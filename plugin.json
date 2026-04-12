@@ -1,0 +1,10 @@
+{
+  "name": "heare",
+  "version": "0.1.0",
+  "description": "Proactive ambient voice AI assistant powered by Claude Code",
+  "skills": [
+    { "name": "voice-start", "file": "skills/voice-start.md" },
+    { "name": "voice-stop", "file": "skills/voice-stop.md" },
+    { "name": "voice-mode", "file": "skills/voice-mode.md" }
+  ]
+}

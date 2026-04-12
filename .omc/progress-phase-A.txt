@@ -1,0 +1,38 @@
+# heare scaffolding progress log
+
+## Ralph run 1: 2026-04-11 — Phase A scaffolding (COMPLETED)
+See .omc/progress-phase-A.txt for the full phase A log.
+
+Phase A delivered:
+- 10 source modules in src/ (1290 lines after deslop)
+- 5 test files with 48 passing tests
+- pyproject.toml + uv.lock
+- Prompts, skills, plugin.json, README, .env.example
+- Architect APPROVED with 4 minor Phase B issues flagged and deferred
+
+## Ralph run 2: 2026-04-11 — Phase B/C/D/E readiness (IN PROGRESS)
+
+### Goal
+Close out the architect-flagged Phase A bugs and implement the Phase E
+reliability features so the code is ready for live-hardware verification.
+Live-hardware steps (mic test, 1-hour soak) still require the user.
+
+### Architect-flagged bugs being fixed
+1. BCDE-002: Mode hot-reload didn't work — daemon read mode only at start
+2. BCDE-003: _check_timeout only fired on frame arrival — silent user bypassed timeout
+3. BCDE-004: SIGTERM handler didn't cancel runner.run(pipeline)
+4. BCDE-006: edge-tts only caught NoAudioReceived, not general network errors
+
+### New work
+5. BCDE-001: Install portaudio + enable pyaudio via [local] extra
+6. BCDE-005: Log rotation (10MB, RotatingFileHandler)
+7. BCDE-007: Groq rate-limit back-off + settings cap
+8. BCDE-008: Backfill tests + verify Phase B/C/D/E non-hardware criteria
+9. BCDE-009: Architect review + deslop + regression
+
+### Starting state
+- 48 tests passing
+- `uv run python -m src.main --help` exit 0
+- plugin.json valid
+- Architect approval on Phase A
+- brew install portaudio kicked off in background

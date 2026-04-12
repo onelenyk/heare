@@ -1,0 +1,108 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1775976388118,
+  "projectRoot": "/Users/lenyk/myprojects/heare",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "pytest",
+        "version": null,
+        "category": "testing"
+      }
+    ],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": "snake_case",
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "src",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "prompts": {
+      "path": "prompts",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1775976388106,
+      "keyFiles": [
+        "decider.txt",
+        "identity-bootstrap.txt",
+        "persona.txt"
+      ]
+    },
+    "skills": {
+      "path": "skills",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1775976388107,
+      "keyFiles": [
+        "voice-mode.md",
+        "voice-start.md",
+        "voice-stop.md"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 13,
+      "lastAccessed": 1775976388107,
+      "keyFiles": [
+        "__init__.py",
+        "claude_cli.py",
+        "config.py",
+        "context.py",
+        "decider.py"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 12,
+      "lastAccessed": 1775976388108,
+      "keyFiles": [
+        "__init__.py",
+        "test_context.py",
+        "test_decider.py",
+        "test_edge_tts.py",
+        "test_edge_tts_errors.py"
+      ]
+    },
+    "tests/fixtures": {
+      "path": "tests/fixtures",
+      "purpose": "Test fixtures",
+      "fileCount": 1,
+      "lastAccessed": 1775976388108,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
