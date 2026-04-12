@@ -23,9 +23,9 @@ logger = logging.getLogger("heare.decider")
 
 def _load_pipecat_base():
     from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-    from pipecat.frames.frames import Frame, TextFrame, TranscriptionFrame
+    from pipecat.frames.frames import Frame, TTSSpeakFrame, TranscriptionFrame
 
-    return FrameProcessor, FrameDirection, Frame, TextFrame, TranscriptionFrame
+    return FrameProcessor, FrameDirection, Frame, TTSSpeakFrame, TranscriptionFrame
 
 
 YES_PATTERNS = [
@@ -86,7 +86,7 @@ def _build_decider_processor_class():
         FrameProcessor,
         FrameDirection,
         Frame,
-        TextFrame,
+        TTSSpeakFrame,
         TranscriptionFrame,
     ) = _load_pipecat_base()
 
@@ -178,7 +178,7 @@ def _build_decider_processor_class():
             if d_type == "speak":
                 reply = decision.get("reply")
                 if reply:
-                    await self.push_frame(TextFrame(reply))
+                    await self.push_frame(TTSSpeakFrame(reply))
                 return
             if d_type == "act":
                 confidence = decision.get("confidence", 0.0) or 0.0
@@ -193,7 +193,7 @@ def _build_decider_processor_class():
                 )
                 self._schedule_timeout_task()
                 intent = decision.get("intent", "do that")
-                await self.push_frame(TextFrame(f"Хочу {intent}, можна?"))
+                await self.push_frame(TTSSpeakFrame(f"Хочу {intent}, можна?"))
 
         def _schedule_timeout_task(self) -> None:
             self._cancel_timeout_task()
@@ -226,7 +226,7 @@ def _build_decider_processor_class():
             await self.store.log_transcript(transcript, self.settings.mode.value)
             verdict = parse_yes_no(transcript)
             if verdict == "unclear":
-                await self.push_frame(TextFrame("Скажи: так чи ні?"))
+                await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
                 return
             if verdict == "no":
                 await self._cancel_pending("okay")
@@ -247,12 +247,12 @@ def _build_decider_processor_class():
                 summary = result.get("summary", "done")
                 if decision_id is not None:
                     await self.store.log_action(decision_id, "ok", summary)
-                await self.push_frame(TextFrame(summary))
+                await self.push_frame(TTSSpeakFrame(summary))
             except Exception as e:
                 logger.exception("action failed: %s", e)
                 if decision_id is not None:
                     await self.store.log_action(decision_id, "error", str(e))
-                await self.push_frame(TextFrame("дія не вдалася"))
+                await self.push_frame(TTSSpeakFrame("дія не вдалася"))
             finally:
                 self.pending_action = None
                 self.pending_decision_id = None
@@ -270,7 +270,7 @@ def _build_decider_processor_class():
             self.confirmation_deadline = None
             self.state = DeciderState.LISTENING
             self._cancel_timeout_task()
-            await self.push_frame(TextFrame(message))
+            await self.push_frame(TTSSpeakFrame(message))
 
         async def on_heartbeat_tick(self) -> None:
             if self.state != DeciderState.LISTENING:
@@ -288,7 +288,7 @@ def _build_decider_processor_class():
             reply = decision.get("reply")
             await self.store.log_heartbeat(decided_to_speak, reply)
             if decided_to_speak and reply:
-                await self.push_frame(TextFrame(reply))
+                await self.push_frame(TTSSpeakFrame(reply))
 
     _decider_cls = DeciderProcessor
     return DeciderProcessor
