@@ -23,9 +23,23 @@ logger = logging.getLogger("heare.decider")
 
 def _load_pipecat_base():
     from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-    from pipecat.frames.frames import Frame, TTSSpeakFrame, TranscriptionFrame
+    from pipecat.frames.frames import (
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
+        Frame,
+        TTSSpeakFrame,
+        TranscriptionFrame,
+    )
 
-    return FrameProcessor, FrameDirection, Frame, TTSSpeakFrame, TranscriptionFrame
+    return (
+        FrameProcessor,
+        FrameDirection,
+        Frame,
+        TTSSpeakFrame,
+        TranscriptionFrame,
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
+    )
 
 
 YES_PATTERNS = [
@@ -88,6 +102,8 @@ def _build_decider_processor_class():
         Frame,
         TTSSpeakFrame,
         TranscriptionFrame,
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
     ) = _load_pipecat_base()
 
     class DeciderProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
@@ -112,6 +128,7 @@ def _build_decider_processor_class():
             self._last_transcript: str | None = None
             self._lock = asyncio.Lock()
             self._timeout_task: asyncio.Task | None = None
+            self._bot_speaking = False
 
         def _reload_mode(self) -> None:
             mode_file = self.settings.mode_file
@@ -127,9 +144,22 @@ def _build_decider_processor_class():
         async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
             await super().process_frame(frame, direction)
 
+            if isinstance(frame, BotStartedSpeakingFrame):
+                self._bot_speaking = True
+                await self.push_frame(frame, direction)
+                return
+            if isinstance(frame, BotStoppedSpeakingFrame):
+                self._bot_speaking = False
+                await self.push_frame(frame, direction)
+                return
+
             transcript = self._extract_transcript(frame)
             if transcript is None:
                 await self.push_frame(frame, direction)
+                return
+
+            if self._bot_speaking:
+                logger.debug("ignoring transcript while bot is speaking: %s", transcript[:40])
                 return
 
             self._reload_mode()
