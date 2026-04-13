@@ -20,6 +20,7 @@ from src.config import Settings
 from src.speaker_gallery import SpeakerGallery
 from src.speaker_processor import (
     _SLOT_RETAIN,
+    _AccumBuffer,
     _TurnSlot,
     _build_processor_classes,
     create_speaker_processors,
@@ -396,3 +397,416 @@ async def test_build_processor_classes_idempotent() -> None:
     c2 = _build_processor_classes()
     assert c1[0] is c2[0]
     assert c1[1] is c2[1]
+
+
+async def test_prev_id_cleared_on_non_owner_turn(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """SPK2-B1: a non-owner turn (no gallery match) must clear _prev_id
+    so a subsequent short turn does NOT inherit the previous owner label.
+    """
+    import src.speaker_id as sid
+
+    state = {"vec": _owner_vector()}
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: state["vec"].copy())
+    gallery = _mk_gallery(tmp_path)
+    buffer, tagger = create_speaker_processors(_settings(), gallery, model=MagicMock())
+
+    async def _run_turn(audio_bytes: bytes) -> None:
+        prev_completed = buffer.latest_completed_turn_id()
+        await buffer.process_frame(fake_frames["user_start"](), None)
+        await buffer.process_frame(
+            fake_frames["audio"](audio=audio_bytes, sample_rate=16000, num_channels=1),
+            None,
+        )
+        await buffer.process_frame(fake_frames["user_stop"](), None)
+        for _ in range(50):
+            cur = buffer.latest_completed_turn_id()
+            if cur is not None and cur != prev_completed:
+                break
+            await asyncio.sleep(0.01)
+
+    # Turn 1: owner, long enough to match
+    state["vec"] = _owner_vector()
+    await _run_turn(b"\x10\x20" * 8000)  # 1000ms @ 16k
+    f1 = fake_frames["transcript"](text="long owner", user_id="u", timestamp="t")
+    f1.finalized = True
+    await tagger.process_frame(f1, None)
+    assert f1.speaker_id == "owner"
+    assert tagger._prev_id == "owner"
+
+    # Turn 2: stranger, long enough to run identify. Gallery only has owner;
+    # orthogonal stranger vector → gallery.identify returns (None, small).
+    state["vec"] = _stranger_vector()
+    await _run_turn(b"\x30\x40" * 8000)
+    f2 = fake_frames["transcript"](text="long stranger", user_id="u", timestamp="t")
+    f2.finalized = True
+    await tagger.process_frame(f2, None)
+    assert f2.speaker_id is None
+    # The leak fix: prev identity must be CLEARED now
+    assert tagger._prev_id is None
+
+    # Turn 3: a short turn — must NOT inherit "owner" via latent _prev_id
+    state["vec"] = _owner_vector()  # wouldn't matter; short-turn skips embed
+    await _run_turn(b"\x00\x00" * 800)  # 50ms
+    f3 = fake_frames["transcript"](text="так", user_id="u", timestamp="t")
+    f3.finalized = True
+    await tagger.process_frame(f3, None)
+    assert f3.speaker_id is None
+    assert f3.speaker_inherited is False
+    await buffer.close()
+
+
+async def test_sticky_window_expires_after_timeout(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """SPK2-B1: once speaker_id_sticky_seconds elapses, short turns no
+    longer inherit the previous label and fall through as unknown.
+
+    Rather than patching global time.monotonic (which deadlocks asyncio
+    internals), we artificially age self._prev_at by subtracting the
+    sticky window + slack directly on the tagger instance.
+    """
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
+    gallery = _mk_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_sticky_seconds = 5.0
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    # Turn 1: owner, long, matches — establishes prev_id + _prev_at
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    await buffer.process_frame(
+        fake_frames["audio"](
+            audio=b"\x10\x20" * 8000, sample_rate=16000, num_channels=1
+        ),
+        None,
+    )
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    for _ in range(30):
+        if buffer.latest_completed_turn_id() is not None:
+            break
+        await asyncio.sleep(0.01)
+    f1 = fake_frames["transcript"](text="long owner", user_id="u", timestamp="t")
+    f1.finalized = True
+    await tagger.process_frame(f1, None)
+    assert tagger._prev_id == "owner"
+    assert tagger._prev_at > 0.0
+
+    # Age the sticky window past expiry (5s + 1s slack)
+    tagger._prev_at -= 6.0
+
+    # Turn 2: short, 50ms — sticky window expired so must NOT inherit
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    await buffer.process_frame(
+        fake_frames["audio"](
+            audio=b"\x00\x00" * 800, sample_rate=16000, num_channels=1
+        ),
+        None,
+    )
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    for _ in range(30):
+        if buffer.latest_completed_turn_id() == 2:
+            break
+        await asyncio.sleep(0.01)
+    f2 = fake_frames["transcript"](text="так", user_id="u", timestamp="t")
+    f2.finalized = True
+    await tagger.process_frame(f2, None)
+    assert f2.speaker_id is None
+    assert f2.speaker_inherited is False
+    await buffer.close()
+
+
+async def test_short_turn_after_stranger_does_not_inherit_owner(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """SPK2-B1: end-to-end through the tagger's short-turn path — a short
+    'так' that arrives right after a non-matched long turn must fall
+    through as None (not inherit the owner id from two turns ago).
+    """
+    import src.speaker_id as sid
+
+    state = {"vec": _owner_vector()}
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: state["vec"].copy())
+    gallery = _mk_gallery(tmp_path)
+    buffer, tagger = create_speaker_processors(_settings(), gallery, model=MagicMock())
+
+    async def _run(audio: bytes) -> None:
+        prev_completed = buffer.latest_completed_turn_id()
+        await buffer.process_frame(fake_frames["user_start"](), None)
+        await buffer.process_frame(
+            fake_frames["audio"](audio=audio, sample_rate=16000, num_channels=1),
+            None,
+        )
+        await buffer.process_frame(fake_frames["user_stop"](), None)
+        for _ in range(50):
+            cur = buffer.latest_completed_turn_id()
+            if cur is not None and cur != prev_completed:
+                break
+            await asyncio.sleep(0.01)
+
+    # 1. owner long → prev_id=owner
+    state["vec"] = _owner_vector()
+    await _run(b"\x10\x20" * 8000)
+    f1 = fake_frames["transcript"](text="long owner", user_id="u", timestamp="t")
+    f1.finalized = True
+    await tagger.process_frame(f1, None)
+    assert tagger._prev_id == "owner"
+
+    # 2. stranger long → prev cleared
+    state["vec"] = _stranger_vector()
+    await _run(b"\x30\x40" * 8000)
+    f2 = fake_frames["transcript"](text="stranger long", user_id="u", timestamp="t")
+    f2.finalized = True
+    await tagger.process_frame(f2, None)
+    assert tagger._prev_id is None
+
+    # 3. short "так" — must NOT inherit owner
+    await _run(b"\x00\x00" * 800)
+    f3 = fake_frames["transcript"](text="так", user_id="u", timestamp="t")
+    f3.finalized = True
+    await tagger.process_frame(f3, None)
+    assert f3.speaker_id is None
+    assert f3.speaker_inherited is False
+    await buffer.close()
+
+
+def test_accum_buffer_rolls_over_duration_limit() -> None:
+    """SPK2-B2: _AccumBuffer caps total audio at 2x the target duration."""
+    buf = _AccumBuffer(target_ms=3000, sample_rate=16000)
+    # Each chunk = 500ms @ 16k int16 mono = 16000 bytes
+    chunk = b"\x00\x01" * 8000
+    for _ in range(20):  # 10_000ms worth of audio fed in
+        buf.append(chunk)
+    # Cap is 2 * 3000ms = 6000ms; buffer should hold no more than that
+    assert buf.total_ms() <= 6000.0
+    # And at least one target-window's worth remains
+    assert buf.total_ms() >= 3000.0
+
+
+async def test_accum_buffer_flushed_on_bot_speaking(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """SPK2-B2: BotStartedSpeakingFrame flushes the rolling accumulator so
+    TTS audio never contaminates the stored context.
+    """
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
+    gallery = _mk_gallery(tmp_path)
+    buffer, _ = create_speaker_processors(_settings(), gallery, model=MagicMock())
+
+    # Feed 1 second of audio through a user turn so the accumulator grows.
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    audio = fake_frames["audio"](
+        audio=b"\x10\x20" * 8000, sample_rate=16000, num_channels=1
+    )
+    await buffer.process_frame(audio, None)
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    assert buffer._accum.total_ms() > 0.0
+
+    # Bot starts speaking → accumulator must flush
+    await buffer.process_frame(fake_frames["bot_start"](), None)
+    assert buffer._accum.total_ms() == 0.0
+    await buffer.close()
+
+
+async def test_short_turn_uses_accumulated_embedding(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """SPK2-B2: when a sub-target-duration turn completes and the rolling
+    buffer has reached target, the slot receives an accum_embedding AND
+    the tagger uses it (not the single-turn embedding) for gallery.identify.
+    """
+    import src.speaker_id as sid
+
+    call_log: list[int] = []
+
+    def tracking_embed(pcm, sr, model):
+        call_log.append(len(pcm))
+        return _owner_vector()
+
+    monkeypatch.setattr(sid, "embed", tracking_embed)
+    gallery = _mk_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_accum_target_ms = 3000
+    settings.speaker_id_min_duration_ms = 400
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    async def _run_turn(audio_bytes: bytes) -> int:
+        prev = buffer.latest_completed_turn_id()
+        await buffer.process_frame(fake_frames["user_start"](), None)
+        await buffer.process_frame(
+            fake_frames["audio"](
+                audio=audio_bytes, sample_rate=16000, num_channels=1
+            ),
+            None,
+        )
+        await buffer.process_frame(fake_frames["user_stop"](), None)
+        for _ in range(50):
+            cur = buffer.latest_completed_turn_id()
+            if cur is not None and cur != prev:
+                return cur
+            await asyncio.sleep(0.01)
+        raise AssertionError("slot never completed")
+
+    # 3 back-to-back 1-second turns so the accumulator reaches 3000ms
+    second_pcm = b"\x10\x20" * 16000  # 1000ms at 16k int16
+    _ = await _run_turn(second_pcm)
+    _ = await _run_turn(second_pcm)
+    last_turn = await _run_turn(second_pcm)
+
+    slot = buffer.get_slot(last_turn)
+    assert slot is not None
+    assert slot.duration_ms < settings.speaker_id_accum_target_ms
+    assert buffer._accum.total_ms() >= settings.speaker_id_accum_target_ms
+    assert slot.accum_embedding is not None
+
+    # Tagger must use the accumulated embedding, not the single-turn one
+    frame = fake_frames["transcript"](text="accum turn", user_id="u", timestamp="t")
+    frame.finalized = True
+    await tagger.process_frame(frame, None)
+    assert frame.speaker_id == "owner"
+    # 3 single-turn embeds + 1 accumulation embed on the last turn = 4 calls,
+    # and the accumulation call is strictly larger than any single-turn call.
+    assert len(call_log) == 4
+    assert max(call_log) > len(second_pcm)
+    await buffer.close()
+
+
+async def test_long_turn_uses_single_turn_embedding(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """SPK2-B2: a turn at/above the accum target ignores the accumulator
+    and runs only the single-turn embed.
+    """
+    import src.speaker_id as sid
+
+    call_log: list[int] = []
+
+    def tracking_embed(pcm, sr, model):
+        call_log.append(len(pcm))
+        return _owner_vector()
+
+    monkeypatch.setattr(sid, "embed", tracking_embed)
+    gallery = _mk_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_accum_target_ms = 3000
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    # 4-second turn — above accum_target_ms
+    long_pcm = b"\x10\x20" * 64000  # 4000ms
+    prev = buffer.latest_completed_turn_id()
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    await buffer.process_frame(
+        fake_frames["audio"](audio=long_pcm, sample_rate=16000, num_channels=1),
+        None,
+    )
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    for _ in range(50):
+        cur = buffer.latest_completed_turn_id()
+        if cur is not None and cur != prev:
+            break
+        await asyncio.sleep(0.01)
+
+    slot = buffer.get_slot(buffer.latest_completed_turn_id())
+    assert slot is not None
+    assert slot.duration_ms >= settings.speaker_id_accum_target_ms
+    # No second embed for accumulation should have been kicked off
+    assert slot.accum_embedding is None
+    # Only one embed call was made (single-turn), not two
+    assert len(call_log) == 1
+
+    frame = fake_frames["transcript"](text="long turn", user_id="u", timestamp="t")
+    frame.finalized = True
+    await tagger.process_frame(frame, None)
+    assert frame.speaker_id == "owner"
+    await buffer.close()
+
+
+async def test_tagger_auto_appends_high_confidence_long_turn(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """SPK2-B4: a long, high-confidence owner turn should call
+    gallery.append_reference so the centroid adapts over the session.
+    """
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
+    gallery = _mk_gallery(tmp_path)
+    call_log: list[tuple[str, int]] = []
+    original_append = gallery.append_reference
+
+    def tracking_append(speaker_id, v, **kwargs):
+        result = original_append(speaker_id, v, **kwargs)
+        call_log.append((speaker_id, len(gallery._speakers[speaker_id]["embeddings"])))
+        return result
+
+    gallery.append_reference = tracking_append  # type: ignore[method-assign]
+    buffer, tagger = create_speaker_processors(_settings(), gallery, model=MagicMock())
+
+    long_pcm = b"\x10\x20" * 64000  # 4000ms @ 16k — above accum target
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    await buffer.process_frame(
+        fake_frames["audio"](audio=long_pcm, sample_rate=16000, num_channels=1),
+        None,
+    )
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    for _ in range(50):
+        if buffer.latest_completed_turn_id() is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    frame = fake_frames["transcript"](text="довга фраза", user_id="u", timestamp="t")
+    frame.finalized = True
+    await tagger.process_frame(frame, None)
+    assert frame.speaker_id == "owner"
+    # Owner vector == enrollment vector, so score is ~1.0 — comfortably above
+    # threshold_match + 0.05. append_reference must have been invoked once.
+    assert len(call_log) == 1
+    assert call_log[0][0] == "owner"
+    # Gallery now has 2 references (original enrollment + auto-appended)
+    assert call_log[0][1] == 2
+    await buffer.close()
+
+
+async def test_tagger_auto_appends_marginal_duration_turn(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """Marginal-duration owner matches also auto-append. The gate is
+    'high-confidence owner match', not turn length — we always feed the
+    stable single-turn embedding regardless of which path identified.
+    """
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
+    gallery = _mk_gallery(tmp_path)
+    append_calls: list[str] = []
+    original_append = gallery.append_reference
+
+    def tracking_append(speaker_id, v, **kwargs):
+        append_calls.append(speaker_id)
+        return original_append(speaker_id, v, **kwargs)
+
+    gallery.append_reference = tracking_append  # type: ignore[method-assign]
+    buffer, tagger = create_speaker_processors(_settings(), gallery, model=MagicMock())
+
+    # 1-second marginal-duration turn (above min_duration_ms, below accum target)
+    pcm = b"\x10\x20" * 16000
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    await buffer.process_frame(
+        fake_frames["audio"](audio=pcm, sample_rate=16000, num_channels=1),
+        None,
+    )
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    for _ in range(50):
+        if buffer.latest_completed_turn_id() is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    frame = fake_frames["transcript"](text="коротка", user_id="u", timestamp="t")
+    frame.finalized = True
+    await tagger.process_frame(frame, None)
+    assert append_calls == ["owner"]
+    await buffer.close()

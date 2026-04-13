@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +43,7 @@ class _TurnSlot:
     turn_id: int
     pcm: bytes | None = None
     embedding: np.ndarray | None = None
+    accum_embedding: np.ndarray | None = None
     error: Exception | None = None
     elapsed_ms: float = 0.0
     duration_ms: float = 0.0
@@ -50,6 +52,40 @@ class _TurnSlot:
 
 
 _SLOT_RETAIN = 4
+
+
+class _AccumBuffer:
+    """Rolling PCM buffer bounded by duration.
+
+    Kept at up to 2x the target duration as headroom so a short turn still
+    has a recent window of audio that reaches ECAPA's stable regime (~3s).
+    Flushed on BotStartedSpeakingFrame so TTS audio never contaminates the
+    accumulator.
+    """
+
+    def __init__(self, target_ms: int, sample_rate: int) -> None:
+        self.target_ms = target_ms
+        self.sample_rate = sample_rate
+        self._chunks: deque[bytes] = deque()
+        self._total_bytes = 0
+
+    def append(self, pcm: bytes) -> None:
+        self._chunks.append(pcm)
+        self._total_bytes += len(pcm)
+        cap_bytes = int((2 * self.target_ms / 1000.0) * self.sample_rate * 2)
+        while self._total_bytes > cap_bytes and len(self._chunks) > 1:
+            oldest = self._chunks.popleft()
+            self._total_bytes -= len(oldest)
+
+    def pcm_bytes(self) -> bytes:
+        return b"".join(self._chunks)
+
+    def total_ms(self) -> float:
+        return (self._total_bytes / 2) / self.sample_rate * 1000.0
+
+    def flush(self) -> None:
+        self._chunks.clear()
+        self._total_bytes = 0
 
 
 def _load_pipecat_base() -> tuple[Any, ...]:
@@ -125,6 +161,10 @@ def _build_processor_classes() -> tuple[Any, Any]:
             self._current_turn: _TurnSlot | None = None
             self._chunks: list[bytes] = []
             self._latest_completed_turn_id: int | None = None
+            self._accum = _AccumBuffer(
+                target_ms=settings.speaker_id_accum_target_ms,
+                sample_rate=sample_rate,
+            )
 
         def get_slot(self, turn_id: int) -> _TurnSlot | None:
             return self._slots.get(turn_id)
@@ -145,6 +185,7 @@ def _build_processor_classes() -> tuple[Any, Any]:
                     slot.task.cancel()
 
         async def close(self) -> None:
+            self._accum.flush()
             pending: list[asyncio.Task] = []
             for slot in list(self._slots.values()):
                 if slot.task is not None and not slot.task.done():
@@ -165,6 +206,12 @@ def _build_processor_classes() -> tuple[Any, Any]:
         async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
             await super().process_frame(frame, direction)
 
+            if isinstance(frame, BotStartedSpeakingFrame):
+                # TTS audio must never contaminate the rolling accumulator.
+                self._accum.flush()
+                await self.push_frame(frame, direction)
+                return
+
             if isinstance(frame, UserStartedSpeakingFrame):
                 slot = _TurnSlot(turn_id=self._next_turn_id)
                 self._slots[slot.turn_id] = slot
@@ -184,6 +231,13 @@ def _build_processor_classes() -> tuple[Any, Any]:
                     )
                 if self._current_turn is not None:
                     self._chunks.append(frame.audio)
+                    # SECURITY: the accumulator is a cross-turn rolling
+                    # window. Widening speaker_id_accum_target_ms raises the
+                    # risk of a stranger's short turn being misclassified
+                    # because owner audio still in the buffer can elevate a
+                    # mixed embedding above threshold. Re-audit the decider
+                    # confirmation gate if you change that setting.
+                    self._accum.append(frame.audio)
                 await self.push_frame(frame, direction)
                 return
 
@@ -213,6 +267,31 @@ def _build_processor_classes() -> tuple[Any, Any]:
                 slot.embedding = await loop.run_in_executor(
                     None, speaker_id.embed, slot.pcm, self._sample_rate, self._model
                 )
+                # ECAPA is trained on ~3s clips; fire a second embed on the
+                # rolling window only when this turn would score below the
+                # stable regime on its own.
+                target_ms = self._settings.speaker_id_accum_target_ms
+                if (
+                    slot.duration_ms < target_ms
+                    and self._accum.total_ms() >= target_ms
+                ):
+                    try:
+                        accum_pcm = self._accum.pcm_bytes()
+                        slot.accum_embedding = await loop.run_in_executor(
+                            None,
+                            speaker_id.embed,
+                            accum_pcm,
+                            self._sample_rate,
+                            self._model,
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(
+                            "speaker accum embed failed for turn %d: %s",
+                            slot.turn_id,
+                            e,
+                        )
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
@@ -243,6 +322,7 @@ def _build_processor_classes() -> tuple[Any, Any]:
             self._bot_speaking = False
             self._bot_cooldown_task: asyncio.Task | None = None
             self._prev_id: str | None = None
+            self._prev_at: float = 0.0
 
         def _schedule_bot_cooldown(self) -> None:
             if self._bot_cooldown_task is not None and not self._bot_cooldown_task.done():
@@ -334,23 +414,45 @@ def _build_processor_classes() -> tuple[Any, Any]:
                 )
                 return
 
-            # Short-turn fast-reject: inherit prev label (LISTENING path uses
-            # this as "same speaker continuation"; AWAITING_CONFIRMATION in
-            # decider.py rejects inherited confirmations as fail-closed).
+            # Short-turn fast-reject: inherit prev label only when we still
+            # hold a trusted prev identity AND the sticky window has not
+            # expired. Outside the window (or without prev), a short turn
+            # falls through as unknown — the decider's fail-closed gate in
+            # AWAITING_CONFIRMATION handles the rest.
             if slot.duration_ms < self._settings.speaker_id_min_duration_ms:
-                frame.speaker_id = self._prev_id
-                frame.speaker_confidence = -1.0
-                frame.speaker_inherited = True
-                logger.info(
-                    "[SPEAKER] turn=%d sid=%s conf=-1.00 inherited=True elapsed_ms=%.0f",
-                    turn_id,
-                    self._prev_id,
-                    slot.elapsed_ms,
+                sticky_ok = (
+                    self._prev_id is not None
+                    and (time.monotonic() - self._prev_at)
+                    < self._settings.speaker_id_sticky_seconds
                 )
+                if sticky_ok:
+                    frame.speaker_id = self._prev_id
+                    frame.speaker_confidence = -1.0
+                    frame.speaker_inherited = True
+                    logger.info(
+                        "[SPEAKER] turn=%d sid=%s conf=-1.00 inherited=True elapsed_ms=%.0f",
+                        turn_id,
+                        self._prev_id,
+                        slot.elapsed_ms,
+                    )
+                else:
+                    logger.info(
+                        "[SPEAKER] turn=%d sid=None inherited=False (sticky expired or no prev) elapsed_ms=%.0f",
+                        turn_id,
+                        slot.elapsed_ms,
+                    )
                 return
 
+            # Marginal-duration turns (between min_duration_ms and the
+            # accum target) prefer the rolling-window embedding — see
+            # _run_embed for the stable-regime rationale.
+            target_ms = self._settings.speaker_id_accum_target_ms
+            using_accum = (
+                slot.duration_ms < target_ms and slot.accum_embedding is not None
+            )
+            embed_vec = slot.accum_embedding if using_accum else slot.embedding
             sid, score = self._gallery.identify(
-                slot.embedding,
+                embed_vec,
                 threshold_match=self._settings.speaker_id_threshold_match,
             )
             frame.speaker_id = sid
@@ -358,14 +460,39 @@ def _build_processor_classes() -> tuple[Any, Any]:
             if sid is not None:
                 frame.speaker_label = self._gallery.get_label(sid)
                 self._prev_id = sid
+                self._prev_at = time.monotonic()
+                # Session ref: register EVERY successful match as an
+                # in-memory anchor. Rapid adaptation to the current room.
+                # Never persisted — forgotten on restart.
+                if slot.embedding is not None:
+                    self._gallery.register_session_ref(sid, slot.embedding)
+                # Persistent auto-append: only on HIGH-confidence single-
+                # turn embeddings. Long-term memory stays clean.
+                if (
+                    slot.embedding is not None
+                    and score >= self._settings.speaker_id_threshold_match + 0.05
+                ):
+                    try:
+                        self._gallery.append_reference(sid, slot.embedding)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(
+                            "auto-append failed for turn %d: %s", turn_id, e
+                        )
+            else:
+                # Non-match on a non-short turn invalidates any prior sticky
+                # label — a stranger (or low-confidence owner) must not leak
+                # "owner" forward to the next short turn.
+                self._prev_id = None
+                self._prev_at = 0.0
             # NOTE: never log speaker_label — labels are user-controlled PII.
             logger.info(
-                "[SPEAKER] turn=%d sid=%s conf=%.2f dur_ms=%.0f embed_ms=%.0f",
+                "[SPEAKER] turn=%d sid=%s conf=%.2f dur_ms=%.0f embed_ms=%.0f using_accum=%s",
                 turn_id,
                 sid,
                 score,
                 slot.duration_ms,
                 slot.elapsed_ms,
+                using_accum,
             )
 
     _buffer_cls = AudioBufferProcessor

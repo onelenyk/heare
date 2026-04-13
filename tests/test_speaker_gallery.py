@@ -155,3 +155,136 @@ def test_get_centroid_averages_embeddings(tmp_path: Path) -> None:
     # Mean of (1,0) and (0,1) is (0.5, 0.5); L2-normalized = (1/sqrt(2), 1/sqrt(2))
     expected = np.array([0.5, 0.5]) / np.linalg.norm([0.5, 0.5])
     assert np.allclose(c, expected.astype(np.float32), atol=1e-6)
+
+
+def test_identify_uses_max_over_refs_not_centroid(tmp_path: Path) -> None:
+    """A vector that matches ONE reference should identify as owner even
+    when it's far from the centroid — the key property of max-over-refs.
+    """
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    # Two orthogonal references; centroid is their L2-normalized mean
+    # (45 degrees off each ref). A vector aligned with ref #1 has cosine
+    # ~1.0 to that ref but only ~0.707 to the centroid — max-over-refs
+    # correctly returns 1.0 where centroid-only would return 0.707.
+    g._speakers["owner"] = {
+        "label": "owner",
+        "embeddings": [
+            [1.0, 0.0],
+            [0.0, 1.0],
+        ],
+        "created_at": "2026-04-13T00:00:00Z",
+        "updated_at": "2026-04-13T00:00:00Z",
+        "turn_count": 2,
+    }
+    v = np.array([1.0, 0.0], dtype=np.float32)
+    sid, score = g.identify(v, threshold_match=0.9)
+    assert sid == "owner"
+    assert score == pytest.approx(1.0, abs=1e-6)
+
+
+def test_append_reference_rejects_unknown_speaker(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    v = np.array([1.0, 0.0], dtype=np.float32)
+    assert g.append_reference("ghost", v) is False
+
+
+def test_append_reference_grows_gallery_and_persists(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    v0 = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    g.enroll_owner(v0, label="owner")
+    assert len(g._speakers["owner"]["embeddings"]) == 1
+
+    v1 = np.array([0.95, 0.31, 0.0], dtype=np.float32)  # ~0.95 to v0
+    assert g.append_reference("owner", v1) is True
+    assert len(g._speakers["owner"]["embeddings"]) == 2
+
+    # Persists on disk — reloading picks up both refs
+    g2 = SpeakerGallery.load(tmp_path / "speakers.json")
+    assert len(g2._speakers["owner"]["embeddings"]) == 2
+
+
+def test_append_reference_anti_drift_rejects_low_cosine(tmp_path: Path) -> None:
+    """A vector roughly orthogonal to the existing centroid (cos ~0) must
+    be rejected by the anti-drift guard even though the API was called.
+    """
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.array([1.0, 0.0, 0.0], dtype=np.float32), label="owner")
+    stranger = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    assert g.append_reference("owner", stranger) is False
+    # Gallery untouched
+    assert len(g._speakers["owner"]["embeddings"]) == 1
+
+
+def test_register_session_ref_is_considered_by_identify(tmp_path: Path) -> None:
+    """A session ref should count as an anchor for identify() — a query
+    that only matches the session ref (not the persistent ones) should
+    still return the speaker id.
+    """
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    # Enroll with one persistent ref along axis 0
+    g.enroll_owner(np.array([1.0, 0.0, 0.0], dtype=np.float32), label="owner")
+    # Register a session ref along axis 1 (orthogonal to the persistent one)
+    g.register_session_ref("owner", np.array([0.0, 1.0, 0.0], dtype=np.float32))
+    # A query aligned with the session ref should match owner
+    v = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    sid, score = g.identify(v, threshold_match=0.90)
+    assert sid == "owner"
+    assert score == pytest.approx(1.0, abs=1e-6)
+
+
+def test_register_session_ref_fifo_cap(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.array([1.0, 0.0], dtype=np.float32), label="owner")
+    for i in range(20):
+        g.register_session_ref(
+            "owner", np.array([1.0, 0.01 * i], dtype=np.float32), cap=5
+        )
+    assert g.session_ref_count("owner") == 5
+
+
+def test_session_refs_not_persisted(tmp_path: Path) -> None:
+    """Session refs live only in memory — a fresh load from disk does
+    NOT carry them over.
+    """
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.array([1.0, 0.0], dtype=np.float32), label="owner")
+    g.register_session_ref("owner", np.array([0.0, 1.0], dtype=np.float32))
+    assert g.session_ref_count("owner") == 1
+
+    # Reload from disk — session refs must be gone
+    g2 = SpeakerGallery.load(tmp_path / "speakers.json")
+    assert g2.session_ref_count("owner") == 0
+    assert len(g2._speakers["owner"]["embeddings"]) == 1
+
+
+def test_clear_session_refs(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.array([1.0, 0.0], dtype=np.float32), label="owner")
+    g.register_session_ref("owner", np.array([0.0, 1.0], dtype=np.float32))
+    assert g.session_ref_count("owner") == 1
+    g.clear_session_refs()
+    assert g.session_ref_count("owner") == 0
+
+
+def test_append_reference_fifo_cap_preserves_enrollment_ref(
+    tmp_path: Path,
+) -> None:
+    """When more than `cap` refs are appended, the oldest rotated refs are
+    dropped but the enrollment reference at index 0 is always preserved.
+    """
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    enrollment = np.array([1.0, 0.0], dtype=np.float32)
+    g.enroll_owner(enrollment, label="owner")
+
+    # Append 10 near-identical refs; cap the gallery at 5 for the test
+    for i in range(10):
+        v = np.array([1.0, 0.01 * (i + 1)], dtype=np.float32)
+        v = v / np.linalg.norm(v)
+        assert g.append_reference("owner", v.astype(np.float32), cap=5) is True
+
+    embeddings = g._speakers["owner"]["embeddings"]
+    assert len(embeddings) == 5
+    # Enrollment ref must still be at index 0
+    assert np.allclose(
+        np.array(embeddings[0], dtype=np.float32), enrollment, atol=1e-6
+    )

@@ -94,6 +94,7 @@ def test_speaker_id_defaults() -> None:
     assert s.speaker_id_sticky_threshold == 0.80
     assert s.speaker_id_sticky_seconds == 5.0
     assert s.speaker_id_min_duration_ms == 400
+    assert s.speaker_id_accum_target_ms == 3000
     assert s.speaker_id_centroid_k == 5
     assert s.speaker_id_ema_alpha == 0.1
     assert s.speaker_id_auto_enroll_after == 3

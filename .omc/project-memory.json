@@ -105,15 +105,33 @@
   },
   "hotPaths": [
     {
-      "path": "src/decider.py",
-      "accessCount": 14,
-      "lastAccessed": 1776091369963,
+      "path": "src/speaker_processor.py",
+      "accessCount": 28,
+      "lastAccessed": 1776112424648,
       "type": "file"
     },
     {
-      "path": "src/speaker_processor.py",
+      "path": "src/decider.py",
+      "accessCount": 17,
+      "lastAccessed": 1776109291495,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_speaker_processor.py",
+      "accessCount": 17,
+      "lastAccessed": 1776111280580,
+      "type": "file"
+    },
+    {
+      "path": "src/speaker_gallery.py",
+      "accessCount": 15,
+      "lastAccessed": 1776112412364,
+      "type": "file"
+    },
+    {
+      "path": "src/config.py",
       "accessCount": 9,
-      "lastAccessed": 1776107539117,
+      "lastAccessed": 1776109274913,
       "type": "file"
     },
     {
@@ -124,14 +142,8 @@
     },
     {
       "path": "src/main.py",
-      "accessCount": 7,
-      "lastAccessed": 1776091379645,
-      "type": "file"
-    },
-    {
-      "path": "src/speaker_gallery.py",
-      "accessCount": 7,
-      "lastAccessed": 1776091559884,
+      "accessCount": 8,
+      "lastAccessed": 1776109897346,
       "type": "file"
     },
     {
@@ -147,12 +159,6 @@
       "type": "file"
     },
     {
-      "path": "src/config.py",
-      "accessCount": 6,
-      "lastAccessed": 1776091370825,
-      "type": "file"
-    },
-    {
       "path": "prompts/decider.txt",
       "accessCount": 6,
       "lastAccessed": 1776091378180,
@@ -165,15 +171,27 @@
       "type": "directory"
     },
     {
+      "path": "tests/test_config.py",
+      "accessCount": 6,
+      "lastAccessed": 1776109286556,
+      "type": "file"
+    },
+    {
       "path": "src/speaker_id.py",
       "accessCount": 5,
       "lastAccessed": 1776091557728,
       "type": "file"
     },
     {
-      "path": "tests/test_speaker_processor.py",
+      "path": "tests/test_speaker_gallery.py",
+      "accessCount": 5,
+      "lastAccessed": 1776112439500,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_stranger_integration.py",
       "accessCount": 4,
-      "lastAccessed": 1776091380561,
+      "lastAccessed": 1776108262434,
       "type": "file"
     },
     {
@@ -189,9 +207,9 @@
       "type": "file"
     },
     {
-      "path": "tests/test_stranger_integration.py",
+      "path": "tests/test_decider.py",
       "accessCount": 3,
-      "lastAccessed": 1776091380141,
+      "lastAccessed": 1776108261967,
       "type": "file"
     },
     {
@@ -207,21 +225,9 @@
       "type": "file"
     },
     {
-      "path": "tests/test_config.py",
-      "accessCount": 2,
-      "lastAccessed": 1776090366203,
-      "type": "file"
-    },
-    {
       "path": "tests/test_speaker_id.py",
       "accessCount": 2,
       "lastAccessed": 1776090506927,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_decider.py",
-      "accessCount": 2,
-      "lastAccessed": 1776091046758,
       "type": "file"
     },
     {
@@ -271,12 +277,6 @@
       "accessCount": 1,
       "lastAccessed": 1776088473381,
       "type": "directory"
-    },
-    {
-      "path": "tests/test_speaker_gallery.py",
-      "accessCount": 1,
-      "lastAccessed": 1776090487446,
-      "type": "file"
     },
     {
       "path": "tests/fixtures/decider_prompt_flag_off.golden.txt",

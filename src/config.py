@@ -60,6 +60,7 @@ class Settings:
     speaker_id_sticky_threshold: float = 0.80
     speaker_id_sticky_seconds: float = 5.0
     speaker_id_min_duration_ms: int = 400
+    speaker_id_accum_target_ms: int = 3000
     speaker_id_centroid_k: int = 5
     speaker_id_ema_alpha: float = 0.1
     speaker_id_auto_enroll_after: int = 3

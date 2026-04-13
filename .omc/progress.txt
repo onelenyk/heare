@@ -72,3 +72,46 @@
 - **Runtime config tuned**: threshold_match=0.65 (down from 0.75), min_duration_ms=1500 (up from 400). Sub-1.5s clips now inherit prev label instead of running ECAPA (reliable for LISTENING, fail-closed for AWAITING_CONFIRMATION per design)
 - **Open question**: short confirmation words ("так", "ні") will inherit prev label and therefore fail the AWAITING_CONFIRMATION gate (which rejects inherited labels). User will need to say "так, роби" or similar longer phrase. Acceptable trade-off — documented as Phase 2 UX iteration item.
 - **Debug aids shipped temporarily**: SpeakerTaggerProcessor dumps each turn's PCM to /tmp/heare_turn_NNNN.wav + logs rms + peak (for calibration session only; revert before merge)
+
+## Phase 2 — Track B (live-hardware fixes)
+
+### SPK2-B1: Fix _prev_id sticky-window leak
+- src/speaker_processor.py SpeakerTaggerProcessor: added self._prev_at=0.0; short-turn inheritance now gated on both `_prev_id is not None` AND `time.monotonic() - _prev_at < settings.speaker_id_sticky_seconds`
+- On successful identify: set BOTH _prev_id AND _prev_at = time.monotonic()
+- On non-match (sid=None) for a non-short turn: CLEAR BOTH _prev_id=None AND _prev_at=0.0 — this is the leak fix
+- When sticky expired or no prev: short-turn falls through as speaker_id=None, speaker_inherited=False
+- tests/test_speaker_processor.py: +3 tests
+  - test_prev_id_cleared_on_non_owner_turn: owner → stranger → short "так" → None (not owner)
+  - test_sticky_window_expires_after_timeout: ages tagger._prev_at directly (NOT patching time.monotonic — that deadlocks asyncio's loop scheduler)
+  - test_short_turn_after_stranger_does_not_inherit_owner: end-to-end variant
+- Test count: 292 → 295 (+3), ruff clean
+- Key learning: monkeypatching time.monotonic at module level hangs pytest because asyncio event loop schedules via time.monotonic internally. Workaround: mutate the tagger's state directly (tagger._prev_at -= 6.0) to simulate time passing without touching the clock.
+
+### SPK2-B2: Multi-segment audio accumulation buffer
+- src/config.py: +1 field `speaker_id_accum_target_ms: int = 3000`
+- src/speaker_processor.py: new `_AccumBuffer` class (deque[bytes] bounded to 2x target duration) with append/pcm_bytes/total_ms/flush
+- AudioBufferProcessor.__init__ constructs self._accum sized to settings.speaker_id_accum_target_ms
+- process_frame: BotStartedSpeakingFrame flushes the accumulator (TTS must not contaminate); AudioRawFrame now appends to both per-turn chunks AND the rolling accumulator
+- _run_embed: after the single-turn embed completes, if slot.duration_ms < accum_target_ms AND accum.total_ms() >= target, fires a second executor embed on accum.pcm_bytes() and stores the result on slot.accum_embedding. Cancel/error on the accum embed logs warning but does not fail the primary embed
+- _TurnSlot gains `accum_embedding: np.ndarray | None = None` field
+- SpeakerTaggerProcessor._tag_transcription (marginal-duration path): when slot.duration_ms < accum_target_ms AND slot.accum_embedding is not None, gallery.identify() is called against the accumulated embedding instead. Log line now includes `using_accum=True/False`
+- AudioBufferProcessor.close() now flushes the accumulator alongside the existing task cancellation
+- tests/test_config.py: +1 assertion for accum_target_ms default
+- tests/test_speaker_processor.py: +4 tests (accum buffer rollover unit test, accum flush on bot-speaking, short turn uses accumulated embedding, long turn ignores accumulator)
+- Test count: 295 → 299 (+4), ruff clean
+- Key learning: tracking embed call counts via a fake wrapper (call_log: list[int]) in tracking_embed cleanly distinguishes single-turn vs accumulation embed calls by the PCM byte length — avoids needing to inspect the actual vectors
+- tests/test_stranger_integration.py scenarios still pass: stranger's long (>3000ms) turn uses single-turn embedding, so accumulation cannot mask stranger identity via owner-filled accumulator
+
+### SPK2-B3: Short confirmation word UX (OBSOLETED-PENDING-LIVE-TEST by B2)
+- Decision: ship B3 as zero-LOC code change. B2's accumulation path already restores owner identity for normal-length 'так' utterances (400-1500ms) by running gallery.identify against a 3s accumulated window of prior owner audio — no new decider code path needed, no new tests
+- Sub-400ms fragments still inherit (fail-closed in AWAITING_CONFIRMATION) per the security envelope — this is by design, not a bug
+- If live-hardware testing shows short-word confirmations still fail (e.g. because ~/.heare/config.toml has min_duration_ms=1500 from prior calibration), reopen B3 as a fast follow-up with a `trusted_continuation` path. For now, rely on existing fail-closed behavior + B2's accumulation fix
+- Per plan open question #3: 'Test B2 alone first; only do B3 if B2's accumulation doesn't close the gap' — this session ships exactly that order, deferring B3 implementation until live validation
+
+### Phase 2 Track B — aggregate stats
+- Test count: 292 (Phase 1 baseline) → 299 (+7 across B1 and B2)
+- Ruff: clean throughout
+- Files modified: src/config.py, src/speaker_processor.py, tests/test_config.py, tests/test_speaker_processor.py
+- Files NOT touched: src/decider.py, src/speaker_gallery.py, src/pipeline.py, src/main.py, tests/test_stranger_integration.py, tests/test_decider.py — B3's deferral kept the change set narrow and the security envelope byte-identical
+- Flag-off path unchanged (speaker_id_enabled defaults to False; golden-string regression test continues to pass)
+
