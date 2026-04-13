@@ -1,0 +1,46 @@
+## heare Phase B latency — implementation log
+
+### LAT-B1: Stronger ambient pre-filter
+- src/decider.py: added _is_mostly_non_ukrainian (Cyrillic<30% threshold), _looks_like_question (?-suffix or UA question words), UA_QUESTION_WORD_PATTERN, _CYRILLIC_RE, _LATIN_RE
+- Extended is_quick_nothing() with explicit RULE 0-5 ordering:
+  - RULE 0: wake-word ALWAYS bypasses (runs first)
+  - RULE 1: focus mode no-wake → True
+  - RULE 2: other-person address → True
+  - RULE 3 (NEW): < 3 words in ambient → True
+  - RULE 4 (NEW): mostly non-Ukrainian in ambient → True
+  - RULE 5 (NEW): declarative (no question) in ambient → True
+- 11 new tests added; 7 existing state-machine tests updated to use wake-word prefix
+
+### LAT-B2: Tighten prompt + force key order
+- prompts/decider.txt rewritten with:
+  - MAX 8 words reply constraint
+  - MAX 5 words intent constraint
+  - "FIELD ORDER IS STRICT" section requiring t-first, r-second for speak responses
+  - "Be terse" guidance
+- Updated test_render_real_decider_template to check new schema format
+- 2 new static prompt-text tests
+
+### LAT-B4: Speculative context build
+- Prereq verification: UserStartedSpeakingFrame is a Pipecat SystemFrame, broadcast to all processors (confirmed via __mro__ inspection and base_input.py source grep). Outcome (a) — reaches decider directly.
+- src/decider.py _load_pipecat_base() now imports UserStartedSpeakingFrame + UserStoppedSpeakingFrame
+- DeciderProcessor gains: _speculative_prompt, _speculative_ctx, _speculative_task, _speculative_started_at, _speculative_stale_after_seconds (default 5.0s)
+- process_frame handles UserStartedSpeakingFrame → calls _begin_speculative_context() which spawns _build_speculative() async task
+- _build_speculative renders the decider prompt with {transcript_or_heartbeat} still present as a literal so it can be substituted later
+- _handle_listening now calls _prompt_for_transcript which (a) waits up to 200ms for in-flight speculation, (b) substitutes transcript via str.replace, (c) falls back to normal build if no/stale speculation
+- _clear_speculative called after use
+- 5 new tests verify all paths
+
+### Test count evolution
+- Start of Phase B: 199 tests
+- After B1: 219 tests (+11 new, 7 updated to pass new filter)
+- After B2: 221 tests (+2 prompt-text tests)
+- After B4: 226 tests (+5 speculative tests)
+- Lint: ruff clean throughout
+
+### Deferred (by design — see .omc/plans/latency-phase-B.md)
+- LAT-B-MEASURE: requires live mic session (≥30 phrases × 2 sessions), cannot be automated by ralph
+- LAT-B3: conditional on B-MEASURE failing gate; implementation reserved for follow-up PRD
+
+### Key learnings
+- Updating the transcript filter's contract forced updating existing state-machine tests that used short transcripts. Wake-word prefix ("Гава, ...") is the cleanest way to bypass LAT-B1 filters in tests that care about decider state transitions, not filter behavior.
+- Speculative context timing: 200ms wait-for-in-flight-speculation balances "don't block user" with "don't duplicate work". For most utterances (>500ms speech) the speculation completes during VAD stop_secs anyway.

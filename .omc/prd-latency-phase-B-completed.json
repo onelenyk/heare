@@ -1,0 +1,77 @@
+{
+  "project": "heare-latency-phase-B",
+  "description": "Implement Phase B latency optimizations per the consensus-approved plan at .omc/plans/latency-phase-B.md. Codable stories only (B1, B2, B4). B-MEASURE is a live-hardware task and B3 is conditional — both are post-ralph follow-ups.",
+  "scope_note": "Keep `claude -p` CLI intact. No new deps. Every story includes tests. Ralph order: B1 → B2 → B4. B-MEASURE and B3 are documented in the plan but NOT in this PRD — ralph can't run a 20-min live mic session or conditionally execute a story.",
+  "stories": [
+    {
+      "id": "LAT-B1",
+      "title": "Stronger ambient pre-filter: short transcript, non-Ukrainian, declarative-no-question",
+      "priority": 1,
+      "passes": true,
+      "evidence": "src/decider.py adds _is_mostly_non_ukrainian() (Cyrillic<30% threshold with _CYRILLIC_RE/_LATIN_RE), _looks_like_question() (?-suffix or UA_QUESTION_WORD_PATTERN), and extends is_quick_nothing() with explicit rule ordering RULE 0-5. RULE 0 wake-word bypass runs first so 'heare status' passes despite non-Ukrainian rule. 11 new tests added to test_decider.py. 7 existing state-machine tests updated to use wake-word prefix ('Гава, ...') so they bypass the new filters (unrelated to state-machine coverage). Full suite: 219 tests pass, lint clean.",
+      "rationale": "The biggest immediate win for Groq STT pressure. Extends is_quick_nothing in src/decider.py to filter out 50-65% of ambient-mode transcripts that clearly aren't addressed to Heare. Wake-word check must run FIRST (RULE 0) so 'heare status' (100% Latin) still passes through despite the non-Ukrainian rule. Critic v2 finding #2 fixed via explicit rule ordering.",
+      "acceptanceCriteria": [
+        "src/decider.py adds _is_mostly_non_ukrainian(text) that returns True when Cyrillic characters < 30% of alpha chars",
+        "src/decider.py adds _looks_like_question(text) that returns True when text ends with '?' OR contains Ukrainian question words (чи|як|що|коли|чому|хто|де|навіщо|скільки) as word-boundary matches",
+        "src/decider.py is_quick_nothing() filter ordering is explicit: RULE 0 = wake-word bypass (already exists lines 91-93), RULE 1 = focus mode, RULE 2 = other-person, RULE 3 (NEW) = short transcript in ambient (<3 words), RULE 4 (NEW) = non-Ukrainian in ambient, RULE 5 (NEW) = declarative-no-question in ambient",
+        "Wake-word ALWAYS bypasses RULES 3-5 even if transcript is short or English",
+        "test_ambient_short_transcript_filtered: is_quick_nothing('Ок.', Mode.AMBIENT) is True",
+        "test_ambient_non_ukrainian_filtered: is_quick_nothing('That is a good capacitor', Mode.AMBIENT) is True",
+        "test_ambient_declarative_filtered: is_quick_nothing('Це працює нормально.', Mode.AMBIENT) is True",
+        "test_ambient_question_passes: is_quick_nothing('Як воно працює?', Mode.AMBIENT) is False",
+        "test_ambient_wake_word_bypass_all_rules: is_quick_nothing('Гава що', Mode.FOCUS) is False (short BUT wake-word)",
+        "test_is_quick_nothing_wake_word_english_bypasses_non_ukrainian: is_quick_nothing('heare status', Mode.AMBIENT) is False (Latin-only BUT wake-word)",
+        "test_is_mostly_non_ukrainian_helper: at least 5 parametric cases (empty, all-Cyrillic, all-Latin, mixed 50/50, mixed 10/90)",
+        "test_looks_like_question_helper: at least 5 parametric cases including '?' ending, 'як' word, 'що' word, no markers, 'мама' (not a question word)",
+        "All 28 existing test_decider.py tests still pass",
+        "uv run pytest tests/ → 0 failures",
+        "uv run ruff check src/ tests/ → All checks passed"
+      ]
+    },
+    {
+      "id": "LAT-B2",
+      "title": "Tighten prompt reply length + force strict key order in output schema",
+      "priority": 2,
+      "passes": true,
+      "evidence": "prompts/decider.txt rewritten with 'MAX 8 words' reply constraint, 'MAX 5 words' intent constraint, and 'FIELD ORDER IS STRICT' section declaring 't' must be first key and 'r' must immediately follow in speak responses. Added 'Be terse. Short replies feel more natural in voice.' guidance. Two new tests in test_context.py: test_decider_prompt_has_length_constraints and test_decider_prompt_mandates_strict_key_order. Updated test_render_real_decider_template assertions to check for the new schema format. 221 tests pass, lint clean.",
+      "rationale": "Prompt-only change that reduces output tokens (30-50 → 10-15) and forces the JSON output to emit 't' before 'r', which is a prerequisite for any future streaming parser (B3). No behavioral test against live LLM is required for ralph — static text-assertion on the prompt file is sufficient; actual model compliance verification is a post-deploy manual check (documented in the plan's B2 section).",
+      "acceptanceCriteria": [
+        "prompts/decider.txt contains the literal string 'MAX 8 words' (for reply field constraint)",
+        "prompts/decider.txt contains the literal string 'MAX 5 words' (for intent field constraint)",
+        "prompts/decider.txt contains the literal string 'FIELD ORDER IS STRICT' (forces t-first ordering)",
+        "prompts/decider.txt contains guidance that 't' MUST be the first key and 'r' MUST follow 't' in speak responses",
+        "test_decider_prompt_has_length_constraints in tests/test_context.py verifies the three constraint strings are present",
+        "test_decider_prompt_mandates_strict_key_order verifies the 'FIELD ORDER IS STRICT' section exists",
+        "Existing test_render_real_decider_template still passes (literal JSON braces in new prompt survive ContextBuilder.render)",
+        "All 199+ existing tests still pass",
+        "uv run pytest tests/ → 0 failures",
+        "uv run ruff check src/ tests/ → All checks passed"
+      ]
+    },
+    {
+      "id": "LAT-B4",
+      "title": "Speculative context build on UserStartedSpeakingFrame (with prereq frame-routing verification)",
+      "priority": 3,
+      "passes": true,
+      "evidence": "Frame routing verification: UserStartedSpeakingFrame is a SystemFrame in Pipecat (verified via `cls.__mro__`), same class as BotStartedSpeakingFrame which already reaches DeciderProcessor. SystemFrames are broadcast to all downstream processors. Outcome (a) confirmed. Implementation: _load_pipecat_base extended to import UserStartedSpeakingFrame + UserStoppedSpeakingFrame. DeciderProcessor gains _speculative_prompt, _speculative_ctx, _speculative_task, _speculative_started_at, _speculative_stale_after_seconds=5.0 fields. UserStartedSpeakingFrame handler spawns _build_speculative() async task that renders the prompt with the {transcript_or_heartbeat} placeholder still present. _handle_listening now calls _prompt_for_transcript which (a) awaits up to 200ms for in-flight speculation, (b) substitutes transcript via str.replace, (c) falls back to normal context build if no/stale speculation. Stale guard at 5 seconds. 5 new tests verify: speculation built on frame, reused in handle_listening (context_builder.build NOT called a second time), cleared after use, fallback works with no prior speculation, stale speculation triggers fallback. 226 tests pass, lint clean.",
+      "rationale": "Pre-renders the decider prompt context while the user is still speaking, so when the final transcript arrives we only need to plug it in. Critic v2 finding #1 fixed via explicit prereq verification step with three outcome branches. If UserStartedSpeakingFrame doesn't reach DeciderProcessor and no upstream observer can be wired, the story DESCOPES cleanly with evidence logged in progress.txt.",
+      "acceptanceCriteria": [
+        "Prereq verification: temporary DEBUG log added to DeciderProcessor.process_frame that records frame type; daemon started via live run OR verified via unit test that constructs a UserStartedSpeakingFrame and passes it to process_frame; outcome recorded in .omc/progress.txt",
+        "Outcome branch selected: (a) frame reaches decider → handler added in process_frame, (b) upstream observer needed → sibling processor in pipeline.py inserted between stt and decider, OR (c) DESCOPE with rationale in progress.txt",
+        "If outcome (a) or (b): DeciderProcessor has _speculative_ctx and _speculative_prompt fields",
+        "If outcome (a) or (b): UserStartedSpeakingFrame handler spawns async task that calls context_builder.build(transcript=None, heartbeat=False) and renders prompt template (with {transcript_or_heartbeat} placeholder preserved)",
+        "If outcome (a) or (b): _handle_listening reuses _speculative_prompt via str.replace of the placeholder — does NOT call context_builder.build again",
+        "If outcome (a) or (b): _speculative_ctx cleared after use in _handle_listening",
+        "If outcome (a) or (b): 5-second stale guard — if _speculative_ctx is set but no TranscriptionFrame arrives within 5s, clear it",
+        "If outcome (a) or (b): test_speculative_context_built_on_user_started_speaking verifies ctx populated",
+        "If outcome (a) or (b): test_speculative_context_reused_in_handle_listening verifies context_builder.build is NOT called a second time when spec was prepared",
+        "If outcome (a) or (b): test_speculative_context_cleared_after_use verifies field is None after _handle_listening",
+        "If outcome (a) or (b): test_speculative_context_handles_no_speculation verifies _handle_listening still works when no prior UserStarted frame was sent (direct-call fallback)",
+        "If outcome (c): .omc/progress.txt contains explicit evidence (log excerpt or reasoning) that UserStartedSpeakingFrame is unreachable, and story closes with passes=true + descope note",
+        "All existing tests still pass",
+        "uv run pytest tests/ → 0 failures",
+        "uv run ruff check src/ tests/ → All checks passed"
+      ]
+    }
+  ]
+}

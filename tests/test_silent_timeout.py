@@ -58,7 +58,7 @@ async def test_silent_timeout_cancels_without_frame(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "p {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
 
-    await decider._handle_listening("запусти тести")
+    await decider._handle_listening("Гава, запусти тести")
     assert decider.state == DeciderState.AWAITING_CONFIRMATION
     assert decider._timeout_task is not None
 
@@ -86,7 +86,7 @@ async def test_yes_cancels_timeout_task(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "p {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
 
-    await decider._handle_listening("запусти тести")
+    await decider._handle_listening("Гава, запусти тести")
     timeout_task = decider._timeout_task
     assert timeout_task is not None
     await decider._handle_confirmation("так")
@@ -102,7 +102,7 @@ async def test_no_cancels_timeout_task(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "p {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
 
-    await decider._handle_listening("запусти тести")
+    await decider._handle_listening("Гава, запусти тести")
     timeout_task = decider._timeout_task
     await decider._handle_confirmation("ні")
     assert decider.state == DeciderState.LISTENING

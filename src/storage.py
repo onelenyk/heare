@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any
@@ -9,12 +11,23 @@ from typing import Any
 import aiosqlite
 
 
+SCHEMA_VERSION = 2
+
+logger = logging.getLogger("heare.storage")
+
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts REAL NOT NULL,
     text TEXT NOT NULL,
-    mode TEXT NOT NULL
+    mode TEXT NOT NULL,
+    speaker_id TEXT,
+    speaker_confidence REAL
 );
 
 CREATE TABLE IF NOT EXISTS decisions (
@@ -61,6 +74,48 @@ class TranscriptStore:
         self._db = await aiosqlite.connect(self.db_path)
         await self._db.executescript(SCHEMA)
         await self._db.commit()
+        await self._migrate_speaker_columns()
+        await self._check_schema_version()
+
+    async def _migrate_speaker_columns(self) -> None:
+        # Idempotent ALTER — upgrades older DBs created before SPK-001 where
+        # the transcripts table did not have speaker_id/speaker_confidence.
+        # Fresh installs already have the columns via SCHEMA above.
+        for col_ddl in (
+            "ALTER TABLE transcripts ADD COLUMN speaker_id TEXT",
+            "ALTER TABLE transcripts ADD COLUMN speaker_confidence REAL",
+        ):
+            try:
+                await self.db.execute(col_ddl)
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+        await self.db.commit()
+
+    async def _check_schema_version(self) -> None:
+        cursor = await self.db.execute(
+            "SELECT value FROM meta WHERE key = ?", ("schema_version",)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            await self.db.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?)",
+                ("schema_version", str(SCHEMA_VERSION)),
+            )
+            await self.db.commit()
+            return
+        existing = int(row[0])
+        if existing > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"heare DB schema_version={existing} is newer than this code "
+                f"(expected {SCHEMA_VERSION}). Refusing to open — please upgrade heare."
+            )
+        if existing < SCHEMA_VERSION:
+            await self.db.execute(
+                "UPDATE meta SET value = ? WHERE key = ?",
+                (str(SCHEMA_VERSION), "schema_version"),
+            )
+            await self.db.commit()
 
     @property
     def db(self) -> aiosqlite.Connection:
@@ -73,10 +128,17 @@ class TranscriptStore:
             await self._db.close()
             self._db = None
 
-    async def log_transcript(self, text: str, mode: str) -> int:
+    async def log_transcript(
+        self,
+        text: str,
+        mode: str,
+        speaker_id: str | None = None,
+        speaker_confidence: float | None = None,
+    ) -> int:
         cursor = await self.db.execute(
-            "INSERT INTO transcripts (ts, text, mode) VALUES (?, ?, ?)",
-            (time.time(), text, mode),
+            "INSERT INTO transcripts (ts, text, mode, speaker_id, speaker_confidence)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (time.time(), text, mode, speaker_id, speaker_confidence),
         )
         await self.db.commit()
         assert cursor.lastrowid is not None

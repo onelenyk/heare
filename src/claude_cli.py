@@ -77,7 +77,9 @@ class ClaudeCLI:
             json.dumps({"session_id": session_id, "created_at": time.time()})
         )
 
-    def _build_args(self, prompt: str, json_output: bool) -> list[str]:
+    def _build_args(
+        self, prompt: str, json_output: bool, model: str | None = None
+    ) -> list[str]:
         args = [self.binary, "-p", prompt, "--dangerously-skip-permissions"]
         if self._session_id:
             args += ["--resume", self._session_id]
@@ -85,14 +87,18 @@ class ClaudeCLI:
             args += ["--output-format", "json"]
         if self.persona:
             args += ["--append-system-prompt", self.persona]
+        if model:
+            args += ["--model", model]
         return args
 
-    async def _run(self, prompt: str, json_output: bool) -> str:
+    async def _run(
+        self, prompt: str, json_output: bool, model: str | None = None
+    ) -> str:
         await self.ensure_session()
         await self._rate_limiter.acquire()
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
-            args = self._build_args(prompt, json_output)
+            args = self._build_args(prompt, json_output, model)
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *args,
@@ -153,32 +159,86 @@ class ClaudeCLI:
                 self._persist_session(sid)
 
     async def call_decider(self, prompt: str) -> dict[str, Any]:
-        raw = await self._run(prompt, json_output=True)
+        raw = await self._run(
+            prompt, json_output=True, model=self.settings.claude_decider_model
+        )
         try:
             payload = json.loads(raw)
-        except json.JSONDecodeError as e:
-            raise ClaudeCLIError(f"decider returned non-JSON: {e}: {raw[:200]!r}")
+        except json.JSONDecodeError:
+            logger.warning("decider returned non-JSON, treating as nothing: %s", raw[:200])
+            return {"type": "nothing", "reason": "malformed response (non-JSON)"}
+        decision = self._extract_decision(payload)
+        if not isinstance(decision, dict):
+            logger.warning("decider payload is not a dict, treating as nothing: %r", decision)
+            return {"type": "nothing", "reason": "malformed response (not a dict)"}
+        decision = self._normalize_decision_keys(decision)
+        if "type" not in decision:
+            logger.warning("decider response missing 'type' key: %r", decision)
+            decision["type"] = "nothing"
+        return decision
+
+    # Short-key schema (saves output tokens):
+    # {"t":"n"} | {"t":"s","r":"reply"} | {"t":"a","c":0.9,"i":"intent","x":{...}}
+    _DECISION_KEY_MAP = {
+        "t": "type",
+        "r": "reply",
+        "c": "confidence",
+        "i": "intent",
+        "x": "action",
+    }
+    _DECISION_TYPE_MAP = {"n": "nothing", "s": "speak", "a": "act"}
+
+    @classmethod
+    def _normalize_decision_keys(cls, decision: dict[str, Any]) -> dict[str, Any]:
+        """Normalize short-key decider output to long-key form expected by callers.
+
+        Idempotent: long-key dicts pass through unchanged.
+        """
+        out: dict[str, Any] = {}
+        for k, v in decision.items():
+            out[cls._DECISION_KEY_MAP.get(k, k)] = v
+        if "type" in out and isinstance(out["type"], str):
+            out["type"] = cls._DECISION_TYPE_MAP.get(out["type"], out["type"])
+        return out
+
+    @staticmethod
+    def _strip_markdown_fence(text: str) -> str:
+        """Strip ```json ... ``` or ``` ... ``` wrappers that smaller models add."""
+        s = text.strip()
+        if not s.startswith("```"):
+            return s
+        # Drop opening fence (```json or ```)
+        first_nl = s.find("\n")
+        if first_nl == -1:
+            return s
+        s = s[first_nl + 1 :]
+        # Drop closing fence
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3]
+        return s.strip()
+
+    @classmethod
+    def _extract_decision(cls, payload: Any) -> Any:
+        """Unwrap nested 'result' field from Claude JSON output format."""
         if isinstance(payload, dict) and "result" in payload:
             result = payload["result"]
             if isinstance(result, str):
+                cleaned = cls._strip_markdown_fence(result)
                 try:
-                    return json.loads(result)
-                except json.JSONDecodeError as e:
-                    raise ClaudeCLIError(
-                        f"decider result field is not JSON: {e}: {result[:200]!r}"
-                    )
-            if isinstance(result, dict):
-                return result
-        if isinstance(payload, dict):
-            return payload
-        raise ClaudeCLIError(f"unexpected decider payload: {payload!r}")
+                    return json.loads(cleaned)
+                except json.JSONDecodeError:
+                    return result
+            return result
+        return payload
 
     async def call_action(self, description: str) -> dict[str, Any]:
         raw = await self._run(description, json_output=False)
         return {"summary": raw}
 
     async def bootstrap_identity(self, prompt: str) -> dict[str, Any]:
-        raw = await self._run(prompt, json_output=True)
+        raw = await self._run(
+            prompt, json_output=True, model=self.settings.claude_decider_model
+        )
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as e:

@@ -1,119 +1,74 @@
-# heare scaffolding progress log
+## heare speaker recognition Phase 1 — implementation log
 
-## Ralph run 1: 2026-04-11 — Phase A scaffolding (COMPLETED)
-See .omc/progress-phase-A.txt for the full phase A log.
+### SPK-001: Foundation — config + optional deps + storage migration
+- src/config.py: added 9 speaker_id_* fields + speakers_file Path (default ~/.heare/speakers.json)
+- pyproject.toml: added [project.optional-dependencies].speaker = [speechbrain>=1.0, torch>=2.0, numpy>=1.24]
+- src/storage.py: SCHEMA_VERSION=2 constant; SCHEMA adds meta table + speaker_id/speaker_confidence columns on transcripts; init() runs _migrate_speaker_columns (idempotent try/except on duplicate column) then _check_schema_version (fail-loud on newer DB, silent bump on older); log_transcript signature now `(text, mode, speaker_id=None, speaker_confidence=None) -> int`
+- tests/test_storage.py: +6 tests (with_speaker_fields, backward_compat, schema_version_fresh, fail_loud_on_newer, migration_idempotent)
+- tests/test_config.py: +1 test (test_speaker_id_defaults)
+- Test count: 226 → 232 (+6), ruff clean
+- Key learning: `sqlite3.OperationalError` string-match on "duplicate column" is cross-version safe; aiosqlite surfaces the same error
 
-Phase A delivered:
-- 10 source modules in src/ (1290 lines after deslop)
-- 5 test files with 48 passing tests
-- pyproject.toml + uv.lock
-- Prompts, skills, plugin.json, README, .env.example
-- Architect APPROVED with 4 minor Phase B issues flagged and deferred
+### SPK-002: speaker_id.py + speaker_gallery.py
+- src/speaker_id.py: lazy load_model() (speechbrain import deferred), warmup() with white-noise int16, embed() int16→float32→ECAPA→L2-normalized 192-dim, cosine() with 1e-12 epsilon
+- src/speaker_gallery.py: sanitize_label with regex [{}<>\n\r\t\x00-\x1f] + 32-char cap, LabelValidationError, SpeakerGallery.load (missing/malformed safe), save() atomic via tempfile.mkstemp + os.replace with cleanup-on-failure, enroll_owner, identify (owner-only Phase 1), get_centroid L2-normalized mean
+- tests/test_speaker_id.py: mocks speechbrain via sys.modules monkeypatch (SimpleNamespace + FakeClassifier/FakeTensor) so no torch install needed — 7 tests
+- tests/test_speaker_gallery.py: 20 tests covering sanitize parametric accept/reject, load missing/malformed, enroll+identify roundtrip, atomic-save-on-failure via json.dump mock, get_centroid averaging
+- Test count: 232 → 262 (+30), ruff clean
+- Key learning: atomic-save test needs to assert BOTH that original bytes are preserved AND that no .tmp file is left behind after exception — caught a cleanup bug in first draft of save()
 
-## Ralph run 2: 2026-04-11 — Phase B/C/D/E readiness (IN PROGRESS)
+### SPK-003: Conditional prompt gating
+- prompts/decider.txt: {speaker_rule_block} placeholder on its own line before NEW INPUT — renders to empty string when flag off (one blank line), 'Speaker: owner' when flag on
+- src/context.py: build() signature `(transcript, heartbeat=False, keep_placeholders=None)`, injects speaker_rule_block via _render_rule_block helper, overwrites kept keys with literal '{name}' form so speculative path can substitute later
+- tests/test_context.py: +5 tests (empty-when-off, populated-when-on, keep_placeholders preserves literal for speaker_rule_block AND transcript_or_heartbeat, golden-string flag-off test with fixtures/decider_prompt_flag_off.golden.txt)
+- tests/fixtures/decider_prompt_flag_off.golden.txt: committed golden that asserts flag-off rendering is byte-stable and contains NO Speaker: owner line
+- Test count: 262 → 267 (+5), ruff clean
+- Updated test_build_shape_on_transcript expected-keys set to include speaker_rule_block (was failing after build() change; caught by full regression)
 
-### Goal
-Close out the architect-flagged Phase A bugs and implement the Phase E
-reliability features so the code is ready for live-hardware verification.
-Live-hardware steps (mic test, 1-hour soak) still require the user.
+### SPK-004: speaker_processor.py (race-safe fire-and-forget embed)
+- src/speaker_processor.py: _TurnSlot dataclass (task, event, pcm, embedding, error, elapsed_ms, duration_ms); AudioBufferProcessor with lazy pipecat import, per-turn slot dict, _SLOT_RETAIN=4 GC with task cancel on eviction, close() with 1s bounded gather; SpeakerTaggerProcessor with own _bot_speaking flag, finalized filter, 200ms bounded wait fail-closed, short-turn (<400ms) inherit, gallery identify at threshold_match=0.75; create_speaker_processors factory
+- tests/test_speaker_processor.py: 12 tests mock speaker_id.embed at module boundary (no torch needed); test_tagger_fail_closed_on_slot_timeout uses manually-installed stuck slot whose event is never set, asserts <300ms to fail-closed; test_gc_cancels_in_flight_task spams _SLOT_RETAIN+2 turns with slow embed, asserts evicted slots (turn_id 1, 2) gone from dict; test_shutdown_cancels_pending_tasks asserts close() completes within 1.2s
+- Test count: 267 → 279 (+12), ruff clean
+- Key learning 1: pipecat TranscriptionFrame.finalized default is False — tests MUST set frame.finalized=True manually or the tagger skips them as interim (caught on first run)
+- Key learning 2: pipecat InterimTranscriptionFrame is a SEPARATE class (not a TranscriptionFrame with finalized=False) — tagger handles BOTH: InterimTranscriptionFrame isinstance check AND finalized attribute check on TranscriptionFrame
+- Key learning 3: _TurnSlot.event uses default_factory=asyncio.Event — py3.10+ lazily binds to running loop, so tests must construct slots inside async test functions (pytest-asyncio handles this via asyncio_mode=auto)
 
-### Architect-flagged bugs being fixed
-1. BCDE-002: Mode hot-reload didn't work — daemon read mode only at start
-2. BCDE-003: _check_timeout only fired on frame arrival — silent user bypassed timeout
-3. BCDE-004: SIGTERM handler didn't cancel runner.run(pipeline)
-4. BCDE-006: edge-tts only caught NoAudioReceived, not general network errors
+### SPK-005: Decider gating + pipeline wiring + enroll-owner CLI
+- src/decider.py: pending_speaker_id field; _handle_listening non-owner filter (flag on + sid != 'owner' → store and return, no decider call); pending_speaker_id captured at arm time; _handle_confirmation rejects inherited=True and speaker mismatch with TTSSpeakFrame('Скажи: так чи ні?'); both cleanup paths clear pending_speaker_id=None; _store_only takes speaker kwargs; _build_speculative uses keep_placeholders=['transcript_or_heartbeat', 'speaker_rule_block']; _prompt_for_transcript double-substitutes both placeholders
+- src/pipeline.py: audio_in_sample_rate=16000 forced; when flag on and owner enrolled, loads model+warmup, inserts AudioBufferProcessor after transport.input() and SpeakerTaggerProcessor between stt and decider; gracefully degrades to flag-off path when no owner enrolled (logs warning)
+- src/main.py: enroll-owner subcommand with sounddevice recording, live 3s countdown, sanitize_label + LabelValidationError handling, SpeakerGallery.load + enroll_owner
+- tests/test_decider.py: +7 tests (non_owner_dropped, owner_unchanged, rejects_inherited, speaker_mismatch, pending_cleared_on_execute/cancel, silent_persists_stranger)
+- tests/test_main_cli.py: +3 tests (enroll-owner parser defaults, custom args, flag-off error path)
+- tests/test_pipeline.py: updated test_transport_params assertion to include audio_in_sample_rate=16000
+- Test count: 279 → 289 (+10), ruff clean
+- Key learning: existing harness fixture in test_decider.py was easy to extend — new speaker kwargs default to None so existing tests pass unchanged
 
-### New work
-5. BCDE-001: Install portaudio + enable pyaudio via [local] extra
-6. BCDE-005: Log rotation (10MB, RotatingFileHandler)
-7. BCDE-007: Groq rate-limit back-off + settings cap
-8. BCDE-008: Backfill tests + verify Phase B/C/D/E non-hardware criteria
-9. BCDE-009: Architect review + deslop + regression
+### SPK-006: Stranger integration test + full regression
+- tests/test_stranger_integration.py: 3 end-to-end tests wiring AudioBufferProcessor → SpeakerTaggerProcessor → DeciderProcessor with mocked embed via rig fixture that enrolls owner and pre-seeds state["next_vector"] per test
+- Test 1 (stranger_in_listening): stranger vector → tagger None → decider drops via non-owner filter, no Claude call
+- Test 2 (stranger_interrupts_confirmation): owner arms, stranger 600ms "так" rejected via speaker mismatch
+- Test 3 (short_turn_in_confirmation): owner arms, 300ms "так" inherits owner label, decider rejects via speaker_inherited=True gate
+- Test helper _run_turn_through_pipeline: waits for a NEW completed turn_id (not just non-None) to avoid race across sequential turns — this bug bit the first run of scenario 3 because latest_completed_turn_id was already 1 from the owner turn when the short turn started
+- Test count: 289 → 292 (+3)
 
-### Starting state
-- 48 tests passing
-- `uv run python -m src.main --help` exit 0
-- plugin.json valid
-- Architect approval on Phase A
-- brew install portaudio kicked off in background
+### Phase 1 COMPLETE — final stats
+- Test count: 226 baseline → 292 (+66 new tests across 6 stories)
+- Ruff: clean throughout
+- Feature OFF by default — speaker_id_enabled=False, existing 226 tests pass unchanged, golden-string test (test_golden_string_flag_off_render) enforces byte-stable flag-off rendering
+- Security gate closed: a synthetic stranger cannot cause EXECUTING transitions in any of the 3 attack scenarios
+- No torch/speechbrain download in CI — all tests mock speaker_id.embed at module boundary
+- Race-safe fire-and-forget embed with 200ms bounded wait + fail-closed timeout
+- Files created: src/speaker_id.py, src/speaker_gallery.py, src/speaker_processor.py, tests/test_speaker_id.py, tests/test_speaker_gallery.py, tests/test_speaker_processor.py, tests/test_stranger_integration.py, tests/fixtures/decider_prompt_flag_off.golden.txt
+- Files modified: src/config.py, src/storage.py, src/context.py, src/decider.py, src/pipeline.py, src/main.py, prompts/decider.txt, pyproject.toml, tests/test_config.py, tests/test_storage.py, tests/test_context.py, tests/test_decider.py, tests/test_main_cli.py, tests/test_pipeline.py
+- Phase 2 deferred: gallery growth, auto-enrollment, drift audit, list/rename/forget CLI
 
-### Progress
-
-BCDE-001 DONE — brew install portaudio 19.7.0 succeeded on arm64-tahoe.
-uv sync --extra local built pyaudio 0.2.14. LocalAudioTransport imports
-cleanly in heare's venv. pipeline.build_pipeline still imports cleanly.
-
-BCDE-002 DONE — DeciderProcessor._reload_mode() reads ~/.heare/mode file
-before every dispatch (called from process_frame). Handles missing file
-and garbage content gracefully. 3 new tests in test_mode_hot_reload.py.
-
-BCDE-003 DONE — Added _schedule_timeout_task / _timeout_watcher /
-_cancel_timeout_task. Background asyncio task sleeps confirmation_timeout_seconds
-and cancels under lock. Yes/no/execute all cancel the task. 3 new tests in
-test_silent_timeout.py. The existing _check_timeout frame path kept for
-defence-in-depth.
-
-BCDE-004 DONE — Extracted run_until_stopped(runner, pipeline, heartbeat)
-from _cmd_start. Uses asyncio.wait(FIRST_COMPLETED) + stop_event +
-pipeline_task + heartbeat_task. On shutdown, cancels all tasks and awaits
-them. signal handler installs via loop.add_signal_handler. 2 new tests in
-test_shutdown.py using SleepingRunner/SleepingHeartbeat fakes.
-
-BCDE-005 DONE — _setup_logging installs logging.handlers.RotatingFileHandler
-with maxBytes=10*1024*1024 and backupCount=3 (constants DAEMON_LOG_MAX_BYTES /
-DAEMON_LOG_BACKUPS). 2 new tests in test_log_rotation.py — one checks the
-handler config, one actually triggers rotation with a small cap to verify
-.1 backup appears.
-
-BCDE-006 DONE — EdgeTTSService.run_tts already caught NoAudioReceived; the
-general Exception handler was already there too. Added 2 new tests in
-test_edge_tts_errors.py to lock behavior: immediate RuntimeError yields
-only TTSStoppedFrame, mid-stream ConnectionResetError yields partial audio
-+ TTSStoppedFrame.
-
-BCDE-007 DONE — New module src/rate_limit.py with RateLimiter(max_calls,
-window_seconds, clock, sleeper). ClaudeCLI._run awaits self._rate_limiter.acquire()
-before every subprocess spawn. Settings.claude_max_calls_per_minute=30 default.
-3 new tests in test_rate_limit.py with a FakeClock + list-capturing fake sleeper.
-README documents why Groq STT is not rate-limited by heare (it runs inside pipecat).
-
-BCDE-008 DONE — Full verification:
-- `uv run pytest tests/` → 63 passed in 3.13s
-- `uv run python -m src.main --help` → exit 0
-- `python3 -m json.tool < plugin.json` → valid
-- LocalAudioTransport + build_pipeline + run_until_stopped + _setup_logging +
-  RateLimiter all import cleanly
-- Line counts: all src files ≥ 20 lines, total 1436 (was 1290 pre-BCDE)
-- README updated with Status section distinguishing in-code verification from
-  live-hardware verification.
-
-### Files changed in BCDE Ralph session
-- pyproject.toml                    (via uv sync --extra local, no manual edit)
-- src/config.py                     (claude_max_calls_per_minute field)
-- src/claude_cli.py                 (RateLimiter wired into _run)
-- src/decider.py                    (hot-reload + silent-timeout task)
-- src/main.py                       (run_until_stopped + RotatingFileHandler)
-- src/rate_limit.py                 (new)
-- tests/test_mode_hot_reload.py     (new)
-- tests/test_silent_timeout.py      (new)
-- tests/test_shutdown.py            (new)
-- tests/test_log_rotation.py        (new)
-- tests/test_edge_tts_errors.py     (new)
-- tests/test_rate_limit.py          (new)
-- README.md                         (Status + rate-limit caveat)
-- .omc/prd.json                     (this run's PRD)
-- .omc/progress.txt                 (this log)
-
-### Learnings
-- asyncio.Task.cancel() transitions to "cancelling" not "done" until the
-  event loop processes the cancellation — tests must await the task before
-  asserting .done()/.cancelled().
-- _setup_logging re-runs on every _cmd_start call; must strip prior
-  RotatingFileHandler+StreamHandler from root to avoid duplicate handlers.
-- edge-tts NoAudioReceived lives at edge_tts.exceptions.NoAudioReceived, not
-  at module top level — use the fully qualified path to avoid AttributeError
-  on import order.
-- Pipecat 0.0.108 GroqSTTService emits TranscriptionFrame BEFORE SmartTurn
-  emits UserStoppedSpeakingFrame. Our _extract_transcript only needs to match
-  TranscriptionFrame; the UserStoppedSpeakingFrame branch (removed in
-  phase A deslop) was dead code.
+### Live-hardware calibration findings (post-Phase 1 shipping)
+- Offline 5s match tests scored cos 0.79-0.84 against a single 15s enrollment reference — PERFECT match rate 3/3 at 0.75 threshold
+- Live daemon (focus mode, ambient mode) initially scored only 0.30-0.71 on VAD-chunked audio — threshold 0.75 rejected most owner utterances
+- Root cause: ECAPA trained on 3s+ VoxCeleb chunks; daemon VAD slices produce 1-3s clips that fall outside training distribution
+- **Duration is the dominant signal**: ≥3s clips match reliably, 1-3s are marginal, <1s almost always fail
+- Volume is NOT the bottleneck: peaks of 10000-32000 consistently captured, RMS 1600-4400 across daemon turns
+- **Calibration fix**: appended 8 daemon-style daemon-captured owner turns (>1.5s each, cos>0.55 to original centroid) as additional reference embeddings. Result: re-scoring same daemon clips against new 9-reference centroid → 12/16 match (was 8/16), average confidence jumped from ~0.55 to ~0.75
+- **Runtime config tuned**: threshold_match=0.65 (down from 0.75), min_duration_ms=1500 (up from 400). Sub-1.5s clips now inherit prev label instead of running ECAPA (reliable for LISTENING, fail-closed for AWAITING_CONFIRMATION per design)
+- **Open question**: short confirmation words ("так", "ні") will inherit prev label and therefore fail the AWAITING_CONFIRMATION gate (which rejects inherited labels). User will need to say "так, роби" or similar longer phrase. Acceptable trade-off — documented as Phase 2 UX iteration item.
+- **Debug aids shipped temporarily**: SpeakerTaggerProcessor dumps each turn's PCM to /tmp/heare_turn_NNNN.wav + logs rms + peak (for calibration session only; revert before merge)

@@ -63,7 +63,7 @@ async def test_mode_hot_reload_ambient_to_silent(harness) -> None:
     mode_file.write_text("ambient")
     decider._reload_mode()
     assert settings.mode == Mode.AMBIENT
-    await decider._handle_listening("два")
+    await decider._handle_listening("Гава, як справи")
     assert len(cli.calls) == 1
 
 

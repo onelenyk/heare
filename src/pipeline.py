@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Tuple
 
 from .config import Settings
 from .decider import create_decider_processor
+from .tts_cache import TTSCache
 from .tts_edge import create_edge_tts_service
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ async def build_pipeline(
         LocalSmartTurnAnalyzerV3,
     )
     from pipecat.pipeline.pipeline import Pipeline
-    from pipecat.pipeline.task import PipelineTask
+    from pipecat.pipeline.task import PipelineParams, PipelineTask
     from pipecat.services.groq.stt import GroqSTTService
     from pipecat.transports.local.audio import (
         LocalAudioTransport,
@@ -49,13 +50,23 @@ async def build_pipeline(
         Path(__file__).parent.parent / "prompts" / "decider.txt"
     ).read_text()
 
-    vad = SileroVADAnalyzer()
-    smart_turn = LocalSmartTurnAnalyzerV3()
+    from pipecat.audio.vad.vad_analyzer import VADParams
+    from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+
+    # VAD waits 0.5s of silence before declaring end-of-speech. Compromise
+    # between latency (was 1.0s default) and Groq STT rate-limit pressure
+    # (0.2s produced too many fragments and hit the free-tier 20 RPS cap).
+    # SmartTurnV3's ML model is the anti-fragmentation safety net.
+    vad = SileroVADAnalyzer(
+        params=VADParams(stop_secs=0.5, start_secs=0.3, confidence=0.7, min_volume=0.6)
+    )
+    smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
 
     transport = LocalAudioTransport(
         params=LocalAudioTransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
+            audio_in_sample_rate=16000,
             vad_analyzer=vad,
             turn_analyzer=smart_turn,
         )
@@ -74,23 +85,46 @@ async def build_pipeline(
         decider_prompt_template=decider_prompt,
     )
 
+    tts_cache = TTSCache()
     tts = create_edge_tts_service(
         voice=settings.tts_voice,
         sample_rate=settings.tts_sample_rate,
+        cache=tts_cache,
     )
 
-    pipeline = Pipeline(
-        [
-            transport.input(),
-            stt,
-            decider,
-            tts,
-            transport.output(),
-        ]
-    )
+    stages: list[object] = [transport.input(), stt]
+    if settings.speaker_id_enabled:
+        from . import speaker_id
+        from .speaker_gallery import SpeakerGallery
+        from .speaker_processor import create_speaker_processors
+
+        gallery = SpeakerGallery.load(settings.speakers_file)
+        if "owner" not in gallery.list_speakers():
+            logger.warning(
+                "speaker_id_enabled but no owner enrolled in %s — "
+                "run `heare enroll-owner` first. Disabling speaker-id for this run.",
+                settings.speakers_file,
+            )
+        else:
+            model = speaker_id.load_model()
+            speaker_id.warmup(model, sample_rate=16000)
+            audio_buffer, speaker_tagger = create_speaker_processors(
+                settings, gallery, model, sample_rate=16000
+            )
+            # AudioBufferProcessor sits right after transport.input() so it
+            # sees raw PCM; the tagger sits between STT and decider so it
+            # can annotate each TranscriptionFrame before the decider reads
+            # the speaker_id attribute.
+            stages = [transport.input(), audio_buffer, stt, speaker_tagger]
+
+    stages.extend([decider, tts, transport.output()])
+    pipeline = Pipeline(stages)
     task = PipelineTask(
         pipeline,
+        params=PipelineParams(
+            allow_interruptions=False,  # no HW echo cancellation — own voice would kill TTS
+        ),
         cancel_on_idle_timeout=False,
         enable_turn_tracking=False,
     )
-    return task, decider
+    return task, decider, tts_cache

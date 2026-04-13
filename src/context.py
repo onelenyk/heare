@@ -21,18 +21,35 @@ class ContextBuilder:
         self.settings = settings
 
     async def build(
-        self, transcript: str | None, heartbeat: bool = False
+        self,
+        transcript: str | None,
+        heartbeat: bool = False,
+        keep_placeholders: list[str] | None = None,
     ) -> dict[str, Any]:
         now = dt.datetime.now().astimezone()
         recent = await self.store.recent_transcripts(n=5)
-        return {
+        keep = set(keep_placeholders or ())
+        ctx: dict[str, Any] = {
             "time": now.strftime("%Y-%m-%d %H:%M:%S"),
             "timezone": str(now.tzinfo),
             "mode": self.settings.mode.value,
             "heartbeat_flag": "yes" if heartbeat else "no",
             "recent_transcripts": self._format_recent(recent),
             "transcript_or_heartbeat": self._format_input(transcript, heartbeat),
+            "speaker_rule_block": self._render_rule_block(),
         }
+        # Speculative-path support: if a caller asks for a placeholder to
+        # remain literal (so it can be substituted later with a real value),
+        # overwrite the rendered value with the literal `{name}` form so
+        # _safe_substitute leaves it untouched during render.
+        for key in keep:
+            ctx[key] = "{" + key + "}"
+        return ctx
+
+    def _render_rule_block(self) -> str:
+        if not self.settings.speaker_id_enabled:
+            return ""
+        return "Speaker: owner"
 
     def _format_recent(self, rows: list[dict[str, Any]]) -> str:
         if not rows:

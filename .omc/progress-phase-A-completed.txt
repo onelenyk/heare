@@ -1,0 +1,48 @@
+## heare latency Phase A — implementation log
+
+### LAT-A1: Streaming TTS pipeline
+- Rewrote src/tts_edge.py EdgeTTSService.run_tts to spawn ffmpeg with stdin/stdout pipes once per call
+- Two concurrent coroutines (feed_mp3, drain_pcm) gather() to pipeline MP3 → PCM in real time
+- Reads ffmpeg.stdout in 1024-byte chunks (was chunk_size*4 before fix) so first PCM yields ASAP
+- Cleanup: 10s timeout on gather, 2s on proc.wait, kill if still alive
+- Test: tests/test_tts_streaming.py::test_first_audio_frame_arrives_before_last_mp3_chunk feeds a 2s tone in 10 chunks at 100ms intervals; asserts first PCM frame arrives BEFORE the last MP3 chunk is sent (proves concurrency)
+
+### LAT-A2: Minimal decider output schema
+- Rewrote prompts/decider.txt with short keys: nothing→{"t":"n"}, speak→{"t":"s","r":""}, act→{"t":"a","c":,"i":"","x":{}}
+- Added _normalize_decision_keys to claude_cli.py with _DECISION_KEY_MAP and _DECISION_TYPE_MAP
+- Idempotent: long-key dicts pass through unchanged
+- call_decider now normalizes after _extract_decision
+- Updated test_context.py::test_render_real_decider_template assertions to check {"t":"n"} literal braces survive ContextBuilder.render
+
+### LAT-A3: VAD stop_secs=0.2 + SmartTurn fallback 1.0s
+- src/pipeline.py: SileroVADAnalyzer with VADParams(stop_secs=0.2, start_secs=0.3)
+- LocalSmartTurnAnalyzerV3 with SmartTurnParams(stop_secs=1.0) — was the default 3.0s
+- Added pipecat.audio.turn.smart_turn.base_smart_turn and pipecat.audio.vad.vad_analyzer to test_pipeline.py mock module dict
+
+### LAT-A4: Rule-based pre-filter (is_quick_nothing)
+- src/decider.py: WAKE_WORD_PATTERN, OTHER_PERSON_PATTERN, FIXED_PHRASES, is_quick_nothing(transcript, mode)
+- Focus mode without wake-word → True. Other-person address (мам/тат/гала/алло) without wake-word → True.
+- _handle_listening calls is_quick_nothing right after is_noise and short-circuits before LLM
+
+### LAT-A5: TTSCache for fixed phrases
+- New src/tts_cache.py with TTSCache class (get/put/has/__len__/warmup)
+- warmup is async, idempotent, tolerates synth failures, skips empty PCM
+- src/decider.py exposes FIXED_PHRASES list (4 entries)
+
+### LAT-A6: WarmupTask for edge-tts
+- src/heartbeat.py adds WarmupTask class with run/stop and async _ping_edge_tts
+- Lazy `import edge_tts` so tests can patch sys.modules without pulling pipecat
+- Settings.warmup_interval_seconds=240.0 default
+- Floor lowered from 1.0 to 0.01 so tests can use 50-100ms intervals
+
+### Test count
+- Start of run: 167 tests
+- End of run: 199 tests (+32 new across test_tts_streaming, test_warmup, test_tts_cache, test_pipeline, test_decider, test_claude_cli)
+- Lint: ruff clean throughout
+
+### Key learnings
+- Pipecat 0.0.108 uses deprecated vad_analyzer/turn_analyzer params on transport — they still work but emit warnings. Migration to user_turn_strategies is a separate refactor.
+- Streaming MP3 → ffmpeg stdin requires `proc.stdin.drain()` between writes to avoid backpressure deadlocks.
+- ffmpeg with very small inputs (silence) buffers everything before flushing — use a tone (≥1s) to test streaming behavior.
+- patch.dict on sys.modules + lazy `import` inside the function works correctly for testing edge_tts mocks IF the module isn't already cached.
+- HeartbeatTask floor of 1.0s prevented short-interval testing; lowered to 0.01s.

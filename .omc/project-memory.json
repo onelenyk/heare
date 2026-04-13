@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775976388118,
+  "lastScanned": 1776072002268,
   "projectRoot": "/Users/lenyk/myprojects/heare",
   "techStack": {
     "languages": [
@@ -51,7 +51,7 @@
       "path": "prompts",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1775976388106,
+      "lastAccessed": 1776072002255,
       "keyFiles": [
         "decider.txt",
         "identity-bootstrap.txt",
@@ -62,7 +62,7 @@
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1775976388107,
+      "lastAccessed": 1776072002256,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -72,8 +72,8 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 13,
-      "lastAccessed": 1775976388107,
+      "fileCount": 14,
+      "lastAccessed": 1776072002256,
       "keyFiles": [
         "__init__.py",
         "claude_cli.py",
@@ -85,24 +85,211 @@
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 12,
-      "lastAccessed": 1775976388108,
+      "fileCount": 22,
+      "lastAccessed": 1776072002256,
       "keyFiles": [
         "__init__.py",
-        "test_context.py",
-        "test_decider.py",
-        "test_edge_tts.py",
-        "test_edge_tts_errors.py"
+        "test_audio.py",
+        "test_claude_cli.py",
+        "test_config.py",
+        "test_context.py"
       ]
     },
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
       "fileCount": 1,
-      "lastAccessed": 1775976388108,
+      "lastAccessed": 1776072002257,
       "keyFiles": []
     }
   },
-  "hotPaths": [],
+  "hotPaths": [
+    {
+      "path": "src/decider.py",
+      "accessCount": 14,
+      "lastAccessed": 1776091369963,
+      "type": "file"
+    },
+    {
+      "path": "src/speaker_processor.py",
+      "accessCount": 9,
+      "lastAccessed": 1776107539117,
+      "type": "file"
+    },
+    {
+      "path": "src/storage.py",
+      "accessCount": 8,
+      "lastAccessed": 1776091364123,
+      "type": "file"
+    },
+    {
+      "path": "src/main.py",
+      "accessCount": 7,
+      "lastAccessed": 1776091379645,
+      "type": "file"
+    },
+    {
+      "path": "src/speaker_gallery.py",
+      "accessCount": 7,
+      "lastAccessed": 1776091559884,
+      "type": "file"
+    },
+    {
+      "path": "src/context.py",
+      "accessCount": 6,
+      "lastAccessed": 1776091370033,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline.py",
+      "accessCount": 6,
+      "lastAccessed": 1776091370415,
+      "type": "file"
+    },
+    {
+      "path": "src/config.py",
+      "accessCount": 6,
+      "lastAccessed": 1776091370825,
+      "type": "file"
+    },
+    {
+      "path": "prompts/decider.txt",
+      "accessCount": 6,
+      "lastAccessed": 1776091378180,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 6,
+      "lastAccessed": 1776091519401,
+      "type": "directory"
+    },
+    {
+      "path": "src/speaker_id.py",
+      "accessCount": 5,
+      "lastAccessed": 1776091557728,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_speaker_processor.py",
+      "accessCount": 4,
+      "lastAccessed": 1776091380561,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/frames/frames.py",
+      "accessCount": 3,
+      "lastAccessed": 1776088460994,
+      "type": "directory"
+    },
+    {
+      "path": "tests/test_context.py",
+      "accessCount": 3,
+      "lastAccessed": 1776090598272,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_stranger_integration.py",
+      "accessCount": 3,
+      "lastAccessed": 1776091380141,
+      "type": "file"
+    },
+    {
+      "path": "pyproject.toml",
+      "accessCount": 2,
+      "lastAccessed": 1776090322694,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_storage.py",
+      "accessCount": 2,
+      "lastAccessed": 1776090362054,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_config.py",
+      "accessCount": 2,
+      "lastAccessed": 1776090366203,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_speaker_id.py",
+      "accessCount": 2,
+      "lastAccessed": 1776090506927,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_decider.py",
+      "accessCount": 2,
+      "lastAccessed": 1776091046758,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_main_cli.py",
+      "accessCount": 2,
+      "lastAccessed": 1776091063960,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_pipeline.py",
+      "accessCount": 2,
+      "lastAccessed": 1776091101929,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 1,
+      "lastAccessed": 1776072144314,
+      "type": "file"
+    },
+    {
+      "path": "plugin.json",
+      "accessCount": 1,
+      "lastAccessed": 1776072144732,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/transports/local/audio.py",
+      "accessCount": 1,
+      "lastAccessed": 1776088452026,
+      "type": "directory"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/transports",
+      "accessCount": 1,
+      "lastAccessed": 1776088459386,
+      "type": "directory"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat",
+      "accessCount": 1,
+      "lastAccessed": 1776088468279,
+      "type": "directory"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/transports/base_transport.py",
+      "accessCount": 1,
+      "lastAccessed": 1776088473381,
+      "type": "directory"
+    },
+    {
+      "path": "tests/test_speaker_gallery.py",
+      "accessCount": 1,
+      "lastAccessed": 1776090487446,
+      "type": "file"
+    },
+    {
+      "path": "tests/fixtures/decider_prompt_flag_off.golden.txt",
+      "accessCount": 1,
+      "lastAccessed": 1776091379040,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 1,
+      "lastAccessed": 1776091517810,
+      "type": "directory"
+    }
+  ],
   "userDirectives": []
 }

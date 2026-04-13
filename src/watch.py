@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from rich.align import Align
 from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live

@@ -1,0 +1,119 @@
+# heare scaffolding progress log
+
+## Ralph run 1: 2026-04-11 — Phase A scaffolding (COMPLETED)
+See .omc/progress-phase-A.txt for the full phase A log.
+
+Phase A delivered:
+- 10 source modules in src/ (1290 lines after deslop)
+- 5 test files with 48 passing tests
+- pyproject.toml + uv.lock
+- Prompts, skills, plugin.json, README, .env.example
+- Architect APPROVED with 4 minor Phase B issues flagged and deferred
+
+## Ralph run 2: 2026-04-11 — Phase B/C/D/E readiness (IN PROGRESS)
+
+### Goal
+Close out the architect-flagged Phase A bugs and implement the Phase E
+reliability features so the code is ready for live-hardware verification.
+Live-hardware steps (mic test, 1-hour soak) still require the user.
+
+### Architect-flagged bugs being fixed
+1. BCDE-002: Mode hot-reload didn't work — daemon read mode only at start
+2. BCDE-003: _check_timeout only fired on frame arrival — silent user bypassed timeout
+3. BCDE-004: SIGTERM handler didn't cancel runner.run(pipeline)
+4. BCDE-006: edge-tts only caught NoAudioReceived, not general network errors
+
+### New work
+5. BCDE-001: Install portaudio + enable pyaudio via [local] extra
+6. BCDE-005: Log rotation (10MB, RotatingFileHandler)
+7. BCDE-007: Groq rate-limit back-off + settings cap
+8. BCDE-008: Backfill tests + verify Phase B/C/D/E non-hardware criteria
+9. BCDE-009: Architect review + deslop + regression
+
+### Starting state
+- 48 tests passing
+- `uv run python -m src.main --help` exit 0
+- plugin.json valid
+- Architect approval on Phase A
+- brew install portaudio kicked off in background
+
+### Progress
+
+BCDE-001 DONE — brew install portaudio 19.7.0 succeeded on arm64-tahoe.
+uv sync --extra local built pyaudio 0.2.14. LocalAudioTransport imports
+cleanly in heare's venv. pipeline.build_pipeline still imports cleanly.
+
+BCDE-002 DONE — DeciderProcessor._reload_mode() reads ~/.heare/mode file
+before every dispatch (called from process_frame). Handles missing file
+and garbage content gracefully. 3 new tests in test_mode_hot_reload.py.
+
+BCDE-003 DONE — Added _schedule_timeout_task / _timeout_watcher /
+_cancel_timeout_task. Background asyncio task sleeps confirmation_timeout_seconds
+and cancels under lock. Yes/no/execute all cancel the task. 3 new tests in
+test_silent_timeout.py. The existing _check_timeout frame path kept for
+defence-in-depth.
+
+BCDE-004 DONE — Extracted run_until_stopped(runner, pipeline, heartbeat)
+from _cmd_start. Uses asyncio.wait(FIRST_COMPLETED) + stop_event +
+pipeline_task + heartbeat_task. On shutdown, cancels all tasks and awaits
+them. signal handler installs via loop.add_signal_handler. 2 new tests in
+test_shutdown.py using SleepingRunner/SleepingHeartbeat fakes.
+
+BCDE-005 DONE — _setup_logging installs logging.handlers.RotatingFileHandler
+with maxBytes=10*1024*1024 and backupCount=3 (constants DAEMON_LOG_MAX_BYTES /
+DAEMON_LOG_BACKUPS). 2 new tests in test_log_rotation.py — one checks the
+handler config, one actually triggers rotation with a small cap to verify
+.1 backup appears.
+
+BCDE-006 DONE — EdgeTTSService.run_tts already caught NoAudioReceived; the
+general Exception handler was already there too. Added 2 new tests in
+test_edge_tts_errors.py to lock behavior: immediate RuntimeError yields
+only TTSStoppedFrame, mid-stream ConnectionResetError yields partial audio
++ TTSStoppedFrame.
+
+BCDE-007 DONE — New module src/rate_limit.py with RateLimiter(max_calls,
+window_seconds, clock, sleeper). ClaudeCLI._run awaits self._rate_limiter.acquire()
+before every subprocess spawn. Settings.claude_max_calls_per_minute=30 default.
+3 new tests in test_rate_limit.py with a FakeClock + list-capturing fake sleeper.
+README documents why Groq STT is not rate-limited by heare (it runs inside pipecat).
+
+BCDE-008 DONE — Full verification:
+- `uv run pytest tests/` → 63 passed in 3.13s
+- `uv run python -m src.main --help` → exit 0
+- `python3 -m json.tool < plugin.json` → valid
+- LocalAudioTransport + build_pipeline + run_until_stopped + _setup_logging +
+  RateLimiter all import cleanly
+- Line counts: all src files ≥ 20 lines, total 1436 (was 1290 pre-BCDE)
+- README updated with Status section distinguishing in-code verification from
+  live-hardware verification.
+
+### Files changed in BCDE Ralph session
+- pyproject.toml                    (via uv sync --extra local, no manual edit)
+- src/config.py                     (claude_max_calls_per_minute field)
+- src/claude_cli.py                 (RateLimiter wired into _run)
+- src/decider.py                    (hot-reload + silent-timeout task)
+- src/main.py                       (run_until_stopped + RotatingFileHandler)
+- src/rate_limit.py                 (new)
+- tests/test_mode_hot_reload.py     (new)
+- tests/test_silent_timeout.py      (new)
+- tests/test_shutdown.py            (new)
+- tests/test_log_rotation.py        (new)
+- tests/test_edge_tts_errors.py     (new)
+- tests/test_rate_limit.py          (new)
+- README.md                         (Status + rate-limit caveat)
+- .omc/prd.json                     (this run's PRD)
+- .omc/progress.txt                 (this log)
+
+### Learnings
+- asyncio.Task.cancel() transitions to "cancelling" not "done" until the
+  event loop processes the cancellation — tests must await the task before
+  asserting .done()/.cancelled().
+- _setup_logging re-runs on every _cmd_start call; must strip prior
+  RotatingFileHandler+StreamHandler from root to avoid duplicate handlers.
+- edge-tts NoAudioReceived lives at edge_tts.exceptions.NoAudioReceived, not
+  at module top level — use the fully qualified path to avoid AttributeError
+  on import order.
+- Pipecat 0.0.108 GroqSTTService emits TranscriptionFrame BEFORE SmartTurn
+  emits UserStoppedSpeakingFrame. Our _extract_transcript only needs to match
+  TranscriptionFrame; the UserStoppedSpeakingFrame branch (removed in
+  phase A deslop) was dead code.

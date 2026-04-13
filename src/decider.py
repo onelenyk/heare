@@ -29,6 +29,8 @@ def _load_pipecat_base():
         Frame,
         TTSSpeakFrame,
         TranscriptionFrame,
+        UserStartedSpeakingFrame,
+        UserStoppedSpeakingFrame,
     )
 
     return (
@@ -39,7 +41,114 @@ def _load_pipecat_base():
         TranscriptionFrame,
         BotStartedSpeakingFrame,
         BotStoppedSpeakingFrame,
+        UserStartedSpeakingFrame,
+        UserStoppedSpeakingFrame,
     )
+
+
+_FILLER_TOKEN = r"(хм+|ну+|пу+|ах+|ех+|ум+|ой+|ай+|м+|а+|о+|е+|у+|и+|ь+)"
+NOISE_PATTERN = re.compile(
+    rf"^({_FILLER_TOKEN}[\-\s,]*)+[\.,!\?\s]*$",
+    re.IGNORECASE,
+)
+
+# Fixed phrases the assistant says often — pre-renderable into TTSCache so
+# they play instantly instead of round-tripping through edge-tts.
+FIXED_PHRASES: list[str] = [
+    "okay",
+    "nevermind, cancelled",
+    "Скажи: так чи ні?",
+    "дія не вдалася",
+]
+
+# Wake words that signal "user is talking TO Heare"
+WAKE_WORD_PATTERN = re.compile(r"\b(гава|heare|гей)\b", re.IGNORECASE)
+
+# Other people the user might address (NOT Heare). Detected as standalone words
+# so words like "мама" (mum) are caught but "мамонт" (mammoth) is not.
+OTHER_PERSON_PATTERN = re.compile(
+    r"\b(гала|мамо|мама|мам|тато|тат|алло|alyona|alex)\b",
+    re.IGNORECASE,
+)
+
+# Ukrainian question words (matched on word boundaries)
+UA_QUESTION_WORD_PATTERN = re.compile(
+    r"\b(чи|як|що|коли|чому|хто|де|навіщо|скільки)\b",
+    re.IGNORECASE,
+)
+
+# Cyrillic script range covering Ukrainian letters
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
+_LATIN_RE = re.compile(r"[A-Za-z]")
+
+
+def is_noise(text: str) -> bool:
+    """Detect filler/noise transcripts that don't warrant a decider call."""
+    cleaned = text.strip()
+    if not cleaned:
+        return True
+    if not any(c.isalpha() for c in cleaned):
+        return True
+    return bool(NOISE_PATTERN.match(cleaned))
+
+
+def _is_mostly_non_ukrainian(text: str) -> bool:
+    """True if less than 30% of alphabetic characters are Cyrillic.
+
+    Empty / no-alpha strings return False (they're handled by is_noise).
+    """
+    cyrillic = len(_CYRILLIC_RE.findall(text))
+    latin = len(_LATIN_RE.findall(text))
+    alpha_total = cyrillic + latin
+    if alpha_total == 0:
+        return False
+    return (cyrillic / alpha_total) < 0.30
+
+
+def _looks_like_question(text: str) -> bool:
+    """True if text ends with '?' or contains a Ukrainian question word."""
+    if text.rstrip().endswith("?"):
+        return True
+    return bool(UA_QUESTION_WORD_PATTERN.search(text))
+
+
+def is_quick_nothing(transcript: str, mode: Mode) -> bool:
+    """Decide locally (no LLM) when a transcript is clearly NOT for Heare.
+
+    Filter ordering (first match wins):
+      RULE 0: Wake-word ALWAYS bypasses all other rules
+      RULE 1: Focus mode without wake-word → True
+      RULE 2: Other-person address → True
+      RULE 3: Short transcript (< 3 words) in ambient → True
+      RULE 4: Mostly non-Ukrainian in ambient → True
+      RULE 5: Declarative (no question marker) in ambient → True
+    """
+    cleaned = transcript.strip()
+    if not cleaned:
+        return False  # is_noise handles empty
+    # RULE 0: wake-word bypass — runs first so "heare status" passes even
+    # though it's Latin-only and short.
+    if WAKE_WORD_PATTERN.search(cleaned):
+        return False
+    # RULE 1: focus mode with no wake-word
+    if mode == Mode.FOCUS:
+        return True
+    # RULE 2: other-person address in any mode
+    if OTHER_PERSON_PATTERN.search(cleaned):
+        return True
+    # RULES 3-5 only apply in ambient mode
+    if mode != Mode.AMBIENT:
+        return False
+    # RULE 3: too short to carry intent
+    if len(cleaned.split()) < 3:
+        return True
+    # RULE 4: not a language we speak
+    if _is_mostly_non_ukrainian(cleaned):
+        return True
+    # RULE 5: declarative statement, not directed at us
+    if not _looks_like_question(cleaned):
+        return True
+    return False
 
 
 YES_PATTERNS = [
@@ -104,6 +213,8 @@ def _build_decider_processor_class():
         TranscriptionFrame,
         BotStartedSpeakingFrame,
         BotStoppedSpeakingFrame,
+        UserStartedSpeakingFrame,
+        UserStoppedSpeakingFrame,
     ) = _load_pipecat_base()
 
     class DeciderProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
@@ -124,11 +235,108 @@ def _build_decider_processor_class():
             self.state: DeciderState = DeciderState.LISTENING
             self.pending_action: dict[str, Any] | None = None
             self.pending_decision_id: int | None = None
+            self.pending_speaker_id: str | None = None
             self.confirmation_deadline: float | None = None
             self._last_transcript: str | None = None
             self._lock = asyncio.Lock()
             self._timeout_task: asyncio.Task | None = None
             self._bot_speaking = False
+            self._bot_cooldown_task: asyncio.Task | None = None
+            # LAT-B4: speculative context pre-built on UserStartedSpeakingFrame
+            self._speculative_prompt: str | None = None
+            self._speculative_ctx: dict | None = None
+            self._speculative_task: asyncio.Task | None = None
+            self._speculative_started_at: float | None = None
+            self._speculative_stale_after_seconds: float = 5.0
+
+        def _begin_speculative_context(self) -> None:
+            """Kick off async context + prompt build while user is still speaking."""
+            # Cancel any in-flight speculation from a prior utterance
+            self._clear_speculative()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            self._speculative_started_at = time.monotonic()
+            self._speculative_task = loop.create_task(self._build_speculative())
+
+        async def _build_speculative(self) -> None:
+            try:
+                # Keep BOTH placeholders literal during speculative render so
+                # we can substitute the real transcript AND the real speaker
+                # rule block at execution time without re-rendering the whole
+                # template. See plan §4 / speculative prompt double-sub.
+                ctx = await self.context_builder.build(
+                    transcript="{transcript_or_heartbeat}",
+                    heartbeat=False,
+                    keep_placeholders=[
+                        "transcript_or_heartbeat",
+                        "speaker_rule_block",
+                    ],
+                )
+                prompt_template = self.context_builder.render(
+                    self.decider_prompt_template, ctx
+                )
+                self._speculative_ctx = ctx
+                self._speculative_prompt = prompt_template
+            except Exception as e:
+                logger.warning("speculative context build failed: %s", e)
+                self._speculative_ctx = None
+                self._speculative_prompt = None
+
+        def _is_speculative_stale(self) -> bool:
+            if self._speculative_started_at is None:
+                return True
+            return (
+                time.monotonic() - self._speculative_started_at
+                > self._speculative_stale_after_seconds
+            )
+
+        def _clear_speculative(self) -> None:
+            task = self._speculative_task
+            self._speculative_task = None
+            if task is not None and not task.done():
+                task.cancel()
+            self._speculative_ctx = None
+            self._speculative_prompt = None
+            self._speculative_started_at = None
+
+        async def _prompt_for_transcript(self, transcript: str) -> str:
+            """Build the final decider prompt for a transcript.
+
+            LAT-B4: if speculative context is available and not stale, reuse it
+            by substituting {transcript_or_heartbeat}.
+            SPK-005: also substitute {speaker_rule_block} with the real rule
+            block computed from the current flag state.
+            """
+            if (
+                self._speculative_task is not None
+                and not self._speculative_task.done()
+            ):
+                # Speculation still building — wait up to 200ms for it, then
+                # fall back to normal build if it's too slow.
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(self._speculative_task), timeout=0.2
+                    )
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+            if (
+                self._speculative_prompt is not None
+                and not self._is_speculative_stale()
+            ):
+                rule_block = self.context_builder._render_rule_block()
+                prompt = self._speculative_prompt.replace(
+                    "{transcript_or_heartbeat}", transcript, 1
+                ).replace(
+                    "{speaker_rule_block}", rule_block, 1
+                )
+                self._clear_speculative()
+                return prompt
+            # Fallback: build from scratch
+            self._clear_speculative()
+            ctx = await self.context_builder.build(transcript, heartbeat=False)
+            return self.context_builder.render(self.decider_prompt_template, ctx)
 
         def _reload_mode(self) -> None:
             mode_file = self.settings.mode_file
@@ -146,10 +354,16 @@ def _build_decider_processor_class():
 
             if isinstance(frame, BotStartedSpeakingFrame):
                 self._bot_speaking = True
+                self._cancel_bot_cooldown()
                 await self.push_frame(frame, direction)
                 return
             if isinstance(frame, BotStoppedSpeakingFrame):
-                self._bot_speaking = False
+                self._schedule_bot_cooldown()
+                await self.push_frame(frame, direction)
+                return
+            if isinstance(frame, UserStartedSpeakingFrame):
+                # LAT-B4: pre-build prompt context while user is still speaking
+                self._begin_speculative_context()
                 await self.push_frame(frame, direction)
                 return
 
@@ -164,17 +378,29 @@ def _build_decider_processor_class():
 
             self._reload_mode()
 
+            speaker_id = getattr(frame, "speaker_id", None)
+            speaker_confidence = getattr(frame, "speaker_confidence", None)
+            speaker_inherited = getattr(frame, "speaker_inherited", False)
+
             async with self._lock:
                 if self.settings.mode == Mode.SILENT:
-                    await self._store_only(transcript)
+                    await self._store_only(
+                        transcript, speaker_id, speaker_confidence
+                    )
                     return
 
                 if self.state == DeciderState.LISTENING:
-                    await self._handle_listening(transcript)
+                    await self._handle_listening(
+                        transcript, speaker_id, speaker_confidence
+                    )
                 elif self.state == DeciderState.AWAITING_CONFIRMATION:
-                    await self._handle_confirmation(transcript)
+                    await self._handle_confirmation(
+                        transcript, speaker_id, speaker_inherited
+                    )
                 elif self.state == DeciderState.EXECUTING:
-                    await self._store_only(transcript)
+                    await self._store_only(
+                        transcript, speaker_id, speaker_confidence
+                    )
 
         def _extract_transcript(self, frame) -> str | None:
             if not isinstance(frame, TranscriptionFrame):
@@ -184,24 +410,86 @@ def _build_decider_processor_class():
                 return None
             return str(text).strip() or None
 
-        async def _store_only(self, transcript: str) -> None:
+        async def _store_only(
+            self,
+            transcript: str,
+            speaker_id: str | None = None,
+            speaker_confidence: float | None = None,
+        ) -> None:
             self._last_transcript = transcript
-            await self.store.log_transcript(transcript, self.settings.mode.value)
-
-        async def _handle_listening(self, transcript: str) -> None:
-            transcript_id = await self.store.log_transcript(
-                transcript, self.settings.mode.value
+            await self.store.log_transcript(
+                transcript,
+                self.settings.mode.value,
+                speaker_id=speaker_id,
+                speaker_confidence=speaker_confidence,
             )
-            ctx = await self.context_builder.build(transcript, heartbeat=False)
-            prompt = self.context_builder.render(self.decider_prompt_template, ctx)
+
+        async def _handle_listening(
+            self,
+            transcript: str,
+            speaker_id: str | None = None,
+            speaker_confidence: float | None = None,
+        ) -> None:
+            # Non-owner filter (Phase 1 closes the confirmation spoof):
+            # when the feature is enabled, non-owner transcripts are stored
+            # but never reach Claude — no decider call, no possibility of
+            # transitioning to EXECUTING.
+            if self.settings.speaker_id_enabled and speaker_id != "owner":
+                logger.info(
+                    "[DECIDER] non-owner utterance dropped: sid=%s", speaker_id
+                )
+                await self.store.log_transcript(
+                    transcript,
+                    self.settings.mode.value,
+                    speaker_id=speaker_id,
+                    speaker_confidence=speaker_confidence,
+                )
+                return
+            if is_noise(transcript):
+                logger.debug("noise filter dropped transcript: %r", transcript[:40])
+                await self.store.log_transcript(
+                    transcript,
+                    self.settings.mode.value,
+                    speaker_id=speaker_id,
+                    speaker_confidence=speaker_confidence,
+                )
+                return
+            if is_quick_nothing(transcript, self.settings.mode):
+                logger.debug(
+                    "quick-nothing filter dropped transcript: %r", transcript[:40]
+                )
+                await self.store.log_transcript(
+                    transcript,
+                    self.settings.mode.value,
+                    speaker_id=speaker_id,
+                    speaker_confidence=speaker_confidence,
+                )
+                return
+            t0 = time.monotonic()
+            transcript_id = await self.store.log_transcript(
+                transcript,
+                self.settings.mode.value,
+                speaker_id=speaker_id,
+                speaker_confidence=speaker_confidence,
+            )
+            prompt = await self._prompt_for_transcript(transcript)
+            t_pre = time.monotonic()
             try:
                 decision = await self.claude_cli.call_decider(prompt)
             except Exception as e:
                 logger.exception("decider call failed: %s", e)
                 return
+            t_decider = time.monotonic()
 
             decision_id = await self.store.log_decision(transcript_id, decision)
             d_type = decision.get("type", "nothing")
+            logger.info(
+                "[TIMING] decider transcript=%r prep=%.0fms decider=%.0fms type=%s",
+                transcript[:40],
+                (t_pre - t0) * 1000,
+                (t_decider - t_pre) * 1000,
+                d_type,
+            )
 
             if d_type == "nothing":
                 return
@@ -212,11 +500,12 @@ def _build_decider_processor_class():
                 return
             if d_type == "act":
                 confidence = decision.get("confidence", 0.0) or 0.0
-                if confidence < 0.8:
+                if confidence < self.settings.min_action_confidence:
                     logger.info("action below confidence floor, dropping")
                     return
                 self.pending_action = decision
                 self.pending_decision_id = decision_id
+                self.pending_speaker_id = speaker_id
                 self.state = DeciderState.AWAITING_CONFIRMATION
                 self.confirmation_deadline = (
                     time.monotonic() + self.settings.confirmation_timeout_seconds
@@ -239,6 +528,28 @@ def _build_decider_processor_class():
             if task is not None and not task.done():
                 task.cancel()
 
+        def _schedule_bot_cooldown(self) -> None:
+            self._cancel_bot_cooldown()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._bot_speaking = False
+                return
+            self._bot_cooldown_task = loop.create_task(self._bot_cooldown_watcher())
+
+        def _cancel_bot_cooldown(self) -> None:
+            task = self._bot_cooldown_task
+            self._bot_cooldown_task = None
+            if task is not None and not task.done():
+                task.cancel()
+
+        async def _bot_cooldown_watcher(self) -> None:
+            try:
+                await asyncio.sleep(self.settings.bot_speaking_cooldown_seconds)
+            except asyncio.CancelledError:
+                return
+            self._bot_speaking = False
+
         async def _timeout_watcher(self) -> None:
             try:
                 await asyncio.sleep(self.settings.confirmation_timeout_seconds)
@@ -252,8 +563,36 @@ def _build_decider_processor_class():
                 ):
                     await self._cancel_pending("nevermind, cancelled")
 
-        async def _handle_confirmation(self, transcript: str) -> None:
-            await self.store.log_transcript(transcript, self.settings.mode.value)
+        async def _handle_confirmation(
+            self,
+            transcript: str,
+            speaker_id: str | None = None,
+            speaker_inherited: bool = False,
+        ) -> None:
+            await self.store.log_transcript(
+                transcript,
+                self.settings.mode.value,
+                speaker_id=speaker_id,
+            )
+            # Short-turn fail-closed: inherited labels are NEVER trusted in
+            # AWAITING_CONFIRMATION — a 350 ms "так" from a stranger right
+            # after an owner utterance would inherit owner's id and pass
+            # otherwise. See plan §4 short-turn fail-closed.
+            if self.settings.speaker_id_enabled and speaker_inherited:
+                logger.warning(
+                    "ignoring inherited-label confirmation, pending was %s",
+                    self.pending_speaker_id,
+                )
+                await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
+                return
+            if self.settings.speaker_id_enabled and speaker_id != self.pending_speaker_id:
+                logger.warning(
+                    "speaker mismatch on confirmation: got %s, expected %s",
+                    speaker_id,
+                    self.pending_speaker_id,
+                )
+                await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
+                return
             verdict = parse_yes_no(transcript)
             if verdict == "unclear":
                 await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
@@ -286,6 +625,7 @@ def _build_decider_processor_class():
             finally:
                 self.pending_action = None
                 self.pending_decision_id = None
+                self.pending_speaker_id = None
                 self.confirmation_deadline = None
                 self.state = DeciderState.LISTENING
                 self._cancel_timeout_task()
@@ -297,6 +637,7 @@ def _build_decider_processor_class():
                 )
             self.pending_action = None
             self.pending_decision_id = None
+            self.pending_speaker_id = None
             self.confirmation_deadline = None
             self.state = DeciderState.LISTENING
             self._cancel_timeout_task()

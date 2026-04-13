@@ -35,6 +35,9 @@ class Settings:
     heartbeat_interval_minutes: int = 30
     confirmation_timeout_seconds: int = 30
     transcript_retention_days: int = 30
+    min_action_confidence: float = 0.8
+    bot_speaking_cooldown_seconds: float = 2.0
+    warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")
     session_file: Path = field(default_factory=lambda: HEARE_HOME / "session.json")
     identity_file: Path = field(default_factory=lambda: HEARE_HOME / "identity.json")
@@ -46,8 +49,21 @@ class Settings:
     claude_timeout_seconds: int = 60
     claude_max_retries: int = 3
     claude_max_calls_per_minute: int = 30
+    claude_decider_model: str = "haiku"
     groq_api_key: str | None = None
     groq_language: str = "uk"
+    # Speaker recognition (off by default — torch/speechbrain live under
+    # [project.optional-dependencies].speaker and are lazy-imported)
+    speaker_id_enabled: bool = False
+    speaker_id_threshold_match: float = 0.75
+    speaker_id_threshold_unknown: float = 0.55
+    speaker_id_sticky_threshold: float = 0.80
+    speaker_id_sticky_seconds: float = 5.0
+    speaker_id_min_duration_ms: int = 400
+    speaker_id_centroid_k: int = 5
+    speaker_id_ema_alpha: float = 0.1
+    speaker_id_auto_enroll_after: int = 3
+    speakers_file: Path = field(default_factory=lambda: HEARE_HOME / "speakers.json")
 
     def ensure_dirs(self) -> None:
         for p in (self.workspace_dir, self.log_dir, HEARE_HOME):
