@@ -420,7 +420,8 @@ def _cmd_speakers_rename(args: argparse.Namespace) -> int:
     if not ok:
         print(f"speaker not found: {args.speaker_id}")
         return 1
-    print(f"renamed: {args.speaker_id} -> {args.new_label}")
+    stored_label = gallery.get_label(args.speaker_id)
+    print(f"renamed: {args.speaker_id} -> {stored_label}")
     return 0
 
 

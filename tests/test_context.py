@@ -193,7 +193,7 @@ async def test_format_recent_redacts_non_owner_when_flag_on(
     rendered = result["recent_transcripts"]
     assert "я тут" in rendered
     assert "stranger speak" not in rendered
-    assert "[інший голос]" in rendered
+    assert "[REDACTED]" in rendered
 
 
 async def test_format_recent_passthrough_when_flag_off(
@@ -208,7 +208,7 @@ async def test_format_recent_passthrough_when_flag_off(
     rendered = result["recent_transcripts"]
     assert "я тут" in rendered
     assert "stranger speak" in rendered
-    assert "[інший голос]" not in rendered
+    assert "[REDACTED]" not in rendered
 
 
 async def test_format_recent_none_speaker_id_treated_as_non_owner(
@@ -221,7 +221,7 @@ async def test_format_recent_none_speaker_id_treated_as_non_owner(
     result = await ctx.build("х", heartbeat=False)
     rendered = result["recent_transcripts"]
     assert "legacy row" not in rendered
-    assert "[інший голос]" in rendered
+    assert "[REDACTED]" in rendered
 
 
 def test_render_with_template() -> None:

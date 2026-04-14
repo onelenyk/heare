@@ -291,7 +291,7 @@ def test_append_reference_fifo_cap_preserves_enrollment_ref(
 
 
 # ---------------------------------------------------------------------------
-# SPK-A2: remove_speaker + rename_speaker
+# remove_speaker + rename_speaker
 # ---------------------------------------------------------------------------
 
 
@@ -331,7 +331,7 @@ def test_rename_speaker_missing(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# SPK-A3: audit() drift report
+# audit() drift report
 # ---------------------------------------------------------------------------
 
 
@@ -386,7 +386,7 @@ def test_audit_missing_returns_none(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# SPK-A4: enroll_guest auto-enrollment API
+# enroll_guest auto-enrollment API
 # ---------------------------------------------------------------------------
 
 

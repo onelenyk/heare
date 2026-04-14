@@ -108,26 +108,32 @@
   "hotPaths": [
     {
       "path": "src/decider.py",
-      "accessCount": 46,
-      "lastAccessed": 1776200420985,
+      "accessCount": 47,
+      "lastAccessed": 1776201194188,
       "type": "file"
     },
     {
       "path": "src/speaker_processor.py",
-      "accessCount": 33,
-      "lastAccessed": 1776200873472,
+      "accessCount": 36,
+      "lastAccessed": 1776201352856,
       "type": "file"
     },
     {
       "path": "src/storage.py",
+      "accessCount": 30,
+      "lastAccessed": 1776201172151,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_speaker_processor.py",
       "accessCount": 29,
-      "lastAccessed": 1776200574626,
+      "lastAccessed": 1776201361624,
       "type": "file"
     },
     {
       "path": "src/main.py",
-      "accessCount": 25,
-      "lastAccessed": 1776200732286,
+      "accessCount": 27,
+      "lastAccessed": 1776201296416,
       "type": "file"
     },
     {
@@ -137,15 +143,9 @@
       "type": "file"
     },
     {
-      "path": "tests/test_speaker_processor.py",
-      "accessCount": 22,
-      "lastAccessed": 1776200963657,
-      "type": "file"
-    },
-    {
       "path": "src/speaker_gallery.py",
-      "accessCount": 20,
-      "lastAccessed": 1776200859654,
+      "accessCount": 21,
+      "lastAccessed": 1776201175680,
       "type": "file"
     },
     {
@@ -167,6 +167,12 @@
       "type": "directory"
     },
     {
+      "path": "tests/test_speaker_gallery.py",
+      "accessCount": 15,
+      "lastAccessed": 1776201357536,
+      "type": "file"
+    },
+    {
       "path": "tests/test_claude_cli.py",
       "accessCount": 14,
       "lastAccessed": 1776198961606,
@@ -180,38 +186,32 @@
     },
     {
       "path": "src/config.py",
-      "accessCount": 12,
-      "lastAccessed": 1776200884074,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_speaker_gallery.py",
-      "accessCount": 10,
-      "lastAccessed": 1776200924012,
+      "accessCount": 13,
+      "lastAccessed": 1776201175799,
       "type": "file"
     },
     {
       "path": "",
-      "accessCount": 9,
-      "lastAccessed": 1776168843931,
+      "accessCount": 11,
+      "lastAccessed": 1776201367380,
       "type": "directory"
+    },
+    {
+      "path": "src/context.py",
+      "accessCount": 10,
+      "lastAccessed": 1776201290649,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_context.py",
+      "accessCount": 10,
+      "lastAccessed": 1776201291730,
+      "type": "file"
     },
     {
       "path": "src/pipeline.py",
       "accessCount": 9,
       "lastAccessed": 1776198488401,
-      "type": "file"
-    },
-    {
-      "path": "src/context.py",
-      "accessCount": 8,
-      "lastAccessed": 1776200578182,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_context.py",
-      "accessCount": 8,
-      "lastAccessed": 1776200620163,
       "type": "file"
     },
     {
@@ -230,6 +230,12 @@
       "path": "src/speaker_id.py",
       "accessCount": 6,
       "lastAccessed": 1776200316204,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_main_cli.py",
+      "accessCount": 6,
+      "lastAccessed": 1776201360133,
       "type": "file"
     },
     {
@@ -255,12 +261,6 @@
       "accessCount": 4,
       "lastAccessed": 1776200627655,
       "type": "directory"
-    },
-    {
-      "path": "tests/test_main_cli.py",
-      "accessCount": 4,
-      "lastAccessed": 1776200793184,
-      "type": "file"
     },
     {
       "path": ".venv/lib/python3.13/site-packages/pipecat/frames/frames.py",

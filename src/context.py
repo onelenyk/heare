@@ -59,7 +59,7 @@ class ContextBuilder:
         for row in rows:
             stamp = dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
             if redact and row.get("speaker_id") != "owner":
-                text = "[інший голос]"
+                text = "[REDACTED]"
             else:
                 text = row["text"]
             lines.append(f"  - [{stamp}] {text}")

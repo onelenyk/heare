@@ -156,7 +156,7 @@ def test_main_dispatches_to_func(capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# SPK-A2: speakers list / info / rm / rename CLI
+# speakers list / info / rm / rename CLI
 # ---------------------------------------------------------------------------
 
 
@@ -293,7 +293,7 @@ def test_speakers_rename_invalid_label(capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# SPK-A3: speakers audit CLI
+# speakers audit CLI
 # ---------------------------------------------------------------------------
 
 

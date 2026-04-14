@@ -813,7 +813,7 @@ async def test_tagger_auto_appends_marginal_duration_turn(
 
 
 # ---------------------------------------------------------------------------
-# SPK-A4: auto-enrollment of repeated non-owner voices
+# auto-enrollment of repeated non-owner voices
 # ---------------------------------------------------------------------------
 
 

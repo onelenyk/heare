@@ -323,9 +323,9 @@ def _build_processor_classes() -> tuple[Any, Any]:
             self._bot_cooldown_task: asyncio.Task | None = None
             self._prev_id: str | None = None
             self._prev_at: float = 0.0
-            # SPK-A4: rolling buffer of recent non-owner embeddings used to
-            # detect repeated strangers. Session-local, never persisted,
-            # cleared on successful auto-enroll and on bot_speaking.
+            # Session-local rolling buffer of recent non-owner embeddings.
+            # Never persisted, cleared on successful auto-enroll and on
+            # bot_speaking so TTS echo cannot poison the stranger cluster.
             self._stranger_candidates: deque[np.ndarray] = deque(maxlen=10)
 
         def _maybe_auto_enroll(self, new_embed: np.ndarray) -> None:
