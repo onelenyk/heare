@@ -261,9 +261,6 @@ async def test_schema_upgrade_v2_to_v3() -> None:
 
 
 async def test_log_event_happy_path(store: TranscriptStore) -> None:
-    # DP-003 turned on foreign_keys, so the FK on events.transcript_id now
-    # enforces that the row exists. Insert a transcript first and reference
-    # its real id instead of a hardcoded sentinel.
     tid = await store.log_transcript("hello", "ambient")
     eid = await store.log_event(
         "decider.start", transcript_id=tid, payload={"mode": "ambient"}
@@ -345,10 +342,6 @@ async def test_foreign_keys_enabled_after_init(store: TranscriptStore) -> None:
 
 
 async def test_event_decision_id_cascade_sets_null(store: TranscriptStore) -> None:
-    """Insert a transcript -> decision -> event chain, DELETE the decision,
-    then assert the event row's decision_id was set to NULL by the
-    ON DELETE SET NULL FK cascade. Before DP-003 this silently failed
-    because SQLite's FK enforcement is off by default."""
     tid = await store.log_transcript("hello", "ambient")
     did = await store.log_decision(
         tid,
@@ -373,7 +366,4 @@ async def test_event_decision_id_cascade_sets_null(store: TranscriptStore) -> No
     )
     row = await cursor.fetchone()
     assert row is not None
-    assert row[0] is None, (
-        "FK cascade did not fire — PRAGMA foreign_keys is off or the "
-        "ON DELETE SET NULL clause was dropped from the schema"
-    )
+    assert row[0] is None

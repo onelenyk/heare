@@ -71,10 +71,6 @@ async def test_run_until_stopped_cancels_when_pipeline_exits() -> None:
 
 
 async def test_run_until_stopped_awaits_decider_shutdown() -> None:
-    """DP-002: run_until_stopped must await decider.shutdown() during teardown
-    so the fire-and-forget emit drainer is cancelled cleanly instead of being
-    GC'd with in-flight events on the queue."""
-
     class QuickRunner:
         async def run(self, pipeline) -> None:
             return
@@ -98,10 +94,6 @@ async def test_run_until_stopped_awaits_decider_shutdown() -> None:
 
 
 async def test_run_until_stopped_survives_decider_shutdown_failure() -> None:
-    """A broken decider.shutdown() must not crash teardown — the try/except
-    in run_until_stopped swallows and logs the failure so the signal-handler
-    removal and cancellation still complete."""
-
     class QuickRunner:
         async def run(self, pipeline) -> None:
             return
