@@ -261,8 +261,12 @@ async def test_schema_upgrade_v2_to_v3() -> None:
 
 
 async def test_log_event_happy_path(store: TranscriptStore) -> None:
+    # DP-003 turned on foreign_keys, so the FK on events.transcript_id now
+    # enforces that the row exists. Insert a transcript first and reference
+    # its real id instead of a hardcoded sentinel.
+    tid = await store.log_transcript("hello", "ambient")
     eid = await store.log_event(
-        "decider.start", transcript_id=5, payload={"mode": "ambient"}
+        "decider.start", transcript_id=tid, payload={"mode": "ambient"}
     )
     assert eid > 0
     cursor = await store.db.execute(
@@ -271,9 +275,9 @@ async def test_log_event_happy_path(store: TranscriptStore) -> None:
     )
     row = await cursor.fetchone()
     assert row is not None
-    kind, tid, did, payload_json = row
+    kind, got_tid, did, payload_json = row
     assert kind == "decider.start"
-    assert tid == 5
+    assert got_tid == tid
     assert did is None
     assert json.loads(payload_json) == {"mode": "ambient"}
 
@@ -326,3 +330,50 @@ async def test_events_indexes_exist(store: TranscriptStore) -> None:
     rows = await cursor.fetchall()
     names = {r[0] for r in rows}
     assert names == {"idx_events_ts", "idx_events_decision"}
+
+
+# ---------------------------------------------------------------------------
+# DP-003: PRAGMA foreign_keys=ON + ON DELETE SET NULL cascade on events
+# ---------------------------------------------------------------------------
+
+
+async def test_foreign_keys_enabled_after_init(store: TranscriptStore) -> None:
+    cursor = await store.db.execute("PRAGMA foreign_keys")
+    row = await cursor.fetchone()
+    assert row is not None
+    assert int(row[0]) == 1
+
+
+async def test_event_decision_id_cascade_sets_null(store: TranscriptStore) -> None:
+    """Insert a transcript -> decision -> event chain, DELETE the decision,
+    then assert the event row's decision_id was set to NULL by the
+    ON DELETE SET NULL FK cascade. Before DP-003 this silently failed
+    because SQLite's FK enforcement is off by default."""
+    tid = await store.log_transcript("hello", "ambient")
+    did = await store.log_decision(
+        tid,
+        {
+            "type": "act",
+            "confidence": 0.9,
+            "reason": "asked",
+            "reply": None,
+            "intent": "run a thing",
+            "action": {"tool": "Bash", "args": "echo hi"},
+        },
+    )
+    eid = await store.log_event(
+        "action.executing", decision_id=did, payload={"intent": "run a thing"}
+    )
+
+    await store.db.execute("DELETE FROM decisions WHERE id = ?", (did,))
+    await store.db.commit()
+
+    cursor = await store.db.execute(
+        "SELECT decision_id FROM events WHERE id = ?", (eid,)
+    )
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row[0] is None, (
+        "FK cascade did not fire — PRAGMA foreign_keys is off or the "
+        "ON DELETE SET NULL clause was dropped from the schema"
+    )

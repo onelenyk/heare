@@ -68,3 +68,53 @@ async def test_run_until_stopped_cancels_when_pipeline_exits() -> None:
         timeout=2.0,
     )
     assert heartbeat.cancelled or heartbeat.stopped
+
+
+async def test_run_until_stopped_awaits_decider_shutdown() -> None:
+    """DP-002: run_until_stopped must await decider.shutdown() during teardown
+    so the fire-and-forget emit drainer is cancelled cleanly instead of being
+    GC'd with in-flight events on the queue."""
+
+    class QuickRunner:
+        async def run(self, pipeline) -> None:
+            return
+
+    class FakeDecider:
+        def __init__(self) -> None:
+            self.shutdown_called = 0
+
+        async def shutdown(self) -> None:
+            self.shutdown_called += 1
+
+    heartbeat = SleepingHeartbeat()
+    decider = FakeDecider()
+    await asyncio.wait_for(
+        run_until_stopped(
+            QuickRunner(), object(), heartbeat, decider=decider
+        ),
+        timeout=2.0,
+    )
+    assert decider.shutdown_called == 1
+
+
+async def test_run_until_stopped_survives_decider_shutdown_failure() -> None:
+    """A broken decider.shutdown() must not crash teardown — the try/except
+    in run_until_stopped swallows and logs the failure so the signal-handler
+    removal and cancellation still complete."""
+
+    class QuickRunner:
+        async def run(self, pipeline) -> None:
+            return
+
+    class FailingDecider:
+        async def shutdown(self) -> None:
+            raise RuntimeError("boom during shutdown")
+
+    heartbeat = SleepingHeartbeat()
+    await asyncio.wait_for(
+        run_until_stopped(
+            QuickRunner(), object(), heartbeat, decider=FailingDecider()
+        ),
+        timeout=2.0,
+    )
+    assert heartbeat.stopped

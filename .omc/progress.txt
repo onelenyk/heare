@@ -63,3 +63,43 @@
 - Files created: none (all changes extend existing files)
 
 
+## heare daemon polish (Phase A) — follow-up to RT review
+
+### DP-001: Commit RT-001..RT-005 realtime-progress-watch work
+- Staged explicit file list (9 src+tests + .omc/progress.txt + .omc/project-memory.json + .omc/prd-speaker-phase-2-track-b-completed.json) and committed with `feat(watch):` prefix; commit hash bfb8675
+- Excluded .omc/prd.json (Phase A PRD, rides in DP-005) and .omc/prd-realtime-progress-watch-completed.json (archive, rides in DP-005)
+- Sanity re-run of the 145 RT-touched tests post-commit: all pass
+
+### DP-002: Wire DeciderProcessor.shutdown() into pipeline teardown
+- src/main.py run_until_stopped: added keyword-only `decider=None` parameter; finally-block awaits `decider.shutdown()` after the named_tasks cancel+await loop and before signal-handler removal, wrapped in try/except that logs exceptions so a broken shutdown cannot break teardown
+- src/main.py _cmd_start: passes `decider=decider` from build_pipeline tuple into run_until_stopped
+- tests/test_shutdown.py: +2 tests (test_run_until_stopped_awaits_decider_shutdown with FakeDecider counting shutdown_called, test_run_until_stopped_survives_decider_shutdown_failure with FailingDecider raising RuntimeError)
+- Existing test_run_until_stopped_cancels_on_sigterm and test_run_until_stopped_cancels_when_pipeline_exits pass unchanged — keyword-only default-None parameter is backward compatible
+
+### DP-003: PRAGMA foreign_keys=ON + ON DELETE SET NULL cascade
+- src/storage.py TranscriptStore.init(): added `PRAGMA foreign_keys=ON` on the line after WAL pragma, before executescript(SCHEMA)
+- tests/test_storage.py: +2 tests (test_foreign_keys_enabled_after_init, test_event_decision_id_cascade_sets_null which inserts transcript->decision->event chain, DELETEs the decision, asserts event.decision_id is now NULL via the ON DELETE SET NULL cascade)
+- Fix-up: test_log_event_happy_path was passing transcript_id=5 (hardcoded sentinel that never existed). FK enforcement broke it instantly. Updated to insert a real transcript via log_transcript first and reference its returned id — this is actually a correctness improvement, not a workaround
+- Key learning: turning on SQLite foreign_keys is a one-way door for the test suite. Any prior test that used sentinel FK ids was silently getting away with it. Grep'd for `transcript_id=\\d|decision_id=\\d` across tests/ — only the one broken site found
+
+### DP-004: Fix proc.kill mock warning in test_claude_cli
+- tests/test_claude_cli.py: imported MagicMock alongside AsyncMock/patch; _make_mock_proc sets `proc.kill = MagicMock()` (sync) instead of AsyncMock; docstring updated to explain why (real Popen.kill is sync, AsyncMock leaks an unawaited coroutine in the timeout path)
+- test_run_timeout_kills_process still green with `p.kill.assert_called()` — MagicMock supports the same assertion surface
+- Pre-fix: 1 RuntimeWarning in test_run_timeout_kills_process. Post-fix: zero warnings
+
+### DP-005: Commit Phase A polish + archive RT PRD
+- .omc/prd-realtime-progress-watch-completed.json: byte-identical snapshot of the RT PRD taken via `cp .omc/prd.json ...` BEFORE the Phase A PRD was written
+- .omc/prd.json: rewritten with 5 Phase A stories (DP-001..DP-005), all marked passes: true after verification
+- Second commit on HEAD: src/main.py + src/storage.py + tests/test_claude_cli.py + tests/test_shutdown.py + tests/test_storage.py + .omc/prd.json + .omc/prd-realtime-progress-watch-completed.json + .omc/progress.txt
+
+### Phase A totals
+- Starting baseline: 339 tests (RT phase final)
+- Final: 343 tests (+4: 2 shutdown tests + 2 FK tests)
+- Ruff: clean
+- Zero regressions after fixing the transcript_id=5 sentinel in test_log_event_happy_path
+- Files modified: src/storage.py, src/main.py, tests/test_storage.py, tests/test_shutdown.py, tests/test_claude_cli.py
+- Files created: .omc/prd-realtime-progress-watch-completed.json (RT PRD archive)
+- Commit 1: bfb8675 `feat(watch): ...` (RT phase)
+- Commit 2: (Phase A, filled in after DP-005 commit lands)
+
+

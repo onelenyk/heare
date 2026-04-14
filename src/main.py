@@ -138,7 +138,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
 
         runner = PipelineRunner()
-        await run_until_stopped(runner, pipeline, heartbeat, warmup)
+        await run_until_stopped(runner, pipeline, heartbeat, warmup, decider=decider)
     finally:
         if store is not None:
             await store.close()
@@ -148,7 +148,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     return 0
 
 
-async def run_until_stopped(runner, pipeline, heartbeat, warmup=None) -> None:
+async def run_until_stopped(runner, pipeline, heartbeat, warmup=None, *, decider=None) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
     heartbeat_task = loop.create_task(heartbeat.run())
@@ -193,6 +193,11 @@ async def run_until_stopped(runner, pipeline, heartbeat, warmup=None) -> None:
                 pass
             except Exception:
                 logger.exception("%s task crashed during shutdown", name)
+        if decider is not None:
+            try:
+                await decider.shutdown()
+            except Exception:
+                logger.exception("decider shutdown failed")
         for sig in installed_signals:
             try:
                 loop.remove_signal_handler(sig)

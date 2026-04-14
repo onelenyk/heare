@@ -120,14 +120,26 @@
     },
     {
       "path": "src/storage.py",
-      "accessCount": 21,
-      "lastAccessed": 1776168684086,
+      "accessCount": 25,
+      "lastAccessed": 1776198748537,
+      "type": "file"
+    },
+    {
+      "path": "src/main.py",
+      "accessCount": 20,
+      "lastAccessed": 1776198701597,
       "type": "file"
     },
     {
       "path": "tests/test_decider.py",
       "accessCount": 19,
       "lastAccessed": 1776168917664,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_storage.py",
+      "accessCount": 18,
+      "lastAccessed": 1776198799604,
       "type": "file"
     },
     {
@@ -140,12 +152,6 @@
       "path": "src/claude_cli.py",
       "accessCount": 17,
       "lastAccessed": 1776168685675,
-      "type": "file"
-    },
-    {
-      "path": "src/main.py",
-      "accessCount": 17,
-      "lastAccessed": 1776198486803,
       "type": "file"
     },
     {
@@ -167,15 +173,9 @@
       "type": "file"
     },
     {
-      "path": "tests/test_storage.py",
-      "accessCount": 13,
-      "lastAccessed": 1776168965572,
-      "type": "file"
-    },
-    {
       "path": "tests/test_claude_cli.py",
-      "accessCount": 11,
-      "lastAccessed": 1776198564719,
+      "accessCount": 13,
+      "lastAccessed": 1776198709676,
       "type": "directory"
     },
     {
@@ -281,6 +281,18 @@
       "type": "file"
     },
     {
+      "path": "tests/test_shutdown.py",
+      "accessCount": 2,
+      "lastAccessed": 1776198723866,
+      "type": "file"
+    },
+    {
+      "path": "tests",
+      "accessCount": 2,
+      "lastAccessed": 1776198807609,
+      "type": "directory"
+    },
+    {
       "path": "plugin.json",
       "accessCount": 1,
       "lastAccessed": 1776072144732,
@@ -314,18 +326,6 @@
       "path": "tests/fixtures/decider_prompt_flag_off.golden.txt",
       "accessCount": 1,
       "lastAccessed": 1776091379040,
-      "type": "file"
-    },
-    {
-      "path": "tests",
-      "accessCount": 1,
-      "lastAccessed": 1776114224383,
-      "type": "directory"
-    },
-    {
-      "path": "tests/test_shutdown.py",
-      "accessCount": 1,
-      "lastAccessed": 1776198563820,
       "type": "file"
     }
   ],

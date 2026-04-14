@@ -106,6 +106,9 @@ class TranscriptStore:
         # WAL mode: watch refresh is 0.5s, reader/writer would otherwise
         # contend. Idempotent on already-WAL DBs.
         await self._db.execute("PRAGMA journal_mode=WAL")
+        # Foreign keys are off by default in SQLite; without this the
+        # ON DELETE SET NULL cascade on events.decision_id never fires.
+        await self._db.execute("PRAGMA foreign_keys=ON")
         await self._db.executescript(SCHEMA)
         await self._db.commit()
         await self._migrate_speaker_columns()

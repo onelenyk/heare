@@ -5,7 +5,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -62,11 +62,13 @@ def _make_mock_proc(stdout=b"", stderr=b"", returncode=0):
       - `.stdout.readline()`  -> yields lines then EOF forever
       - `.stderr.readline()`  -> yields lines then EOF forever
       - `.wait()`             -> returns returncode
-      - `.kill()`             -> no-op AsyncMock for legacy kill assertions
+      - `.kill()`             -> sync MagicMock — real Popen.kill is sync,
+                                 an AsyncMock here leaks an unawaited
+                                 coroutine warning in the timeout test.
     """
     proc = AsyncMock()
     proc.returncode = returncode
-    proc.kill = AsyncMock()
+    proc.kill = MagicMock()
     proc.wait = AsyncMock(return_value=returncode)
     proc.communicate = AsyncMock(return_value=(stdout, stderr))
 
