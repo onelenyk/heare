@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1776072002268,
+  "lastScanned": 1776165400151,
   "projectRoot": "/Users/lenyk/myprojects/heare",
   "techStack": {
     "languages": [
@@ -51,7 +51,7 @@
       "path": "prompts",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1776072002255,
+      "lastAccessed": 1776165400135,
       "keyFiles": [
         "decider.txt",
         "identity-bootstrap.txt",
@@ -62,7 +62,7 @@
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1776072002256,
+      "lastAccessed": 1776165400136,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -72,8 +72,8 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 14,
-      "lastAccessed": 1776072002256,
+      "fileCount": 17,
+      "lastAccessed": 1776165400137,
       "keyFiles": [
         "__init__.py",
         "claude_cli.py",
@@ -85,8 +85,8 @@
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 22,
-      "lastAccessed": 1776072002256,
+      "fileCount": 26,
+      "lastAccessed": 1776165400138,
       "keyFiles": [
         "__init__.py",
         "test_audio.py",
@@ -98,12 +98,20 @@
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
-      "fileCount": 1,
-      "lastAccessed": 1776072002257,
-      "keyFiles": []
+      "fileCount": 2,
+      "lastAccessed": 1776165400139,
+      "keyFiles": [
+        "decider_prompt_flag_off.golden.txt"
+      ]
     }
   },
   "hotPaths": [
+    {
+      "path": "src/decider.py",
+      "accessCount": 45,
+      "lastAccessed": 1776168685226,
+      "type": "file"
+    },
     {
       "path": "src/speaker_processor.py",
       "accessCount": 28,
@@ -111,9 +119,15 @@
       "type": "file"
     },
     {
-      "path": "src/decider.py",
-      "accessCount": 17,
-      "lastAccessed": 1776109291495,
+      "path": "src/storage.py",
+      "accessCount": 21,
+      "lastAccessed": 1776168684086,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_decider.py",
+      "accessCount": 19,
+      "lastAccessed": 1776168917664,
       "type": "file"
     },
     {
@@ -123,10 +137,46 @@
       "type": "file"
     },
     {
+      "path": "src/claude_cli.py",
+      "accessCount": 17,
+      "lastAccessed": 1776168685675,
+      "type": "file"
+    },
+    {
+      "path": "src/main.py",
+      "accessCount": 17,
+      "lastAccessed": 1776198486803,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 16,
+      "lastAccessed": 1776198482641,
+      "type": "directory"
+    },
+    {
       "path": "src/speaker_gallery.py",
       "accessCount": 15,
       "lastAccessed": 1776112412364,
       "type": "file"
+    },
+    {
+      "path": "src/watch.py",
+      "accessCount": 13,
+      "lastAccessed": 1776168865112,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_storage.py",
+      "accessCount": 13,
+      "lastAccessed": 1776168965572,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_claude_cli.py",
+      "accessCount": 11,
+      "lastAccessed": 1776198564719,
+      "type": "directory"
     },
     {
       "path": "src/config.py",
@@ -135,15 +185,15 @@
       "type": "file"
     },
     {
-      "path": "src/storage.py",
-      "accessCount": 8,
-      "lastAccessed": 1776091364123,
-      "type": "file"
+      "path": "",
+      "accessCount": 9,
+      "lastAccessed": 1776168843931,
+      "type": "directory"
     },
     {
-      "path": "src/main.py",
-      "accessCount": 8,
-      "lastAccessed": 1776109897346,
+      "path": "src/pipeline.py",
+      "accessCount": 9,
+      "lastAccessed": 1776198488401,
       "type": "file"
     },
     {
@@ -153,22 +203,10 @@
       "type": "file"
     },
     {
-      "path": "src/pipeline.py",
-      "accessCount": 6,
-      "lastAccessed": 1776091370415,
-      "type": "file"
-    },
-    {
       "path": "prompts/decider.txt",
       "accessCount": 6,
       "lastAccessed": 1776091378180,
       "type": "file"
-    },
-    {
-      "path": "src",
-      "accessCount": 6,
-      "lastAccessed": 1776091519401,
-      "type": "directory"
     },
     {
       "path": "tests/test_config.py",
@@ -189,9 +227,21 @@
       "type": "file"
     },
     {
+      "path": "tests/test_context.py",
+      "accessCount": 5,
+      "lastAccessed": 1776168048582,
+      "type": "file"
+    },
+    {
       "path": "tests/test_stranger_integration.py",
       "accessCount": 4,
       "lastAccessed": 1776108262434,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_watch.py",
+      "accessCount": 4,
+      "lastAccessed": 1776168691775,
       "type": "file"
     },
     {
@@ -201,27 +251,9 @@
       "type": "directory"
     },
     {
-      "path": "tests/test_context.py",
-      "accessCount": 3,
-      "lastAccessed": 1776090598272,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_decider.py",
-      "accessCount": 3,
-      "lastAccessed": 1776108261967,
-      "type": "file"
-    },
-    {
       "path": "pyproject.toml",
       "accessCount": 2,
       "lastAccessed": 1776090322694,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_storage.py",
-      "accessCount": 2,
-      "lastAccessed": 1776090362054,
       "type": "file"
     },
     {
@@ -244,8 +276,8 @@
     },
     {
       "path": "README.md",
-      "accessCount": 1,
-      "lastAccessed": 1776072144314,
+      "accessCount": 2,
+      "lastAccessed": 1776197918110,
       "type": "file"
     },
     {
@@ -285,10 +317,16 @@
       "type": "file"
     },
     {
-      "path": "",
+      "path": "tests",
       "accessCount": 1,
-      "lastAccessed": 1776091517810,
+      "lastAccessed": 1776114224383,
       "type": "directory"
+    },
+    {
+      "path": "tests/test_shutdown.py",
+      "accessCount": 1,
+      "lastAccessed": 1776198563820,
+      "type": "file"
     }
   ],
   "userDirectives": []

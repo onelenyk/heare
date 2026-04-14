@@ -6,7 +6,9 @@ pipecat is not importable so the suite stays runnable on lean environments.
 """
 from __future__ import annotations
 
+import json
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -865,3 +867,315 @@ async def test_silent_mode_persists_stranger_speaker_fields(harness) -> None:
     )
     rows = await cursor.fetchall()
     assert rows == [("unknown", 0.40)]
+
+
+# ---------------------------------------------------------------------------
+# RT-002: fire-and-forget emit queue + 12 state-transition sites
+# ---------------------------------------------------------------------------
+
+
+async def _drain_pending_events(decider, timeout: float = 0.5) -> None:
+    """Helper: give the drainer task time to flush all queued events."""
+    import asyncio as _asyncio
+
+    deadline = _asyncio.get_running_loop().time() + timeout
+    while not decider._emit_queue.empty():
+        if _asyncio.get_running_loop().time() > deadline:
+            break
+        await _asyncio.sleep(0.005)
+
+
+async def _read_events(store) -> list[tuple[str, int | None, int | None]]:
+    cursor = await store.db.execute(
+        "SELECT kind, transcript_id, decision_id FROM events ORDER BY id ASC"
+    )
+    rows = await cursor.fetchall()
+    return [(r[0], r[1], r[2]) for r in rows]
+
+
+async def test_emit_queue_full_drops_not_raises(harness) -> None:
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+
+    # Fill the queue past maxsize=256 by calling _safe_emit without starting
+    # the drainer. _ensure_drainer needs a running loop, and we do have one
+    # here, so manually prevent drain startup by marking drainer done.
+    import asyncio as _asyncio
+
+    async def noop():
+        return
+
+    decider._emit_drainer_task = _asyncio.create_task(noop())
+    await decider._emit_drainer_task  # ensure done, so _ensure_drainer bails
+
+    for _ in range(256):
+        decider._safe_emit("decider.start")
+    assert decider._emit_queue.full()
+    # Now try 5 more — must drop, not raise
+    for _ in range(5):
+        decider._safe_emit("decider.start")
+    assert decider._emit_drop_count == 5
+    await decider.shutdown()
+
+
+async def test_drainer_survives_store_failure(harness) -> None:
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+
+    # Wrap store.log_event so first call raises, subsequent calls pass through.
+    from unittest.mock import patch
+
+    call_count = {"n": 0}
+    real_log_event = store.log_event
+
+    async def flaky_log_event(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("injected failure")
+        return await real_log_event(*args, **kwargs)
+
+    with patch.object(store, "log_event", side_effect=flaky_log_event):
+        decider._safe_emit("decider.start", payload={"n": 1})
+        decider._safe_emit("decider.start", payload={"n": 2})
+        await _drain_pending_events(decider)
+
+    # Second event reached DB despite first raising
+    events = await _read_events(store)
+    assert len(events) == 1
+    assert events[0][0] == "decider.start"
+    # Drainer is still alive
+    assert decider._emit_drainer_task is not None
+    assert not decider._emit_drainer_task.done()
+    await decider.shutdown()
+
+
+async def test_safe_emit_under_lock_is_fast(harness) -> None:
+    import asyncio as _asyncio
+
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+
+    async with decider._lock:
+        t0 = time.monotonic()
+        for _ in range(50):
+            decider._safe_emit("decider.start")
+        elapsed = time.monotonic() - t0
+    # 50 enqueues should complete in well under 1ms each = 50ms total.
+    assert elapsed < 0.05, f"_safe_emit too slow under lock: {elapsed * 1000:.1f}ms"
+    await _asyncio.sleep(0)  # let drainer catch up (loop yield)
+    await decider.shutdown()
+
+
+async def test_drainer_cleanup_cancels_cleanly(harness) -> None:
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider._safe_emit("decider.start")
+    # drainer is now running
+    assert decider._emit_drainer_task is not None
+    await decider.shutdown()
+    # After shutdown, the task reference is cleared and the coroutine done
+    assert decider._emit_drainer_task is None
+
+
+async def test_decider_emits_expected_sequence_for_act_yes(harness) -> None:
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI(
+        [
+            {
+                "type": "act",
+                "confidence": 0.9,
+                "reason": "asked",
+                "intent": "run pytest",
+                "action": {"tool": "Bash", "args": "pytest"},
+            }
+        ]
+    )
+    cli.call_action = AsyncMock(return_value={"summary": "тести пройшли"})
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    await decider._handle_listening("Гава, запусти тести")
+    await decider._handle_confirmation("так")
+    await _drain_pending_events(decider)
+
+    kinds = [e[0] for e in await _read_events(store)]
+    expected = [
+        "decider.start",
+        "decider.done",
+        "action.armed",
+        "action.confirmed",
+        "action.executing",
+        "action.call_start",
+        "action.done",
+        "state.listening",
+    ]
+    assert kinds == expected, f"got {kinds}"
+    await decider.shutdown()
+
+
+async def test_decider_emits_expected_sequence_for_act_no(harness) -> None:
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI(
+        [
+            {
+                "type": "act",
+                "confidence": 0.9,
+                "reason": "asked",
+                "intent": "run pytest",
+                "action": {"tool": "Bash", "args": "pytest"},
+            }
+        ]
+    )
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    await decider._handle_listening("Гава, запусти тести")
+    await decider._handle_confirmation("ні")
+    await _drain_pending_events(decider)
+
+    kinds = [e[0] for e in await _read_events(store)]
+    # no executing/call_start/done branch because we cancelled
+    assert "action.confirmed" not in kinds
+    assert "action.executing" not in kinds
+    assert "action.call_start" not in kinds
+    assert "action.done" not in kinds
+    assert kinds[:3] == ["decider.start", "decider.done", "action.armed"]
+    assert "action.cancelled" in kinds
+    assert kinds[-1] == "state.listening"
+    await decider.shutdown()
+
+
+async def test_decider_emits_action_stdout_per_line(harness) -> None:
+    """When call_action streams stdout lines via on_line, each line must
+    become an action.stdout event in the events table with the decision_id
+    correlated."""
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI(
+        [
+            {
+                "type": "act",
+                "confidence": 0.9,
+                "reason": "asked",
+                "intent": "build stuff",
+                "action": {"tool": "Bash", "args": "make"},
+            }
+        ]
+    )
+
+    async def fake_call_action(description, *, on_line=None):
+        if on_line is not None:
+            for line in ["compiling foo.c", "compiling bar.c", "linking a.out"]:
+                on_line(line)
+        return {"summary": "ok"}
+
+    cli.call_action = AsyncMock(side_effect=fake_call_action)
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    await decider._handle_listening("Гава, зроби білд")
+    await decider._handle_confirmation("так")
+    await _drain_pending_events(decider)
+
+    cursor = await store.db.execute(
+        "SELECT payload_json FROM events WHERE kind = 'action.stdout' ORDER BY id"
+    )
+    rows = await cursor.fetchall()
+    assert len(rows) == 3
+    payloads = [json.loads(r[0]) for r in rows]
+    assert [p["line"] for p in payloads] == [
+        "compiling foo.c",
+        "compiling bar.c",
+        "linking a.out",
+    ]
+    await decider.shutdown()
+
+
+async def test_decider_emits_action_error(harness) -> None:
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI(
+        [
+            {
+                "type": "act",
+                "confidence": 0.9,
+                "reason": "asked",
+                "intent": "run pytest",
+                "action": {"tool": "Bash", "args": "pytest"},
+            }
+        ]
+    )
+    cli.call_action = AsyncMock(side_effect=RuntimeError("boom"))
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    await decider._handle_listening("Гава, запусти тести")
+    await decider._handle_confirmation("так")
+    await _drain_pending_events(decider)
+
+    kinds = [e[0] for e in await _read_events(store)]
+    assert "action.error" in kinds
+    assert "action.done" not in kinds
+    assert kinds[-1] == "state.listening"
+    await decider.shutdown()
+
+
+async def test_decider_emits_dropped_low_conf(harness) -> None:
+    store, settings, ctx = harness
+    settings.min_action_confidence = 0.8
+    cli = FakeClaudeCLI(
+        [
+            {
+                "type": "act",
+                "confidence": 0.3,
+                "reason": "low",
+                "intent": "do something",
+                "action": {"tool": "Bash", "args": "echo hi"},
+            }
+        ]
+    )
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    await decider._handle_listening("Гава, зроби щось")
+    await _drain_pending_events(decider)
+
+    kinds = [e[0] for e in await _read_events(store)]
+    assert "decider.dropped_low_conf" in kinds
+    assert "action.armed" not in kinds
+    await decider.shutdown()
+
+
+async def test_decider_import_does_not_break_flag_off_render(harness) -> None:
+    """RT-005: importing src.decider at module level must not drift the
+    flag-off golden prompt rendering. Uses the same fixed-ctx pattern as
+    test_golden_string_flag_off_render in tests/test_context.py but adds
+    an explicit top-level `import src.decider` so any import-time side
+    effects in decider.py (new queue, drainer, EventKind imports) that
+    could drift the rendering would be caught.
+    """
+    import src.decider  # noqa: F401 — the canary: must import cleanly
+    from pathlib import Path as _Path
+
+    from src.context import ContextBuilder
+
+    store, settings, _ctx = harness
+    settings.speaker_id_enabled = False
+    builder = ContextBuilder(store, settings)
+
+    fixed_ctx = {
+        "time": "2026-04-13 12:00:00",
+        "timezone": "UTC",
+        "mode": "ambient",
+        "heartbeat_flag": "no",
+        "recent_transcripts": "(none)",
+        "transcript_or_heartbeat": "тест",
+        "speaker_rule_block": builder._render_rule_block(),
+    }
+    template = _Path("prompts/decider.txt").read_text()
+    rendered = builder.render(template, fixed_ctx)
+
+    golden_path = _Path("tests/fixtures/decider_prompt_flag_off.golden.txt")
+    golden = golden_path.read_text()
+    assert rendered == golden, (
+        "flag-off render drifted from golden fixture after decider module import — "
+        "check for import-time side effects in src.decider"
+    )
+    assert "Speaker: owner" not in rendered

@@ -376,7 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("reset-identity", help="Backup identity.json and regenerate")
 
     watch_p = sub.add_parser("watch", help="Live status view (Ctrl+C to exit)")
-    watch_p.add_argument("--interval", type=float, default=2.0, help="Refresh seconds")
+    watch_p.add_argument("--interval", type=float, default=0.5, help="Refresh seconds")
     watch_p.add_argument("--once", action="store_true", help="Print once and exit")
 
     logs_p = sub.add_parser("logs", help="Tail the daemon log")

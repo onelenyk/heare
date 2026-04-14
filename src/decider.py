@@ -11,11 +11,19 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from .config import DeciderState, Mode, Settings
+from .storage import EventKind
 
 if TYPE_CHECKING:
     from .claude_cli import ClaudeCLI
     from .context import ContextBuilder
     from .storage import TranscriptStore
+
+
+# Size rationale: worst-case 10s action with ~20 stdout lines + ~12 state
+# transitions = ~32 events, 256 = 8x headroom. If a user runs a 30s streaming
+# action that produces 500 stdout lines, some will drop and the drop counter
+# surfaces via system.emit_drops in the heartbeat loop.
+_EMIT_QUEUE_SIZE = 256
 
 
 logger = logging.getLogger("heare.decider")
@@ -242,6 +250,14 @@ def _build_decider_processor_class():
             self._timeout_task: asyncio.Task | None = None
             self._bot_speaking = False
             self._bot_cooldown_task: asyncio.Task | None = None
+            # RT-002: fire-and-forget emit queue for progress events.
+            # put_nowait is sync so emitting inside `async with self._lock`
+            # never yields and never blocks the FSM critical path.
+            self._emit_queue: asyncio.Queue[
+                tuple[str, int | None, int | None, dict | None]
+            ] = asyncio.Queue(maxsize=_EMIT_QUEUE_SIZE)
+            self._emit_drop_count: int = 0
+            self._emit_drainer_task: asyncio.Task | None = None
             # LAT-B4: speculative context pre-built on UserStartedSpeakingFrame
             self._speculative_prompt: str | None = None
             self._speculative_ctx: dict | None = None
@@ -300,6 +316,77 @@ def _build_decider_processor_class():
             self._speculative_ctx = None
             self._speculative_prompt = None
             self._speculative_started_at = None
+
+        # RT-002: fire-and-forget progress-event emission
+        def _safe_emit(
+            self,
+            kind: str | EventKind,
+            *,
+            transcript_id: int | None = None,
+            decision_id: int | None = None,
+            payload: dict | None = None,
+        ) -> None:
+            """Enqueue a progress event. Never raises, never blocks.
+
+            Called from inside the FSM lock — put_nowait is sync, so the lock
+            holder yields zero extra time. Overflow drops the event and logs
+            a WARNING once per 10 drops so disk contention never breaks the
+            voice-confirmation critical path.
+            """
+            self._ensure_drainer()
+            try:
+                self._emit_queue.put_nowait(
+                    (str(kind), transcript_id, decision_id, payload)
+                )
+            except asyncio.QueueFull:
+                self._emit_drop_count += 1
+                if self._emit_drop_count % 10 == 1:
+                    logger.warning(
+                        "progress event queue full (drops=%d) — dropping %s",
+                        self._emit_drop_count,
+                        kind,
+                    )
+
+        def _ensure_drainer(self) -> None:
+            if self._emit_drainer_task is not None and not self._emit_drainer_task.done():
+                return
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            self._emit_drainer_task = loop.create_task(self._drain_events())
+
+        async def _drain_events(self) -> None:
+            """Long-lived drainer. Never dies: any store exception is logged
+            and the loop continues to the next event."""
+            while True:
+                try:
+                    kind, tid, did, payload = await self._emit_queue.get()
+                except asyncio.CancelledError:
+                    return
+                try:
+                    await self.store.log_event(
+                        kind,
+                        transcript_id=tid,
+                        decision_id=did,
+                        payload=payload,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("progress event drainer: log_event failed: %s", e)
+
+        async def shutdown(self) -> None:
+            """Cancel the drainer and drain any remaining items with a
+            100ms budget. Call from pipeline teardown."""
+            task = self._emit_drainer_task
+            self._emit_drainer_task = None
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=0.1)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
 
         async def _prompt_for_transcript(self, transcript: str) -> str:
             """Build the final decider prompt for a transcript.
@@ -474,6 +561,11 @@ def _build_decider_processor_class():
             )
             prompt = await self._prompt_for_transcript(transcript)
             t_pre = time.monotonic()
+            self._safe_emit(
+                EventKind.DECIDER_START,
+                transcript_id=transcript_id,
+                payload={"transcript": transcript[:200], "mode": self.settings.mode.value},
+            )
             try:
                 decision = await self.claude_cli.call_decider(prompt)
             except Exception as e:
@@ -483,6 +575,15 @@ def _build_decider_processor_class():
 
             decision_id = await self.store.log_decision(transcript_id, decision)
             d_type = decision.get("type", "nothing")
+            self._safe_emit(
+                EventKind.DECIDER_DONE,
+                transcript_id=transcript_id,
+                decision_id=decision_id,
+                payload={
+                    "type": d_type,
+                    "confidence": decision.get("confidence"),
+                },
+            )
             logger.info(
                 "[TIMING] decider transcript=%r prep=%.0fms decider=%.0fms type=%s",
                 transcript[:40],
@@ -502,6 +603,15 @@ def _build_decider_processor_class():
                 confidence = decision.get("confidence", 0.0) or 0.0
                 if confidence < self.settings.min_action_confidence:
                     logger.info("action below confidence floor, dropping")
+                    self._safe_emit(
+                        EventKind.DECIDER_DROPPED_LOW_CONF,
+                        transcript_id=transcript_id,
+                        decision_id=decision_id,
+                        payload={
+                            "confidence": confidence,
+                            "floor": self.settings.min_action_confidence,
+                        },
+                    )
                     return
                 self.pending_action = decision
                 self.pending_decision_id = decision_id
@@ -512,6 +622,12 @@ def _build_decider_processor_class():
                 )
                 self._schedule_timeout_task()
                 intent = decision.get("intent", "do that")
+                self._safe_emit(
+                    EventKind.ACTION_ARMED,
+                    transcript_id=transcript_id,
+                    decision_id=decision_id,
+                    payload={"intent": intent},
+                )
                 await self.push_frame(TTSSpeakFrame(f"Хочу {intent}, можна?"))
 
         def _schedule_timeout_task(self) -> None:
@@ -595,12 +711,25 @@ def _build_decider_processor_class():
                 return
             verdict = parse_yes_no(transcript)
             if verdict == "unclear":
+                self._safe_emit(
+                    EventKind.ACTION_REPROMPT,
+                    decision_id=self.pending_decision_id,
+                )
                 await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
                 return
             if verdict == "no":
+                self._safe_emit(
+                    EventKind.ACTION_CANCELLED,
+                    decision_id=self.pending_decision_id,
+                    payload={"reason": "user said no"},
+                )
                 await self._cancel_pending("okay")
                 return
             if verdict == "yes":
+                self._safe_emit(
+                    EventKind.ACTION_CONFIRMED,
+                    decision_id=self.pending_decision_id,
+                )
                 await self._execute_pending()
 
         async def _execute_pending(self) -> None:
@@ -611,16 +740,48 @@ def _build_decider_processor_class():
             action = self.pending_action
             decision_id = self.pending_decision_id
             description = action.get("intent") or str(action.get("action"))
+            self._safe_emit(
+                EventKind.ACTION_EXECUTING,
+                decision_id=decision_id,
+                payload={"intent": description[:200]},
+            )
+
+            def _stdout_emit(line: str) -> None:
+                # Per-line stdout from the `claude -p` subprocess surfaces
+                # in the progress dashboard during long actions. 8 KB cap
+                # protects the queue from a single runaway line.
+                self._safe_emit(
+                    EventKind.ACTION_STDOUT,
+                    decision_id=decision_id,
+                    payload={"line": line[:8192]},
+                )
+
             try:
-                result = await self.claude_cli.call_action(description)
+                self._safe_emit(
+                    EventKind.ACTION_CALL_START,
+                    decision_id=decision_id,
+                )
+                result = await self.claude_cli.call_action(
+                    description, on_line=_stdout_emit
+                )
                 summary = result.get("summary", "done")
                 if decision_id is not None:
                     await self.store.log_action(decision_id, "ok", summary)
+                self._safe_emit(
+                    EventKind.ACTION_DONE,
+                    decision_id=decision_id,
+                    payload={"summary": (summary or "")[:200]},
+                )
                 await self.push_frame(TTSSpeakFrame(summary))
             except Exception as e:
                 logger.exception("action failed: %s", e)
                 if decision_id is not None:
                     await self.store.log_action(decision_id, "error", str(e))
+                self._safe_emit(
+                    EventKind.ACTION_ERROR,
+                    decision_id=decision_id,
+                    payload={"error": str(e)[:200]},
+                )
                 await self.push_frame(TTSSpeakFrame("дія не вдалася"))
             finally:
                 self.pending_action = None
@@ -629,6 +790,7 @@ def _build_decider_processor_class():
                 self.confirmation_deadline = None
                 self.state = DeciderState.LISTENING
                 self._cancel_timeout_task()
+                self._safe_emit(EventKind.STATE_LISTENING)
 
         async def _cancel_pending(self, message: str) -> None:
             if self.pending_decision_id is not None:
@@ -641,6 +803,7 @@ def _build_decider_processor_class():
             self.confirmation_deadline = None
             self.state = DeciderState.LISTENING
             self._cancel_timeout_task()
+            self._safe_emit(EventKind.STATE_LISTENING)
             await self.push_frame(TTSSpeakFrame(message))
 
         async def on_heartbeat_tick(self) -> None:

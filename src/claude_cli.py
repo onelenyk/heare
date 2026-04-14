@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from .rate_limit import RateLimiter
 
@@ -91,8 +91,64 @@ class ClaudeCLI:
             args += ["--model", model]
         return args
 
+    async def _read_streams(
+        self,
+        proc: "asyncio.subprocess.Process",
+        on_line: Callable[[str], None] | None,
+    ) -> tuple[str, str]:
+        """Drain stdout line-by-line (invoking on_line per segment) and
+        stderr in full, concurrently, until the process exits.
+
+        Returns the stripped stdout and stderr buffers so _log_invocation
+        and return-value consumers stay byte-identical to the prior
+        `proc.communicate()` path.
+        """
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+
+        async def drain_stdout() -> None:
+            while True:
+                try:
+                    raw = await proc.stdout.readline()
+                except asyncio.LimitOverrunError:
+                    # Expected path when a line exceeds StreamReader's buffer
+                    # (e.g. a `\r`-based progress bar never emitting `\n`).
+                    # Flush a fixed-size chunk so we keep producing events.
+                    raw = await proc.stdout.read(8192)
+                if not raw:
+                    break
+                decoded = raw.decode(errors="replace")
+                # Progress-bar tools (pytest -v, npm, pip) redraw with `\r`
+                # instead of `\n`. Split on both so the dashboard shows
+                # visible motion even when the stream has no newlines.
+                for segment in decoded.replace("\r", "\n").split("\n"):
+                    segment = segment.rstrip("\n")
+                    if not segment:
+                        continue
+                    stdout_chunks.append(segment)
+                    if on_line is not None:
+                        try:
+                            on_line(segment)
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning("on_line callback raised: %s", e)
+
+        async def drain_stderr() -> None:
+            while True:
+                raw = await proc.stderr.readline()
+                if not raw:
+                    break
+                stderr_chunks.append(raw.decode(errors="replace"))
+
+        await asyncio.gather(drain_stdout(), drain_stderr())
+        await proc.wait()
+        return "\n".join(stdout_chunks).strip(), "".join(stderr_chunks).strip()
+
     async def _run(
-        self, prompt: str, json_output: bool, model: str | None = None
+        self,
+        prompt: str,
+        json_output: bool,
+        model: str | None = None,
+        on_line: Callable[[str], None] | None = None,
     ) -> str:
         await self.ensure_session()
         await self._rate_limiter.acquire()
@@ -107,16 +163,15 @@ class ClaudeCLI:
                     stderr=asyncio.subprocess.PIPE,
                 )
                 try:
-                    stdout_b, stderr_b = await asyncio.wait_for(
-                        proc.communicate(), timeout=self.timeout
+                    stdout, stderr = await asyncio.wait_for(
+                        self._read_streams(proc, on_line),
+                        timeout=self.timeout,
                     )
                 except asyncio.TimeoutError:
                     proc.kill()
                     raise ClaudeCLIError(
                         f"claude -p timed out after {self.timeout}s"
                     )
-                stdout = stdout_b.decode().strip()
-                stderr = stderr_b.decode().strip()
                 self._log_invocation(prompt, stdout, stderr, proc.returncode or 0)
                 if proc.returncode != 0:
                     if "no conversation found" in stderr.lower() and self._session_id:
@@ -231,8 +286,13 @@ class ClaudeCLI:
             return result
         return payload
 
-    async def call_action(self, description: str) -> dict[str, Any]:
-        raw = await self._run(description, json_output=False)
+    async def call_action(
+        self,
+        description: str,
+        *,
+        on_line: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        raw = await self._run(description, json_output=False, on_line=on_line)
         return {"summary": raw}
 
     async def bootstrap_identity(self, prompt: str) -> dict[str, Any]:

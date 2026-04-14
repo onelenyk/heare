@@ -17,11 +17,64 @@ from src.config import Settings
 # Helpers
 # ---------------------------------------------------------------------------
 
+
+def _split_readline_items(data: bytes) -> list[bytes]:
+    """Split a bytes blob into readline-style chunks: each `\\n`-terminated
+    line plus any trailing chunk without a newline. Empty input -> []."""
+    if not data:
+        return []
+    parts = data.split(b"\n")
+    result: list[bytes] = []
+    for p in parts[:-1]:
+        result.append(p + b"\n")
+    if parts[-1]:
+        result.append(parts[-1])
+    return result
+
+
+def _make_readline(data: bytes):
+    """Build an async readline that yields each chunk then b'' forever.
+
+    `b''` is the StreamReader EOF sentinel. Returning it indefinitely
+    (instead of raising StopIteration) is critical for tests that reuse
+    the same proc mock across retry attempts — second retry's drain loop
+    immediately sees EOF and exits.
+    """
+    items = _split_readline_items(data)
+    cursor = {"i": 0}
+
+    async def readline() -> bytes:
+        i = cursor["i"]
+        if i >= len(items):
+            return b""
+        cursor["i"] = i + 1
+        return items[i]
+
+    return readline
+
+
 def _make_mock_proc(stdout=b"", stderr=b"", returncode=0):
+    """Build a fake subprocess proc that supports BOTH the legacy
+    `communicate()` path and the new readline-based streaming path.
+
+    The same proc exposes:
+      - `.communicate()`      -> returns (stdout, stderr) one-shot
+      - `.stdout.readline()`  -> yields lines then EOF forever
+      - `.stderr.readline()`  -> yields lines then EOF forever
+      - `.wait()`             -> returns returncode
+      - `.kill()`             -> no-op AsyncMock for legacy kill assertions
+    """
     proc = AsyncMock()
-    proc.communicate = AsyncMock(return_value=(stdout, stderr))
     proc.returncode = returncode
     proc.kill = AsyncMock()
+    proc.wait = AsyncMock(return_value=returncode)
+    proc.communicate = AsyncMock(return_value=(stdout, stderr))
+
+    proc.stdout = AsyncMock()
+    proc.stdout.readline = _make_readline(stdout)
+
+    proc.stderr = AsyncMock()
+    proc.stderr.readline = _make_readline(stderr)
     return proc
 
 
@@ -334,13 +387,27 @@ async def test_run_retry_on_failure(cli: ClaudeCLI) -> None:
 
 
 async def test_run_timeout_kills_process(cli: ClaudeCLI) -> None:
-    """communicate() timing out must kill the process and raise ClaudeCLIError."""
-    # Each retry gets its own proc so we can count kills accurately.
+    """A stdout stream that never closes must hit the asyncio.wait_for
+    timeout, trigger proc.kill(), and raise ClaudeCLIError."""
+    cli.timeout = 0.05
     procs: list[AsyncMock] = []
+    # The test patches asyncio.sleep globally to skip retry backoff, so a
+    # sleep-based hang would return instantly. Use an unsignalled Event
+    # instead — wait() routes through loop.create_future, not sleep, so
+    # asyncio.wait_for's timeout fires correctly.
+    _never = asyncio.Event()
+
+    async def _hang_forever() -> bytes:
+        await _never.wait()
+        return b""
 
     def make_timeout_proc(*args, **kwargs):
         p = _make_mock_proc()
-        p.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
+        # Direct async-function assignment so `await readline()` awaits the
+        # long sleep. Using AsyncMock(side_effect=async_fn) would drop the
+        # await and fire the sleep as a one-shot coroutine that never
+        # propagates its delay.
+        p.stdout.readline = _hang_forever
         procs.append(p)
         return p
 
@@ -349,7 +416,6 @@ async def test_run_timeout_kills_process(cli: ClaudeCLI) -> None:
             with pytest.raises(ClaudeCLIError, match="timed out"):
                 await cli._run("prompt", json_output=False)
 
-    # Every timed-out proc must have been killed.
     assert len(procs) > 0
     for p in procs:
         p.kill.assert_called()
@@ -439,3 +505,82 @@ async def test_version(cli: ClaudeCLI) -> None:
     with patch("asyncio.create_subprocess_exec", return_value=proc):
         v = await cli.version()
     assert v == "claude 1.0"
+
+
+# ---------------------------------------------------------------------------
+# RT-003: _run streaming refactor (readline, on_line, \r splitting, 8KB cap)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_streams_stdout_via_on_line(cli: ClaudeCLI) -> None:
+    """Three newline-separated lines must each fire on_line in order and
+    the final return value equals the joined lines."""
+    proc = _make_mock_proc(stdout=b"line one\nline two\nline three\n")
+    captured: list[str] = []
+
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        result = await cli._run(
+            "prompt", json_output=False, on_line=captured.append
+        )
+
+    assert captured == ["line one", "line two", "line three"]
+    assert result == "line one\nline two\nline three"
+
+
+async def test_run_splits_on_cr_for_progress_bars(cli: ClaudeCLI) -> None:
+    """Progress-bar tools (pytest -v, pip, npm) redraw a single line with `\\r`.
+    Each segment must fire on_line individually so the dashboard shows motion."""
+    proc = _make_mock_proc(stdout=b"a\rb\rc\n")
+    captured: list[str] = []
+
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        await cli._run("prompt", json_output=False, on_line=captured.append)
+
+    assert captured == ["a", "b", "c"]
+
+
+async def test_run_call_action_plumbs_on_line(cli: ClaudeCLI) -> None:
+    """call_action's on_line kwarg must reach the per-line callback inside
+    _run so decider emit-per-stdout-line works end-to-end."""
+    proc = _make_mock_proc(stdout=b"building...\ndone.\n")
+    captured: list[str] = []
+
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        result = await cli.call_action("build the thing", on_line=captured.append)
+
+    assert captured == ["building...", "done."]
+    assert result == {"summary": "building...\ndone."}
+
+
+async def test_run_stderr_drained_in_parallel(cli: ClaudeCLI) -> None:
+    """stdout and stderr must both be captured even when both produce content."""
+    proc = _make_mock_proc(
+        stdout=b"out1\nout2\n", stderr=b"warn1\nwarn2\n"
+    )
+    captured: list[str] = []
+
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        await cli._run("prompt", json_output=False, on_line=captured.append)
+
+    # stdout reached on_line (stderr should NOT — it's internal diagnostic only)
+    assert captured == ["out1", "out2"]
+
+
+async def test_run_on_line_callback_exception_does_not_break_stream(
+    cli: ClaudeCLI,
+) -> None:
+    """If on_line raises on one line, subsequent lines must still be read and
+    the overall call must complete normally."""
+    proc = _make_mock_proc(stdout=b"line1\nline2\nline3\n")
+    calls: list[str] = []
+
+    def flaky(line: str) -> None:
+        calls.append(line)
+        if line == "line1":
+            raise RuntimeError("boom from on_line")
+
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        result = await cli._run("prompt", json_output=False, on_line=flaky)
+
+    assert calls == ["line1", "line2", "line3"]
+    assert result == "line1\nline2\nline3"

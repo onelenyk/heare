@@ -1,117 +1,65 @@
-## heare speaker recognition Phase 1 — implementation log
+## heare realtime progress watch — implementation log
 
-### SPK-001: Foundation — config + optional deps + storage migration
-- src/config.py: added 9 speaker_id_* fields + speakers_file Path (default ~/.heare/speakers.json)
-- pyproject.toml: added [project.optional-dependencies].speaker = [speechbrain>=1.0, torch>=2.0, numpy>=1.24]
-- src/storage.py: SCHEMA_VERSION=2 constant; SCHEMA adds meta table + speaker_id/speaker_confidence columns on transcripts; init() runs _migrate_speaker_columns (idempotent try/except on duplicate column) then _check_schema_version (fail-loud on newer DB, silent bump on older); log_transcript signature now `(text, mode, speaker_id=None, speaker_confidence=None) -> int`
-- tests/test_storage.py: +6 tests (with_speaker_fields, backward_compat, schema_version_fresh, fail_loud_on_newer, migration_idempotent)
-- tests/test_config.py: +1 test (test_speaker_id_defaults)
-- Test count: 226 → 232 (+6), ruff clean
-- Key learning: `sqlite3.OperationalError` string-match on "duplicate column" is cross-version safe; aiosqlite surfaces the same error
+### RT-001: Schema v3 events table + EventKind + log_event + WAL + purge
+- src/storage.py: bumped SCHEMA_VERSION from 2 to 3; added StrEnum-based EventKind with 14 members (decider.*, action.*, state.listening, system.emit_drops)
+- src/storage.py SCHEMA: appended `events` table with id/ts/kind/transcript_id/decision_id/payload_json columns; FK(transcript_id)->transcripts; FK(decision_id)->decisions ON DELETE SET NULL; two indexes (idx_events_ts DESC, idx_events_decision on (decision_id, ts))
+- src/storage.py init(): added `PRAGMA journal_mode=WAL` after connect (idempotent) so 0.5s watch polling doesn't contend with writes
+- src/storage.py log_event(kind, *, transcript_id, decision_id, payload) async method inserting into events with time.time() ts; `str(kind)` works for both StrEnum and bare strings
+- src/storage.py purge_older_than(days) now also DELETEs events WHERE ts < cutoff and sums both rowcounts
+- tests/test_storage.py: updated test_schema_version_fail_loud_on_newer_db regex (was r"99.*2|2.*99", now r"99") so it's agnostic to current SCHEMA_VERSION
+- tests/test_storage.py: +8 new tests (schema_version_v3_on_fresh_install, schema_upgrade_v2_to_v3 end-to-end via hand-built v2 db, log_event_happy_path, log_event_null_fks, log_event_accepts_strenum, purge_older_than_includes_events, wal_mode_set_after_init, events_indexes_exist)
+- Test count: 310 baseline -> 318 (+8), ruff clean, zero regressions
+- Key learning: aiosqlite.connect() ignores PRAGMA as a special case, so it must be issued via execute() like any other statement. The PRAGMA return value is the journal mode name ("wal"); on a fresh DB it will return "wal" because SQLite applies the pragma immediately.
 
-### SPK-002: speaker_id.py + speaker_gallery.py
-- src/speaker_id.py: lazy load_model() (speechbrain import deferred), warmup() with white-noise int16, embed() int16→float32→ECAPA→L2-normalized 192-dim, cosine() with 1e-12 epsilon
-- src/speaker_gallery.py: sanitize_label with regex [{}<>\n\r\t\x00-\x1f] + 32-char cap, LabelValidationError, SpeakerGallery.load (missing/malformed safe), save() atomic via tempfile.mkstemp + os.replace with cleanup-on-failure, enroll_owner, identify (owner-only Phase 1), get_centroid L2-normalized mean
-- tests/test_speaker_id.py: mocks speechbrain via sys.modules monkeypatch (SimpleNamespace + FakeClassifier/FakeTensor) so no torch install needed — 7 tests
-- tests/test_speaker_gallery.py: 20 tests covering sanitize parametric accept/reject, load missing/malformed, enroll+identify roundtrip, atomic-save-on-failure via json.dump mock, get_centroid averaging
-- Test count: 232 → 262 (+30), ruff clean
-- Key learning: atomic-save test needs to assert BOTH that original bytes are preserved AND that no .tmp file is left behind after exception — caught a cleanup bug in first draft of save()
+### RT-002: Decider fire-and-forget emit queue + 12 state-transition sites
+- src/decider.py: imports `EventKind` from .storage; adds `_EMIT_QUEUE_SIZE = 256` module constant (rationale: 10s action ~20 stdout + ~12 transitions = ~32 events, 8x headroom)
+- DeciderProcessor.__init__ now constructs self._emit_queue (asyncio.Queue maxsize=256), self._emit_drop_count=0, self._emit_drainer_task=None
+- New methods: _safe_emit (sync put_nowait with drop counter + WARNING once per 10 drops), _ensure_drainer (lazy task start if loop is running), _drain_events (infinite loop awaiting queue.get() + store.log_event, catches all exceptions and continues), shutdown (cancel drainer with 100ms wait_for grace)
+- 12 emit sites wired:
+  - _handle_listening: decider.start (before call_decider), decider.done (after log_decision), decider.dropped_low_conf (in confidence-floor branch), action.armed (in d_type=='act' branch)
+  - _handle_confirmation: action.confirmed (yes), action.cancelled (no), action.reprompt (unclear)
+  - _execute_pending: action.executing (after state=EXECUTING), action.call_start (before call_action), action.done (try branch), action.error (except branch), state.listening (finally)
+  - _cancel_pending: state.listening added for completeness (since it also transitions to LISTENING)
+- Principle 3 (fail-safe) verified: test_safe_emit_under_lock_is_fast measures 50 enqueues inside `async with self._lock` complete in <50ms total (well under 1ms each)
+- tests/test_decider.py: +9 tests for RT-002 (queue overflow, drainer store-failure survival, lock timing, drainer cleanup, emit sequence for act-yes/act-no/act-error/dropped_low_conf) plus the RT-005 import canary
+- Test count: 318 -> 327 (+9), ruff clean, zero regressions
+- Key learning 1: `_ensure_drainer` must call `asyncio.get_running_loop()` and gracefully return if no loop — otherwise unit tests constructing DeciderProcessor outside an event loop would crash. In practice the first _safe_emit happens inside an async test function so this works.
+- Key learning 2: The existing test_golden_string_flag_off_render uses a fixed-ctx dict (not builder.build()) to avoid wall-clock drift. First attempt of RT-005 used builder.build() and failed with a timestamp mismatch — copying the fixed-ctx pattern resolved it. The decider import canary is now byte-identical to the golden and catches any future import-time drift.
 
-### SPK-003: Conditional prompt gating
-- prompts/decider.txt: {speaker_rule_block} placeholder on its own line before NEW INPUT — renders to empty string when flag off (one blank line), 'Speaker: owner' when flag on
-- src/context.py: build() signature `(transcript, heartbeat=False, keep_placeholders=None)`, injects speaker_rule_block via _render_rule_block helper, overwrites kept keys with literal '{name}' form so speculative path can substitute later
-- tests/test_context.py: +5 tests (empty-when-off, populated-when-on, keep_placeholders preserves literal for speaker_rule_block AND transcript_or_heartbeat, golden-string flag-off test with fixtures/decider_prompt_flag_off.golden.txt)
-- tests/fixtures/decider_prompt_flag_off.golden.txt: committed golden that asserts flag-off rendering is byte-stable and contains NO Speaker: owner line
-- Test count: 262 → 267 (+5), ruff clean
-- Updated test_build_shape_on_transcript expected-keys set to include speaker_rule_block (was failing after build() change; caught by full regression)
+### RT-005: Flag-off decider-import canary (shipped with RT-002)
+- tests/test_decider.py::test_decider_import_does_not_break_flag_off_render explicitly `import src.decider` at function top to exercise import-time side effects of the new EventKind reference and emit infrastructure
+- Uses the same fixed-ctx dict as test_context.py::test_golden_string_flag_off_render so wall-clock timestamp drift is eliminated
+- Confirms zero drift after RT-001 (EventKind added) and RT-002 (queue + emitters)
 
-### SPK-004: speaker_processor.py (race-safe fire-and-forget embed)
-- src/speaker_processor.py: _TurnSlot dataclass (task, event, pcm, embedding, error, elapsed_ms, duration_ms); AudioBufferProcessor with lazy pipecat import, per-turn slot dict, _SLOT_RETAIN=4 GC with task cancel on eviction, close() with 1s bounded gather; SpeakerTaggerProcessor with own _bot_speaking flag, finalized filter, 200ms bounded wait fail-closed, short-turn (<400ms) inherit, gallery identify at threshold_match=0.75; create_speaker_processors factory
-- tests/test_speaker_processor.py: 12 tests mock speaker_id.embed at module boundary (no torch needed); test_tagger_fail_closed_on_slot_timeout uses manually-installed stuck slot whose event is never set, asserts <300ms to fail-closed; test_gc_cancels_in_flight_task spams _SLOT_RETAIN+2 turns with slow embed, asserts evicted slots (turn_id 1, 2) gone from dict; test_shutdown_cancels_pending_tasks asserts close() completes within 1.2s
-- Test count: 267 → 279 (+12), ruff clean
-- Key learning 1: pipecat TranscriptionFrame.finalized default is False — tests MUST set frame.finalized=True manually or the tagger skips them as interim (caught on first run)
-- Key learning 2: pipecat InterimTranscriptionFrame is a SEPARATE class (not a TranscriptionFrame with finalized=False) — tagger handles BOTH: InterimTranscriptionFrame isinstance check AND finalized attribute check on TranscriptionFrame
-- Key learning 3: _TurnSlot.event uses default_factory=asyncio.Event — py3.10+ lazily binds to running loop, so tests must construct slots inside async test functions (pytest-asyncio handles this via asyncio_mode=auto)
+### RT-003: ClaudeCLI._run streaming refactor + action.stdout emission
+- src/claude_cli.py: _run gains on_line callback param; replaces proc.communicate() with await asyncio.wait_for(self._read_streams(proc, on_line), timeout=self.timeout)
+- New _read_streams method: concurrent drain_stdout + drain_stderr inner coroutines via asyncio.gather, then proc.wait(), returns stripped (stdout, stderr) tuple for backward-compat with _log_invocation
+- drain_stdout uses proc.stdout.readline() in a loop; catches asyncio.LimitOverrunError and falls back to proc.stdout.read(8192); splits decoded bytes on BOTH \r AND \n via .replace("\r","\n").split("\n") so progress-bar tools (pytest -v, pip, npm) render as visible motion; invokes on_line per non-empty segment in try/except that logs WARNING on callback exceptions
+- call_action plumbed with on_line kwarg to _run; call_decider unchanged (no streaming for JSON decider output)
+- src/decider.py _execute_pending: closure _stdout_emit calls self._safe_emit(ACTION_STDOUT, decision_id, payload={'line': line[:8192]}) and passes it to call_action(on_line=_stdout_emit); 8KB line cap protects the queue from runaway single lines
+- tests/test_claude_cli.py: rewrote _make_mock_proc helper to support BOTH legacy communicate() path AND readline path. Critical pattern: side_effect=list exhausts on retry reuse (StopAsyncIteration), so switched to cursor-closure async function that returns b'' forever after exhausting the queue. Test test_run_timeout_kills_process: asyncio.sleep is globally patched by existing fixtures so sleep-based hangs return instantly; use asyncio.Event().wait() instead which routes through loop.create_future, unaffected by sleep patching
+- +5 RT-003 claude_cli tests: streams_stdout_via_on_line (3 newline-separated lines), splits_on_cr_for_progress_bars ('a\rb\rc\n' -> 3 segments), call_action_plumbs_on_line (end-to-end via call_action), stderr_drained_in_parallel (both streams), on_line_callback_exception_does_not_break_stream (raising callback doesn't halt reading)
+- +1 RT-003 decider test: emits_action_stdout_per_line (fake call_action side_effect invokes on_line 3 times; events table has 3 action.stdout rows with correlated decision_id and JSON payloads)
+- Test count: 327 -> 333 (+6), ruff clean, zero regressions
+- Key learning: `AsyncMock(side_effect=list)` is unusable for readline mocks that must survive retry reuse — use a cursor-closure that persists across calls and returns EOF sentinel forever. Direct-assignment of async functions is also cleaner than AsyncMock wrapping for tests that want guaranteed behavior.
 
-### SPK-005: Decider gating + pipeline wiring + enroll-owner CLI
-- src/decider.py: pending_speaker_id field; _handle_listening non-owner filter (flag on + sid != 'owner' → store and return, no decider call); pending_speaker_id captured at arm time; _handle_confirmation rejects inherited=True and speaker mismatch with TTSSpeakFrame('Скажи: так чи ні?'); both cleanup paths clear pending_speaker_id=None; _store_only takes speaker kwargs; _build_speculative uses keep_placeholders=['transcript_or_heartbeat', 'speaker_rule_block']; _prompt_for_transcript double-substitutes both placeholders
-- src/pipeline.py: audio_in_sample_rate=16000 forced; when flag on and owner enrolled, loads model+warmup, inserts AudioBufferProcessor after transport.input() and SpeakerTaggerProcessor between stt and decider; gracefully degrades to flag-off path when no owner enrolled (logs warning)
-- src/main.py: enroll-owner subcommand with sounddevice recording, live 3s countdown, sanitize_label + LabelValidationError handling, SpeakerGallery.load + enroll_owner
-- tests/test_decider.py: +7 tests (non_owner_dropped, owner_unchanged, rejects_inherited, speaker_mismatch, pending_cleared_on_execute/cancel, silent_persists_stranger)
-- tests/test_main_cli.py: +3 tests (enroll-owner parser defaults, custom args, flag-off error path)
-- tests/test_pipeline.py: updated test_transport_params assertion to include audio_in_sample_rate=16000
-- Test count: 279 → 289 (+10), ruff clean
-- Key learning: existing harness fixture in test_decider.py was easy to extend — new speaker kwargs default to None so existing tests pass unchanged
+### RT-004: Watch progress panel + layout rewire + 0.5s refresh default
+- src/watch.py: new _progress_panel(con) queries last 8 events via SELECT ts, kind, decision_id, payload_json FROM events ORDER BY ts DESC LIMIT 8; reverses for chronological display
+- Color families: *.error=red, decider.*=cyan, action.stdout=white, action.*=yellow, state.*=dim
+- Payload preview extracted from JSON via common keys (line, intent, summary, type, error, reason) — shows the first non-empty one, truncated to 60 chars
+- action.stdout rows get a "│ " prefix so they visually indent under the parent action row
+- Handles con=None with "(no progress yet)" placeholder
+- _build_layout rewired: header(size=4) + body(ratio=1) + progress(size=10) + log(size=8 with lines=6 content) — row budget: 22 fixed rows total, body gets remaining terminal height (18 on 40-row term), minimum viable 32-row terminal
+- src/main.py: watch subparser default --interval 2.0 -> 0.5 (WAL mode from RT-001 makes 4x read load safe)
+- tests/test_watch.py: +6 tests using a _rich_text helper that flattens Panels via rich.console.Console(record=True).export_text() for substring assertions. Color-coding test uses `panel.renderable` (which is a Group) and walks `.renderables` extracting Text.style values. Default-interval test via build_parser().parse_args(['watch']).interval == 0.5
+- Test count: 333 -> 339 (+6), ruff clean, zero regressions
 
-### SPK-006: Stranger integration test + full regression
-- tests/test_stranger_integration.py: 3 end-to-end tests wiring AudioBufferProcessor → SpeakerTaggerProcessor → DeciderProcessor with mocked embed via rig fixture that enrolls owner and pre-seeds state["next_vector"] per test
-- Test 1 (stranger_in_listening): stranger vector → tagger None → decider drops via non-owner filter, no Claude call
-- Test 2 (stranger_interrupts_confirmation): owner arms, stranger 600ms "так" rejected via speaker mismatch
-- Test 3 (short_turn_in_confirmation): owner arms, 300ms "так" inherits owner label, decider rejects via speaker_inherited=True gate
-- Test helper _run_turn_through_pipeline: waits for a NEW completed turn_id (not just non-None) to avoid race across sequential turns — this bug bit the first run of scenario 3 because latest_completed_turn_id was already 1 from the owner turn when the short turn started
-- Test count: 289 → 292 (+3)
+### Phase totals
+- Starting baseline: 310 tests
+- Final: 339 tests (+29 across RT-001 through RT-005)
+- Ruff: clean throughout every story
+- Flag-off golden fixture: byte-identical (canary test verifies after each story)
+- Files modified: src/storage.py, src/decider.py, src/claude_cli.py, src/watch.py, src/main.py, tests/test_storage.py, tests/test_decider.py, tests/test_claude_cli.py, tests/test_watch.py
+- Files created: none (all changes extend existing files)
 
-### Phase 1 COMPLETE — final stats
-- Test count: 226 baseline → 292 (+66 new tests across 6 stories)
-- Ruff: clean throughout
-- Feature OFF by default — speaker_id_enabled=False, existing 226 tests pass unchanged, golden-string test (test_golden_string_flag_off_render) enforces byte-stable flag-off rendering
-- Security gate closed: a synthetic stranger cannot cause EXECUTING transitions in any of the 3 attack scenarios
-- No torch/speechbrain download in CI — all tests mock speaker_id.embed at module boundary
-- Race-safe fire-and-forget embed with 200ms bounded wait + fail-closed timeout
-- Files created: src/speaker_id.py, src/speaker_gallery.py, src/speaker_processor.py, tests/test_speaker_id.py, tests/test_speaker_gallery.py, tests/test_speaker_processor.py, tests/test_stranger_integration.py, tests/fixtures/decider_prompt_flag_off.golden.txt
-- Files modified: src/config.py, src/storage.py, src/context.py, src/decider.py, src/pipeline.py, src/main.py, prompts/decider.txt, pyproject.toml, tests/test_config.py, tests/test_storage.py, tests/test_context.py, tests/test_decider.py, tests/test_main_cli.py, tests/test_pipeline.py
-- Phase 2 deferred: gallery growth, auto-enrollment, drift audit, list/rename/forget CLI
-
-### Live-hardware calibration findings (post-Phase 1 shipping)
-- Offline 5s match tests scored cos 0.79-0.84 against a single 15s enrollment reference — PERFECT match rate 3/3 at 0.75 threshold
-- Live daemon (focus mode, ambient mode) initially scored only 0.30-0.71 on VAD-chunked audio — threshold 0.75 rejected most owner utterances
-- Root cause: ECAPA trained on 3s+ VoxCeleb chunks; daemon VAD slices produce 1-3s clips that fall outside training distribution
-- **Duration is the dominant signal**: ≥3s clips match reliably, 1-3s are marginal, <1s almost always fail
-- Volume is NOT the bottleneck: peaks of 10000-32000 consistently captured, RMS 1600-4400 across daemon turns
-- **Calibration fix**: appended 8 daemon-style daemon-captured owner turns (>1.5s each, cos>0.55 to original centroid) as additional reference embeddings. Result: re-scoring same daemon clips against new 9-reference centroid → 12/16 match (was 8/16), average confidence jumped from ~0.55 to ~0.75
-- **Runtime config tuned**: threshold_match=0.65 (down from 0.75), min_duration_ms=1500 (up from 400). Sub-1.5s clips now inherit prev label instead of running ECAPA (reliable for LISTENING, fail-closed for AWAITING_CONFIRMATION per design)
-- **Open question**: short confirmation words ("так", "ні") will inherit prev label and therefore fail the AWAITING_CONFIRMATION gate (which rejects inherited labels). User will need to say "так, роби" or similar longer phrase. Acceptable trade-off — documented as Phase 2 UX iteration item.
-- **Debug aids shipped temporarily**: SpeakerTaggerProcessor dumps each turn's PCM to /tmp/heare_turn_NNNN.wav + logs rms + peak (for calibration session only; revert before merge)
-
-## Phase 2 — Track B (live-hardware fixes)
-
-### SPK2-B1: Fix _prev_id sticky-window leak
-- src/speaker_processor.py SpeakerTaggerProcessor: added self._prev_at=0.0; short-turn inheritance now gated on both `_prev_id is not None` AND `time.monotonic() - _prev_at < settings.speaker_id_sticky_seconds`
-- On successful identify: set BOTH _prev_id AND _prev_at = time.monotonic()
-- On non-match (sid=None) for a non-short turn: CLEAR BOTH _prev_id=None AND _prev_at=0.0 — this is the leak fix
-- When sticky expired or no prev: short-turn falls through as speaker_id=None, speaker_inherited=False
-- tests/test_speaker_processor.py: +3 tests
-  - test_prev_id_cleared_on_non_owner_turn: owner → stranger → short "так" → None (not owner)
-  - test_sticky_window_expires_after_timeout: ages tagger._prev_at directly (NOT patching time.monotonic — that deadlocks asyncio's loop scheduler)
-  - test_short_turn_after_stranger_does_not_inherit_owner: end-to-end variant
-- Test count: 292 → 295 (+3), ruff clean
-- Key learning: monkeypatching time.monotonic at module level hangs pytest because asyncio event loop schedules via time.monotonic internally. Workaround: mutate the tagger's state directly (tagger._prev_at -= 6.0) to simulate time passing without touching the clock.
-
-### SPK2-B2: Multi-segment audio accumulation buffer
-- src/config.py: +1 field `speaker_id_accum_target_ms: int = 3000`
-- src/speaker_processor.py: new `_AccumBuffer` class (deque[bytes] bounded to 2x target duration) with append/pcm_bytes/total_ms/flush
-- AudioBufferProcessor.__init__ constructs self._accum sized to settings.speaker_id_accum_target_ms
-- process_frame: BotStartedSpeakingFrame flushes the accumulator (TTS must not contaminate); AudioRawFrame now appends to both per-turn chunks AND the rolling accumulator
-- _run_embed: after the single-turn embed completes, if slot.duration_ms < accum_target_ms AND accum.total_ms() >= target, fires a second executor embed on accum.pcm_bytes() and stores the result on slot.accum_embedding. Cancel/error on the accum embed logs warning but does not fail the primary embed
-- _TurnSlot gains `accum_embedding: np.ndarray | None = None` field
-- SpeakerTaggerProcessor._tag_transcription (marginal-duration path): when slot.duration_ms < accum_target_ms AND slot.accum_embedding is not None, gallery.identify() is called against the accumulated embedding instead. Log line now includes `using_accum=True/False`
-- AudioBufferProcessor.close() now flushes the accumulator alongside the existing task cancellation
-- tests/test_config.py: +1 assertion for accum_target_ms default
-- tests/test_speaker_processor.py: +4 tests (accum buffer rollover unit test, accum flush on bot-speaking, short turn uses accumulated embedding, long turn ignores accumulator)
-- Test count: 295 → 299 (+4), ruff clean
-- Key learning: tracking embed call counts via a fake wrapper (call_log: list[int]) in tracking_embed cleanly distinguishes single-turn vs accumulation embed calls by the PCM byte length — avoids needing to inspect the actual vectors
-- tests/test_stranger_integration.py scenarios still pass: stranger's long (>3000ms) turn uses single-turn embedding, so accumulation cannot mask stranger identity via owner-filled accumulator
-
-### SPK2-B3: Short confirmation word UX (OBSOLETED-PENDING-LIVE-TEST by B2)
-- Decision: ship B3 as zero-LOC code change. B2's accumulation path already restores owner identity for normal-length 'так' utterances (400-1500ms) by running gallery.identify against a 3s accumulated window of prior owner audio — no new decider code path needed, no new tests
-- Sub-400ms fragments still inherit (fail-closed in AWAITING_CONFIRMATION) per the security envelope — this is by design, not a bug
-- If live-hardware testing shows short-word confirmations still fail (e.g. because ~/.heare/config.toml has min_duration_ms=1500 from prior calibration), reopen B3 as a fast follow-up with a `trusted_continuation` path. For now, rely on existing fail-closed behavior + B2's accumulation fix
-- Per plan open question #3: 'Test B2 alone first; only do B3 if B2's accumulation doesn't close the gap' — this session ships exactly that order, deferring B3 implementation until live validation
-
-### Phase 2 Track B — aggregate stats
-- Test count: 292 (Phase 1 baseline) → 299 (+7 across B1 and B2)
-- Ruff: clean throughout
-- Files modified: src/config.py, src/speaker_processor.py, tests/test_config.py, tests/test_speaker_processor.py
-- Files NOT touched: src/decider.py, src/speaker_gallery.py, src/pipeline.py, src/main.py, tests/test_stranger_integration.py, tests/test_decider.py — B3's deferral kept the change set narrow and the security envelope byte-identical
-- Flag-off path unchanged (speaker_id_enabled defaults to False; golden-string regression test continues to pass)
 

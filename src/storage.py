@@ -5,13 +5,31 @@ import json
 import logging
 import sqlite3
 import time
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+
+class EventKind(StrEnum):
+    DECIDER_START = "decider.start"
+    DECIDER_DONE = "decider.done"
+    DECIDER_DROPPED_LOW_CONF = "decider.dropped_low_conf"
+    ACTION_ARMED = "action.armed"
+    ACTION_CONFIRMED = "action.confirmed"
+    ACTION_CANCELLED = "action.cancelled"
+    ACTION_REPROMPT = "action.reprompt"
+    ACTION_EXECUTING = "action.executing"
+    ACTION_CALL_START = "action.call_start"
+    ACTION_STDOUT = "action.stdout"
+    ACTION_DONE = "action.done"
+    ACTION_ERROR = "action.error"
+    STATE_LISTENING = "state.listening"
+    SYSTEM_EMIT_DROPS = "system.emit_drops"
 
 logger = logging.getLogger("heare.storage")
 
@@ -59,8 +77,21 @@ CREATE TABLE IF NOT EXISTS heartbeats (
     reply TEXT
 );
 
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    kind TEXT NOT NULL,
+    transcript_id INTEGER,
+    decision_id INTEGER,
+    payload_json TEXT,
+    FOREIGN KEY(transcript_id) REFERENCES transcripts(id),
+    FOREIGN KEY(decision_id) REFERENCES decisions(id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_transcripts_ts ON transcripts(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_decision ON events(decision_id, ts);
 """
 
 
@@ -72,6 +103,9 @@ class TranscriptStore:
     async def init(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self.db_path)
+        # WAL mode: watch refresh is 0.5s, reader/writer would otherwise
+        # contend. Idempotent on already-WAL DBs.
+        await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.executescript(SCHEMA)
         await self._db.commit()
         await self._migrate_speaker_columns()
@@ -190,6 +224,29 @@ class TranscriptStore:
         assert cursor.lastrowid is not None
         return cursor.lastrowid
 
+    async def log_event(
+        self,
+        kind: EventKind | str,
+        *,
+        transcript_id: int | None = None,
+        decision_id: int | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        cursor = await self.db.execute(
+            "INSERT INTO events (ts, kind, transcript_id, decision_id, payload_json)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                time.time(),
+                str(kind),
+                transcript_id,
+                decision_id,
+                json.dumps(payload) if payload is not None else None,
+            ),
+        )
+        await self.db.commit()
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
         cursor = await self.db.execute(
             "SELECT id, ts, text, mode FROM transcripts ORDER BY ts DESC LIMIT ?",
@@ -203,6 +260,11 @@ class TranscriptStore:
 
     async def purge_older_than(self, days: int) -> int:
         cutoff = time.time() - (days * 86400)
-        cursor = await self.db.execute("DELETE FROM transcripts WHERE ts < ?", (cutoff,))
+        tx_cursor = await self.db.execute(
+            "DELETE FROM transcripts WHERE ts < ?", (cutoff,)
+        )
+        ev_cursor = await self.db.execute(
+            "DELETE FROM events WHERE ts < ?", (cutoff,)
+        )
         await self.db.commit()
-        return cursor.rowcount or 0
+        return (tx_cursor.rowcount or 0) + (ev_cursor.rowcount or 0)

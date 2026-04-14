@@ -156,3 +156,159 @@ def test_open_db_missing_file() -> None:
         db_path = Path(tmp) / "nonexistent.db"
         con = _open_db(db_path)
     assert con is None
+
+
+# ---------------------------------------------------------------------------
+# RT-004: _progress_panel + layout rewire
+# ---------------------------------------------------------------------------
+
+
+def _rich_text(panel) -> str:
+    """Flatten a Rich Panel into plain text for substring assertions."""
+    from rich.console import Console as _Console
+
+    console = _Console(width=200, record=True, force_terminal=False, color_system=None)
+    console.print(panel)
+    return console.export_text()
+
+
+def test_progress_panel_handles_none_con() -> None:
+    from src.watch import _progress_panel
+
+    panel = _progress_panel(None)
+    # Must not raise, must render the "no progress yet" placeholder
+    text = _rich_text(panel)
+    assert "no progress yet" in text
+
+
+def test_progress_panel_renders_empty_when_no_events() -> None:
+    from src.watch import _progress_panel
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            panel = _progress_panel(con)
+        finally:
+            con.close()
+    text = _rich_text(panel)
+    assert "no progress yet" in text
+
+
+def test_progress_panel_renders_events_in_chronological_order() -> None:
+    """Seed 5 events at strictly increasing ts, assert the rendered panel
+    lists them in chronological order (oldest first, newest last)."""
+    from src.watch import _progress_panel
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con_rw = sqlite3.connect(str(db_path))
+        base = 1700000000.0
+        kinds = [
+            "decider.start",
+            "decider.done",
+            "action.armed",
+            "action.executing",
+            "action.done",
+        ]
+        for i, kind in enumerate(kinds):
+            con_rw.execute(
+                "INSERT INTO events (ts, kind, transcript_id, decision_id, payload_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (base + i, kind, None, None, None),
+            )
+        con_rw.commit()
+        con_rw.close()
+
+        con = sqlite3.connect(str(db_path))
+        try:
+            panel = _progress_panel(con)
+        finally:
+            con.close()
+
+    text = _rich_text(panel)
+    # Each kind should appear, and the earlier ones should show up BEFORE
+    # the later ones in the rendered text (chronological order).
+    for k in kinds:
+        assert k in text
+    pos = [text.index(k) for k in kinds]
+    assert pos == sorted(pos), f"events out of order: {pos}"
+
+
+def test_progress_panel_color_codes_kind_families() -> None:
+    """_progress_panel must color-code rows by kind family. We don't assert
+    raw ANSI codes; we assert that the three families render as three
+    distinct styled segments."""
+    from src.watch import _progress_panel
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con_rw = sqlite3.connect(str(db_path))
+        rows = [
+            (1.0, "decider.start"),   # cyan
+            (2.0, "action.error"),    # red
+            (3.0, "state.listening"), # dim
+        ]
+        for ts, kind in rows:
+            con_rw.execute(
+                "INSERT INTO events (ts, kind, transcript_id, decision_id, payload_json) "
+                "VALUES (?, ?, NULL, NULL, NULL)",
+                (ts, kind),
+            )
+        con_rw.commit()
+        con_rw.close()
+
+        con = sqlite3.connect(str(db_path))
+        try:
+            panel = _progress_panel(con)
+        finally:
+            con.close()
+
+    # The panel should have 3 Text children inside the Group renderable.
+    from rich.console import Group as _Group
+
+    assert isinstance(panel.renderable, _Group)
+    text_lines = [r for r in panel.renderable.renderables if hasattr(r, "style")]
+    styles = [str(t.style) for t in text_lines]
+    # Each of the three kinds maps to a distinct style.
+    assert "cyan" in styles
+    assert "red" in styles
+    assert "dim" in styles
+
+
+def test_build_layout_includes_progress_and_log() -> None:
+    """_build_layout must expose both 'progress' and 'log' named layouts
+    plus the existing 'header' and 'body'."""
+    from src.watch import _build_layout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        settings = _make_settings(tmp, db_path=db_path)
+        layout = _build_layout(settings)
+
+    # Walk layout children and confirm the expected names
+    def _names(layout_obj) -> set[str]:
+        out = {layout_obj.name} if layout_obj.name else set()
+        for child in getattr(layout_obj, "children", []) or []:
+            out |= _names(child)
+        return out
+
+    names = _names(layout)
+    assert "header" in names
+    assert "body" in names
+    assert "progress" in names
+    assert "log" in names
+
+
+def test_watch_cli_default_interval_is_half_second() -> None:
+    """RT-004: watch CLI must default to 0.5s refresh so the dashboard feels
+    realtime."""
+    from src.main import build_parser
+
+    parser = build_parser()
+    args = parser.parse_args(["watch"])
+    assert args.interval == 0.5

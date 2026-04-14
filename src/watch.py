@@ -6,6 +6,7 @@ daemon.log. Read-only — the viewer never touches daemon state.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import sqlite3
 import time
@@ -223,6 +224,57 @@ def _heartbeats_table(con: sqlite3.Connection | None) -> Table:
     return table
 
 
+def _progress_panel(con: sqlite3.Connection | None) -> Panel:
+    """Realtime progress events panel (RT-004). Shows the last ~8 events
+    in chronological order, color-coded by kind family."""
+    content: list[Text] = []
+    if con is not None:
+        rows = _fetch(
+            con,
+            "SELECT ts, kind, decision_id, payload_json FROM events "
+            "ORDER BY ts DESC LIMIT 8",
+        )
+        for ts, kind, decision_id, payload_json in reversed(rows):
+            if kind.endswith(".error"):
+                style = "red"
+            elif kind.startswith("decider."):
+                style = "cyan"
+            elif kind == "action.stdout":
+                style = "white"
+            elif kind.startswith("action."):
+                style = "yellow"
+            elif kind.startswith("state."):
+                style = "dim"
+            else:
+                style = "dim"
+            # Extract a short payload preview so the dashboard stays readable.
+            preview = ""
+            if payload_json:
+                try:
+                    data = json.loads(payload_json)
+                except (ValueError, TypeError):
+                    data = None
+                if isinstance(data, dict):
+                    for key in ("line", "intent", "summary", "type", "error", "reason"):
+                        if key in data and data[key]:
+                            preview = str(data[key])
+                            break
+            prefix = "│ " if kind == "action.stdout" else "  "
+            did_s = f"#{decision_id} " if decision_id else ""
+            line = f"{_fmt_time(ts)} {prefix}{did_s}{kind}"
+            if preview:
+                line += f" · {_truncate(preview, 60)}"
+            content.append(Text(_truncate(line, 160), style=style))
+    if not content:
+        content = [Text("(no progress yet)", style="dim italic")]
+    return Panel(
+        Group(*content),
+        title="progress",
+        border_style="magenta",
+        padding=(0, 1),
+    )
+
+
 def _log_panel(settings: Settings, lines: int = 8) -> Panel:
     log_file = settings.log_dir / "daemon.log"
     content: list[Text] = []
@@ -254,10 +306,14 @@ def _build_layout(settings: Settings) -> Layout:
     con = _open_db(settings.db_path)
     try:
         layout = Layout()
+        # RT-004 row budget: header=4 + body(ratio=1) + progress=10 + log=8
+        # = 22 fixed rows. On a 40-row terminal the body still gets 18 rows,
+        # comfortable for the 4 tables. Minimum viable terminal = 32 rows.
         layout.split_column(
             Layout(_build_header(settings, con), size=4, name="header"),
             Layout(name="body", ratio=1),
-            Layout(_log_panel(settings), size=10, name="log"),
+            Layout(_progress_panel(con), size=10, name="progress"),
+            Layout(_log_panel(settings, lines=6), size=8, name="log"),
         )
         layout["body"].split_row(
             Layout(
