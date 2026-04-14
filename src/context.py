@@ -54,10 +54,15 @@ class ContextBuilder:
     def _format_recent(self, rows: list[dict[str, Any]]) -> str:
         if not rows:
             return "(none)"
+        redact = self.settings.speaker_id_enabled
         lines = []
         for row in rows:
             stamp = dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
-            lines.append(f"  - [{stamp}] {row['text']}")
+            if redact and row.get("speaker_id") != "owner":
+                text = "[інший голос]"
+            else:
+                text = row["text"]
+            lines.append(f"  - [{stamp}] {text}")
         return "\n".join(lines)
 
     def _format_input(self, transcript: str | None, heartbeat: bool) -> str:

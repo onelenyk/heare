@@ -323,6 +323,35 @@ def _build_processor_classes() -> tuple[Any, Any]:
             self._bot_cooldown_task: asyncio.Task | None = None
             self._prev_id: str | None = None
             self._prev_at: float = 0.0
+            # SPK-A4: rolling buffer of recent non-owner embeddings used to
+            # detect repeated strangers. Session-local, never persisted,
+            # cleared on successful auto-enroll and on bot_speaking.
+            self._stranger_candidates: deque[np.ndarray] = deque(maxlen=10)
+
+        def _maybe_auto_enroll(self, new_embed: np.ndarray) -> None:
+            threshold = self._settings.speaker_id_threshold_match
+            matches = 0
+            new_norm = float(np.linalg.norm(new_embed)) + 1e-12
+            for prior in self._stranger_candidates:
+                prior_norm = float(np.linalg.norm(prior)) + 1e-12
+                cos = float(np.dot(prior, new_embed) / (prior_norm * new_norm))
+                if cos >= threshold:
+                    matches += 1
+            self._stranger_candidates.append(new_embed)
+            needed = self._settings.speaker_id_auto_enroll_after
+            if (matches + 1) >= needed:
+                try:
+                    guest_id = self._gallery.enroll_guest(new_embed)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("auto-enroll failed: %s", e)
+                    return
+                if guest_id:
+                    logger.info(
+                        "[SPEAKER] auto-enrolled %s after %d matching turns",
+                        guest_id,
+                        matches + 1,
+                    )
+                    self._stranger_candidates.clear()
 
         def _schedule_bot_cooldown(self) -> None:
             if self._bot_cooldown_task is not None and not self._bot_cooldown_task.done():
@@ -348,6 +377,9 @@ def _build_processor_classes() -> tuple[Any, Any]:
                 self._bot_speaking = True
                 if self._bot_cooldown_task is not None and not self._bot_cooldown_task.done():
                     self._bot_cooldown_task.cancel()
+                # A stranger's candidate buffer must not bleed across a TTS
+                # turn — own voice echoing back could poison the cluster.
+                self._stranger_candidates.clear()
                 await self.push_frame(frame, direction)
                 return
             if isinstance(frame, BotStoppedSpeakingFrame):
@@ -484,6 +516,12 @@ def _build_processor_classes() -> tuple[Any, Any]:
                 # "owner" forward to the next short turn.
                 self._prev_id = None
                 self._prev_at = 0.0
+                if (
+                    self._settings.speaker_id_auto_enroll_enabled
+                    and slot.embedding is not None
+                    and slot.duration_ms >= self._settings.speaker_id_min_duration_ms
+                ):
+                    self._maybe_auto_enroll(slot.embedding)
             # NOTE: never log speaker_label — labels are user-controlled PII.
             logger.info(
                 "[SPEAKER] turn=%d sid=%s conf=%.2f dur_ms=%.0f embed_ms=%.0f using_accum=%s",

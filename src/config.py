@@ -64,6 +64,7 @@ class Settings:
     speaker_id_centroid_k: int = 5
     speaker_id_ema_alpha: float = 0.1
     speaker_id_auto_enroll_after: int = 3
+    speaker_id_auto_enroll_enabled: bool = False
     speakers_file: Path = field(default_factory=lambda: HEARE_HOME / "speakers.json")
 
     def ensure_dirs(self) -> None:

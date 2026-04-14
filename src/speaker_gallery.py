@@ -39,6 +39,10 @@ AUTO_ENROLL_MIN_COS = 0.55
 # match so the gallery adapts rapidly to the current room/mic/ambient.
 SESSION_REFS_CAP = 10
 
+# Hard upper bound on auto-enrolled guest slots to prevent a noisy
+# environment from unbounded-growing the gallery.
+MAX_GUESTS = 99
+
 
 class LabelValidationError(ValueError):
     pass
@@ -233,3 +237,87 @@ class SpeakerGallery:
         if not entry:
             return None
         return entry.get("label")
+
+    def get_entry(self, speaker_id: str) -> dict[str, Any] | None:
+        return self._speakers.get(speaker_id)
+
+    def remove_speaker(self, speaker_id: str) -> bool:
+        if speaker_id not in self._speakers:
+            return False
+        self._speakers.pop(speaker_id)
+        self._session_refs.pop(speaker_id, None)
+        self.save()
+        return True
+
+    def rename_speaker(self, speaker_id: str, new_label: str) -> bool:
+        entry = self._speakers.get(speaker_id)
+        if not entry:
+            return False
+        clean = sanitize_label(new_label)
+        entry["label"] = clean
+        entry["updated_at"] = _iso_now()
+        self.save()
+        return True
+
+    def enroll_guest(
+        self, v: np.ndarray, max_guests: int = MAX_GUESTS
+    ) -> str:
+        existing = [sid for sid in self._speakers if sid.startswith("guest_")]
+        if len(existing) >= max_guests:
+            logger.warning(
+                "enroll_guest: hit MAX_GUESTS=%d; refusing to grow gallery",
+                max_guests,
+            )
+            return ""
+        next_n = 1
+        taken = set()
+        for sid in existing:
+            try:
+                taken.add(int(sid.split("_", 1)[1]))
+            except (ValueError, IndexError):
+                continue
+        while next_n in taken:
+            next_n += 1
+        guest_id = f"guest_{next_n:02d}"
+        now = _iso_now()
+        self._speakers[guest_id] = {
+            "label": guest_id,
+            "embeddings": [v.astype(np.float32).tolist()],
+            "created_at": now,
+            "updated_at": now,
+            "turn_count": 1,
+        }
+        self.save()
+        return guest_id
+
+    def audit(self, speaker_id: str) -> dict[str, Any] | None:
+        entry = self._speakers.get(speaker_id)
+        if not entry:
+            return None
+        embeddings = entry.get("embeddings") or []
+        if not embeddings:
+            return {
+                "ref_count": 0,
+                "min_cos_vs_centroid": 0.0,
+                "mean_cos_vs_centroid": 0.0,
+                "max_cos_vs_centroid": 0.0,
+                "mean_cos_vs_enrollment": 0.0,
+                "enrollment_cos_floor_hit": True,
+            }
+        refs = np.asarray(embeddings, dtype=np.float32)
+        ref_norms = np.linalg.norm(refs, axis=1) + 1e-12
+        centroid = self.get_centroid(speaker_id)
+        # get_centroid normalises already; centroid norm is 1.0
+        c_cos = (refs @ centroid) / ref_norms
+        enroll = refs[0]
+        enroll_norm = float(np.linalg.norm(enroll)) + 1e-12
+        e_cos = (refs @ enroll) / (ref_norms * enroll_norm)
+        mean_e = float(e_cos.mean())
+        return {
+            "ref_count": int(len(embeddings)),
+            "min_cos_vs_centroid": float(c_cos.min()),
+            "mean_cos_vs_centroid": float(c_cos.mean()),
+            "max_cos_vs_centroid": float(c_cos.max()),
+            "mean_cos_vs_enrollment": mean_e,
+            "enrollment_cos_floor_hit": mean_e < AUTO_ENROLL_MIN_COS,
+        }

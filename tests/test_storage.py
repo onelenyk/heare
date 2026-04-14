@@ -341,6 +341,17 @@ async def test_foreign_keys_enabled_after_init(store: TranscriptStore) -> None:
     assert int(row[0]) == 1
 
 
+async def test_recent_transcripts_includes_speaker_id(store: TranscriptStore) -> None:
+    await store.log_transcript("hello", "ambient", speaker_id="owner")
+    await store.log_transcript("hi", "ambient", speaker_id="unknown")
+    rows = await store.recent_transcripts(5)
+    assert len(rows) == 2
+    assert all("speaker_id" in r for r in rows)
+    by_text = {r["text"]: r["speaker_id"] for r in rows}
+    assert by_text["hello"] == "owner"
+    assert by_text["hi"] == "unknown"
+
+
 async def test_event_decision_id_cascade_sets_null(store: TranscriptStore) -> None:
     tid = await store.log_transcript("hello", "ambient")
     did = await store.log_decision(

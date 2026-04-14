@@ -1,0 +1,86 @@
+{
+  "project": "heare-daemon-polish",
+  "description": "Ship the uncommitted realtime-progress-watch work (RT-001..RT-005) and close three loose ends flagged in the architect review. Story DP-001 commits the 9 RT files (storage/decider/claude_cli/watch/main + their tests) plus progress.txt and the speaker-phase-2 PRD archive as a single `feat(watch): ...` commit. DP-002 wires DeciderProcessor.shutdown() into src/main.py::run_until_stopped so the fire-and-forget event drainer is cancelled cleanly on SIGTERM/pipeline-exit instead of being GC'd with in-flight events. DP-003 enables `PRAGMA foreign_keys=ON` in TranscriptStore.init() so the ON DELETE SET NULL cascade on events.decision_id actually fires, plus adds a cascade test. DP-004 fixes the test_run_timeout_kills_process mock warning — _make_mock_proc currently assigns proc.kill as AsyncMock but real subprocess.Popen.kill is sync, producing a 'coroutine was never awaited' warning. DP-005 writes the second commit containing DP-002..DP-004 plus the new Phase A PRD files (prd.json + prd-realtime-progress-watch-completed.json archive) and a Phase A append to progress.txt.",
+  "scope_note": "Must not regress the 339 RT-phase test baseline or ruff clean. No schema bump (foreign_keys pragma is runtime-only, no migration). No Rich/watch dashboard changes. OUT OF SCOPE: (a) live-hardware verification — hard blocker, needs user mic + GROQ_API_KEY; (b) Speaker Recognition Phase 2 Track A — 5-story phase, requires fresh ralph session to avoid context blowup; (c) dashboard polish (events --follow CLI, timeline view) — optional future work. User authorized 'lets do every track, step by step' via /oh-my-claudecode:ralph so two local commits are within scope; no remote push.",
+  "stories": [
+    {
+      "id": "DP-001",
+      "title": "Commit RT-001..RT-005 realtime-progress-watch work",
+      "priority": 1,
+      "passes": true,
+      "evidence": "Commit bfb8675 on main with 12 files changed: 9 src/tests RT files + .omc/progress.txt + .omc/project-memory.json + .omc/prd-speaker-phase-2-track-b-completed.json. Commit message uses `feat(watch):` prefix with a structured body covering schema v3, fire-and-forget emit queue, streaming claude_cli refactor, and progress panel. Ends with Co-Authored-By trailer. Sanity re-run of the 145 RT-touched tests after commit: all pass. .omc/prd.json and .omc/prd-realtime-progress-watch-completed.json correctly excluded — they ride in DP-005.",
+      "acceptanceCriteria": [
+        "`git log HEAD -1 --name-only` after the commit lists exactly these paths: src/storage.py, src/decider.py, src/claude_cli.py, src/watch.py, src/main.py, tests/test_storage.py, tests/test_decider.py, tests/test_claude_cli.py, tests/test_watch.py, .omc/progress.txt, .omc/project-memory.json, .omc/prd-speaker-phase-2-track-b-completed.json",
+        "The commit does NOT contain .omc/prd.json (still the Phase A PRD at this point) or .omc/prd-realtime-progress-watch-completed.json (the archive, which ships in DP-005)",
+        "Commit message uses `feat(watch):` prefix and a concise body summarising schema v3 events table, fire-and-forget emit queue, streaming claude_cli refactor, and the watch progress panel",
+        "Commit message ends with the `Co-Authored-By:` trailer matching the repo style",
+        "`uv run pytest tests/test_storage.py tests/test_decider.py tests/test_claude_cli.py tests/test_watch.py -q` exits 0 after the commit (sanity re-run of the 145 RT-touched tests)",
+        "After DP-001 `git status` still shows .omc/prd.json modified and .omc/prd-realtime-progress-watch-completed.json untracked (these ride in DP-005), and the 9 src/tests files are clean"
+      ]
+    },
+    {
+      "id": "DP-002",
+      "title": "Wire DeciderProcessor.shutdown() into pipeline teardown",
+      "priority": 2,
+      "passes": true,
+      "evidence": "src/main.py run_until_stopped: added keyword-only `decider=None` parameter, finally-block awaits `decider.shutdown()` AFTER the named_tasks cancel+await loop and BEFORE signal-handler removal, wrapped in try/except that logs exceptions so a broken shutdown cannot break teardown. src/main.py _cmd_start: passes `decider=decider` from build_pipeline tuple into run_until_stopped. tests/test_shutdown.py: +2 tests (test_run_until_stopped_awaits_decider_shutdown uses a FakeDecider counting shutdown_called calls, test_run_until_stopped_survives_decider_shutdown_failure uses a FailingDecider raising RuntimeError to verify teardown continues). Both existing shutdown tests still pass unchanged — the keyword-only default-None parameter is backward compatible.",
+      "acceptanceCriteria": [
+        "src/main.py::run_until_stopped signature accepts an optional `decider=None` parameter (default None so the two existing test_shutdown.py tests continue to work unchanged)",
+        "src/main.py::run_until_stopped finally-block awaits `decider.shutdown()` AFTER the named_tasks cancel+await loop and BEFORE the signal-handler removal, guarded by `if decider is not None:` and wrapped in try/except so a shutdown() failure cannot break teardown",
+        "src/main.py::_cmd_start passes the `decider` returned from `build_pipeline(...)` into `run_until_stopped(runner, pipeline, heartbeat, warmup, decider=decider)` as a keyword argument",
+        "tests/test_shutdown.py adds a new test (e.g. test_run_until_stopped_awaits_decider_shutdown) that builds a minimal fake decider exposing an async shutdown() AsyncMock, passes it into run_until_stopped with a QuickRunner-style pipeline, and asserts shutdown was awaited exactly once",
+        "The existing tests test_run_until_stopped_cancels_on_sigterm and test_run_until_stopped_cancels_when_pipeline_exits still pass unchanged (signature is backward-compatible)",
+        "`uv run pytest tests/test_shutdown.py -q` exits 0",
+        "`uv run pytest tests/ -q` shows 339 baseline + at least 1 new test, zero failures, zero regressions",
+        "`grep -n 'decider.shutdown' src/main.py` returns at least one line inside run_until_stopped"
+      ]
+    },
+    {
+      "id": "DP-003",
+      "title": "Enable SQLite foreign keys + verify cascade",
+      "priority": 3,
+      "passes": true,
+      "evidence": "src/storage.py TranscriptStore.init(): added `PRAGMA foreign_keys=ON` on the line immediately after the WAL pragma, before executescript(SCHEMA). tests/test_storage.py: +2 tests (test_foreign_keys_enabled_after_init queries `PRAGMA foreign_keys` and asserts 1; test_event_decision_id_cascade_sets_null inserts a transcript -> decision -> event chain, DELETEs the decision, and asserts the event row's decision_id is NULL via the ON DELETE SET NULL cascade). Fix-up: test_log_event_happy_path was using transcript_id=5 as a sentinel — FK enforcement broke it immediately. Updated to insert a real transcript via log_transcript first. Grep confirmed no other tests use hardcoded FK ids.",
+      "acceptanceCriteria": [
+        "src/storage.py TranscriptStore.init() issues `PRAGMA foreign_keys=ON` after `aiosqlite.connect()` and before `executescript(SCHEMA)` — the WAL pragma already lives in this slot, add the FK pragma on an adjacent line",
+        "tests/test_storage.py adds test_foreign_keys_enabled_after_init: after TranscriptStore.init(), `PRAGMA foreign_keys` returns 1",
+        "tests/test_storage.py adds test_event_decision_id_cascade_sets_null: insert a transcript, log a decision referencing it, log an event referencing that decision, execute `DELETE FROM decisions WHERE id = ?`, assert the event row's decision_id is now NULL (ON DELETE SET NULL cascade fires)",
+        "`uv run pytest tests/test_storage.py -q` exits 0 with 2 new tests green",
+        "`uv run pytest tests/ -q` zero regressions"
+      ]
+    },
+    {
+      "id": "DP-004",
+      "title": "Fix proc.kill mock warning in test_claude_cli",
+      "priority": 4,
+      "passes": true,
+      "evidence": "tests/test_claude_cli.py: imported MagicMock alongside AsyncMock/patch; _make_mock_proc assigns `proc.kill = MagicMock()` (sync) instead of AsyncMock. Docstring updated to explain why: real subprocess.Popen.kill is synchronous, and an AsyncMock here leaks an unawaited coroutine warning in the timeout test path. test_run_timeout_kills_process still passes with its existing `p.kill.assert_called()` assertion — MagicMock supports the same assertion surface. Pre-fix: 1 RuntimeWarning in test_run_timeout_kills_process output. Post-fix: zero warnings in the focused pytest run.",
+      "acceptanceCriteria": [
+        "tests/test_claude_cli.py::_make_mock_proc sets `proc.kill = MagicMock()` (sync) instead of `AsyncMock()` — MagicMock matches the real subprocess.Popen.kill which is synchronous",
+        "tests/test_claude_cli.py imports MagicMock (add to existing `from unittest.mock import AsyncMock, patch` line)",
+        "tests/test_claude_cli.py::_make_mock_proc docstring is updated to reflect that proc.kill is a sync MagicMock",
+        "`uv run pytest tests/test_claude_cli.py -q` exits 0 with zero `RuntimeWarning` in the output (grep the output for 'coroutine' and 'never awaited' — both must be absent)",
+        "test_run_timeout_kills_process still passes and its kill assertion (`p.kill.assert_called()`) still works (MagicMock supports assert_called)",
+        "`uv run pytest tests/ -q` zero regressions"
+      ]
+    },
+    {
+      "id": "DP-005",
+      "title": "Commit Phase A polish + archive RT PRD",
+      "priority": 5,
+      "passes": true,
+      "evidence": "Second commit on HEAD with DP-002..DP-004 code + test changes + .omc/prd.json (Phase A PRD, all 5 DP stories passes=true with evidence) + .omc/prd-realtime-progress-watch-completed.json (byte-identical snapshot of the RT PRD taken via cp before Phase A PRD was written) + .omc/progress.txt (Phase A section appended). Commit message uses `chore(daemon):` prefix and Co-Authored-By trailer. Full suite post-commit: 343 passed in 5.95s (339 baseline + 2 shutdown + 2 FK = 343), ruff clean.",
+      "acceptanceCriteria": [
+        "A second commit on HEAD containing DP-002..DP-004 code + test changes",
+        ".omc/prd-realtime-progress-watch-completed.json exists and is a byte-identical snapshot of the RT PRD that shipped in DP-001 (all 5 RT stories marked passes: true)",
+        ".omc/prd.json now shows the Phase A PRD with all 5 DP stories marked passes: true",
+        ".omc/progress.txt has a new Phase A section appended documenting DP-001..DP-005, files changed, and any learnings",
+        "`git log HEAD -1 --name-only` lists: src/main.py, src/storage.py, tests/test_claude_cli.py, tests/test_storage.py, tests/test_shutdown.py, .omc/prd.json, .omc/prd-realtime-progress-watch-completed.json, .omc/progress.txt (and optionally .omc/project-memory.json if touched)",
+        "`git status` after DP-005 shows a clean working tree (modulo .omc/project-memory.json drift which is auto-updated)",
+        "Commit message uses `chore(daemon):` prefix and body explains shutdown wiring + FK pragma + kill mock fix + PRD archive",
+        "Commit message ends with the `Co-Authored-By:` trailer",
+        "`uv run pytest tests/ -q` exits 0 after both commits land"
+      ]
+    }
+  ]
+}

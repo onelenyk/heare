@@ -100,6 +100,57 @@
 - Files modified: src/storage.py, src/main.py, tests/test_storage.py, tests/test_shutdown.py, tests/test_claude_cli.py
 - Files created: .omc/prd-realtime-progress-watch-completed.json (RT PRD archive)
 - Commit 1: bfb8675 `feat(watch): ...` (RT phase)
-- Commit 2: (Phase A, filled in after DP-005 commit lands)
+- Commit 2: 73c7bc3 `chore(daemon): wire shutdown, enable FKs, fix kill mock` (Phase A)
+- Commit 3: efe3a18 `chore(tests): trim task-id references from new DP test docstrings` (deslop)
+
+
+## heare speaker recognition Phase 2 Track A
+
+Phase 2 Track A shipped all four remaining stories. Gallery growth (A0)
+was already wired in Phase 2 Track B (speaker_processor.py:467-480 calls
+register_session_ref on every match and append_reference on high-confidence
+matches) so it needed no new work.
+
+### SPK-A1: Context redaction — non-owner transcripts hidden from decider prompt
+- src/storage.py recent_transcripts SELECT extended to include speaker_id; return dicts now carry a speaker_id key (may be None for legacy rows)
+- src/context.py _format_recent learns about settings.speaker_id_enabled: when ON, rows with speaker_id != 'owner' (including None as fail-closed) render their text as literal '[інший голос]'; when OFF, verbatim pass-through
+- Flag-off golden fixture byte-identical. RT-005 decider-import canary byte-identical
+- tests/test_storage.py: +1 test (recent_transcripts_includes_speaker_id)
+- tests/test_context.py: +3 tests (redacts_non_owner_when_flag_on, passthrough_when_flag_off, none_speaker_id_treated_as_non_owner)
+- Fix-up: pre-existing test_recent_transcripts_rendering was dev-config dependent because load_settings() reads ~/.heare/config.toml where speaker_id_enabled was True on this machine. Made it explicit: `settings.speaker_id_enabled = False`
+- Key learning: load_settings() is NOT hermetic — it reads the dev user's config.toml. Any new test that depends on a specific flag value must set it explicitly instead of trusting the default. The existing test_main_cli.py pattern of constructing Settings() directly is the better pattern
+
+### SPK-A2: Speakers CLI — list / info / rm / rename
+- src/speaker_gallery.py: new remove_speaker + rename_speaker + get_entry methods
+- src/main.py: new `speakers` subparser with list/info/rm/rename/audit sub-subcommands; five _cmd_speakers_* handlers + a dispatcher _cmd_speakers. rm requires --yes to confirm; rename traps LabelValidationError and returns 1 on bad labels
+- tests/test_speaker_gallery.py: +5 tests for remove/rename (success, missing, invalid label)
+- tests/test_main_cli.py: +8 tests for list_empty/list_prints_all/info_prints_fields/info_missing/rm_requires_yes/rm_with_yes/rename_success/rename_invalid_label — all use `patch("src.main.load_settings", return_value=Settings(...))` to stay hermetic
+- Key learning: the existing test_main_cli pattern creates a Settings() directly and patches load_settings via unittest.mock — no conftest needed
+
+### SPK-A3: Drift audit — per-speaker cosine statistics
+- src/speaker_gallery.py: new audit(speaker_id) method returning {ref_count, min/mean/max cosine vs centroid, mean cosine vs enrollment ref, enrollment_cos_floor_hit}. Uses the same numpy vector ops as identify()/get_centroid()
+- Drift threshold reuses AUTO_ENROLL_MIN_COS (0.55) — keeps the floor in one place
+- src/main.py: _cmd_speakers_audit formats per-speaker OK/DRIFT report; positional speaker_id is optional (defaults to auditing everything)
+- tests/test_speaker_gallery.py: +4 tests (single_ref, multi_ref_healthy via near-identical appended refs, detects_drift by directly mutating gallery._speakers to bypass append_reference's anti-drift guard, missing_returns_none)
+- tests/test_main_cli.py: +2 tests (prints_ok_for_healthy, prints_drift_marker via direct mutation then save())
+- Key learning: to test drift detection, bypass append_reference and mutate _speakers directly — the public API refuses to create a drifted gallery on purpose
+
+### SPK-A4: Auto-enrollment of repeated non-owner voices (flag-gated, default off)
+- src/config.py: new `speaker_id_auto_enroll_enabled: bool = False` — separate master switch from speaker_id_enabled so existing deployments and tests are unaffected
+- src/speaker_gallery.py: new enroll_guest(v, max_guests=99) method. Scans existing guest_NN slots, picks the lowest free N, inserts a gallery entry with label='guest_NN', persists. Max 99 guests total — returns empty string + logs WARNING on overflow to protect against noisy environments
+- src/speaker_processor.py: SpeakerTaggerProcessor gains self._stranger_candidates (deque maxlen=10). Cleared on BotStartedSpeakingFrame so own-voice echo can't poison the cluster. New _maybe_auto_enroll(embedding) helper: count how many prior candidates have cosine >= speaker_id_threshold_match against the new embedding; if (matches+1) >= speaker_id_auto_enroll_after (default 3), call gallery.enroll_guest and clear the buffer on success
+- Wired into the non-owner branch of _tag_transcription only when the flag is on AND slot.embedding is not None AND slot.duration_ms >= min_duration_ms
+- tests/test_speaker_gallery.py: +3 tests (enroll_guest_assigns_next_id, enroll_guest_persists, enroll_guest_max_cap via max_guests=2 parameter override)
+- tests/test_speaker_processor.py: +5 tests using monkeypatch.setattr(sid, 'embed', ...) to return a stranger vector per turn. New _run_stranger_turn helper encapsulates the start/audio/stop/transcript cycle. Tests cover: disabled_by_default (5 turns, no guest), triggers_after_threshold (3 matching turns, guest_01 enrolled), ignores_dissimilar_candidates (rotating orthogonal embeddings, no enrollment), ignores_short_turns (200ms audio, never reaches auto-enroll branch), clears_buffer_after_success (_stranger_candidates empty after enroll)
+- Security invariant: non-owner speakers are still blocked from command authority by the existing decider drop at decider.py:524. Auto-enrollment only stabilizes stranger labels for context redaction and operator visibility — it does NOT grant any new permissions. This keeps the fail-closed model intact
+- Key learning: to test the 'matching embeddings' path, just return the SAME vector from embed on every call (cosine=1.0). To test the 'dissimilar' path, rotate through orthogonal standard-basis vectors (cosine=0.0). Both patterns avoid the speechbrain/torch dependency entirely
+
+### Track A totals
+- Starting baseline: 343 tests (Phase A daemon-polish final)
+- Final: 374 tests (+31 across SPK-A1..A4)
+- Ruff: clean throughout
+- Flag-off golden fixture: byte-identical after each story
+- Files modified: src/storage.py, src/context.py, src/config.py, src/main.py, src/speaker_gallery.py, src/speaker_processor.py, tests/test_storage.py, tests/test_context.py, tests/test_speaker_gallery.py, tests/test_speaker_processor.py, tests/test_main_cli.py
+- Files created: .omc/prd-daemon-polish-completed.json (Phase A archive)
 
 

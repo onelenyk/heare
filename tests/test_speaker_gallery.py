@@ -288,3 +288,136 @@ def test_append_reference_fifo_cap_preserves_enrollment_ref(
     assert np.allclose(
         np.array(embeddings[0], dtype=np.float32), enrollment, atol=1e-6
     )
+
+
+# ---------------------------------------------------------------------------
+# SPK-A2: remove_speaker + rename_speaker
+# ---------------------------------------------------------------------------
+
+
+def test_remove_speaker_success(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.ones(5, dtype=np.float32))
+    assert g.remove_speaker("owner") is True
+    assert g.list_speakers() == []
+    g2 = SpeakerGallery.load(tmp_path / "speakers.json")
+    assert g2.list_speakers() == []
+
+
+def test_remove_speaker_missing(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    assert g.remove_speaker("ghost") is False
+
+
+def test_rename_speaker_success(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.ones(5, dtype=np.float32), label="owner")
+    assert g.rename_speaker("owner", "Nazar") is True
+    assert g.get_label("owner") == "Nazar"
+    g2 = SpeakerGallery.load(tmp_path / "speakers.json")
+    assert g2.get_label("owner") == "Nazar"
+
+
+def test_rename_speaker_invalid_label(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.ones(5, dtype=np.float32))
+    with pytest.raises(LabelValidationError):
+        g.rename_speaker("owner", "bad\nlabel")
+
+
+def test_rename_speaker_missing(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    assert g.rename_speaker("ghost", "whatever") is False
+
+
+# ---------------------------------------------------------------------------
+# SPK-A3: audit() drift report
+# ---------------------------------------------------------------------------
+
+
+def test_audit_single_ref(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    v = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    g.enroll_owner(v)
+    report = g.audit("owner")
+    assert report is not None
+    assert report["ref_count"] == 1
+    assert report["min_cos_vs_centroid"] == pytest.approx(1.0, abs=1e-3)
+    assert report["mean_cos_vs_centroid"] == pytest.approx(1.0, abs=1e-3)
+    assert report["max_cos_vs_centroid"] == pytest.approx(1.0, abs=1e-3)
+    assert report["mean_cos_vs_enrollment"] == pytest.approx(1.0, abs=1e-3)
+    assert report["enrollment_cos_floor_hit"] is False
+
+
+def test_audit_multi_ref_healthy(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    base = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    g.enroll_owner(base)
+    for i in range(3):
+        delta = np.array([0.0, 0.01 * (i + 1), 0.0], dtype=np.float32)
+        v = base + delta
+        v = v / np.linalg.norm(v)
+        g.append_reference("owner", v.astype(np.float32))
+    report = g.audit("owner")
+    assert report is not None
+    assert report["ref_count"] == 4
+    assert report["mean_cos_vs_centroid"] > 0.95
+    assert report["enrollment_cos_floor_hit"] is False
+
+
+def test_audit_detects_drift(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    base = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    g.enroll_owner(base)
+    # Directly poke the internal state to simulate a drifted gallery.
+    # Real-world append_reference would reject these via anti-drift guard.
+    drifted = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    g._speakers["owner"]["embeddings"].append(drifted.tolist())
+    g._speakers["owner"]["embeddings"].append(drifted.tolist())
+    report = g.audit("owner")
+    assert report is not None
+    assert report["enrollment_cos_floor_hit"] is True
+    assert report["mean_cos_vs_enrollment"] < 0.55
+
+
+def test_audit_missing_returns_none(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    assert g.audit("ghost") is None
+
+
+# ---------------------------------------------------------------------------
+# SPK-A4: enroll_guest auto-enrollment API
+# ---------------------------------------------------------------------------
+
+
+def test_enroll_guest_assigns_next_id(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(np.array([1.0, 0.0, 0.0], dtype=np.float32))
+    v1 = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    v2 = np.array([0.0, 0.9, 0.1], dtype=np.float32)
+    v3 = np.array([0.0, 0.8, 0.2], dtype=np.float32)
+    assert g.enroll_guest(v1) == "guest_01"
+    assert g.enroll_guest(v2) == "guest_02"
+    assert g.enroll_guest(v3) == "guest_03"
+    assert "owner" in g.list_speakers()
+    assert sorted(g.list_speakers()) == ["guest_01", "guest_02", "guest_03", "owner"]
+
+
+def test_enroll_guest_persists(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    v = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    guest_id = g.enroll_guest(v)
+    assert guest_id == "guest_01"
+    g2 = SpeakerGallery.load(tmp_path / "speakers.json")
+    assert "guest_01" in g2.list_speakers()
+    assert g2.get_label("guest_01") == "guest_01"
+
+
+def test_enroll_guest_max_cap(tmp_path: Path) -> None:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    v = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    assert g.enroll_guest(v, max_guests=2) == "guest_01"
+    assert g.enroll_guest(v, max_guests=2) == "guest_02"
+    # Third call hits the cap — empty string + gallery unchanged
+    assert g.enroll_guest(v, max_guests=2) == ""
+    assert sorted(g.list_speakers()) == ["guest_01", "guest_02"]

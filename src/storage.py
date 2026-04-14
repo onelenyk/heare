@@ -252,12 +252,19 @@ class TranscriptStore:
 
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
         cursor = await self.db.execute(
-            "SELECT id, ts, text, mode FROM transcripts ORDER BY ts DESC LIMIT ?",
+            "SELECT id, ts, text, mode, speaker_id FROM transcripts"
+            " ORDER BY ts DESC LIMIT ?",
             (n,),
         )
         rows = await cursor.fetchall()
         return [
-            {"id": r[0], "ts": r[1], "text": r[2], "mode": r[3]}
+            {
+                "id": r[0],
+                "ts": r[1],
+                "text": r[2],
+                "mode": r[3],
+                "speaker_id": r[4],
+            }
             for r in reversed(rows)
         ]
 

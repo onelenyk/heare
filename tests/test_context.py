@@ -52,6 +52,7 @@ async def test_recent_transcripts_rendering(store: TranscriptStore) -> None:
     await store.log_transcript("один", "ambient")
     await store.log_transcript("два", "ambient")
     settings = load_settings()
+    settings.speaker_id_enabled = False
     ctx = ContextBuilder(store, settings)
     result = await ctx.build("три", heartbeat=False)
     assert "один" in result["recent_transcripts"]
@@ -178,6 +179,49 @@ async def test_golden_string_flag_off_render(store: TranscriptStore) -> None:
 
     # When flag is off, the rendered output must NOT contain the Speaker rule
     assert "Speaker: owner" not in rendered
+
+
+async def test_format_recent_redacts_non_owner_when_flag_on(
+    store: TranscriptStore,
+) -> None:
+    await store.log_transcript("я тут", "ambient", speaker_id="owner")
+    await store.log_transcript("stranger speak", "ambient", speaker_id="unknown")
+    settings = load_settings()
+    settings.speaker_id_enabled = True
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build("х", heartbeat=False)
+    rendered = result["recent_transcripts"]
+    assert "я тут" in rendered
+    assert "stranger speak" not in rendered
+    assert "[інший голос]" in rendered
+
+
+async def test_format_recent_passthrough_when_flag_off(
+    store: TranscriptStore,
+) -> None:
+    await store.log_transcript("я тут", "ambient", speaker_id="owner")
+    await store.log_transcript("stranger speak", "ambient", speaker_id="unknown")
+    settings = load_settings()
+    settings.speaker_id_enabled = False
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build("х", heartbeat=False)
+    rendered = result["recent_transcripts"]
+    assert "я тут" in rendered
+    assert "stranger speak" in rendered
+    assert "[інший голос]" not in rendered
+
+
+async def test_format_recent_none_speaker_id_treated_as_non_owner(
+    store: TranscriptStore,
+) -> None:
+    await store.log_transcript("legacy row", "ambient", speaker_id=None)
+    settings = load_settings()
+    settings.speaker_id_enabled = True
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build("х", heartbeat=False)
+    rendered = result["recent_transcripts"]
+    assert "legacy row" not in rendered
+    assert "[інший голос]" in rendered
 
 
 def test_render_with_template() -> None:

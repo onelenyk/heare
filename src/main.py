@@ -349,6 +349,125 @@ def _cmd_enroll_owner(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_speakers_list(args: argparse.Namespace) -> int:
+    from .speaker_gallery import SpeakerGallery
+
+    settings = load_settings()
+    gallery = SpeakerGallery.load(settings.speakers_file)
+    ids = gallery.list_speakers()
+    if not ids:
+        print("(no speakers enrolled)")
+        return 0
+    for sid in ids:
+        entry = gallery.get_entry(sid) or {}
+        label = entry.get("label", "?")
+        turn_count = entry.get("turn_count", 0)
+        updated = entry.get("updated_at", "?")
+        print(f"{sid}\t{label}\tturn_count={turn_count}\tupdated={updated}")
+    return 0
+
+
+def _cmd_speakers_info(args: argparse.Namespace) -> int:
+    import numpy as np
+
+    from .speaker_gallery import SpeakerGallery
+
+    settings = load_settings()
+    gallery = SpeakerGallery.load(settings.speakers_file)
+    entry = gallery.get_entry(args.speaker_id)
+    if not entry:
+        print(f"speaker not found: {args.speaker_id}")
+        return 1
+    embeddings = entry.get("embeddings") or []
+    ref_count = len(embeddings)
+    centroid = gallery.get_centroid(args.speaker_id)
+    centroid_norm = float(np.linalg.norm(centroid)) if centroid is not None else 0.0
+    print(f"id: {args.speaker_id}")
+    print(f"label: {entry.get('label', '?')}")
+    print(f"created_at: {entry.get('created_at', '?')}")
+    print(f"updated_at: {entry.get('updated_at', '?')}")
+    print(f"turn_count: {entry.get('turn_count', 0)}")
+    print(f"ref_count: {ref_count}")
+    print(f"centroid_norm: {centroid_norm:.4f}")
+    return 0
+
+
+def _cmd_speakers_rm(args: argparse.Namespace) -> int:
+    from .speaker_gallery import SpeakerGallery
+
+    settings = load_settings()
+    if not args.yes:
+        print("pass --yes to confirm")
+        return 1
+    gallery = SpeakerGallery.load(settings.speakers_file)
+    if not gallery.remove_speaker(args.speaker_id):
+        print(f"speaker not found: {args.speaker_id}")
+        return 1
+    print(f"removed: {args.speaker_id}")
+    return 0
+
+
+def _cmd_speakers_rename(args: argparse.Namespace) -> int:
+    from .speaker_gallery import LabelValidationError, SpeakerGallery
+
+    settings = load_settings()
+    gallery = SpeakerGallery.load(settings.speakers_file)
+    try:
+        ok = gallery.rename_speaker(args.speaker_id, args.new_label)
+    except LabelValidationError as e:
+        print(f"invalid label: {e}")
+        return 1
+    if not ok:
+        print(f"speaker not found: {args.speaker_id}")
+        return 1
+    print(f"renamed: {args.speaker_id} -> {args.new_label}")
+    return 0
+
+
+def _cmd_speakers(args: argparse.Namespace) -> int:
+    sub = args.speakers_cmd
+    if sub == "list":
+        return _cmd_speakers_list(args)
+    if sub == "info":
+        return _cmd_speakers_info(args)
+    if sub == "rm":
+        return _cmd_speakers_rm(args)
+    if sub == "rename":
+        return _cmd_speakers_rename(args)
+    if sub == "audit":
+        return _cmd_speakers_audit(args)
+    print("unknown speakers subcommand")
+    return 1
+
+
+def _cmd_speakers_audit(args: argparse.Namespace) -> int:
+    from .speaker_gallery import SpeakerGallery
+
+    settings = load_settings()
+    gallery = SpeakerGallery.load(settings.speakers_file)
+    target_ids = [args.speaker_id] if args.speaker_id else gallery.list_speakers()
+    if not target_ids:
+        print("(no speakers enrolled)")
+        return 0
+    any_missing = False
+    for sid in target_ids:
+        report = gallery.audit(sid)
+        if report is None:
+            print(f"{sid}: not found")
+            any_missing = True
+            continue
+        status = "DRIFT" if report["enrollment_cos_floor_hit"] else "OK"
+        print(
+            f"{sid} refs={report['ref_count']} "
+            f"centroid[min={report['min_cos_vs_centroid']:.3f} "
+            f"mean={report['mean_cos_vs_centroid']:.3f} "
+            f"max={report['max_cos_vs_centroid']:.3f}] "
+            f"enrollment[mean={report['mean_cos_vs_enrollment']:.3f}] "
+            f"{status}"
+        )
+    return 1 if any_missing else 0
+
+
 def _cmd_logs(args: argparse.Namespace) -> int:
     settings = load_settings()
     log_file = settings.log_dir / "daemon.log"
@@ -394,6 +513,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     enroll_p.add_argument("--duration", type=int, default=15, help="Recording seconds")
     enroll_p.add_argument("--label", type=str, default="owner", help="Human label")
+
+    speakers_p = sub.add_parser("speakers", help="Manage the speaker gallery")
+    speakers_sub = speakers_p.add_subparsers(dest="speakers_cmd", required=True)
+    speakers_sub.add_parser("list", help="List enrolled speakers")
+    info_p = speakers_sub.add_parser("info", help="Show details for a speaker")
+    info_p.add_argument("speaker_id", help="Speaker id (e.g. owner)")
+    rm_p = speakers_sub.add_parser("rm", help="Remove a speaker")
+    rm_p.add_argument("speaker_id")
+    rm_p.add_argument("--yes", action="store_true", help="Confirm removal")
+    rename_p = speakers_sub.add_parser("rename", help="Rename a speaker label")
+    rename_p.add_argument("speaker_id")
+    rename_p.add_argument("new_label")
+    audit_p = speakers_sub.add_parser("audit", help="Cosine drift report")
+    audit_p.add_argument("speaker_id", nargs="?", default=None)
+
     return parser
 
 
@@ -419,6 +553,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_logs(args)
     if cmd == "enroll-owner":
         return _cmd_enroll_owner(args)
+    if cmd == "speakers":
+        return _cmd_speakers(args)
     parser.print_help()
     return 1
 

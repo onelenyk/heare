@@ -153,3 +153,182 @@ def test_main_dispatches_to_func(capsys) -> None:
         with patch("src.main.load_settings", return_value=settings):
             result = main(["status"])
     assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# SPK-A2: speakers list / info / rm / rename CLI
+# ---------------------------------------------------------------------------
+
+
+def _speakers_tmp_settings(tmp: str) -> Settings:
+    return Settings(
+        pid_file=Path(tmp) / "heare.pid",
+        db_path=Path(tmp) / "heare.db",
+        mode_file=Path(tmp) / "mode",
+        log_dir=Path(tmp) / "logs",
+        speakers_file=Path(tmp) / "speakers.json",
+    )
+
+
+def test_speakers_list_empty(capsys) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "list"])
+    assert rc == 0
+    assert "no speakers enrolled" in capsys.readouterr().out
+
+
+def test_speakers_list_prints_all(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.ones(5, dtype=np.float32), label="Nazar")
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "list"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "owner" in out
+    assert "Nazar" in out
+    assert "turn_count=" in out
+
+
+def test_speakers_info_prints_fields(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.ones(5, dtype=np.float32), label="Nazar")
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "info", "owner"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "id: owner" in out
+    assert "label: Nazar" in out
+    assert "ref_count:" in out
+    assert "centroid_norm:" in out
+
+
+def test_speakers_info_missing_returns_1(capsys) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "info", "ghost"])
+    assert rc == 1
+    assert "speaker not found" in capsys.readouterr().out
+
+
+def test_speakers_rm_requires_yes_flag(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.ones(5, dtype=np.float32))
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "rm", "owner"])
+        # Owner must still be in gallery — no --yes, no removal
+        g2 = SpeakerGallery.load(settings.speakers_file)
+        assert "owner" in g2.list_speakers()
+    assert rc == 1
+    assert "pass --yes" in capsys.readouterr().out
+
+
+def test_speakers_rm_with_yes_removes(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.ones(5, dtype=np.float32))
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "rm", "owner", "--yes"])
+        g2 = SpeakerGallery.load(settings.speakers_file)
+        assert g2.list_speakers() == []
+    assert rc == 0
+    assert "removed: owner" in capsys.readouterr().out
+
+
+def test_speakers_rename_success(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.ones(5, dtype=np.float32), label="owner")
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "rename", "owner", "Nazar"])
+        g2 = SpeakerGallery.load(settings.speakers_file)
+        assert g2.get_label("owner") == "Nazar"
+    assert rc == 0
+    assert "renamed" in capsys.readouterr().out
+
+
+def test_speakers_rename_invalid_label(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.ones(5, dtype=np.float32))
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "rename", "owner", "bad\nlabel"])
+    assert rc == 1
+    assert "invalid label" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# SPK-A3: speakers audit CLI
+# ---------------------------------------------------------------------------
+
+
+def test_speakers_audit_prints_ok_for_healthy(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.array([1.0, 0.0, 0.0], dtype=np.float32))
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "audit"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "owner" in out
+    assert "OK" in out
+
+
+def test_speakers_audit_prints_drift_marker(capsys) -> None:
+    import numpy as np
+
+    from src.speaker_gallery import SpeakerGallery
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _speakers_tmp_settings(tmp)
+        g = SpeakerGallery(settings.speakers_file)
+        g.enroll_owner(np.array([1.0, 0.0, 0.0], dtype=np.float32))
+        drifted = [0.0, 1.0, 0.0]
+        g._speakers["owner"]["embeddings"].append(drifted)
+        g._speakers["owner"]["embeddings"].append(drifted)
+        g.save()
+        with patch("src.main.load_settings", return_value=settings):
+            rc = main(["speakers", "audit", "owner"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "DRIFT" in out

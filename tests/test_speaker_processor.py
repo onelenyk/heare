@@ -810,3 +810,155 @@ async def test_tagger_auto_appends_marginal_duration_turn(
     await tagger.process_frame(frame, None)
     assert append_calls == ["owner"]
     await buffer.close()
+
+
+# ---------------------------------------------------------------------------
+# SPK-A4: auto-enrollment of repeated non-owner voices
+# ---------------------------------------------------------------------------
+
+
+async def _run_stranger_turn(
+    buffer, tagger, fake_frames, turn_text: str, duration_samples: int = 80000
+) -> None:
+    """Feed one complete non-owner turn (start / audio / stop / transcript).
+
+    duration_samples=80000 -> 5000ms PCM at 16kHz, above the 400ms floor
+    and above the 3000ms accum target so the tagger reads slot.embedding
+    directly (no accum interference).
+    """
+    pcm = b"\x10\x20" * duration_samples
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    await buffer.process_frame(
+        fake_frames["audio"](audio=pcm, sample_rate=16000, num_channels=1),
+        None,
+    )
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    target_turn_id = buffer._next_turn_id - 1
+    for _ in range(100):
+        if buffer.latest_completed_turn_id() == target_turn_id:
+            break
+        await asyncio.sleep(0.01)
+    frame = fake_frames["transcript"](text=turn_text, user_id="u", timestamp="t")
+    frame.finalized = True
+    await tagger.process_frame(frame, None)
+
+
+async def test_auto_enroll_disabled_by_default(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery(tmp_path)
+    # speaker_id_auto_enroll_enabled defaults to False — feeding 5 matching
+    # stranger turns must not grow the gallery beyond owner.
+    buffer, tagger = create_speaker_processors(_settings(), gallery, model=MagicMock())
+
+    for i in range(5):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"стрейнджер {i}")
+
+    assert gallery.list_speakers() == ["owner"]
+    await buffer.close()
+
+
+async def test_auto_enroll_triggers_after_threshold(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_enabled = True
+    settings.speaker_id_auto_enroll_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    # Three matching non-owner turns — the third triggers enroll_guest
+    for i in range(3):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"стрейнджер {i}")
+
+    assert "guest_01" in gallery.list_speakers()
+    assert "owner" in gallery.list_speakers()
+    await buffer.close()
+
+
+async def test_auto_enroll_ignores_dissimilar_candidates(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    # Rotate through three orthogonal vectors so no pair reaches the 0.75
+    # similarity threshold.
+    vectors = [
+        np.eye(192, dtype=np.float32)[5],
+        np.eye(192, dtype=np.float32)[42],
+        np.eye(192, dtype=np.float32)[100],
+    ]
+    counter = {"i": 0}
+
+    def rotating_embed(pcm, sr, model):
+        v = vectors[counter["i"] % len(vectors)]
+        counter["i"] += 1
+        return v
+
+    monkeypatch.setattr(sid, "embed", rotating_embed)
+    gallery = _mk_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_enabled = True
+    settings.speaker_id_auto_enroll_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    for i in range(3):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"стрейнджер {i}")
+
+    # No guest_NN should have been enrolled — all three candidates are
+    # mutually orthogonal.
+    assert "guest_01" not in gallery.list_speakers()
+    assert gallery.list_speakers() == ["owner"]
+    await buffer.close()
+
+
+async def test_auto_enroll_ignores_short_turns(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_enabled = True
+    settings.speaker_id_auto_enroll_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    # 3200 samples @ 16kHz = 200ms, below speaker_id_min_duration_ms=400.
+    # The tagger takes the short-turn branch and never reaches auto-enroll.
+    for i in range(5):
+        await _run_stranger_turn(
+            buffer, tagger, fake_frames, f"коротко {i}", duration_samples=1600
+        )
+
+    assert "guest_01" not in gallery.list_speakers()
+    await buffer.close()
+
+
+async def test_auto_enroll_clears_buffer_after_success(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_enabled = True
+    settings.speaker_id_auto_enroll_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    for i in range(3):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"стрейнджер {i}")
+
+    # Buffer cleared on successful enroll so subsequent stranger turns
+    # don't immediately re-enroll a new guest from residue.
+    assert len(tagger._stranger_candidates) == 0
+    # But the enrolled guest_01 is now in the gallery, so subsequent
+    # turns will match it via identify() rather than stack up as candidates.
+    await buffer.close()
