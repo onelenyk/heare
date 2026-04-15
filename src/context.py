@@ -25,6 +25,7 @@ class ContextBuilder:
         transcript: str | None,
         heartbeat: bool = False,
         keep_placeholders: list[str] | None = None,
+        speaker_id: str | None = None,
     ) -> dict[str, Any]:
         now = dt.datetime.now().astimezone()
         recent = await self.store.recent_transcripts(n=5)
@@ -36,7 +37,7 @@ class ContextBuilder:
             "heartbeat_flag": "yes" if heartbeat else "no",
             "recent_transcripts": self._format_recent(recent),
             "transcript_or_heartbeat": self._format_input(transcript, heartbeat),
-            "speaker_rule_block": self._render_rule_block(),
+            "speaker_rule_block": self._render_rule_block(speaker_id=speaker_id),
         }
         # Speculative-path support: if a caller asks for a placeholder to
         # remain literal (so it can be substituted later with a real value),
@@ -46,10 +47,14 @@ class ContextBuilder:
             ctx[key] = "{" + key + "}"
         return ctx
 
-    def _render_rule_block(self) -> str:
+    def _render_rule_block(self, speaker_id: str | None = None) -> str:
         if not self.settings.speaker_id_enabled:
             return ""
-        return "Speaker: owner"
+        if speaker_id == "owner":
+            return "Speaker: owner (high confidence)"
+        if speaker_id is None:
+            return "Speaker: unknown (could be owner with voice drift, a guest, or background audio)"
+        return f"Speaker: {speaker_id} (not owner)"
 
     def _format_recent(self, rows: list[dict[str, Any]]) -> str:
         if not rows:

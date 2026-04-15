@@ -112,8 +112,12 @@ async def test_build_returns_speaker_rule_block_when_flag_on(
     settings = load_settings()
     settings.speaker_id_enabled = True
     ctx = ContextBuilder(store, settings)
+    # No speaker_id → unknown speaker path
     result = await ctx.build("x", heartbeat=False)
-    assert "Speaker: owner" in result["speaker_rule_block"]
+    assert "Speaker: unknown" in result["speaker_rule_block"]
+    # owner speaker_id → high confidence path
+    result_owner = await ctx.build("x", heartbeat=False, speaker_id="owner")
+    assert "Speaker: owner (high confidence)" in result_owner["speaker_rule_block"]
 
 
 async def test_build_keeps_placeholder_literal_with_keep_placeholders(

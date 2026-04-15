@@ -116,7 +116,7 @@ async def test_confirmation_yes_executes(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, запусти тести")
-    await decider._handle_confirmation("так")
+    await decider._handle_confirmation("гава так")
     cli.call_action.assert_awaited()
     assert decider.state == DeciderState.LISTENING
     assert decider.pending_action is None
@@ -138,7 +138,7 @@ async def test_confirmation_no_cancels(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, запусти тести")
-    await decider._handle_confirmation("ні")
+    await decider._handle_confirmation("гава ні")
     cli.call_action.assert_not_awaited()
     assert decider.state == DeciderState.LISTENING
     assert decider.pending_action is None
@@ -192,7 +192,7 @@ async def test_executing_state_pushes_summary_frame(harness) -> None:
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, запусти тести")
     assert decider.state == DeciderState.AWAITING_CONFIRMATION
-    await decider._handle_confirmation("так")
+    await decider._handle_confirmation("гава так")
     assert decider.state == DeciderState.LISTENING
     assert decider.pending_action is None
     pushed_texts = [
@@ -220,7 +220,7 @@ async def test_executing_state_action_failure_pushes_error_frame(harness) -> Non
     decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, запусти тести")
-    await decider._handle_confirmation("так")
+    await decider._handle_confirmation("гава так")
     assert decider.state == DeciderState.LISTENING
     pushed_texts = [
         call.args[0].text
@@ -721,7 +721,12 @@ def test_is_noise_function() -> None:
 
 # ---- SPK-005 speaker gating tests ----
 
-async def test_non_owner_dropped_in_listening(harness) -> None:
+async def test_non_owner_reaches_decider_in_listening(harness) -> None:
+    """KW-3: hard speaker gate removed — non-owner utterances now reach Claude.
+
+    The keyword gate on act decisions is the new guard; speak decisions pass
+    through regardless of speaker_id.
+    """
     store, settings, ctx = harness
     settings.speaker_id_enabled = True
     cli = FakeClaudeCLI([{"type": "speak", "confidence": 0.9, "reply": "hi"}])
@@ -730,8 +735,8 @@ async def test_non_owner_dropped_in_listening(harness) -> None:
     await decider._handle_listening(
         "Гава, привіт", speaker_id="unknown", speaker_confidence=0.4
     )
-    # Non-owner must NOT reach Claude decider
-    assert cli.calls == []
+    # Non-owner now DOES reach Claude decider (gate removed by KW-3)
+    assert len(cli.calls) == 1
     assert decider.state == DeciderState.LISTENING
     # Transcript must be persisted with speaker_id for audit
     recent = await store.recent_transcripts(5)
@@ -772,8 +777,8 @@ async def test_confirmation_rejects_inherited(harness) -> None:
     )
     assert decider.state == DeciderState.AWAITING_CONFIRMATION
     assert decider.pending_speaker_id == "owner"
-    # Inherited short-turn "так" must NOT execute
-    await decider._handle_confirmation("так", speaker_id="owner", speaker_inherited=True)
+    # Inherited short-turn "гава так" must NOT execute (inherited label rejected)
+    await decider._handle_confirmation("гава так", speaker_id="owner", speaker_inherited=True)
     cli.call_action.assert_not_awaited()
     assert decider.state == DeciderState.AWAITING_CONFIRMATION
 
@@ -796,8 +801,8 @@ async def test_confirmation_speaker_mismatch(harness) -> None:
     await decider._handle_listening(
         "Гава, запусти тести", speaker_id="owner", speaker_confidence=0.95
     )
-    # Stranger says "так" — pending_speaker_id='owner', frame.speaker_id='unknown'
-    await decider._handle_confirmation("так", speaker_id="unknown", speaker_inherited=False)
+    # Stranger says "гава так" — pending_speaker_id='owner', frame.speaker_id='unknown'
+    await decider._handle_confirmation("гава так", speaker_id="unknown", speaker_inherited=False)
     cli.call_action.assert_not_awaited()
     assert decider.state == DeciderState.AWAITING_CONFIRMATION
 
@@ -821,7 +826,7 @@ async def test_pending_speaker_id_cleared_on_execute(harness) -> None:
         "Гава, запусти", speaker_id="owner", speaker_confidence=0.95
     )
     assert decider.pending_speaker_id == "owner"
-    await decider._handle_confirmation("так", speaker_id="owner", speaker_inherited=False)
+    await decider._handle_confirmation("гава так", speaker_id="owner", speaker_inherited=False)
     assert decider.pending_speaker_id is None
     assert decider.state == DeciderState.LISTENING
 
@@ -845,7 +850,7 @@ async def test_pending_speaker_id_cleared_on_cancel(harness) -> None:
         "Гава, запусти", speaker_id="owner", speaker_confidence=0.95
     )
     assert decider.pending_speaker_id == "owner"
-    await decider._handle_confirmation("ні", speaker_id="owner", speaker_inherited=False)
+    await decider._handle_confirmation("гава ні", speaker_id="owner", speaker_inherited=False)
     assert decider.pending_speaker_id is None
     assert decider.state == DeciderState.LISTENING
 
@@ -998,7 +1003,7 @@ async def test_decider_emits_expected_sequence_for_act_yes(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, запусти тести")
-    await decider._handle_confirmation("так")
+    await decider._handle_confirmation("гава так")
     await _drain_pending_events(decider)
 
     kinds = [e[0] for e in await _read_events(store)]
@@ -1032,7 +1037,7 @@ async def test_decider_emits_expected_sequence_for_act_no(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, запусти тести")
-    await decider._handle_confirmation("ні")
+    await decider._handle_confirmation("гава ні")
     await _drain_pending_events(decider)
 
     kinds = [e[0] for e in await _read_events(store)]
@@ -1074,7 +1079,7 @@ async def test_decider_emits_action_stdout_per_line(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, зроби білд")
-    await decider._handle_confirmation("так")
+    await decider._handle_confirmation("гава так")
     await _drain_pending_events(decider)
 
     cursor = await store.db.execute(
@@ -1108,7 +1113,7 @@ async def test_decider_emits_action_error(harness) -> None:
     decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
     decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
     await decider._handle_listening("Гава, запусти тести")
-    await decider._handle_confirmation("так")
+    await decider._handle_confirmation("гава так")
     await _drain_pending_events(decider)
 
     kinds = [e[0] for e in await _read_events(store)]
@@ -1179,3 +1184,142 @@ async def test_decider_import_does_not_break_flag_off_render(harness) -> None:
         "check for import-time side effects in src.decider"
     )
     assert "Speaker: owner" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# KW-7: drift, keyword gate, and stranger-confirmation-rejection tests
+# ---------------------------------------------------------------------------
+
+
+async def test_owner_voice_drift_with_keyword_still_commands(harness) -> None:
+    """Owner voice drifted below threshold (speaker_id=None) but said keyword.
+
+    Transcript must reach Claude (call_decider called), and act → AWAITING_CONFIRMATION.
+    """
+    store, settings, ctx = harness
+    settings.speaker_id_enabled = True
+    settings.speaker_command_keyword_required = True
+    cli = FakeClaudeCLI(
+        [
+            {
+                "type": "act",
+                "confidence": 0.9,
+                "intent": "запусти тести",
+                "action": {"tool": "Bash", "args": "pytest"},
+            }
+        ]
+    )
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+
+    # speaker_id=None — drift, below threshold — but transcript contains keyword "гава"
+    await decider._handle_listening(
+        "гава запусти тести", speaker_id=None, speaker_confidence=None
+    )
+
+    assert len(cli.calls) == 1, "transcript must reach Claude even with drifted speaker"
+    assert decider.state == DeciderState.AWAITING_CONFIRMATION
+
+
+async def test_act_without_keyword_dropped(harness) -> None:
+    """Act decision with no command keyword in transcript is dropped.
+
+    DECIDER_DROPPED_NO_KEYWORD event emitted; state stays LISTENING.
+    """
+    store, settings, ctx = harness
+    settings.speaker_id_enabled = True
+    settings.speaker_command_keyword_required = True
+    cli = FakeClaudeCLI(
+        [
+            {
+                "type": "act",
+                "confidence": 0.9,
+                "intent": "запусти тести",
+                "action": {"tool": "Bash", "args": "pytest"},
+            }
+        ]
+    )
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+
+    # No keyword (гава/heare/гей) in transcript — keyword gate must drop it.
+    # Use a question to pass the ambient quick-nothing pre-filter, but no wake word.
+    await decider._handle_listening(
+        "як запустити тести зараз", speaker_id="owner", speaker_confidence=0.95
+    )
+
+    assert len(cli.calls) == 1, "call_decider should still be called"
+    assert decider.state == DeciderState.LISTENING, "state must stay LISTENING after drop"
+    assert decider.pending_action is None
+
+
+async def test_stranger_keyword_confirmation_rejected(harness) -> None:
+    """Armed state: stranger provides keyword confirmation — must be rejected.
+
+    AND-logic requires keyword AND same-speaker; stranger fails speaker match.
+    """
+    store, settings, ctx = harness
+    settings.speaker_id_enabled = True
+    settings.speaker_command_keyword_required = True
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+
+    # Manually arm the decider as if owner issued a command
+    decider.state = DeciderState.AWAITING_CONFIRMATION
+    decider.pending_action = {"type": "act", "intent": "test", "action": "test"}
+    decider.pending_speaker_id = "owner"
+    decider.confirmation_deadline = time.monotonic() + 30
+
+    # Stranger says "гава так" — has keyword but wrong speaker
+    await decider._handle_confirmation(
+        "гава так", speaker_id="stranger_01", speaker_inherited=False
+    )
+
+    pushed_texts = [
+        call.args[0].text
+        for call in decider.push_frame.await_args_list
+        if hasattr(call.args[0], "text")
+    ]
+    assert any("Скажи: гава так, або гава ні" in t for t in pushed_texts), (
+        f"expected reprompt TTS not found; got: {pushed_texts}"
+    )
+    assert decider.state == DeciderState.AWAITING_CONFIRMATION, (
+        "state must remain AWAITING_CONFIRMATION after stranger rejection"
+    )
+
+
+async def test_owner_drift_confirmation_fails_with_speaker_id_enabled(harness) -> None:
+    """Armed with pending_speaker_id='owner', drifted owner (speaker_id=None) confirms.
+
+    When speaker_id_enabled=True, AND-logic requires non-None speaker match — rejected.
+    """
+    store, settings, ctx = harness
+    settings.speaker_id_enabled = True
+    settings.speaker_command_keyword_required = True
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+
+    # Manually arm the decider as if owner issued a command
+    decider.state = DeciderState.AWAITING_CONFIRMATION
+    decider.pending_action = {"type": "act", "intent": "test", "action": "test"}
+    decider.pending_speaker_id = "owner"
+    decider.confirmation_deadline = time.monotonic() + 30
+
+    # Drifted owner: speaker_id=None (below threshold), but says keyword
+    await decider._handle_confirmation(
+        "гава так", speaker_id=None, speaker_inherited=False
+    )
+
+    pushed_texts = [
+        call.args[0].text
+        for call in decider.push_frame.await_args_list
+        if hasattr(call.args[0], "text")
+    ]
+    assert any("Скажи: гава так, або гава ні" in t for t in pushed_texts), (
+        f"expected reprompt TTS not found; got: {pushed_texts}"
+    )
+    assert decider.state == DeciderState.AWAITING_CONFIRMATION, (
+        "state must remain AWAITING_CONFIRMATION after drifted-owner rejection"
+    )

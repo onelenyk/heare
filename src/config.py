@@ -65,6 +65,8 @@ class Settings:
     speaker_id_ema_alpha: float = 0.1
     speaker_id_auto_enroll_after: int = 3
     speaker_id_auto_enroll_enabled: bool = False
+    speaker_command_keyword_required: bool = True
+    command_keyword_pattern: str = r"\b(гава|heare|гей)\b"
     speakers_file: Path = field(default_factory=lambda: HEARE_HOME / "speakers.json")
 
     def ensure_dirs(self) -> None:

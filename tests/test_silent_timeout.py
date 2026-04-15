@@ -89,7 +89,7 @@ async def test_yes_cancels_timeout_task(harness) -> None:
     await decider._handle_listening("Гава, запусти тести")
     timeout_task = decider._timeout_task
     assert timeout_task is not None
-    await decider._handle_confirmation("так")
+    await decider._handle_confirmation("гава так")
     assert decider.state == DeciderState.LISTENING
     cli.call_action.assert_awaited()
     await _drain(timeout_task)
@@ -104,7 +104,7 @@ async def test_no_cancels_timeout_task(harness) -> None:
 
     await decider._handle_listening("Гава, запусти тести")
     timeout_task = decider._timeout_task
-    await decider._handle_confirmation("ні")
+    await decider._handle_confirmation("гава ні")
     assert decider.state == DeciderState.LISTENING
     cli.call_action.assert_not_awaited()
     assert timeout_task is not None

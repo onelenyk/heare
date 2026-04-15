@@ -150,16 +150,18 @@ async def _run_turn_through_pipeline(
     return frame
 
 
-async def test_stranger_in_listening_never_reaches_decider(rig) -> None:
-    """Scenario 1: stranger speaks while decider is LISTENING.
+async def test_stranger_in_listening_act_gated_no_keyword(rig) -> None:
+    """Scenario 1: stranger speaks while decider is LISTENING, no command keyword.
 
-    With flag on and stranger's embedding orthogonal to owner, the tagger
-    attaches speaker_id=None. The decider's non-owner filter drops the
-    transcript before it reaches Claude — no EXECUTING transition, no
-    TTS push, transcript persisted with speaker_id=None for audit.
+    KW-3: hard non-owner gate removed. The transcript reaches Claude, but the
+    keyword gate blocks the act decision because the transcript lacks the
+    command keyword. No EXECUTING transition, state stays LISTENING, transcript
+    persisted with speaker_id=None for audit.
     """
     rig["state"]["next_vector"] = _stranger_vec()
-    frame = await _run_turn_through_pipeline(rig, "Гава, видали файл")
+    # Transcript with question word (bypasses quick-nothing filter) but no command keyword
+    # (no гава/heare/гей) — keyword gate will drop the act decision
+    frame = await _run_turn_through_pipeline(rig, "що там з файлами?")
     # Tagger identified this turn as non-owner (orthogonal to owner centroid)
     assert frame.speaker_id is None
     assert frame.speaker_confidence < 0.75
@@ -171,8 +173,8 @@ async def test_stranger_in_listening_never_reaches_decider(rig) -> None:
         speaker_id=frame.speaker_id,
         speaker_confidence=frame.speaker_confidence,
     )
-    # Decider must NOT have called Claude and must NOT have transitioned
-    assert rig["cli"].calls == []
+    # KW-3: Claude IS called (hard gate removed), but act is dropped by keyword gate
+    assert len(rig["cli"].calls) == 1
     assert decider.state == DeciderState.LISTENING
     # Audit trail: the transcript was stored with speaker_id=None
     recent = await rig["store"].recent_transcripts(5)

@@ -67,6 +67,7 @@ FIXED_PHRASES: list[str] = [
     "nevermind, cancelled",
     "Скажи: так чи ні?",
     "дія не вдалася",
+    "Скажи: гава так, або гава ні",
 ]
 
 # Wake words that signal "user is talking TO Heare"
@@ -159,51 +160,77 @@ def is_quick_nothing(transcript: str, mode: Mode) -> bool:
     return False
 
 
-YES_PATTERNS = [
-    r"\bтак\b",
-    r"\bда\b",
-    r"\bага\b",
-    r"\bокей\b",
-    r"\bok\b",
-    r"\byes\b",
-    r"\byeah\b",
-    r"\bsure\b",
-    r"\bgo\b",
-    r"\bдавай\b",
-    r"\bзроби\b",
-    r"\bвперед\b",
-    r"\bконечно\b",
-    r"\bкрасава\b",
-    r"\bчому ні\b",
-]
+# Head-anchored yes/no parser — replaces the old YES_PATTERNS/NO_PATTERNS
+# substring-scan approach.
 
-NO_PATTERNS = [
-    r"\bні\b",
-    r"\bнет\b",
-    r"\bне треба\b",
-    r"\bне потрібно\b",
-    r"\bnevermind\b",
-    r"\bcancel\b",
-    r"\bstop\b",
-    r"\bskip\b",
-    r"\bно\b",
-    r"\babort\b",
-    r"\bне\b",
-    r"\bне зараз\b",
-]
+# Vocative prefix stripped before head-matching so "гава так" → "так".
+_VOCATIVES = re.compile(r"^\s*(гава|heare|гей)[\s,]+", re.IGNORECASE)
+
+_YES_HEAD = re.compile(
+    r"^(так|да|ага|окей|ok|yes|yeah|sure|go|давай|зроби|вперед|конечно|красава)\b",
+    re.IGNORECASE,
+)
+_NO_HEAD = re.compile(
+    r"^(ні|нет|не|nevermind|cancel|stop|skip|no|abort)\b",
+    re.IGNORECASE,
+)
+# "так не роби", "давай не зараз" — YES token immediately followed by "не" inverts to NO.
+_YES_THEN_NE = re.compile(
+    r"^(так|да|ok|yes|давай|ага|окей)\s+не\b", re.IGNORECASE
+)
+# "не треба", "не потрібно", "не зараз" — tail negation after YES head → NO.
+_NEGATION_TAIL = re.compile(
+    r"\bне\s+(треба|потрібно|зараз|роби|хочу|робимо)\b", re.IGNORECASE
+)
+
+MAX_YES_NO_WORDS = 4  # utterances longer than this are dialogue, not confirmations
 
 
 def parse_yes_no(text: str) -> str:
-    lowered = text.strip().lower()
-    if not lowered:
+    """Return 'yes', 'no', or 'unclear'.
+
+    Head-anchored: the utterance must START with a yes/no token (after
+    optional vocative strip). Beyond MAX_YES_NO_WORDS words → 'unclear'.
+    """
+    raw = text.strip().lower()
+    if not raw:
         return "unclear"
-    for pat in YES_PATTERNS:
-        if re.search(pat, lowered):
-            return "yes"
-    for pat in NO_PATTERNS:
-        if re.search(pat, lowered):
+    # Strip leading vocative so "гава так" → "так", "гава, ні" → "ні"
+    cleaned = _VOCATIVES.sub("", raw)
+    # Normalise punctuation and whitespace
+    cleaned = re.sub(r"[\.,\!\?]+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if not cleaned:
+        return "unclear"
+    words = cleaned.split()
+    if len(words) > MAX_YES_NO_WORDS:
+        return "unclear"
+    # Lone "не"
+    if cleaned == "не":
+        return "no"
+    # NO head wins unconditionally
+    if _NO_HEAD.match(cleaned):
+        return "no"
+    # YES head + negation inversion
+    if _YES_HEAD.match(cleaned):
+        if _YES_THEN_NE.match(cleaned):
             return "no"
+        if _NEGATION_TAIL.search(cleaned):
+            return "no"
+        return "yes"
     return "unclear"
+
+
+def _keyword_is_adjacent_prefix(
+    transcript: str, keyword_re: re.Pattern, n: int = 3
+) -> bool:
+    """Return True if keyword_re matches within the first n tokens of transcript.
+
+    This prevents ambient 'гава' later in a sentence from being treated as
+    a valid confirmation keyword — the keyword must be up front.
+    """
+    words = transcript.strip().lower().split()[:n]
+    return bool(keyword_re.search(" ".join(words)))
 
 
 _decider_cls = None
@@ -264,6 +291,9 @@ def _build_decider_processor_class():
             self._speculative_task: asyncio.Task | None = None
             self._speculative_started_at: float | None = None
             self._speculative_stale_after_seconds: float = 5.0
+            self._command_keyword_re: re.Pattern = re.compile(
+                self.settings.command_keyword_pattern, re.IGNORECASE
+            )
 
         def _begin_speculative_context(self) -> None:
             """Kick off async context + prompt build while user is still speaking."""
@@ -388,13 +418,15 @@ def _build_decider_processor_class():
                 except (asyncio.CancelledError, asyncio.TimeoutError):
                     pass
 
-        async def _prompt_for_transcript(self, transcript: str) -> str:
+        async def _prompt_for_transcript(
+            self, transcript: str, speaker_id: str | None = None
+        ) -> str:
             """Build the final decider prompt for a transcript.
 
             LAT-B4: if speculative context is available and not stale, reuse it
             by substituting {transcript_or_heartbeat}.
             SPK-005: also substitute {speaker_rule_block} with the real rule
-            block computed from the current flag state.
+            block computed from the current flag state and speaker_id.
             """
             if (
                 self._speculative_task is not None
@@ -412,7 +444,7 @@ def _build_decider_processor_class():
                 self._speculative_prompt is not None
                 and not self._is_speculative_stale()
             ):
-                rule_block = self.context_builder._render_rule_block()
+                rule_block = self.context_builder._render_rule_block(speaker_id=speaker_id)
                 prompt = self._speculative_prompt.replace(
                     "{transcript_or_heartbeat}", transcript, 1
                 ).replace(
@@ -422,7 +454,9 @@ def _build_decider_processor_class():
                 return prompt
             # Fallback: build from scratch
             self._clear_speculative()
-            ctx = await self.context_builder.build(transcript, heartbeat=False)
+            ctx = await self.context_builder.build(
+                transcript, heartbeat=False, speaker_id=speaker_id
+            )
             return self.context_builder.render(self.decider_prompt_template, ctx)
 
         def _reload_mode(self) -> None:
@@ -517,21 +551,6 @@ def _build_decider_processor_class():
             speaker_id: str | None = None,
             speaker_confidence: float | None = None,
         ) -> None:
-            # Non-owner filter (Phase 1 closes the confirmation spoof):
-            # when the feature is enabled, non-owner transcripts are stored
-            # but never reach Claude — no decider call, no possibility of
-            # transitioning to EXECUTING.
-            if self.settings.speaker_id_enabled and speaker_id != "owner":
-                logger.info(
-                    "[DECIDER] non-owner utterance dropped: sid=%s", speaker_id
-                )
-                await self.store.log_transcript(
-                    transcript,
-                    self.settings.mode.value,
-                    speaker_id=speaker_id,
-                    speaker_confidence=speaker_confidence,
-                )
-                return
             if is_noise(transcript):
                 logger.debug("noise filter dropped transcript: %r", transcript[:40])
                 await self.store.log_transcript(
@@ -559,7 +578,7 @@ def _build_decider_processor_class():
                 speaker_id=speaker_id,
                 speaker_confidence=speaker_confidence,
             )
-            prompt = await self._prompt_for_transcript(transcript)
+            prompt = await self._prompt_for_transcript(transcript, speaker_id=speaker_id)
             t_pre = time.monotonic()
             self._safe_emit(
                 EventKind.DECIDER_START,
@@ -600,6 +619,20 @@ def _build_decider_processor_class():
                     await self.push_frame(TTSSpeakFrame(reply))
                 return
             if d_type == "act":
+                # Keyword gate: act decisions require the command keyword in transcript
+                if self.settings.speaker_command_keyword_required:
+                    if not self._command_keyword_re.search(transcript):
+                        logger.info(
+                            "[DECIDER] act dropped — no command keyword: %r",
+                            transcript[:60],
+                        )
+                        self._safe_emit(
+                            EventKind.DECIDER_DROPPED_NO_KEYWORD,
+                            transcript_id=transcript_id,
+                            decision_id=decision_id,
+                            payload={"speaker_id": speaker_id},
+                        )
+                        return
                 confidence = decision.get("confidence", 0.0) or 0.0
                 if confidence < self.settings.min_action_confidence:
                     logger.info("action below confidence floor, dropping")
@@ -690,25 +723,8 @@ def _build_decider_processor_class():
                 self.settings.mode.value,
                 speaker_id=speaker_id,
             )
-            # Short-turn fail-closed: inherited labels are NEVER trusted in
-            # AWAITING_CONFIRMATION — a 350 ms "так" from a stranger right
-            # after an owner utterance would inherit owner's id and pass
-            # otherwise. See plan §4 short-turn fail-closed.
-            if self.settings.speaker_id_enabled and speaker_inherited:
-                logger.warning(
-                    "ignoring inherited-label confirmation, pending was %s",
-                    self.pending_speaker_id,
-                )
-                await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
-                return
-            if self.settings.speaker_id_enabled and speaker_id != self.pending_speaker_id:
-                logger.warning(
-                    "speaker mismatch on confirmation: got %s, expected %s",
-                    speaker_id,
-                    self.pending_speaker_id,
-                )
-                await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
-                return
+            # Parse first — if it's not a yes/no, reprompt immediately regardless
+            # of speaker/keyword authorization.
             verdict = parse_yes_no(transcript)
             if verdict == "unclear":
                 self._safe_emit(
@@ -717,6 +733,36 @@ def _build_decider_processor_class():
                 )
                 await self.push_frame(TTSSpeakFrame("Скажи: так чи ні?"))
                 return
+
+            # Authorization: require BOTH keyword adjacency AND speaker match.
+            # Inherited short-turn labels NEVER count as same-speaker.
+            # When speaker_id_enabled=False, keyword alone is sufficient.
+            if self.settings.speaker_command_keyword_required:
+                has_keyword = _keyword_is_adjacent_prefix(
+                    transcript, self._command_keyword_re
+                )
+                if self.settings.speaker_id_enabled:
+                    is_same_speaker = (
+                        not speaker_inherited
+                        and speaker_id is not None
+                        and speaker_id == self.pending_speaker_id
+                    )
+                    authorized = has_keyword and is_same_speaker
+                else:
+                    # No speaker pipeline — keyword alone gates confirmation
+                    authorized = has_keyword
+
+                if not authorized:
+                    logger.warning(
+                        "confirmation rejected — keyword=%s speaker=%s pending=%s inherited=%s",
+                        has_keyword,
+                        speaker_id,
+                        self.pending_speaker_id,
+                        speaker_inherited,
+                    )
+                    await self.push_frame(TTSSpeakFrame("Скажи: гава так, або гава ні"))
+                    return
+
             if verdict == "no":
                 self._safe_emit(
                     EventKind.ACTION_CANCELLED,

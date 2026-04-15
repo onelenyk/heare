@@ -42,10 +42,25 @@ def test_yes_variants(text: str) -> None:
         "skip",
         "abort",
         "не зараз",
+        "не так",
+        "так не роби",
+        "гава, ні",
+        "гава, не треба",
+        "давай не зараз",
     ],
 )
 def test_no_variants(text: str) -> None:
     assert parse_yes_no(text) == "no"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "гава так",
+    ],
+)
+def test_yes_vocative(text: str) -> None:
+    assert parse_yes_no(text) == "yes"
 
 
 @pytest.mark.parametrize(
@@ -57,7 +72,10 @@ def test_no_variants(text: str) -> None:
         "я не знаю",
         "maybe later actually",
         "розкажи детальніше",
+        "розкажи детальніше як запустити тести",
+        "я не знаю",
+        "можливо",
     ],
 )
 def test_unclear(text: str) -> None:
-    assert parse_yes_no(text) in {"unclear", "yes", "no"}
+    assert parse_yes_no(text) == "unclear"

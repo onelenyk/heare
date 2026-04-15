@@ -19,6 +19,7 @@ class EventKind(StrEnum):
     DECIDER_START = "decider.start"
     DECIDER_DONE = "decider.done"
     DECIDER_DROPPED_LOW_CONF = "decider.dropped_low_conf"
+    DECIDER_DROPPED_NO_KEYWORD = "decider.dropped_no_keyword"
     ACTION_ARMED = "action.armed"
     ACTION_CONFIRMED = "action.confirmed"
     ACTION_CANCELLED = "action.cancelled"

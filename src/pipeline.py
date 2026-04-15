@@ -102,7 +102,8 @@ async def build_pipeline(
         if "owner" not in gallery.list_speakers():
             logger.warning(
                 "speaker_id_enabled but no owner enrolled in %s — "
-                "run `heare enroll-owner` first. Disabling speaker-id for this run.",
+                "run `heare enroll-owner` to enable speaker identification. "
+                "Commands still work via keyword gate.",
                 settings.speakers_file,
             )
         else:
