@@ -14,7 +14,7 @@ from .config import DeciderState, Mode, Settings
 from .storage import EventKind
 
 if TYPE_CHECKING:
-    from .claude_cli import ClaudeCLI
+    from .claude_backend_common import ClaudeBackend
     from .context import ContextBuilder
     from .storage import TranscriptStore
 
@@ -68,6 +68,7 @@ FIXED_PHRASES: list[str] = [
     "Скажи: так чи ні?",
     "дія не вдалася",
     "Скажи: гава так, або гава ні",
+    "Скажи пароль, або гава ні",
 ]
 
 # Wake words that signal "user is talking TO Heare"
@@ -233,6 +234,32 @@ def _keyword_is_adjacent_prefix(
     return bool(keyword_re.search(" ".join(words)))
 
 
+def _redact_passphrase(transcript: str, passphrase: str | None) -> str:
+    """Return transcript with every case-insensitive occurrence of passphrase
+    replaced by '***'. Returns input unchanged when passphrase is None/empty.
+    Keeps the shared secret out of SQLite transcript logs.
+    """
+    if not passphrase:
+        return transcript
+    phrase = passphrase.strip().lower()
+    if not phrase:
+        return transcript
+    lower_t = transcript.lower()
+    idx = lower_t.find(phrase)
+    if idx == -1:
+        return transcript
+    parts: list[str] = []
+    cursor = 0
+    plen = len(phrase)
+    while idx != -1:
+        parts.append(transcript[cursor:idx])
+        parts.append("***")
+        cursor = idx + plen
+        idx = lower_t.find(phrase, cursor)
+    parts.append(transcript[cursor:])
+    return "".join(parts)
+
+
 _decider_cls = None
 
 
@@ -255,7 +282,7 @@ def _build_decider_processor_class():
     class DeciderProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
         def __init__(
             self,
-            claude_cli: "ClaudeCLI",
+            claude_cli: "ClaudeBackend",
             store: "TranscriptStore",
             context_builder: "ContextBuilder",
             settings: Settings,
@@ -718,11 +745,46 @@ def _build_decider_processor_class():
             speaker_id: str | None = None,
             speaker_inherited: bool = False,
         ) -> None:
+            redacted_transcript = _redact_passphrase(
+                transcript, self.settings.confirmation_passphrase
+            )
             await self.store.log_transcript(
-                transcript,
+                redacted_transcript,
                 self.settings.mode.value,
                 speaker_id=speaker_id,
             )
+            # Additive passphrase gate. Runs BEFORE parse_yes_no.
+            # Early-returns only on match (execute or stranger-reject).
+            # On no match falls through so "гава так" still works.
+            if self.settings.confirmation_passphrase:
+                passphrase = self.settings.confirmation_passphrase.strip().lower()
+                has_keyword = _keyword_is_adjacent_prefix(
+                    transcript, self._command_keyword_re
+                )
+                if passphrase and has_keyword and passphrase in transcript.strip().lower():
+                    stranger_positively_identified = (
+                        self.settings.speaker_id_enabled
+                        and not speaker_inherited
+                        and speaker_id is not None
+                        and speaker_id != self.pending_speaker_id
+                    )
+                    if stranger_positively_identified:
+                        logger.info(
+                            "passphrase matched but speaker-id is stranger; rejecting"
+                        )
+                        await self.push_frame(
+                            TTSSpeakFrame("Скажи пароль, або гава ні")
+                        )
+                        return
+                    logger.info("confirmation via passphrase")
+                    self._safe_emit(
+                        EventKind.ACTION_CONFIRMED,
+                        decision_id=self.pending_decision_id,
+                    )
+                    await self._execute_pending()
+                    return
+                # No match — fall through to existing yes/no + speaker-id flow.
+
             # Parse first — if it's not a yes/no, reprompt immediately regardless
             # of speaker/keyword authorization.
             verdict = parse_yes_no(transcript)
@@ -875,7 +937,7 @@ def _build_decider_processor_class():
 
 
 def create_decider_processor(
-    claude_cli: "ClaudeCLI",
+    claude_cli: "ClaudeBackend",
     store: "TranscriptStore",
     context_builder: "ContextBuilder",
     settings: Settings,

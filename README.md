@@ -69,6 +69,24 @@ brew install portaudio
 uv sync --extra local
 ```
 
+## Configuration
+
+Optional settings in `~/.heare/config.toml`:
+
+```toml
+# Use the persistent claude-agent-sdk backend instead of spawning
+# a new `claude -p` subprocess per call (~500-800 ms saved per tick).
+# Requires: pip install claude-agent-sdk (included in uv sync)
+use_agent_sdk = true
+
+# Override the Claude Code CLI path used by the SDK backend.
+# Defaults to whatever `claude` resolves to on $PATH.
+# claude_sdk_cli_path = "/usr/local/bin/claude"
+```
+
+All other settings (mode, voice, timeouts, speaker recognition, etc.) are
+documented as inline comments in `src/config.py`.
+
 ## Run
 
 First start bootstraps both the Claude Code session and heare's persona.

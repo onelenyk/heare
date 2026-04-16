@@ -173,10 +173,23 @@ class TranscriptStore:
         speaker_id: str | None = None,
         speaker_confidence: float | None = None,
     ) -> int:
+        now = time.time()
+        # Deduplication: ignore identical transcript text within 2 seconds.
+        # Prevents duplicates when Groq STT sends multiple TranscriptionFrame
+        # objects for the same utterance.
+        cursor = await self.db.execute(
+            "SELECT id FROM transcripts WHERE text = ? AND ts > ? ORDER BY ts DESC LIMIT 1",
+            (text, now - 2.0),
+        )
+        row = await cursor.fetchone()
+        if row is not None:
+            logger.debug("dedup: ignoring duplicate transcript %r", text[:40])
+            return row[0]
+
         cursor = await self.db.execute(
             "INSERT INTO transcripts (ts, text, mode, speaker_id, speaker_confidence)"
             " VALUES (?, ?, ?, ?, ?)",
-            (time.time(), text, mode, speaker_id, speaker_confidence),
+            (now, text, mode, speaker_id, speaker_confidence),
         )
         await self.db.commit()
         assert cursor.lastrowid is not None

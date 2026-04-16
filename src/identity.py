@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
-    from .claude_cli import ClaudeCLI
+    from .claude_backend_common import ClaudeBackend
     from .config import Settings
 
 
@@ -54,7 +54,7 @@ def load_identity(path: Path) -> Identity | None:
         return None
 
 
-async def ensure_identity(claude_cli: "ClaudeCLI", settings: "Settings") -> Identity:
+async def ensure_identity(claude_cli: "ClaudeBackend", settings: "Settings") -> Identity:
     existing = load_identity(settings.identity_file)
     if existing is not None:
         return existing

@@ -101,6 +101,51 @@ def test_speaker_id_defaults() -> None:
     assert s.speakers_file.name == "speakers.json"
 
 
+def test_wake_word_default() -> None:
+    s = Settings()
+    assert s.wake_word == "гава"
+
+
+def test_wake_word_custom(monkeypatch, tmp_path) -> None:
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('wake_word = "Хара"\n')
+    s = load_settings()
+    assert s.wake_word == "Хара"
+
+
+def test_confirmation_passphrase_default() -> None:
+    s = Settings()
+    assert s.confirmation_passphrase is None
+
+
+def test_confirmation_passphrase_custom(monkeypatch, tmp_path) -> None:
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('confirmation_passphrase = "авторизую"\n')
+    s = load_settings()
+    assert s.confirmation_passphrase == "авторизую"
+
+
+def test_proactivity_level_default() -> None:
+    s = Settings()
+    assert s.proactivity_level == "medium"
+
+
+def test_proactivity_level_custom(monkeypatch, tmp_path) -> None:
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('proactivity_level = "high"\n')
+    s = load_settings()
+    assert s.proactivity_level == "high"
+
+
 def test_ensure_dirs_creates_directories(tmp_path) -> None:
     s = Settings()
     s.workspace_dir = tmp_path / "workspace"

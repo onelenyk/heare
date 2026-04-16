@@ -38,6 +38,8 @@ class ContextBuilder:
             "recent_transcripts": self._format_recent(recent),
             "transcript_or_heartbeat": self._format_input(transcript, heartbeat),
             "speaker_rule_block": self._render_rule_block(speaker_id=speaker_id),
+            "silence_block": self._render_silence_block(recent, now.timestamp()),
+            "proactivity_block": self._render_proactivity_block(),
         }
         # Speculative-path support: if a caller asks for a placeholder to
         # remain literal (so it can be substituted later with a real value),
@@ -47,13 +49,34 @@ class ContextBuilder:
             ctx[key] = "{" + key + "}"
         return ctx
 
+    def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:
+        """Return a one-line context note about how long the room has been quiet."""
+        if not recent:
+            return ""
+        last_ts = recent[-1]["ts"]
+        silence_s = max(0, int(now_ts - last_ts))
+        active = silence_s < 300
+        return (
+            f"Silence since last utterance: {silence_s}s. "
+            f"Conversation active: {'yes' if active else 'no'}."
+        )
+
+    def _render_proactivity_block(self) -> str:
+        """Return a prompt override based on proactivity_level setting."""
+        level = self.settings.proactivity_level
+        if level == "low":
+            return "PROACTIVITY OVERRIDE: reserved — stay quiet unless clearly helpful.\n"
+        if level == "high":
+            return "PROACTIVITY OVERRIDE: high — be very engaged, initiate topics, ask follow-ups freely.\n"
+        return ""  # medium: prompt defaults apply, no override needed
+
     def _render_rule_block(self, speaker_id: str | None = None) -> str:
         if not self.settings.speaker_id_enabled:
             return ""
         if speaker_id == "owner":
             return "Speaker: owner (high confidence)"
         if speaker_id is None:
-            return "Speaker: unknown (could be owner with voice drift, a guest, or background audio)"
+            return "Speaker: likely owner (utterance below ID threshold — treat as owner)"
         return f"Speaker: {speaker_id} (not owner)"
 
     def _format_recent(self, rows: list[dict[str, Any]]) -> str:

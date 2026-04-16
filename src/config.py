@@ -5,11 +5,14 @@ hot-reloaded without restarting the daemon.
 """
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+
+logger = logging.getLogger("heare.config")
 
 
 class Mode(str, Enum):
@@ -66,8 +69,19 @@ class Settings:
     speaker_id_auto_enroll_after: int = 3
     speaker_id_auto_enroll_enabled: bool = False
     speaker_command_keyword_required: bool = True
+    # Optional shared-secret phrase. When non-empty, saying
+    # `<wake-word> <passphrase>` confirms a pending action. Additive —
+    # the existing yes/no + speaker-id flow still works. Never logged.
+    confirmation_passphrase: str | None = None
+    # Wake word / command keyword. Set via config.toml or onboarding. Default is "гава".
+    wake_word: str = "гава"
+    # Proactivity level for ambient mode: "low" | "medium" | "high"
+    # medium = prompt defaults; low = reserved; high = very engaged.
+    proactivity_level: str = "medium"
     command_keyword_pattern: str = r"\b(гава|heare|гей)\b"
     speakers_file: Path = field(default_factory=lambda: HEARE_HOME / "speakers.json")
+    use_agent_sdk: bool = False
+    claude_sdk_cli_path: str | None = None
 
     def ensure_dirs(self) -> None:
         for p in (self.workspace_dir, self.log_dir, HEARE_HOME):
@@ -93,6 +107,28 @@ def load_settings() -> Settings:
             elif isinstance(current, Mode):
                 value = Mode(value)
             setattr(settings, key, value)
+
+    # Build command_keyword_pattern from wake_word if the user customized it
+    if settings.wake_word != "гава":
+        import re
+        escaped = re.escape(settings.wake_word)
+        settings.command_keyword_pattern = rf"\b({escaped})\b"
+
+    if settings.confirmation_passphrase is not None:
+        if not isinstance(settings.confirmation_passphrase, str):
+            logger.warning(
+                "confirmation_passphrase must be a string; ignoring (got %s)",
+                type(settings.confirmation_passphrase).__name__,
+            )
+            settings.confirmation_passphrase = None
+        else:
+            phrase = settings.confirmation_passphrase.strip()
+            if phrase and len(phrase) < 5:
+                logger.warning(
+                    "confirmation_passphrase is very short (len=%d); "
+                    "recommend 5+ chars / 2+ words to avoid STT false-positives",
+                    len(phrase),
+                )
 
     settings.groq_api_key = os.environ.get("GROQ_API_KEY")
 

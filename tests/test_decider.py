@@ -1173,6 +1173,8 @@ async def test_decider_import_does_not_break_flag_off_render(harness) -> None:
         "recent_transcripts": "(none)",
         "transcript_or_heartbeat": "тест",
         "speaker_rule_block": builder._render_rule_block(),
+        "silence_block": "",
+        "proactivity_block": "",
     }
     template = _Path("prompts/decider.txt").read_text()
     rendered = builder.render(template, fixed_ctx)
@@ -1323,3 +1325,149 @@ async def test_owner_drift_confirmation_fails_with_speaker_id_enabled(harness) -
     assert decider.state == DeciderState.AWAITING_CONFIRMATION, (
         "state must remain AWAITING_CONFIRMATION after drifted-owner rejection"
     )
+
+
+# ---------------------------------------------------------------------------
+# Confirmation passphrase tests
+# ---------------------------------------------------------------------------
+
+
+def _arm_decider(decider, speaker_id: str = "owner") -> None:
+    """Put decider into AWAITING_CONFIRMATION as if owner issued a command."""
+    decider.state = DeciderState.AWAITING_CONFIRMATION
+    decider.pending_action = {"type": "act", "intent": "test", "action": "test"}
+    decider.pending_speaker_id = speaker_id
+    decider.confirmation_deadline = time.monotonic() + 30
+
+
+@pytest.mark.asyncio
+async def test_passphrase_executes(harness) -> None:
+    """keyword + passphrase + unknown speaker → execute (graceful degrade)."""
+    store, settings, ctx = harness
+    settings.confirmation_passphrase = "авторизую"
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    _arm_decider(decider)
+
+    await decider._handle_confirmation(
+        "гава авторизую", speaker_id=None, speaker_inherited=False
+    )
+
+    cli.call_action.assert_awaited()
+    assert decider.state == DeciderState.LISTENING
+    assert decider.pending_action is None
+
+
+@pytest.mark.asyncio
+async def test_passphrase_stranger_rejected(harness) -> None:
+    """keyword + passphrase + positively-identified stranger → reprompt, no execute."""
+    store, settings, ctx = harness
+    settings.speaker_id_enabled = True
+    settings.confirmation_passphrase = "авторизую"
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    _arm_decider(decider, speaker_id="owner")
+
+    await decider._handle_confirmation(
+        "гава авторизую", speaker_id="stranger_01", speaker_inherited=False
+    )
+
+    cli.call_action.assert_not_awaited()
+    assert decider.state == DeciderState.AWAITING_CONFIRMATION
+    pushed_texts = [
+        call.args[0].text
+        for call in decider.push_frame.await_args_list
+        if hasattr(call.args[0], "text")
+    ]
+    assert any("Скажи пароль, або гава ні" in t for t in pushed_texts), (
+        f"expected passphrase-reject TTS not found; got: {pushed_texts}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_passphrase_unknown_speaker_executes(harness) -> None:
+    """keyword + passphrase + speaker_id=None (short utterance) → execute (graceful degrade)."""
+    store, settings, ctx = harness
+    settings.speaker_id_enabled = True
+    settings.confirmation_passphrase = "авторизую"
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    _arm_decider(decider, speaker_id="owner")
+
+    await decider._handle_confirmation(
+        "гава авторизую", speaker_id=None, speaker_inherited=False
+    )
+
+    cli.call_action.assert_awaited()
+    assert decider.state == DeciderState.LISTENING
+
+
+@pytest.mark.asyncio
+async def test_passphrase_fallthrough_to_tak(harness) -> None:
+    """Passphrase configured but transcript has keyword+так → falls through to yes/no path."""
+    store, settings, ctx = harness
+    settings.confirmation_passphrase = "авторизую"
+    settings.speaker_id_enabled = False
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    _arm_decider(decider)
+
+    await decider._handle_confirmation(
+        "гава так", speaker_id=None, speaker_inherited=False
+    )
+
+    # "гава так" hits the existing yes/no path and executes
+    cli.call_action.assert_awaited()
+    assert decider.state == DeciderState.LISTENING
+
+
+@pytest.mark.asyncio
+async def test_passphrase_no_keyword_fallthrough(harness) -> None:
+    """Passphrase present in transcript but no keyword → falls through; parse_yes_no
+    returns 'unclear' for an unknown word → existing 'Скажи: так чи ні?' reprompt."""
+    store, settings, ctx = harness
+    settings.confirmation_passphrase = "авторизую"
+    settings.speaker_id_enabled = False
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    _arm_decider(decider)
+
+    # Passphrase without wake word — no keyword match
+    await decider._handle_confirmation(
+        "авторизую", speaker_id=None, speaker_inherited=False
+    )
+
+    cli.call_action.assert_not_awaited()
+    assert decider.state == DeciderState.AWAITING_CONFIRMATION
+    pushed_texts = [
+        call.args[0].text
+        for call in decider.push_frame.await_args_list
+        if hasattr(call.args[0], "text")
+    ]
+    assert any("Скажи: так чи ні?" in t for t in pushed_texts), (
+        f"expected 'Скажи: так чи ні?' reprompt not found; got: {pushed_texts}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_passphrase_none_unchanged(harness) -> None:
+    """confirmation_passphrase=None → passphrase branch dormant; existing path works."""
+    store, settings, ctx = harness
+    settings.confirmation_passphrase = None
+    settings.speaker_id_enabled = False
+    cli = FakeClaudeCLI([])
+    decider = create_decider_processor(cli, store, ctx, settings, "prompt {mode}")
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+    _arm_decider(decider)
+
+    await decider._handle_confirmation(
+        "гава так", speaker_id=None, speaker_inherited=False
+    )
+
+    cli.call_action.assert_awaited()
+    assert decider.state == DeciderState.LISTENING

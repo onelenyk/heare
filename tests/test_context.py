@@ -35,6 +35,8 @@ async def test_build_shape_on_transcript(store: TranscriptStore) -> None:
         "recent_transcripts",
         "transcript_or_heartbeat",
         "speaker_rule_block",
+        "silence_block",
+        "proactivity_block",
     }
     assert result["heartbeat_flag"] == "no"
     assert "привіт" in result["transcript_or_heartbeat"]
@@ -78,9 +80,9 @@ async def test_render_real_decider_template(store: TranscriptStore) -> None:
 
 
 def test_decider_prompt_has_length_constraints() -> None:
-    """LAT-B2: prompt must enforce MAX 8 words reply and MAX 5 words intent."""
+    """LAT-B2: prompt must enforce reply word limit and MAX 5 words intent."""
     template = Path(__file__).parent.parent.joinpath("prompts", "decider.txt").read_text()
-    assert "MAX 8 words" in template, "reply length constraint missing"
+    assert "MAX 15 words" in template, "reply length constraint missing"
     assert "MAX 5 words" in template, "intent length constraint missing"
 
 
@@ -112,9 +114,9 @@ async def test_build_returns_speaker_rule_block_when_flag_on(
     settings = load_settings()
     settings.speaker_id_enabled = True
     ctx = ContextBuilder(store, settings)
-    # No speaker_id → unknown speaker path
+    # No speaker_id → likely owner path (below ID threshold)
     result = await ctx.build("x", heartbeat=False)
-    assert "Speaker: unknown" in result["speaker_rule_block"]
+    assert "Speaker: likely owner" in result["speaker_rule_block"]
     # owner speaker_id → high confidence path
     result_owner = await ctx.build("x", heartbeat=False, speaker_id="owner")
     assert "Speaker: owner (high confidence)" in result_owner["speaker_rule_block"]
@@ -162,6 +164,8 @@ async def test_golden_string_flag_off_render(store: TranscriptStore) -> None:
         "recent_transcripts": "(none)",
         "transcript_or_heartbeat": "тест",
         "speaker_rule_block": ctx._render_rule_block(),
+        "silence_block": "",
+        "proactivity_block": "",
     }
     template = (
         Path(__file__).parent.parent.joinpath("prompts", "decider.txt").read_text()

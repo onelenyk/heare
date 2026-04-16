@@ -11,6 +11,14 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from .claude_backend_common import (
+    DECISION_KEY_MAP as _DKM,
+    DECISION_TYPE_MAP as _DTM,
+    extract_decision as _extract_decision_fn,
+    normalize_decision_keys as _normalize_decision_keys_fn,
+    parse_decider_response,
+    strip_markdown_fence as _strip_markdown_fence_fn,
+)
 from .rate_limit import RateLimiter
 
 if TYPE_CHECKING:
@@ -213,78 +221,37 @@ class ClaudeCLI:
             if isinstance(sid, str) and sid:
                 self._persist_session(sid)
 
+    async def __aenter__(self) -> "ClaudeCLI":
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        pass
+
     async def call_decider(self, prompt: str) -> dict[str, Any]:
         raw = await self._run(
             prompt, json_output=True, model=self.settings.claude_decider_model
         )
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning("decider returned non-JSON, treating as nothing: %s", raw[:200])
-            return {"type": "nothing", "reason": "malformed response (non-JSON)"}
-        decision = self._extract_decision(payload)
-        if not isinstance(decision, dict):
-            logger.warning("decider payload is not a dict, treating as nothing: %r", decision)
-            return {"type": "nothing", "reason": "malformed response (not a dict)"}
-        decision = self._normalize_decision_keys(decision)
-        if "type" not in decision:
-            logger.warning("decider response missing 'type' key: %r", decision)
-            decision["type"] = "nothing"
-        return decision
+        return parse_decider_response(raw)
 
-    # Short-key schema (saves output tokens):
-    # {"t":"n"} | {"t":"s","r":"reply"} | {"t":"a","c":0.9,"i":"intent","x":{...}}
-    _DECISION_KEY_MAP = {
-        "t": "type",
-        "r": "reply",
-        "c": "confidence",
-        "i": "intent",
-        "x": "action",
-    }
-    _DECISION_TYPE_MAP = {"n": "nothing", "s": "speak", "a": "act"}
-
-    @classmethod
-    def _normalize_decision_keys(cls, decision: dict[str, Any]) -> dict[str, Any]:
-        """Normalize short-key decider output to long-key form expected by callers.
-
-        Idempotent: long-key dicts pass through unchanged.
-        """
-        out: dict[str, Any] = {}
-        for k, v in decision.items():
-            out[cls._DECISION_KEY_MAP.get(k, k)] = v
-        if "type" in out and isinstance(out["type"], str):
-            out["type"] = cls._DECISION_TYPE_MAP.get(out["type"], out["type"])
-        return out
+    # Short-key schema aliases — kept for backward compatibility with existing tests
+    # that call ClaudeCLI._DECISION_KEY_MAP / _DECISION_TYPE_MAP directly.
+    _DECISION_KEY_MAP = _DKM
+    _DECISION_TYPE_MAP = _DTM
 
     @staticmethod
     def _strip_markdown_fence(text: str) -> str:
-        """Strip ```json ... ``` or ``` ... ``` wrappers that smaller models add."""
-        s = text.strip()
-        if not s.startswith("```"):
-            return s
-        # Drop opening fence (```json or ```)
-        first_nl = s.find("\n")
-        if first_nl == -1:
-            return s
-        s = s[first_nl + 1 :]
-        # Drop closing fence
-        if s.rstrip().endswith("```"):
-            s = s.rstrip()[:-3]
-        return s.strip()
+        """Alias to shared helper — kept so tests/test_claude_cli.py:208 still passes."""
+        return _strip_markdown_fence_fn(text)
+
+    @classmethod
+    def _normalize_decision_keys(cls, decision: dict[str, Any]) -> dict[str, Any]:
+        """Alias to shared helper — kept so tests/test_claude_cli.py:266 still passes."""
+        return _normalize_decision_keys_fn(decision)
 
     @classmethod
     def _extract_decision(cls, payload: Any) -> Any:
-        """Unwrap nested 'result' field from Claude JSON output format."""
-        if isinstance(payload, dict) and "result" in payload:
-            result = payload["result"]
-            if isinstance(result, str):
-                cleaned = cls._strip_markdown_fence(result)
-                try:
-                    return json.loads(cleaned)
-                except json.JSONDecodeError:
-                    return result
-            return result
-        return payload
+        """Alias to shared helper."""
+        return _extract_decision_fn(payload)
 
     async def call_action(
         self,

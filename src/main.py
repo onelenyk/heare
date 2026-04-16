@@ -14,8 +14,12 @@ import signal
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .config import Mode, load_settings
+
+if TYPE_CHECKING:
+    from .claude_backend_common import ClaudeBackend
 
 
 logger = logging.getLogger("heare.main")
@@ -78,7 +82,6 @@ def _ensure_workspace_mcp(workspace_dir: Path) -> None:
 async def _cmd_start(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
-    from .claude_cli import ClaudeCLI
     from .context import ContextBuilder
     from .heartbeat import HeartbeatTask, WarmupTask
     from .identity import ensure_identity, render_persona
@@ -91,54 +94,102 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     _setup_logging(settings.log_dir)
     _ensure_workspace_mcp(settings.workspace_dir)
 
+    # Prevent multiple daemon instances
+    if settings.pid_file.exists():
+        try:
+            existing_pid = int(settings.pid_file.read_text().strip())
+            # Check if process is still running
+            try:
+                os.kill(existing_pid, 0)  # Signal 0 doesn't kill, just checks existence
+                logger.error(
+                    "Daemon already running (PID %s). Stop it first with: heare stop",
+                    existing_pid,
+                )
+                print(f"❌ Error: Daemon already running (PID {existing_pid})")
+                print(f"   Stop it first: heare stop")
+                return 1
+            except OSError:
+                # Process not running, stale PID file
+                logger.info("Removing stale PID file %s", settings.pid_file)
+                settings.pid_file.unlink()
+        except (ValueError, OSError) as e:
+            logger.warning("Invalid PID file %s: %s. Removing.", settings.pid_file, e)
+            try:
+                settings.pid_file.unlink()
+            except OSError:
+                pass
+
     settings.pid_file.write_text(str(os.getpid()))
+
+    if settings.use_agent_sdk:
+        from .agent_sdk_cli import AgentSDKCLI
+        _backend: "ClaudeBackend" = AgentSDKCLI(settings)
+    else:
+        from .claude_cli import ClaudeCLI
+        _backend = ClaudeCLI(settings)
+
     store: TranscriptStore | None = None
     try:
         store = TranscriptStore(settings.db_path)
         await store.init()
         await store.purge_older_than(settings.transcript_retention_days)
 
-        claude_cli = ClaudeCLI(settings)
-        version = await claude_cli.version()
-        logger.info("claude CLI version: %s", version)
+        async with _backend as claude_cli:
+            version = await claude_cli.version()
+            logger.info("claude backend: %s", version)
 
-        identity = await ensure_identity(claude_cli, settings)
-        persona_template = (
-            Path(__file__).parent.parent / "prompts" / "persona.txt"
-        ).read_text()
-        claude_cli.persona = render_persona(persona_template, identity)
-        logger.info("I am %s %s", identity["name"], identity["emoji"])
+            identity = await ensure_identity(claude_cli, settings)
+            persona_template = (
+                Path(__file__).parent.parent / "prompts" / "persona.txt"
+            ).read_text()
+            claude_cli.persona = render_persona(persona_template, identity)
+            logger.info("I am %s %s", identity["name"], identity["emoji"])
 
-        context_builder = ContextBuilder(store, settings)
-        pipeline, decider, tts_cache = await build_pipeline(
-            settings, claude_cli, store, context_builder
-        )
-
-        # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play
-        # instantly. Failures are non-fatal — falls back to live TTS.
-        from .decider import FIXED_PHRASES
-        from .tts_edge import synthesize_to_pcm
-
-        try:
-            await tts_cache.warmup(
-                FIXED_PHRASES,
-                lambda text: synthesize_to_pcm(
-                    text, settings.tts_voice, settings.tts_sample_rate
-                ),
+            context_builder = ContextBuilder(store, settings)
+            pipeline, decider, tts_cache = await build_pipeline(
+                settings, claude_cli, store, context_builder
             )
-        except Exception as e:
-            logger.warning("TTS cache warmup failed (non-fatal): %s", e)
 
-        heartbeat = HeartbeatTask(decider, settings.heartbeat_interval_minutes)
-        warmup = WarmupTask(
-            voice=settings.tts_voice,
-            interval_seconds=settings.warmup_interval_seconds,
-        )
+            # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play
+            # instantly. Failures are non-fatal — falls back to live TTS.
+            from .decider import FIXED_PHRASES
+            from .tts_edge import synthesize_to_pcm
 
-        from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
+            try:
+                await tts_cache.warmup(
+                    FIXED_PHRASES,
+                    lambda text: synthesize_to_pcm(
+                        text, settings.tts_voice, settings.tts_sample_rate
+                    ),
+                )
+            except Exception as e:
+                logger.warning("TTS cache warmup failed (non-fatal): %s", e)
 
-        runner = PipelineRunner()
-        await run_until_stopped(runner, pipeline, heartbeat, warmup, decider=decider)
+            # Startup greeting — speak once to confirm daemon is alive
+            from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
+            greeting = f"{settings.wake_word} на зв'язку"
+            await decider.push_frame(TTSSpeakFrame(greeting))
+
+            # Onboarding: ask for confirmation passphrase if not set
+            from .config import HEARE_HOME  # noqa: E402
+            onboarding_flag = HEARE_HOME / ".onboarded"
+            if settings.confirmation_passphrase is None and not onboarding_flag.exists():
+                await decider.push_frame(
+                    TTSSpeakFrame("Привіт! Встанови секретне слово для підтвердження дій. Наприклад: авторизую.")
+                )
+                # Wait a moment for the user to respond, then continue
+                await asyncio.sleep(8)
+
+            heartbeat = HeartbeatTask(decider, settings.heartbeat_interval_minutes)
+            warmup = WarmupTask(
+                voice=settings.tts_voice,
+                interval_seconds=settings.warmup_interval_seconds,
+            )
+
+            from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
+
+            runner = PipelineRunner()
+            await run_until_stopped(runner, pipeline, heartbeat, warmup, decider=decider)
     finally:
         if store is not None:
             await store.close()
@@ -252,6 +303,40 @@ def _cmd_mode(args: argparse.Namespace) -> int:
     settings.mode_file.parent.mkdir(parents=True, exist_ok=True)
     settings.mode_file.write_text(mode.value)
     print(f"mode set to {mode.value}")
+    return 0
+
+
+def _cmd_set_wake_word(args: argparse.Namespace) -> int:
+    from .config import HEARE_HOME  # noqa: E402
+
+    settings = load_settings()
+    word = args.word.strip()
+    if not word:
+        print("passphrase cannot be empty")
+        return 1
+
+    # Write to config.toml
+    config_path = HEARE_HOME / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Read existing config or create new
+    if config_path.exists():
+        content = config_path.read_text()
+        # Update or add confirmation_passphrase line
+        if "confirmation_passphrase" in content:
+            import re
+            content = re.sub(r'confirmation_passphrase\s*=\s*".*?"', f'confirmation_passphrase = "{word}"', content)
+        else:
+            content += f'\nconfirmation_passphrase = "{word}"\n'
+    else:
+        content = f'confirmation_passphrase = "{word}"\n'
+
+    config_path.write_text(content)
+
+    # Mark onboarding as complete
+    (HEARE_HOME / ".onboarded").touch()
+
+    print(f"confirmation passphrase set to '{word}' — restart daemon to apply")
     return 0
 
 
@@ -500,6 +585,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("reset-session", help="Backup session.json and start fresh")
     sub.add_parser("reset-identity", help="Backup identity.json and regenerate")
 
+    set_word_p = sub.add_parser("set-passphrase", help="Set the confirmation passphrase (restart required)")
+    set_word_p.add_argument("word", help="Secret word to confirm actions (e.g. авторизую)")
+
     watch_p = sub.add_parser("watch", help="Live status view (Ctrl+C to exit)")
     watch_p.add_argument("--interval", type=float, default=0.5, help="Refresh seconds")
     watch_p.add_argument("--once", action="store_true", help="Print once and exit")
@@ -548,6 +636,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_reset_session(args)
     if cmd == "reset-identity":
         return _cmd_reset_identity(args)
+    if cmd == "set-passphrase":
+        return _cmd_set_wake_word(args)
     if cmd == "watch":
         return _cmd_watch(args)
     if cmd == "logs":

@@ -127,6 +127,49 @@ async def test_log_transcript_without_speaker_fields_backward_compat(
     assert row == (None, None)
 
 
+async def test_log_transcript_deduplication(store: TranscriptStore) -> None:
+    """Logging the same transcript within 2 seconds returns existing ID."""
+    import time
+
+    text = "привіт світ"
+    tid1 = await store.log_transcript(text, "ambient")
+    # Sleep briefly to ensure different timestamp
+    time.sleep(0.01)
+    # Log same text again - should return existing ID, not create new row
+    tid2 = await store.log_transcript(text, "ambient")
+    assert tid1 == tid2, "Second log should return existing ID"
+
+    # Verify only one row exists
+    cursor = await store.db.execute(
+        "SELECT COUNT(*) FROM transcripts WHERE text = ?", (text,)
+    )
+    row = await cursor.fetchone()
+    assert row[0] == 1, "Should only have one transcript entry"
+
+
+async def test_log_transcript_deduplication_after_window(store: TranscriptStore) -> None:
+    """Logging same transcript after 2 seconds creates new row."""
+    import time
+
+    text = "тест повторення"
+    tid1 = await store.log_transcript(text, "ambient")
+    # Force time to pass the dedup window by manually inserting with old timestamp
+    await store.db.execute(
+        "UPDATE transcripts SET ts = ts - 3.0 WHERE id = ?", (tid1,)
+    )
+    await store.db.commit()
+    # Log same text again - should create new row since old one is >2s ago
+    tid2 = await store.log_transcript(text, "ambient")
+    assert tid2 != tid1, "Should create new entry after dedup window"
+
+    # Verify two rows exist
+    cursor = await store.db.execute(
+        "SELECT COUNT(*) FROM transcripts WHERE text = ?", (text,)
+    )
+    row = await cursor.fetchone()
+    assert row[0] == 2, "Should have two transcript entries"
+
+
 async def test_schema_version_fresh_install(store: TranscriptStore) -> None:
     cursor = await store.db.execute(
         "SELECT value FROM meta WHERE key = ?", ("schema_version",)
