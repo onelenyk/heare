@@ -1,0 +1,24 @@
+# Heare Log Rotation Configuration
+# Install with:
+#   cp heare.logrotate ~/.config/logrotate.d/heare
+#   logrotate ~/.config/logrotate.d/heare
+
+~/.heare/logs/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 lenyk staff
+    sharedscripts
+    postrotate
+        # Send SIGHUP to Heare to reopen log files if supported
+        if [ -f ~/.heare/heare.pid ]; then
+            pid=$(cat ~/.heare/heare.pid)
+            if ps -p "$pid" > /dev/null 2>&1; then
+                kill -USR1 "$pid" 2>/dev/null || true
+            fi
+        fi
+    endscript
+}
