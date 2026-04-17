@@ -287,6 +287,8 @@ def _build_decider_processor_class():
             context_builder: "ContextBuilder",
             settings: Settings,
             decider_prompt_template: str,
+            turn_aggregator: Any | None = None,
+            conversation_manager: Any | None = None,
         ) -> None:
             super().__init__()
             self.claude_cli = claude_cli
@@ -294,6 +296,8 @@ def _build_decider_processor_class():
             self.context_builder = context_builder
             self.settings = settings
             self.decider_prompt_template = decider_prompt_template
+            self.turn_aggregator = turn_aggregator
+            self.conversation_manager = conversation_manager
             self.state: DeciderState = DeciderState.LISTENING
             self.pending_action: dict[str, Any] | None = None
             self.pending_decision_id: int | None = None
@@ -598,6 +602,163 @@ def _build_decider_processor_class():
                     speaker_confidence=speaker_confidence,
                 )
                 return
+
+            # US-004: Turn aggregation flow (new feature, opt-in)
+            if self.turn_aggregator is not None:
+                return await self._handle_listening_with_aggregation(
+                    transcript, speaker_id, speaker_confidence
+                )
+
+            # Legacy flow (preserved when turn_aggregator is None)
+            return await self._handle_listening_legacy(
+                transcript, speaker_id, speaker_confidence
+            )
+
+        async def _handle_listening_with_aggregation(
+            self,
+            transcript: str,
+            speaker_id: str | None = None,
+            speaker_confidence: float | None = None,
+        ) -> None:
+            """Handle transcript using turn aggregation flow.
+
+            This flow buffers utterances until turn timeout, then extracts topics
+            and builds rich conversation context before calling decider.
+            """
+            t0 = time.monotonic()
+            transcript_id = await self.store.log_transcript(
+                transcript,
+                self.settings.mode.value,
+                speaker_id=speaker_id,
+                speaker_confidence=speaker_confidence,
+            )
+
+            # Add utterance to turn aggregator
+            # Type assertion: we only call this method when turn_aggregator is not None
+            assert self.turn_aggregator is not None
+            should_submit, aggregated_text = await self.turn_aggregator.add_utterance(
+                transcript, time.monotonic()
+            )
+
+            # If turn is not complete yet, return early (buffering)
+            if not should_submit or aggregated_text is None:
+                logger.debug("TurnAggregator: buffering utterance (turn not complete)")
+                return
+
+            # Turn is complete: update conversation state, then render prompt
+            if self.conversation_manager is not None:
+                try:
+                    topics = await self.conversation_manager.extract_topics(aggregated_text)
+                    conversation_id = await self.conversation_manager.get_or_create_active()
+                    await self.conversation_manager.update_summary(
+                        conversation_id, aggregated_text, topics
+                    )
+                    ctx = await self.context_builder.build(
+                        aggregated_text,
+                        heartbeat=False,
+                        speaker_id=speaker_id,
+                        conversation_id=conversation_id,
+                    )
+                    prompt = self.context_builder.render(self.decider_prompt_template, ctx)
+                except Exception as e:
+                    logger.exception("turn aggregation flow failed, falling back to legacy: %s", e)
+                    return await self._handle_listening_legacy(
+                        transcript, speaker_id, speaker_confidence
+                    )
+            else:
+                prompt = await self._prompt_for_transcript(aggregated_text, speaker_id=speaker_id)
+
+            t_pre = time.monotonic()
+            self._safe_emit(
+                EventKind.DECIDER_START,
+                transcript_id=transcript_id,
+                payload={"transcript": aggregated_text[:200], "mode": self.settings.mode.value},
+            )
+            try:
+                decision = await self.claude_cli.call_decider(prompt)
+            except Exception as e:
+                logger.exception("decider call failed: %s", e)
+                return
+            t_decider = time.monotonic()
+
+            decision_id = await self.store.log_decision(transcript_id, decision)
+            d_type = decision.get("type", "nothing")
+            self._safe_emit(
+                EventKind.DECIDER_DONE,
+                transcript_id=transcript_id,
+                decision_id=decision_id,
+                payload={
+                    "type": d_type,
+                    "confidence": decision.get("confidence"),
+                },
+            )
+            logger.info(
+                "[TIMING] decider transcript=%r prep=%.0fms decider=%.0fms type=%s",
+                aggregated_text[:40],
+                (t_pre - t0) * 1000,
+                (t_decider - t_pre) * 1000,
+                d_type,
+            )
+
+            if d_type == "nothing":
+                return
+            if d_type == "speak":
+                reply = decision.get("reply")
+                if reply:
+                    await self.push_frame(TTSSpeakFrame(reply))
+                return
+            if d_type == "act":
+                # Keyword gate: act decisions require the command keyword in transcript
+                if self.settings.speaker_command_keyword_required:
+                    if not self._command_keyword_re.search(aggregated_text):
+                        logger.info(
+                            "[DECIDER] act dropped — no command keyword: %r",
+                            aggregated_text[:60],
+                        )
+                        self._safe_emit(
+                            EventKind.DECIDER_DROPPED_NO_KEYWORD,
+                            transcript_id=transcript_id,
+                            decision_id=decision_id,
+                            payload={"speaker_id": speaker_id},
+                        )
+                        return
+                confidence = decision.get("confidence", 0.0) or 0.0
+                if confidence < self.settings.min_action_confidence:
+                    logger.info("action below confidence floor, dropping")
+                    self._safe_emit(
+                        EventKind.DECIDER_DROPPED_LOW_CONF,
+                        transcript_id=transcript_id,
+                        decision_id=decision_id,
+                        payload={
+                            "confidence": confidence,
+                            "floor": self.settings.min_action_confidence,
+                        },
+                    )
+                    return
+                self.pending_action = decision
+                self.pending_decision_id = decision_id
+                self.pending_speaker_id = speaker_id
+                self.state = DeciderState.AWAITING_CONFIRMATION
+                self.confirmation_deadline = (
+                    time.monotonic() + self.settings.confirmation_timeout_seconds
+                )
+                self._schedule_timeout_task()
+                intent = decision.get("intent", "do that")
+                self._safe_emit(
+                    EventKind.ACTION_ARMED,
+                    transcript_id=transcript_id,
+                    decision_id=decision_id,
+                    payload={"intent": intent},
+                )
+                await self.push_frame(TTSSpeakFrame(f"Хочу {intent}, можна?"))
+
+        async def _handle_listening_legacy(
+            self,
+            transcript: str,
+            speaker_id: str | None = None,
+            speaker_confidence: float | None = None,
+        ) -> None:
+            """Legacy flow: direct decider call with speculative context optimization."""
             t0 = time.monotonic()
             transcript_id = await self.store.log_transcript(
                 transcript,
@@ -942,6 +1103,8 @@ def create_decider_processor(
     context_builder: "ContextBuilder",
     settings: Settings,
     decider_prompt_template: str,
+    turn_aggregator: Any | None = None,
+    conversation_manager: Any | None = None,
 ):
     cls = _build_decider_processor_class()
-    return cls(claude_cli, store, context_builder, settings, decider_prompt_template)
+    return cls(claude_cli, store, context_builder, settings, decider_prompt_template, turn_aggregator, conversation_manager)

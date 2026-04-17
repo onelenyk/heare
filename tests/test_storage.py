@@ -421,3 +421,128 @@ async def test_event_decision_id_cascade_sets_null(store: TranscriptStore) -> No
     row = await cursor.fetchone()
     assert row is not None
     assert row[0] is None
+
+
+async def test_conversation_tables_create(store: TranscriptStore) -> None:
+    """Verify that conversation and turns tables were created during init."""
+    # Check conversations table exists
+    cursor = await store.db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'"
+    )
+    row = await cursor.fetchone()
+    assert row is not None, "conversations table should exist"
+
+    # Check turns table exists
+    cursor = await store.db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='turns'"
+    )
+    row = await cursor.fetchone()
+    assert row is not None, "turns table should exist"
+
+    # Check transcripts.turn_id column exists
+    cursor = await store.db.execute("PRAGMA table_info(transcripts)")
+    columns = await cursor.fetchall()
+    column_names = [col[1] for col in columns]
+    assert "turn_id" in column_names, "transcripts.turn_id column should exist"
+
+
+async def test_start_and_end_conversation(store: TranscriptStore) -> None:
+    """Test starting and ending a conversation."""
+    # Start a conversation
+    conv_id = await store.start_conversation("ambient")
+    assert conv_id > 0
+
+    # Verify it's active
+    active = await store.get_active_conversation()
+    assert active is not None
+    assert active["id"] == conv_id
+    assert active["mode"] == "ambient"
+    assert active["end_ts"] is None
+
+    # End it
+    await store.end_conversation(conv_id)
+
+    # Verify it's no longer active
+    active = await store.get_active_conversation()
+    assert active is None
+
+
+async def test_create_turn(store: TranscriptStore) -> None:
+    """Test creating a turn in a conversation."""
+    # Start a conversation
+    conv_id = await store.start_conversation("focus")
+
+    # Create a turn
+    turn_id = await store.create_turn(
+        conversation_id=conv_id,
+        aggregated_text="Hello world, this is a test",
+        utterance_count=3,
+        topic_tags=["greeting", "test"],
+    )
+    assert turn_id > 0
+
+    # Verify turn was created
+    cursor = await store.db.execute(
+        "SELECT aggregated_text, utterance_count, topic_tags FROM turns WHERE id = ?",
+        (turn_id,),
+    )
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row[0] == "Hello world, this is a test"
+    assert row[1] == 3
+    assert row[2] == '["greeting", "test"]'
+
+
+async def test_update_conversation_summary(store: TranscriptStore) -> None:
+    """Test updating conversation summary."""
+    conv_id = await store.start_conversation("ambient")
+
+    # Update summary
+    await store.update_conversation_summary(
+        conversation_id=conv_id,
+        summary="Discussed weather and plans",
+        entity_map={"location": "Kyiv", "topic": "weather"},
+    )
+
+    # Verify summary was updated
+    active = await store.get_active_conversation()
+    assert active is not None
+    assert active["summary"] == "Discussed weather and plans"
+    assert active["entity_map"] == '{"location": "Kyiv", "topic": "weather"}'
+
+
+async def test_get_recent_turns(store: TranscriptStore) -> None:
+    """Test retrieving recent turns."""
+    conv_id = await store.start_conversation("focus")
+
+    # Create multiple turns
+    await store.create_turn(conv_id, "First turn", 1, ["topic1"])
+    await store.create_turn(conv_id, "Second turn", 2, ["topic2"])
+    await store.create_turn(conv_id, "Third turn", 1, ["topic3"])
+
+    # Get recent turns
+    turns = await store.get_recent_turns(conv_id, n=2)
+    assert len(turns) == 2
+    assert turns[0]["aggregated_text"] == "Second turn"
+    assert turns[1]["aggregated_text"] == "Third turn"
+
+
+async def test_link_transcript_to_turn(store: TranscriptStore) -> None:
+    """Test linking a transcript to a turn."""
+    # Create a transcript
+    tid = await store.log_transcript("test transcript", "focus")
+
+    # Create a turn
+    conv_id = await store.start_conversation("focus")
+    turn_id = await store.create_turn(conv_id, "aggregated", 1)
+
+    # Link them
+    await store.link_transcript_to_turn(tid, turn_id)
+
+    # Verify link
+    cursor = await store.db.execute(
+        "SELECT turn_id FROM transcripts WHERE id = ?", (tid,)
+    )
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row[0] == turn_id

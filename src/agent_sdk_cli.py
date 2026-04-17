@@ -180,9 +180,14 @@ class AgentSDKCLI:
                 return await self._attempt_query(prompt, on_line=on_line)
             except ClaudeCLIError as e:
                 msg = str(e).lower()
-                if "no conversation found" in msg or "session" in msg and "not found" in msg:
+                is_session_error = (
+                    "no conversation found" in msg
+                    or ("session" in msg and "not found" in msg)
+                    or "sdk result error" in msg  # opaque SDK errors are often stale sessions
+                )
+                if is_session_error and attempt == 1:
                     logger.warning(
-                        "stale session on attempt %d — reconnecting", attempt
+                        "stale session on attempt %d — reconnecting: %s", attempt, e
                     )
                     await self._reconnect()
                     last_error = e
@@ -230,10 +235,12 @@ class AgentSDKCLI:
                     if message.session_id:
                         result_session_id = message.session_id
                     if message.is_error:
-                        errors = message.errors or []
-                        raise ClaudeCLIError(
-                            f"SDK result error: {'; '.join(errors) or 'unknown'}"
+                        detail = (
+                            '; '.join(message.errors or [])
+                            or message.result
+                            or f"subtype={message.subtype} stop_reason={message.stop_reason}"
                         )
+                        raise ClaudeCLIError(f"SDK result error: {detail}")
 
         try:
             await asyncio.wait_for(_drain(), timeout=self.timeout)

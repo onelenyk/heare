@@ -12,13 +12,20 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .config import Settings
+    from .conversation import ConversationManager
     from .storage import TranscriptStore
 
 
 class ContextBuilder:
-    def __init__(self, store: "TranscriptStore", settings: "Settings") -> None:
+    def __init__(
+        self,
+        store: "TranscriptStore",
+        settings: "Settings",
+        conversation_manager: "ConversationManager | None" = None,
+    ) -> None:
         self.store = store
         self.settings = settings
+        self.conversation_manager = conversation_manager
 
     async def build(
         self,
@@ -26,10 +33,31 @@ class ContextBuilder:
         heartbeat: bool = False,
         keep_placeholders: list[str] | None = None,
         speaker_id: str | None = None,
+        conversation_id: int | None = None,
     ) -> dict[str, Any]:
         now = dt.datetime.now().astimezone()
         recent = await self.store.recent_transcripts(n=5)
         keep = set(keep_placeholders or ())
+
+        conversation_ctx: dict[str, Any]
+        if self.conversation_manager is not None and conversation_id is not None:
+            raw = await self.conversation_manager.build_context(conversation_id)
+            conversation_ctx = {
+                "conversation_active": "yes" if raw.get("conversation_active") else "no",
+                "conversation_summary": raw.get("conversation_summary", ""),
+                "active_topics": raw.get("active_topics", []),
+                "entities": raw.get("entities", {}),
+                "recent_turns": raw.get("recent_turns", []),
+            }
+        else:
+            conversation_ctx = {
+                "conversation_active": "no",
+                "conversation_summary": "",
+                "active_topics": [],
+                "entities": {},
+                "recent_turns": [],
+            }
+
         ctx: dict[str, Any] = {
             "time": now.strftime("%Y-%m-%d %H:%M:%S"),
             "timezone": str(now.tzinfo),
@@ -40,6 +68,11 @@ class ContextBuilder:
             "speaker_rule_block": self._render_rule_block(speaker_id=speaker_id),
             "silence_block": self._render_silence_block(recent, now.timestamp()),
             "proactivity_block": self._render_proactivity_block(),
+            "conversation_active": conversation_ctx["conversation_active"],
+            "conversation_summary": conversation_ctx["conversation_summary"],
+            "active_topics": ", ".join(conversation_ctx["active_topics"]),
+            "entities": self._format_entities(conversation_ctx["entities"]),
+            "recent_turns": self._format_recent_turns(conversation_ctx["recent_turns"]),
         }
         # Speculative-path support: if a caller asks for a placeholder to
         # remain literal (so it can be substituted later with a real value),
@@ -99,6 +132,31 @@ class ContextBuilder:
         if transcript is None:
             return "(empty)"
         return transcript
+
+    def _format_entities(self, entities: dict[str, Any]) -> str:
+        """Format entities dictionary for display in prompt."""
+        if not entities:
+            return ""
+        entity_lines = []
+        for category, items in entities.items():
+            if isinstance(items, list):
+                entity_lines.append(f"{category}: {', '.join(str(item) for item in items)}")
+            else:
+                entity_lines.append(f"{category}: {str(items)}")
+        return "\n".join(f"  - {line}" for line in entity_lines)
+
+    def _format_recent_turns(self, recent_turns: list[dict[str, Any]]) -> str:
+        """Format recent turns with topics for display in prompt."""
+        if not recent_turns:
+            return "(none)"
+        lines = []
+        for turn in recent_turns:
+            timestamp = dt.datetime.fromtimestamp(turn["start_ts"]).strftime("%H:%M:%S")
+            text = turn["aggregated_text"]
+            topics = turn.get("topic_tags", [])
+            topic_line = f" (topics: {', '.join(topics)})" if topics else ""
+            lines.append(f"  - [{timestamp}] {text}{topic_line}")
+        return "\n".join(lines)
 
     def render(self, template: str, ctx: dict[str, Any]) -> str:
         return _safe_substitute(template, ctx)

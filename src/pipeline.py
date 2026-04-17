@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .claude_cli import ClaudeCLI
     from .context import ContextBuilder
     from .storage import TranscriptStore
+    from .conversation import ConversationManager
 
 
 logger = logging.getLogger("heare.pipeline")
@@ -28,6 +29,7 @@ async def build_pipeline(
     claude_cli: "ClaudeCLI",
     store: "TranscriptStore",
     context_builder: "ContextBuilder",
+    conversation_manager: "ConversationManager | None" = None,
 ) -> Tuple[object, object]:
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
@@ -77,12 +79,50 @@ async def build_pipeline(
         language=settings.groq_language,
     )
 
+    turn_aggregator = None
+    if settings.turn_aggregation_enabled:
+        from .turn_aggregator import TurnAggregator
+
+        async def on_turn_complete(
+            aggregated_text: str,
+            turn_start_ts: float,
+            turn_end_ts: float,
+            buffer: list[dict],
+        ) -> None:
+            if conversation_manager and settings.topic_extraction_enabled:
+                try:
+                    topics = await conversation_manager.extract_topics(aggregated_text)
+                    conv_id = await conversation_manager.get_or_create_active()
+                    await conversation_manager.update_summary(conv_id, aggregated_text, topics)
+                    logger.info(
+                        "Turn complete: %d utterances, %d topics, conv_id=%s",
+                        len(buffer), len(topics), conv_id,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to update conversation on turn complete: %s", e)
+
+        turn_aggregator = TurnAggregator(
+            mode=settings.mode,
+            focus_timeout=settings.focus_mode_turn_timeout,
+            ambient_timeout=settings.ambient_mode_turn_timeout,
+            max_turn_duration=settings.max_turn_duration,
+            on_turn_complete=on_turn_complete,
+        )
+        logger.info(
+            "TurnAggregator enabled: mode=%s, focus_timeout=%ss, ambient_timeout=%ss",
+            settings.mode.value,
+            settings.focus_mode_turn_timeout,
+            settings.ambient_mode_turn_timeout,
+        )
+
     decider = create_decider_processor(
         claude_cli=claude_cli,
         store=store,
         context_builder=context_builder,
         settings=settings,
         decider_prompt_template=decider_prompt,
+        turn_aggregator=turn_aggregator,
+        conversation_manager=conversation_manager,
     )
 
     tts_cache = TTSCache()

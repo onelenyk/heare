@@ -93,6 +93,30 @@ CREATE INDEX IF NOT EXISTS idx_transcripts_ts ON transcripts(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_decision ON events(decision_id, ts);
+
+CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_ts REAL NOT NULL,
+    end_ts REAL,
+    mode TEXT NOT NULL,
+    summary TEXT,
+    entity_map TEXT
+);
+
+CREATE TABLE IF NOT EXISTS turns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    start_ts REAL NOT NULL,
+    end_ts REAL NOT NULL,
+    aggregated_text TEXT NOT NULL,
+    utterance_count INTEGER NOT NULL,
+    topic_tags TEXT,
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_mode ON conversations(mode);
+CREATE INDEX IF NOT EXISTS idx_conversations_active ON conversations(end_ts) WHERE end_ts IS NULL;
+CREATE INDEX IF NOT EXISTS idx_turns_conversation ON turns(conversation_id);
 """
 
 
@@ -122,6 +146,7 @@ class TranscriptStore:
         for col_ddl in (
             "ALTER TABLE transcripts ADD COLUMN speaker_id TEXT",
             "ALTER TABLE transcripts ADD COLUMN speaker_confidence REAL",
+            "ALTER TABLE transcripts ADD COLUMN turn_id INTEGER REFERENCES turns(id)",
         ):
             try:
                 await self.db.execute(col_ddl)
@@ -292,3 +317,127 @@ class TranscriptStore:
         )
         await self.db.commit()
         return (tx_cursor.rowcount or 0) + (ev_cursor.rowcount or 0)
+
+    # Conversation memory methods
+
+    async def start_conversation(self, mode: str) -> int:
+        """Start a new conversation session."""
+        cursor = await self.db.execute(
+            "INSERT INTO conversations (start_ts, mode) VALUES (?, ?)",
+            (time.time(), mode),
+        )
+        await self.db.commit()
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+    async def end_conversation(self, conversation_id: int) -> None:
+        """End a conversation session."""
+        await self.db.execute(
+            "UPDATE conversations SET end_ts = ? WHERE id = ? AND end_ts IS NULL",
+            (time.time(), conversation_id),
+        )
+        await self.db.commit()
+
+    async def create_turn(
+        self,
+        conversation_id: int,
+        aggregated_text: str,
+        utterance_count: int,
+        topic_tags: list[str] | None = None,
+    ) -> int:
+        """Create a new turn in a conversation."""
+        now = time.time()
+        cursor = await self.db.execute(
+            """
+            INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text, utterance_count, topic_tags)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                conversation_id,
+                now,
+                now,
+                aggregated_text,
+                utterance_count,
+                json.dumps(topic_tags) if topic_tags else None,
+            ),
+        )
+        await self.db.commit()
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+    async def get_active_conversation(self) -> dict[str, Any] | None:
+        """Get the currently active conversation (end_ts IS NULL)."""
+        cursor = await self.db.execute(
+            """
+            SELECT id, start_ts, end_ts, mode, summary, entity_map
+            FROM conversations
+            WHERE end_ts IS NULL
+            ORDER BY start_ts DESC
+            LIMIT 1
+            """
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "start_ts": row[1],
+            "end_ts": row[2],
+            "mode": row[3],
+            "summary": row[4],
+            "entity_map": row[5],
+        }
+
+    async def update_conversation_summary(
+        self,
+        conversation_id: int,
+        summary: str,
+        entity_map: dict[str, Any] | None = None,
+    ) -> None:
+        """Update conversation summary and entity map."""
+        await self.db.execute(
+            """
+            UPDATE conversations
+            SET summary = ?, entity_map = ?
+            WHERE id = ?
+            """,
+            (summary, json.dumps(entity_map) if entity_map else None, conversation_id),
+        )
+        await self.db.commit()
+
+    async def get_recent_turns(
+        self, conversation_id: int, n: int = 3
+    ) -> list[dict[str, Any]]:
+        """Get the last N turns for a conversation."""
+        cursor = await self.db.execute(
+            """
+            SELECT id, start_ts, end_ts, aggregated_text, utterance_count, topic_tags
+            FROM turns
+            WHERE conversation_id = ?
+            ORDER BY start_ts DESC
+            LIMIT ?
+            """,
+            (conversation_id, n),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "start_ts": r[1],
+                "end_ts": r[2],
+                "aggregated_text": r[3],
+                "utterance_count": r[4],
+                "topic_tags": json.loads(r[5]) if r[5] else None,
+            }
+            for r in reversed(rows)
+        ]
+
+    async def link_transcript_to_turn(
+        self, transcript_id: int, turn_id: int
+    ) -> None:
+        """Link a transcript to a turn."""
+        await self.db.execute(
+            "UPDATE transcripts SET turn_id = ? WHERE id = ?",
+            (turn_id, transcript_id),
+        )
+        await self.db.commit()

@@ -146,6 +146,21 @@ def test_proactivity_level_custom(monkeypatch, tmp_path) -> None:
     assert s.proactivity_level == "high"
 
 
+def test_turn_aggregation_settings() -> None:
+    s = Settings()
+    assert s.turn_aggregation_enabled is False  # Default disabled for gradual rollout
+    assert s.focus_mode_turn_timeout == 0.5
+    assert s.ambient_mode_turn_timeout == 3.0
+    assert s.max_turn_duration == 30.0
+
+
+def test_conversation_memory_settings() -> None:
+    s = Settings()
+    assert s.conversation_memory_enabled is False  # Default disabled for gradual rollout
+    assert s.max_conversation_age_hours == 24.0
+    assert s.topic_extraction_enabled is True
+
+
 def test_ensure_dirs_creates_directories(tmp_path) -> None:
     s = Settings()
     s.workspace_dir = tmp_path / "workspace"

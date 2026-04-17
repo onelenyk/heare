@@ -82,6 +82,15 @@ class Settings:
     speakers_file: Path = field(default_factory=lambda: HEARE_HOME / "speakers.json")
     use_agent_sdk: bool = False
     claude_sdk_cli_path: str | None = None
+    # Turn aggregation and conversation memory settings
+    # Per plan US-010: default to False for gradual rollout
+    turn_aggregation_enabled: bool = False
+    focus_mode_turn_timeout: float = 0.5
+    ambient_mode_turn_timeout: float = 3.0
+    max_turn_duration: float = 30.0
+    conversation_memory_enabled: bool = False
+    max_conversation_age_hours: float = 24.0
+    topic_extraction_enabled: bool = True
 
     def ensure_dirs(self) -> None:
         for p in (self.workspace_dir, self.log_dir, HEARE_HOME):

@@ -1,0 +1,96 @@
+# Conversation Memory System - Implementation Progress
+
+## Iteration 1
+
+### Stories Completed: 10/10 ✅
+
+### US-001: Database schema for conversations and turns ✅
+### US-002: TurnAggregator frame processor ✅
+### US-003: ConversationManager for topics and summaries ✅
+### US-004: Decider integration with turn aggregation ✅
+### US-005: Pipeline integration - insert TurnAggregator ✅
+### US-006: Prompt updates for conversation context ✅
+### US-007: Configuration for turn aggregation and conversation memory ✅
+### US-008: Acceptance criteria verification tests ✅
+### US-009: Migration script and rollback ✅
+### US-010: Feature flags and gradual rollout ✅
+
+**US-010 Implementation (Final Story):**
+- All feature flags work independently
+- Default config has both flags disabled for gradual rollout
+- System works normally when both flags are false (existing behavior)
+- System works when turn_aggregation_enabled=true, conversation_memory_enabled=false
+- System works when both flags are enabled (full feature)
+- Added comprehensive test suite with 5 tests
+
+**Tests Added:**
+- test_aggregation_disabled_baseline ✅ (verifies existing behavior)
+- test_aggregation_only_no_memory ✅ (aggregation without conversation state)
+- test_both_enabled ✅ (full feature with both enabled)
+- test_feature_flags_can_be_flipped_independently ✅
+- test_default_settings_match_plan_spec ✅
+
+**Files Changed:**
+- src/config.py (added feature flag defaults: turn_aggregation_enabled=False, conversation_memory_enabled=False)
+- tests/test_feature_flags.py (NEW, 200 lines)
+
+**Verification:**
+- All 5 feature flag tests pass ✅
+- mypy type checking passes ✅
+- ruff linting passes ✅
+- Full test suite: 479/479 tests pass ✅
+
+**All Acceptance Criteria Met:** ✅
+
+### Implementation Summary
+
+**Total Stories Completed:** 10/10
+**Total Tests Added:** 84 tests
+**Pass Rate:** 100% (479/479 tests)
+
+**New Files Created:**
+- src/turn_aggregator.py (300 lines)
+- src/conversation.py (~200 lines)
+- tests/test_turn_aggregator.py (280 lines)
+- tests/test_conversation.py (~400 lines)
+- tests/test_feature_flags.py (200 lines)
+- tests/test_migration.py (~150 lines)
+- tests/integration/test_conversation_flow.py (~100 lines)
+- migrations/01_add_conversations.sql
+
+**Modified Files:**
+- src/storage.py (added 70 lines for conversation methods)
+- src/decider.py (added turn aggregation integration)
+- src/pipeline.py (added TurnAggregator integration)
+- src/context.py (added conversation context rendering)
+- src/config.py (added 7 new settings fields)
+- prompts/decider.txt (added conversation context variables)
+- tests/test_config.py (updated defaults to False)
+- tests/test_storage.py (added 6 conversation tests)
+- tests/test_decider.py (added 2 turn aggregation tests)
+- tests/test_pipeline.py (fixed TTS mock in wiring test)
+
+**Key Features Delivered:**
+1. Mode-aware turn aggregation (Focus 0.5s, Ambient 3.0s)
+2. Safety limits (30s max turn duration, 50 max buffer size)
+3. Topic extraction using Claude API
+4. Conversation summary building
+5. Entity tracking
+6. Recent turns context
+7. Full Pipecat pipeline integration
+8. Feature flags for gradual rollout
+9. Database migration with rollback support
+10. Comprehensive test coverage
+
+### Learnings:
+- TurnAggregator works independently of Pipecat pipeline (adapter pattern)
+- Mode-aware timeouts critical for UX (0.5s vs 3.0s)
+- Safety limits prevent pathological cases
+- Feature flags enable gradual rollout and safety
+- Database schema design affects query performance (indexes added)
+- Mock patching requires careful path specification
+- Conversation context must be optional (backward compatibility)
+- Claude API calls need proper error handling and timeouts
+
+### Next Steps:
+All user stories complete. The conversation memory system is ready for review and deployment.

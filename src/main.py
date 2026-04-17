@@ -145,9 +145,15 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             claude_cli.persona = render_persona(persona_template, identity)
             logger.info("I am %s %s", identity["name"], identity["emoji"])
 
-            context_builder = ContextBuilder(store, settings)
+            conversation_manager = None
+            if settings.conversation_memory_enabled:
+                from .conversation import ConversationManager
+                conversation_manager = ConversationManager(store, claude_cli)
+
+            context_builder = ContextBuilder(store, settings, conversation_manager)
+
             pipeline, decider, tts_cache = await build_pipeline(
-                settings, claude_cli, store, context_builder
+                settings, claude_cli, store, context_builder, conversation_manager
             )
 
             # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play

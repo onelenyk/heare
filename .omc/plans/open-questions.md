@@ -1,5 +1,18 @@
 # Open Questions
 
+## conversation-memory - 2026-04-16
+
+- [x] **Unmeasurable acceptance criteria** — FIXED: Converted to automated tests with measurable assertions (time.time() measurements, decider prompt content verification)
+- [x] **SmartTurn V3 conflict** — FIXED: Added "SmartTurn V3 Integration Strategy" section explaining complementary operation (micro-pauses vs conversation turns)
+- [x] **Missing API reduction verification** — FIXED: Added detailed verification methodology with SQL queries and step-by-step measurement plan
+- [x] **TurnAggregator implementation gap** — FIXED: Added complete pseudocode with buffer management, timestamp preservation, mode change handling, memory limits
+- [x] **Latency regression hand-wavy** — FIXED: Added honest tradeoff discussion (1.0s → 3.0s-4.0s in ambient mode) with acceptance rationale
+- [x] **Database FK direction** — FIXED: Removed incorrect `FOREIGN KEY(session_id) REFERENCES transcripts(id)` line
+- [x] **Options 2/3 underdeveloped** — FIXED: Fleshed out with concrete implementation details and use cases where they shine
+- [x] **Missing conversation lifecycle** — FIXED: Added "Conversation Lifecycle Management" section covering start/end conditions
+- [x] **Missing state synchronization** — FIXED: Added "State Synchronization with FSM" section
+- [x] **API cost model acknowledgment** — FIXED: Clarified Groq STT (unavoidable) vs Claude decider calls (reducible), added net reduction calculation
+
 ## owner-detection-rethink - 2026-04-15
 
 - [ ] **Should `speak` decisions also require the command keyword, or only `act`?** — Current plan gates `act` only. If Claude returns `speak`, Heare replies to anyone in the room. This matches ambient assistant intent but could be noisy in focus mode. Decision needed before TODO 3.

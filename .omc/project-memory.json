@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1776280428512,
+  "lastScanned": 1776373272319,
   "projectRoot": "/Users/lenyk/myprojects/heare",
   "techStack": {
     "languages": [
@@ -10,6 +10,14 @@
         "confidence": "high",
         "markers": [
           "pyproject.toml"
+        ]
+      },
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
         ]
       }
     ],
@@ -24,8 +32,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": null,
-    "testCommand": "pytest",
+    "buildCommand": "make build",
+    "testCommand": "make test",
     "lintCommand": "ruff check",
     "devCommand": null,
     "scripts": {}
@@ -47,11 +55,20 @@
   },
   "customNotes": [],
   "directoryMap": {
+    "migrations": {
+      "path": "migrations",
+      "purpose": "Database migrations",
+      "fileCount": 1,
+      "lastAccessed": 1776373272309,
+      "keyFiles": [
+        "01_add_conversations.sql"
+      ]
+    },
     "prompts": {
       "path": "prompts",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1776280428501,
+      "lastAccessed": 1776373272309,
       "keyFiles": [
         "decider.txt",
         "identity-bootstrap.txt",
@@ -62,7 +79,7 @@
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1776280428501,
+      "lastAccessed": 1776373272309,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -72,34 +89,34 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 17,
-      "lastAccessed": 1776280428502,
+      "fileCount": 21,
+      "lastAccessed": 1776373272309,
       "keyFiles": [
         "__init__.py",
+        "agent_sdk_cli.py",
+        "claude_backend_common.py",
         "claude_cli.py",
-        "config.py",
-        "context.py",
-        "decider.py"
+        "config.py"
       ]
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 26,
-      "lastAccessed": 1776280428502,
+      "fileCount": 32,
+      "lastAccessed": 1776373272310,
       "keyFiles": [
         "__init__.py",
+        "test_agent_sdk_cli.py",
         "test_audio.py",
         "test_claude_cli.py",
-        "test_config.py",
-        "test_context.py"
+        "test_config.py"
       ]
     },
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
       "fileCount": 2,
-      "lastAccessed": 1776280428502,
+      "lastAccessed": 1776373272310,
       "keyFiles": [
         "decider_prompt_flag_off.golden.txt"
       ]
@@ -108,50 +125,62 @@
   "hotPaths": [
     {
       "path": "src/decider.py",
-      "accessCount": 144,
-      "lastAccessed": 1776360392179,
-      "type": "file"
-    },
-    {
-      "path": "src/main.py",
-      "accessCount": 70,
-      "lastAccessed": 1776360404177,
+      "accessCount": 201,
+      "lastAccessed": 1776461134620,
       "type": "file"
     },
     {
       "path": "tests/test_decider.py",
-      "accessCount": 63,
-      "lastAccessed": 1776360373385,
+      "accessCount": 96,
+      "lastAccessed": 1776364494930,
+      "type": "file"
+    },
+    {
+      "path": "src/main.py",
+      "accessCount": 76,
+      "lastAccessed": 1776461140366,
       "type": "file"
     },
     {
       "path": "src/storage.py",
-      "accessCount": 55,
-      "lastAccessed": 1776360423782,
+      "accessCount": 71,
+      "lastAccessed": 1776411647732,
       "type": "file"
     },
     {
       "path": "src",
-      "accessCount": 48,
-      "lastAccessed": 1776360423837,
+      "accessCount": 57,
+      "lastAccessed": 1776364487001,
+      "type": "directory"
+    },
+    {
+      "path": "src/config.py",
+      "accessCount": 56,
+      "lastAccessed": 1776411647207,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline.py",
+      "accessCount": 52,
+      "lastAccessed": 1776412601901,
+      "type": "file"
+    },
+    {
+      "path": "src/context.py",
+      "accessCount": 52,
+      "lastAccessed": 1776461119524,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 42,
+      "lastAccessed": 1776461108091,
       "type": "directory"
     },
     {
       "path": "src/speaker_processor.py",
       "accessCount": 41,
       "lastAccessed": 1776358984299,
-      "type": "file"
-    },
-    {
-      "path": "src/config.py",
-      "accessCount": 41,
-      "lastAccessed": 1776360398629,
-      "type": "file"
-    },
-    {
-      "path": "src/context.py",
-      "accessCount": 30,
-      "lastAccessed": 1776330704413,
       "type": "file"
     },
     {
@@ -167,15 +196,21 @@
       "type": "file"
     },
     {
-      "path": "",
-      "accessCount": 27,
-      "lastAccessed": 1776330619894,
-      "type": "directory"
+      "path": "tests/test_storage.py",
+      "accessCount": 28,
+      "lastAccessed": 1776363181114,
+      "type": "file"
     },
     {
-      "path": "tests/test_storage.py",
+      "path": "tests/test_context.py",
+      "accessCount": 27,
+      "lastAccessed": 1776363474893,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_pipeline.py",
       "accessCount": 25,
-      "lastAccessed": 1776359084944,
+      "lastAccessed": 1776411653251,
       "type": "file"
     },
     {
@@ -185,15 +220,15 @@
       "type": "file"
     },
     {
-      "path": "src/pipeline.py",
+      "path": "src/agent_sdk_cli.py",
       "accessCount": 23,
-      "lastAccessed": 1776360203130,
+      "lastAccessed": 1776412266209,
       "type": "file"
     },
     {
-      "path": "tests/test_context.py",
+      "path": "prompts/decider.txt",
       "accessCount": 22,
-      "lastAccessed": 1776330739152,
+      "lastAccessed": 1776363383890,
       "type": "file"
     },
     {
@@ -203,15 +238,21 @@
       "type": "directory"
     },
     {
-      "path": "prompts/decider.txt",
-      "accessCount": 16,
-      "lastAccessed": 1776330402814,
-      "type": "file"
-    },
-    {
       "path": "tests/test_speaker_gallery.py",
       "accessCount": 15,
       "lastAccessed": 1776201357536,
+      "type": "file"
+    },
+    {
+      "path": "tests",
+      "accessCount": 15,
+      "lastAccessed": 1776364200165,
+      "type": "directory"
+    },
+    {
+      "path": "tests/test_config.py",
+      "accessCount": 15,
+      "lastAccessed": 1776364796113,
       "type": "file"
     },
     {
@@ -233,39 +274,21 @@
       "type": "file"
     },
     {
-      "path": "tests",
-      "accessCount": 12,
-      "lastAccessed": 1776360410935,
-      "type": "directory"
+      "path": "src/claude_backend_common.py",
+      "accessCount": 11,
+      "lastAccessed": 1776363177184,
+      "type": "file"
     },
     {
       "path": "pyproject.toml",
-      "accessCount": 9,
-      "lastAccessed": 1776292184087,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_config.py",
-      "accessCount": 9,
-      "lastAccessed": 1776358761459,
-      "type": "file"
-    },
-    {
-      "path": "src/claude_backend_common.py",
-      "accessCount": 9,
-      "lastAccessed": 1776360367827,
+      "accessCount": 11,
+      "lastAccessed": 1776364622403,
       "type": "file"
     },
     {
       "path": "src/identity.py",
       "accessCount": 8,
       "lastAccessed": 1776292188675,
-      "type": "file"
-    },
-    {
-      "path": "src/agent_sdk_cli.py",
-      "accessCount": 8,
-      "lastAccessed": 1776292361075,
       "type": "file"
     },
     {
@@ -278,6 +301,18 @@
       "path": "tests/test_main.py",
       "accessCount": 8,
       "lastAccessed": 1776359789182,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/frames/frames.py",
+      "accessCount": 8,
+      "lastAccessed": 1776362933397,
+      "type": "directory"
+    },
+    {
+      "path": "tests/fixtures/decider_prompt_flag_off.golden.txt",
+      "accessCount": 8,
+      "lastAccessed": 1776363505607,
       "type": "file"
     },
     {
@@ -311,27 +346,15 @@
       "type": "directory"
     },
     {
-      "path": "tests/fixtures/decider_prompt_flag_off.golden.txt",
+      "path": ".venv/lib/python3.13/site-packages/pipecat",
       "accessCount": 4,
-      "lastAccessed": 1776329397212,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/frames/frames.py",
-      "accessCount": 3,
-      "lastAccessed": 1776088460994,
+      "lastAccessed": 1776362923909,
       "type": "directory"
     },
     {
       "path": "src/rate_limit.py",
       "accessCount": 3,
       "lastAccessed": 1776290955051,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_pipeline.py",
-      "accessCount": 3,
-      "lastAccessed": 1776359673954,
       "type": "file"
     },
     {
@@ -344,6 +367,12 @@
       "path": "tests/test_agent_sdk_cli.py",
       "accessCount": 2,
       "lastAccessed": 1776292180286,
+      "type": "file"
+    },
+    {
+      "path": "src/tts_edge.py",
+      "accessCount": 2,
+      "lastAccessed": 1776373335503,
       "type": "file"
     },
     {
@@ -365,12 +394,6 @@
       "type": "directory"
     },
     {
-      "path": ".venv/lib/python3.13/site-packages/pipecat",
-      "accessCount": 1,
-      "lastAccessed": 1776088468279,
-      "type": "directory"
-    },
-    {
       "path": ".venv/lib/python3.13/site-packages/pipecat/transports/base_transport.py",
       "accessCount": 1,
       "lastAccessed": 1776088473381,
@@ -380,12 +403,6 @@
       "path": ".env.example",
       "accessCount": 1,
       "lastAccessed": 1776281004882,
-      "type": "file"
-    },
-    {
-      "path": "src/tts_edge.py",
-      "accessCount": 1,
-      "lastAccessed": 1776289515227,
       "type": "file"
     },
     {

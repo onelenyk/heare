@@ -1,0 +1,189 @@
+{
+  "title": "Conversation Memory System Implementation",
+  "version": "1.0.0",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Database schema for conversations and turns",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Add conversations and turns tables to TranscriptStore with migration script",
+      "acceptanceCriteria": [
+        "conversations table exists with columns: id, start_ts, end_ts, mode, summary, entity_map",
+        "turns table exists with columns: id, conversation_id, start_ts, end_ts, aggregated_text, utterance_count, topic_tags",
+        "transcripts.turn_id column exists as INTEGER FOREIGN KEY",
+        "Migration script migrations/01_add_conversations.sql is runnable",
+        "ConversationStore class has methods: start_conversation, end_conversation, create_turn, get_active_conversation, update_conversation_summary",
+        "Test file tests/test_storage.py has test_conversation_tables_create() that passes"
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "TurnAggregator frame processor",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement TurnAggregator as Pipecat FrameProcessor that buffers utterances and emits AggregatedTranscriptFrame",
+      "acceptanceCriteria": [
+        "src/turn_aggregator.py exists with TurnAggregator(FrameProcessor) class",
+        "TurnAggregator.__init__ accepts: mode, focus_timeout, ambient_timeout, max_turn_duration, max_buffer_size, on_turn_complete",
+        "TurnAggregator.add_utterance(text, ts) returns (should_submit, aggregated_text)",
+        "Focus mode (0.5s): Single utterance submits immediately after timeout",
+        "Ambient mode (3.0s): Multiple utterances with gaps < 3.0s are aggregated",
+        "Max turn duration (30s): Forces submit even if still receiving utterances",
+        "Max buffer size (50): Forces submit when buffer exceeded",
+        "AggregatedTranscriptFrame dataclass defined with: text, utterance_count, turn_start_ts, turn_end_ts",
+        "Test file tests/test_turn_aggregator.py exists with >150 lines covering all timeout scenarios",
+        "All tests in tests/test_turn_aggregator.py pass"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "ConversationManager for topics and summaries",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement ConversationManager to extract topics, maintain summaries, and build rich context",
+      "acceptanceCriteria": [
+        "src/conversation.py exists with ConversationManager class",
+        "ConversationManager.extract_topics(text) returns list[str] of 3-5 topic phrases (2-4 words each)",
+        "ConversationManager.update_summary(conv_id, turn_text, topics) updates conversation.summary and entity_map",
+        "ConversationManager.build_context(conv_id) returns dict with: conversation_active, conversation_summary, active_topics, entities, recent_turns",
+        "Topic extraction uses Claude with structured output (not raw text parsing)",
+        "Test file tests/test_conversation.py exists with mocked Claude calls",
+        "tests/test_conversation.py has test_extract_topics_returns_list() that passes",
+        "tests/test_conversation.py has test_update_summary_merges_topics() that passes",
+        "All tests in tests/test_conversation.py pass"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Decider integration with turn aggregation",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Modify DeciderProcessor to use TurnAggregator and ConversationManager",
+      "acceptanceCriteria": [
+        "src/decider.py DeciderProcessor.__init__ accepts turn_aggregator and conversation_manager parameters",
+        "DeciderProcessor._handle_listening calls turn_aggregator.add_utterance()",
+        "When turn_aggregator returns should_submit=True: extract topics, update conversation, build rich context",
+        "Context includes: conversation_active (yes/no), conversation_summary, active_topics, entities, recent_turns",
+        "Mode-aware: Focus mode uses 0.5s timeout, ambient mode uses 3.0s timeout",
+        "Test file tests/test_decider.py has test_turn_based_flow() that verifies aggregation",
+        "tests/test_decider.py has test_conversation_context_in_prompt() that verifies context fields",
+        "All tests in tests/test_decider.py pass including new tests"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Pipeline integration - insert TurnAggregator",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Insert TurnAggregator into Pipecat pipeline after speaker_tagger, before decider",
+      "acceptanceCriteria": [
+        "src/pipeline.py build_pipeline() creates TurnAggregator instance",
+        "TurnAggregator positioned after speaker_tagger, before decider in pipeline list",
+        "TurnAggregator receives mode from settings, focus_timeout=0.5, ambient_timeout=3.0",
+        "on_turn_complete callback wired to decider or conversation manager",
+        "Pipeline still runs without errors when turn_aggregation_enabled=false",
+        "Integration test tests/integration/test_conversation_flow.py exists",
+        "test_conversation_flow.py has test_end_to_end_turn_aggregation() that passes",
+        "All integration tests pass"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Prompt updates for conversation context",
+      "priority": 6,
+      "status": "completed",
+      "passes": true,
+      "description": "Update prompts/decider.txt to include conversation context variables",
+      "acceptanceCriteria": [
+        "prompts/decider.txt includes {conversation_active} variable",
+        "prompts/decider.txt includes {conversation_summary} variable",
+        "prompts/decider.txt includes {active_topics} variable (comma-separated)",
+        "prompts/decider.txt includes {entities} variable",
+        "prompts/decider.txt includes {recent_turns} variable (last 3 turns with topics)",
+        "Context builder (src/context.py) renders these variables from ConversationManager.build_context()",
+        "Test fixture tests/fixtures/decider_prompt_flag_off.golden.txt updated with new context blocks",
+        "tests/test_context.py has test_conversation_context_rendering() that passes",
+        "All context tests pass"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Configuration for turn aggregation and conversation memory",
+      "priority": 7,
+      "status": "completed",
+      "passes": true,
+      "description": "Add settings fields to src/config.py for turn aggregation and conversation memory",
+      "acceptanceCriteria": [
+        "src/config.py Settings has turn_aggregation_enabled: bool = False",
+        "src/config.py Settings has focus_mode_turn_timeout: float = 0.5",
+        "src/config.py Settings has ambient_mode_turn_timeout: float = 3.0",
+        "src/config.py Settings has max_turn_duration: float = 30.0",
+        "src/config.py Settings has conversation_memory_enabled: bool = False",
+        "src/config.py Settings has max_conversation_age_hours: float = 24.0",
+        "src/config.py Settings has topic_extraction_enabled: bool = True",
+        "Test file tests/test_config.py has test_turn_aggregation_settings() that validates defaults",
+        "tests/test_config.py has test_conversation_memory_settings() that validates defaults",
+        "All config tests pass"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Acceptance criteria verification tests",
+      "priority": 8,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement all 5 acceptance tests from plan: focus mode, ambient mode, conversation reference, API reduction, no regression",
+      "acceptanceCriteria": [
+        "tests/test_turn_aggregator.py has test_focus_mode_quick_reply() that verifies 0.5s timeout behavior",
+        "tests/test_turn_aggregator.py has test_ambient_mode_aggregation() that verifies 3.0s aggregation with explicit assertions",
+        "tests/test_decider.py has test_conversation_reference() that verifies context propagation with 'weather' substring check",
+        "tests/test_decider.py has test_api_call_reduction() that uses mocked events (not 24h wait) and verifies 3-5x reduction ratio",
+        "tests/test_decider.py has test_existing_functionality_preserved() that runs all existing tests",
+        "All 5 acceptance tests pass",
+        "Test coverage > 80% for new code (turn_aggregator.py, conversation.py)"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Migration script and rollback",
+      "priority": 9,
+      "status": "completed",
+      "passes": true,
+      "description": "Create database migration script with rollback support",
+      "acceptanceCriteria": [
+        "migrations/01_add_conversations.sql script exists",
+        "Migration script is idempotent (can run multiple times safely)",
+        "Migration script has IF NOT EXISTS clauses for all CREATE TABLE",
+        "Migration script adds turn_id column with ALTER TABLE (not CREATE TABLE)",
+        "Test file tests/test_migration.py exists",
+        "tests/test_migration.py has test_migration_creates_tables() that passes",
+        "tests/test_migration.py has test_migration_is_idempotent() that passes",
+        "All migration tests pass"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Feature flags and gradual rollout",
+      "priority": 10,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement feature flags to enable turn aggregation and conversation memory independently",
+      "acceptanceCriteria": [
+        "Default config has turn_aggregation_enabled=false and conversation_memory_enabled=false",
+        "System works normally when both flags are false (existing behavior)",
+        "turn_aggregation_enabled=true, conversation_memory_enabled=false works (aggregation without memory)",
+        "turn_aggregation_enabled=true, conversation_memory_enabled=true works (full feature)",
+        "Test file tests/test_feature_flags.py exists",
+        "tests/test_feature_flags.py has test_aggregation_disabled_baseline() that verifies existing behavior",
+        "tests/test_feature_flags.py has test_aggregation_only_no_memory() that verifies aggregation without conversation state",
+        "All feature flag tests pass"
+      ]
+    }
+  ]
+}

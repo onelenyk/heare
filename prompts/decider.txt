@@ -5,6 +5,12 @@ CONTEXT:
 - Current time: {time} ({timezone})
 - Mode: {mode}
 - Heartbeat tick: {heartbeat_flag}
+- Conversation active: {conversation_active}
+- Conversation summary: {conversation_summary}
+- Active topics: {active_topics}
+- Entities mentioned: {entities}
+- Recent turns with topics:
+{recent_turns}
 - Last 5 transcripts:
 {recent_transcripts}
 {silence_block}

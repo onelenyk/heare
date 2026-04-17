@@ -37,6 +37,11 @@ async def test_build_shape_on_transcript(store: TranscriptStore) -> None:
         "speaker_rule_block",
         "silence_block",
         "proactivity_block",
+        "conversation_active",
+        "conversation_summary",
+        "active_topics",
+        "entities",
+        "recent_turns",
     }
     assert result["heartbeat_flag"] == "no"
     assert "привіт" in result["transcript_or_heartbeat"]
@@ -252,3 +257,32 @@ def test_render_with_template() -> None:
                 await s.close()
 
     asyncio.run(_run())
+
+
+async def test_conversation_context_rendering(store: TranscriptStore) -> None:
+    """Test that conversation context variables are properly rendered in the context."""
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+
+    # Test with no conversation (default case)
+    result = await ctx.build("test transcript", heartbeat=False)
+
+    # Verify new conversation context variables are present
+    assert "conversation_active" in result
+    assert "conversation_summary" in result
+    assert "active_topics" in result
+    assert "entities" in result
+    assert "recent_turns" in result
+
+    # Verify default values
+    assert result["conversation_active"] == "no"
+    assert result["conversation_summary"] == ""
+    assert result["active_topics"] == ""
+    assert result["entities"] == ""
+    assert result["recent_turns"] == "(none)"
+
+    # Verify they are rendered in template substitution
+    template = "conversation_active={conversation_active} active_topics={active_topics}"
+    rendered = ctx.render(template, result)
+    assert "conversation_active=no" in rendered
+    assert "active_topics=" in rendered

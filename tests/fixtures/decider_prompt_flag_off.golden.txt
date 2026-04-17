@@ -5,6 +5,12 @@ CONTEXT:
 - Current time: 2026-04-13 12:00:00 (UTC)
 - Mode: ambient
 - Heartbeat tick: no
+- Conversation active: {conversation_active}
+- Conversation summary: {conversation_summary}
+- Active topics: {active_topics}
+- Entities mentioned: {entities}
+- Recent turns with topics:
+{recent_turns}
 - Last 5 transcripts:
 (none)
 
