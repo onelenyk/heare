@@ -145,39 +145,51 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             claude_cli.persona = render_persona(persona_template, identity)
             logger.info("I am %s %s", identity["name"], identity["emoji"])
 
-            conversation_manager = None
-            openrouter_cli = None
-            if settings.generator_mode:
-                if not settings.openrouter_api_key:
-                    raise RuntimeError(
-                        "generator_mode=True but OPENROUTER_API_KEY is not set in .env"
-                    )
-                from .openrouter_cli import OpenRouterCLI
-                openrouter_cli = OpenRouterCLI(
-                    api_key=settings.openrouter_api_key,
-                    model=settings.openrouter_model,
-                    timeout=settings.openrouter_timeout_seconds,
+            if not settings.openrouter_api_key:
+                raise RuntimeError(
+                    "OPENROUTER_API_KEY is not set — add it to .env or ~/.heare/config.toml"
                 )
-            elif settings.conversation_memory_enabled:
-                from .conversation import ConversationManager
-                conversation_manager = ConversationManager(store, claude_cli)
+            from .openrouter_cli import OpenRouterCLI
+            openrouter_cli = OpenRouterCLI(
+                api_key=settings.openrouter_api_key,
+                model=settings.openrouter_model,
+                timeout=settings.openrouter_timeout_seconds,
+            )
 
-            context_builder = ContextBuilder(store, settings, conversation_manager)
+            context_builder = ContextBuilder(store, settings)
+
+            from .actions import ActionWorker, Intent, IntentQueue
+
+            intent_queue = IntentQueue(max_pending=settings.intent_queue_max_pending)
+
+            async def _on_action_result(intent: "Intent", summary: str) -> None:
+                logger.info("[ACTION RESULT id=%d] summary=%s", intent.id, summary[:200])
+
+            async def _on_action_error(intent: "Intent", exc: BaseException) -> None:
+                logger.info("[ACTION ERROR id=%d] exc=%r", intent.id, exc)
+
+            action_worker = ActionWorker(
+                queue=intent_queue,
+                claude_cli=claude_cli,
+                on_result=_on_action_result,
+                on_error=_on_action_error,
+                timeout=settings.action_timeout_seconds,
+            )
 
             pipeline, processor, tts_cache = await build_pipeline(
                 settings,
                 claude_cli,
                 store,
                 context_builder,
-                conversation_manager,
-                openrouter_cli=openrouter_cli,
+                openrouter_cli,
                 persona=claude_cli.persona or "",
+                intent_queue=intent_queue,
             )
 
             # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play
             # instantly. Failures are non-fatal — falls back to live TTS.
-            from .decider import FIXED_PHRASES
             from .tts_edge import synthesize_to_pcm
+            from .tts_phrases import FIXED_PHRASES
 
             try:
                 await tts_cache.warmup(
@@ -202,29 +214,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 except Exception:
                     logger.exception("startup greeting push failed (non-fatal)")
 
+            # Startup ordering (US-P2.1-06): worker task starts BEFORE the
+            # deferred greeting so any intent a too-eager generator submits
+            # during boot has a live queue consumer.
+            worker_task = asyncio.create_task(action_worker.run())
             asyncio.create_task(_push_greeting())
-
-            # Onboarding passphrase prompt only in legacy decider mode
-            # (Phase 2 will reintroduce confirmation gating in the action worker).
-            from .config import HEARE_HOME  # noqa: E402
-            onboarding_flag = HEARE_HOME / ".onboarded"
-            if (
-                not settings.generator_mode
-                and settings.confirmation_passphrase is None
-                and not onboarding_flag.exists()
-            ):
-                async def _push_onboarding() -> None:
-                    await asyncio.sleep(2.0)
-                    try:
-                        await processor.push_frame(
-                            TTSSpeakFrame(
-                                "Привіт! Встанови секретне слово для підтвердження дій. Наприклад: авторизую."
-                            )
-                        )
-                    except Exception:
-                        logger.exception("onboarding prompt push failed (non-fatal)")
-
-                asyncio.create_task(_push_onboarding())
 
             heartbeat = HeartbeatTask(processor, settings.heartbeat_interval_minutes)
             warmup = WarmupTask(
@@ -235,7 +229,10 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
 
             runner = PipelineRunner()
-            await run_until_stopped(runner, pipeline, heartbeat, warmup, decider=processor)
+            await run_until_stopped(
+                runner, pipeline, heartbeat, warmup,
+                decider=processor, worker_task=worker_task,
+            )
     finally:
         if store is not None:
             await store.close()
@@ -245,7 +242,9 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     return 0
 
 
-async def run_until_stopped(runner, pipeline, heartbeat, warmup=None, *, decider=None) -> None:
+async def run_until_stopped(
+    runner, pipeline, heartbeat, warmup=None, *, decider=None, worker_task=None
+) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
     heartbeat_task = loop.create_task(heartbeat.run())
@@ -268,6 +267,8 @@ async def run_until_stopped(runner, pipeline, heartbeat, warmup=None, *, decider
     watch_set = {pipeline_task, heartbeat_task, stop_waiter}
     if warmup_task is not None:
         watch_set.add(warmup_task)
+    if worker_task is not None:
+        watch_set.add(worker_task)
     try:
         done, _ = await asyncio.wait(watch_set, return_when=asyncio.FIRST_COMPLETED)
     finally:
@@ -277,12 +278,16 @@ async def run_until_stopped(runner, pipeline, heartbeat, warmup=None, *, decider
         background_tasks = [pipeline_task, heartbeat_task, stop_waiter]
         if warmup_task is not None:
             background_tasks.append(warmup_task)
+        if worker_task is not None:
+            background_tasks.append(worker_task)
         for task in background_tasks:
             if not task.done():
                 task.cancel()
         named_tasks = [(pipeline_task, "pipeline"), (heartbeat_task, "heartbeat")]
         if warmup_task is not None:
             named_tasks.append((warmup_task, "warmup"))
+        if worker_task is not None:
+            named_tasks.append((worker_task, "action-worker"))
         for task, name in named_tasks:
             try:
                 await task

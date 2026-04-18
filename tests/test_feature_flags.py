@@ -257,16 +257,6 @@ async def test_default_settings_match_plan_spec(harness) -> None:
     )
 
 
-def test_generator_mode_default_is_false() -> None:
-    """Phase 1 US-P1-08: generator_mode defaults to False — emergency opt-in only."""
-    s = Settings()
-    assert s.generator_mode is False
-
-
-def test_generator_mode_both_values_settable() -> None:
-    """Phase 1 US-P1-08: flag toggles without side-effects at Settings layer."""
-    s = Settings()
-    s.generator_mode = True
-    assert s.generator_mode is True
-    s.generator_mode = False
-    assert s.generator_mode is False
+# Phase 2.1 US-P2.1-07a: generator_mode flag removed (only generator
+# pipeline remains). The two tests that used to assert its default and
+# toggle behavior were deleted here.

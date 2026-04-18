@@ -163,10 +163,16 @@ def test_conversation_memory_settings() -> None:
 
 def test_openrouter_settings_defaults() -> None:
     s = Settings()
-    assert s.generator_mode is False
     assert s.openrouter_api_key is None
     assert s.openrouter_model == "google/gemini-3.1-flash-lite-preview-20260303"
     assert s.openrouter_timeout_seconds == 5.0
+
+
+def test_phase2_worker_settings_defaults() -> None:
+    """Phase 2.1 US-P2.1-07a: action worker config defaults."""
+    s = Settings()
+    assert s.action_timeout_seconds == 120.0
+    assert s.intent_queue_max_pending == 32
 
 
 def test_load_settings_openrouter_from_env(monkeypatch, tmp_path) -> None:

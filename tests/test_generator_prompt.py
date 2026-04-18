@@ -43,9 +43,27 @@ def test_template_requires_ukrainian_response() -> None:
     assert "україн" in raw.lower()
 
 
-def test_template_does_not_request_json_output() -> None:
+def test_template_reply_text_forbids_json() -> None:
+    """Reply text must still be plain Ukrainian; JSON is allowed ONLY inside
+    <intent> tags (Phase 2.1)."""
     raw = _load()
-    assert "JSON" not in raw or "НЕ виводь JSON" in raw
+    # The rule must appear: reply text has no JSON
+    assert "без JSON" in raw or "НЕ виводь JSON" in raw
+
+
+def test_template_has_intents_section() -> None:
+    """Phase 2.1 US-P2.1-02: INTENTS section documents when/how to emit tags."""
+    raw = _load()
+    assert "INTENTS" in raw
+    assert "<intent>" in raw
+    assert '"tool"' in raw
+    assert '"args"' in raw
+
+
+def test_template_forbids_fenced_intent() -> None:
+    """Prompt must explicitly say don't wrap intent tags in ```fences```."""
+    raw = _load()
+    assert "fences" in raw.lower() or "```" in raw
 
 
 def test_substitution_leaves_no_placeholders() -> None:

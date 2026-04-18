@@ -1,23 +1,25 @@
-"""Phase-1 GeneratorProcessor.
+"""GeneratorProcessor — always-replies pipeline stage for s2s-realtime.
 
-Replaces DeciderProcessor for the s2s-realtime branch. Always produces a
-reply — no classification, no nothing/speak/act branching. Streams reply
-chunks into TTS as they arrive from OpenRouter.
+Phase 2.1: streams LLM chunks through IntentStreamParser, speaks the
+non-intent text via TTSSpeakFrame, submits intents to IntentQueue,
+and honors a minimal cancel keyword gate for "скасуй"/"відміни".
 
-Pipecat imports are deferred so admin CLI paths work on machines without
-portaudio.
+Pipecat imports are deferred so admin CLI paths work on machines
+without portaudio.
 """
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
 from .context import ContextBuilder
-from .decider import FIXED_PHRASES
+from .intent_parser import IntentStreamParser
 from .openrouter_cli import OpenRouterCLI, OpenRouterError
 
 if TYPE_CHECKING:
+    from .actions import IntentQueue
     from .config import Settings
     from .storage import TranscriptStore
 
@@ -28,14 +30,16 @@ FALLBACK_PHRASE = "Хвилинку, щось не так."
 
 _SENTENCE_TERMINATORS = ".!?…"
 
+# Cancel keyword gate. "стоп" intentionally excluded — too many false
+# positives ("стоп-кадр", "автостоп"). The boundary class rejects
+# substring matches like "скаси" (different stem).
+_CANCEL_RE = re.compile(
+    r"(?i)(?:^|[\s.,!?—])(скасуй|відміни)(?:$|[\s.,!?—])"
+)
+
 
 def _split_on_sentence(buffer: str) -> tuple[str, str]:
-    """Return (complete_sentence_prefix, remainder).
-
-    Scans `buffer` for the last sentence terminator. If found, splits so the
-    first element contains a complete sentence (or run of sentences) and the
-    second contains everything after. Otherwise returns ('', buffer).
-    """
+    """Return (complete_sentence_prefix, remainder)."""
     last = -1
     for i, ch in enumerate(buffer):
         if ch in _SENTENCE_TERMINATORS:
@@ -90,6 +94,7 @@ def _build_generator_processor_class():
             context_builder: ContextBuilder,
             prompt_template: str,
             persona: str,
+            intent_queue: "IntentQueue",
             store: "TranscriptStore | None" = None,
             settings: "Settings | None" = None,
         ) -> None:
@@ -98,10 +103,10 @@ def _build_generator_processor_class():
             self.context_builder = context_builder
             self.prompt_template = prompt_template
             self.persona = persona
+            self.intent_queue = intent_queue
             self.store = store
             self.settings = settings
-            # Feedback-loop guard: drop transcripts heard while bot is
-            # speaking (or shortly after — STT has audio in flight).
+            # Feedback-loop guard — drop transcripts while bot speaks / cooldown
             self._bot_speaking = False
             self._bot_cooldown_until = 0.0
             self._bot_cooldown_seconds = (
@@ -109,13 +114,8 @@ def _build_generator_processor_class():
             )
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
-            # Pipecat requires super().process_frame first for internal
-            # bookkeeping (start/stop state tracking).
             await super().process_frame(frame, direction)
 
-            # Bot-speaking state — drives the feedback-loop guard in
-            # _handle_transcription. We still forward these frames so
-            # downstream services see them.
             if isinstance(frame, BotStartedSpeakingFrame):
                 self._bot_speaking = True
             elif isinstance(frame, BotStoppedSpeakingFrame):
@@ -125,10 +125,6 @@ def _build_generator_processor_class():
             if isinstance(frame, TranscriptionFrame):
                 await self._handle_transcription(frame, direction)
             else:
-                # Forward EVERYTHING else downstream so EdgeTTS sees
-                # StartFrame / EndFrame / audio-control frames. Without
-                # this, downstream services never initialize and all
-                # TTSSpeakFrames we push later are silently dropped.
                 await self.push_frame(frame, direction)
 
         async def _handle_transcription(self, frame: Any, direction: Any) -> None:
@@ -136,9 +132,6 @@ def _build_generator_processor_class():
             if not transcript:
                 return
 
-            # Feedback-loop guard: drop transcripts while bot is speaking
-            # OR during the post-speech cooldown window (STT may still be
-            # processing tail of bot audio).
             if self._bot_speaking or time.monotonic() < self._bot_cooldown_until:
                 logger.debug(
                     "generator: dropping transcript while bot speaking/cooldown: %r",
@@ -146,8 +139,7 @@ def _build_generator_processor_class():
                 )
                 return
 
-            # Persist the incoming transcript so the watch dashboard / storage
-            # reflects user activity (parity with legacy DeciderProcessor).
+            # Persist transcript so the watch dashboard sees user activity
             if self.store is not None and self.settings is not None:
                 try:
                     await self.store.log_transcript(
@@ -159,11 +151,21 @@ def _build_generator_processor_class():
                 except Exception:
                     logger.exception("generator: failed to log transcript (non-fatal)")
 
+            # Cancel keyword gate — pending-only cancellation
+            cancelled_id: int | None = None
+            if _CANCEL_RE.search(transcript):
+                cancelled = self.intent_queue.cancel_latest()
+                if cancelled is not None:
+                    cancelled_id = cancelled.id
+                    logger.info("[INTENT CANCELLED id=%d]", cancelled.id)
+
             t_start = time.monotonic()
             ttft_ms: float | None = None
             chunk_count = 0
+            intent_count = 0
             buffer = ""
             full_text_parts: list[str] = []
+            parser = IntentStreamParser()
             try:
                 ctx = await self.context_builder.build_for_generator(
                     transcript=transcript, persona=self.persona
@@ -174,8 +176,10 @@ def _build_generator_processor_class():
                         continue
                     if ttft_ms is None:
                         ttft_ms = (time.monotonic() - t_start) * 1000
-                    buffer += chunk
-                    # Flush on sentence boundary so EdgeTTS gets coherent text.
+                    # Route chunk through the parser — separates TTS text
+                    # from intent payloads with anti-leakage invariants.
+                    speech, intents = parser.feed(chunk)
+                    buffer += speech
                     sentence, remainder = _split_on_sentence(buffer)
                     if sentence:
                         text = sentence.strip()
@@ -184,7 +188,27 @@ def _build_generator_processor_class():
                             full_text_parts.append(text)
                             chunk_count += 1
                         buffer = remainder
-                # Flush any trailing partial sentence
+                    for intent_payload in intents:
+                        intent_id = await self.intent_queue.submit(intent_payload)
+                        if intent_id is not None:
+                            intent_count += 1
+                            logger.info(
+                                "[INTENT SUBMITTED id=%d tool=%s]",
+                                intent_id,
+                                intent_payload.get("tool", "?"),
+                            )
+                # End-of-stream: release any held parser bytes + flush tail
+                speech, intents = parser.flush()
+                buffer += speech
+                for intent_payload in intents:
+                    intent_id = await self.intent_queue.submit(intent_payload)
+                    if intent_id is not None:
+                        intent_count += 1
+                        logger.info(
+                            "[INTENT SUBMITTED id=%d tool=%s]",
+                            intent_id,
+                            intent_payload.get("tool", "?"),
+                        )
                 tail = buffer.strip()
                 if tail:
                     await self.push_frame(TTSSpeakFrame(tail))
@@ -209,13 +233,13 @@ def _build_generator_processor_class():
 
             total_ms = (time.monotonic() - t_start) * 1000
             ttft_display = ttft_ms if ttft_ms is not None else total_ms
-            reply_preview = " ".join(full_text_parts)[:100]
             logger.info(
-                '[TIMING] generator transcript="%s" ttft=%dms total_chunks=%d reply=%r',
+                '[TIMING] generator transcript="%s" ttft=%dms chunks=%d intents=%d cancelled=%s',
                 transcript[:80],
                 int(ttft_display),
                 chunk_count,
-                reply_preview,
+                intent_count,
+                cancelled_id if cancelled_id is not None else "none",
             )
 
         async def shutdown(self) -> None:
@@ -237,13 +261,29 @@ def create_generator_processor(
     persona: str,
     store: "TranscriptStore | None" = None,
     settings: "Settings | None" = None,
+    intent_queue: "IntentQueue | None" = None,
 ):
+    """Build a GeneratorProcessor. `intent_queue` defaults to a fresh
+    IntentQueue so tests don't need to pre-instantiate one. Production
+    callers (main.py) always pass the daemon-lifetime queue.
+    """
+    from .actions import IntentQueue as _IQ
+
+    if intent_queue is None:
+        intent_queue = _IQ()
     cls = _build_generator_processor_class()
-    return cls(openrouter_cli, context_builder, prompt_template, persona, store, settings)
+    return cls(
+        openrouter_cli,
+        context_builder,
+        prompt_template,
+        persona,
+        intent_queue,
+        store,
+        settings,
+    )
 
 
 __all__ = [
     "FALLBACK_PHRASE",
-    "FIXED_PHRASES",
     "create_generator_processor",
 ]

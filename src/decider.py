@@ -62,15 +62,9 @@ NOISE_PATTERN = re.compile(
 
 # Fixed phrases the assistant says often — pre-renderable into TTSCache so
 # they play instantly instead of round-tripping through edge-tts.
-FIXED_PHRASES: list[str] = [
-    "okay",
-    "nevermind, cancelled",
-    "Скажи: так чи ні?",
-    "дія не вдалася",
-    "Скажи: гава так, або гава ні",
-    "Скажи пароль, або гава ні",
-    "Хвилинку, щось не так.",
-]
+# Relocated to src/tts_phrases.py in Phase 2.1 (US-P2.1-07b).
+# Re-exported here for any legacy importers; flagged for deletion in 2.7.
+from .tts_phrases import FIXED_PHRASES  # noqa: F401, E402
 
 # Wake words that signal "user is talking TO Heare"
 WAKE_WORD_PATTERN = re.compile(r"\b(гава|heare|гей)\b", re.IGNORECASE)

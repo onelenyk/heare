@@ -2,6 +2,8 @@
 
 Pipecat imports are deferred inside build_pipeline so admin CLI paths work
 without portaudio installed.
+
+Phase 2.1: single generator pipeline; `generator_mode` flag retired.
 """
 from __future__ import annotations
 
@@ -10,16 +12,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Tuple
 
 from .config import Settings
-from .decider import create_decider_processor
 from .tts_cache import TTSCache
 from .tts_edge import create_edge_tts_service
 
 if TYPE_CHECKING:
+    from .actions import IntentQueue
     from .claude_cli import ClaudeCLI
     from .context import ContextBuilder
     from .openrouter_cli import OpenRouterCLI
     from .storage import TranscriptStore
-    from .conversation import ConversationManager
 
 
 logger = logging.getLogger("heare.pipeline")
@@ -30,9 +31,9 @@ async def build_pipeline(
     claude_cli: "ClaudeCLI",
     store: "TranscriptStore",
     context_builder: "ContextBuilder",
-    conversation_manager: "ConversationManager | None" = None,
-    openrouter_cli: "OpenRouterCLI | None" = None,
+    openrouter_cli: "OpenRouterCLI",
     persona: str = "",
+    intent_queue: "IntentQueue | None" = None,
 ) -> Tuple[object, object, object]:
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
@@ -51,17 +52,11 @@ async def build_pipeline(
             "GROQ_API_KEY is not set — copy .env.example to .env and fill it in"
         )
 
-    decider_prompt = (
-        Path(__file__).parent.parent / "prompts" / "decider.txt"
-    ).read_text()
-
     from pipecat.audio.vad.vad_analyzer import VADParams
     from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 
     # VAD waits 0.5s of silence before declaring end-of-speech. Compromise
-    # between latency (was 1.0s default) and Groq STT rate-limit pressure
-    # (0.2s produced too many fragments and hit the free-tier 20 RPS cap).
-    # SmartTurnV3's ML model is the anti-fragmentation safety net.
+    # between latency (was 1.0s default) and Groq STT rate-limit pressure.
     vad = SileroVADAnalyzer(
         params=VADParams(stop_secs=0.5, start_secs=0.3, confidence=0.7, min_volume=0.6)
     )
@@ -89,121 +84,33 @@ async def build_pipeline(
         cache=tts_cache,
     )
 
-    if settings.generator_mode:
-        # Phase-1 s2s-realtime: slim pipeline with OpenRouter generator.
-        if openrouter_cli is None:
-            raise RuntimeError(
-                "generator_mode=True but openrouter_cli not provided to build_pipeline"
-            )
-        from .generator import create_generator_processor
+    from .generator import create_generator_processor
 
-        generator_prompt = (
-            Path(__file__).parent.parent / "prompts" / "generator.txt"
-        ).read_text()
-        generator = create_generator_processor(
-            openrouter_cli=openrouter_cli,
-            context_builder=context_builder,
-            prompt_template=generator_prompt,
-            persona=persona,
-            store=store,
-            settings=settings,
-        )
-        stages = [transport.input(), stt, generator, tts, transport.output()]
-        logger.info(
-            "Generator mode enabled: model=%s, timeout=%ss",
-            settings.openrouter_model,
-            settings.openrouter_timeout_seconds,
-        )
-        pipeline = Pipeline(stages)
-        task = PipelineTask(
-            pipeline,
-            params=PipelineParams(allow_interruptions=False),
-            cancel_on_idle_timeout=False,
-            enable_turn_tracking=False,
-        )
-        return task, generator, tts_cache
-
-    # Legacy pipeline: decider + optional turn_aggregator + optional speaker_id
-    turn_aggregator = None
-    if settings.turn_aggregation_enabled:
-        from .turn_aggregator import TurnAggregator
-
-        async def on_turn_complete(
-            aggregated_text: str,
-            turn_start_ts: float,
-            turn_end_ts: float,
-            buffer: list[dict],
-        ) -> None:
-            if conversation_manager and settings.topic_extraction_enabled:
-                try:
-                    topics = await conversation_manager.extract_topics(aggregated_text)
-                    conv_id = await conversation_manager.get_or_create_active()
-                    await conversation_manager.update_summary(conv_id, aggregated_text, topics)
-                    logger.info(
-                        "Turn complete: %d utterances, %d topics, conv_id=%s",
-                        len(buffer), len(topics), conv_id,
-                    )
-                except Exception as e:
-                    logger.warning("Failed to update conversation on turn complete: %s", e)
-
-        turn_aggregator = TurnAggregator(
-            mode=settings.mode,
-            focus_timeout=settings.focus_mode_turn_timeout,
-            ambient_timeout=settings.ambient_mode_turn_timeout,
-            max_turn_duration=settings.max_turn_duration,
-            on_turn_complete=on_turn_complete,
-        )
-        logger.info(
-            "TurnAggregator enabled: mode=%s, focus_timeout=%ss, ambient_timeout=%ss",
-            settings.mode.value,
-            settings.focus_mode_turn_timeout,
-            settings.ambient_mode_turn_timeout,
-        )
-
-    decider = create_decider_processor(
-        claude_cli=claude_cli,
-        store=store,
+    generator_prompt = (
+        Path(__file__).parent.parent / "prompts" / "generator.txt"
+    ).read_text()
+    generator = create_generator_processor(
+        openrouter_cli=openrouter_cli,
         context_builder=context_builder,
+        prompt_template=generator_prompt,
+        persona=persona,
+        store=store,
         settings=settings,
-        decider_prompt_template=decider_prompt,
-        turn_aggregator=turn_aggregator,
-        conversation_manager=conversation_manager,
+        intent_queue=intent_queue,
     )
 
-    stages: list[object] = [transport.input(), stt]
-    if settings.speaker_id_enabled:
-        from . import speaker_id
-        from .speaker_gallery import SpeakerGallery
-        from .speaker_processor import create_speaker_processors
-
-        gallery = SpeakerGallery.load(settings.speakers_file)
-        if "owner" not in gallery.list_speakers():
-            logger.warning(
-                "speaker_id_enabled but no owner enrolled in %s — "
-                "run `heare enroll-owner` to enable speaker identification. "
-                "Commands still work via keyword gate.",
-                settings.speakers_file,
-            )
-        else:
-            model = speaker_id.load_model()
-            speaker_id.warmup(model, sample_rate=16000)
-            audio_buffer, speaker_tagger = create_speaker_processors(
-                settings, gallery, model, sample_rate=16000
-            )
-            # AudioBufferProcessor sits right after transport.input() so it
-            # sees raw PCM; the tagger sits between STT and decider so it
-            # can annotate each TranscriptionFrame before the decider reads
-            # the speaker_id attribute.
-            stages = [transport.input(), audio_buffer, stt, speaker_tagger]
-
-    stages.extend([decider, tts, transport.output()])
+    stages = [transport.input(), stt, generator, tts, transport.output()]
+    logger.info(
+        "Generator pipeline: model=%s, openrouter_timeout=%ss, action_timeout=%ss",
+        settings.openrouter_model,
+        settings.openrouter_timeout_seconds,
+        settings.action_timeout_seconds,
+    )
     pipeline = Pipeline(stages)
     task = PipelineTask(
         pipeline,
-        params=PipelineParams(
-            allow_interruptions=False,  # no HW echo cancellation — own voice would kill TTS
-        ),
+        params=PipelineParams(allow_interruptions=False),
         cancel_on_idle_timeout=False,
         enable_turn_tracking=False,
     )
-    return task, decider, tts_cache
+    return task, generator, tts_cache

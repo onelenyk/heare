@@ -1,4 +1,8 @@
-"""Integration tests for Phase-1 s2s-realtime pipeline wiring."""
+"""Integration tests for Phase-2.1 s2s-realtime pipeline wiring.
+
+Phase 2.1: generator_mode flag removed; pipeline always builds the
+generator path.
+"""
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -36,9 +40,8 @@ async def env(tmp_path):
         await store.close()
 
 
-async def test_generator_mode_builds_generator_processor(env, monkeypatch):
+async def test_build_pipeline_returns_generator_processor(env, monkeypatch):
     settings, store, ctx = env
-    settings.generator_mode = True
 
     def _fake_transport(*a, **kw):
         t = MagicMock()
@@ -61,33 +64,8 @@ async def test_generator_mode_builds_generator_processor(env, monkeypatch):
         persona="Ти Heare.",
     )
 
-    # Middle element is a GeneratorProcessor, not a Decider
+    # Middle element is a GeneratorProcessor
     assert type(middle).__name__ == "GeneratorProcessor"
-    # Legacy shutdown contract preserved (both decider + generator expose it)
+    # Shutdown contract preserved
     assert callable(getattr(middle, "shutdown", None))
     assert callable(getattr(middle, "on_heartbeat_tick", None))
-
-
-async def test_generator_mode_requires_openrouter_cli(env, monkeypatch):
-    settings, store, ctx = env
-    settings.generator_mode = True
-    claude_cli = MagicMock()
-
-    def _fake_transport(*a, **kw):
-        t = MagicMock()
-        t.input = MagicMock(return_value=MagicMock(name="input"))
-        t.output = MagicMock(return_value=MagicMock(name="output"))
-        return t
-
-    monkeypatch.setattr("src.pipeline.LocalAudioTransport", _fake_transport, raising=False)
-    import pipecat.transports.local.audio as audio_mod
-    monkeypatch.setattr(audio_mod, "LocalAudioTransport", _fake_transport)
-
-    with pytest.raises(RuntimeError, match="openrouter_cli"):
-        await build_pipeline(
-            settings=settings,
-            claude_cli=claude_cli,
-            store=store,
-            context_builder=ctx,
-            openrouter_cli=None,
-        )

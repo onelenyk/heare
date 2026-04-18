@@ -180,4 +180,161 @@ async def test_ttft_logged_with_expected_format(harness, caplog) -> None:
     msg = timing_lines[0]
     assert "transcript=" in msg
     assert "ttft=" in msg
-    assert "total_chunks=1" in msg
+    assert "chunks=1" in msg
+    assert "intents=0" in msg
+
+
+# ---------- Phase 2.1 tests: intent emission + cancel keyword ----------
+
+
+async def test_intent_emission_and_tts_separation(harness) -> None:
+    """Generator pushes reply text to TTS and submits intent to queue — no tag leakage."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    fake = FakeOpenRouter(
+        chunks=[
+            "Виконаю. ",
+            '<intent>{"tool":"bash","args":"echo hi"}</intent>',
+        ]
+    )
+    queue = IntentQueue()
+    gen = create_generator_processor(
+        fake, ctx, "template {transcript}", "persona", intent_queue=queue
+    )
+    pushed: list = []
+
+    async def capture(frame, direction=None):
+        pushed.append(frame)
+
+    gen.push_frame = capture  # type: ignore[assignment]
+    await gen._handle_transcription(_make_transcription_frame("запусти echo hi"), None)
+
+    # TTS got "Виконаю." exactly; no '<' anywhere in emitted text
+    tts_texts = [f.text for f in pushed]
+    assert any("Виконаю" in t for t in tts_texts)
+    for t in tts_texts:
+        assert "<" not in t
+    # Queue has the intent
+    assert queue.pending_count() == 1
+
+
+async def test_mid_stream_tag_no_leakage(harness) -> None:
+    """Anti-leakage: tag split across chunks mid-stream — no `<` in TTS."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    fake = FakeOpenRouter(
+        chunks=[
+            "Додам. ",
+            '<intent>{"tool":"bash",',
+            '"args":"x"}</intent>',
+            " далі щось.",
+        ]
+    )
+    queue = IntentQueue()
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    pushed: list = []
+
+    async def capture(frame, direction=None):
+        pushed.append(frame)
+
+    gen.push_frame = capture  # type: ignore[assignment]
+    await gen._handle_transcription(_make_transcription_frame("зроби"), None)
+
+    tts_texts = [f.text for f in pushed]
+    joined = " ".join(tts_texts)
+    assert "<" not in joined
+    assert "Додам." in joined
+    assert "далі щось." in joined
+    assert queue.pending_count() == 1
+
+
+async def test_cancel_keyword_pops_pending_intent(harness, caplog) -> None:
+    """User says "скасуй" → cancel_latest called, pending intent removed."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    fake = FakeOpenRouter(chunks=["Скасовую."])
+    queue = IntentQueue()
+    await queue.submit({"tool": "bash", "args": "will-be-cancelled"})
+
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+
+    with caplog.at_level(logging.INFO, logger="heare.generator"):
+        await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+
+    assert queue.pending_count() == 0
+    assert any("INTENT CANCELLED" in r.message for r in caplog.records)
+
+
+async def test_cancel_keyword_on_empty_queue_graceful(harness) -> None:
+    """User says "скасуй" with empty queue → no crash, reply still speaks."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    fake = FakeOpenRouter(chunks=["Немає чого скасовувати."])
+    queue = IntentQueue()
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    pushed: list = []
+
+    async def capture(frame, direction=None):
+        pushed.append(frame)
+
+    gen.push_frame = capture  # type: ignore[assignment]
+    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+    assert queue.pending_count() == 0
+    # Bot still replied
+    assert any("Немає" in f.text for f in pushed)
+
+
+async def test_cancel_keyword_negative_cases(harness) -> None:
+    """Substring 'стоп' must NOT trigger cancel. 'скаси' (diff stem) must NOT trigger."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    for phrase in ["стоп-кадр", "автостоп", "скаси мене"]:
+        queue = IntentQueue()
+        await queue.submit({"tool": "bash", "args": "stay-safe"})
+        fake = FakeOpenRouter(chunks=["ok"])
+        gen = create_generator_processor(
+            fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+        )
+        gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+        await gen._handle_transcription(_make_transcription_frame(phrase), None)
+        # Intent should still be there — no cancel triggered
+        assert queue.pending_count() == 1, (
+            f"phrase {phrase!r} unexpectedly cancelled the pending intent"
+        )
+
+
+async def test_cancel_keyword_positive_edge_cases(harness) -> None:
+    """Real cancellation phrases must trigger cancel_latest."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    for phrase in [
+        "скасуй!",
+        "ну скасуй",
+        "скасуй, будь ласка",
+        "відміни замовлення",
+    ]:
+        queue = IntentQueue()
+        await queue.submit({"tool": "bash", "args": "will-cancel"})
+        fake = FakeOpenRouter(chunks=["ok"])
+        gen = create_generator_processor(
+            fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+        )
+        gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+        await gen._handle_transcription(_make_transcription_frame(phrase), None)
+        assert queue.pending_count() == 0, (
+            f"phrase {phrase!r} should have cancelled but queue has "
+            f"{queue.pending_count()} pending"
+        )
