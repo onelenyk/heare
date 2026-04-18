@@ -315,6 +315,80 @@ async def test_cancel_keyword_negative_cases(harness) -> None:
         )
 
 
+async def test_tts_scrubber_removes_tool_names() -> None:
+    """Phase 2.2 US-P2.2-07: `bash` as a standalone token gets stripped."""
+    from src.generator import _scrub_tts_text
+
+    out = _scrub_tts_text("Добре, запустив bash echo hi.")
+    assert "bash" not in out.lower()
+    assert "запустив" in out
+    assert "echo hi" in out
+
+
+async def test_tts_scrubber_handles_json_fragment_leak() -> None:
+    """JSON fragment that leaked from an intent tag is stripped entirely."""
+    from src.generator import _scrub_tts_text
+
+    out = _scrub_tts_text(
+        'Зроблю зараз {"tool":"bash","args":"x"} далі.'
+    )
+    assert '"tool"' not in out
+    assert '"args"' not in out
+    assert '{' not in out
+    assert "Зроблю зараз" in out
+    assert "далі." in out
+
+
+async def test_tts_scrubber_bashful_passthrough() -> None:
+    """Unrelated words containing 'bash' as a substring must NOT be stripped."""
+    from src.generator import _scrub_tts_text
+
+    out = _scrub_tts_text("Він був дуже bashful сьогодні.")
+    assert "bashful" in out
+
+
+async def test_intent_emission_under_saturated_context(harness) -> None:
+    """Phase 2.2 US-P2.2-07b: intent tag still parses when prompt is saturated
+    with conversation context."""
+    from src.actions import IntentQueue
+    from src.conversation import ConversationManager
+    from src.context import ContextBuilder
+    from unittest.mock import MagicMock
+
+    store, settings, _ = harness
+    mgr = ConversationManager(store, MagicMock())
+    # Saturate the action log with 5 entries
+    for i in range(1, 6):
+        mgr.record_action_pending(i, "bash", f"cmd{i} long argument line here")
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+
+    fake = FakeOpenRouter(
+        chunks=[
+            "Виконаю. ",
+            '<intent>{"tool":"bash",',
+            '"args":"echo saturated"}</intent>',
+        ]
+    )
+    queue = IntentQueue()
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    pushed: list = []
+
+    async def capture(frame, direction=None):
+        pushed.append(frame)
+
+    gen.push_frame = capture  # type: ignore[assignment]
+    await gen._handle_transcription(_make_transcription_frame("запусти"), None)
+
+    # Intent extracted cleanly
+    assert queue.pending_count() == 1
+    # No '<' in any TTS frame
+    tts_texts = [f.text for f in pushed]
+    for t in tts_texts:
+        assert "<" not in t
+
+
 async def test_cancel_keyword_positive_edge_cases(harness) -> None:
     """Real cancellation phrases must trigger cancel_latest."""
     from src.actions import IntentQueue

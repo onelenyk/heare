@@ -156,16 +156,32 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 timeout=settings.openrouter_timeout_seconds,
             )
 
-            context_builder = ContextBuilder(store, settings)
+            # Phase 2.2: ConversationManager is the source-of-truth for
+            # conversation memory + action-log. Instantiated when the flag
+            # is enabled OR (default) when OPENROUTER_API_KEY is configured
+            # and the flag hasn't been explicitly disabled in config.toml.
+            # Users who set conversation_memory_enabled=False get no memory.
+            conversation_manager = None
+            if settings.conversation_memory_enabled:
+                from .conversation import ConversationManager
+                conversation_manager = ConversationManager(store, claude_cli)
+
+            context_builder = ContextBuilder(store, settings, conversation_manager)
 
             from .actions import ActionWorker, Intent, IntentQueue
 
             intent_queue = IntentQueue(max_pending=settings.intent_queue_max_pending)
 
             async def _on_action_result(intent: "Intent", summary: str) -> None:
+                # Phase 2.2: record BEFORE logging so next turn's context
+                # already reflects the completed action.
+                if conversation_manager is not None:
+                    conversation_manager.record_action_result(intent.id, summary)
                 logger.info("[ACTION RESULT id=%d] summary=%s", intent.id, summary[:200])
 
             async def _on_action_error(intent: "Intent", exc: BaseException) -> None:
+                if conversation_manager is not None:
+                    conversation_manager.record_action_error(intent.id, repr(exc))
                 logger.info("[ACTION ERROR id=%d] exc=%r", intent.id, exc)
 
             action_worker = ActionWorker(
@@ -184,6 +200,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 openrouter_cli,
                 persona=claude_cli.persona or "",
                 intent_queue=intent_queue,
+                conversation_manager=conversation_manager,
             )
 
             # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play

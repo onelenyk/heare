@@ -26,11 +26,9 @@ _EXCLUDED_FROM_GENERATOR_CTX: frozenset[str] = frozenset({
     "speaker_rule_block",
     "silence_block",
     "proactivity_block",
-    "conversation_active",
-    "conversation_summary",
-    "active_topics",
-    "entities",
-    "recent_turns",
+    "conversation_active",  # internal yes/no flag, not surfaced to generator
+    # Phase 2.2: the following 4 keys now flow into build_for_generator:
+    # conversation_summary, active_topics, entities, recent_turns
 })
 
 
@@ -104,17 +102,30 @@ class ContextBuilder:
         self,
         transcript: str,
         persona: str,
+        conversation_id: int | None = None,
     ) -> dict[str, Any]:
-        """Minimal context for the Phase-1 generator prompt.
+        """Context for the generator prompt (Phase 2.2: with conversation memory).
 
-        Shares the time/timezone/recent-transcripts computation with build()
-        so any new field added there is visible here (or flagged by the
-        _EXCLUDED_FROM_GENERATOR_CTX drift test).
+        Shares time/timezone/recent-transcripts/conversation-* fields with
+        build() via projection. Adds persona, transcript, and the
+        bfg-only recent_actions key.
         """
-        full = await self.build(transcript=None, heartbeat=False)
+        full = await self.build(
+            transcript=None,
+            heartbeat=False,
+            conversation_id=conversation_id,
+        )
         result = {k: v for k, v in full.items() if k not in _EXCLUDED_FROM_GENERATOR_CTX}
         result["persona"] = persona
         result["transcript"] = transcript
+        # recent_actions — pulled directly from ConversationManager's
+        # in-memory log; not persisted in build() output.
+        if self.conversation_manager is not None:
+            result["recent_actions"] = self._format_recent_actions(
+                self.conversation_manager.recent_actions()
+            )
+        else:
+            result["recent_actions"] = "(none)"
         return result
 
     def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:
@@ -179,6 +190,27 @@ class ContextBuilder:
             else:
                 entity_lines.append(f"{category}: {str(items)}")
         return "\n".join(f"  - {line}" for line in entity_lines)
+
+    def _format_recent_actions(self, actions: list[dict[str, Any]]) -> str:
+        """Format recent action-log entries for the generator prompt.
+
+        Example output:
+            - [14:23] ✓ bash: додав хліб
+            - [14:25] ⋯ search: пошук рейсів
+            - [14:27] ✗ bash: помилка — ...
+        """
+        if not actions:
+            return "(none)"
+        glyph = {"pending": "⋯", "done": "✓", "error": "✗"}
+        lines: list[str] = []
+        for a in actions:
+            ts = dt.datetime.fromtimestamp(a.get("ts", 0)).strftime("%H:%M:%S")
+            status = a.get("status", "pending")
+            tool = a.get("tool", "")
+            args = a.get("args", "")[:60]
+            tail = a.get("result") or a.get("error") or args
+            lines.append(f"  - [{ts}] {glyph.get(status, '?')} {tool}: {tail[:80]}")
+        return "\n".join(lines)
 
     def _format_recent_turns(self, recent_turns: list[dict[str, Any]]) -> str:
         """Format recent turns with topics for display in prompt."""

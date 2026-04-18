@@ -15,7 +15,15 @@ logger = logging.getLogger("heare.conversation")
 
 
 class ConversationManager:
-    """Maintains conversation state: topics, entities, summary."""
+    """Maintains conversation state: topics, entities, summary, recent actions.
+
+    Phase 2.2: adds an in-memory `_action_log` (bounded deque) updated by
+    sync `record_action_*` methods from the generator hot path and the
+    action worker callbacks. Single event loop → dict/deque mutations are
+    atomic under the GIL; no lock required.
+    """
+
+    _ACTION_LOG_MAXLEN = 16
 
     def __init__(self, store: TranscriptStore, claude_cli: ClaudeBackend) -> None:
         """Initialize ConversationManager.
@@ -24,8 +32,63 @@ class ConversationManager:
             store: TranscriptStore for database operations
             claude_cli: ClaudeBackend for topic extraction
         """
+        import collections
+
         self.store = store
         self.claude = claude_cli
+        self._action_log: collections.deque = collections.deque(
+            maxlen=self._ACTION_LOG_MAXLEN
+        )
+
+    # ---- Phase 2.2 action log (sync, no lock — single event loop) ----
+
+    def record_action_pending(self, intent_id: int, tool: str, args: str) -> None:
+        self._action_log.append({
+            "id": intent_id,
+            "tool": tool,
+            "args": args,
+            "status": "pending",
+            "ts": time.time(),
+        })
+
+    def record_action_result(self, intent_id: int, summary: str) -> None:
+        # Update the matching pending entry if present; otherwise append a
+        # fresh "done" entry. Both branches are O(n) over maxlen=16 = trivial.
+        for entry in self._action_log:
+            if entry["id"] == intent_id and entry["status"] == "pending":
+                entry["status"] = "done"
+                entry["result"] = summary
+                entry["ts"] = time.time()
+                return
+        self._action_log.append({
+            "id": intent_id,
+            "tool": "",
+            "args": "",
+            "status": "done",
+            "result": summary,
+            "ts": time.time(),
+        })
+
+    def record_action_error(self, intent_id: int, error: str) -> None:
+        for entry in self._action_log:
+            if entry["id"] == intent_id and entry["status"] == "pending":
+                entry["status"] = "error"
+                entry["error"] = error
+                entry["ts"] = time.time()
+                return
+        self._action_log.append({
+            "id": intent_id,
+            "tool": "",
+            "args": "",
+            "status": "error",
+            "error": error,
+            "ts": time.time(),
+        })
+
+    def recent_actions(self, limit: int = 5) -> list[dict]:
+        """Return a snapshot of the last `limit` actions, newest-first."""
+        snapshot = list(self._action_log)
+        return list(reversed(snapshot[-limit:])) if snapshot else []
 
     async def extract_topics(self, text: str) -> list[str]:
         """Extract topic tags from aggregated turn text.
@@ -163,6 +226,7 @@ Example format: ["weather forecast", "calendar meeting", "code debugging"]"""
                 "entities": {},
                 "recent_turns": [],
                 "recent_transcripts": "",
+                "recent_actions": self.recent_actions(),
             }
 
         # Get conversation info
@@ -176,6 +240,7 @@ Example format: ["weather forecast", "calendar meeting", "code debugging"]"""
                 "entities": {},
                 "recent_turns": [],
                 "recent_transcripts": "",
+                "recent_actions": self.recent_actions(),
             }
 
         # Get recent turns
@@ -208,6 +273,7 @@ Example format: ["weather forecast", "calendar meeting", "code debugging"]"""
             "entities": entities,
             "recent_turns": recent_turns,
             "recent_transcripts": recent_transcripts,
+            "recent_actions": self.recent_actions(),
         }
 
     async def get_or_create_active(self) -> int:

@@ -19,22 +19,36 @@ def test_template_exists_and_nonempty() -> None:
 
 
 def test_template_has_exactly_expected_placeholders() -> None:
+    """Phase 2.2 expands the placeholder set with conversation context."""
     raw = _load()
     import re
 
     found = set(re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", raw))
-    assert found == {"time", "timezone", "persona", "recent_transcripts", "transcript"}
+    assert found == {
+        "time",
+        "timezone",
+        "persona",
+        "recent_transcripts",
+        "transcript",
+        "conversation_summary",
+        "active_topics",
+        "entities",
+        "recent_turns",
+        "recent_actions",
+    }
 
 
-def test_template_does_not_contain_phase2_placeholders() -> None:
+def test_template_contains_phase2_placeholders() -> None:
+    """Phase 2.2 US-P2.2-04: conversation context section added."""
     raw = _load()
-    for forbidden in (
+    for required in (
         "{conversation_summary}",
         "{active_topics}",
         "{entities}",
         "{recent_turns}",
+        "{recent_actions}",
     ):
-        assert forbidden not in raw, f"unexpected Phase-2 placeholder {forbidden!r}"
+        assert required in raw, f"missing Phase-2.2 placeholder {required!r}"
 
 
 def test_template_requires_ukrainian_response() -> None:
@@ -74,6 +88,11 @@ def test_substitution_leaves_no_placeholders() -> None:
         "timezone": "Europe/Kiev",
         "recent_transcripts": "  - [01:23:00] Привіт.",
         "transcript": "Як справи?",
+        "conversation_summary": "обговорювали плани",
+        "active_topics": "плани, хліб",
+        "entities": "  - topics: плани, хліб",
+        "recent_turns": "  - [01:22:00] Щось.",
+        "recent_actions": "  - [01:20:00] ✓ bash: echo",
     }
     rendered = _safe_substitute(raw, ctx)
     import re

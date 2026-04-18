@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Any, Tuple
 
 from .config import Settings
 from .tts_cache import TTSCache
@@ -34,6 +34,7 @@ async def build_pipeline(
     openrouter_cli: "OpenRouterCLI",
     persona: str = "",
     intent_queue: "IntentQueue | None" = None,
+    conversation_manager: Any = None,
 ) -> Tuple[object, object, object]:
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
@@ -97,6 +98,7 @@ async def build_pipeline(
         store=store,
         settings=settings,
         intent_queue=intent_queue,
+        conversation_manager=conversation_manager,
     )
 
     stages = [transport.input(), stt, generator, tts, transport.output()]

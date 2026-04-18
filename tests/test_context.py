@@ -289,12 +289,66 @@ async def test_conversation_context_rendering(store: TranscriptStore) -> None:
 
 
 async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) -> None:
+    """Phase 2.2: bfg now returns 10 keys (5 original + 4 conversation projected
+    from build() + 1 new recent_actions)."""
     settings = load_settings()
     ctx = ContextBuilder(store, settings)
     result = await ctx.build_for_generator(transcript="як справи?", persona="Ти Heare.")
-    assert set(result.keys()) == {"time", "timezone", "persona", "recent_transcripts", "transcript"}
+    assert set(result.keys()) == {
+        "time",
+        "timezone",
+        "persona",
+        "recent_transcripts",
+        "transcript",
+        "conversation_summary",
+        "active_topics",
+        "entities",
+        "recent_turns",
+        "recent_actions",
+    }
     assert result["persona"] == "Ти Heare."
     assert result["transcript"] == "як справи?"
+    # With no conversation_manager, recent_actions is "(none)"
+    assert result["recent_actions"] == "(none)"
+
+
+async def test_build_for_generator_recent_actions_formatting(store: TranscriptStore) -> None:
+    """recent_actions reflects ConversationManager._action_log entries."""
+    from unittest.mock import MagicMock
+    from src.conversation import ConversationManager
+
+    settings = load_settings()
+    mgr = ConversationManager(store, MagicMock())
+    mgr.record_action_pending(1, "bash", "echo hi")
+    mgr.record_action_result(1, "ran: echo hi")
+    mgr.record_action_pending(2, "search", "rates")
+
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+    result = await ctx.build_for_generator(transcript="?", persona="p")
+    formatted = result["recent_actions"]
+    assert "bash" in formatted
+    assert "search" in formatted
+    # Glyphs for done + pending
+    assert "✓" in formatted
+    assert "⋯" in formatted
+
+
+async def test_build_for_generator_recent_actions_limit(store: TranscriptStore) -> None:
+    """Formatter shows at most 5 entries."""
+    from unittest.mock import MagicMock
+    from src.conversation import ConversationManager
+
+    settings = load_settings()
+    mgr = ConversationManager(store, MagicMock())
+    for i in range(1, 9):  # 8 entries
+        mgr.record_action_pending(i, "bash", f"cmd{i}")
+
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+    result = await ctx.build_for_generator(transcript="?", persona="p")
+    formatted = result["recent_actions"]
+    # Count lines
+    lines = [ln for ln in formatted.split("\n") if ln.strip().startswith("-")]
+    assert len(lines) == 5
 
 
 async def test_context_builder_keys_accounted_for(store: TranscriptStore) -> None:

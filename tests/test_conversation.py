@@ -201,7 +201,7 @@ async def test_build_context_includes_all_fields(store: TranscriptStore, fake_cl
     manager = ConversationManager(store, fake_claude)
     ctx = await manager.build_context(conv_id)
 
-    # Verify all required keys are present
+    # Verify all required keys are present (Phase 2.2 adds recent_actions)
     assert set(ctx.keys()) == {
         "conversation_active",
         "conversation_summary",
@@ -209,6 +209,7 @@ async def test_build_context_includes_all_fields(store: TranscriptStore, fake_cl
         "entities",
         "recent_turns",
         "recent_transcripts",
+        "recent_actions",
     }
 
 
