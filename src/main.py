@@ -106,7 +106,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                     existing_pid,
                 )
                 print(f"❌ Error: Daemon already running (PID {existing_pid})")
-                print(f"   Stop it first: heare stop")
+                print("   Stop it first: heare stop")
                 return 1
             except OSError:
                 # Process not running, stale PID file
@@ -146,14 +146,32 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             logger.info("I am %s %s", identity["name"], identity["emoji"])
 
             conversation_manager = None
-            if settings.conversation_memory_enabled:
+            openrouter_cli = None
+            if settings.generator_mode:
+                if not settings.openrouter_api_key:
+                    raise RuntimeError(
+                        "generator_mode=True but OPENROUTER_API_KEY is not set in .env"
+                    )
+                from .openrouter_cli import OpenRouterCLI
+                openrouter_cli = OpenRouterCLI(
+                    api_key=settings.openrouter_api_key,
+                    model=settings.openrouter_model,
+                    timeout=settings.openrouter_timeout_seconds,
+                )
+            elif settings.conversation_memory_enabled:
                 from .conversation import ConversationManager
                 conversation_manager = ConversationManager(store, claude_cli)
 
             context_builder = ContextBuilder(store, settings, conversation_manager)
 
-            pipeline, decider, tts_cache = await build_pipeline(
-                settings, claude_cli, store, context_builder, conversation_manager
+            pipeline, processor, tts_cache = await build_pipeline(
+                settings,
+                claude_cli,
+                store,
+                context_builder,
+                conversation_manager,
+                openrouter_cli=openrouter_cli,
+                persona=claude_cli.persona or "",
             )
 
             # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play
@@ -171,22 +189,44 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             except Exception as e:
                 logger.warning("TTS cache warmup failed (non-fatal): %s", e)
 
-            # Startup greeting — speak once to confirm daemon is alive
+            # Startup greeting is deferred: pushing a TTSSpeakFrame before the
+            # pipeline runner has processed StartFrame drops the frame. We
+            # schedule it as a task that waits ~1s after runner starts.
             from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
-            greeting = f"{settings.wake_word} на зв'язку"
-            await decider.push_frame(TTSSpeakFrame(greeting))
 
-            # Onboarding: ask for confirmation passphrase if not set
+            async def _push_greeting() -> None:
+                await asyncio.sleep(1.0)
+                greeting = f"{settings.wake_word} на зв'язку"
+                try:
+                    await processor.push_frame(TTSSpeakFrame(greeting))
+                except Exception:
+                    logger.exception("startup greeting push failed (non-fatal)")
+
+            asyncio.create_task(_push_greeting())
+
+            # Onboarding passphrase prompt only in legacy decider mode
+            # (Phase 2 will reintroduce confirmation gating in the action worker).
             from .config import HEARE_HOME  # noqa: E402
             onboarding_flag = HEARE_HOME / ".onboarded"
-            if settings.confirmation_passphrase is None and not onboarding_flag.exists():
-                await decider.push_frame(
-                    TTSSpeakFrame("Привіт! Встанови секретне слово для підтвердження дій. Наприклад: авторизую.")
-                )
-                # Wait a moment for the user to respond, then continue
-                await asyncio.sleep(8)
+            if (
+                not settings.generator_mode
+                and settings.confirmation_passphrase is None
+                and not onboarding_flag.exists()
+            ):
+                async def _push_onboarding() -> None:
+                    await asyncio.sleep(2.0)
+                    try:
+                        await processor.push_frame(
+                            TTSSpeakFrame(
+                                "Привіт! Встанови секретне слово для підтвердження дій. Наприклад: авторизую."
+                            )
+                        )
+                    except Exception:
+                        logger.exception("onboarding prompt push failed (non-fatal)")
 
-            heartbeat = HeartbeatTask(decider, settings.heartbeat_interval_minutes)
+                asyncio.create_task(_push_onboarding())
+
+            heartbeat = HeartbeatTask(processor, settings.heartbeat_interval_minutes)
             warmup = WarmupTask(
                 voice=settings.tts_voice,
                 interval_seconds=settings.warmup_interval_seconds,
@@ -195,7 +235,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
 
             runner = PipelineRunner()
-            await run_until_stopped(runner, pipeline, heartbeat, warmup, decider=decider)
+            await run_until_stopped(runner, pipeline, heartbeat, warmup, decider=processor)
     finally:
         if store is not None:
             await store.close()
@@ -315,7 +355,6 @@ def _cmd_mode(args: argparse.Namespace) -> int:
 def _cmd_set_wake_word(args: argparse.Namespace) -> int:
     from .config import HEARE_HOME  # noqa: E402
 
-    settings = load_settings()
     word = args.word.strip()
     if not word:
         print("passphrase cannot be empty")

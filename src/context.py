@@ -16,6 +16,24 @@ if TYPE_CHECKING:
     from .storage import TranscriptStore
 
 
+# Keys from build() that intentionally do NOT flow into the generator prompt.
+# This is asserted in tests/test_context.py to prevent silent drift when
+# build() grows new fields.
+_EXCLUDED_FROM_GENERATOR_CTX: frozenset[str] = frozenset({
+    "mode",
+    "heartbeat_flag",
+    "transcript_or_heartbeat",
+    "speaker_rule_block",
+    "silence_block",
+    "proactivity_block",
+    "conversation_active",
+    "conversation_summary",
+    "active_topics",
+    "entities",
+    "recent_turns",
+})
+
+
 class ContextBuilder:
     def __init__(
         self,
@@ -81,6 +99,23 @@ class ContextBuilder:
         for key in keep:
             ctx[key] = "{" + key + "}"
         return ctx
+
+    async def build_for_generator(
+        self,
+        transcript: str,
+        persona: str,
+    ) -> dict[str, Any]:
+        """Minimal context for the Phase-1 generator prompt.
+
+        Shares the time/timezone/recent-transcripts computation with build()
+        so any new field added there is visible here (or flagged by the
+        _EXCLUDED_FROM_GENERATOR_CTX drift test).
+        """
+        full = await self.build(transcript=None, heartbeat=False)
+        result = {k: v for k, v in full.items() if k not in _EXCLUDED_FROM_GENERATOR_CTX}
+        result["persona"] = persona
+        result["transcript"] = transcript
+        return result
 
     def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:
         """Return a one-line context note about how long the room has been quiet."""

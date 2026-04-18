@@ -149,7 +149,6 @@ async def test_log_transcript_deduplication(store: TranscriptStore) -> None:
 
 async def test_log_transcript_deduplication_after_window(store: TranscriptStore) -> None:
     """Logging same transcript after 2 seconds creates new row."""
-    import time
 
     text = "тест повторення"
     tid1 = await store.log_transcript(text, "ambient")

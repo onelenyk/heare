@@ -17,6 +17,7 @@ from .tts_edge import create_edge_tts_service
 if TYPE_CHECKING:
     from .claude_cli import ClaudeCLI
     from .context import ContextBuilder
+    from .openrouter_cli import OpenRouterCLI
     from .storage import TranscriptStore
     from .conversation import ConversationManager
 
@@ -30,7 +31,9 @@ async def build_pipeline(
     store: "TranscriptStore",
     context_builder: "ContextBuilder",
     conversation_manager: "ConversationManager | None" = None,
-) -> Tuple[object, object]:
+    openrouter_cli: "OpenRouterCLI | None" = None,
+    persona: str = "",
+) -> Tuple[object, object, object]:
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
         LocalSmartTurnAnalyzerV3,
@@ -79,6 +82,48 @@ async def build_pipeline(
         language=settings.groq_language,
     )
 
+    tts_cache = TTSCache()
+    tts = create_edge_tts_service(
+        voice=settings.tts_voice,
+        sample_rate=settings.tts_sample_rate,
+        cache=tts_cache,
+    )
+
+    if settings.generator_mode:
+        # Phase-1 s2s-realtime: slim pipeline with OpenRouter generator.
+        if openrouter_cli is None:
+            raise RuntimeError(
+                "generator_mode=True but openrouter_cli not provided to build_pipeline"
+            )
+        from .generator import create_generator_processor
+
+        generator_prompt = (
+            Path(__file__).parent.parent / "prompts" / "generator.txt"
+        ).read_text()
+        generator = create_generator_processor(
+            openrouter_cli=openrouter_cli,
+            context_builder=context_builder,
+            prompt_template=generator_prompt,
+            persona=persona,
+            store=store,
+            settings=settings,
+        )
+        stages = [transport.input(), stt, generator, tts, transport.output()]
+        logger.info(
+            "Generator mode enabled: model=%s, timeout=%ss",
+            settings.openrouter_model,
+            settings.openrouter_timeout_seconds,
+        )
+        pipeline = Pipeline(stages)
+        task = PipelineTask(
+            pipeline,
+            params=PipelineParams(allow_interruptions=False),
+            cancel_on_idle_timeout=False,
+            enable_turn_tracking=False,
+        )
+        return task, generator, tts_cache
+
+    # Legacy pipeline: decider + optional turn_aggregator + optional speaker_id
     turn_aggregator = None
     if settings.turn_aggregation_enabled:
         from .turn_aggregator import TurnAggregator
@@ -123,13 +168,6 @@ async def build_pipeline(
         decider_prompt_template=decider_prompt,
         turn_aggregator=turn_aggregator,
         conversation_manager=conversation_manager,
-    )
-
-    tts_cache = TTSCache()
-    tts = create_edge_tts_service(
-        voice=settings.tts_voice,
-        sample_rate=settings.tts_sample_rate,
-        cache=tts_cache,
     )
 
     stages: list[object] = [transport.input(), stt]

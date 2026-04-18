@@ -69,6 +69,7 @@ FIXED_PHRASES: list[str] = [
     "дія не вдалася",
     "Скажи: гава так, або гава ні",
     "Скажи пароль, або гава ні",
+    "Хвилинку, щось не так.",
 ]
 
 # Wake words that signal "user is talking TO Heare"

@@ -192,3 +192,27 @@ GroqSTTService runs inside Pipecat and is NOT rate-limited by heare —
 if you hit the Groq free tier ceiling, pipecat surfaces the error and
 heare logs it via the daemon log. This is deliberate: the biggest cost
 center is our own claude calls, not Groq STT.
+
+### Experimental generator mode (Phase 1 s2s-realtime)
+
+`settings.generator_mode` flips the pipeline from the legacy
+decider/aggregator stack to a stripped always-replies generator backed
+by OpenRouter streaming. Enable with:
+
+```toml
+# ~/.heare/config.toml
+generator_mode = true
+openrouter_api_key = "…"          # OR set OPENROUTER_API_KEY in .env
+openrouter_model = "google/gemini-3.1-flash-lite-preview-20260303"
+openrouter_timeout_seconds = 5.0
+```
+
+When enabled:
+- pipeline becomes `transport → STT → GeneratorProcessor → TTS → transport`
+- decider / speaker_id / turn_aggregator / confirmation / conversation_memory
+  are **not instantiated**; they return in Phase 2 via individual PRDs
+- target time-to-first-audio ≤2s (vs 7-13s on the legacy path)
+
+**This flag is emergency-rollback only.** It will be removed by the end
+of Phase 2.1 when the intent queue + action worker land. Don't build new
+features behind it — build on the generator path directly.

@@ -91,6 +91,12 @@ class Settings:
     conversation_memory_enabled: bool = False
     max_conversation_age_hours: float = 24.0
     topic_extraction_enabled: bool = True
+    # Phase 1 (s2s-realtime) — generator pipeline via OpenRouter.
+    # generator_mode is emergency-opt-in; target removal in Phase 2.1.
+    generator_mode: bool = False
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "google/gemini-3.1-flash-lite-preview-20260303"
+    openrouter_timeout_seconds: float = 5.0
 
     def ensure_dirs(self) -> None:
         for p in (self.workspace_dir, self.log_dir, HEARE_HOME):
@@ -140,6 +146,7 @@ def load_settings() -> Settings:
                 )
 
     settings.groq_api_key = os.environ.get("GROQ_API_KEY")
+    settings.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
 
     mode_override = os.environ.get("HEARE_MODE")
     if mode_override:

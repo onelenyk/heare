@@ -161,6 +161,23 @@ def test_conversation_memory_settings() -> None:
     assert s.topic_extraction_enabled is True
 
 
+def test_openrouter_settings_defaults() -> None:
+    s = Settings()
+    assert s.generator_mode is False
+    assert s.openrouter_api_key is None
+    assert s.openrouter_model == "google/gemini-3.1-flash-lite-preview-20260303"
+    assert s.openrouter_timeout_seconds == 5.0
+
+
+def test_load_settings_openrouter_from_env(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-testkey123")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    s = load_settings()
+    assert s.openrouter_api_key == "sk-or-testkey123"
+
+
 def test_ensure_dirs_creates_directories(tmp_path) -> None:
     s = Settings()
     s.workspace_dir = tmp_path / "workspace"

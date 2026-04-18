@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.config import Mode, Settings
 from src.conversation import ConversationManager
 from src.storage import TranscriptStore
 

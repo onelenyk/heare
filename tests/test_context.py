@@ -286,3 +286,32 @@ async def test_conversation_context_rendering(store: TranscriptStore) -> None:
     rendered = ctx.render(template, result)
     assert "conversation_active=no" in rendered
     assert "active_topics=" in rendered
+
+
+async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) -> None:
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build_for_generator(transcript="як справи?", persona="Ти Heare.")
+    assert set(result.keys()) == {"time", "timezone", "persona", "recent_transcripts", "transcript"}
+    assert result["persona"] == "Ти Heare."
+    assert result["transcript"] == "як справи?"
+
+
+async def test_context_builder_keys_accounted_for(store: TranscriptStore) -> None:
+    """Drift guard: every key in build() must be either propagated to the generator
+    view or explicitly listed in _EXCLUDED_FROM_GENERATOR_CTX."""
+    from src.context import _EXCLUDED_FROM_GENERATOR_CTX
+
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+    full = await ctx.build("x", heartbeat=False)
+    gen = await ctx.build_for_generator(transcript="x", persona="p")
+
+    missing_from_gen = set(full.keys()) - set(gen.keys())
+    assert missing_from_gen == _EXCLUDED_FROM_GENERATOR_CTX, (
+        f"build() keys not in generator view: {missing_from_gen}. "
+        f"Expected exactly: {_EXCLUDED_FROM_GENERATOR_CTX}. "
+        "If you added a new key to build(), decide whether it should flow into "
+        "the generator prompt (add to generator view) or is intentionally "
+        "excluded (add to _EXCLUDED_FROM_GENERATOR_CTX)."
+    )
