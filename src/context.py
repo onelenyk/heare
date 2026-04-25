@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .config import Settings
     from .conversation import ConversationManager
+    from .speaker_gallery import SpeakerGallery
     from .storage import TranscriptStore
+
+from .language import LANG_NAMES
 
 
 # Keys from build() that intentionally do NOT flow into the generator prompt.
@@ -38,10 +41,12 @@ class ContextBuilder:
         store: "TranscriptStore",
         settings: "Settings",
         conversation_manager: "ConversationManager | None" = None,
+        speaker_gallery: "SpeakerGallery | None" = None,
     ) -> None:
         self.store = store
         self.settings = settings
         self.conversation_manager = conversation_manager
+        self.speaker_gallery = speaker_gallery
 
     async def build(
         self,
@@ -52,7 +57,9 @@ class ContextBuilder:
         conversation_id: int | None = None,
     ) -> dict[str, Any]:
         now = dt.datetime.now().astimezone()
-        recent = await self.store.recent_transcripts(n=5)
+        recent = await self.store.recent_transcripts(
+            n=self.settings.context_recent_transcripts_count
+        )
         keep = set(keep_placeholders or ())
 
         conversation_ctx: dict[str, Any]
@@ -103,6 +110,7 @@ class ContextBuilder:
         transcript: str,
         persona: str,
         conversation_id: int | None = None,
+        user_language: str = "en",
     ) -> dict[str, Any]:
         """Context for the generator prompt (Phase 2.2: with conversation memory).
 
@@ -118,6 +126,7 @@ class ContextBuilder:
         result = {k: v for k, v in full.items() if k not in _EXCLUDED_FROM_GENERATOR_CTX}
         result["persona"] = persona
         result["transcript"] = transcript
+        result["user_language"] = LANG_NAMES.get(user_language, "English")
         # recent_actions — pulled directly from ConversationManager's
         # in-memory log; not persisted in build() output.
         if self.conversation_manager is not None:
@@ -161,16 +170,25 @@ class ContextBuilder:
     def _format_recent(self, rows: list[dict[str, Any]]) -> str:
         if not rows:
             return "(none)"
-        redact = self.settings.speaker_id_enabled
+        labelled = self.settings.speaker_id_enabled
         lines = []
         for row in rows:
             stamp = dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
-            if redact and row.get("speaker_id") != "owner":
-                text = "[REDACTED]"
+            if labelled:
+                label = self._resolve_label(row.get("speaker_id"))
+                lines.append(f"  - [{stamp}] {label}: {row['text']}")
             else:
-                text = row["text"]
-            lines.append(f"  - [{stamp}] {text}")
+                lines.append(f"  - [{stamp}] {row['text']}")
         return "\n".join(lines)
+
+    def _resolve_label(self, speaker_id: str | None) -> str:
+        if speaker_id is None:
+            return "unknown"
+        if self.speaker_gallery is not None:
+            label = self.speaker_gallery.get_label(speaker_id)
+            if label:
+                return label
+        return speaker_id
 
     def _format_input(self, transcript: str | None, heartbeat: bool) -> str:
         if heartbeat:
@@ -198,6 +216,11 @@ class ContextBuilder:
             - [14:23] ✓ bash: додав хліб
             - [14:25] ⋯ search: пошук рейсів
             - [14:27] ✗ bash: помилка — ...
+
+        Tail is truncated to 80 chars for most tools. Web tools
+        (web_search/web_fetch) keep up to 1500 chars so the generator can
+        answer follow-up questions from prior search content instead of
+        re-issuing a search.
         """
         if not actions:
             return "(none)"
@@ -209,7 +232,10 @@ class ContextBuilder:
             tool = a.get("tool", "")
             args = a.get("args", "")[:60]
             tail = a.get("result") or a.get("error") or args
-            lines.append(f"  - [{ts}] {glyph.get(status, '?')} {tool}: {tail[:80]}")
+            tail_limit = 1500 if tool in ("web_search", "web_fetch") else 80
+            lines.append(
+                f"  - [{ts}] {glyph.get(status, '?')} {tool}: {tail[:tail_limit]}"
+            )
         return "\n".join(lines)
 
     def _format_recent_turns(self, recent_turns: list[dict[str, Any]]) -> str:

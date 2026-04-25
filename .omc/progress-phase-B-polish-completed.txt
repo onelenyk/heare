@@ -1,0 +1,101 @@
+# Phase B-polish — Less water, fewer double-turns
+
+PRD: .omc/prd.json
+Source: live observation 2026-04-19 17:41-17:44 (LinkedIn conversation)
+Date: 2026-04-19
+
+## Bugs the user observed live
+
+1. Agent produced 2-4 TTS frames per turn, full of polite filler
+   ("Зрозумів, Назаре", "якщо передумаєш...", "дозволиш мені?...").
+2. Pre-action narration ("спробую дістати імена відправн...") plus
+   post-action result, doubling speech for every action.
+3. One utterance "Але повідомлення зберігаються не в системі..."
+   (1.5s pause) "...подивитися, які там є" became TWO transcripts and
+   TWO replies — Groq STT split mid-sentence.
+
+## Stories shipped
+
+### US-BP-01 — Anti-water prompt constraints
+- prompts/generator.txt "Правила відповіді" rewritten:
+  - "Відповідай ОДНИМ реченням українською. Максимум 12 слів."
+  - "НЕ лий воду: не додавай подяк, вибачень, альтернатив, описів того,
+    що збираєшся робити, обіцянок, ввічливих 'Назаре/якщо хочеш/дозволиш'."
+  - "Коли додаєш `<intent>`, твоя текстова відповідь перед тегом —
+    коротко, до 5 слів ('Виконую.', 'Зараз гляну.', 'Відкриваю.')."
+  - "НЕ питай дозволу, якщо користувач уже дав пряму команду."
+- INTENTS block from Phase B unchanged.
+- tests/test_generator_prompt.py: 4 new tests (one-sentence cap, anti-
+  filler list, pre-intent ≤5-word cap, no-permission rule). Existing 13
+  prompt tests still pass.
+
+### US-BP-02 — STT debounce inside GeneratorProcessor
+- src/config.py: Settings gains `transcript_debounce_seconds: float = 0.6`.
+  0 disables (legacy immediate dispatch).
+- src/generator.py:
+  - GeneratorProcessor.__init__ wires _debounce_seconds, _debounce_buffer,
+    _debounce_frame, _debounce_direction, _debounce_task.
+  - process_frame: if debounce > 0, calls new _schedule_transcription;
+    else legacy inline _handle_transcription.
+  - _schedule_transcription: append text to buffer, cancel any pending
+    flush task, schedule a fresh one.
+  - _flush_debounced: sleeps debounce window; cancellation aborts cleanly;
+    on fire, joins buffer with single space, mutates the latest frame's
+    text, calls _handle_transcription with combined text.
+- tests/test_generator.py: 3 new debounce tests:
+  - two frames within window → exactly 1 _handle_transcription call w/
+    combined text
+  - single frame still processed after window
+  - debounce=0 dispatches each frame immediately (legacy regression)
+
+### US-BP-03 — Regression + lint
+- `uv run pytest tests/` → 603 passed (was 596 after Phase B; +7 net).
+- `uv run ruff check src/ tests/` → All checks passed.
+
+## Files touched
+- prompts/generator.txt
+- src/config.py
+- src/generator.py
+- tests/test_generator_prompt.py
+- tests/test_generator.py
+
+## Learnings
+
+1. Gemini Flash Lite, even with explicit "1-2 sentences" guidance, leans
+   long. A hard "ОДНИМ реченням / 12 слів" plus naming the filler types
+   (подяки/вибачення/альтернативи) is needed to actually shorten replies.
+2. The pre-action narration was a separate issue — Claude SDK now returns
+   a real Ukrainian summary post-action, so the generator's narration is
+   pure noise. Capping pre-`<intent>` text to 5 words removes redundancy
+   without sacrificing user feedback (the post-action TTS covers it).
+3. Debouncing TranscriptionFrames downstream of STT (rather than tuning
+   VAD stop_secs upstream) keeps response latency tight for normal turns
+   while coalescing the rare mid-sentence-pause case. 0.6s is a safe
+   default — covers Groq's split behaviour without feeling sluggish.
+4. Mutating frame.text inside the debounce flush is simpler than
+   constructing a synthetic TranscriptionFrame, which differs across
+   pipecat versions in its constructor signature. The mutation is
+   wrapped in try/except in case a frame type forbids attribute writes.
+
+## How to live-verify
+
+```
+uv run python -m src.main stop
+uv run python -m src.main start
+uv run python -m src.main watch
+```
+
+Scenarios from the live log:
+1. Say "Запусти ехо привіт" — expect ONE TTS sentence (≤12 words),
+   then ONE result phrase. Total 2 TTS frames per action turn (was 3-4).
+2. Speak one long sentence with a deliberate ~1.5s mid-pause — expect
+   ONE agent reply (was two). Look in daemon.log for ONE
+   `[TIMING] generator transcript=...` line per spoken utterance.
+3. Say "Подивись Gmail" — expect ≤5 words before `<intent>`, e.g.
+   "Зараз гляну.", not a full description of what's about to happen.
+
+## Not changed in this phase
+- D4 (verbal confirmation gate for destructive actions) — Phase C.
+- D6 split (two SDK clients for decider vs action) — Phase D.
+- VAD stop_secs / Groq STT settings — left alone; debounce is the
+  cleaner intervention.

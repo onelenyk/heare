@@ -1,0 +1,57 @@
+{
+  "title": "Fix re_enroll blocking the event loop — un-block sounddevice.wait via asyncio.to_thread",
+  "version": "1.0.0",
+  "source_plan": "Diagnosis from daemon.log + indication.jsonl analysis (2026-04-25). _execute_re_enroll calls sd.wait() synchronously inside an async function, blocking the daemon event loop for the full recording duration (~15s). Symptoms: (1) generator's acknowledgement TTS frames queued before recording cannot drain until recording ends — ack speech sounds scrambled with the action result; (2) indication backend writes (REENROLL_RECORDING_START/END, intent_submitted/completed) all flush at the END of the blocked window instead of bracketing the recording window, so the user gets no audio cue when recording opens; (3) edge-tts WSS warmup task can't run, causing 15s+ TTS cold-starts; (4) speaker tagger and other turn handling stall.",
+  "notes": "Out of scope: src/main.py:_cmd_enroll_owner uses sd.wait() inside a sync CLI command (uses time.sleep(1)) — that is a one-shot CLI tool, not async, not in the daemon loop. Leave it alone. This PRD targets only the daemon-side _execute_re_enroll.",
+  "stories": [
+    {
+      "id": "US-RE-1",
+      "title": "Move sd.rec + sd.wait off the event loop in _execute_re_enroll",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Wrap the blocking sounddevice recording (sd.rec + sd.wait) in asyncio.to_thread so the daemon event loop stays free during the recording window. The indication notify(START) call must happen BEFORE to_thread is awaited; notify(END) must happen AFTER it returns. No other behavior changes (same args parsing, same return shape, same error handling, same indication kinds).",
+      "acceptanceCriteria": [
+        "src/direct_tools.py:_execute_re_enroll uses await asyncio.to_thread(...) (or equivalent loop.run_in_executor) to wrap the blocking recording so the daemon event loop is not blocked while sd.wait() runs",
+        "ind.notify(REENROLL_RECORDING_START, ...) is called BEFORE the await asyncio.to_thread(...) line",
+        "ind.notify(REENROLL_RECORDING_END) is called AFTER the await asyncio.to_thread(...) line returns",
+        "asyncio is imported in src/direct_tools.py (or already available — verify)",
+        "Function signature unchanged: async def _execute_re_enroll(args: str, settings: 'Settings | None' = None) -> dict",
+        "Return shape unchanged: same {success, output, error} keys, same success/error messages on the existing branches",
+        "Args parsing unchanged: still accepts integer-coerced duration, clamped to [5, 30], default 15",
+        "uv run ruff check src/direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-RE-2",
+      "title": "Regression test that proves the loop is not blocked during recording",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Add a focused unit test that exercises _execute_re_enroll with sounddevice mocked to simulate a 0.5s blocking recording. Assert the event loop stays responsive — i.e. a parallel asyncio.sleep(0) coroutine runs to completion DURING the simulated record. Without the fix this test fails because sd.wait() blocks the loop. With the fix it passes because to_thread releases the loop.",
+      "acceptanceCriteria": [
+        "tests/test_direct_tools.py adds a test that monkeypatches sounddevice (sd.rec returns a fake numpy array; sd.wait blocks for ~0.3s via time.sleep)",
+        "Mock the speaker_id load_model + embed + SpeakerGallery save chain so the test does not require ECAPA model downloads or filesystem writes outside tmp",
+        "Mock get_indication() to return a recorder that captures notify calls",
+        "Inside the test: launch _execute_re_enroll as an asyncio task AND a concurrent counter coroutine that increments every 50ms via await asyncio.sleep(0.05); when re_enroll completes, assert the counter incremented at least 3 times (proving the loop ran during the blocked recording)",
+        "Assert REENROLL_RECORDING_START is captured by the indication recorder BEFORE the recording 'completes' (use timestamps or order-of-events)",
+        "Assert REENROLL_RECORDING_END is captured AFTER",
+        "Test does not actually access an audio device (sounddevice fully mocked)",
+        "uv run pytest tests/test_direct_tools.py -v exits 0"
+      ]
+    },
+    {
+      "id": "US-RE-3",
+      "title": "Full regression — pytest + ruff clean on changed files",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Final verification: full test suite passes, ruff clean on src/direct_tools.py and tests/test_direct_tools.py. progress.txt updated.",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 with all tests passing (existing 840+ plus the new test)",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0",
+        ".omc/progress.txt records the bug, the fix, and the verification evidence"
+      ]
+    }
+  ]
+}

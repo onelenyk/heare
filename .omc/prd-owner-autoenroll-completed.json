@@ -1,0 +1,80 @@
+{
+  "title": "Owner Auto-Enrollment — Zero-setup speaker recognition",
+  "version": "1.0.0",
+  "source_plan": "user request 2026-04-24 — automatic owner enrollment eliminates manual CLI setup",
+  "notes": "Currently owner enrollment requires 'heare speaker enroll owner' CLI command. Guest auto-enrollment exists after 2+ matching turns. This feature extends auto-enrollment to the owner, with a higher threshold (5 turns) for safety, and speaks a Ukrainian confirmation message when enrollment succeeds.",
+  "stories": [
+    {
+      "id": "US-OWN-01",
+      "title": "Settings: speaker_id_auto_enroll_owner_* knobs",
+      "priority": 1,
+      "status": "pending",
+      "passes": true,
+      "description": "Add configuration fields to Settings for owner auto-enrollment. Defaults to enabled with a conservative 5-turn threshold (higher than guest's 2 turns) to prevent accidental enrollment.",
+      "acceptanceCriteria": [
+        "src/config.py Settings has: speaker_id_auto_enroll_owner_enabled: bool = True",
+        "src/config.py Settings has: speaker_id_auto_enroll_owner_after: int = 5",
+        "tests/test_config.py includes a test verifying speaker_id_auto_enroll_owner_enabled defaults to True",
+        "tests/test_config.py includes a test verifying speaker_id_auto_enroll_owner_after defaults to 5"
+      ]
+    },
+    {
+      "id": "US-OWN-02",
+      "title": "SpeakerTaggerProcessor: owner auto-enroll logic in _maybe_auto_enroll()",
+      "priority": 2,
+      "status": "pending",
+      "passes": true,
+      "description": "Extend _maybe_auto_enroll() to check for owner enrollment BEFORE guest enrollment. Reuses _stranger_candidates deque, checks if owner already exists (never overwrite), and calls gallery.enroll_owner() when threshold is met.",
+      "acceptanceCriteria": [
+        "src/speaker_processor.py _maybe_auto_enroll() checks 'owner' not in gallery._speakers before attempting enrollment",
+        "_maybe_auto_enroll() checks speaker_id_auto_enroll_owner_enabled setting before proceeding",
+        "_maybe_auto_enroll() compares matches+1 against speaker_id_auto_enroll_owner_after threshold",
+        "When threshold met: calls gallery.enroll_owner(new_embed, 'owner'), logs success, clears _stranger_candidates, returns early (skips guest enrollment)",
+        "When owner already exists: owner enrollment path is skipped entirely, guest enrollment proceeds normally",
+        "Failed enrollment (exception) is caught, logged as warning, does not crash the processor"
+      ]
+    },
+    {
+      "id": "US-OWN-03",
+      "title": "TTS notification: speak Ukrainian phrase on successful owner enrollment",
+      "priority": 3,
+      "status": "pending",
+      "passes": true,
+      "description": "When owner is auto-enrolled, push a TTSSpeakFrame with a Ukrainian confirmation message so the user hears that enrollment succeeded.",
+      "acceptanceCriteria": [
+        "After gallery.enroll_owner() succeeds, _maybe_auto_enroll() imports TTSSpeakFrame from pipecat.frames.frames",
+        "TTSSpeakFrame is pushed with Ukrainian text: 'Тепер я впізнаю твій голос.' (Now I recognize your voice)",
+        "TTS push is wrapped in try/except; failure is logged but does not prevent enrollment",
+        "Log includes '[SPEAKER] auto-enrolled owner after N turns' message with turn count"
+      ]
+    },
+    {
+      "id": "US-OWN-04",
+      "title": "Tests: owner auto-enrollment unit tests",
+      "priority": 4,
+      "status": "pending",
+      "passes": true,
+      "description": "Add comprehensive unit tests for owner auto-enrollment behavior in test_speaker_processor.py.",
+      "acceptanceCriteria": [
+        "test_auto_enroll_owner_when_no_owner_exists: verifies enroll_owner called after threshold met, TTS pushed, buffer cleared",
+        "test_auto_enroll_owner_skipped_when_owner_exists: verifies enroll_owner NOT called when 'owner' in gallery",
+        "test_auto_enroll_owner_respects_threshold: verifies enroll_owner called on 5th turn (not before) with default threshold",
+        "test_auto_enroll_owner_handles_enrollment_failure: verifies exception caught, logged, does not crash",
+        "test_auto_enroll_owner_checks_enabled_flag: verifies nothing happens when speaker_id_auto_enroll_owner_enabled=False"
+      ]
+    },
+    {
+      "id": "US-OWN-05",
+      "title": "Regression: full pytest + ruff green",
+      "priority": 5,
+      "status": "pending",
+      "passes": true,
+      "description": "The full test suite passes; ruff is clean across src/ and tests/; the new feature is fully covered; existing speaker/pipeline tests still pass.",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 with all tests passing (including 5 new owner auto-enroll tests)",
+        "uv run ruff check src/ tests/ exits 0",
+        ".omc/progress.txt records implementation details, files changed, and design decisions"
+      ]
+    }
+  ]
+}

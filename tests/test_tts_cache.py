@@ -97,6 +97,6 @@ def test_fixed_phrases_list_exposed() -> None:
 
     assert isinstance(FIXED_PHRASES, list)
     assert "okay" in FIXED_PHRASES
-    assert "nevermind, cancelled" in FIXED_PHRASES
+    assert "cancelled" in FIXED_PHRASES
     assert "Скажи: так чи ні?" in FIXED_PHRASES
     assert "дія не вдалася" in FIXED_PHRASES

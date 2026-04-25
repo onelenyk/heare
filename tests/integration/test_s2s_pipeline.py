@@ -55,7 +55,7 @@ async def test_build_pipeline_returns_generator_processor(env, monkeypatch):
     openrouter = OpenRouterCLI(api_key="k", model=settings.openrouter_model)
     claude_cli = MagicMock()
 
-    task, middle, tts_cache = await build_pipeline(
+    task, middle, tts_cache, _indication = await build_pipeline(
         settings=settings,
         claude_cli=claude_cli,
         store=store,
@@ -69,3 +69,33 @@ async def test_build_pipeline_returns_generator_processor(env, monkeypatch):
     # Shutdown contract preserved
     assert callable(getattr(middle, "shutdown", None))
     assert callable(getattr(middle, "on_heartbeat_tick", None))
+
+
+@pytest.mark.parametrize("lang_code", ["en", "uk"])
+async def test_build_pipeline_with_groq_language(env, monkeypatch, lang_code):
+    """Pipeline builds without error for both English and Ukrainian groq_language hints."""
+    settings, store, ctx = env
+    settings.groq_language = lang_code
+
+    def _fake_transport(*a, **kw):
+        t = MagicMock()
+        t.input = MagicMock(return_value=MagicMock(name="input"))
+        t.output = MagicMock(return_value=MagicMock(name="output"))
+        return t
+
+    import pipecat.transports.local.audio as audio_mod
+    monkeypatch.setattr(audio_mod, "LocalAudioTransport", _fake_transport)
+
+    openrouter = OpenRouterCLI(api_key="k", model=settings.openrouter_model)
+    claude_cli = MagicMock()
+
+    task, middle, tts_cache, _indication = await build_pipeline(
+        settings=settings,
+        claude_cli=claude_cli,
+        store=store,
+        context_builder=ctx,
+        openrouter_cli=openrouter,
+        persona="Heare.",
+    )
+
+    assert type(middle).__name__ == "GeneratorProcessor"

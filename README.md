@@ -87,6 +87,43 @@ use_agent_sdk = true
 All other settings (mode, voice, timeouts, speaker recognition, etc.) are
 documented as inline comments in `src/config.py`.
 
+## MCP servers
+
+heare's Claude Agent SDK backend can call MCP tools — browser automation,
+filesystem, memory, etc. — in addition to Bash/Read/Write/Edit/WebFetch/
+WebSearch.
+
+**Edit `workspace/.mcp.json` to add servers; restart heare.**
+
+heare seeds `~/.heare/workspace/.mcp.json` from your global `~/.claude.json`
+on first run. Every server listed in `.mcp.json` is automatically callable by
+the agent — no separate allowlist needed. Example:
+
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
+    },
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/you/Documents"
+      ]
+    }
+  }
+}
+```
+
+You can add an optional `"description"` field to each entry; heare uses it
+to describe the server's purpose in the generator prompt. Restart the daemon
+after editing `.mcp.json`.
+
 ## Run
 
 First start bootstraps both the Claude Code session and heare's persona.

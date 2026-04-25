@@ -106,6 +106,10 @@ def _build_edge_tts_class():
             self._sample_rate = sample_rate
             self._cache = cache
 
+        def set_voice(self, voice: str) -> None:
+            self._voice = voice
+            self._settings.voice = voice
+
         async def run_tts(
             self, text: str, context_id: str | None = None
         ) -> AsyncGenerator[Frame, None]:

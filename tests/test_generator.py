@@ -265,6 +265,7 @@ async def test_cancel_keyword_pops_pending_intent(harness, caplog) -> None:
         fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
     )
     gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "uk"  # simulate Ukrainian already established
 
     with caplog.at_level(logging.INFO, logger="heare.generator"):
         await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
@@ -325,6 +326,28 @@ async def test_tts_scrubber_removes_tool_names() -> None:
     assert "echo hi" in out
 
 
+async def test_handle_transcription_drops_during_enrollment(harness, caplog, monkeypatch) -> None:
+    """US-EG-2: generator drops transcript while enrollment is active."""
+    _, _, ctx = harness
+    fake = FakeOpenRouter(chunks=["should not be called"])
+    gen = create_generator_processor(fake, ctx, "template {transcript}", "persona")
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+
+    class _FakeIndication:
+        is_enrollment_active = True
+
+    monkeypatch.setattr("src.indication.get_indication", lambda: _FakeIndication())
+
+    with caplog.at_level(logging.DEBUG, logger="heare.generator"):
+        await gen._handle_transcription(_make_transcription_frame("hello"), None)
+
+    assert fake.call_count == 0, "OpenRouter must not be called during enrollment"
+    assert gen.push_frame.await_count == 0, "No TTSSpeakFrame should be pushed during enrollment"
+    assert any("enrollment" in r.message for r in caplog.records), (
+        "Expected drop log line mentioning 'enrollment'"
+    )
+
+
 async def test_tts_scrubber_handles_json_fragment_leak() -> None:
     """JSON fragment that leaked from an intent tag is stripped entirely."""
     from src.generator import _scrub_tts_text
@@ -345,6 +368,32 @@ async def test_tts_scrubber_bashful_passthrough() -> None:
 
     out = _scrub_tts_text("Він був дуже bashful сьогодні.")
     assert "bashful" in out
+
+
+async def test_tts_scrubber_strips_bash_completed_marker() -> None:
+    """Phase AH2-02: Claude Code's '(Bash completed with no output)' marker
+    is dropped in one piece so TTS never says fragments like
+    '( completed with no output)'."""
+    from src.generator import _scrub_tts_text
+
+    out = _scrub_tts_text("(Bash completed with no output)")
+    # Must be fully gone — no leftover parens, no 'completed', no 'no output'.
+    assert "(" not in out
+    assert "Bash" not in out
+    assert "completed" not in out
+    assert "no output" not in out
+
+
+async def test_tts_scrubber_strips_marker_inside_ukrainian_text() -> None:
+    """Phase AH2-02: the marker disappears inside surrounding speech without
+    mangling the words around it."""
+    from src.generator import _scrub_tts_text
+
+    out = _scrub_tts_text("Фуй! (Bash completed with no output) наступне.")
+    assert "Bash" not in out
+    assert "completed" not in out
+    assert "Фуй!" in out
+    assert "наступне" in out
 
 
 async def test_intent_emission_under_saturated_context(harness) -> None:
@@ -407,8 +456,451 @@ async def test_cancel_keyword_positive_edge_cases(harness) -> None:
             fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
         )
         gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+        gen._active_lang = "uk"  # simulate Ukrainian already established
         await gen._handle_transcription(_make_transcription_frame(phrase), None)
         assert queue.pending_count() == 0, (
             f"phrase {phrase!r} should have cancelled but queue has "
             f"{queue.pending_count()} pending"
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase B-0 persistence — generator writes decisions and forwards transcript_id
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_decisions(store) -> list[dict]:
+    cursor = await store.db.execute(
+        "SELECT id, transcript_id, type, reply, intent, action_json FROM decisions"
+        " ORDER BY id"
+    )
+    rows = await cursor.fetchall()
+    return [
+        {
+            "id": r[0],
+            "transcript_id": r[1],
+            "type": r[2],
+            "reply": r[3],
+            "intent": r[4],
+            "action_json": r[5],
+        }
+        for r in rows
+    ]
+
+
+async def test_generator_persists_speak_decisions_with_transcript_id(harness) -> None:
+    """US-B0-02: each TTS push yields a decisions row with type='speak' and transcript_id."""
+    store, settings, ctx = harness
+    fake = FakeOpenRouter(chunks=["Привіт", ", ", "друже!", " Як ", "справи", "?"])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", store=store, settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+
+    await gen._handle_transcription(_make_transcription_frame("hi"), None)
+
+    decisions = await _fetch_decisions(store)
+    speak_rows = [d for d in decisions if d["type"] == "speak"]
+    assert len(speak_rows) == 2, f"expected 2 speak rows, got {len(speak_rows)}: {speak_rows}"
+    assert speak_rows[0]["reply"] == "Привіт, друже!"
+    assert speak_rows[1]["reply"] == "Як справи?"
+    assert all(r["transcript_id"] == 1 for r in speak_rows), (
+        f"transcript_id should be threaded, got {[r['transcript_id'] for r in speak_rows]}"
+    )
+
+
+async def test_generator_persists_act_decision_and_queues_decision_id(harness) -> None:
+    """US-B0-02: an intent emission yields a type='act' decision and Intent.decision_id matches."""
+    from src.actions import IntentQueue
+
+    store, settings, ctx = harness
+    fake = FakeOpenRouter(
+        chunks=[
+            "Виконаю. ",
+            '<intent>{"tool":"bash","args":"echo hi"}</intent>',
+        ]
+    )
+    queue = IntentQueue()
+    gen = create_generator_processor(
+        fake,
+        ctx,
+        "tpl {transcript}",
+        "persona",
+        store=store,
+        settings=settings,
+        intent_queue=queue,
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+
+    await gen._handle_transcription(
+        _make_transcription_frame("запусти echo hi"), None
+    )
+
+    decisions = await _fetch_decisions(store)
+    act_rows = [d for d in decisions if d["type"] == "act"]
+    assert len(act_rows) == 1
+    act = act_rows[0]
+    assert act["intent"] == "bash"
+    assert act["transcript_id"] == 1
+    # action_json must serialize both tool and args
+    assert act["action_json"] is not None
+    import json as _json
+
+    payload = _json.loads(act["action_json"])
+    assert payload == {"tool": "bash", "args": "echo hi"}
+
+    # Intent on the queue carries the decision_id returned by log_decision
+    assert queue.pending_count() == 1
+    intent = await queue.next()
+    assert intent.decision_id == act["id"]
+    assert intent.transcript_id == 1
+
+
+async def test_generator_without_store_does_not_raise(harness) -> None:
+    """US-B0-02: legacy code path (no store) is still supported."""
+    _, _, ctx = harness
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(fake, ctx, "tpl {transcript}", "persona")
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    await gen._handle_transcription(_make_transcription_frame("hi"), None)
+    # no assertion; the test just verifies nothing raised
+
+
+# ---------------------------------------------------------------------------
+# Phase BP-02: STT debounce inside GeneratorProcessor
+# ---------------------------------------------------------------------------
+
+
+def _spy_handle_factory(real_handle, sink: list[str]):
+    """Spy that records the effective transcript text passed to _handle_transcription.
+
+    The debounce flush passes its combined string via ``override_text``; the
+    inline path uses ``frame.text``. The spy captures whichever wins so each
+    test sees the actual transcript that the production code would consume.
+    """
+    async def spy_handle(frame, direction, override_text=None):
+        text = override_text if override_text is not None else (frame.text or "")
+        sink.append(text)
+        await real_handle(frame, direction, override_text=override_text)
+
+    return spy_handle
+
+
+async def test_debounce_coalesces_two_close_frames(harness) -> None:
+    """Phase BP-02: two TranscriptionFrames within the debounce window
+    produce exactly ONE _handle_transcription call with combined text."""
+    import asyncio as _asyncio
+
+    _, settings, ctx = harness
+    settings.transcript_debounce_seconds = 0.1  # short window for the test
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    handled_calls: list[str] = []
+    gen._handle_transcription = _spy_handle_factory(  # type: ignore[method-assign]
+        gen._handle_transcription, handled_calls
+    )
+
+    # Two frames 30ms apart — well within the 100ms window
+    await gen.process_frame(_make_transcription_frame("Перша частина."), None)
+    await _asyncio.sleep(0.03)
+    await gen.process_frame(_make_transcription_frame("друга частина."), None)
+    # Wait for debounce to fire
+    await _asyncio.sleep(0.2)
+
+    assert len(handled_calls) == 1, (
+        f"expected 1 combined call, got {len(handled_calls)}: {handled_calls}"
+    )
+    assert handled_calls[0] == "Перша частина. друга частина."
+
+
+async def test_debounce_single_frame_processed_after_window(harness) -> None:
+    """Phase BP-02: a single TranscriptionFrame is still processed (after
+    the debounce window) — the debounce never silently drops input."""
+    import asyncio as _asyncio
+
+    _, settings, ctx = harness
+    settings.transcript_debounce_seconds = 0.05
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    handled_calls: list[str] = []
+    gen._handle_transcription = _spy_handle_factory(  # type: ignore[method-assign]
+        gen._handle_transcription, handled_calls
+    )
+
+    await gen.process_frame(_make_transcription_frame("одне речення"), None)
+    await _asyncio.sleep(0.15)
+    assert handled_calls == ["одне речення"]
+
+
+async def test_debounce_zero_disables_buffering(harness) -> None:
+    """Phase BP-02: transcript_debounce_seconds=0 dispatches each frame
+    immediately (legacy behaviour, used by older tests)."""
+    _, settings, ctx = harness
+    settings.transcript_debounce_seconds = 0.0
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    handled_calls: list[str] = []
+    gen._handle_transcription = _spy_handle_factory(  # type: ignore[method-assign]
+        gen._handle_transcription, handled_calls
+    )
+
+    await gen.process_frame(_make_transcription_frame("a"), None)
+    await gen.process_frame(_make_transcription_frame("b"), None)
+    # No sleep — both should already have been dispatched inline.
+    assert handled_calls == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# US-I18N-05: TTS voice swap tests
+# ---------------------------------------------------------------------------
+
+
+def _make_transcription_frame_with_lang(text: str, lang_name: str):
+    """Create a TranscriptionFrame with a mock result.language attribute."""
+    from unittest.mock import MagicMock
+
+    frame = _make_transcription_frame(text)
+    result = MagicMock()
+    result.language = lang_name
+    frame.result = result
+    return frame
+
+
+class FakeTTSService:
+    """Minimal TTS service stub for voice-swap tests."""
+
+    def __init__(self, initial_voice: str = "en-US-AriaNeural"):
+        self._voice = initial_voice
+        self.set_voice_calls: list[str] = []
+
+    def set_voice(self, voice: str) -> None:
+        self._voice = voice
+        self.set_voice_calls.append(voice)
+
+
+async def test_tts_voice_swap_on_language_change(harness, caplog) -> None:
+    """After 2 Ukrainian turns (hysteresis), set_voice called with Ukrainian voice."""
+    _, settings, ctx = harness
+    fake = FakeOpenRouter(chunks=["Ok."])
+    tts = FakeTTSService(initial_voice="en-US-AriaNeural")
+    settings.tts_voice = "en-US-AriaNeural"
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings, tts_service=tts
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    # Force active lang to English so we can test English→Ukrainian transition
+    gen._active_lang = "en"
+    gen._current_voice = "en-US-AriaNeural"
+
+    with caplog.at_level(logging.INFO, logger="heare.generator"):
+        # First Ukrainian turn — hysteresis pending, no swap yet
+        await gen._handle_transcription(
+            _make_transcription_frame_with_lang("привіт", "ukrainian"), None
+        )
+        assert tts.set_voice_calls == [], "no swap on first detection"
+
+        # Second Ukrainian turn — hysteresis satisfied, swap fires
+        await gen._handle_transcription(
+            _make_transcription_frame_with_lang("як справи", "ukrainian"), None
+        )
+
+    assert "uk-UA-OstapNeural" in tts.set_voice_calls
+    assert any("[TTS VOICE SWAP]" in r.message for r in caplog.records)
+    swap_msg = next(r.message for r in caplog.records if "[TTS VOICE SWAP]" in r.message)
+    assert "from=" in swap_msg
+    assert "to=" in swap_msg
+
+    # Now switch back to English (2 turns)
+    tts.set_voice_calls.clear()
+    await gen._handle_transcription(
+        _make_transcription_frame_with_lang("hello", "english"), None
+    )
+    assert tts.set_voice_calls == [], "no swap on first English detection"
+    await gen._handle_transcription(
+        _make_transcription_frame_with_lang("how are you", "english"), None
+    )
+    assert "en-US-AriaNeural" in tts.set_voice_calls
+
+
+async def test_tts_voice_no_swap_same_language(harness, caplog) -> None:
+    """Two turns in the same language after it's active produce no set_voice call."""
+    _, settings, ctx = harness
+    fake = FakeOpenRouter(chunks=["Ok."])
+    tts = FakeTTSService(initial_voice="uk-UA-OstapNeural")
+    settings.tts_voice = "uk-UA-OstapNeural"
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings, tts_service=tts
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    # Force active lang to Ukrainian so same-language turns don't trigger swap
+    gen._active_lang = "uk"
+    gen._current_voice = "uk-UA-OstapNeural"
+
+    with caplog.at_level(logging.INFO, logger="heare.generator"):
+        await gen._handle_transcription(
+            _make_transcription_frame_with_lang("привіт", "ukrainian"), None
+        )
+        await gen._handle_transcription(
+            _make_transcription_frame_with_lang("як справи", "ukrainian"), None
+        )
+
+    assert tts.set_voice_calls == [], "no set_voice when language stays the same"
+    assert not any("[TTS VOICE SWAP]" in r.message for r in caplog.records)
+
+
+async def test_tts_voice_swap_without_service(harness) -> None:
+    """tts_service=None path does not crash on language change."""
+    _, settings, ctx = harness
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings, tts_service=None
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+
+    # Two Ukrainian turns to trigger hysteresis swap — must not raise
+    await gen._handle_transcription(
+        _make_transcription_frame_with_lang("привіт", "ukrainian"), None
+    )
+    await gen._handle_transcription(
+        _make_transcription_frame_with_lang("як справи", "ukrainian"), None
+    )
+
+
+# ---------------------------------------------------------------------------
+# US-I18N-03: cancel multilingual, lang propagation, hysteresis, TIMING, LANG_MISMATCH
+# ---------------------------------------------------------------------------
+
+
+async def test_cancel_keyword_english(harness) -> None:
+    """English 'cancel' cancels a pending intent when active_lang is 'en'."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    queue = IntentQueue()
+    await queue.submit({"tool": "bash", "args": "will-be-cancelled"})
+    fake = FakeOpenRouter(chunks=["Cancelled."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "en"
+    frame = _make_transcription_frame_with_lang("cancel", "english")
+    await gen._handle_transcription(frame, None)
+    assert queue.pending_count() == 0
+
+
+async def test_cancel_keyword_russian(harness) -> None:
+    """Russian 'отмени' cancels a pending intent when active_lang is 'ru'."""
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    queue = IntentQueue()
+    await queue.submit({"tool": "bash", "args": "will-be-cancelled"})
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "ru"
+    frame = _make_transcription_frame_with_lang("отмени", "russian")
+    await gen._handle_transcription(frame, None)
+    assert queue.pending_count() == 0
+
+
+async def test_language_propagated_to_context(harness) -> None:
+    """user_language key appears in context dict passed to prompt template."""
+    _, settings, ctx = harness
+    captured_ctx: dict = {}
+
+    original_build = ctx.build_for_generator
+
+    async def capture_build(**kwargs):
+        result = await original_build(**kwargs)
+        captured_ctx.update(result)
+        return result
+
+    ctx.build_for_generator = capture_build  # type: ignore[method-assign]
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "uk"
+    await gen._handle_transcription(_make_transcription_frame("привіт"), None)
+    assert "user_language" in captured_ctx
+    assert captured_ctx["user_language"] == "Ukrainian"
+
+
+async def test_hysteresis_single_detection_no_swap(harness) -> None:
+    """Single non-current language detection does not switch active_lang."""
+    _, settings, ctx = harness
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "en"
+    await gen._handle_transcription(
+        _make_transcription_frame_with_lang("привіт", "ukrainian"), None
+    )
+    assert gen._active_lang == "en"
+
+
+async def test_hysteresis_two_consecutive_detections_swap(harness) -> None:
+    """Two consecutive non-current detections switch active_lang."""
+    _, settings, ctx = harness
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "en"
+    await gen._handle_transcription(
+        _make_transcription_frame_with_lang("привіт", "ukrainian"), None
+    )
+    assert gen._active_lang == "en"
+    await gen._handle_transcription(
+        _make_transcription_frame_with_lang("як справи", "ukrainian"), None
+    )
+    assert gen._active_lang == "uk"
+
+
+async def test_lang_field_in_timing_log(harness, caplog) -> None:
+    """[TIMING] log line contains lang= field."""
+    _, settings, ctx = harness
+    fake = FakeOpenRouter(chunks=["Ok."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "uk"
+    with caplog.at_level(logging.INFO, logger="heare.generator"):
+        await gen._handle_transcription(_make_transcription_frame("привіт"), None)
+    timing_records = [r for r in caplog.records if "[TIMING]" in r.message]
+    assert timing_records, "no [TIMING] log record found"
+    assert "lang=" in timing_records[0].message
+
+
+async def test_lang_mismatch_logging(harness, caplog) -> None:
+    """[LANG_MISMATCH] WARNING is logged when Gemini replies in wrong script."""
+    _, settings, ctx = harness
+    # Active lang is Ukrainian (expects Cyrillic), but reply is Latin
+    fake = FakeOpenRouter(chunks=["Hello world this is a long enough reply."])
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", settings=settings
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "uk"
+    with caplog.at_level(logging.WARNING, logger="heare.generator"):
+        await gen._handle_transcription(_make_transcription_frame("привіт"), None)
+    mismatch_records = [r for r in caplog.records if "[LANG_MISMATCH]" in r.message]
+    assert mismatch_records, "[LANG_MISMATCH] WARNING not logged"

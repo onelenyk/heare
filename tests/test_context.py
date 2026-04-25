@@ -194,19 +194,19 @@ async def test_golden_string_flag_off_render(store: TranscriptStore) -> None:
     assert "Speaker: owner" not in rendered
 
 
-async def test_format_recent_redacts_non_owner_when_flag_on(
+async def test_format_recent_labels_speakers_when_flag_on(
     store: TranscriptStore,
 ) -> None:
     await store.log_transcript("я тут", "ambient", speaker_id="owner")
-    await store.log_transcript("stranger speak", "ambient", speaker_id="unknown")
+    await store.log_transcript("stranger speak", "ambient", speaker_id="guest_01")
     settings = load_settings()
     settings.speaker_id_enabled = True
     ctx = ContextBuilder(store, settings)
     result = await ctx.build("х", heartbeat=False)
     rendered = result["recent_transcripts"]
-    assert "я тут" in rendered
-    assert "stranger speak" not in rendered
-    assert "[REDACTED]" in rendered
+    assert "owner: я тут" in rendered
+    assert "guest_01: stranger speak" in rendered
+    assert "[REDACTED]" not in rendered
 
 
 async def test_format_recent_passthrough_when_flag_off(
@@ -221,10 +221,11 @@ async def test_format_recent_passthrough_when_flag_off(
     rendered = result["recent_transcripts"]
     assert "я тут" in rendered
     assert "stranger speak" in rendered
+    assert "owner:" not in rendered  # no speaker labels when flag is off
     assert "[REDACTED]" not in rendered
 
 
-async def test_format_recent_none_speaker_id_treated_as_non_owner(
+async def test_format_recent_none_speaker_id_marked_unknown(
     store: TranscriptStore,
 ) -> None:
     await store.log_transcript("legacy row", "ambient", speaker_id=None)
@@ -233,8 +234,25 @@ async def test_format_recent_none_speaker_id_treated_as_non_owner(
     ctx = ContextBuilder(store, settings)
     result = await ctx.build("х", heartbeat=False)
     rendered = result["recent_transcripts"]
-    assert "legacy row" not in rendered
-    assert "[REDACTED]" in rendered
+    assert "unknown: legacy row" in rendered
+    assert "[REDACTED]" not in rendered
+
+
+async def test_format_recent_uses_gallery_labels(
+    store: TranscriptStore,
+) -> None:
+    from unittest.mock import MagicMock
+
+    await store.log_transcript("hello", "ambient", speaker_id="guest_01")
+    settings = load_settings()
+    settings.speaker_id_enabled = True
+    gallery = MagicMock()
+    gallery.get_label = MagicMock(return_value="Alice")
+    ctx = ContextBuilder(store, settings, speaker_gallery=gallery)
+    result = await ctx.build("х", heartbeat=False)
+    rendered = result["recent_transcripts"]
+    assert "Alice: hello" in rendered
+    gallery.get_label.assert_called_with("guest_01")
 
 
 def test_render_with_template() -> None:
@@ -289,8 +307,8 @@ async def test_conversation_context_rendering(store: TranscriptStore) -> None:
 
 
 async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) -> None:
-    """Phase 2.2: bfg now returns 10 keys (5 original + 4 conversation projected
-    from build() + 1 new recent_actions)."""
+    """Phase 2.2: bfg now returns 11 keys (5 original + 4 conversation projected
+    from build() + 1 new recent_actions + 1 user_language)."""
     settings = load_settings()
     ctx = ContextBuilder(store, settings)
     result = await ctx.build_for_generator(transcript="як справи?", persona="Ти Heare.")
@@ -305,11 +323,30 @@ async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) 
         "entities",
         "recent_turns",
         "recent_actions",
+        "user_language",
     }
     assert result["persona"] == "Ти Heare."
     assert result["transcript"] == "як справи?"
     # With no conversation_manager, recent_actions is "(none)"
     assert result["recent_actions"] == "(none)"
+
+
+async def test_build_for_generator_user_language_mapping(store: TranscriptStore) -> None:
+    """user_language code is mapped to full language name in build_for_generator output."""
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+
+    result_uk = await ctx.build_for_generator(transcript="x", persona="p", user_language="uk")
+    assert result_uk["user_language"] == "Ukrainian"
+
+    result_en = await ctx.build_for_generator(transcript="x", persona="p", user_language="en")
+    assert result_en["user_language"] == "English"
+
+    result_ru = await ctx.build_for_generator(transcript="x", persona="p", user_language="ru")
+    assert result_ru["user_language"] == "Russian"
+
+    result_fr = await ctx.build_for_generator(transcript="x", persona="p", user_language="fr")
+    assert result_fr["user_language"] == "English"
 
 
 async def test_build_for_generator_recent_actions_formatting(store: TranscriptStore) -> None:
@@ -349,6 +386,58 @@ async def test_build_for_generator_recent_actions_limit(store: TranscriptStore) 
     # Count lines
     lines = [ln for ln in formatted.split("\n") if ln.strip().startswith("-")]
     assert len(lines) == 5
+
+
+async def test_format_recent_actions_keeps_web_search_content(
+    store: TranscriptStore,
+) -> None:
+    """web_search results must survive past the 80-char truncation cap so the
+    generator can answer follow-ups from prior search content."""
+    from unittest.mock import MagicMock
+    from src.conversation import ConversationManager
+
+    settings = load_settings()
+    mgr = ConversationManager(store, MagicMock())
+    long_recipe = (
+        "Chili Recipe\nBrown beef with onion and garlic, then add chili powder, "
+        "cumin, tomatoes, and beans; simmer twenty minutes. " * 8
+    )
+    assert len(long_recipe) > 80
+    mgr.record_action_pending(1, "web_search", "chili recipe")
+    mgr.record_action_result(1, long_recipe)
+
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+    result = await ctx.build_for_generator(transcript="?", persona="p")
+    formatted = result["recent_actions"]
+    assert "Brown beef" in formatted
+    # The tail (a single appended entry, possibly multi-line) must hold
+    # well more than the 80-char cap that applies to other tools.
+    assert formatted.count("twenty minutes") >= 3, (
+        f"web_search tail should keep the long recipe; got {len(formatted)} chars"
+    )
+    assert len(formatted) > 200
+
+
+async def test_format_recent_actions_truncates_other_tools(
+    store: TranscriptStore,
+) -> None:
+    """Non-web tools stay capped at the 80-char tail to keep prompts tight."""
+    from unittest.mock import MagicMock
+    from src.conversation import ConversationManager
+
+    settings = load_settings()
+    mgr = ConversationManager(store, MagicMock())
+    long_output = "x" * 200
+    mgr.record_action_pending(1, "bash", "cat huge")
+    mgr.record_action_result(1, long_output)
+
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+    result = await ctx.build_for_generator(transcript="?", persona="p")
+    formatted = result["recent_actions"]
+    line = next(ln for ln in formatted.splitlines() if "bash" in ln)
+    # The tail (the part after `bash: `) must be at most 80 chars.
+    tail = line.split("bash: ", 1)[1]
+    assert len(tail) <= 80
 
 
 async def test_context_builder_keys_accounted_for(store: TranscriptStore) -> None:

@@ -156,19 +156,21 @@ def test_partial_prefix_that_disproves_flushes_lt() -> None:
 
 
 def test_second_intent_in_stream_logged_and_dropped(caplog) -> None:
-    p = IntentStreamParser()
+    """Multi-intent mode: second intent is now accepted (not dropped)."""
+    p = IntentStreamParser(max_intents=10)
     body = (
         '<intent>{"tool":"bash","args":"first"}</intent> '
         'middle '
         '<intent>{"tool":"bash","args":"second"}</intent> tail'
     )
-    with caplog.at_level(logging.WARNING, logger="heare.intent_parser"):
-        text, intents = _feed_all(p, [body])
-    assert len(intents) == 1
+    text, intents = _feed_all(p, [body])
+    # Both intents should be accepted now
+    assert len(intents) == 2
     assert intents[0]["args"] == "first"
+    assert intents[1]["args"] == "second"
     assert "tail" in text
     assert "middle" in text
-    assert any("second intent" in r.message.lower() for r in caplog.records)
+    # No warning about dropping (multi-intent is enabled)
 
 
 def test_emoji_in_body_drops_intent() -> None:

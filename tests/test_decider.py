@@ -51,6 +51,8 @@ async def harness():
         settings = Settings()
         settings.mode = Mode.AMBIENT
         settings.confirmation_timeout_seconds = 1
+        settings.speaker_id_enabled = False
+        settings.speaker_namer_enabled = False
         ctx_builder = ContextBuilder(store, settings)
         try:
             yield store, settings, ctx_builder

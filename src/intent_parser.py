@@ -10,7 +10,9 @@ Invariants (see PRD US-P2.1-01):
   7. Whitespace/control chars between opener and JSON consumed; emoji in
      body causes JSON parse failure → drop silently.
 
-Additional rule: one intent per stream (second+ are logged and dropped).
+Multi-intent mode: Multiple intents per stream are now supported for
+action chaining (e.g., browser automation workflows). Configurable via
+Settings.max_intents_per_response.
 
 Test-only env-var `HEARE_FAKE_OPENROUTER` is consumed by OpenRouterCLI,
 not this module — the parser is deterministic on input.
@@ -39,10 +41,11 @@ _FENCE_RE = re.compile(r"^```\w*\s*\n(.+?)\n```\s*$", re.DOTALL)
 class IntentStreamParser:
     """Anti-leakage streaming parser for `<intent>{...}</intent>` blocks."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_intents: int = 10) -> None:
         self._buffer: str = ""
         self._state: str = "text"  # "text" | "intent"
         self._intents_emitted: int = 0
+        self._max_intents: int = max_intents
 
     def feed(self, chunk: str) -> tuple[str, list[dict]]:
         if not chunk:
@@ -107,12 +110,13 @@ class IntentStreamParser:
                     self._state = "text"
                     parsed = _parse_intent_body(body)
                     if parsed is not None:
-                        if self._intents_emitted < 1:
+                        if self._max_intents == 0 or self._intents_emitted < self._max_intents:
                             intents.append(parsed)
                             self._intents_emitted += 1
                         else:
                             logger.warning(
-                                "second intent in stream dropped (Phase 2.1 limit=1)"
+                                "intent limit reached (max=%d) — dropping additional intents",
+                                self._max_intents,
                             )
                     continue
                 # Incomplete body — wait for more bytes.

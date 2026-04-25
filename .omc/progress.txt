@@ -1,10 +1,187 @@
-# heare S2S-realtime Phase 1 — Progress Log
+# PRD B — Voice-friendly action results
 
-## Session start: 2026-04-18
-Branch: s2s-realtime
-Source plan: .omc/plans/ralplan-s2s-phase1.md
-PRD: .omc/prd.json
+## Iteration 1 starting
 
-## Iteration 1 — US-P1-00 latency gate
-Goal: measure claude -p streaming TTFT on haiku + sonnet, decide GO/NO-GO.
-Gate threshold: haiku warm TTFT <= 1500ms AND cold TTFT <= 3500ms.
+Goal: each direct tool ships a per-language `spoken` summary so TTS reads
+"You have 3 profiles: owner, Назар, and Myjko" instead of the raw ASCII
+table from `list_profiles`. Generic 'Done.' fallback for Claude/MCP/workflow.
+
+Stories: 7 (US-VFA-01..07). See .omc/prd.json.
+
+---
+
+## PRD B — Completion Summary
+
+### Feature description
+
+PRD B — Voice-Friendly Action Results ships spoken-text templates for every
+direct tool in the heare voice assistant, eliminating raw ASCII tables, raw
+file content, and raw stdout from the TTS pipeline. Each handler in
+`src/direct_tools.py` now returns a `spoken` dict keyed by `{en, uk, ru}` with
+short, natural sentences. For Claude/MCP/workflow tools that produce free-form
+output, `_resolve_spoken` in `src/main.py` generates a generic per-language
+"Done." or "Action failed." instead of dumping the raw result into speech. The
+`Intent` dataclass now carries a `language` field (default `"en"`) populated by
+the generator from `_active_lang`; this flows through `IntentQueue.submit` into
+the action-worker callback so every spoken resolution is language-aware.
+
+### Files touched
+
+- `src/actions.py` — Added `language: str = "en"` field to `Intent` dataclass;
+  `IntentQueue.submit` gains keyword-only `language` kwarg and forwards it.
+- `src/direct_tools.py` — All handlers (list_profiles, create_profile,
+  rename_profile, delete_profile, re_enroll, bash, read, write, web_fetch,
+  web_search) return `spoken: dict[str, str]` with en/uk/ru entries; module
+  docstring documents the spoken contract.
+- `src/generator.py` — Every `IntentQueue.submit(...)` call site passes
+  `language=self._active_lang`.
+- `src/main.py` — New `_resolve_spoken(result, intent, fallback_summary) -> str`
+  helper at module scope; `_on_action_result` and `_on_action_error` call it;
+  logs `[ACTION SPEAK id=N len=M]`.
+- `tests/test_actions.py` — Tests for `Intent.language` default and round-trip
+  through `submit`.
+- `tests/test_direct_tools.py` — Spoken-content assertions for every profile,
+  system, and web tool (error + success paths).
+- `tests/test_main.py` — Tests for `_resolve_spoken` covering dict/str/None
+  input, language selection, English fallback, generic Done/failed per language.
+- `tests/integration/test_intent_flow.py` — Verifies spoken decision row
+  contains the templated sentence, not the raw output.
+
+### Key design decisions
+
+1. **Per-language spoken dict pattern** — handlers return
+   `{"en": "...", "uk": "...", "ru": "..."}`. Callers pick by
+   `intent.language`, falling back to `"en"` if the key is absent.
+
+2. **Generic per-language Done/Action-failed fallback for MCP/Claude/workflow**
+   — `_resolve_spoken` produces "Done." / "Готово." / "Готово." on success and
+   "Action failed." / "Не вдалося виконати." / "Не удалось выполнить." on
+   failure when no `spoken` key is present, so raw MCP/Claude output is
+   never passed to TTS.
+
+3. **`intent.language` flows STT→generator→ActionWorker callback→_resolve_spoken**
+   — the `_active_lang` attribute set by the generator from the STT transcript
+   is attached to every `Intent` at submit time and is available inside the
+   `on_result` callback without any global state.
+
+### Live-verify recipe
+
+Restart the daemon. Say "show me my profiles". The bot should respond with
+"У тебе 3 профілі: owner, Назар, і Myjko." (Ukrainian) instead of reading
+the ASCII table with pipes and dashes. In `daemon.log`, grep for
+`[ACTION SPEAK id=` — the `len=` value should be ~30 characters (the
+templated sentence), not 100+ characters (the old ASCII table).
+
+### Final test count and lint status
+
+- **Tests**: 919 passed, 0 failed, 4 warnings (2026-04-25)
+- **Lint**: `uv run ruff check src/ tests/` — All checks passed
+
+### Story completion
+
+- US-VFA-01 (Intent.language + submit kwarg): completed
+- US-VFA-02 (Profile tool spoken templates): completed
+- US-VFA-03 (System tool spoken templates): completed
+- US-VFA-04 (Web tool spoken templates): completed
+- US-VFA-05 (_resolve_spoken with language resolution): completed
+- US-VFA-06 (Claude/MCP/workflow generic Done fallback): completed
+- US-VFA-07 (Full regression + lint + progress.txt): completed
+
+---
+
+## PRD WS — Web search returns answers, not just titles
+
+### Feature description
+
+Three-fix pass on the web_search direct tool to stop the assistant from
+saying "Found 5 results" without the actual content, and from re-searching
+when the user asks a follow-up:
+
+1. `_search_serper` and `_search_duckduckgo` now include the snippet text
+   in `output` (`<title>\n<snippet>\n<url>`). Serper's snippet field is
+   already in the API response and was being read but discarded; the
+   DuckDuckGo path now extracts `result__snippet` adjacent to each title
+   link.
+2. The hardcoded `spoken={"en": "Found N results. First: …"}` is gone.
+   Both providers now emit the minimal cue
+   `{"en":"Searching done.","uk":"Пошук завершено.","ru":"Поиск завершён."}`
+   so the generator composes the actual content-aware answer from the
+   snippets in `output` (visible via the recent_actions log).
+3. Optional chained `web_fetch` of the top organic result behind a new
+   `Settings.web_search_fetch_top: bool = True` flag. The fetched body is
+   appended as a "Top page content:" block. Failure-safe: any fetch error
+   is swallowed and the snippets-only output is returned. Total output
+   capped at 8000 chars.
+4. `ContextBuilder._format_recent_actions` now keeps up to 1500 chars of
+   tail for `web_search` / `web_fetch` actions (other tools stay capped
+   at 80 chars). This lets the generator read prior search content from
+   the action log on follow-up turns.
+5. `prompts/generator.txt` gained a "Reuse prior search results — do NOT
+   re-search" rule with English/Ukrainian/Russian recipe follow-up
+   examples that answer from prior search content without emitting a new
+   `<intent>{"tool":"web_search",…}</intent>`.
+
+### Files touched
+
+- `src/direct_tools.py` — Snippets in output for both providers; minimal
+  spoken cue; new `_maybe_append_top_page` + `_truncate` helpers; chained
+  top-page fetch behind `web_search_fetch_top`. Removed dead `import re`
+  in `_execute_web_search`.
+- `src/config.py` — New `web_search_fetch_top: bool = True`.
+- `src/context.py` — `_format_recent_actions` branches truncation on
+  tool name (web tools 1500, others 80).
+- `prompts/generator.txt` — New "Reuse prior search results" rule + 3
+  multi-language recipe-follow-up examples.
+- `tests/test_direct_tools.py` — Updated `test_web_search_spoken_with_results`
+  to assert the new minimal cue (no "Found N results"); added
+  `test_web_search_duckduckgo_includes_snippets`,
+  `test_web_search_serper_includes_snippets`, and three chained-fetch
+  tests (enabled / disabled / fetch-error swallowed).
+- `tests/test_context.py` — Added two tests for the
+  `_format_recent_actions` per-tool truncation branch.
+- `tests/test_generator_prompt.py` — Added two tests asserting the new
+  rule line and follow-up example exist in the prompt.
+
+### Key design decisions
+
+1. **Snippets in `output`, not `spoken`** — the action callback writes
+   `output` into the recent_actions log; the generator reads from there
+   on follow-up. `spoken` only feeds TTS for the immediate turn.
+2. **Minimal "Searching done." cue, not silent** — the user must hear
+   *something* between issuing the search and the generator's next
+   reply, but it must not preempt the content answer.
+3. **`web_search_fetch_top` defaults True** — most content-style queries
+   benefit from the fetched body. Disable in low-bandwidth setups.
+4. **Per-tool truncation in the action log** — keep prompts tight for
+   chatty tools (bash, list_profiles ASCII tables) but let web search
+   results flow through so the generator can answer follow-ups.
+
+### Live-verify recipe
+
+1. `make restart`. Say "find the recipe for chili con carne".
+2. The TTS cue should be "Searching done." (English) — NOT
+   "Found N results. First: …".
+3. Within ~2s the generator should speak a one-sentence chili recipe
+   pulled from the snippets / fetched top page, NOT another search.
+4. Say "give me the recipe" again as a follow-up. Expected: the
+   generator dictates the recipe from the prior `web_search` entry in
+   `recent_actions` WITHOUT a new `<intent>{"tool":"web_search",…}</intent>`.
+5. Sanity grep `'Found N results'` (or `'Found 5 results'`) in
+   `src/direct_tools.py` — must return nothing.
+
+### Test/lint status
+
+- `uv run pytest tests/test_direct_tools.py tests/test_context.py tests/test_generator_prompt.py tests/test_config.py -q` — 139 passed.
+- `uv run ruff check src/ tests/` — All checks passed.
+- Full `uv run pytest -q` shows 1 unrelated pre-existing failure in
+  `tests/test_indication.py` (branch state predates this PRD; reverting
+  my single-line `web_search_fetch_top` addition does not change the
+  failure mode).
+
+### Story completion (PRD WS)
+
+- US-WS-01 (Snippets + drop hardcoded spoken): completed
+- US-WS-02 (Optional chained web_fetch behind setting): completed
+- US-WS-03 (Action log preserves web tool content): completed
+- US-WS-04 (Generator prompt rule + example): completed
+- US-WS-05 (Full regression + lint + progress.txt): completed

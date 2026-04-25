@@ -21,6 +21,8 @@ from rich.table import Table
 from rich.text import Text
 
 from .config import Settings
+from .identity import load_identity
+from .tool_registry import TOOLS
 
 
 def _fmt_time(ts: float) -> str:
@@ -97,6 +99,9 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     running, pid, uptime = _daemon_status(settings)
     mode = _current_mode(settings)
     counts = _counts(con)
+    identity = load_identity(settings.identity_file)
+    name = identity["name"] if identity else "heare"
+    emoji = identity["emoji"] if identity else "🪶"
 
     status_text = (
         Text("● running", style="bold green") if running else Text("○ stopped", style="bold red")
@@ -105,8 +110,8 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     mode_text = Text(mode, style=f"bold {mode_style}")
 
     line1 = Text.assemble(
-        ("heare ", "bold magenta"),
-        ("🪶  ", ""),
+        (f"{name} ", "bold magenta"),
+        (f"{emoji}  ", ""),
         status_text,
         ("   pid=", "dim"),
         (f"{pid or '-'}", "white"),
@@ -133,94 +138,156 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     )
 
 
-def _transcripts_table(con: sqlite3.Connection | None) -> Table:
-    table = Table(title="transcripts", expand=True, header_style="bold cyan")
+def _load_speaker_labels(speakers_file: Path) -> dict[str, str]:
+    """Return {speaker_id: label} from the gallery JSON. Fails silently."""
+    if not speakers_file.exists():
+        return {}
+    try:
+        data = json.loads(speakers_file.read_text())
+    except (OSError, ValueError):
+        return {}
+    speakers = data.get("speakers") or {}
+    return {
+        sid: (entry.get("label") or sid)
+        for sid, entry in speakers.items()
+        if isinstance(entry, dict)
+    }
+
+
+def _speaker_style(sid: str | None) -> str:
+    if sid is None:
+        return "dim"
+    if sid == "owner":
+        return "bold green"
+    return "yellow"
+
+
+def _you_table(
+    con: sqlite3.Connection | None, labels: dict[str, str] | None = None
+) -> Table:
+    labels = labels or {}
+    """Column 1 — what the user said, with speaker labels."""
+    table = Table(title="🧑 You", expand=True, header_style="bold cyan")
     table.add_column("time", width=8, style="dim")
-    table.add_column("mode", width=8, style="dim")
+    table.add_column("who", width=10)
     table.add_column("text", overflow="ellipsis")
+    rows: list = []
     if con is not None:
         rows = _fetch(
             con,
-            "SELECT ts, mode, text FROM transcripts ORDER BY ts DESC LIMIT 8",
+            "SELECT ts, speaker_id, text FROM transcripts ORDER BY ts DESC LIMIT 8",
         )
-        for ts, mode, text in reversed(rows):
-            table.add_row(_fmt_time(ts), mode, _truncate(text, 80))
+        for ts, sid, text in reversed(rows):
+            display = labels.get(sid, sid) if sid else "unknown"
+            table.add_row(
+                _fmt_time(ts),
+                Text(_truncate(display, 10), style=_speaker_style(sid)),
+                _truncate(text, 80),
+            )
     if con is None or not rows:
         table.add_row("—", "—", Text("(none yet)", style="dim italic"))
     return table
 
 
-def _decisions_table(con: sqlite3.Connection | None) -> Table:
-    table = Table(title="decisions", expand=True, header_style="bold cyan")
+def _said_table(con: sqlite3.Connection | None) -> Table:
+    """Column 2 — what heare said via TTS (speak decisions)."""
+    table = Table(title="🗣️ Heare said", expand=True, header_style="bold cyan")
     table.add_column("time", width=8, style="dim")
-    table.add_column("type", width=7)
-    table.add_column("conf", width=5, justify="right")
-    table.add_column("reply / intent", overflow="ellipsis")
+    table.add_column("text", overflow="ellipsis")
+    rows: list = []
+    if con is not None:
+        rows = _fetch(
+            con,
+            "SELECT ts, reply FROM decisions"
+            " WHERE type = 'speak' AND reply IS NOT NULL"
+            " ORDER BY ts DESC LIMIT 8",
+        )
+        for ts, reply in reversed(rows):
+            table.add_row(_fmt_time(ts), _truncate(reply, 80))
+    if con is None or not rows:
+        table.add_row("—", Text("(none yet)", style="dim italic"))
+    return table
+
+
+def _did_table(con: sqlite3.Connection | None) -> Table:
+    """Column 3 — what heare did (actions joined with their act decisions)."""
+    table = Table(title="⚙️ Heare did", expand=True, header_style="bold cyan")
+    table.add_column("time", width=8, style="dim")
+    table.add_column("status", width=9)
+    table.add_column("command", overflow="ellipsis")
+    table.add_column("result", overflow="ellipsis")
+    rows: list = []
     if con is not None:
         rows = _fetch(
             con,
             """
-            SELECT ts, type, confidence, reply, intent
-            FROM decisions
-            ORDER BY ts DESC LIMIT 8
+            SELECT a.ts, a.status, d.action_json, a.result_summary
+            FROM actions a
+            LEFT JOIN decisions d ON d.id = a.decision_id
+            ORDER BY a.ts DESC LIMIT 8
             """,
         )
-        for ts, d_type, conf, reply, intent in reversed(rows):
-            conf_s = f"{conf:.2f}" if isinstance(conf, (int, float)) else "--"
-            payload = reply or intent or ""
-            color = {
-                "nothing": "dim",
-                "speak": "green",
-                "act": "yellow",
-            }.get(d_type, "white")
-            table.add_row(
-                _fmt_time(ts),
-                Text(d_type, style=color),
-                conf_s,
-                _truncate(payload, 80),
+        for ts, status, action_json, summary in reversed(rows):
+            color = {"ok": "green", "error": "red", "cancelled": "dim"}.get(
+                status, "white"
             )
-    if con is None or not rows:
-        table.add_row("—", "—", "—", Text("(none yet)", style="dim italic"))
-    return table
-
-
-def _actions_table(con: sqlite3.Connection | None) -> Table:
-    table = Table(title="actions", expand=True, header_style="bold cyan")
-    table.add_column("time", width=8, style="dim")
-    table.add_column("status", width=9)
-    table.add_column("result", overflow="ellipsis")
-    if con is not None:
-        rows = _fetch(
-            con,
-            "SELECT ts, status, result_summary FROM actions ORDER BY ts DESC LIMIT 5",
-        )
-        for ts, status, summary in reversed(rows):
-            color = {"ok": "green", "error": "red", "cancelled": "dim"}.get(status, "white")
+            # Extract command from action_json
+            command = "—"
+            if action_json:
+                try:
+                    data = json.loads(action_json)
+                    if isinstance(data, dict):
+                        tool = data.get("tool", "")
+                        args = data.get("args", "")
+                        if tool:
+                            command = f"{tool}: {args}"
+                except (ValueError, TypeError):
+                    pass
             table.add_row(
                 _fmt_time(ts),
                 Text(status, style=color),
+                _truncate(command, 50),
                 _truncate(summary, 80),
             )
     if con is None or not rows:
-        table.add_row("—", "—", Text("(none yet)", style="dim italic"))
+        table.add_row(
+            "—", "—", "—", Text("(none yet)", style="dim italic")
+        )
     return table
 
 
-def _heartbeats_table(con: sqlite3.Connection | None) -> Table:
-    table = Table(title="heartbeats", expand=True, header_style="bold cyan")
-    table.add_column("time", width=8, style="dim")
-    table.add_column("decision", width=8)
-    table.add_column("reply", overflow="ellipsis")
-    if con is not None:
-        rows = _fetch(
-            con,
-            "SELECT ts, decided_to_speak, reply FROM heartbeats ORDER BY ts DESC LIMIT 5",
-        )
-        for ts, spoke, reply in reversed(rows):
-            decision = Text("spoke", style="green") if spoke else Text("quiet", style="dim")
-            table.add_row(_fmt_time(ts), decision, _truncate(reply, 80) if reply else "")
-    if con is None or not rows:
-        table.add_row("—", "—", Text("(none yet)", style="dim italic"))
+_EXECUTION_STYLE = {
+    "direct": "green",
+    "claude": "cyan",
+    "workflow": "yellow",
+    "mcp": "magenta",
+}
+
+
+def _tools_table() -> Table:
+    """Reference panel — every enabled tool the agent may invoke."""
+    table = Table(title="🛠 Tools", expand=True, header_style="bold cyan", padding=(0, 1))
+    table.add_column("name", width=14, style="bold")
+    table.add_column("exec", width=8)
+    table.add_column("description", overflow="ellipsis")
+    table.add_column("name", width=14, style="bold")
+    table.add_column("exec", width=8)
+    table.add_column("description", overflow="ellipsis")
+
+    enabled = sorted((t for t in TOOLS.values() if t.enabled), key=lambda t: t.name)
+    half = (len(enabled) + 1) // 2
+    left, right = enabled[:half], enabled[half:]
+    def _row(tool):
+        return [
+            tool.name,
+            Text(tool.execution, style=_EXECUTION_STYLE.get(tool.execution, "white")),
+            _truncate(tool.description, 60),
+        ]
+
+    for i in range(half):
+        left_cells = _row(left[i])
+        right_cells = _row(right[i]) if i < len(right) else ["", "", ""]
+        table.add_row(*left_cells, *right_cells)
     return table
 
 
@@ -304,26 +371,24 @@ def _log_panel(settings: Settings, lines: int = 8) -> Panel:
 
 def _build_layout(settings: Settings) -> Layout:
     con = _open_db(settings.db_path)
+    labels = _load_speaker_labels(settings.speakers_file)
     try:
         layout = Layout()
-        # RT-004 row budget: header=4 + body(ratio=1) + progress=10 + log=8
-        # = 22 fixed rows. On a 40-row terminal the body still gets 18 rows,
-        # comfortable for the 4 tables. Minimum viable terminal = 32 rows.
+        # Row budget: header=4 + tools=10 + body(ratio=1) + progress=10 + log=8
+        # = 32 fixed rows. On a 50-row terminal the body still gets 18 rows,
+        # comfortable for the three side-by-side tables. Minimum viable
+        # terminal = 42 rows.
         layout.split_column(
             Layout(_build_header(settings, con), size=4, name="header"),
+            Layout(_tools_table(), size=10, name="tools"),
             Layout(name="body", ratio=1),
             Layout(_progress_panel(con), size=10, name="progress"),
             Layout(_log_panel(settings, lines=6), size=8, name="log"),
         )
         layout["body"].split_row(
-            Layout(
-                Group(_transcripts_table(con), _heartbeats_table(con)),
-                name="left",
-            ),
-            Layout(
-                Group(_decisions_table(con), _actions_table(con)),
-                name="right",
-            ),
+            Layout(_you_table(con, labels), name="you"),
+            Layout(_said_table(con), name="said"),
+            Layout(_did_table(con), name="did"),
         )
         return layout
     finally:

@@ -1,15 +1,13 @@
 """Tests for src/config.py Settings, enums, load_settings, ensure_dirs."""
 from __future__ import annotations
 
-
-
 from src.config import DeciderState, Mode, Settings, load_settings
 
 
 def test_default_settings() -> None:
     s = Settings()
     assert s.mode == Mode.AMBIENT
-    assert s.tts_voice == "uk-UA-PolinaNeural"
+    assert s.tts_voice == "en-US-AriaNeural"
     assert s.tts_sample_rate == 24000
     assert s.heartbeat_interval_minutes == 30
     assert s.confirmation_timeout_seconds == 30
@@ -88,8 +86,8 @@ def test_decider_state_enum_values() -> None:
 
 def test_speaker_id_defaults() -> None:
     s = Settings()
-    assert s.speaker_id_enabled is False
-    assert s.speaker_id_threshold_match == 0.75
+    assert s.speaker_id_enabled is True
+    assert s.speaker_id_threshold_match == 0.50
     assert s.speaker_id_threshold_unknown == 0.55
     assert s.speaker_id_sticky_threshold == 0.80
     assert s.speaker_id_sticky_seconds == 5.0
@@ -97,7 +95,10 @@ def test_speaker_id_defaults() -> None:
     assert s.speaker_id_accum_target_ms == 3000
     assert s.speaker_id_centroid_k == 5
     assert s.speaker_id_ema_alpha == 0.1
-    assert s.speaker_id_auto_enroll_after == 3
+    assert s.speaker_id_auto_enroll_after == 2
+    assert s.speaker_id_auto_enroll_enabled is True
+    assert s.speaker_id_auto_enroll_owner_enabled is True
+    assert s.speaker_id_auto_enroll_owner_after == 5
     assert s.speakers_file.name == "speakers.json"
 
 
@@ -168,6 +169,17 @@ def test_openrouter_settings_defaults() -> None:
     assert s.openrouter_timeout_seconds == 5.0
 
 
+def test_topic_extraction_backend_default() -> None:
+    s = Settings()
+    assert s.topic_extraction_backend == "openrouter"
+
+
+def test_topic_extraction_openrouter_defaults() -> None:
+    s = Settings()
+    assert s.topic_extraction_openrouter_model == "google/gemini-3.1-flash-lite-preview-20260303"
+    assert s.topic_extraction_openrouter_timeout_seconds == 5.0
+
+
 def test_phase2_worker_settings_defaults() -> None:
     """Phase 2.1 US-P2.1-07a: action worker config defaults."""
     s = Settings()
@@ -182,6 +194,50 @@ def test_load_settings_openrouter_from_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
     s = load_settings()
     assert s.openrouter_api_key == "sk-or-testkey123"
+
+
+def test_speaker_namer_defaults() -> None:
+    s = Settings()
+    assert s.speaker_namer_enabled is True
+    assert s.speaker_namer_model == "anthropic/claude-haiku-4.5"
+    assert s.speaker_namer_min_turns == 3
+    assert s.speaker_namer_debounce_seconds == 10.0
+    assert s.speaker_namer_confidence_threshold == 0.8
+    assert s.speaker_namer_confidence_hysteresis == 0.05
+    assert s.speaker_namer_buffer_size == 10
+    assert s.speaker_namer_queue_max == 64
+    assert s.speaker_namer_timeout_seconds == 15.0
+
+
+def test_speaker_namer_toml_roundtrip(monkeypatch, tmp_path) -> None:
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("HEARE_MODE", raising=False)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        "speaker_namer_enabled = true\n"
+        'speaker_namer_model = "anthropic/claude-sonnet-4.6"\n'
+        "speaker_namer_min_turns = 5\n"
+        "speaker_namer_debounce_seconds = 20.0\n"
+        "speaker_namer_confidence_threshold = 0.9\n"
+        "speaker_namer_confidence_hysteresis = 0.1\n"
+        "speaker_namer_buffer_size = 20\n"
+        "speaker_namer_queue_max = 128\n"
+        "speaker_namer_timeout_seconds = 30.0\n"
+    )
+    s = cfg_mod.load_settings()
+    assert s.speaker_namer_enabled is True
+    assert s.speaker_namer_model == "anthropic/claude-sonnet-4.6"
+    assert s.speaker_namer_min_turns == 5
+    assert s.speaker_namer_debounce_seconds == 20.0
+    assert s.speaker_namer_confidence_threshold == 0.9
+    assert s.speaker_namer_confidence_hysteresis == 0.1
+    assert s.speaker_namer_buffer_size == 20
+    assert s.speaker_namer_queue_max == 128
+    assert s.speaker_namer_timeout_seconds == 30.0
 
 
 def test_ensure_dirs_creates_directories(tmp_path) -> None:
@@ -200,3 +256,164 @@ def test_ensure_dirs_creates_directories(tmp_path) -> None:
         assert cfg_mod.HEARE_HOME.exists()
     finally:
         cfg_mod.HEARE_HOME = original
+
+
+# ---------------------------------------------------------------------------
+# IndicationSettings (US-IND-A2)
+# ---------------------------------------------------------------------------
+
+
+def test_indication_defaults_when_section_absent(monkeypatch, tmp_path) -> None:
+    """Missing [indication] section yields fully-defaulted IndicationSettings."""
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("HEARE_MODE", raising=False)
+
+    s = cfg_mod.load_settings()
+    assert s.indication.enabled is True
+    assert s.indication.sound_enabled is True
+    assert s.indication.visual_enabled is True
+    assert s.indication.notification_center_enabled is True
+    assert s.indication.cooldown_seconds == 1.5
+    assert s.indication.quiet_hours == [("22:00", "07:00")]
+    # Per-kind defaults match plan §3
+    assert s.indication.kinds["attention"].sound is True
+    assert s.indication.kinds["info"].sound is False
+    assert s.indication.kinds["info"].visual is True
+    assert s.indication.kinds["info"].notification is False
+    assert s.indication.kinds["input_waiting"].notification is True
+
+
+def test_indication_partial_override(monkeypatch, tmp_path) -> None:
+    """Partial section overrides specified fields, keeps defaults for the rest."""
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("HEARE_MODE", raising=False)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        "[indication]\n"
+        "enabled = false\n"
+        "cooldown_seconds = 3.0\n"
+        "\n"
+        "[indication.kinds.info]\n"
+        "sound = true\n"
+    )
+    s = cfg_mod.load_settings()
+    assert s.indication.enabled is False
+    assert s.indication.cooldown_seconds == 3.0
+    # Untouched fields keep defaults
+    assert s.indication.sound_enabled is True
+    assert s.indication.kinds["attention"].sound is True
+    # Overridden per-kind
+    assert s.indication.kinds["info"].sound is True
+    # Other per-kind keep defaults
+    assert s.indication.kinds["info"].visual is True
+
+
+def test_indication_invalid_quiet_hours_dropped(monkeypatch, tmp_path, caplog) -> None:
+    """Invalid quiet_hours strings log a warning and are dropped."""
+    import logging
+
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("HEARE_MODE", raising=False)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        "[indication]\n"
+        'quiet_hours = ["25:00-07:00", "22:00-07:00", "garbage"]\n'
+    )
+    records: list[logging.LogRecord] = []
+
+    class _H(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _H(level=logging.WARNING)
+    cfg_logger = logging.getLogger("heare.config")
+    cfg_logger.addHandler(handler)
+    cfg_logger.setLevel(logging.WARNING)
+    try:
+        s = cfg_mod.load_settings()
+    finally:
+        cfg_logger.removeHandler(handler)
+
+    # Only the valid entry survives
+    assert s.indication.quiet_hours == [("22:00", "07:00")]
+    msgs = [r.getMessage() for r in records]
+    assert any("25:00-07:00" in m for m in msgs)
+    assert any("garbage" in m for m in msgs)
+
+
+def test_indication_invalid_quiet_hours_type_keeps_default(monkeypatch, tmp_path) -> None:
+    """quiet_hours that isn't a list logs and keeps defaults."""
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("HEARE_MODE", raising=False)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        "[indication]\n"
+        'quiet_hours = "22:00-07:00"\n'  # string, not list
+    )
+    s = cfg_mod.load_settings()
+    assert s.indication.quiet_hours == [("22:00", "07:00")]
+
+
+def test_indication_invalid_cooldown_keeps_default(monkeypatch, tmp_path) -> None:
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("HEARE_MODE", raising=False)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        "[indication]\n"
+        'cooldown_seconds = "abc"\n'
+    )
+    s = cfg_mod.load_settings()
+    assert s.indication.cooldown_seconds == 1.5
+
+
+def test_deprecated_enable_mcp_servers_warning(monkeypatch, tmp_path) -> None:
+    """Startup with enable_mcp_servers in config.toml logs a deprecation WARNING."""
+    import logging
+
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("HEARE_MODE", raising=False)
+    monkeypatch.delenv("HEARE_CLAUDE_CLI", raising=False)
+    monkeypatch.delenv("HEARE_HEARTBEAT_MIN", raising=False)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('enable_mcp_servers = ["github", "notion"]\n')
+
+    import logging as _logging
+    records: list[logging.LogRecord] = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _Handler()
+    handler.setLevel(logging.WARNING)
+    cfg_logger = _logging.getLogger("heare.config")
+    cfg_logger.addHandler(handler)
+    try:
+        s = cfg_mod.load_settings()
+    finally:
+        cfg_logger.removeHandler(handler)
+
+    warning_messages = [r.getMessage() for r in records if r.levelno == logging.WARNING]
+    assert any("enable_mcp_servers" in msg for msg in warning_messages), (
+        f"expected deprecation warning for enable_mcp_servers, got: {warning_messages}"
+    )
+    # Field still exists on Settings (retained for one release)
+    assert hasattr(s, "enable_mcp_servers")

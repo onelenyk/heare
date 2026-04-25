@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs watch test clean
+.PHONY: help install start stop restart status logs watch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -7,6 +7,7 @@ help:
 	@echo "  make quickstart  - Run initial setup"
 	@echo "  make dev        - Start development server"
 	@echo "  make test        - Run tests"
+	@echo "  make test-recognizer - Interactive speaker recognition tester"
 	@echo "  make clean       - Clean build artifacts"
 	@echo ""
 	@echo "Daemon Control:"
@@ -16,6 +17,13 @@ help:
 	@echo "  make status     - Check daemon status"
 	@echo "  make logs       - Tail daemon logs"
 	@echo "  make watch      - Start watch dashboard"
+	@echo ""
+	@echo "MCP Servers:"
+	@echo "  make mcp-list           - List all available MCP servers"
+	@echo "  make mcp-status         - Show enabled MCP servers"
+	@echo "  make mcp-enable NAME    - Enable an MCP server (e.g., make mcp-enable NAME=github)"
+	@echo "  make mcp-disable NAME   - Disable an MCP server"
+	@echo "  make mcp-edit-catalog   - Open custom catalog in editor"
 	@echo ""
 	@echo "Infrastructure:"
 	@echo "  make install    - Install as systemd service"
@@ -87,3 +95,31 @@ check:
 	$(MAKE) lint
 	$(MAKE) test
 	@echo "✅ All checks passed"
+
+# MCP Server Management
+mcp-list:
+	@uv run python -m src.main mcp list
+
+mcp-status:
+	@uv run python -m src.main mcp status
+
+mcp-enable:
+	@if [ -z "$(NAME)" ]; then \
+		echo "Usage: make mcp-enable NAME=github"; \
+		exit 1; \
+	fi
+	@uv run python -m src.main mcp enable $(NAME)
+
+mcp-disable:
+	@if [ -z "$(NAME)" ]; then \
+		echo "Usage: make mcp-disable NAME=github"; \
+		exit 1; \
+	fi
+	@uv run python -m src.main mcp disable $(NAME)
+
+mcp-edit-catalog:
+	@uv run python -m src.main mcp edit-catalog
+
+# Speaker Recognition Testing
+test-recognizer:
+	@uv run python -m src.main test-recognizer

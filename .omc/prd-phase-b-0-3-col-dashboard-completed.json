@@ -1,0 +1,81 @@
+{
+  "title": "heare Phase B-0 — Three-column Observability Dashboard",
+  "version": "1.0.0",
+  "source_plan": ".omc/research/intent-action.md (D9 — watch dashboard data gap)",
+  "notes": "Resurrects the watch dashboard's middle columns by persisting TTS text and intent outcomes from the Phase 2.1 generator pipeline. Reuses existing decisions + actions tables — no schema migration. Replaces the 4-panel body (transcripts / decisions / actions / heartbeats) with a 3-column body: You / Heare said / Heare did.",
+  "stories": [
+    {
+      "id": "US-B0-01",
+      "title": "Intent dataclass carries decision_id + transcript_id",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Extend src/actions.Intent with optional decision_id and transcript_id fields so the ActionWorker can correlate its log_action call to the originating decision row.",
+      "acceptanceCriteria": [
+        "Intent dataclass in src/actions.py has two new fields: decision_id: int | None = None and transcript_id: int | None = None (defaults preserve backward compat).",
+        "IntentQueue.submit accepts an optional decision_id / transcript_id via kwargs and forwards them onto the Intent instance it creates.",
+        "Existing IntentQueue submit call sites continue to work (backward compat). New unit test in tests/test_actions.py verifies that the new fields round-trip through submit→next.",
+        "All existing tests in tests/test_actions.py still pass."
+      ]
+    },
+    {
+      "id": "US-B0-02",
+      "title": "Generator persists TTS and intent rows",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "When the GeneratorProcessor pushes a TTSSpeakFrame it must log a decisions row with type='speak' and reply=text. When it submits an intent it must first log a decisions row with type='act', intent=tool, action={tool,args} and pass the resulting decision_id onto the queued Intent. Generator must also retain the transcript_id from log_transcript and attach it to every decision/intent it writes.",
+      "acceptanceCriteria": [
+        "GeneratorProcessor stores transcript_id returned from store.log_transcript in a per-turn local variable (not a module attribute).",
+        "_push_tts writes a decisions row via store.log_decision({type:'speak', reply:<scrubbed_text>, transcript_id}) after a successful push_frame. Failures are logged non-fatally, never raised.",
+        "_submit_intent writes a decisions row with type='act', intent=<tool>, action={'tool':..,'args':..}, transcript_id BEFORE calling IntentQueue.submit, then passes the returned decision_id onto submit so the Intent carries it.",
+        "New unit tests in tests/test_generator.py cover both paths using a fake store that records log_decision calls.",
+        "Existing test_end_to_end_intent_submission_and_execution still passes (ensures the Generator + FakeClaudeCLI integration is not broken). Existing test_generator / test_generator_prompt tests also still pass."
+      ]
+    },
+    {
+      "id": "US-B0-03",
+      "title": "Action callbacks persist action rows and their spoken outcome",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "main._on_action_result and _on_action_error must call store.log_action(decision_id, status, spoken_summary) exactly once per completed intent. When decision_id is None (e.g. Intent not decorated) the row is skipped without raising. The spoken summary/hint used by TTS is also persisted as a decisions row (type='speak', reply=spoken).",
+      "acceptanceCriteria": [
+        "_on_action_result calls store.log_action(intent.decision_id, 'ok', spoken_summary) when intent.decision_id is not None. The spoken summary string (same one pushed to TTS) is used.",
+        "_on_action_result ALSO calls store.log_decision({type:'speak', reply:spoken_summary, transcript_id:intent.transcript_id}) so the result speech appears in the 'Heare said' column alongside streaming replies.",
+        "_on_action_error calls store.log_action(intent.decision_id, 'error' for generic errors or 'cancelled' for asyncio.TimeoutError / asyncio.CancelledError, error_hint). The hint is also logged as a decisions row (type='speak').",
+        "Both callbacks swallow store exceptions (logger.exception, do not raise).",
+        "A new integration test in tests/integration/test_intent_flow.py drives the full pipeline with a real TranscriptStore-backed sqlite db and asserts that after one action: (a) 1 transcript row, (b) at least 2 decision rows (speak for reply, act for intent, speak for result), (c) 1 action row with status='ok' and the expected result_summary."
+      ]
+    },
+    {
+      "id": "US-B0-04",
+      "title": "Watch dashboard 3-column body",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "src/watch.py body layout changes from 2-col/4-table grid to a 3-column layout: You (transcripts) | Heare said (decisions.reply WHERE type='speak') | Heare did (actions JOIN decisions ON decision_id for intent label).",
+      "acceptanceCriteria": [
+        "_build_layout splits the body row into exactly three columns: 'you', 'said', 'did', each rendering one Table.",
+        "The 'said' table shows columns: time, text (from decisions where type='speak', newest last, LIMIT 8).",
+        "The 'did' table shows columns: time, status, tool, result (joining actions with decisions via decision_id, newest last, LIMIT 8). Tool column pulls from decisions.intent. Status is color-coded: ok=green, error=red, cancelled=dim.",
+        "Header counts remain unchanged (transcripts / decisions / actions / heartbeats).",
+        "Existing _decisions_table / _actions_table / _heartbeats_table helpers are either removed or unused (dead code deleted).",
+        "New unit test in tests/test_watch.py populates a tmp db with synthetic rows and asserts the three new tables render with the expected columns and at least one row each."
+      ]
+    },
+    {
+      "id": "US-B0-05",
+      "title": "Regression + lint green",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Full suite and ruff must be clean after Phase B-0 changes.",
+      "acceptanceCriteria": [
+        "uv run pytest tests/ exits 0 with zero failures.",
+        "uv run ruff check src/ tests/ exits 0.",
+        "progress.txt records files touched, learnings, and a live-verify note describing how to trigger each of the three panels via the real daemon."
+      ]
+    }
+  ]
+}

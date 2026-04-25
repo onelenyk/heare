@@ -1,0 +1,55 @@
+{
+  "title": "heare Phase B-polish — Less water, fewer double-turns",
+  "version": "1.0.0",
+  "source_plan": "daemon.log 2026-04-19 17:41-17:44 (LinkedIn conversation)",
+  "notes": "User observation: agent produces 2-4 TTS frames per turn with filler, polite hedging, promise-then-execute-then-describe, unsolicited alternatives. Also: Groq STT split one utterance into two transcriptions ('Але повідомлення зберігаються…' + 'подивитися, які там є'), causing duplicate agent replies. Two fixes in one cycle: tighten prompt, debounce TranscriptionFrame arrivals inside GeneratorProcessor.",
+  "stories": [
+    {
+      "id": "US-BP-01",
+      "title": "Anti-water prompt constraints",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Rewrite the 'Правила відповіді' block in prompts/generator.txt to enforce one-sentence, <=12-word replies; ban thank-you/apology/unsolicited-alternative fillers; cap pre-intent text to 5 words; ban permission questions after a direct command. Keep the existing INTENTS block (Phase B) unchanged.",
+      "acceptanceCriteria": [
+        "prompts/generator.txt reply-rules section contains 'одним реченням' (or equivalent singular) and 'максимум 12 слів' (or '≤ 12 слів').",
+        "prompts/generator.txt contains an anti-filler rule naming at least three of: подяк, вибачень, альтернатив, описів, обіцянок.",
+        "prompts/generator.txt contains a rule limiting pre-intent wording to a short phrase (name 'коротко', 'до 5 слів', or equivalent).",
+        "prompts/generator.txt contains a rule prohibiting permission questions when the user already gave a direct command.",
+        "New tests in tests/test_generator_prompt.py assert each of the above four rules. The existing placeholder-set golden test still passes.",
+        "All existing tests in tests/test_generator_prompt.py still pass."
+      ]
+    },
+    {
+      "id": "US-BP-02",
+      "title": "Debounce TranscriptionFrame arrivals",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Groq STT occasionally emits two TranscriptionFrames for what a human would call one utterance (mid-sentence pause). The Generator currently processes each as a separate turn, producing duplicate replies. Add a short debounce window inside GeneratorProcessor: buffer incoming transcript text and process as one turn after N ms of silence. Configurable via Settings.transcript_debounce_seconds (default 0.6).",
+      "acceptanceCriteria": [
+        "src/config.py Settings gains a transcript_debounce_seconds: float attribute defaulting to 0.6 seconds. 0 disables debouncing (legacy behavior).",
+        "src/generator.py GeneratorProcessor buffers TranscriptionFrames: on arrival it appends text to a per-processor buffer, cancels any pending debounce task, and schedules a new task that will call the existing _handle_transcription path with the combined text after transcript_debounce_seconds seconds.",
+        "When the debounce window fires, the combined text is passed to _handle_transcription along with the latest frame's speaker_id / speaker_confidence. Multiple transcript fragments are joined with a single space.",
+        "When transcript_debounce_seconds == 0, _handle_transcription is invoked inline (no debouncing) — preserves existing single-frame-per-turn behavior for tests.",
+        "New unit test: two TranscriptionFrames arriving 300 ms apart produce exactly ONE _handle_transcription invocation with combined text. Use monkeypatched asyncio.sleep or short real debounce value.",
+        "New unit test: a single TranscriptionFrame followed by silence produces exactly ONE _handle_transcription invocation with that frame's text.",
+        "New unit test: transcript_debounce_seconds=0 produces immediate per-frame processing (regression coverage for the inline path).",
+        "Existing test_generator.py tests — which pass transcript_debounce_seconds=0 via Settings or rely on the current immediate dispatch — still pass. If any test needs adjustment, the adjustment is narrow and documented in the test's docstring."
+      ]
+    },
+    {
+      "id": "US-BP-03",
+      "title": "Regression + lint green",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Full suite + ruff after the two fixes.",
+      "acceptanceCriteria": [
+        "uv run pytest tests/ exits 0.",
+        "uv run ruff check src/ tests/ exits 0.",
+        "progress.txt records files touched, learnings, and a live-verify note citing the 2026-04-19 17:43 double-transcript scenario and a concrete replay plan (restart daemon, speak one sentence with a mid-sentence pause ~1.5s, expect ONE agent reply)."
+      ]
+    }
+  ]
+}

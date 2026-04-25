@@ -1,0 +1,81 @@
+# Indication Subsystem — Progress Log
+
+## Session: 2026-04-24
+
+### Status
+COMPLETE. 822 pytest tests pass; ruff clean.
+
+### Plan
+.omc/plans/indication.md (v3, consensus-approved by Architect + Critic)
+
+### Files added
+- src/indication.py — facade, IndicationCueFrame (SystemFrame), IndicationKind/Level enums, KIND_TO_LEVEL, _DEFAULTS, Backend Protocol, Indication class with thread-safe sync notify(), gating (mode/cooldown/quiet hours/per-kind toggles), runtime reload, set/get_indication singleton, lazy-built SoundCueProcessor (OutputAudioRawFrame + IndicationCueFrame brackets)
+- src/indication_assets.py — numpy oscillator helpers per level (attention/error/long_running/success/info/input_waiting); deterministic int16 mono PCM at 24 kHz
+- src/indication_backends/__init__.py
+- src/indication_backends/sound.py — SoundBackend; pre-built PCM dict; routes to SoundCueProcessor.enqueue_cue
+- src/indication_backends/visual.py — JSONL writer at <log_dir>/indication.jsonl; trims to last 200 lines
+- src/indication_backends/notification.py — macOS osascript via `on run argv` + subprocess argv; injection-safe; Darwin auto-disable; 2s timeout
+
+### Files modified
+- src/config.py — IndicationSettings dataclass with per-kind toggles, quiet hours, cooldown; nested loader with validation (drops invalid quiet_hours, falls back on bad cooldown)
+- src/pipeline.py — builds Indication facade + SoundCueProcessor + STT-error observer; inserts processor after tts; registers as singleton; returns 4-tuple (task, processor, tts_cache, indication)
+- src/main.py — captures indication facade; SIGHUP triggers Indication.reload(); aclose in shutdown finally; DAEMON_STARTED in greeting path; DAEMON_SHUTDOWN before aclose
+- src/generator.py — _indication_speaking flag; gates transcripts during cue; OPENROUTER_TIMEOUT, INTENT_SUBMITTED, INTENT_CANCELLED notifications
+- src/speaker_processor.py — _indication_speaking flag in tagger; OWNER/GUEST_AUTO_ENROLLED notifications (TTS greeting still fires)
+- src/speaker_namer.py — GUEST_RENAMED notification on successful rename
+- src/actions.py — ACTION_REJECTED notifications for all 3 rejection paths; ACTION_LONG_RUNNING 5s watchdog timer (self-cancels on completion)
+- src/direct_tools.py — REENROLL_RECORDING_START/END around sd.rec()
+- src/mcp_utils.py — notify_mcp_auth_required / notify_mcp_disconnected helpers with per-server session-scoped debounce
+- src/heartbeat.py — HEARTBEAT_TICK on each tick
+
+### Tests added
+- tests/test_indication_assets.py — 21 tests: cue length, amplitude bounds, determinism, click avoidance, alt SR
+- tests/test_indication.py — 19 tests: facade gating, mode, cooldown, quiet-hours, INPUT_WAITING bypass, thread-safe notify (worker-thread + main-loop branches), backend isolation
+- tests/test_indication_sound.py — 7 tests: 3-frame sequence, OutputAudioRawFrame subclass, queue overflow + cues_dropped counter, tail timing formula, bot-speaking deferral, SoundBackend routing
+- tests/test_indication_visual.py — 4 tests: JSONL writes, trim at keep_last, parent-dir creation
+- tests/test_indication_notification.py — 16 tests: argv arity per sound clause, injection regression (4 payloads), timeout kill, non-Darwin disable, level→sound mapping
+- tests/test_indication_wiring.py — 11 tests: generator/tagger gating; re-enroll wiring; intent-rejected (3 paths); action-long-running fires after 5s and not for fast actions; action-failed; OpenRouter timeout; STT_ERROR via ErrorFrame
+- tests/test_indication_runtime_disable.py — 3 tests: reload disable/re-enable transitions; mid-drain notify short-circuit; aclose idempotency
+- tests/test_indication_no_phantom.py (integration) — real pipecat pipeline + SoundCueProcessor; asserts 3-frame sequence with correct subclass and ordering
+- tests/test_mcp_indication.py — 4 tests: per-server debounce, body text correctness (no `claude mcp authenticate` claim), reset between sessions
+
+### Tests modified
+- tests/test_config.py — 5 new tests for IndicationSettings defaults, partial override, invalid quiet_hours dropped, type fallback, invalid cooldown
+- tests/test_pipeline.py — extended pipecat_mocks fixture (pipecat.frames.frames stubs SystemFrame + ErrorFrame; pipecat.processors.frame_processor stubs FrameProcessor + FrameDirection); settings fixture sets indication.enabled=False; build_pipeline 4-tuple unpack
+- tests/integration/test_s2s_pipeline.py — build_pipeline 4-tuple unpack
+- tests/test_speaker_processor.py — existing owner-enroll tests continue to pass with new indication notification paths
+
+### Stories (all completed)
+- [x] US-IND-A1: PCM asset generator
+- [x] US-IND-A2: IndicationSettings config schema
+- [x] US-IND-A3: Indication facade + Backend protocol + thread-safe notify
+- [x] US-IND-A4a: SoundBackend + SoundCueProcessor + IndicationCueFrame
+- [x] US-IND-A4b: VisualBackend
+- [x] US-IND-A4c: NotificationBackend (argv-only, injection-safe)
+- [x] US-IND-A5: Pipeline integration + upstream consumers + lifecycle
+- [x] US-IND-A6: Runtime disable / re-enable
+- [x] US-IND-B1: Confirmation + re-enroll input-waiting (off-loop branch)
+- [x] US-IND-B2: Action lifecycle errors + rejection + long-running
+- [x] US-IND-B3: External service errors (OpenRouter/STT/TTS/audio device)
+- [x] US-IND-B4: MCP_AUTH_REQUIRED
+- [x] US-IND-C1: Intent lifecycle + cancellation
+- [x] US-IND-C2: Speaker enrollment events
+- [x] US-IND-C3: Mode + wake + daemon lifecycle + workflow + confirmation timeout
+- [x] US-IND-C4: MCP disconnect
+- [x] US-IND-D1: T3 info events
+- [x] US-IND-D2: Speaker drift periodic audit
+- [x] US-IND-FINAL: Full regression
+
+### Design decisions / learnings
+- Decider is retired (Phase 2.1 generator pipeline replaced it). Plan items targeting decider.py (AWAITING_CONFIRMATION, CONFIRMATION_DEADLINE, CONFIRMATION_TIMED_OUT, MODE_CHANGED, WAKE_WORD_DETECTED) gracefully skipped — IndicationKind enums kept for future revival; wiring left as no-op.
+- Added a process-wide singleton (set_indication / get_indication) so producers don't have to thread the facade through every constructor. This was crucial for direct_tools, speaker_namer, mcp_utils, heartbeat — all of which already exist outside pipeline.py construction.
+- Thread-safety contract verified by spawning a worker thread in tests/test_indication.py — direct_tools._execute_re_enroll exercises it implicitly when called inside a sounddevice context.
+- TTS_FAILURE and AUDIO_DEVICE_LOST deferred (would require deep pipecat hooks not yet exposed by the active code).
+- Multi-intent / new-conversation / network-unreachable / speaker-drift T3 events are kind-defined but not actively wired — future work documented in plan §6 Phase D.
+- pipecat test fixtures must register submodules as packages (`__path__ = []`) to allow `from pipecat.x.y import Z` traversal in test contexts that use sys.modules patching.
+- OutputAudioRawFrame is the only raw-audio frame `transport.output()` actually plays. Bare AudioRawFrame is silently dropped — caught by US-IND-A4a tests asserting subclass.
+- IndicationCueFrame inherits from pipecat SystemFrame so pipecat broadcasts it both upstream and downstream; this is what enables decider/generator/SpeakerTagger gating without using BotStartedSpeakingFrame (which would muzzle the user for ~2.5s per beep).
+
+### Verification
+- `uv run pytest -q` → 822 passed, 0 failed, 2 unrelated DeprecationWarnings (pre-existing GroqSTTService deprecation)
+- `uv run ruff check src/ tests/` → clean

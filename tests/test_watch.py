@@ -312,3 +312,211 @@ def test_watch_cli_default_interval_is_half_second() -> None:
     parser = build_parser()
     args = parser.parse_args(["watch"])
     assert args.interval == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Phase B-0: 3-column body (You / Heare said / Heare did)
+# ---------------------------------------------------------------------------
+
+
+def _seed_three_column_sample(db_path: Path) -> None:
+    """Populate transcripts / decisions / actions with one turn worth of rows."""
+    con = sqlite3.connect(str(db_path))
+    con.executescript(SCHEMA)
+    # transcript
+    con.execute(
+        "INSERT INTO transcripts (ts, text, mode) VALUES (1.0, 'запусти echo hi', 'ambient')"
+    )
+    # decisions: speak (reply), act (intent), speak (result)
+    con.execute(
+        "INSERT INTO decisions (ts, transcript_id, type, reply)"
+        " VALUES (2.0, 1, 'speak', 'Додам зараз.')"
+    )
+    con.execute(
+        "INSERT INTO decisions (ts, transcript_id, type, intent, action_json)"
+        " VALUES (3.0, 1, 'act', 'bash', '{\"tool\":\"bash\",\"args\":\"echo hi\"}')"
+    )
+    con.execute(
+        "INSERT INTO decisions (ts, transcript_id, type, reply)"
+        " VALUES (4.0, 1, 'speak', 'ran: echo hi')"
+    )
+    # action row linked to the act decision (id=2)
+    con.execute(
+        "INSERT INTO actions (ts, decision_id, status, result_summary)"
+        " VALUES (5.0, 2, 'ok', 'ran: echo hi')"
+    )
+    con.commit()
+    con.close()
+
+
+def test_you_table_shows_user_transcripts() -> None:
+    from src.watch import _you_table
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _seed_three_column_sample(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            table = _you_table(con)
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "🧑 You" in text
+    assert "запусти echo hi" in text
+    # The "who" column is always present; rows without speaker_id show "unknown".
+    assert "who" in text
+    assert "unknown" in text
+
+
+def test_you_table_shows_speaker_labels() -> None:
+    from src.watch import _you_table
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            con.execute(
+                "INSERT INTO transcripts (ts, text, mode, speaker_id)"
+                " VALUES (?, ?, ?, ?)",
+                (1000.0, "привіт", "ambient", "owner"),
+            )
+            con.execute(
+                "INSERT INTO transcripts (ts, text, mode, speaker_id)"
+                " VALUES (?, ?, ?, ?)",
+                (1001.0, "я alice", "ambient", "guest_01"),
+            )
+            con.commit()
+            table = _you_table(con, labels={"owner": "owner", "guest_01": "Alice"})
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "owner" in text
+    assert "Alice" in text
+    assert "guest_01" not in text  # gallery label wins over raw id
+
+
+def test_said_table_shows_only_speak_decisions() -> None:
+    """US-B0-04: the 'Heare said' column must NOT include act rows."""
+    from src.watch import _said_table
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _seed_three_column_sample(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            table = _said_table(con)
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "🗣️" in text or "Heare said" in text
+    assert "Додам зараз." in text
+    assert "ran: echo hi" in text  # the action result speech
+    # No intent token should appear — it's filtered by type='speak'
+    assert "bash" not in text
+
+
+def test_did_table_joins_actions_with_act_decisions() -> None:
+    """US-B0-04: the 'Heare did' column must show status + tool + result_summary."""
+    from src.watch import _did_table
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _seed_three_column_sample(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            table = _did_table(con)
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "Heare did" in text
+    assert "ok" in text
+    assert "bash" in text  # tool column
+    assert "ran: echo hi" in text  # result_summary
+
+
+def test_build_layout_has_three_body_columns() -> None:
+    """US-B0-04: the body splits into three named columns (you / said / did)."""
+    from src.watch import _build_layout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _seed_three_column_sample(db_path)
+        settings = _make_settings(tmp, db_path=db_path)
+        layout = _build_layout(settings)
+
+    def _names(layout_obj) -> set[str]:
+        out = {layout_obj.name} if layout_obj.name else set()
+        for child in getattr(layout_obj, "children", []) or []:
+            out |= _names(child)
+        return out
+
+    names = _names(layout)
+    assert {"you", "said", "did"}.issubset(names)
+
+
+def test_empty_tables_render_none_yet_placeholders() -> None:
+    """An empty DB still renders the three columns with placeholder rows."""
+    from src.watch import _you_table, _said_table, _did_table
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            you = _rich_text(_you_table(con))
+            said = _rich_text(_said_table(con))
+            did = _rich_text(_did_table(con))
+        finally:
+            con.close()
+
+    assert "none yet" in you
+    assert "none yet" in said
+    assert "none yet" in did
+
+
+# ---------------------------------------------------------------------------
+# Tools panel
+# ---------------------------------------------------------------------------
+
+
+def test_tools_table_lists_every_enabled_registry_tool() -> None:
+    """Dashboard's tool reference must mirror tool_registry.TOOLS exactly."""
+    from src.tool_registry import TOOLS
+    from src.watch import _tools_table
+
+    rendered = _rich_text(_tools_table())
+    for tool in TOOLS.values():
+        if tool.enabled:
+            assert tool.name in rendered, f"missing enabled tool: {tool.name}"
+
+
+def test_tools_table_shows_execution_kind() -> None:
+    """Execution column distinguishes direct vs claude vs workflow."""
+    from src.watch import _tools_table
+
+    rendered = _rich_text(_tools_table())
+    assert "direct" in rendered
+    assert "workflow" in rendered
+
+
+def test_build_layout_includes_tools_panel() -> None:
+    from src.watch import _build_layout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        settings = _make_settings(tmp, db_path=db_path)
+        layout = _build_layout(settings)
+
+    def _names(layout_obj) -> set[str]:
+        out = {layout_obj.name} if layout_obj.name else set()
+        for child in getattr(layout_obj, "children", []) or []:
+            out |= _names(child)
+        return out
+
+    assert "tools" in _names(layout)

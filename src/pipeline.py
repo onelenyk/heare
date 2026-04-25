@@ -35,7 +35,11 @@ async def build_pipeline(
     persona: str = "",
     intent_queue: "IntentQueue | None" = None,
     conversation_manager: Any = None,
-) -> Tuple[object, object, object]:
+    *,
+    speaker_gallery: Any = None,
+    speaker_model: Any = None,
+    namer_enqueue: Any = None,
+) -> Tuple[object, object, object, object]:
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
         LocalSmartTurnAnalyzerV3,
@@ -73,9 +77,12 @@ async def build_pipeline(
         )
     )
 
+    from pipecat.transcriptions.language import Language
+
     stt = GroqSTTService(
         api_key=settings.groq_api_key,
-        language=settings.groq_language,
+        language=Language(settings.groq_language),
+        include_prob_metrics=True,
     )
 
     tts_cache = TTSCache()
@@ -99,9 +106,107 @@ async def build_pipeline(
         settings=settings,
         intent_queue=intent_queue,
         conversation_manager=conversation_manager,
+        tts_service=tts,
     )
 
-    stages = [transport.input(), stt, generator, tts, transport.output()]
+    speaker_buffer = None
+    speaker_tagger = None
+    if (
+        settings.speaker_id_enabled
+        and speaker_gallery is not None
+        and speaker_model is not None
+    ):
+        from .speaker_processor import create_speaker_processors
+
+        speaker_buffer, speaker_tagger = create_speaker_processors(
+            settings,
+            speaker_gallery,
+            speaker_model,
+            namer_enqueue=namer_enqueue,
+        )
+        logger.info(
+            "Speaker chain active: tagger wired; namer_enqueue=%s",
+            "on" if namer_enqueue is not None else "off",
+        )
+
+    # Build the indication subsystem (sound + visual + macOS notifications).
+    # Indication is constructed even when settings.indication.enabled is False
+    # so producers can call notify() unconditionally; the facade short-circuits.
+    from .indication import Indication, build_sound_cue_processor
+
+    sound_cue_processor = None
+    backends: list[Any] = []
+    if settings.indication.enabled:
+        if settings.indication.sound_enabled:
+            from .indication_backends.sound import SoundBackend
+
+            sound_cue_processor = build_sound_cue_processor(
+                sample_rate=settings.tts_sample_rate
+            )
+            backends.append(
+                SoundBackend(sound_cue_processor, sample_rate=settings.tts_sample_rate)
+            )
+        if settings.indication.visual_enabled:
+            from .indication_backends.visual import VisualBackend
+
+            backends.append(
+                VisualBackend(settings.log_dir / "indication.jsonl")
+            )
+        if settings.indication.notification_center_enabled:
+            from .indication_backends.notification import NotificationBackend
+
+            backends.append(NotificationBackend())
+    indication = Indication(
+        settings.indication,
+        backends,
+        mode_provider=lambda: settings.mode,
+    )
+    # Register as process-wide singleton so producers in any module can
+    # fire notify() without threading the facade through call sites.
+    from .indication import set_indication
+
+    set_indication(indication)
+    logger.info(
+        "indication: %d backend(s) ready (enabled=%s)",
+        len(backends),
+        settings.indication.enabled,
+    )
+
+    # STT error-frame observer — pipecat surfaces STT errors via ErrorFrame.
+    # A one-line wrapper FrameProcessor inserted immediately downstream of stt
+    # forwards the frame and fires STT_ERROR on the indication facade.
+    from pipecat.frames.frames import ErrorFrame  # type: ignore
+    from pipecat.processors.frame_processor import (  # type: ignore
+        FrameProcessor as _FP,
+    )
+
+    class _SttErrorObserver(_FP):  # type: ignore[misc,valid-type]
+        async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
+            await super().process_frame(frame, direction)
+            if isinstance(frame, ErrorFrame):
+                from .indication import IndicationKind, get_indication
+
+                ind_inner = get_indication()
+                if ind_inner is not None:
+                    err_msg = getattr(frame, "error", str(frame))
+                    ind_inner.notify(
+                        IndicationKind.STT_ERROR, body=str(err_msg)[:160]
+                    )
+            await self.push_frame(frame, direction)
+
+    stt_error_observer = _SttErrorObserver()
+
+    stages: list[Any] = [transport.input()]
+    if speaker_buffer is not None:
+        stages.append(speaker_buffer)
+    stages.append(stt)
+    stages.append(stt_error_observer)
+    if speaker_tagger is not None:
+        stages.append(speaker_tagger)
+    stages.extend([generator, tts])
+    if sound_cue_processor is not None:
+        stages.append(sound_cue_processor)
+    stages.append(transport.output())
     logger.info(
         "Generator pipeline: model=%s, openrouter_timeout=%ss, action_timeout=%ss",
         settings.openrouter_model,
@@ -115,4 +220,4 @@ async def build_pipeline(
         cancel_on_idle_timeout=False,
         enable_turn_tracking=False,
     )
-    return task, generator, tts_cache
+    return task, generator, tts_cache, indication

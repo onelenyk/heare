@@ -19,7 +19,6 @@ def test_template_exists_and_nonempty() -> None:
 
 
 def test_template_has_exactly_expected_placeholders() -> None:
-    """Phase 2.2 expands the placeholder set with conversation context."""
     raw = _load()
     import re
 
@@ -35,11 +34,12 @@ def test_template_has_exactly_expected_placeholders() -> None:
         "entities",
         "recent_turns",
         "recent_actions",
+        "mcp_servers",
+        "user_language",
     }
 
 
 def test_template_contains_phase2_placeholders() -> None:
-    """Phase 2.2 US-P2.2-04: conversation context section added."""
     raw = _load()
     for required in (
         "{conversation_summary}",
@@ -51,22 +51,19 @@ def test_template_contains_phase2_placeholders() -> None:
         assert required in raw, f"missing Phase-2.2 placeholder {required!r}"
 
 
-def test_template_requires_ukrainian_response() -> None:
+def test_template_requires_user_language_response() -> None:
     raw = _load()
-    # Basic sanity: the prompt must instruct Ukrainian output
-    assert "україн" in raw.lower()
+    assert "{user_language}" in raw
+    assert "Always respond in {user_language}" in raw
 
 
 def test_template_reply_text_forbids_json() -> None:
-    """Reply text must still be plain Ukrainian; JSON is allowed ONLY inside
-    <intent> tags (Phase 2.1)."""
     raw = _load()
-    # The rule must appear: reply text has no JSON
-    assert "без JSON" in raw or "НЕ виводь JSON" in raw
+    lowered = raw.lower()
+    assert "no json" in lowered or "never output json" in lowered
 
 
 def test_template_has_intents_section() -> None:
-    """Phase 2.1 US-P2.1-02: INTENTS section documents when/how to emit tags."""
     raw = _load()
     assert "INTENTS" in raw
     assert "<intent>" in raw
@@ -75,31 +72,134 @@ def test_template_has_intents_section() -> None:
 
 
 def test_template_forbids_fenced_intent() -> None:
-    """Prompt must explicitly say don't wrap intent tags in ```fences```."""
     raw = _load()
     assert "fences" in raw.lower() or "```" in raw
+
+
+def test_template_intent_schema_lists_all_six_tools() -> None:
+    raw = _load()
+    for tool in ("bash", "read", "write", "edit", "web_fetch", "web_search"):
+        assert f'"{tool}"' in raw, f"missing tool {tool!r} in schema"
+    assert "mcp__" in raw, "missing MCP tools format documentation"
+
+
+def test_template_has_positive_and_negative_intent_examples() -> None:
+    raw = _load()
+    positive_count = raw.count('<intent>{"tool":"bash"')
+    assert positive_count >= 3, (
+        f"expected >=3 positive bash intent examples, found {positive_count}"
+    )
+    assert "gmail.com" in raw, "expected the gmail.com negative example"
+    assert "Хочу відкрити" in raw, "expected the 'Хочу відкрити щось' negative example"
+
+
+def test_template_has_positive_example_per_non_bash_tool() -> None:
+    raw = _load()
+    for tool in ("read", "write", "edit", "web_fetch", "web_search"):
+        marker = f'<intent>{{"tool":"{tool}"'
+        assert marker in raw, (
+            f"missing positive example for tool {tool!r} (looked for {marker!r})"
+        )
+
+
+def test_template_has_if_unsure_dont_emit_rule() -> None:
+    raw = _load()
+    lowered = raw.lower()
+    assert "if unsure" in lowered or "do not add an intent" in lowered
+
+
+def test_template_lists_forbidden_commands() -> None:
+    raw = _load()
+    assert "rm -rf" in raw, "expected 'rm -rf' in the forbidden commands section"
+    assert "sudo" in raw, "expected 'sudo' in the forbidden commands section"
+
+
+def test_template_lists_trigger_verbs_multilingual() -> None:
+    """English and Ukrainian trigger verbs must both appear in the INTENTS section."""
+    raw = _load()
+    for verb in ("run", "open", "execute", "close", "create", "find"):
+        assert verb in raw, f"expected English trigger verb {verb!r}"
+    for verb in ("запусти", "відкрий", "виконай", "закрий", "створи", "знайди"):
+        assert verb in raw, f"expected Ukrainian trigger verb {verb!r}"
+
+
+def test_template_enforces_one_sentence_reply() -> None:
+    raw = _load()
+    assert "ONE sentence" in raw
+    assert "12 words" in raw
+
+
+def test_template_bans_filler() -> None:
+    raw = _load()
+    lowered = raw.lower()
+    filler_names = ("thanks", "apologies", "alternatives", "promises")
+    hits = sum(1 for name in filler_names if name in lowered)
+    assert hits >= 3, (
+        f"expected >=3 filler categories named, found {hits} in prompt"
+    )
+
+
+def test_template_caps_pre_intent_wording() -> None:
+    raw = _load()
+    lowered = raw.lower()
+    assert "5 words" in lowered or "up to 5" in lowered or "short" in lowered
+
+
+def test_template_forbids_permission_asks_after_command() -> None:
+    raw = _load()
+    lowered = raw.lower()
+    assert "do not ask permission" in lowered or "don't ask permission" in lowered
+
+
+def test_template_has_use_prior_search_rule() -> None:
+    """Generator must be instructed to read prior search results before re-searching."""
+    raw = _load()
+    lowered = raw.lower()
+    assert "recent_actions" in raw, "rule must mention recent_actions"
+    forbid_phrases = ("do not", "don't", "avoid")
+    assert any(p in lowered for p in forbid_phrases), (
+        "rule must explicitly forbid re-searching (do not/don't/avoid)"
+    )
+    assert "web_search" in raw or "search" in lowered
+
+
+def test_template_has_prior_search_followup_example() -> None:
+    """At least one example must show a follow-up answered from prior search
+    content WITHOUT a new web_search intent."""
+    raw = _load()
+    # Locate the recipe follow-up example block.
+    needle = "give me the recipe"
+    assert needle in raw, "expected an English recipe follow-up example"
+    block_start = raw.index(needle)
+    # Bound the block at the next blank line gap or 600 chars.
+    block = raw[block_start:block_start + 600]
+    # The follow-up Response must NOT contain a web_search intent for the
+    # same topic — that is the whole point of the rule.
+    assert '"tool":"web_search"' not in block, (
+        "follow-up example must answer from prior search content, not re-search"
+    )
 
 
 def test_substitution_leaves_no_placeholders() -> None:
     raw = _load()
     ctx = {
-        "persona": "Ти Heare, теплий співрозмовник.",
+        "persona": "You are Heare, a warm companion.",
         "time": "2026-04-18 01:23:45",
         "timezone": "Europe/Kiev",
-        "recent_transcripts": "  - [01:23:00] Привіт.",
-        "transcript": "Як справи?",
-        "conversation_summary": "обговорювали плани",
-        "active_topics": "плани, хліб",
-        "entities": "  - topics: плани, хліб",
-        "recent_turns": "  - [01:22:00] Щось.",
+        "recent_transcripts": "  - [01:23:00] Hello.",
+        "transcript": "How are you?",
+        "conversation_summary": "discussed plans",
+        "active_topics": "plans, bread",
+        "entities": "  - topics: plans, bread",
+        "recent_turns": "  - [01:22:00] Something.",
         "recent_actions": "  - [01:20:00] ✓ bash: echo",
+        "mcp_servers": "chrome-devtools, filesystem",
+        "user_language": "Ukrainian",
     }
     rendered = _safe_substitute(raw, ctx)
     import re
 
-    # No placeholder-shaped braces remaining
     leftover = re.findall(r"\{[a-zA-Z_][a-zA-Z0-9_]*\}", rendered)
     assert leftover == [], f"leftover placeholders: {leftover}"
-    # All context values present in rendered output
     for value in ctx.values():
         assert value.strip().split("\n")[0] in rendered

@@ -1,0 +1,111 @@
+{
+  "title": "Hybrid Tool Execution — Direct vs Claude CLI routing",
+  "version": "1.0.0",
+  "source_plan": "user request 2026-04-22 — implement smart hybrid approach with comprehensive tests",
+  "notes": "direct_tools.py exists with execute_direct() for simple tools, but ActionWorker still routes everything through Claude CLI. This phase wires in the fast path and adds comprehensive test coverage.",
+  "stories": [
+    {
+      "id": "US-HYB-01",
+      "title": "Wire direct_tools into ActionWorker",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "ActionWorker._process_one checks _is_simple_tool() and routes: simple tools → execute_direct(), complex tools → Claude CLI. Settings passed for workspace_dir.",
+      "acceptanceCriteria": [
+        "src/actions.py imports execute_direct and _is_simple_tool from direct_tools module",
+        "ActionWorker._process_one has if/else branching: if _is_simple_tool(intent.tool) call execute_direct() else call claude_cli.call_action()",
+        "execute_direct receives settings from self.claude_cli.settings or equivalent",
+        "execute_direct result dict converted to summary string for on_result callback",
+        "Error cases handled: execute_direct success=false → on_error called with exception",
+        "Logging added: direct execution path logs 'DIRECT EXECUTION tool=%s', Claude path logs 'CLAUDE CLI tool=%s'"
+      ]
+    },
+    {
+      "id": "US-HYB-02",
+      "title": "Test direct tool execution paths",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Comprehensive unit tests for each simple tool: bash, read, write, web_fetch, web_search. Mock subprocess, filesystem, HTTP.",
+      "acceptanceCriteria": [
+        "tests/test_direct_tools.py exists with test class for each tool",
+        "test_bash_success: mock subprocess, assert returncode=0, success=true, output captured",
+        "test_bash_timeout: asyncio.TimeoutError raised, assert success=false, error='Command timed out'",
+        "test_bash_stderr: mock subprocess with stderr, assert error field contains stderr",
+        "test_read_success: create temp file, assert content matches",
+        "test_read_not_found: non-existent path, assert success=false, error contains 'File not found'",
+        "test_read_large_file: 200k file, assert content truncated to 100k with '... (truncated)' suffix",
+        "test_read_workspace_relative: settings with workspace_dir, relative path resolved correctly",
+        "test_write_success: path:content format, assert file created, parent dirs created",
+        "test_write_no_colon: missing colon in args, assert success=false, error='requires path: content format'",
+        "test_write_workspace_relative: relative path resolved to workspace_dir",
+        "test_web_fetch_success: mock httpx with text response, assert output=response.text",
+        "test_web_fetch_binary: mock httpx with binary content, assert output='[Binary response, N bytes]'",
+        "test_web_fetch_large: mock 100k response, assert truncated to 50k",
+        "test_web_fetch_http_error: mock httpx.HTTPStatusError, assert success=false, error contains status code",
+        "test_web_fetch_invalid_url: url without http/https, assert success=false, error='must start with'",
+        "test_web_search_brave_success: mock httpx Brave API, assert results extracted as '- title: url' format",
+        "test_web_search_brave_no_results: mock empty response, assert 'No results found'",
+        "test_web_search_no_api_key: unset BRAVE_API_KEY, assert success=false, error='requires BRAVE_API_KEY'",
+        "test_web_search_brave_failure: mock httpx error, assert fallback to 'Brave search failed'"
+      ]
+    },
+    {
+      "id": "US-HYB-03",
+      "title": "Test ActionWorker routing logic",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Integration tests verifying ActionWorker routes tools correctly: simple tools bypass Claude, complex tools go through Claude CLI. Mock both execute_direct and claude_cli.",
+      "acceptanceCriteria": [
+        "tests/test_actions_routing.py exists (or added to tests/test_actions.py)",
+        "test_simple_tool_routes_to_direct: Intent with tool='bash' → execute_direct called, claude_cli.call_action NOT called",
+        "test_read_tool_routes_to_direct: Intent with tool='read' → execute_direct called",
+        "test_write_tool_routes_to_direct: Intent with tool='write' → execute_direct called",
+        "test_web_fetch_routes_to_direct: Intent with tool='web_fetch' → execute_direct called",
+        "test_web_search_routes_to_direct: Intent with tool='web_search' → execute_direct called",
+        "test_edit_tool_routes_to_claude: Intent with tool='edit' → claude_cli.call_action called, execute_direct NOT called",
+        "test_mcp_tool_routes_to_claude: Intent with tool='mcp__github__create_issue' → claude_cli.call_action called",
+        "test_direct_success_calls_on_result: execute_direct returns success=true → on_result callback invoked with summary",
+        "test_direct_failure_calls_on_error: execute_direct returns success=false → on_error callback invoked with exception",
+        "test_direct_result_format: execute_direct dict with output='hello' → on_result receives 'hello' as summary",
+        "test_claude_path_unchanged: Intent with tool='edit' → existing Claude flow unchanged, summary extracted from result['summary']"
+      ]
+    },
+    {
+      "id": "US-HYB-04",
+      "title": "Test _is_simple_tool classification",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Unit tests for _is_simple_tool function verifying correct classification of tools.",
+      "acceptanceCriteria": [
+        "tests/test_direct_tools.py has test_is_simple_tool function",
+        "test_bash_is_simple: _is_simple_tool('bash') returns True",
+        "test_read_is_simple: _is_simple_tool('read') returns True",
+        "test_write_is_simple: _is_simple_tool('write') returns True",
+        "test_web_fetch_is_simple: _is_simple_tool('web_fetch') returns True",
+        "test_web_search_is_simple: _is_simple_tool('web_search') returns True",
+        "test_edit_is_not_simple: _is_simple_tool('edit') returns False",
+        "test_mcp_tool_is_not_simple: _is_simple_tool('mcp__github__create_issue') returns False",
+        "test_mcp_filesystem_is_not_simple: _is_simple_tool('mcp__filesystem__read_file') returns False",
+        "test_unknown_tool_is_not_simple: _is_simple_tool('unknown') returns False"
+      ]
+    },
+    {
+      "id": "US-HYB-05",
+      "title": "Regression + lint green",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Full test suite passes, ruff checks clean. No regressions from wiring changes.",
+      "acceptanceCriteria": [
+        "uv run pytest tests/ exits 0 with all tests passing",
+        "New test files test_direct_tools.py, test_actions_routing.py included in run",
+        "uv run ruff check src/ tests/ exits 0",
+        "Existing tests (test_actions.py, test_agent_sdk_cli.py, etc.) still pass",
+        "progress.txt records all files touched, test counts, and verification notes"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "title": "Voice profile management tools — list, create, rename, delete",
+  "version": "1.0.0",
+  "source_plan": "User request: full agent control over voice profiles with visible table overview and CRUD operations. Currently only re_enroll exists for updating owner profile. SpeakerGallery class already has methods (enroll_guest, rename_speaker, remove_speaker, list_speakers, audit) but they're not exposed as agent tools. Requirements: plain text table output for list_profiles, placeholder creation for guests (no voice recording), audio feedback (success beeps) for create/rename/delete operations.",
+  "notes": "Design: add 4 new direct tools (list_profiles, create_profile, rename_profile, delete_profile) following existing patterns in tool_registry.py and direct_tools.py. Add new IndicationKind entries for audio feedback (PROFILE_CREATED, PROFILE_RENAMED, PROFILE_DELETED). Output format for list_profiles is plain text ASCII table (not Rich console) since agent responses are spoken/text. create_profile makes placeholder profiles (empty embeddings list) that auto-enroll can fill later. Owner profile cannot be deleted.",
+  "stories": [
+    {
+      "id": "US-VP-1",
+      "title": "Add IndicationKind entries for profile operations",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Add three new IndicationKind entries for audio feedback during profile operations: PROFILE_CREATED, PROFILE_RENAMED, PROFILE_DELETED. Map to appropriate levels (SUCCESS for created/renamed, INFO for deleted) with default titles/bodies.",
+      "acceptanceCriteria": [
+        "src/indication.py: IndicationKind enum gains PROFILE_CREATED = 'profile_created', PROFILE_RENAMED = 'profile_renamed', PROFILE_DELETED = 'profile_deleted'",
+        "src/indication.py: KIND_TO_LEVEL maps PROFILE_CREATED → IndicationLevel.SUCCESS, PROFILE_RENAMED → IndicationLevel.SUCCESS, PROFILE_DELETED → IndicationLevel.INFO",
+        "src/indication.py: _DEFAULTS has entries for all three kinds with titles ('heare: profile ready', 'heare: renamed', 'heare: deleted') and descriptive bodies",
+        "src/config.py: _LEVEL_DEFAULTS already has 'success' and 'info' entries with sound=True (success was just enabled in the countdown fix session), so audio feedback will work out of the box",
+        "uv run pytest tests/test_indication.py -v exits 0 (existing tests still pass)",
+        "uv run ruff check src/indication.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VP-2",
+      "title": "Add new tools to tool_registry.py",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Add four new Tool entries to the TOOLS dict: list_profiles, create_profile, rename_profile, delete_profile. All use execution='direct' with appropriate descriptions.",
+      "acceptanceCriteria": [
+        "src/tool_registry.py: TOOLS dict has 'list_profiles' entry with name='list_profiles', sdk_name='ListProfiles', execution='direct', description='Show all voice profiles with details', enabled=True",
+        "src/tool_registry.py: TOOLS dict has 'create_profile' entry with name='create_profile', sdk_name='CreateProfile', execution='direct', description='Create a new voice profile', enabled=True",
+        "src/tool_registry.py: TOOLS dict has 'rename_profile' entry with name='rename_profile', sdk_name='RenameProfile', execution='direct', description='Rename a voice profile', enabled=True",
+        "src/tool_registry.py: TOOLS dict has 'delete_profile' entry with name='delete_profile', sdk_name='DeleteProfile', execution='direct', description='Delete a voice profile', enabled=True",
+        "get_tool_descriptions() output includes all four new tools",
+        "uv run pytest tests/test_config.py -v exits 0 (existing tests still pass)",
+        "uv run ruff check src/tool_registry.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VP-3",
+      "title": "Implement list_profiles handler in direct_tools.py",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Add _execute_list_profiles function that loads SpeakerGallery, retrieves all speakers, and formats them as a plain text ASCII table with columns: ID, Label, Refs, Created. Add routing in execute_direct.",
+      "acceptanceCriteria": [
+        "src/direct_tools.py: execute_direct has elif branch for 'list_profiles' calling _execute_list_profiles(args, settings)",
+        "src/direct_tools.py: _execute_list_profiles function exists, async, loads SpeakerGallery from settings.speakers_file, calls gallery.list_speakers()",
+        "src/direct_tools.py: _execute_list_profiles returns dict with success=True, output=plain text table (header separator line, one row per speaker with columns: ID (truncated to 8 chars), Label (truncated to 10 chars), Refs (count), Created (date YYYY-MM-DD)), error=None",
+        "src/direct_tools.py: _execute_list_profiles returns 'No voice profiles found.' message when gallery is empty",
+        "tests/test_direct_tools.py adds test_list_profiles_show_table that mocks SpeakerGallery.load, sets up 2-3 speakers, calls _execute_list_profiles, asserts output contains table headers and data rows",
+        "uv run pytest tests/test_direct_tools.py -v exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VP-4",
+      "title": "Implement create_profile handler in direct_tools.py",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Add _execute_create_profile function that creates a new guest profile with placeholder (empty embeddings list). Triggers PROFILE_CREATED indication. Max 99 guests enforced. Auto-increments guest_NN suffix.",
+      "acceptanceCriteria": [
+        "src/direct_tools.py: execute_direct has elif branch for 'create_profile' calling _execute_create_profile(args, settings)",
+        "src/direct_tools.py: _execute_create_profile function exists, async, loads SpeakerGallery, creates new guest_NN entry with label from args (or guest_id if empty), embeddings=[], created_at/updated_at timestamps, turn_count=0",
+        "src/direct_tools.py: _execute_create_profile calls gallery.save() after adding entry, calls ind.notify(PROFILE_CREATED) if ind is not None",
+        "src/direct_tools.py: _execute_create_profile returns error 'Max 99 guest profiles allowed' when limit hit",
+        "src/direct_tools.py: _execute_create_profile auto-increments guest_NN correctly (finds max existing N, uses N+1)",
+        "tests/test_direct_tools.py adds test_create_profile_placeholder that mocks SpeakerGallery.load, calls _execute_create_profile, asserts new entry added with empty embeddings, notification sent",
+        "tests/test_direct_tools.py adds test_create_profile_max_guests that pre-fills 99 guests, asserts error returned",
+        "uv run pytest tests/test_direct_tools.py -v exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VP-5",
+      "title": "Implement rename_profile handler in direct_tools.py",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Add _execute_rename_profile function that parses args as 'speaker_id new_label', calls gallery.rename_speaker(), triggers PROFILE_RENAMED indication on success.",
+      "acceptanceCriteria": [
+        "src/direct_tools.py: execute_direct has elif branch for 'rename_profile' calling _execute_rename_profile(args, settings)",
+        "src/direct_tools.py: _execute_rename_profile function exists, async, parses args into speaker_id and new_label (split on whitespace, max 2 parts)",
+        "src/direct_tools.py: _execute_rename_profile calls gallery.rename_speaker(speaker_id, new_label), calls ind.notify(PROFILE_RENAMED) on success",
+        "src/direct_tools.py: _execute_rename_profile returns error 'Usage: rename_profile <id> <new_label>' when args has < 2 parts",
+        "src/direct_tools.py: _execute_rename_profile returns error 'Profile X not found' when rename_speaker returns False",
+        "tests/test_direct_tools.py adds test_rename_profile_success that mocks gallery with rename_speaker returning True, calls handler, asserts success and notification sent",
+        "tests/test_direct_tools.py adds test_rename_profile_not_found that mocks gallery with rename_speaker returning False, asserts error returned",
+        "uv run pytest tests/test_direct_tools.py -v exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VP-6",
+      "title": "Implement delete_profile handler in direct_tools.py",
+      "priority": 6,
+      "status": "completed",
+      "passes": true,
+      "description": "Add _execute_delete_profile function that calls gallery.remove_speaker(), triggers PROFILE_DELETED indication on success. Prevents deletion of 'owner' profile.",
+      "acceptanceCriteria": [
+        "src/direct_tools.py: execute_direct has elif branch for 'delete_profile' calling _execute_delete_profile(args, settings)",
+        "src/direct_tools.py: _execute_delete_profile function exists, async, parses speaker_id from args",
+        "src/direct_tools.py: _execute_delete_profile returns error 'Cannot delete owner profile' when speaker_id == 'owner'",
+        "src/direct_tools.py: _execute_delete_profile calls gallery.remove_speaker(speaker_id), calls ind.notify(PROFILE_DELETED) on success",
+        "src/direct_tools.py: _execute_delete_profile returns error 'Profile X not found' when remove_speaker returns False",
+        "tests/test_direct_tools.py adds test_delete_profile_success that mocks gallery with remove_speaker returning True, calls handler with 'guest_01', asserts success and notification sent",
+        "tests/test_direct_tools.py adds test_delete_profile_owner_blocked that calls handler with 'owner', asserts error 'Cannot delete owner profile'",
+        "tests/test_direct_tools.py adds test_delete_profile_not_found that mocks gallery with remove_speaker returning False, asserts error returned",
+        "uv run pytest tests/test_direct_tools.py -v exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VP-7",
+      "title": "Update prompts/generator.txt with new tools",
+      "priority": 7,
+      "status": "completed",
+      "passes": true,
+      "description": "Add tool descriptions and usage examples to the Ukrainian prompt file so the agent knows about the new profile management capabilities.",
+      "acceptanceCriteria": [
+        "prompts/generator.txt: tool list includes list_profiles, create_profile, rename_profile, delete_profile with Ukrainian descriptions",
+        "prompts/generator.txt: has example for list_profiles ('покажи мої профілі' → list_profiles intent)",
+        "prompts/generator.txt: has example for create_profile ('створи профіль для Мами' → create_profile intent)",
+        "prompts/generator.txt: has example for rename_profile ('перейменуй guest_01 на Дмитро' → rename_profile intent)",
+        "prompts/generator.txt: has example for delete_profile ('видали профіль guest_02' → delete_profile intent)",
+        "uv run pytest tests/test_generator_prompt.py -v exits 0 (if prompt tests exist)",
+        "uv run ruff check prompts/generator.txt exits 0 (or syntax check via manual read)"
+      ]
+    },
+    {
+      "id": "US-VP-8",
+      "title": "Full regression — pytest + ruff clean",
+      "priority": 8,
+      "status": "completed",
+      "passes": true,
+      "description": "Final verification: full test suite passes, ruff clean on all changed files, progress.txt updated.",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 (no regressions, all new tests pass)",
+        "uv run ruff check src/indication.py src/tool_registry.py src/direct_tools.py prompts/generator.txt tests/test_direct_tools.py tests/test_indication.py tests/test_config.py exits 0",
+        ".omc/progress.txt records the feature, implementation details, and verification evidence"
+      ]
+    }
+  ]
+}

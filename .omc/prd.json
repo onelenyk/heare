@@ -1,18 +1,91 @@
 {
-  "title": "heare Phase 2.2 — ConversationManager re-wire",
-  "version": "5.0.0",
-  "source_plan": ".omc/plans/ralplan-phase2.2-conversation-memory.md",
-  "notes": "v5: Phase 2.2 APPROVED. 10 stories, 555/555 tests pass, lint clean. Architect signed off 2026-04-18.",
+  "title": "PRD WS — Web search returns answers, not just titles",
+  "version": "1.0.0",
+  "source_plan": "User reports: asking 'find the recipe for chili con carne' makes the assistant respond 'Found 5 results' without any actual recipe. Asking again ('give me the recipe') triggers a second web_search instead of using the first result. Three root causes:\n  1) src/direct_tools.py _search_serper / _search_duckduckgo only emit `f\"{title}: {url}\"` — snippets are dropped on Serper and never extracted on DuckDuckGo.\n  2) Both providers hardcode spoken={'en': 'Found N results. First: …'} which short-circuits whatever the generator could have said about the content.\n  3) Even if snippets existed, src/context.py _format_recent_actions truncates each action's tail to 80 chars, so the generator can't read prior search content from action_log → forced to re-search.\n\nFix:\n  - Include snippets in the result `output` for both providers.\n  - Drop the hardcoded 'Found N results. First: …' spoken; replace with a short cue (e.g. 'Searching done.' / Ukrainian / Russian) so the generator chooses what to say from the content.\n  - Optionally chain a single web_fetch of the top organic URL behind a new `web_search_fetch_top: bool = True` setting; append 'Top page content:' block to output. Failure-safe.\n  - Bump action-log tail truncation to ~1500 chars for web_search/web_fetch entries (kept at 80 for everything else).\n  - prompts/generator.txt: add an explicit rule ('If recent_actions contains a successful web_search/web_fetch on the topic, READ the snippets and answer — do NOT emit another web_search') with a positive example.\n  - Update tests/test_direct_tools.py and tests/test_generator_prompt.py.",
+  "notes": "Builds on PRD B (which introduced the spoken contract). Touches src/direct_tools.py, src/config.py (new setting), src/context.py (action-log truncation), prompts/generator.txt, tests/test_direct_tools.py, tests/test_generator_prompt.py. Does NOT change actions.py, conversation.py action-log storage, or main.py.",
   "stories": [
-    {"id":"US-P2.2-01","title":"ConversationManager action-log","priority":1,"status":"completed","passes":true,"description":"Sync dict/deque-only record methods; no lock (single loop). 6 tests.","acceptanceCriteria":["record_action_* sync","deque maxlen=16","recent_actions newest-first","6 tests pass"]},
-    {"id":"US-P2.2-02","title":"Generator background memory update + conversation_id","priority":2,"status":"completed","passes":true,"description":"conversation_id acquired once at top; background task spawned post-TTS.","acceptanceCriteria":["get_or_create_active awaited once","conversation_id threaded to build_for_generator","_background_memory_update via asyncio.create_task","topic_extraction_enabled gates Claude call"]},
-    {"id":"US-P2.2-03","title":"ContextBuilder.build_for_generator surfaces memory","priority":3,"status":"completed","passes":true,"description":"10-key output; _EXCLUDED drops 4 conversation keys; recent_actions injected.","acceptanceCriteria":["conversation_id param threaded to build()","10 keys in bfg output","drift guard passes","3 new tests"]},
-    {"id":"US-P2.2-04","title":"Generator prompt conversation section","priority":4,"status":"completed","passes":true,"description":"5 new placeholders + usage instruction.","acceptanceCriteria":["Контекст розмови section","all 5 placeholders present","substitution leaves no placeholders"]},
-    {"id":"US-P2.2-05","title":"Action callbacks update ConversationManager","priority":5,"status":"completed","passes":true,"description":"_on_action_result/_error call record_* before logging; record_action_pending at intent submit.","acceptanceCriteria":["callbacks sync-record","no DB I/O in callbacks","record_action_pending is sync"]},
-    {"id":"US-P2.2-06","title":"ConversationManager instantiation with preserved flag semantics","priority":6,"status":"completed","passes":true,"description":"conversation_memory_enabled keeps disable-all semantic; topic_extraction_enabled narrow gate.","acceptanceCriteria":["ConversationManager created when flag=true","existing semantic preserved","topic_extraction_enabled gates Claude only"]},
-    {"id":"US-P2.2-07","title":"TTS-leak scrubber","priority":7,"status":"completed","passes":true,"description":"_scrub_tts_text strips bash/JSON fragments; bashful passthrough preserved. 3 tests.","acceptanceCriteria":["bash token stripped","JSON fragment stripped","bashful preserved"]},
-    {"id":"US-P2.2-07b","title":"Saturated-context intent-compliance guard","priority":8,"status":"completed","passes":true,"description":"Intent tag still parses under full conversation context load.","acceptanceCriteria":["saturated context test passes","no '<' leakage"]},
-    {"id":"US-P2.2-08","title":"Regression + lint","priority":9,"status":"completed","passes":true,"description":"555/555 tests pass, ruff clean.","acceptanceCriteria":["make test exits 0","make lint exits 0","test_intent_flow still passes"]},
-    {"id":"US-P2.2-09","title":"Architect sign-off + live smoke","priority":10,"status":"completed","passes":true,"description":"Architect APPROVED all 5 verification points. Live smoke deferred to user.","acceptanceCriteria":["All US-P2.2-01..08 passes","Architect APPROVED (DONE)","live smoke documented in .omc/benchmarks/phase2.2-live-smoke.md"]}
+    {
+      "id": "US-WS-01",
+      "title": "Snippets in web_search output + drop hardcoded 'Found N results' spoken",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Modify _search_serper and _search_duckduckgo in src/direct_tools.py so each result string includes the snippet text. Format: '<title>\\n<snippet>\\n<url>' when snippet is present; '<title>\\n<url>' otherwise. For Serper, use the existing data['organic'][i]['snippet'] field (currently read at line 397 but unused). For DuckDuckGo, extract <a class=\"result__snippet\">…</a> (or the more common <a class=\"result__snippet\" href=...>text</a> / <td class=\"result-snippet\">text</td>) text adjacent to each result__a link. Use a robust regex that pairs the title link with its snippet (or returns the title-only result if no snippet found nearby).\n\nDrop the hardcoded 'Found N results. First: …' spoken text from both providers. Replace with a minimal language-neutral cue: spoken={'en':'Searching done.','uk':'Пошук завершено.','ru':'Поиск завершён.'} on success-with-results; keep the existing 'No results found.' on zero hits and 'Search failed.' on error. The generator (which sees the snippets via the action log) will compose the actual content-aware answer.",
+      "acceptanceCriteria": [
+        "_search_serper: each non-empty entry in `output` is formatted '<title>\\n<snippet>\\n<url>' when the Serper organic record has a non-empty 'snippet'; otherwise '<title>\\n<url>'. Knowledge graph result still appears first as '📚 …' with description preserved.",
+        "_search_duckduckgo: each entry is '<title>\\n<snippet>\\n<url>' when a snippet element is present in the HTML for that result, else '<title>\\n<url>'. Snippet extraction handles the 'result__snippet' DuckDuckGo class.",
+        "Both providers replace the hardcoded 'Found N results. First: …' spoken with spoken={'en':'Searching done.','uk':'Пошук завершено.','ru':'Поиск завершён.'} on the success-with-results path. Zero-results spoken stays 'No results found.' / Ukrainian / Russian. Error spoken stays 'Search failed.' / Ukrainian / Russian.",
+        "tests/test_direct_tools.py: update test_web_search_duckduckgo_success to assert snippets land in output when present, AND that the hardcoded 'Found N results' phrase is gone from spoken['en']. Update test_web_search_spoken_with_results similarly (rename or rewrite — must NOT contain 'Found 3 results.' assertion). Add a fresh test test_web_search_serper_includes_snippets that mocks Serper response with snippets and asserts both title and snippet are in output.",
+        "tests/test_direct_tools.py: test_web_search_spoken_zero_results stays green (zero-results spoken unchanged).",
+        "tests/test_direct_tools.py: test_web_search_spoken_error stays green (error spoken unchanged).",
+        "uv run pytest tests/test_direct_tools.py -q exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-WS-02",
+      "title": "Optional chained web_fetch of top result behind web_search_fetch_top setting",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Add a new field `web_search_fetch_top: bool = True` to src/config.Settings (next to web_search_provider). When True AND the search produced at least one organic result with a URL, _execute_web_search performs a single chained web_fetch on the top URL and appends the fetched (truncated) content as a 'Top page content:' block to the output string. Use the existing _execute_web_fetch helper for parity (HTML->text trimming, length cap). Fetch failure must be swallowed silently — the search result remains successful and the snippets-only output is returned without the appended block. Total output is hard-capped at 8000 chars to protect downstream prompts.",
+      "acceptanceCriteria": [
+        "src/config.py Settings has new field `web_search_fetch_top: bool = True`, documented one line above (e.g. '# Auto-fetch the top organic search result so the agent has full content for content-style queries (recipe, how-to). Disable to save bandwidth.').",
+        "src/direct_tools.py _execute_web_search: after the search succeeds and a top URL is available, when settings.web_search_fetch_top is True, call _execute_web_fetch(top_url, settings) and append '\\n\\nTop page content:\\n<fetched_text>' to output. If web_fetch fails (success=False or raises), swallow and return the snippets-only output unchanged.",
+        "Total output length is capped at 8000 chars (truncate with '\\n... (truncated)' suffix if exceeded).",
+        "When settings is None OR settings.web_search_fetch_top is False, no chained fetch happens (regression-safe path for callers that don't pass settings).",
+        "tests/test_direct_tools.py: add test_web_search_chains_web_fetch_when_enabled that mocks both Serper-or-DDG and the subsequent web_fetch (use module-level patches), asserts the appended 'Top page content:' block appears in output.",
+        "tests/test_direct_tools.py: add test_web_search_skips_fetch_when_disabled that sets settings.web_search_fetch_top=False and verifies no web_fetch call was made AND no 'Top page content:' block in output.",
+        "tests/test_direct_tools.py: add test_web_search_swallows_top_fetch_error that makes web_fetch fail; assert search result is still success=True and output contains the snippets but no 'Top page content:' block.",
+        "tests/test_direct_tools.py: existing test_web_search_duckduckgo_success continues to pass (it passes settings=None so no fetch happens).",
+        "uv run pytest tests/test_direct_tools.py tests/test_config.py -q exits 0",
+        "uv run ruff check src/config.py src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-WS-03",
+      "title": "Action log preserves web_search/web_fetch content (bump tail truncation)",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "src/context.ContextBuilder._format_recent_actions currently truncates every action's tail (result/error/args) to 80 chars (line 230). For web_search and web_fetch entries that's far too short — the generator never sees the snippets and is forced to re-search. Bump the tail cap to 1500 chars when tool == 'web_search' or 'web_fetch'; keep 80 chars for everything else (so list_profiles tables and bash output don't bloat the prompt).",
+      "acceptanceCriteria": [
+        "src/context.py _format_recent_actions branches the truncation length on entry['tool']: 1500 chars for {'web_search', 'web_fetch'}, 80 chars otherwise.",
+        "tests/test_context.py: add test_format_recent_actions_keeps_web_search_content asserting that a 1000-char result string for tool='web_search' appears intact in the formatted line (no '... (truncated)' marker, length > 80).",
+        "tests/test_context.py: add test_format_recent_actions_truncates_other_tools asserting that a 200-char bash result is still truncated to 80 chars.",
+        "uv run pytest tests/test_context.py -q exits 0",
+        "uv run ruff check src/context.py tests/test_context.py exits 0"
+      ]
+    },
+    {
+      "id": "US-WS-04",
+      "title": "Generator prompt: read prior search results, do not re-search",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Edit prompts/generator.txt. Add a rule (under or extending the 'Conversation context' / 'Use this context …' block) and at least one positive example showing the generator answering from a prior web_search result instead of emitting another <intent>{'tool':'web_search',…}</intent>.\n\nRule wording target: 'If `recent_actions` contains a successful web_search or web_fetch whose query/URL matches the user's current question, READ the result text and answer from it. Do NOT emit another web_search/web_fetch intent for the same topic.'\n\nExample to add: user asks about a recipe after a prior web_search done; generator dictates the recipe steps from the snippets/top content rather than re-searching.",
+      "acceptanceCriteria": [
+        "prompts/generator.txt contains a rule line referencing recent_actions and explicitly forbidding re-emitting web_search/web_fetch when the same topic was already searched. Phrase MUST include both 'recent_actions' and at least one of 'do not' / 'don\\'t' / 'avoid'.",
+        "prompts/generator.txt contains at least one new positive example where the user follow-up ('give me the recipe' / 'дай рецепт' / 'дай рецепт') is answered from prior search content WITHOUT a new <intent> tag.",
+        "tests/test_generator_prompt.py: add test_template_has_use_prior_search_rule asserting the rule line is present (substring match for 'recent_actions' AND ('do not' or 'don\\'t' or 'avoid') AND ('web_search' or 'search')).",
+        "tests/test_generator_prompt.py: add test_template_has_prior_search_followup_example asserting at least one example block describes a follow-up like 'give me the recipe' (or Ukrainian/Russian equivalent) followed by an answer that does NOT contain a `<intent>{\\\"tool\\\":\\\"web_search\\\"` tag for the same topic in that example block.",
+        "tests/test_generator_prompt.py: existing test_template_has_exactly_expected_placeholders MUST stay green (no new placeholders introduced).",
+        "uv run pytest tests/test_generator_prompt.py -q exits 0"
+      ]
+    },
+    {
+      "id": "US-WS-05",
+      "title": "Full regression + lint + progress.txt",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Final gate. Run full pytest + ruff. Update .omc/progress.txt with the PRD WS summary, files touched, design decisions (snippets in output, fetch-top setting, web-tools-only tail bump, prompt rule), and a live-verify recipe ('say find the recipe for chili con carne — the answer should include actual snippet text or top-page content; saying give me the recipe should NOT trigger another web_search call').",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 (no regressions).",
+        "uv run ruff check src/ tests/ exits 0.",
+        ".omc/progress.txt records: feature description, all files touched (src/direct_tools.py, src/config.py, src/context.py, prompts/generator.txt, tests/test_direct_tools.py, tests/test_generator_prompt.py, tests/test_context.py), design decisions, and the live-verify recipe.",
+        "Sanity: grep `'Found N results'` in src/direct_tools.py returns nothing; grep `'Searching done.'` returns the new spoken cue."
+      ]
+    }
   ]
 }

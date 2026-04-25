@@ -843,21 +843,234 @@ async def _run_stranger_turn(
     await tagger.process_frame(frame, None)
 
 
-async def test_auto_enroll_disabled_by_default(
+# ---------------------------------------------------------------------------
+# owner auto-enrollment (US-OWN-02 / US-OWN-03)
+# ---------------------------------------------------------------------------
+
+
+def _mk_empty_gallery(tmp_path: Path) -> SpeakerGallery:
+    """Gallery with no owner enrolled — the trigger condition for owner
+    auto-enrollment.
+    """
+    return SpeakerGallery(tmp_path / "speakers.json")
+
+
+async def test_auto_enroll_owner_when_no_owner_exists(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_empty_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_owner_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    pushed: list[object] = []
+    original_push = tagger.push_frame
+
+    async def capture_push(frame, direction=None):
+        pushed.append(frame)
+        return await original_push(frame, direction)
+
+    tagger.push_frame = capture_push  # type: ignore[method-assign]
+
+    for i in range(3):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"привіт {i}")
+
+    assert "owner" in gallery.list_speakers()
+    assert len(tagger._stranger_candidates) == 0
+    # TTSSpeakFrame is pushed via a fire-and-forget task — give it a tick.
+    for _ in range(20):
+        from pipecat.frames.frames import TTSSpeakFrame  # type: ignore
+
+        if any(isinstance(f, TTSSpeakFrame) for f in pushed):
+            break
+        await asyncio.sleep(0.01)
+    from pipecat.frames.frames import TTSSpeakFrame  # type: ignore
+
+    tts_frames = [f for f in pushed if isinstance(f, TTSSpeakFrame)]
+    assert len(tts_frames) == 1
+    assert tts_frames[0].text == "Тепер я впізнаю твій голос."
+    await buffer.close()
+
+
+async def test_auto_enroll_owner_skipped_when_owner_exists(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    # Gallery already has an owner — must never overwrite.
+    gallery = _mk_gallery(tmp_path)
+    original_owner_embeds = list(gallery._speakers["owner"]["embeddings"])
+    settings = _settings()
+    settings.speaker_id_auto_enroll_owner_after = 3
+    settings.speaker_id_auto_enroll_after = 99  # disable guest path noise
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    for i in range(5):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"стрейнджер {i}")
+
+    # Owner entry untouched (embeddings list unchanged in length and content).
+    assert gallery._speakers["owner"]["embeddings"] == original_owner_embeds
+    await buffer.close()
+
+
+async def test_auto_enroll_owner_respects_threshold(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_empty_gallery(tmp_path)
+    settings = _settings()
+    # Use the documented default 5 turns explicitly so this test guards
+    # the default behaviour, not an override.
+    settings.speaker_id_auto_enroll_owner_after = 5
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    for i in range(4):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"turn {i}")
+        assert "owner" not in gallery.list_speakers(), (
+            f"owner enrolled prematurely after {i+1} turns"
+        )
+
+    # 5th matching turn triggers enrollment.
+    await _run_stranger_turn(buffer, tagger, fake_frames, "turn 5")
+    assert "owner" in gallery.list_speakers()
+    await buffer.close()
+
+
+async def test_auto_enroll_owner_handles_enrollment_failure(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import logging
+
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_empty_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_owner_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("disk full")
+
+    gallery.enroll_owner = boom  # type: ignore[method-assign]
+
+    records: list[logging.LogRecord] = []
+
+    class _H(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _H(level=logging.WARNING)
+    sp_logger = logging.getLogger("heare.speaker_processor")
+    sp_logger.addHandler(handler)
+    sp_logger.setLevel(logging.WARNING)
+    try:
+        for i in range(3):
+            await _run_stranger_turn(buffer, tagger, fake_frames, f"turn {i}")
+    finally:
+        sp_logger.removeHandler(handler)
+
+    assert "owner" not in gallery.list_speakers()
+    assert any("owner auto-enroll failed" in r.getMessage() for r in records)
+    await buffer.close()
+
+
+async def test_auto_enroll_owner_tts_failure_does_not_revert_enrollment(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    """A TTSSpeakFrame failure after enroll_owner succeeds must be caught
+    so the enrollment remains in place.
+    """
+    import pipecat.frames.frames as pf  # type: ignore
+
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("tts unavailable")
+
+    monkeypatch.setattr(pf, "TTSSpeakFrame", boom)
+
+    gallery = _mk_empty_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_owner_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    for i in range(3):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"turn {i}")
+
+    assert "owner" in gallery.list_speakers()
+    await buffer.close()
+
+
+async def test_auto_enroll_owner_checks_enabled_flag(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_empty_gallery(tmp_path)
+    settings = _settings()
+    settings.speaker_id_auto_enroll_owner_enabled = False
+    settings.speaker_id_auto_enroll_owner_after = 3
+    # Force the guest path threshold high so it can't accidentally fire either.
+    settings.speaker_id_auto_enroll_after = 99
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    for i in range(5):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"turn {i}")
+
+    assert "owner" not in gallery.list_speakers()
+    await buffer.close()
+
+
+async def test_auto_enroll_when_disabled(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
     import src.speaker_id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery(tmp_path)
-    # speaker_id_auto_enroll_enabled defaults to False — feeding 5 matching
+    # When speaker_id_auto_enroll_enabled=False, feeding 5 matching
     # stranger turns must not grow the gallery beyond owner.
-    buffer, tagger = create_speaker_processors(_settings(), gallery, model=MagicMock())
+    settings = _settings()
+    settings.speaker_id_auto_enroll_enabled = False
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
 
     for i in range(5):
         await _run_stranger_turn(buffer, tagger, fake_frames, f"стрейнджер {i}")
 
     assert gallery.list_speakers() == ["owner"]
+    await buffer.close()
+
+
+async def test_auto_enroll_enabled_by_default(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery(tmp_path)
+    # speaker_id_auto_enroll_enabled defaults to True — feeding 3 matching
+    # stranger turns should auto-enroll guest_01 without explicit configuration.
+    settings = _settings()
+    # Don't set speaker_id_auto_enroll_enabled — rely on default (True)
+    settings.speaker_id_auto_enroll_after = 3
+    buffer, tagger = create_speaker_processors(settings, gallery, model=MagicMock())
+
+    # Three matching non-owner turns — the third triggers enroll_guest
+    for i in range(3):
+        await _run_stranger_turn(buffer, tagger, fake_frames, f"стрейнджер {i}")
+
+    assert "guest_01" in gallery.list_speakers()
+    assert "owner" in gallery.list_speakers()
     await buffer.close()
 
 
@@ -961,4 +1174,198 @@ async def test_auto_enroll_clears_buffer_after_success(
     assert len(tagger._stranger_candidates) == 0
     # But the enrolled guest_01 is now in the gallery, so subsequent
     # turns will match it via identify() rather than stack up as candidates.
+    await buffer.close()
+
+
+# ---- Namer enqueue hook (US-NAME-05) ----
+
+
+def _mk_gallery_with_guest(tmp_path: Path) -> SpeakerGallery:
+    g = SpeakerGallery(tmp_path / "speakers.json")
+    g.enroll_owner(_owner_vector(), label="owner")
+    # Enroll a guest so the stranger vector matches guest_01 (not None).
+    g.enroll_guest(_stranger_vector())
+    return g
+
+
+async def _run_one_turn_and_tag(buffer, tagger, fake_frames, text: str) -> object:
+    await buffer.process_frame(fake_frames["user_start"](), None)
+    await buffer.process_frame(
+        fake_frames["audio"](
+            audio=b"\x10\x20" * 8000, sample_rate=16000, num_channels=1
+        ),
+        None,
+    )
+    await buffer.process_frame(fake_frames["user_stop"](), None)
+    for _ in range(30):
+        if buffer.latest_completed_turn_id() is not None:
+            break
+        await asyncio.sleep(0.01)
+    frame = fake_frames["transcript"](text=text, user_id="u", timestamp="t")
+    frame.finalized = True
+    await tagger.process_frame(frame, None)
+    return frame
+
+
+async def test_tagger_calls_namer_enqueue_on_guest_match(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery_with_guest(tmp_path)
+    captured: list[object] = []
+    buffer, tagger = create_speaker_processors(
+        _settings(),
+        gallery,
+        model=MagicMock(),
+        namer_enqueue=captured.append,
+    )
+    frame = await _run_one_turn_and_tag(buffer, tagger, fake_frames, "привіт")
+    assert frame.speaker_id == "guest_01"
+    assert len(captured) == 1
+    rec = captured[0]
+    assert rec.speaker_id == "guest_01"
+    assert rec.text == "привіт"
+    assert rec.turn_id == frame.speaker_turn_id
+    await buffer.close()
+
+
+async def test_tagger_skips_namer_enqueue_for_owner(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
+    gallery = _mk_gallery(tmp_path)
+    captured: list[object] = []
+    buffer, tagger = create_speaker_processors(
+        _settings(),
+        gallery,
+        model=MagicMock(),
+        namer_enqueue=captured.append,
+    )
+    frame = await _run_one_turn_and_tag(buffer, tagger, fake_frames, "hello")
+    assert frame.speaker_id == "owner"
+    assert captured == []
+    await buffer.close()
+
+
+async def test_tagger_skips_namer_enqueue_when_sid_none(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    # Unknown vector — no guest enrolled → sid stays None
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery(tmp_path)  # only owner
+    captured: list[object] = []
+    buffer, tagger = create_speaker_processors(
+        _settings(),
+        gallery,
+        model=MagicMock(),
+        namer_enqueue=captured.append,
+    )
+    frame = await _run_one_turn_and_tag(buffer, tagger, fake_frames, "hi")
+    assert frame.speaker_id is None
+    assert captured == []
+    await buffer.close()
+
+
+async def test_tagger_skips_namer_enqueue_for_empty_text(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery_with_guest(tmp_path)
+    captured: list[object] = []
+    buffer, tagger = create_speaker_processors(
+        _settings(),
+        gallery,
+        model=MagicMock(),
+        namer_enqueue=captured.append,
+    )
+    frame = await _run_one_turn_and_tag(buffer, tagger, fake_frames, "   ")
+    assert frame.speaker_id == "guest_01"
+    assert captured == []
+    await buffer.close()
+
+
+async def test_tagger_swallows_namer_enqueue_exception(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery_with_guest(tmp_path)
+
+    def _boom(_rec: object) -> None:
+        raise RuntimeError("namer exploded")
+
+    buffer, tagger = create_speaker_processors(
+        _settings(),
+        gallery,
+        model=MagicMock(),
+        namer_enqueue=_boom,
+    )
+    # Must not raise — tagger swallows and logs.
+    frame = await _run_one_turn_and_tag(buffer, tagger, fake_frames, "hi")
+    assert frame.speaker_id == "guest_01"
+    await buffer.close()
+
+
+async def test_tagger_without_namer_enqueue_behaves_as_before(
+    fake_frames, tmp_path: Path, monkeypatch
+) -> None:
+    import src.speaker_id as sid
+
+    monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
+    gallery = _mk_gallery_with_guest(tmp_path)
+    # No namer_enqueue passed — path is None.
+    buffer, tagger = create_speaker_processors(
+        _settings(), gallery, model=MagicMock()
+    )
+    assert tagger._namer_enqueue is None
+    frame = await _run_one_turn_and_tag(buffer, tagger, fake_frames, "hello")
+    assert frame.speaker_id == "guest_01"
+    assert frame.speaker_label == "guest_01"
+    await buffer.close()
+
+
+async def test_tagger_skips_during_enrollment(
+    fake_frames, tmp_path: Path, monkeypatch, caplog
+) -> None:
+    """US-EG-2: tagger sets speaker_confidence=-1.0 and skips embedding during enrollment."""
+    import logging
+
+    import src.speaker_id as sid
+
+    embed_calls = {"n": 0}
+
+    def counting_embed(pcm, sr, model):
+        embed_calls["n"] += 1
+        return _owner_vector()
+
+    monkeypatch.setattr(sid, "embed", counting_embed)
+    gallery = _mk_gallery(tmp_path)
+    mock_model = MagicMock()
+    buffer, tagger = create_speaker_processors(_settings(), gallery, model=mock_model)
+
+    class _FakeIndication:
+        is_enrollment_active = True
+
+    monkeypatch.setattr("src.indication.get_indication", lambda: _FakeIndication())
+
+    frame = fake_frames["transcript"](text="hello", user_id="u", timestamp="t")
+    frame.finalized = True
+
+    with caplog.at_level(logging.INFO, logger="heare.speaker_processor"):
+        await tagger._tag_transcription(frame)
+
+    assert frame.speaker_confidence == -1.0
+    assert embed_calls["n"] == 0, "embed must not be called during enrollment"
+    assert any("enrollment" in r.message for r in caplog.records), (
+        "Expected log line mentioning 'enrollment'"
+    )
     await buffer.close()

@@ -1,0 +1,79 @@
+# Phase A — Observable Actions
+
+Source research: .omc/research/intent-action.md
+PRD: .omc/prd.json
+Implementation date: 2026-04-18
+
+## Stories implemented
+
+### US-A-01 — AgentSDKCLI tool-use capture
+- File: src/agent_sdk_cli.py
+  - Added import: ToolResultBlock, UserMessage
+  - Added module-level helper _extract_tool_result_text(content) that flattens str | list[dict] | None into plain text. Unknown items fall back to repr().
+  - Refactored _attempt_query's inner loop: factored out _emit_segments(text), extended to branch on UserMessage and iterate ToolResultBlock children, appending flattened content (including is_error=True bodies).
+- Tests added (tests/test_agent_sdk_cli.py):
+  - test_sdk_call_action_captures_tool_result_stdout — mixed assistant/tool transcript
+  - test_sdk_call_action_captures_tool_result_from_list_content — list[dict] shape
+  - test_sdk_call_action_captures_tool_error_output — is_error=True still contributes
+  - test_sdk_call_action_empty_tool_result_does_not_raise — None content tolerated
+- Test helpers added: _tool_use_msg, _tool_result_user_msg
+- Result: 20/20 tests green; previously missing bash stdout now reaches summary.
+
+### US-A-02 — Spoken summary after success
+- File: src/main.py
+  - Module-level _spoken_action_summary(summary, scrubber): collapses whitespace, clips to 120 chars, runs scrubber, falls back to "Готово." when empty after processing.
+  - _ACTION_SUCCESS_FALLBACK = "Готово." / _ACTION_SUMMARY_MAX_CHARS = 120.
+  - _on_action_result: now imports TTSSpeakFrame + _scrub_tts_text once (earlier in _cmd_start), calls processor.push_frame(TTSSpeakFrame(spoken)), logs "[ACTION SPEAK id=X len=Y]".
+- Reordering: build_pipeline now runs BEFORE the action callbacks are defined so they can close over processor. ActionWorker construction stays after the callback definitions.
+- Tests added (tests/test_main.py): 5 unit tests cover passthrough, empty, clipping, scrubber integration, whitespace collapse.
+
+### US-A-03 — Spoken hint after failure
+- File: src/main.py
+  - _action_error_hint(exc): TimeoutError → "Дія не встигла, скасовую." Other exceptions → "Не вдалося — {ClassName}."
+  - _ACTION_TIMEOUT_HINT string constant.
+  - _on_action_error pushes the hint via processor, logs "[ACTION ERROR SPEAK id=X kind=...]".
+- Tests added (tests/test_main.py): 2 unit tests cover timeout and generic exception paths.
+
+### US-A-04 — Integration tests for observable action loop
+- File: tests/integration/test_intent_flow.py
+  - test_intent_flow_emits_result_speech — summary prefix reaches TTS
+  - test_intent_flow_emits_empty_summary_fallback — fallback phrase spoken when summary empty
+  - test_intent_flow_emits_error_speech_on_timeout — timeout hint spoken
+  - test_intent_flow_emits_error_speech_on_runtime_error — RuntimeError class name surfaced
+  - Pre-existing test_end_to_end_intent_submission_and_execution unchanged.
+
+### US-A-05 — Regression + lint
+- uv run pytest tests/ → 570 passed, 1 pre-existing DeprecationWarning (GroqSTTService unrelated).
+- uv run ruff check src/ tests/ → All checks passed.
+
+## Files touched
+- src/agent_sdk_cli.py
+- src/main.py
+- tests/test_agent_sdk_cli.py
+- tests/test_main.py
+- tests/integration/test_intent_flow.py
+
+## Learnings / patterns
+
+1. claude-agent-sdk separates tool output from assistant text: bash stdout lives in UserMessage → ToolResultBlock, not AssistantMessage → TextBlock. Anything that needs to see tool output must iterate UserMessage too.
+2. ToolResultBlock.content has three legal shapes (str / list[dict] / None). A dict item's text key is the canonical place; unknown shapes should be repr'd, not dropped.
+3. The generator's _scrub_tts_text is a module-level helper suitable for reuse from main.py's action callbacks — same defense-in-depth against tool-name leaks.
+4. Ordering fix in main.py: any code that pushes frames through `processor` must run AFTER build_pipeline. The old ordering worked only because the old callbacks never touched processor.
+
+## How to live-verify
+1. `uv run python -m src.main start`
+2. Say: "запусти echo hello"
+3. Expected daemon.log entries:
+   - [INTENT SUBMITTED id=N tool=bash]
+   - [ACTION RESULT id=N] summary=...hello
+   - [ACTION SPEAK id=N len=...]
+4. Expected audio:
+   - Generator's streamed reply ("зараз виконаю" or similar)
+   - After action completes: TTS speaks the summary (or "Готово." if empty)
+5. To test error path: "запусти sleep 1000" (action_timeout defaults to 120s). Wait out the timeout and listen for "Дія не встигла, скасовую."
+
+## Not changed in this phase
+- Generator prompt (D1) — still Phase B.
+- Confirmation gate (D4) — still Phase C.
+- SDK split for decider vs. action (D6) — still Phase D.
+- Intent validation / tool allowlist (D5) — still Phase B.

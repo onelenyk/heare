@@ -28,6 +28,8 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
+    UserMessage,
 )
 
 from .claude_backend_common import extract_decision, parse_decider_response, strip_markdown_fence
@@ -44,6 +46,34 @@ class ClaudeCLIError(RuntimeError):
     pass
 
 
+def _extract_tool_result_text(content: Any) -> str:
+    """Flatten a ToolResultBlock.content into plain text.
+
+    content can be str, list[dict], or None (see claude_agent_sdk.ToolResultBlock).
+    Dict items may carry {"type": "text", "text": "..."}; unknown shapes are
+    repr'd so caller still sees *something* rather than silently losing output.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text_val = item.get("text")
+                if isinstance(text_val, str):
+                    parts.append(text_val)
+                    continue
+                parts.append(repr(item))
+            elif isinstance(item, str):
+                parts.append(item)
+            else:
+                parts.append(repr(item))
+        return "\n".join(p for p in parts if p)
+    return repr(content)
+
+
 class AgentSDKCLI:
     """Persistent Claude backend using the claude-agent-sdk Python package.
 
@@ -51,9 +81,12 @@ class AgentSDKCLI:
     and opens ClaudeSDKClient; __aexit__ closes it. The underlying Node.js
     process stays alive across all calls, eliminating per-call startup overhead.
 
-    Note on serialization: the DeciderProcessor FSM (decider.py:506) serializes
-    all call_decider and call_action calls — they are structurally mutually
-    exclusive. No additional call-level lock is needed here.
+    Note on serialization: _run_query holds an asyncio.Lock so concurrent
+    callers (ActionWorker, ConversationManager.extract_topics, identity
+    bootstrap) don't scramble each other's receive_response() streams on
+    the shared ClaudeSDKClient. Phase D will split into two clients for
+    parallelism; until then, the lock trades a little latency for
+    correctness.
 
     Note on persona: Claude Code appends persona text via --append-system-prompt.
     The SDK's system_prompt field replaces rather than appends, which would break
@@ -75,6 +108,12 @@ class AgentSDKCLI:
         )
         self._client: ClaudeSDKClient | None = None
         self._client_lock = asyncio.Lock()  # serialize reconnects only
+        # Serialize _run_query to prevent concurrent query()/receive_response()
+        # pairs from scrambling each other's streams. Without this, an in-flight
+        # action and a background topic-extraction call share the same
+        # ClaudeSDKClient and their messages interleave, causing things like a
+        # topic-JSON array to appear inside an action summary.
+        self._run_query_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -114,8 +153,16 @@ class AgentSDKCLI:
 
     async def _open_client(self) -> None:
         """Open a new ClaudeSDKClient with current session state."""
+        # Derive allowed MCP tool patterns from workspace/.mcp.json — the
+        # single source of truth. No separate enable_mcp_servers allowlist.
+        from .mcp_utils import build_mcp_allowed_patterns, read_mcp_servers
+
+        mcp_servers = read_mcp_servers(self.settings.workspace_dir)
+        allowed = list(
+            set(self.settings.get_sdk_allowed_tools()) | set(build_mcp_allowed_patterns(mcp_servers))
+        )
         options = ClaudeAgentOptions(
-            allowed_tools=["Bash"],
+            allowed_tools=allowed,
             resume=self._session_id,
             cwd=str(self.cwd),
             cli_path=self.settings.claude_sdk_cli_path or self.settings.claude_cli,
@@ -171,36 +218,39 @@ class AgentSDKCLI:
         """Send prompt, iterate response, return joined stdout text.
 
         Handles rate limiting, retry/backoff, timeout, stale-session recovery,
-        and per-invocation log files.
+        and per-invocation log files. Serialized via _run_query_lock so
+        concurrent callers (action worker + background topic extraction) do
+        not scramble each other's streams on the shared SDK client.
         """
-        await self._rate_limiter.acquire()
-        last_error: Exception | None = None
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                return await self._attempt_query(prompt, on_line=on_line)
-            except ClaudeCLIError as e:
-                msg = str(e).lower()
-                is_session_error = (
-                    "no conversation found" in msg
-                    or ("session" in msg and "not found" in msg)
-                    or "sdk result error" in msg  # opaque SDK errors are often stale sessions
-                )
-                if is_session_error and attempt == 1:
-                    logger.warning(
-                        "stale session on attempt %d — reconnecting: %s", attempt, e
+        async with self._run_query_lock:
+            await self._rate_limiter.acquire()
+            last_error: Exception | None = None
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    return await self._attempt_query(prompt, on_line=on_line)
+                except ClaudeCLIError as e:
+                    msg = str(e).lower()
+                    is_session_error = (
+                        "no conversation found" in msg
+                        or ("session" in msg and "not found" in msg)
+                        or "sdk result error" in msg  # opaque SDK errors are often stale sessions
                     )
-                    await self._reconnect()
+                    if is_session_error and attempt == 1:
+                        logger.warning(
+                            "stale session on attempt %d — reconnecting: %s", attempt, e
+                        )
+                        await self._reconnect()
+                        last_error = e
+                        continue
                     last_error = e
-                    continue
-                last_error = e
-                backoff = 2 ** attempt
-                logger.warning(
-                    "SDK attempt %d failed: %s — retry in %ds", attempt, e, backoff
-                )
-                await asyncio.sleep(backoff)
-        raise ClaudeCLIError(
-            f"claude-agent-sdk failed after {self.max_retries} attempts: {last_error}"
-        )
+                    backoff = 2 ** attempt
+                    logger.warning(
+                        "SDK attempt %d failed: %s — retry in %ds", attempt, e, backoff
+                    )
+                    await asyncio.sleep(backoff)
+            raise ClaudeCLIError(
+                f"claude-agent-sdk failed after {self.max_retries} attempts: {last_error}"
+            )
 
     async def _attempt_query(
         self,
@@ -212,9 +262,31 @@ class AgentSDKCLI:
             raise ClaudeCLIError("SDK client not initialized — call __aenter__ first")
 
         await self._client.query(prompt)
-        stdout_chunks: list[str] = []
+        # Phase AH2-03: collect assistant text and tool-result bodies in
+        # separate buckets. When Claude emits a text summary we prefer it
+        # (avoids duplicating raw stdout alongside the summary). When Claude
+        # ends the turn silently we fall back to the tool-result content so
+        # the caller still has *something* to speak.
+        text_chunks: list[str] = []
+        tool_result_chunks: list[str] = []
         result_session_id: str | None = None
         iterator = self._client.receive_response()
+        # Diagnostic counters so we can see how many text/tool-result blocks
+        # the SDK actually delivered per call. Empty assistant text + empty
+        # tool-result usually means Claude ran the tool and ended the turn
+        # silently — the caller should force a summary via the prompt.
+        block_counts: dict[str, int] = {"text": 0, "tool_result": 0}
+
+        def _emit_segments(text: str, bucket: list[str]) -> None:
+            for segment in text.replace("\r", "\n").split("\n"):
+                if not segment:
+                    continue
+                bucket.append(segment)
+                if on_line is not None:
+                    try:
+                        on_line(segment)
+                    except Exception as e:
+                        logger.warning("on_line callback raised: %s", e)
 
         async def _drain() -> None:
             nonlocal result_session_id
@@ -222,15 +294,17 @@ class AgentSDKCLI:
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
                         if isinstance(block, TextBlock):
-                            for segment in block.text.replace("\r", "\n").split("\n"):
-                                if not segment:
-                                    continue
-                                stdout_chunks.append(segment)
-                                if on_line is not None:
-                                    try:
-                                        on_line(segment)
-                                    except Exception as e:
-                                        logger.warning("on_line callback raised: %s", e)
+                            block_counts["text"] += 1
+                            _emit_segments(block.text, text_chunks)
+                elif isinstance(message, UserMessage):
+                    content = message.content
+                    blocks = content if isinstance(content, list) else []
+                    for block in blocks:
+                        if isinstance(block, ToolResultBlock):
+                            block_counts["tool_result"] += 1
+                            text = _extract_tool_result_text(block.content)
+                            if text:
+                                _emit_segments(text, tool_result_chunks)
                 elif isinstance(message, ResultMessage):
                     if message.session_id:
                         result_session_id = message.session_id
@@ -257,7 +331,17 @@ class AgentSDKCLI:
         if result_session_id:
             self._persist_session(result_session_id)
 
-        stdout = "\n".join(stdout_chunks).strip()
+        # Prefer Claude's text summary; fall back to raw tool-result content
+        # only when Claude did not emit any text this turn.
+        chosen = text_chunks if text_chunks else tool_result_chunks
+        stdout = "\n".join(chosen).strip()
+        logger.info(
+            "[SDK DRAIN text=%d tool_result=%d source=%s stdout_len=%d]",
+            block_counts["text"],
+            block_counts["tool_result"],
+            "text" if text_chunks else "tool_result" if tool_result_chunks else "none",
+            len(stdout),
+        )
         self._log_invocation(prompt, stdout)
         return stdout
 

@@ -37,6 +37,14 @@ class HeartbeatTask:
                     await self.decider_processor.on_heartbeat_tick()
                 except Exception as e:
                     logger.exception("heartbeat tick failed: %s", e)
+                try:
+                    from .indication import IndicationKind, get_indication
+
+                    ind = get_indication()
+                    if ind is not None:
+                        ind.notify(IndicationKind.HEARTBEAT_TICK)
+                except Exception:  # noqa: BLE001
+                    logger.warning("heartbeat indication notify failed", exc_info=True)
         except asyncio.CancelledError:
             logger.info("heartbeat task cancelled")
             raise

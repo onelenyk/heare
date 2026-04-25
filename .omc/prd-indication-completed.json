@@ -1,0 +1,335 @@
+{
+  "title": "Indication Subsystem — sound + visual + macOS notification cues",
+  "version": "1.0.0",
+  "source_plan": ".omc/plans/indication.md (v3, consensus-approved)",
+  "notes": "Implement an indication facade so the user always knows what the daemon is doing. Three backends (SoundBackend via injected SoundCueProcessor with IndicationCueFrame brackets; VisualBackend via JSONL tailed by watch.py; NotificationBackend via osascript with argv-only construction). Mode-aware gating, per-kind toggles, cooldown, quiet hours. Wires ~30 events across T1/T2/T3.",
+  "stories": [
+    {
+      "id": "US-IND-A1",
+      "title": "PCM asset generator (numpy oscillators)",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Add src/indication_assets.py with pure numpy functions producing 16-bit mono PCM for 6 cue levels (attention, error, long_running, success, info, input_waiting). No I/O. Deterministic.",
+      "acceptanceCriteria": [
+        "src/indication_assets.py exists; functions per level documented in plan §4.1 produce int16 mono PCM at 24 kHz",
+        "All cues are 80–500ms; peak amplitude ≤ 0.4; ADSR envelope avoids click",
+        "tests/test_indication_assets.py asserts deterministic length and amplitude bounds for all 6 levels (same bytes across two calls)",
+        "uv run pytest tests/test_indication_assets.py exits 0",
+        "uv run ruff check src/indication_assets.py tests/test_indication_assets.py exits 0",
+        "No new dependencies in pyproject.toml"
+      ]
+    },
+    {
+      "id": "US-IND-A2",
+      "title": "IndicationSettings config schema",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Extend src/config.py with IndicationSettings dataclass and a nested loader for the [indication] TOML section described in plan §3. Defaults match plan; missing section is fully valid.",
+      "acceptanceCriteria": [
+        "Settings has indication: IndicationSettings field; defaults match plan §3 (enabled=True, sound/visual/notification_center_enabled=True, cooldown_seconds=1.5, quiet_hours=['22:00-07:00'])",
+        "Per-kind toggles for attention/error/long_running/success/info/input_waiting load from [indication.kinds.<level>] sub-tables; defaults match plan",
+        "Invalid quiet_hours strings (e.g. '25:00-07:00') log a warning and are dropped, never crash load_settings()",
+        "tests/test_config.py adds: default-with-no-section, partial override, invalid quiet_hours dropped — all pass",
+        "Existing tests/test_config.py tests still pass",
+        "uv run ruff check src/config.py tests/test_config.py exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-A3",
+      "title": "Indication facade + Backend protocol + thread-safe notify()",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Add src/indication.py with IndicationCueFrame (SystemFrame), IndicationKind enum, IndicationLevel enum, KIND_TO_LEVEL map, _DEFAULTS table, Backend Protocol, Indication class. Implement thread-safe sync notify() with on-loop and off-loop dispatch branches. Implement gate logic (master enabled, per-kind toggles, mode gating, quiet hours, cooldown coalescing). Add tests/test_indication.py with a RecordingBackend.",
+      "acceptanceCriteria": [
+        "src/indication.py defines: IndicationCueFrame inheriting from pipecat SystemFrame; IndicationKind enum with all kinds from plan §2.1; IndicationLevel enum with 6 levels; KIND_TO_LEVEL map; _DEFAULTS title/body table; Backend Protocol with name and async fire(...)",
+        "Indication.__init__ captures self._loop = loop or asyncio.get_running_loop()",
+        "notify() called from the same loop's thread uses loop.call_soon_threadsafe(loop.create_task, coro)",
+        "notify() called from any other thread uses asyncio.run_coroutine_threadsafe(coro, self._loop)",
+        "notify() never raises; backend exceptions caught and logged as warnings",
+        "Cooldown coalesces back-to-back same-kind notifies within cooldown_seconds — only the first reaches backends",
+        "Quiet hours block sound only; visual and notification still fire",
+        "INPUT_WAITING level bypasses quiet hours for notification backend",
+        "Mode gating: silent → no kinds, focus → only attention/error/input_waiting reach backends, ambient → all reach backends",
+        "RecordingBackend in tests/test_indication.py captures (kind, level, title, body, meta)",
+        "Thread-safety AC: tests/test_indication.py spawns a worker thread, calls Indication.notify(KIND) from it, waits up to 1s, asserts RecordingBackend captured the event. Repeats from main loop. Both succeed.",
+        "uv run pytest tests/test_indication.py exits 0",
+        "uv run ruff check src/indication.py tests/test_indication.py exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-A4a",
+      "title": "SoundBackend + SoundCueProcessor + IndicationCueFrame brackets",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement src/indication_backends/sound.py and the SoundCueProcessor in src/indication.py. Per cue, processor pushes IndicationCueFrame(start=True) → OutputAudioRawFrame → IndicationCueFrame(start=False). Buffer asyncio.Queue(maxsize=1); drop+counter on overflow. Defer emission while bot speaking. Add tests/test_indication_sound.py and tests/integration/test_indication_no_phantom.py.",
+      "acceptanceCriteria": [
+        "src/indication_backends/sound.py exists; SoundBackend.fire calls processor.enqueue_cue(pcm) (sync, non-blocking)",
+        "SoundCueProcessor in src/indication.py is a FrameProcessor with asyncio.Queue(maxsize=1) and a long-lived drain task",
+        "Per cue, drain task pushes exactly: IndicationCueFrame(start=True), then OutputAudioRawFrame(audio=pcm, sample_rate=tts_sample_rate, num_channels=1), then IndicationCueFrame(start=False)",
+        "OutputAudioRawFrame is the subclass used (NOT bare AudioRawFrame); test asserts isinstance check on the pushed frame",
+        "Trailing IndicationCueFrame(start=False) is scheduled at len(pcm)/(sample_rate*2) + 0.2s after the start frame; test asserts the gap formula for two distinct PCM lengths",
+        "Queue overflow AC: fire 3 ATTENTION cues back-to-back; assert exactly 1 plays, 2 dropped, processor.cues_dropped == 2",
+        "SoundCueProcessor tracks _bot_speaking via BotStartedSpeakingFrame/BotStoppedSpeakingFrame in process_frame; defers emission while bot speaks; drops cue after 2s of waiting",
+        "tests/test_indication_sound.py uses a FakeSoundCueProcessor (or captures pushed frames on a real one) — passes",
+        "Echo-back integration test tests/integration/test_indication_no_phantom.py: minimal pipeline + stub STT in loopback mode, fire one ATTENTION cue while STT is live, assert no phantom transcript appears in the transcripts table within 3s",
+        "uv run pytest tests/test_indication_sound.py tests/integration/test_indication_no_phantom.py exits 0",
+        "uv run ruff check src/indication_backends/sound.py exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-A4b",
+      "title": "VisualBackend (JSONL writer)",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement src/indication_backends/visual.py: append-only JSONL at settings.log_dir / 'indication.jsonl', one line per fire, rotation trims to last 200 lines on each fire(). Tests using tmp_path.",
+      "acceptanceCriteria": [
+        "src/indication_backends/visual.py exists; VisualBackend.fire writes one JSON line {'ts': float, 'kind': str, 'level': str, 'title': str, 'body': str} to settings.log_dir/indication.jsonl",
+        "On each fire(), the file is trimmed to its last 200 lines",
+        "tests/test_indication_visual.py uses tmp_path: asserts each fire appends one valid JSON line; asserts rotation caps at 200 lines after firing 250 events",
+        "Failure of another backend does not affect this one (covered by A3 isolation contract; integration verified through Indication facade test)",
+        "uv run pytest tests/test_indication_visual.py exits 0",
+        "uv run ruff check src/indication_backends/visual.py exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-A4c",
+      "title": "NotificationBackend (macOS osascript, argv-only, injection-safe)",
+      "priority": 6,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement src/indication_backends/notification.py. Body/title pass via subprocess argv ('on run argv' AppleScript reads via 'item N of argv'). Never interpolates user text into AppleScript source. Darwin guard at construction. 2s subprocess timeout.",
+      "acceptanceCriteria": [
+        "src/indication_backends/notification.py exists; on non-Darwin (sys.platform != 'darwin') backend disables itself at construction (fire becomes no-op)",
+        "fire() builds: cmd = ['osascript', '-e', 'on run argv', '-e', '<display notification line>', '-e', 'end run', '--', body, title, *(sound_name if non-empty)]",
+        "Body and title are NEVER concatenated into the AppleScript source string",
+        "When level→sound_name is empty (info/success/long_running): AppleScript omits 'sound name (item 3 of argv)' clause; argv length == 2 (body, title)",
+        "When level→sound_name is non-empty (attention/error/input_waiting): AppleScript includes the 'sound name (item 3 of argv)' clause; argv length == 3 (body, title, sound_name)",
+        "Subprocess uses asyncio.create_subprocess_exec with stdout=DEVNULL, stderr=PIPE; timeout=2.0 wraps proc.wait(); on timeout proc.kill() is called",
+        "tests/test_indication_notification.py mocks asyncio.create_subprocess_exec, parametrizes both arities (sound vs no-sound), asserts rendered script lines and argv length per case",
+        "Injection regression test: pass body containing '\"; do shell script \"echo PWNED\"; display notification \"' — asserts (a) returncode 0 from mocked osascript, (b) the literal payload string is delivered as an argv item (captured by mock), (c) NO PWNED side-effect anywhere (no echo into stdout/stderr/files), (d) no exception raised",
+        "Non-Darwin skip test: monkeypatch sys.platform to 'linux'; assert NotificationBackend disables and fire is a no-op",
+        "uv run pytest tests/test_indication_notification.py exits 0",
+        "uv run ruff check src/indication_backends/notification.py exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-A5",
+      "title": "Pipeline integration + IndicationCueFrame upstream consumers + lifecycle",
+      "priority": 7,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire Indication and SoundCueProcessor into src/pipeline.py and src/main.py. Construct backends from settings. Pass facade to processors that need it. Capture main-loop ref. Add one-line _indication_speaking flag handling to decider, generator, and SpeakerTagger so they drop transcripts during cue playback. Call Indication.aclose() in shutdown path.",
+      "acceptanceCriteria": [
+        "src/pipeline.py instantiates Indication(settings.indication, [SoundBackend(processor), VisualBackend(...), NotificationBackend(...)], loop=asyncio.get_running_loop()) when settings.indication.enabled",
+        "SoundCueProcessor inserted into the pipeline AFTER tts and BEFORE transport.output()",
+        "src/main.py captures the main loop ref before pipeline build; passes Indication facade to producers needing it (decider, generator, action worker callbacks)",
+        "src/decider.py SpeakerTagger pattern: add _indication_speaking flag set on IndicationCueFrame(start=True), cleared on (start=False); transcript-drop block at decider.py:502-509 (existing _bot_speaking pattern) checks both flags",
+        "src/generator.py: same flag check in transcript-drop branch around line 179",
+        "src/speaker_processor.py SpeakerTagger: skip embedding ingestion while _indication_speaking is True",
+        "Unit test: inject IndicationCueFrame(start=True) followed by a transcript fragment; assert decider/generator/tagger drop the fragment until IndicationCueFrame(start=False) is observed",
+        "Indication.aclose() awaited in pipeline shutdown path (run_until_stopped finally)",
+        "uv run heare --help works; uv run pytest -q stays green; uv run ruff check src/ tests/ stays clean",
+        "Daemon log shows 'indication: 3 backends ready' on startup when enabled, '0 backends' when disabled"
+      ]
+    },
+    {
+      "id": "US-IND-A6",
+      "title": "Runtime disable / re-enable (Indication.reload)",
+      "priority": 8,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement Indication.reload(settings). Lock-and-flag-flip-before-drain ordering: acquire lock, set _enabled=False, release lock, drain pending dispatch tasks (with timeout), aclose backends, optionally re-init if newly enabled. Add a thin file-watcher or signal-handler hook in main.py that triggers reload when ~/.heare/config.toml [indication].enabled flips.",
+      "acceptanceCriteria": [
+        "Indication.reload(settings) follows the documented sequence: (1) acquire lock + self._enabled=False; (2) release lock; (3) drain pending dispatch tasks with bounded timeout; (4) aclose() on each backend (per-backend try/except); (5) re-read settings; if enabled, re-init backends and set _enabled=True",
+        "Any notify() arriving between steps 1 and 5 sees _enabled=False under the lock and short-circuits; never enqueues into a closing backend",
+        "tests/test_indication_runtime_disable.py: start enabled=True, fire a cue (recorded), call reload(disabled), fire another (NOT recorded), call reload(enabled), fire (recorded). Assert backends close cleanly between transitions; no daemon restart",
+        "main.py wires either a SIGHUP handler or a config file mtime watcher that triggers reload on change (one-line hook is acceptable)",
+        "uv run pytest tests/test_indication_runtime_disable.py exits 0",
+        "uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-B1",
+      "title": "T1 wiring — confirmation + re-enroll input-waiting (off-loop branch)",
+      "priority": 9,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire AWAITING_CONFIRMATION (decider.py:736-748), CONFIRMATION_DEADLINE (5s before timeout via subtask in _timeout_watcher), REENROLL_RECORDING_START/_END (direct_tools.py:_execute_re_enroll). Re-enroll runs sounddevice.rec() in a worker thread — exercises the off-loop run_coroutine_threadsafe branch added in A3.",
+      "acceptanceCriteria": [
+        "decider.py:736-748 calls indication.notify(AWAITING_CONFIRMATION, ...) exactly once per state entry",
+        "decider _timeout_watcher schedules a sub-task at (timeout - 5)s that calls notify(CONFIRMATION_DEADLINE); cancelled if state exits early",
+        "direct_tools._execute_re_enroll calls notify(REENROLL_RECORDING_START) before sounddevice.rec(), notify(REENROLL_RECORDING_END) after — both calls happen from the worker thread, exercising off-loop dispatch",
+        "tests/test_indication_wiring.py covers off-loop call path: spawn _execute_re_enroll under a mocked sounddevice; assert RecordingBackend captures both REENROLL events",
+        "Notification center fires for all three even when sound_enabled=False (because INPUT_WAITING bypass — verified in test)",
+        "Deadline warning fires exactly once per confirmation cycle (not per poll tick)",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-B2",
+      "title": "T1 wiring — action lifecycle errors + rejection + long-running",
+      "priority": 10,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire ACTION_REJECTED (3 rejection paths in actions.py:111-132), ACTION_FAILED (main.py:_on_action_error around lines 318-339), ACTION_LONG_RUNNING (timer in ActionWorker._process_one that fires after 5s and self-cancels on completion).",
+      "acceptanceCriteria": [
+        "actions.py:111-117 (tool not allowed), :118-125 (args too long), :126-132 (queue full) each call indication.notify(ACTION_REJECTED, ...) exactly once with body including the rejection reason",
+        "main.py:_on_action_error calls notify(ACTION_FAILED, body=f'{tool}: {error}') for any action error",
+        "ActionWorker._process_one starts a 5s timer when an action begins; on expiry calls notify(ACTION_LONG_RUNNING, body=f'{tool} still running ({elapsed}s)'); timer cancels cleanly when action completes earlier",
+        "Test: actions completing in <5s never fire ACTION_LONG_RUNNING",
+        "Test: actions running >5s fire ACTION_LONG_RUNNING exactly once",
+        "Test: each rejection path fires exactly one ACTION_REJECTED notification",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-B3",
+      "title": "T1 wiring — external service errors (OpenRouter / STT_ERROR via ErrorFrame / TTS / audio device)",
+      "priority": 11,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire OPENROUTER_TIMEOUT (generator.py:417-419 OpenRouterError catch), STT_ERROR (new wrapper FrameProcessor placed downstream of stt that watches for pipecat ErrorFrame and calls notify), TTS_FAILURE (tts_edge.py exception path), AUDIO_DEVICE_LOST (LocalAudioTransport input observer in pipeline.py).",
+      "acceptanceCriteria": [
+        "generator.py OpenRouterError handler calls notify(OPENROUTER_TIMEOUT, body=str(e))",
+        "src/pipeline.py inserts a one-line wrapper FrameProcessor after stt whose process_frame checks isinstance(frame, ErrorFrame) and calls indication.notify(STT_ERROR, body=str(frame.error))",
+        "tts_edge.py catches the existing edge-tts/ffmpeg crash path and calls notify(TTS_FAILURE, body=...) — does NOT push a TTSSpeakFrame in response (no recursion)",
+        "pipeline.py registers a transport input-loss observer (LocalAudioTransport hook) that calls notify(AUDIO_DEVICE_LOST)",
+        "Test: inject synthetic pipecat ErrorFrame into the STT wrapper, assert notify(STT_ERROR, ...) called exactly once",
+        "Test: each failure type fires exactly once per occurrence; TTS failure does not recurse into another TTS event",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-B4",
+      "title": "T1 wiring — MCP_AUTH_REQUIRED (per-server session-scoped debounce)",
+      "priority": 12,
+      "status": "completed",
+      "passes": true,
+      "description": "Add MCP error inspection in src/mcp_utils.py to detect 401 / auth_required responses; route to indication.notify(MCP_AUTH_REQUIRED, body=\"MCP server '<name>' needs authentication — check terminal\"). Debounce per-server, session-scoped (cleared on daemon restart).",
+      "acceptanceCriteria": [
+        "mcp_utils.py inspects MCP responses and triggers MCP_AUTH_REQUIRED on 401/auth_required",
+        "Body text is exactly: \"MCP server '<server-name>' needs authentication — check terminal\"",
+        "Per-server debounce: in-memory dict keyed by server name; once notified for server X, no further MCP_AUTH_REQUIRED for X this session",
+        "Daemon restart clears debounce: simulated by re-instantiating the debounce holder",
+        "Test: simulate 401 from fake MCP server twice in same session — exactly one notification; restart simulation — re-emits one more",
+        "Sound is suppressed for MCP_AUTH_REQUIRED via per-kind config defaults (notification only)",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-C1",
+      "title": "T2 wiring — intent lifecycle + cancellation",
+      "priority": 13,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire INTENT_SUBMITTED (generator.py:_submit_intent on success), INTENT_COMPLETED (main.py:_on_action_result), INTENT_CANCELLED (generator.py cancel branch around line 349-353).",
+      "acceptanceCriteria": [
+        "generator.py:_submit_intent calls notify(INTENT_SUBMITTED, body=f'queued: {tool}') when submit returns non-None id",
+        "main.py:_on_action_result calls notify(INTENT_COMPLETED, body=f'done: {tool}')",
+        "generator.py cancel branch calls notify(INTENT_CANCELLED, body=f'cancelled: {tool}') when cancel_latest() returns non-None",
+        "Test: a complete one-utterance act-confirm cycle fires INTENT_SUBMITTED then INTENT_COMPLETED exactly once each",
+        "Test: 'скасуй' utterance fires exactly one INTENT_CANCELLED",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-C2",
+      "title": "T2 wiring — speaker enrollment events",
+      "priority": 14,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire OWNER_AUTO_ENROLLED and GUEST_AUTO_ENROLLED in src/speaker_processor.py (existing auto-enroll paths in _maybe_auto_enroll), GUEST_RENAMED in src/speaker_namer.py around lines 138-150. Owner enrollment retains its existing TTS Ukrainian greeting AND adds a notification.",
+      "acceptanceCriteria": [
+        "speaker_processor.py auto-enroll-owner path calls notify(OWNER_AUTO_ENROLLED, body='owner voice learned'); existing TTSSpeakFrame Ukrainian greeting is preserved",
+        "speaker_processor.py auto-enroll-guest path calls notify(GUEST_AUTO_ENROLLED, body=guest_id)",
+        "speaker_namer.py rename success path calls notify(GUEST_RENAMED, body=f'{old} → {new}')",
+        "Test: existing speaker auto-enroll tests still pass; new wiring adds RecordingBackend assertions for one notify per event",
+        "No duplicate notification when guest is renamed after auto-enroll (each event distinct)",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-C3",
+      "title": "T2 wiring — mode change + wake word + daemon lifecycle + workflow + confirmation timeout",
+      "priority": 15,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire MODE_CHANGED (decider.py mode-reload path), WAKE_WORD_DETECTED (decider.py wake-word branch in FOCUS only), DAEMON_STARTED (main.py post-StartFrame post-audio-init), DAEMON_SHUTDOWN (run_until_stopped finally), CONFIRMATION_TIMED_OUT (decider.py:885-896), WORKFLOW_SAVED (workflow.py save), WORKFLOW_RUN_START/END (actions.py:296-310 / :338-346).",
+      "acceptanceCriteria": [
+        "decider.py mode reload path fires MODE_CHANGED exactly once per actual transition (not on no-op reloads)",
+        "decider.py wake-word match in FOCUS mode fires WAKE_WORD_DETECTED; no fire in AMBIENT or SILENT",
+        "DAEMON_STARTED fires AFTER pipecat StartFrame is dispatched and audio init succeeds (hooked into the existing greeting-schedule path); never before",
+        "DAEMON_SHUTDOWN fires from run_until_stopped finally clause, BEFORE Indication.aclose() is awaited",
+        "CONFIRMATION_TIMED_OUT fires exactly once when timeout watcher fires",
+        "WORKFLOW_SAVED fires on new workflow creation; WORKFLOW_RUN_START fires when worker begins; WORKFLOW_RUN_END fires when worker ends (success or failure)",
+        "Test: starting and stopping the daemon emits exactly one DAEMON_STARTED + one DAEMON_SHUTDOWN; mode hot-reload (writing ~/.heare/mode) fires once; confirmation timeout fires once",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-C4",
+      "title": "T2 wiring — MCP disconnect (debounced 30s per server)",
+      "priority": 16,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire MCP_DISCONNECTED in mcp_utils.py connection-monitor path. Debounced 30s per server (in-process, session-scoped).",
+      "acceptanceCriteria": [
+        "mcp_utils.py disconnect handler fires MCP_DISCONNECTED with body containing the server name",
+        "Per-server 30s debounce: simulated rapid disconnect-reconnect-disconnect within 30s yields exactly one notification per server",
+        "After 30s elapsed, a new disconnect on the same server emits a fresh notification",
+        "Test asserts both behaviors with monkeypatched clock",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-D1",
+      "title": "T3 wiring — info events (multi-intent, network, heartbeat, new conversation)",
+      "priority": 17,
+      "status": "completed",
+      "passes": true,
+      "description": "Wire MULTI_INTENT_START/_END (intent_parser.py counter for n>1 intents per response), NETWORK_UNREACHABLE (openrouter_cli.py classify of OpenRouterError with DNS-like cause), HEARTBEAT_TICK (heartbeat.py tick), NEW_CONVERSATION (conversation.py get_or_create_active when row is newly created).",
+      "acceptanceCriteria": [
+        "intent_parser.py counts intents per response; on n>1 first intent fires MULTI_INTENT_START, last intent fires MULTI_INTENT_END; n==1 fires neither",
+        "openrouter_cli.py classifies OpenRouterError causes; transport/DNS-like errors fire NETWORK_UNREACHABLE; other errors fire OPENROUTER_TIMEOUT (already wired in B3)",
+        "heartbeat.py tick fires HEARTBEAT_TICK (subject to global cooldown like other kinds; default heartbeat interval far exceeds 1.5s cooldown)",
+        "conversation.py get_or_create_active fires NEW_CONVERSATION only when a NEW row is created (not when an existing active conversation is returned)",
+        "Tests cover each kind",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-D2",
+      "title": "T3 wiring — speaker drift surface (periodic audit)",
+      "priority": 18,
+      "status": "completed",
+      "passes": true,
+      "description": "Add a periodic audit task in main.py (every 6h) that runs gallery.audit() for each enrolled speaker; on DRIFT result fire SPEAKER_DRIFT (visual + notification only — no sound). 24h debounce per speaker.",
+      "acceptanceCriteria": [
+        "main.py registers a 6h-period asyncio task that iterates all enrolled speakers and calls gallery.audit(speaker_id)",
+        "If audit reports enrollment_cos_floor_hit==True or otherwise indicates DRIFT, fires SPEAKER_DRIFT with body identifying the speaker",
+        "24h debounce per speaker: same speaker firing twice within 24h emits exactly one notification",
+        "Test: monkeypatch gallery.audit to return DRIFT; assert exactly one SPEAKER_DRIFT per speaker per audit cycle within debounce window",
+        "Sound is suppressed for SPEAKER_DRIFT via per-kind config defaults (info-tier kind, no sound)",
+        "uv run pytest -q exits 0; uv run ruff check exits 0"
+      ]
+    },
+    {
+      "id": "US-IND-FINAL",
+      "title": "Final regression — full pytest + ruff + manual smoke",
+      "priority": 19,
+      "status": "completed",
+      "passes": true,
+      "description": "Final gate: full test suite passes, ruff clean, manual smoke through one act-confirm-execute cycle observes one cue + one notification + one visual row per stage; runtime disable confirmed.",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 with all existing + new tests passing (including thread-safety, injection-regression, echo-back integration, runtime-disable)",
+        "uv run ruff check src/ tests/ exits 0",
+        ".omc/progress.txt records implementation details, files changed, design decisions, learnings"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "title": "Topic Extraction on OpenRouter — move ConversationManager.extract_topics off Claude Code",
+  "version": "1.0.0",
+  "source_plan": ".omc/plans/decider-on-openrouter.md (revision 2, consensus-approved by Architect + Critic)",
+  "notes": "Move ConversationManager.extract_topics() (the sole live call_decider consumer in production) from the Claude SDK backend to a new OpenRouterTopicExtractorCLI module. Opt-in via topic_extraction_backend config flag, defaults to 'claude'. Frees the AgentSDKCLI._run_query_lock from contention with call_action. Out of scope: DeciderProcessor (dead code), call_action, bootstrap_identity.",
+  "stories": [
+    {
+      "id": "US-TE-1",
+      "title": "Create src/openrouter_topic_extractor.py with OpenRouterTopicExtractorCLI",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "New non-streaming OpenRouter HTTP client dedicated to topic extraction. Sends a prompt expecting a bare JSON array, returns list[str] capped at 5 items. All error paths degrade to []. Tracks consecutive failures and emits WARN log at 3+. Does NOT send response_format json_object (per consensus resolution).",
+      "acceptanceCriteria": [
+        "src/openrouter_topic_extractor.py exists with class OpenRouterTopicExtractorCLI",
+        "Constructor signature: __init__(self, api_key: str, model: str, timeout: float = 5.0, *, transport: httpx.AsyncBaseTransport | None = None) — transport kwarg plumbed through to httpx.AsyncClient for test injection",
+        "Public API: async def extract_topics(self, prompt: str) -> list[str]",
+        "POST request body does NOT include response_format field (verified by inspecting the request payload in tests)",
+        "Successful response returning JSON content '[\"a\",\"b\",\"c\"]' yields ['a','b','c']",
+        "Response with preamble text before the array (e.g. 'Sure: [\"a\",\"b\"]') is parsed via _extract_first_json_array helper and yields ['a','b']",
+        "Response wrapped as object {\"topics\":[\"a\",\"b\"]} yields ['a','b'] (find first list value in dict)",
+        "Result list is capped at 5 items (a 7-item response returns 5)",
+        "httpx.TimeoutException, httpx.HTTPError, JSON parse error all return [] and log a warning",
+        "_consecutive_failures starts at 0; increments on any failure; resets to 0 on success",
+        "On the 3rd consecutive failure, logger.warning emits a line containing 'consecutive_failures=3' and 'backend=openrouter'",
+        "uv run pytest tests/test_openrouter_topic_extractor.py exits 0",
+        "uv run ruff check src/openrouter_topic_extractor.py exits 0"
+      ]
+    },
+    {
+      "id": "US-TE-2",
+      "title": "Dual-backend ConversationManager.extract_topics with timing log",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Modify ConversationManager.__init__ to accept optional topic_extractor=None. When provided, extract_topics routes to topic_extractor.extract_topics(prompt) directly (skips Claude path entirely). Always emit a [TOPIC EXTRACT backend=... ms=N topics=M] log line.",
+      "acceptanceCriteria": [
+        "ConversationManager.__init__ has new optional kwarg: topic_extractor: OpenRouterTopicExtractorCLI | None = None (stored as self._topic_extractor)",
+        "When self._topic_extractor is not None, extract_topics calls await self._topic_extractor.extract_topics(prompt) and returns its result directly without touching self.claude.call_decider",
+        "When self._topic_extractor is None, the existing Claude call_decider path runs unchanged",
+        "Every extract_topics call emits a logger.info line containing 'TOPIC EXTRACT', 'backend=claude' or 'backend=openrouter', 'ms=' and 'topics=' tokens",
+        "Existing tests in tests/test_conversation.py pass without edits when topic_extractor is omitted",
+        "New test in tests/test_conversation.py: passing a mock topic_extractor causes call_decider NOT to be invoked and the extractor's return value to be returned",
+        "New test in tests/test_conversation.py: omitting topic_extractor (default) calls call_decider exactly once",
+        "uv run pytest tests/test_conversation.py exits 0",
+        "uv run ruff check src/conversation.py tests/test_conversation.py exits 0"
+      ]
+    },
+    {
+      "id": "US-TE-3",
+      "title": "Config fields + main.py wiring for opt-in OpenRouter topic backend",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Add 3 config fields immediately after openrouter_timeout_seconds (line 218) preserving the OpenRouter grouping. Wire conditional construction of OpenRouterTopicExtractorCLI in main.py around the existing ConversationManager build site (line 234-237). Default behavior unchanged.",
+      "acceptanceCriteria": [
+        "src/config.py adds: topic_extraction_backend: str = 'claude'",
+        "src/config.py adds: topic_extraction_openrouter_model: str = 'google/gemini-2.0-flash-exp:free'",
+        "src/config.py adds: topic_extraction_openrouter_timeout_seconds: float = 5.0",
+        "All three fields are inserted immediately AFTER the existing openrouter_timeout_seconds field (currently line 218); not between topic_extraction_enabled and openrouter_api_key",
+        "src/main.py builds OpenRouterTopicExtractorCLI only when settings.topic_extraction_backend == 'openrouter' AND settings.openrouter_api_key is truthy; otherwise topic_extractor is None",
+        "If topic_extraction_backend == 'openrouter' but openrouter_api_key is missing, main.py logs a warning and falls back to None (Claude path)",
+        "ConversationManager constructor call passes topic_extractor=topic_extractor (kwarg)",
+        "Default path: with no config changes (settings.topic_extraction_backend == 'claude'), no OpenRouterTopicExtractorCLI is constructed",
+        "tests/test_config.py asserts the three new fields exist with the documented defaults",
+        "Existing tests/test_main_cli.py and tests/test_main.py pass without edits",
+        "uv run pytest tests/test_config.py tests/test_main.py tests/test_main_cli.py exits 0",
+        "uv run ruff check src/config.py src/main.py tests/test_config.py exits 0"
+      ]
+    },
+    {
+      "id": "US-TE-4",
+      "title": "Full regression — make test + ruff clean + plan acceptance criteria all met",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Final verification gate. Full test suite passes, ruff clean, every acceptance criterion from each prior story is verified by reading the actual file diffs and test output.",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 with all tests passing (existing + new)",
+        "uv run ruff check src/ tests/ exits 0",
+        "uv run python -c 'from src.openrouter_topic_extractor import OpenRouterTopicExtractorCLI; print(OpenRouterTopicExtractorCLI.__name__)' prints OpenRouterTopicExtractorCLI",
+        "uv run python -c 'from src.config import Settings; s=Settings(); print(s.topic_extraction_backend, s.topic_extraction_openrouter_model, s.topic_extraction_openrouter_timeout_seconds)' prints 'claude google/gemini-2.0-flash-exp:free 5.0'",
+        "grep -n 'topic_extractor' src/conversation.py shows the dual-backend route",
+        "grep -n 'TOPIC EXTRACT backend=' src/conversation.py shows the timing log line",
+        ".omc/progress.txt records implementation details, files changed, design decisions, and learnings"
+      ]
+    }
+  ]
+}

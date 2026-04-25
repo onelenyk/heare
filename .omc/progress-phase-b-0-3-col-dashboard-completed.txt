@@ -1,0 +1,106 @@
+# Phase B-0 — Three-column Observability Dashboard
+
+PRD: .omc/prd.json
+Source plan: .omc/research/intent-action.md (D9)
+Implementation date: 2026-04-18
+
+## Stories implemented
+
+### US-B0-01 — Intent carries decision_id + transcript_id
+- src/actions.py: Intent dataclass gains `decision_id: int | None = None` and
+  `transcript_id: int | None = None` defaults.
+- IntentQueue.submit now takes keyword-only args `decision_id` / `transcript_id`,
+  forwards both onto the Intent.
+- tests/test_actions.py: two new unit tests (round-trip + defaults).
+
+### US-B0-02 — Generator persists speak / act decisions
+- src/generator.py:
+  - `_handle_transcription` captures `transcript_id` returned by `log_transcript`.
+  - `_push_tts(text, transcript_id)` writes a `{type:'speak', reply:scrubbed}`
+    decisions row via a new `_log_spoken_decision` helper.
+  - `_submit_intent(payload, transcript_id)` first calls `log_decision(
+    {type:'act', intent:tool, action:{tool,args}})`, captures the returned
+    decision_id, and forwards it into `IntentQueue.submit`.
+  - Call sites in the streaming loop pass `transcript_id` through.
+- tests/test_generator.py: three new tests seed a real TranscriptStore and
+  assert speak/act rows + Intent.decision_id correlation. Legacy no-store path
+  still works.
+
+### US-B0-03 — Action callbacks persist outcome rows and speech
+- src/main.py:
+  - Module-level `_persist_action_outcome(store, intent, status, spoken)` helper:
+    logs an `actions` row (if `decision_id` is set) and a `decisions` row of
+    type 'speak' (so the action result appears in the "Heare said" column).
+  - `_on_action_result` → status='ok', `_on_action_error` → 'cancelled' for
+    TimeoutError/CancelledError, 'error' otherwise.
+  - Store failures swallowed (logger.exception). `store=None` short-circuits.
+- tests/integration/test_intent_flow.py:
+  - `test_intent_flow_persists_full_turn_to_store` drives the full pipeline
+    against a real sqlite DB and asserts: 1 transcript, ≥3 decisions (speak
+    reply + act intent + speak result), 1 action with status='ok' and the
+    expected `result_summary`, plus that the action's decision_id points at
+    the act row.
+  - Two unit tests for the helper: tolerates missing decision_id, no-op when
+    store=None.
+
+### US-B0-04 — Watch dashboard 3-column body
+- src/watch.py:
+  - Replaced `_transcripts_table` + `_decisions_table` + `_actions_table` +
+    `_heartbeats_table` with three focused helpers: `_you_table`, `_said_table`,
+    `_did_table`.
+  - `_did_table` joins `actions` with `decisions` via `decision_id` to surface
+    the tool label alongside status and result.
+  - `_build_layout` now splits the body into three named columns
+    (`you` / `said` / `did`).
+  - Progress panel + log tail + header unchanged.
+- tests/test_watch.py: five new tests seed synthetic rows and assert column
+  contents, join behavior, layout names, empty-db placeholders.
+
+### US-B0-05 — Regression + lint
+- `uv run pytest tests/` → 583 passed (was 570 before Phase B-0; +13 new
+  tests across test_actions/test_generator/test_watch/test_intent_flow).
+  Only warning is the pre-existing GroqSTTService deprecation.
+- `uv run ruff check src/ tests/` → All checks passed.
+
+## Files touched
+- src/actions.py
+- src/generator.py
+- src/main.py
+- src/watch.py
+- tests/test_actions.py
+- tests/test_generator.py
+- tests/test_watch.py
+- tests/integration/test_intent_flow.py
+
+## Learnings
+
+1. `decisions.id` is the bridge between generator-emitted intents and
+   action-worker outcomes. Carry it via the Intent dataclass rather than a
+   side channel — keeps the callback contract obvious.
+2. The `decisions` schema already had the right columns (`type`, `reply`,
+   `intent`, `action_json`) for repurposing without migration. Future cleanup
+   could rename the table to `events_legacy` but that is not necessary for B-0.
+3. `log_action` requires `decision_id NOT NULL`. If the Intent was submitted
+   without a store (legacy path) the callback safely skips the action row
+   insert rather than crashing.
+4. Emoji in rich.Table titles renders as two display cols but zero logical
+   width; keep titles short or the column headers wrap awkwardly on 80-col
+   terminals.
+
+## How to live-verify
+
+```
+uv run python -m src.main start          # start daemon
+uv run python -m src.main watch          # open dashboard in another terminal
+# Speak: "запусти echo hello"
+# Expect:
+#   🧑 You column: new row with your transcript
+#   🗣️ Heare said column: reply text, then the action summary
+#   ⚙️ Heare did column: ok | bash | ran: echo hello
+```
+
+## Not changed in this phase
+- Generator prompt hardening (D1) — Phase B.
+- Tool allowlist (D5) — Phase B.
+- Confirmation gate (D4) — Phase C.
+- SDK split for decider vs action (D6) — Phase D.

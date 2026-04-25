@@ -122,6 +122,73 @@ async def test_extract_topics_handles_parse_error(store: TranscriptStore, fake_c
     assert len(topics) == 0
 
 
+class FakeTopicExtractor:
+    """Minimal fake matching the OpenRouterTopicExtractorCLI interface."""
+
+    def __init__(self, return_value: list[str] | None = None) -> None:
+        self._return_value = return_value or []
+        self.extract_topics = AsyncMock(return_value=self._return_value)
+
+
+async def test_extract_topics_uses_extractor_when_injected(
+    store: TranscriptStore, fake_claude: FakeClaudeCLI
+) -> None:
+    """When topic_extractor is provided, the OpenRouter path runs and call_decider is NOT invoked."""
+    extractor = FakeTopicExtractor(return_value=["alpha", "beta", "gamma"])
+    manager = ConversationManager(store, fake_claude, topic_extractor=extractor)
+
+    topics = await manager.extract_topics("some text")
+
+    assert topics == ["alpha", "beta", "gamma"]
+    assert extractor.extract_topics.await_count == 1
+    assert fake_claude.call_decider.await_count == 0
+
+
+async def test_extract_topics_uses_claude_when_no_extractor(
+    store: TranscriptStore, fake_claude: FakeClaudeCLI
+) -> None:
+    """When topic_extractor is None (default), the Claude path runs."""
+    fake_claude.call_decider = AsyncMock(return_value='["x","y"]')
+    manager = ConversationManager(store, fake_claude)  # no topic_extractor
+
+    topics = await manager.extract_topics("some text")
+
+    assert topics == ["x", "y"]
+    assert fake_claude.call_decider.await_count == 1
+
+
+async def test_extract_topics_emits_timing_log_openrouter(
+    store: TranscriptStore, fake_claude: FakeClaudeCLI, caplog: pytest.LogCaptureFixture
+) -> None:
+    """OpenRouter path emits a TOPIC EXTRACT backend=openrouter log line."""
+    import logging
+
+    extractor = FakeTopicExtractor(return_value=["a", "b"])
+    manager = ConversationManager(store, fake_claude, topic_extractor=extractor)
+    with caplog.at_level(logging.INFO, logger="heare.conversation"):
+        await manager.extract_topics("text")
+    assert any(
+        "TOPIC EXTRACT backend=openrouter" in rec.getMessage()
+        for rec in caplog.records
+    )
+
+
+async def test_extract_topics_emits_timing_log_claude(
+    store: TranscriptStore, fake_claude: FakeClaudeCLI, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Claude path emits a TOPIC EXTRACT backend=claude log line."""
+    import logging
+
+    fake_claude.call_decider = AsyncMock(return_value='["a"]')
+    manager = ConversationManager(store, fake_claude)
+    with caplog.at_level(logging.INFO, logger="heare.conversation"):
+        await manager.extract_topics("text")
+    assert any(
+        "TOPIC EXTRACT backend=claude" in rec.getMessage()
+        for rec in caplog.records
+    )
+
+
 async def test_update_summary_merges_topics(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
     """Test that update_summary merges topics into conversation."""
     # Create a conversation

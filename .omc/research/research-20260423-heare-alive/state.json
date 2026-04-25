@@ -1,0 +1,32 @@
+{
+  "id": "research-20260423-heare-alive",
+  "goal": "Deep research: how to make heare (voice-first ambient agent) feel more 'alive' and powerful — perception, embodiment, closed-loop execution, memory, multi-channel output, safety, code quality, proactive triggers, local stack, voice UX, ecosystem, prior art, latency.",
+  "status": "complete",
+  "mode": "standard",
+  "iteration": 1,
+  "maxIterations": 10,
+  "stages": [
+    {"id": 1, "name": "Perception — screen/app/terminal/clipboard awareness on macOS", "tier": "MEDIUM", "status": "complete", "findings": 12, "findingsFile": "stages/stage-1.md"},
+    {"id": 2, "name": "Terminal embodiment — tmux/PTY/iTerm control", "tier": "MEDIUM", "status": "complete", "findings": 12, "findingsFile": "stages/stage-2.md"},
+    {"id": 3, "name": "Closed-loop execution — ReAct, self-verify, undo, dynamic chaining", "tier": "HIGH", "status": "complete", "findings": 14, "findingsFile": "stages/stage-3.md"},
+    {"id": 4, "name": "Memory & persona evolution — auto-memory, preferences, mood model", "tier": "MEDIUM", "status": "complete", "findings": 11, "findingsFile": "stages/stage-4.md"},
+    {"id": 5, "name": "Multi-channel output — Telegram/notifications/dashboard/vision", "tier": "MEDIUM", "status": "complete", "findings": 12, "findingsFile": "stages/stage-5.md"},
+    {"id": 6, "name": "Safety & policy — sandboxing, dry-run, diff preview, scope rules, audit", "tier": "HIGH", "status": "complete", "findings": 14, "findingsFile": "stages/stage-6.md"},
+    {"id": 7, "name": "Anti-slop pass — concrete removal/refactor list from current code", "tier": "MEDIUM", "status": "complete", "findings": 20, "findingsFile": "stages/stage-7.md"},
+    {"id": 8, "name": "Proactive triggers — file watches, git events, calendar, ambient audio", "tier": "MEDIUM", "status": "complete", "findings": 13, "findingsFile": "stages/stage-8.md"},
+    {"id": 9, "name": "Local/offline stack — whisper.cpp, local LLM, local TTS, fallback design", "tier": "MEDIUM", "status": "complete", "findings": 17, "findingsFile": "stages/stage-9.md"},
+    {"id": 10, "name": "Voice UX — barge-in, prosody, emotional TTS, voice cloning, non-verbal", "tier": "MEDIUM", "status": "complete", "findings": 12, "findingsFile": "stages/stage-10.md"},
+    {"id": 11, "name": "Ecosystem — Raycast/Shortcuts/Alfred, git hooks, iOS companion, Apple Watch, HomeKit", "tier": "MEDIUM", "status": "complete", "findings": 13, "findingsFile": "stages/stage-11.md"},
+    {"id": 12, "name": "Prior art — Willow/Rhasspy/Mycroft/Leon/Friend/Bee/Pickle/LLMVM", "tier": "MEDIUM", "status": "complete", "findings": 23, "findingsFile": "stages/stage-12.md"},
+    {"id": 13, "name": "Latency & pipeline performance — Pipecat tuning, streaming, TTFA budget", "tier": "HIGH", "status": "complete", "findings": 14, "findingsFile": "stages/stage-13.md"}
+  ],
+  "totalFindings": 187,
+  "verification": {
+    "status": "passed",
+    "method": "inline cross-validation in report.md — 8 tensions identified and resolved across stages",
+    "completedAt": "2026-04-23T01:20:00Z"
+  },
+  "report": "report.md",
+  "createdAt": "2026-04-23T00:00:00Z",
+  "updatedAt": "2026-04-23T01:20:00Z"
+}

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .claude_backend_common import ClaudeBackend
+    from .openrouter_topic_extractor import OpenRouterTopicExtractorCLI
     from .storage import TranscriptStore
 
 
@@ -25,17 +26,27 @@ class ConversationManager:
 
     _ACTION_LOG_MAXLEN = 16
 
-    def __init__(self, store: TranscriptStore, claude_cli: ClaudeBackend) -> None:
+    def __init__(
+        self,
+        store: TranscriptStore,
+        claude_cli: ClaudeBackend,
+        *,
+        topic_extractor: "OpenRouterTopicExtractorCLI | None" = None,
+    ) -> None:
         """Initialize ConversationManager.
 
         Args:
             store: TranscriptStore for database operations
-            claude_cli: ClaudeBackend for topic extraction
+            claude_cli: ClaudeBackend for topic extraction (Claude path; default).
+            topic_extractor: Optional OpenRouter-backed topic extractor. When
+                provided, ``extract_topics`` routes here instead of calling
+                ``claude_cli.call_decider``. Default: None (use Claude path).
         """
         import collections
 
         self.store = store
         self.claude = claude_cli
+        self._topic_extractor = topic_extractor
         self._action_log: collections.deque = collections.deque(
             maxlen=self._ACTION_LOG_MAXLEN
         )
@@ -111,35 +122,53 @@ Text: {text}
 
 Example format: ["weather forecast", "calendar meeting", "code debugging"]"""
 
+        t_start = time.monotonic()
+        backend_name = "openrouter" if self._topic_extractor is not None else "claude"
+        topics: list[str] = []
         try:
-            response = await self.claude.call_decider(prompt)
-            # Parse response - might be JSON or text
-            if isinstance(response, dict):
-                # If it's a dict, look for expected keys
-                if "result" in response:
-                    response_text = response["result"]
+            if self._topic_extractor is not None:
+                topics = await self._topic_extractor.extract_topics(prompt)
+                return topics
+
+            # Claude path
+            try:
+                response = await self.claude.call_decider(prompt)
+                # Parse response - might be JSON or text
+                if isinstance(response, dict):
+                    # If it's a dict, look for expected keys
+                    if "result" in response:
+                        response_text = response["result"]
+                    else:
+                        # Fallback: try to extract from reply field
+                        response_text = response.get("reply", str(response))
                 else:
-                    # Fallback: try to extract from reply field
-                    response_text = response.get("reply", str(response))
-            else:
-                response_text = str(response)
+                    response_text = str(response)
 
-            # Clean up markdown fences if present
-            response_text = response_text.strip()
-            if response_text.startswith("```"):
-                # Remove markdown fence
-                lines = response_text.split("\n")
-                response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else lines[0]
+                # Clean up markdown fences if present
+                response_text = response_text.strip()
+                if response_text.startswith("```"):
+                    # Remove markdown fence
+                    lines = response_text.split("\n")
+                    response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else lines[0]
 
-            # Parse JSON
-            topics = json.loads(response_text)
-            if isinstance(topics, list):
-                return [str(t) for t in topics[:5]]  # Max 5 topics
-            return []
+                # Parse JSON
+                parsed_topics = json.loads(response_text)
+                if isinstance(parsed_topics, list):
+                    topics = [str(t) for t in parsed_topics[:5]]  # Max 5 topics
+                return topics
 
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            logger.warning("Failed to extract topics from text: %s", e)
-            return []
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning("Failed to extract topics from text: %s", e)
+                topics = []
+                return topics
+        finally:
+            elapsed_ms = int((time.monotonic() - t_start) * 1000)
+            logger.info(
+                "[TOPIC EXTRACT backend=%s ms=%d topics=%d]",
+                backend_name,
+                elapsed_ms,
+                len(topics),
+            )
 
     async def update_summary(
         self,

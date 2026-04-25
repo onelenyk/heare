@@ -65,10 +65,9 @@ def test_build_parser_enroll_owner_custom() -> None:
 def test_cmd_enroll_owner_requires_flag_enabled(monkeypatch, capsys) -> None:
     from src.main import _cmd_enroll_owner
 
-    monkeypatch.setattr(
-        "src.main.load_settings",
-        lambda: Settings(),  # speaker_id_enabled defaults to False
-    )
+    disabled = Settings()
+    disabled.speaker_id_enabled = False
+    monkeypatch.setattr("src.main.load_settings", lambda: disabled)
     ns = type("ns", (), {"duration": 15, "label": "owner"})()
     rc = _cmd_enroll_owner(ns)
     assert rc == 1

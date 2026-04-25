@@ -11,7 +11,7 @@ CONTEXT:
 - Entities mentioned: {entities}
 - Recent turns with topics:
 {recent_turns}
-- Last 5 transcripts:
+- Recent transcripts:
 (none)
 
 

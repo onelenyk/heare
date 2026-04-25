@@ -1,0 +1,54 @@
+{
+  "title": "heare Phase B — Prompt hardening + tool allowlist",
+  "version": "1.0.0",
+  "source_plan": ".omc/research/intent-action.md (D1, D5)",
+  "notes": "Two defects from the original research: D1 (generator prompt is underspecified — Gemini Flash Lite guesses wrong args or emits intent for passive mentions like 'gmail.com') and D5 (IntentQueue.submit accepts any tool string, so a bogus tool would silently no-op at the Claude SDK layer). Narrow and concrete — change one prompt file and one queue method.",
+  "stories": [
+    {
+      "id": "US-B-01",
+      "title": "Generator prompt schema + examples + don't-emit rule",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Rewrite the INTENTS section of prompts/generator.txt to (a) declare a strict JSON schema with tool='bash' as the ONLY allowed value, (b) expand the trigger-verb list to cover common Ukrainian imperatives, (c) provide 3 concrete positive examples and 2 negative examples, (d) include an explicit 'if unsure, just speak' fallback rule, and (e) list a short forbidden-commands note (rm -rf, sudo, curl | bash). Do NOT rewrite the rest of the template; keep existing placeholders and reply rules intact.",
+      "acceptanceCriteria": [
+        "prompts/generator.txt still contains all existing placeholders: {persona}, {time}, {timezone}, {recent_transcripts}, {conversation_summary}, {active_topics}, {entities}, {recent_turns}, {recent_actions}, {transcript}. Test asserts exact placeholder set.",
+        "prompts/generator.txt contains the string 'tool' and the string '\"bash\"' — a strict schema block that names bash as the sole allowed tool.",
+        "prompts/generator.txt contains at least 3 positive intent examples (different commands like echo, ls/pwd, open -a) and at least 2 negative examples (user utterance that should NOT produce an intent — e.g. 'gmail.com' alone or 'хочу відкрити щось').",
+        "prompts/generator.txt contains a 'якщо не впевнений — не додавай intent' (or equivalent Ukrainian phrase) fallback rule.",
+        "prompts/generator.txt contains a forbidden-patterns warning mentioning at least 'rm -rf' and 'sudo' — model must refuse / speak instead.",
+        "New test in tests/test_generator_prompt.py asserts each of the above (5 assertions).",
+        "test_template_has_exactly_expected_placeholders keeps passing — no placeholders added or removed."
+      ]
+    },
+    {
+      "id": "US-B-02",
+      "title": "IntentQueue enforces tool allowlist and args length",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "IntentQueue.submit currently accepts any non-empty tool string and any args length. Add: tool must be in ALLOWED_TOOLS = {'bash'}; args length must be <= MAX_ARGS_LEN = 2000. Rejections log a specific warning and return None (same as current queue-full rejection path).",
+      "acceptanceCriteria": [
+        "src/actions.py defines module-level ALLOWED_TOOLS: set[str] = {'bash'} and MAX_ARGS_LEN: int = 2000.",
+        "IntentQueue.submit rejects payloads whose tool is not in ALLOWED_TOOLS with a '[INTENT REJECTED — tool not allowed tool=X]' warning and returns None.",
+        "IntentQueue.submit rejects payloads whose args exceed MAX_ARGS_LEN with a '[INTENT REJECTED — args too long len=N]' warning and returns None.",
+        "Empty-tool rejection keeps its existing warning text for backward compat.",
+        "New unit tests in tests/test_actions.py: (a) non-allowed tool returns None + warning, (b) args too long returns None + warning, (c) bash + short args still accepted (smoke test). Use caplog at WARNING level.",
+        "Existing action tests still pass (all submit calls use tool='bash' with short args)."
+      ]
+    },
+    {
+      "id": "US-B-03",
+      "title": "Regression + lint green",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Full suite + ruff after Phase B changes.",
+      "acceptanceCriteria": [
+        "uv run pytest tests/ exits 0 with zero failures.",
+        "uv run ruff check src/ tests/ exits 0.",
+        "progress.txt records files touched, learnings, and a live-verify note for each of the two known-bad scenarios (gmail.com utterance does NOT emit intent; 'Відкрий Google Chrome' either emits correct args OR speaks without intent)."
+      ]
+    }
+  ]
+}
