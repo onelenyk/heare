@@ -133,6 +133,45 @@ class ConversationManager:
             ts=ts,
         )
 
+    def record_action_cancelled(self, intent_id: int, tool: str = "", args: str = "") -> None:
+        """CCS-05a: mark an intent as cancelled in the action log.
+
+        Updates the in-memory deque entry (if present) AND fires a
+        write-through UPSERT to ``actions.status='cancelled'``. When no
+        matching pending entry exists (e.g. drained-without-record path),
+        a fresh row is appended. Tool/args are best-effort metadata so the
+        cancelled row remains traceable.
+        """
+        ts = time.time()
+        for entry in self._action_log:
+            if entry["id"] == intent_id and entry["status"] == "pending":
+                entry["status"] = "cancelled"
+                entry["ts"] = ts
+                self._schedule_persist(
+                    intent_id=intent_id,
+                    tool=entry.get("tool", "") or tool,
+                    args=entry.get("args", "") or args,
+                    status="cancelled",
+                    result=None,
+                    ts=ts,
+                )
+                return
+        self._action_log.append({
+            "id": intent_id,
+            "tool": tool,
+            "args": args,
+            "status": "cancelled",
+            "ts": ts,
+        })
+        self._schedule_persist(
+            intent_id=intent_id,
+            tool=tool,
+            args=args,
+            status="cancelled",
+            result=None,
+            ts=ts,
+        )
+
     def record_action_error(self, intent_id: int, error: str) -> None:
         ts = time.time()
         for entry in self._action_log:

@@ -233,6 +233,22 @@ class Settings:
     # treat as refinable (vs. issuing a fresh search). MUST be <=
     # conversation_idle_seconds — see __post_init__ assertion.
     refinement_recency_seconds: float = 600.0
+    # CCS-05a: stop-word vocabulary for the decider's pre-generator cancel
+    # fast-path. When the user utters a STANDALONE imperative containing
+    # one of these words (≤4 words, optional politeness markers), the
+    # decider calls IntentQueue.cancel_active() before invoking the LLM.
+    # Extensible at runtime via the HEARE_CANCEL_STOP_WORDS env var
+    # (comma-separated). See src/decider.py:_is_standalone_cancel_imperative.
+    # AC#1 lists the canonical en+uk+ru roots ("stop", "cancel", "halt",
+    # "відміни", "отмени"). AC#5 also requires "будь ласка стоп" to fire,
+    # which means "стоп" — the bare Cyrillic transliteration of "stop" —
+    # must also be a stop-word. Including it here keeps both ACs satisfied
+    # without test-only env overrides.
+    cancel_stop_words: list[str] = field(
+        default_factory=lambda: [
+            "stop", "cancel", "halt", "відміни", "отмени", "стоп",
+        ]
+    )
     # Phase 1/2.1 — generator pipeline via OpenRouter.
     openrouter_api_key: str | None = None
     openrouter_model: str = "google/gemini-3.1-flash-lite-preview-20260303"
@@ -361,6 +377,15 @@ def load_settings() -> Settings:
     settings.groq_api_key = os.environ.get("GROQ_API_KEY")
     settings.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
     settings.serper_api_key = os.environ.get("SERPER_API_KEY")
+
+    # CCS-05a: env override for cancel_stop_words (comma-separated). Empty
+    # tokens are dropped; surrounding whitespace stripped; case preserved
+    # (the detector lowercases at match time).
+    cancel_words_env = os.environ.get("HEARE_CANCEL_STOP_WORDS")
+    if cancel_words_env is not None:
+        parsed = [w.strip() for w in cancel_words_env.split(",") if w.strip()]
+        if parsed:
+            settings.cancel_stop_words = parsed
 
     mode_override = os.environ.get("HEARE_MODE")
     if mode_override:

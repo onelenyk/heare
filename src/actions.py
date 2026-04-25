@@ -15,7 +15,7 @@ import collections
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from .claude_backend_common import ClaudeBackend
 from .direct_tools import execute_direct, _is_simple_tool
@@ -50,6 +50,13 @@ class IntentQueue:
         self._deque: collections.deque[Intent] = collections.deque()
         self._event = asyncio.Event()
         self._next_id: int = 1
+        # CCS-05a: optional callbacks wired by the daemon at startup.
+        # ``conversation_manager`` exposes record_action_cancelled to mark
+        # drained intents in the action log. ``cancel_in_flight_callback``
+        # is the worker's hook to abort the currently-running action;
+        # Story 5b will replace the stub with real kill paths.
+        self.conversation_manager: Any | None = None
+        self.cancel_in_flight_callback: Callable[[], Awaitable[bool]] | None = None
 
     async def submit(
         self,
@@ -137,6 +144,98 @@ class IntentQueue:
 
     def pending_count(self) -> int:
         return len(self._deque)
+
+    def bind_worker(
+        self, cancel_in_flight: Callable[[], Awaitable[bool]] | None
+    ) -> None:
+        """CCS-05a: register the worker's in-flight cancel hook.
+
+        Called by ActionWorker on construction. Story 5b will provide the
+        real kill semantics; for 5a a None or no-op callable is fine.
+        """
+        self.cancel_in_flight_callback = cancel_in_flight
+
+    def bind_conversation_manager(self, manager: Any | None) -> None:
+        """CCS-05a: register the ConversationManager so cancel_active can
+        update the action log via record_action_cancelled.
+        """
+        self.conversation_manager = manager
+
+    async def cancel_active(self) -> bool:
+        """CCS-05a: drain pending intents and abort any in-flight action.
+
+        Behaviour:
+          * Pops every pending intent from the queue. For each, marks
+            ``status='cancelled'`` in the action log via the bound
+            conversation_manager (if any).
+          * Calls the bound ``cancel_in_flight_callback`` to abort whatever
+            the worker is currently executing. Story 5a leaves this as a
+            stub (Story 5b implements real kill paths). When unbound, logs
+            a debug warning that 5b has not shipped.
+          * Returns True iff anything was cancelled (queued or in-flight).
+            On True, fires IndicationKind.INTENT_CANCELLED exactly once.
+            On False (empty queue + no in-flight), logs debug, fires NO
+            indication, and returns.
+
+        Latency: synchronous deque drain + one optional await on the
+        worker callback + one notify(). Indication.notify() is sync (the
+        facade enqueues the dispatch via call_soon_threadsafe), so the
+        only real await here is the in-flight callback — which is a
+        no-op in 5a.
+        """
+        from .indication import IndicationKind, get_indication
+
+        drained: list[Intent] = []
+        while self._deque:
+            drained.append(self._deque.popleft())
+        # Drained the whole deque; clear the wake event for queue consumers.
+        self._event.clear()
+
+        # Mark each drained intent as cancelled in the action log so the
+        # next-turn context reflects reality. Best-effort — failures are
+        # swallowed so a broken store can't block cancellation.
+        manager = self.conversation_manager
+        if manager is not None:
+            for intent in drained:
+                try:
+                    manager.record_action_cancelled(
+                        intent.id, tool=intent.tool, args=intent.args
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "record_action_cancelled raised for intent id=%d (swallowed)",
+                        intent.id,
+                    )
+
+        in_flight_cancelled = False
+        cb = self.cancel_in_flight_callback
+        if cb is not None:
+            try:
+                in_flight_cancelled = bool(await cb())
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "cancel_in_flight_callback raised (swallowed) — Story 5b "
+                    "will replace this stub with real kill semantics"
+                )
+        else:
+            logger.debug(
+                "cancel_active: no cancel_in_flight_callback bound — "
+                "Story 5b kill paths not yet wired"
+            )
+
+        anything = bool(drained) or in_flight_cancelled
+        if not anything:
+            logger.debug("cancel_active: empty queue + no in-flight; no-op")
+            return False
+
+        ind = get_indication()
+        if ind is not None:
+            ind.notify(
+                IndicationKind.INTENT_CANCELLED,
+                body=f"cancelled {len(drained)} pending"
+                + (" + in-flight" if in_flight_cancelled else ""),
+            )
+        return True
 
 
 OnResult = Callable[[Intent, str, dict], Awaitable[None]]

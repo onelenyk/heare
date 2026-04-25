@@ -427,3 +427,130 @@ async def test_worker_no_kill_method_is_no_op() -> None:
         pass
     assert len(errors) == 1
     assert isinstance(errors[0], asyncio.TimeoutError)
+
+
+# ============================================================================
+# CCS-05a — IntentQueue.cancel_active
+# ============================================================================
+
+
+class _StubManager:
+    """Minimal stand-in for ConversationManager.record_action_cancelled."""
+
+    def __init__(self) -> None:
+        self.cancelled: list[tuple[int, str, str]] = []
+
+    def record_action_cancelled(self, intent_id: int, *, tool: str = "", args: str = "") -> None:
+        self.cancelled.append((intent_id, tool, args))
+
+
+async def test_intent_queue_cancel_active_drains_queue() -> None:
+    """AC: cancel_active() drains the queue and records each intent cancelled."""
+    q = IntentQueue()
+    mgr = _StubManager()
+    q.bind_conversation_manager(mgr)
+    id1 = await q.submit({"tool": "bash", "args": "a"})
+    id2 = await q.submit({"tool": "bash", "args": "b"})
+    id3 = await q.submit({"tool": "bash", "args": "c"})
+    assert q.pending_count() == 3
+
+    cancelled = await q.cancel_active()
+    assert cancelled is True
+    assert q.pending_count() == 0
+    cancelled_ids = sorted(t[0] for t in mgr.cancelled)
+    assert cancelled_ids == sorted([id1, id2, id3])
+
+
+async def test_intent_queue_cancel_active_empty_queue_no_op() -> None:
+    """AC: empty queue + no in-flight → returns False, fires no indication."""
+    from src.indication import (
+        IndicationKind as _IK,
+        Indication as _Ind,
+        set_indication as _set_ind,
+    )
+    from src.config import IndicationSettings as _IS
+    import datetime as _dt
+
+    captured: list[_IK] = []
+
+    class _RB:
+        name = "visual"
+
+        async def fire(self, kind, level, title, body, meta) -> None:
+            captured.append(kind)
+
+        async def aclose(self) -> None:
+            pass
+
+    outside_quiet = _dt.datetime(2026, 4, 24, 12, 0)
+    facade = _Ind(_IS(), [_RB()], wallclock=lambda: outside_quiet)
+    _set_ind(facade)
+    try:
+        q = IntentQueue()
+        result = await q.cancel_active()
+        assert result is False
+        # Yield so any (erroneously) scheduled indication completes.
+        await asyncio.sleep(0.05)
+        assert _IK.INTENT_CANCELLED not in captured
+    finally:
+        _set_ind(None)
+
+
+async def test_intent_queue_cancel_active_fires_indication_when_anything_cancelled() -> None:
+    """AC: indication fires exactly once when at least one intent is drained."""
+    from src.indication import (
+        IndicationKind as _IK,
+        Indication as _Ind,
+        set_indication as _set_ind,
+    )
+    from src.config import IndicationSettings as _IS
+    import datetime as _dt
+
+    captured: list[_IK] = []
+
+    class _RB:
+        name = "visual"
+
+        async def fire(self, kind, level, title, body, meta) -> None:
+            captured.append(kind)
+
+        async def aclose(self) -> None:
+            pass
+
+    outside_quiet = _dt.datetime(2026, 4, 24, 12, 0)
+    facade = _Ind(_IS(), [_RB()], wallclock=lambda: outside_quiet)
+    _set_ind(facade)
+    try:
+        q = IntentQueue()
+        await q.submit({"tool": "bash", "args": "a"})
+        result = await q.cancel_active()
+        assert result is True
+        for _ in range(10):
+            await asyncio.sleep(0.02)
+            if _IK.INTENT_CANCELLED in captured:
+                break
+        assert captured.count(_IK.INTENT_CANCELLED) == 1
+    finally:
+        _set_ind(None)
+
+
+async def test_intent_queue_cancel_active_calls_worker_in_flight_stub() -> None:
+    """AC: bound cancel_in_flight callback is invoked by cancel_active.
+
+    Story 5b will provide the real kill semantics; for 5a the worker stub
+    just needs to receive the call.
+    """
+    q = IntentQueue()
+    calls: list[bool] = []
+
+    async def _cancel_in_flight() -> bool:
+        calls.append(True)
+        return True
+
+    q.bind_worker(_cancel_in_flight)
+    # Empty queue + worker reports True for in-flight cancellation:
+    # cancel_active should still return True and invoke the stub.
+    result = await q.cancel_active()
+    assert calls == [True]
+    assert result is True
+

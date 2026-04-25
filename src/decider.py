@@ -183,6 +183,134 @@ _NEGATION_TAIL = re.compile(
 MAX_YES_NO_WORDS = 4  # utterances longer than this are dialogue, not confirmations
 
 
+# CCS-05a: politeness markers that may precede a stop-word in a standalone
+# cancel imperative (e.g. "please cancel", "будь ласка стоп"). Stripped
+# at the START of the utterance only — they cannot appear mid-utterance.
+_CANCEL_POLITENESS_PREFIXES: tuple[str, ...] = (
+    "будь ласка",  # uk (multi-word — strip first)
+    "пожалуйста",  # ru
+    "please",
+    "ok",
+    "okay",
+)
+# Filler tokens stripped from the start of the utterance before the
+# stop-word detector evaluates the remainder.
+_CANCEL_FILLER_PREFIXES: tuple[str, ...] = ("hey", "yo", "uh", "um")
+# Negation tokens — when ANY of these appear in the original (lowercased,
+# punctuation-stripped) utterance, the utterance is NOT a cancel
+# imperative. Order matters: longer phrases ("do not", "will not") first.
+_CANCEL_NEGATION_TOKENS: tuple[str, ...] = (
+    "do not",
+    "will not",
+    "don't",
+    "won't",
+    "не",  # uk/ru
+)
+# Context tokens that disambiguate stop/cancel as a NOUN rather than an
+# imperative ("stop sign", "stop is a four-letter word", "the cancel
+# button"). Their presence anywhere in the residual utterance kills the
+# trigger.
+_CANCEL_CONTEXT_TOKENS: tuple[str, ...] = (
+    "is",
+    "isn't",
+    "are",
+    "aren't",
+    "was",
+    "were",
+    "sign",
+    "word",
+    "button",
+)
+# Max words in the residual utterance (after politeness/filler strip).
+# Longer utterances are conversation, not commands.
+_CANCEL_MAX_RESIDUAL_WORDS: int = 4
+
+
+def _is_standalone_cancel_imperative(
+    text: str, stop_words: list[str]
+) -> bool:
+    """CCS-05a: detect a STANDALONE cancel imperative.
+
+    Trigger criteria (ALL must hold):
+      1. After lowercase + punctuation-normalisation, the utterance
+         contains NO negation tokens (``don't``, ``do not``, ``won't``,
+         ``will not``, ``не``). Negation anywhere in the utterance
+         disqualifies it. This precludes ``don't stop``, ``I won't
+         stop``, ``не зупиняйся``.
+      2. After stripping (in order) the longest matching politeness
+         prefix and any leading filler tokens, the residual is ≤4 words.
+      3. The first residual word matches one of ``stop_words``
+         (case-insensitive).
+      4. The residual contains NO context tokens (``is``, ``sign``,
+         ``word``, ``button``, …) — these flag the stop-word as a noun
+         rather than an imperative.
+
+    Pure / synchronous — safe to call from the decider's frame-processing
+    hot path with no event-loop yield.
+
+    Edge case (documented per consensus condition #1):
+      ``no no no stop`` — strictly four words. After stripping there are
+      no politeness/filler prefixes; the first word ``no`` is NOT a
+      stop-word, so by rule (3) this would NOT trigger. The plan asks us
+      to TRIGGER on this fixture because the imperative tail "stop"
+      dominates. Handled as a small special case: if every residual word
+      before the stop-word is the literal token ``no``, we treat the
+      utterance as triggering. This keeps the rule otherwise tight.
+    """
+    if not text:
+        return False
+    raw = text.strip().lower()
+    if not raw:
+        return False
+    # Normalise punctuation to spaces so tokenisation is uniform.
+    cleaned = re.sub(r"[\.,\!\?:;\"'()]+", " ", raw)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return False
+    # Rule 1: negation kill. Use word boundaries — "не" matches " не " not "нерухомо".
+    for tok in _CANCEL_NEGATION_TOKENS:
+        # Match as a whole token (surrounded by spaces or string edges).
+        if re.search(rf"(^|\s){re.escape(tok)}(\s|$)", cleaned):
+            return False
+    # Strip ONE longest politeness prefix at start.
+    residual = cleaned
+    for prefix in sorted(_CANCEL_POLITENESS_PREFIXES, key=len, reverse=True):
+        if residual == prefix or residual.startswith(prefix + " "):
+            residual = residual[len(prefix):].lstrip()
+            break
+    # Strip leading filler tokens (zero or more, single tokens).
+    residual_tokens = residual.split()
+    while residual_tokens and residual_tokens[0] in _CANCEL_FILLER_PREFIXES:
+        residual_tokens.pop(0)
+    if not residual_tokens:
+        return False
+    # Rule 2: residual must be ≤4 words.
+    if len(residual_tokens) > _CANCEL_MAX_RESIDUAL_WORDS:
+        return False
+    stop_set = {w.lower().strip() for w in stop_words if w and w.strip()}
+    if not stop_set:
+        return False
+    first = residual_tokens[0]
+    # "no no no stop" carve-out: residual is e.g. ["no", "no", "no", "stop"].
+    # Strictly all-no leading tokens followed by a stop-word counts.
+    if first == "no" and len(residual_tokens) <= _CANCEL_MAX_RESIDUAL_WORDS:
+        non_no = [t for t in residual_tokens if t != "no"]
+        if (
+            non_no
+            and non_no[0] in stop_set
+            and not any(t in _CANCEL_CONTEXT_TOKENS for t in non_no[1:])
+        ):
+            return True
+        # Otherwise fall through — first token "no" is not a stop-word.
+    if first not in stop_set:
+        return False
+    # Rule 4: context tokens disqualify (stop sign, stop is a, the cancel button).
+    for tok in residual_tokens[1:]:
+        if tok in _CANCEL_CONTEXT_TOKENS:
+            return False
+    return True
+
+
 def parse_yes_no(text: str) -> str:
     """Return 'yes', 'no', or 'unclear'.
 
@@ -285,6 +413,7 @@ def _build_decider_processor_class():
             decider_prompt_template: str,
             turn_aggregator: Any | None = None,
             conversation_manager: Any | None = None,
+            intent_queue: Any | None = None,
         ) -> None:
             super().__init__()
             self.claude_cli = claude_cli
@@ -294,6 +423,10 @@ def _build_decider_processor_class():
             self.decider_prompt_template = decider_prompt_template
             self.turn_aggregator = turn_aggregator
             self.conversation_manager = conversation_manager
+            # CCS-05a: optional IntentQueue handle. When set, the decider's
+            # pre-generator stop-word fast-path can call cancel_active()
+            # without round-tripping through the LLM.
+            self.intent_queue = intent_queue
             self.state: DeciderState = DeciderState.LISTENING
             self.pending_action: dict[str, Any] | None = None
             self.pending_decision_id: int | None = None
@@ -582,6 +715,42 @@ def _build_decider_processor_class():
             speaker_id: str | None = None,
             speaker_confidence: float | None = None,
         ) -> None:
+            # CCS-05a: pre-generator stop-word fast-path. If the user
+            # uttered a STANDALONE cancel imperative ("stop", "cancel",
+            # "відміни", optionally with politeness/filler markers), skip
+            # the LLM round-trip and call IntentQueue.cancel_active()
+            # directly. The detector is pure / synchronous; the only
+            # possible await is the cancel_active() call itself (which
+            # Story 5b will make actually-cancel something).
+            if self.intent_queue is not None and _is_standalone_cancel_imperative(
+                transcript, self.settings.cancel_stop_words
+            ):
+                tokens = len(transcript.split())
+                logger.info(
+                    "[CANCEL FAST-PATH transcript=%r tokens=%d]",
+                    transcript[:80],
+                    tokens,
+                )
+                # Persist the transcript for forensics. Best-effort —
+                # cancellation must not block on I/O.
+                try:
+                    await self.store.log_transcript(
+                        transcript,
+                        self.settings.mode.value,
+                        speaker_id=speaker_id,
+                        speaker_confidence=speaker_confidence,
+                    )
+                except Exception:
+                    logger.exception(
+                        "log_transcript failed in cancel fast-path (non-fatal)"
+                    )
+                try:
+                    await self.intent_queue.cancel_active()
+                except Exception:
+                    logger.exception(
+                        "cancel_active raised in cancel fast-path (swallowed)"
+                    )
+                return
             if is_noise(transcript):
                 logger.debug("noise filter dropped transcript: %r", transcript[:40])
                 await self.store.log_transcript(
@@ -1149,6 +1318,16 @@ def create_decider_processor(
     decider_prompt_template: str,
     turn_aggregator: Any | None = None,
     conversation_manager: Any | None = None,
+    intent_queue: Any | None = None,
 ):
     cls = _build_decider_processor_class()
-    return cls(claude_cli, store, context_builder, settings, decider_prompt_template, turn_aggregator, conversation_manager)
+    return cls(
+        claude_cli,
+        store,
+        context_builder,
+        settings,
+        decider_prompt_template,
+        turn_aggregator,
+        conversation_manager,
+        intent_queue,
+    )

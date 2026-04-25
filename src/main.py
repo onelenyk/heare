@@ -317,6 +317,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             from .actions import ActionWorker, Intent, IntentQueue
 
             intent_queue = IntentQueue(max_pending=settings.intent_queue_max_pending)
+            # CCS-05a: bind the conversation_manager so cancel_active() can
+            # mark drained intents as cancelled in the action log. Story 5b
+            # will additionally bind a worker cancel_in_flight callback.
+            if conversation_manager is not None:
+                intent_queue.bind_conversation_manager(conversation_manager)
 
             # Acoustic diarization + LLM identity-inference subsystem. All
             # gates are conservative: any missing piece leaves the

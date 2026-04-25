@@ -2075,3 +2075,215 @@ async def test_confirm_during_warning_fire_race_fuzz(harness, ccs03_facade) -> N
         f"race-guard ineffective: only {race_zero_count}/{iterations} "
         f"iterations suppressed CONFIRMATION_DEADLINE on boundary cancel"
     )
+
+
+# ============================================================================
+# CCS-05a — cancel signal origin: decider fast-path BEFORE generator
+# ============================================================================
+
+
+def _load_cancel_fixtures() -> tuple[list[str], list[str]]:
+    """Load TRIGGER + NO-TRIGGER utterances from tests/fixtures/cancel_stopwords.txt."""
+    fixture_path = Path(__file__).parent / "fixtures" / "cancel_stopwords.txt"
+    triggers: list[str] = []
+    no_triggers: list[str] = []
+    for line in fixture_path.read_text(encoding="utf-8").splitlines():
+        if not line or line.lstrip().startswith("#"):
+            continue
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        verdict, utt = parts[0].strip(), parts[1].strip()
+        if verdict == "TRIGGER":
+            triggers.append(utt)
+        elif verdict == "NO-TRIGGER":
+            no_triggers.append(utt)
+    return triggers, no_triggers
+
+
+_CCS05A_TRIGGERS, _CCS05A_NO_TRIGGERS = _load_cancel_fixtures()
+
+
+@pytest.mark.parametrize("utterance", _CCS05A_TRIGGERS)
+def test_standalone_cancel_imperative_triggers_for_stop_words(utterance: str) -> None:
+    """AC: stop-word fixtures (en/uk/ru) trigger the standalone-imperative detector."""
+    from src.decider import _is_standalone_cancel_imperative
+    from src.config import Settings as _S
+
+    settings = _S()
+    assert _is_standalone_cancel_imperative(utterance, settings.cancel_stop_words), (
+        f"expected TRIGGER for {utterance!r}"
+    )
+
+
+@pytest.mark.parametrize("utterance", _CCS05A_NO_TRIGGERS)
+def test_standalone_cancel_imperative_rejects_negations_and_contexts(
+    utterance: str,
+) -> None:
+    """AC: negations and noun-context utterances do NOT trigger."""
+    from src.decider import _is_standalone_cancel_imperative
+    from src.config import Settings as _S
+
+    settings = _S()
+    assert not _is_standalone_cancel_imperative(
+        utterance, settings.cancel_stop_words
+    ), f"expected NO-TRIGGER for {utterance!r}"
+
+
+class _CCS05ASpyQueue:
+    """Minimal async spy implementing the IntentQueue surface the decider
+    fast-path needs (cancel_active). Records each call and returns True
+    unconditionally so we can assert call ordering.
+    """
+
+    def __init__(self) -> None:
+        self.cancel_active_calls: int = 0
+
+    async def cancel_active(self) -> bool:
+        self.cancel_active_calls += 1
+        return True
+
+
+@pytest.mark.asyncio
+async def test_decider_fast_path_calls_cancel_active_before_llm(harness) -> None:
+    """AC: standalone 'stop' transcript triggers cancel_active() and bypasses LLM."""
+    store, settings, ctx = harness
+    cli = FakeClaudeCLI([])  # NO decisions queued — LLM call would IndexError
+    queue = _CCS05ASpyQueue()
+    decider = create_decider_processor(
+        cli, store, ctx, settings, "prompt {mode}", intent_queue=queue
+    )
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+
+    await decider._handle_listening("stop")
+
+    assert queue.cancel_active_calls == 1, (
+        f"cancel_active should fire exactly once; got {queue.cancel_active_calls}"
+    )
+    # Decider must NOT have called the LLM. FakeClaudeCLI tracks call_decider
+    # invocations via the .calls list (set on every call_decider entry).
+    assert cli.calls == [], (
+        f"LLM must be bypassed in fast-path; got calls={cli.calls!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_decider_fast_path_does_not_trigger_for_non_imperative(
+    harness,
+) -> None:
+    """AC: 'don't stop the recording' falls through to normal LLM flow."""
+    store, settings, ctx = harness
+    # Provide a benign "nothing" decision so the LLM path completes cleanly.
+    cli = FakeClaudeCLI([{"type": "nothing", "reason": "ok"}])
+    queue = _CCS05ASpyQueue()
+    decider = create_decider_processor(
+        cli, store, ctx, settings, "prompt {mode}", intent_queue=queue
+    )
+    decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+
+    await decider._handle_listening("don't stop the recording")
+
+    assert queue.cancel_active_calls == 0, (
+        "negation utterance must NOT trigger fast-path"
+    )
+    # is_quick_nothing may have dropped this in ambient (declarative + no
+    # question marker), so the LLM may not be called either. The contract
+    # we care about: cancel_active was NOT called.
+
+
+@pytest.mark.asyncio
+async def test_cancel_stop_words_extensible_via_env(monkeypatch, harness) -> None:
+    """AC#6: HEARE_CANCEL_STOP_WORDS env var extends the stop-word vocabulary."""
+    from src.config import load_settings as _load
+    from src.decider import _is_standalone_cancel_imperative
+
+    monkeypatch.setenv("HEARE_CANCEL_STOP_WORDS", "foo,bar")
+    new_settings = _load()
+    # Env override REPLACES the default list (semantics of comma-list reload).
+    assert "foo" in new_settings.cancel_stop_words
+    assert "bar" in new_settings.cancel_stop_words
+
+    # Standalone "foo" must now trigger.
+    assert _is_standalone_cancel_imperative("foo", new_settings.cancel_stop_words)
+    assert _is_standalone_cancel_imperative(
+        "please bar", new_settings.cancel_stop_words
+    )
+    # And a non-listed legacy stop-word must NOT trigger under the override
+    # (semantics: env var REPLACES the list; this guards the override is
+    # actually exclusive, not additive).
+    assert not _is_standalone_cancel_imperative(
+        "stop", new_settings.cancel_stop_words
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_signal_origin_indication_observable_within_500ms(
+    harness, monkeypatch
+) -> None:
+    """AC: end-to-end 'transcript -> INTENT_CANCELLED indication' observable
+    in a RecordingBackend within 500ms wall-clock.
+    """
+    import asyncio as _aio
+    import datetime as _dt
+    from dataclasses import dataclass, field as _field
+
+    from src.config import IndicationSettings as _IS
+    from src.indication import (
+        Indication as _Indication,
+        IndicationKind as _IK,
+        set_indication as _set_ind,
+    )
+    from src.actions import IntentQueue as _IQ
+
+    @dataclass
+    class _RB:
+        name: str
+        captured: list = _field(default_factory=list)
+
+        async def fire(self, kind, level, title, body, meta) -> None:
+            self.captured.append((kind, level, title, body))
+
+        async def aclose(self) -> None:
+            pass
+
+    sound = _RB(name="sound")
+    visual = _RB(name="visual")
+    notif = _RB(name="notification")
+    settings_ind = _IS()
+    # Pin wallclock outside default 22:00-07:00 quiet hours so notify is
+    # not gated.
+    outside_quiet = _dt.datetime(2026, 4, 24, 12, 0)
+    facade = _Indication(
+        settings_ind, [sound, visual, notif], wallclock=lambda: outside_quiet
+    )
+    _set_ind(facade)
+    try:
+        store, settings, ctx = harness
+        cli = FakeClaudeCLI([])
+        queue = _IQ()
+        # Submit a pending intent so cancel_active has something to drain.
+        await queue.submit({"tool": "bash", "args": "echo hi"})
+
+        decider = create_decider_processor(
+            cli, store, ctx, settings, "prompt {mode}", intent_queue=queue
+        )
+        decider.push_frame = AsyncMock()  # type: ignore[attr-defined]
+
+        t0 = _aio.get_event_loop().time()
+        await decider._handle_listening("stop")
+        # Allow the indication facade's call_soon_threadsafe dispatch to
+        # complete on the loop.
+        for _ in range(20):
+            await _aio.sleep(0.01)
+            if any(c[0] == _IK.INTENT_CANCELLED for c in visual.captured):
+                break
+        elapsed_ms = (_aio.get_event_loop().time() - t0) * 1000
+        assert elapsed_ms < 500, f"end-to-end exceeded 500ms: {elapsed_ms:.0f}"
+        all_captured = sound.captured + visual.captured + notif.captured
+        assert any(c[0] == _IK.INTENT_CANCELLED for c in all_captured), (
+            f"expected INTENT_CANCELLED indication; "
+            f"got {[c[0] for c in all_captured]}"
+        )
+    finally:
+        _set_ind(None)
+
