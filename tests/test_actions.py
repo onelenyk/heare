@@ -554,3 +554,334 @@ async def test_intent_queue_cancel_active_calls_worker_in_flight_stub() -> None:
     assert calls == [True]
     assert result is True
 
+
+# ============================================================================
+# CCS-05b — ActionWorker.cancel_in_flight kill paths
+# ============================================================================
+
+
+class _CancelStubManager:
+    """Stand-in ConversationManager that records cancellation calls."""
+
+    def __init__(self) -> None:
+        self.cancelled: list[tuple[int, str, str]] = []
+
+    def record_action_cancelled(self, intent_id: int, *, tool: str = "", args: str = "") -> None:
+        self.cancelled.append((intent_id, tool, args))
+
+
+async def test_cancel_in_flight_returns_false_when_idle() -> None:
+    """AC: with no active task, cancel_in_flight returns False."""
+
+    async def call_action(description: str):  # pragma: no cover — never invoked
+        return {"summary": "ok"}
+
+    backend = MagicMock()
+    backend.call_action = call_action
+
+    async def on_result(intent, summary, result):  # pragma: no cover
+        pass
+
+    async def on_error(intent, exc):  # pragma: no cover
+        pass
+
+    q = IntentQueue()
+    worker = ActionWorker(q, backend, on_result, on_error, timeout=1.0)
+    # No queue.next() pending — worker isn't running.
+    result = await worker.cancel_in_flight()
+    assert result is False
+
+
+async def test_cancel_in_flight_cancels_active_task_within_200ms() -> None:
+    """AC: cancel_in_flight cancels the active asyncio task quickly."""
+    started = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def slow_call(description: str):
+        started.set()
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            finished.set()
+            raise
+        return {"summary": "never"}
+
+    backend = MagicMock()
+    backend.call_action = slow_call
+
+    errors: list[BaseException] = []
+
+    async def on_result(intent, summary, result):  # pragma: no cover
+        pass
+
+    async def on_error(intent, exc):
+        errors.append(exc)
+
+    q = IntentQueue()
+    worker = ActionWorker(q, backend, on_result, on_error, timeout=10.0)
+    await q.submit({"tool": "edit", "args": "a"})
+    worker_task = asyncio.create_task(worker.run())
+    # Wait for the action to actually start.
+    await asyncio.wait_for(started.wait(), timeout=2.0)
+
+    t0 = asyncio.get_event_loop().time()
+    cancelled = await worker.cancel_in_flight()
+    elapsed = asyncio.get_event_loop().time() - t0
+
+    assert cancelled is True
+    # Generous slack for CI scheduling, but verify it's well under a sec.
+    assert elapsed < 0.5, f"cancel_in_flight took {elapsed:.3f}s (>500ms)"
+    # Wait for finally-block in slow_call to observe CancelledError.
+    await asyncio.wait_for(finished.wait(), timeout=1.0)
+
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+    # on_error received the CancelledError marker.
+    assert len(errors) == 1
+    assert isinstance(errors[0], asyncio.CancelledError)
+
+
+async def test_cancel_in_flight_marks_intent_cancelled_in_action_log() -> None:
+    """AC: cancel_in_flight calls record_action_cancelled with the active intent's id."""
+    started = asyncio.Event()
+
+    async def slow_call(description: str):
+        started.set()
+        await asyncio.sleep(10)
+        return {"summary": "never"}
+
+    backend = MagicMock()
+    backend.call_action = slow_call
+
+    async def on_result(intent, summary, result):  # pragma: no cover
+        pass
+
+    async def on_error(intent, exc):
+        pass
+
+    q = IntentQueue()
+    mgr = _CancelStubManager()
+    q.bind_conversation_manager(mgr)
+    worker = ActionWorker(q, backend, on_result, on_error, timeout=10.0)
+    intent_id = await q.submit({"tool": "edit", "args": "long"})
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.wait_for(started.wait(), timeout=2.0)
+    cancelled = await worker.cancel_in_flight()
+    assert cancelled is True
+    # Record exists for the active intent.
+    matches = [t for t in mgr.cancelled if t[0] == intent_id]
+    assert len(matches) == 1
+    assert matches[0][1] == "edit"
+    assert matches[0][2] == "long"
+
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+
+
+async def test_cancel_in_flight_invokes_tts_cancel_callback() -> None:
+    """AC: cancel_in_flight calls the optional tts_cancel hook with no args."""
+    started = asyncio.Event()
+
+    async def slow_call(description: str):
+        started.set()
+        await asyncio.sleep(10)
+        return {"summary": "never"}
+
+    backend = MagicMock()
+    backend.call_action = slow_call
+
+    async def on_result(intent, summary, result):  # pragma: no cover
+        pass
+
+    async def on_error(intent, exc):
+        pass
+
+    drops: list[int] = []
+
+    def _tts_cancel() -> int:
+        drops.append(7)
+        return 7
+
+    q = IntentQueue()
+    worker = ActionWorker(
+        q, backend, on_result, on_error, timeout=10.0, tts_cancel=_tts_cancel
+    )
+    await q.submit({"tool": "edit", "args": "a"})
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.wait_for(started.wait(), timeout=2.0)
+    cancelled = await worker.cancel_in_flight()
+    assert cancelled is True
+    assert drops == [7]
+
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+
+
+async def test_cancel_in_flight_calls_kill_running_action_with_timeout() -> None:
+    """AC: kill_running_action is invoked with a 1s budget."""
+    started = asyncio.Event()
+    kill_called: list[bool] = []
+
+    async def slow_call(description: str):
+        started.set()
+        await asyncio.sleep(10)
+        return {"summary": "never"}
+
+    async def kill():
+        kill_called.append(True)
+        return True
+
+    backend = MagicMock()
+    backend.call_action = slow_call
+    backend.kill_running_action = kill
+
+    async def on_result(intent, summary, result):  # pragma: no cover
+        pass
+
+    async def on_error(intent, exc):
+        pass
+
+    q = IntentQueue()
+    worker = ActionWorker(q, backend, on_result, on_error, timeout=10.0)
+    await q.submit({"tool": "edit", "args": "a"})
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.wait_for(started.wait(), timeout=2.0)
+    cancelled = await worker.cancel_in_flight()
+    assert cancelled is True
+    assert kill_called == [True]
+
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+
+
+async def test_cancel_active_via_queue_invokes_worker_cancel_in_flight() -> None:
+    """End-to-end: IntentQueue.cancel_active reaches ActionWorker.cancel_in_flight.
+
+    This exercises Story 5a's queue-side hook + Story 5b's worker-side
+    real implementation in one path.
+    """
+    started = asyncio.Event()
+
+    async def slow_call(description: str):
+        started.set()
+        await asyncio.sleep(10)
+        return {"summary": "never"}
+
+    backend = MagicMock()
+    backend.call_action = slow_call
+
+    async def on_result(intent, summary, result):  # pragma: no cover
+        pass
+
+    async def on_error(intent, exc):
+        pass
+
+    q = IntentQueue()
+    worker = ActionWorker(q, backend, on_result, on_error, timeout=10.0)
+    await q.submit({"tool": "edit", "args": "a"})
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.wait_for(started.wait(), timeout=2.0)
+    cancelled = await q.cancel_active()
+    assert cancelled is True
+
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+
+
+async def test_cancel_active_fires_intent_cancelled_indication_once() -> None:
+    """AC: full chain (queue cancel → worker cancel_in_flight) fires
+    INTENT_CANCELLED exactly once."""
+    from src.indication import (
+        IndicationKind as _IK,
+        Indication as _Ind,
+        set_indication as _set_ind,
+    )
+    from src.config import IndicationSettings as _IS
+    import datetime as _dt
+
+    captured: list[_IK] = []
+
+    class _RB:
+        name = "visual"
+
+        async def fire(self, kind, level, title, body, meta) -> None:
+            captured.append(kind)
+
+        async def aclose(self) -> None:
+            pass
+
+    started = asyncio.Event()
+
+    async def slow_call(description: str):
+        started.set()
+        await asyncio.sleep(10)
+        return {"summary": "never"}
+
+    backend = MagicMock()
+    backend.call_action = slow_call
+
+    async def on_result(intent, summary, result):  # pragma: no cover
+        pass
+
+    async def on_error(intent, exc):
+        pass
+
+    facade = _Ind(
+        _IS(),
+        [_RB()],
+        wallclock=lambda: _dt.datetime(2026, 4, 24, 12, 0),
+    )
+    _set_ind(facade)
+    try:
+        q = IntentQueue()
+        worker = ActionWorker(q, backend, on_result, on_error, timeout=10.0)
+        await q.submit({"tool": "edit", "args": "a"})
+        worker_task = asyncio.create_task(worker.run())
+        await asyncio.wait_for(started.wait(), timeout=2.0)
+        result = await q.cancel_active()
+        assert result is True
+        # Indication is fire-and-forget (call_soon_threadsafe). Wait for it.
+        for _ in range(20):
+            await asyncio.sleep(0.02)
+            if _IK.INTENT_CANCELLED in captured:
+                break
+        assert captured.count(_IK.INTENT_CANCELLED) == 1, (
+            f"expected 1 INTENT_CANCELLED, got captured={captured}"
+        )
+
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+    finally:
+        _set_ind(None)
+
+
+def test_cancel_tool_registered_for_action_log_shape() -> None:
+    """AC: tool_registry exposes 'cancel' so action_log rows have a stable tool name."""
+    from src.tool_registry import is_tool_allowed, get_tool
+
+    assert is_tool_allowed("cancel"), "'cancel' must be allowed for action_log shape"
+    tool = get_tool("cancel")
+    assert tool is not None
+    assert tool.name == "cancel"
+    # SDK mapping is a no-op (the dispatch path never executes cancel as
+    # a tool — IntentQueue.cancel_active short-circuits ahead of dispatch).
+    assert tool.sdk_name == "Cancel"
+

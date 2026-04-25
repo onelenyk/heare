@@ -278,6 +278,8 @@ class ActionWorker:
         on_result: OnResult,
         on_error: OnError,
         timeout: float = 120.0,
+        *,
+        tts_cancel: Callable[[], int] | None = None,
     ) -> None:
         self.queue = queue
         self.claude_cli = claude_cli
@@ -285,11 +287,53 @@ class ActionWorker:
         self.on_error = on_error
         self.timeout = timeout
         self._settings = getattr(claude_cli, "settings", None)
+        # CCS-05b: optional callable invoked by ``cancel_in_flight`` to drop
+        # queued/in-flight TTS frames with a 50ms fade-out. Returns the
+        # number of frames dropped. None disables the path (default for
+        # tests that have no TTS service wired).
+        self._tts_cancel = tts_cancel
+        # CCS-05b: bookkeeping for the in-flight cancel hook. ``_active_task``
+        # is the asyncio.Task currently executing one intent in
+        # ``_process_one``; ``_active_intent`` is the intent that task is
+        # processing. Both are None whenever the worker is parked on
+        # ``queue.next()``.
+        self._active_task: asyncio.Task | None = None
+        self._active_intent: Intent | None = None
+        # Auto-bind the queue's in-flight cancel hook so callers that build
+        # a worker manually (tests, future entrypoints) get the wiring
+        # without an extra step. main.py keeps the explicit bind as
+        # defence-in-depth.
+        try:
+            queue.bind_worker(self.cancel_in_flight)
+        except Exception:  # noqa: BLE001 — best-effort wiring
+            logger.exception("queue.bind_worker raised (swallowed)")
 
     async def run(self) -> None:
         while True:
             intent = await self.queue.next()
-            await self._process_one(intent)
+            self._active_intent = intent
+            self._active_task = asyncio.current_task()
+            try:
+                await self._process_one(intent)
+            except asyncio.CancelledError:
+                # cancel_in_flight propagated cancellation into the active
+                # task. Mark the intent cancelled in the action log via
+                # on_error so downstream observers (TTS hint, etc.) still
+                # fire, then keep the worker loop alive — the cancelled
+                # intent is fully unwound here, the next ``await
+                # queue.next()`` resumes normal service.
+                logger.info(
+                    "[ACTION CANCELLED id=%d tool=%s]", intent.id, intent.tool
+                )
+                try:
+                    await self._safe_call_error(intent, asyncio.CancelledError())
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "on_error raised for cancelled intent id=%d", intent.id
+                    )
+            finally:
+                self._active_task = None
+                self._active_intent = None
 
     async def _process_one(self, intent: Intent) -> None:
         from .indication import IndicationKind, get_indication
@@ -324,6 +368,89 @@ class ActionWorker:
         finally:
             if long_running_task is not None and not long_running_task.done():
                 long_running_task.cancel()
+
+    # ------------------------------------------------------------------
+    # CCS-05b — in-flight cancel
+    # ------------------------------------------------------------------
+
+    async def cancel_in_flight(self) -> bool:
+        """Cancel the currently-executing intent if any.
+
+        Story 5b kill-path: cancels the worker's active asyncio task so the
+        ``CancelledError`` propagates into whatever the task is awaiting —
+        bash subprocess.communicate (which calls ``os.killpg`` on its
+        SIGTERM/SIGKILL escalation), httpx requests (which surface the
+        cancellation as ``CancelledError``), or the Claude SDK call (best
+        effort — wrapped in a 1s timeout). Also drops queued/in-flight TTS
+        frames via the bound ``tts_cancel`` callable so the user does not
+        keep hearing an obsolete answer.
+
+        Returns True iff a cancellation was actually issued, i.e. there
+        was an active task to cancel.
+        """
+        active = self._active_task
+        intent = self._active_intent
+        if active is None or active.done():
+            return False
+
+        # Mark the intent as cancelled in the action log first — even if the
+        # task takes a while to finish unwinding, the action log row already
+        # reflects user intent. Best-effort: a missing/None manager just
+        # leaves the row at its prior status.
+        manager = getattr(self.queue, "conversation_manager", None)
+        if manager is not None and intent is not None:
+            try:
+                manager.record_action_cancelled(
+                    intent.id, tool=intent.tool, args=intent.args
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "record_action_cancelled raised for intent id=%d (swallowed)",
+                    intent.id,
+                )
+
+        # Drop queued/in-flight TTS audio with a 50ms fade-out so the user
+        # doesn't continue hearing a stale answer. Best-effort.
+        if self._tts_cancel is not None:
+            try:
+                dropped = self._tts_cancel()
+                logger.info(
+                    "[CANCEL TTS dropped=%s intent_id=%s]",
+                    dropped,
+                    intent.id if intent is not None else "?",
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("tts_cancel raised (swallowed)")
+
+        # Best-effort SDK cancel. The Claude SDK exposes
+        # ``kill_running_action`` for in-flight aborts; honor it with a
+        # 1s timeout so a wedged SDK can't block the cancel path.
+        kill = getattr(self.claude_cli, "kill_running_action", None)
+        if kill is not None:
+            try:
+                await asyncio.wait_for(kill(), timeout=1.0)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "kill_running_action timed out after 1.0s — proceeding"
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("kill_running_action raised (swallowed)")
+
+        # Cancel the asyncio task. CancelledError propagates into the
+        # subprocess.communicate / httpx / SDK await; the bash path catches
+        # it and runs the SIGTERM→SIGKILL escalation via os.killpg before
+        # re-raising.
+        active.cancel()
+
+        # Brief courtesy wait so callers (and tests) see the task actually
+        # unwind. Don't hold the cancel path forever — if the task is
+        # stuck, the bash kill_pg has already fired, and the worker loop's
+        # own CancelledError handler will mark the intent and continue.
+        try:
+            await asyncio.wait_for(asyncio.shield(active), timeout=0.1)
+        except (asyncio.TimeoutError, asyncio.CancelledError, BaseException):
+            pass
+        return True
 
     async def _execute_direct_path(self, intent: Intent) -> None:
         """Fast path: execute simple tool directly without Claude CLI."""

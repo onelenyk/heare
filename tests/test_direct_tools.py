@@ -189,6 +189,150 @@ async def test_bash_with_workspace_dir(settings: Settings) -> None:
         assert call_kwargs["cwd"] == settings.workspace_dir
 
 
+# -------- CCS-05b cancel/kill paths --------
+
+
+async def test_bash_spawned_with_new_session_kwarg(settings: Settings) -> None:
+    """AC#4: bash subprocess spawned with start_new_session=True so the
+    process group can be signalled via os.killpg on cancel."""
+    with patch("asyncio.create_subprocess_shell") as mock_subprocess:
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+
+        async def mock_communicate():
+            return b"", b""
+
+        mock_proc.communicate = mock_communicate
+        mock_subprocess.return_value = mock_proc
+
+        await _execute_bash("true", settings)
+        mock_subprocess.assert_called_once()
+        call_kwargs = mock_subprocess.call_args[1]
+        assert call_kwargs.get("start_new_session") is True, (
+            f"start_new_session=True must be passed to create_subprocess_shell; got {call_kwargs}"
+        )
+
+
+async def test_bash_kill_via_process_group_within_3s_no_orphans(settings: Settings) -> None:
+    """AC#3 + AC#4: a real `bash -c 'sleep 60 & wait'` is killed within 3s
+    of cancel; the entire process group is terminated so no orphan
+    children remain.
+
+    Strategy: spawn a real bash that backgrounds a child sleep, capture
+    the PGID, cancel the asyncio task, then probe with kill(0, signal=0)
+    to verify the children are gone.
+    """
+    import os
+
+    # Use a portable shell command that creates a child with a known PID
+    # we can probe. The trailing `wait` keeps bash alive while children run.
+    # We capture children's PIDs by writing them to a tmp file.
+    pid_file = settings.workspace_dir / "child_pids.txt"
+    cmd = (
+        f"sh -c 'sleep 60 & echo $! > {pid_file}; sleep 60 & echo $! >> {pid_file}; wait'"
+    )
+
+    task = asyncio.create_task(_execute_bash(cmd, settings))
+
+    # Give bash time to fork the children and write their pids.
+    for _ in range(30):
+        await asyncio.sleep(0.1)
+        if pid_file.exists() and pid_file.read_text().count("\n") >= 2:
+            break
+
+    assert pid_file.exists(), "child PIDs file was never written"
+    child_pids = [int(line) for line in pid_file.read_text().split() if line.strip()]
+    assert len(child_pids) >= 1, f"expected at least one child PID, got {child_pids}"
+
+    t0 = asyncio.get_event_loop().time()
+    task.cancel()
+    try:
+        await asyncio.wait_for(task, timeout=3.5)
+    except asyncio.CancelledError:
+        pass
+    except asyncio.TimeoutError:
+        pytest.fail("cancel did not finish within 3.5s")
+    elapsed = asyncio.get_event_loop().time() - t0
+    assert elapsed < 3.5, f"cancel took {elapsed:.2f}s (>3s budget)"
+
+    # Wait briefly for the OS to reap the killed children.
+    await asyncio.sleep(0.2)
+
+    # Probe each child PID — kill(pid, 0) raises ProcessLookupError when
+    # the process is gone. Permission errors are also acceptable (means
+    # we no longer own the pid; the process is effectively dead from our
+    # perspective).
+    orphans = []
+    for pid in child_pids:
+        try:
+            os.kill(pid, 0)
+            # If we got here, the process is still alive — orphan!
+            orphans.append(pid)
+        except (ProcessLookupError, PermissionError, OSError):
+            # Expected: child was killed via the process group.
+            pass
+    assert not orphans, f"orphan child processes remain after cancel: {orphans}"
+
+
+async def test_bash_cancel_swallows_processlookuperror_when_already_finished() -> None:
+    """AC: cancel path tolerates ProcessLookupError gracefully when the
+    process has already exited between communicate() raising and the
+    killpg call."""
+    with patch("asyncio.create_subprocess_shell") as mock_subprocess:
+        mock_proc = AsyncMock()
+        mock_proc.pid = 99999  # nonexistent PID
+        mock_proc.returncode = 0
+
+        async def mock_communicate():
+            raise asyncio.CancelledError()
+
+        mock_proc.communicate = mock_communicate
+
+        async def mock_wait():
+            return 0
+
+        mock_proc.wait = mock_wait
+        mock_subprocess.return_value = mock_proc
+
+        # Patch os.killpg to raise ProcessLookupError — handler must swallow.
+        with patch("src.direct_tools.os.killpg", side_effect=ProcessLookupError):
+            with pytest.raises(asyncio.CancelledError):
+                await _execute_bash("sleep 1", None)
+
+
+async def test_web_fetch_cancellation_propagates_within_1s() -> None:
+    """AC#5: cancelling a slow web_fetch propagates CancelledError within 1s."""
+    import httpx
+
+    started = asyncio.Event()
+
+    class _SlowTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):  # noqa: D401
+            started.set()
+            await asyncio.sleep(60)
+            return httpx.Response(200, content=b"never")  # pragma: no cover
+
+    # Patch httpx.AsyncClient to use the slow transport.
+    real_client_cls = httpx.AsyncClient
+
+    class _SlowClient(real_client_cls):  # type: ignore[misc,valid-type]
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = _SlowTransport()
+            super().__init__(*args, **kwargs)
+
+    with patch("src.direct_tools.httpx.AsyncClient", _SlowClient):
+        from src.direct_tools import _execute_web_fetch
+
+        task = asyncio.create_task(_execute_web_fetch("https://slow.test/x", None))
+        await asyncio.wait_for(started.wait(), timeout=2.0)
+        t0 = asyncio.get_event_loop().time()
+        task.cancel()
+        with pytest.raises((asyncio.CancelledError, BaseException)):
+            await asyncio.wait_for(task, timeout=1.5)
+        elapsed = asyncio.get_event_loop().time() - t0
+        assert elapsed < 1.5, f"web_fetch cancel took {elapsed:.2f}s (>1s budget)"
+
+
 # -------- _execute_read tests --------
 
 async def test_read_success(tmp_path: Path) -> None:

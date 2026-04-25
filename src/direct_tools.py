@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -108,7 +109,13 @@ async def execute_direct(
 
 
 async def _execute_bash(args: str, settings: "Settings | None" = None) -> dict:
-    """Execute a bash command."""
+    """Execute a bash command.
+
+    CCS-05b: spawned with ``start_new_session=True`` so the bash + every
+    child it spawns share a single process group. On cancellation the
+    process group is signalled (SIGTERM, 2s grace, then SIGKILL) via
+    ``os.killpg`` so no orphan child processes survive.
+    """
     import subprocess
 
     workspace = settings.workspace_dir if settings else Path.cwd()
@@ -119,8 +126,30 @@ async def _execute_bash(args: str, settings: "Settings | None" = None) -> dict:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=workspace,
+            start_new_session=True,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await proc.communicate()
+        except asyncio.CancelledError:
+            # CCS-05b: cancel signalled — escalate to the entire process
+            # group so child processes (e.g. ``bash -c 'sleep 60'``'s
+            # sleep) die alongside the bash parent.
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
+                try:
+                    await proc.wait()
+                except BaseException:  # noqa: BLE001 — best-effort drain
+                    pass
+            raise
 
         stdout_str = stdout.decode("utf-8", errors="replace")
         stderr_str = stderr.decode("utf-8", errors="replace")

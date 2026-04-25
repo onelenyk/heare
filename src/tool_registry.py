@@ -118,6 +118,19 @@ TOOLS: dict[str, Tool] = {
         description="Rename a speaker profile",
         enabled=True,
     ),
+    # CCS-05b: stable identifier for cancellation rows in the action log.
+    # The cancel "tool" never executes — IntentQueue.cancel_active /
+    # ActionWorker.cancel_in_flight short-circuit before dispatch — but
+    # registering it keeps the action_log shape consistent
+    # (tool='cancel' rather than empty string) and avoids tripping the
+    # is_tool_allowed allowlist if a future code path submits it.
+    "cancel": Tool(
+        name="cancel",
+        sdk_name="Cancel",  # No-op SDK mapping — tool never reaches the SDK.
+        execution="direct",
+        description="Cancel the in-flight action and drain pending intents",
+        enabled=True,
+    ),
 }
 
 

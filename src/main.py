@@ -462,13 +462,37 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 )
                 await _persist_action_outcome(store, intent, status, hint)
 
+            # CCS-05b: thread the TTS service's cancel_pending hook through
+            # the worker so cancel_in_flight can drop queued/in-flight TTS
+            # frames with a 50ms fade-out. ``processor`` here is the
+            # generator; the actual TTS service is exposed through the
+            # pipeline but conveniently accessible via the same module.
+            from .pipeline import build_pipeline as _bp  # noqa: F401 — type hint
+            tts_cancel_hook = None
+            try:
+                # The pipeline returned (task, generator, tts_cache, indication)
+                # — but `tts` is the EdgeTTSService instance, exposed via the
+                # generator's tts_service attribute.
+                _tts = getattr(processor, "_tts_service", None) or getattr(
+                    processor, "tts_service", None
+                )
+                if _tts is not None and hasattr(_tts, "cancel_pending"):
+                    tts_cancel_hook = _tts.cancel_pending
+            except Exception:  # noqa: BLE001 — best-effort wiring
+                logger.exception("TTS cancel-hook wiring failed (non-fatal)")
+
             action_worker = ActionWorker(
                 queue=intent_queue,
                 claude_cli=claude_cli,
                 on_result=_on_action_result,
                 on_error=_on_action_error,
                 timeout=settings.action_timeout_seconds,
+                tts_cancel=tts_cancel_hook,
             )
+            # Defence-in-depth: ActionWorker.__init__ already calls
+            # bind_worker, but state this contract explicitly so future
+            # edits can't silently break the cancel hook.
+            intent_queue.bind_worker(action_worker.cancel_in_flight)
 
             # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play
             # instantly. Failures are non-fatal — falls back to live TTS.

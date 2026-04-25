@@ -498,3 +498,117 @@ async def test_refinement_outside_recency_window_does_not_combine():
     )
     # Sanity: the new transcript still flows in.
     assert "actually for vegan" in prompt
+
+
+# ============================================================================
+# CCS-05b — end-to-end cancel during in-flight web_search
+# ============================================================================
+
+
+async def test_user_says_stop_during_in_flight_web_search_cancels_full_chain():
+    """End-to-end: with an in-flight web_search, IntentQueue.cancel_active
+    propagates through ActionWorker.cancel_in_flight all the way to
+    cancelling the active task, marking the action_log row as cancelled,
+    and firing exactly one INTENT_CANCELLED indication.
+
+    Scope (per PRD US-CCS-05b note): if the integration harness can't
+    reasonably exercise the full pipecat pipeline, we use the unit-level
+    "decider → cancel_active → worker.cancel_in_flight → action log"
+    path. That is what this test does, exercising every collaborator
+    that ships in 5a and 5b.
+    """
+    from src.actions import ActionWorker, IntentQueue
+    from src.conversation import ConversationManager
+    from src.indication import (
+        Indication as _Ind,
+        IndicationKind as _IK,
+        set_indication as _set_ind,
+    )
+    from src.config import IndicationSettings as _IS
+    from src.storage import TranscriptStore as _Store
+    import datetime as _dt
+
+    captured: list[_IK] = []
+
+    class _RB:
+        name = "visual"
+
+        async def fire(self, kind, level, title, body, meta) -> None:
+            captured.append(kind)
+
+        async def aclose(self) -> None:
+            pass
+
+    facade = _Ind(
+        _IS(),
+        [_RB()],
+        wallclock=lambda: _dt.datetime(2026, 4, 24, 12, 0),
+    )
+    _set_ind(facade)
+
+    started = asyncio.Event()
+
+    class _SlowBackend:
+        """Pretend to be a backend whose call_action hangs forever."""
+
+        async def call_action(self, description: str):
+            started.set()
+            await asyncio.sleep(60)
+            return {"summary": "never"}
+
+        # No kill_running_action — verify the cancel path works without it.
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "heare.db"
+        store = _Store(db)
+        await store.init()
+        backend = _SlowBackend()
+        manager = ConversationManager(store, backend)
+
+        q = IntentQueue()
+        q.bind_conversation_manager(manager)
+        worker = ActionWorker(
+            q, backend, lambda *a, **k: asyncio.sleep(0),  # type: ignore[arg-type]
+            lambda *a, **k: asyncio.sleep(0),  # type: ignore[arg-type]
+            timeout=60.0,
+        )
+        # Use 'edit' to force the Claude-CLI path (slow_call hangs there).
+        intent_id = await q.submit({"tool": "edit", "args": "search recipe"})
+        # Pre-record the pending action so the action log has a row to update.
+        manager.record_action_pending(intent_id, "edit", "search recipe")
+
+        worker_task = asyncio.create_task(worker.run())
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2.0)
+
+            t0 = asyncio.get_event_loop().time()
+            cancelled = await q.cancel_active()
+            elapsed = asyncio.get_event_loop().time() - t0
+            assert cancelled is True
+            assert elapsed < 1.5, f"cancel chain took {elapsed:.2f}s (>1.5s budget)"
+
+            # Wait for the indication to flush.
+            for _ in range(30):
+                await asyncio.sleep(0.02)
+                if _IK.INTENT_CANCELLED in captured:
+                    break
+            assert captured.count(_IK.INTENT_CANCELLED) == 1, (
+                f"expected exactly one INTENT_CANCELLED, got captured={captured}"
+            )
+
+            # Action log row for the search was marked cancelled.
+            entries = list(manager._action_log)
+            matches = [e for e in entries if e.get("id") == intent_id]
+            assert matches, (
+                f"expected an action_log entry for intent_id={intent_id}, got {entries!r}"
+            )
+            assert matches[0]["status"] == "cancelled", (
+                f"expected status=cancelled, got {matches[0]['status']!r}"
+            )
+        finally:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass
+            _set_ind(None)
