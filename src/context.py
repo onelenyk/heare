@@ -213,9 +213,9 @@ class ContextBuilder:
         """Format recent action-log entries for the generator prompt.
 
         Example output:
-            - [14:23] ✓ bash: додав хліб
-            - [14:25] ⋯ search: пошук рейсів
-            - [14:27] ✗ bash: помилка — ...
+            - [14:23] (5m ago) ✓ bash: додав хліб
+            - [14:25] (3m ago) ⋯ search: пошук рейсів
+            - [14:27] (1m ago) ✗ bash: помилка — ...
 
         CCS-02: items-first rendering for web_search/web_fetch entries.
         When ``entry["items"]`` is present and non-empty AND the tool is
@@ -224,6 +224,14 @@ class ContextBuilder:
         entry at ``WEB_TAIL_LIMIT`` chars (1800) using TAIL-FIRST
         truncation: drop trailing items first and append a
         ``"(N more items truncated)"`` suffix.
+
+        CCS-04: each entry is annotated with both an absolute ``[HH:MM:SS]``
+        timestamp AND a relative ``(Nm ago)`` / ``(Ns ago)`` / ``(Nh ago)``
+        annotation so the generator prompt can apply the
+        ``refinement_recency_seconds`` (default 600s = 10 min) recency
+        window described in prompts/generator.txt's REFINEMENT rule. The
+        relative form keeps the rule expressible in plain language to the
+        LLM without requiring it to reason about wallclock arithmetic.
 
         Fallback: when ``items`` is absent (or empty), the legacy
         ``result`` rendering path is used unchanged — this keeps existing
@@ -238,9 +246,12 @@ class ContextBuilder:
         # Both the constant below and the AC use the SAME 1800 — no drift.
         WEB_TAIL_LIMIT = 1800
         OTHER_TAIL_LIMIT = 80
+        now_ts = dt.datetime.now().timestamp()
         lines: list[str] = []
         for a in actions:
-            ts = dt.datetime.fromtimestamp(a.get("ts", 0)).strftime("%H:%M:%S")
+            entry_ts = a.get("ts", 0) or 0
+            ts = dt.datetime.fromtimestamp(entry_ts).strftime("%H:%M:%S")
+            rel = self._format_relative_age(now_ts - entry_ts)
             status = a.get("status", "pending")
             tool = a.get("tool", "")
             args = a.get("args", "")[:60]
@@ -254,7 +265,7 @@ class ContextBuilder:
                     items, WEB_TAIL_LIMIT
                 )
                 lines.append(
-                    f"  - [{ts}] {glyph.get(status, '?')} {tool}: {rendered}"
+                    f"  - [{ts}] {rel} {glyph.get(status, '?')} {tool}: {rendered}"
                 )
                 continue
             # Legacy fallback path: render from `result` blob. Existing tests
@@ -267,9 +278,23 @@ class ContextBuilder:
                 else OTHER_TAIL_LIMIT
             )
             lines.append(
-                f"  - [{ts}] {glyph.get(status, '?')} {tool}: {tail[:tail_limit]}"
+                f"  - [{ts}] {rel} {glyph.get(status, '?')} {tool}: {tail[:tail_limit]}"
             )
         return "\n".join(lines)
+
+    @staticmethod
+    def _format_relative_age(age_seconds: float) -> str:
+        """Render an age (seconds) as a compact ``(Ns ago)`` / ``(Nm ago)``
+        / ``(Nh ago)`` annotation for the generator prompt's REFINEMENT
+        recency window. Negative or zero ages render as ``(just now)``.
+        """
+        if age_seconds < 1:
+            return "(just now)"
+        if age_seconds < 60:
+            return f"({int(age_seconds)}s ago)"
+        if age_seconds < 3600:
+            return f"({int(age_seconds // 60)}m ago)"
+        return f"({int(age_seconds // 3600)}h ago)"
 
     @staticmethod
     def _render_items_with_tail_truncation(

@@ -355,3 +355,146 @@ async def test_persist_action_outcome_none_store_is_noop():
 
     intent = Intent(id=1, tool="bash", args="x", raw={}, decision_id=5, transcript_id=9)
     await _persist_action_outcome(None, intent, "ok", "Готово.")  # does not raise
+
+
+# ---- CCS-04 refinement integration tests ----
+#
+# These tests exercise the *prompt-shape* contract that drives the live LLM at
+# runtime: ContextBuilder.build_for_generator → render(prompts/generator.txt).
+# They are integration-style because they walk through ConversationManager →
+# ContextBuilder → render with a fake recent_actions deque and assert the
+# rendered prompt carries (a) the recent web_search entry's relative-age
+# annotation that the LLM uses to apply the 10-min recency window, AND (b) the
+# REFINEMENT rule + examples the LLM follows.
+#
+# Fallback note: the integration harness here cannot reasonably exercise the
+# live LLM (no OpenRouter key, no network). The tests therefore assert prompt
+# *shape* — the LLM-facing inputs and instructions — instead of LLM output.
+# This is the documented fallback approach in PRD US-CCS-04.
+
+
+async def _render_prompt_with_fake_actions(
+    fake_actions: list[dict[str, Any]],
+    transcript: str,
+    user_language: str = "en",
+) -> str:
+    """Render the live prompts/generator.txt with a stubbed recent_actions
+    deque so we can inspect the prompt the LLM would receive."""
+    from unittest.mock import MagicMock
+
+    from src.context import ContextBuilder
+    from src.conversation import ConversationManager
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "heare.db"
+        store = TranscriptStore(db)
+        await store.init()
+        settings = Settings()
+        mgr = ConversationManager(store, MagicMock())
+        # Inject the fake action_log entries directly into the deque so
+        # ContextBuilder.build_for_generator sees them via mgr.recent_actions().
+        for entry in fake_actions:
+            mgr._action_log.append(entry)
+
+        ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+        rendered_ctx = await ctx.build_for_generator(
+            transcript=transcript,
+            persona="Ти Heare.",
+            user_language=user_language,
+        )
+        template_path = Path(__file__).parent.parent.parent / "prompts" / "generator.txt"
+        template = template_path.read_text()
+        prompt = ctx.render(template, rendered_ctx)
+        await store.close()
+        return prompt
+
+
+async def test_refinement_within_recency_window_combines_query():
+    """CCS-04 AC#7: a 2-min-old web_search 'chili recipe' + transcript
+    'actually for vegan' should result in the LLM seeing a prompt that
+    encodes the refinement rule AND surfaces the prior query with a
+    relative-age annotation inside the recency window.
+    """
+    import time as _time
+    fake_actions = [{
+        "id": 1,
+        "tool": "web_search",
+        "args": "chili recipe",
+        "status": "done",
+        "result": "Top 3 chili recipes…",
+        "ts": _time.time() - 120,  # 2 min ago
+    }]
+    prompt = await _render_prompt_with_fake_actions(
+        fake_actions, transcript="actually for vegan", user_language="en"
+    )
+    # (1) The prior web_search args appear in the rendered recent_actions.
+    assert "chili recipe" in prompt
+    # (2) The relative-age annotation is "2m ago" — inside the 10-min window.
+    assert "(2m ago)" in prompt or "(1m ago)" in prompt or "(just now)" in prompt, (
+        "expected a relative-age annotation inside the 10-min recency window"
+    )
+    # (3) The transcript flows through to the prompt.
+    assert "actually for vegan" in prompt
+    # (4) The REFINEMENT rule is present so the LLM knows to combine.
+    assert "REFINEMENT" in prompt
+    # (5) The qualifier vocabulary is present.
+    assert "actually" in prompt
+    # (6) The recency window is stated in plain language.
+    assert "within the last 10 minutes" in prompt
+    # (7) The combined-query worked example is present so the LLM has a pattern.
+    assert "vegan chili recipe" in prompt
+
+
+async def test_refinement_within_recency_window_combines_query_uk():
+    """CCS-04 AC#8: Ukrainian variant — prior 'рецепт чілі' (2 min ago) +
+    transcript 'тільки веганський' should render a prompt with both the
+    Ukrainian qualifier vocabulary and a recent-tag relative annotation."""
+    import time as _time
+    fake_actions = [{
+        "id": 1,
+        "tool": "web_search",
+        "args": "рецепт чілі",
+        "status": "done",
+        "result": "Топ-3 рецепти чілі…",
+        "ts": _time.time() - 120,
+    }]
+    prompt = await _render_prompt_with_fake_actions(
+        fake_actions, transcript="тільки веганський", user_language="uk"
+    )
+    assert "рецепт чілі" in prompt
+    assert "(2m ago)" in prompt or "(1m ago)" in prompt or "(just now)" in prompt
+    assert "тільки веганський" in prompt
+    assert "REFINEMENT" in prompt
+    # Ukrainian qualifier vocabulary must be in the prompt rule
+    assert "тільки" in prompt and "насправді" in prompt
+    # Worked example present (combined args 'веганський рецепт чілі')
+    assert "веганський рецепт чілі" in prompt
+
+
+async def test_refinement_outside_recency_window_does_not_combine():
+    """CCS-04 AC#9: a 30-min-old web_search must render a relative tag OUTSIDE
+    the 10-min window so the LLM follows the stale-fallthrough rule and issues
+    a fresh search instead of combining."""
+    import time as _time
+    fake_actions = [{
+        "id": 1,
+        "tool": "web_search",
+        "args": "chili recipe",
+        "status": "done",
+        "result": "Stale chili result…",
+        "ts": _time.time() - 1800,  # 30 min ago
+    }]
+    prompt = await _render_prompt_with_fake_actions(
+        fake_actions, transcript="actually for vegan", user_language="en"
+    )
+    # The relative tag is outside the 10-min recency window.
+    assert "(30m ago)" in prompt or "(29m ago)" in prompt, (
+        "expected a relative-age annotation outside the 10-min recency window; "
+        f"got prompt fragment: ... {prompt[prompt.find('chili recipe'):prompt.find('chili recipe')+200]!r}"
+    )
+    # The stale-fallthrough rule is present so the LLM can apply it.
+    assert "more than 10 minutes ago" in prompt, (
+        "REFINEMENT rule must describe stale-fallthrough so LLM emits a fresh search"
+    )
+    # Sanity: the new transcript still flows in.
+    assert "actually for vegan" in prompt

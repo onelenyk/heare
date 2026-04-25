@@ -214,6 +214,80 @@ def test_template_has_ordinal_or_qualifier_example() -> None:
         )
 
 
+def test_template_has_refinement_section() -> None:
+    """CCS-04: prompt contains a REFINEMENT section header (case-insensitive)."""
+    raw = _load()
+    assert "refinement" in raw.lower(), "expected REFINEMENT section header"
+
+
+def test_template_lists_qualifier_vocabulary_in_three_languages() -> None:
+    """CCS-04: refinement rule must enumerate qualifier vocabulary for en/uk/ru."""
+    raw = _load()
+    for word in ("actually", "but", "instead", "just", "only"):
+        assert word in raw, f"expected English qualifier {word!r}"
+    for word in ("насправді", "але", "тільки", "краще"):
+        assert word in raw, f"expected Ukrainian qualifier {word!r}"
+    for word in ("вообще-то", "но", "только", "лучше"):
+        assert word in raw, f"expected Russian qualifier {word!r}"
+
+
+def test_template_has_three_refinement_examples() -> None:
+    """CCS-04: at least one refinement example per language (en/uk/ru), each
+    emitting a new web_search intent that combines prior query + qualifier."""
+    raw = _load()
+    # Locate the REFINEMENT section header
+    idx = raw.lower().index("refinement")
+    block = raw[idx:]
+    # Expect at least three "User (...refining" examples in this block, one per language
+    assert "User (English, refining" in block, "missing English refinement example"
+    assert "User (Ukrainian, refining" in block, "missing Ukrainian refinement example"
+    assert "User (Russian, refining" in block, "missing Russian refinement example"
+    # Each refinement example should emit a new web_search intent with combined args
+    en_idx = block.index("User (English, refining")
+    en_block = block[en_idx:en_idx + 400]
+    assert '"tool":"web_search"' in en_block, "EN refinement example missing web_search intent"
+    assert "vegan" in en_block and "chili" in en_block, (
+        "EN refinement combined args must include both terms"
+    )
+    uk_idx = block.index("User (Ukrainian, refining")
+    uk_block = block[uk_idx:uk_idx + 400]
+    assert '"tool":"web_search"' in uk_block, "UK refinement example missing web_search intent"
+    assert "веганськ" in uk_block, "UK refinement combined args must include the qualifier"
+    ru_idx = block.index("User (Russian, refining")
+    ru_block = block[ru_idx:ru_idx + 400]
+    assert '"tool":"web_search"' in ru_block, "RU refinement example missing web_search intent"
+    assert "веган" in ru_block, "RU refinement combined args must include the qualifier"
+
+
+def test_template_refinement_rule_states_recency_window_in_plain_language() -> None:
+    """CCS-04: rule must state the recency window in plain English so the LLM
+    can apply it without numeric arithmetic."""
+    raw = _load()
+    assert "within the last 10 minutes" in raw, (
+        "refinement rule must state '10 minutes' recency window in plain language"
+    )
+
+
+def test_template_refinement_rule_has_topic_unrelated_guard() -> None:
+    """CCS-04: rule explicitly forbids emitting a generic web_search if the
+    qualifier is unrelated to the prior topic."""
+    raw = _load()
+    lowered = raw.lower()
+    assert "unrelated to the prior topic" in lowered, (
+        "missing 'unrelated to the prior topic' guard in REFINEMENT rule"
+    )
+
+
+def test_template_refinement_rule_has_outside_window_fallthrough() -> None:
+    """CCS-04: when prior web_search is older than recency window, model must
+    issue a fresh web_search rather than combine with stale prior query."""
+    raw = _load()
+    lowered = raw.lower()
+    assert "more than 10 minutes ago" in lowered, (
+        "REFINEMENT rule must describe the >10-min stale fallthrough"
+    )
+
+
 def test_substitution_leaves_no_placeholders() -> None:
     raw = _load()
     ctx = {
