@@ -218,6 +218,15 @@ class Settings:
     conversation_memory_enabled: bool = False
     max_conversation_age_hours: float = 24.0
     topic_extraction_enabled: bool = True
+    # CCS-01: hydration freshness window. The action log on startup is
+    # filtered to rows newer than now - conversation_idle_seconds so a
+    # stale 6-hour-old web_search doesn't pollute the prompt or trigger
+    # CCS-04's refinement rule on a dead query. Default: 30 min.
+    conversation_idle_seconds: float = 1800.0
+    # CCS-04 prep: maximum age of a prior web_search the generator may
+    # treat as refinable (vs. issuing a fresh search). MUST be <=
+    # conversation_idle_seconds — see __post_init__ assertion.
+    refinement_recency_seconds: float = 600.0
     # Phase 1/2.1 — generator pipeline via OpenRouter.
     openrouter_api_key: str | None = None
     openrouter_model: str = "google/gemini-3.1-flash-lite-preview-20260303"
@@ -280,6 +289,16 @@ class Settings:
     # _load_indication_settings(). Missing section is fully valid; defaults
     # match plan §3 (.omc/plans/indication.md).
     indication: IndicationSettings = field(default_factory=IndicationSettings)
+
+    def __post_init__(self) -> None:
+        # CCS-01 invariant: a refinement window longer than the idle
+        # hydration window would let the generator refine a query that
+        # was filtered out of recent_actions on startup — incoherent.
+        assert self.refinement_recency_seconds <= self.conversation_idle_seconds, (
+            f"refinement_recency_seconds ({self.refinement_recency_seconds}) "
+            f"must be <= conversation_idle_seconds ({self.conversation_idle_seconds}); "
+            f"otherwise the refinement rule would fire on entries hydration filters out."
+        )
 
     def ensure_dirs(self) -> None:
         for p in (self.workspace_dir, self.log_dir, HEARE_HOME):

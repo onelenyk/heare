@@ -295,6 +295,19 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 conversation_manager = ConversationManager(
                     store, claude_cli, topic_extractor=topic_extractor
                 )
+                # CCS-01: rebuild the in-memory action log from SQLite,
+                # filtered to a freshness window so stale entries from
+                # earlier sessions don't pollute the generator prompt.
+                # Awaited (not fire-and-forget) so the deque is populated
+                # before the first generator turn.
+                try:
+                    await conversation_manager.hydrate_action_log(
+                        since_ts=time.time() - settings.conversation_idle_seconds,
+                    )
+                except Exception:
+                    logger.exception(
+                        "action_log hydrate failed (non-fatal) — starting empty"
+                    )
 
             # Built without a gallery for now; if speaker_id_enabled loads
             # one below, we attach it in-place so recent transcripts carry

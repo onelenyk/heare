@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -475,3 +476,188 @@ async def test_get_or_create_active_within_30_minutes(store: TranscriptStore, fa
     row = await cursor.fetchone()
     assert row is not None
     assert row[0] is None  # end_ts should still be NULL
+
+
+# ============================================================================
+# CCS-01: action_log persistence
+# ============================================================================
+
+
+class TestActionLogPersistence:
+    """Tests for the SQLite-backed action_log projection (CCS-01)."""
+
+    async def _wait_persist(self) -> None:
+        # The persist task is fire-and-forget. Yield to let it run; one
+        # extra sleep(0) is sufficient because the queue is unbounded.
+        import asyncio as _aio
+
+        for _ in range(5):
+            await _aio.sleep(0)
+
+    async def test_record_action_pending_writes_to_db(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        manager = ConversationManager(store, fake_claude)
+        manager.record_action_pending(7, "web_search", "chili recipe")
+        await self._wait_persist()
+        cursor = await store.db.execute(
+            "SELECT status, tool, args FROM actions WHERE intent_id = ?", (7,)
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        assert row[0] == "pending"
+        assert row[1] == "web_search"
+        assert row[2] == "chili recipe"
+
+    async def test_record_action_result_upserts_existing_pending(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        manager = ConversationManager(store, fake_claude)
+        manager.record_action_pending(8, "web_search", "chili recipe")
+        await self._wait_persist()
+        manager.record_action_result(8, "found 5 hits")
+        await self._wait_persist()
+        cursor = await store.db.execute(
+            "SELECT id, status, tool, result_json FROM actions WHERE intent_id = ?",
+            (8,),
+        )
+        rows = await cursor.fetchall()
+        assert len(rows) == 1, "UPSERT must keep a single row per intent"
+        assert rows[0][1] == "done"
+        assert rows[0][2] == "web_search"
+        assert "summary" in rows[0][3]
+        assert "found 5 hits" in rows[0][3]
+
+    async def test_record_action_error_upserts_existing_pending(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        manager = ConversationManager(store, fake_claude)
+        manager.record_action_pending(9, "bash", "rm -rf /")
+        await self._wait_persist()
+        manager.record_action_error(9, "rejected: dangerous")
+        await self._wait_persist()
+        cursor = await store.db.execute(
+            "SELECT status, result_json FROM actions WHERE intent_id = ?", (9,)
+        )
+        rows = await cursor.fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "error"
+        assert "error" in rows[0][1]
+        assert "rejected: dangerous" in rows[0][1]
+
+    async def test_persist_failure_does_not_raise(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        from unittest.mock import AsyncMock as _AsyncMock
+
+        manager = ConversationManager(store, fake_claude)
+        # Patch the store method to raise — the in-memory deque must still
+        # update and no exception bubbles to the caller.
+        store.upsert_action_log_entry = _AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("DB locked")
+        )
+        manager.record_action_pending(10, "web_search", "x")
+        # In-memory deque still has the entry
+        assert any(e["id"] == 10 for e in manager._action_log)
+        # Wait for the fire-and-forget task to fail silently
+        await self._wait_persist()
+        # No exception bubbled
+
+    async def test_hydrate_action_log_restores_recent_entries(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        # Write entries via the first manager
+        m1 = ConversationManager(store, fake_claude)
+        m1.record_action_pending(1, "web_search", "alpha")
+        m1.record_action_result(1, "alpha summary")
+        m1.record_action_pending(2, "web_search", "beta")
+        m1.record_action_result(2, "beta summary")
+        await self._wait_persist()
+        # Simulate restart: brand-new manager hydrates from disk.
+        m2 = ConversationManager(store, fake_claude)
+        await m2.hydrate_action_log()
+        recent = m2.recent_actions(limit=5)
+        ids = {e["id"] for e in recent}
+        assert {1, 2}.issubset(ids)
+        # Tool and result preserved
+        beta = next(e for e in recent if e["id"] == 2)
+        assert beta["tool"] == "web_search"
+        assert beta["result"] == "beta summary"
+        assert beta["status"] == "done"
+
+    async def test_hydrate_action_log_filters_by_since_ts(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        import json as _json
+
+        now = time.time()
+        # 6 hours ago — should be filtered out
+        await store.upsert_action_log_entry(
+            intent_id=20,
+            tool="web_search",
+            args="ancient",
+            status="done",
+            result=_json.dumps({"summary": "old"}),
+            ts=now - 21600,
+        )
+        # 5 minutes ago — should be hydrated
+        await store.upsert_action_log_entry(
+            intent_id=21,
+            tool="web_search",
+            args="recent",
+            status="done",
+            result=_json.dumps({"summary": "fresh"}),
+            ts=now - 300,
+        )
+        manager = ConversationManager(store, fake_claude)
+        await manager.hydrate_action_log(since_ts=now - 1800)  # 30-min window
+        ids = {e["id"] for e in manager.recent_actions(limit=10)}
+        assert ids == {21}
+
+    async def test_hydrate_action_log_no_since_ts_loads_all(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        import json as _json
+
+        now = time.time()
+        await store.upsert_action_log_entry(
+            intent_id=30,
+            tool="web_search",
+            args="ancient",
+            status="done",
+            result=_json.dumps({"summary": "old"}),
+            ts=now - 21600,
+        )
+        await store.upsert_action_log_entry(
+            intent_id=31,
+            tool="web_search",
+            args="recent",
+            status="done",
+            result=_json.dumps({"summary": "fresh"}),
+            ts=now - 300,
+        )
+        manager = ConversationManager(store, fake_claude)
+        await manager.hydrate_action_log()  # no since_ts → both
+        ids = {e["id"] for e in manager.recent_actions(limit=10)}
+        assert ids == {30, 31}
+
+    async def test_hydrate_preserves_chronological_order(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        import json as _json
+
+        base = time.time()
+        for i in range(3):
+            await store.upsert_action_log_entry(
+                intent_id=40 + i,
+                tool="web_search",
+                args=f"q{i}",
+                status="done",
+                result=_json.dumps({"summary": f"r{i}"}),
+                ts=base + i,
+            )
+        manager = ConversationManager(store, fake_claude)
+        await manager.hydrate_action_log()
+        # recent_actions returns newest-first
+        recent = manager.recent_actions(limit=5)
+        assert [e["id"] for e in recent] == [42, 41, 40]

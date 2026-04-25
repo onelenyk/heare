@@ -12,7 +12,7 @@ from typing import Any
 import aiosqlite
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class EventKind(StrEnum):
@@ -65,9 +65,13 @@ CREATE TABLE IF NOT EXISTS decisions (
 CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts REAL NOT NULL,
-    decision_id INTEGER NOT NULL,
+    decision_id INTEGER,
     status TEXT NOT NULL,
     result_summary TEXT,
+    tool TEXT,
+    args TEXT,
+    result_json TEXT,
+    intent_id INTEGER,
     FOREIGN KEY(decision_id) REFERENCES decisions(id)
 );
 
@@ -137,6 +141,7 @@ class TranscriptStore:
         await self._db.executescript(SCHEMA)
         await self._db.commit()
         await self._migrate_speaker_columns()
+        await self._migrate_action_log_columns()
         await self._check_schema_version()
 
     async def _migrate_speaker_columns(self) -> None:
@@ -153,6 +158,85 @@ class TranscriptStore:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e).lower():
                     raise
+        await self.db.commit()
+
+    async def _migrate_action_log_columns(self) -> None:
+        # CCS-01: persist the in-memory action log to the actions table.
+        # Idempotent ALTERs — old rows surface tool/args/result_json/intent_id
+        # as NULL and are filtered out at hydrate time.
+        for col_ddl in (
+            "ALTER TABLE actions ADD COLUMN tool TEXT",
+            "ALTER TABLE actions ADD COLUMN args TEXT",
+            "ALTER TABLE actions ADD COLUMN result_json TEXT",
+            "ALTER TABLE actions ADD COLUMN intent_id INTEGER",
+        ):
+            try:
+                await self.db.execute(col_ddl)
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+
+        # CCS-01: action_log entries are keyed by intent_id, NOT decision_id —
+        # the original schema declared decision_id NOT NULL which blocks rows
+        # that come from the action log alone. Detect the constraint and
+        # rebuild the table without it. Idempotent: noop if already nullable.
+        cursor = await self.db.execute("PRAGMA table_info(actions)")
+        cols = await cursor.fetchall()
+        decision_notnull = any(
+            row[1] == "decision_id" and row[3] == 1 for row in cols
+        )
+        if decision_notnull:
+            # SQLite has no DROP NOT NULL; recreate the table preserving
+            # data + indices. PRAGMA foreign_keys must be off across the
+            # rebuild (per SQLite docs §7.11). Wrap the lot in a single tx.
+            await self.db.execute("PRAGMA foreign_keys=OFF")
+            await self.db.execute("BEGIN")
+            try:
+                await self.db.execute(
+                    """
+                    CREATE TABLE actions_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts REAL NOT NULL,
+                        decision_id INTEGER,
+                        status TEXT NOT NULL,
+                        result_summary TEXT,
+                        tool TEXT,
+                        args TEXT,
+                        result_json TEXT,
+                        intent_id INTEGER,
+                        FOREIGN KEY(decision_id) REFERENCES decisions(id)
+                    )
+                    """
+                )
+                await self.db.execute(
+                    """
+                    INSERT INTO actions_new
+                        (id, ts, decision_id, status, result_summary,
+                         tool, args, result_json, intent_id)
+                    SELECT id, ts, decision_id, status, result_summary,
+                           tool, args, result_json, intent_id
+                    FROM actions
+                    """
+                )
+                await self.db.execute("DROP TABLE actions")
+                await self.db.execute("ALTER TABLE actions_new RENAME TO actions")
+                await self.db.execute("COMMIT")
+            except Exception:
+                await self.db.execute("ROLLBACK")
+                await self.db.execute("PRAGMA foreign_keys=ON")
+                raise
+            await self.db.execute("PRAGMA foreign_keys=ON")
+
+        # UNIQUE index on intent_id is required for ON CONFLICT(intent_id).
+        # SQLite treats NULLs as distinct in UNIQUE indexes, so legacy rows
+        # (log_action: decision_id-only, intent_id IS NULL) coexist freely
+        # without clashing with each other or the action_log entries.
+        # NOTE: ON CONFLICT does NOT work with partial indices, so this is
+        # an unconditional UNIQUE index.
+        await self.db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_actions_intent_id "
+            "ON actions(intent_id)"
+        )
         await self.db.commit()
 
     async def _check_schema_version(self) -> None:
@@ -256,6 +340,95 @@ class TranscriptStore:
         await self.db.commit()
         assert cursor.lastrowid is not None
         return cursor.lastrowid
+
+    async def upsert_action_log_entry(
+        self,
+        *,
+        intent_id: int,
+        tool: str,
+        args: str,
+        status: str,
+        result: str | None,
+        ts: float | None = None,
+    ) -> int:
+        """Insert or update an action_log row keyed by intent_id.
+
+        CCS-01: persists the in-memory action log to SQLite so the deque
+        can be rehydrated on daemon restart. ON CONFLICT(intent_id) keeps
+        a single row per intent across pending → done/error transitions.
+        ``result`` is the raw JSON string for ``result_json``; pass None
+        for the pending state.
+        """
+        when = ts if ts is not None else time.time()
+        cursor = await self.db.execute(
+            """
+            INSERT INTO actions (ts, status, tool, args, result_json, intent_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(intent_id) DO UPDATE SET
+                ts = excluded.ts,
+                status = excluded.status,
+                tool = excluded.tool,
+                args = excluded.args,
+                result_json = excluded.result_json
+            """,
+            (when, status, tool, args, result, intent_id),
+        )
+        await self.db.commit()
+        # cursor.lastrowid is undefined on UPDATE in SQLite; resolve from intent_id.
+        if cursor.lastrowid:
+            return cursor.lastrowid
+        sel = await self.db.execute(
+            "SELECT id FROM actions WHERE intent_id = ?", (intent_id,)
+        )
+        row = await sel.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    async def load_recent_action_log(
+        self,
+        *,
+        limit: int = 16,
+        since_ts: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return up to ``limit`` newest action_log rows (intent_id IS NOT NULL),
+        filtered to ts >= since_ts when provided. Order newest-first.
+
+        Legacy rows (decision_id-only, intent_id IS NULL) are excluded.
+        """
+        if since_ts is None:
+            cursor = await self.db.execute(
+                """
+                SELECT intent_id, ts, tool, args, status, result_json
+                FROM actions
+                WHERE intent_id IS NOT NULL
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+        else:
+            cursor = await self.db.execute(
+                """
+                SELECT intent_id, ts, tool, args, status, result_json
+                FROM actions
+                WHERE intent_id IS NOT NULL AND ts >= ?
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (since_ts, limit),
+            )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "intent_id": r[0],
+                "ts": r[1],
+                "tool": r[2],
+                "args": r[3],
+                "status": r[4],
+                "result_json": r[5],
+            }
+            for r in rows
+        ]
 
     async def log_heartbeat(self, decided_to_speak: bool, reply: str | None) -> int:
         cursor = await self.db.execute(

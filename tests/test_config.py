@@ -417,3 +417,38 @@ def test_deprecated_enable_mcp_servers_warning(monkeypatch, tmp_path) -> None:
     )
     # Field still exists on Settings (retained for one release)
     assert hasattr(s, "enable_mcp_servers")
+
+
+# ============================================================================
+# CCS-01: Settings invariant — refinement_recency must be <= idle window
+# ============================================================================
+
+
+def test_settings_defaults_pass_post_init() -> None:
+    """Default Settings() must satisfy the CCS-01 invariant."""
+    import pytest as _pytest  # noqa: F401  (kept for parity with other tests)
+
+    s = Settings()
+    # Both fields exist and the invariant is respected by defaults.
+    assert s.conversation_idle_seconds == 1800.0
+    assert s.refinement_recency_seconds == 600.0
+
+
+def test_settings_refinement_window_exceeding_idle_raises() -> None:
+    """Settings(refinement_recency_seconds > conversation_idle_seconds) must trip."""
+    import pytest as _pytest
+
+    with _pytest.raises(AssertionError):
+        Settings(
+            refinement_recency_seconds=2000.0,
+            conversation_idle_seconds=1800.0,
+        )
+
+
+def test_settings_refinement_window_equal_idle_ok() -> None:
+    """Equal values are explicitly allowed by the <= invariant."""
+    s = Settings(
+        refinement_recency_seconds=1800.0,
+        conversation_idle_seconds=1800.0,
+    )
+    assert s.refinement_recency_seconds == 1800.0

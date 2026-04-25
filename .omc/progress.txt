@@ -1,187 +1,41 @@
-# PRD B — Voice-friendly action results
+# PRD CCS — Conversation Core Stability Bundle
 
-## Iteration 1 starting
+## Sprint kickoff
+- Source plan: .omc/plans/conversation-core-stability.md (consensus-approved via ralplan iteration 1)
+- Branch: s2s-realtime (option A from user — layer commits on top of today's PRD WS commit b2783e5)
+- Worker policy: 1 worker, sequential (option from user)
+- 6 stories, 24 story points total
+- Execution-time conditions folded in:
+  1. US-CCS-05a: stop-word fixture (en/uk/ru) covering "hey, please cancel", "no no no stop", "ok stop stop"
+  2. US-CCS-01: assert refinement_recency_seconds <= conversation_idle_seconds in Settings.__post_init__
+  3. US-CCS-02: comment legacy fallback path; verify tests/test_context.py:394-432 stays green
 
-Goal: each direct tool ships a per-language `spoken` summary so TTS reads
-"You have 3 profiles: owner, Назар, and Myjko" instead of the raw ASCII
-table from `list_profiles`. Generic 'Done.' fallback for Claude/MCP/workflow.
+## Known pre-existing issue
+tests/test_indication.py::test_notify_dispatches_to_all_enabled_backends is time-of-day flaky between 22:00–07:00 local because it doesn't pin a wallclock outside default quiet hours. Unrelated to PRD CCS; will be flagged in progress notes if it lands inside a touched file but otherwise ignored.
 
-Stories: 7 (US-VFA-01..07). See .omc/prd.json.
-
----
-
-## PRD B — Completion Summary
-
-### Feature description
-
-PRD B — Voice-Friendly Action Results ships spoken-text templates for every
-direct tool in the heare voice assistant, eliminating raw ASCII tables, raw
-file content, and raw stdout from the TTS pipeline. Each handler in
-`src/direct_tools.py` now returns a `spoken` dict keyed by `{en, uk, ru}` with
-short, natural sentences. For Claude/MCP/workflow tools that produce free-form
-output, `_resolve_spoken` in `src/main.py` generates a generic per-language
-"Done." or "Action failed." instead of dumping the raw result into speech. The
-`Intent` dataclass now carries a `language` field (default `"en"`) populated by
-the generator from `_active_lang`; this flows through `IntentQueue.submit` into
-the action-worker callback so every spoken resolution is language-aware.
+## US-CCS-01 — implemented (2026-04-25)
 
 ### Files touched
+- src/storage.py: SCHEMA_VERSION 3→4; SCHEMA actions table now declares decision_id nullable + new tool/args/result_json/intent_id columns. New _migrate_action_log_columns() runs idempotent ALTERs and rebuilds the actions table to drop the old NOT NULL on decision_id when an upgraded DB is detected. New upsert_action_log_entry() uses INSERT ... ON CONFLICT(intent_id) DO UPDATE; new load_recent_action_log() filters by intent_id IS NOT NULL and an optional since_ts.
+- src/conversation.py: imports asyncio. record_action_pending/_result/_error each call _schedule_persist (fire-and-forget asyncio.create_task → _persist_action_entry_safe with try/except). New hydrate_action_log(since_ts) loads rows newest-first then re-appends in chronological order so the deque preserves natural append order (oldest at left).
+- src/config.py: Settings gains conversation_idle_seconds=1800.0 and refinement_recency_seconds=600.0 (Story 4 prep). New __post_init__ asserts refinement_recency_seconds <= conversation_idle_seconds.
+- src/main.py: after ConversationManager construction, await conversation_manager.hydrate_action_log(since_ts=time.time() - settings.conversation_idle_seconds). Wrapped in try/except so a corrupt log never blocks daemon start.
+- tests/test_storage.py: schema-version test updated to 4; new tests for action_log columns, idempotent migration, upsert insert→update, since_ts filter, ordering, legacy decision-only rows excluded.
+- tests/test_conversation.py: new TestActionLogPersistence class covering write-through, UPSERT, error path, persist failure swallowed, hydrate restores, hydrate filters by since_ts, hydrate w/o since_ts, chronological ordering.
+- tests/test_config.py: invariant tests for refinement_recency vs idle window.
 
-- `src/actions.py` — Added `language: str = "en"` field to `Intent` dataclass;
-  `IntentQueue.submit` gains keyword-only `language` kwarg and forwards it.
-- `src/direct_tools.py` — All handlers (list_profiles, create_profile,
-  rename_profile, delete_profile, re_enroll, bash, read, write, web_fetch,
-  web_search) return `spoken: dict[str, str]` with en/uk/ru entries; module
-  docstring documents the spoken contract.
-- `src/generator.py` — Every `IntentQueue.submit(...)` call site passes
-  `language=self._active_lang`.
-- `src/main.py` — New `_resolve_spoken(result, intent, fallback_summary) -> str`
-  helper at module scope; `_on_action_result` and `_on_action_error` call it;
-  logs `[ACTION SPEAK id=N len=M]`.
-- `tests/test_actions.py` — Tests for `Intent.language` default and round-trip
-  through `submit`.
-- `tests/test_direct_tools.py` — Spoken-content assertions for every profile,
-  system, and web tool (error + success paths).
-- `tests/test_main.py` — Tests for `_resolve_spoken` covering dict/str/None
-  input, language selection, English fallback, generic Done/failed per language.
-- `tests/integration/test_intent_flow.py` — Verifies spoken decision row
-  contains the templated sentence, not the raw output.
+### Design decisions
+1. UPSERT keying on intent_id required a UNIQUE index. Partial indexes (... WHERE intent_id IS NOT NULL) are NOT supported by SQLite ON CONFLICT — verified with sqlite3.OperationalError "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint". Solution: unconditional UNIQUE INDEX on intent_id; SQLite treats multiple NULLs as distinct so legacy log_action() rows still coexist.
+2. The original actions.decision_id was declared NOT NULL with FK to decisions(id). Action_log entries are keyed by intent_id and have no decision_id. Solution: a one-shot table rebuild migration in _migrate_action_log_columns when a NOT NULL constraint is detected via PRAGMA table_info. PRAGMA foreign_keys=OFF wraps the rebuild per SQLite docs §7.11.
+3. Persistence is fire-and-forget via asyncio.create_task with a guarded try/except. In-memory mutation happens FIRST so reads stay coherent within a turn even if the DB is slow/locked. Sync-test path with no running loop is detected via asyncio.get_running_loop() RuntimeError → silent skip.
+4. Hydration reverses the newest-first SELECT result so the deque appends chronologically (oldest at left, newest at right) — matches how new entries arrive at runtime.
+5. result_json is a JSON dict {summary} or {error}, leaving room for Story 2 to extend with {summary, items}.
 
-### Key design decisions
+### Gotchas
+- Old DBs created with the v2/v3 schema have decision_id NOT NULL — migration must handle the rebuild path. New DBs get the nullable decision_id directly from SCHEMA.
+- The test_indication.py::test_notify_dispatches_to_all_enabled_backends pre-existing time-of-day flake is unaffected by this story — does not touch indication or quiet-hours.
 
-1. **Per-language spoken dict pattern** — handlers return
-   `{"en": "...", "uk": "...", "ru": "..."}`. Callers pick by
-   `intent.language`, falling back to `"en"` if the key is absent.
-
-2. **Generic per-language Done/Action-failed fallback for MCP/Claude/workflow**
-   — `_resolve_spoken` produces "Done." / "Готово." / "Готово." on success and
-   "Action failed." / "Не вдалося виконати." / "Не удалось выполнить." on
-   failure when no `spoken` key is present, so raw MCP/Claude output is
-   never passed to TTS.
-
-3. **`intent.language` flows STT→generator→ActionWorker callback→_resolve_spoken**
-   — the `_active_lang` attribute set by the generator from the STT transcript
-   is attached to every `Intent` at submit time and is available inside the
-   `on_result` callback without any global state.
-
-### Live-verify recipe
-
-Restart the daemon. Say "show me my profiles". The bot should respond with
-"У тебе 3 профілі: owner, Назар, і Myjko." (Ukrainian) instead of reading
-the ASCII table with pipes and dashes. In `daemon.log`, grep for
-`[ACTION SPEAK id=` — the `len=` value should be ~30 characters (the
-templated sentence), not 100+ characters (the old ASCII table).
-
-### Final test count and lint status
-
-- **Tests**: 919 passed, 0 failed, 4 warnings (2026-04-25)
-- **Lint**: `uv run ruff check src/ tests/` — All checks passed
-
-### Story completion
-
-- US-VFA-01 (Intent.language + submit kwarg): completed
-- US-VFA-02 (Profile tool spoken templates): completed
-- US-VFA-03 (System tool spoken templates): completed
-- US-VFA-04 (Web tool spoken templates): completed
-- US-VFA-05 (_resolve_spoken with language resolution): completed
-- US-VFA-06 (Claude/MCP/workflow generic Done fallback): completed
-- US-VFA-07 (Full regression + lint + progress.txt): completed
-
----
-
-## PRD WS — Web search returns answers, not just titles
-
-### Feature description
-
-Three-fix pass on the web_search direct tool to stop the assistant from
-saying "Found 5 results" without the actual content, and from re-searching
-when the user asks a follow-up:
-
-1. `_search_serper` and `_search_duckduckgo` now include the snippet text
-   in `output` (`<title>\n<snippet>\n<url>`). Serper's snippet field is
-   already in the API response and was being read but discarded; the
-   DuckDuckGo path now extracts `result__snippet` adjacent to each title
-   link.
-2. The hardcoded `spoken={"en": "Found N results. First: …"}` is gone.
-   Both providers now emit the minimal cue
-   `{"en":"Searching done.","uk":"Пошук завершено.","ru":"Поиск завершён."}`
-   so the generator composes the actual content-aware answer from the
-   snippets in `output` (visible via the recent_actions log).
-3. Optional chained `web_fetch` of the top organic result behind a new
-   `Settings.web_search_fetch_top: bool = True` flag. The fetched body is
-   appended as a "Top page content:" block. Failure-safe: any fetch error
-   is swallowed and the snippets-only output is returned. Total output
-   capped at 8000 chars.
-4. `ContextBuilder._format_recent_actions` now keeps up to 1500 chars of
-   tail for `web_search` / `web_fetch` actions (other tools stay capped
-   at 80 chars). This lets the generator read prior search content from
-   the action log on follow-up turns.
-5. `prompts/generator.txt` gained a "Reuse prior search results — do NOT
-   re-search" rule with English/Ukrainian/Russian recipe follow-up
-   examples that answer from prior search content without emitting a new
-   `<intent>{"tool":"web_search",…}</intent>`.
-
-### Files touched
-
-- `src/direct_tools.py` — Snippets in output for both providers; minimal
-  spoken cue; new `_maybe_append_top_page` + `_truncate` helpers; chained
-  top-page fetch behind `web_search_fetch_top`. Removed dead `import re`
-  in `_execute_web_search`.
-- `src/config.py` — New `web_search_fetch_top: bool = True`.
-- `src/context.py` — `_format_recent_actions` branches truncation on
-  tool name (web tools 1500, others 80).
-- `prompts/generator.txt` — New "Reuse prior search results" rule + 3
-  multi-language recipe-follow-up examples.
-- `tests/test_direct_tools.py` — Updated `test_web_search_spoken_with_results`
-  to assert the new minimal cue (no "Found N results"); added
-  `test_web_search_duckduckgo_includes_snippets`,
-  `test_web_search_serper_includes_snippets`, and three chained-fetch
-  tests (enabled / disabled / fetch-error swallowed).
-- `tests/test_context.py` — Added two tests for the
-  `_format_recent_actions` per-tool truncation branch.
-- `tests/test_generator_prompt.py` — Added two tests asserting the new
-  rule line and follow-up example exist in the prompt.
-
-### Key design decisions
-
-1. **Snippets in `output`, not `spoken`** — the action callback writes
-   `output` into the recent_actions log; the generator reads from there
-   on follow-up. `spoken` only feeds TTS for the immediate turn.
-2. **Minimal "Searching done." cue, not silent** — the user must hear
-   *something* between issuing the search and the generator's next
-   reply, but it must not preempt the content answer.
-3. **`web_search_fetch_top` defaults True** — most content-style queries
-   benefit from the fetched body. Disable in low-bandwidth setups.
-4. **Per-tool truncation in the action log** — keep prompts tight for
-   chatty tools (bash, list_profiles ASCII tables) but let web search
-   results flow through so the generator can answer follow-ups.
-
-### Live-verify recipe
-
-1. `make restart`. Say "find the recipe for chili con carne".
-2. The TTS cue should be "Searching done." (English) — NOT
-   "Found N results. First: …".
-3. Within ~2s the generator should speak a one-sentence chili recipe
-   pulled from the snippets / fetched top page, NOT another search.
-4. Say "give me the recipe" again as a follow-up. Expected: the
-   generator dictates the recipe from the prior `web_search` entry in
-   `recent_actions` WITHOUT a new `<intent>{"tool":"web_search",…}</intent>`.
-5. Sanity grep `'Found N results'` (or `'Found 5 results'`) in
-   `src/direct_tools.py` — must return nothing.
-
-### Test/lint status
-
-- `uv run pytest tests/test_direct_tools.py tests/test_context.py tests/test_generator_prompt.py tests/test_config.py -q` — 139 passed.
-- `uv run ruff check src/ tests/` — All checks passed.
-- Full `uv run pytest -q` shows 1 unrelated pre-existing failure in
-  `tests/test_indication.py` (branch state predates this PRD; reverting
-  my single-line `web_search_fetch_top` addition does not change the
-  failure mode).
-
-### Story completion (PRD WS)
-
-- US-WS-01 (Snippets + drop hardcoded spoken): completed
-- US-WS-02 (Optional chained web_fetch behind setting): completed
-- US-WS-03 (Action log preserves web tool content): completed
-- US-WS-04 (Generator prompt rule + example): completed
-- US-WS-05 (Full regression + lint + progress.txt): completed
+### Verification
+- uv run pytest tests/test_storage.py tests/test_conversation.py tests/test_config.py -q → 104 passed
+- uv run pytest -q → 944 passed, 1 failed (pre-existing time-of-day flake in test_indication, unrelated)
+- uv run ruff check src/storage.py src/conversation.py src/config.py src/main.py src/pipeline.py tests/test_conversation.py tests/test_storage.py tests/test_config.py → All checks passed

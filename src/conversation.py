@@ -1,6 +1,7 @@
 """ConversationManager maintains conversation state: topics, entities, summary."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -52,24 +53,45 @@ class ConversationManager:
         )
 
     # ---- Phase 2.2 action log (sync, no lock — single event loop) ----
+    # CCS-01: each record_* mutation also fires a fire-and-forget SQLite
+    # UPSERT (write-through projection). DB failures log a warning but do
+    # NOT raise; the in-memory deque is the source of truth within a turn.
 
     def record_action_pending(self, intent_id: int, tool: str, args: str) -> None:
+        ts = time.time()
         self._action_log.append({
             "id": intent_id,
             "tool": tool,
             "args": args,
             "status": "pending",
-            "ts": time.time(),
+            "ts": ts,
         })
+        self._schedule_persist(
+            intent_id=intent_id,
+            tool=tool,
+            args=args,
+            status="pending",
+            result=None,
+            ts=ts,
+        )
 
     def record_action_result(self, intent_id: int, summary: str) -> None:
         # Update the matching pending entry if present; otherwise append a
         # fresh "done" entry. Both branches are O(n) over maxlen=16 = trivial.
+        ts = time.time()
         for entry in self._action_log:
             if entry["id"] == intent_id and entry["status"] == "pending":
                 entry["status"] = "done"
                 entry["result"] = summary
-                entry["ts"] = time.time()
+                entry["ts"] = ts
+                self._schedule_persist(
+                    intent_id=intent_id,
+                    tool=entry.get("tool", ""),
+                    args=entry.get("args", ""),
+                    status="done",
+                    result=json.dumps({"summary": summary}),
+                    ts=ts,
+                )
                 return
         self._action_log.append({
             "id": intent_id,
@@ -77,15 +99,32 @@ class ConversationManager:
             "args": "",
             "status": "done",
             "result": summary,
-            "ts": time.time(),
+            "ts": ts,
         })
+        self._schedule_persist(
+            intent_id=intent_id,
+            tool="",
+            args="",
+            status="done",
+            result=json.dumps({"summary": summary}),
+            ts=ts,
+        )
 
     def record_action_error(self, intent_id: int, error: str) -> None:
+        ts = time.time()
         for entry in self._action_log:
             if entry["id"] == intent_id and entry["status"] == "pending":
                 entry["status"] = "error"
                 entry["error"] = error
-                entry["ts"] = time.time()
+                entry["ts"] = ts
+                self._schedule_persist(
+                    intent_id=intent_id,
+                    tool=entry.get("tool", ""),
+                    args=entry.get("args", ""),
+                    status="error",
+                    result=json.dumps({"error": error}),
+                    ts=ts,
+                )
                 return
         self._action_log.append({
             "id": intent_id,
@@ -93,8 +132,118 @@ class ConversationManager:
             "args": "",
             "status": "error",
             "error": error,
-            "ts": time.time(),
+            "ts": ts,
         })
+        self._schedule_persist(
+            intent_id=intent_id,
+            tool="",
+            args="",
+            status="error",
+            result=json.dumps({"error": error}),
+            ts=ts,
+        )
+
+    def _schedule_persist(
+        self,
+        *,
+        intent_id: int,
+        tool: str,
+        args: str,
+        status: str,
+        result: str | None,
+        ts: float,
+    ) -> None:
+        """Fire-and-forget the SQLite UPSERT.
+
+        CCS-01: write-through to the action_log projection. Errors (DB
+        locked, store closed, no running loop) are logged and swallowed —
+        the in-memory deque update has already succeeded.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop (sync test path) — skip persistence silently.
+            return
+        coro = self._persist_action_entry_safe(
+            intent_id=intent_id,
+            tool=tool,
+            args=args,
+            status=status,
+            result=result,
+            ts=ts,
+        )
+        loop.create_task(coro)
+
+    async def _persist_action_entry_safe(
+        self,
+        *,
+        intent_id: int,
+        tool: str,
+        args: str,
+        status: str,
+        result: str | None,
+        ts: float,
+    ) -> None:
+        try:
+            await self.store.upsert_action_log_entry(
+                intent_id=intent_id,
+                tool=tool,
+                args=args,
+                status=status,
+                result=result,
+                ts=ts,
+            )
+        except Exception as e:  # noqa: BLE001 — DB lock / store closed are non-fatal
+            logger.warning(
+                "action_log persist failed intent_id=%d status=%s: %s",
+                intent_id,
+                status,
+                e,
+            )
+
+    async def hydrate_action_log(
+        self, *, since_ts: float | None = None
+    ) -> None:
+        """Rebuild the in-memory action log from SQLite on startup.
+
+        CCS-01: loads up to ``_ACTION_LOG_MAXLEN`` rows from the actions
+        table (intent_id IS NOT NULL only — legacy decision-only rows are
+        skipped). When ``since_ts`` is provided, rows older than that are
+        also skipped to prevent stale-context pollution across the
+        conversation idle boundary (default 30 min).
+        """
+        try:
+            rows = await self.store.load_recent_action_log(
+                limit=self._ACTION_LOG_MAXLEN,
+                since_ts=since_ts,
+            )
+        except Exception as e:  # noqa: BLE001 — non-fatal; deque stays empty
+            logger.warning("action_log hydrate failed: %s", e)
+            return
+
+        # rows are newest-first; append in chronological order so the
+        # deque preserves natural append order (oldest at left, newest right).
+        self._action_log.clear()
+        for row in reversed(rows):
+            entry: dict[str, Any] = {
+                "id": row["intent_id"],
+                "tool": row["tool"] or "",
+                "args": row["args"] or "",
+                "status": row["status"],
+                "ts": row["ts"],
+            }
+            raw = row.get("result_json")
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = None
+                if isinstance(parsed, dict):
+                    if "summary" in parsed:
+                        entry["result"] = parsed["summary"]
+                    if "error" in parsed:
+                        entry["error"] = parsed["error"]
+            self._action_log.append(entry)
 
     def recent_actions(self, limit: int = 5) -> list[dict]:
         """Return a snapshot of the last `limit` actions, newest-first."""

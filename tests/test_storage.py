@@ -218,13 +218,13 @@ async def test_migration_idempotent() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_schema_version_v3_on_fresh_install(store: TranscriptStore) -> None:
+async def test_schema_version_v4_on_fresh_install(store: TranscriptStore) -> None:
     cursor = await store.db.execute(
         "SELECT value FROM meta WHERE key = ?", ("schema_version",)
     )
     row = await cursor.fetchone()
     assert row is not None
-    assert int(row[0]) == 3
+    assert int(row[0]) == 4
 
 
 async def test_schema_upgrade_v2_to_v3() -> None:
@@ -284,13 +284,13 @@ async def test_schema_upgrade_v2_to_v3() -> None:
         # Now open via TranscriptStore — init() must upgrade in place
         s = TranscriptStore(db_path)
         await s.init()
-        # meta.schema_version is now 3
+        # meta.schema_version is now 4 (CCS-01)
         cursor = await s.db.execute(
             "SELECT value FROM meta WHERE key = ?", ("schema_version",)
         )
         row = await cursor.fetchone()
         assert row is not None
-        assert int(row[0]) == 3
+        assert int(row[0]) == 4
         # events table exists
         cursor = await s.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
@@ -545,3 +545,141 @@ async def test_link_transcript_to_turn(store: TranscriptStore) -> None:
     row = await cursor.fetchone()
     assert row is not None
     assert row[0] == turn_id
+
+
+# ============================================================================
+# CCS-01: action_log persistence
+# ============================================================================
+
+
+async def test_actions_table_has_action_log_columns(store: TranscriptStore) -> None:
+    cursor = await store.db.execute("PRAGMA table_info(actions)")
+    rows = await cursor.fetchall()
+    names = {row[1] for row in rows}
+    assert "tool" in names
+    assert "args" in names
+    assert "result_json" in names
+    assert "intent_id" in names
+
+
+async def test_action_log_migration_idempotent() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "heare.db"
+        s1 = TranscriptStore(db)
+        await s1.init()
+        await s1.close()
+        # Re-open the same DB; init() must be a noop on the additive columns.
+        s2 = TranscriptStore(db)
+        await s2.init()
+        cursor = await s2.db.execute("PRAGMA table_info(actions)")
+        rows = await cursor.fetchall()
+        names = {row[1] for row in rows}
+        assert {"tool", "args", "result_json", "intent_id"}.issubset(names)
+        await s2.close()
+
+
+async def test_upsert_action_log_entry_inserts_then_updates(
+    store: TranscriptStore,
+) -> None:
+    rid1 = await store.upsert_action_log_entry(
+        intent_id=42,
+        tool="web_search",
+        args="chili recipe",
+        status="pending",
+        result=None,
+    )
+    assert rid1 > 0
+    rid2 = await store.upsert_action_log_entry(
+        intent_id=42,
+        tool="web_search",
+        args="chili recipe",
+        status="done",
+        result=json.dumps({"summary": "found 5 hits"}),
+    )
+    assert rid2 == rid1, "UPSERT must reuse the same row id"
+    cursor = await store.db.execute(
+        "SELECT status, result_json, tool FROM actions WHERE intent_id = ?",
+        (42,),
+    )
+    rows = await cursor.fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "done"
+    assert "summary" in rows[0][1]
+    assert rows[0][2] == "web_search"
+
+
+async def test_load_recent_action_log_orders_newest_first_and_caps_limit(
+    store: TranscriptStore,
+) -> None:
+    base = time.time()
+    for i in range(5):
+        await store.upsert_action_log_entry(
+            intent_id=100 + i,
+            tool="web_search",
+            args=f"query{i}",
+            status="done",
+            result=json.dumps({"summary": f"r{i}"}),
+            ts=base + i,
+        )
+    rows = await store.load_recent_action_log(limit=3)
+    assert len(rows) == 3
+    assert rows[0]["intent_id"] == 104  # newest first
+    assert rows[1]["intent_id"] == 103
+    assert rows[2]["intent_id"] == 102
+
+
+async def test_load_recent_action_log_filters_by_since_ts(
+    store: TranscriptStore,
+) -> None:
+    now = time.time()
+    # Older than threshold
+    await store.upsert_action_log_entry(
+        intent_id=200,
+        tool="web_search",
+        args="ancient",
+        status="done",
+        result=json.dumps({"summary": "old"}),
+        ts=now - 3600,
+    )
+    # Right at the threshold (should be included via >=)
+    await store.upsert_action_log_entry(
+        intent_id=201,
+        tool="web_search",
+        args="threshold",
+        status="done",
+        result=json.dumps({"summary": "edge"}),
+        ts=now - 1800,
+    )
+    # Within window
+    await store.upsert_action_log_entry(
+        intent_id=202,
+        tool="web_search",
+        args="recent",
+        status="done",
+        result=json.dumps({"summary": "fresh"}),
+        ts=now - 60,
+    )
+    rows = await store.load_recent_action_log(since_ts=now - 1800)
+    ids = {r["intent_id"] for r in rows}
+    assert ids == {201, 202}
+
+
+async def test_load_recent_action_log_excludes_legacy_decision_only_rows(
+    store: TranscriptStore,
+) -> None:
+    # legacy log_action: decision-id only, intent_id IS NULL — must NOT
+    # surface in the action_log projection.
+    tid = await store.log_transcript("legacy", "ambient")
+    did = await store.log_decision(tid, {"type": "act"})
+    await store.log_action(did, "ok", "legacy summary")
+    # action_log entry alongside it
+    await store.upsert_action_log_entry(
+        intent_id=300,
+        tool="web_search",
+        args="modern",
+        status="done",
+        result=json.dumps({"summary": "modern"}),
+    )
+    rows = await store.load_recent_action_log()
+    ids = {r["intent_id"] for r in rows}
+    assert ids == {300}
