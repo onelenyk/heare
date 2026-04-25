@@ -180,6 +180,40 @@ def test_template_has_prior_search_followup_example() -> None:
     )
 
 
+def test_template_has_numbered_results_addressing_rule() -> None:
+    """CCS-02: prompt teaches the model to address numbered web_search
+    items by ordinal ('the second one') and qualifier ('the vegan one'),
+    referencing recent_actions."""
+    raw = _load()
+    assert "the second one" in raw, "ordinal example 'the second one' missing"
+    assert "the vegan one" in raw, "qualifier example 'the vegan one' missing"
+    assert "recent_actions" in raw, "rule must mention recent_actions"
+    # uk/ru ordinal/qualifier vocabulary present
+    assert "другий" in raw or "веганський" in raw or "второй" in raw or "веганский" in raw, (
+        "expected at least one uk/ru ordinal or qualifier term"
+    )
+
+
+def test_template_has_ordinal_or_qualifier_example() -> None:
+    """CCS-02: at least one example block shows ordinal OR qualifier
+    reference resulting in an answer that does NOT emit a new web_search
+    intent for the same topic."""
+    raw = _load()
+    # Find the addressing-numbered-results section
+    needles = ("the second one", "веганський")
+    found = [n for n in needles if n in raw]
+    assert found, f"expected one of {needles!r} in prompt"
+
+    # For each found needle, check the surrounding example block (next 600
+    # chars) does NOT emit a web_search intent.
+    for needle in found:
+        idx = raw.index(needle)
+        block = raw[idx:idx + 600]
+        assert '"tool":"web_search"' not in block, (
+            f"addressing example near {needle!r} must not re-search; got: {block!r}"
+        )
+
+
 def test_substitution_leaves_no_placeholders() -> None:
     raw = _load()
     ctx = {

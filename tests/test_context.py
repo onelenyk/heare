@@ -440,6 +440,95 @@ async def test_format_recent_actions_truncates_other_tools(
     assert len(tail) <= 80
 
 
+# -------- CCS-02: items-first rendering for web_search/web_fetch --------
+
+async def test_format_recent_actions_items_first_for_web_search(
+    store: TranscriptStore,
+) -> None:
+    """When a web_search entry has structured `items`, render numbered
+    1./2./3. blocks from items, NOT the legacy `result` blob."""
+    from unittest.mock import MagicMock
+    from src.conversation import ConversationManager
+
+    settings = load_settings()
+    mgr = ConversationManager(store, MagicMock())
+    items = [
+        {"n": 1, "title": "Recipe One", "url": "https://e.com/1", "snippet": "First recipe."},
+        {"n": 2, "title": "Recipe Two", "url": "https://e.com/2", "snippet": "Second recipe."},
+        {"n": 3, "title": "Recipe Three", "url": "https://e.com/3", "snippet": "Third recipe."},
+    ]
+    mgr.record_action_pending(1, "web_search", "chili recipe")
+    mgr.record_action_result(1, "summary text not used here", items=items)
+
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+    result = await ctx.build_for_generator(transcript="?", persona="p")
+    formatted = result["recent_actions"]
+    assert "1. Recipe One" in formatted
+    assert "2. Recipe Two" in formatted
+    assert "3. Recipe Three" in formatted
+    assert "First recipe." in formatted
+    assert "https://e.com/1" in formatted
+
+
+async def test_format_recent_actions_truncates_long_items_tail_first(
+    store: TranscriptStore,
+) -> None:
+    """5 items × ~250-char snippets exceed 1800 chars → tail is dropped
+    and a '(N more items truncated)' suffix is appended. Total length
+    must remain <= 1800 chars (per AC)."""
+    from unittest.mock import MagicMock
+    from src.conversation import ConversationManager
+
+    settings = load_settings()
+    mgr = ConversationManager(store, MagicMock())
+    # Each item is ~520 chars (440 snippet + title + url + numbering); 5
+    # items joined by blank lines = ~2600 chars, well over the 1800 cap.
+    snippet = "lorem ipsum dolor sit amet " * 16  # ~432 chars
+    items = [
+        {"n": i, "title": f"Title {i}", "url": f"https://e.com/{i}", "snippet": snippet}
+        for i in range(1, 6)
+    ]
+    mgr.record_action_pending(1, "web_search", "long query")
+    mgr.record_action_result(1, "ignored", items=items)
+
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+    result = await ctx.build_for_generator(transcript="?", persona="p")
+    formatted = result["recent_actions"]
+    # Extract the tail after "web_search: " — items render as multi-line
+    # so we measure from the prefix to end.
+    idx = formatted.index("web_search: ") + len("web_search: ")
+    tail = formatted[idx:]
+    assert len(tail) <= 1800, f"web entry tail must be <=1800 chars, got {len(tail)}"
+    assert "more items truncated" in formatted, (
+        f"expected truncation suffix, got: {formatted!r}"
+    )
+    # First item should always survive truncation.
+    assert "1. Title 1" in formatted
+
+
+async def test_format_recent_actions_falls_back_to_result_when_no_items(
+    store: TranscriptStore,
+) -> None:
+    """Entry with `result` only (no `items`) hits the legacy fallback path
+    — substring of `result` appears in the output."""
+    from unittest.mock import MagicMock
+    from src.conversation import ConversationManager
+
+    settings = load_settings()
+    mgr = ConversationManager(store, MagicMock())
+    legacy_blob = "Legacy result blob. Brown beef, simmer twenty minutes."
+    mgr.record_action_pending(1, "web_search", "chili recipe")
+    mgr.record_action_result(1, legacy_blob)  # no items=
+
+    ctx = ContextBuilder(store, settings, conversation_manager=mgr)
+    result = await ctx.build_for_generator(transcript="?", persona="p")
+    formatted = result["recent_actions"]
+    assert "Legacy result blob." in formatted
+    assert "Brown beef" in formatted
+    # No numbered "1. " or "(N more items truncated)" since the entry has no items.
+    assert "more items truncated" not in formatted
+
+
 async def test_context_builder_keys_accounted_for(store: TranscriptStore) -> None:
     """Drift guard: every key in build() must be either propagated to the generator
     view or explicitly listed in _EXCLUDED_FROM_GENERATOR_CTX."""

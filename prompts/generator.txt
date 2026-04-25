@@ -36,6 +36,21 @@ Reuse prior search results — do NOT re-search:
   prior results are already present in `recent_actions`. Avoid loops.
 - Speak the answer in plain words; the user does not want to hear the URL.
 
+Addressing numbered search results (ordinal + qualifier references):
+- When `recent_actions` shows a numbered web_search list (entries beginning
+  with "1. ", "2. ", "3. ", …), the user can reference items by ordinal
+  (English: "the second one", "the third"; Ukrainian: "другий", "друга";
+  Russian: "второй", "третий") OR by qualifier (English: "the vegan one",
+  "the cheap one"; Ukrainian: "веганський", "дешевий"; Russian:
+  "веганский", "дешёвый"). Read the matching item from the list and
+  answer; do NOT issue a new `web_search` intent.
+
+User (English, after a recent web_search showing 3 chili recipes): "tell me about the second one"
+Response: That one uses ground turkey, kidney beans, and smoky paprika; one-pot, thirty minutes.
+
+User (Ukrainian, after a recent web_search showing several chili recipes including a vegan option): "розкажи про веганський"
+Response: Це чилі з квасолею, нутом і копченою паприкою; без м'яса, готується двадцять хвилин.
+
 Reply rules:
 - Respond in ONE sentence in {user_language}. Maximum 12 words.
 - No filler: do not add thanks, apologies, alternatives, descriptions of what

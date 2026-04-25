@@ -387,7 +387,13 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 # Phase 2.2: record BEFORE logging so next turn's context
                 # already reflects the completed action.
                 if conversation_manager is not None:
-                    conversation_manager.record_action_result(intent.id, summary)
+                    # CCS-02: thread structured items (e.g. web_search hits)
+                    # into the action log so the next-turn context renders
+                    # numbered entries the LLM can address by ordinal.
+                    items = result.get("items") if isinstance(result, dict) else None
+                    conversation_manager.record_action_result(
+                        intent.id, summary, items=items
+                    )
                 # Determine success/failure from result dict so direct-tool
                 # failures (success=False with spoken key) are logged correctly
                 # and do not fall through as "ok".

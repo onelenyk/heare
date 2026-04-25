@@ -75,38 +75,61 @@ class ConversationManager:
             ts=ts,
         )
 
-    def record_action_result(self, intent_id: int, summary: str) -> None:
+    def record_action_result(
+        self,
+        intent_id: int,
+        summary: str,
+        *,
+        items: list[dict] | None = None,
+    ) -> None:
+        """Record a completed action.
+
+        CCS-02: when ``items`` is provided (e.g. structured web_search
+        hits), it is stored on the in-memory entry as ``entry["items"]``
+        and persisted into ``result_json`` as
+        ``{"summary": summary, "items": items}``. Backward compatible:
+        callers that pass only ``summary`` produce ``{"summary": summary}``.
+        """
         # Update the matching pending entry if present; otherwise append a
         # fresh "done" entry. Both branches are O(n) over maxlen=16 = trivial.
         ts = time.time()
+        if items is not None:
+            persisted = json.dumps({"summary": summary, "items": items})
+        else:
+            persisted = json.dumps({"summary": summary})
         for entry in self._action_log:
             if entry["id"] == intent_id and entry["status"] == "pending":
                 entry["status"] = "done"
                 entry["result"] = summary
                 entry["ts"] = ts
+                if items is not None:
+                    entry["items"] = items
                 self._schedule_persist(
                     intent_id=intent_id,
                     tool=entry.get("tool", ""),
                     args=entry.get("args", ""),
                     status="done",
-                    result=json.dumps({"summary": summary}),
+                    result=persisted,
                     ts=ts,
                 )
                 return
-        self._action_log.append({
+        new_entry: dict[str, Any] = {
             "id": intent_id,
             "tool": "",
             "args": "",
             "status": "done",
             "result": summary,
             "ts": ts,
-        })
+        }
+        if items is not None:
+            new_entry["items"] = items
+        self._action_log.append(new_entry)
         self._schedule_persist(
             intent_id=intent_id,
             tool="",
             args="",
             status="done",
-            result=json.dumps({"summary": summary}),
+            result=persisted,
             ts=ts,
         )
 
@@ -243,6 +266,9 @@ class ConversationManager:
                         entry["result"] = parsed["summary"]
                     if "error" in parsed:
                         entry["error"] = parsed["error"]
+                    # CCS-02: structured search results survive restart.
+                    if isinstance(parsed.get("items"), list):
+                        entry["items"] = parsed["items"]
             self._action_log.append(entry)
 
     def recent_actions(self, limit: int = 5) -> list[dict]:

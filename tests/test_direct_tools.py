@@ -1398,3 +1398,161 @@ async def test_web_search_swallows_top_fetch_error(settings: Settings) -> None:
     output = result["output"]
     assert "Title X" in output
     assert "Top page content:" not in output
+
+
+# -------- CCS-02: numbered + structured search results --------
+
+async def test_serper_returns_numbered_output_and_items() -> None:
+    """Serper returns ``output`` numbered "1. … 2. …" AND a structured
+    ``items`` list with contiguous ``n`` starting at 1 (knowledge_graph
+    pushes organic numbering down by 0 since it gets ``n=0``)."""
+    import re
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json = MagicMock(return_value={
+        "knowledgeGraph": {
+            "title": "Chili",
+            "description": "A spicy stew of meat, beans, and tomatoes.",
+        },
+        "organic": [
+            {"title": "T1", "link": "https://e.com/1", "snippet": "S1."},
+            {"title": "T2", "link": "https://e.com/2", "snippet": "S2."},
+            {"title": "T3", "link": "https://e.com/3", "snippet": "S3."},
+        ],
+    })
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            result = await _execute_web_search("chili recipe", None)
+
+    assert result["success"] is True
+    output = result["output"]
+    # Numbered organic results: 1.…\n\n2.…
+    assert re.search(r"^.*\n\n1\.\s", output, re.DOTALL) or output.startswith("1. ") or "📚" in output
+    assert re.search(r"\n\n1\.\s.+\n.+\n\n2\.\s", output, re.DOTALL), (
+        f"expected numbered organic blocks 1./2., got: {output!r}"
+    )
+
+    items = result["items"]
+    assert isinstance(items, list)
+    assert len(items) == 4  # kg + 3 organic
+    # Knowledge graph at position 0
+    assert items[0]["n"] == 0
+    # Organic items contiguous starting at 1
+    organic = [it for it in items if it["n"] >= 1]
+    ns = [it["n"] for it in organic]
+    assert ns == [1, 2, 3]
+    for it in organic:
+        assert set(it.keys()) >= {"n", "title", "url", "snippet"}
+
+
+async def test_duckduckgo_returns_numbered_output_and_items() -> None:
+    """DuckDuckGo returns numbered output and ``items`` with ``n`` 1..N."""
+    import re
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = (
+        '<a class="result__a" href="https://example.com/1">Title One</a>'
+        '<a class="result__snippet" href="https://example.com/1">First snippet.</a>'
+        '<a class="result__a" href="https://example.com/2">Title Two</a>'
+        '<a class="result__snippet" href="https://example.com/2">Second snippet.</a>'
+        '<a class="result__a" href="https://example.com/3">Title Three</a>'
+        '<a class="result__snippet" href="https://example.com/3">Third snippet.</a>'
+    )
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_response
+        )
+        result = await _execute_web_search("test query", None)
+
+    assert result["success"] is True
+    output = result["output"]
+    assert output.startswith("1. ")
+    assert re.search(r"^1\.\s.+\n.+\n.+\n\n2\.\s", output, re.DOTALL), (
+        f"expected '1. …\\n\\n2. …' numbering, got: {output!r}"
+    )
+    items = result["items"]
+    assert isinstance(items, list)
+    assert len(items) == 3
+    assert [it["n"] for it in items] == [1, 2, 3]
+    for it in items:
+        assert set(it.keys()) >= {"n", "title", "url", "snippet"}
+    assert items[0]["title"] == "Title One"
+    assert items[0]["snippet"] == "First snippet."
+
+
+async def test_serper_knowledge_graph_at_position_0() -> None:
+    """Serper knowledgeGraph entries land at items[0] with n=0 and
+    kind='answer_box', and prefix the output with '📚 …'."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json = MagicMock(return_value={
+        "knowledgeGraph": {
+            "title": "Pipecat",
+            "description": "An open-source framework for voice agents.",
+        },
+        "organic": [
+            {"title": "Repo", "link": "https://github.com/pipecat-ai", "snippet": "Source."},
+        ],
+    })
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            result = await _execute_web_search("pipecat", None)
+
+    items = result["items"]
+    assert items[0]["n"] == 0
+    assert items[0]["kind"] == "answer_box"
+    assert "Pipecat" in items[0]["title"]
+    assert result["output"].startswith("📚 ")
+
+
+async def test_search_serper_empty_results_has_empty_items() -> None:
+    """Empty Serper response: spoken='No results found.', items=[]."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json = MagicMock(return_value={"organic": []})
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            result = await _execute_web_search("xyzzy", None)
+
+    assert result["success"] is True
+    assert result["items"] == []
+    assert result["output"] == "No results found"
+    assert result["spoken"]["en"] == "No results found."
+
+
+async def test_search_duckduckgo_empty_results_has_empty_items() -> None:
+    """Empty DuckDuckGo HTML: spoken='No results found.', items=[]."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "<html>nothing here</html>"
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_response
+        )
+        result = await _execute_web_search("xyzzy", None)
+
+    assert result["success"] is True
+    assert result["items"] == []
+    assert result["output"] == "No results found"
+    assert result["spoken"]["en"] == "No results found."

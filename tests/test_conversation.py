@@ -585,6 +585,56 @@ class TestActionLogPersistence:
         assert beta["result"] == "beta summary"
         assert beta["status"] == "done"
 
+    async def test_record_action_result_with_items_persists_and_hydrates(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        """CCS-02: structured items round-trip via persistence/hydrate."""
+        m1 = ConversationManager(store, fake_claude)
+        items = [
+            {"n": 1, "title": "T1", "url": "https://e.com/1", "snippet": "S1"},
+            {"n": 2, "title": "T2", "url": "https://e.com/2", "snippet": "S2"},
+        ]
+        m1.record_action_pending(11, "web_search", "chili recipe")
+        m1.record_action_result(11, "two hits", items=items)
+        # In-memory entry has items
+        live = next(e for e in m1.recent_actions() if e["id"] == 11)
+        assert live["items"] == items
+        await self._wait_persist()
+        # Verify result_json contains items + summary
+        cursor = await store.db.execute(
+            "SELECT result_json FROM actions WHERE intent_id = ?", (11,)
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        import json as _json
+        parsed = _json.loads(row[0])
+        assert parsed.get("summary") == "two hits"
+        assert parsed.get("items") == items
+
+        # Restart hydrate: items survive
+        m2 = ConversationManager(store, fake_claude)
+        await m2.hydrate_action_log()
+        restored = next(e for e in m2.recent_actions(limit=5) if e["id"] == 11)
+        assert restored["items"] == items
+        assert restored["result"] == "two hits"
+
+    async def test_record_action_result_without_items_backward_compatible(
+        self, store: TranscriptStore, fake_claude: FakeClaudeCLI
+    ) -> None:
+        """CCS-02: omitting items keeps the legacy result_json shape
+        ({\"summary\": ...}) — no `items` key persisted."""
+        m1 = ConversationManager(store, fake_claude)
+        m1.record_action_pending(12, "bash", "echo hi")
+        m1.record_action_result(12, "ran: hi")
+        await self._wait_persist()
+        cursor = await store.db.execute(
+            "SELECT result_json FROM actions WHERE intent_id = ?", (12,)
+        )
+        row = await cursor.fetchone()
+        import json as _json
+        parsed = _json.loads(row[0])
+        assert parsed == {"summary": "ran: hi"}
+
     async def test_hydrate_action_log_filters_by_since_ts(
         self, store: TranscriptStore, fake_claude: FakeClaudeCLI
     ) -> None:

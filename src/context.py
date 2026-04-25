@@ -217,26 +217,113 @@ class ContextBuilder:
             - [14:25] ⋯ search: пошук рейсів
             - [14:27] ✗ bash: помилка — ...
 
-        Tail is truncated to 80 chars for most tools. Web tools
-        (web_search/web_fetch) keep up to 1500 chars so the generator can
-        answer follow-up questions from prior search content instead of
-        re-issuing a search.
+        CCS-02: items-first rendering for web_search/web_fetch entries.
+        When ``entry["items"]`` is present and non-empty AND the tool is
+        ``web_search``/``web_fetch``, build a numbered list from items
+        (NOT in addition to the legacy ``result`` blob). Hard cap each web
+        entry at ``WEB_TAIL_LIMIT`` chars (1800) using TAIL-FIRST
+        truncation: drop trailing items first and append a
+        ``"(N more items truncated)"`` suffix.
+
+        Fallback: when ``items`` is absent (or empty), the legacy
+        ``result`` rendering path is used unchanged — this keeps existing
+        web_search entries (and tests like
+        ``test_format_recent_actions_keeps_web_search_content`` /
+        ``test_format_recent_actions_truncates_other_tools``) working
+        exactly as before. Non-web tools always use the 80-char tail cap.
         """
         if not actions:
             return "(none)"
         glyph = {"pending": "⋯", "done": "✓", "error": "✗"}
+        # Both the constant below and the AC use the SAME 1800 — no drift.
+        WEB_TAIL_LIMIT = 1800
+        OTHER_TAIL_LIMIT = 80
         lines: list[str] = []
         for a in actions:
             ts = dt.datetime.fromtimestamp(a.get("ts", 0)).strftime("%H:%M:%S")
             status = a.get("status", "pending")
             tool = a.get("tool", "")
             args = a.get("args", "")[:60]
+            items = a.get("items")
+            if (
+                tool in ("web_search", "web_fetch")
+                and isinstance(items, list)
+                and items
+            ):
+                rendered = self._render_items_with_tail_truncation(
+                    items, WEB_TAIL_LIMIT
+                )
+                lines.append(
+                    f"  - [{ts}] {glyph.get(status, '?')} {tool}: {rendered}"
+                )
+                continue
+            # Legacy fallback path: render from `result` blob. Existing tests
+            # at tests/test_context.py:391-440 exercise this path for entries
+            # without `items` — keep behavior unchanged.
             tail = a.get("result") or a.get("error") or args
-            tail_limit = 1500 if tool in ("web_search", "web_fetch") else 80
+            tail_limit = (
+                WEB_TAIL_LIMIT
+                if tool in ("web_search", "web_fetch")
+                else OTHER_TAIL_LIMIT
+            )
             lines.append(
                 f"  - [{ts}] {glyph.get(status, '?')} {tool}: {tail[:tail_limit]}"
             )
         return "\n".join(lines)
+
+    @staticmethod
+    def _render_items_with_tail_truncation(
+        items: list[dict[str, Any]], char_cap: int
+    ) -> str:
+        """Render numbered items with tail-first truncation.
+
+        Builds ``"{n}. {title}\\n{snippet}\\n{url}"`` blocks separated by
+        blank lines. When the joined string exceeds ``char_cap``, drop
+        items from the tail (one at a time) and append a
+        ``"(N more items truncated)"`` suffix. The final string is
+        guaranteed to be ``<= char_cap`` chars.
+        """
+        def _render_block(it: dict[str, Any]) -> str:
+            n = it.get("n", 0)
+            title = (it.get("title") or "").strip()
+            snippet = (it.get("snippet") or "").strip()
+            url = (it.get("url") or "").strip()
+            parts = [f"{n}. {title}"] if title else [f"{n}."]
+            if snippet:
+                parts.append(snippet)
+            if url:
+                parts.append(url)
+            return "\n".join(parts)
+
+        rendered_blocks = [_render_block(it) for it in items]
+        joined = "\n\n".join(rendered_blocks)
+        if len(joined) <= char_cap:
+            return joined
+
+        # Tail-first truncation: drop blocks from the end until the
+        # joined output PLUS the suffix fits the cap.
+        kept = list(rendered_blocks)
+        while kept:
+            dropped = len(rendered_blocks) - len(kept)
+            if dropped > 0:
+                suffix = f"\n({dropped} more items truncated)"
+            else:
+                suffix = ""
+            candidate = "\n\n".join(kept) + suffix
+            if len(candidate) <= char_cap and dropped > 0:
+                return candidate
+            if len(candidate) <= char_cap:
+                # No drop yet but somehow fits — should not happen given
+                # the early-return above; keep for safety.
+                return candidate
+            kept.pop()
+
+        # Pathological: even a single block is too long — hard truncate
+        # the first block and tag the rest as truncated.
+        dropped = len(rendered_blocks)
+        suffix = f"\n({dropped} more items truncated)"
+        budget = max(0, char_cap - len(suffix))
+        return rendered_blocks[0][:budget] + suffix
 
     def _format_recent_turns(self, recent_turns: list[dict[str, Any]]) -> str:
         """Format recent turns with topics for display in prompt."""

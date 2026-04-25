@@ -39,3 +39,33 @@ tests/test_indication.py::test_notify_dispatches_to_all_enabled_backends is time
 - uv run pytest tests/test_storage.py tests/test_conversation.py tests/test_config.py -q → 104 passed
 - uv run pytest -q → 944 passed, 1 failed (pre-existing time-of-day flake in test_indication, unrelated)
 - uv run ruff check src/storage.py src/conversation.py src/config.py src/main.py src/pipeline.py tests/test_conversation.py tests/test_storage.py tests/test_config.py → All checks passed
+
+## US-CCS-02 — implemented (2026-04-26)
+
+### Files touched
+- src/direct_tools.py: _search_serper and _search_duckduckgo now build numbered "1. …\n\n2. …" output AND additionally return a structured `items: list[dict]` with keys {n, title, url, snippet}. Knowledge-graph (Serper knowledgeGraph) entries land at items[0] with n=0 and kind="answer_box", and prefix the output as "📚 {title}: {description}". Empty-results path returns output="No results found" and items=[]. Error paths now also include items=[]. Docstrings document the new return shape.
+- src/conversation.py: record_action_result now accepts an optional items=None kwarg. When provided, items is stored on the in-memory entry as entry["items"] and persisted into result_json as {"summary": …, "items": …} (vs. legacy {"summary": …}). hydrate_action_log now reads items back from result_json["items"] if present, surviving daemon restart.
+- src/main.py: _on_action_result threads result.get("items") into record_action_result(intent.id, summary, items=…) so structured search hits flow into the action log.
+- src/context.py: _format_recent_actions gains items-first rendering for web_search/web_fetch entries. WEB_TAIL_LIMIT=1800 (was 1500); OTHER_TAIL_LIMIT=80 (unchanged). New _render_items_with_tail_truncation helper builds "1. {title}\n{snippet}\n{url}" blocks separated by blank lines and TAIL-FIRST drops blocks until joined+suffix fits under WEB_TAIL_LIMIT, appending "\n(N more items truncated)". Legacy result-blob path is the explicit fallback for entries without items — comment notes the existing tests at tests/test_context.py:391-440 stay green via this fallback.
+- prompts/generator.txt: new "Addressing numbered search results" section sits below the existing "Reuse prior search results" rule. Documents ordinal references ("the second one", "другий", "второй") and qualifier references ("the vegan one", "веганський", "веганский"), and adds 2 worked examples (English ordinal + Ukrainian qualifier) where the response answers from prior search content WITHOUT emitting a new web_search intent.
+- tests/test_direct_tools.py: 5 new tests — numbered+items for serper, numbered+items for duckduckgo, knowledge_graph at items[0], serper empty results → items=[], duckduckgo empty results → items=[].
+- tests/test_context.py: 3 new tests — items-first rendering for web_search, tail-first truncation under 1800-char cap with "(N more items truncated)" suffix, and fallback to result blob when items absent.
+- tests/test_generator_prompt.py: 2 new tests — prompt contains "the second one" + "the vegan one" + recent_actions, and the surrounding example block does not emit a web_search intent.
+- tests/test_conversation.py: 2 new tests — items round-trip via persistence (result_json contains both summary and items, hydrate restores items) and backward-compat (no items kwarg ⇒ legacy {"summary": …} shape).
+
+### Design decisions
+1. Knowledge-graph at n=0 with kind="answer_box" rather than fragmenting to a separate field. Output rendering keeps the 📚 prefix; items rendering uses the n=0 slot. Documented in the _search_serper docstring; covered by test_serper_knowledge_graph_at_position_0.
+2. WEB_TAIL_LIMIT lives as a function-local constant inside _format_recent_actions (the previous tail_limit was inline-literal). Both the constant and the AC use 1800 — single source of truth.
+3. Tail-first truncation drops whole blocks (not character-level mid-block cuts) so that surviving items remain syntactically intact "1. …\n…\n…" entries the LLM can address by ordinal. Pathological case of single-block-too-long still character-truncates with a "(N more items truncated)" tag — unlikely in practice but covered defensively.
+4. record_action_result keeps items optional (default None) for backward compatibility. Callers that pass only summary produce result_json={"summary": …} as before. Story 1's hydrate path was extended to read parsed["items"] only when it's a list — preserves resilience to malformed JSON.
+5. The fallback path comment in _format_recent_actions explicitly references tests/test_context.py:391-440 so future maintainers know the legacy rendering must stay byte-compatible for entries without items (consensus-review condition #3).
+
+### Gotchas
+- Old in-memory entries with no items key fall through to the legacy result blob render. This is by design — legacy DB rows hydrated without items still render via result_json["summary"], no surprise breakage.
+- Serper organic items start at n=1 even when the knowledge_graph sits at n=0 — n is contiguous within the organic list (1..5). Test asserts this explicitly.
+- The tests/test_indication.py::test_notify_dispatches_to_all_enabled_backends pre-existing time-of-day flake remains the only failing test in the full suite (current run was at 01:01 local, inside the documented 22:00–07:00 quiet-hours window).
+
+### Verification
+- uv run pytest tests/test_direct_tools.py tests/test_context.py tests/test_generator_prompt.py tests/test_conversation.py -q → 150 passed
+- uv run pytest -q → 956 passed, 1 failed (pre-existing time-of-day flake in test_indication, unrelated)
+- uv run ruff check src/direct_tools.py src/context.py src/conversation.py src/main.py tests/test_direct_tools.py tests/test_context.py tests/test_generator_prompt.py tests/test_conversation.py → All checks passed

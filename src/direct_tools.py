@@ -413,7 +413,29 @@ def _truncate(text: str, limit: int) -> str:
 async def _search_serper(
     query: str, api_key: str, settings: "Settings | None" = None
 ) -> dict:
-    """Search using Serper.dev (Google API)."""
+    """Search using Serper.dev (Google API).
+
+    Return shape (CCS-02)::
+
+        {
+            "success": True,
+            "output": "1. Title\\nSnippet\\nURL\\n\\n2. …",  # numbered text
+            "items": [
+                {"n": 0, "title": "📚 …", "url": "", "snippet": "…",
+                 "kind": "answer_box"},   # Serper knowledgeGraph, when present
+                {"n": 1, "title": "…", "url": "…", "snippet": "…"},
+                ...
+            ],
+            "error": None,
+            "spoken": {...},
+        }
+
+    Knowledge-graph (Serper ``knowledgeGraph``) entries are inserted at
+    position 0 of ``items`` with ``n=0`` and ``kind="answer_box"``, and
+    rendered at the start of ``output`` as ``"📚 {title}: {description}"``.
+    Organic hits are numbered ``1..5`` (contiguous). Empty-results path
+    returns ``output="No results found"`` and ``items=[]``.
+    """
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
@@ -424,8 +446,26 @@ async def _search_serper(
             resp.raise_for_status()
             data = resp.json()
 
-            results: list[str] = []
+            items: list[dict] = []
+            text_blocks: list[str] = []
             top_url: str | None = None
+
+            # Knowledge-graph (answer box) goes to position 0 with n=0.
+            if "knowledgeGraph" in data:
+                kg = data["knowledgeGraph"]
+                kg_title = kg.get("title", "")
+                kg_desc = kg.get("description", "")
+                if kg_title and kg_desc:
+                    items.append({
+                        "n": 0,
+                        "title": f"📚 {kg_title}",
+                        "url": "",
+                        "snippet": kg_desc,
+                        "kind": "answer_box",
+                    })
+                    text_blocks.append(f"📚 {kg_title}: {kg_desc}")
+
+            n = 1
             for item in data.get("organic", [])[:5]:
                 title = item.get("title", "")
                 url = item.get("link", "")
@@ -433,21 +473,19 @@ async def _search_serper(
                 if title and url:
                     if top_url is None:
                         top_url = url
+                    items.append({
+                        "n": n,
+                        "title": title,
+                        "url": url,
+                        "snippet": snippet,
+                    })
                     if snippet:
-                        results.append(f"{title}\n{snippet}\n{url}")
+                        text_blocks.append(f"{n}. {title}\n{snippet}\n{url}")
                     else:
-                        results.append(f"{title}\n{url}")
+                        text_blocks.append(f"{n}. {title}\n{url}")
+                    n += 1
 
-            # Answer box if available
-            if "knowledgeGraph" in data:
-                kg = data["knowledgeGraph"]
-                kg_title = kg.get("title", "")
-                kg_desc = kg.get("description", "")
-                if kg_title and kg_desc:
-                    results.insert(0, f"📚 {kg_title}: {kg_desc}")
-
-            n = len(results)
-            if n >= 1:
+            if items:
                 spoken: dict[str, str] = {
                     "en": "Searching done.",
                     "uk": "Пошук завершено.",
@@ -459,11 +497,12 @@ async def _search_serper(
                     "uk": "Нічого не знайшов.",
                     "ru": "Ничего не нашёл.",
                 }
-            output = "\n\n".join(results) if results else "No results found"
+            output = "\n\n".join(text_blocks) if text_blocks else "No results found"
             output = await _maybe_append_top_page(output, top_url, settings)
             return {
                 "success": True,
                 "output": output,
+                "items": items,
                 "error": None,
                 "spoken": spoken,
             }
@@ -471,6 +510,7 @@ async def _search_serper(
         return {
             "success": False,
             "output": "",
+            "items": [],
             "error": f"Serper API error: {e.response.status_code}",
             "spoken": {
                 "en": "Search failed.",
@@ -482,6 +522,7 @@ async def _search_serper(
         return {
             "success": False,
             "output": "",
+            "items": [],
             "error": f"Serper search failed: {e}",
             "spoken": {
                 "en": "Search failed.",
@@ -494,7 +535,25 @@ async def _search_serper(
 async def _search_duckduckgo(
     query: str, settings: "Settings | None" = None
 ) -> dict:
-    """Search using DuckDuckGo HTML scraping (fallback, no API key needed)."""
+    """Search using DuckDuckGo HTML scraping (fallback, no API key needed).
+
+    Return shape (CCS-02)::
+
+        {
+            "success": True,
+            "output": "1. Title\\nSnippet\\nURL\\n\\n2. …",
+            "items": [
+                {"n": 1, "title": "…", "url": "…", "snippet": "…"},
+                ...
+            ],
+            "error": None,
+            "spoken": {...},
+        }
+
+    Items are numbered ``1..5`` (contiguous). DuckDuckGo has no
+    knowledge-graph equivalent, so ``n=0`` is unused here. Empty results
+    return ``output="No results found"`` and ``items=[]``.
+    """
     import re
 
     try:
@@ -507,13 +566,15 @@ async def _search_duckduckgo(
             resp.raise_for_status()
             text = resp.text
 
-            results: list[str] = []
+            items: list[dict] = []
+            text_blocks: list[str] = []
             top_url: str | None = None
             link_pattern = r'<a class="result__a" href="([^"]*)">([^<]*)</a>'
             link_iter = list(re.finditer(link_pattern, text))
             tag_strip = re.compile(r"<[^>]+>")
             ws_collapse = re.compile(r"\s+")
 
+            n = 1
             for i, m in enumerate(link_iter[:5]):
                 url = m.group(1)
                 title = m.group(2).strip()
@@ -536,13 +597,19 @@ async def _search_duckduckgo(
                 if snippet_match:
                     raw = tag_strip.sub("", snippet_match.group(1))
                     snippet = ws_collapse.sub(" ", raw).strip()
+                items.append({
+                    "n": n,
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet,
+                })
                 if snippet:
-                    results.append(f"{title}\n{snippet}\n{url}")
+                    text_blocks.append(f"{n}. {title}\n{snippet}\n{url}")
                 else:
-                    results.append(f"{title}\n{url}")
+                    text_blocks.append(f"{n}. {title}\n{url}")
+                n += 1
 
-            n = len(results)
-            if n >= 1:
+            if items:
                 spoken: dict[str, str] = {
                     "en": "Searching done.",
                     "uk": "Пошук завершено.",
@@ -554,11 +621,12 @@ async def _search_duckduckgo(
                     "uk": "Нічого не знайшов.",
                     "ru": "Ничего не нашёл.",
                 }
-            output = "\n\n".join(results) if results else "No results found"
+            output = "\n\n".join(text_blocks) if text_blocks else "No results found"
             output = await _maybe_append_top_page(output, top_url, settings)
             return {
                 "success": True,
                 "output": output,
+                "items": items,
                 "error": None,
                 "spoken": spoken,
             }
@@ -566,6 +634,7 @@ async def _search_duckduckgo(
         return {
             "success": False,
             "output": "",
+            "items": [],
             "error": f"DuckDuckGo search failed: {e}",
             "spoken": {
                 "en": "Search failed.",
