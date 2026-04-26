@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Any
 
 from .context import ContextBuilder
 from .intent_parser import IntentStreamParser
-from .language import check_cancel, detect_script_language, voice_for_language
+from .language import (
+    detect_script_language,
+    is_standalone_cancel_imperative,
+    voice_for_language,
+)
 from .openrouter_cli import OpenRouterCLI, OpenRouterError
 from .zai_cli import ZaiCLI
 
@@ -399,8 +403,17 @@ def _build_generator_processor_class():
                     logger.exception("generator: failed to log transcript (non-fatal)")
 
             # Cancel keyword gate — full cancel (queued + in-flight)
+            # US-WU-02: smart standalone-imperative detector promoted from
+            # the dormant decider. Negation guard, ≤4-word residual,
+            # context-token guard. EC-2 of the consensus plan: no escape
+            # hatch — the old keyword-list regex approach is gone.
             cancelled_anything = False
-            if check_cancel(transcript, self._active_lang):
+            stop_words = (
+                self.settings.cancel_stop_words
+                if self.settings is not None
+                else ["stop", "cancel", "halt", "відміни", "отмени", "стоп"]
+            )
+            if is_standalone_cancel_imperative(transcript, stop_words):
                 cancelled_anything = await self.intent_queue.cancel_active()
                 if cancelled_anything:
                     logger.info(

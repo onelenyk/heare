@@ -237,7 +237,7 @@ class Settings:
     # one of these words (≤4 words, optional politeness markers), the
     # decider calls IntentQueue.cancel_active() before invoking the LLM.
     # Extensible at runtime via the HEARE_CANCEL_STOP_WORDS env var
-    # (comma-separated). See src/decider.py:_is_standalone_cancel_imperative.
+    # (comma-separated). See src/language.py:is_standalone_cancel_imperative.
     # AC#1 lists the canonical en+uk+ru roots ("stop", "cancel", "halt",
     # "відміни", "отмени"). AC#5 also requires "будь ласка стоп" to fire,
     # which means "стоп" — the bare Cyrillic transliteration of "stop" —

@@ -2082,54 +2082,6 @@ async def test_confirm_during_warning_fire_race_fuzz(harness, ccs03_facade) -> N
 # ============================================================================
 
 
-def _load_cancel_fixtures() -> tuple[list[str], list[str]]:
-    """Load TRIGGER + NO-TRIGGER utterances from tests/fixtures/cancel_stopwords.txt."""
-    fixture_path = Path(__file__).parent / "fixtures" / "cancel_stopwords.txt"
-    triggers: list[str] = []
-    no_triggers: list[str] = []
-    for line in fixture_path.read_text(encoding="utf-8").splitlines():
-        if not line or line.lstrip().startswith("#"):
-            continue
-        parts = line.split("\t", 1)
-        if len(parts) != 2:
-            continue
-        verdict, utt = parts[0].strip(), parts[1].strip()
-        if verdict == "TRIGGER":
-            triggers.append(utt)
-        elif verdict == "NO-TRIGGER":
-            no_triggers.append(utt)
-    return triggers, no_triggers
-
-
-_CCS05A_TRIGGERS, _CCS05A_NO_TRIGGERS = _load_cancel_fixtures()
-
-
-@pytest.mark.parametrize("utterance", _CCS05A_TRIGGERS)
-def test_standalone_cancel_imperative_triggers_for_stop_words(utterance: str) -> None:
-    """AC: stop-word fixtures (en/uk/ru) trigger the standalone-imperative detector."""
-    from src.decider import _is_standalone_cancel_imperative
-    from src.config import Settings as _S
-
-    settings = _S()
-    assert _is_standalone_cancel_imperative(utterance, settings.cancel_stop_words), (
-        f"expected TRIGGER for {utterance!r}"
-    )
-
-
-@pytest.mark.parametrize("utterance", _CCS05A_NO_TRIGGERS)
-def test_standalone_cancel_imperative_rejects_negations_and_contexts(
-    utterance: str,
-) -> None:
-    """AC: negations and noun-context utterances do NOT trigger."""
-    from src.decider import _is_standalone_cancel_imperative
-    from src.config import Settings as _S
-
-    settings = _S()
-    assert not _is_standalone_cancel_imperative(
-        utterance, settings.cancel_stop_words
-    ), f"expected NO-TRIGGER for {utterance!r}"
-
-
 class _CCS05ASpyQueue:
     """Minimal async spy implementing the IntentQueue surface the decider
     fast-path needs (cancel_active). Records each call and returns True
@@ -2195,7 +2147,7 @@ async def test_decider_fast_path_does_not_trigger_for_non_imperative(
 async def test_cancel_stop_words_extensible_via_env(monkeypatch, harness) -> None:
     """AC#6: HEARE_CANCEL_STOP_WORDS env var extends the stop-word vocabulary."""
     from src.config import load_settings as _load
-    from src.decider import _is_standalone_cancel_imperative
+    from src.language import is_standalone_cancel_imperative
 
     monkeypatch.setenv("HEARE_CANCEL_STOP_WORDS", "foo,bar")
     new_settings = _load()
@@ -2204,14 +2156,14 @@ async def test_cancel_stop_words_extensible_via_env(monkeypatch, harness) -> Non
     assert "bar" in new_settings.cancel_stop_words
 
     # Standalone "foo" must now trigger.
-    assert _is_standalone_cancel_imperative("foo", new_settings.cancel_stop_words)
-    assert _is_standalone_cancel_imperative(
+    assert is_standalone_cancel_imperative("foo", new_settings.cancel_stop_words)
+    assert is_standalone_cancel_imperative(
         "please bar", new_settings.cancel_stop_words
     )
     # And a non-listed legacy stop-word must NOT trigger under the override
     # (semantics: env var REPLACES the list; this guards the override is
     # actually exclusive, not additive).
-    assert not _is_standalone_cancel_imperative(
+    assert not is_standalone_cancel_imperative(
         "stop", new_settings.cancel_stop_words
     )
 

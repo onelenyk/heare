@@ -45,3 +45,57 @@
   tests/test_intent_parser.py tests/test_indication.py -q` → 115 passed.
   Full suite `uv run pytest -q` → 994 passed, 4 pre-existing warnings.
   `uv run ruff check src/generator.py tests/test_generator.py` → all checks passed.
+
+## US-WU-02 — implemented (2026-04-25)
+- Function move: `_is_standalone_cancel_imperative` promoted from
+  src/decider.py:229 to src/language.py as the public
+  `is_standalone_cancel_imperative(text, stop_words)` (no leading underscore).
+  Same signature, same logic — ≤4-word residual, negation guard
+  ("don't stop", "не зупиняйся" rejected), context-token guard
+  ("stop sign", "the cancel button" rejected), "no no no stop" carve-out.
+  Private constants (_CANCEL_POLITENESS_PREFIXES, _CANCEL_FILLER_PREFIXES,
+  _CANCEL_NEGATION_TOKENS, _CANCEL_CONTEXT_TOKENS, _CANCEL_MAX_RESIDUAL_WORDS)
+  moved with it.
+- EC-2 deletions: `check_cancel` function and the `CANCEL_PATTERNS` regex
+  dict are GONE from src/language.py. `grep -rn 'check_cancel\|CANCEL_PATTERNS'
+  src/` returns zero matches. The keyword-list approach is gone — no escape
+  hatch remains.
+- Generator wired: src/generator.py:403 cancel keyword gate now calls
+  `is_standalone_cancel_imperative(transcript, settings.cancel_stop_words)`.
+  CCS-05a smart detection finally reaches production after the post-mortem
+  found the original CCS-05a code lived in dormant DeciderProcessor. Falls
+  back to the default stop-word list when settings is None (test paths).
+- Decider import updated: src/decider.py imports
+  `is_standalone_cancel_imperative` from src.language and the dormant
+  fast-path call site at line ~598 uses the public name. Sibling
+  consistency for US-WU-05.
+- Test migration: tests/test_language.py grew a fixture-driven parametrized
+  test pair (`test_is_standalone_cancel_imperative_fixtures_trigger` /
+  `..._no_trigger`) that loads tests/fixtures/cancel_stopwords.txt and
+  asserts every TRIGGER row → True and every NO-TRIGGER row → False with
+  the default stop-word list. The legacy `test_check_cancel_*` tests were
+  deleted (the function they tested no longer exists). The
+  `test_cancel_stop_words_extensible_via_env` env-override test moved
+  here too.
+- Test phrase updates in tests/test_generator.py: the cancel-path tests
+  previously used "скасуй" — that token is NOT in the canonical
+  stop-word list ("stop", "cancel", "halt", "відміни", "отмени", "стоп")
+  and the smart detector intentionally requires the head token to match
+  exactly. Phrases swapped to detector-recognized stop-words: "стоп",
+  "стоп!", "будь ласка стоп", "відміни замовлення", "ok stop",
+  "please cancel". `test_cancel_keyword_negative_cases` ("стоп-кадр",
+  "автостоп", "скаси мене") still passes — the smart detector treats
+  hyphenated/concatenated tokens as a single residual word that does
+  NOT match the standalone "стоп".
+- tests/test_decider.py: the fixture-driven detector tests
+  `test_standalone_cancel_imperative_*` were migrated out (now in
+  tests/test_language.py). The dormant-DeciderProcessor wrapper tests
+  (`test_decider_fast_path_*`, `test_cancel_stop_words_extensible_via_env`)
+  remain but now import from src.language. They will be removed in
+  US-WU-05 with the rest of the dormant decider tests.
+- Verification:
+  * `uv run pytest tests/test_language.py tests/test_generator.py
+    tests/test_decider.py -q` → 179 passed.
+  * Full suite `uv run pytest -q` → 991 passed, 4 pre-existing warnings.
+  * `uv run ruff check src/ tests/` → all checks passed.
+  * `grep -rn 'check_cancel\|CANCEL_PATTERNS' src/` → zero matches (EC-2).

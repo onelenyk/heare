@@ -1,11 +1,11 @@
 # CCS-05a stop-word fixtures (en/uk/ru).
 # Format: TSV-style — verdict\tutterance
-#   TRIGGER     — _is_standalone_cancel_imperative must return True
+#   TRIGGER     — is_standalone_cancel_imperative must return True
 #   NO-TRIGGER  — must return False
 # Lines starting with '#' and blank lines are skipped.
 #
 # The "no no no stop" carve-out is documented in the detector docstring
-# (src/decider.py:_is_standalone_cancel_imperative). The "ok stop stop"
+# (src/language.py:is_standalone_cancel_imperative). The "ok stop stop"
 # fixture exercises politeness-prefix stripping followed by a stop-word
 # residual head.
 TRIGGER	stop

@@ -253,7 +253,7 @@ async def test_mid_stream_tag_no_leakage(harness) -> None:
 
 
 async def test_cancel_keyword_pops_pending_intent(harness, caplog) -> None:
-    """User says "скасуй" → cancel_active drains queue, fast-path log fires."""
+    """User says "стоп" → cancel_active drains queue, fast-path log fires."""
     from src.actions import IntentQueue
 
     _, _, ctx = harness
@@ -268,14 +268,14 @@ async def test_cancel_keyword_pops_pending_intent(harness, caplog) -> None:
     gen._active_lang = "uk"  # simulate Ukrainian already established
 
     with caplog.at_level(logging.INFO, logger="heare.generator"):
-        await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+        await gen._handle_transcription(_make_transcription_frame("стоп"), None)
 
     assert queue.pending_count() == 0
     assert any("CANCEL FAST-PATH" in r.message for r in caplog.records)
 
 
 async def test_cancel_keyword_on_empty_queue_graceful(harness) -> None:
-    """User says "скасуй" with empty queue → no crash, reply still speaks."""
+    """User says "стоп" with empty queue → no crash, reply still speaks."""
     from src.actions import IntentQueue
 
     _, _, ctx = harness
@@ -290,7 +290,7 @@ async def test_cancel_keyword_on_empty_queue_graceful(harness) -> None:
         pushed.append(frame)
 
     gen.push_frame = capture  # type: ignore[assignment]
-    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+    await gen._handle_transcription(_make_transcription_frame("стоп"), None)
     assert queue.pending_count() == 0
     # Bot still replied
     assert any("Немає" in f.text for f in pushed)
@@ -439,15 +439,21 @@ async def test_intent_emission_under_saturated_context(harness) -> None:
 
 
 async def test_cancel_keyword_positive_edge_cases(harness) -> None:
-    """Real cancellation phrases must trigger cancel_active (drain queue)."""
+    """Real cancellation phrases must trigger cancel_active (drain queue).
+
+    US-WU-02: phrases now exercise the smart standalone-imperative detector.
+    Each must be ≤4 residual words after politeness/filler strip and lead
+    with one of the configured stop-words ("stop", "cancel", "halt",
+    "відміни", "отмени", "стоп")."""
     from src.actions import IntentQueue
 
     _, _, ctx = harness
     for phrase in [
-        "скасуй!",
-        "ну скасуй",
-        "скасуй, будь ласка",
+        "стоп!",
+        "будь ласка стоп",
         "відміни замовлення",
+        "ok stop",
+        "please cancel",
     ]:
         queue = IntentQueue()
         await queue.submit({"tool": "bash", "args": "will-cancel"})
@@ -943,7 +949,7 @@ async def test_cancel_path_calls_cancel_active_and_fires_indication_once(
     gen.push_frame = AsyncMock()  # type: ignore[method-assign]
     gen._active_lang = "uk"
 
-    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+    await gen._handle_transcription(_make_transcription_frame("стоп"), None)
 
     # cancel_active was called exactly once (replaces cancel_latest call site)
     cancel_active_mock.assert_awaited_once()
@@ -994,7 +1000,7 @@ async def test_cancel_path_when_nothing_to_cancel_fires_no_indication(
     gen.push_frame = AsyncMock()  # type: ignore[method-assign]
     gen._active_lang = "uk"
 
-    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+    await gen._handle_transcription(_make_transcription_frame("стоп"), None)
 
     cancel_active_mock.assert_awaited_once()
     intent_cancelled_calls = [
@@ -1029,7 +1035,7 @@ async def test_cancel_path_still_invokes_llm(harness, monkeypatch) -> None:
     gen.push_frame = AsyncMock()  # type: ignore[method-assign]
     gen._active_lang = "uk"
 
-    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+    await gen._handle_transcription(_make_transcription_frame("стоп"), None)
 
     cancel_active_mock.assert_awaited_once()
     assert fake.call_count == 1, (
