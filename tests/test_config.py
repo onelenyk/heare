@@ -9,7 +9,6 @@ def test_default_settings() -> None:
     assert s.mode == Mode.AMBIENT
     assert s.tts_voice == "en-US-AriaNeural"
     assert s.tts_sample_rate == 24000
-    assert s.heartbeat_interval_minutes == 30
     assert s.confirmation_timeout_seconds == 30
     assert s.transcript_retention_days == 30
     assert s.claude_cli == "claude"
@@ -48,28 +47,6 @@ def test_load_settings_claude_cli_override(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
     s = load_settings()
     assert s.claude_cli == "/usr/bin/claude"
-
-
-def test_load_settings_heartbeat_override(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("HEARE_HEARTBEAT_MIN", "5")
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-    monkeypatch.delenv("HEARE_CLAUDE_CLI", raising=False)
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    s = load_settings()
-    assert s.heartbeat_interval_minutes == 5
-
-
-def test_load_settings_heartbeat_invalid(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("HEARE_HEARTBEAT_MIN", "abc")
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-    monkeypatch.delenv("HEARE_CLAUDE_CLI", raising=False)
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    s = load_settings()
-    assert s.heartbeat_interval_minutes == 30
 
 
 def test_mode_enum_values() -> None:
@@ -390,7 +367,6 @@ def test_deprecated_enable_mcp_servers_warning(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("HEARE_MODE", raising=False)
     monkeypatch.delenv("HEARE_CLAUDE_CLI", raising=False)
-    monkeypatch.delenv("HEARE_HEARTBEAT_MIN", raising=False)
 
     config_file = tmp_path / "config.toml"
     config_file.write_text('enable_mcp_servers = ["github", "notion"]\n')

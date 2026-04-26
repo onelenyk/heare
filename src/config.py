@@ -144,7 +144,6 @@ class Settings:
     mode: Mode = Mode.AMBIENT
     tts_voice: str = "en-US-AriaNeural"
     tts_sample_rate: int = 24000
-    heartbeat_interval_minutes: int = 30
     confirmation_timeout_seconds: int = 30
     # CCS-03: a CONFIRMATION_DEADLINE indication fires this many seconds
     # BEFORE confirmation_timeout_seconds elapses, giving the user an
@@ -397,13 +396,6 @@ def load_settings() -> Settings:
     claude_override = os.environ.get("HEARE_CLAUDE_CLI")
     if claude_override:
         settings.claude_cli = claude_override
-
-    heartbeat_override = os.environ.get("HEARE_HEARTBEAT_MIN")
-    if heartbeat_override:
-        try:
-            settings.heartbeat_interval_minutes = max(1, int(heartbeat_override))
-        except ValueError:
-            pass
 
     if toml_data.get("enable_mcp_servers"):
         logger.warning(

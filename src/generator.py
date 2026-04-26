@@ -566,10 +566,6 @@ def _build_generator_processor_class():
             """No-op: parity with DeciderProcessor.shutdown() for main teardown."""
             return
 
-        async def on_heartbeat_tick(self) -> None:
-            """No-op: parity with DeciderProcessor for HeartbeatTask compatibility."""
-            return
-
     _generator_cls = GeneratorProcessor
     return _generator_cls
 

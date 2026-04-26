@@ -68,7 +68,6 @@ async def test_build_pipeline_returns_generator_processor(env, monkeypatch):
     assert type(middle).__name__ == "GeneratorProcessor"
     # Shutdown contract preserved
     assert callable(getattr(middle, "shutdown", None))
-    assert callable(getattr(middle, "on_heartbeat_tick", None))
 
 
 @pytest.mark.parametrize("lang_code", ["en", "uk"])

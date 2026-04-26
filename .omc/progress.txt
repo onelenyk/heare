@@ -99,3 +99,93 @@
   * Full suite `uv run pytest -q` → 991 passed, 4 pre-existing warnings.
   * `uv run ruff check src/ tests/` → all checks passed.
   * `grep -rn 'check_cancel\|CANCEL_PATTERNS' src/` → zero matches (EC-2).
+
+## US-WU-04 — implemented (2026-04-25)
+- Removed dead HeartbeatTask code path. The legacy ticker fired every N
+  minutes and called into `GeneratorProcessor.on_heartbeat_tick` — a
+  no-op stub left over from the pre-S2S architecture. No proactive
+  speech in production, no user demand. Whole path deleted including
+  the env override.
+- File-level changes:
+  * `src/heartbeat.py`: `HeartbeatTask` class deleted. File kept (it
+    still hosts `WarmupTask`, which is unrelated — pings edge-tts every
+    240s to keep the WSS warm). Module docstring rewritten to record
+    the removal.
+  * `src/main.py`: import shrunk to `from .heartbeat import WarmupTask`;
+    `heartbeat = HeartbeatTask(...)` construction removed; the
+    `heartbeat=heartbeat` argument dropped from the `run_until_stopped`
+    call. `run_until_stopped` itself loses its `heartbeat` positional
+    parameter — the `heartbeat_task = loop.create_task(heartbeat.run())`
+    line, the `watch_set` membership, the `heartbeat.stop()` call, the
+    `(heartbeat_task, "heartbeat")` named-task entry, and the
+    `background_tasks` membership all gone.
+  * `src/generator.py`: the no-op `on_heartbeat_tick` stub at
+    src/generator.py:569-571 deleted. `shutdown()` retained for main
+    teardown parity. No other production caller of the stub remained.
+  * `src/config.py`: `heartbeat_interval_minutes: int = 30` Setting
+    field deleted (line 147). The `HEARE_HEARTBEAT_MIN` env override
+    block at lines 401-406 deleted (EC-4 from consensus). Both go
+    together — no orphan parse-without-field, no orphan field-without-
+    parse.
+  * `README.md`: the "Parallel: HeartbeatTask every N minutes ..."
+    diagram annotation, the "and heartbeat check-ins" mode-table cell
+    fragment, and the "Heartbeat ticks are suppressed while heare is
+    waiting for your confirmation" paragraph all removed. The SQLite
+    schema-comment line that lists "heartbeats" as a table is RETAINED
+    on purpose: the `heartbeats` table itself still lives in
+    `src/storage.py` (created via `CREATE TABLE IF NOT EXISTS
+    heartbeats`) and is touched by the dormant decider's
+    `log_heartbeat()` call. The DB schema is out of scope for this
+    story — US-WU-05 deletes the dormant decider and the schema cleanup
+    can ride alongside if desired.
+- What was kept (intentional):
+  * `WarmupTask` (different lifecycle, real production work — keeps
+    edge-tts WSS warm).
+  * `IndicationKind.HEARTBEAT_TICK` enum value in `src/indication.py`
+    (plus its level-map and message-map entries). Per plan open-question
+    deferral: leaving it costs nothing, three indication tests still
+    reference it.
+  * `DeciderProcessor.on_heartbeat_tick` at `src/decider.py:1164` and
+    `store.log_heartbeat` in `src/storage.py`. The dormant decider is
+    no longer instantiated by `_cmd_start` (since 16eba0e), so this
+    `on_heartbeat_tick` is reachable ONLY from `tests/test_decider.py`.
+    US-WU-05 (next story) deletes `tests/test_decider.py` and most of
+    `src/decider.py` — heartbeat code rides along then.
+- Test changes:
+  * `tests/test_generator.py`: `test_on_heartbeat_tick_is_noop` deleted
+    (covered the removed stub).
+  * `tests/test_config.py`: `test_load_settings_heartbeat_override` and
+    `test_load_settings_heartbeat_invalid` deleted (covered the removed
+    env block). The `heartbeat_interval_minutes == 30` assertion in
+    `test_default_settings` removed. The `monkeypatch.delenv(
+    "HEARE_HEARTBEAT_MIN", raising=False)` line in
+    `test_deprecated_enable_mcp_servers_warning` removed (env var no
+    longer parsed, so leakage between tests is impossible).
+  * `tests/test_shutdown.py`: rewritten — the `SleepingHeartbeat` shim
+    class deleted; all four `run_until_stopped(...)` calls drop the
+    heartbeat parameter; the heartbeat-related assertions
+    (`heartbeat.cancelled`, `heartbeat.stopped`) removed. The
+    `test_run_until_stopped_cancels_when_pipeline_exits` assertion that
+    used `heartbeat.cancelled or heartbeat.stopped` is gone — the test
+    just verifies the call returns within the timeout (the pipeline
+    exit path is what matters).
+  * `tests/integration/test_s2s_pipeline.py`: dropped the
+    `assert callable(getattr(middle, "on_heartbeat_tick", None))` check
+    (the contract no longer exists).
+- EC-4 evidence (consensus deployment-impact requirement):
+  * `grep -rn 'HEARE_HEARTBEAT_MIN' src/ tests/` → zero matches.
+  * `grep -rn 'HeartbeatTask\|heartbeat_interval_minutes' src/` → zero
+    matches.
+  * `grep -rn 'on_heartbeat_tick' src/` → exactly one match:
+    `src/decider.py:1164` (dormant decider, no production caller; queued
+    for deletion in US-WU-05).
+- Verification:
+  * `uv run pytest tests/test_config.py tests/test_generator.py
+    tests/test_shutdown.py -q` → 76 passed.
+  * Full suite `uv run pytest -q` → 988 passed, 4 pre-existing
+    warnings (down from 991: three heartbeat tests deleted, no new
+    failures).
+  * `uv run ruff check src/ tests/` → all checks passed.
+- Deployment note (PR body): `HEARE_HEARTBEAT_MIN=<N>` lines in `.env`
+  files are now silently ignored — no warning, no error. Owners can
+  drop the line at their convenience.

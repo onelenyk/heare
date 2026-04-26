@@ -182,7 +182,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
     from .context import ContextBuilder
-    from .heartbeat import HeartbeatTask, WarmupTask
+    from .heartbeat import WarmupTask
     from .identity import ensure_identity, render_persona
     from .pipeline import build_pipeline
     from .storage import TranscriptStore
@@ -541,7 +541,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 namer_task = asyncio.create_task(speaker_namer.run())
             asyncio.create_task(_push_greeting())
 
-            heartbeat = HeartbeatTask(processor, settings.heartbeat_interval_minutes)
             warmup = WarmupTask(
                 voice=settings.tts_voice,
                 interval_seconds=settings.warmup_interval_seconds,
@@ -551,7 +550,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
             runner = PipelineRunner()
             await run_until_stopped(
-                runner, pipeline, heartbeat, warmup,
+                runner, pipeline, warmup,
                 decider=processor, worker_task=worker_task,
                 namer_task=namer_task,
             )
@@ -577,12 +576,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
 
 async def run_until_stopped(
-    runner, pipeline, heartbeat, warmup=None, *, decider=None, worker_task=None,
+    runner, pipeline, warmup=None, *, decider=None, worker_task=None,
     namer_task=None,
 ) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
-    heartbeat_task = loop.create_task(heartbeat.run())
     warmup_task = loop.create_task(warmup.run()) if warmup is not None else None
     stop_event = asyncio.Event()
 
@@ -621,7 +619,7 @@ async def run_until_stopped(
         pass
 
     stop_waiter = loop.create_task(stop_event.wait())
-    watch_set = {pipeline_task, heartbeat_task, stop_waiter}
+    watch_set = {pipeline_task, stop_waiter}
     if warmup_task is not None:
         watch_set.add(warmup_task)
     if worker_task is not None:
@@ -631,10 +629,9 @@ async def run_until_stopped(
     try:
         done, _ = await asyncio.wait(watch_set, return_when=asyncio.FIRST_COMPLETED)
     finally:
-        heartbeat.stop()
         if warmup is not None:
             warmup.stop()
-        background_tasks = [pipeline_task, heartbeat_task, stop_waiter]
+        background_tasks = [pipeline_task, stop_waiter]
         if warmup_task is not None:
             background_tasks.append(warmup_task)
         if worker_task is not None:
@@ -644,7 +641,7 @@ async def run_until_stopped(
         for task in background_tasks:
             if not task.done():
                 task.cancel()
-        named_tasks = [(pipeline_task, "pipeline"), (heartbeat_task, "heartbeat")]
+        named_tasks = [(pipeline_task, "pipeline")]
         if warmup_task is not None:
             named_tasks.append((warmup_task, "warmup"))
         if worker_task is not None:

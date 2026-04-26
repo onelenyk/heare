@@ -35,9 +35,6 @@ Mic ──► SileroVAD ──► GroqSTT ──► SmartTurnV3
                          └─────────┬──────────────┘
                                    ▼ AudioFrame
                                 Speaker
-
-Parallel: HeartbeatTask every N minutes fires on_heartbeat_tick,
-so heare can initiate speech on its own.
 ```
 
 See `.omc/plans/heare-scaffold.md` for the full plan and decisions.
@@ -151,7 +148,7 @@ uv run python -m src.main reset-identity  # backup identity.json
 | --------- | ------------------------------------------------------------------------------------------------- | -------------------- |
 | `silent`  | Never speak, never act. Log only.                                                                 | None                 |
 | `focus`   | Speak only when directly addressed ("Heare, ...") or on a clear question into silence.           | Yes, with confirmation |
-| `ambient` | Also speaks on stuck-user heuristics and heartbeat check-ins.                                      | Yes, with confirmation |
+| `ambient` | Also speaks on stuck-user heuristics.                                                              | Yes, with confirmation |
 
 ## State layout
 
@@ -177,9 +174,6 @@ heare never runs a risky action without verbally asking first.
 3. You: _"так"_ → heare runs the action, speaks a summary
 4. You: _"ні"_ → heare cancels, speaks "okay"
 5. Silence for 30s → heare auto-cancels and speaks "nevermind, cancelled"
-
-Heartbeat ticks are suppressed while heare is waiting for your
-confirmation, so it never interrupts its own prompt.
 
 ## Tests
 

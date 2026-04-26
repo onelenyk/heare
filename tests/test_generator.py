@@ -158,14 +158,6 @@ async def test_shutdown_is_idempotent(harness) -> None:
     await gen.shutdown()  # idempotent — no crash
 
 
-async def test_on_heartbeat_tick_is_noop(harness) -> None:
-    _, _, ctx = harness
-    fake = FakeOpenRouter(chunks=["ignored"])
-    gen = create_generator_processor(fake, ctx, "t", "p")
-    await gen.on_heartbeat_tick()
-    assert fake.call_count == 0
-
-
 async def test_ttft_logged_with_expected_format(harness, caplog) -> None:
     _, _, ctx = harness
     fake = FakeOpenRouter(chunks=["привіт"])
