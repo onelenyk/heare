@@ -189,3 +189,67 @@
 - Deployment note (PR body): `HEARE_HEARTBEAT_MIN=<N>` lines in `.env`
   files are now silently ignored — no warning, no error. Owners can
   drop the line at their convenience.
+
+## US-WU-03 — implemented (2026-04-25)
+- Plan picked Option A: delete CCS-03 dead code. The deadline-warning cue
+  fired CONFIRMATION_DEADLINE 5s before the confirmation timeout. The
+  implementation lived in dormant DeciderProcessor; production runs
+  GeneratorProcessor, which has no AWAITING_CONFIRMATION state, so the
+  cue had nowhere to fire. Feature deferred until a confirmation flow
+  exists in the live pipeline.
+- Deletions in `src/decider.py` (~30 lines):
+  * `_deadline_warning_task: asyncio.Task | None = None` field on
+    `DeciderProcessor.__init__` — gone.
+  * `_deadline_warning_watcher` async method (with race-guard re-check
+    against `_timeout_task`) — gone.
+  * `_schedule_timeout_task` no longer schedules the parallel warning
+    task. The original `_timeout_task = loop.create_task(...)` and the
+    `_cancel_timeout_task()` precondition stay.
+  * `_cancel_timeout_task` no longer cancels the warning task. The
+    original `_timeout_task` clear-then-cancel sequence stays.
+  * `from .indication import IndicationKind, get_indication` import
+    deleted — no longer needed in decider.py.
+- Deletion in `src/config.py`:
+  * `confirmation_deadline_warning_seconds: float = 5.0` Setting field
+    plus its CCS-03 comment block — gone. Nothing reads it.
+- Deletion in `tests/test_decider.py`:
+  * The 8 CCS-03 tests deleted (`test_deadline_warning_fires_at_T_minus_N`,
+    `test_no_deadline_warning_when_user_confirms_early`,
+    `test_no_deadline_warning_when_user_cancels_early`,
+    `test_warning_disabled_when_warning_seconds_is_zero`,
+    `test_warning_clamped_when_exceeds_timeout`,
+    `test_existing_timeout_path_unchanged`,
+    `test_warning_respects_indication_facade_gating`,
+    `test_confirm_during_warning_fire_race_fuzz`).
+  * The CCS-03 fixture (`ccs03_facade`), helpers (`_CCS03RecordingFacade`,
+    `_ccs03_arm`), and CCS-03-only imports (`asyncio as
+    _ccs03_asyncio`, `logging as _ccs03_logging`, `random as
+    _ccs03_random`, `dataclass`/`field` aliases, `_ccs03_ind_mod`,
+    `_CCS03_IndKind`) all deleted along with the tests they served.
+    The `# US-CCS-03` section header replaced with a deletion-rationale
+    comment.
+- What was kept (intentional):
+  * `IndicationKind.CONFIRMATION_DEADLINE` enum value in
+    `src/indication.py` — zero callers, but cheap to keep and ready for
+    a future confirmation flow inside GeneratorProcessor.
+  * `Settings.confirmation_timeout_seconds` field — still used by
+    `DeciderProcessor`'s primary `_timeout_watcher` path, which fires
+    the "nevermind, cancelled" cleanup. US-WU-05 will delete the
+    dormant `DeciderProcessor` outright and the field can ride along.
+  * `_timeout_watcher` itself — unchanged. Only the parallel warning
+    task is being removed.
+- Annotation: `.omc/progress-ccs-completed.txt` US-CCS-03 section gained
+  a one-line `> 2026-04-25 update (PRD WU)` note pointing at this story.
+- Verification:
+  * `uv run pytest tests/test_decider.py tests/test_config.py -q` → 121
+    passed.
+  * Full suite `uv run pytest -q` → 980 passed, 4 pre-existing warnings
+    (down from 988: 8 CCS-03 tests deleted, no new failures).
+  * `uv run ruff check src/decider.py src/config.py tests/test_decider.py`
+    → all checks passed.
+  * `grep -rn '_deadline_warning\|confirmation_deadline_warning_seconds'
+    src/ tests/` → zero matches.
+- Acceptance criteria from PRD: all 9 ACs verified — dead code deleted,
+  setting deleted, tests deleted, enum value preserved, primary timeout
+  path untouched, lint clean, full suite green, count drops by exactly
+  8, CCS-completed annotation appended.

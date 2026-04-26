@@ -11,7 +11,6 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from .config import DeciderState, Mode, Settings
-from .indication import IndicationKind, get_indication
 from .language import is_standalone_cancel_imperative
 from .storage import EventKind
 
@@ -308,10 +307,6 @@ def _build_decider_processor_class():
             self._last_transcript: str | None = None
             self._lock = asyncio.Lock()
             self._timeout_task: asyncio.Task | None = None
-            # CCS-03: parallel warning task that fires CONFIRMATION_DEADLINE
-            # at T-N seconds. Cancelled atomically with _timeout_task on
-            # confirm/cancel.
-            self._deadline_warning_task: asyncio.Task | None = None
             self._bot_speaking = False
             self._bot_cooldown_task: asyncio.Task | None = None
             # RT-002: fire-and-forget emit queue for progress events.
@@ -900,56 +895,12 @@ def _build_decider_processor_class():
             except RuntimeError:
                 return
             self._timeout_task = loop.create_task(self._timeout_watcher())
-            # CCS-03: schedule the parallel deadline-warning task at T-N.
-            timeout = float(self.settings.confirmation_timeout_seconds)
-            warn_lead = float(self.settings.confirmation_deadline_warning_seconds)
-            if warn_lead >= timeout:
-                logger.warning(
-                    "confirmation_deadline_warning_seconds=%.1f >= "
-                    "confirmation_timeout_seconds=%.1f; clamping to timeout-1",
-                    warn_lead,
-                    timeout,
-                )
-                warn_lead = max(0.0, timeout - 1.0)
-            if warn_lead > 0:
-                self._deadline_warning_task = loop.create_task(
-                    self._deadline_warning_watcher(timeout - warn_lead)
-                )
 
         def _cancel_timeout_task(self) -> None:
-            # CCS-03: clear _timeout_task BEFORE cancelling the warning task so
-            # the race-guard re-check inside _deadline_warning_watcher sees
-            # _timeout_task is None even if the warning task wakes up between
-            # cancel() and the in-flight notify() call.
             task = self._timeout_task
             self._timeout_task = None
             if task is not None and not task.done():
                 task.cancel()
-            warn_task = self._deadline_warning_task
-            self._deadline_warning_task = None
-            if warn_task is not None and not warn_task.done():
-                warn_task.cancel()
-
-        async def _deadline_warning_watcher(
-            self, seconds_until_warning: float
-        ) -> None:
-            """Fire CONFIRMATION_DEADLINE indication at T-N seconds.
-
-            CCS-03 race-guard: between sleep wakeup and notify(), the confirm
-            or cancel path may have cancelled the timeout task. Re-check the
-            guard immediately before firing to drop the cue if the timeout is
-            no longer armed. This closes the confirm-during-warning race.
-            """
-            try:
-                await asyncio.sleep(seconds_until_warning)
-            except asyncio.CancelledError:
-                return
-            # Race-guard re-check.
-            if self._timeout_task is None or self._timeout_task.cancelled():
-                return
-            ind = get_indication()
-            if ind is not None:
-                ind.notify(IndicationKind.CONFIRMATION_DEADLINE)
 
         def _schedule_bot_cooldown(self) -> None:
             self._cancel_bot_cooldown()

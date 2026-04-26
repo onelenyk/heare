@@ -145,12 +145,6 @@ class Settings:
     tts_voice: str = "en-US-AriaNeural"
     tts_sample_rate: int = 24000
     confirmation_timeout_seconds: int = 30
-    # CCS-03: a CONFIRMATION_DEADLINE indication fires this many seconds
-    # BEFORE confirmation_timeout_seconds elapses, giving the user an
-    # audible/visible "5s left" cue. 0 disables the cue entirely. If the
-    # value is >= confirmation_timeout_seconds it is clamped at startup
-    # to max(0, timeout - 1) and a warning is logged (see decider.py).
-    confirmation_deadline_warning_seconds: float = 5.0
     transcript_retention_days: int = 30
     min_action_confidence: float = 0.8
     bot_speaking_cooldown_seconds: float = 2.0
