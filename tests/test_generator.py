@@ -253,7 +253,7 @@ async def test_mid_stream_tag_no_leakage(harness) -> None:
 
 
 async def test_cancel_keyword_pops_pending_intent(harness, caplog) -> None:
-    """User says "скасуй" → cancel_latest called, pending intent removed."""
+    """User says "скасуй" → cancel_active drains queue, fast-path log fires."""
     from src.actions import IntentQueue
 
     _, _, ctx = harness
@@ -271,7 +271,7 @@ async def test_cancel_keyword_pops_pending_intent(harness, caplog) -> None:
         await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
 
     assert queue.pending_count() == 0
-    assert any("INTENT CANCELLED" in r.message for r in caplog.records)
+    assert any("CANCEL FAST-PATH" in r.message for r in caplog.records)
 
 
 async def test_cancel_keyword_on_empty_queue_graceful(harness) -> None:
@@ -439,7 +439,7 @@ async def test_intent_emission_under_saturated_context(harness) -> None:
 
 
 async def test_cancel_keyword_positive_edge_cases(harness) -> None:
-    """Real cancellation phrases must trigger cancel_latest."""
+    """Real cancellation phrases must trigger cancel_active (drain queue)."""
     from src.actions import IntentQueue
 
     _, _, ctx = harness
@@ -904,3 +904,134 @@ async def test_lang_mismatch_logging(harness, caplog) -> None:
         await gen._handle_transcription(_make_transcription_frame("привіт"), None)
     mismatch_records = [r for r in caplog.records if "[LANG_MISMATCH]" in r.message]
     assert mismatch_records, "[LANG_MISMATCH] WARNING not logged"
+
+
+# ---------------------------------------------------------------------------
+# US-WU-01: cancel path wires CCS-05b kill paths via cancel_active()
+# ---------------------------------------------------------------------------
+
+
+async def test_cancel_path_calls_cancel_active_and_fires_indication_once(
+    harness, monkeypatch
+) -> None:
+    """US-WU-01 / EC-1: stop-word triggers IntentQueue.cancel_active and the
+    INTENT_CANCELLED indication fires exactly once (the manual notify block in
+    the generator was deleted; single emit site is actions.py:233)."""
+    from unittest.mock import MagicMock
+
+    from src import indication as ind_mod
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    fake = FakeOpenRouter(chunks=["Скасовано."])
+
+    queue = IntentQueue()
+    cancel_active_mock = AsyncMock(return_value=True)
+    queue.cancel_active = cancel_active_mock  # type: ignore[method-assign]
+
+    notify_mock = MagicMock()
+
+    class _FakeIndication:
+        is_enrollment_active = False
+        notify = notify_mock
+
+    monkeypatch.setattr(ind_mod, "_INSTANCE", _FakeIndication())
+
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "uk"
+
+    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+
+    # cancel_active was called exactly once (replaces cancel_latest call site)
+    cancel_active_mock.assert_awaited_once()
+
+    # The generator's manual notify block was deleted: it must NOT call
+    # Indication.notify(IndicationKind.INTENT_CANCELLED, ...). The single
+    # emit site is inside cancel_active() at actions.py:233 — and we mocked
+    # cancel_active away, so notify must be untouched here.
+    intent_cancelled_calls = [
+        c
+        for c in notify_mock.call_args_list
+        if c.args and c.args[0] == ind_mod.IndicationKind.INTENT_CANCELLED
+    ]
+    assert len(intent_cancelled_calls) == 0, (
+        "generator must not fire INTENT_CANCELLED itself; cancel_active is "
+        "the single emit site (EC-1)"
+    )
+
+
+async def test_cancel_path_when_nothing_to_cancel_fires_no_indication(
+    harness, monkeypatch
+) -> None:
+    """US-WU-01: empty queue + no in-flight → cancel_active returns False →
+    no Indication.notify call from the generator side either."""
+    from unittest.mock import MagicMock
+
+    from src import indication as ind_mod
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    fake = FakeOpenRouter(chunks=["Нічого скасовувати."])
+
+    queue = IntentQueue()
+    cancel_active_mock = AsyncMock(return_value=False)
+    queue.cancel_active = cancel_active_mock  # type: ignore[method-assign]
+
+    notify_mock = MagicMock()
+
+    class _FakeIndication:
+        is_enrollment_active = False
+        notify = notify_mock
+
+    monkeypatch.setattr(ind_mod, "_INSTANCE", _FakeIndication())
+
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "uk"
+
+    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+
+    cancel_active_mock.assert_awaited_once()
+    intent_cancelled_calls = [
+        c
+        for c in notify_mock.call_args_list
+        if c.args and c.args[0] == ind_mod.IndicationKind.INTENT_CANCELLED
+    ]
+    assert len(intent_cancelled_calls) == 0, (
+        "no-op cancel must produce zero INTENT_CANCELLED notifications"
+    )
+
+
+async def test_cancel_path_still_invokes_llm(harness, monkeypatch) -> None:
+    """US-WU-01: cancel keyword does NOT short-circuit the LLM call; the
+    generator continues to produce a spoken acknowledgement after cancelling
+    queued/in-flight work. (Matches the existing graceful-on-empty contract.)"""
+    from src import indication as ind_mod
+    from src.actions import IntentQueue
+
+    _, _, ctx = harness
+    fake = FakeOpenRouter(chunks=["Скасовано."])
+
+    queue = IntentQueue()
+    cancel_active_mock = AsyncMock(return_value=True)
+    queue.cancel_active = cancel_active_mock  # type: ignore[method-assign]
+
+    monkeypatch.setattr(ind_mod, "_INSTANCE", None)
+
+    gen = create_generator_processor(
+        fake, ctx, "tpl {transcript}", "persona", intent_queue=queue
+    )
+    gen.push_frame = AsyncMock()  # type: ignore[method-assign]
+    gen._active_lang = "uk"
+
+    await gen._handle_transcription(_make_transcription_frame("скасуй"), None)
+
+    cancel_active_mock.assert_awaited_once()
+    assert fake.call_count == 1, (
+        "generator must still produce its TTS acknowledgement after cancel"
+    )

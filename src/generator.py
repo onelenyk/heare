@@ -398,21 +398,17 @@ def _build_generator_processor_class():
                 except Exception:
                     logger.exception("generator: failed to log transcript (non-fatal)")
 
-            # Cancel keyword gate — pending-only cancellation
-            cancelled_id: int | None = None
+            # Cancel keyword gate — full cancel (queued + in-flight)
+            cancelled_anything = False
             if check_cancel(transcript, self._active_lang):
-                cancelled = self.intent_queue.cancel_latest()
-                if cancelled is not None:
-                    cancelled_id = cancelled.id
-                    logger.info("[INTENT CANCELLED id=%d]", cancelled.id)
-                    from .indication import IndicationKind, get_indication
-
-                    ind = get_indication()
-                    if ind is not None:
-                        ind.notify(
-                            IndicationKind.INTENT_CANCELLED,
-                            body=f"cancelled: {cancelled.tool}",
-                        )
+                cancelled_anything = await self.intent_queue.cancel_active()
+                if cancelled_anything:
+                    logger.info(
+                        "[CANCEL FAST-PATH transcript=%r]", transcript[:80]
+                    )
+                # INTENT_CANCELLED indication is fired inside cancel_active() at
+                # actions.py:233 — do NOT also fire it here. Single emit site
+                # required by EC-1 of the consensus plan.
 
             # Acquire conversation_id once per turn (Phase 2.2 US-P2.2-02)
             conversation_id: int | None = None
@@ -508,7 +504,7 @@ def _build_generator_processor_class():
                 int(ttft_display),
                 chunk_count,
                 intent_count,
-                cancelled_id if cancelled_id is not None else "none",
+                "yes" if cancelled_anything else "none",
             )
 
             # Gemini response language compliance logging (US-I18N-03)
