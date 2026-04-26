@@ -1,0 +1,109 @@
+# Hybrid Tool Execution — Direct vs Claude CLI routing
+
+PRD: .omc/prd.json
+Source: user request 2026-04-22
+Date: 2026-04-22
+
+## What changed
+
+Implemented smart hybrid routing for tool execution:
+- **Simple tools** (bash, read, write, web_fetch, web_search) → `execute_direct()` — fast path
+- **Complex tools** (edit, MCP tools) → `claude_cli.call_action()` — reasoning path
+
+The `direct_tools.py` module existed with `execute_direct()` implementation but was never wired in. This phase adds the routing logic in `ActionWorker._process_one()`.
+
+## Stories shipped
+
+### US-HYB-01 — Wire direct_tools into ActionWorker
+- `src/actions.py`: Added import for `execute_direct`, `_is_simple_tool`
+- `ActionWorker.__init__`: Extract settings via `getattr(claude_cli, "settings", None)`
+- `ActionWorker._process_one`: Added if/else branching based on `_is_simple_tool()`
+- `ActionWorker._execute_direct_path`: New method for fast-path execution
+- `ActionWorker._execute_claude_path`: Extracted existing Claude logic
+- Logging: `[DIRECT EXECUTION tool=%s id=%d]` and `[CLAUDE CLI tool=%s id=%d]`
+
+### US-HYB-02 — Test direct tool execution paths
+- `tests/test_direct_tools.py`: 34 tests covering all simple tools
+  - bash: success, timeout, stderr, workspace_dir
+  - read: success, not_found, large_file truncation, workspace_relative, colon_format
+  - write: success, no_colon error, parent_dirs created, workspace_relative
+  - web_fetch: success, binary, large truncation, HTTP errors, invalid URL
+  - web_search: Brave API success, no results, missing API key, failure handling
+- `src/direct_tools.py`: Fixed content stripping (was leaving leading space after split)
+
+### US-HYB-03 — Test ActionWorker routing logic
+- `tests/test_actions_routing.py`: 11 routing tests
+  - Simple tools verify `execute_direct` called, `call_action` NOT called
+  - Complex tools (edit, MCP) verify `call_action` called, `execute_direct` NOT called
+  - Direct success/failure paths test callback behavior
+  - Claude path unchanged for complex tools
+
+### US-HYB-04 — Test _is_simple_tool classification
+- Included in `tests/test_direct_tools.py` (9 tests)
+  - All simple tools return True
+  - edit, MCP tools, unknown return False
+
+### US-HYB-05 — Regression + lint
+- `uv run pytest tests/` → 668 passed
+- Fixed test expectations for hybrid routing:
+  - `test_actions.py`: Changed 'bash' → 'edit' (simple→complex routing)
+  - `test_generator_prompt.py`: Added `mcp_servers` placeholder to expected set
+  - `test_intent_flow.py`: Changed 'bash' → 'edit' for integration tests
+- `src/config.py`: Added missing imports (`asyncio`, `Callable`)
+- `uv run ruff check --fix`: Auto-fixed 5 unused imports
+- 1 pre-existing ruff issue remains in `src/generator.py` (shutdown redefinition)
+
+## Files touched
+
+**Modified:**
+- `src/actions.py` — routing logic, new methods
+- `src/direct_tools.py` — content stripping fix
+- `src/config.py` — added asyncio, Callable imports
+- `tests/test_actions.py` — updated to use 'edit' instead of 'bash'
+- `tests/test_generator_prompt.py` — added mcp_servers to expected placeholders
+- `tests/integration/test_intent_flow.py` — updated to use 'edit', updated assertions
+
+**New:**
+- `tests/test_direct_tools.py` — 34 comprehensive tests
+- `tests/test_actions_routing.py` — 11 routing tests
+
+## Test gallery
+
+| Category | Test file | Tests | Coverage |
+|----------|-----------|-------|----------|
+| Direct tools | `test_direct_tools.py` | 34 | bash(4), read(5), write(4), web_fetch(5), web_search(4), routing(3), classification(9) |
+| Routing | `test_actions_routing.py` | 11 | simple→direct(5), complex→claude(2), callbacks(3), unchanged(1) |
+| Existing | `test_actions.py` | 23 | Updated to test Claude path with 'edit' |
+| Integration | `test_intent_flow.py` | 7 | Updated to use 'edit' for Claude path |
+
+**Total: 75 tests directly related to hybrid execution**
+
+## How it works
+
+```
+Intent arrives → ActionWorker._process_one()
+                |
+                ├─→ _is_simple_tool(tool)?
+                |      |
+                |      ├─ YES → _execute_direct_path()
+                |      |              └─→ execute_direct(tool, args, settings)
+                |      |                      └─→ subprocess / filesystem / HTTP
+                |      |
+                |      └─ NO → _execute_claude_path()
+                |                     └─→ claude_cli.call_action(description)
+                |                             └─→ Claude reasoning (edit, MCP, etc.)
+                |
+                └─→ on_result(intent, summary) or on_error(intent, exc)
+```
+
+## Performance impact
+
+- **Simple tools**: Bypass Claude API call entirely — subprocess/file/HTTP directly
+- **Complex tools**: Unchanged — still use Claude CLI for reasoning
+- **80/20 rule**: Most common operations (bash, read, write, web fetch/search) are fast-path
+
+## Not changed in this phase
+
+- D4 (verbal confirmation gate) — Phase C
+- D6 split (two SDK clients) — Phase D
+- Tool allowlist expansion — already complete (Phase B-mcp)

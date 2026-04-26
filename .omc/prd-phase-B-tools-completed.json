@@ -1,0 +1,53 @@
+{
+  "title": "heare Phase B-tools — Expand allowed tools beyond bash",
+  "version": "1.0.0",
+  "source_plan": "user request 2026-04-19: 'What if I want an agent to have access to more tools' — Варіант A (expand allowlist).",
+  "notes": "Currently the Claude SDK is called with allowed_tools=['Bash'] and the IntentQueue accepts only tool='bash'. For voice commands that aren't shell-ish (read a file, edit a file, fetch a URL, web search), Claude either can't act or Gemini forces it through shell. Expand to a five-tool vocabulary: bash, read, write, edit, web_fetch, web_search. Three coordinated changes: queue allowlist, SDK allowed_tools, generator prompt examples. MCP tools are out of scope for this phase.",
+  "stories": [
+    {
+      "id": "US-BT-01",
+      "title": "Expand SDK allowed_tools and IntentQueue allowlist",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Add a configurable list of allowed tools in Settings (default covers bash + the 5 common Claude tools). Thread it into AgentSDKCLI's ClaudeAgentOptions. Sync the queue-side allowlist in src/actions.py so lowercase intent tool names accept the same set.",
+      "acceptanceCriteria": [
+        "src/config.py Settings gains agent_sdk_allowed_tools: list[str] defaulting to ['Bash', 'Read', 'Write', 'Edit', 'WebFetch', 'WebSearch'] (SDK CamelCase).",
+        "src/agent_sdk_cli.py _open_client passes settings.agent_sdk_allowed_tools into ClaudeAgentOptions.allowed_tools (no longer hardcoded to ['Bash']).",
+        "src/actions.py ALLOWED_TOOLS expands from {'bash'} to {'bash','read','write','edit','web_fetch','web_search'} (intent-side lowercase).",
+        "New unit test in tests/test_agent_sdk_cli.py asserts that ClaudeSDKClient is constructed with the extended allowed_tools list by default. Use the existing FakeClient / captured_options pattern (see test_sdk_session_loaded_on_first_call).",
+        "New unit tests in tests/test_actions.py verify each new tool (read, write, edit, web_fetch, web_search) is accepted by IntentQueue.submit (tool='bash' still works — existing tests unchanged). A tool outside the set (e.g. 'filesystem') is still rejected."
+      ]
+    },
+    {
+      "id": "US-BT-02",
+      "title": "Generator prompt teaches the expanded schema",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Update prompts/generator.txt INTENTS section: the schema block now lists all 6 allowed tool values; add one concrete positive example per new tool; keep existing bash examples; update negative examples as needed.",
+      "acceptanceCriteria": [
+        "prompts/generator.txt schema block names all six values ('bash', 'read', 'write', 'edit', 'web_fetch', 'web_search') — exact strings checkable in a test.",
+        "prompts/generator.txt contains at least one positive example for each new tool: read (e.g. reading a file), write (creating a file with content), edit (modifying a file), web_fetch (fetching a URL), web_search (querying a search engine). All examples in Ukrainian for the reply text.",
+        "Negative examples from Phase B retained unchanged.",
+        "Forbidden-commands block retained.",
+        "'If unsure don't emit intent' Ukrainian rule retained.",
+        "Placeholder set unchanged — test_template_has_exactly_expected_placeholders still passes.",
+        "New unit tests in tests/test_generator_prompt.py: (a) schema names all six tools, (b) at least one positive example present for each of the 5 new tools (substring check per tool keyword)."
+      ]
+    },
+    {
+      "id": "US-BT-03",
+      "title": "Regression + lint green",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Full suite + ruff after Phase B-tools changes.",
+      "acceptanceCriteria": [
+        "uv run pytest tests/ exits 0.",
+        "uv run ruff check src/ tests/ exits 0.",
+        "progress.txt records files touched, the new tool-name vocabulary (lowercase intent side vs CamelCase SDK side), and a live-verify note (say 'знайди в інтернеті що таке Pipecat' → expect intent with tool=web_search)."
+      ]
+    }
+  ]
+}

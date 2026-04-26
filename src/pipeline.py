@@ -2,23 +2,25 @@
 
 Pipecat imports are deferred inside build_pipeline so admin CLI paths work
 without portaudio installed.
+
+Phase 2.1: single generator pipeline; `generator_mode` flag retired.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Any, Tuple
 
 from .config import Settings
-from .decider import create_decider_processor
 from .tts_cache import TTSCache
 from .tts_edge import create_edge_tts_service
 
 if TYPE_CHECKING:
-    from .claude_cli import ClaudeCLI
+    from .actions import IntentQueue
+    from .claude_backend_common import ClaudeBackend
     from .context import ContextBuilder
+    from .openrouter_cli import OpenRouterCLI
     from .storage import TranscriptStore
-    from .conversation import ConversationManager
 
 
 logger = logging.getLogger("heare.pipeline")
@@ -26,11 +28,18 @@ logger = logging.getLogger("heare.pipeline")
 
 async def build_pipeline(
     settings: Settings,
-    claude_cli: "ClaudeCLI",
+    claude_cli: "ClaudeBackend",
     store: "TranscriptStore",
     context_builder: "ContextBuilder",
-    conversation_manager: "ConversationManager | None" = None,
-) -> Tuple[object, object]:
+    openrouter_cli: "OpenRouterCLI",
+    persona: str = "",
+    intent_queue: "IntentQueue | None" = None,
+    conversation_manager: Any = None,
+    *,
+    speaker_gallery: Any = None,
+    speaker_model: Any = None,
+    namer_enqueue: Any = None,
+) -> Tuple[object, object, object, object]:
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
         LocalSmartTurnAnalyzerV3,
@@ -48,17 +57,11 @@ async def build_pipeline(
             "GROQ_API_KEY is not set — copy .env.example to .env and fill it in"
         )
 
-    decider_prompt = (
-        Path(__file__).parent.parent / "prompts" / "decider.txt"
-    ).read_text()
-
     from pipecat.audio.vad.vad_analyzer import VADParams
     from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 
     # VAD waits 0.5s of silence before declaring end-of-speech. Compromise
-    # between latency (was 1.0s default) and Groq STT rate-limit pressure
-    # (0.2s produced too many fragments and hit the free-tier 20 RPS cap).
-    # SmartTurnV3's ML model is the anti-fragmentation safety net.
+    # between latency (was 1.0s default) and Groq STT rate-limit pressure.
     vad = SileroVADAnalyzer(
         params=VADParams(stop_secs=0.5, start_secs=0.3, confidence=0.7, min_volume=0.6)
     )
@@ -74,55 +77,12 @@ async def build_pipeline(
         )
     )
 
+    from pipecat.transcriptions.language import Language
+
     stt = GroqSTTService(
         api_key=settings.groq_api_key,
-        language=settings.groq_language,
-    )
-
-    turn_aggregator = None
-    if settings.turn_aggregation_enabled:
-        from .turn_aggregator import TurnAggregator
-
-        async def on_turn_complete(
-            aggregated_text: str,
-            turn_start_ts: float,
-            turn_end_ts: float,
-            buffer: list[dict],
-        ) -> None:
-            if conversation_manager and settings.topic_extraction_enabled:
-                try:
-                    topics = await conversation_manager.extract_topics(aggregated_text)
-                    conv_id = await conversation_manager.get_or_create_active()
-                    await conversation_manager.update_summary(conv_id, aggregated_text, topics)
-                    logger.info(
-                        "Turn complete: %d utterances, %d topics, conv_id=%s",
-                        len(buffer), len(topics), conv_id,
-                    )
-                except Exception as e:
-                    logger.warning("Failed to update conversation on turn complete: %s", e)
-
-        turn_aggregator = TurnAggregator(
-            mode=settings.mode,
-            focus_timeout=settings.focus_mode_turn_timeout,
-            ambient_timeout=settings.ambient_mode_turn_timeout,
-            max_turn_duration=settings.max_turn_duration,
-            on_turn_complete=on_turn_complete,
-        )
-        logger.info(
-            "TurnAggregator enabled: mode=%s, focus_timeout=%ss, ambient_timeout=%ss",
-            settings.mode.value,
-            settings.focus_mode_turn_timeout,
-            settings.ambient_mode_turn_timeout,
-        )
-
-    decider = create_decider_processor(
-        claude_cli=claude_cli,
-        store=store,
-        context_builder=context_builder,
-        settings=settings,
-        decider_prompt_template=decider_prompt,
-        turn_aggregator=turn_aggregator,
-        conversation_manager=conversation_manager,
+        language=Language(settings.groq_language),
+        include_prob_metrics=True,
     )
 
     tts_cache = TTSCache()
@@ -132,40 +92,132 @@ async def build_pipeline(
         cache=tts_cache,
     )
 
-    stages: list[object] = [transport.input(), stt]
-    if settings.speaker_id_enabled:
-        from . import speaker_id
-        from .speaker_gallery import SpeakerGallery
+    from .generator import create_generator_processor
+
+    generator_prompt = (
+        Path(__file__).parent.parent / "prompts" / "generator.txt"
+    ).read_text()
+    generator = create_generator_processor(
+        openrouter_cli=openrouter_cli,
+        context_builder=context_builder,
+        prompt_template=generator_prompt,
+        persona=persona,
+        store=store,
+        settings=settings,
+        intent_queue=intent_queue,
+        conversation_manager=conversation_manager,
+        tts_service=tts,
+    )
+
+    speaker_buffer = None
+    speaker_tagger = None
+    if (
+        settings.speaker_id_enabled
+        and speaker_gallery is not None
+        and speaker_model is not None
+    ):
         from .speaker_processor import create_speaker_processors
 
-        gallery = SpeakerGallery.load(settings.speakers_file)
-        if "owner" not in gallery.list_speakers():
-            logger.warning(
-                "speaker_id_enabled but no owner enrolled in %s — "
-                "run `heare enroll-owner` to enable speaker identification. "
-                "Commands still work via keyword gate.",
-                settings.speakers_file,
-            )
-        else:
-            model = speaker_id.load_model()
-            speaker_id.warmup(model, sample_rate=16000)
-            audio_buffer, speaker_tagger = create_speaker_processors(
-                settings, gallery, model, sample_rate=16000
-            )
-            # AudioBufferProcessor sits right after transport.input() so it
-            # sees raw PCM; the tagger sits between STT and decider so it
-            # can annotate each TranscriptionFrame before the decider reads
-            # the speaker_id attribute.
-            stages = [transport.input(), audio_buffer, stt, speaker_tagger]
+        speaker_buffer, speaker_tagger = create_speaker_processors(
+            settings,
+            speaker_gallery,
+            speaker_model,
+            namer_enqueue=namer_enqueue,
+        )
+        logger.info(
+            "Speaker chain active: tagger wired; namer_enqueue=%s",
+            "on" if namer_enqueue is not None else "off",
+        )
 
-    stages.extend([decider, tts, transport.output()])
+    # Build the indication subsystem (sound + visual + macOS notifications).
+    # Indication is constructed even when settings.indication.enabled is False
+    # so producers can call notify() unconditionally; the facade short-circuits.
+    from .indication import Indication, build_sound_cue_processor
+
+    sound_cue_processor = None
+    backends: list[Any] = []
+    if settings.indication.enabled:
+        if settings.indication.sound_enabled:
+            from .indication_backends.sound import SoundBackend
+
+            sound_cue_processor = build_sound_cue_processor(
+                sample_rate=settings.tts_sample_rate
+            )
+            backends.append(
+                SoundBackend(sound_cue_processor, sample_rate=settings.tts_sample_rate)
+            )
+        if settings.indication.visual_enabled:
+            from .indication_backends.visual import VisualBackend
+
+            backends.append(
+                VisualBackend(settings.log_dir / "indication.jsonl")
+            )
+        if settings.indication.notification_center_enabled:
+            from .indication_backends.notification import NotificationBackend
+
+            backends.append(NotificationBackend())
+    indication = Indication(
+        settings.indication,
+        backends,
+        mode_provider=lambda: settings.mode,
+    )
+    # Register as process-wide singleton so producers in any module can
+    # fire notify() without threading the facade through call sites.
+    from .indication import set_indication
+
+    set_indication(indication)
+    logger.info(
+        "indication: %d backend(s) ready (enabled=%s)",
+        len(backends),
+        settings.indication.enabled,
+    )
+
+    # STT error-frame observer — pipecat surfaces STT errors via ErrorFrame.
+    # A one-line wrapper FrameProcessor inserted immediately downstream of stt
+    # forwards the frame and fires STT_ERROR on the indication facade.
+    from pipecat.frames.frames import ErrorFrame  # type: ignore
+    from pipecat.processors.frame_processor import (  # type: ignore
+        FrameProcessor as _FP,
+    )
+
+    class _SttErrorObserver(_FP):  # type: ignore[misc,valid-type]
+        async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
+            await super().process_frame(frame, direction)
+            if isinstance(frame, ErrorFrame):
+                from .indication import IndicationKind, get_indication
+
+                ind_inner = get_indication()
+                if ind_inner is not None:
+                    err_msg = getattr(frame, "error", str(frame))
+                    ind_inner.notify(
+                        IndicationKind.STT_ERROR, body=str(err_msg)[:160]
+                    )
+            await self.push_frame(frame, direction)
+
+    stt_error_observer = _SttErrorObserver()
+
+    stages: list[Any] = [transport.input()]
+    if speaker_buffer is not None:
+        stages.append(speaker_buffer)
+    stages.append(stt)
+    stages.append(stt_error_observer)
+    if speaker_tagger is not None:
+        stages.append(speaker_tagger)
+    stages.extend([generator, tts])
+    if sound_cue_processor is not None:
+        stages.append(sound_cue_processor)
+    stages.append(transport.output())
+    logger.info(
+        "Generator pipeline: model=%s, openrouter_timeout=%ss, action_timeout=%ss",
+        settings.openrouter_model,
+        settings.openrouter_timeout_seconds,
+        settings.action_timeout_seconds,
+    )
     pipeline = Pipeline(stages)
     task = PipelineTask(
         pipeline,
-        params=PipelineParams(
-            allow_interruptions=False,  # no HW echo cancellation — own voice would kill TTS
-        ),
+        params=PipelineParams(allow_interruptions=False),
         cancel_on_idle_timeout=False,
         enable_turn_tracking=False,
     )
-    return task, decider, tts_cache
+    return task, generator, tts_cache, indication

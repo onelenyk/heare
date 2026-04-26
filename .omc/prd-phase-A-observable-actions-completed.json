@@ -1,0 +1,79 @@
+{
+  "title": "heare Phase A — Observable Actions",
+  "version": "1.0.0",
+  "source_plan": ".omc/research/intent-action.md",
+  "notes": "Fix D2 (empty action summary from Agent SDK) + D3 (no audio feedback). Scope is intentionally narrow: make intent execution observable. Prompt hardening, confirmation gate, and SDK split are deferred to Phase B/C/D.",
+  "stories": [
+    {
+      "id": "US-A-01",
+      "title": "AgentSDKCLI captures tool-use output",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "_run_query must collect ToolResultBlock content from UserMessage in addition to AssistantMessage.TextBlock so bash stdout reaches the returned summary.",
+      "acceptanceCriteria": [
+        "src/agent_sdk_cli.py _attempt_query iterates UserMessage and ToolResultBlock, appending content.text-like strings to stdout_chunks (order: message arrival order).",
+        "ToolResultBlock.content can be str or list[dict]; both shapes extract plain text safely without raising.",
+        "ToolResultBlock with is_error=True still contributes to stdout_chunks (so caller sees the error text).",
+        "Unit test in tests/test_agent_sdk_cli.py drives a scripted SDK transcript: AssistantMessage(TextBlock 'ok'), AssistantMessage(ToolUseBlock), UserMessage(ToolResultBlock 'hi'), AssistantMessage(TextBlock 'done') and asserts the returned string contains both 'hi' and 'done'.",
+        "Existing tests in tests/test_agent_sdk_cli.py continue to pass after the change."
+      ]
+    },
+    {
+      "id": "US-A-02",
+      "title": "Spoken summary after successful action",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "When ActionWorker reports success, the pipeline pushes a short Ukrainian TTSSpeakFrame so the user hears the result. Empty summaries fall back to a generic confirmation phrase.",
+      "acceptanceCriteria": [
+        "src/main.py _on_action_result pushes a TTSSpeakFrame through the processor for every successful action.",
+        "If summary has content, spoken text is the first ~120 chars (cleaned, one line). If summary is empty, spoken text is the fallback 'Готово.'",
+        "Scrubber patterns from src/generator.py are applied so JSON/tool fragments never reach TTS.",
+        "Structured log entry '[ACTION SPEAK id=X len=Y]' records how many chars were spoken for debuggability.",
+        "No pipecat import crash on machines without pipecat — pushes via processor.push_frame which the pipeline already provides."
+      ]
+    },
+    {
+      "id": "US-A-03",
+      "title": "Spoken hint after failed action",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "When ActionWorker reports an error (timeout or exception), the pipeline pushes a short Ukrainian TTSSpeakFrame so the user hears the failure.",
+      "acceptanceCriteria": [
+        "src/main.py _on_action_error pushes a TTSSpeakFrame with a short Ukrainian error hint (e.g. 'Не вийшло: <type>').",
+        "TimeoutError produces the phrase 'Дія не встигла, скасовую.' (no traceback text).",
+        "Other exceptions produce 'Не вдалося — <exception-class-name>.'",
+        "Structured log entry '[ACTION ERROR SPEAK id=X kind=...]' records the hint that was spoken."
+      ]
+    },
+    {
+      "id": "US-A-04",
+      "title": "Integration test covers observable action loop",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "tests/integration/test_intent_flow.py grows to assert both the success-speech and error-speech paths.",
+      "acceptanceCriteria": [
+        "New test test_intent_flow_emits_result_speech simulates a successful action, asserts on_result pushes a TTSSpeakFrame containing the summary prefix or the fallback phrase.",
+        "New test test_intent_flow_emits_error_speech simulates a timeout, asserts on_error pushes a TTSSpeakFrame with the timeout hint.",
+        "Existing test_end_to_end_intent_submission_and_execution continues to pass unchanged.",
+        "Tests run via uv run pytest tests/integration/test_intent_flow.py and exit 0."
+      ]
+    },
+    {
+      "id": "US-A-05",
+      "title": "Regression + lint green",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Full test suite and lint must be clean after Phase A changes.",
+      "acceptanceCriteria": [
+        "uv run pytest tests/ exits 0 with zero failures.",
+        "ruff check . exits 0 on all touched files (src/agent_sdk_cli.py, src/main.py, tests/**).",
+        "progress.txt records files touched, patterns learned, and a short 'how to live-verify' note."
+      ]
+    }
+  ]
+}

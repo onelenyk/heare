@@ -91,12 +91,12 @@ async def test_tts_cache_warmup_skips_empty_pcm() -> None:
     assert not cache.has("x")  # empty PCM treated as miss
 
 
-def test_decider_exposes_fixed_phrases() -> None:
-    """LAT-A5 acceptance: src/decider.py defines FIXED_PHRASES with the expected entries."""
-    from src.decider import FIXED_PHRASES
+def test_fixed_phrases_list_exposed() -> None:
+    """Phase 2.1 US-P2.1-07b: FIXED_PHRASES now lives in src/tts_phrases."""
+    from src.tts_phrases import FIXED_PHRASES
 
     assert isinstance(FIXED_PHRASES, list)
     assert "okay" in FIXED_PHRASES
-    assert "nevermind, cancelled" in FIXED_PHRASES
+    assert "cancelled" in FIXED_PHRASES
     assert "Скажи: так чи ні?" in FIXED_PHRASES
     assert "дія не вдалася" in FIXED_PHRASES

@@ -5,6 +5,7 @@ and that conversation memory works end-to-end.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -239,5 +240,3 @@ async def test_conversation_manager_integration_flow(tmp_settings):
         pytest.fail(f"update_summary raised exception: {e}")
 
 
-# Import asyncio at module level for the test
-import asyncio

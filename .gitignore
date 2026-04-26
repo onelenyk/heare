@@ -3,6 +3,7 @@
 .idea/
 .omc/state/
 .omc/sessions/
+.claude/
 __pycache__/
 *.pyc
 *.pyo

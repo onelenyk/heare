@@ -35,9 +35,6 @@ Mic ──► SileroVAD ──► GroqSTT ──► SmartTurnV3
                          └─────────┬──────────────┘
                                    ▼ AudioFrame
                                 Speaker
-
-Parallel: HeartbeatTask every N minutes fires on_heartbeat_tick,
-so heare can initiate speech on its own.
 ```
 
 See `.omc/plans/heare-scaffold.md` for the full plan and decisions.
@@ -87,6 +84,43 @@ use_agent_sdk = true
 All other settings (mode, voice, timeouts, speaker recognition, etc.) are
 documented as inline comments in `src/config.py`.
 
+## MCP servers
+
+heare's Claude Agent SDK backend can call MCP tools — browser automation,
+filesystem, memory, etc. — in addition to Bash/Read/Write/Edit/WebFetch/
+WebSearch.
+
+**Edit `workspace/.mcp.json` to add servers; restart heare.**
+
+heare seeds `~/.heare/workspace/.mcp.json` from your global `~/.claude.json`
+on first run. Every server listed in `.mcp.json` is automatically callable by
+the agent — no separate allowlist needed. Example:
+
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
+    },
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/you/Documents"
+      ]
+    }
+  }
+}
+```
+
+You can add an optional `"description"` field to each entry; heare uses it
+to describe the server's purpose in the generator prompt. Restart the daemon
+after editing `.mcp.json`.
+
 ## Run
 
 First start bootstraps both the Claude Code session and heare's persona.
@@ -114,7 +148,7 @@ uv run python -m src.main reset-identity  # backup identity.json
 | --------- | ------------------------------------------------------------------------------------------------- | -------------------- |
 | `silent`  | Never speak, never act. Log only.                                                                 | None                 |
 | `focus`   | Speak only when directly addressed ("Heare, ...") or on a clear question into silence.           | Yes, with confirmation |
-| `ambient` | Also speaks on stuck-user heuristics and heartbeat check-ins.                                      | Yes, with confirmation |
+| `ambient` | Also speaks on stuck-user heuristics.                                                              | Yes, with confirmation |
 
 ## State layout
 
@@ -140,9 +174,6 @@ heare never runs a risky action without verbally asking first.
 3. You: _"так"_ → heare runs the action, speaks a summary
 4. You: _"ні"_ → heare cancels, speaks "okay"
 5. Silence for 30s → heare auto-cancels and speaks "nevermind, cancelled"
-
-Heartbeat ticks are suppressed while heare is waiting for your
-confirmation, so it never interrupts its own prompt.
 
 ## Tests
 
@@ -192,3 +223,32 @@ GroqSTTService runs inside Pipecat and is NOT rate-limited by heare —
 if you hit the Groq free tier ceiling, pipecat surfaces the error and
 heare logs it via the daemon log. This is deliberate: the biggest cost
 center is our own claude calls, not Groq STT.
+
+### Architecture (post Phase 2.1)
+
+```
+mic ──▶ transport.input() ──▶ GroqSTTService ──▶ GeneratorProcessor ──▶ EdgeTTSService ──▶ transport.output() ──▶ speaker
+                                                     │
+                                                     └─ emits ──▶ IntentQueue ──▶ ActionWorker (claude CLI + tools)
+```
+
+Every user utterance gets a reply — the generator always speaks.
+Action requests (explicit "запусти", "додай", …) are emitted as
+`<intent>...</intent>` tags in the LLM stream, parsed out before TTS,
+and executed asynchronously by `ActionWorker` so conversation never
+blocks on Claude tool use.
+
+Required config:
+
+```toml
+# ~/.heare/config.toml
+openrouter_api_key = "…"          # OR set OPENROUTER_API_KEY in .env
+openrouter_model = "google/gemini-3.1-flash-lite-preview-20260303"
+openrouter_timeout_seconds = 5.0
+action_timeout_seconds = 120.0
+intent_queue_max_pending = 32
+```
+
+Target latency: time-to-first-audio ≤2s. Cancellation: say "скасуй" or
+"відміни" to drop the newest pending (not-yet-started) intent.
+In-flight action cancellation is a Phase 2.7 follow-up.

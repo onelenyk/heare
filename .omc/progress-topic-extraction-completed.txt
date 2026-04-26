@@ -1,0 +1,78 @@
+# Topic Extraction on OpenRouter — Progress Log
+
+## Session: 2026-04-25
+
+### Status
+COMPLETE. 840 pytest tests pass; ruff clean on all modified files.
+
+### Plan
+.omc/plans/decider-on-openrouter.md (revision 2, consensus-approved by Architect + Critic after iteration 1 was REJECTED for targeting dead code).
+
+### Architectural finding (during ralplan iteration 1)
+The original plan targeted `DeciderProcessor.call_decider` at `src/decider.py:673,772,1081`. Both Architect and Critic independently verified that `DeciderProcessor` is dead code on the s2s-realtime branch:
+- `create_decider_processor` has zero callers in `src/`. Only `tests/test_decider.py` instantiates it.
+- The pipeline (`src/pipeline.py:97`, `src/main.py:294`) returns `GeneratorProcessor`, not `DeciderProcessor`.
+- `GeneratorProcessor.on_heartbeat_tick`/`shutdown` (`src/generator.py:498-500`) are explicit no-op stubs.
+- The decider role was folded into the generator in Phase 2.1 (commit `576a0c4`).
+
+The revised iteration-2 plan targets `ConversationManager.extract_topics()` at `src/conversation.py:115`, which IS the sole live `call_decider` consumer in production (called from `_background_memory_update` in `src/generator.py:313`).
+
+### Files added
+- `src/openrouter_topic_extractor.py` — non-streaming OpenRouter HTTP client dedicated to topic extraction. Class `OpenRouterTopicExtractorCLI(api_key, model, timeout, *, transport=None)` with `async extract_topics(prompt) -> list[str]`. Logger `heare.openrouter_topic_extractor`. Module-level helpers `_parse_topics()` and `_extract_first_json_array()`. All error paths degrade to `[]` and increment `_consecutive_failures`; success resets the counter; 3+ consecutive failures emit a WARN log. **Does NOT send `response_format` field** (consensus resolution: rely on prompt + defensive parser instead of JSON-mode constraint that some providers translate to "must be top-level object").
+- `tests/test_openrouter_topic_extractor.py` — 11 tests using `httpx.MockTransport` injected via the `transport=` kwarg. Covers: success, preamble text, object-wrapped, cap at 5, timeout, HTTP 500, invalid JSON, consecutive-failures WARN log + reset on success, request-body shape (no `response_format`), markdown-fence stripping, `_extract_first_json_array` unit.
+
+### Files modified
+- `src/conversation.py` — `ConversationManager.__init__` gains keyword-only `topic_extractor: OpenRouterTopicExtractorCLI | None = None` parameter. `extract_topics` wrapped in `try/finally` timing block. When `self._topic_extractor is not None`, routes to OpenRouter and skips `call_decider`. Otherwise the existing Claude path runs unchanged. Always emits `[TOPIC EXTRACT backend=... ms=N topics=M]` log line via `logger.info`.
+- `tests/test_conversation.py` — added `FakeTopicExtractor` stub and 4 new tests: extractor injected uses OpenRouter (call_decider NOT called); extractor None falls back to Claude (call_decider called once); timing log emitted on OpenRouter path; timing log emitted on Claude path.
+- `src/config.py` — added 3 fields **immediately after `openrouter_timeout_seconds` (line 218)**, preserving the OpenRouter grouping: `topic_extraction_backend: str = "claude"`, `topic_extraction_openrouter_model: str = "google/gemini-2.0-flash-exp:free"`, `topic_extraction_openrouter_timeout_seconds: float = 5.0`.
+- `src/main.py` — replaced the single-line `ConversationManager(store, claude_cli)` call with a conditional block that constructs `OpenRouterTopicExtractorCLI` only when `settings.topic_extraction_backend == "openrouter"` AND `settings.openrouter_api_key` is truthy; logs a WARNING and falls back to Claude when the key is missing; injects `topic_extractor=topic_extractor` into the `ConversationManager` constructor.
+- `tests/test_config.py` — added `test_topic_extraction_backend_default` and `test_topic_extraction_openrouter_defaults`.
+
+### Design decisions (from the consensus loop)
+1. **No `response_format: json_object`.** Resolved Open Question #2. Some providers force a top-level object when this flag is set, which conflicts with the prompt that asks for a bare JSON array. The defensive parser (`_extract_first_json_array`) handles malformed output instead.
+2. **Consecutive-failure WARN log.** Architect-required addition. Without it, OpenRouter outages produce silent `[]` topics for every turn. Counter increments on any failure path, resets on success, fires WARN at threshold 3.
+3. **Sidestep, don't fix, the latent Claude-path bug.** Critic identified that `parse_decider_response` rejects bare JSON arrays as "not a dict", causing the existing Claude path to silently return `[]` for valid inputs in some cases. This plan does NOT fix that — it routes around it. Tracked as a follow-up.
+4. **Dual-backend, default-safe.** New backend is opt-in via config flag. Default on `main` after merge: still Claude. Flip to OpenRouter is a separate follow-up after manual production validation.
+5. **Separate non-streaming module.** Did not extend `OpenRouterCLI` (which is streaming-only). Mixing streaming and non-streaming in one class would violate separation of concerns.
+
+### Out of scope (intentionally not addressed in this work)
+- `DeciderProcessor` cleanup. It remains dead code. A separate plan should retire it.
+- `call_action` and `bootstrap_identity`. Both stay on Claude Code untouched.
+- Generator (`GeneratorProcessor._handle_transcription`). Already on OpenRouter.
+- Flipping `topic_extraction_backend` default to `"openrouter"`. Follow-up after production validation.
+- Fixing the latent Claude-path topic extraction parser bug. Follow-up cleanup.
+
+### Verification (Story 4 AC)
+- `uv run pytest -q` → **840 passed**, 2 unrelated warnings, exit 0
+- `uv run ruff check` on modified files (`src/openrouter_topic_extractor.py src/conversation.py src/config.py src/main.py tests/test_openrouter_topic_extractor.py tests/test_conversation.py tests/test_config.py`) → "All checks passed!"
+- Note: `uv run ruff check src/ tests/` reports 4 pre-existing errors in `src/generator.py:21` (duplicate `from .zai_cli import ZaiCLI`) and `src/zai_cli.py:11` (unused `import asyncio`). Both files are untouched by this work; the errors exist on the branch independent of this change. Verified by stashing tracked changes — the errors persist. Out of scope.
+- `uv run python -c 'from src.openrouter_topic_extractor import OpenRouterTopicExtractorCLI; print(OpenRouterTopicExtractorCLI.__name__)'` → `OpenRouterTopicExtractorCLI`
+- `uv run python -c 'from src.config import Settings; s=Settings(); print(s.topic_extraction_backend, s.topic_extraction_openrouter_model, s.topic_extraction_openrouter_timeout_seconds)'` → `claude google/gemini-2.0-flash-exp:free 5.0`
+- `grep topic_extractor src/conversation.py` → 5 matches (TYPE_CHECKING import, init param, docstring, init storage, branch checks)
+- `grep 'TOPIC EXTRACT backend=' src/conversation.py` → 1 match at line 167 (the timing log)
+
+### How to flip to OpenRouter for manual validation
+```toml
+# ~/.heare/config.toml
+topic_extraction_backend = "openrouter"
+# topic_extraction_openrouter_model = "google/gemini-2.0-flash-exp:free"  # optional override
+# topic_extraction_openrouter_timeout_seconds = 5.0  # optional override
+```
+Plus `OPENROUTER_API_KEY` env var (already loaded by `load_settings()`).
+
+After flipping, observe:
+- `[TOPIC EXTRACT backend=openrouter ms=N topics=M]` log line on every turn.
+- Reduced lock contention in `AgentSDKCLI._run_query` (memory updates no longer hold the SDK lock).
+- One fewer Claude API call per turn.
+
+### Deslop pass (Step 7.5/7.6 of Ralph)
+- Scope: only the 7 files changed in this session.
+- One smell removed: redundant `[:_TOPIC_CAP]` on `extract_topics` line 100 (was a no-op slice — `_parse_topics` and `_extract_first_json_array` already cap on every return path).
+- No other smells worth fixing in scope. Claude-path duplication in `conversation.py:extract_topics` is intentionally untouched (latent-bug follow-up, plan §"Out of scope").
+- Post-deslop regression: `pytest` on changed scope → 99 passed; `ruff check` on changed files → clean.
+
+### Learnings
+1. **Always verify the target before planning.** The first ralplan iteration produced a fully-formed plan that targeted a code path with zero production callers. The Architect's grep-based verification of `create_decider_processor` callers caught it. The premise of any plan must be evidence-checked, not inferred from project documentation (which can drift behind reality).
+2. **`docs/full_flow.md` is stale on this branch.** It describes a two-stage decider→generator architecture that was retired in Phase 2.1. Future planning should treat it as historical context, not authoritative.
+3. **Consensus mode catches premise errors.** Both Architect and Critic independently flagged the dead-code issue. A single-reviewer workflow likely would have approved the original plan.
+4. **`httpx.MockTransport` is the right test pattern for HTTP clients in this codebase** — `OpenRouterCLI` already used it via the `transport=` kwarg, and the new module mirrored that contract for parity.

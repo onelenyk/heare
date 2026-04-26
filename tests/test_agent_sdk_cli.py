@@ -106,6 +106,35 @@ def _result_msg(
     return msg
 
 
+def _tool_use_msg(tool_name: str, tool_input: dict[str, Any]) -> Any:
+    """AssistantMessage carrying a single ToolUseBlock."""
+    from claude_agent_sdk import AssistantMessage, ToolUseBlock
+
+    block = MagicMock(spec=ToolUseBlock)
+    block.id = "tool_use_1"
+    block.name = tool_name
+    block.input = tool_input
+    msg = MagicMock(spec=AssistantMessage)
+    msg.content = [block]
+    return msg
+
+
+def _tool_result_user_msg(content: Any, is_error: bool = False) -> Any:
+    """UserMessage carrying a single ToolResultBlock.
+
+    content mirrors the SDK shape: can be str, list[dict], or None.
+    """
+    from claude_agent_sdk import ToolResultBlock, UserMessage
+
+    block = MagicMock(spec=ToolResultBlock)
+    block.tool_use_id = "tool_use_1"
+    block.content = content
+    block.is_error = is_error
+    msg = MagicMock(spec=UserMessage)
+    msg.content = [block]
+    return msg
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
@@ -298,6 +327,116 @@ def test_sdk_call_action_on_line_exception_does_not_break_stream(
     assert "second" in lines
 
 
+def test_sdk_call_action_prefers_text_summary_over_tool_result(
+    cli: AgentSDKCLI, fake_client: FakeClient
+) -> None:
+    """Phase AH2-03: when Claude emits a text summary, the returned summary
+    contains ONLY that text (no duplicated raw tool output).
+
+    Transcript:
+      1. Assistant pre-text ("ok, running")
+      2. Assistant ToolUseBlock
+      3. User ToolResultBlock (raw 'hi' — not included in summary)
+      4. Assistant post-text ("done")
+    """
+    fake_client.set_messages(
+        _text_msg("ok, running"),
+        _tool_use_msg("Bash", {"command": "echo hi"}),
+        _tool_result_user_msg("hi"),
+        _text_msg("done"),
+        _result_msg(),
+    )
+
+    async def run() -> dict[str, str]:
+        return await cli.call_action("desc")
+
+    result = asyncio.run(run())
+    summary = result["summary"]
+    assert "ok, running" in summary
+    assert "done" in summary
+    # Prefer-text behavior: raw tool result "hi" must NOT appear in the
+    # returned summary at all (substring, not just whole-line).
+    assert "hi" not in summary
+
+
+def test_sdk_call_action_falls_back_to_tool_result_when_no_text(
+    cli: AgentSDKCLI, fake_client: FakeClient
+) -> None:
+    """Phase AH2-03: when Claude ends the turn silently (no TextBlock),
+    the summary falls back to the tool-result content so the caller still
+    has output to speak."""
+    fake_client.set_messages(
+        _tool_use_msg("Bash", {"command": "echo silent"}),
+        _tool_result_user_msg("silent-output"),
+        _result_msg(),
+    )
+
+    async def run() -> dict[str, str]:
+        return await cli.call_action("desc")
+
+    result = asyncio.run(run())
+    assert "silent-output" in result["summary"]
+
+
+def test_sdk_call_action_captures_tool_result_from_list_content(
+    cli: AgentSDKCLI, fake_client: FakeClient
+) -> None:
+    """US-A-01: ToolResultBlock.content may be list[dict]; flattening picks text."""
+    fake_client.set_messages(
+        _tool_use_msg("Bash", {"command": "ls"}),
+        _tool_result_user_msg([
+            {"type": "text", "text": "file-one"},
+            {"type": "text", "text": "file-two"},
+        ]),
+        _result_msg(),
+    )
+
+    async def run() -> dict[str, str]:
+        return await cli.call_action("desc")
+
+    result = asyncio.run(run())
+    assert "file-one" in result["summary"]
+    assert "file-two" in result["summary"]
+
+
+def test_sdk_call_action_captures_tool_error_output(
+    cli: AgentSDKCLI, fake_client: FakeClient
+) -> None:
+    """US-A-01: ToolResultBlock with is_error=True still contributes to summary.
+
+    The caller needs the error text to speak a useful hint.
+    """
+    fake_client.set_messages(
+        _tool_use_msg("Bash", {"command": "false"}),
+        _tool_result_user_msg("command not found", is_error=True),
+        _result_msg(),
+    )
+
+    async def run() -> dict[str, str]:
+        return await cli.call_action("desc")
+
+    result = asyncio.run(run())
+    assert "command not found" in result["summary"]
+
+
+def test_sdk_call_action_empty_tool_result_does_not_raise(
+    cli: AgentSDKCLI, fake_client: FakeClient
+) -> None:
+    """US-A-01: None / empty ToolResultBlock content is tolerated silently."""
+    fake_client.set_messages(
+        _tool_use_msg("Bash", {"command": "true"}),
+        _tool_result_user_msg(None),
+        _text_msg("finished"),
+        _result_msg(),
+    )
+
+    async def run() -> dict[str, str]:
+        return await cli.call_action("desc")
+
+    result = asyncio.run(run())
+    assert "finished" in result["summary"]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Session persistence / loading
 # ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +481,150 @@ def test_sdk_session_loaded_on_first_call(settings: Settings) -> None:
     asyncio.run(run())
     assert len(captured_options) == 1
     assert captured_options[0].resume == sid
+
+
+def test_sdk_allowed_tools_uses_settings_list(settings: Settings) -> None:
+    """Phase B-tools US-BT-01: ClaudeAgentOptions.allowed_tools mirrors
+    Settings.agent_sdk_allowed_tools exactly (default expands beyond Bash)."""
+    captured_options: list[Any] = []
+    client = FakeClient()
+
+    def factory(options: Any) -> FakeClient:
+        captured_options.append(options)
+        return client
+
+    async def run() -> None:
+        with patch("src.agent_sdk_cli.ClaudeSDKClient", side_effect=factory):
+            sdk = AgentSDKCLI(settings)
+            await sdk.__aenter__()
+            await sdk.__aexit__(None, None, None)
+
+    asyncio.run(run())
+    assert len(captured_options) == 1
+    tools = list(captured_options[0].allowed_tools)
+    # Default covers bash + the five richer SDK tools.
+    for expected in ("Bash", "Read", "Write", "Edit", "WebFetch", "WebSearch"):
+        assert expected in tools, f"missing {expected!r} in {tools}"
+
+
+def test_sdk_allowed_tools_respects_custom_settings(settings: Settings) -> None:
+    """Phase B-tools US-BT-01: overriding Settings.agent_sdk_allowed_tools
+    propagates through to ClaudeAgentOptions — no hardcoded list."""
+    settings.agent_sdk_allowed_tools = ["Bash", "Read"]
+    captured_options: list[Any] = []
+    client = FakeClient()
+
+    def factory(options: Any) -> FakeClient:
+        captured_options.append(options)
+        return client
+
+    async def run() -> None:
+        with patch("src.agent_sdk_cli.ClaudeSDKClient", side_effect=factory):
+            sdk = AgentSDKCLI(settings)
+            await sdk.__aenter__()
+            await sdk.__aexit__(None, None, None)
+
+    asyncio.run(run())
+    assert set(captured_options[0].allowed_tools) == {"Bash", "Read"}
+
+
+def _write_mcp_json(workspace_dir: Path, servers: dict) -> None:
+    """Write a .mcp.json into workspace_dir for MCP tests."""
+    import json
+
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    (workspace_dir / ".mcp.json").write_text(json.dumps({"mcpServers": servers}))
+
+
+def test_sdk_mcp_servers_empty_adds_no_mcp_entries(settings: Settings) -> None:
+    """Empty workspace/.mcp.json leaves allowed_tools free of mcp__ entries."""
+    _write_mcp_json(settings.workspace_dir, {})
+    captured_options: list[Any] = []
+    client = FakeClient()
+
+    def factory(options: Any) -> FakeClient:
+        captured_options.append(options)
+        return client
+
+    async def run() -> None:
+        with patch("src.agent_sdk_cli.ClaudeSDKClient", side_effect=factory):
+            sdk = AgentSDKCLI(settings)
+            await sdk.__aenter__()
+            await sdk.__aexit__(None, None, None)
+
+    asyncio.run(run())
+    tools = list(captured_options[0].allowed_tools)
+    assert all(not t.startswith("mcp__") for t in tools), (
+        f"expected no mcp__ entries when .mcp.json is empty, got {tools}"
+    )
+
+
+def test_sdk_mcp_servers_dedup_duplicate_names(settings: Settings) -> None:
+    """Servers in .mcp.json each produce exactly one mcp__<name>__* entry (no duplication)."""
+    _write_mcp_json(
+        settings.workspace_dir,
+        {
+            "chrome-devtools": {"type": "stdio", "command": "npx"},
+            "filesystem": {"type": "stdio", "command": "npx"},
+        },
+    )
+    captured_options: list[Any] = []
+    client = FakeClient()
+
+    def factory(options: Any) -> FakeClient:
+        captured_options.append(options)
+        return client
+
+    async def run() -> None:
+        with patch("src.agent_sdk_cli.ClaudeSDKClient", side_effect=factory):
+            sdk = AgentSDKCLI(settings)
+            await sdk.__aenter__()
+            await sdk.__aexit__(None, None, None)
+
+    asyncio.run(run())
+    mcp_entries = [
+        t for t in captured_options[0].allowed_tools if t.startswith("mcp__")
+    ]
+    assert "mcp__chrome-devtools__*" in mcp_entries
+    assert "mcp__filesystem__*" in mcp_entries
+    # No duplicates
+    assert len(mcp_entries) == len(set(mcp_entries)), (
+        f"unexpected duplicates in mcp entries: {mcp_entries}"
+    )
+
+
+def test_sdk_mcp_servers_expand_to_wildcard_patterns(settings: Settings) -> None:
+    """Each server in workspace/.mcp.json becomes mcp__<name>__* in allowed_tools."""
+    base_tools = list(settings.get_sdk_allowed_tools())  # snapshot before
+    _write_mcp_json(
+        settings.workspace_dir,
+        {
+            "chrome-devtools": {"type": "stdio", "command": "npx"},
+            "filesystem": {"type": "stdio", "command": "npx"},
+        },
+    )
+    captured_options: list[Any] = []
+    client = FakeClient()
+
+    def factory(options: Any) -> FakeClient:
+        captured_options.append(options)
+        return client
+
+    async def run() -> None:
+        with patch("src.agent_sdk_cli.ClaudeSDKClient", side_effect=factory):
+            sdk = AgentSDKCLI(settings)
+            await sdk.__aenter__()
+            await sdk.__aexit__(None, None, None)
+
+    asyncio.run(run())
+    tools = list(captured_options[0].allowed_tools)
+    assert "mcp__chrome-devtools__*" in tools
+    assert "mcp__filesystem__*" in tools
+    # Base tools survive unchanged.
+    for base in base_tools:
+        assert base in tools, f"base tool {base!r} lost after mcp expansion"
+    # settings.agent_sdk_allowed_tools was not mutated in place.
+    assert list(settings.get_sdk_allowed_tools()) == base_tools
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -464,6 +747,91 @@ def test_sdk_rate_limiter_called(cli: AgentSDKCLI, fake_client: FakeClient) -> N
 # ─────────────────────────────────────────────────────────────────────────────
 # bootstrap_identity
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_sdk_serializes_concurrent_calls(settings: Settings) -> None:
+    """US-AH2-01: concurrent _run_query calls must NOT scramble streams.
+
+    Drive two concurrent call_decider tasks. A SerializingFakeClient enforces
+    that only one call is 'in flight' at a time and scripts a distinct
+    response for each call (by call index). Asserts:
+      - both calls return their own scripted JSON (no mixing),
+      - at no point are two queries concurrently between query() and the end
+        of the receive_response iteration.
+    """
+
+    class SerializingFakeClient:
+        def __init__(self):
+            self._call_index = 0
+            self._queries: list[str] = []
+            self._in_flight = 0
+            self._max_in_flight = 0
+            # Two scripted responses keyed by call order.
+            self._scripted = [
+                [_text_msg('{"t":"s","r":"first"}'), _result_msg("sid1")],
+                [_text_msg('{"t":"s","r":"second"}'), _result_msg("sid2")],
+            ]
+            self._pending: list | None = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def query(self, prompt: str) -> None:
+            self._in_flight += 1
+            self._max_in_flight = max(self._max_in_flight, self._in_flight)
+            self._queries.append(prompt)
+            self._pending = self._scripted[self._call_index]
+            self._call_index += 1
+
+        def receive_response(self):
+            pending = self._pending
+            self._pending = None
+            parent = self
+
+            class _Iter:
+                def __init__(self, items):
+                    self._items = iter(items)
+
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    try:
+                        return next(self._items)
+                    except StopIteration:
+                        # Turn complete; decrement in_flight
+                        parent._in_flight -= 1
+                        raise StopAsyncIteration
+
+                async def aclose(self):
+                    pass
+
+            return _Iter(pending or [])
+
+    client = SerializingFakeClient()
+
+    async def run():
+        with patch("src.agent_sdk_cli.ClaudeSDKClient", return_value=client):
+            async with AgentSDKCLI(settings) as sdk:
+                # Both tasks start concurrently but must serialize.
+                results = await asyncio.gather(
+                    sdk.call_decider("prompt-a"),
+                    sdk.call_decider("prompt-b"),
+                )
+        return results
+
+    results = asyncio.run(run())
+
+    # Each caller got a distinct scripted reply — no mixing.
+    replies = sorted(r.get("reply") for r in results)
+    assert replies == ["first", "second"], f"scrambled: {replies}"
+    # Lock enforced strict serialization — max concurrency was 1.
+    assert client._max_in_flight == 1, (
+        f"expected serialization, saw max_in_flight={client._max_in_flight}"
+    )
 
 
 def test_sdk_bootstrap_identity_uses_extract_decision(

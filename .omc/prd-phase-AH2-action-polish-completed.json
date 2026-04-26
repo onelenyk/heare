@@ -1,0 +1,79 @@
+{
+  "title": "heare Phase A-hotfix-2 — Action output polish",
+  "version": "1.0.0",
+  "source_plan": ".omc/research/intent-action.md (D6 SDK serialization, D2 polish)",
+  "notes": "Triggered by live observation 2026-04-19 15:19-15:21: actions now complete (tool_result=1) but outputs are scrambled (topic JSON leaks into action summary), English, double-voiced, or mangled by the scrubber. Fix four concrete issues in one cycle. Keeps the SDK backend shared (no client split — that is Phase D) but serializes calls.",
+  "stories": [
+    {
+      "id": "US-AH2-01",
+      "title": "Serialize SDK calls with an asyncio.Lock",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "AgentSDKCLI currently lets ActionWorker and ConversationManager hit the single ClaudeSDKClient concurrently. Their streams interleave — topic-extraction JSON ends up in an action summary, 60s timeouts fire. Introduce an asyncio.Lock around _run_query so calls are serial. Cost: extract_topics waits for an in-flight action (acceptable — topic extraction is async background).",
+      "acceptanceCriteria": [
+        "AgentSDKCLI gains a new _run_query_lock: asyncio.Lock attribute initialized in __init__.",
+        "_run_query acquires the lock around the entire call (rate_limit acquire + attempts). The lock is released on normal return and on exception.",
+        "A new test in tests/test_agent_sdk_cli.py spawns two concurrent call_decider tasks with distinct scripted responses and asserts each caller gets its OWN response (no mixing). Use asyncio.gather with staggered scripted responses.",
+        "Existing agent SDK tests still pass."
+      ]
+    },
+    {
+      "id": "US-AH2-02",
+      "title": "Scrubber keeps 'Bash' in plain English",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Claude Code's bash tool emits the literal marker `(Bash completed with no output)` when a command has no stdout. The current scrubber mangles it to `( completed with no output)` — ugly and unhelpful. Fix: drop the whole marker cleanly so TTS never says any variant of it. Preserve everything else as-is.",
+      "acceptanceCriteria": [
+        "_scrub_tts_text in src/generator.py strips '(Bash completed with no output)' entirely (result contains neither '(Bash' nor '( completed' nor 'no output)').",
+        "The strip happens BEFORE the standalone-bash word-boundary rule so the parens also disappear.",
+        "Existing behavior preserved: '{\"tool\":\"bash\",\"args\":\"x\"}' still strips to empty/neutral; '\"tool\":\"bash\"' still strips; 'bashful' still passes through.",
+        "New unit tests in tests/test_generator.py: (a) '(Bash completed with no output)' → empty/whitespace, (b) 'Фуй! (Bash completed with no output) наступне.' → 'Фуй! наступне.', (c) the existing three scrubber tests still pass."
+      ]
+    },
+    {
+      "id": "US-AH2-03",
+      "title": "Prefer assistant text summary over raw ToolResult",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Currently _attempt_query appends BOTH AssistantMessage.TextBlock content AND UserMessage.ToolResultBlock content to stdout_chunks. When Claude provides a summary, appending the raw tool output too results in redundant / duplicative TTS. Change: collect them in separate buckets; when the text bucket is non-empty, return ONLY text. When text is empty, fall back to tool_result. Existing 'on_line' streaming keeps firing per segment regardless.",
+      "acceptanceCriteria": [
+        "_attempt_query returns stdout derived from text_chunks when text_chunks is non-empty; else from tool_result_chunks.",
+        "Existing on_line streaming callback still fires for every segment from both block types (observability unchanged).",
+        "[SDK DRAIN] log line keeps reporting both text and tool_result counts.",
+        "Unit test: scripted transcript with both text and tool_result → returned summary contains only the text content (not the tool result).",
+        "Unit test: scripted transcript with only tool_result (no text) → returned summary contains the tool result content.",
+        "test_sdk_call_action_captures_tool_result_stdout still passes (its transcript has text blocks, so it just checks text reaches summary)."
+      ]
+    },
+    {
+      "id": "US-AH2-04",
+      "title": "Ukrainian-language action summary",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "The action dispatch prompt currently asks Claude for an English one-liner. heare speaks Ukrainian; English summaries sound wrong through the TTS voice. Ask for the summary in Ukrainian.",
+      "acceptanceCriteria": [
+        "_action_description in src/actions.py still starts with 'Use the {tool} tool: {args}' (contract preserved).",
+        "The trailing instruction explicitly asks Claude to reply in Ukrainian ('українською мовою' or equivalent).",
+        "Existing unit test test_action_description_includes_summary_instruction asserts the Ukrainian directive is present (updated assertion).",
+        "Existing dispatch-contract tests still pass (first line unchanged)."
+      ]
+    },
+    {
+      "id": "US-AH2-05",
+      "title": "Regression + lint green",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Full suite + ruff after the four fixes.",
+      "acceptanceCriteria": [
+        "uv run pytest tests/ exits 0 with zero failures.",
+        "uv run ruff check src/ tests/ exits 0.",
+        "progress.txt records files touched, learnings, and a live-verify note that replays the 'запусти ехо привіт' scenario against the four known-bad outputs."
+      ]
+    }
+  ]
+}

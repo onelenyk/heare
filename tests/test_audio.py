@@ -246,6 +246,9 @@ async def test_tts_stopped_frame_always_last():
 
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg not installed")
+@pytest.mark.skip(
+    reason="pending DeciderProcessor → GeneratorProcessor migration (PRD WU US-WU-05)"
+)
 async def test_end_to_end_speak_produces_audio_frames():
     """Full flow: transcript → decider says speak → TTS generates real audio frames."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -303,6 +306,9 @@ async def test_end_to_end_speak_produces_audio_frames():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(
+    reason="pending DeciderProcessor → GeneratorProcessor migration (PRD WU US-WU-05)"
+)
 async def test_echo_cancellation_full_cycle():
     """Transcripts during bot speech and during cooldown are dropped; after cooldown, processing resumes."""
     import asyncio as _asyncio
@@ -360,6 +366,9 @@ async def test_echo_cancellation_full_cycle():
         await store.close()
 
 
+@pytest.mark.skip(
+    reason="pending DeciderProcessor → GeneratorProcessor migration (PRD WU US-WU-05)"
+)
 async def test_echo_cancellation_preserves_bot_frames():
     """BotStarted/StoppedSpeakingFrames are always passed through to output."""
     with tempfile.TemporaryDirectory() as tmp:

@@ -1,0 +1,82 @@
+# Phase B — Prompt hardening + tool allowlist
+
+PRD: .omc/prd.json
+Source: .omc/research/intent-action.md D1 + D5
+Date: 2026-04-19
+
+## Stories shipped
+
+### US-B-01 — Generator prompt hardening (D1)
+- prompts/generator.txt: rewrote the INTENTS section with:
+  - Strict schema: `<intent>{"tool":"bash","args":"<shell команда>"}</intent>`;
+    tool must be exactly "bash" — no other values.
+  - Expanded trigger-verb list: запусти, відкрий, виконай, закрий, створи,
+    додай, знайди, зроби, перевір.
+  - Explicit fallback: "якщо не впевнений — не додавай intent".
+  - Forbidden-commands warning: rm -rf, sudo, curl | bash, chmod 777,
+    :>/dev/sda, disk format (and a requirement to refuse verbally).
+  - 3 positive examples (echo, open -a 'Google Chrome', ls -la) and
+    4 negative examples (gmail.com alone, "хочу відкрити щось",
+    "як справи?", "видали всі файли").
+- tests/test_generator_prompt.py: 5 new tests cover schema, positive/
+  negative examples, if-unsure rule, forbidden commands, trigger verbs.
+- Placeholder set unchanged — existing golden test still passes.
+
+### US-B-02 — Tool allowlist + args length cap (D5)
+- src/actions.py:
+  - ALLOWED_TOOLS: set[str] = {"bash"}
+  - MAX_ARGS_LEN: int = 2000
+  - IntentQueue.submit now rejects tool not in ALLOWED_TOOLS with
+    '[INTENT REJECTED — tool not allowed ...]' warning.
+  - Rejects args longer than MAX_ARGS_LEN with
+    '[INTENT REJECTED — args too long ...]' warning.
+  - Both paths return None and do NOT enqueue — matches the
+    existing empty-tool / queue-full rejection shape.
+- tests/test_actions.py: 3 new tests cover (a) tool not in allowlist,
+  (b) args too long, (c) bash + short args still accepted.
+
+### US-B-03 — Regression + lint
+- `uv run pytest tests/` → 596 passed (was 588 after Phase AH2; +8 new
+  across test_generator_prompt.py and test_actions.py).
+- `uv run ruff check src/ tests/` → All checks passed.
+
+## Files touched
+- prompts/generator.txt
+- src/actions.py
+- tests/test_actions.py
+- tests/test_generator_prompt.py
+
+## Learnings
+
+1. Gemini Flash Lite is small enough that a single "here's how" example is
+   insufficient — it overgeneralizes. Explicit positive AND negative
+   examples (plus a 'when in doubt, don't emit' rule) are load-bearing.
+2. The tool allowlist belongs at the queue boundary, not the worker. Doing
+   it at submit() means the SDK never sees a bogus tool name and we get
+   an observable warning for free — no silent no-op.
+3. Args length cap chosen conservatively (2000 chars). Most real commands
+   are <200 chars; anything larger is probably a pasted-in file or an LLM
+   hallucination that would waste an action turn.
+
+## How to live-verify
+
+Restart daemon + dashboard:
+  uv run python -m src.main stop
+  uv run python -m src.main start
+  uv run python -m src.main watch
+
+Scenarios from the live observation:
+  1. Say just "gmail.com" — expect NO intent submitted, no action row.
+     Watch log for absence of '[INTENT SUBMITTED]'.
+  2. Say "Відкрий Google Chrome" — expect either a correct intent
+     (`open -a 'Google Chrome'`) OR a conversational reply without intent.
+     If the LLM still hallucinates 'google-chrome' with no -a, the
+     allowlist will still catch obvious tool-name errors; args errors
+     surface in the Claude summary now (Phase AH2 land).
+  3. If the LLM ever emits a non-bash tool, look for '[INTENT REJECTED —
+     tool not allowed ...]' warning in daemon.log.
+
+## Not changed in this phase
+- D4 (verbal confirmation gate for destructive actions) — Phase C.
+- D6 split (two SDK clients for decider vs action) — Phase D.
+- Generator model upgrade (Gemini Flash Lite → Sonnet) — future decision.

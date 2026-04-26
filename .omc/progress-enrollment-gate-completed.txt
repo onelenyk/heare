@@ -1,0 +1,63 @@
+# Suppress voice processing during re_enroll recording — Progress Log
+
+## Session: 2026-04-25 (Ralph)
+
+### Status
+COMPLETE. 847 pytest tests pass; ruff clean on all changed files.
+
+### Bug
+After the previous ralph session fixed the event-loop blocking in `_execute_re_enroll` (commit pending), the daemon log on 2026-04-25 13:24 showed two back-to-back re_enroll cycles fired from a single user request. Cause: while re_enroll was recording the owner's voice for *sampling*, the same audio was still being routed through STT → generator → IntentQueue, so the generator interpreted utterances during the recording window as new commands and submitted a duplicate `re_enroll` intent. The user spoke for ~15s during recording, was transcribed mid-window, the generator emitted another "запам'ятай мій голос" intent, ActionWorker queued it, and a second 15s recording fired immediately after the first.
+
+### Fix
+Extended the existing `_bot_speaking | _indication_speaking` drop-gates with a new `is_enrollment_active` flag on the `Indication` facade.
+
+1. **`src/indication.py`** (Story US-EG-1):
+   - Added `self._enrollment_active: bool = False` to `__init__`
+   - Added public `@property is_enrollment_active` returning that flag
+   - At the top of `notify()`, before the `_enabled` short-circuit and before the cooldown coalescer, the flag is updated:
+     - `kind is REENROLL_RECORDING_START` → True
+     - `kind is REENROLL_RECORDING_END` → False
+   - This means the gate works even when indication backends are disabled or the kind is in cooldown.
+
+2. **`src/generator.py`** (Story US-EG-2):
+   - Added helper method `_is_enrollment_active()` on `GeneratorProcessor` that lazy-imports `get_indication` and returns the flag.
+   - Extended the gate in `_handle_transcription` (around line 356-371) — drops the transcript when `_is_enrollment_active()` is True. Updated the debug log line to show all three states (bot/indication/enrollment).
+   - Incidentally fixed a pre-existing duplicate `from .zai_cli import ZaiCLI` import at line 20-21 (was blocking ruff — picked up because the AC required ruff clean on `src/generator.py`).
+
+3. **`src/speaker_processor.py`** (Story US-EG-2):
+   - Same `_is_enrollment_active()` helper.
+   - Extended the gate in `_tag_transcription` (around line 514-527) — sets `frame.speaker_confidence = -1.0` and short-circuits when enrollment is active. Updated the `[SPEAKER]` log line to show which gating reason fired (bot / indication / enrollment).
+
+4. **Tests** (Story US-EG-2 + US-EG-3):
+   - `tests/test_indication.py` +3 tests: flag flips on START/END; flag updates through cooldown; flag updates when indication is disabled.
+   - `tests/test_generator.py` +1 test: `_handle_transcription` drops the transcript when `is_enrollment_active=True` (no LLM call, no TTS frame).
+   - `tests/test_speaker_processor.py` +1 test: tagger marks frame `speaker_confidence=-1.0` and skips embedding when `is_enrollment_active=True`.
+   - `tests/test_direct_tools.py` +1 integration test: real `Indication` facade with empty backends, mocked sounddevice; samples `is_enrollment_active` before/during/after the recording window. Asserts True only mid-recording.
+
+### Deslop pass (Step 7.5/7.6)
+The two `_is_enrollment_active(self)` helpers in `src/generator.py` and `src/speaker_processor.py` were byte-identical (14 lines × 2 sites = 28 lines of pure duplication). Cleanup:
+- Added module-level `is_enrollment_active() -> bool` to `src/indication.py` (alongside `set_indication`/`get_indication`) and exported via `__all__`. Single source of truth for the flag check.
+- Removed both `_is_enrollment_active(self)` methods from the processors.
+- Inlined the call at each gate site with a lazy `from .indication import is_enrollment_active` (matches the file's existing lazy-import pattern for `IndicationKind`/`get_indication`). Pre-compute the bool once into a local so the gate condition + log line don't double-call.
+- Subtle gotcha caught by tests: the new function must call `get_indication()` (not read `_INSTANCE` directly) so test monkeypatches of `src.indication.get_indication` continue to work. Fixed during the deslop pass.
+- Post-deslop: 847/847 tests pass; ruff clean on all 7 changed files.
+
+### Why this design (vs alternatives)
+Picked option (b) "global facade flag read by processors" over option (a) "new IndicationCueFrame-style frame routed through the pipeline". Reasons:
+- The recording happens *off-pipeline* (sounddevice direct), so there's no audio frame the cue processor can bracket. Option (a) would require synthesizing a 15s frame solely for this gate.
+- The processors already lazy-import `get_indication()` for unrelated `notify()` calls — adding one read for the flag is two extra lines, no new wiring.
+- Option (b) updates BEFORE the cooldown/enabled check, making the gate work even with indication backends disabled. Option (a) would tie input gating to backend dispatch, which is wrong.
+
+### Out of scope (deliberately not addressed)
+- **Magic-word escape during enrollment** (e.g. "скасуй" cancels). User opted for a full block during the 15s window. Easy to add later by checking transcript text against a small allowlist before applying the gate.
+- **Suppress STT itself** during enrollment. Currently STT still runs (small wasted Groq API call per fragment) but downstream work is dropped. Pre-gating audio at the transport layer is technically cleaner but ~5x the wiring.
+- **Pre-existing E402 in `src/direct_tools.py:23`** (module-level import after another statement) — verified pre-existing via `git stash` round-trip in earlier ralph sessions. Out of scope.
+
+### Verification
+- `uv run pytest -q` → **847 passed**, 2 unrelated warnings, exit 0 (was 841 before this session; +6 new tests)
+- `uv run ruff check` on the 8 modified files → "All checks passed!" (only the documented pre-existing E402 in `src/direct_tools.py:23` remains, untouched by this session)
+
+### Learnings
+1. **Composing drop-gates is cheap when the pattern already exists.** Adding `_is_enrollment_active()` cost ~10 lines per processor because the `_bot_speaking | _indication_speaking` boolean composition was already there. The hard part was the design decision (flag-on-facade vs frame-in-pipeline), not the wiring.
+2. **The flag must update BEFORE the enabled/cooldown checks.** A naive implementation that did the cooldown check first would mean a within-cooldown duplicate START would not flip the flag — a subtle bug that the cooldown unit test caught.
+3. **Tests with the real Indication facade are valuable for end-to-end gates.** The integration test in `test_direct_tools.py` constructs a real `Indication` with no backends — `notify()` flips the flag but no audio/visual side-effects fire. This is a good pattern for testing system-wide flag propagation without pulling in a full pipeline.

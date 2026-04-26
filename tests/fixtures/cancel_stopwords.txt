@@ -1,0 +1,38 @@
+# CCS-05a stop-word fixtures (en/uk/ru).
+# Format: TSV-style — verdict\tutterance
+#   TRIGGER     — is_standalone_cancel_imperative must return True
+#   NO-TRIGGER  — must return False
+# Lines starting with '#' and blank lines are skipped.
+#
+# The "no no no stop" carve-out is documented in the detector docstring
+# (src/language.py:is_standalone_cancel_imperative). The "ok stop stop"
+# fixture exercises politeness-prefix stripping followed by a stop-word
+# residual head.
+TRIGGER	stop
+TRIGGER	cancel
+TRIGGER	halt
+TRIGGER	відміни
+TRIGGER	отмени
+TRIGGER	please cancel
+TRIGGER	please stop
+TRIGGER	please cancel that
+TRIGGER	будь ласка стоп
+TRIGGER	пожалуйста стоп
+TRIGGER	ok stop
+TRIGGER	okay stop
+TRIGGER	hey stop
+TRIGGER	hey cancel
+TRIGGER	no no no stop
+TRIGGER	ok stop stop
+NO-TRIGGER	don't stop the recording
+NO-TRIGGER	please don't stop
+NO-TRIGGER	I won't stop
+NO-TRIGGER	stop is a four-letter word
+NO-TRIGGER	stop sign
+NO-TRIGGER	the cancel button
+NO-TRIGGER	hey, please cancel that immediately
+NO-TRIGGER	не зупиняйся
+NO-TRIGGER	не отменяй
+NO-TRIGGER	the recording cannot stop
+NO-TRIGGER	do not stop
+NO-TRIGGER	will not cancel

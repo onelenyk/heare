@@ -1,0 +1,42 @@
+# Owner Auto-Enrollment — Progress Log
+
+## Session: 2026-04-24
+
+### Task
+Implement automatic owner enrollment to eliminate manual CLI setup requirement.
+
+### Design Decisions
+- Threshold: 5 turns (higher than guest's 2) for safety
+- Owner enrollment checked BEFORE guest enrollment in _maybe_auto_enroll()
+- Reuses existing _stranger_candidates deque (no new state)
+- TTS notification: "Тепер я впізнаю твій голос." (Ukrainian)
+- Safety: never overwrites existing owner entry
+- KEY DESIGN POINT discovered during impl: when owner-enroll is enabled and
+  no owner exists, the guest path is fully suppressed — otherwise the lower
+  guest threshold (default 2) would always fire first and the owner slot
+  would never accumulate to 5. After owner is enrolled (or owner-enroll
+  is disabled), guest path runs normally.
+- TTS push happens via loop.create_task() so push_frame's await does not
+  re-enter the tagger; failure is caught and logged.
+
+### Stories
+- [x] US-OWN-01: Settings knobs (2 new config fields)
+- [x] US-OWN-02: Auto-enroll logic in _maybe_auto_enroll()
+- [x] US-OWN-03: TTS notification
+- [x] US-OWN-04: Unit tests (5 tests)
+- [x] US-OWN-05: Regression verification (730 passed, ruff clean)
+
+### Files Modified
+- src/config.py — added speaker_id_auto_enroll_owner_enabled (True),
+  speaker_id_auto_enroll_owner_after (5)
+- src/speaker_processor.py — _maybe_auto_enroll() now runs an owner
+  branch before the guest branch, with guest suppression while owner
+  slot is open; pushes TTSSpeakFrame on successful owner enrollment
+- tests/test_config.py — extended test_speaker_id_defaults
+- tests/test_speaker_processor.py — added 5 tests covering enroll path,
+  owner-already-exists guard, threshold respect, exception handling,
+  enabled-flag opt-out
+
+### Verification
+- uv run pytest -q → 730 passed
+- uv run ruff check src/ tests/ → 0 errors

@@ -1,0 +1,84 @@
+# Voice profile management tools — Progress Log
+
+## Session: 2026-04-25 (Ralph)
+
+### Status
+COMPLETE. 852 pytest tests pass; ruff clean on all changed Python files (E402 in src/direct_tools.py:23 is pre-existing, documented out of scope).
+
+### Feature
+Added full agent control over voice profiles with 4 new direct tools: list_profiles, create_profile, rename_profile, delete_profile. The agent can now show all profiles in a plain text table, create placeholder guest profiles, rename profiles, and delete non-owner profiles. Audio feedback (success/info beeps) is provided for all operations via new IndicationKind entries.
+
+### Files changed
+- `src/indication.py` — added 3 new IndicationKind entries (PROFILE_CREATED, PROFILE_RENAMED, PROFILE_DELETED) with level mappings and default messages
+- `src/tool_registry.py` — added 4 new Tool entries to TOOLS dict (list_profiles, create_profile, rename_profile, delete_profile)
+- `src/direct_tools.py` — added routing in execute_direct() and implemented 4 handler functions:
+  - `_execute_list_profiles()` — builds plain text table with ID, Label, Refs, Created columns
+  - `_execute_create_profile()` — creates placeholder guest_NN with empty embeddings list, max 99 guests enforced
+  - `_execute_rename_profile()` — parses "id new_label" args, calls gallery.rename_speaker()
+  - `_execute_delete_profile()` — prevents owner deletion, calls gallery.remove_speaker()
+- `prompts/generator.txt` — added tool descriptions and 4 usage examples in Ukrainian
+
+### Design decisions
+1. **Plain text table output** — Used ASCII table format instead of Rich console since agent responses are spoken/text. Format: "ID       | Label      | Refs | Created" with separator line.
+2. **Placeholder profiles** — create_profile makes entries with empty embeddings list that auto-enroll can fill later. No voice recording required (per user choice).
+3. **Owner protection** — delete_profile explicitly blocks deletion of "owner" profile with error message.
+4. **Guest numbering** — Auto-increments guest_NN suffix by finding max existing N and using N+1.
+5. **Audio feedback** — PROFILE_CREATED/RENAMED use SUCCESS level (success beep), PROFILE_DELETED uses INFO level (info beep).
+
+### Verification
+- `uv run pytest -q` → **852 passed**, 2 unrelated warnings, exit 0
+- `uv run ruff check` on Python files → clean (E402 at src/direct_tools.py:23 is pre-existing, documented out of scope in enrollment-gate PRD)
+
+### Out of scope
+- Voice recording during create_profile — user opted for placeholder creation
+- Bulk operations (delete all, rename all) — single-profile operations only
+- Profile export/import — not requested
+- E402 at src/direct_tools.py:23 — pre-existing, verified via git stash in earlier sessions
+
+### Learnings
+1. **Type hint syntax** — Must be `"Settings | None" = None` not `"Settings | None = None)"` — the `= None` default value is outside the type hint string.
+2. **Plain text tables** — ASCII format with fixed-width columns works well for voice agent output; Rich console would be overkill.
+3. **Guest numbering** — Finding next available slot requires scanning existing guest_NN IDs, not just counting.
+
+## Session: 2026-04-25 (Team: heare-i18n-foundation)
+
+### Status
+COMPLETE. 898 pytest tests pass (46 new); ruff clean on all changed files.
+
+### Feature
+PRD A: i18n Foundation — Multilingual Voice Loop (en/uk/ru). Users can speak Ukrainian, English, or Russian and receive a same-language voice reply. Language detection is zero-latency (Whisper STT verbose_json metadata). 2-turn hysteresis prevents flicker from single-turn misdetections.
+
+### Files created
+- `src/language.py` — SUPPORTED_LANGS, LANG_NAMES, LANG_TO_VOICE, WHISPER_NAME_TO_ISO, CANCEL_PATTERNS, detect_language_from_frame(), voice_for_language(), check_cancel(), detect_script_language()
+- `tests/test_language.py` — 18 tests covering all language utilities
+
+### Files modified
+- `src/context.py` — build_for_generator gains user_language param; output maps code → full name via LANG_NAMES
+- `src/generator.py` — _CANCEL_RE replaced with check_cancel(); FALLBACK_PHRASE→English; lang= field in [TIMING] log; [LANG_MISMATCH] WARNING logging; user_language passed to build_for_generator; hysteresis state machine (_active_lang, _pending_lang, _pending_lang_count); _set_tts_voice(); tts_service param
+- `src/tts_edge.py` — set_voice() method added for runtime voice swapping
+- `src/tts_phrases.py` — English + Russian fallback phrases added; confirmation phrases kept with DO NOT REMOVE comment
+- `src/config.py` — tts_voice default → en-US-AriaNeural; groq_language default → "en"; docstring updated
+- `src/pipeline.py` — groq_language→Language enum; include_prob_metrics=True; tts_service passed to generator
+- `src/main.py` — greeting is language-aware (en/uk/ru)
+- `prompts/generator.txt` — rewritten in English with {user_language} placeholder; multilingual examples
+- `prompts/persona.txt` — removed hardcoded "You speak Ukrainian"
+- `prompts/identity-bootstrap.txt` — removed hardcoded Ukrainian language instruction
+- `tests/test_context.py` — user_language key assertions (11 keys), language mapping test
+- `tests/test_generator.py` — multilingual cancel tests; 9 new tests (hysteresis, TIMING lang=, LANG_MISMATCH, TTS voice swap, English/Russian cancel, language propagation)
+- `tests/test_generator_prompt.py` — golden expectations updated for English baseline + {user_language}
+- `tests/test_config.py` — updated default value assertions
+- `tests/test_pipeline.py` — STT construction assertions updated
+- `tests/test_tts_cache.py` — updated phrase assertion ("nevermind, cancelled" → "cancelled")
+- `src/actions.py`, `src/zai_cli.py`, `tests/test_direct_tools.py` — pre-existing ruff F401 unused imports fixed
+
+### Design decisions
+1. Per-turn language detection from Whisper verbose_json (zero latency, already computed by STT).
+2. 2-turn hysteresis: active_lang switches only after 2 consecutive non-current detections.
+3. Single English prompt with {user_language} placeholder (best LLM instruction-following).
+4. Static 3-entry voice map: en→en-US-AriaNeural, uk→uk-UA-OstapNeural, ru→ru-RU-DmitryNeural.
+5. [LANG_MISMATCH] WARNING logging (Cyrillic/Latin script ratio heuristic) for observability only — no retry.
+6. Confirmation phrases kept Ukrainian-only (actively used by decider.py) — deferred to PRD C.
+
+### Verification
+- `uv run pytest -q` → **898 passed**, 4 warnings, exit 0
+- `uv run ruff check src/ tests/` → **All checks passed**

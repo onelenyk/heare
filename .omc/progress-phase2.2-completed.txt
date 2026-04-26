@@ -1,0 +1,10 @@
+# heare S2S-realtime Phase 1 — Progress Log
+
+## Session start: 2026-04-18
+Branch: s2s-realtime
+Source plan: .omc/plans/ralplan-s2s-phase1.md
+PRD: .omc/prd.json
+
+## Iteration 1 — US-P1-00 latency gate
+Goal: measure claude -p streaming TTFT on haiku + sonnet, decide GO/NO-GO.
+Gate threshold: haiku warm TTFT <= 1500ms AND cold TTFT <= 3500ms.

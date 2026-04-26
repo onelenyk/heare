@@ -1,0 +1,91 @@
+# Phase B-tools — Expand allowed tools beyond bash
+
+PRD: .omc/prd.json
+Source: user request 2026-04-19 — Варіант A (expand allowlist)
+Date: 2026-04-19
+
+## What changed
+
+Before: heare could only emit `<intent>{"tool":"bash",...}</intent>`. The
+Claude SDK was restricted to `allowed_tools=["Bash"]`. Voice commands
+like "прочитай файл X" or "знайди в інтернеті Y" either leaked to bash
+(`cat X`, `curl X | grep`) or failed silently.
+
+After: six tools are legal — bash, read, write, edit, web_fetch,
+web_search. Intent-side names are lowercase; the SDK's CamelCase
+identifiers live in Settings.agent_sdk_allowed_tools.
+
+## Stories shipped
+
+### US-BT-01 — Expand SDK + queue allowlists
+- src/config.py: Settings.agent_sdk_allowed_tools defaulting to
+  ['Bash','Read','Write','Edit','WebFetch','WebSearch'].
+- src/agent_sdk_cli.py: _open_client no longer hardcodes ['Bash'];
+  reads settings.agent_sdk_allowed_tools.
+- src/actions.py: ALLOWED_TOOLS expanded from {'bash'} to
+  {'bash','read','write','edit','web_fetch','web_search'}.
+- tests/test_agent_sdk_cli.py: 2 new tests (default list + custom override).
+- tests/test_actions.py: 2 new tests (accept all 6 tools, still reject
+  out-of-set name).
+
+### US-BT-02 — Generator prompt schema + examples
+- prompts/generator.txt: INTENTS schema now enumerates all 6 tool values;
+  added 5 new positive examples (one per non-bash tool) with Ukrainian
+  reply text ('Читаю.', 'Створюю.', 'Редагую.', 'Завантажую.', 'Шукаю.').
+  Existing 3 bash examples retained. Negative examples unchanged.
+- tests/test_generator_prompt.py:
+  - test_template_intent_schema_names_bash_as_only_tool renamed to
+    test_template_intent_schema_lists_all_six_tools; now asserts all
+    six tool strings appear.
+  - new test_template_has_positive_example_per_non_bash_tool asserts
+    one `<intent>{"tool":"<name>"` marker per new tool.
+
+### US-BT-03 — Regression + lint
+- uv run pytest tests/ → 608 passed (was 603 after Phase B-polish; +5 net).
+- uv run ruff check src/ tests/ → All checks passed.
+
+## Files touched
+- src/config.py
+- src/agent_sdk_cli.py
+- src/actions.py
+- prompts/generator.txt
+- tests/test_agent_sdk_cli.py
+- tests/test_actions.py
+- tests/test_generator_prompt.py
+
+## Learnings
+
+1. Keeping intent-side names lowercase and SDK-side CamelCase avoids a
+   mapping layer — dispatch still sends `Use the {tool} tool: {args}`
+   and Claude parses the English prompt NLP-style to pick the right tool
+   from allowed_tools. No explicit name table needed today.
+2. list[str] with default_factory is the idiomatic way to declare a
+   mutable list default on a dataclass in 3.11+. Works with the
+   existing Settings frozen=False pattern.
+3. MCP tools are OUT of scope here — MCP tool identifiers have the
+   shape `mcp__servername__toolname` and need a different teach-by-
+   example approach in the prompt. Left for a follow-up phase.
+
+## How to live-verify
+
+Restart daemon + dashboard:
+  uv run python -m src.main stop
+  uv run python -m src.main start
+  uv run python -m src.main watch
+
+Scenarios to try:
+1. "прочитай файл ~/Documents/todo.md" → expect intent with tool=read
+   and args containing the path. Daemon log:
+     [INTENT SUBMITTED id=N tool=read]
+     [ACTION RESULT id=N] summary=<file contents or friendly error>
+2. "знайди в інтернеті, що таке Pipecat" → expect tool=web_search.
+3. "створи файл hello.txt із текстом Привіт світе" → expect tool=write.
+4. "запусти ls" → still works (tool=bash) — backward compat.
+
+If the LLM emits an out-of-set tool name (e.g. 'python'), watch for
+'[INTENT REJECTED — tool not allowed ...]' in daemon.log.
+
+## Not changed in this phase
+- MCP tool vocabulary (Figma, chrome-devtools, Google Drive) — future.
+- D4 (verbal confirmation gate) — Phase C.
+- D6 split (two SDK clients for decider vs action) — Phase D.

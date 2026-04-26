@@ -1,0 +1,46 @@
+# re_enroll Event-Loop-Blocking Fix — Progress Log
+
+## Session: 2026-04-25 (Ralph)
+
+### Status
+COMPLETE. 841 pytest tests pass; ruff clean on changed files.
+
+### Bug
+`src/direct_tools.py:_execute_re_enroll` is an `async def` running on the daemon's main event loop. It called `sd.wait()` synchronously, which is a blocking call that froze the loop for the entire 15-second recording window. Symptoms in production logs (`~/.heare/logs/daemon.log`, `~/.heare/logs/indication.jsonl` from session ending 2026-04-25 13:06):
+
+1. **TTS scrambled** — generator emitted "Запишу твій голос" speech chunks BEFORE the `<intent>` tag, but TTS frames couldn't drain through the pipeline while the loop was blocked. The acknowledgement played at the same time as the action result ("Voice profile updated...").
+2. **Indication brackets fired post-hoc** — `indication.jsonl` showed `intent_submitted`, `reenroll_recording_start`, `reenroll_recording_end`, and `intent_completed` all flushed within a 16ms burst at `1777111578.78x` (the END of recording). The user got no audio cue when the recording window opened.
+3. **TTS cold-start spike** — edge-tts WSS warmup task couldn't keep the connection warm during the 15s freeze. Observed `ttfb_pcm=16055ms` for `text='Запишу твій голос.'` immediately after re_enroll completed.
+
+### Fix
+`src/direct_tools.py:332-342` — wrapped `sd.rec` + `sd.wait` in a local `_record()` closure dispatched via `await asyncio.to_thread(_record)`. The PortAudio recording itself runs on its own thread (`sd.rec` is non-blocking); `sd.wait` was the actual problem since it's a blocking sync call. Now the daemon event loop stays free during the recording window so:
+- `notify(REENROLL_RECORDING_START)` written immediately (before the await)
+- TTS frames drain in real-time (acknowledgement plays right after the user finishes speaking)
+- Edge-tts WSS warmup ticks normally
+- `notify(REENROLL_RECORDING_END)` written when recording actually ends
+- `asyncio` was already imported at line 10 — no new imports needed
+
+### Files modified
+- `src/direct_tools.py:325-340` — replaced bare `sd.rec` / `sd.wait` with a `_record()` closure dispatched via `await asyncio.to_thread(_record)`. Function signature, return shape, args parsing, and indication semantics all unchanged.
+- `tests/test_direct_tools.py` — appended `test_re_enroll_does_not_block_event_loop`. Mocks `sounddevice` so `sd.wait` blocks for 0.3s, mocks `speaker_id` / `SpeakerGallery` / `load_settings` / `get_indication`. Runs `_execute_re_enroll` concurrently with a ticker that increments every 50ms via `await asyncio.sleep(0.05)`. Asserts:
+  - Ticker advanced ≥ 3 times during the 0.3s blocking window (proves loop is responsive)
+  - START indication notified before END
+  - START/END timestamps separated by ≥ 0.25s (catches regression to the original bug where both fired in a post-hoc burst)
+
+### Out of scope (intentionally not addressed)
+- `src/main.py:_cmd_enroll_owner` (line 726) also calls `sd.wait()` but that's a sync CLI command (`time.sleep(1)` countdown shows it's intentionally blocking), one-shot, not in the daemon event loop. Untouched.
+- `src/direct_tools.py:23` E402 ruff error (pre-existing module-level import) — verified pre-existing via `git stash` round-trip; out of scope for this fix.
+
+### Verification
+- `uv run pytest -q` → **841 passed**, 2 unrelated warnings, exit 0 (was 840; new test added one)
+- `uv run pytest tests/test_direct_tools.py -v -k re_enroll` → 1/1 passed in 0.95s
+- `uv run ruff check tests/test_direct_tools.py` → "All checks passed!"
+- `uv run ruff check src/direct_tools.py` → 1 pre-existing E402 at line 23 (out of scope, verified via stash)
+
+### Architect verdict
+APPROVE. The fix directly addresses all three user-facing complaints (scrambled acknowledgement TTS, post-hoc indication burst, edge-tts cold-start). The regression test is well-designed — the concurrent ticker pattern would genuinely fail if the fix were reverted, and the timestamp-gap assertion catches the specific regression where indication events flush post-hoc.
+
+### Learnings
+1. **Sync-blocking calls in async functions are easy to overlook.** `sd.rec()` is non-blocking but `sd.wait()` is blocking — the function looked async but had a 15s sync hang inside. `asyncio.to_thread` is the right tool for any short blocking C-level call (audio, file dialog, etc).
+2. **Indication backend timestamps are an excellent diagnostic.** Looking at `indication.jsonl` and seeing all 4 events at the same monotonic timestamp was the smoking gun — proved the loop was blocked, not just slow.
+3. **Test the symptom, not the implementation.** The regression test asserts loop responsiveness via a concurrent ticker (the actual user-visible behavior), not "asyncio.to_thread is called" (an implementation detail). This makes the test resilient to alternative correct implementations (e.g. switching to `loop.run_in_executor`).

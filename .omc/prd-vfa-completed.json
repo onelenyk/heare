@@ -1,0 +1,124 @@
+{
+  "title": "PRD B — Voice-friendly action results",
+  "version": "1.0.0",
+  "source_plan": "User found that list_profiles dumps an ASCII table into TTS — the bot literally tries to read pipes and dashes. Root cause: tool execution result.output is the same string used for TTS. Fix: each direct tool ships a separate spoken summary (per language) that the action callback uses for the TTS frame; raw output continues to feed logs and dashboard.",
+  "notes": "Builds on i18n PRD A. Spoken templates are per-language ({en,uk,ru}) and resolved via intent.language. Falls back to English then to truncated output. Touches src/actions.py (Intent.language), src/direct_tools.py (every handler returns spoken), src/main.py (_persist_action_outcome resolves per language), src/generator.py (intent submit carries _active_lang). Does NOT touch tool_registry, prompts/, speaker code.",
+  "stories": [
+    {
+      "id": "US-VFA-01",
+      "title": "Intent carries language; spoken contract documented",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Extend src/actions.Intent dataclass with `language: str = \"en\"`. IntentQueue.submit accepts an optional `language` kwarg and forwards it onto the Intent instance it creates. Generator (src/generator.py _submit_intent or wherever IntentQueue.submit is called) passes `language=self._active_lang`. Document in src/direct_tools.py module docstring and execute_direct return-value docstring that handlers MAY return `spoken: dict[str, str] | str | None` (lang→sentence map, single sentence, or omitted).",
+      "acceptanceCriteria": [
+        "src/actions.py Intent dataclass has new field `language: str = \"en\"` after transcript_id (defaults preserve back-compat).",
+        "src/actions.py IntentQueue.submit signature gains keyword-only `language: str = \"en\"`, forwards onto Intent.",
+        "src/generator.py: every IntentQueue.submit(...) call site passes `language=self._active_lang`.",
+        "src/direct_tools.py: execute_direct docstring describes `spoken` field in the return dict (optional, dict[lang,str] | str | None, English required when present).",
+        "tests/test_actions.py: a new test verifies Intent.language defaults to \"en\" AND a non-default value (e.g. \"uk\") round-trips through submit→next.",
+        "uv run pytest tests/test_actions.py tests/test_generator.py -q exits 0",
+        "uv run ruff check src/actions.py src/direct_tools.py src/generator.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VFA-02",
+      "title": "Profile tool spoken templates (list/create/rename/delete/re_enroll)",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Each profile-related direct-tool handler in src/direct_tools.py returns a `spoken` dict with en/uk/ru entries. Templates are short, voice-friendly sentences — never the raw output. Templates use Python str.format with the tool's resolved values.",
+      "acceptanceCriteria": [
+        "_execute_list_profiles returns spoken={\"en\": \"You have N profile(s): <names>.\", \"uk\": \"У тебе N профілів: <names>.\", \"ru\": \"У тебя N профилей: <names>.\"} (or singular variant for N=1; comma-joined names with last \"and\"/\"і\"/\"и\"). Empty case: \"No voice profiles yet.\" / \"Профілів поки немає.\" / \"Профилей пока нет.\"",
+        "_execute_create_profile returns spoken={\"en\": \"Created profile <name>.\", \"uk\": \"Створив профіль <name>.\", \"ru\": \"Создал профиль <name>.\"}.",
+        "_execute_rename_profile returns spoken={\"en\": \"Renamed <id> to <new_label>.\", \"uk\": \"Перейменував <id> на <new_label>.\", \"ru\": \"Переименовал <id> в <new_label>.\"}.",
+        "_execute_delete_profile returns spoken={\"en\": \"Deleted profile <id>.\", \"uk\": \"Видалив профіль <id>.\", \"ru\": \"Удалил профиль <id>.\"}.",
+        "_execute_re_enroll returns spoken={\"en\": \"Voice profile updated.\", \"uk\": \"Голосовий профіль оновлено.\", \"ru\": \"Голосовой профиль обновлён.\"}.",
+        "Error paths still return success=False with a spoken dict where the en variant is short and voice-friendly (e.g. \"Profile owner cannot be deleted.\").",
+        "tests/test_direct_tools.py adds at least one spoken-content assertion per profile tool (5+ new assertions).",
+        "uv run pytest tests/test_direct_tools.py -q exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VFA-03",
+      "title": "System tool spoken templates (bash/read/write)",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "bash, read, write handlers in src/direct_tools.py return spoken templates that NEVER dump raw stdout/file content into TTS. Short, deterministic phrases.",
+      "acceptanceCriteria": [
+        "_execute_bash success path returns spoken={\"en\":\"Done.\",\"uk\":\"Виконано.\",\"ru\":\"Готово.\"} when stdout is empty or longer than 80 chars; when stdout is non-empty AND ≤ 80 chars, en is \"Done. <stdout>\" (uk/ru similar). Multi-line stdout is collapsed/truncated.",
+        "_execute_bash error path returns spoken={\"en\":\"Command failed.\",\"uk\":\"Команда не виконалася.\",\"ru\":\"Команда не выполнилась.\"} (no raw stderr in spoken).",
+        "_execute_read returns spoken={\"en\":\"Read N lines.\",\"uk\":\"Прочитав N рядків.\",\"ru\":\"Прочитал N строк.\"} on success; \"File not found.\" / Ukrainian / Russian on missing file.",
+        "_execute_write returns spoken={\"en\":\"File saved.\",\"uk\":\"Файл збережено.\",\"ru\":\"Файл сохранён.\"}; error variant short.",
+        "tests/test_direct_tools.py adds at least one spoken-content assertion per tool (3+ new assertions).",
+        "uv run pytest tests/test_direct_tools.py -q exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VFA-04",
+      "title": "Web tool spoken templates (web_fetch/web_search)",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Web tools return spoken templates that signal completion without dumping raw HTML/SERP into TTS.",
+      "acceptanceCriteria": [
+        "_execute_web_fetch success spoken: {\"en\":\"Fetched. Want a summary?\",\"uk\":\"Завантажив. Зробити підсумок?\",\"ru\":\"Загрузил. Сделать сводку?\"}.",
+        "_execute_web_search success spoken (with N hits): {\"en\":\"Found N results.\",\"uk\":\"Знайшов N результатів.\",\"ru\":\"Нашёл N результатов.\"}; zero hits: \"No results found.\" / Ukrainian / Russian.",
+        "Error variants short: \"Fetch failed.\" / \"Search failed.\" with uk/ru equivalents.",
+        "tests/test_direct_tools.py adds spoken assertions (2+ new assertions).",
+        "uv run pytest tests/test_direct_tools.py -q exits 0",
+        "uv run ruff check src/direct_tools.py tests/test_direct_tools.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VFA-05",
+      "title": "_on_action_result/_on_action_error consume spoken with language resolution",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Update src/main.py _on_action_result and _on_action_error to resolve spoken from the action result dict using intent.language. New helper `_resolve_spoken(result, intent, fallback_summary)` lives in main.py (or a tiny helper module): if result['spoken'] is a dict, pick by intent.language with 'en' fallback; if it's a str, use as-is; if missing/None, fall back to truncated `_spoken_action_summary(...)` of the raw output (current behavior). _persist_action_outcome continues to write the resolved text into the decisions(speak) row.",
+      "acceptanceCriteria": [
+        "src/main.py defines `_resolve_spoken(result: dict, intent: Intent, fallback_summary: str) -> str` (or equivalent) at module scope.",
+        "_on_action_result calls _resolve_spoken instead of using the raw `summary` for the spoken frame; logs `[ACTION SPEAK id=N len=M]` with the resolved text length.",
+        "_on_action_error: existing `hint = _action_error_hint(exc)` path remains for non-tool errors; when the worker delivers a structured ActionResult error (with spoken), prefer that over the generic hint.",
+        "tests/test_main.py adds: (a) test_resolve_spoken_picks_language_from_dict, (b) test_resolve_spoken_falls_back_to_english_for_unknown_language, (c) test_resolve_spoken_str_form_used_as_is, (d) test_resolve_spoken_none_falls_back_to_summary.",
+        "Existing integration test tests/integration/test_intent_flow.py — `test_intent_flow_persists_full_turn_to_store` still passes; the spoken decision row now contains the templated sentence, not the raw output.",
+        "uv run pytest tests/test_main.py tests/integration/test_intent_flow.py -q exits 0",
+        "uv run ruff check src/main.py tests/test_main.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VFA-06",
+      "title": "Claude/MCP/workflow fallback spoken (generic 'Done.' per language)",
+      "priority": 6,
+      "status": "completed",
+      "passes": true,
+      "description": "Direct tools all ship spoken templates after VFA-02..04. For Claude/MCP/workflow tools (which return free-form output), the action worker has no per-tool spoken. _resolve_spoken falls back to a generic per-language 'Done.' rather than dumping the Claude/MCP/workflow output into TTS. Errors fall back to a generic 'Action failed.' per language.",
+      "acceptanceCriteria": [
+        "_resolve_spoken from VFA-05: when result lacks 'spoken' AND result['success'] is True, returns generic per-lang Done sentence ({en:'Done.', uk:'Готово.', ru:'Готово.'}) keyed by intent.language; fallback English.",
+        "_resolve_spoken when result lacks 'spoken' AND result['success'] is False, returns generic per-lang 'Action failed.' ({en:'Action failed.', uk:'Не вдалося виконати.', ru:'Не удалось выполнить.'}); preserves intent.language.",
+        "Existing _spoken_action_summary helper kept as last-resort fallback ONLY when the raw output is short (<60 chars) and from a clearly direct tool — otherwise the generic Done sentence wins, so MCP/workflow output never flows into TTS.",
+        "tests/test_main.py adds: test_resolve_spoken_generic_done_per_language and test_resolve_spoken_generic_failure_per_language.",
+        "uv run pytest tests/test_main.py -q exits 0",
+        "uv run ruff check src/main.py tests/test_main.py exits 0"
+      ]
+    },
+    {
+      "id": "US-VFA-07",
+      "title": "Full regression + lint + progress.txt",
+      "priority": 7,
+      "status": "completed",
+      "passes": true,
+      "description": "Final verification gate. Run full pytest + ruff. Update .omc/progress.txt with the PRD B summary, files touched, design decisions, learnings, and a live-verify recipe (\"say 'show profiles' — should hear 'You have 3 profiles: owner, Назар, and Myjko' instead of the ASCII table\").",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 (no regressions; expect ~898 baseline + ~15 new = ~913).",
+        "uv run ruff check src/ tests/ exits 0.",
+        ".omc/progress.txt records: feature description, all files touched (src/actions.py, src/direct_tools.py, src/generator.py, src/main.py, tests/...), design decisions (per-lang spoken dict, generic Done fallback for MCP/workflow), live-verify recipe.",
+        "Sanity: grep `[ACTION SPEAK id=` in daemon.log after a `list_profiles` turn shows length ~30 chars (templated sentence), not 100+ chars (ASCII table)."
+      ]
+    }
+  ]
+}

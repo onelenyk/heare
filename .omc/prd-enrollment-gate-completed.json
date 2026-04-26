@@ -1,0 +1,75 @@
+{
+  "title": "Suppress voice processing during re_enroll recording window",
+  "version": "1.0.0",
+  "source_plan": "User report: when re_enroll is recording the owner's voice for sampling, STT/generator/SpeakerTagger still process the same audio stream → generator interprets utterances as new commands → emits a duplicate re_enroll intent → second back-to-back recording. Daemon log 2026-04-25 13:24 shows two re_enroll cycles fired from one user request because the loop is now responsive (post asyncio.to_thread fix) but enrollment isn't gating input.",
+  "notes": "Design: extend the existing indication facade with an enrollment-active flag that flips True on notify(REENROLL_RECORDING_START) and False on notify(REENROLL_RECORDING_END). Generator's _handle_transcription and SpeakerTagger's _tag_transcription read this flag (via get_indication()) and drop frames during the window — same pattern as the existing _indication_speaking + _bot_speaking gates. Out of scope: a 'magic word' escape during enrollment (e.g. 'скасуй'). User opted for full block during the 15s window; can be added later. Gate the flag update BEFORE the enabled/cooldown checks so input gating works even if indication backends are disabled.",
+  "stories": [
+    {
+      "id": "US-EG-1",
+      "title": "Enrollment-active flag on Indication facade",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Add `_enrollment_active: bool = False` to `Indication.__init__` plus a public `is_enrollment_active` property. In `notify()`, track the flag based on kind: `REENROLL_RECORDING_START` sets True, `REENROLL_RECORDING_END` sets False. The flag update happens BEFORE the `_enabled` short-circuit so input gating works even when indication backends are disabled.",
+      "acceptanceCriteria": [
+        "src/indication.py: Indication.__init__ initializes self._enrollment_active = False",
+        "src/indication.py: Indication has a read-only @property is_enrollment_active that returns self._enrollment_active",
+        "src/indication.py: Indication.notify() updates self._enrollment_active before the `if not self._enabled: return` guard, setting True on REENROLL_RECORDING_START and False on REENROLL_RECORDING_END",
+        "Direct calls notify(REENROLL_RECORDING_START) → is_enrollment_active is True; notify(REENROLL_RECORDING_END) → is_enrollment_active is False (verified by unit test)",
+        "Cooldown coalescing does NOT skip the flag update — even if a duplicate START fires within cooldown_seconds, the flag stays True (verified by unit test)",
+        "When self._enabled is False, the flag still updates (so disabling indication does not break input gating; verified by unit test)",
+        "tests/test_indication.py adds test cases covering all three behaviors above",
+        "uv run pytest tests/test_indication.py -v exits 0",
+        "uv run ruff check src/indication.py tests/test_indication.py exits 0"
+      ]
+    },
+    {
+      "id": "US-EG-2",
+      "title": "GeneratorProcessor and SpeakerTagger drop frames during enrollment",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "Add a helper method `_is_enrollment_active()` to GeneratorProcessor and SpeakerTaggerProcessor that lazily imports `get_indication()` and returns `ind is not None and ind.is_enrollment_active`. Then extend the existing drop-gates: in `GeneratorProcessor._handle_transcription` (around the bot_speaking/indication_speaking check at line 344-348) AND in `SpeakerTaggerProcessor._tag_transcription` (the bot_speaking/indication_speaking check around line 499), add the new check. Existing tests must remain green.",
+      "acceptanceCriteria": [
+        "src/generator.py: GeneratorProcessor has a helper method _is_enrollment_active() that returns get_indication().is_enrollment_active when get_indication() is not None, else False",
+        "src/generator.py: _handle_transcription drops the transcript (returns early with debug log) when self._is_enrollment_active() is True, with the same debug-log shape as the existing bot_speaking/indication_speaking branch",
+        "src/speaker_processor.py: SpeakerTaggerProcessor has the same _is_enrollment_active() helper",
+        "src/speaker_processor.py: _tag_transcription marks frame with speaker_confidence=-1.0 and short-circuits when self._is_enrollment_active() is True; the [SPEAKER] log line shows '(enrollment recording)' suffix to distinguish from the bot/indication-speaking branch",
+        "Existing tests/test_generator.py and tests/test_speaker_processor.py pass without edits (no enrollment fixtures present today)",
+        "tests/test_generator.py adds test_handle_transcription_drops_during_enrollment: setup is_enrollment_active=True, push a TranscriptionFrame, assert no LLM call and no TTS frame emitted",
+        "tests/test_speaker_processor.py adds test_tagger_skips_during_enrollment: setup is_enrollment_active=True, push a TranscriptionFrame, assert speaker_confidence == -1.0 and no embedding work runs",
+        "uv run pytest tests/test_generator.py tests/test_speaker_processor.py -v exits 0",
+        "uv run ruff check src/generator.py src/speaker_processor.py tests/test_generator.py tests/test_speaker_processor.py exits 0"
+      ]
+    },
+    {
+      "id": "US-EG-3",
+      "title": "End-to-end regression test: no duplicate re_enroll during recording",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Integration-style test in tests/test_direct_tools.py that proves the fix prevents a duplicate intent submission during the recording window. Mock indication facade with the real Indication class so notify(START)/notify(END) actually flips is_enrollment_active. Run _execute_re_enroll concurrently with a simulated transcript pushed at the GeneratorProcessor's _handle_transcription. Assert _handle_transcription drops the frame (no submitted intent) WHILE re_enroll is recording, and accepts a frame submitted AFTER recording ends.",
+      "acceptanceCriteria": [
+        "tests/test_direct_tools.py adds test_re_enroll_blocks_concurrent_transcription with a real Indication instance configured with no backends (so cue dispatch is a no-op but the flag still flips)",
+        "Test mocks sounddevice exactly like the existing test_re_enroll_does_not_block_event_loop (sd.wait sleeps 0.3s)",
+        "During the recording window: a stub call to GeneratorProcessor._is_enrollment_active() returns True; a separate assertion verifies that the gate condition would drop a transcript",
+        "After recording ends: _is_enrollment_active() returns False",
+        "Test does not require the full pipecat pipeline — direct property + helper-method assertions are sufficient",
+        "uv run pytest tests/test_direct_tools.py -v exits 0"
+      ]
+    },
+    {
+      "id": "US-EG-4",
+      "title": "Full regression — pytest + ruff clean on changed files",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "Final verification: full test suite passes, ruff clean on changed source/test files, progress.txt updated.",
+      "acceptanceCriteria": [
+        "uv run pytest -q exits 0 (was 841 passing; new tests should bump it to ≥844)",
+        "uv run ruff check on the 4 modified source/test files (src/indication.py, src/generator.py, src/speaker_processor.py, tests/test_*.py) exits 0",
+        ".omc/progress.txt records the bug, the fix, and the verification evidence"
+      ]
+    }
+  ]
+}

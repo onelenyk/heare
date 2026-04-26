@@ -27,6 +27,97 @@ logger = logging.getLogger("heare.main")
 DAEMON_LOG_MAX_BYTES = 10 * 1024 * 1024
 DAEMON_LOG_BACKUPS = 3
 
+# Phase A observability — user-facing TTS phrases when actions finish.
+_ACTION_SUCCESS_FALLBACK = "Готово."
+_ACTION_TIMEOUT_HINT = "Дія не встигла, скасовую."
+_ACTION_SUMMARY_MAX_CHARS = 120
+
+# VFA-06: generic per-language sentences for tools that ship no spoken template.
+_GENERIC_DONE = {"en": "Done.", "uk": "Готово.", "ru": "Готово."}
+_GENERIC_FAILURE = {
+    "en": "Action failed.",
+    "uk": "Не вдалося виконати.",
+    "ru": "Не удалось выполнить.",
+}
+
+
+def _spoken_action_summary(summary: str, scrubber) -> str:
+    """Build the one-line Ukrainian phrase spoken after a successful action.
+
+    Empty or scrub-emptied summaries fall back to 'Готово.' so the user
+    always hears an acknowledgement.
+    """
+    flat = " ".join(summary.split())
+    if not flat:
+        return _ACTION_SUCCESS_FALLBACK
+    clipped = flat[:_ACTION_SUMMARY_MAX_CHARS]
+    cleaned = scrubber(clipped)
+    return cleaned or _ACTION_SUCCESS_FALLBACK
+
+
+def _action_error_hint(exc: BaseException) -> str:
+    """Short, non-leaky Ukrainian phrase describing the action failure."""
+    if isinstance(exc, asyncio.TimeoutError):
+        return _ACTION_TIMEOUT_HINT
+    return f"Не вдалося — {exc.__class__.__name__}."
+
+
+def _resolve_spoken(result: dict, intent: object, fallback_summary: str) -> str:
+    """Resolve the TTS-ready spoken phrase from an action result dict.
+
+    Resolution order (VFA-05 / VFA-06):
+    1. result["spoken"] is a non-empty dict  → pick by intent.language, fall back to "en".
+    2. result["spoken"] is a non-empty str   → use as-is.
+    3. spoken missing/None AND success=True  → generic per-language Done sentence.
+    4. spoken missing/None AND success=False → generic per-language failure sentence.
+    5. Last resort (direct-tool short output explicitly provided) → fallback_summary.
+    """
+    spoken = result.get("spoken")
+    lang = getattr(intent, "language", "en") or "en"
+
+    if isinstance(spoken, dict) and spoken:
+        return spoken.get(lang) or spoken.get("en") or fallback_summary
+
+    if isinstance(spoken, str) and spoken:
+        return spoken
+
+    # spoken is None or missing — use generic sentences keyed by language.
+    if result.get("success") is True:
+        return _GENERIC_DONE.get(lang) or _GENERIC_DONE["en"]
+
+    if result.get("success") is False:
+        return _GENERIC_FAILURE.get(lang) or _GENERIC_FAILURE["en"]
+
+    # Last resort: the caller's explicitly-supplied fallback (e.g. short direct-tool output).
+    return fallback_summary
+
+
+async def _persist_action_outcome(store, intent, status: str, spoken: str) -> None:
+    """Phase B-0: record the finished action and its spoken outcome.
+
+    Idempotent on failure (each call is independently try/except'd) so a
+    broken store never interrupts the TTS pipeline. `store=None` short-circuits
+    for the legacy code path with no persistence.
+    """
+    if store is None:
+        return
+    if intent.decision_id is not None:
+        try:
+            await store.log_action(intent.decision_id, status, spoken)
+        except Exception:
+            logger.exception(
+                "action row persist failed id=%d (non-fatal)", intent.id
+            )
+    try:
+        await store.log_decision(
+            intent.transcript_id,
+            {"type": "speak", "reply": spoken},
+        )
+    except Exception:
+        logger.exception(
+            "action speech persist failed id=%d (non-fatal)", intent.id
+        )
+
 
 def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -77,13 +168,21 @@ def _ensure_workspace_mcp(workspace_dir: Path) -> None:
         target,
         len(mcp_servers),
     )
+    if mcp_servers:
+        names = ", ".join(mcp_servers.keys())
+        logger.warning(
+            "Auto-authorized MCP servers from ~/.claude.json: %s. "
+            "All servers in workspace/.mcp.json are now callable by the agent. "
+            "Review and remove any unwanted entries.",
+            names,
+        )
 
 
 async def _cmd_start(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
     from .context import ContextBuilder
-    from .heartbeat import HeartbeatTask, WarmupTask
+    from .heartbeat import WarmupTask
     from .identity import ensure_identity, render_persona
     from .pipeline import build_pipeline
     from .storage import TranscriptStore
@@ -106,7 +205,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                     existing_pid,
                 )
                 print(f"❌ Error: Daemon already running (PID {existing_pid})")
-                print(f"   Stop it first: heare stop")
+                print("   Stop it first: heare stop")
                 return 1
             except OSError:
                 # Process not running, stale PID file
@@ -121,12 +220,8 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
     settings.pid_file.write_text(str(os.getpid()))
 
-    if settings.use_agent_sdk:
-        from .agent_sdk_cli import AgentSDKCLI
-        _backend: "ClaudeBackend" = AgentSDKCLI(settings)
-    else:
-        from .claude_cli import ClaudeCLI
-        _backend = ClaudeCLI(settings)
+    from .agent_sdk_cli import AgentSDKCLI
+    _backend: "ClaudeBackend" = AgentSDKCLI(settings)
 
     store: TranscriptStore | None = None
     try:
@@ -145,21 +240,260 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             claude_cli.persona = render_persona(persona_template, identity)
             logger.info("I am %s %s", identity["name"], identity["emoji"])
 
+            # Try z.ai first with OpenRouter fallback
+            from .zai_cli import ZaiCLI
+
+            llm_cli = ZaiCLI.from_settings(settings)
+            if llm_cli is None:
+                # Fall back to pure OpenRouter if z.ai is not configured
+                if not settings.openrouter_api_key:
+                    raise RuntimeError(
+                        "Neither z.ai (via ~/.claude.json) nor OPENROUTER_API_KEY is configured"
+                    )
+                from .openrouter_cli import OpenRouterCLI
+
+                llm_cli = OpenRouterCLI(
+                    api_key=settings.openrouter_api_key,
+                    model=settings.openrouter_model,
+                    timeout=settings.openrouter_timeout_seconds,
+                )
+            else:
+                logger.info("Using z.ai for generator with OpenRouter fallback")
+
+            # Phase 2.2: ConversationManager is the source-of-truth for
+            # conversation memory + action-log. Instantiated when the flag
+            # is enabled OR (default) when OPENROUTER_API_KEY is configured
+            # and the flag hasn't been explicitly disabled in config.toml.
+            # Users who set conversation_memory_enabled=False get no memory.
             conversation_manager = None
             if settings.conversation_memory_enabled:
                 from .conversation import ConversationManager
-                conversation_manager = ConversationManager(store, claude_cli)
+                topic_extractor = None
+                if settings.topic_extraction_backend == "openrouter":
+                    if settings.openrouter_api_key:
+                        from .openrouter_topic_extractor import (
+                            OpenRouterTopicExtractorCLI,
+                        )
+                        topic_extractor = OpenRouterTopicExtractorCLI(
+                            api_key=settings.openrouter_api_key,
+                            model=settings.topic_extraction_openrouter_model,
+                            timeout=settings.topic_extraction_openrouter_timeout_seconds,
+                        )
+                        logger.info(
+                            "Topic extraction backend: openrouter (model=%s)",
+                            settings.topic_extraction_openrouter_model,
+                        )
+                    else:
+                        logger.warning(
+                            "topic_extraction_backend=openrouter but openrouter_api_key "
+                            "is not set — falling back to Claude path"
+                        )
+                conversation_manager = ConversationManager(
+                    store, claude_cli, topic_extractor=topic_extractor
+                )
+                # CCS-01: rebuild the in-memory action log from SQLite,
+                # filtered to a freshness window so stale entries from
+                # earlier sessions don't pollute the generator prompt.
+                # Awaited (not fire-and-forget) so the deque is populated
+                # before the first generator turn.
+                try:
+                    await conversation_manager.hydrate_action_log(
+                        since_ts=time.time() - settings.conversation_idle_seconds,
+                    )
+                except Exception:
+                    logger.exception(
+                        "action_log hydrate failed (non-fatal) — starting empty"
+                    )
 
+            # Built without a gallery for now; if speaker_id_enabled loads
+            # one below, we attach it in-place so recent transcripts carry
+            # human-readable speaker labels.
             context_builder = ContextBuilder(store, settings, conversation_manager)
 
-            pipeline, decider, tts_cache = await build_pipeline(
-                settings, claude_cli, store, context_builder, conversation_manager
+            from .actions import ActionWorker, Intent, IntentQueue
+
+            intent_queue = IntentQueue(max_pending=settings.intent_queue_max_pending)
+            # CCS-05a: bind the conversation_manager so cancel_active() can
+            # mark drained intents as cancelled in the action log. Story 5b
+            # will additionally bind a worker cancel_in_flight callback.
+            if conversation_manager is not None:
+                intent_queue.bind_conversation_manager(conversation_manager)
+
+            # Acoustic diarization + LLM identity-inference subsystem. All
+            # gates are conservative: any missing piece leaves the
+            # subsystem silent and the pipeline shape unchanged.
+            speaker_gallery = None
+            speaker_model = None
+            speaker_namer = None
+            if settings.speaker_id_enabled:
+                try:
+                    from . import speaker_id as _sid_mod
+                    from .speaker_gallery import SpeakerGallery as _Gallery
+
+                    speaker_gallery = _Gallery.load(settings.speakers_file)
+                    loop = asyncio.get_running_loop()
+                    speaker_model = await loop.run_in_executor(
+                        None, _sid_mod.load_model
+                    )
+                    logger.info(
+                        "Speaker subsystem: gallery loaded (%d speakers), ECAPA model ready",
+                        len(speaker_gallery.list_speakers()),
+                    )
+                except Exception:
+                    logger.exception(
+                        "Speaker subsystem init failed — continuing without diarization"
+                    )
+                    speaker_gallery = None
+                    speaker_model = None
+
+            if speaker_gallery is not None and speaker_model is not None:
+                from .speaker_namer import maybe_build_namer
+
+                # Wire the loaded gallery into ContextBuilder so recent
+                # transcripts surface human-readable labels (owner / Alice /
+                # guest_02) instead of raw speaker ids.
+                context_builder.speaker_gallery = speaker_gallery
+
+                speaker_namer = maybe_build_namer(
+                    settings, speaker_gallery, settings.openrouter_api_key
+                )
+                if speaker_namer is not None:
+                    logger.info(
+                        "Speaker namer: enabled, model=%s",
+                        settings.speaker_namer_model,
+                    )
+
+            namer_enqueue = speaker_namer.enqueue if speaker_namer is not None else None
+
+            pipeline, processor, tts_cache, indication = await build_pipeline(
+                settings,
+                claude_cli,
+                store,
+                context_builder,
+                llm_cli,
+                persona=claude_cli.persona or "",
+                intent_queue=intent_queue,
+                conversation_manager=conversation_manager,
+                speaker_gallery=speaker_gallery,
+                speaker_model=speaker_model,
+                namer_enqueue=namer_enqueue,
             )
+
+            # Phase A (D3): callbacks speak action outcomes so the user hears
+            # them instead of having to tail logs. Processor must exist first.
+            from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
+            from .generator import _scrub_tts_text
+
+            async def _on_action_result(intent: "Intent", summary: str, result: dict) -> None:
+                # Phase 2.2: record BEFORE logging so next turn's context
+                # already reflects the completed action.
+                if conversation_manager is not None:
+                    # CCS-02: thread structured items (e.g. web_search hits)
+                    # into the action log so the next-turn context renders
+                    # numbered entries the LLM can address by ordinal.
+                    items = result.get("items") if isinstance(result, dict) else None
+                    conversation_manager.record_action_result(
+                        intent.id, summary, items=items
+                    )
+                # Determine success/failure from result dict so direct-tool
+                # failures (success=False with spoken key) are logged correctly
+                # and do not fall through as "ok".
+                is_success = result.get("success", True) is not False
+                status_label = "ok" if is_success else "error"
+                logger.info(
+                    "[ACTION RESULT id=%d status=%s] summary=%s",
+                    intent.id,
+                    status_label,
+                    summary[:200],
+                )
+                from .indication import IndicationKind, get_indication
+
+                ind = get_indication()
+                if ind is not None:
+                    ind.notify(
+                        IndicationKind.INTENT_COMPLETED, body=f"done: {intent.tool}"
+                    )
+                fallback = _spoken_action_summary(summary, _scrub_tts_text)
+                spoken = _resolve_spoken(result, intent, fallback_summary=fallback)
+                try:
+                    await processor.push_frame(TTSSpeakFrame(spoken))
+                    logger.info("[ACTION SPEAK id=%d len=%d]", intent.id, len(spoken))
+                except Exception:
+                    logger.exception("action result TTS push failed (non-fatal)")
+                await _persist_action_outcome(store, intent, status_label, spoken)
+
+            async def _on_action_error(intent: "Intent", exc: BaseException) -> None:
+                if conversation_manager is not None:
+                    conversation_manager.record_action_error(intent.id, repr(exc))
+                logger.info("[ACTION ERROR id=%d] exc=%r", intent.id, exc)
+                from .indication import IndicationKind, get_indication
+
+                ind = get_indication()
+                if ind is not None:
+                    ind.notify(
+                        IndicationKind.ACTION_FAILED,
+                        body=f"{intent.tool}: {exc.__class__.__name__}",
+                    )
+                # Use generic per-language failure sentence for pure Python exceptions
+                # (timeout, cancelled, etc.). No result dict is available here.
+                hint = _resolve_spoken(
+                    {"success": False},
+                    intent,
+                    fallback_summary=_action_error_hint(exc),
+                )
+                kind = (
+                    "timeout"
+                    if isinstance(exc, asyncio.TimeoutError)
+                    else exc.__class__.__name__
+                )
+                try:
+                    await processor.push_frame(TTSSpeakFrame(hint))
+                    logger.info("[ACTION ERROR SPEAK id=%d kind=%s]", intent.id, kind)
+                except Exception:
+                    logger.exception("action error TTS push failed (non-fatal)")
+                status = (
+                    "cancelled"
+                    if isinstance(exc, (asyncio.TimeoutError, asyncio.CancelledError))
+                    else "error"
+                )
+                await _persist_action_outcome(store, intent, status, hint)
+
+            # CCS-05b: thread the TTS service's cancel_pending hook through
+            # the worker so cancel_in_flight can drop queued/in-flight TTS
+            # frames with a 50ms fade-out. ``processor`` here is the
+            # generator; the actual TTS service is exposed through the
+            # pipeline but conveniently accessible via the same module.
+            from .pipeline import build_pipeline as _bp  # noqa: F401 — type hint
+            tts_cancel_hook = None
+            try:
+                # The pipeline returned (task, generator, tts_cache, indication)
+                # — but `tts` is the EdgeTTSService instance, exposed via the
+                # generator's tts_service attribute.
+                _tts = getattr(processor, "_tts_service", None) or getattr(
+                    processor, "tts_service", None
+                )
+                if _tts is not None and hasattr(_tts, "cancel_pending"):
+                    tts_cancel_hook = _tts.cancel_pending
+            except Exception:  # noqa: BLE001 — best-effort wiring
+                logger.exception("TTS cancel-hook wiring failed (non-fatal)")
+
+            action_worker = ActionWorker(
+                queue=intent_queue,
+                claude_cli=claude_cli,
+                on_result=_on_action_result,
+                on_error=_on_action_error,
+                timeout=settings.action_timeout_seconds,
+                tts_cancel=tts_cancel_hook,
+            )
+            # Defence-in-depth: ActionWorker.__init__ already calls
+            # bind_worker, but state this contract explicitly so future
+            # edits can't silently break the cancel hook.
+            intent_queue.bind_worker(action_worker.cancel_in_flight)
 
             # Warm up the TTS cache with FIXED_PHRASES so cancel/confirm/etc. play
             # instantly. Failures are non-fatal — falls back to live TTS.
-            from .decider import FIXED_PHRASES
             from .tts_edge import synthesize_to_pcm
+            from .tts_phrases import FIXED_PHRASES
 
             try:
                 await tts_cache.warmup(
@@ -171,22 +505,42 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             except Exception as e:
                 logger.warning("TTS cache warmup failed (non-fatal): %s", e)
 
-            # Startup greeting — speak once to confirm daemon is alive
-            from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
-            greeting = f"{settings.wake_word} на зв'язку"
-            await decider.push_frame(TTSSpeakFrame(greeting))
+            # Startup greeting is deferred: pushing a TTSSpeakFrame before the
+            # pipeline runner has processed StartFrame drops the frame. We
+            # schedule it as a task that waits ~1s after runner starts.
+            async def _push_greeting() -> None:
+                await asyncio.sleep(1.0)
+                # DAEMON_STARTED fires AFTER StartFrame propagates and audio
+                # init succeeds (we are 1s past pipeline start at this point).
+                from .indication import IndicationKind, get_indication
 
-            # Onboarding: ask for confirmation passphrase if not set
-            from .config import HEARE_HOME  # noqa: E402
-            onboarding_flag = HEARE_HOME / ".onboarded"
-            if settings.confirmation_passphrase is None and not onboarding_flag.exists():
-                await decider.push_frame(
-                    TTSSpeakFrame("Привіт! Встанови секретне слово для підтвердження дій. Наприклад: авторизую.")
-                )
-                # Wait a moment for the user to respond, then continue
-                await asyncio.sleep(8)
+                _ind = get_indication()
+                if _ind is not None:
+                    _ind.notify(
+                        IndicationKind.DAEMON_STARTED,
+                        body=f"{identity.get('name') or settings.wake_word} ready",
+                    )
+                # Use the persona's name (from identity.json) rather than the
+                # wake word — wake word is the command trigger, name is the
+                # bot's identity. They're allowed to differ.
+                greeting_name = identity.get("name") or settings.wake_word
+                _greetings = {"en": "online", "uk": "на зв'язку", "ru": "на связи"}
+                _greeting_suffix = _greetings.get(settings.groq_language, "online")
+                greeting = f"{greeting_name} {_greeting_suffix}"
+                try:
+                    await processor.push_frame(TTSSpeakFrame(greeting))
+                except Exception:
+                    logger.exception("startup greeting push failed (non-fatal)")
 
-            heartbeat = HeartbeatTask(decider, settings.heartbeat_interval_minutes)
+            # Startup ordering (US-P2.1-06): worker task starts BEFORE the
+            # deferred greeting so any intent a too-eager generator submits
+            # during boot has a live queue consumer.
+            worker_task = asyncio.create_task(action_worker.run())
+            namer_task = None
+            if speaker_namer is not None:
+                namer_task = asyncio.create_task(speaker_namer.run())
+            asyncio.create_task(_push_greeting())
+
             warmup = WarmupTask(
                 voice=settings.tts_voice,
                 interval_seconds=settings.warmup_interval_seconds,
@@ -195,8 +549,24 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
 
             runner = PipelineRunner()
-            await run_until_stopped(runner, pipeline, heartbeat, warmup, decider=decider)
+            await run_until_stopped(
+                runner, pipeline, warmup,
+                decider=processor, worker_task=worker_task,
+                namer_task=namer_task,
+            )
     finally:
+        ind = locals().get("indication")
+        if ind is not None:
+            try:
+                from .indication import IndicationKind
+
+                ind.notify(IndicationKind.DAEMON_SHUTDOWN)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                await ind.aclose()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("indication.aclose failed (non-fatal): %s", e)
         if store is not None:
             await store.close()
         if settings.pid_file.exists():
@@ -205,10 +575,12 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     return 0
 
 
-async def run_until_stopped(runner, pipeline, heartbeat, warmup=None, *, decider=None) -> None:
+async def run_until_stopped(
+    runner, pipeline, warmup=None, *, decider=None, worker_task=None,
+    namer_task=None,
+) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
-    heartbeat_task = loop.create_task(heartbeat.run())
     warmup_task = loop.create_task(warmup.run()) if warmup is not None else None
     stop_event = asyncio.Event()
 
@@ -224,25 +596,58 @@ async def run_until_stopped(runner, pipeline, heartbeat, warmup=None, *, decider
         except NotImplementedError:
             pass
 
+    # SIGHUP — re-read settings and reload the indication subsystem without
+    # restart. Looks up the facade via the module-level singleton set by
+    # pipeline.py:build_pipeline (no closure capture from serve()).
+    def _handle_sighup() -> None:
+        logger.info("received SIGHUP — reloading indication settings")
+        from .config import load_settings
+        from .indication import get_indication
+
+        ind = get_indication()
+        if ind is None:
+            logger.info("SIGHUP: no indication facade reachable; ignored")
+            return
+        try:
+            loop.create_task(ind.reload(load_settings().indication))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("SIGHUP indication reload failed: %s", e)
+
+    try:
+        loop.add_signal_handler(signal.SIGHUP, _handle_sighup)
+    except (NotImplementedError, AttributeError):
+        pass
+
     stop_waiter = loop.create_task(stop_event.wait())
-    watch_set = {pipeline_task, heartbeat_task, stop_waiter}
+    watch_set = {pipeline_task, stop_waiter}
     if warmup_task is not None:
         watch_set.add(warmup_task)
+    if worker_task is not None:
+        watch_set.add(worker_task)
+    if namer_task is not None:
+        watch_set.add(namer_task)
     try:
         done, _ = await asyncio.wait(watch_set, return_when=asyncio.FIRST_COMPLETED)
     finally:
-        heartbeat.stop()
         if warmup is not None:
             warmup.stop()
-        background_tasks = [pipeline_task, heartbeat_task, stop_waiter]
+        background_tasks = [pipeline_task, stop_waiter]
         if warmup_task is not None:
             background_tasks.append(warmup_task)
+        if worker_task is not None:
+            background_tasks.append(worker_task)
+        if namer_task is not None:
+            background_tasks.append(namer_task)
         for task in background_tasks:
             if not task.done():
                 task.cancel()
-        named_tasks = [(pipeline_task, "pipeline"), (heartbeat_task, "heartbeat")]
+        named_tasks = [(pipeline_task, "pipeline")]
         if warmup_task is not None:
             named_tasks.append((warmup_task, "warmup"))
+        if worker_task is not None:
+            named_tasks.append((worker_task, "action-worker"))
+        if namer_task is not None:
+            named_tasks.append((namer_task, "speaker-namer"))
         for task, name in named_tasks:
             try:
                 await task
@@ -315,7 +720,6 @@ def _cmd_mode(args: argparse.Namespace) -> int:
 def _cmd_set_wake_word(args: argparse.Namespace) -> int:
     from .config import HEARE_HOME  # noqa: E402
 
-    settings = load_settings()
     word = args.word.strip()
     if not word:
         print("passphrase cannot be empty")
@@ -437,6 +841,30 @@ def _cmd_enroll_owner(args: argparse.Namespace) -> int:
         f"enrolled owner='{label}' from {duration}s of audio "
         f"(embedding dim {vector.shape[0]})"
     )
+    return 0
+
+
+def _cmd_test_recognizer(args: argparse.Namespace) -> int:
+    """Interactive speaker recognition tester."""
+    try:
+        from . import test_recognizer
+    except ImportError as e:
+        print(f"test-recognizer requires pyaudio: {e}")
+        print("Install with: pip install pyaudio")
+        return 1
+
+    import asyncio
+
+    sys.argv = ["test-recognizer"]
+    if args.threshold:
+        sys.argv.extend(["--threshold", str(args.threshold)])
+    if args.duration:
+        sys.argv.extend(["--duration", str(args.duration)])
+
+    try:
+        asyncio.run(test_recognizer.main())
+    except (KeyboardInterrupt, EOFError):
+        print("\nExiting...")
     return 0
 
 
@@ -609,6 +1037,10 @@ def build_parser() -> argparse.ArgumentParser:
     enroll_p.add_argument("--duration", type=int, default=15, help="Recording seconds")
     enroll_p.add_argument("--label", type=str, default="owner", help="Human label")
 
+    test_p = sub.add_parser("test-recognizer", help="Interactive speaker recognition tester")
+    test_p.add_argument("--threshold", type=float, default=None, help="Override match threshold")
+    test_p.add_argument("--duration", type=int, default=None, help="Recording duration (ms)")
+
     speakers_p = sub.add_parser("speakers", help="Manage the speaker gallery")
     speakers_sub = speakers_p.add_subparsers(dest="speakers_cmd", required=True)
     speakers_sub.add_parser("list", help="List enrolled speakers")
@@ -650,6 +1082,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_logs(args)
     if cmd == "enroll-owner":
         return _cmd_enroll_owner(args)
+    if cmd == "test-recognizer":
+        return _cmd_test_recognizer(args)
     if cmd == "speakers":
         return _cmd_speakers(args)
     parser.print_help()

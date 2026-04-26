@@ -34,6 +34,11 @@ from .config import Settings
 if TYPE_CHECKING:
     from .speaker_gallery import SpeakerGallery
 
+# Signature for the tagger's optional namer hook. Kept as an Any alias so
+# speaker_processor stays free of the speaker_namer import at module load
+# time — the concrete TurnRecord is imported lazily inside _tag_transcription.
+NamerEnqueue = Any  # Callable[[TurnRecord], None]
+
 
 logger = logging.getLogger("heare.speaker_processor")
 
@@ -104,6 +109,8 @@ def _load_pipecat_base() -> tuple[Any, ...]:
         FrameProcessor,
     )
 
+    from .indication import IndicationCueFrame
+
     return (
         FrameProcessor,
         FrameDirection,
@@ -115,6 +122,7 @@ def _load_pipecat_base() -> tuple[Any, ...]:
         UserStoppedSpeakingFrame,
         BotStartedSpeakingFrame,
         BotStoppedSpeakingFrame,
+        IndicationCueFrame,
     )
 
 
@@ -137,6 +145,7 @@ def _build_processor_classes() -> tuple[Any, Any]:
         UserStoppedSpeakingFrame,
         BotStartedSpeakingFrame,
         BotStoppedSpeakingFrame,
+        IndicationCueFrame,
     ) = _load_pipecat_base()
 
     class AudioBufferProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
@@ -314,19 +323,23 @@ def _build_processor_classes() -> tuple[Any, Any]:
             buffer: AudioBufferProcessor,
             gallery: "SpeakerGallery",
             settings: Settings,
+            namer_enqueue: NamerEnqueue | None = None,
         ) -> None:
             super().__init__()
             self._buffer = buffer
             self._gallery = gallery
             self._settings = settings
+            self._namer_enqueue = namer_enqueue
             self._bot_speaking = False
             self._bot_cooldown_task: asyncio.Task | None = None
+            # Indication-cue echo gate — set while a non-speech cue is playing.
+            self._indication_speaking = False
             self._prev_id: str | None = None
             self._prev_at: float = 0.0
             # Session-local rolling buffer of recent non-owner embeddings.
             # Never persisted, cleared on successful auto-enroll and on
             # bot_speaking so TTS echo cannot poison the stranger cluster.
-            self._stranger_candidates: deque[np.ndarray] = deque(maxlen=10)
+            self._stranger_candidates: deque[np.ndarray] = deque(maxlen=5)
 
         def _maybe_auto_enroll(self, new_embed: np.ndarray) -> None:
             threshold = self._settings.speaker_id_threshold_match
@@ -338,6 +351,58 @@ def _build_processor_classes() -> tuple[Any, Any]:
                 if cos >= threshold:
                     matches += 1
             self._stranger_candidates.append(new_embed)
+
+            # Owner auto-enroll runs first and only when no owner exists.
+            # The threshold is intentionally higher than guest's (default 5
+            # vs 2) because mis-enrolling the owner is harder to undo than
+            # mis-enrolling a guest. Existing owner is never overwritten.
+            #
+            # While the owner slot is open and owner-enroll is enabled, the
+            # guest path is suppressed entirely — otherwise the lower guest
+            # threshold (default 2) would always fire first and the owner
+            # slot would never be filled by auto-enrollment.
+            owner_enabled = self._settings.speaker_id_auto_enroll_owner_enabled
+            owner_needed = self._settings.speaker_id_auto_enroll_owner_after
+            owner_slot_open = (
+                owner_enabled and "owner" not in self._gallery.list_speakers()
+            )
+            if owner_slot_open and (matches + 1) >= owner_needed:
+                try:
+                    self._gallery.enroll_owner(new_embed, "owner")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("owner auto-enroll failed: %s", e)
+                    return
+                logger.info(
+                    "[SPEAKER] auto-enrolled owner after %d matching turns",
+                    matches + 1,
+                )
+                self._stranger_candidates.clear()
+                try:
+                    from .indication import IndicationKind, get_indication
+
+                    ind = get_indication()
+                    if ind is not None:
+                        ind.notify(
+                            IndicationKind.OWNER_AUTO_ENROLLED,
+                            body=f"learned after {matches + 1} turns",
+                        )
+                except Exception:  # noqa: BLE001
+                    logger.warning("owner enroll indication notify failed", exc_info=True)
+                try:
+                    from pipecat.frames.frames import TTSSpeakFrame  # type: ignore
+
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(
+                        self.push_frame(TTSSpeakFrame("Тепер я впізнаю твій голос."))
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("owner enroll TTS push failed: %s", e)
+                return
+            if owner_slot_open:
+                # Owner threshold not yet met — let candidates accumulate
+                # without prematurely consuming them as a guest enrollment.
+                return
+
             needed = self._settings.speaker_id_auto_enroll_after
             if (matches + 1) >= needed:
                 try:
@@ -352,6 +417,19 @@ def _build_processor_classes() -> tuple[Any, Any]:
                         matches + 1,
                     )
                     self._stranger_candidates.clear()
+                    try:
+                        from .indication import IndicationKind, get_indication
+
+                        ind = get_indication()
+                        if ind is not None:
+                            ind.notify(
+                                IndicationKind.GUEST_AUTO_ENROLLED,
+                                body=guest_id,
+                            )
+                    except Exception:  # noqa: BLE001
+                        logger.warning(
+                            "guest enroll indication notify failed", exc_info=True
+                        )
 
         def _schedule_bot_cooldown(self) -> None:
             if self._bot_cooldown_task is not None and not self._bot_cooldown_task.done():
@@ -372,6 +450,11 @@ def _build_processor_classes() -> tuple[Any, Any]:
 
         async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
             await super().process_frame(frame, direction)
+
+            if isinstance(frame, IndicationCueFrame):
+                self._indication_speaking = bool(frame.start)
+                await self.push_frame(frame, direction)
+                return
 
             if isinstance(frame, BotStartedSpeakingFrame):
                 self._bot_speaking = True
@@ -413,10 +496,20 @@ def _build_processor_classes() -> tuple[Any, Any]:
             frame.speaker_inherited = False
             frame.speaker_turn_id = None
 
-            if self._bot_speaking:
+            from .indication import is_enrollment_active
+            enrollment_active = is_enrollment_active()
+            if self._bot_speaking or self._indication_speaking or enrollment_active:
                 frame.speaker_confidence = -1.0
+                state = []
+                if self._bot_speaking:
+                    state.append("bot")
+                if self._indication_speaking:
+                    state.append("indication")
+                if enrollment_active:
+                    state.append("enrollment")
                 logger.info(
-                    "[SPEAKER] turn=? sid=None conf=-1.00 inherited=False (bot speaking)"
+                    "[SPEAKER] turn=? sid=None conf=-1.00 inherited=False (%s speaking/recording)",
+                    "/".join(state),
                 )
                 return
 
@@ -532,6 +625,36 @@ def _build_processor_classes() -> tuple[Any, Any]:
                 slot.elapsed_ms,
                 using_accum,
             )
+            # Parallel "who talks" pipeline: hand tagged guest turns to the
+            # namer. Guarded so a namer queue stall/exception never blocks
+            # the audio path. Owner is excluded — it's already named.
+            if (
+                self._namer_enqueue is not None
+                and sid is not None
+                and sid != "owner"
+            ):
+                text = getattr(frame, "text", "") or ""
+                if text.strip():
+                    try:
+                        from .speaker_namer import TurnRecord  # local import keeps module lazy
+
+                        self._namer_enqueue(
+                            TurnRecord(
+                                speaker_id=sid,
+                                text=text,
+                                timestamp=time.time(),
+                                turn_id=turn_id,
+                            )
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:  # noqa: BLE001
+                        logger.warning(
+                            "namer enqueue raised for turn=%d sid=%s — dropping",
+                            turn_id,
+                            sid,
+                            exc_info=True,
+                        )
 
     _buffer_cls = AudioBufferProcessor
     _tagger_cls = SpeakerTaggerProcessor
@@ -543,8 +666,9 @@ def create_speaker_processors(
     gallery: "SpeakerGallery",
     model: Any,
     sample_rate: int = 16000,
+    namer_enqueue: NamerEnqueue | None = None,
 ) -> tuple[Any, Any]:
     buffer_cls, tagger_cls = _build_processor_classes()
     buffer = buffer_cls(settings, model, sample_rate)
-    tagger = tagger_cls(buffer, gallery, settings)
+    tagger = tagger_cls(buffer, gallery, settings, namer_enqueue=namer_enqueue)
     return buffer, tagger

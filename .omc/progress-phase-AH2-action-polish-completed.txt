@@ -1,0 +1,103 @@
+# Phase A-hotfix-2 — Action output polish
+
+PRD: .omc/prd.json
+Source: live observation of 'Запусти ехо привіт' turn (daemon.log 2026-04-19 15:19-15:21)
+Date: 2026-04-19
+
+## Bugs the user saw in live run
+
+1. id=3 summary contained both success text and a topic-extraction JSON array
+   (scrambled stream — concurrent SDK calls).
+2. TTS voiced '( completed with no output) Success: lau...' — scrubber chewed
+   up Claude Code's own '(Bash completed with no output)' marker.
+3. Summary text was duplicative: raw bash stdout + English summary both spoken.
+4. Claude replied in English ('Success: printed ...') through a Ukrainian TTS.
+
+## Stories shipped
+
+### US-AH2-01 — Serialize SDK calls
+- src/agent_sdk_cli.py: new asyncio.Lock `_run_query_lock`; _run_query now
+  acquires it around the full retry/rate-limit path.
+- tests/test_agent_sdk_cli.py: new test_sdk_serializes_concurrent_calls uses
+  a SerializingFakeClient that tracks max_in_flight; asserts each of two
+  concurrent call_decider tasks gets its own scripted reply AND max_in_flight
+  == 1 (strict serialization).
+- Kills the stream-scrambling observed in id=3 and the 60s timeout warnings
+  from topic extraction piling up behind actions.
+
+### US-AH2-02 — Scrubber keeps plain text, kills the bash marker
+- src/generator.py: new scrubber pattern `(Bash completed with no output)` →
+  "" placed BEFORE the standalone-bash word rule, so both the parens and the
+  marker disappear cleanly.
+- tests/test_generator.py: 2 new tests cover isolated marker + marker inside
+  Ukrainian prose. Existing 3 scrubber tests still pass.
+
+### US-AH2-03 — Prefer assistant text over raw ToolResult
+- src/agent_sdk_cli.py: _attempt_query now collects text and tool-result
+  content in separate buckets; returns text when non-empty, falls back to
+  tool_result otherwise. [SDK DRAIN] log line gains a `source=text|tool_result|none`
+  field.
+- tests/test_agent_sdk_cli.py: renamed test_sdk_call_action_captures_tool_result_stdout
+  -> test_sdk_call_action_prefers_text_summary_over_tool_result; new
+  test_sdk_call_action_falls_back_to_tool_result_when_no_text.
+- on_line streaming still fires for both block types (observability preserved).
+
+### US-AH2-04 — Ukrainian-language action summary
+- src/actions.py: _action_description now asks Claude to reply in Ukrainian
+  ("українською мовою"). First-line contract ("Use the {tool} tool: {args}")
+  preserved.
+- tests/test_actions.py: test_action_description_includes_summary_instruction
+  gains an assertion that "ukrainian" or "українською" appears in the prompt.
+
+### US-AH2-05 — Regression + lint
+- `uv run pytest tests/` → 588 passed (was 584 before Phase AH2; +4 net).
+- `uv run ruff check src/ tests/` → All checks passed.
+
+## Files touched
+- src/actions.py
+- src/agent_sdk_cli.py
+- src/generator.py
+- tests/test_actions.py
+- tests/test_agent_sdk_cli.py
+- tests/test_generator.py
+- .omc/prd.json / progress.txt
+
+## Learnings
+
+1. ClaudeSDKClient must not be shared across concurrent callers. An asyncio
+   Lock around the full query+receive_response flow is the minimum viable
+   guard; splitting into two dedicated clients is still Phase D future work.
+2. The AssistantMessage.TextBlock summary from Claude usually already echoes
+   the key bash stdout, so always appending the raw ToolResultBlock was double
+   talk. Prefer-text, fallback-to-tool_result is the right default.
+3. Claude Code's bash tool emits literal status markers ('(Bash completed with
+   no output)') as ToolResultBlock content. These are invisible to the user
+   but leak to TTS unless scrubbed as a whole phrase.
+4. The summarization prompt MUST name the target language explicitly. Saying
+   only "reply with ONE line" yields English because Claude defaults to the
+   language of the prompt itself.
+
+## How to live-verify
+
+Restart daemon + dashboard:
+  uv run python -m src.main stop
+  uv run python -m src.main start
+  uv run python -m src.main watch
+
+Scenarios replayed from the live log:
+  1. Say: "Запусти ехо привіт" → expect TTS says one Ukrainian sentence
+     like "Виконав echo, вивів 'привіт'." No duplicate raw output.
+  2. Say: "Запусти JetBrains Toolbox" → expect TTS says a clean Ukrainian
+     success line (no '( completed with no output)').
+  3. Say: "Закрий JetBrains Toolbox" → expect TTS says a clean Ukrainian
+     success line WITHOUT the topic-JSON array tail.
+
+Watch dashboard 'Heare did' column should show clean result_summary text
+for each action.
+
+## Not changed here
+- D1 (prompt hardening) — Phase B.
+- D5 (tool allowlist) — Phase B.
+- D4 (confirmation gate) — Phase C.
+- D6 split (two SDK clients for decider vs action) — Phase D; the Lock is
+  the Phase AH2 shortcut that buys us correctness without the full split.

@@ -9,6 +9,15 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+# US-WU-05: every test in this file exercises DeciderProcessor instance
+# behavior (state machine, _timeout_task, _handle_listening,
+# _handle_confirmation). DeciderProcessor was deleted; create_decider_processor
+# now raises RuntimeError. Skip the whole module until these tests are
+# rewritten against GeneratorProcessor.
+pytestmark = pytest.mark.skip(
+    reason="pending DeciderProcessor → GeneratorProcessor migration (PRD WU US-WU-05)"
+)
+
 pytest.importorskip("pipecat.frames.frames")
 
 from src.config import DeciderState, Mode, Settings  # noqa: E402
@@ -35,6 +44,8 @@ async def harness():
         settings = Settings()
         settings.mode = Mode.AMBIENT
         settings.confirmation_timeout_seconds = 1
+        settings.speaker_id_enabled = False
+        settings.speaker_namer_enabled = False
         ctx = ContextBuilder(store, settings)
         try:
             yield store, settings, ctx

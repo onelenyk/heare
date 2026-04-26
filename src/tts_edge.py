@@ -21,6 +21,50 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("heare.tts")
 
+
+def _apply_fade_out(pcm: bytes, sample_rate: int, fade_ms: int = 50) -> bytes:
+    """Apply a linear-ramp fade-out to the last ``fade_ms`` of PCM s16le mono.
+
+    CCS-05b: prevents an audible click when the cancel path drops a
+    currently-speaking frame. PCM is signed 16-bit little-endian mono;
+    the last ``fade_ms`` of samples (or the entire frame if shorter) are
+    multiplied by a linear 1.0 → 0.0 ramp. Pure-Python; no numpy
+    dependency on the test path.
+
+    Returns a new bytes object — input is not mutated.
+    """
+    if not pcm:
+        return pcm
+    fade_samples = max(1, int(fade_ms * sample_rate / 1000))
+    total_samples = len(pcm) // 2
+    if total_samples == 0:
+        return pcm
+    n = min(fade_samples, total_samples)
+    head = pcm[: (total_samples - n) * 2]
+    tail = bytearray(pcm[(total_samples - n) * 2:])
+    # Linear ramp 1.0 → 0.0 across n samples; write back as little-endian s16.
+    for i in range(n):
+        idx = i * 2
+        # Decode signed 16-bit little-endian.
+        lo = tail[idx]
+        hi = tail[idx + 1]
+        sample = lo | (hi << 8)
+        if sample >= 0x8000:
+            sample -= 0x10000
+        # Multiplier 1 → 0 across the n samples.
+        gain = 1.0 - (i / max(1, n - 1)) if n > 1 else 0.0
+        scaled = int(sample * gain)
+        # Re-encode (clamp defensively, though scaling can only reduce magnitude).
+        if scaled < -0x8000:
+            scaled = -0x8000
+        elif scaled > 0x7FFF:
+            scaled = 0x7FFF
+        if scaled < 0:
+            scaled += 0x10000
+        tail[idx] = scaled & 0xFF
+        tail[idx + 1] = (scaled >> 8) & 0xFF
+    return bytes(head) + bytes(tail)
+
 _edge_tts_cls = None
 
 
@@ -105,6 +149,47 @@ def _build_edge_tts_class():
             self._voice = voice
             self._sample_rate = sample_rate
             self._cache = cache
+            # CCS-05b: cancel signalling. ``_cancel_event`` is set by
+            # ``cancel_pending`` so the in-flight ``run_tts`` generator
+            # short-circuits at its next iteration. ``_pending_pcm`` is the
+            # most recently fetched (cached) PCM buffer — when a cancel
+            # arrives mid-emit, we apply a 50ms fade-out to the chunk
+            # currently being yielded and drop everything after.
+            self._cancel_event = asyncio.Event()
+            self._cancel_dropped: int = 0
+            self._last_chunk: bytes = b""
+            # Optional reference to the live ffmpeg process so cancel can
+            # tear it down without waiting for natural EOF.
+            self._live_proc: Any = None
+
+        def set_voice(self, voice: str) -> None:
+            self._voice = voice
+            self._settings.voice = voice
+
+        def cancel_pending(self) -> int:
+            """CCS-05b: drop queued/upcoming TTS frames with a 50ms fade-out.
+
+            Synchronous: sets the cancel event so any in-flight
+            ``run_tts`` generator short-circuits at its next iteration,
+            optionally tears down the live ffmpeg process, and returns the
+            number of frames dropped (best-effort — pre-frame counter
+            captures the residual of the chunk-emit loop). The currently-
+            speaking frame is faded out via ``_apply_fade_out`` before the
+            generator yields it.
+            """
+            self._cancel_event.set()
+            # Best-effort teardown of the live ffmpeg subprocess so no
+            # further PCM bytes are produced.
+            proc = self._live_proc
+            if proc is not None:
+                try:
+                    if getattr(proc, "returncode", None) is None:
+                        proc.kill()
+                except Exception:  # noqa: BLE001
+                    logger.debug("EdgeTTSService cancel: proc.kill failed", exc_info=True)
+            dropped = self._cancel_dropped
+            self._cancel_dropped = 0
+            return dropped
 
         async def run_tts(
             self, text: str, context_id: str | None = None
@@ -114,6 +199,11 @@ def _build_edge_tts_class():
                 yield TTSStoppedFrame()
                 return
 
+            # New utterance — reset cancel state so a stale cancel from a
+            # prior run can't poison this generator.
+            self._cancel_event.clear()
+            self._cancel_dropped = 0
+
             chunk_size = self._sample_rate * 2 // 10  # ~100ms of 16-bit mono
 
             # Cache fast path: pre-rendered PCM for fixed phrases.
@@ -121,12 +211,32 @@ def _build_edge_tts_class():
                 cached = self._cache.get(text)
                 if cached:
                     t_cache = time.monotonic()
-                    for i in range(0, len(cached), chunk_size):
+                    chunks = [
+                        cached[i : i + chunk_size]
+                        for i in range(0, len(cached), chunk_size)
+                    ]
+                    self._cancel_dropped = len(chunks)
+                    for idx, chunk in enumerate(chunks):
+                        if self._cancel_event.is_set():
+                            # Apply 50ms fade-out to the chunk we are
+                            # about to yield, then drop the rest.
+                            faded = _apply_fade_out(chunk, self._sample_rate, fade_ms=50)
+                            self._last_chunk = faded
+                            yield TTSAudioRawFrame(
+                                audio=faded,
+                                sample_rate=self._sample_rate,
+                                num_channels=1,
+                            )
+                            self._cancel_dropped = len(chunks) - (idx + 1)
+                            yield TTSStoppedFrame()
+                            return
+                        self._last_chunk = chunk
                         yield TTSAudioRawFrame(
-                            audio=cached[i : i + chunk_size],
+                            audio=chunk,
                             sample_rate=self._sample_rate,
                             num_channels=1,
                         )
+                        self._cancel_dropped = len(chunks) - (idx + 1)
                     yield TTSStoppedFrame()
                     logger.info(
                         "[TIMING] tts CACHE HIT text=%r yielded %dB in %.0fms",
@@ -167,6 +277,7 @@ def _build_edge_tts_class():
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
+                self._live_proc = proc
             except Exception as e:
                 logger.exception("failed to launch ffmpeg: %s", e)
                 yield TTSStoppedFrame()
@@ -239,12 +350,25 @@ def _build_edge_tts_class():
                     item = await pcm_queue.get()
                     if item is None:
                         break
+                    if self._cancel_event.is_set():
+                        # Apply 50ms fade-out to the chunk we're about to
+                        # yield, then drop everything queued after.
+                        faded = _apply_fade_out(item, self._sample_rate, fade_ms=50)
+                        self._last_chunk = faded
+                        yield TTSAudioRawFrame(
+                            audio=faded,
+                            sample_rate=self._sample_rate,
+                            num_channels=1,
+                        )
+                        break
+                    self._last_chunk = item
                     yield TTSAudioRawFrame(
                         audio=item,
                         sample_rate=self._sample_rate,
                         num_channels=1,
                     )
             finally:
+                self._live_proc = None
                 # Ensure both tasks finish; ffmpeg drains naturally on stdin close
                 try:
                     await asyncio.wait_for(
