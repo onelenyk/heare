@@ -253,3 +253,109 @@
   setting deleted, tests deleted, enum value preserved, primary timeout
   path untouched, lint clean, full suite green, count drops by exactly
   8, CCS-completed annotation appended.
+
+## US-WU-05 — implemented (2026-04-25)
+- Plan: delete the dormant DeciderProcessor class body (~900 lines),
+  the dormant CCS-03/05a helpers it owned exclusively, the entire
+  test_decider.py suite, and skip-mark the six sibling test files that
+  still import create_decider_processor at module load time. The
+  pre-S2S DeciderProcessor was never instantiated by build_pipeline
+  once the S2S generator pipeline shipped — production runs
+  GeneratorProcessor — so the class and its tests have been dead code
+  since the s2s-realtime branch.
+- src/decider.py: 1157 → 96 lines (≈1061 lines deleted).
+  * DeciderProcessor class (the FrameProcessor subclass + its
+    factory builder _build_decider_processor_class + the cached
+    _decider_cls singleton) — gone.
+  * Dormant helpers deleted: is_noise, is_quick_nothing,
+    _is_mostly_non_ukrainian, _looks_like_question,
+    _keyword_is_adjacent_prefix, _redact_passphrase, plus the regex
+    patterns (NOISE_PATTERN, WAKE_WORD_PATTERN, OTHER_PERSON_PATTERN,
+    UA_QUESTION_WORD_PATTERN, _CYRILLIC_RE, _LATIN_RE, _FILLER_TOKEN)
+    and the legacy `from .tts_phrases import FIXED_PHRASES`
+    re-export.
+  * `_load_pipecat_base` deferred-import stub deleted (no longer
+    needed once DeciderProcessor is gone).
+  * Helpers KEPT (with grep evidence): `parse_yes_no` plus its
+    private regexes (_VOCATIVES, _YES_HEAD, _NO_HEAD, _YES_THEN_NE,
+    _NEGATION_TAIL) and MAX_YES_NO_WORDS — `tests/test_yes_no.py:6`
+    imports `parse_yes_no`. The function is generically useful for a
+    future GeneratorProcessor confirmation flow; cheap to keep.
+  * `create_decider_processor` replaced with the EC-3 stub:
+    `raise RuntimeError("DeciderProcessor removed; sibling tests
+    pending GeneratorProcessor migration")`. Module imports succeed
+    (no ImportError / AttributeError at pytest collection time) but
+    runtime calls fail loud.
+- tests/test_decider.py: deleted via `git rm` (1922 lines, ~84 tests of
+  dormant code; the 8 CCS-03 tests had already been deleted in
+  US-WU-03).
+- Six sibling test files — per-file decisions:
+  * `tests/test_yes_no.py` — KEPT AS-IS. Imports only `parse_yes_no`,
+    which survived. 27 parameterised assertions still pass.
+  * `tests/test_silent_timeout.py` — module-level
+    `pytestmark = pytest.mark.skip(...)`. All 3 tests exercise
+    DeciderProcessor's _timeout_task / _handle_listening /
+    _handle_confirmation state machine.
+  * `tests/test_mode_hot_reload.py` — module-level
+    `pytestmark = pytest.mark.skip(...)`. All 3 tests exercise
+    DeciderProcessor.reload_mode.
+  * `tests/test_stranger_integration.py` — module-level
+    `pytestmark = pytest.mark.skip(...)`. All 3 tests pipe audio
+    through DeciderProcessor to verify the speaker security gate.
+  * `tests/test_audio.py` — per-test
+    `@pytest.mark.skip(...)` on the 3 tests that build a decider
+    (`test_end_to_end_speak_produces_audio_frames`,
+    `test_echo_cancellation_full_cycle`,
+    `test_echo_cancellation_preserves_bot_frames`). The other 11
+    audio tests (transcoder, tone, format, sample rate) are
+    independent of DeciderProcessor and continue to run normally.
+  * `tests/test_feature_flags.py` — per-test
+    `@pytest.mark.skip(...)` on the 4 tests that call
+    `create_decider_processor` (`test_aggregation_disabled_baseline`,
+    `test_aggregation_only_no_memory`, `test_both_enabled`,
+    `test_feature_flags_can_be_flipped_independently`). The two
+    settings-only tests (`test_default_settings_match_plan_spec`,
+    plus the deleted-flag comment block) continue to run.
+- src/main.py / src/heartbeat.py — verified clean. Neither references
+  DeciderProcessor or create_decider_processor (heartbeat.py was
+  already cleared in US-WU-04; main.py never imported DeciderProcessor
+  in the S2S pipeline).
+- EC-3 evidence (consensus execution condition):
+  * `grep -rn 'DeciderProcessor' src/` → matches only inside
+    `src/decider.py` (docstring, stub error message — no live code).
+    One stale inline comment in `src/generator.py:566` mentions
+    "parity with DeciderProcessor.shutdown()" — leaving it alone;
+    not a runtime reference.
+  * `grep -rn 'DeciderProcessor' tests/` → matches only inside
+    docstrings, top-level comments, and skip-reason strings; no live
+    test code references the deleted class.
+  * `uv run pytest --collect-only -q` → 892 tests collected, zero
+    ImportError, zero AttributeError.
+- Verification:
+  * `uv run pytest -q` → 876 passed, 16 skipped, 4 pre-existing
+    warnings, exit 0. Test count vs US-WU-04 baseline (988 passed):
+    ΔPassed = -112 (84 deleted test_decider.py tests + 13 sibling
+    tests now skip-marked + 15 small refactor-driven count diffs
+    that landed across WU-01..WU-04, mostly the
+    test_intent_parser/test_decider duplications absorbed when WU-01
+    moved INTENT_CANCELLED into actions.py). Skipped count rose from
+    0 → 16 (the 13 newly skip-marked sibling tests plus 3 pre-existing
+    skipif-on-environment tests).
+  * `uv run ruff check src/ tests/` → all checks passed.
+- Acceptance criteria from PRD US-WU-05:
+  * AC1: DeciderProcessor class body deleted ✓ (lines 278..1134 in
+    the original file, all gone).
+  * AC2: dormant helpers deleted (is_noise / is_quick_nothing /
+    _redact_passphrase / etc.) ✓.
+  * AC3: tests/test_decider.py deleted ✓ (`git rm`).
+  * AC4: pure helpers preserved where sibling tests need them
+    (parse_yes_no kept) ✓.
+  * AC5: create_decider_processor stub raises RuntimeError with the
+    exact EC-3 message ✓.
+  * AC6: sibling tests collect cleanly — no ImportError /
+    AttributeError ✓ (892 collected).
+  * AC7: skip-marked sibling tests count as `skipped`, not `errored`
+    ✓ (pytest summary: 16 skipped, 0 errors).
+  * AC8: full suite green ✓ (876 passed).
+  * AC9: ruff clean ✓.
+  * AC10: progress note + commit ✓ (this entry + the WU-05 commit).

@@ -8,6 +8,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+# US-WU-05: tests exercise DeciderProcessor's reload_mode behavior. The
+# class was deleted; create_decider_processor now raises RuntimeError.
+# Skip the whole module until these tests are rewritten against
+# GeneratorProcessor (which has its own mode-hot-reload story).
+pytestmark = pytest.mark.skip(
+    reason="pending DeciderProcessor → GeneratorProcessor migration (PRD WU US-WU-05)"
+)
+
 pytest.importorskip("pipecat.frames.frames")
 
 from src.config import Mode, Settings  # noqa: E402
