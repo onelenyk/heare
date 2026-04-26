@@ -81,7 +81,12 @@ async def test_notify_dispatches_to_all_enabled_backends() -> None:
     sound = RecordingBackend(name="sound")
     visual = RecordingBackend(name="visual")
     notif = RecordingBackend(name="notification")
-    ind = Indication(_settings(), [sound, visual, notif])
+    # Pin wallclock outside default 22:00-07:00 quiet hours so the sound
+    # backend isn't suppressed when this test runs at night.
+    outside_quiet = dt.datetime(2026, 4, 24, 12, 0)
+    ind = Indication(
+        _settings(), [sound, visual, notif], wallclock=lambda: outside_quiet
+    )
 
     ind.notify(IndicationKind.OWNER_AUTO_ENROLLED, body="hi")
     await asyncio.sleep(0.05)
