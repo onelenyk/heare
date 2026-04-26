@@ -17,7 +17,7 @@ from .tts_edge import create_edge_tts_service
 
 if TYPE_CHECKING:
     from .actions import IntentQueue
-    from .claude_cli import ClaudeCLI
+    from .claude_backend_common import ClaudeBackend
     from .context import ContextBuilder
     from .openrouter_cli import OpenRouterCLI
     from .storage import TranscriptStore
@@ -28,7 +28,7 @@ logger = logging.getLogger("heare.pipeline")
 
 async def build_pipeline(
     settings: Settings,
-    claude_cli: "ClaudeCLI",
+    claude_cli: "ClaudeBackend",
     store: "TranscriptStore",
     context_builder: "ContextBuilder",
     openrouter_cli: "OpenRouterCLI",

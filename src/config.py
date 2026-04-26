@@ -213,7 +213,6 @@ class Settings:
     speaker_namer_buffer_size: int = 10
     speaker_namer_queue_max: int = 64
     speaker_namer_timeout_seconds: float = 15.0
-    use_agent_sdk: bool = False
     claude_sdk_cli_path: str | None = None
     # Turn aggregation and conversation memory settings
     # Per plan US-010: default to False for gradual rollout

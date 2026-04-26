@@ -220,12 +220,8 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
     settings.pid_file.write_text(str(os.getpid()))
 
-    if settings.use_agent_sdk:
-        from .agent_sdk_cli import AgentSDKCLI
-        _backend: "ClaudeBackend" = AgentSDKCLI(settings)
-    else:
-        from .claude_cli import ClaudeCLI
-        _backend = ClaudeCLI(settings)
+    from .agent_sdk_cli import AgentSDKCLI
+    _backend: "ClaudeBackend" = AgentSDKCLI(settings)
 
     store: TranscriptStore | None = None
     try:

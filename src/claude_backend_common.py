@@ -1,7 +1,8 @@
 """Shared decider parsing helpers and ClaudeBackend Protocol.
 
-Both ClaudeCLI (subprocess) and AgentSDKCLI (persistent SDK session) use
-the same parsing pipeline so there is exactly one implementation.
+The Protocol exists so test doubles (FakeClaudeCLI etc.) and the production
+backend (AgentSDKCLI) can be type-checked against the same structural
+interface without inheritance.
 """
 from __future__ import annotations
 
@@ -92,11 +93,12 @@ def parse_decider_response(raw: str) -> dict[str, Any]:
 
 
 class ClaudeBackend(Protocol):
-    """Structural Protocol for Claude backends (subprocess and SDK).
+    """Structural Protocol for the Claude backend.
 
-    Both ClaudeCLI and AgentSDKCLI satisfy this interface structurally —
-    no inheritance needed. Use for TYPE_CHECKING annotations in decider.py,
-    identity.py, and main.py so mypy can enforce the contract.
+    AgentSDKCLI satisfies this interface structurally; test doubles like
+    FakeClaudeCLI in the tests/ tree do too. Use for TYPE_CHECKING
+    annotations in decider.py, identity.py, and main.py so mypy can
+    enforce the contract.
     """
 
     persona: str | None

@@ -1,8 +1,8 @@
 """Persistent Claude backend using claude-agent-sdk.
 
-Replaces per-call `claude -p` subprocess spawning with a single long-running
-ClaudeSDKClient session. Set `use_agent_sdk = true` in ~/.heare/config.toml
-to activate; the subprocess backend (ClaudeCLI) remains the default.
+Sole Claude backend for heare. Uses a single long-running ClaudeSDKClient
+session instead of per-call `claude -p` subprocess spawning (the legacy
+subprocess backend was removed in favor of this).
 
 Usage:
     async with AgentSDKCLI(settings) as sdk_cli:
