@@ -1,0 +1,140 @@
+{
+  "title": "PRD CCS \u2014 Conversation Core Stability Bundle",
+  "version": "1.0.0",
+  "source_plan": ".omc/plans/conversation-core-stability.md",
+  "notes": "6-story bundle hardening the heare voice agent's conversation core. Sequential due to file overlaps (src/decider.py shared by 3+5a; src/context.py by 1+2; src/actions.py by 5a+5b). One worker, ralph-mode. Branch: stay on s2s-realtime, layer commits. Mode: SHORT with scoped Story-5 pre-mortem.",
+  "stories": [
+    {
+      "id": "US-CCS-01",
+      "title": "Persist action log to SQLite + since_ts freshness window",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "Replace the in-memory `collections.deque(maxlen=16)` in ConversationManager._action_log with a SQLite-backed projection. On startup, rehydrate from disk with a freshness filter (since_ts = now - settings.conversation_idle_seconds, default 1800s). Write-through on every record_action_pending/result/error. Schema: ALTER TABLE actions ADD COLUMN tool, args, result_json, intent_id (idempotent).",
+      "acceptanceCriteria": [
+        "Schema: PRAGMA table_info(actions) returns rows for tool, args, result_json, intent_id in addition to existing columns; idempotent on restart.",
+        "ConversationManager.record_action_pending(7, 'web_search', 'chili recipe') followed by record_action_result(7, '...') produces exactly one row in actions (UPSERT on intent_id) with status='done', tool='web_search', result_json containing the summary.",
+        "ConversationManager.hydrate_action_log() after a simulated restart restores recent_actions(limit=5) to the same 5 newest entries (same tool, status, args, result_json) within \u00b11 entry of pre-restart state.",
+        "hydrate_action_log() accepts a since_ts: float | None = None argument. When provided, entries with ts < since_ts are skipped during deque rehydration.",
+        "On daemon startup, the hydration call passes since_ts = now - settings.conversation_idle_seconds (default 1800s = 30 min). The default lives in src/config.py:Settings.conversation_idle_seconds.",
+        "Test verifies that after writing two action_log entries \u2014 one timestamped 6 hours ago and one timestamped 5 minutes ago \u2014 only the 5-min-old entry is hydrated on startup with the default since_ts.",
+        "Settings.__post_init__ asserts refinement_recency_seconds <= conversation_idle_seconds (consensus-review condition #2).",
+        "uv run pytest tests/test_conversation.py tests/test_storage.py -q exits 0.",
+        "uv run ruff check src/storage.py src/conversation.py src/config.py src/main.py src/pipeline.py tests/test_conversation.py tests/test_storage.py exits 0.",
+        "In-memory deque retains maxlen=16 cap; load_recent_action_log(limit=16) returns at most 16, ordered newest-first.",
+        "Persistence write failures (DB locked) log a warning and DO NOT raise into the caller \u2014 the in-memory deque update still succeeds.",
+        "Generator context (build_for_generator -> recent_actions field) is populated correctly on a freshly-restarted daemon \u2014 verified by an integration test that destroys + recreates the manager."
+      ]
+    },
+    {
+      "id": "US-CCS-02",
+      "title": "Numbered + structured search results, items-first render in _format_recent_actions",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "_search_serper and _search_duckduckgo build numbered output (1., 2., \u2026) and additionally return a structured items: list[dict] (each {n, title, url, snippet}) inside the result dict. _format_recent_actions in src/context.py renders web_search/web_fetch entries FROM items when present (NOT in addition to result blob); legacy result rendering is fallback for entries without items. Hard cap 1800 chars/entry with tail-first truncation.",
+      "acceptanceCriteria": [
+        "_search_serper('chili recipe', api_key, settings) returns a dict where output matches regex ^1\\.\\s.+\\n\\n2\\.\\s (numbered) and items is a list of length >=1 with keys {n, title, url, snippet}.",
+        "_search_duckduckgo('chili recipe', settings) likewise; n starts at 1 and is contiguous.",
+        "Knowledge-graph entries (Serper knowledgeGraph) are inserted at position 0 with n=0 or labeled as 'answer box'. The function docstring documents the chosen behavior; a test covers it.",
+        "ConversationManager.recent_actions() for a completed web_search includes the items list verbatim.",
+        "_format_recent_actions renders web_search/web_fetch entries FROM items if present, NOT in addition to result. Legacy result rendering path is kept as fallback for entries without items. Function docstring documents items-first AND truncation-tail-first; both covered by tests.",
+        "A web_search entry with 5 items \u00d7 250-char snippets renders to <=1800 chars total and includes a '(N more items truncated)' suffix when truncation occurred. Test asserts exactly this.",
+        "tail_limit constant in src/context.py:235 is updated to 1800 (or explicitly documented as the cap for the new path); both code constant and AC use the same number \u2014 no drift.",
+        "Generator prompt contains the literal example text 'the second one' AND 'the vegan one' (or non-English equivalents) \u2014 verified by a string-search test.",
+        "Existing tests/test_context.py:394-432 stays green via the legacy fallback path (consensus-review condition #3); a one-line code comment notes this.",
+        "uv run pytest tests/test_direct_tools.py tests/test_context.py tests/test_generator_prompt.py -q exits 0.",
+        "uv run ruff check src/direct_tools.py src/context.py src/conversation.py tests/test_direct_tools.py tests/test_context.py tests/test_generator_prompt.py exits 0.",
+        "Empty-results path still returns the 'No results found' spoken dict and an empty items: []."
+      ]
+    },
+    {
+      "id": "US-CCS-03",
+      "title": "Confirmation deadline countdown cue with race-guard",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "_timeout_watcher in src/decider.py sleeps confirmation_timeout_seconds then fires cancel silently. Add a parallel deadline-warning task that fires IndicationKind.CONFIRMATION_DEADLINE N seconds before timeout (default N=5). Both tasks cancel atomically on confirm/cancel. Warning task re-checks a guard flag immediately before notify to close the confirm-during-warning race.",
+      "acceptanceCriteria": [
+        "Settings gains confirmation_deadline_warning_seconds: float = 5.0.",
+        "With confirmation_timeout_seconds=10 and confirmation_deadline_warning_seconds=3, after ARMED entry the indication facade receives exactly one notify(IndicationKind.CONFIRMATION_DEADLINE, \u2026) call ~7s in (\u00b10.5s).",
+        "If the user confirms at t=2s, NO CONFIRMATION_DEADLINE cue fires (both tasks cancelled).",
+        "If the user cancels at t=4s, NO CONFIRMATION_DEADLINE cue fires.",
+        "confirmation_deadline_warning_seconds=0 disables the cue entirely (no warning task scheduled).",
+        "confirmation_deadline_warning_seconds >= confirmation_timeout_seconds is clamped at startup to max(0, timeout-1) and a warning is logged.",
+        "Warning task re-checks self._timeout_task is not None and not self._timeout_task.cancelled() immediately before calling indication.notify(IndicationKind.CONFIRMATION_DEADLINE, ...). If guard fails, task returns without firing.",
+        "Fuzz test runs 100 iterations where confirm arrives within \u00b150ms of the warning fire boundary; in 0 of those iterations does a CONFIRMATION_DEADLINE notification reach the indication backends. Uses a RecordingBackend (style of tests/test_indication.py::RecordingBackend) and asserts the recorded notification list is empty for confirms inside the race window.",
+        "uv run pytest tests/test_decider.py -q -k 'deadline or warning or race' exits 0.",
+        "uv run ruff check src/decider.py src/config.py tests/test_decider.py exits 0.",
+        "Existing _timeout_watcher behavior unchanged on the timeout path: _cancel_pending('nevermind, cancelled') still fires when the full T elapses.",
+        "Cue respects existing indication cooldown / quiet-hours / mode gating \u2014 verified by mocking the Indication facade and asserting notify (not the backend) was invoked."
+      ]
+    },
+    {
+      "id": "US-CCS-04",
+      "title": "Refine vs new-search prompt rule + 10-min recency guard",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "When user follows a recent successful web_search with a qualifier ('actually for vegan', 'but cheaper', '\u0442\u0456\u043b\u044c\u043a\u0438 \u0432\u0435\u0433\u0430\u043d\u0441\u044c\u043a\u0438\u0439') AND the prior web_search happened within last refinement_recency_seconds (default 600s = 10 min), generator emits a new web_search whose query is prior_query + ' ' + qualifier_phrase. Prompt-only with recency guard. Reliability depends on Stories 1+2 surfacing the prior query AND its timestamp in recent_actions.",
+      "acceptanceCriteria": [
+        "Settings gains refinement_recency_seconds: float = 600.0.",
+        "prompts/generator.txt contains a section header matching REFINEMENT (case-insensitive).",
+        "Qualifier vocabulary lists at minimum: en ['actually', 'but', 'instead', 'just', 'only'], uk ['\u043d\u0430\u0441\u043f\u0440\u0430\u0432\u0434\u0456', '\u0430\u043b\u0435', '\u0442\u0456\u043b\u044c\u043a\u0438', '\u043a\u0440\u0430\u0449\u0435'], ru ['\u0432\u043e\u043e\u0431\u0449\u0435-\u0442\u043e', '\u043d\u043e', '\u0442\u043e\u043b\u044c\u043a\u043e', '\u043b\u0443\u0447\u0448\u0435'].",
+        "Three worked examples are present, one per language, each showing prior query + qualifier -> combined query.",
+        "Generator is explicitly told: 'Do NOT emit a generic web_search if the qualifier is unrelated to the prior topic' \u2014 guard rule.",
+        "Refinement rule in the generator prompt ALSO requires that the prior web_search entry's timestamp is within the last refinement_recency_seconds (default 600s = 10 min). Prompt example MUST show the rule including the recency window in plain language (e.g. 'within the last 10 minutes').",
+        "Integration test: given a fake recent_actions with web_search 'chili recipe' (ts 2 min ago) and a transcript 'actually for vegan', the next emitted intent has tool == 'web_search' AND args contains both 'chili' and 'vegan'.",
+        "Same test in Ukrainian: prior web_search '\u0440\u0435\u0446\u0435\u043f\u0442 \u0447\u0456\u043b\u0456' (ts 2 min ago), transcript '\u0442\u0456\u043b\u044c\u043a\u0438 \u0432\u0435\u0433\u0430\u043d\u0441\u044c\u043a\u0438\u0439', emitted args contain both terms.",
+        "Test verifies that a fake recent_actions containing a 30-min-old web_search does NOT trigger refinement: generator issues a fresh web_search with the new query, not a combined one.",
+        "uv run pytest tests/test_generator_prompt.py tests/integration/test_intent_flow.py -q exits 0.",
+        "uv run ruff check prompts/ src/config.py src/context.py tests/test_generator_prompt.py tests/integration/test_intent_flow.py exits 0.",
+        "src/context.py recent_actions projection includes the timestamp of each entry (relative or absolute) so the prompt rule has the data it needs.",
+        "Existing 'Reuse prior search results \u2014 do NOT re-search' rule remains and is reconciled with the refinement rule (refinement = different topic-with-modifier within recency window, not same topic)."
+      ]
+    },
+    {
+      "id": "US-CCS-05a",
+      "title": "Cancel signal origin \u2014 decider fast-path before generator",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "Decider detects stop-words ('stop', 'cancel', 'halt', '\u0432\u0456\u0434\u043c\u0456\u043d\u0438', '\u043e\u0442\u043c\u0435\u043d\u0438', + configurable list) BEFORE the generator is invoked. On match, decider directly calls IntentQueue.cancel_active() without waiting for an LLM round-trip. Stop-word detection requires the utterance to be a STANDALONE imperative (single-clause, \u22644 words, optional politeness markers like 'please' / '\u0431\u0443\u0434\u044c \u043b\u0430\u0441\u043a\u0430').",
+      "acceptanceCriteria": [
+        "Settings gains cancel_stop_words: list[str] = ['stop', 'cancel', 'halt', '\u0432\u0456\u0434\u043c\u0456\u043d\u0438', '\u043e\u0442\u043c\u0435\u043d\u0438'] (configurable via env var HEARE_CANCEL_STOP_WORDS).",
+        "Stop-word utterances ('stop', 'cancel', '\u0432\u0456\u0434\u043c\u0456\u043d\u0438', '\u043e\u0442\u043c\u0435\u043d\u0438', 'halt') trigger IntentQueue.cancel_active() from the decider BEFORE the generator is invoked.",
+        "Wall-clock latency from stop-word transcript to cancel_active() invocation is under the next event-loop tick (no awaits other than the call itself); LLM disambiguation is NOT in the hot path.",
+        "False-positive guard: utterances like 'don't stop the recording', 'I won't stop', 'stop is a four-letter word' do NOT trigger cancel. Detector requires standalone imperative form: single clause, <=4 words, optional politeness markers ('please', '\u0431\u0443\u0434\u044c \u043b\u0430\u0441\u043a\u0430', '\u043f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430').",
+        "tests/fixtures/cancel_stopwords.txt (or inline pytest.mark.parametrize) enumerates positive + negative utterances per AC#3, in en/uk/ru including: 'hey, please cancel', 'no no no stop', 'ok stop stop' (consensus-review condition #1).",
+        "Configurable cancel_stop_words list can be extended via env var without code changes; a test sets the env and asserts the new word triggers.",
+        "Stop-word during in-flight TTS or in-flight action triggers cancel; the end-to-end 'transcript -> INTENT_CANCELLED indication' trace is observable in a RecordingBackend test within ~500ms wall-clock.",
+        "Submitting cancel_active() on an empty queue with no in-flight action is a no-op (logs debug, fires no indication).",
+        "IntentQueue.cancel_active() new method drains the queue AND triggers ActionWorker.cancel_in_flight() (the latter implemented in Story 5b).",
+        "uv run pytest tests/test_decider.py tests/test_actions.py -q -k 'cancel or stop_word' exits 0.",
+        "uv run ruff check src/decider.py src/actions.py src/config.py tests/test_decider.py tests/test_actions.py exits 0."
+      ]
+    },
+    {
+      "id": "US-CCS-05b",
+      "title": "Kill paths \u2014 bash SIGTERM/SIGKILL via os.killpg, httpx, SDK, TTS frame drop",
+      "priority": 6,
+      "status": "completed",
+      "passes": true,
+      "description": "Implement actual cancel mechanics behind IntentQueue.cancel_active() / ActionWorker.cancel_in_flight(): bash subprocess SIGTERM with 2s grace then SIGKILL via process group (os.killpg); httpx via task cancel; Claude Agent SDK call cancel best-effort; drop pending TTS frames in pipeline with a 50ms fade-out on the currently-speaking frame; mark intent as cancelled in the action log.",
+      "acceptanceCriteria": [
+        "ActionWorker._process_one holds the active task in self._active_task: asyncio.Task | None and the active intent in self._active_intent.",
+        "New async def cancel_in_flight() -> bool. Marks the intent as cancelled in the action log (Story 1's UPSERT path).",
+        "A 60s 'bash sleep 60' is killed within 3s of cancel (2s SIGTERM grace + 1s slack); process group is terminated, no orphan child processes remain (verified via pgrep or equivalent in-test check).",
+        "Bash subprocess is spawned with start_new_session=True; cancel signals the process group via os.killpg, NOT just the parent. Test asserts no orphan child process after cancel.",
+        "A web_fetch of a slow URL is cancelled within 1s of cancel submission; CancelledError propagates and on_error is called.",
+        "Queued TTS frames stop playing within 500ms of cancel, with a 50ms fade-out on the currently-speaking frame to prevent audible click/pop.",
+        "Submitting cancel while a Claude SDK call is in flight invokes kill_running_action(); on success, an INTENT_CANCELLED indication fires.",
+        "After a successful cancel, IndicationKind.INTENT_CANCELLED is fired exactly once.",
+        "The cancelled intent is marked with status='cancelled' in the action log (Story 1's UPSERT path).",
+        "tool_registry registers 'cancel' tool with no-op SDK mapping (so the action log has a stable tool='cancel' entry).",
+        "uv run pytest tests/test_actions.py tests/test_direct_tools.py tests/test_pipeline.py tests/integration/test_intent_flow.py -q -k 'cancel or kill' exits 0.",
+        "uv run ruff check src/actions.py src/direct_tools.py src/agent_sdk_cli.py src/pipeline.py src/tool_registry.py tests/test_actions.py tests/test_direct_tools.py tests/test_pipeline.py tests/integration/test_intent_flow.py exits 0."
+      ]
+    }
+  ]
+}

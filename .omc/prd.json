@@ -1,0 +1,117 @@
+{
+  "title": "PRD WU \u2014 Conversation Core Wireup",
+  "version": "1.0.0",
+  "source_plan": ".omc/plans/conversation-core-wireup.md",
+  "notes": "Cleanup + wire-up sprint. Three of the six CCS stories shipped dead code in src/decider.py; live pipeline only uses GeneratorProcessor. This sprint bridges CCS-05a/05b into production, removes dead code, fixes one CI flake. Branch: s2s-realtime, layer commits on b2783e5 base. SHORT mode + 4 consensus execution conditions (EC-1..EC-4) locked in plan file.",
+  "stories": [
+    {
+      "id": "US-WU-06",
+      "title": "Pin wallclock in test_notify_dispatches_to_all_enabled_backends",
+      "priority": 1,
+      "status": "completed",
+      "passes": true,
+      "description": "tests/test_indication.py::test_notify_dispatches_to_all_enabled_backends fails between 22:00\u201307:00 local because Indication() doesn't get a wallclock= kwarg, so quiet hours (default 22:00\u201307:00) suppress the sound backend. Sibling test_per_kind_toggle_disables_individual_backend at line 117 already pins wallclock to 12:00 \u2014 same author, just forgot.",
+      "acceptanceCriteria": [
+        "tests/test_indication.py:84 passes wallclock=lambda: dt.datetime(2026, 4, 24, 12, 0) to Indication(...).",
+        "uv run pytest tests/test_indication.py::test_notify_dispatches_to_all_enabled_backends -q exits 0 regardless of wall-clock time.",
+        "uv run pytest tests/test_indication.py -q exits 0 (no regressions).",
+        "uv run ruff check tests/test_indication.py exits 0."
+      ]
+    },
+    {
+      "id": "US-WU-01",
+      "title": "Wire CCS-05b kill paths into the live cancel path",
+      "priority": 2,
+      "status": "completed",
+      "passes": true,
+      "description": "src/generator.py:404 currently calls self.intent_queue.cancel_latest() (drops one queued intent only, leaves in-flight running). Replace with await self.intent_queue.cancel_active() so ActionWorker.cancel_in_flight() fires (subprocess SIGTERM via os.killpg, httpx cancel, SDK kill, TTS fade-out). EC-1: INTENT_CANCELLED indication must fire EXACTLY ONCE per cancel utterance (single emit site is src/actions.py:233); the generator's manual notify block at lines 408-415 must be deleted in the same commit.",
+      "acceptanceCriteria": [
+        "src/generator.py:404 calls `await self.intent_queue.cancel_active()` (not cancel_latest).",
+        "src/generator.py:408-415 manual `INTENT_CANCELLED` notify block is deleted.",
+        "Unit test uses Mock/spy on Indication.notify and asserts call_count == 1 for IndicationKind.INTENT_CANCELLED over the cancel-path with 2 queued + 1 in-flight intents.",
+        "Integration test: when generator receives a transcript matching a stop-word and a long-running bash subprocess is in flight, the subprocess is killed within 3s of the cancel.",
+        "Empty queue + no in-flight cancel still produces NO indication notify call (cancel_active returns False; nothing to notify about).",
+        "uv run pytest tests/test_generator.py tests/test_actions.py -q exits 0.",
+        "uv run ruff check src/generator.py tests/test_generator.py tests/test_actions.py exits 0."
+      ]
+    },
+    {
+      "id": "US-WU-02",
+      "title": "Promote smart stop-word detector + DELETE check_cancel",
+      "priority": 3,
+      "status": "completed",
+      "passes": true,
+      "description": "Move _is_standalone_cancel_imperative from src/decider.py:229 to src/language.py (next to where check_cancel currently lives). Update src/generator.py:403 to call the new function with self.settings.cancel_stop_words. EC-2: check_cancel and the CANCEL_PATTERNS dict MUST be deleted from src/language.py \u2014 no escape hatch. The smarter detector replaces the keyword-list match: \u22644-word imperatives only, negation guard ('don't stop' rejected), context guard ('stop sign' rejected).",
+      "acceptanceCriteria": [
+        "_is_standalone_cancel_imperative is defined in src/language.py with the same signature and logic as currently in src/decider.py:229.",
+        "src/generator.py:403 calls _is_standalone_cancel_imperative(transcript, self.settings.cancel_stop_words) instead of check_cancel.",
+        "check_cancel function and CANCEL_PATTERNS dict are DELETED from src/language.py (EC-2: not 'preferred' \u2014 deleted).",
+        "grep -rn 'check_cancel\\|CANCEL_PATTERNS' src/ returns zero matches.",
+        "tests/fixtures/cancel_stopwords.txt fixture-driven tests are migrated to test the new src/language.py location and exercise the production hot path.",
+        "All consensus-mandated false-positive cases ('don't stop the recording', 'stop is a four-letter word', 'no no no stop', 'ok stop stop', 'hey, please cancel') behave correctly.",
+        "uv run pytest tests/test_language.py tests/test_generator.py -q exits 0.",
+        "uv run ruff check src/language.py src/generator.py tests/test_language.py exits 0."
+      ]
+    },
+    {
+      "id": "US-WU-04",
+      "title": "Remove HeartbeatTask + delete HEARE_HEARTBEAT_MIN env override (Option A)",
+      "priority": 4,
+      "status": "completed",
+      "passes": true,
+      "description": "GeneratorProcessor.on_heartbeat_tick (src/generator.py:560-562) is a no-op. HeartbeatTask in src/heartbeat.py:25-52 ticks every N min and calls into a no-op. No user demand for proactive speech; legacy DeciderProcessor's heartbeat behaviour was reportedly chatty. Delete HeartbeatTask, the on_heartbeat_tick stub, the heartbeat_interval_minutes Setting field, and the HEARE_HEARTBEAT_MIN env override block at src/config.py:401-406. EC-4: PR body must explicitly call out HEARE_HEARTBEAT_MIN as a removed env var so deployment owners can clean their .env.",
+      "acceptanceCriteria": [
+        "src/heartbeat.py is deleted (or HeartbeatTask + WarmupTask are removed; check what else references heartbeat.py).",
+        "src/generator.py:560-562 on_heartbeat_tick stub is deleted (no longer called by anything).",
+        "src/config.py heartbeat_interval_minutes Setting field is deleted.",
+        "src/config.py:401-406 HEARE_HEARTBEAT_MIN env override block is deleted.",
+        "src/main.py: HeartbeatTask construction + start/stop calls are removed.",
+        "grep -rn 'HEARE_HEARTBEAT_MIN' src/ tests/ returns zero matches.",
+        "Deployed .env files containing HEARE_HEARTBEAT_MIN=N produce no error and no startup log warning (silently ignored, since the env block is gone).",
+        "PR body explicitly calls out HEARE_HEARTBEAT_MIN as a removed env var.",
+        "uv run pytest -q exits 0 (heartbeat tests deleted with the module if present).",
+        "uv run ruff check src/ tests/ exits 0."
+      ]
+    },
+    {
+      "id": "US-WU-03",
+      "title": "Delete CCS-03 dead code (Option A \u2014 defer until confirmation flow exists)",
+      "priority": 5,
+      "status": "completed",
+      "passes": true,
+      "description": "CCS-03 (deadline-warning cue) lives in DeciderProcessor (src/decider.py:1042-1056, _deadline_warning_watcher etc.). GeneratorProcessor has no AWAITING_CONFIRMATION state, so there's no timeout to warn about. Plan picked Option A: delete CCS-03 dead code. The IndicationKind.CONFIRMATION_DEADLINE enum value can stay (zero callers, no harm). The settings field confirmation_deadline_warning_seconds is removed since nothing reads it.",
+      "acceptanceCriteria": [
+        "src/decider.py: _deadline_warning_watcher method is deleted.",
+        "src/decider.py: _deadline_warning_task field is deleted from DeciderProcessor.__init__.",
+        "src/decider.py: _schedule_timeout_task no longer schedules the warning task.",
+        "src/decider.py: _cancel_timeout_task no longer cancels the warning task.",
+        "src/config.py: confirmation_deadline_warning_seconds Setting field is deleted.",
+        "tests/test_decider.py: tests in -k 'deadline or warning or race' are deleted (or marked skip with reason='CCS-03 deferred until confirmation flow exists in GeneratorProcessor').",
+        ".omc/progress-ccs-completed.txt entry for CCS-03 is annotated to note that the implementation was dead code and has been removed pending confirmation-flow design.",
+        "uv run pytest -q exits 0.",
+        "uv run ruff check src/decider.py src/config.py exits 0."
+      ]
+    },
+    {
+      "id": "US-WU-05",
+      "title": "Delete tests/test_decider.py + most of src/decider.py with shim semantics",
+      "priority": 6,
+      "status": "completed",
+      "passes": true,
+      "description": "DeciderProcessor (src/decider.py, ~1100 lines) is dormant \u2014 never instantiated by build_pipeline. Delete the class body and tests/test_decider.py. EC-3: create_decider_processor must be specified \u2014 chosen behaviour: raise RuntimeError('DeciderProcessor removed; sibling tests pending GeneratorProcessor migration'). Six sibling test files still import from src/decider \u2014 they must either keep passing on the new path OR be marked pytest.mark.skip with a clear reason. Bare ImportError/AttributeError at collection time is REJECT. Keep parse_yes_no helper if anything outside DeciderProcessor still uses it; check via grep first.",
+      "acceptanceCriteria": [
+        "tests/test_decider.py is deleted entirely.",
+        "src/decider.py: DeciderProcessor class body is deleted (the FrameProcessor subclass, ~900 lines).",
+        "src/decider.py: helpers no longer needed by GeneratorProcessor are deleted (is_noise, is_quick_nothing, _is_standalone_cancel_imperative since US-WU-02 promoted it).",
+        "src/decider.py: parse_yes_no helper is kept ONLY if grep -rn 'parse_yes_no' src/ tests/ shows callers outside the deleted DeciderProcessor; otherwise also deleted.",
+        "src/decider.py: create_decider_processor raises RuntimeError('DeciderProcessor removed; sibling tests pending GeneratorProcessor migration') with that exact message.",
+        "Sibling test files (tests/test_audio.py, tests/test_feature_flags.py, tests/test_mode_hot_reload.py, tests/test_silent_timeout.py, tests/test_stranger_integration.py, tests/test_yes_no.py) either ALL pass without touching create_decider_processor, OR the affected tests are marked pytest.mark.skip with reason='pending DeciderProcessor \u2192 GeneratorProcessor migration'. Bare ImportError/AttributeError at pytest collection is REJECT.",
+        "src/heartbeat.py is already removed by US-WU-04 \u2014 verify no DeciderProcessor references remain.",
+        "src/main.py imports of DeciderProcessor are removed.",
+        "uv run pytest -q exits 0 (with skip-marked tests counted as skipped, not errored).",
+        "uv run ruff check src/ tests/ exits 0.",
+        "grep -rn 'DeciderProcessor' src/ returns matches only inside src/decider.py (the surviving create_decider_processor stub is OK)."
+      ]
+    }
+  ]
+}

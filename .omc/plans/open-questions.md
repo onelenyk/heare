@@ -62,3 +62,11 @@
 
 - [ ] **Which OpenRouter model for topic extraction?** — Plan defaults to `google/gemini-2.0-flash-exp:free` (zero cost, fast). May want `google/gemini-3.1-flash-lite-preview-20260303` (same as generator) for consistency. Decision needed before Story 3 config, but easy to change later.
 - [x] **Should `response_format: {"type": "json_object"}` be used?** — RESOLVED: No. The prompt instructs the model to return a bare JSON array; defensive parsing (`_extract_first_json_array()`) handles malformed output. Skipping `response_format` avoids the top-level-object requirement that some providers enforce in JSON-object mode.
+
+## conversation-core-wireup - 2026-04-25
+
+- [ ] **US-WU-03: Delete CCS-03 dead code (Option A) or build minimal AWAITING_CONFIRMATION flow (Option B)?** — Plan recommends A. Architect/Critic to confirm. Affects ~200 LOC commitment if B is chosen.
+- [ ] **US-WU-04: Are there `IndicationKind.HEARTBEAT_TICK` consumers in `src/indication_backends/` or external dashboards?** — Determines whether the enum value is removed entirely or kept dormant alongside `CONFIRMATION_DEADLINE`.
+- [ ] **US-WU-05: Are sibling decider-tests (`test_audio`, `test_feature_flags`, `test_mode_hot_reload`, `test_silent_timeout`, `test_stranger_integration`, `test_yes_no`) testing live `GeneratorProcessor` behaviour via `create_decider_processor` shim, or are they dormant tests of dormant code?** — Determines whether each is migrated to `create_generator_processor` or deleted in a follow-up bulk pass. Blocks decision on whether `src/decider.py` can be deleted entirely (instead of partially).
+- [ ] **US-WU-01: Should the `[INTENT CANCELLED id=N]` log line format be preserved exactly for downstream log scrapers, or is reformat acceptable?** — One-line diff either way; needs ops sign-off before merging the live cancel-path swap.
+- [ ] **US-WU-02: After moving `_is_standalone_cancel_imperative` into `src/language.py`, should `check_cancel` (regex keyword match) be deleted or kept as a back-compat alias?** — Affects API surface of `src/language.py`. Plan currently recommends delete if no remaining callers.

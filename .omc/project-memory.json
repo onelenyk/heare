@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1777121928615,
+  "lastScanned": 1777239504137,
   "projectRoot": "/Users/lenyk/myprojects/heare",
   "techStack": {
     "languages": [
@@ -61,14 +61,14 @@
       "path": "data",
       "purpose": "Data files",
       "fileCount": 0,
-      "lastAccessed": 1777121928603,
+      "lastAccessed": 1777239504117,
       "keyFiles": []
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1777121928603,
+      "lastAccessed": 1777239504117,
       "keyFiles": [
         "action_execution_flow.md",
         "conversation_logic.md",
@@ -80,7 +80,7 @@
       "path": "migrations",
       "purpose": "Database migrations",
       "fileCount": 1,
-      "lastAccessed": 1777121928604,
+      "lastAccessed": 1777239504118,
       "keyFiles": [
         "01_add_conversations.sql"
       ]
@@ -89,7 +89,7 @@
       "path": "prompts",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1777121928604,
+      "lastAccessed": 1777239504118,
       "keyFiles": [
         "decider.txt",
         "generator.txt",
@@ -101,7 +101,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 3,
-      "lastAccessed": 1777121928604,
+      "lastAccessed": 1777239504118,
       "keyFiles": [
         "bench_claude_ttft.py",
         "bench_openrouter.py",
@@ -112,7 +112,7 @@
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1777121928604,
+      "lastAccessed": 1777239504118,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -123,20 +123,20 @@
       "path": "src",
       "purpose": "Source code",
       "fileCount": 37,
-      "lastAccessed": 1777121928604,
+      "lastAccessed": 1777239504118,
       "keyFiles": [
         "__init__.py",
         "actions.py",
         "agent_sdk_cli.py",
         "claude_backend_common.py",
-        "claude_cli.py"
+        "config.py"
       ]
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 52,
-      "lastAccessed": 1777121928604,
+      "fileCount": 51,
+      "lastAccessed": 1777239504119,
       "keyFiles": [
         "__init__.py",
         "test_actions.py",
@@ -148,9 +148,10 @@
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
-      "fileCount": 2,
-      "lastAccessed": 1777121928605,
+      "fileCount": 3,
+      "lastAccessed": 1777239504119,
       "keyFiles": [
+        "cancel_stopwords.txt",
         "decider_prompt_flag_off.golden.txt"
       ]
     }
@@ -158,50 +159,86 @@
   "hotPaths": [
     {
       "path": "src/direct_tools.py",
-      "accessCount": 145,
-      "lastAccessed": 1777148160793,
+      "accessCount": 153,
+      "lastAccessed": 1777156961416,
       "type": "file"
     },
     {
       "path": "src/main.py",
-      "accessCount": 91,
-      "lastAccessed": 1777137817455,
+      "accessCount": 111,
+      "lastAccessed": 1777196633350,
       "type": "file"
     },
     {
       "path": "src/generator.py",
-      "accessCount": 72,
-      "lastAccessed": 1777137179543,
+      "accessCount": 92,
+      "lastAccessed": 1777197587562,
       "type": "file"
     },
     {
       "path": "src/config.py",
-      "accessCount": 62,
-      "lastAccessed": 1777147679179,
+      "accessCount": 84,
+      "lastAccessed": 1777197010352,
       "type": "file"
     },
     {
       "path": "tests/test_direct_tools.py",
-      "accessCount": 56,
-      "lastAccessed": 1777147769940,
+      "accessCount": 65,
+      "lastAccessed": 1777156597128,
       "type": "file"
     },
     {
-      "path": "src/speaker_processor.py",
-      "accessCount": 44,
-      "lastAccessed": 1777128904775,
-      "type": "file"
-    },
-    {
-      "path": "src/indication.py",
-      "accessCount": 44,
-      "lastAccessed": 1777148582026,
+      "path": "src/decider.py",
+      "accessCount": 58,
+      "lastAccessed": 1777197335166,
       "type": "file"
     },
     {
       "path": "src/actions.py",
-      "accessCount": 37,
-      "lastAccessed": 1777147308308,
+      "accessCount": 52,
+      "lastAccessed": 1777239721667,
+      "type": "file"
+    },
+    {
+      "path": "src/indication.py",
+      "accessCount": 48,
+      "lastAccessed": 1777155479610,
+      "type": "file"
+    },
+    {
+      "path": "src/speaker_processor.py",
+      "accessCount": 45,
+      "lastAccessed": 1777149216418,
+      "type": "file"
+    },
+    {
+      "path": "prompts/generator.txt",
+      "accessCount": 36,
+      "lastAccessed": 1777239693933,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline.py",
+      "accessCount": 33,
+      "lastAccessed": 1777195164684,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_config.py",
+      "accessCount": 33,
+      "lastAccessed": 1777196677157,
+      "type": "file"
+    },
+    {
+      "path": "src/context.py",
+      "accessCount": 31,
+      "lastAccessed": 1777156959540,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_decider.py",
+      "accessCount": 29,
+      "lastAccessed": 1777197066579,
       "type": "file"
     },
     {
@@ -211,39 +248,33 @@
       "type": "file"
     },
     {
-      "path": "tests/test_config.py",
-      "accessCount": 28,
-      "lastAccessed": 1777135841092,
+      "path": "tests/test_context.py",
+      "accessCount": 18,
+      "lastAccessed": 1777154369756,
       "type": "file"
     },
     {
-      "path": "prompts/generator.txt",
-      "accessCount": 27,
-      "lastAccessed": 1777148053036,
-      "type": "file"
-    },
-    {
-      "path": "src/pipeline.py",
-      "accessCount": 26,
-      "lastAccessed": 1777130297055,
-      "type": "file"
-    },
-    {
-      "path": "src/decider.py",
-      "accessCount": 25,
-      "lastAccessed": 1777129093542,
-      "type": "file"
-    },
-    {
-      "path": "src/context.py",
-      "accessCount": 23,
-      "lastAccessed": 1777147699471,
+      "path": "src/tts_edge.py",
+      "accessCount": 18,
+      "lastAccessed": 1777156961512,
       "type": "file"
     },
     {
       "path": "src/watch.py",
       "accessCount": 16,
       "lastAccessed": 1777125153020,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_indication.py",
+      "accessCount": 16,
+      "lastAccessed": 1777195662499,
+      "type": "file"
+    },
+    {
+      "path": "src/storage.py",
+      "accessCount": 15,
+      "lastAccessed": 1777156958428,
       "type": "file"
     },
     {
@@ -254,26 +285,8 @@
     },
     {
       "path": "src/speaker_gallery.py",
-      "accessCount": 13,
-      "lastAccessed": 1777117009884,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_context.py",
-      "accessCount": 12,
-      "lastAccessed": 1777147818442,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_indication.py",
-      "accessCount": 11,
-      "lastAccessed": 1777148575156,
-      "type": "file"
-    },
-    {
-      "path": "src/tts_edge.py",
-      "accessCount": 10,
-      "lastAccessed": 1777130044780,
+      "accessCount": 14,
+      "lastAccessed": 1777149216587,
       "type": "file"
     },
     {
@@ -319,6 +332,12 @@
       "type": "file"
     },
     {
+      "path": "README.md",
+      "accessCount": 6,
+      "lastAccessed": 1777196711576,
+      "type": "file"
+    },
+    {
       "path": "tests/integration/test_indication_no_phantom.py",
       "accessCount": 5,
       "lastAccessed": 1777058468195,
@@ -349,27 +368,21 @@
       "type": "file"
     },
     {
-      "path": "tests/test_decider.py",
-      "accessCount": 3,
-      "lastAccessed": 1777105385384,
+      "path": "tests/test_silent_timeout.py",
+      "accessCount": 4,
+      "lastAccessed": 1777197350873,
       "type": "file"
     },
     {
-      "path": "src/storage.py",
+      "path": "tests/test_stranger_integration.py",
       "accessCount": 3,
-      "lastAccessed": 1777105686514,
+      "lastAccessed": 1777197363070,
       "type": "file"
     },
     {
       "path": "tests/test_main_cli.py",
       "accessCount": 2,
       "lastAccessed": 1777031533025,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_silent_timeout.py",
-      "accessCount": 2,
-      "lastAccessed": 1777031600030,
       "type": "file"
     },
     {
@@ -406,18 +419,6 @@
       "path": "tests/test_openrouter_cli.py",
       "accessCount": 1,
       "lastAccessed": 1777030789125,
-      "type": "file"
-    },
-    {
-      "path": "README.md",
-      "accessCount": 1,
-      "lastAccessed": 1777049118544,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_stranger_integration.py",
-      "accessCount": 1,
-      "lastAccessed": 1777049535277,
       "type": "file"
     },
     {
