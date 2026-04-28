@@ -156,6 +156,13 @@ class Settings:
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
     mode_file: Path = field(default_factory=lambda: HEARE_HOME / "mode")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
+    mute_file: Path = field(default_factory=lambda: HEARE_HOME / "mute.flag")
+    mute_input_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "mute_input.flag"
+    )
+    inject_dir: Path = field(default_factory=lambda: HEARE_HOME / "inject")
+    # DEPRECATED (Phase 2): Legacy AgentSDKCLI/decider removed. These fields
+    # exist only for config file compatibility and are no longer used.
     claude_cli: str = "claude"
     claude_timeout_seconds: int = 60
     claude_max_retries: int = 3
@@ -225,10 +232,11 @@ class Settings:
     # treat as refinable (vs. issuing a fresh search). MUST be <=
     # conversation_idle_seconds — see __post_init__ assertion.
     refinement_recency_seconds: float = 600.0
-    # CCS-05a: stop-word vocabulary for the decider's pre-generator cancel
-    # fast-path. When the user utters a STANDALONE imperative containing
-    # one of these words (≤4 words, optional politeness markers), the
-    # decider calls IntentQueue.cancel_active() before invoking the LLM.
+    # CCS-05a: stop-word vocabulary for the native cancel fast-path.
+    # When the user utters a STANDALONE imperative containing one of these
+    # words (≤4 words, optional politeness markers), the TranscriptionGate
+    # pushes an InterruptionFrame upstream. Pipecat's native interruption
+    # cancels in-flight tool calls and triggers the TTS fade-out observer.
     # Extensible at runtime via the HEARE_CANCEL_STOP_WORDS env var
     # (comma-separated). See src/language.py:is_standalone_cancel_imperative.
     # AC#1 lists the canonical en+uk+ru roots ("stop", "cancel", "halt",
@@ -263,11 +271,9 @@ class Settings:
     # many seconds for a follow-up fragment before processing. 0 disables
     # the debounce — each frame dispatches immediately (legacy behaviour).
     transcript_debounce_seconds: float = 0.6
-    # Phase B-tools: which SDK tools the agent backend may invoke. Names
-    # are the CamelCase identifiers the claude-agent-sdk expects (see
-    # ClaudeAgentOptions.allowed_tools). The IntentQueue accepts a
-    # lowercase alias set — defined in src/tool_registry.py.
-    # None = use default from tool_registry.
+    # Phase 2: which tools the Pipecat-native pipeline may invoke via
+    # register_function. Names are the tool identifiers defined in
+    # src/tool_registry.py. None = use all enabled tools from the registry.
     agent_sdk_allowed_tools: list[str] | None = None
     # Web search provider: "auto" (use Serper if key available, else DuckDuckGo),
     # "duckduckgo" (force DuckDuckGo), or "serper" (force Serper with API key)
@@ -387,9 +393,10 @@ def load_settings() -> Settings:
         if raw:
             settings.mode = Mode(raw)
 
+    # DEPRECATED (Phase 2): HEARE_CLAUDE_CLI override no longer used.
     claude_override = os.environ.get("HEARE_CLAUDE_CLI")
     if claude_override:
-        settings.claude_cli = claude_override
+        settings.claude_cli = claude_override  # No-op: legacy field ignored
 
     if toml_data.get("enable_mcp_servers"):
         logger.warning(

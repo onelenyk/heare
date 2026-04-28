@@ -47,6 +47,16 @@ class ContextBuilder:
         self.settings = settings
         self.conversation_manager = conversation_manager
         self.speaker_gallery = speaker_gallery
+        self._mcp_descriptions: str | None = None
+        try:
+            from .mcp_utils import build_mcp_prompt_block, read_mcp_servers
+
+            servers = read_mcp_servers(settings.workspace_dir)
+            block = build_mcp_prompt_block(servers)
+            if block:
+                self._mcp_descriptions = block
+        except Exception:  # noqa: BLE001 — MCP discovery is best-effort
+            self._mcp_descriptions = None
 
     async def build(
         self,
@@ -135,6 +145,8 @@ class ContextBuilder:
             )
         else:
             result["recent_actions"] = "(none)"
+        if self._mcp_descriptions:
+            result["mcp_servers"] = self._mcp_descriptions
         return result
 
     def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:

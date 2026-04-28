@@ -25,12 +25,16 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Awaitable, Callable
 
+import httpx
+
 from .speaker_gallery import LabelValidationError, sanitize_label
 
 if TYPE_CHECKING:
     from .config import Settings
-    from .openrouter_cli import OpenRouterCLI
     from .speaker_gallery import SpeakerGallery
+
+
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 logger = logging.getLogger("heare.speaker_namer")
@@ -284,26 +288,33 @@ def maybe_build_namer(
         return None
     if gallery is None:
         return None
-    from .openrouter_cli import OpenRouterCLI
-
-    cli = OpenRouterCLI(
+    predictor = build_openrouter_predictor(
         api_key=openrouter_api_key,
         model=settings.speaker_namer_model,
         timeout=settings.speaker_namer_timeout_seconds,
     )
-    predictor = build_openrouter_predictor(cli, settings)
     return SpeakerNamer(gallery, settings, predictor, clock=clock)
 
 
 def build_openrouter_predictor(
-    openrouter_cli: "OpenRouterCLI",
-    settings: "Settings",
+    *,
+    api_key: str,
+    model: str,
+    timeout: float,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> PredictFn:
     """Return an async predictor that asks OpenRouter for a name guess.
 
-    The returned callable is safe: any network/parse failure yields
-    (None, 0.0) instead of raising, so SpeakerNamer.run() stays alive.
+    Issues a single non-streaming /chat/completions POST and reads
+    ``choices[0].message.content`` as JSON. Any network/parse failure
+    yields (None, 0.0) so SpeakerNamer.run() stays alive.
     """
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/onelenyk/heare",
+        "X-Title": "heare",
+    }
 
     async def _predict(speaker_id: str, utterances: list[str]) -> PredictResult:
         if not utterances:
@@ -316,18 +327,39 @@ def build_openrouter_predictor(
             f"Recent utterances:\n{numbered}\n\n"
             "Return the JSON now."
         )
-        chunks: list[str] = []
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": 200,
+        }
+        kwargs: dict = {"timeout": timeout}
+        if transport is not None:
+            kwargs["transport"] = transport
         try:
-            async for delta in openrouter_cli.generate(
-                prompt=user_prompt, system=_SYSTEM_PROMPT
-            ):
-                chunks.append(delta)
+            async with httpx.AsyncClient(**kwargs) as client:
+                resp = await client.post(
+                    _OPENROUTER_URL, json=payload, headers=headers
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "namer predictor: openrouter HTTP %d", resp.status_code
+                    )
+                    return None, 0.0
+                data = resp.json()
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
             logger.warning("namer predictor: openrouter call failed: %s", e)
             return None, 0.0
-        raw = "".join(chunks)
+        try:
+            raw = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            return None, 0.0
+        if not isinstance(raw, str):
+            return None, 0.0
         return _parse_prediction_json(raw)
 
     return _predict

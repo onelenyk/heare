@@ -52,12 +52,10 @@ async def test_turn_aggregator_with_conversation_manager(tmp_settings):
     mock_claude.version = AsyncMock(return_value="1.0.0")
 
     # Create conversation manager
-    conv_manager = ConversationManager(mock_store, mock_claude)
+    conv_manager = ConversationManager(mock_store)
 
     # Mock conversation manager methods
-    conv_manager.extract_topics = AsyncMock(return_value=["topic1", "topic2"])
     conv_manager.get_or_create_active = AsyncMock(return_value=1)
-    conv_manager.update_summary = AsyncMock()
 
     # Track callback invocations
     callback_called = False
@@ -72,10 +70,8 @@ async def test_turn_aggregator_with_conversation_manager(tmp_settings):
         """Callback when a turn completes."""
         nonlocal callback_called, callback_data
 
-        # Extract topics and update conversation
-        topics = await conv_manager.extract_topics(aggregated_text)
+        # Get conversation ID
         conv_id = await conv_manager.get_or_create_active()
-        await conv_manager.update_summary(conv_id, aggregated_text, topics)
 
         callback_called = True
         callback_data = {
@@ -83,7 +79,6 @@ async def test_turn_aggregator_with_conversation_manager(tmp_settings):
             "start_ts": turn_start_ts,
             "end_ts": turn_end_ts,
             "buffer": buffer,
-            "topics": topics,
             "conv_id": conv_id,
         }
 
@@ -107,13 +102,10 @@ async def test_turn_aggregator_with_conversation_manager(tmp_settings):
     # Verify callback was invoked
     assert callback_called
     assert callback_data["text"] == "First utterance"
-    assert callback_data["topics"] == ["topic1", "topic2"]
     assert callback_data["conv_id"] == 1
 
     # Verify conversation manager methods were called
-    conv_manager.extract_topics.assert_called_once_with("First utterance")
     conv_manager.get_or_create_active.assert_called_once()
-    conv_manager.update_summary.assert_called_once_with(1, "First utterance", ["topic1", "topic2"])
 
 
 @pytest.mark.asyncio
@@ -214,15 +206,10 @@ async def test_conversation_manager_integration_flow(tmp_settings):
     )
 
     # Create conversation manager
-    conv_manager = ConversationManager(mock_store, mock_claude)
+    conv_manager = ConversationManager(mock_store)
 
     # Simulate turn completion
     aggregated_text = "I need to check the weather forecast for tomorrow and then attend a calendar meeting about the new code debugging project"
-
-    # Extract topics
-    topics = await conv_manager.extract_topics(aggregated_text)
-    assert isinstance(topics, list)
-    assert len(topics) > 0
 
     # Get or create conversation
     mock_store.get_active_conversation = AsyncMock(return_value=None)
@@ -230,13 +217,7 @@ async def test_conversation_manager_integration_flow(tmp_settings):
     conv_id = await conv_manager.get_or_create_active()
     assert conv_id == 42
 
-    # Update summary - just verify it doesn't crash
-    # (The actual update_conversation_summary is a no-op mock since we're testing the flow)
-    try:
-        await conv_manager.update_summary(conv_id, aggregated_text, topics)
-        # If we get here without exception, the flow works
-        assert True
-    except Exception as e:
-        pytest.fail(f"update_summary raised exception: {e}")
+    # Verify conversation manager flow works
+    assert conv_id == 42
 
 

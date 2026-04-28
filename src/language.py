@@ -174,3 +174,61 @@ def detect_script_language(text: str) -> str:
     if latin / total > 0.5:
         return "latin"
     return "unknown"
+
+
+# ---------------------------------------------------------------------------
+# parse_yes_no — moved from src/decider.py for PH2-06's deletion phase.
+# Pure, head-anchored yes/no parser used by tests/test_yes_no.py and
+# generally useful for any future confirmation flow.
+
+# Vocative prefix stripped before head-matching so "гава так" → "так".
+_YN_VOCATIVES = re.compile(r"^\s*(гава|heare|гей)[\s,]+", re.IGNORECASE)
+_YN_YES_HEAD = re.compile(
+    r"^(так|да|ага|окей|ok|yes|yeah|sure|go|давай|зроби|вперед|конечно|красава)\b",
+    re.IGNORECASE,
+)
+_YN_NO_HEAD = re.compile(
+    r"^(ні|нет|не|nevermind|cancel|stop|skip|no|abort)\b",
+    re.IGNORECASE,
+)
+# "так не роби" — YES token immediately followed by "не" inverts to NO.
+_YN_YES_THEN_NE = re.compile(
+    r"^(так|да|ok|yes|давай|ага|окей)\s+не\b", re.IGNORECASE
+)
+# "не треба", "не зараз" — tail negation after YES head → NO.
+_YN_NEGATION_TAIL = re.compile(
+    r"\bне\s+(треба|потрібно|зараз|роби|хочу|робимо)\b", re.IGNORECASE
+)
+
+MAX_YES_NO_WORDS = 4  # utterances longer than this are dialogue, not confirmations
+
+
+def parse_yes_no(text: str) -> str:
+    """Return ``'yes'``, ``'no'``, or ``'unclear'``.
+
+    Head-anchored: the utterance must START with a yes/no token (after
+    optional vocative strip). Beyond ``MAX_YES_NO_WORDS`` words →
+    ``'unclear'``.
+    """
+    raw = text.strip().lower()
+    if not raw:
+        return "unclear"
+    cleaned = _YN_VOCATIVES.sub("", raw)
+    cleaned = re.sub(r"[\.,\!\?]+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if not cleaned:
+        return "unclear"
+    words = cleaned.split()
+    if len(words) > MAX_YES_NO_WORDS:
+        return "unclear"
+    if cleaned == "не":
+        return "no"
+    if _YN_NO_HEAD.match(cleaned):
+        return "no"
+    if _YN_YES_HEAD.match(cleaned):
+        if _YN_YES_THEN_NE.match(cleaned):
+            return "no"
+        if _YN_NEGATION_TAIL.search(cleaned):
+            return "no"
+        return "yes"
+    return "unclear"
