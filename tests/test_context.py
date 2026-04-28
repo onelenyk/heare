@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config import load_settings
+from src.config import Settings, load_settings
 from src.context import ContextBuilder
 from src.storage import TranscriptStore
 
@@ -307,12 +307,12 @@ async def test_conversation_context_rendering(store: TranscriptStore) -> None:
 
 
 async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) -> None:
-    """Phase 2.2: bfg now returns 11 keys (5 original + 4 conversation projected
-    from build() + 1 new recent_actions + 1 user_language)."""
+    """Phase 2.2: bfg returns the canonical-key superset; ``mcp_servers``
+    appears optionally when MCP servers are configured in the workspace."""
     settings = load_settings()
     ctx = ContextBuilder(store, settings)
     result = await ctx.build_for_generator(transcript="як справи?", persona="Ти Heare.")
-    assert set(result.keys()) == {
+    required = {
         "time",
         "timezone",
         "persona",
@@ -325,6 +325,9 @@ async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) 
         "recent_actions",
         "user_language",
     }
+    optional = {"mcp_servers"}
+    assert required <= set(result.keys())
+    assert set(result.keys()) - required <= optional
     assert result["persona"] == "Ти Heare."
     assert result["transcript"] == "як справи?"
     # With no conversation_manager, recent_actions is "(none)"
@@ -351,11 +354,10 @@ async def test_build_for_generator_user_language_mapping(store: TranscriptStore)
 
 async def test_build_for_generator_recent_actions_formatting(store: TranscriptStore) -> None:
     """recent_actions reflects ConversationManager._action_log entries."""
-    from unittest.mock import MagicMock
     from src.conversation import ConversationManager
 
     settings = load_settings()
-    mgr = ConversationManager(store, MagicMock())
+    mgr = ConversationManager(store)
     mgr.record_action_pending(1, "bash", "echo hi")
     mgr.record_action_result(1, "ran: echo hi")
     mgr.record_action_pending(2, "search", "rates")
@@ -372,11 +374,10 @@ async def test_build_for_generator_recent_actions_formatting(store: TranscriptSt
 
 async def test_build_for_generator_recent_actions_limit(store: TranscriptStore) -> None:
     """Formatter shows at most 5 entries."""
-    from unittest.mock import MagicMock
     from src.conversation import ConversationManager
 
     settings = load_settings()
-    mgr = ConversationManager(store, MagicMock())
+    mgr = ConversationManager(store)
     for i in range(1, 9):  # 8 entries
         mgr.record_action_pending(i, "bash", f"cmd{i}")
 
@@ -393,11 +394,10 @@ async def test_format_recent_actions_keeps_web_search_content(
 ) -> None:
     """web_search results must survive past the 80-char truncation cap so the
     generator can answer follow-ups from prior search content."""
-    from unittest.mock import MagicMock
     from src.conversation import ConversationManager
 
     settings = load_settings()
-    mgr = ConversationManager(store, MagicMock())
+    mgr = ConversationManager(store)
     long_recipe = (
         "Chili Recipe\nBrown beef with onion and garlic, then add chili powder, "
         "cumin, tomatoes, and beans; simmer twenty minutes. " * 8
@@ -422,11 +422,10 @@ async def test_format_recent_actions_truncates_other_tools(
     store: TranscriptStore,
 ) -> None:
     """Non-web tools stay capped at the 80-char tail to keep prompts tight."""
-    from unittest.mock import MagicMock
     from src.conversation import ConversationManager
 
     settings = load_settings()
-    mgr = ConversationManager(store, MagicMock())
+    mgr = ConversationManager(store)
     long_output = "x" * 200
     mgr.record_action_pending(1, "bash", "cat huge")
     mgr.record_action_result(1, long_output)
@@ -447,11 +446,10 @@ async def test_format_recent_actions_items_first_for_web_search(
 ) -> None:
     """When a web_search entry has structured `items`, render numbered
     1./2./3. blocks from items, NOT the legacy `result` blob."""
-    from unittest.mock import MagicMock
     from src.conversation import ConversationManager
 
     settings = load_settings()
-    mgr = ConversationManager(store, MagicMock())
+    mgr = ConversationManager(store)
     items = [
         {"n": 1, "title": "Recipe One", "url": "https://e.com/1", "snippet": "First recipe."},
         {"n": 2, "title": "Recipe Two", "url": "https://e.com/2", "snippet": "Second recipe."},
@@ -476,11 +474,10 @@ async def test_format_recent_actions_truncates_long_items_tail_first(
     """5 items × ~250-char snippets exceed 1800 chars → tail is dropped
     and a '(N more items truncated)' suffix is appended. Total length
     must remain <= 1800 chars (per AC)."""
-    from unittest.mock import MagicMock
     from src.conversation import ConversationManager
 
     settings = load_settings()
-    mgr = ConversationManager(store, MagicMock())
+    mgr = ConversationManager(store)
     # Each item is ~520 chars (440 snippet + title + url + numbering); 5
     # items joined by blank lines = ~2600 chars, well over the 1800 cap.
     snippet = "lorem ipsum dolor sit amet " * 16  # ~432 chars
@@ -511,11 +508,10 @@ async def test_format_recent_actions_falls_back_to_result_when_no_items(
 ) -> None:
     """Entry with `result` only (no `items`) hits the legacy fallback path
     — substring of `result` appears in the output."""
-    from unittest.mock import MagicMock
     from src.conversation import ConversationManager
 
     settings = load_settings()
-    mgr = ConversationManager(store, MagicMock())
+    mgr = ConversationManager(store)
     legacy_blob = "Legacy result blob. Brown beef, simmer twenty minutes."
     mgr.record_action_pending(1, "web_search", "chili recipe")
     mgr.record_action_result(1, legacy_blob)  # no items=
@@ -547,3 +543,50 @@ async def test_context_builder_keys_accounted_for(store: TranscriptStore) -> Non
         "the generator prompt (add to generator view) or is intentionally "
         "excluded (add to _EXCLUDED_FROM_GENERATOR_CTX)."
     )
+
+
+# ---------------------------------------------------------------------------
+# MCP server injection (architect HIGH fix): post-cutover ContextBuilder
+# must surface MCP server descriptions to the system prompt so the LLM
+# knows the mcp__<server>__* tools exist.
+
+
+async def test_build_for_generator_injects_mcp_servers(
+    store: TranscriptStore, tmp_path
+) -> None:
+    """When workspace_dir/.mcp.json defines servers, build_for_generator
+    surfaces ``mcp_servers`` in the result dict."""
+    import json as _json
+
+    settings = Settings()
+    settings.workspace_dir = tmp_path
+    (tmp_path / ".mcp.json").write_text(
+        _json.dumps(
+            {
+                "mcpServers": {
+                    "memory": {"description": "long-term notes"},
+                    "filesystem": {"description": "fs access"},
+                }
+            }
+        )
+    )
+
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build_for_generator(transcript="hi", persona="p")
+    assert "mcp_servers" in result
+    assert "memory" in result["mcp_servers"]
+    assert "filesystem" in result["mcp_servers"]
+    assert "mcp__memory__*" in result["mcp_servers"]
+
+
+async def test_build_for_generator_omits_mcp_servers_when_none(
+    store: TranscriptStore, tmp_path
+) -> None:
+    """When no .mcp.json (or empty servers), the key is absent from the
+    result so the system-prompt block stays untriggered."""
+    settings = Settings()
+    settings.workspace_dir = tmp_path  # no .mcp.json file in tmp dir
+
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build_for_generator(transcript="hi", persona="p")
+    assert "mcp_servers" not in result

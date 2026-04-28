@@ -10,7 +10,6 @@ import httpx
 import pytest
 
 from src.config import Settings
-from src.openrouter_cli import OpenRouterCLI
 from src.speaker_namer import (
     SpeakerNamer,
     TurnRecord,
@@ -301,29 +300,27 @@ async def test_run_does_not_retrigger_without_new_turns() -> None:
 # ---------- OpenRouter predictor adapter ----------
 
 
-def _sse_bytes(text_chunks: list[str]) -> bytes:
-    lines: list[str] = []
-    for c in text_chunks:
-        ev = {"choices": [{"delta": {"content": c}}]}
-        lines.append("data: " + json.dumps(ev))
-        lines.append("")
-    lines.append("data: [DONE]")
-    lines.append("")
-    return ("\n".join(lines) + "\n").encode()
+def _completion(content: str) -> bytes:
+    body = {"choices": [{"message": {"role": "assistant", "content": content}}]}
+    return json.dumps(body).encode()
 
 
-def _cli(handler) -> OpenRouterCLI:
-    return OpenRouterCLI(api_key="k", model="m", transport=httpx.MockTransport(handler))
+def _build_predict(handler):
+    return build_openrouter_predictor(
+        api_key="k",
+        model="m",
+        timeout=5.0,
+        transport=httpx.MockTransport(handler),
+    )
 
 
 async def test_predictor_valid_response() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(
-            200, content=_sse_bytes(['{"name": "Alice", ', '"confidence": 0.87}'])
+            200, content=_completion('{"name": "Alice", "confidence": 0.87}')
         )
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     name, conf = await predict("guest_01", ["hi", "I'm Alice"])
     assert name == "Alice"
     assert conf == pytest.approx(0.87)
@@ -332,11 +329,10 @@ async def test_predictor_valid_response() -> None:
 async def test_predictor_null_name() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(
-            200, content=_sse_bytes(['{"name": null, "confidence": 0.3}'])
+            200, content=_completion('{"name": null, "confidence": 0.3}')
         )
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     name, conf = await predict("guest_01", ["hi"])
     assert name is None
     assert conf == 0.0
@@ -344,10 +340,9 @@ async def test_predictor_null_name() -> None:
 
 async def test_predictor_malformed_json() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=_sse_bytes(["not json at all"]))
+        return httpx.Response(200, content=_completion("not json at all"))
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     assert await predict("guest_01", ["hi"]) == (None, 0.0)
 
 
@@ -355,8 +350,7 @@ async def test_predictor_http_error() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="server oops")
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     assert await predict("guest_01", ["hi"]) == (None, 0.0)
 
 
@@ -365,22 +359,20 @@ async def test_predictor_label_sanitization() -> None:
         # A newline (control char) should trip sanitize_label → (None, 0.0)
         return httpx.Response(
             200,
-            content=_sse_bytes(['{"name": "Alice\\nEvil", "confidence": 0.95}']),
+            content=_completion('{"name": "Alice\\nEvil", "confidence": 0.95}'),
         )
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     assert await predict("guest_01", ["hi"]) == (None, 0.0)
 
 
 async def test_predictor_confidence_clamped() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(
-            200, content=_sse_bytes(['{"name": "Bob", "confidence": 2.5}'])
+            200, content=_completion('{"name": "Bob", "confidence": 2.5}')
         )
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     name, conf = await predict("guest_01", ["hi"])
     assert name == "Bob"
     assert conf == 1.0
@@ -388,10 +380,9 @@ async def test_predictor_confidence_clamped() -> None:
 
 async def test_predictor_missing_field() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=_sse_bytes(['{"name": "Alice"}']))
+        return httpx.Response(200, content=_completion('{"name": "Alice"}'))
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     assert await predict("guest_01", ["hi"]) == (None, 0.0)
 
 
@@ -399,17 +390,14 @@ async def test_predictor_prose_wrapped_json() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
-            content=_sse_bytes(
-                [
-                    'Based on the context, my answer is: ',
-                    '{"name": "Charlie", "confidence": 0.82}',
-                    ". Done.",
-                ]
+            content=_completion(
+                'Based on the context, my answer is: '
+                '{"name": "Charlie", "confidence": 0.82}'
+                ". Done."
             ),
         )
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     name, conf = await predict("guest_01", ["hi", "I'm Charlie"])
     assert name == "Charlie"
     assert conf == pytest.approx(0.82)
@@ -420,8 +408,7 @@ async def test_predictor_empty_utterances() -> None:
     def handler(_req: httpx.Request) -> httpx.Response:
         raise AssertionError("predictor should not call OpenRouter for empty input")
 
-    cli = _cli(handler)
-    predict = build_openrouter_predictor(cli, _settings())
+    predict = _build_predict(handler)
     assert await predict("guest_01", []) == (None, 0.0)
 
 

@@ -9,12 +9,16 @@ import pytest
 
 from src.config import Settings, Mode
 from src.watch import (
+    _activity_table,
+    _bot_table,
     _counts,
     _current_mode,
     _daemon_status,
+    _did_table,
     _fmt_time,
     _open_db,
     _truncate,
+    _you_table,
 )
 from src.storage import SCHEMA
 
@@ -130,9 +134,7 @@ def test_counts_empty_db() -> None:
         finally:
             con.close()
     assert counts["transcripts"] == 0
-    assert counts["decisions"] == 0
     assert counts["actions"] == 0
-    assert counts["heartbeats"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -159,9 +161,8 @@ def test_open_db_missing_file() -> None:
 
 
 # ---------------------------------------------------------------------------
-# RT-004: _progress_panel + layout rewire
+# Helper to flatten Rich panels for testing
 # ---------------------------------------------------------------------------
-
 
 def _rich_text(panel) -> str:
     """Flatten a Rich Panel into plain text for substring assertions."""
@@ -170,138 +171,6 @@ def _rich_text(panel) -> str:
     console = _Console(width=200, record=True, force_terminal=False, color_system=None)
     console.print(panel)
     return console.export_text()
-
-
-def test_progress_panel_handles_none_con() -> None:
-    from src.watch import _progress_panel
-
-    panel = _progress_panel(None)
-    # Must not raise, must render the "no progress yet" placeholder
-    text = _rich_text(panel)
-    assert "no progress yet" in text
-
-
-def test_progress_panel_renders_empty_when_no_events() -> None:
-    from src.watch import _progress_panel
-
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "heare.db"
-        _create_schema(db_path)
-        con = sqlite3.connect(str(db_path))
-        try:
-            panel = _progress_panel(con)
-        finally:
-            con.close()
-    text = _rich_text(panel)
-    assert "no progress yet" in text
-
-
-def test_progress_panel_renders_events_in_chronological_order() -> None:
-    """Seed 5 events at strictly increasing ts, assert the rendered panel
-    lists them in chronological order (oldest first, newest last)."""
-    from src.watch import _progress_panel
-
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "heare.db"
-        _create_schema(db_path)
-        con_rw = sqlite3.connect(str(db_path))
-        base = 1700000000.0
-        kinds = [
-            "decider.start",
-            "decider.done",
-            "action.armed",
-            "action.executing",
-            "action.done",
-        ]
-        for i, kind in enumerate(kinds):
-            con_rw.execute(
-                "INSERT INTO events (ts, kind, transcript_id, decision_id, payload_json) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (base + i, kind, None, None, None),
-            )
-        con_rw.commit()
-        con_rw.close()
-
-        con = sqlite3.connect(str(db_path))
-        try:
-            panel = _progress_panel(con)
-        finally:
-            con.close()
-
-    text = _rich_text(panel)
-    # Each kind should appear, and the earlier ones should show up BEFORE
-    # the later ones in the rendered text (chronological order).
-    for k in kinds:
-        assert k in text
-    pos = [text.index(k) for k in kinds]
-    assert pos == sorted(pos), f"events out of order: {pos}"
-
-
-def test_progress_panel_color_codes_kind_families() -> None:
-    """_progress_panel must color-code rows by kind family. We don't assert
-    raw ANSI codes; we assert that the three families render as three
-    distinct styled segments."""
-    from src.watch import _progress_panel
-
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "heare.db"
-        _create_schema(db_path)
-        con_rw = sqlite3.connect(str(db_path))
-        rows = [
-            (1.0, "decider.start"),   # cyan
-            (2.0, "action.error"),    # red
-            (3.0, "state.listening"), # dim
-        ]
-        for ts, kind in rows:
-            con_rw.execute(
-                "INSERT INTO events (ts, kind, transcript_id, decision_id, payload_json) "
-                "VALUES (?, ?, NULL, NULL, NULL)",
-                (ts, kind),
-            )
-        con_rw.commit()
-        con_rw.close()
-
-        con = sqlite3.connect(str(db_path))
-        try:
-            panel = _progress_panel(con)
-        finally:
-            con.close()
-
-    # The panel should have 3 Text children inside the Group renderable.
-    from rich.console import Group as _Group
-
-    assert isinstance(panel.renderable, _Group)
-    text_lines = [r for r in panel.renderable.renderables if hasattr(r, "style")]
-    styles = [str(t.style) for t in text_lines]
-    # Each of the three kinds maps to a distinct style.
-    assert "cyan" in styles
-    assert "red" in styles
-    assert "dim" in styles
-
-
-def test_build_layout_includes_progress_and_log() -> None:
-    """_build_layout must expose both 'progress' and 'log' named layouts
-    plus the existing 'header' and 'body'."""
-    from src.watch import _build_layout
-
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "heare.db"
-        _create_schema(db_path)
-        settings = _make_settings(tmp, db_path=db_path)
-        layout = _build_layout(settings)
-
-    # Walk layout children and confirm the expected names
-    def _names(layout_obj) -> set[str]:
-        out = {layout_obj.name} if layout_obj.name else set()
-        for child in getattr(layout_obj, "children", []) or []:
-            out |= _names(child)
-        return out
-
-    names = _names(layout)
-    assert "header" in names
-    assert "body" in names
-    assert "progress" in names
-    assert "log" in names
 
 
 def test_watch_cli_default_interval_is_half_second() -> None:
@@ -315,46 +184,31 @@ def test_watch_cli_default_interval_is_half_second() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Phase B-0: 3-column body (You / Heare said / Heare did)
+# Pipecat-native: 2-column body (You / Heare did) + Recent Activity panel
 # ---------------------------------------------------------------------------
 
 
-def _seed_three_column_sample(db_path: Path) -> None:
-    """Populate transcripts / decisions / actions with one turn worth of rows."""
+def _seed_pipecat_native_sample(db_path: Path) -> None:
+    """Populate transcripts / actions with one turn worth of rows."""
     con = sqlite3.connect(str(db_path))
     con.executescript(SCHEMA)
     # transcript
     con.execute(
         "INSERT INTO transcripts (ts, text, mode) VALUES (1.0, 'запусти echo hi', 'ambient')"
     )
-    # decisions: speak (reply), act (intent), speak (result)
+    # action row with new schema (intent_id, tool, args)
     con.execute(
-        "INSERT INTO decisions (ts, transcript_id, type, reply)"
-        " VALUES (2.0, 1, 'speak', 'Додам зараз.')"
-    )
-    con.execute(
-        "INSERT INTO decisions (ts, transcript_id, type, intent, action_json)"
-        " VALUES (3.0, 1, 'act', 'bash', '{\"tool\":\"bash\",\"args\":\"echo hi\"}')"
-    )
-    con.execute(
-        "INSERT INTO decisions (ts, transcript_id, type, reply)"
-        " VALUES (4.0, 1, 'speak', 'ran: echo hi')"
-    )
-    # action row linked to the act decision (id=2)
-    con.execute(
-        "INSERT INTO actions (ts, decision_id, status, result_summary)"
-        " VALUES (5.0, 2, 'ok', 'ran: echo hi')"
+        "INSERT INTO actions (ts, intent_id, tool, args, status, result_summary)"
+        " VALUES (2.0, 'intent_123', 'bash', 'echo hi', 'ok', 'ran: echo hi')"
     )
     con.commit()
     con.close()
 
 
 def test_you_table_shows_user_transcripts() -> None:
-    from src.watch import _you_table
-
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "heare.db"
-        _seed_three_column_sample(db_path)
+        _seed_pipecat_native_sample(db_path)
         con = sqlite3.connect(str(db_path))
         try:
             table = _you_table(con)
@@ -370,8 +224,6 @@ def test_you_table_shows_user_transcripts() -> None:
 
 
 def test_you_table_shows_speaker_labels() -> None:
-    from src.watch import _you_table
-
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "heare.db"
         _create_schema(db_path)
@@ -398,34 +250,11 @@ def test_you_table_shows_speaker_labels() -> None:
     assert "guest_01" not in text  # gallery label wins over raw id
 
 
-def test_said_table_shows_only_speak_decisions() -> None:
-    """US-B0-04: the 'Heare said' column must NOT include act rows."""
-    from src.watch import _said_table
-
+def test_did_table_shows_tool_and_args() -> None:
+    """Pipecat-native: 'Heare did' column must show status + tool + args + result_summary."""
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "heare.db"
-        _seed_three_column_sample(db_path)
-        con = sqlite3.connect(str(db_path))
-        try:
-            table = _said_table(con)
-        finally:
-            con.close()
-
-    text = _rich_text(table)
-    assert "🗣️" in text or "Heare said" in text
-    assert "Додам зараз." in text
-    assert "ran: echo hi" in text  # the action result speech
-    # No intent token should appear — it's filtered by type='speak'
-    assert "bash" not in text
-
-
-def test_did_table_joins_actions_with_act_decisions() -> None:
-    """US-B0-04: the 'Heare did' column must show status + tool + result_summary."""
-    from src.watch import _did_table
-
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "heare.db"
-        _seed_three_column_sample(db_path)
+        _seed_pipecat_native_sample(db_path)
         con = sqlite3.connect(str(db_path))
         try:
             table = _did_table(con)
@@ -433,19 +262,58 @@ def test_did_table_joins_actions_with_act_decisions() -> None:
             con.close()
 
     text = _rich_text(table)
-    assert "Heare did" in text
-    assert "ok" in text
+    assert "Heare did" in text or "⚙️" in text
+    assert "ok" in text  # status
     assert "bash" in text  # tool column
+    assert "echo hi" in text  # args column
     assert "ran: echo hi" in text  # result_summary
 
 
-def test_build_layout_has_three_body_columns() -> None:
-    """US-B0-04: the body splits into three named columns (you / said / did)."""
+def test_activity_table_merges_transcripts_and_actions() -> None:
+    """Recent Activity panel must show transcripts and actions in chronological order."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con_rw = sqlite3.connect(str(db_path))
+        base = 1700000000.0
+        # Add 3 transcripts
+        for i in range(3):
+            con_rw.execute(
+                "INSERT INTO transcripts (ts, text, mode) VALUES (?, ?, ?)",
+                (base + i, f"transcript {i}", "ambient"),
+            )
+        # Add 3 actions
+        for i in range(3):
+            con_rw.execute(
+                "INSERT INTO actions (ts, intent_id, tool, args, status, result_summary) VALUES (?, ?, ?, ?, ?, ?)",
+                (base + i + 0.5, f"intent_{i}", "bash", f"echo {i}", "ok", f"ran {i}"),
+            )
+        con_rw.commit()
+        con_rw.close()
+
+        con = sqlite3.connect(str(db_path))
+        try:
+            table = _activity_table(con)
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "Recent Activity" in text or "📋" in text
+    # Should show both transcripts and actions
+    assert "transcript 0" in text
+    assert "echo 0" in text
+    # Should show type labels
+    assert "You" in text or "🧑" in text
+    assert "Did" in text or "⚙️" in text
+
+
+def test_build_layout_has_activity_and_three_body_columns() -> None:
+    """Pipecat-native: layout has 'activity' and 3-column body (you / bot / did)."""
     from src.watch import _build_layout
 
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "heare.db"
-        _seed_three_column_sample(db_path)
+        _seed_pipecat_native_sample(db_path)
         settings = _make_settings(tmp, db_path=db_path)
         layout = _build_layout(settings)
 
@@ -456,27 +324,27 @@ def test_build_layout_has_three_body_columns() -> None:
         return out
 
     names = _names(layout)
-    assert {"you", "said", "did"}.issubset(names)
+    assert "activity" in names
+    assert {"you", "bot", "did"}.issubset(names)
+    # Old panels should NOT exist
+    assert "said" not in names
+    assert "progress" not in names
 
 
 def test_empty_tables_render_none_yet_placeholders() -> None:
-    """An empty DB still renders the three columns with placeholder rows."""
-    from src.watch import _you_table, _said_table, _did_table
-
+    """An empty DB still renders the two columns with placeholder rows."""
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "heare.db"
         _create_schema(db_path)
         con = sqlite3.connect(str(db_path))
         try:
             you = _rich_text(_you_table(con))
-            said = _rich_text(_said_table(con))
             did = _rich_text(_did_table(con))
         finally:
             con.close()
 
-    assert "none yet" in you
-    assert "none yet" in said
-    assert "none yet" in did
+    assert "none yet" in you.lower() or "no activity" in you.lower()
+    assert "none yet" in did.lower() or "no activity" in did.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -504,7 +372,92 @@ def test_tools_table_shows_execution_kind() -> None:
     assert "workflow" in rendered
 
 
-def test_build_layout_includes_tools_panel() -> None:
+# ---------------------------------------------------------------------------
+# Bot response logging (BOTLOG-01 through BOTLOG-04)
+# ---------------------------------------------------------------------------
+
+
+def test_bot_table_renders_assistant_responses() -> None:
+    """_bot_table should show transcripts where speaker_id='bot'."""
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            # Add a user transcript (should be filtered out)
+            con.execute(
+                "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
+                (1000.0, "hello", "ambient", "owner"),
+            )
+            # Add bot responses (should be shown)
+            con.execute(
+                "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
+                (1001.0, "Hello! How can I help?", "assistant", "bot"),
+            )
+            con.execute(
+                "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
+                (1002.0, "I can assist you with that.", "assistant", "bot"),
+            )
+            con.commit()
+            table = _bot_table(con)
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "Bot said" in text or "🗣️" in text
+    assert "Hello! How can I help?" in text
+    assert "I can assist you with that." in text
+    # User transcript should NOT appear
+    assert "hello" not in text
+
+
+def test_bot_table_handles_empty_db() -> None:
+    """_bot_table should show placeholder when no bot responses exist."""
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            table = _bot_table(con)
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "none yet" in text.lower() or "no activity" in text.lower()
+
+
+def test_you_table_filters_bot_responses() -> None:
+    """_you_table should NOT show transcripts where speaker_id='bot'."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "heare.db"
+        _create_schema(db_path)
+        con = sqlite3.connect(str(db_path))
+        try:
+            # Add user transcript
+            con.execute(
+                "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
+                (1000.0, "user message", "ambient", "owner"),
+            )
+            # Add bot response (should be filtered out)
+            con.execute(
+                "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
+                (1001.0, "bot response", "assistant", "bot"),
+            )
+            con.commit()
+            table = _you_table(con)
+        finally:
+            con.close()
+
+    text = _rich_text(table)
+    assert "user message" in text
+    # Bot response should NOT appear in You table
+    assert "bot response" not in text
+
+
+def test_build_layout_has_three_column_body() -> None:
+    """Layout should have 3-column body: you, bot, did."""
     from src.watch import _build_layout
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -519,4 +472,9 @@ def test_build_layout_includes_tools_panel() -> None:
             out |= _names(child)
         return out
 
-    assert "tools" in _names(layout)
+    names = _names(layout)
+    assert {"you", "bot", "did"}.issubset(names)
+    # Old panels should NOT exist
+    assert "said" not in names
+    assert "progress" not in names
+

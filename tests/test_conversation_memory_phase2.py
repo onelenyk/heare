@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,7 +18,7 @@ async def mgr():
         store = TranscriptStore(db)
         await store.init()
         try:
-            yield ConversationManager(store, MagicMock())
+            yield ConversationManager(store)
         finally:
             await store.close()
 

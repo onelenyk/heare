@@ -1,52 +1,219 @@
-"""Pipecat pipeline assembly.
+"""Pipecat-native pipeline assembly.
 
-Pipecat imports are deferred inside build_pipeline so admin CLI paths work
-without portaudio installed.
+Pipeline shape (top-level):
 
-Phase 2.1: single generator pipeline; `generator_mode` flag retired.
+    transport.input
+      → [optional speaker_buffer]
+      → stt
+      → stt_error_observer
+      → [optional speaker_tagger]
+      → TranscriptionGateProcessor      (PH2-01)
+      → user_aggregator                 (LLMContextAggregatorPair.user())
+      → OpenRouterLLMService            (Pipecat-native LLM)
+      → tts
+      → AssistantResponseProcessor      (BOTLOG-02)
+      → [optional sound_cue_processor]
+      → transport.output
+      → assistant_aggregator            (LLMContextAggregatorPair.assistant())
+
+The LLMContext is built with the ToolsSchema from ``src.llm_tools``
+(13 enabled tools). Tool execution flows through Pipecat's native
+register_function handlers — the legacy two-stage intent-tag
+machinery has been removed.
+
+Pipecat imports are deferred so admin CLI paths import this module
+without portaudio. ``build_pipeline`` is the production
+entry point; ``_assemble_native_stages`` is the pure stage-list
+builder, exposed for unit testing without portaudio mock state.
 """
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Tuple
 
+from .assistant_response_logger import create_assistant_response_logger
+from .mute_gate import create_input_mute_gate, create_mute_gate
 from .config import Settings
+from .language_state import LanguageState
+from .llm_context_injector import (
+    create_system_prompt_injector,
+    render_native_system_prompt,
+)
+from .llm_tools import build_tools_schema, register_all_tools
+from .transcription_gate import create_transcription_gate
 from .tts_cache import TTSCache
 from .tts_edge import create_edge_tts_service
 
 if TYPE_CHECKING:
-    from .actions import IntentQueue
-    from .claude_backend_common import ClaudeBackend
     from .context import ContextBuilder
-    from .openrouter_cli import OpenRouterCLI
     from .storage import TranscriptStore
 
 
-logger = logging.getLogger("heare.pipeline")
+logger = logging.getLogger("heare.pipeline_native")
+
+
+def _build_system_prompt(persona: str, language: str) -> str:
+    """Construction-time system message — minimal, no conversation context.
+
+    The pipeline-native graph also wires a ``SystemPromptInjector``
+    (PH2-07) that rebuilds this prompt with the full ``ContextBuilder``
+    output (recent transcripts, conversation memory, action log, MCP
+    descriptions) for every user turn. This function is only used to
+    seed the LLMContext at construction time before any utterance has
+    arrived. Tests cover both the seed shape and the per-turn rebuild
+    path independently.
+    """
+    return render_native_system_prompt(
+        persona=persona, context=None, language=language
+    )
+
+
+def _wire_language_state(
+    state: LanguageState,
+    llm_context: Any,
+    persona: str,
+) -> None:
+    """Update the LLMContext's first system message whenever the
+    LanguageState changes. The user_aggregator reads the same context
+    object, so the next LLM turn picks up the new system prompt without
+    any explicit ``LLMUpdateSettingsFrame`` push.
+    """
+
+    def _on_language_change(new_lang: str) -> None:
+        try:
+            messages = llm_context.get_messages()
+        except Exception:
+            messages = getattr(llm_context, "_messages", None)
+            if messages is None:
+                logger.warning(
+                    "pipeline_native: language listener could not access "
+                    "LLMContext messages; skipping update"
+                )
+                return
+        new_system = _build_system_prompt(persona, new_lang)
+        for i, msg in enumerate(messages):
+            if isinstance(msg, dict) and msg.get("role") == "system":
+                messages[i] = {"role": "system", "content": new_system}
+                logger.info(
+                    "[LLM SYSTEM PROMPT REWRITE] lang=%s", new_lang
+                )
+                return
+        # No system message yet — prepend.
+        messages.insert(
+            0, {"role": "system", "content": new_system}
+        )
+        logger.info(
+            "[LLM SYSTEM PROMPT INSERT] lang=%s (no prior system message)",
+            new_lang,
+        )
+
+    state.set_change_listener(_on_language_change)
+
+
+def _assemble_native_stages(
+    *,
+    transport_input: Any,
+    transport_output: Any,
+    stt: Any,
+    stt_error_observer: Any,
+    transcription_gate: Any,
+    user_aggregator: Any,
+    llm_service: Any,
+    tts: Any,
+    assistant_response_logger: Any = None,
+    tts_fade_observer: Any = None,
+    assistant_aggregator: Any,
+    system_prompt_injector: Any = None,
+    speaker_buffer: Any = None,
+    speaker_tagger: Any = None,
+    sound_cue_processor: Any = None,
+    mute_gate: Any = None,
+    input_mute_gate: Any = None,
+) -> list:
+    """Pure stage-list assembly, factored out for unit testing.
+
+    When supplied, ``system_prompt_injector`` (PH2-07) sits between
+    the ``transcription_gate`` and the ``user_aggregator`` so it can
+    rebuild the LLMContext's system message before the LLM sees the
+    user turn. ``assistant_response_logger`` (BOTLOG-02) sits after
+    the TTS service to intercept TTSAudioRawFrame and log only bot
+    responses that are actually spoken (audio playing). ``tts_fade_observer``
+    (PH2-05) sits immediately after the TTS service so any ``InterruptionFrame``
+    propagating in either direction triggers the 50ms fade-out hook on the TTS service.
+    """
+    stages: list = [transport_input]
+    # input_mute_gate sits as early as possible so muted mic audio is dropped
+    # before STT (and any speaker buffering) runs.
+    if input_mute_gate is not None:
+        stages.append(input_mute_gate)
+    if speaker_buffer is not None:
+        stages.append(speaker_buffer)
+    stages.extend([stt, stt_error_observer])
+    if speaker_tagger is not None:
+        stages.append(speaker_tagger)
+    stages.append(transcription_gate)
+    if system_prompt_injector is not None:
+        stages.append(system_prompt_injector)
+    stages.extend([user_aggregator, llm_service])
+    # assistant_response_logger sits BETWEEN llm_service and tts so it can
+    # observe LLMFullResponseStartFrame / LLMTextFrame / LLMFullResponseEndFrame
+    # before TTS consumes them — EdgeTTSService never emits TTSTextFrame, so
+    # capture must happen on the LLM side.
+    if assistant_response_logger is not None:
+        stages.append(assistant_response_logger)
+    stages.append(tts)
+    if tts_fade_observer is not None:
+        stages.append(tts_fade_observer)
+    if sound_cue_processor is not None:
+        stages.append(sound_cue_processor)
+    if mute_gate is not None:
+        stages.append(mute_gate)
+    stages.extend([transport_output, assistant_aggregator])
+    return stages
 
 
 async def build_pipeline(
     settings: Settings,
-    claude_cli: "ClaudeBackend",
     store: "TranscriptStore",
     context_builder: "ContextBuilder",
-    openrouter_cli: "OpenRouterCLI",
     persona: str = "",
-    intent_queue: "IntentQueue | None" = None,
-    conversation_manager: Any = None,
     *,
+    conversation_manager: Any = None,
     speaker_gallery: Any = None,
     speaker_model: Any = None,
     namer_enqueue: Any = None,
-) -> Tuple[object, object, object, object]:
-    from pipecat.audio.vad.silero import SileroVADAnalyzer
+) -> Tuple[object, object, object, object, object, object]:
+    """Build the Pipecat-native pipeline.
+
+    Returns
+    -------
+    (task, transcription_gate, tts_cache, indication, llm_service, language_state)
+
+    The ``transcription_gate`` replaces the legacy ``processor`` slot
+    in the return tuple — main.py will be updated alongside PH2-06.
+    """
+    # ------------------------------------------------------------------
+    # Pipecat imports (deferred for admin-CLI compatibility)
+    # ------------------------------------------------------------------
+    from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
     from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
         LocalSmartTurnAnalyzerV3,
     )
+    from pipecat.audio.vad.silero import SileroVADAnalyzer
+    from pipecat.audio.vad.vad_analyzer import VADParams
+    from pipecat.frames.frames import ErrorFrame
     from pipecat.pipeline.pipeline import Pipeline
     from pipecat.pipeline.task import PipelineParams, PipelineTask
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    from pipecat.processors.aggregators.llm_response_universal import (
+        LLMContextAggregatorPair,
+    )
+    from pipecat.processors.frame_processor import (
+        FrameProcessor as _FP,
+    )
     from pipecat.services.groq.stt import GroqSTTService
+    from pipecat.services.openrouter.llm import OpenRouterLLMService
+    from pipecat.transcriptions.language import Language
     from pipecat.transports.local.audio import (
         LocalAudioTransport,
         LocalAudioTransportParams,
@@ -56,35 +223,35 @@ async def build_pipeline(
         raise RuntimeError(
             "GROQ_API_KEY is not set — copy .env.example to .env and fill it in"
         )
+    if not settings.openrouter_api_key:
+        raise RuntimeError(
+            "OPENROUTER_API_KEY is not set — required for the Pipecat-native LLM service"
+        )
 
-    from pipecat.audio.vad.vad_analyzer import VADParams
-    from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
-
-    # VAD waits 0.5s of silence before declaring end-of-speech. Compromise
-    # between latency (was 1.0s default) and Groq STT rate-limit pressure.
+    # ------------------------------------------------------------------
+    # Audio + STT + TTS (mostly identical to legacy build_pipeline)
+    # ------------------------------------------------------------------
     vad = SileroVADAnalyzer(
-        params=VADParams(stop_secs=0.5, start_secs=0.3, confidence=0.7, min_volume=0.6)
+        params=VADParams(
+            stop_secs=0.5, start_secs=0.3, confidence=0.7, min_volume=0.6
+        )
     )
     smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
-
     transport = LocalAudioTransport(
         params=LocalAudioTransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
             audio_in_sample_rate=16000,
+            audio_out_sample_rate=settings.tts_sample_rate,
             vad_analyzer=vad,
             turn_analyzer=smart_turn,
         )
     )
-
-    from pipecat.transcriptions.language import Language
-
     stt = GroqSTTService(
         api_key=settings.groq_api_key,
         language=Language(settings.groq_language),
         include_prob_metrics=True,
     )
-
     tts_cache = TTSCache()
     tts = create_edge_tts_service(
         voice=settings.tts_voice,
@@ -92,23 +259,9 @@ async def build_pipeline(
         cache=tts_cache,
     )
 
-    from .generator import create_generator_processor
-
-    generator_prompt = (
-        Path(__file__).parent.parent / "prompts" / "generator.txt"
-    ).read_text()
-    generator = create_generator_processor(
-        openrouter_cli=openrouter_cli,
-        context_builder=context_builder,
-        prompt_template=generator_prompt,
-        persona=persona,
-        store=store,
-        settings=settings,
-        intent_queue=intent_queue,
-        conversation_manager=conversation_manager,
-        tts_service=tts,
-    )
-
+    # ------------------------------------------------------------------
+    # Speaker chain (optional — same gating as legacy)
+    # ------------------------------------------------------------------
     speaker_buffer = None
     speaker_tagger = None
     if (
@@ -129,10 +282,10 @@ async def build_pipeline(
             "on" if namer_enqueue is not None else "off",
         )
 
-    # Build the indication subsystem (sound + visual + macOS notifications).
-    # Indication is constructed even when settings.indication.enabled is False
-    # so producers can call notify() unconditionally; the facade short-circuits.
-    from .indication import Indication, build_sound_cue_processor
+    # ------------------------------------------------------------------
+    # Indication subsystem (identical to legacy)
+    # ------------------------------------------------------------------
+    from .indication import Indication, build_sound_cue_processor, set_indication
 
     sound_cue_processor = None
     backends: list[Any] = []
@@ -144,7 +297,9 @@ async def build_pipeline(
                 sample_rate=settings.tts_sample_rate
             )
             backends.append(
-                SoundBackend(sound_cue_processor, sample_rate=settings.tts_sample_rate)
+                SoundBackend(
+                    sound_cue_processor, sample_rate=settings.tts_sample_rate
+                )
             )
         if settings.indication.visual_enabled:
             from .indication_backends.visual import VisualBackend
@@ -157,14 +312,8 @@ async def build_pipeline(
 
             backends.append(NotificationBackend())
     indication = Indication(
-        settings.indication,
-        backends,
-        mode_provider=lambda: settings.mode,
+        settings.indication, backends, mode_provider=lambda: settings.mode
     )
-    # Register as process-wide singleton so producers in any module can
-    # fire notify() without threading the facade through call sites.
-    from .indication import set_indication
-
     set_indication(indication)
     logger.info(
         "indication: %d backend(s) ready (enabled=%s)",
@@ -172,14 +321,9 @@ async def build_pipeline(
         settings.indication.enabled,
     )
 
-    # STT error-frame observer — pipecat surfaces STT errors via ErrorFrame.
-    # A one-line wrapper FrameProcessor inserted immediately downstream of stt
-    # forwards the frame and fires STT_ERROR on the indication facade.
-    from pipecat.frames.frames import ErrorFrame  # type: ignore
-    from pipecat.processors.frame_processor import (  # type: ignore
-        FrameProcessor as _FP,
-    )
-
+    # ------------------------------------------------------------------
+    # STT error observer (identical to legacy)
+    # ------------------------------------------------------------------
     class _SttErrorObserver(_FP):  # type: ignore[misc,valid-type]
         async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
             await super().process_frame(frame, direction)
@@ -196,28 +340,163 @@ async def build_pipeline(
 
     stt_error_observer = _SttErrorObserver()
 
-    stages: list[Any] = [transport.input()]
-    if speaker_buffer is not None:
-        stages.append(speaker_buffer)
-    stages.append(stt)
-    stages.append(stt_error_observer)
-    if speaker_tagger is not None:
-        stages.append(speaker_tagger)
-    stages.extend([generator, tts])
-    if sound_cue_processor is not None:
-        stages.append(sound_cue_processor)
-    stages.append(transport.output())
-    logger.info(
-        "Generator pipeline: model=%s, openrouter_timeout=%ss, action_timeout=%ss",
-        settings.openrouter_model,
-        settings.openrouter_timeout_seconds,
-        settings.action_timeout_seconds,
+    # ------------------------------------------------------------------
+    # TTS fade-out observer (PH2-05): on InterruptionFrame, fire the
+    # 50ms TTS fade hook from CCS-05b so any in-flight TTS frame stops
+    # cleanly instead of clipping. Pipecat's native interruption already
+    # cancels the in-flight register_function calls (cancel_on_interruption),
+    # which trips execute_direct's CancelledError path → os.killpg for
+    # bash subprocesses. The fade is a polish layer on top.
+    # ------------------------------------------------------------------
+    from pipecat.frames.frames import InterruptionFrame
+
+    class _TtsFadeOnInterruption(_FP):  # type: ignore[misc,valid-type]
+        def __init__(self, tts_service: Any) -> None:
+            super().__init__()
+            self._tts = tts_service
+
+        async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
+            await super().process_frame(frame, direction)
+            if isinstance(frame, InterruptionFrame):
+                cancel_pending = getattr(self._tts, "cancel_pending", None)
+                if callable(cancel_pending):
+                    try:
+                        result = cancel_pending()
+                        if hasattr(result, "__await__"):
+                            await result
+                    except Exception:
+                        logger.exception(
+                            "pipeline_native: tts.cancel_pending raised "
+                            "(non-fatal)"
+                        )
+            await self.push_frame(frame, direction)
+
+    tts_fade_observer = _TtsFadeOnInterruption(tts)
+
+    # ------------------------------------------------------------------
+    # Phase-2 native components
+    # ------------------------------------------------------------------
+    language_state = LanguageState(
+        initial=settings.groq_language
+        if settings.groq_language not in ("auto", "")
+        else "en"
     )
+    transcription_gate = create_transcription_gate(
+        store=store,
+        settings=settings,
+        tts_service=tts,
+        language_state=language_state,
+    )
+
+    llm_service = OpenRouterLLMService(
+        api_key=settings.openrouter_api_key,
+        model=settings.openrouter_model,
+    )
+    tools_schema = build_tools_schema()
+    llm_context = LLMContext(
+        messages=[
+            {
+                "role": "system",
+                "content": _build_system_prompt(persona, language_state.language),
+            }
+        ],
+        tools=tools_schema,
+    )
+    aggregator_pair = LLMContextAggregatorPair(llm_context)
+    user_aggregator = aggregator_pair.user()
+    assistant_aggregator = aggregator_pair.assistant()
+
+    register_all_tools(
+        llm_service,
+        settings=settings,
+        conversation_manager=conversation_manager,
+    )
+    _wire_language_state(language_state, llm_context, persona)
+
+    # PH2-07: per-turn dynamic system prompt — every TranscriptionFrame
+    # passing the gate triggers the injector to rebuild the system
+    # message with fresh persona+context+language before the
+    # user_aggregator appends the user turn.
+    system_prompt_injector = create_system_prompt_injector(
+        llm_context=llm_context,
+        context_builder=context_builder,
+        persona=persona,
+        language_state=language_state,
+        conversation_manager=conversation_manager,
+    )
+
+    # Capture LLM text upstream of TTS and log per-response to transcripts.
+    assistant_response_logger = create_assistant_response_logger(
+        store=store, settings=settings
+    )
+
+    # Mute gate — drops TTSAudioRawFrame when ``settings.mute_file`` exists.
+    # Toggled from the watch dashboard (or any other process) by creating /
+    # removing the file. Bot text is still logged because capture happens
+    # upstream of TTS.
+    mute_gate = create_mute_gate(flag_path=settings.mute_file)
+
+    # Input (mic) mute gate — drops InputAudioRawFrame when
+    # ``settings.mute_input_file`` exists. Sits at the very front of the
+    # pipeline so STT never even sees the muted audio.
+    input_mute_gate = create_input_mute_gate(flag_path=settings.mute_input_file)
+
+    # ------------------------------------------------------------------
+    # Compose stages and build the task
+    # ------------------------------------------------------------------
+    stages = _assemble_native_stages(
+        transport_input=transport.input(),
+        transport_output=transport.output(),
+        stt=stt,
+        stt_error_observer=stt_error_observer,
+        transcription_gate=transcription_gate,
+        system_prompt_injector=system_prompt_injector,
+        user_aggregator=user_aggregator,
+        llm_service=llm_service,
+        assistant_response_logger=assistant_response_logger,
+        tts=tts,
+        tts_fade_observer=tts_fade_observer,
+        assistant_aggregator=assistant_aggregator,
+        speaker_buffer=speaker_buffer,
+        speaker_tagger=speaker_tagger,
+        sound_cue_processor=sound_cue_processor,
+        mute_gate=mute_gate,
+        input_mute_gate=input_mute_gate,
+    )
+
+    logger.info(
+        "Pipecat-native pipeline assembled: model=%s, lang=%s, tools=%d",
+        settings.openrouter_model,
+        language_state.language,
+        len(tools_schema.standard_tools),
+    )
+
     pipeline = Pipeline(stages)
     task = PipelineTask(
         pipeline,
+        # Native barge-in is OFF: any VAD trigger (including the bot's
+        # own audio leaking back through the mic) would preempt the
+        # current TTS turn and cause choppy playback. Explicit cancel
+        # words ("stop"/"відміни"/etc.) still work — TranscriptionGate
+        # detects them and pushes InterruptionFrame upstream, which the
+        # _TtsFadeOnInterruption observer routes to the TTS fade-out.
         params=PipelineParams(allow_interruptions=False),
         cancel_on_idle_timeout=False,
         enable_turn_tracking=False,
     )
-    return task, generator, tts_cache, indication
+    return (
+        task,
+        transcription_gate,
+        tts_cache,
+        indication,
+        llm_service,
+        language_state,
+    )
+
+
+__all__ = [
+    "build_pipeline",
+    "_assemble_native_stages",
+    "_build_system_prompt",
+    "_wire_language_state",
+]

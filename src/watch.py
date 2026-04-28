@@ -22,7 +22,10 @@ from rich.text import Text
 
 from .config import Settings
 from .identity import load_identity
+from .mute_gate import is_input_muted, is_muted, toggle_input_mute, toggle_mute
+from .text_injector import inject_text
 from .tool_registry import TOOLS
+from .watch_controls import daemon_pid, restart_daemon, start_daemon, stop_daemon
 
 
 def _fmt_time(ts: float) -> str:
@@ -86,7 +89,7 @@ def _fetch(con: sqlite3.Connection, sql: str, *params: Any) -> list[tuple]:
 
 
 def _counts(con: sqlite3.Connection | None) -> dict[str, int]:
-    out = {"transcripts": 0, "decisions": 0, "actions": 0, "heartbeats": 0}
+    out = {"transcripts": 0, "actions": 0}
     if con is None:
         return out
     for name in out:
@@ -123,12 +126,8 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     line2 = Text.assemble(
         ("transcripts=", "dim"),
         (f"{counts['transcripts']}", "white"),
-        ("  decisions=", "dim"),
-        (f"{counts['decisions']}", "white"),
         ("  actions=", "dim"),
         (f"{counts['actions']}", "white"),
-        ("  heartbeats=", "dim"),
-        (f"{counts['heartbeats']}", "white"),
     )
     return Panel(
         Group(line1, line2),
@@ -178,6 +177,9 @@ def _you_table(
             "SELECT ts, speaker_id, text FROM transcripts ORDER BY ts DESC LIMIT 8",
         )
         for ts, sid, text in reversed(rows):
+            # Filter out bot responses (they go in the Bot panel)
+            if sid == "bot":
+                continue
             display = labels.get(sid, sid) if sid else "unknown"
             table.add_row(
                 _fmt_time(ts),
@@ -189,28 +191,29 @@ def _you_table(
     return table
 
 
-def _said_table(con: sqlite3.Connection | None) -> Table:
-    """Column 2 — what heare said via TTS (speak decisions)."""
-    table = Table(title="🗣️ Heare said", expand=True, header_style="bold cyan")
+def _bot_table(con: sqlite3.Connection | None) -> Table:
+    """Column 2 — what the bot said (assistant responses logged by AssistantResponseProcessor)."""
+    table = Table(title="🗣️ Bot said", expand=True, header_style="bold cyan")
     table.add_column("time", width=8, style="dim")
     table.add_column("text", overflow="ellipsis")
     rows: list = []
     if con is not None:
         rows = _fetch(
             con,
-            "SELECT ts, reply FROM decisions"
-            " WHERE type = 'speak' AND reply IS NOT NULL"
-            " ORDER BY ts DESC LIMIT 8",
+            "SELECT ts, text FROM transcripts WHERE speaker_id='bot' ORDER BY ts DESC LIMIT 8",
         )
-        for ts, reply in reversed(rows):
-            table.add_row(_fmt_time(ts), _truncate(reply, 80))
+        for ts, text in reversed(rows):
+            table.add_row(
+                _fmt_time(ts),
+                _truncate(text, 80),
+            )
     if con is None or not rows:
         table.add_row("—", Text("(none yet)", style="dim italic"))
     return table
 
 
 def _did_table(con: sqlite3.Connection | None) -> Table:
-    """Column 3 — what heare did (actions joined with their act decisions)."""
+    """Column 2 — what heare did (actions from Pipecat-native pipeline)."""
     table = Table(title="⚙️ Heare did", expand=True, header_style="bold cyan")
     table.add_column("time", width=8, style="dim")
     table.add_column("status", width=9)
@@ -221,38 +224,99 @@ def _did_table(con: sqlite3.Connection | None) -> Table:
         rows = _fetch(
             con,
             """
-            SELECT a.ts, a.status, d.action_json, a.result_summary
-            FROM actions a
-            LEFT JOIN decisions d ON d.id = a.decision_id
-            ORDER BY a.ts DESC LIMIT 8
+            SELECT ts, status, tool, args, result_summary
+            FROM actions
+            ORDER BY ts DESC LIMIT 8
             """,
         )
-        for ts, status, action_json, summary in reversed(rows):
-            color = {"ok": "green", "error": "red", "cancelled": "dim"}.get(
+        for ts, status, tool, args, summary in reversed(rows):
+            color = {"ok": "green", "error": "red", "cancelled": "dim", "done": "green", "pending": "yellow"}.get(
                 status, "white"
             )
-            # Extract command from action_json
+            # Build command from tool and args (direct from actions table)
             command = "—"
-            if action_json:
-                try:
-                    data = json.loads(action_json)
-                    if isinstance(data, dict):
-                        tool = data.get("tool", "")
-                        args = data.get("args", "")
-                        if tool:
-                            command = f"{tool}: {args}"
-                except (ValueError, TypeError):
-                    pass
+            if tool:
+                command = f"{tool}: {args}"
+            elif args:
+                command = args
+
+            result = summary or ""
             table.add_row(
                 _fmt_time(ts),
                 Text(status, style=color),
                 _truncate(command, 50),
-                _truncate(summary, 80),
+                _truncate(result, 80),
             )
     if con is None or not rows:
         table.add_row(
             "—", "—", "—", Text("(none yet)", style="dim italic")
         )
+    return table
+
+
+def _activity_table(con: sqlite3.Connection | None) -> Table:
+    """Combined activity feed showing transcripts and actions in chronological order.
+
+    Shows NEWEST items at the TOP (most recent first).
+    """
+    table = Table(title="📋 Recent Activity (newest first ↑)", expand=True, header_style="bold cyan")
+    table.add_column("time", width=8, style="dim")
+    table.add_column("type", width=10)
+    table.add_column("content", overflow="ellipsis")
+
+    activities: list = []
+    if con is not None:
+        # Fetch transcripts (increased from 8 to 20 for scrollability)
+        # Include speaker_id to distinguish bot responses
+        transcript_rows = _fetch(
+            con,
+            "SELECT ts, text, speaker_id FROM transcripts ORDER BY ts DESC LIMIT 20",
+        )
+        for ts, text, speaker_id in transcript_rows:
+            activities.append((ts, "transcript", text, speaker_id))
+
+        # Fetch actions (increased from 8 to 20 for scrollability)
+        action_rows = _fetch(
+            con,
+            "SELECT ts, status, tool, args, result_summary FROM actions ORDER BY ts DESC LIMIT 20",
+        )
+        for ts, status, tool, args, summary in action_rows:
+            # Build action description
+            if tool:
+                desc = f"{tool}: {args}"
+                if summary:
+                    desc += f" → {summary}"
+            else:
+                desc = f"Action: {status}"
+            activities.append((ts, "action", desc, None))
+
+    # Sort by timestamp (most recent first) and take top 30 (increased from 12)
+    activities.sort(key=lambda x: x[0], reverse=True)
+    activities = activities[:30]
+
+    # Display WITHOUT reversed() - newest first at top
+    for ts, kind, content, speaker_id in activities:
+        if kind == "transcript":
+            # Distinguish between user and bot transcripts
+            if speaker_id == "bot":
+                style = "magenta"
+                kind_display = "🗣️ Bot"
+            else:
+                style = "cyan"
+                kind_display = "🧑 You"
+        else:  # action
+            style = "yellow"
+            kind_display = "⚙️ Did"
+
+        table.add_row(
+            _fmt_time(ts),
+            Text(kind_display, style=style),
+            _truncate(content, 100),
+        )
+
+    if con is None or not activities:
+        table.add_row("—", "—", Text("(no activity yet)", style="dim italic"))
+
     return table
 
 
@@ -291,57 +355,6 @@ def _tools_table() -> Table:
     return table
 
 
-def _progress_panel(con: sqlite3.Connection | None) -> Panel:
-    """Realtime progress events panel (RT-004). Shows the last ~8 events
-    in chronological order, color-coded by kind family."""
-    content: list[Text] = []
-    if con is not None:
-        rows = _fetch(
-            con,
-            "SELECT ts, kind, decision_id, payload_json FROM events "
-            "ORDER BY ts DESC LIMIT 8",
-        )
-        for ts, kind, decision_id, payload_json in reversed(rows):
-            if kind.endswith(".error"):
-                style = "red"
-            elif kind.startswith("decider."):
-                style = "cyan"
-            elif kind == "action.stdout":
-                style = "white"
-            elif kind.startswith("action."):
-                style = "yellow"
-            elif kind.startswith("state."):
-                style = "dim"
-            else:
-                style = "dim"
-            # Extract a short payload preview so the dashboard stays readable.
-            preview = ""
-            if payload_json:
-                try:
-                    data = json.loads(payload_json)
-                except (ValueError, TypeError):
-                    data = None
-                if isinstance(data, dict):
-                    for key in ("line", "intent", "summary", "type", "error", "reason"):
-                        if key in data and data[key]:
-                            preview = str(data[key])
-                            break
-            prefix = "│ " if kind == "action.stdout" else "  "
-            did_s = f"#{decision_id} " if decision_id else ""
-            line = f"{_fmt_time(ts)} {prefix}{did_s}{kind}"
-            if preview:
-                line += f" · {_truncate(preview, 60)}"
-            content.append(Text(_truncate(line, 160), style=style))
-    if not content:
-        content = [Text("(no progress yet)", style="dim italic")]
-    return Panel(
-        Group(*content),
-        title="progress",
-        border_style="magenta",
-        padding=(0, 1),
-    )
-
-
 def _log_panel(settings: Settings, lines: int = 8) -> Panel:
     log_file = settings.log_dir / "daemon.log"
     content: list[Text] = []
@@ -369,25 +382,75 @@ def _log_panel(settings: Settings, lines: int = 8) -> Panel:
     )
 
 
-def _build_layout(settings: Settings) -> Layout:
+_CONTROL_HINTS = (
+    "[s] start  [x] stop  [r] restart  [m] mute-bot  [M] mute-mic  "
+    "[t] text  [q] quit"
+)
+
+
+def _controls_panel(
+    settings: Settings,
+    last_action: str | None,
+    input_buffer: str | None = None,
+) -> Panel:
+    pid = daemon_pid(settings)
+    state = (
+        Text("● running", style="bold green")
+        if pid is not None
+        else Text("○ stopped", style="bold red")
+    )
+    pid_part = Text(f"  pid={pid}", style="dim") if pid is not None else Text("")
+    bot_mute = (
+        Text("  🔇bot", style="bold magenta")
+        if is_muted(settings.mute_file)
+        else Text("  🔊bot", style="dim")
+    )
+    mic_mute = (
+        Text("  🎙️OFF", style="bold magenta")
+        if is_input_muted(settings.mute_input_file)
+        else Text("  🎙️ON", style="dim")
+    )
+
+    if input_buffer is not None:
+        prompt = Text("  type message — Enter=send, Esc=cancel:  ", style="bold")
+        buffer_view = Text(input_buffer + "▌", style="bold white on grey15")
+        line = Text.assemble(state, pid_part, bot_mute, mic_mute, prompt, buffer_view)
+    else:
+        hint = Text(_CONTROL_HINTS, style="cyan")
+        msg = (
+            Text(f"  ⤷ {last_action}", style="yellow")
+            if last_action
+            else Text("")
+        )
+        line = Text.assemble(state, pid_part, bot_mute, mic_mute, "   ", hint, msg)
+    return Panel(line, border_style="dim", padding=(0, 1))
+
+
+def _build_layout(
+    settings: Settings,
+    last_action: str | None = None,
+    input_buffer: str | None = None,
+) -> Layout:
     con = _open_db(settings.db_path)
     labels = _load_speaker_labels(settings.speakers_file)
     try:
         layout = Layout()
-        # Row budget: header=4 + tools=10 + body(ratio=1) + progress=10 + log=8
-        # = 32 fixed rows. On a 50-row terminal the body still gets 18 rows,
-        # comfortable for the three side-by-side tables. Minimum viable
-        # terminal = 42 rows.
+        # header=3 + activity=10 + body=ratio + log=6 + controls=3
         layout.split_column(
-            Layout(_build_header(settings, con), size=4, name="header"),
-            Layout(_tools_table(), size=10, name="tools"),
+            Layout(_build_header(settings, con), size=3, name="header"),
+            Layout(_activity_table(con), size=10, name="activity"),
             Layout(name="body", ratio=1),
-            Layout(_progress_panel(con), size=10, name="progress"),
-            Layout(_log_panel(settings, lines=6), size=8, name="log"),
+            Layout(_log_panel(settings, lines=4), size=6, name="log"),
+            Layout(
+                _controls_panel(settings, last_action, input_buffer),
+                size=3,
+                name="controls",
+            ),
         )
+        # 3-column body: you | bot | did (each gets equal space)
         layout["body"].split_row(
             Layout(_you_table(con, labels), name="you"),
-            Layout(_said_table(con), name="said"),
+            Layout(_bot_table(con), name="bot"),
             Layout(_did_table(con), name="did"),
         )
         return layout
@@ -396,20 +459,150 @@ def _build_layout(settings: Settings) -> Layout:
             con.close()
 
 
+def _dispatch_key(settings: Settings, key: str) -> str | None:
+    """Map a hotkey to a daemon action; return a short status message.
+
+    Returns None for unknown keys so the dashboard can ignore them silently.
+    """
+    if key in ("s", "S"):
+        return f"start: {start_daemon(settings)}"
+    if key in ("x", "X"):
+        return f"stop: {stop_daemon(settings)}"
+    if key in ("r", "R"):
+        return f"restart: {restart_daemon(settings)}"
+    if key == "m":
+        muted_now = toggle_mute(settings.mute_file)
+        return "bot muted (audio off, text still logged)" if muted_now else "bot unmuted"
+    if key == "M":
+        muted_now = toggle_input_mute(settings.mute_input_file)
+        return "mic muted (daemon can't hear you)" if muted_now else "mic unmuted"
+    return None
+
+
+def _make_key_reader():
+    """Put stdin in cbreak mode and return (read_fn, restore_fn).
+
+    ``read_fn()`` returns a single key character or '' if nothing available
+    within the poll window. ``restore_fn()`` puts the terminal back.
+    Falls back to a no-op pair when stdin is not a TTY (e.g. during tests
+    or piped runs).
+    """
+    import select
+    import sys
+
+    if not sys.stdin.isatty():
+        return (lambda: ""), (lambda: None)
+
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    tty.setcbreak(fd)
+
+    def read_key() -> str:
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.0)
+        if not rlist:
+            return ""
+        try:
+            return sys.stdin.read(1)
+        except (OSError, ValueError):
+            return ""
+
+    def restore() -> None:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+    return read_key, restore
+
+
+def _handle_input_key(
+    settings: Settings, buffer: str, key: str
+) -> tuple[str | None, str | None]:
+    """Process one key in text-input mode.
+
+    Returns ``(new_buffer, action_message)``.
+
+    * ``new_buffer is None`` means "leave input mode."
+    * ``action_message`` is non-None when the action should be displayed in the
+      controls panel (e.g. injection result).
+    """
+    # Enter — submit
+    if key in ("\r", "\n"):
+        text = buffer.strip()
+        if not text:
+            return None, "text input cancelled (empty)"
+        try:
+            inject_text(settings.inject_dir, text)
+        except Exception as e:  # noqa: BLE001
+            return None, f"inject failed: {e}"
+        return None, f"injected: {text[:60]}"
+
+    # Esc — cancel
+    if key == "\x1b":
+        return None, "text input cancelled"
+
+    # Backspace (DEL = 0x7f, BS = 0x08)
+    if key in ("\x7f", "\b"):
+        return buffer[:-1], None
+
+    # Printable chars only (filter control codes other than handled ones)
+    if key.isprintable():
+        return buffer + key, None
+
+    # Unknown control: stay in input mode, no change
+    return buffer, None
+
+
 def run_watch(settings: Settings, interval: float, once: bool = False) -> int:
     console = Console()
     if once:
         console.print(_build_layout(settings))
         return 0
+
+    read_key, restore_tty = _make_key_reader()
+    last_action: str | None = None
+    input_buffer: str | None = None  # None = normal mode; str = input mode
+
+    def render() -> None:
+        live.update(_build_layout(settings, last_action, input_buffer))
+
     try:
         with Live(
-            _build_layout(settings),
+            _build_layout(settings, last_action, input_buffer),
             console=console,
             refresh_per_second=max(1.0, 1.0 / interval) if interval > 0 else 4.0,
             screen=True,
         ) as live:
             while True:
-                time.sleep(interval)
-                live.update(_build_layout(settings))
+                poll_step = 0.05
+                elapsed = 0.0
+                while elapsed < max(interval, poll_step):
+                    key = read_key()
+                    if key:
+                        if input_buffer is not None:
+                            new_buf, action = _handle_input_key(
+                                settings, input_buffer, key
+                            )
+                            input_buffer = new_buf
+                            if action is not None:
+                                last_action = action
+                            render()
+                        else:
+                            if key in ("q", "Q", "\x03", "\x04"):
+                                return 0
+                            if key == "t":
+                                input_buffer = ""
+                                last_action = None
+                                render()
+                            else:
+                                result = _dispatch_key(settings, key)
+                                if result is not None:
+                                    last_action = result
+                                    render()
+                    time.sleep(poll_step)
+                    elapsed += poll_step
+                render()
     except KeyboardInterrupt:
         return 0
+    finally:
+        restore_tty()

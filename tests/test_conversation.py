@@ -51,222 +51,11 @@ def fake_claude():
     return FakeClaudeCLI()
 
 
-async def test_extract_topics_returns_list(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that extract_topics returns a list of topic strings."""
-    # Mock Claude to return JSON array
-    fake_claude.call_decider = AsyncMock(
-        return_value='["weather forecast", "calendar meeting", "code debugging"]'
-    )
-
-    manager = ConversationManager(store, fake_claude)
-    topics = await manager.extract_topics("Let's discuss the weather and our meeting")
-
-    assert isinstance(topics, list)
-    assert len(topics) == 3
-    assert topics == ["weather forecast", "calendar meeting", "code debugging"]
-    assert fake_claude.call_decider.await_count == 1
-
-
-async def test_extract_topics_handles_dict_response(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that extract_topics handles dict response with 'result' field."""
-    # Mock Claude to return dict with result field (SDK format)
-    fake_claude.call_decider = AsyncMock(
-        return_value={"result": '["topic1", "topic2", "topic3"]'}
-    )
-
-    manager = ConversationManager(store, fake_claude)
-    topics = await manager.extract_topics("Test text")
-
-    assert isinstance(topics, list)
-    assert len(topics) == 3
-    assert topics == ["topic1", "topic2", "topic3"]
-
-
-async def test_extract_topics_handles_markdown_fences(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that extract_topics strips markdown fences."""
-    # Mock Claude to return JSON in markdown fences
-    fake_claude.call_decider = AsyncMock(
-        return_value='```json\n["AI development", "testing", "code review"]\n```'
-    )
-
-    manager = ConversationManager(store, fake_claude)
-    topics = await manager.extract_topics("Let's talk about AI and testing")
-
-    assert isinstance(topics, list)
-    assert len(topics) == 3
-    assert "AI development" in topics
-
-
-async def test_extract_topics_limits_to_5(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that extract_topics limits results to 5 topics."""
-    # Mock Claude to return more than 5 topics
-    fake_claude.call_decider = AsyncMock(
-        return_value='["t1", "t2", "t3", "t4", "t5", "t6", "t7"]'
-    )
-
-    manager = ConversationManager(store, fake_claude)
-    topics = await manager.extract_topics("Many topics here")
-
-    assert isinstance(topics, list)
-    assert len(topics) == 5  # Should limit to 5
-
-
-async def test_extract_topics_handles_parse_error(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that extract_topics returns empty list on parse error."""
-    # Mock Claude to return invalid JSON
-    fake_claude.call_decider = AsyncMock(return_value="not valid json")
-
-    manager = ConversationManager(store, fake_claude)
-    topics = await manager.extract_topics("Test text")
-
-    assert isinstance(topics, list)
-    assert len(topics) == 0
-
-
-class FakeTopicExtractor:
-    """Minimal fake matching the OpenRouterTopicExtractorCLI interface."""
-
-    def __init__(self, return_value: list[str] | None = None) -> None:
-        self._return_value = return_value or []
-        self.extract_topics = AsyncMock(return_value=self._return_value)
-
-
-async def test_extract_topics_uses_extractor_when_injected(
-    store: TranscriptStore, fake_claude: FakeClaudeCLI
-) -> None:
-    """When topic_extractor is provided, the OpenRouter path runs and call_decider is NOT invoked."""
-    extractor = FakeTopicExtractor(return_value=["alpha", "beta", "gamma"])
-    manager = ConversationManager(store, fake_claude, topic_extractor=extractor)
-
-    topics = await manager.extract_topics("some text")
-
-    assert topics == ["alpha", "beta", "gamma"]
-    assert extractor.extract_topics.await_count == 1
-    assert fake_claude.call_decider.await_count == 0
-
-
-async def test_extract_topics_uses_claude_when_no_extractor(
-    store: TranscriptStore, fake_claude: FakeClaudeCLI
-) -> None:
-    """When topic_extractor is None (default), the Claude path runs."""
-    fake_claude.call_decider = AsyncMock(return_value='["x","y"]')
-    manager = ConversationManager(store, fake_claude)  # no topic_extractor
-
-    topics = await manager.extract_topics("some text")
-
-    assert topics == ["x", "y"]
-    assert fake_claude.call_decider.await_count == 1
-
-
-async def test_extract_topics_emits_timing_log_openrouter(
-    store: TranscriptStore, fake_claude: FakeClaudeCLI, caplog: pytest.LogCaptureFixture
-) -> None:
-    """OpenRouter path emits a TOPIC EXTRACT backend=openrouter log line."""
-    import logging
-
-    extractor = FakeTopicExtractor(return_value=["a", "b"])
-    manager = ConversationManager(store, fake_claude, topic_extractor=extractor)
-    with caplog.at_level(logging.INFO, logger="heare.conversation"):
-        await manager.extract_topics("text")
-    assert any(
-        "TOPIC EXTRACT backend=openrouter" in rec.getMessage()
-        for rec in caplog.records
-    )
-
-
-async def test_extract_topics_emits_timing_log_claude(
-    store: TranscriptStore, fake_claude: FakeClaudeCLI, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Claude path emits a TOPIC EXTRACT backend=claude log line."""
-    import logging
-
-    fake_claude.call_decider = AsyncMock(return_value='["a"]')
-    manager = ConversationManager(store, fake_claude)
-    with caplog.at_level(logging.INFO, logger="heare.conversation"):
-        await manager.extract_topics("text")
-    assert any(
-        "TOPIC EXTRACT backend=claude" in rec.getMessage()
-        for rec in caplog.records
-    )
-
-
-async def test_update_summary_merges_topics(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that update_summary merges topics into conversation."""
-    # Create a conversation
-    conv_id = await store.start_conversation("ambient")
-
-    manager = ConversationManager(store, fake_claude)
-    await manager.update_summary(
-        conversation_id=conv_id,
-        turn_text="Let's discuss the project timeline",
-        topics=["project management", "timeline"],
-    )
-
-    # Verify summary was updated
-    conv = await store.get_active_conversation()
-    assert conv is not None
-    assert conv["id"] == conv_id
-    assert "project timeline" in conv["summary"]
-
-    # Verify entity map includes topics
-    assert conv["entity_map"] is not None
-    entity_map = json.loads(conv["entity_map"])
-    assert "topics" in entity_map
-    assert entity_map["topics"] == ["project management", "timeline"]
-
-
-async def test_update_summary_keeps_recent_verbatim(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that update_summary keeps last 3 turns verbatim."""
-    conv_id = await store.start_conversation("focus")
-
-    manager = ConversationManager(store, fake_claude)
-
-    # Add 4 turns
-    for i in range(4):
-        await store.create_turn(
-            conversation_id=conv_id,
-            aggregated_text=f"Turn {i+1} text",
-            utterance_count=1,
-            topic_tags=[f"topic{i}"],
-        )
-        await manager.update_summary(
-            conversation_id=conv_id,
-            turn_text=f"Turn {i+1} text",
-            topics=[f"topic{i}"],
-        )
-
-    # Verify summary keeps last 3 verbatim
-    conv = await store.get_active_conversation()
-    assert conv is not None
-    # Should have last 3 turns verbatim in summary
-    assert "Turn 2 text" in conv["summary"] or "Turn 3 text" in conv["summary"] or "Turn 4 text" in conv["summary"]
-
-
-async def test_update_summary_extracts_entities(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
-    """Test that update_summary extracts capitalized entities."""
-    conv_id = await store.start_conversation("ambient")
-
-    manager = ConversationManager(store, fake_claude)
-    await manager.update_summary(
-        conversation_id=conv_id,
-        turn_text="Let's meet with John Smith in Kyiv tomorrow",
-        topics=["meeting"],
-    )
-
-    # Verify entity map includes mentioned entities
-    conv = await store.get_active_conversation()
-    assert conv is not None
-    entity_map = json.loads(conv["entity_map"])
-    assert "mentioned" in entity_map
-    # Should capture some capitalized words
-    assert len(entity_map["mentioned"]) > 0
-
-
 async def test_build_context_includes_all_fields(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
     """Test that build_context returns dict with all required keys."""
     conv_id = await store.start_conversation("ambient")
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
 
     # Verify all required keys are present (Phase 2.2 adds recent_actions)
@@ -283,7 +72,7 @@ async def test_build_context_includes_all_fields(store: TranscriptStore, fake_cl
 
 async def test_build_context_with_no_conversation(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
     """Test that build_context handles None conversation_id."""
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     ctx = await manager.build_context(None)
 
     assert ctx["conversation_active"] is False
@@ -300,7 +89,7 @@ async def test_build_context_with_inactive_conversation(store: TranscriptStore, 
     conv_id = await store.start_conversation("ambient")
     await store.end_conversation(conv_id)
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
 
     assert ctx["conversation_active"] is False
@@ -316,7 +105,7 @@ async def test_active_topics_from_last_2_turns(store: TranscriptStore, fake_clau
     await store.create_turn(conv_id, "Turn 2", 1, ["topic3", "topic4"])
     await store.create_turn(conv_id, "Turn 3", 1, ["topic5", "topic6"])
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
 
     # Should have topics from last 2 turns (turns 2 and 3)
@@ -335,7 +124,7 @@ async def test_active_topics_deduplicates(store: TranscriptStore, fake_claude: F
     await store.create_turn(conv_id, "Turn 1", 1, ["weather", "meeting"])
     await store.create_turn(conv_id, "Turn 2", 1, ["weather", "coding"])
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
 
     # Weather should appear only once
@@ -356,7 +145,7 @@ async def test_recent_turns_verbatim(store: TranscriptStore, fake_claude: FakeCl
             topic_tags=[f"topic{i}"],
         )
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
 
     # Should have last 3 turns
@@ -384,7 +173,7 @@ async def test_recent_transcripts_fallback(store: TranscriptStore, fake_claude: 
     await store.create_turn(conv_id, "First turn", 1, ["topic1"])
     await store.create_turn(conv_id, "Second turn", 1, ["topic2"])
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
 
     # Verify recent_transcripts is a joined string
@@ -398,7 +187,7 @@ async def test_get_or_create_active_returns_existing(store: TranscriptStore, fak
     # Create an active conversation
     existing_id = await store.start_conversation("ambient")
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     result_id = await manager.get_or_create_active()
 
     # Should return existing conversation
@@ -408,7 +197,7 @@ async def test_get_or_create_active_returns_existing(store: TranscriptStore, fak
 async def test_get_or_create_active_creates_new(store: TranscriptStore, fake_claude: FakeClaudeCLI) -> None:
     """Test that get_or_create_active creates new conversation when none exists."""
     # No active conversation
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     result_id = await manager.get_or_create_active()
 
     # Should create new conversation
@@ -434,7 +223,7 @@ async def test_get_or_create_active_ends_old_conversation(store: TranscriptStore
     )
     await store.db.commit()
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     result_id = await manager.get_or_create_active()
 
     # Should create new conversation (old one ended)
@@ -463,7 +252,7 @@ async def test_get_or_create_active_within_30_minutes(store: TranscriptStore, fa
     )
     await store.db.commit()
 
-    manager = ConversationManager(store, fake_claude)
+    manager = ConversationManager(store)
     result_id = await manager.get_or_create_active()
 
     # Should reuse existing conversation
@@ -497,7 +286,7 @@ class TestActionLogPersistence:
     async def test_record_action_pending_writes_to_db(
         self, store: TranscriptStore, fake_claude: FakeClaudeCLI
     ) -> None:
-        manager = ConversationManager(store, fake_claude)
+        manager = ConversationManager(store)
         manager.record_action_pending(7, "web_search", "chili recipe")
         await self._wait_persist()
         cursor = await store.db.execute(
@@ -512,7 +301,7 @@ class TestActionLogPersistence:
     async def test_record_action_result_upserts_existing_pending(
         self, store: TranscriptStore, fake_claude: FakeClaudeCLI
     ) -> None:
-        manager = ConversationManager(store, fake_claude)
+        manager = ConversationManager(store)
         manager.record_action_pending(8, "web_search", "chili recipe")
         await self._wait_persist()
         manager.record_action_result(8, "found 5 hits")
@@ -531,7 +320,7 @@ class TestActionLogPersistence:
     async def test_record_action_error_upserts_existing_pending(
         self, store: TranscriptStore, fake_claude: FakeClaudeCLI
     ) -> None:
-        manager = ConversationManager(store, fake_claude)
+        manager = ConversationManager(store)
         manager.record_action_pending(9, "bash", "rm -rf /")
         await self._wait_persist()
         manager.record_action_error(9, "rejected: dangerous")
@@ -550,7 +339,7 @@ class TestActionLogPersistence:
     ) -> None:
         from unittest.mock import AsyncMock as _AsyncMock
 
-        manager = ConversationManager(store, fake_claude)
+        manager = ConversationManager(store)
         # Patch the store method to raise — the in-memory deque must still
         # update and no exception bubbles to the caller.
         store.upsert_action_log_entry = _AsyncMock(  # type: ignore[method-assign]
@@ -567,14 +356,14 @@ class TestActionLogPersistence:
         self, store: TranscriptStore, fake_claude: FakeClaudeCLI
     ) -> None:
         # Write entries via the first manager
-        m1 = ConversationManager(store, fake_claude)
+        m1 = ConversationManager(store)
         m1.record_action_pending(1, "web_search", "alpha")
         m1.record_action_result(1, "alpha summary")
         m1.record_action_pending(2, "web_search", "beta")
         m1.record_action_result(2, "beta summary")
         await self._wait_persist()
         # Simulate restart: brand-new manager hydrates from disk.
-        m2 = ConversationManager(store, fake_claude)
+        m2 = ConversationManager(store)
         await m2.hydrate_action_log()
         recent = m2.recent_actions(limit=5)
         ids = {e["id"] for e in recent}
@@ -589,7 +378,7 @@ class TestActionLogPersistence:
         self, store: TranscriptStore, fake_claude: FakeClaudeCLI
     ) -> None:
         """CCS-02: structured items round-trip via persistence/hydrate."""
-        m1 = ConversationManager(store, fake_claude)
+        m1 = ConversationManager(store)
         items = [
             {"n": 1, "title": "T1", "url": "https://e.com/1", "snippet": "S1"},
             {"n": 2, "title": "T2", "url": "https://e.com/2", "snippet": "S2"},
@@ -612,7 +401,7 @@ class TestActionLogPersistence:
         assert parsed.get("items") == items
 
         # Restart hydrate: items survive
-        m2 = ConversationManager(store, fake_claude)
+        m2 = ConversationManager(store)
         await m2.hydrate_action_log()
         restored = next(e for e in m2.recent_actions(limit=5) if e["id"] == 11)
         assert restored["items"] == items
@@ -623,7 +412,7 @@ class TestActionLogPersistence:
     ) -> None:
         """CCS-02: omitting items keeps the legacy result_json shape
         ({\"summary\": ...}) — no `items` key persisted."""
-        m1 = ConversationManager(store, fake_claude)
+        m1 = ConversationManager(store)
         m1.record_action_pending(12, "bash", "echo hi")
         m1.record_action_result(12, "ran: hi")
         await self._wait_persist()
@@ -659,7 +448,7 @@ class TestActionLogPersistence:
             result=_json.dumps({"summary": "fresh"}),
             ts=now - 300,
         )
-        manager = ConversationManager(store, fake_claude)
+        manager = ConversationManager(store)
         await manager.hydrate_action_log(since_ts=now - 1800)  # 30-min window
         ids = {e["id"] for e in manager.recent_actions(limit=10)}
         assert ids == {21}
@@ -686,7 +475,7 @@ class TestActionLogPersistence:
             result=_json.dumps({"summary": "fresh"}),
             ts=now - 300,
         )
-        manager = ConversationManager(store, fake_claude)
+        manager = ConversationManager(store)
         await manager.hydrate_action_log()  # no since_ts → both
         ids = {e["id"] for e in manager.recent_actions(limit=10)}
         assert ids == {30, 31}
@@ -706,7 +495,7 @@ class TestActionLogPersistence:
                 result=_json.dumps({"summary": f"r{i}"}),
                 ts=base + i,
             )
-        manager = ConversationManager(store, fake_claude)
+        manager = ConversationManager(store)
         await manager.hydrate_action_log()
         # recent_actions returns newest-first
         recent = manager.recent_actions(limit=5)

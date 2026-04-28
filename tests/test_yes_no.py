@@ -1,9 +1,9 @@
-"""Tests for parse_yes_no in src/decider.py."""
+"""Tests for parse_yes_no in src/language.py (moved from src/decider.py for PH2-06)."""
 from __future__ import annotations
 
 import pytest
 
-from src.decider import parse_yes_no
+from src.language import parse_yes_no
 
 
 @pytest.mark.parametrize(
