@@ -263,6 +263,12 @@ def _build_transcription_gate_class():
             raw_lang = detect_language_from_frame(
                 frame, fallback=self._active_lang
             )
+            # Allow manual override via ~/.heare/language file (for testing/manual control)
+            from .language_override import read_language_override
+            override_lang = read_language_override()
+            if override_lang:
+                raw_lang = override_lang
+
             if raw_lang == self._active_lang:
                 self._pending_lang = None
                 self._pending_lang_count = 0
