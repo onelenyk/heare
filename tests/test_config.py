@@ -13,7 +13,7 @@ def test_default_settings() -> None:
     assert s.transcript_retention_days == 30
     assert s.claude_cli == "claude"
     assert s.groq_api_key is None
-    assert s.groq_language == "uk"
+    assert s.groq_language == "auto"  # Auto-detect language by default
 
 
 def test_min_action_confidence_default() -> None:
