@@ -1424,7 +1424,6 @@ async def _execute_list_tools(args: str, settings: "Settings | None" = None) -> 
 
 async def _execute_list_directory(args: str, settings: "Settings | None" = None) -> dict:
     """List contents of a directory with optional details."""
-    import os
 
     workspace = settings.workspace_dir if settings else Path.cwd()
 
@@ -1599,7 +1598,6 @@ async def _execute_find_files(args: str, settings: "Settings | None" = None) -> 
 
 async def _execute_get_tree_view(args: str, settings: "Settings | None" = None) -> dict:
     """Get recursive directory tree structure."""
-    import os
 
     workspace = settings.workspace_dir if settings else Path.cwd()
 
@@ -2002,7 +2000,6 @@ def _human_readable_size(size_bytes: int) -> str:
 async def _execute_copy_file(args: str, settings: "Settings | None" = None) -> dict:
     """Copy a file or directory with progress reporting."""
     import shutil
-    import os
 
     workspace = settings.workspace_dir if settings else Path.cwd()
 
@@ -2387,7 +2384,6 @@ async def _execute_create_archive(args: str, settings: "Settings | None" = None)
     """Create a tar or zip archive from files/directories."""
     import tarfile
     import zipfile
-    import os
 
     workspace = settings.workspace_dir if settings else Path.cwd()
 
@@ -2511,7 +2507,6 @@ async def _execute_extract_archive(args: str, settings: "Settings | None" = None
     """Extract tar or zip archive to a directory."""
     import tarfile
     import zipfile
-    import os
 
     workspace = settings.workspace_dir if settings else Path.cwd()
 

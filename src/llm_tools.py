@@ -24,7 +24,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from .direct_tools import execute_direct
-from .tool_registry import TOOLS, get_enabled_tools
+from .tool_registry import TOOLS, get_enabled_tools, get_tool
 
 if TYPE_CHECKING:
     from .config import Settings

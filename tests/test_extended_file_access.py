@@ -1,11 +1,8 @@
 """Tests for extended file access capabilities."""
 
-import asyncio
-import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.direct_tools import (
     _execute_list_directory,
@@ -22,12 +19,8 @@ from src.direct_tools import (
     _execute_create_archive,
     _execute_extract_archive,
     _execute_batch_operation,
-    _execute_add_favorite,
-    _execute_list_favorites,
-    _execute_set_view_preference,
-    _execute_show_profile,
 )
-from src.user_profile import UserProfile, ProfileManager
+from src.user_profile import ProfileManager
 from src.permission_manager import PermissionManager
 from src.config import Settings
 

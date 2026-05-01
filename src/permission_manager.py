@@ -3,15 +3,14 @@
 This module handles user prompts for accessing new directories and manages
 both temporary and permanent access permissions.
 """
-import asyncio
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .user_profile import ProfileManager, get_profile_manager
-from .indication import Indication, IndicationKind, get_indication
+from .user_profile import get_profile_manager
+from .indication import IndicationKind, get_indication
 
 logger = logging.getLogger(__name__)
 
@@ -122,10 +121,10 @@ class PermissionManager:
 
     async def _cli_prompt_permission(self, path: Path, operation: str) -> bool:
         """CLI fallback for permission prompts."""
-        print(f"\n[Permission Request]")
+        print("\n[Permission Request]")
         print(f"Operation: {operation}")
         print(f"Directory: {path}")
-        print(f"\nDo you want to allow access to this directory? (y/N): ", end="")
+        print("\nDo you want to allow access to this directory? (y/N): ", end="")
 
         try:
             import sys

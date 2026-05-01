@@ -208,9 +208,6 @@ async def test_conversation_manager_integration_flow(tmp_settings):
     # Create conversation manager
     conv_manager = ConversationManager(mock_store)
 
-    # Simulate turn completion
-    aggregated_text = "I need to check the weather forecast for tomorrow and then attend a calendar meeting about the new code debugging project"
-
     # Get or create conversation
     mock_store.get_active_conversation = AsyncMock(return_value=None)
     mock_store.start_conversation = AsyncMock(return_value=42)
