@@ -268,6 +268,13 @@ TOOLS: dict[str, Tool] = {
         description="Execute an Agent Skill by name. Skills can orchestrate multiple heare tools internally. Provide the skill name and context dict with required parameters.",
         enabled=True,
     ),
+    "set_provider": Tool(
+        name="set_provider",
+        sdk_name="SetProvider",
+        execution="direct",
+        description="Switch the active LLM provider (openrouter or zai). Change takes effect on the next user utterance.",
+        enabled=True,
+    ),
 }
 
 

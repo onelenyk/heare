@@ -441,6 +441,15 @@ def _cmd_mode(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_provider(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    provider = args.provider_name
+    settings.provider_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.provider_file.write_text(provider)
+    print(f"LLM provider set to {provider} (effective on next user utterance)")
+    return 0
+
+
 def _cmd_set_wake_word(args: argparse.Namespace) -> int:
     from .config import HEARE_HOME  # noqa: E402
 
@@ -740,6 +749,9 @@ def build_parser() -> argparse.ArgumentParser:
     mode_p = sub.add_parser("mode", help="Set the current mode (hot-reloaded)")
     mode_p.add_argument("mode_name", choices=[m.value for m in Mode])
 
+    prov_p = sub.add_parser("provider", help="Set the LLM provider (hot-reloaded)")
+    prov_p.add_argument("provider_name", choices=["openrouter", "zai"])
+
     sub.add_parser("reset-session", help="Backup session.json and start fresh")
     sub.add_parser("reset-identity", help="Backup identity.json and regenerate")
 
@@ -794,6 +806,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status(args)
     if cmd == "mode":
         return _cmd_mode(args)
+    if cmd == "provider":
+        return _cmd_provider(args)
     if cmd == "reset-session":
         return _cmd_reset_session(args)
     if cmd == "reset-identity":

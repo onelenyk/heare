@@ -78,6 +78,10 @@ def _name_args(args: dict[str, Any]) -> str:
     return str(args.get("name", "")).strip()
 
 
+def _provider_args(args: dict[str, Any]) -> str:
+    return str(args.get("provider", "")).strip()
+
+
 def _id_args(args: dict[str, Any]) -> str:
     return str(args.get("speaker_id", args.get("id", ""))).strip()
 
@@ -410,8 +414,8 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
                 "description": "Preference key (show_hidden, detail_level, sort_by, sort_order)",
             },
             "value": {
-                "type": ["string", "boolean", "integer"],
-                "description": "Value to set",
+                "type": "string",
+                "description": "Value to set (string, boolean, or integer)",
             },
         },
         ["key", "value"],
@@ -447,8 +451,19 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
                 "additionalProperties": True,
             },
         },
-        ["name", "context"],
+        ["name"],
         _json_args,
+    ),
+    "set_provider": (
+        {
+            "provider": {
+                "type": "string",
+                "enum": ["openrouter", "zai"],
+                "description": "LLM provider to switch to (openrouter or zai)",
+            },
+        },
+        ["provider"],
+        _provider_args,
     ),
 }
 

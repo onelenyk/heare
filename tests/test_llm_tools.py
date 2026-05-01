@@ -329,3 +329,90 @@ async def test_handler_without_conversation_manager_is_noop(monkeypatch) -> None
         )
     )
     rcb.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Integration tests for SwitchableLLMService + register_all_tools
+# (US-004 / zai-anthropic-full-support I1-I3).
+# Verifies tool fan-out, set_provider direct-tool wiring, and
+# provider-agnostic schema construction.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _switchable_service(tmp_path):
+    """Build a real SwitchableLLMService backed by both delegates."""
+    pytest.importorskip("pipecat.services.openai.llm")
+    pytest.importorskip("pipecat.services.anthropic.llm")
+
+    from src.switchable_llm import SwitchableLLMService
+
+    return SwitchableLLMService(
+        openrouter_api_key="sk-or-test",
+        openrouter_model="mock-or",
+        zai_api_key="sk-zai-test",
+        zai_model="claude-3-5-sonnet",
+        zai_base_url="https://api.z.ai/api/anthropic",
+        provider_file=tmp_path / "provider",
+    )
+
+
+def test_register_all_tools_visible_on_both_delegates(_switchable_service) -> None:
+    """I1: register_all_tools() fans out so both delegates see every tool."""
+    swit = _switchable_service
+    names = register_all_tools(swit, settings=None)
+
+    enabled = get_enabled_tools()
+    assert set(names) == enabled
+
+    or_funcs = set(swit._or_service._functions.keys())
+    zai_funcs = set(swit._zai_service._functions.keys())
+    # Pipecat may include a None entry for "default handlers"; ignore it.
+    or_named = {n for n in or_funcs if n is not None}
+    zai_named = {n for n in zai_funcs if n is not None}
+    assert enabled <= or_named, f"missing on OR delegate: {enabled - or_named}"
+    assert enabled <= zai_named, f"missing on ZAI delegate: {enabled - zai_named}"
+
+
+@pytest.mark.asyncio
+async def test_set_provider_tool_writes_file_and_takes_effect(
+    tmp_path, _switchable_service
+) -> None:
+    """I2: the set_provider direct tool writes the provider file and the
+    SwitchableLLMService picks it up on next sync."""
+    from src.config import Settings
+    from src.direct_tools import _execute_set_provider
+
+    swit = _switchable_service
+
+    # Repoint settings.provider_file at the same file the service watches.
+    settings = Settings(provider_file=swit._provider_file)
+
+    result = await _execute_set_provider("zai", settings)
+    assert result["success"] is True
+    assert swit._provider_file.read_text().strip() == "zai"
+
+    # Next sync must flip the active provider.
+    assert swit.active_provider == "zai"
+
+
+def test_tools_schema_is_provider_agnostic() -> None:
+    """I3: build_tools_schema() yields a single ToolsSchema usable by both
+    the OpenAI and Anthropic adapters; tool counts must match the registry."""
+    schema = build_tools_schema()
+    enabled = get_enabled_tools()
+    assert {t.name for t in schema.standard_tools} == enabled
+
+    # The Pipecat adapters translate the schema per-provider. We assert that
+    # both adapter classes accept the same ToolsSchema without error.
+    pytest.importorskip("pipecat.adapters.services.open_ai_adapter")
+    pytest.importorskip("pipecat.adapters.services.anthropic_adapter")
+
+    from pipecat.adapters.services.open_ai_adapter import OpenAILLMAdapter
+    from pipecat.adapters.services.anthropic_adapter import AnthropicLLMAdapter
+
+    or_tools = OpenAILLMAdapter().to_provider_tools_format(schema)
+    zai_tools = AnthropicLLMAdapter().to_provider_tools_format(schema)
+    # Each adapter produces exactly one entry per enabled tool.
+    assert len(or_tools) == len(enabled)
+    assert len(zai_tools) == len(enabled)

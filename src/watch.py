@@ -72,6 +72,14 @@ def _current_mode(settings: Settings) -> str:
     return settings.mode.value
 
 
+def _current_provider(settings: Settings) -> str:
+    if settings.provider_file.exists():
+        raw = settings.provider_file.read_text().strip().lower()
+        if raw in ("openrouter", "zai"):
+            return raw
+    return "openrouter"
+
+
 def _open_db(path: Path) -> sqlite3.Connection | None:
     if not path.exists():
         return None
@@ -101,6 +109,7 @@ def _counts(con: sqlite3.Connection | None) -> dict[str, int]:
 def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     running, pid, uptime = _daemon_status(settings)
     mode = _current_mode(settings)
+    provider = _current_provider(settings)
     counts = _counts(con)
     identity = load_identity(settings.identity_file)
     name = identity["name"] if identity else "heare"
@@ -111,6 +120,8 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     )
     mode_style = {"silent": "dim", "focus": "cyan", "ambient": "yellow"}.get(mode, "white")
     mode_text = Text(mode, style=f"bold {mode_style}")
+    prov_style = "cyan" if provider == "zai" else "yellow"
+    provider_text = Text(provider, style=f"bold {prov_style}")
 
     line1 = Text.assemble(
         (f"{name} ", "bold magenta"),
@@ -122,6 +133,8 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
         (uptime, "white"),
         ("   mode=", "dim"),
         mode_text,
+        ("   provider=", "dim"),
+        provider_text,
     )
     line2 = Text.assemble(
         ("transcripts=", "dim"),
@@ -476,6 +489,13 @@ def _dispatch_key(settings: Settings, key: str) -> str | None:
     if key == "M":
         muted_now = toggle_input_mute(settings.mute_input_file)
         return "mic muted (daemon can't hear you)" if muted_now else "mic unmuted"
+    if key == "p":
+        pf = settings.provider_file
+        current = pf.read_text().strip().lower() if pf.exists() else "openrouter"
+        new_provider = "zai" if current == "openrouter" else "openrouter"
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        pf.write_text(new_provider)
+        return f"provider: {new_provider} (effective on next utterance)"
     return None
 
 

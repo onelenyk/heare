@@ -151,6 +151,8 @@ async def execute_direct(
         return await _execute_list_skills(args, settings)
     elif tool == "run_skill":
         return await _execute_run_skill(args, settings)
+    elif tool == "set_provider":
+        return await _execute_set_provider(args, settings)
     else:
         return {
             "success": False,
@@ -3253,3 +3255,50 @@ def _extract_tool_calls_from_instructions(instructions: str, context: dict) -> l
         result.append((tool_name, substituted_args))
 
     return result
+
+
+async def _execute_set_provider(args: str, settings: "Settings | None" = None) -> dict:
+    """Switch the active LLM provider (openrouter or zai).
+
+    Args:
+        args: Provider name (openrouter or zai)
+        settings: heare Settings
+
+    Returns:
+        dict with success status and message
+    """
+    try:
+        provider = args.strip().lower()
+
+        if provider not in ("openrouter", "zai"):
+            return {
+                "success": False,
+                "output": "",
+                "error": f"Invalid provider: {provider}. Must be 'openrouter' or 'zai'",
+                "spoken": {"en": f"Invalid provider {provider}. Use openrouter or zai."},
+            }
+
+        if settings is None:
+            from .config import load_settings
+
+            settings = load_settings()
+
+        settings.provider_file.parent.mkdir(parents=True, exist_ok=True)
+        settings.provider_file.write_text(provider)
+
+        return {
+            "success": True,
+            "output": f"LLM provider set to {provider}",
+            "spoken": {
+                "en": f"Switched to {provider}.",
+                "uk": f"Перейшов на {provider}.",
+            },
+        }
+    except Exception as e:
+        logger.exception("_execute_set_provider failed")
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Failed to set provider: {str(e)}",
+            "spoken": {"en": "Failed to switch provider."},
+        }

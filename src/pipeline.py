@@ -213,8 +213,9 @@ async def build_pipeline(
         FrameProcessor as _FP,
     )
     from pipecat.services.groq.stt import GroqSTTService
-    from pipecat.services.openrouter.llm import OpenRouterLLMService
     from pipecat.transcriptions.language import Language
+
+    from .switchable_llm import SwitchableLLMService
     from pipecat.transports.local.audio import (
         LocalAudioTransport,
         LocalAudioTransportParams,
@@ -224,9 +225,10 @@ async def build_pipeline(
         raise RuntimeError(
             "GROQ_API_KEY is not set — copy .env.example to .env and fill it in"
         )
-    if not settings.openrouter_api_key:
+    if not settings.openrouter_api_key and not settings.zai_api_key:
         raise RuntimeError(
-            "OPENROUTER_API_KEY is not set — required for the Pipecat-native LLM service"
+            "Neither OPENROUTER_API_KEY nor ZAI_API_KEY is set — "
+            "at least one is required for the LLM service"
         )
 
     # ------------------------------------------------------------------
@@ -389,9 +391,13 @@ async def build_pipeline(
         language_state=language_state,
     )
 
-    llm_service = OpenRouterLLMService(
-        api_key=settings.openrouter_api_key,
-        model=settings.openrouter_model,
+    llm_service = SwitchableLLMService(
+        openrouter_api_key=settings.openrouter_api_key,
+        openrouter_model=settings.openrouter_model,
+        zai_api_key=settings.zai_api_key,
+        zai_model=settings.zai_model,
+        zai_base_url=settings.zai_base_url,
+        provider_file=settings.provider_file,
     )
     tools_schema = build_tools_schema()
     llm_context = LLMContext(
@@ -512,8 +518,9 @@ async def build_pipeline(
     )
 
     logger.info(
-        "Pipecat-native pipeline assembled: model=%s, lang=%s, tools=%d",
-        settings.openrouter_model,
+        "Pipecat-native pipeline assembled: provider=%s, model=%s, lang=%s, tools=%d",
+        llm_service.active_provider,
+        settings.openrouter_model if llm_service.active_provider == "openrouter" else settings.zai_model,
         language_state.language,
         len(tools_schema.standard_tools),
     )
