@@ -158,15 +158,15 @@
   },
   "hotPaths": [
     {
-      "path": "src/watch.py",
-      "accessCount": 82,
-      "lastAccessed": 1777663328325,
+      "path": "src/pipeline.py",
+      "accessCount": 90,
+      "lastAccessed": 1777666934550,
       "type": "file"
     },
     {
-      "path": "src/pipeline.py",
-      "accessCount": 80,
-      "lastAccessed": 1777664146448,
+      "path": "src/watch.py",
+      "accessCount": 82,
+      "lastAccessed": 1777663328325,
       "type": "file"
     },
     {
@@ -183,8 +183,8 @@
     },
     {
       "path": "src/config.py",
-      "accessCount": 58,
-      "lastAccessed": 1777663885290,
+      "accessCount": 64,
+      "lastAccessed": 1777666927810,
       "type": "file"
     },
     {
@@ -201,8 +201,8 @@
     },
     {
       "path": "src/main.py",
-      "accessCount": 26,
-      "lastAccessed": 1777660578122,
+      "accessCount": 27,
+      "lastAccessed": 1777665914219,
       "type": "file"
     },
     {
@@ -227,6 +227,12 @@
       "path": ".venv/lib/python3.13/site-packages/pipecat/services/llm_service.py",
       "accessCount": 11,
       "lastAccessed": 1777663225663,
+      "type": "file"
+    },
+    {
+      "path": "src/transcription_gate.py",
+      "accessCount": 11,
+      "lastAccessed": 1777666915626,
       "type": "file"
     },
     {
@@ -263,12 +269,6 @@
       "path": "tests/test_llm_tools.py",
       "accessCount": 8,
       "lastAccessed": 1777664159729,
-      "type": "file"
-    },
-    {
-      "path": "src/transcription_gate.py",
-      "accessCount": 7,
-      "lastAccessed": 1777634217950,
       "type": "file"
     },
     {
@@ -315,8 +315,8 @@
     },
     {
       "path": "src/tts_edge.py",
-      "accessCount": 3,
-      "lastAccessed": 1777634205725,
+      "accessCount": 4,
+      "lastAccessed": 1777665645717,
       "type": "file"
     },
     {
@@ -339,8 +339,8 @@
     },
     {
       "path": "src/language_state.py",
-      "accessCount": 2,
-      "lastAccessed": 1777393521466,
+      "accessCount": 3,
+      "lastAccessed": 1777665937214,
       "type": "file"
     },
     {

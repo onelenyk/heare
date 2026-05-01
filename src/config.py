@@ -170,11 +170,13 @@ class Settings:
     claude_max_calls_per_minute: int = 30
     claude_decider_model: str = "haiku"
     groq_api_key: str | None = None
-    # Whisper transcription language. "auto" = auto-detect (default). ISO-639-1 code
-    # (e.g. "en", "uk", "ru") = force transcription in that language. Set to your
-    # dominant spoken language only if you want to disable auto-detection.
-    # Multi-language conversation uses auto-detection with dynamic TTS voice selection.
-    groq_language: str = "auto"
+    # Whisper transcription language. ISO-639-1 code (e.g. "en", "uk", "ru").
+    # This is a HINT for Groq's Whisper, not a hard force — Groq will detect the
+    # language from audio and override this hint if confident. Set to your DOMINANT
+    # spoken language so Groq has the right context for detection. Default: "uk" (Ukrainian).
+    # Multi-language conversation: Groq detects other languages when spoken, TTS voice
+    # automatically swaps to match detected language via TranscriptionGateProcessor.
+    groq_language: str = "uk"
     # Speaker recognition (off by default — torch/speechbrain live under
     # [project.optional-dependencies].speaker and are lazy-imported)
     speaker_id_enabled: bool = True

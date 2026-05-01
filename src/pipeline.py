@@ -250,17 +250,15 @@ async def build_pipeline(
             turn_analyzer=smart_turn,
         )
     )
-    # STT with optional language override. When groq_language is "auto" (default),
-    # Groq's Whisper auto-detects the language from audio. The TranscriptionGateProcessor
-    # reads Groq's detected language and (optionally) refines it via Claude, then
-    # dynamically updates the TTS voice to match.
-    stt_kwargs = {
-        "api_key": settings.groq_api_key,
-        "include_prob_metrics": True,
-    }
-    if settings.groq_language not in ("auto", ""):
-        stt_kwargs["language"] = Language(settings.groq_language)
-    stt = GroqSTTService(**stt_kwargs)
+    # STT language is a HINT for Groq's Whisper, not a hard force. Groq will detect
+    # the language from audio and can override this hint if confident (e.g., English
+    # speech despite "uk" hint). The TranscriptionGateProcessor reads Groq's detected
+    # language and dynamically updates TTS voice to match.
+    stt = GroqSTTService(
+        api_key=settings.groq_api_key,
+        language=Language(settings.groq_language),
+        include_prob_metrics=True,
+    )
     tts_cache = TTSCache()
     tts = create_edge_tts_service(
         voice=settings.tts_voice,
