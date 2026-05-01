@@ -263,20 +263,42 @@ def _build_transcription_gate_class():
             raw_lang = detect_language_from_frame(
                 frame, fallback=self._active_lang
             )
+            logger.info(
+                "[DETECTED] language=%s from transcript=%r",
+                raw_lang,
+                transcript[:60],
+            )
             if raw_lang == self._active_lang:
                 self._pending_lang = None
                 self._pending_lang_count = 0
+                logger.debug(
+                    "[HYSTERESIS] language=%s matches active, reset pending",
+                    raw_lang,
+                )
             elif raw_lang == self._pending_lang:
                 self._pending_lang_count += 1
+                logger.debug(
+                    "[HYSTERESIS] language=%s matches pending count=%d",
+                    raw_lang,
+                    self._pending_lang_count,
+                )
                 if self._pending_lang_count >= 2:
                     self._active_lang = raw_lang
                     self._pending_lang = None
                     self._pending_lang_count = 0
+                    logger.info(
+                        "[LANGUAGE CONFIRMED] active_lang=%s confirmed_count=2",
+                        raw_lang,
+                    )
                     if self._language_state is not None:
                         self._language_state.set_language(raw_lang)
             else:
                 self._pending_lang = raw_lang
                 self._pending_lang_count = 1
+                logger.debug(
+                    "[HYSTERESIS] new pending language=%s count=1",
+                    raw_lang,
+                )
 
             # Voice swap follows the active (post-hysteresis) language.
             self._set_tts_voice(self._active_lang)

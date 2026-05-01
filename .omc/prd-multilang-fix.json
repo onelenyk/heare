@@ -1,0 +1,61 @@
+{
+  "title": "Fix Multi-Language Support - Claude Respects Detected Language",
+  "description": "Ensure Claude generates responses ONLY in the detected user language (Ukrainian/English/Russian) without mixing. Verify language detection flows from Groq → LanguageState → System Prompt → Claude's response.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Debug and verify language detection flow",
+      "description": "Trace language detection from Groq through TranscriptionGateProcessor to LanguageState. Add logging to verify detected language is correctly passed to system prompt.",
+      "acceptanceCriteria": [
+        "TranscriptionGateProcessor logs detected language at least with: DETECTED language=uk/en/ru from transcript=...",
+        "LanguageState.set_language() is called with correct detected language",
+        "System prompt includes detected language name (e.g., 'The user is speaking Ukrainian')",
+        "Logs show language flowing through full pipeline: detection → state → prompt"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "Make system prompt force Claude to respond ONLY in detected language",
+      "description": "Update system prompt to be explicit that Claude must respond ONLY in detected language without code-mixing. Test with Ukrainian, English, Russian.",
+      "acceptanceCriteria": [
+        "System prompt explicitly says: 'Respond ONLY in {language}. Do NOT mix languages. Do NOT respond in English unless explicitly asked.'",
+        "Test: Speak Ukrainian → Claude responds 100% Ukrainian (verify in logs and audio)",
+        "Test: Speak English → Claude responds 100% English (verify in logs and audio)",
+        "No mixed English/Ukrainian responses in either case"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "Verify TTS voice matches detected language",
+      "description": "Ensure TTS voice selection follows detected language: uk→OstapNeural, en→AriaNeural, ru→DmitryNeural.",
+      "acceptanceCriteria": [
+        "TranscriptionGateProcessor logs TTS voice swap: [TTS VOICE SWAP] from=... to=... lang=uk/en/ru",
+        "Ukrainian responses use OstapNeural voice (can hear Cyrillic pronunciation)",
+        "English responses use AriaNeural voice (can hear English pronunciation)",
+        "No mismatched voice-language combinations"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "Test end-to-end multi-language conversation",
+      "description": "Full integration test: User speaks language → Groq detects → Claude responds in that language → TTS speaks in matching voice.",
+      "acceptanceCriteria": [
+        "make test passes with 800+ tests green",
+        "Test with Ukrainian input → responses 100% Ukrainian",
+        "Test with English input → responses 100% English",
+        "No test regressions from z.ai or other features",
+        "Daemon logs show clean language detection for both languages"
+      ],
+      "passes": true
+    }
+  ],
+  "metadata": {
+    "createdAt": "2026-05-01T23:30:00Z",
+    "iteration": 1,
+    "maxIterations": 4,
+    "taskDescription": "Fix multi-language support: Claude must respond in detected user language without mixing. Verify full pipeline from detection to response."
+  }
+}

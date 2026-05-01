@@ -80,8 +80,8 @@ def render_native_system_prompt(
 
     parts: list[str] = [persona_block, ""]
     parts.append("You are Heare, a voice companion. Respond naturally to the user.")
-    parts.append(f"The user is speaking {lang_name}. Always respond in {lang_name}.")
-    parts.append("If the detected language is uncertain, respond in English.")
+    parts.append(f"The user is speaking {lang_name}.")
+    parts.append(f"Respond ONLY in {lang_name}. Do NOT mix languages. Do NOT respond in English unless the user explicitly asks you to.")
     parts.append("")
 
     if context:
@@ -216,6 +216,10 @@ def _build_injector_class():
                 if self._language_state is not None
                 else "en"
             )
+            logger.info(
+                "[SYSTEM PROMPT INJECT] language=%s from state",
+                language,
+            )
             conversation_id: int | None = None
             if self._conversation_manager is not None:
                 try:
@@ -242,6 +246,11 @@ def _build_injector_class():
                 return
             new_prompt = render_native_system_prompt(
                 persona=self._persona, context=ctx, language=language
+            )
+            logger.debug(
+                "[SYSTEM PROMPT] generated for language=%s, lines=%d",
+                language,
+                len(new_prompt.split("\n")),
             )
             _replace_system_message(self._llm_context, new_prompt)
 
