@@ -28,6 +28,7 @@ builder, exposed for unit testing without portaudio mock state.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any, Tuple
 
@@ -412,6 +413,52 @@ async def build_pipeline(
         conversation_manager=conversation_manager,
     )
     _wire_language_state(language_state, llm_context, persona)
+
+    # Load dynamic tools from database and register them
+    dynamic_tools = await store.load_all_dynamic_tools()
+    for tool_dict in dynamic_tools:
+        if not tool_dict.get("enabled", True):
+            continue
+
+        name = tool_dict["name"]
+        try:
+            definition = json.loads(tool_dict["definition_json"])
+
+            # Register in tool_registry runtime cache
+            from .tool_registry import register_dynamic_tool, Tool
+            register_dynamic_tool(
+                Tool(
+                    name=name,
+                    sdk_name=tool_dict["sdk_name"],
+                    execution="direct",
+                    description=tool_dict["description"],
+                    enabled=True,
+                )
+            )
+
+            # Register schema in llm_tools
+            from .llm_tools import register_dynamic_tool_schema
+            register_dynamic_tool_schema(
+                name=name,
+                schema=definition.get("arguments", {}),
+                impl_type=definition.get("implementation_type", "bash"),
+                impl=definition.get("implementation", ""),
+            )
+
+            # Register handler with LLM service
+            from .llm_tools import register_dynamic_tool_handler
+            register_dynamic_tool_handler(
+                llm_service,
+                name=name,
+                impl_type=definition.get("implementation_type", "bash"),
+                impl=definition.get("implementation", ""),
+                settings=settings,
+                conversation_manager=conversation_manager,
+            )
+
+            logger.info("Loaded dynamic tool: %s", name)
+        except Exception as e:
+            logger.warning("Failed to load dynamic tool %s: %s", name, e)
 
     # PH2-07: per-turn dynamic system prompt — every TranscriptionFrame
     # passing the gate triggers the injector to rebuild the system

@@ -12,7 +12,7 @@ from typing import Any
 import aiosqlite
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class EventKind(StrEnum):
@@ -118,9 +118,30 @@ CREATE TABLE IF NOT EXISTS turns (
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS dynamic_tools (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    sdk_name TEXT NOT NULL,
+    execution_type TEXT NOT NULL,
+    description TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    definition_json TEXT NOT NULL,
+    created_ts REAL NOT NULL,
+    modified_ts REAL NOT NULL,
+    last_used_ts REAL,
+    usage_count INTEGER DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_conversations_mode ON conversations(mode);
 CREATE INDEX IF NOT EXISTS idx_conversations_active ON conversations(end_ts) WHERE end_ts IS NULL;
 CREATE INDEX IF NOT EXISTS idx_turns_conversation ON turns(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_dynamic_tools_enabled ON dynamic_tools(enabled);
+CREATE INDEX IF NOT EXISTS idx_dynamic_tools_last_used ON dynamic_tools(last_used_ts DESC);
+
+CREATE TABLE IF NOT EXISTS user_profile (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL
+);
 """
 
 
@@ -614,3 +635,322 @@ class TranscriptStore:
             (turn_id, transcript_id),
         )
         await self.db.commit()
+
+    # Dynamic tools methods
+
+    async def create_dynamic_tool(
+        self,
+        *,
+        name: str,
+        sdk_name: str,
+        execution_type: str,
+        description: str,
+        definition_json: str,
+        enabled: bool = True,
+    ) -> int:
+        """Create a new dynamic tool."""
+        now = time.time()
+        cursor = await self.db.execute(
+            """
+            INSERT INTO dynamic_tools
+                (name, sdk_name, execution_type, description, enabled, definition_json, created_ts, modified_ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (name, sdk_name, execution_type, description, enabled, definition_json, now, now),
+        )
+        await self.db.commit()
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+    async def get_dynamic_tool(self, name: str) -> dict[str, Any] | None:
+        """Get a dynamic tool by name."""
+        cursor = await self.db.execute(
+            """
+            SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
+                   created_ts, modified_ts, last_used_ts, usage_count
+            FROM dynamic_tools
+            WHERE name = ?
+            """,
+            (name,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "name": row[1],
+            "sdk_name": row[2],
+            "execution_type": row[3],
+            "description": row[4],
+            "enabled": bool(row[5]),
+            "definition_json": row[6],
+            "created_ts": row[7],
+            "modified_ts": row[8],
+            "last_used_ts": row[9],
+            "usage_count": row[10],
+        }
+
+    async def list_dynamic_tools(self, enabled_only: bool = True) -> list[dict[str, Any]]:
+        """List all dynamic tools."""
+        if enabled_only:
+            cursor = await self.db.execute(
+                """
+                SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
+                       created_ts, modified_ts, last_used_ts, usage_count
+                FROM dynamic_tools
+                WHERE enabled = 1
+                ORDER BY created_ts DESC
+                """
+            )
+        else:
+            cursor = await self.db.execute(
+                """
+                SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
+                       created_ts, modified_ts, last_used_ts, usage_count
+                FROM dynamic_tools
+                ORDER BY created_ts DESC
+                """
+            )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "name": r[1],
+                "sdk_name": r[2],
+                "execution_type": r[3],
+                "description": r[4],
+                "enabled": bool(r[5]),
+                "definition_json": r[6],
+                "created_ts": r[7],
+                "modified_ts": r[8],
+                "last_used_ts": r[9],
+                "usage_count": r[10],
+            }
+            for r in rows
+        ]
+
+    async def update_dynamic_tool(
+        self,
+        name: str,
+        *,
+        sdk_name: str | None = None,
+        execution_type: str | None = None,
+        description: str | None = None,
+        definition_json: str | None = None,
+        enabled: bool | None = None,
+    ) -> bool:
+        """Update a dynamic tool."""
+        updates: list[tuple[str, Any]] = []
+        values: list[Any] = []
+
+        if sdk_name is not None:
+            updates.append("sdk_name = ?")
+            values.append(sdk_name)
+        if execution_type is not None:
+            updates.append("execution_type = ?")
+            values.append(execution_type)
+        if description is not None:
+            updates.append("description = ?")
+            values.append(description)
+        if definition_json is not None:
+            updates.append("definition_json = ?")
+            values.append(definition_json)
+        if enabled is not None:
+            updates.append("enabled = ?")
+            values.append(enabled)
+
+        if not updates:
+            return False
+
+        updates.append("modified_ts = ?")
+        values.append(time.time())
+        values.append(name)
+
+        cursor = await self.db.execute(
+            f"UPDATE dynamic_tools SET {', '.join(updates)} WHERE name = ?",
+            values,
+        )
+        await self.db.commit()
+        return (cursor.rowcount or 0) > 0
+
+    async def delete_dynamic_tool(self, name: str) -> bool:
+        """Delete a dynamic tool."""
+        cursor = await self.db.execute(
+            "DELETE FROM dynamic_tools WHERE name = ?",
+            (name,),
+        )
+        await self.db.commit()
+        return (cursor.rowcount or 0) > 0
+
+    async def load_all_dynamic_tools(self) -> list[dict[str, Any]]:
+        """Load all enabled dynamic tools for startup hydration."""
+        cursor = await self.db.execute(
+            """
+            SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
+                   created_ts, modified_ts, last_used_ts, usage_count
+            FROM dynamic_tools
+            WHERE enabled = 1
+            ORDER BY name
+            """
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "name": r[1],
+                "sdk_name": r[2],
+                "execution_type": r[3],
+                "description": r[4],
+                "enabled": bool(r[5]),
+                "definition_json": r[6],
+                "created_ts": r[7],
+                "modified_ts": r[8],
+                "last_used_ts": r[9],
+                "usage_count": r[10],
+            }
+            for r in rows
+        ]
+
+    async def record_tool_usage(self, name: str) -> None:
+        """Record that a tool was used (update last_used_ts and increment usage_count)."""
+        await self.db.execute(
+            """
+            UPDATE dynamic_tools
+            SET last_used_ts = ?, usage_count = usage_count + 1
+            WHERE name = ?
+            """,
+            (time.time(), name),
+        )
+        await self.db.commit()
+
+    # ============================================================================
+    # User Profile Methods
+    # ============================================================================
+
+    async def get_user_profile(self) -> dict:
+        """Get complete user profile from database."""
+        cursor = await self.db.execute(
+            "SELECT key, value_json FROM user_profile"
+        )
+        rows = await cursor.fetchall()
+
+        profile = {}
+        for key, value_json in rows:
+            profile[key] = json.loads(value_json) if value_json else {}
+
+        return profile
+
+    async def set_user_profile(self, key: str, value: dict) -> None:
+        """Set a user profile value."""
+        value_json = json.dumps(value, ensure_ascii=False)
+        await self.db.execute(
+            """
+            INSERT OR REPLACE INTO user_profile (key, value_json)
+            VALUES (?, ?)
+            """,
+            (key, value_json),
+        )
+        await self.db.commit()
+
+    async def update_user_profile(self, updates: dict) -> None:
+        """Update multiple profile values."""
+        for key, value in updates.items():
+            value_json = json.dumps(value, ensure_ascii=False)
+            await self.db.execute(
+                """
+                INSERT OR REPLACE INTO user_profile (key, value_json)
+                VALUES (?, ?)
+                """,
+                (key, value_json),
+            )
+        await self.db.commit()
+
+    async def delete_user_profile_key(self, key: str) -> bool:
+        """Delete a profile key. Returns True if deleted, False if not found."""
+        cursor = await self.db.execute(
+            "DELETE FROM user_profile WHERE key = ?",
+            (key,),
+        )
+        await self.db.commit()
+        return cursor.rowcount > 0
+
+    async def clear_user_profile(self) -> None:
+        """Clear all user profile data."""
+        await self.db.execute("DELETE FROM user_profile")
+        await self.db.commit()
+
+    async def get_user_profile_value(self, key: str, default=None):
+        """Get a specific profile value with optional default."""
+        cursor = await self.db.execute(
+            "SELECT value_json FROM user_profile WHERE key = ?",
+            (key,),
+        )
+        row = await cursor.fetchone()
+
+        if row is None:
+            return default
+
+        value_json = row[0]
+        return json.loads(value_json) if value_json else default
+
+    async def set_allowed_directory(self, path: str, label: str, approved_at: str) -> None:
+        """Add directory to allowed list."""
+        profile = await self.get_user_profile()
+
+        if "allowed_directories" not in profile:
+            profile["allowed_directories"] = []
+
+        # Remove if already exists
+        profile["allowed_directories"] = [
+            item for item in profile["allowed_directories"]
+            if item["path"] != path
+        ]
+
+        # Add new entry
+        profile["allowed_directories"].append({
+            "path": path,
+            "label": label,
+            "approved_at": approved_at,
+        })
+
+        await self.set_user_profile("allowed_directories", profile["allowed_directories"])
+
+    async def remove_allowed_directory(self, path: str) -> bool:
+        """Remove directory from allowed list."""
+        profile = await self.get_user_profile()
+
+        if "allowed_directories" not in profile:
+            return False
+
+        original_count = len(profile["allowed_directories"])
+        profile["allowed_directories"] = [
+            item for item in profile["allowed_directories"]
+            if item["path"] != path
+        ]
+
+        if len(profile["allowed_directories"]) < original_count:
+            await self.set_user_profile("allowed_directories", profile["allowed_directories"])
+            return True
+
+        return False
+
+    async def is_directory_allowed(self, path: str, workspace_path: str) -> bool:
+        """Check if directory is allowed."""
+        profile = await self.get_user_profile()
+
+        # Always allow workspace
+        if path == workspace_path:
+            return True
+
+        # Check allowed directories
+        if "allowed_directories" in profile:
+            for item in profile["allowed_directories"]:
+                if path == item["path"]:
+                    return True
+
+                # Check if this path is a subdirectory of an allowed path
+                allowed_path = item["path"]
+                if path.startswith(allowed_path + "/") or path == allowed_path:
+                    return True
+
+        return False

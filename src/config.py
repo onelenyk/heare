@@ -161,6 +161,7 @@ class Settings:
         default_factory=lambda: HEARE_HOME / "mute_input.flag"
     )
     inject_dir: Path = field(default_factory=lambda: HEARE_HOME / "inject")
+    skills_paths: list[str] = field(default_factory=lambda: ["~/.heare/skills"])
     # DEPRECATED (Phase 2): Legacy AgentSDKCLI/decider removed. These fields
     # exist only for config file compatibility and are no longer used.
     claude_cli: str = "claude"
@@ -309,6 +310,13 @@ class Settings:
     # _load_indication_settings(). Missing section is fully valid; defaults
     # match plan §3 (.omc/plans/indication.md).
     indication: IndicationSettings = field(default_factory=IndicationSettings)
+
+    # File access settings for extended workspace management
+    file_access_profile_path: Path = field(default_factory=lambda: HEARE_HOME / "profile.json")
+    file_access_auto_approve_workspace: bool = True
+    file_access_ask_for_new_dirs: bool = True
+    file_access_max_archive_size: int = 1024 * 1024 * 1024  # 1GB
+    file_access_operation_timeout: int = 300  # 5 minutes
 
     def __post_init__(self) -> None:
         # CCS-01 invariant: a refinement window longer than the idle

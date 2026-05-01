@@ -97,6 +97,11 @@ def _workflow_args(args: dict[str, Any]) -> str:
     return str(args.get("name", "")).strip()
 
 
+def _json_args(args: dict[str, Any]) -> str:
+    """Pass through arguments as JSON string for tool creation."""
+    return json.dumps(args)
+
+
 _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
     "bash": (
         {
@@ -229,6 +234,222 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         [],
         _empty_args,
     ),
+    "create_tool": (
+        {
+            "name": {
+                "type": "string",
+                "description": "Tool name (lowercase, no spaces, letters/numbers/underscores only)",
+            },
+            "description": {
+                "type": "string",
+                "description": "What the tool does",
+            },
+            "arguments": {
+                "type": "object",
+                "description": "JSON schema for tool arguments as a dict mapping arg names to their type/description",
+            },
+            "implementation_type": {
+                "type": "string",
+                "enum": ["bash", "fetch", "python"],
+                "description": "How the tool is executed: bash (shell command), fetch (HTTP GET), or python (eval expression)",
+            },
+            "implementation": {
+                "type": "string",
+                "description": "The command, URL, or Python code. Use {arg} placeholders for bash/fetch, args dict for python.",
+            },
+        },
+        ["name", "description", "arguments", "implementation_type", "implementation"],
+        _json_args,
+    ),
+    "update_tool": (
+        {
+            "name": {
+                "type": "string",
+                "description": "Tool name to update",
+            },
+            "description": {
+                "type": "string",
+                "description": "New description (optional)",
+            },
+            "arguments": {
+                "type": "object",
+                "description": "New arguments schema (optional)",
+            },
+            "implementation_type": {
+                "type": "string",
+                "enum": ["bash", "fetch", "python"],
+                "description": "New implementation type (optional)",
+            },
+            "implementation": {
+                "type": "string",
+                "description": "New implementation string (optional)",
+            },
+        },
+        ["name"],
+        _json_args,
+    ),
+    "delete_tool": (
+        {
+            "name": {
+                "type": "string",
+                "description": "Tool name to delete",
+            },
+        },
+        ["name"],
+        _name_args,
+    ),
+    "list_tools": (
+        {},
+        [],
+        _empty_args,
+    ),
+    # Archive & Batch Tools
+    "create_archive": (
+        {
+            "archive_path": {
+                "type": "string",
+                "description": "Path where archive will be created",
+            },
+            "sources": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "List of source files/directories to include",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["tar.gz", "zip", "tar.bz2"],
+                "description": "Archive format (default: tar.gz)",
+            },
+            "compression": {
+                "type": "string",
+                "enum": ["auto", "gzip", "bzip2", "none"],
+                "description": "Compression method (default: auto)",
+            },
+        },
+        ["archive_path", "sources"],
+        _json_args,
+    ),
+    "extract_archive": (
+        {
+            "archive_path": {
+                "type": "string",
+                "description": "Path to archive file",
+            },
+            "destination": {
+                "type": "string",
+                "description": "Directory to extract to",
+            },
+            "overwrite": {
+                "type": "boolean",
+                "description": "Overwrite existing files (default: false)",
+            },
+            "preserve_path": {
+                "type": "boolean",
+                "description": "Preserve archive directory structure (default: true)",
+            },
+        },
+        ["archive_path", "destination"],
+        _json_args,
+    ),
+    "batch_operation": (
+        {
+            "operation": {
+                "type": "string",
+                "enum": ["delete", "copy_to", "move_to", "list_info", "archive"],
+                "description": "Operation to perform",
+            },
+            "pattern": {
+                "type": "string",
+                "description": "File pattern to match (e.g., '*.py', 'temp_')",
+            },
+            "source": {
+                "type": "string",
+                "description": "Source directory or file (default: workspace)",
+            },
+            "include_subdirs": {
+                "type": "boolean",
+                "description": "Include subdirectories (default: false)",
+            },
+            "dry_run": {
+                "type": "boolean",
+                "description": "Show what would be done without actually doing it (default: false)",
+            },
+        },
+        ["operation", "pattern"],
+        _json_args,
+    ),
+    # Profile Management Tools
+    "add_favorite": (
+        {
+            "path": {
+                "type": "string",
+                "description": "Directory path to add to favorites",
+            },
+            "label": {
+                "type": "string",
+                "description": "Optional label for the favorite location",
+            },
+        },
+        ["path"],
+        _path_args,
+    ),
+    "list_favorites": (
+        {
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of favorites to return (default: 10)",
+            },
+        },
+        [],
+        _empty_args,
+    ),
+    "set_view_preference": (
+        {
+            "key": {
+                "type": "string",
+                "description": "Preference key (show_hidden, detail_level, sort_by, sort_order)",
+            },
+            "value": {
+                "type": ["string", "boolean", "integer"],
+                "description": "Value to set",
+            },
+        },
+        ["key", "value"],
+        _json_args,
+    ),
+    "show_profile": (
+        {
+            "section": {
+                "type": "string",
+                "enum": ["all", "preferences", "favorites", "history"],
+                "description": "Profile section to show (default: all)",
+            },
+        },
+        [],
+        _empty_args,
+    ),
+    # Agent Skills meta-tools
+    "list_skills": (
+        {},
+        [],
+        _empty_args,
+    ),
+    "run_skill": (
+        {
+            "name": {
+                "type": "string",
+                "description": "Name of the skill to run (e.g., 'pdf-processing')",
+            },
+            "context": {
+                "type": "object",
+                "description": "Skill-specific context dict. Contents depend on the skill. Call list_skills first to learn what parameters each skill expects.",
+                "properties": {},
+                "additionalProperties": True,
+            },
+        },
+        ["name", "context"],
+        _json_args,
+    ),
 }
 
 
@@ -263,6 +484,23 @@ def build_tools_schema():
                 required=required,
             )
         )
+
+    # Add dynamic tools schemas
+    from .tool_registry import _DYNAMIC_TOOLS
+    for name in _DYNAMIC_TOOLS:
+        if name not in enabled:
+            continue
+        dynamic_schema = get_dynamic_tool_schema(name)
+        if dynamic_schema:
+            schemas.append(
+                FunctionSchema(
+                    name=name,
+                    description=get_tool(name).description,
+                    properties=dynamic_schema[0],
+                    required=dynamic_schema[1],
+                )
+            )
+
     return ToolsSchema(standard_tools=schemas)
 
 
@@ -401,7 +639,67 @@ def register_all_tools(
     return registered
 
 
+# ---------------------------------------------------------------------------
+# Dynamic tool schema registration — for runtime tool creation
+# ---------------------------------------------------------------------------
+
+# Store for dynamic tool schemas
+_DYNAMIC_TOOL_SCHEMAS: dict[str, tuple[dict, str, str]] = {}
+
+
+def register_dynamic_tool_schema(
+    name: str,
+    schema: dict,
+    impl_type: str,
+    impl: str,
+) -> None:
+    """Register a dynamic tool's schema for immediate use."""
+    _DYNAMIC_TOOL_SCHEMAS[name] = (schema, impl_type, impl)
+
+
+def unregister_dynamic_tool_schema(name: str) -> bool:
+    """Unregister a dynamic tool's schema. Returns True if existed."""
+    return _DYNAMIC_TOOL_SCHEMAS.pop(name, None) is not None
+
+
+def get_dynamic_tool_schema(name: str) -> tuple[dict, str, str] | None:
+    """Get a dynamic tool's schema."""
+    return _DYNAMIC_TOOL_SCHEMAS.get(name)
+
+
+def register_dynamic_tool_handler(
+    llm: Any,
+    name: str,
+    impl_type: str,
+    impl: str,
+    settings: "Settings | None" = None,
+    conversation_manager: Any = None,
+) -> None:
+    """Create and register a handler for a dynamically created tool."""
+    from .dynamic_tools import execute_bash_tool, execute_fetch_tool, execute_python_tool
+
+    async def handler(params: Any) -> None:
+        args = dict(params.arguments or {})
+
+        # Execute based on type
+        if impl_type == "bash":
+            result = await execute_bash_tool(impl, args, settings)
+        elif impl_type == "fetch":
+            result = await execute_fetch_tool(impl, args, settings)
+        elif impl_type == "python":
+            result = await execute_python_tool(impl, args, settings)
+        else:
+            result = {"success": False, "error": f"Unknown impl_type: {impl_type}"}
+
+        await params.result_callback(result)
+
+    llm.register_function(name, handler, cancel_on_interruption=True)
+
+
 __all__ = [
     "build_tools_schema",
     "register_all_tools",
+    "register_dynamic_tool_schema",
+    "unregister_dynamic_tool_schema",
+    "register_dynamic_tool_handler",
 ]

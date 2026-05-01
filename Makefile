@@ -52,6 +52,7 @@ logs:
 	@./hearectl logs
 
 watch:
+	@./hearectl status >/dev/null 2>&1 || ./hearectl start
 	@./hearectl watch
 
 test:

@@ -218,13 +218,13 @@ async def test_migration_idempotent() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_schema_version_v4_on_fresh_install(store: TranscriptStore) -> None:
+async def test_schema_version_v5_on_fresh_install(store: TranscriptStore) -> None:
     cursor = await store.db.execute(
         "SELECT value FROM meta WHERE key = ?", ("schema_version",)
     )
     row = await cursor.fetchone()
     assert row is not None
-    assert int(row[0]) == 4
+    assert int(row[0]) == 5
 
 
 async def test_schema_upgrade_v2_to_v3() -> None:
@@ -284,13 +284,13 @@ async def test_schema_upgrade_v2_to_v3() -> None:
         # Now open via TranscriptStore — init() must upgrade in place
         s = TranscriptStore(db_path)
         await s.init()
-        # meta.schema_version is now 4 (CCS-01)
+        # meta.schema_version is now 5 (after dynamic_tools migration)
         cursor = await s.db.execute(
             "SELECT value FROM meta WHERE key = ?", ("schema_version",)
         )
         row = await cursor.fetchone()
         assert row is not None
-        assert int(row[0]) == 4
+        assert int(row[0]) == 5
         # events table exists
         cursor = await s.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"

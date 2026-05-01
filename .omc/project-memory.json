@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1777393328777,
+  "lastScanned": 1777574674348,
   "projectRoot": "/Users/lenyk/myprojects/heare",
   "techStack": {
     "languages": [
@@ -61,14 +61,14 @@
       "path": "data",
       "purpose": "Data files",
       "fileCount": 0,
-      "lastAccessed": 1777393328763,
+      "lastAccessed": 1777574674338,
       "keyFiles": []
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1777393328763,
+      "lastAccessed": 1777574674338,
       "keyFiles": [
         "action_execution_flow.md",
         "conversation_logic.md",
@@ -80,7 +80,7 @@
       "path": "migrations",
       "purpose": "Database migrations",
       "fileCount": 1,
-      "lastAccessed": 1777393328763,
+      "lastAccessed": 1777574674338,
       "keyFiles": [
         "01_add_conversations.sql"
       ]
@@ -89,7 +89,7 @@
       "path": "prompts",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1777393328764,
+      "lastAccessed": 1777574674338,
       "keyFiles": [
         "decider.txt",
         "identity-bootstrap.txt",
@@ -100,7 +100,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 3,
-      "lastAccessed": 1777393328764,
+      "lastAccessed": 1777574674339,
       "keyFiles": [
         "bench_claude_ttft.py",
         "bench_openrouter.py",
@@ -111,7 +111,7 @@
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1777393328764,
+      "lastAccessed": 1777574674339,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -121,34 +121,34 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 33,
-      "lastAccessed": 1777393328764,
+      "fileCount": 37,
+      "lastAccessed": 1777574674339,
       "keyFiles": [
         "__init__.py",
+        "assistant_response_logger.py",
         "config.py",
         "context.py",
-        "conversation.py",
-        "direct_tools.py"
+        "conversation.py"
       ]
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 41,
-      "lastAccessed": 1777393328765,
+      "fileCount": 45,
+      "lastAccessed": 1777574674339,
       "keyFiles": [
         "__init__.py",
+        "test_assistant_response_logger.py",
         "test_config.py",
         "test_context.py",
-        "test_conversation.py",
-        "test_conversation_memory_phase2.py"
+        "test_conversation.py"
       ]
     },
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
       "fileCount": 3,
-      "lastAccessed": 1777393328765,
+      "lastAccessed": 1777574674340,
       "keyFiles": [
         "cancel_stopwords.txt",
         "decider_prompt_flag_off.golden.txt"
@@ -158,38 +158,74 @@
   "hotPaths": [
     {
       "path": "src/watch.py",
-      "accessCount": 51,
-      "lastAccessed": 1777403107533,
+      "accessCount": 70,
+      "lastAccessed": 1777646592960,
+      "type": "file"
+    },
+    {
+      "path": "src/direct_tools.py",
+      "accessCount": 64,
+      "lastAccessed": 1777642966949,
+      "type": "file"
+    },
+    {
+      "path": "src/llm_tools.py",
+      "accessCount": 53,
+      "lastAccessed": 1777646049056,
       "type": "file"
     },
     {
       "path": "src/pipeline.py",
-      "accessCount": 25,
-      "lastAccessed": 1777403040443,
+      "accessCount": 50,
+      "lastAccessed": 1777641804395,
       "type": "file"
     },
     {
-      "path": "tests/test_watch.py",
-      "accessCount": 18,
-      "lastAccessed": 1777401702002,
-      "type": "file"
-    },
-    {
-      "path": "src/assistant_response_logger.py",
-      "accessCount": 12,
-      "lastAccessed": 1777402535386,
-      "type": "file"
-    },
-    {
-      "path": "src/config.py",
-      "accessCount": 11,
-      "lastAccessed": 1777403009575,
+      "path": "src/tool_registry.py",
+      "accessCount": 37,
+      "lastAccessed": 1777646360989,
       "type": "file"
     },
     {
       "path": "src/storage.py",
-      "accessCount": 8,
-      "lastAccessed": 1777401221728,
+      "accessCount": 31,
+      "lastAccessed": 1777641479987,
+      "type": "file"
+    },
+    {
+      "path": "src/config.py",
+      "accessCount": 31,
+      "lastAccessed": 1777646360580,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_watch.py",
+      "accessCount": 20,
+      "lastAccessed": 1777643812089,
+      "type": "file"
+    },
+    {
+      "path": "src/main.py",
+      "accessCount": 15,
+      "lastAccessed": 1777634226167,
+      "type": "file"
+    },
+    {
+      "path": "src/llm_context_injector.py",
+      "accessCount": 15,
+      "lastAccessed": 1777642680070,
+      "type": "file"
+    },
+    {
+      "path": "src/assistant_response_logger.py",
+      "accessCount": 13,
+      "lastAccessed": 1777634212646,
+      "type": "file"
+    },
+    {
+      "path": "src/conversation.py",
+      "accessCount": 9,
+      "lastAccessed": 1777641264138,
       "type": "file"
     },
     {
@@ -199,27 +235,45 @@
       "type": "file"
     },
     {
-      "path": "src/main.py",
-      "accessCount": 7,
-      "lastAccessed": 1777403049892,
+      "path": ".venv/lib/python3.13/site-packages/pipecat/services/llm_service.py",
+      "accessCount": 8,
+      "lastAccessed": 1777411412296,
       "type": "file"
     },
     {
-      "path": "tests/integration/test_conversation_flow.py",
-      "accessCount": 5,
-      "lastAccessed": 1777393715990,
+      "path": ".venv/lib/python3.13/site-packages/pipecat/frames/frames.py",
+      "accessCount": 8,
+      "lastAccessed": 1777639542881,
       "type": "file"
     },
     {
-      "path": "src/conversation.py",
-      "accessCount": 4,
-      "lastAccessed": 1777393564311,
+      "path": "Makefile",
+      "accessCount": 8,
+      "lastAccessed": 1777641519478,
       "type": "file"
     },
     {
       "path": "src/transcription_gate.py",
-      "accessCount": 4,
-      "lastAccessed": 1777401364582,
+      "accessCount": 7,
+      "lastAccessed": 1777634217950,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_conversation_flow.py",
+      "accessCount": 6,
+      "lastAccessed": 1777640305077,
+      "type": "file"
+    },
+    {
+      "path": "src/context.py",
+      "accessCount": 6,
+      "lastAccessed": 1777641264667,
+      "type": "file"
+    },
+    {
+      "path": "src/mcp_utils.py",
+      "accessCount": 6,
+      "lastAccessed": 1777641273319,
       "type": "file"
     },
     {
@@ -229,15 +283,39 @@
       "type": "file"
     },
     {
-      "path": "src/llm_context_injector.py",
-      "accessCount": 2,
-      "lastAccessed": 1777393521360,
+      "path": "tests/test_llm_tools.py",
+      "accessCount": 4,
+      "lastAccessed": 1777640299227,
       "type": "file"
     },
     {
       "path": "src/identity.py",
-      "accessCount": 2,
-      "lastAccessed": 1777393521411,
+      "accessCount": 3,
+      "lastAccessed": 1777410574836,
+      "type": "file"
+    },
+    {
+      "path": "src/speaker_namer.py",
+      "accessCount": 3,
+      "lastAccessed": 1777410577930,
+      "type": "file"
+    },
+    {
+      "path": "src/tts_edge.py",
+      "accessCount": 3,
+      "lastAccessed": 1777634205725,
+      "type": "file"
+    },
+    {
+      "path": "src/mute_gate.py",
+      "accessCount": 3,
+      "lastAccessed": 1777634206008,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 3,
+      "lastAccessed": 1777640301199,
       "type": "file"
     },
     {
@@ -247,39 +325,9 @@
       "type": "file"
     },
     {
-      "path": "src/speaker_namer.py",
-      "accessCount": 2,
-      "lastAccessed": 1777393525565,
-      "type": "file"
-    },
-    {
-      "path": "src/context.py",
-      "accessCount": 2,
-      "lastAccessed": 1777393532385,
-      "type": "file"
-    },
-    {
       "path": "tests/test_conversation.py",
       "accessCount": 2,
       "lastAccessed": 1777393588504,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/frames/frames.py",
-      "accessCount": 2,
-      "lastAccessed": 1777401559724,
-      "type": "file"
-    },
-    {
-      "path": "src/tts_edge.py",
-      "accessCount": 2,
-      "lastAccessed": 1777402456341,
-      "type": "file"
-    },
-    {
-      "path": "src/mute_gate.py",
-      "accessCount": 2,
-      "lastAccessed": 1777402983289,
       "type": "file"
     },
     {
@@ -289,21 +337,33 @@
       "type": "file"
     },
     {
-      "path": "src/llm_tools.py",
-      "accessCount": 1,
-      "lastAccessed": 1777393406537,
+      "path": "tests/test_mcp_indication.py",
+      "accessCount": 2,
+      "lastAccessed": 1777411400534,
       "type": "file"
     },
     {
-      "path": "src/tool_registry.py",
-      "accessCount": 1,
-      "lastAccessed": 1777393430747,
+      "path": ".venv/lib/python3.13/site-packages/pipecat/processors/frame_processor.py",
+      "accessCount": 2,
+      "lastAccessed": 1777411402211,
       "type": "file"
     },
     {
-      "path": "src/direct_tools.py",
-      "accessCount": 1,
-      "lastAccessed": 1777393432408,
+      "path": "tests/integration/test_tool_result_speech.py",
+      "accessCount": 2,
+      "lastAccessed": 1777576570077,
+      "type": "file"
+    },
+    {
+      "path": "src/watch_controls.py",
+      "accessCount": 2,
+      "lastAccessed": 1777576583291,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/schemas/tools_schema.py",
+      "accessCount": 2,
+      "lastAccessed": 1777639537901,
       "type": "file"
     },
     {
@@ -313,27 +373,9 @@
       "type": "file"
     },
     {
-      "path": "Makefile",
-      "accessCount": 1,
-      "lastAccessed": 1777396641568,
-      "type": "file"
-    },
-    {
       "path": ".venv/lib/python3.13/site-packages/pipecat/services/tts_service.py",
       "accessCount": 1,
       "lastAccessed": 1777401383729,
-      "type": "file"
-    },
-    {
-      "path": "tests/integration/test_tool_result_speech.py",
-      "accessCount": 1,
-      "lastAccessed": 1777401419541,
-      "type": "file"
-    },
-    {
-      "path": "src/watch_controls.py",
-      "accessCount": 1,
-      "lastAccessed": 1777402135876,
       "type": "file"
     },
     {
@@ -346,6 +388,72 @@
       "path": "tests/test_text_injector.py",
       "accessCount": 1,
       "lastAccessed": 1777403145481,
+      "type": "file"
+    },
+    {
+      "path": "src/speaker_processor.py",
+      "accessCount": 1,
+      "lastAccessed": 1777410575204,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_mcp_utils.py",
+      "accessCount": 1,
+      "lastAccessed": 1777410585746,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/schemas/function_schema.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411352107,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/schemas/direct_function.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411354723,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/base_llm_adapter.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411370811,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/services/open_ai_adapter.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411374347,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/services/anthropic_adapter.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411377414,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/services/ai_service.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411383475,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/services/mcp_service.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411388259,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/services/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411390487,
+      "type": "file"
+    },
+    {
+      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/services/gemini_adapter.py",
+      "accessCount": 1,
+      "lastAccessed": 1777411394886,
       "type": "file"
     }
   ],

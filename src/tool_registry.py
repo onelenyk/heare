@@ -12,6 +12,7 @@ are derived from this registry.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -27,6 +28,47 @@ class Tool:
     execution: ExecutionType  # how it's executed
     description: str  # what it does
     enabled: bool = True  # can be toggled
+
+
+@dataclass(frozen=True)
+class ToolDefinition:
+    """Schema for a dynamic tool definition.
+
+    Used when the LLM creates a new tool at runtime.
+    """
+
+    name: str  # lowercase, no spaces
+    description: str  # what the tool does
+    arguments: dict[str, dict]  # JSON schema format
+    implementation_type: Literal["bash", "fetch", "python"]  # how to execute
+    implementation: str  # command/url/code
+
+    def validate(self) -> list[str]:
+        """Validate the tool definition, returning a list of errors."""
+        errors: list[str] = []
+
+        if not self.name:
+            errors.append("name is required")
+        elif not self.name.islower():
+            errors.append("name must be lowercase")
+        elif not re.match(r"^[a-z][a-z0-9_]*$", self.name):
+            errors.append("name must start with a letter and contain only letters, numbers, underscores")
+
+        if not self.description:
+            errors.append("description is required")
+
+        if self.implementation_type not in ("bash", "fetch", "python"):
+            errors.append(f"invalid implementation_type: {self.implementation_type}")
+
+        if not self.implementation:
+            errors.append("implementation is required")
+
+        if not self.arguments:
+            errors.append("arguments schema is required")
+        elif not isinstance(self.arguments, dict):
+            errors.append("arguments must be a dict")
+
+        return errors
 
 
 # ============================================================================
@@ -131,7 +173,139 @@ TOOLS: dict[str, Tool] = {
         description="Cancel the in-flight action and drain pending intents",
         enabled=True,
     ),
+    # CRUD tools for dynamic tool management
+    "create_tool": Tool(
+        name="create_tool",
+        sdk_name="CreateTool",
+        execution="direct",
+        description="Create a new tool dynamically. Provide: name, description, arguments (JSON schema), implementation type (bash/fetch/python), and implementation string.",
+        enabled=True,
+    ),
+    "update_tool": Tool(
+        name="update_tool",
+        sdk_name="UpdateTool",
+        execution="direct",
+        description="Update an existing dynamic tool. Provide the tool name and fields to update.",
+        enabled=True,
+    ),
+    "delete_tool": Tool(
+        name="delete_tool",
+        sdk_name="DeleteTool",
+        execution="direct",
+        description="Delete a dynamic tool by name. Cannot delete built-in tools.",
+        enabled=True,
+    ),
+    "list_tools": Tool(
+        name="list_tools",
+        sdk_name="ListTools",
+        execution="direct",
+        description="List all available tools, including dynamically created ones.",
+        enabled=True,
+    ),
+    # Archive & Batch Tools
+    "create_archive": Tool(
+        name="create_archive",
+        sdk_name="CreateArchive",
+        execution="direct",
+        description="Create tar or zip archive from files/directories with compression options",
+        enabled=True,
+    ),
+    "extract_archive": Tool(
+        name="extract_archive",
+        sdk_name="ExtractArchive",
+        execution="direct",
+        description="Extract tar or zip archive to a directory with overwrite options",
+        enabled=True,
+    ),
+    "batch_operation": Tool(
+        name="batch_operation",
+        sdk_name="BatchOperation",
+        execution="direct",
+        description="Perform operations on multiple files matching a pattern (delete, copy, move, list, archive)",
+        enabled=True,
+    ),
+    # Profile Management Tools
+    "add_favorite": Tool(
+        name="add_favorite",
+        sdk_name="AddFavorite",
+        execution="direct",
+        description="Add a directory to favorites list",
+        enabled=True,
+    ),
+    "list_favorites": Tool(
+        name="list_favorites",
+        sdk_name="ListFavorites",
+        execution="direct",
+        description="List favorite locations with access counts",
+        enabled=True,
+    ),
+    "set_view_preference": Tool(
+        name="set_view_preference",
+        sdk_name="SetViewPreference",
+        execution="direct",
+        description="Set display preferences (show_hidden, detail_level, sort_by, sort_order)",
+        enabled=True,
+    ),
+    "show_profile": Tool(
+        name="show_profile",
+        sdk_name="ShowProfile",
+        execution="direct",
+        description="Show current user profile settings and preferences",
+        enabled=True,
+    ),
+    # Agent Skills meta-tools (agentskills.io format)
+    "list_skills": Tool(
+        name="list_skills",
+        sdk_name="ListSkills",
+        execution="direct",
+        description="List available Agent Skills. Returns skill names and one-line descriptions. Call this to discover what portable skills exist.",
+        enabled=True,
+    ),
+    "run_skill": Tool(
+        name="run_skill",
+        sdk_name="RunSkill",
+        execution="direct",
+        description="Execute an Agent Skill by name. Skills can orchestrate multiple heare tools internally. Provide the skill name and context dict with required parameters.",
+        enabled=True,
+    ),
 }
+
+
+# ============================================================================
+# RUNTIME TOOL REGISTRY — for dynamically created tools
+# ============================================================================
+
+_DYNAMIC_TOOLS: dict[str, Tool] = {}
+
+
+def register_dynamic_tool(tool: Tool) -> None:
+    """Register a tool at runtime."""
+    _DYNAMIC_TOOLS[tool.name] = tool
+
+
+def unregister_dynamic_tool(name: str) -> bool:
+    """Unregister a tool at runtime. Returns True if tool existed."""
+    return _DYNAMIC_TOOLS.pop(name, None) is not None
+
+
+def get_tool(name: str) -> Tool | None:
+    """Get tool from static or dynamic registry. Overrides the function below."""
+    return TOOLS.get(name) or _DYNAMIC_TOOLS.get(name)
+
+
+def get_all_tools() -> dict[str, Tool]:
+    """Get all tools (static + dynamic)."""
+    return {**TOOLS, **_DYNAMIC_TOOLS}
+
+
+def is_dynamic_tool(name: str) -> bool:
+    """Check if a tool is dynamically created."""
+    return name in _DYNAMIC_TOOLS
+
+
+def is_static_tool(name: str) -> bool:
+    """Check if a tool is a built-in static tool."""
+    return name in TOOLS
 
 
 # ============================================================================
@@ -139,8 +313,10 @@ TOOLS: dict[str, Tool] = {
 # ============================================================================
 
 def get_enabled_tools() -> set[str]:
-    """Get all enabled tool names (lowercase)."""
-    return {t.name for t in TOOLS.values() if t.enabled}
+    """Get all enabled tool names (lowercase), including dynamic tools."""
+    static = {t.name for t in TOOLS.values() if t.enabled}
+    dynamic = {t.name for t in _DYNAMIC_TOOLS.values() if t.enabled}
+    return static | dynamic
 
 
 def get_sdk_tools() -> list[str]:
@@ -158,19 +334,15 @@ def get_claude_tools() -> set[str]:
     return {t.name for t in TOOLS.values() if t.enabled and t.execution == "claude"}
 
 
-def get_tool(name: str) -> Tool | None:
-    """Get a tool by name, or None if not found."""
-    return TOOLS.get(name)
-
-
 def is_tool_allowed(name: str) -> bool:
     """Check if a tool name is allowed and enabled.
 
     Returns True for:
-    - Tools in the registry that are enabled
+    - Tools in the static registry that are enabled
+    - Dynamic tools that are enabled
     - MCP tools (mcp__<server>__<action>)
     """
-    tool = TOOLS.get(name)
+    tool = TOOLS.get(name) or _DYNAMIC_TOOLS.get(name)
     if tool is not None and tool.enabled:
         return True
     # MCP tools are always allowed if they follow the pattern

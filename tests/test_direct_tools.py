@@ -506,18 +506,28 @@ async def test_web_fetch_invalid_url() -> None:
 # -------- _execute_web_search tests (DuckDuckGo) --------
 
 async def test_web_search_duckduckgo_success() -> None:
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = (
+    import httpx
+
+    html = (
         '<a class="result__a" href="https://example.com/1">Result 1</a>'
         '<a class="result__a" href="https://example.com/2">Result 2</a>'
     )
-    mock_response.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient") as mock_client:
+    # Create a real httpx Response with our test HTML
+    mock_response = httpx.Response(
+        200,
+        text=html,
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
+
+    # Create a Settings object that forces DuckDuckGo (ignoring SERPER_API_KEY)
+    settings = Settings()
+    settings.web_search_provider = "duckduckgo"
+
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
-        result = await _execute_web_search("test query", None)
+        result = await _execute_web_search("test query", settings)
         assert result["success"] is True
         assert "Result 1" in result["output"]
         assert "https://example.com/1" in result["output"]
@@ -525,21 +535,28 @@ async def test_web_search_duckduckgo_success() -> None:
 
 async def test_web_search_duckduckgo_includes_snippets() -> None:
     """DuckDuckGo result HTML with `result__snippet` lands in `output`."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = (
+    import httpx
+
+    html = (
         '<a class="result__a" href="https://example.com/1">Chili Recipe</a>'
         '<a class="result__snippet" href="https://example.com/1">'
         'Brown beef, add tomatoes and beans, simmer 20 minutes.</a>'
         '<a class="result__a" href="https://example.com/2">Other Page</a>'
     )
-    mock_response.raise_for_status = MagicMock()
+    mock_response = httpx.Response(
+        200,
+        text=html,
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
 
-    with patch("httpx.AsyncClient") as mock_client:
+    settings = Settings()
+    settings.web_search_provider = "duckduckgo"
+
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_response
         )
-        result = await _execute_web_search("chili recipe", None)
+        result = await _execute_web_search("chili recipe", settings)
 
     assert result["success"] is True
     output = result["output"]
@@ -570,7 +587,7 @@ async def test_web_search_serper_includes_snippets() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
@@ -585,12 +602,15 @@ async def test_web_search_serper_includes_snippets() -> None:
 
 
 async def test_web_search_network_failure() -> None:
-    with patch("httpx.AsyncClient") as mock_client:
+    settings = Settings()
+    settings.web_search_provider = "duckduckgo"
+
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             side_effect=Exception("Network error")
         )
 
-        result = await _execute_web_search("test", None)
+        result = await _execute_web_search("test", settings)
         assert result["success"] is False
         assert "DuckDuckGo search failed" in result["error"]
 
@@ -1385,19 +1405,26 @@ async def test_web_fetch_spoken_error() -> None:
 
 async def test_web_search_spoken_with_results() -> None:
     """_execute_web_search with N hits uses a minimal spoken cue — no result count, no titles."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = (
+    import httpx
+
+    html = (
         '<a class="result__a" href="https://example.com/1">Title One</a>'
         '<a class="result__a" href="https://example.com/2">Title Two</a>'
         '<a class="result__a" href="https://example.com/3">Title Three</a>'
     )
-    mock_response.raise_for_status = MagicMock()
+    mock_response = httpx.Response(
+        200,
+        text=html,
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
 
-    with patch("httpx.AsyncClient") as mock_client:
+    settings = Settings()
+    settings.web_search_provider = "duckduckgo"
+
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
-        result = await _execute_web_search("python asyncio", None)
+        result = await _execute_web_search("python asyncio", settings)
 
     assert result["success"] is True
     spoken = result["spoken"]
@@ -1412,15 +1439,21 @@ async def test_web_search_spoken_with_results() -> None:
 
 async def test_web_search_spoken_zero_results() -> None:
     """_execute_web_search with no hits returns spoken 'No results found.'."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = "<html>nothing here</html>"  # no result__a links
-    mock_response.raise_for_status = MagicMock()
+    import httpx
 
-    with patch("httpx.AsyncClient") as mock_client:
+    mock_response = httpx.Response(
+        200,
+        text="<html>nothing here</html>",  # no result__a links
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
+
+    settings = Settings()
+    settings.web_search_provider = "duckduckgo"
+
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
-        result = await _execute_web_search("xyzzy42 nonexistent", None)
+        result = await _execute_web_search("xyzzy42 nonexistent", settings)
 
     assert result["success"] is True
     spoken = result["spoken"]
@@ -1431,12 +1464,15 @@ async def test_web_search_spoken_zero_results() -> None:
 
 async def test_web_search_spoken_error() -> None:
     """_execute_web_search network failure returns spoken 'Search failed.'."""
-    with patch("httpx.AsyncClient") as mock_client:
+    settings = Settings()
+    settings.web_search_provider = "duckduckgo"
+
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             side_effect=Exception("connection refused")
         )
 
-        result = await _execute_web_search("anything", None)
+        result = await _execute_web_search("anything", settings)
 
     assert result["success"] is False
     spoken = result["spoken"]
@@ -1459,16 +1495,20 @@ def _ddg_html(*pairs: tuple[str, str]) -> str:
 async def test_web_search_chains_web_fetch_when_enabled(settings: Settings) -> None:
     """When web_search_fetch_top is True, the top URL is fetched and appended."""
     settings.web_search_fetch_top = True
+    settings.web_search_provider = "duckduckgo"
 
-    ddg_response = MagicMock()
-    ddg_response.status_code = 200
-    ddg_response.text = _ddg_html(
+    import httpx
+    ddg_html = _ddg_html(
         ("https://example.com/recipe", "Chili Recipe"),
         ("https://example.com/other", "Other"),
     )
-    ddg_response.raise_for_status = MagicMock()
+    ddg_response = httpx.Response(
+        200,
+        text=ddg_html,
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
 
-    with patch("httpx.AsyncClient") as mock_client:
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=ddg_response
         )
@@ -1494,11 +1534,15 @@ async def test_web_search_chains_web_fetch_when_enabled(settings: Settings) -> N
 async def test_web_search_skips_fetch_when_disabled(settings: Settings) -> None:
     """When web_search_fetch_top is False, no chained fetch happens."""
     settings.web_search_fetch_top = False
+    settings.web_search_provider = "duckduckgo"
 
-    ddg_response = MagicMock()
-    ddg_response.status_code = 200
-    ddg_response.text = _ddg_html(("https://example.com/x", "Title X"))
-    ddg_response.raise_for_status = MagicMock()
+    import httpx
+    ddg_html = _ddg_html(("https://example.com/x", "Title X"))
+    ddg_response = httpx.Response(
+        200,
+        text=ddg_html,
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
 
     fetch_calls: list[str] = []
 
@@ -1506,7 +1550,7 @@ async def test_web_search_skips_fetch_when_disabled(settings: Settings) -> None:
         fetch_calls.append(url)
         return {"success": True, "output": "should-not-appear"}
 
-    with patch("httpx.AsyncClient") as mock_client:
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=ddg_response
         )
@@ -1522,16 +1566,20 @@ async def test_web_search_skips_fetch_when_disabled(settings: Settings) -> None:
 async def test_web_search_swallows_top_fetch_error(settings: Settings) -> None:
     """A failing chained fetch must not break the search result."""
     settings.web_search_fetch_top = True
+    settings.web_search_provider = "duckduckgo"
 
-    ddg_response = MagicMock()
-    ddg_response.status_code = 200
-    ddg_response.text = _ddg_html(("https://example.com/x", "Title X"))
-    ddg_response.raise_for_status = MagicMock()
+    import httpx
+    ddg_html = _ddg_html(("https://example.com/x", "Title X"))
+    ddg_response = httpx.Response(
+        200,
+        text=ddg_html,
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
 
     async def failing_fetch(url, _settings):
         return {"success": False, "output": "", "error": "boom"}
 
-    with patch("httpx.AsyncClient") as mock_client:
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=ddg_response
         )
@@ -1568,7 +1616,7 @@ async def test_serper_returns_numbered_output_and_items() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
@@ -1598,10 +1646,9 @@ async def test_serper_returns_numbered_output_and_items() -> None:
 async def test_duckduckgo_returns_numbered_output_and_items() -> None:
     """DuckDuckGo returns numbered output and ``items`` with ``n`` 1..N."""
     import re
+    import httpx
 
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = (
+    html = (
         '<a class="result__a" href="https://example.com/1">Title One</a>'
         '<a class="result__snippet" href="https://example.com/1">First snippet.</a>'
         '<a class="result__a" href="https://example.com/2">Title Two</a>'
@@ -1609,13 +1656,20 @@ async def test_duckduckgo_returns_numbered_output_and_items() -> None:
         '<a class="result__a" href="https://example.com/3">Title Three</a>'
         '<a class="result__snippet" href="https://example.com/3">Third snippet.</a>'
     )
-    mock_response.raise_for_status = MagicMock()
+    mock_response = httpx.Response(
+        200,
+        text=html,
+        request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
+    )
 
-    with patch("httpx.AsyncClient") as mock_client:
+    settings = Settings()
+    settings.web_search_provider = "duckduckgo"
+
+    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_response
         )
-        result = await _execute_web_search("test query", None)
+        result = await _execute_web_search("test query", settings)
 
     assert result["success"] is True
     output = result["output"]
@@ -1650,7 +1704,7 @@ async def test_serper_knowledge_graph_at_position_0() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
@@ -1671,7 +1725,7 @@ async def test_search_serper_empty_results_has_empty_items() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )

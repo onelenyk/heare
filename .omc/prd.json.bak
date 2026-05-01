@@ -28,7 +28,7 @@
         "Malformed SKILL.md files are skipped with WARNING-level log message",
         "Module imports logging, dataclasses, Path, re (for YAML parsing)"
       ],
-      "passes": true
+      "passes": false
     },
     {
       "id": "US-003",
@@ -39,7 +39,7 @@
         "load_settings() function correctly reads skills_paths from TOML config file if present",
         "skills_paths defaults to ['~/.heare/skills'] when not in config"
       ],
-      "passes": true
+      "passes": false
     },
     {
       "id": "US-004",
@@ -55,7 +55,7 @@
         "list_skills case returns {success: true, output: formatted_names, spoken: {...}}",
         "run_skill case returns error with valid skill names list when skill not found"
       ],
-      "passes": true
+      "passes": false
     },
     {
       "id": "US-005",
@@ -71,7 +71,7 @@
         "Extracted tool names match existing heare tools (bash, read, write, web_search, etc.)",
         "Context variables in instructions are substituted correctly"
       ],
-      "passes": true
+      "passes": false
     },
     {
       "id": "US-006",
@@ -85,7 +85,7 @@
         "make test returns success with all tests passing",
         "make lint returns success with no ruff errors"
       ],
-      "passes": true
+      "passes": false
     }
   ],
   "metadata": {

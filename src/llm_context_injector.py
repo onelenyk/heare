@@ -120,6 +120,21 @@ def render_native_system_prompt(
         if mcp:
             parts.append(mcp)
 
+    # Agent Skills — inject brief skill names if available
+    try:
+        from .agent_skills import get_skills_loader
+
+        loader = get_skills_loader(None)  # Use default settings
+        skills = loader.discover()
+        if skills:
+            skill_names = ", ".join([s.name for s in skills])
+            parts.append("")
+            parts.append("### Available Skills")
+            parts.append(skill_names)
+            parts.append("(Use `run_skill(name=..., context=...)` to execute. Call `list_skills` for descriptions.)")
+    except Exception:
+        pass  # Skills loading failed; continue without skill injection
+
     parts.append("")
     parts.append("Reply rules:")
     parts.append("- Respond in ONE sentence. Maximum 12 words.")
