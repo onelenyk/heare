@@ -267,7 +267,10 @@ def _build_transcription_gate_class():
             from .language_override import read_language_override
             override_lang = read_language_override()
             if override_lang:
+                logger.info("transcription_gate: OVERRIDE detected=%s -> forced=%s", raw_lang, override_lang)
                 raw_lang = override_lang
+            else:
+                logger.info("transcription_gate: DETECTED language=%s from transcript=%r", raw_lang, transcript[:60])
 
             if raw_lang == self._active_lang:
                 self._pending_lang = None
