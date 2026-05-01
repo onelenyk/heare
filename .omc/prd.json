@@ -1,96 +1,100 @@
 {
-  "title": "Agent Skills Integration for heare",
-  "description": "Integrate agentskills.io format skills into heare's Pipecat voice pipeline",
+  "title": "Full z.ai Anthropic API Support in Pipecat (Runtime Switching)",
+  "description": "Implement proper z.ai Anthropic API delegation with frame relay, sticky-turn gate, and comprehensive testing. Fix the architectural gap where AnthropicLLMService is initialized but never reached by frames.",
   "stories": [
     {
       "id": "US-001",
-      "title": "Delete orphaned src/skills.py",
-      "description": "Remove the broken, never-used src/skills.py module that has zero imports and a broken _execute_skill_logic implementation",
+      "title": "Refactor SwitchableLLMService to inherit LLMService with separate delegates",
+      "description": "Change SwitchableLLMService from inheriting OpenAILLMService to inheriting LLMService base. Construct OpenAILLMService and AnthropicLLMService as separate member instances. Validate at least one provider key exists.",
       "acceptanceCriteria": [
-        "File /Users/lenyk/myprojects/heare/src/skills.py is deleted",
-        "grep -r 'from src.skills import' /Users/lenyk/myprojects/heare/src /Users/lenyk/myprojects/heare/tests returns zero results",
-        "grep -r 'from .skills import' /Users/lenyk/myprojects/heare/src /Users/lenyk/myprojects/heare/tests returns zero results"
+        "src/switchable_llm.py line 18 changed to: class SwitchableLLMService(LLMService):",
+        "self._or_service is a separate OpenAILLMService instance (not self)",
+        "self._zai_service is AnthropicLLMService instance with AsyncAnthropic client",
+        "Frame relay installed on both delegates via _install_frame_relay()",
+        "z.ai boot smoke test validates API key shape (startswith 'sk-')",
+        "Initialization raises if both keys missing, logs INFO if only one provider available",
+        "Unit tests U1, U2, U3 pass (delegate construction, key validation)"
       ],
       "passes": true
     },
     {
       "id": "US-002",
-      "title": "Create src/agent_skills.py with SkillsLoader",
-      "description": "Implement SkillMetadata dataclass and SkillsLoader class with discover(), load_instructions(), and get_skill_names() methods, plus module-level singleton",
+      "title": "Implement delegating surface with frame relay and sticky-turn gate",
+      "description": "Add _install_frame_relay(), _active_delegate(), process_frame() with sticky-turn gate, lifecycle methods (setup, start, stop, cancel, cleanup), and function registration fan-out. Implement _is_provider_error() and _handle_provider_failure() for error recovery.",
       "acceptanceCriteria": [
-        "File /Users/lenyk/myprojects/heare/src/agent_skills.py exists",
-        "SkillMetadata dataclass has fields: name (str), description (str), path (Path)",
-        "SkillsLoader class has __init__(search_paths: list[Path])",
-        "SkillsLoader.discover() returns list[SkillMetadata] with no bodies loaded",
-        "SkillsLoader.load_instructions(name: str) returns full SKILL.md body as string",
-        "SkillsLoader.get_skill_names() returns list[str] of skill names",
-        "get_skills_loader(settings) singleton function exists and caches loader instance",
-        "Malformed SKILL.md files are skipped with WARNING-level log message",
-        "Module imports logging, dataclasses, Path, re (for YAML parsing)"
+        "_install_frame_relay() patches delegate.push_frame and broadcast_frame to relay through wrapper",
+        "_active_delegate() returns currently active delegate without calling _sync_provider()",
+        "process_frame() triggers _sync_provider() only on (OpenAILLMContextFrame, LLMContextFrame, LLMMessagesFrame)",
+        "process_frame() locks _turn_delegate and sets _turn_in_flight on turn-start frames",
+        "Sticky-turn gate unlocks (_turn_in_flight=False, _turn_delegate=None) on relayed LLMFullResponseEndFrame",
+        "setup() propagates FrameProcessorSetup to both delegates and saves for lazy start",
+        "start() calls await active.start(frame), not queue_frame()",
+        "_ensure_delegate_started() calls await delegate.start() for lazy-started inactive delegate",
+        "stop(), cancel(), cleanup() fan-out to both delegates",
+        "register_function() and unregister_function() fan-out to both delegates",
+        "_is_provider_error() detects AuthenticationError, APIStatusError, APIConnectionError, httpx exceptions",
+        "_handle_provider_failure() rate-limits logs to once per 60s, sets _zai_disabled=True, clears gate, retries on OpenRouter",
+        "Unit tests U4-U9 pass (frame relay, turn-gate, lifecycle, registration, error handling)",
+        "Integration tests I1-I3 pass (tools visibility, provider switching, schema compatibility)"
       ],
       "passes": true
     },
     {
       "id": "US-003",
-      "title": "Add skills_paths to src/config.py",
-      "description": "Add skills_paths field to Settings dataclass with default value ['~/.heare/skills']",
+      "title": "Sanity check pipeline integration and update observability",
+      "description": "Verify pipeline.py constructor call still works unchanged. Add provider tag to boot logs and metrics. Surface active_provider in watch dashboard.",
       "acceptanceCriteria": [
-        "Settings dataclass in src/config.py has field: skills_paths: list[str] = field(default_factory=lambda: ['~/.heare/skills'])",
-        "load_settings() function correctly reads skills_paths from TOML config file if present",
-        "skills_paths defaults to ['~/.heare/skills'] when not in config"
+        "src/pipeline.py lines 394-401 (LLM service construction) work without changes",
+        "SwitchableLLMService.__init__ accepts same kwargs as before",
+        "make build succeeds; boot logs include provider=openrouter by default",
+        "Boot log line at src/pipeline.py:521 updated to include provider tag",
+        "MetricsData tagged with provider before each turn delegation",
+        "active_provider property callable from watch dashboard with no per-tick file I/O",
+        "Observability tests O1-O4 pass (provider switch logging, active_provider property, metrics tagging, error indication)"
       ],
       "passes": true
     },
     {
       "id": "US-004",
-      "title": "Register list_skills and run_skill tools",
-      "description": "Add both meta-tools to TOOLS dict in tool_registry.py, add _TOOL_SPECS entries in llm_tools.py, and add cases in direct_tools.py execute_direct() switch",
+      "title": "Comprehensive test suite and documentation",
+      "description": "Write unit tests (U1-U9), integration tests (I1-I3), e2e tests (E1-E3), and observability tests (O1-O4). Update class docstring. Verify linting and all tests pass.",
       "acceptanceCriteria": [
-        "TOOLS dict in src/tool_registry.py has 'list_skills': Tool(...) with execution='direct'",
-        "TOOLS dict has 'run_skill': Tool(...) with execution='direct'",
-        "_TOOL_SPECS in src/llm_tools.py has 'list_skills': ({}, [], callable)",
-        "_TOOL_SPECS has 'run_skill': ({name, context props}, [name, context required], callable serializer)",
-        "execute_direct() in src/direct_tools.py has case 'list_skills' that returns available skills",
-        "execute_direct() has case 'run_skill' that parses args and dispatches to _execute_skill_internal()",
-        "list_skills case returns {success: true, output: formatted_names, spoken: {...}}",
-        "run_skill case returns error with valid skill names list when skill not found"
+        "tests/test_switchable_llm.py exists with U1-U9 test cases",
+        "tests/test_llm_tools.py extended with I1-I3 test cases",
+        "tests/integration/test_zai_e2e.py exists with E1-E3 test cases (gated by ZAI_API_KEY)",
+        "tests/test_switchable_llm_observability.py exists with O1-O4 test cases",
+        "U9 specifically asserts downstream frame visibility via FrameSpy",
+        "U7 asserts _turn_in_flight cleared after auth error",
+        "make test passes with all test suites green",
+        "make lint (ruff) returns 0 errors on src/switchable_llm.py and new test files",
+        "heare.env.example includes ZAI_API_KEY placeholder",
+        "src/switchable_llm.py docstring updated: removes apologetic 'z.ai configured but unused' text, adds operational explanation"
       ],
       "passes": true
     },
     {
       "id": "US-005",
-      "title": "Implement _execute_skill_internal() and skill execution logic",
-      "description": "Implement async _execute_skill_internal() helper that executes skill instructions via execute_direct(), with single action-log entry semantics and timeout handling",
+      "title": "Manual QA and verification",
+      "description": "Test provider switching end-to-end in watch mode: default openrouter, switch to z.ai, toggle back. Verify tool calls work on both providers. Run architect verification and commit.",
       "acceptanceCriteria": [
-        "Function _execute_skill_internal(skill_name, instructions, context, settings, action_timeout_seconds) exists in src/direct_tools.py",
-        "Function is async and respects asyncio.CancelledError for interruption",
-        "Calls execute_direct() for each tool in the skill without passing conversation_manager (prevents duplicate action-log entries)",
-        "Returns composite result dict with {success: bool, output: str, spoken: {lang: str}}",
-        "Enforces per-skill timeout using action_timeout_seconds parameter",
-        "Function _extract_tool_calls_from_instructions(instructions, context) exists and extracts tool calls via regex",
-        "Extracted tool names match existing heare tools (bash, read, write, web_search, etc.)",
-        "Context variables in instructions are substituted correctly"
-      ],
-      "passes": true
-    },
-    {
-      "id": "US-006",
-      "title": "Inject skill names in system prompt and write test suite",
-      "description": "Add brief skill names section to render_native_system_prompt() in llm_context_injector.py, and write all 15 test cases in tests/test_agent_skills.py",
-      "acceptanceCriteria": [
-        "render_native_system_prompt() in src/llm_context_injector.py calls get_skills_loader() and injects brief skill names (~50 tokens max for 10 skills)",
-        "System prompt includes 'Available Skills' section with skill names when skills are present",
-        "System prompt omits skills section when no skills are installed",
-        "tests/test_agent_skills.py exists with all 15 test cases (unit, integration, E2E, observability)",
-        "make test returns success with all tests passing",
-        "make lint returns success with no ruff errors"
+        "make build && make watch succeeds with default openrouter provider",
+        "Speak a short utterance on openrouter; verify response captured and audio flows",
+        "heare provider zai (or dashboard p key) switches to z.ai",
+        "Speak a short utterance on z.ai; verify Anthropic-shaped request visible in logs",
+        "Toggle back to openrouter; verify next turn uses OpenRouter",
+        "Trigger a tool call (e.g., 'list downloads') on openrouter; verify bash handler runs and result summarized",
+        "Trigger a tool call on z.ai; verify bash handler runs and result summarized",
+        "Architect reviewer approves implementation against acceptance criteria from prd.json",
+        "All post-deslop regression tests pass",
+        "Commit created with title 'feat: full z.ai Anthropic delegation in SwitchableLLMService' on dedicated branch"
       ],
       "passes": true
     }
   ],
   "metadata": {
-    "createdAt": "2026-05-01T16:26:00Z",
+    "createdAt": "2026-05-01T17:30:00Z",
     "iteration": 1,
-    "maxIterations": 5
+    "maxIterations": 5,
+    "taskDescription": "Implement full z.ai Anthropic API support for pipecat with runtime provider switching. Fix the current limitation where AnthropicLLMService is created but not properly delegated."
   }
 }

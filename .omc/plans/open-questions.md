@@ -23,6 +23,14 @@
 - [ ] **Max yes/no word count** — plan picks `≤ 4` words for standalone confirmation. Need to validate against real Ukrainian confirmations like `"добре, давай"` (2 words, yes) vs `"давай, але тільки швидко"` (4 words, arguably yes). Could be surfaced to Claude instead of parsed locally.
 - [ ] **`"так, але не зараз"` parser edge case** — Planner's parser validation showed this case returns `"yes"` under the proposed v4 rules (4 words, YES head, mid-negation buffered by `але`). Semantically ambiguous ("yes but not now" → could mean "yes, later" or "no, not right now"). If real-world usage surfaces this as a problem, add `r"\bале\s+не\b"` alternation to `_NEGATION_TAIL`. Tracking because parser is load-bearing for action confirmation.
 
+## runtime-llm-provider-switching - 2026-05-01
+
+- [ ] **z.ai base URL confirmation** -- The default `https://api.z.ai/v1` is a placeholder. Need to verify the actual z.ai API base URL before implementation. If z.ai docs are not publicly available, the user must provide it. Decision needed before Step 2.
+- [ ] **z.ai default model name** -- `z1-mini` is a guess. The correct default model identifier must be confirmed from z.ai documentation or the user's z.ai dashboard. Decision needed before Step 2.
+- [ ] **Thread safety of client swap** -- `_apply_provider()` mutates `self._client` and `self._settings.model` which are read by the base class. In the pipecat pipeline, `_process_context` runs in the event loop so there is no true concurrent access to the same service instance. Verify this assumption holds for all code paths (especially `run_inference` which is used by speaker_namer -- but speaker_namer uses its own HTTP client, not this service). Low risk but worth confirming.
+- [ ] **Provider switching for `identity.py` and `speaker_namer.py`** -- These use raw `httpx` calls to OpenRouter. Currently out of scope. If the user later wants these to also route through z.ai, that would be a separate plan. Confirm this scoping is acceptable.
+- [ ] **Automatic failover between providers** -- Current plan is explicit switching only (no retry on the other provider if one fails). If the user wants automatic failover, that is future work. Confirm this is acceptable for v1.
+
 ## claude-agent-sdk-integration - 2026-04-16
 
 - [ ] **SDK computer-tool identifier** — The exact `allowed_tools` string for bash/computer tools must be verified against the installed `claude-agent-sdk` version. Fallback: `["Bash"]` only, with an explicit `SETTINGS.agent_sdk_allowed_tools` override. Decision needed during Story 3.
@@ -62,6 +70,15 @@
 
 - [ ] **Which OpenRouter model for topic extraction?** — Plan defaults to `google/gemini-2.0-flash-exp:free` (zero cost, fast). May want `google/gemini-3.1-flash-lite-preview-20260303` (same as generator) for consistency. Decision needed before Story 3 config, but easy to change later.
 - [x] **Should `response_format: {"type": "json_object"}` be used?** — RESOLVED: No. The prompt instructs the model to return a bare JSON array; defensive parsing (`_extract_first_json_array()`) handles malformed output. Skipping `response_format` avoids the top-level-object requirement that some providers enforce in JSON-object mode.
+
+## zai-anthropic-full-support - 2026-05-01 (revised v2)
+
+- [ ] **Indication kind for fallback** — Do we need a new `IndicationKind.LLM_FALLBACK`, or is overloading `STT_ERROR` acceptable for the user-visible cue when z.ai falls back to OpenRouter? Affects Step 4 + observability test O4.
+- [x] **`LLMService` base abstract surface** — RESOLVED (v2 Major #4): Event handlers on the wrapper fire via inherited `FrameProcessor._call_event_handler`. Delegate-internal events relay through the wrapper's `push_frame` which triggers `on_before_push_frame` / `on_after_push_frame`. External consumers attach to the wrapper, not delegates. No fan-out needed.
+- [x] **Boot smoke test cost** — RESOLVED (v2 Major #3): Validate API key shape locally at boot (zero cost). Live validation deferred to first actual turn.
+- [x] **Per-turn metric tagging** — RESOLVED (v2): Use `set_core_metrics_data(MetricsData(processor=..., model=f"{provider}:{model}"))` before each turn delegation. Pipecat's existing metrics infrastructure picks up the tag.
+- [x] **`_sync_provider` call frequency** — RESOLVED (v2 Major #5): Called only on turn-start frames (`LLMContextFrame`/`LLMMessagesFrame`) when `_turn_in_flight` is False. NOT called per-frame.
+- [ ] **Frame relay method: monkey-patch vs link manipulation** — Should the `push_frame` relay use monkey-patching (current plan) or direct `_next`/`_prev` link manipulation? Monkey-patching is more explicit but couples to method signatures. Link manipulation is simpler but changes delegate internal state. Defer decision to executor based on test results.
 
 ## conversation-core-wireup - 2026-04-25
 
