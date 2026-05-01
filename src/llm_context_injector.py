@@ -80,9 +80,8 @@ def render_native_system_prompt(
 
     parts: list[str] = [persona_block, ""]
     parts.append("You are Heare, a voice companion. Respond naturally to the user.")
-    parts.append(f"**IMPORTANT: The user is speaking {lang_name}. You MUST respond ONLY in {lang_name}. Do NOT mix languages. Do NOT respond in English.**")
-    parts.append(f"Every word of your response must be in {lang_name}. No English words unless they are proper nouns.")
-    parts.append("If you don't know how to say something in that language, use a similar word or phrase in that language.")
+    parts.append(f"The user is speaking {lang_name}. Always respond in {lang_name}.")
+    parts.append("If the detected language is uncertain, respond in English.")
     parts.append("")
 
     if context:
