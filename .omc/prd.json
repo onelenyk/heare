@@ -49,12 +49,12 @@
         "Unit test creates HeaderBar, calls refresh_data() with seeded HeaderData, asserts rendered text contains name, status, pid, uptime, mode, provider, counts",
         "HeaderBar renders same two-line layout as current _build_header() (verified by visual comparison)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-004",
       "title": "Build ActivityTable widget",
-      "description": "Create ActivityTable(DataTable) in widgets.py. Fixed columns: time (8), WHO (12), TYPE (10), content (flex). refresh_data(rows: list[ActivityRow]) clears and repopulates. TYPE column shows status badges for actions (ok=green, error=red, pending=yellow, cancelled=dim). Scrollable by default.",
+      "description": "IN PROGRESS - Creating ActivityTable(DataTable) in widgets.py. Fixed columns: time (8), WHO (12), TYPE (10), content (flex). refresh_data(rows: list[ActivityRow]) clears and repopulates. TYPE column shows status badges for actions (ok=green, error=red, pending=yellow, cancelled=dim). Scrollable by default.",
       "acceptanceCriteria": [
         "widgets.py defines ActivityTable(DataTable) class",
         "ActivityTable has 4 fixed columns: time (width 8), WHO (width 12), TYPE (width 10), content (flex)",
