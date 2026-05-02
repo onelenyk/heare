@@ -292,6 +292,10 @@ class Settings:
     # Auto-fetch the top organic search result so the agent has full content
     # for content-style queries (recipe, how-to). Disable to save bandwidth.
     web_search_fetch_top: bool = True
+    # Capability discovery (US-004+): remote marketplace + MCP registry endpoints.
+    # Empty string disables remote fetch for that source.
+    marketplace_url: str = "https://skillsmp.com"
+    mcp_registry_url: str = ""
 
     def get_sdk_allowed_tools(self) -> list[str]:
         """Get the list of allowed SDK tools, using defaults if not set."""

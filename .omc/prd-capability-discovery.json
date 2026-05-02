@@ -55,7 +55,7 @@
         "tests/test_discovery.py covers: local hit, local miss + remote hit, remote timeout, cache hit, HMAC tamper rejection, normalization",
         "All tests pass: make test green"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-005",
@@ -70,7 +70,7 @@
         "tests/test_marketplace.py covers: happy path, bad hostname blocked, homoglyph blocked, checksum mismatch, malformed JSON",
         "All tests pass: make test green"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-006",
