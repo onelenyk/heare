@@ -86,7 +86,6 @@ def render_native_system_prompt(
     parts.append("")
 
     if context:
-        # Time + transcripts block.
         time_str = context.get("time")
         timezone_str = context.get("timezone")
         if time_str:
@@ -96,7 +95,6 @@ def render_native_system_prompt(
         if recent and recent != "(none)":
             parts.append("Recent transcripts:")
             parts.append(recent)
-        # Conversation memory block.
         summary = context.get("conversation_summary")
         if summary:
             parts.append(f"Conversation summary: {summary}")
@@ -116,25 +114,21 @@ def render_native_system_prompt(
         if recent_actions and recent_actions != "(none)":
             parts.append("Recent actions:")
             parts.append(recent_actions)
-        # MCP descriptions — injected if available.
         mcp = context.get("mcp_servers")
         if mcp:
             parts.append(mcp)
 
-    # Agent Skills — inject brief skill names if available
     try:
         from .agent_skills import get_skills_loader
 
-        loader = get_skills_loader(None)  # Use default settings
-        skills = loader.discover()
+        skills = get_skills_loader(None).discover()
         if skills:
-            skill_names = ", ".join([s.name for s in skills])
             parts.append("")
             parts.append("### Available Skills")
-            parts.append(skill_names)
+            parts.append(", ".join(s.name for s in skills))
             parts.append("(Use `run_skill(name=..., context=...)` to execute. Call `list_skills` for descriptions.)")
     except Exception:
-        pass  # Skills loading failed; continue without skill injection
+        pass
 
     if capability_hints:
         parts.append("")

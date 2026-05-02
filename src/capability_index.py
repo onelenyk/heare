@@ -93,11 +93,11 @@ class CapabilityIndex:
         try:
             servers = read_mcp_servers(self._workspace_dir)
             for name, entry in servers.items():
-                desc = name
-                if isinstance(entry, dict) and entry.get("description"):
-                    desc = entry["description"]
-                else:
-                    desc = f"MCP server: {name}"
+                desc = (
+                    entry["description"]
+                    if isinstance(entry, dict) and entry.get("description")
+                    else f"MCP server: {name}"
+                )
                 entries.append(IndexEntry(
                     source="mcp",
                     name=name,
