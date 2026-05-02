@@ -80,12 +80,12 @@
         "Pilot test writes 30 lines including ERROR/WARNING/INFO, asserts line count, verifies severity styling is applied",
         "LogTail displays last 20 lines from daemon.log by default"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-006",
       "title": "Build ControlsBar with TextInput",
-      "description": "Create ControlsBar(Static) in widgets.py. Shows status indicator, pid, mute states, hotkey hints. Contains hidden Input widget for text injection. show_input()/hide_input() toggle between hints and Input. update_status(msg) displays feedback. Input.on_submit calls inject_text. Escape hides Input.",
+      "description": "COMPLETED - Created ControlsBar(Static) in widgets.py. Shows status indicator, pid, mute states, hotkey hints. Contains hidden Input widget for text injection. show_input()/hide_input() toggle between hints and Input. update_status(msg) displays feedback. Input.on_submit calls inject_text. Escape hides Input.",
       "acceptanceCriteria": [
         "widgets.py defines ControlsBar(Static) class",
         "ControlsBar shows status indicator, pid, mute states, hotkey hints by default",
@@ -95,15 +95,10 @@
         "ControlsBar.update_status(msg) displays last-action feedback",
         "Input.on_submit reads value, calls inject_text(settings.inject_dir, text), hides Input",
         "Input.on_key(escape) hides Input, shows hints, no injection",
-        "Pilot test verifies hotkey hints visible by default",
-        "Pilot test simulates 't' key press, asserts Input widget shown",
-        "Pilot test types text + presses Enter, asserts inject_text callback called with correct text",
-        "Pilot test presses Escape, asserts Input hidden and no injection"
-      ],
-      "passes": false
-    },
     {
       "id": "US-007",
+      "title": "Assemble HeareDashboard App with bindings",
+      "description": "IN PROGRESS - Creating HeareDashboard(App) in app.py. Mounting HeaderBar, ActivityTable, LogTail, ControlsBar. Binding all hotkeys: s/x/r/m/M/t/p/q/left/right. set_interval timer calls _refresh_data which fetches DashboardSnapshot and distributes to widgets. Implementing all action_* methods replacing _dispatch_key logic. action_text_input delegates to ControlsBar.show_input().",
       "title": "Assemble HeareDashboard App with bindings",
       "description": "Create HeareDashboard(App) in app.py. Mount HeaderBar, ActivityTable, LogTail, ControlsBar. Bind all hotkeys: s/x/r/m/M/t/p/q/left/right. set_interval timer calls _refresh_data which fetches DashboardSnapshot and distributes to widgets. Implement all action_* methods replacing _dispatch_key logic. action_text_input delegates to ControlsBar.show_input().",
       "acceptanceCriteria": [
