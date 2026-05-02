@@ -275,6 +275,42 @@ TOOLS: dict[str, Tool] = {
         description="Switch the active LLM provider (openrouter or zai). Change takes effect on the next user utterance.",
         enabled=True,
     ),
+    # Capability discovery (US-007) — proactive skill/MCP install + revoke.
+    "discover_capability": Tool(
+        name="discover_capability",
+        sdk_name="DiscoverCapability",
+        execution="direct",
+        description="Search for an installable skill or MCP server matching the user's intent. Use when the user asks for something you don't have an existing tool for.",
+        enabled=True,
+    ),
+    "install_skill_tool": Tool(
+        name="install_skill_tool",
+        sdk_name="InstallSkillTool",
+        execution="direct",
+        description="Install a skill from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
+        enabled=True,
+    ),
+    "install_mcp_server_tool": Tool(
+        name="install_mcp_server_tool",
+        sdk_name="InstallMcpServerTool",
+        execution="direct",
+        description="Install an MCP server from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
+        enabled=True,
+    ),
+    "revoke_capability": Tool(
+        name="revoke_capability",
+        sdk_name="RevokeCapability",
+        execution="direct",
+        description="Uninstall a previously installed skill or MCP server by slug. User-authored skills are protected and cannot be revoked.",
+        enabled=True,
+    ),
+    "list_capabilities": Tool(
+        name="list_capabilities",
+        sdk_name="ListCapabilities",
+        execution="direct",
+        description="List all skills and MCP servers installed via discovery. Optional category filter.",
+        enabled=True,
+    ),
 }
 
 

@@ -1,5 +1,14 @@
 # Open Questions
 
+## proactive-agent-capability-discovery - 2026-05-01
+
+- [ ] **Sandbox tier for v1** — Is "best-effort process-level sandbox + structural safety classifier" acceptable for v1 launch, or is a real syscall-level sandbox (seccomp/landlock or container isolation) a launch blocker? — Drives whether v1 is ~1 week of work or ~3-4 weeks. Decision needed before Step 4.
+- [ ] **Per-session codegen-unlock phrase** — What exact verbal phrase unlocks codegen for a session? Suggested default: *"you can build tools for this session"* with Ukrainian/Russian equivalents. Need user-approved canonical wording before Step 4. The `proactivity_level = "high"` config flag already exists; should that alone unlock codegen, or is a verbal handshake always required?
+- [ ] **Audible announcement of generated skills** — When the agent successfully writes and executes a new skill, should it say so out loud (*"I wrote a small tool to do that"*)? Voice UX argues silent + audit-on-demand via `list_generated_skills`; trust UX argues announce. Decision affects Step 4 user-facing copy.
+- [ ] **Generated-skill ceiling** — Hard cap on cumulative generated-skill count per user? 100? 1000? Unbounded with prune-by-age (default 30d) only? Decision affects Step 5 lifecycle implementation.
+- [ ] **Provider routing for codegen** — Codegen quality is LLM-sensitive. Should `propose_skill` invocations route through z.ai Claude specifically (higher reliability, slower, more expensive), or stay on Gemini 3.1 Flash via OpenRouter (faster, cheaper, lower codegen reliability)? Decision needed before Step 4.
+- [ ] **Network allowlist grant flow** — How does a user grant a generated skill permission to hit a new external host (e.g. `api.exchangerate.host`)? Voice prompt at codegen time? Manual edit of SKILL.md frontmatter? Auto-allow with audit log? Affects Step 4 sandbox + Step 5 audit surface.
+
 ## conversation-memory - 2026-04-16
 
 - [x] **Unmeasurable acceptance criteria** — FIXED: Converted to automated tests with measurable assertions (time.time() measurements, decider prompt content verification)

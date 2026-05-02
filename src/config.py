@@ -296,6 +296,10 @@ class Settings:
     # Empty string disables remote fetch for that source.
     marketplace_url: str = "https://skillsmp.com"
     mcp_registry_url: str = ""
+    # US-006: when True, the installer requires entry.checksum (or a signature
+    # field) to be set before installing. Default False — checksum is verified
+    # opportunistically when present.
+    installation_signature_required: bool = False
 
     def get_sdk_allowed_tools(self) -> list[str]:
         """Get the list of allowed SDK tools, using defaults if not set."""

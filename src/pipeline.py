@@ -470,6 +470,19 @@ async def build_pipeline(
         except Exception as e:
             logger.warning("Failed to load dynamic tool %s: %s", name, e)
 
+    # US-007: build the unified CapabilityIndex (skills + MCP + tools) so the
+    # system prompt injector can surface top-K relevant capabilities per turn,
+    # and the discover/install/revoke direct tools can resolve slugs.
+    capability_index: Any = None
+    try:
+        from .capability_index import build_capability_index
+        from .direct_tools import set_capability_index
+
+        capability_index = build_capability_index(settings, settings.workspace_dir)
+        set_capability_index(capability_index)
+    except Exception:
+        logger.exception("pipeline_native: capability_index build failed (non-fatal)")
+
     # PH2-07: per-turn dynamic system prompt — every TranscriptionFrame
     # passing the gate triggers the injector to rebuild the system
     # message with fresh persona+context+language before the
@@ -480,6 +493,7 @@ async def build_pipeline(
         persona=persona,
         language_state=language_state,
         conversation_manager=conversation_manager,
+        capability_index=capability_index,
     )
 
     # Capture LLM text upstream of TTS and log per-response to transcripts.

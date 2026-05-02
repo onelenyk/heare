@@ -344,10 +344,10 @@ _EXECUTION_STYLE = {
 def _tools_table() -> Table:
     """Reference panel — every enabled tool the agent may invoke."""
     table = Table(title="🛠 Tools", expand=True, header_style="bold cyan", padding=(0, 1))
-    table.add_column("name", width=20, style="bold")
+    table.add_column("name", width=24, style="bold")
     table.add_column("exec", width=8)
     table.add_column("description", overflow="ellipsis")
-    table.add_column("name", width=20, style="bold")
+    table.add_column("name", width=24, style="bold")
     table.add_column("exec", width=8)
     table.add_column("description ", overflow="ellipsis")
 

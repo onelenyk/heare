@@ -153,6 +153,16 @@ async def execute_direct(
         return await _execute_run_skill(args, settings)
     elif tool == "set_provider":
         return await _execute_set_provider(args, settings)
+    elif tool == "discover_capability":
+        return await _execute_discover_capability(args, settings)
+    elif tool == "install_skill_tool":
+        return await _execute_install_skill_tool(args, settings)
+    elif tool == "install_mcp_server_tool":
+        return await _execute_install_mcp_server_tool(args, settings)
+    elif tool == "revoke_capability":
+        return await _execute_revoke_capability(args, settings)
+    elif tool == "list_capabilities":
+        return await _execute_list_capabilities(args, settings)
     else:
         return {
             "success": False,
@@ -3302,3 +3312,476 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
             "error": f"Failed to set provider: {str(e)}",
             "spoken": {"en": "Failed to switch provider."},
         }
+
+
+# ============================================================================
+# Capability discovery tools (US-007)
+# ============================================================================
+
+_capability_index_singleton = None
+
+
+def set_capability_index(index) -> None:
+    """Wire a CapabilityIndex from the pipeline so the tool handlers can use it."""
+    global _capability_index_singleton
+    _capability_index_singleton = index
+
+
+def _get_or_build_capability_index(settings):
+    """Return the wired index, or build a fresh one from settings."""
+    global _capability_index_singleton
+    if _capability_index_singleton is not None:
+        return _capability_index_singleton
+    from .capability_index import build_capability_index
+
+    workspace = settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
+    _capability_index_singleton = build_capability_index(settings, workspace)
+    return _capability_index_singleton
+
+
+def _entry_to_summary(entry) -> dict:
+    return {
+        "name": entry.name,
+        "source": entry.source,
+        "description": entry.description,
+        "install_url": entry.install_url,
+    }
+
+
+async def _execute_discover_capability(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"intent": "..."}. Returns top-3 candidates from local + remote."""
+    import time as _time
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+    intent = str(payload.get("intent", "")).strip()
+    if not intent:
+        return {
+            "success": False,
+            "output": "",
+            "error": "intent is required",
+            "spoken": {"en": "Missing intent."},
+        }
+
+    from . import discovery
+
+    started = _time.monotonic()
+    index = _get_or_build_capability_index(settings)
+    local_entries = await discovery.discover_capability_local(intent, index, top_k=3)
+
+    source = "local"
+    entries = local_entries
+    if not entries:
+        try:
+            entries = await discovery.discover_capability_remote(intent, settings=settings)
+            source = "remote"
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[CAPABILITY DISCOVERY] remote failed: %s", e)
+            entries = []
+
+    latency_ms = int((_time.monotonic() - started) * 1000)
+    logger.info(
+        "[CAPABILITY DISCOVERY] intent=%r results=%d source=%s latency_ms=%d",
+        intent, len(entries), source, latency_ms,
+    )
+
+    if not entries:
+        return {
+            "success": True,
+            "output": "",
+            "results": [],
+            "spoken": {
+                "en": "I don't have a tool for that. Want me to look one up?",
+                "uk": "Не маю інструменту для цього. Хочеш, я пошукаю?",
+            },
+        }
+
+    top = entries[:3]
+    summaries = [_entry_to_summary(e) for e in top]
+    lines = [f"- {s['name']} ({s['source']}): {s['description']}" for s in summaries]
+    output = "\n".join(lines)
+    first = summaries[0]
+    return {
+        "success": True,
+        "output": output,
+        "results": summaries,
+        "source": source,
+        "spoken": {
+            "en": f"Found {first['name']}. Install it?",
+            "uk": f"Знайшов {first['name']}. Встановити?",
+        },
+    }
+
+
+def _find_entry_by_slug(index, slug: str):
+    for e in index.entries:
+        if e.name == slug:
+            return e
+    return None
+
+
+async def _execute_install_skill_tool(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"slug": "...", "user_confirmed": true, "replace": false}."""
+    import time as _time
+    from . import installer as _installer
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    slug = str(payload.get("slug", "")).strip()
+    user_confirmed = bool(payload.get("user_confirmed", False))
+    replace = bool(payload.get("replace", False))
+    if not slug:
+        return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
+
+    index = _get_or_build_capability_index(settings)
+    entry = _find_entry_by_slug(index, slug)
+    if entry is None:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Unknown slug: {slug}",
+            "spoken": {"en": f"I don't know {slug}."},
+        }
+
+    started = _time.monotonic()
+    try:
+        result = await _installer.install_skill(
+            entry,
+            settings=settings,
+            capability_index=index,
+            user_confirmed=user_confirmed,
+            replace=replace,
+        )
+    except _installer.InstallRefused as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY INSTALL] slug=%s source=skill success=False latency_ms=%d reason=%s",
+            slug, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"refused: {exc}",
+            "spoken": {"en": "Install refused."},
+        }
+    except _installer.InstallFailed as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY INSTALL] slug=%s source=skill success=False latency_ms=%d reason=%s",
+            slug, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"failed: {exc}",
+            "spoken": {"en": "Install failed."},
+        }
+
+    latency_ms = int((_time.monotonic() - started) * 1000)
+    logger.info(
+        "[CAPABILITY INSTALL] slug=%s source=skill success=%s latency_ms=%d",
+        slug, result.success, latency_ms,
+    )
+    return {
+        "success": result.success,
+        "output": result.message_en,
+        "slug": result.slug,
+        "requires_restart": result.requires_restart,
+        "error_code": result.error_code,
+        "spoken": {"en": result.message_en, "uk": result.message_uk},
+    }
+
+
+async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"slug": "...", "user_confirmed": true, "replace": false}."""
+    import time as _time
+    from . import installer as _installer
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    slug = str(payload.get("slug", "")).strip()
+    user_confirmed = bool(payload.get("user_confirmed", False))
+    replace = bool(payload.get("replace", False))
+    if not slug:
+        return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
+
+    index = _get_or_build_capability_index(settings)
+    entry = _find_entry_by_slug(index, slug)
+    if entry is None:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Unknown slug: {slug}",
+            "spoken": {"en": f"I don't know {slug}."},
+        }
+
+    started = _time.monotonic()
+    try:
+        result = await _installer.install_mcp_server(
+            entry,
+            settings=settings,
+            capability_index=index,
+            user_confirmed=user_confirmed,
+            replace=replace,
+        )
+    except _installer.InstallRefused as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY INSTALL] slug=%s source=mcp success=False latency_ms=%d reason=%s",
+            slug, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"refused: {exc}",
+            "spoken": {"en": "Install refused."},
+        }
+    except _installer.InstallFailed as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY INSTALL] slug=%s source=mcp success=False latency_ms=%d reason=%s",
+            slug, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"failed: {exc}",
+            "spoken": {"en": "Install failed."},
+        }
+
+    latency_ms = int((_time.monotonic() - started) * 1000)
+    logger.info(
+        "[CAPABILITY INSTALL] slug=%s source=mcp success=%s latency_ms=%d",
+        slug, result.success, latency_ms,
+    )
+    return {
+        "success": result.success,
+        "output": result.message_en,
+        "slug": result.slug,
+        "requires_restart": result.requires_restart,
+        "error_code": result.error_code,
+        "spoken": {"en": result.message_en, "uk": result.message_uk},
+    }
+
+
+async def _execute_revoke_capability(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"slug": "..."}.
+
+    Removes a marketplace-installed skill or MCP server. Refuses if the
+    skill lacks a `.install.json` sidecar (user-authored skills are protected).
+    """
+    import shutil as _shutil
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    slug = str(payload.get("slug", "")).strip()
+    if not slug:
+        return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
+
+    skill_dir = Path.home() / ".heare" / "skills" / "_marketplace" / slug
+    workspace = settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
+    mcp_sidecar = Path(workspace) / ".mcp_install" / f"{slug}.json"
+
+    removed_skill = False
+    removed_mcp = False
+    error_msg: str | None = None
+
+    if skill_dir.exists():
+        if not (skill_dir / ".install.json").exists():
+            logger.info("[CAPABILITY REVOKE] slug=%s success=False reason=no_sidecar", slug)
+            return {
+                "success": False,
+                "output": "",
+                "error": "user_authored_skill_protected",
+                "spoken": {
+                    "en": f"{slug} was not installed via discovery — refusing to remove.",
+                    "uk": f"{slug} не встановлено через відкриття — не видаляю.",
+                },
+            }
+        try:
+            _shutil.rmtree(skill_dir)
+            removed_skill = True
+        except OSError as exc:
+            error_msg = f"skill rmtree failed: {exc}"
+
+    if mcp_sidecar.exists():
+        try:
+            from .mcp_utils import read_mcp_servers, write_mcp_servers
+
+            servers = read_mcp_servers(Path(workspace))
+            if slug in servers:
+                del servers[slug]
+                write_mcp_servers(Path(workspace), servers)
+            try:
+                mcp_sidecar.unlink()
+            except OSError:
+                pass
+            removed_mcp = True
+        except Exception as exc:  # noqa: BLE001
+            error_msg = f"mcp removal failed: {exc}"
+
+    if not removed_skill and not removed_mcp:
+        logger.info("[CAPABILITY REVOKE] slug=%s success=False reason=not_found", slug)
+        return {
+            "success": False,
+            "output": "",
+            "error": "not_found",
+            "spoken": {
+                "en": f"I don't have {slug} installed.",
+                "uk": f"У мене немає встановленого {slug}.",
+            },
+        }
+
+    if error_msg is not None:
+        logger.info("[CAPABILITY REVOKE] slug=%s success=False reason=%s", slug, error_msg)
+        return {
+            "success": False,
+            "output": "",
+            "error": error_msg,
+            "spoken": {"en": "Revoke failed."},
+        }
+
+    # Refresh in-process state so the change is visible mid-session.
+    try:
+        from .agent_skills import get_skills_loader
+
+        loader = get_skills_loader(settings)
+        loader.invalidate()
+    except Exception:  # noqa: BLE001
+        logger.warning("revoke: SkillsLoader.invalidate failed", exc_info=True)
+
+    try:
+        index = _get_or_build_capability_index(settings)
+        index.rebuild()
+    except Exception:  # noqa: BLE001
+        logger.warning("revoke: capability_index.rebuild failed", exc_info=True)
+
+    logger.info("[CAPABILITY REVOKE] slug=%s success=True", slug)
+    return {
+        "success": True,
+        "output": f"Removed {slug}.",
+        "slug": slug,
+        "spoken": {"en": f"Removed {slug}.", "uk": f"Видалено {slug}."},
+    }
+
+
+async def _execute_list_capabilities(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"category": "..."} or {}. Lists installed-via-discovery items."""
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError:
+        payload = {}
+    category = str(payload.get("category", "")).strip().lower() or None
+
+    items: list[dict] = []
+
+    try:
+        from .agent_skills import get_skills_loader
+
+        loader = get_skills_loader(settings)
+        for meta in loader.discover():
+            if not getattr(meta, "installed_via_discovery", False):
+                continue
+            items.append({
+                "name": meta.name,
+                "source": "skill",
+                "description": meta.description,
+            })
+    except Exception:  # noqa: BLE001
+        logger.warning("list_capabilities: skills discovery failed", exc_info=True)
+
+    workspace = settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
+    sidecar_dir = Path(workspace) / ".mcp_install"
+    if sidecar_dir.is_dir():
+        try:
+            from .mcp_utils import read_mcp_servers
+
+            servers = read_mcp_servers(Path(workspace))
+            for sidecar in sidecar_dir.glob("*.json"):
+                slug = sidecar.stem
+                desc = ""
+                entry = servers.get(slug)
+                if isinstance(entry, dict):
+                    desc = entry.get("description", "") or ""
+                items.append({
+                    "name": slug,
+                    "source": "mcp",
+                    "description": desc or f"MCP server: {slug}",
+                })
+        except Exception:  # noqa: BLE001
+            logger.warning("list_capabilities: mcp scan failed", exc_info=True)
+
+    if category:
+        items = [i for i in items if i["source"] == category]
+
+    count = len(items)
+    if count > 5:
+        names_short = ", ".join(i["name"] for i in items[:3])
+        return {
+            "success": True,
+            "output": f"{count} installed: {names_short} ...",
+            "summary": True,
+            "count": count,
+            "items": items,
+            "spoken": {
+                "en": f"I have {count} installed tools. Want me to name them all, or filter by category?",
+                "uk": f"У мене {count} встановлених інструментів. Назвати всі, чи відфільтрувати за категорією?",
+            },
+        }
+
+    if count == 0:
+        return {
+            "success": True,
+            "output": "No installed capabilities.",
+            "summary": False,
+            "count": 0,
+            "items": [],
+            "spoken": {
+                "en": "Nothing installed via discovery yet.",
+                "uk": "Поки нічого не встановлено через відкриття.",
+            },
+        }
+
+    lines = [f"- {i['name']} ({i['source']}): {i['description']}" for i in items]
+    return {
+        "success": True,
+        "output": "\n".join(lines),
+        "summary": False,
+        "count": count,
+        "items": items,
+        "spoken": {
+            "en": f"I have {count} installed: {', '.join(i['name'] for i in items)}.",
+            "uk": f"У мене {count} встановлених: {', '.join(i['name'] for i in items)}.",
+        },
+    }

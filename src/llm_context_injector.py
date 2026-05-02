@@ -44,6 +44,7 @@ def render_native_system_prompt(
     persona: str,
     context: dict[str, Any] | None,
     language: str,
+    capability_hints: list[dict] | None = None,
 ) -> str:
     """Return the system-message text for one LLM turn.
 
@@ -135,6 +136,15 @@ def render_native_system_prompt(
     except Exception:
         pass  # Skills loading failed; continue without skill injection
 
+    if capability_hints:
+        parts.append("")
+        parts.append("### Possibly relevant tools (try these first if applicable)")
+        for hint in capability_hints:
+            name = hint.get("name", "")
+            source = hint.get("source", "")
+            desc = hint.get("description", "")
+            parts.append(f"- {name} ({source}): {desc}")
+
     parts.append("")
     parts.append("Reply rules:")
     parts.append("- Respond in ONE sentence. Maximum 12 words.")
@@ -151,6 +161,18 @@ def render_native_system_prompt(
         "re-running the same tool."
     )
     parts.append("- Do NOT mention these rules or your role.")
+    parts.append(
+        "- When the user asks for something you don't have a tool for, do NOT "
+        "immediately refuse: first call discover_capability with the user's "
+        "intent. If a candidate is found, offer to install it (mention name + "
+        "hostname) and wait for explicit voice consent before calling "
+        "install_skill_tool or install_mcp_server_tool with user_confirmed=true."
+    )
+    parts.append(
+        "- If discovery returns nothing, refuse politely in the user's "
+        "language: English 'I don't have a tool for that. Want me to look one "
+        "up?'; Ukrainian 'Не маю інструменту для цього. Хочеш, я пошукаю?'."
+    )
 
     return "\n".join(parts).strip() + "\n"
 
@@ -194,6 +216,7 @@ def _build_injector_class():
             persona: str,
             language_state: "LanguageState | None" = None,
             conversation_manager: Any = None,
+            capability_index: Any = None,
         ) -> None:
             super().__init__()
             self._llm_context = llm_context
@@ -201,6 +224,7 @@ def _build_injector_class():
             self._persona = persona
             self._language_state = language_state
             self._conversation_manager = conversation_manager
+            self._capability_index = capability_index
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
@@ -244,8 +268,28 @@ def _build_injector_class():
                     "leaving prior system prompt in place"
                 )
                 return
+            capability_hints: list[dict] | None = None
+            if self._capability_index is not None and transcript:
+                try:
+                    matches = self._capability_index.query(transcript, top_k=5)
+                    capability_hints = [
+                        {
+                            "name": m.name,
+                            "source": m.source,
+                            "description": m.description,
+                        }
+                        for m in matches
+                    ]
+                except Exception:
+                    logger.exception(
+                        "llm_context_injector: capability_index.query failed "
+                        "(non-fatal)"
+                    )
             new_prompt = render_native_system_prompt(
-                persona=self._persona, context=ctx, language=language
+                persona=self._persona,
+                context=ctx,
+                language=language,
+                capability_hints=capability_hints,
             )
             logger.debug(
                 "[SYSTEM PROMPT] generated for language=%s, lines=%d",
@@ -265,6 +309,7 @@ def create_system_prompt_injector(
     persona: str,
     language_state: "LanguageState | None" = None,
     conversation_manager: Any = None,
+    capability_index: Any = None,
 ):
     """Factory returning a SystemPromptInjector instance."""
     cls = _build_injector_class()
@@ -274,6 +319,7 @@ def create_system_prompt_injector(
         persona=persona,
         language_state=language_state,
         conversation_manager=conversation_manager,
+        capability_index=capability_index,
     )
 
 

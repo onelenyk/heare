@@ -159,38 +159,44 @@
   "hotPaths": [
     {
       "path": "src/pipeline.py",
-      "accessCount": 90,
-      "lastAccessed": 1777666934550,
+      "accessCount": 103,
+      "lastAccessed": 1777728099950,
       "type": "file"
     },
     {
       "path": "src/watch.py",
-      "accessCount": 82,
-      "lastAccessed": 1777663328325,
+      "accessCount": 84,
+      "lastAccessed": 1777728383804,
       "type": "file"
     },
     {
       "path": "src/llm_tools.py",
-      "accessCount": 76,
-      "lastAccessed": 1777663456469,
+      "accessCount": 80,
+      "lastAccessed": 1777727971462,
       "type": "file"
     },
     {
       "path": "src/direct_tools.py",
-      "accessCount": 73,
-      "lastAccessed": 1777663468198,
+      "accessCount": 80,
+      "lastAccessed": 1777728039616,
       "type": "file"
     },
     {
       "path": "src/config.py",
-      "accessCount": 64,
-      "lastAccessed": 1777666927810,
+      "accessCount": 75,
+      "lastAccessed": 1777727934052,
       "type": "file"
     },
     {
       "path": "src/tool_registry.py",
-      "accessCount": 40,
-      "lastAccessed": 1777651462315,
+      "accessCount": 46,
+      "lastAccessed": 1777727960218,
+      "type": "file"
+    },
+    {
+      "path": "src/llm_context_injector.py",
+      "accessCount": 36,
+      "lastAccessed": 1777728090295,
       "type": "file"
     },
     {
@@ -201,20 +207,20 @@
     },
     {
       "path": "src/main.py",
-      "accessCount": 27,
-      "lastAccessed": 1777665914219,
+      "accessCount": 28,
+      "lastAccessed": 1777727078946,
+      "type": "file"
+    },
+    {
+      "path": "src/transcription_gate.py",
+      "accessCount": 23,
+      "lastAccessed": 1777668389555,
       "type": "file"
     },
     {
       "path": "tests/test_watch.py",
-      "accessCount": 20,
-      "lastAccessed": 1777643812089,
-      "type": "file"
-    },
-    {
-      "path": "src/llm_context_injector.py",
-      "accessCount": 15,
-      "lastAccessed": 1777642680070,
+      "accessCount": 21,
+      "lastAccessed": 1777728370285,
       "type": "file"
     },
     {
@@ -224,21 +230,21 @@
       "type": "file"
     },
     {
+      "path": "src/mcp_utils.py",
+      "accessCount": 13,
+      "lastAccessed": 1777727929583,
+      "type": "file"
+    },
+    {
       "path": ".venv/lib/python3.13/site-packages/pipecat/services/llm_service.py",
       "accessCount": 11,
       "lastAccessed": 1777663225663,
       "type": "file"
     },
     {
-      "path": "src/transcription_gate.py",
-      "accessCount": 11,
-      "lastAccessed": 1777666915626,
-      "type": "file"
-    },
-    {
       "path": "Makefile",
-      "accessCount": 10,
-      "lastAccessed": 1777663228865,
+      "accessCount": 11,
+      "lastAccessed": 1777666997017,
       "type": "file"
     },
     {
@@ -278,9 +284,15 @@
       "type": "file"
     },
     {
-      "path": "src/mcp_utils.py",
+      "path": "src/language_state.py",
       "accessCount": 6,
-      "lastAccessed": 1777641273319,
+      "lastAccessed": 1777668394058,
+      "type": "file"
+    },
+    {
+      "path": "src/identity.py",
+      "accessCount": 6,
+      "lastAccessed": 1777727648214,
       "type": "file"
     },
     {
@@ -290,15 +302,15 @@
       "type": "file"
     },
     {
-      "path": "tests/test_watch_controls.py",
-      "accessCount": 4,
-      "lastAccessed": 1777403160488,
+      "path": "tests/test_mcp_utils.py",
+      "accessCount": 5,
+      "lastAccessed": 1777727148320,
       "type": "file"
     },
     {
-      "path": "src/identity.py",
+      "path": "tests/test_watch_controls.py",
       "accessCount": 4,
-      "lastAccessed": 1777647938070,
+      "lastAccessed": 1777403160488,
       "type": "file"
     },
     {
@@ -335,12 +347,6 @@
       "path": "src/watch_controls.py",
       "accessCount": 3,
       "lastAccessed": 1777647930269,
-      "type": "file"
-    },
-    {
-      "path": "src/language_state.py",
-      "accessCount": 3,
-      "lastAccessed": 1777665937214,
       "type": "file"
     },
     {
@@ -407,12 +413,6 @@
       "path": "src/speaker_processor.py",
       "accessCount": 1,
       "lastAccessed": 1777410575204,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_mcp_utils.py",
-      "accessCount": 1,
-      "lastAccessed": 1777410585746,
       "type": "file"
     },
     {

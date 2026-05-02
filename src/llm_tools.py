@@ -465,6 +465,73 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         ["provider"],
         _provider_args,
     ),
+    # Capability discovery (US-007)
+    "discover_capability": (
+        {
+            "intent": {
+                "type": "string",
+                "description": "The user's intent / transcript describing what they want. Example: 'weather in kyiv'.",
+            },
+        },
+        ["intent"],
+        _json_args,
+    ),
+    "install_skill_tool": (
+        {
+            "slug": {
+                "type": "string",
+                "description": "Skill slug returned from discover_capability.",
+            },
+            "user_confirmed": {
+                "type": "boolean",
+                "description": "Set true ONLY after the user said yes via voice. Never set true otherwise.",
+            },
+            "replace": {
+                "type": "boolean",
+                "description": "Overwrite an existing skill with the same slug. Default false.",
+            },
+        },
+        ["slug", "user_confirmed"],
+        _json_args,
+    ),
+    "install_mcp_server_tool": (
+        {
+            "slug": {
+                "type": "string",
+                "description": "MCP server slug returned from discover_capability.",
+            },
+            "user_confirmed": {
+                "type": "boolean",
+                "description": "Set true ONLY after the user said yes via voice. Never set true otherwise.",
+            },
+            "replace": {
+                "type": "boolean",
+                "description": "Overwrite an existing MCP server with the same slug. Default false.",
+            },
+        },
+        ["slug", "user_confirmed"],
+        _json_args,
+    ),
+    "revoke_capability": (
+        {
+            "slug": {
+                "type": "string",
+                "description": "Slug of the skill or MCP server to uninstall.",
+            },
+        },
+        ["slug"],
+        _json_args,
+    ),
+    "list_capabilities": (
+        {
+            "category": {
+                "type": "string",
+                "description": "Optional category filter (e.g., 'skill', 'mcp').",
+            },
+        },
+        [],
+        _json_args,
+    ),
 }
 
 

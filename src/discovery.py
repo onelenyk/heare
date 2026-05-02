@@ -178,7 +178,64 @@ async def discover_capability_local(
     capability_index: CapabilityIndex,
     top_k: int = 3,
 ) -> list[IndexEntry]:
-    return capability_index.query(intent, top_k=top_k)
+    started = time.monotonic()
+    out = capability_index.query(intent, top_k=top_k)
+    latency_ms = int((time.monotonic() - started) * 1000)
+    logger.info(
+        "[CAPABILITY DISCOVERY] intent=%r results=%d source=local latency_ms=%d",
+        intent, len(out), latency_ms,
+    )
+    return out
+
+
+class CircuitBreaker:
+    """Simple counter-based circuit breaker.
+
+    Counts only ``net_fail`` (execution_error) failures. ``safety_block`` events
+    are recorded but never counted toward tripping. Trips after
+    ``threshold`` (default 3) consecutive net failures.
+    """
+
+    def __init__(self, threshold: int = 3) -> None:
+        self.threshold = threshold
+        self._net_fails = 0
+        self._safety_blocks = 0
+        self._tripped = False
+
+    def record_net_fail(self) -> None:
+        self._net_fails += 1
+        if self._net_fails >= self.threshold:
+            self._tripped = True
+
+    def record_safety_block(self) -> None:
+        self._safety_blocks += 1
+
+    def record_success(self) -> None:
+        self._net_fails = 0
+
+    @property
+    def tripped(self) -> bool:
+        return self._tripped
+
+    @property
+    def net_fails(self) -> int:
+        return self._net_fails
+
+    @property
+    def safety_blocks(self) -> int:
+        return self._safety_blocks
+
+    def reset(self) -> None:
+        self._net_fails = 0
+        self._safety_blocks = 0
+        self._tripped = False
+
+
+_default_breaker = CircuitBreaker()
+
+
+def get_default_breaker() -> CircuitBreaker:
+    return _default_breaker
 
 
 async def discover_capability_remote(
@@ -187,6 +244,7 @@ async def discover_capability_remote(
     settings,
     cache_dir: Path | None = None,
     timeout: float = REMOTE_TIMEOUT_SECONDS,
+    breaker: CircuitBreaker | None = None,
 ) -> list[IndexEntry]:
     cache_dir = Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE_DIR
     _ensure_cache_dir(cache_dir)
@@ -196,6 +254,11 @@ async def discover_capability_remote(
     if cached is not None:
         return cached
 
+    if breaker is not None and breaker.tripped:
+        logger.warning("discovery remote fetch skipped: circuit breaker tripped (intent=%r)", intent)
+        return []
+
+    started = time.monotonic()
     try:
         async with asyncio.timeout(timeout):
             results = await asyncio.gather(
@@ -205,14 +268,30 @@ async def discover_capability_remote(
             )
     except asyncio.TimeoutError:
         logger.warning("discovery remote fetch timed out after %.2fs (intent=%r)", timeout, intent)
+        if breaker is not None:
+            breaker.record_net_fail()
         return []
 
     entries: list[IndexEntry] = []
+    had_error = False
     for r in results:
         if isinstance(r, Exception):
             logger.warning("discovery remote fetch error: %s", r)
+            had_error = True
             continue
         entries.extend(r)
+
+    if breaker is not None:
+        if had_error and not entries:
+            breaker.record_net_fail()
+        else:
+            breaker.record_success()
+
+    latency_ms = int((time.monotonic() - started) * 1000)
+    logger.info(
+        "[CAPABILITY DISCOVERY] intent=%r results=%d source=remote latency_ms=%d",
+        intent, len(entries), latency_ms,
+    )
 
     try:
         _write_cache(cache_dir, intent_hash, entries, settings=settings)
@@ -225,6 +304,8 @@ async def discover_capability_remote(
 __all__ = [
     "discover_capability_local",
     "discover_capability_remote",
+    "CircuitBreaker",
+    "get_default_breaker",
     "DEFAULT_CACHE_DIR",
     "CACHE_TTL_SECONDS",
     "REMOTE_TIMEOUT_SECONDS",

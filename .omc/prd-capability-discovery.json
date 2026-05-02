@@ -88,7 +88,7 @@
         "tests/test_installer.py covers: speaker-ID gate, slug collision, sidecar provenance, mid-session skill callable, MCP through helpers, install-confirm latency",
         "All tests pass: make test green"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-007",
@@ -106,7 +106,7 @@
         "All tests pass: make test green",
         "make test reports 800+ tests passing with no regressions from existing functionality"
       ],
-      "passes": false
+      "passes": true
     }
   ],
   "metadata": {
