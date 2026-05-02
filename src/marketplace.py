@@ -113,16 +113,55 @@ def _parse_results(payload: object, source: str, allowlist: tuple[str, ...]) -> 
     if not isinstance(payload, dict):
         logger.warning("%s payload not a dict: %r", source, type(payload).__name__)
         return []
-    results = payload.get("results")
-    if not isinstance(results, list):
-        logger.warning("%s payload missing 'results' list", source)
+    items = _extract_items(payload)
+    if items is None:
+        logger.warning("%s payload missing items list", source)
         return []
     out: list[IndexEntry] = []
-    for raw in results:
-        entry = _coerce_entry(raw, source, allowlist)
+    for raw in items:
+        entry = _coerce_skillsmp_entry(raw, source, allowlist) if source == "skill" else _coerce_entry(raw, source, allowlist)
         if entry is not None:
             out.append(entry)
     return out
+
+
+def _extract_items(payload: dict) -> list | None:
+    """Find the items list in either legacy {"results":[...]} or skillsmp {"data":{"skills":[...]}} shape."""
+    if isinstance(payload.get("results"), list):
+        return payload["results"]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        for key in ("skills", "servers", "results"):
+            if isinstance(data.get(key), list):
+                return data[key]
+    return None
+
+
+def _coerce_skillsmp_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEntry | None:
+    """Map skillsmp.com /api/v1/skills/search response shape into IndexEntry."""
+    if not isinstance(raw, dict):
+        return None
+    name = raw.get("name")
+    description = raw.get("description")
+    if not isinstance(name, str) or not isinstance(description, str):
+        return None
+    github_url = raw.get("githubUrl")
+    install_url = github_url if isinstance(github_url, str) and _validate_url(github_url, allowlist) else None
+    if install_url is None and github_url is not None:
+        logger.warning("rejecting skill %r: bad githubUrl %r", name, github_url)
+        return None
+    stars = raw.get("stars")
+    popularity = float(stars) if isinstance(stars, (int, float)) else None
+    return IndexEntry(
+        source=source,  # type: ignore[arg-type]
+        name=name,
+        description=description,
+        args_schema=None,
+        network_required=True,
+        popularity_score=popularity,
+        install_url=install_url,
+        checksum=None,
+    )
 
 
 async def _fetch_json(url: str, timeout: float) -> object | None:
@@ -142,7 +181,7 @@ async def fetch_skill_candidates(
     base = getattr(settings, "marketplace_url", "") or ""
     if not base:
         return []
-    url = f"{base.rstrip('/')}/api/search?q={urllib.parse.quote(query)}"
+    url = f"{base.rstrip('/')}/api/v1/skills/search?q={urllib.parse.quote(query)}"
     if not _validate_url(url, DEFAULT_HOSTNAME_ALLOWLIST):
         logger.warning("marketplace_url rejected: %r", base)
         return []

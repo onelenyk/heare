@@ -44,15 +44,19 @@ def _patch_get(response_or_exc):
 @pytest.mark.asyncio
 async def test_fetch_skill_candidates_happy_path():
     payload = {
-        "results": [
-            {
-                "name": "weather",
-                "description": "weather lookup",
-                "install_url": "https://skillsmp.com/skills/weather.zip",
-                "popularity_score": 0.9,
-                "checksum": "abc123",
-            }
-        ]
+        "success": True,
+        "data": {
+            "skills": [
+                {
+                    "id": "weather-pro-id",
+                    "name": "weather-pro",
+                    "description": "Look up the weather forecast",
+                    "githubUrl": "https://github.com/foo/weather-pro",
+                    "stars": 42,
+                    "author": "foo",
+                }
+            ]
+        },
     }
     settings = _FakeSettings()
     with _patch_get(_mock_response(payload)):
@@ -60,13 +64,13 @@ async def test_fetch_skill_candidates_happy_path():
     assert len(out) == 1
     assert out[0] == IndexEntry(
         source="skill",
-        name="weather",
-        description="weather lookup",
+        name="weather-pro",
+        description="Look up the weather forecast",
         args_schema=None,
-        network_required=False,
-        popularity_score=0.9,
-        install_url="https://skillsmp.com/skills/weather.zip",
-        checksum="abc123",
+        network_required=True,
+        popularity_score=42.0,
+        install_url="https://github.com/foo/weather-pro",
+        checksum=None,
     )
 
 
@@ -142,18 +146,21 @@ async def test_http_error_returns_empty():
 @pytest.mark.asyncio
 async def test_per_result_install_url_validated():
     payload = {
-        "results": [
-            {
-                "name": "good",
-                "description": "ok",
-                "install_url": "https://skillsmp.com/skills/good.zip",
-            },
-            {
-                "name": "evil",
-                "description": "bad",
-                "install_url": "https://evil.com/skills/evil.zip",
-            },
-        ]
+        "success": True,
+        "data": {
+            "skills": [
+                {
+                    "name": "good",
+                    "description": "ok",
+                    "githubUrl": "https://github.com/foo/good",
+                },
+                {
+                    "name": "evil",
+                    "description": "bad",
+                    "githubUrl": "https://evil.com/foo",
+                },
+            ]
+        },
     }
     settings = _FakeSettings()
     with _patch_get(_mock_response(payload)):

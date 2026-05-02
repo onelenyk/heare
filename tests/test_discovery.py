@@ -72,8 +72,13 @@ async def test_local_discovery_returns_index_results():
 
 @pytest.mark.asyncio
 async def test_remote_discovery_returns_empty_when_marketplace_stubbed(
-    settings_with_identity: _FakeSettings, cache_dir: Path
+    monkeypatch, settings_with_identity: _FakeSettings, cache_dir: Path
 ):
+    mp = AsyncMock(return_value=[])
+    mcp = AsyncMock(return_value=[])
+    monkeypatch.setattr(discovery, "_fetch_marketplace", mp)
+    monkeypatch.setattr(discovery, "_fetch_mcp_registry", mcp)
+
     out = await discovery.discover_capability_remote(
         "weather kyiv",
         settings=settings_with_identity,
