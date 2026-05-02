@@ -59,7 +59,7 @@ def daemon_status(settings: Settings) -> tuple[bool, int | None, str]:
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
-        return False, pid, "-"
+        return False, None, "-"  # Return None for stale PID
     started = pid_file.stat().st_mtime
     delta = int(time.time() - started)
     if delta < 60:

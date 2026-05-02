@@ -194,8 +194,8 @@
     },
     {
       "path": "tests/test_watch.py",
-      "accessCount": 42,
-      "lastAccessed": 1777758287517,
+      "accessCount": 48,
+      "lastAccessed": 1777758782582,
       "type": "file"
     },
     {
@@ -247,15 +247,15 @@
       "type": "file"
     },
     {
-      "path": "src/conversation.py",
-      "accessCount": 9,
-      "lastAccessed": 1777641264138,
+      "path": "tests/test_watch_controls.py",
+      "accessCount": 10,
+      "lastAccessed": 1777758919223,
       "type": "file"
     },
     {
-      "path": "tests/test_watch_controls.py",
+      "path": "src/conversation.py",
       "accessCount": 9,
-      "lastAccessed": 1777756244471,
+      "lastAccessed": 1777641264138,
       "type": "file"
     },
     {

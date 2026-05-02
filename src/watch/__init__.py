@@ -4,28 +4,18 @@ Migrated from rich.live to Textual for real scrolling and better interactivity.
 """
 from __future__ import annotations
 
-# Temporary: re-export legacy functions for backward compatibility during migration
-# These will be removed in US-010 after tests are migrated
-from ._legacy import (
-    _activity_table,
-    _bot_table,
-    _build_header,
-    _counts,
-    _current_mode,
-    _current_provider,
-    _daemon_status,
-    _did_table,
-    _fetch,
-    _fmt_time,
-    _load_speaker_labels,
-    _open_db,
-    _speaker_style,
-    _truncate,
-    _you_table,
-)
+import os
+
+from rich.console import Console
+from rich.table import Table
+
+from ..config import Settings
+from ..identity import load_identity
+from .app import HeareDashboard
+from .data import DashboardSnapshot, fetch_dashboard_state
 
 
-def run_watch(settings: Any, interval: float, once: bool = False) -> int:
+def run_watch(settings: Settings, interval: float, once: bool = False) -> int:
     """Run the watch dashboard.
 
     Args:
@@ -36,8 +26,95 @@ def run_watch(settings: Any, interval: float, once: bool = False) -> int:
     Returns:
         Exit code (0 for success)
     """
-    # TODO: Implement in US-008
-    # For now, use legacy implementation
-    from ._legacy import run_watch as _legacy_run_watch
+    # Legacy env-var routing for rollback
+    if os.environ.get("HEARE_WATCH_LEGACY") == "1":
+        from ._legacy import run_watch as _legacy_run_watch
 
-    return _legacy_run_watch(settings, interval, once)
+        return _legacy_run_watch(settings, interval, once)
+
+    # Once mode: render snapshot via rich.Console and exit
+    if once:
+        return _run_once(settings)
+
+    # Interactive mode: run Textual TUI
+    app = HeareDashboard(settings=settings, interval=interval)
+    try:
+        app.run()
+        return 0
+    except Exception:
+        return 1
+
+
+def _run_once(settings: Settings) -> int:
+    """Render dashboard snapshot once and exit.
+
+    Args:
+        settings: Application settings
+
+    Returns:
+        Exit code (0 for success)
+    """
+    # Fetch snapshot
+    snapshot = fetch_dashboard_state(settings)
+
+    # Build rich table layout
+    console = Console()
+
+    # Header line
+    identity = load_identity(settings.identity_file)
+    name = identity["name"] if identity else snapshot.header.name
+    emoji = identity["emoji"] if identity else snapshot.header.emoji
+
+    status = "● running" if snapshot.header.running else "○ stopped"
+    mode_style = {"silent": "dim", "focus": "cyan", "ambient": "yellow"}.get(
+        snapshot.header.mode, "white"
+    )
+    provider_style = "cyan" if snapshot.header.provider == "zai" else "yellow"
+
+    header_line = (
+        f"{name} {emoji}  {status}   "
+        f"pid={snapshot.header.pid or '-'}   "
+        f"uptime={snapshot.header.uptime}   "
+        f"mode=[{mode_style}]{snapshot.header.mode}[/]   "
+        f"provider=[{provider_style}]{snapshot.header.provider}[/]"
+    )
+
+    counts_line = (
+        f"transcripts={snapshot.header.transcripts_count}  "
+        f"actions={snapshot.header.actions_count}"
+    )
+
+    console.print(header_line)
+    console.print(counts_line)
+    console.print()
+
+    # Activity table
+    if snapshot.activity_rows:
+        table = Table(title="Recent Activity (newest first)", show_header=True, expand=True)
+        table.add_column("Time", width=8)
+        table.add_column("WHO", width=12)
+        table.add_column("TYPE", width=10)
+        table.add_column("Content", overflow="ellipsis")
+
+        for row in snapshot.activity_rows[:20]:  # Show last 20
+            time_str = row.ts.strftime("%H:%M:%S") if hasattr(row.ts, "strftime") else str(row.ts)
+            table.add_row(time_str, row.who, row.type_, row.content[:100])
+
+        console.print(table)
+    else:
+        console.print("(no activity yet)", style="dim italic")
+
+    console.print()
+
+    # Log tail
+    if snapshot.log_lines:
+        console.print("Log tail (last 20 lines):")
+        for line in snapshot.log_lines[-20:]:
+            style = {"error": "red", "warning": "yellow", "info": "cyan"}.get(
+                line.severity, "white"
+            )
+            console.print(f"[{style}]{line.text}[/]")
+    else:
+        console.print("(no log lines)", style="dim italic")
+
+    return 0

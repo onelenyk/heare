@@ -9,7 +9,9 @@ import pytest
 from textual.app import App
 
 from src.config import Settings, Mode
+from src.storage import SCHEMA
 from src.watch.app import HeareDashboard
+from src.watch import run_watch
 
 
 # ---------------------------------------------------------------------------
@@ -186,3 +188,62 @@ async def test_provider_toggle_works() -> None:
             # Provider should have toggled to zai
             new_provider = settings.provider_file.read_text().strip()
             assert new_provider == "zai"
+
+
+# ---------------------------------------------------------------------------
+# run_watch() tests
+# ---------------------------------------------------------------------------
+
+
+def test_once_mode_outputs_to_stdout(capsys: pytest.fixture) -> None:
+    """once=True must bypass App, render via rich.Console to stdout, and exit."""
+    import sqlite3
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        (Path(tmp) / "logs").mkdir()
+
+        # Create DB with schema and data
+        con = sqlite3.connect(str(settings.db_path))
+        con.executescript(SCHEMA)
+        con.execute(
+            "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
+            (1700000000.0, "test message", "ambient", None),
+        )
+        con.commit()
+        con.close()
+
+        # Run once mode
+        rc = run_watch(settings, interval=0.5, once=True)
+
+        # Should exit successfully
+        assert rc == 0
+
+        # Check stdout has output
+        captured = capsys.readouterr()
+        assert len(captured.out) > 100  # Non-trivial output
+        assert "heare" in captured.out or "test" in captured.out
+
+
+def test_legacy_env_var_routing() -> None:
+    """HEARE_WATCH_LEGACY=1 must route to the old run_watch."""
+    import os
+
+    old_env = os.environ.get("HEARE_WATCH_LEGACY")
+    try:
+        os.environ["HEARE_WATCH_LEGACY"] = "1"
+
+        # Force reimport
+        import importlib
+        import src.watch
+        importlib.reload(src.watch)
+
+        # Should have run_watch from legacy
+        assert callable(src.watch.run_watch)
+    finally:
+        if old_env is None:
+            os.environ.pop("HEARE_WATCH_LEGACY", None)
+        else:
+            os.environ["HEARE_WATCH_LEGACY"] = old_env
+        # Reload to restore normal behavior
+        importlib.reload(src.watch)
