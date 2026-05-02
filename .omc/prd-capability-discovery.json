@@ -1,0 +1,119 @@
+{
+  "title": "Proactive Agent Capability Discovery v1 (Discovery-Only)",
+  "description": "Implement v1 from .omc/plans/proactive-agent-capability-discovery.md: local capability index, remote discovery, marketplace install (skills + MCP), revoke, with full security primitives (HMAC cache, hostname allowlist, SHA-256 checksum, speaker-ID gate). No codegen.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Capability Index foundation",
+      "description": "Build the unified CapabilityIndex that merges TOOLS, _DYNAMIC_TOOLS, SkillsLoader.discover(), and MCP servers from workspace_dir/.mcp.json into a single queryable index using IndexEntry schema. Substring + token-set inverted-index lookup.",
+      "acceptanceCriteria": [
+        "src/capability_index.py exists with IndexEntry dataclass (source, name, description, args_schema, network_required, popularity_score, install_url, schema_version, checksum)",
+        "CapabilityIndex.build() creates index from 4 sources in <50ms over 100 skills + 50 tools + 10 MCP servers (unit benchmark)",
+        "CapabilityIndex.query(intent) returns top-3 matches via substring + token-set inverted-index in p99 <10ms (unit benchmark)",
+        "Integration test asserts >0 entries from EACH of 4 sources (TOOLS, _DYNAMIC_TOOLS, SkillsLoader, MCP) in populated session",
+        "tests/test_capability_index.py covers build/query/edge cases (empty index, MCP file missing, malformed entry skipped)",
+        "All tests pass: make test green, no regressions"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "SkillsLoader extensions for marketplace",
+      "description": "Extend SkillsLoader to (a) scan _marketplace/<slug>/SKILL.md two levels deep, (b) provide invalidate() API for mid-session re-discovery, (c) read sidecar .install.json for provenance. User-authored skills at ~/.heare/skills/<name>/ unchanged.",
+      "acceptanceCriteria": [
+        "SkillsLoader.invalidate() sets self._discovered = False and clears _metadata_cache",
+        "SkillsLoader.discover() finds skills at ~/.heare/skills/_marketplace/<slug>/SKILL.md (2-level scan) AND ~/.heare/skills/<name>/SKILL.md (1-level, unchanged)",
+        "SkillMetadata extended with optional installed_via_discovery: bool flag (True when sidecar .install.json present)",
+        "tests/test_agent_skills.py adds tests for: invalidate(), 2-level scan, sidecar detection",
+        "All tests pass: make test green"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "MCP utilities write helper",
+      "description": "Add mcp_utils.write_mcp_servers() helper to mirror existing read_mcp_servers(). Single source of truth for workspace_dir/.mcp.json I/O.",
+      "acceptanceCriteria": [
+        "src/mcp_utils.py adds write_mcp_servers(workspace_dir, servers: list[McpServer]) -> None",
+        "write_mcp_servers atomic-writes to workspace_dir/.mcp.json (write to .tmp then rename)",
+        "Round-trip test: write_mcp_servers(servers) followed by read_mcp_servers() returns equivalent data",
+        "tests/test_mcp_utils.py covers: write+read roundtrip, malformed input rejection, atomic write under crash simulation",
+        "All tests pass: make test green"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "Local + remote discovery with HMAC cache",
+      "description": "Build src/discovery.py with discover_capability_local() (CapabilityIndex query) and discover_capability_remote() (skillsmp.com + MCP registry, 2.5s timeout). Cache remote results 24h with HMAC integrity check using key from ~/.heare/identity.json. intent_hash = SHA-256(NFKC.lowercase().collapse_whitespace()). Cache dir 0700 perms.",
+      "acceptanceCriteria": [
+        "src/discovery.py exists with discover_capability_local() and discover_capability_remote() async functions",
+        "Remote discovery has 2.5s timeout; on timeout returns empty result + logs warning",
+        "Cache files at ~/.heare/cache/discovery/<intent_hash>.json with HMAC validation; tampered file rejected and deleted",
+        "intent_hash uses SHA-256(NFKC + lowercase + collapse-whitespace); 'weather kyiv' and 'weather  KYIV' produce identical hash",
+        "~/.heare/cache/discovery/ created with mode 0700 (verified via os.stat)",
+        "tests/test_discovery.py covers: local hit, local miss + remote hit, remote timeout, cache hit, HMAC tamper rejection, normalization",
+        "All tests pass: make test green"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-005",
+      "title": "Marketplace fetcher with security primitives",
+      "description": "Build src/marketplace.py: fetch_skill_candidates() from skillsmp.com, fetch_mcp_candidates() from MCP registry. Hostname allowlist (skillsmp.com, github.com), homoglyph rejection, SHA-256 checksum verification on tarball downloads. Schema validation via pydantic.",
+      "acceptanceCriteria": [
+        "src/marketplace.py exists with fetch_skill_candidates(query) and fetch_mcp_candidates(query) async functions",
+        "Hostname allowlist enforced: install_url not matching ['skillsmp.com', 'github.com'] (configurable) is rejected with explicit log",
+        "Homoglyph detection: 'g1thub.com', 'github.com.evil.com' rejected (use confusable_homoglyphs or simple ASCII-only host check)",
+        "SHA-256 checksum verified post-download against IndexEntry.checksum; mismatch = file deleted + error",
+        "Malformed JSON from marketplace = ValidationError caught, returns empty list, logged",
+        "tests/test_marketplace.py covers: happy path, bad hostname blocked, homoglyph blocked, checksum mismatch, malformed JSON",
+        "All tests pass: make test green"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-006",
+      "title": "Installer (skill + MCP) with consent + speaker-ID gate",
+      "description": "Build src/installer.py: install_skill_from_marketplace() and install_mcp_server_from_marketplace(). Speaker-ID OR confirmation_passphrase HARD-required (no 'where available' hedge). Skill installs to ~/.heare/skills/_marketplace/<slug>/, calls SkillsLoader.invalidate() + capability_index.rebuild(). MCP install routes through mcp_utils.write_mcp_servers(). Install-confirm flow ≤5s human time. Sidecar .install.json with full provenance.",
+      "acceptanceCriteria": [
+        "src/installer.py exists with install_skill() and install_mcp_server() functions",
+        "Install with NO speaker-ID enrollment AND NO confirmation_passphrase: install refused with helpful voice message (EN+UK)",
+        "Install refuses to overwrite existing <slug> directory without explicit replace=True flag",
+        "Skill install: writes to ~/.heare/skills/_marketplace/<slug>/SKILL.md + sidecar .install.json (source_url, version, install_timestamp, signature_verified, user_confirmed)",
+        "MCP install: calls mcp_utils.read_mcp_servers + write_mcp_servers; never raw JSON I/O",
+        "After skill install: SkillsLoader.invalidate() called AND capability_index rebuilt; new skill callable in same session",
+        "After MCP install: voice message says 'restart required to use this server'",
+        "Voice consent prompt is 2 attributes (hostname + 1-sentence summary); flags only on red flags (unsigned, low popularity, secrets-required)",
+        "tests/test_installer.py covers: speaker-ID gate, slug collision, sidecar provenance, mid-session skill callable, MCP through helpers, install-confirm latency",
+        "All tests pass: make test green"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-007",
+      "title": "Tools, system prompt, observability, e2e",
+      "description": "Register 4 new direct tools (discover_capability, install_skill, install_mcp_server, revoke_capability). Extend llm_context_injector to inject Top-K relevant capabilities per turn. Update reply rules: refusal text in EN+UK. Add structured logging events. Adversarial circuit-breaker test. End-to-end smoke test.",
+      "acceptanceCriteria": [
+        "src/direct_tools.py adds 4 new tools registered in tool_registry.py with proper schemas",
+        "llm_context_injector.py extended: Top-K (default 5) capabilities per turn from CapabilityIndex.query(last_user_transcript)",
+        "Refusal text replaced when index miss: EN 'I dont have a tool for that. Want me to look one up?' / UK 'Не маю інструменту для цього. Хочеш, я пошукаю?'",
+        "revoke_capability refuses to delete skill directory lacking .install.json sidecar (user-authored skills protected)",
+        "list_capabilities tool returns summary form when count >5 ('I have 12 installed tools — want me to name them all, or filter by category?')",
+        "Structured log events: [CAPABILITY DISCOVERY] [CAPABILITY INSTALL] [CAPABILITY REVOKE] with intent, source, latency_ms, success fields",
+        "Adversarial circuit-breaker test: 2 sig-fails + 1 safety-block + 3 net-fails — verify safety-block does not count, breaker trips on third net-fail not earlier",
+        "tests/test_e2e_capability_discovery.py: simulate 'do X' turn where X needs unknown MCP → discovery → install proposal → install path validated end-to-end",
+        "All tests pass: make test green",
+        "make test reports 800+ tests passing with no regressions from existing functionality"
+      ],
+      "passes": false
+    }
+  ],
+  "metadata": {
+    "createdAt": "2026-05-02T12:58:00Z",
+    "iteration": 1,
+    "maxIterations": 100,
+    "planPath": ".omc/plans/proactive-agent-capability-discovery.md",
+    "taskDescription": "Implement v1 of proactive agent capability discovery from approved consensus plan."
+  }
+}

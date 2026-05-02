@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -11,6 +12,7 @@ from src.mcp_utils import (
     build_mcp_allowed_patterns,
     build_mcp_prompt_block,
     read_mcp_servers,
+    write_mcp_servers,
 )
 
 
@@ -117,3 +119,63 @@ def test_read_mcp_servers_wrong_types(tmp_path: Path, caplog: pytest.LogCaptureF
 def test_build_prompt_block_empty_servers() -> None:
     """Empty servers dict returns empty string."""
     assert build_mcp_prompt_block({}) == ""
+
+
+# --- write_mcp_servers tests ---
+
+
+def test_write_then_read_roundtrip(tmp_path: Path) -> None:
+    """write_mcp_servers followed by read_mcp_servers returns equivalent data."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    servers = {
+        "github": {"type": "stdio", "command": "npx", "args": ["-y", "github-mcp"]},
+        "filesystem": {"type": "stdio", "command": "npx", "args": ["-y", "fs-mcp"]},
+    }
+    write_mcp_servers(workspace, servers)
+    result = read_mcp_servers(workspace)
+    assert result == servers
+
+
+def test_write_creates_workspace_dir_if_missing(tmp_path: Path) -> None:
+    """write_mcp_servers creates workspace_dir when it does not exist."""
+    workspace = tmp_path / "new" / "nested" / "workspace"
+    assert not workspace.exists()
+    write_mcp_servers(workspace, {"myserver": {"type": "stdio", "command": "npx"}})
+    assert (workspace / ".mcp.json").exists()
+
+
+def test_write_is_atomic_no_partial_file_on_crash(tmp_path: Path) -> None:
+    """Crash during os.replace leaves .mcp.json unchanged (original content preserved)."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    original = {"mcpServers": {"original": {"type": "stdio", "command": "original-cmd"}}}
+    (workspace / ".mcp.json").write_text(json.dumps(original))
+
+    new_servers = {"replaced": {"type": "stdio", "command": "new-cmd"}}
+    with patch("os.replace", side_effect=OSError("simulated crash")):
+        with pytest.raises(OSError, match="simulated crash"):
+            write_mcp_servers(workspace, new_servers)
+
+    result = json.loads((workspace / ".mcp.json").read_text())
+    assert result == original
+
+
+def test_write_empty_list(tmp_path: Path) -> None:
+    """write_mcp_servers with empty dict writes {\"mcpServers\": {}} without deleting the file."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    write_mcp_servers(workspace, {})
+    assert (workspace / ".mcp.json").exists()
+    result = json.loads((workspace / ".mcp.json").read_text())
+    assert result == {"mcpServers": {}}
+
+
+def test_round_trip_preserves_unicode(tmp_path: Path) -> None:
+    """Server names and values with UTF-8 characters survive a write/read roundtrip."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    servers = {"сервер": {"type": "stdio", "command": "npx", "description": "Кирилиця"}}
+    write_mcp_servers(workspace, servers)
+    result = read_mcp_servers(workspace)
+    assert result == servers

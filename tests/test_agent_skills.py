@@ -482,3 +482,144 @@ def test_extract_tool_calls_missing_context_keys():
     assert tool_calls[0] == ("read", "/tmp/test.txt")
     # Missing key remains as placeholder
     assert tool_calls[1] == ("bash", "{missing_key}")
+
+
+# ============================================================================
+# US-002 Tests — SkillsLoader marketplace extensions
+# ============================================================================
+
+
+def test_invalidate_resets_cache():
+    """discover() populates cache; invalidate() clears it so next discover() re-scans."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        skill_dir = tmpdir_path / "skill-a"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            """---
+name: skill-a
+description: Skill A
+---
+"""
+        )
+
+        loader = SkillsLoader([tmpdir_path])
+        first = loader.discover()
+        assert len(first) == 1
+
+        # Add a new skill to disk after first discovery
+        skill_dir2 = tmpdir_path / "skill-b"
+        skill_dir2.mkdir()
+        (skill_dir2 / "SKILL.md").write_text(
+            """---
+name: skill-b
+description: Skill B
+---
+"""
+        )
+
+        # Without invalidate, cached result is returned
+        assert len(loader.discover()) == 1
+
+        loader.invalidate()
+
+        # After invalidate, re-scan picks up new skill
+        second = loader.discover()
+        assert len(second) == 2
+        assert {m.name for m in second} == {"skill-a", "skill-b"}
+
+
+def test_marketplace_subtree_discovery():
+    """Skills under _marketplace/<slug>/SKILL.md are discovered."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        marketplace_dir = tmpdir_path / "_marketplace"
+        marketplace_dir.mkdir()
+        foo_dir = marketplace_dir / "foo"
+        foo_dir.mkdir()
+        (foo_dir / "SKILL.md").write_text(
+            """---
+name: foo
+description: Marketplace foo skill
+---
+"""
+        )
+
+        loader = SkillsLoader([tmpdir_path])
+        discovered = loader.discover()
+
+        assert len(discovered) == 1
+        assert discovered[0].name == "foo"
+
+
+def test_user_authored_skill_unchanged():
+    """User-authored skills at <search>/<name>/SKILL.md are still discovered with installed_via_discovery=False."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        bar_dir = tmpdir_path / "bar"
+        bar_dir.mkdir()
+        (bar_dir / "SKILL.md").write_text(
+            """---
+name: bar
+description: User authored skill
+---
+"""
+        )
+
+        loader = SkillsLoader([tmpdir_path])
+        discovered = loader.discover()
+
+        assert len(discovered) == 1
+        assert discovered[0].name == "bar"
+        assert discovered[0].installed_via_discovery is False
+
+
+def test_installed_via_discovery_flag_set_when_sidecar_present():
+    """installed_via_discovery=True when .install.json exists alongside marketplace skill."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        marketplace_dir = tmpdir_path / "_marketplace"
+        marketplace_dir.mkdir()
+        foo_dir = marketplace_dir / "foo"
+        foo_dir.mkdir()
+        (foo_dir / "SKILL.md").write_text(
+            """---
+name: foo
+description: Marketplace foo skill
+---
+"""
+        )
+        (foo_dir / ".install.json").write_text("{}")
+
+        loader = SkillsLoader([tmpdir_path])
+        discovered = loader.discover()
+
+        assert len(discovered) == 1
+        assert discovered[0].name == "foo"
+        assert discovered[0].installed_via_discovery is True
+
+
+def test_user_authored_skill_no_sidecar_no_flag():
+    """installed_via_discovery=False when no .install.json present."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        skill_dir = tmpdir_path / "my-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            """---
+name: my-skill
+description: No sidecar skill
+---
+"""
+        )
+
+        loader = SkillsLoader([tmpdir_path])
+        discovered = loader.discover()
+
+        assert len(discovered) == 1
+        assert discovered[0].installed_via_discovery is False

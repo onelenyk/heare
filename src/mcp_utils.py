@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger("heare.mcp_utils")
@@ -113,6 +115,30 @@ def read_mcp_servers(workspace_dir: Path) -> dict[str, dict]:
         return {}
 
     return servers
+
+
+def write_mcp_servers(workspace_dir: Path, servers: dict[str, dict]) -> None:
+    """Atomic-write the MCP server list to workspace_dir/.mcp.json.
+
+    Single source of truth for .mcp.json writes. Must be called by anything
+    that mutates the MCP config (currently the planned installer).
+
+    Atomicity: write to a temp file in the same directory, then os.replace().
+    """
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=".mcp.", suffix=".json.tmp", dir=str(workspace_dir)
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump({"mcpServers": servers}, f, indent=2)
+        os.replace(tmp_name, workspace_dir / ".mcp.json")
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def build_mcp_allowed_patterns(servers: dict[str, dict]) -> list[str]:

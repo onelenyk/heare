@@ -26,6 +26,7 @@ class SkillMetadata:
     name: str  # lowercase-hyphenated
     description: str  # one-liner from SKILL.md frontmatter
     path: Path  # skill root dir (contains SKILL.md)
+    installed_via_discovery: bool = False
 
 
 class SkillsLoader:
@@ -62,18 +63,36 @@ class SkillsLoader:
                 logger.debug(f"Skills path not found: {search_path}")
                 continue
 
-            # Find directories with SKILL.md
             for potential_skill_dir in search_path.iterdir():
                 if not potential_skill_dir.is_dir():
+                    continue
+
+                if potential_skill_dir.name == "_marketplace":
+                    # Scan one level deeper: _marketplace/<slug>/SKILL.md
+                    for marketplace_skill_dir in potential_skill_dir.iterdir():
+                        if not marketplace_skill_dir.is_dir():
+                            continue
+                        skill_md = marketplace_skill_dir / "SKILL.md"
+                        if not skill_md.exists():
+                            continue
+                        try:
+                            installed = (marketplace_skill_dir / ".install.json").exists()
+                            metadata = self._parse_skill_metadata(skill_md, installed_via_discovery=installed)
+                            if metadata:
+                                self._metadata_cache.append(metadata)
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to parse skill at {marketplace_skill_dir}: {e}"
+                            )
                     continue
 
                 skill_md = potential_skill_dir / "SKILL.md"
                 if not skill_md.exists():
                     continue
 
-                # Parse YAML frontmatter
                 try:
-                    metadata = self._parse_skill_metadata(skill_md)
+                    installed = (potential_skill_dir / ".install.json").exists()
+                    metadata = self._parse_skill_metadata(skill_md, installed_via_discovery=installed)
                     if metadata:
                         self._metadata_cache.append(metadata)
                 except Exception as e:
@@ -84,6 +103,11 @@ class SkillsLoader:
 
         self._discovered = True
         return self._metadata_cache
+
+    def invalidate(self) -> None:
+        """Force re-scan on next discover() call. Used post-install to surface freshly-installed skills mid-session."""
+        self._discovered = False
+        self._metadata_cache = []
 
     def load_instructions(self, name: str) -> str:
         """Load full SKILL.md instructions for a named skill.
@@ -137,13 +161,15 @@ class SkillsLoader:
         """
         return [s.name for s in self.discover()]
 
-    def _parse_skill_metadata(self, skill_md: Path) -> Optional[SkillMetadata]:
+    def _parse_skill_metadata(self, skill_md: Path, installed_via_discovery: bool = False) -> Optional[SkillMetadata]:
         """Parse YAML frontmatter from SKILL.md.
 
         Parameters
         ----------
         skill_md : Path
             Path to SKILL.md file.
+        installed_via_discovery : bool
+            True when a .install.json sidecar exists alongside the skill.
 
         Returns
         -------
@@ -159,8 +185,6 @@ class SkillsLoader:
 
         frontmatter_text = match.group(1)
 
-        # Simple YAML parsing (manual, no external deps)
-        # Extract 'name: ...' and 'description: ...'
         name_match = re.search(r"^name:\s*(.+?)$", frontmatter_text, re.MULTILINE)
         desc_match = re.search(
             r"^description:\s*(.+?)$", frontmatter_text, re.MULTILINE
@@ -179,7 +203,7 @@ class SkillsLoader:
             )
             return None
 
-        return SkillMetadata(name=name, description=description, path=skill_md.parent)
+        return SkillMetadata(name=name, description=description, path=skill_md.parent, installed_via_discovery=installed_via_discovery)
 
 
 # Module-level singleton
