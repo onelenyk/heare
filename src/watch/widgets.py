@@ -97,7 +97,7 @@ class ActivityTable(DataTable):
         self.add_column("time", width=8)
         self.add_column("WHO", width=12)
         self.add_column("TYPE", width=10)
-        self.add_column("content", width="flex")
+        self.add_column("content", width=100)  # Fixed width, will truncate in refresh_data
 
     def refresh_data(self, rows: list[ActivityRow]) -> None:
         """Update table with new activity data.

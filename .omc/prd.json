@@ -120,12 +120,12 @@
         "Pilot test presses 'M', asserts toggle_input_mute mock called (not toggle_mute)",
         "Pilot test presses 'q', asserts app exits cleanly"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-008",
       "title": "Implement run_watch() with once mode",
-      "description": "Implement run_watch(settings, interval, once) in __init__.py. once=True: call fetch_dashboard_state(), render via rich.Console to stdout, exit with rc=0 (bypass App entirely). once=False: instantiate HeareDashboard, call app.run(). Remove old _make_key_reader/termios hack. Add legacy env-var routing (HEARE_WATCH_LEGACY=1 routes to _legacy.py).",
+      "description": "IN PROGRESS - Implementing run_watch(settings, interval, once) in __init__.py. once=True: call fetch_dashboard_state(), render via rich.Console to stdout, exit with rc=0 (bypass App entirely). once=False: instantiate HeareDashboard, call app.run(). Remove old _make_key_reader/termios hack. Add legacy env-var routing (HEARE_WATCH_LEGACY=1 routes to _legacy.py).",
       "acceptanceCriteria": [
         "run_watch() function defined in watch/__init__.py with signature (settings: Settings, interval: float, once: bool = False) -> int",
         "once=True branch: calls fetch_dashboard_state(settings), renders snapshot via rich.Console to stdout, returns 0",
