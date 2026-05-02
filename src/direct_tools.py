@@ -3112,26 +3112,43 @@ async def _execute_list_skills(args: str, settings: "Settings | None" = None) ->
 
 
 async def _execute_run_skill(args: str, settings: "Settings | None" = None) -> dict:
-    """Execute a skill by name with context dict."""
+    """Execute a skill by name with context dict.
+
+    Args is JSON: ``{"name": "<skill>", "context": {...}}``. Both fields are
+    required by the tool schema.
+    """
     try:
         from .agent_skills import get_skills_loader
 
-        # args format from llm_tools: "skill-name:{json-context}"
-        if ":" not in args:
+        try:
+            payload = json.loads(args) if args else {}
+        except json.JSONDecodeError as e:
             return {
                 "success": False,
-                "error": f"Invalid skill invocation format (expected 'name:context_json'): {args}",
+                "error": f"Invalid run_skill JSON args: {e}",
                 "spoken": {"en": "Invalid skill parameters."},
             }
 
-        try:
-            name_part, context_json = args.split(":", 1)
-            context = json.loads(context_json)
-        except (ValueError, json.JSONDecodeError) as e:
+        if not isinstance(payload, dict):
             return {
                 "success": False,
-                "error": f"Invalid skill invocation format: {e}",
+                "error": "run_skill args must be a JSON object",
                 "spoken": {"en": "Invalid skill parameters."},
+            }
+
+        name_part = str(payload.get("name", "")).strip()
+        if not name_part:
+            return {
+                "success": False,
+                "error": "run_skill requires 'name'",
+                "spoken": {"en": "Missing skill name."},
+            }
+        context = payload.get("context") or {}
+        if not isinstance(context, dict):
+            return {
+                "success": False,
+                "error": "run_skill 'context' must be an object",
+                "spoken": {"en": "Invalid skill context."},
             }
 
         loader = get_skills_loader(settings)
@@ -3169,67 +3186,52 @@ async def _execute_skill_internal(
     settings: "Settings | None" = None,
     action_timeout_seconds: int = 120,
 ) -> dict:
-    """Execute a skill's instruction set internally.
+    """Deliver the skill's SKILL.md body to the LLM as a tool result.
 
-    Parses instructions and dispatches to heare tools. Returns a single
-    composite result (not per-tool). The LLM sees this as one action log
-    entry, not N entries for internal sub-tool calls.
+    Per the agentskills.io spec, SKILL.md is a *prompt* for the LLM to
+    read and follow using its existing tools — not a DSL with embedded
+    tool calls. This function substitutes any ``{var}`` placeholders
+    from ``context`` and returns the body in ``output`` so the LLM
+    consumes it on the next turn and acts on it via bash/read/etc.
     """
+    body = instructions
+    skill_dir = ""
     try:
-        # Extract tool calls from skill instructions
-        tool_calls = _extract_tool_calls_from_instructions(instructions, context)
+        from .agent_skills import get_skills_loader
 
-        if not tool_calls:
-            return {
-                "success": False,
-                "error": f"Skill '{skill_name}' has no executable tool calls",
-                "spoken": {"en": f"Skill {skill_name} has no tool calls."},
-            }
+        loader = get_skills_loader(settings)
+        for meta in loader.discover():
+            if meta.name == skill_name:
+                skill_dir = str(meta.path)
+                break
+    except Exception:  # noqa: BLE001
+        logger.warning("[RUN_SKILL] could not resolve skill_dir for %s", skill_name)
 
-        results = []
-        start_time = asyncio.get_event_loop().time()
+    if skill_dir:
+        body = body.replace("${CLAUDE_SKILL_DIR}", skill_dir)
 
-        for tool_name, tool_args in tool_calls:
-            # Check timeout
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > action_timeout_seconds:
-                return {
-                    "success": False,
-                    "error": f"Skill '{skill_name}' timed out after {action_timeout_seconds}s",
-                    "spoken": {"en": f"Skill {skill_name} took too long."},
-                }
+    if context:
+        for key, value in context.items():
+            body = body.replace(f"{{{key}}}", str(value))
 
-            try:
-                # Call tools without recording to action log (no conversation_manager)
-                tool_result = await execute_direct(
-                    tool=tool_name, args=tool_args, settings=settings
-                )
-                results.append({"tool": tool_name, "result": tool_result})
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Skill '{skill_name}' failed at tool '{tool_name}': {e}",
-                    "spoken": {"en": f"Skill {skill_name} failed."},
-                }
+    header = f"You are now executing skill '{skill_name}'. Follow the instructions below using your existing tools (bash, read, web_search, etc.). Do not call run_skill again for this skill."
+    if context:
+        header += f" Context provided: {json.dumps(context)}"
+    if skill_dir:
+        header += f" Skill directory: {skill_dir}"
 
-        # Compile composite result
-        summary = f"Completed {skill_name}: {len(results)} tool(s) executed"
-        return {
-            "success": True,
-            "output": summary,
-            "spoken": {"en": summary},
-        }
+    output = f"{header}\n\n--- SKILL.md ---\n{body}"
 
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Skill '{skill_name}' execution error: {str(e)}",
-            "spoken": {"en": f"Skill {skill_name} failed."},
-        }
+    return {
+        "success": True,
+        "output": output,
+        "skill": skill_name,
+        "skill_dir": skill_dir,
+        "spoken": {
+            "en": f"Loaded {skill_name}.",
+            "uk": f"Завантажив {skill_name}.",
+        },
+    }
 
 
 def _extract_tool_calls_from_instructions(instructions: str, context: dict) -> list[tuple[str, str]]:
@@ -3319,6 +3321,7 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
 # ============================================================================
 
 _capability_index_singleton = None
+_LAST_DISCOVERY: dict = {}
 
 
 def set_capability_index(index) -> None:
@@ -3362,6 +3365,7 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
             "spoken": {"en": "Bad arguments."},
         }
     intent = str(payload.get("intent", "")).strip()
+    prefer_remote = bool(payload.get("prefer_remote", False))
     if not intent:
         return {
             "success": False,
@@ -3374,17 +3378,25 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
 
     started = _time.monotonic()
     index = _get_or_build_capability_index(settings)
-    local_entries = await discovery.discover_capability_local(intent, index, top_k=3)
 
-    source = "local"
-    entries = local_entries
-    if not entries:
+    if prefer_remote:
         try:
             entries = await discovery.discover_capability_remote(intent, settings=settings)
             source = "remote"
         except Exception as e:  # noqa: BLE001
             logger.warning("[CAPABILITY DISCOVERY] remote failed: %s", e)
             entries = []
+    else:
+        local_entries = await discovery.discover_capability_local(intent, index, top_k=3)
+        entries = local_entries
+        source = "local"
+        if not entries:
+            try:
+                entries = await discovery.discover_capability_remote(intent, settings=settings)
+                source = "remote"
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[CAPABILITY DISCOVERY] remote failed: %s", e)
+                entries = []
 
     latency_ms = int((_time.monotonic() - started) * 1000)
     logger.info(
@@ -3404,6 +3416,8 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
         }
 
     top = entries[:3]
+    for e in top:
+        _LAST_DISCOVERY[e.name] = e
     summaries = [_entry_to_summary(e) for e in top]
     lines = [f"- {s['name']} ({s['source']}): {s['description']}" for s in summaries]
     output = "\n".join(lines)
@@ -3449,13 +3463,13 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
         return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
 
     index = _get_or_build_capability_index(settings)
-    entry = _find_entry_by_slug(index, slug)
+    entry = _find_entry_by_slug(index, slug) or _LAST_DISCOVERY.get(slug)
     if entry is None:
         return {
             "success": False,
             "output": "",
-            "error": f"Unknown slug: {slug}",
-            "spoken": {"en": f"I don't know {slug}."},
+            "error": f"Unknown slug: {slug}. Run discover_capability first.",
+            "spoken": {"en": f"I don't know {slug}. Search for it first."},
         }
 
     started = _time.monotonic()
@@ -3529,13 +3543,13 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
         return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
 
     index = _get_or_build_capability_index(settings)
-    entry = _find_entry_by_slug(index, slug)
+    entry = _find_entry_by_slug(index, slug) or _LAST_DISCOVERY.get(slug)
     if entry is None:
         return {
             "success": False,
             "output": "",
-            "error": f"Unknown slug: {slug}",
-            "spoken": {"en": f"I don't know {slug}."},
+            "error": f"Unknown slug: {slug}. Run discover_capability first.",
+            "spoken": {"en": f"I don't know {slug}. Search for it first."},
         }
 
     started = _time.monotonic()

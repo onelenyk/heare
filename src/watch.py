@@ -187,12 +187,11 @@ def _you_table(
     if con is not None:
         rows = _fetch(
             con,
-            "SELECT ts, speaker_id, text FROM transcripts ORDER BY ts DESC LIMIT 8",
+            "SELECT ts, speaker_id, text FROM transcripts "
+            "WHERE speaker_id IS NULL OR speaker_id != 'bot' "
+            "ORDER BY ts DESC LIMIT 8",
         )
         for ts, sid, text in reversed(rows):
-            # Filter out bot responses (they go in the Bot panel)
-            if sid == "bot":
-                continue
             display = labels.get(sid, sid) if sid else "unknown"
             table.add_row(
                 _fmt_time(ts),
@@ -377,13 +376,14 @@ def _log_panel(settings: Settings, lines: int = 8) -> Panel:
         except OSError:
             raw = []
         for line in raw:
-            style = ""
-            if " ERROR " in line or "ERROR" in line.split()[:4] if line else False:
+            if "ERROR" in line:
                 style = "red"
-            elif " WARNING " in line:
+            elif "WARNING" in line:
                 style = "yellow"
-            elif " INFO " in line:
+            elif "INFO" in line:
                 style = "cyan"
+            else:
+                style = ""
             content.append(Text(_truncate(line, 160), style=style))
     if not content:
         content = [Text("(no log yet)", style="dim italic")]

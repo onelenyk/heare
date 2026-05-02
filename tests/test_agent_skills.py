@@ -246,8 +246,7 @@ async def test_execute_direct_run_skill_not_found_returns_error():
 
     settings = Settings()
 
-    # Serialize args as "name:context" format
-    serialized_args = f"totally-nonexistent-skill:{json.dumps({})}"
+    serialized_args = json.dumps({"name": "totally-nonexistent-skill", "context": {}})
 
     result = await execute_direct("run_skill", serialized_args, settings)
 

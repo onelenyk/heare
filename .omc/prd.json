@@ -36,12 +36,12 @@
         "New unit tests for fetch_activity(), read_log_tail(), and fetch_dashboard_state() pass",
         "DB init creates idx_actions_ts index (verified via sqlite3 .indices)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-003",
       "title": "Build HeaderBar widget",
-      "description": "Create HeaderBar(Static) widget in widgets.py. Takes settings in constructor. Has refresh_data(header: HeaderData) method. Renders two-line layout matching current _build_header.",
+      "description": "IN PROGRESS - Creating HeaderBar(Static) widget in widgets.py. Takes settings in constructor. Has refresh_data(header: HeaderData) method. Renders two-line layout matching current _build_header.",
       "acceptanceCriteria": [
         "widgets.py defines HeaderBar(Static) class",
         "HeaderBar.__init__ accepts settings: Settings parameter",

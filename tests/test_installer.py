@@ -264,3 +264,120 @@ async def test_install_skill_rejects_archive_with_path_traversal(settings, fake_
     assert str(exc.value) in ("unsafe_archive_path", "invalid_archive")
     target = fake_home / ".heare" / "skills" / "_marketplace" / "foo"
     assert not (target.parent.parent.parent.parent / "etc" / "passwd").exists()
+
+
+def test_parse_github_tree_url_with_subpath():
+    result = installer._parse_github_tree_url(
+        "https://github.com/owner/repo/tree/main/skills/foo"
+    )
+    assert result is not None
+    tarball_url, subpath = result
+    assert tarball_url == "https://codeload.github.com/owner/repo/tar.gz/refs/heads/main"
+    assert subpath == "skills/foo"
+
+
+def test_parse_github_tree_url_branch_only():
+    result = installer._parse_github_tree_url(
+        "https://github.com/owner/repo/tree/main"
+    )
+    assert result is not None
+    tarball_url, subpath = result
+    assert tarball_url == "https://codeload.github.com/owner/repo/tar.gz/refs/heads/main"
+    assert subpath == ""
+
+
+def test_parse_github_tree_url_rejects_non_tree():
+    assert installer._parse_github_tree_url("https://github.com/owner/repo") is None
+    assert installer._parse_github_tree_url(
+        "https://github.com/owner/repo/archive/v1.tar.gz"
+    ) is None
+    assert installer._parse_github_tree_url(
+        "https://example.com/owner/repo/tree/main/skills/foo"
+    ) is None
+
+
+def _make_repo_tarball_with_subpath(subpath: str) -> bytes:
+    """Build a tarball mimicking GitHub's repo archive layout: ``repo-main/<subpath>/SKILL.md``."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        prefix = f"repo-main/{subpath}/"
+        skill_md = b"---\nname: foo\ndescription: A test skill\n---\nbody\n"
+        info = tarfile.TarInfo(name=prefix + "SKILL.md")
+        info.size = len(skill_md)
+        tf.addfile(info, io.BytesIO(skill_md))
+        scripts = b"#!/bin/sh\necho hi\n"
+        info2 = tarfile.TarInfo(name=prefix + "scripts/helper.sh")
+        info2.size = len(scripts)
+        tf.addfile(info2, io.BytesIO(scripts))
+        unrelated = b"# top-level readme"
+        info3 = tarfile.TarInfo(name="repo-main/README.md")
+        info3.size = len(unrelated)
+        tf.addfile(info3, io.BytesIO(unrelated))
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_install_skill_extracts_subpath_from_github_tree_url(settings, fake_home):
+    tarball = _make_repo_tarball_with_subpath("skills/foo")
+    entry = _entry(install_url="https://github.com/owner/repo/tree/main/skills/foo")
+    with patch("src.installer._try_raw_fast_path", AsyncMock(return_value=None)), \
+         patch("src.installer._download", AsyncMock(return_value=tarball)) as dl:
+        result = await installer.install_skill(entry, settings=settings, user_confirmed=True)
+    assert result.success
+    dl.assert_awaited_once()
+    download_url = dl.await_args.args[0]
+    assert download_url == "https://codeload.github.com/owner/repo/tar.gz/refs/heads/main"
+    target = fake_home / ".heare" / "skills" / "_marketplace" / "foo"
+    assert (target / "SKILL.md").read_text().startswith("---")
+    assert (target / "scripts" / "helper.sh").exists()
+    assert not (target / "README.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_install_skill_subpath_missing_in_archive(settings, fake_home):
+    tarball = _make_repo_tarball_with_subpath("skills/other")
+    entry = _entry(install_url="https://github.com/owner/repo/tree/main/skills/foo")
+    with patch("src.installer._try_raw_fast_path", AsyncMock(return_value=None)), \
+         patch("src.installer._download", AsyncMock(return_value=tarball)):
+        with pytest.raises(installer.InstallFailed) as exc:
+            await installer.install_skill(entry, settings=settings, user_confirmed=True)
+    assert str(exc.value) in ("subpath_not_found", "invalid_archive")
+    target = fake_home / ".heare" / "skills" / "_marketplace" / "foo"
+    assert not target.exists()
+
+
+@pytest.mark.asyncio
+async def test_install_skill_uses_raw_fast_path_when_no_assets(settings, fake_home):
+    """When SKILL.md has no asset references, fast path writes only SKILL.md."""
+    skill_md = "---\nname: foo\ndescription: A test skill\n---\nplain body, no assets.\n"
+    entry = _entry(install_url="https://github.com/owner/repo/tree/main/skills/foo")
+    with patch(
+        "src.installer._try_raw_fast_path",
+        AsyncMock(return_value=(skill_md, [])),
+    ), patch("src.installer._download", AsyncMock()) as dl:
+        result = await installer.install_skill(entry, settings=settings, user_confirmed=True)
+    assert result.success
+    dl.assert_not_awaited()
+    target = fake_home / ".heare" / "skills" / "_marketplace" / "foo"
+    assert (target / "SKILL.md").read_text() == skill_md
+    assert not (target / "scripts").exists()
+
+
+def test_skill_md_references_local_assets_detects_patterns():
+    assert installer._skill_md_references_local_assets("Run `${CLAUDE_SKILL_DIR}/scripts/x.sh`")
+    assert installer._skill_md_references_local_assets("Output: !`bash scripts/run.sh`")
+    assert installer._skill_md_references_local_assets("See [doc](reference/api.md)")
+    assert not installer._skill_md_references_local_assets("Plain skill body, no refs.")
+
+
+def test_parse_github_tree_parts_extracts_components():
+    result = installer._parse_github_tree_parts(
+        "https://github.com/lsiten/mult-agent/tree/main/skills/turix-windows"
+    )
+    assert result == ("lsiten", "mult-agent", "main", "skills/turix-windows")
+
+
+def test_raw_url_for_builds_correct_path():
+    assert installer._raw_url_for("o", "r", "main", "skills/foo", "SKILL.md") == (
+        "https://raw.githubusercontent.com/o/r/main/skills/foo/SKILL.md"
+    )

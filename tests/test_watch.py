@@ -8,19 +8,22 @@ from pathlib import Path
 import pytest
 
 from src.config import Settings, Mode
+from src.storage import SCHEMA
+from src.watch.data import (
+    counts,
+    current_mode,
+    daemon_status,
+    fmt_time,
+    open_db,
+    truncate,
+)
+# Legacy functions for tests that still use them
 from src.watch import (
     _activity_table,
     _bot_table,
-    _counts,
-    _current_mode,
-    _daemon_status,
     _did_table,
-    _fmt_time,
-    _open_db,
-    _truncate,
     _you_table,
 )
-from src.storage import SCHEMA
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +57,7 @@ def _create_schema(db_path: Path) -> None:
 def test_daemon_status_not_running() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         settings = _make_settings(tmp)
-        running, pid, uptime = _daemon_status(settings)
+        running, pid, uptime = daemon_status(settings)
     assert running is False
     assert pid is None
     assert uptime == "-"
@@ -65,7 +68,7 @@ def test_daemon_status_stale_pid() -> None:
         settings = _make_settings(tmp)
         # Write a PID that almost certainly doesn't exist
         settings.pid_file.write_text("99999999")
-        running, pid, uptime = _daemon_status(settings)
+        running, pid, uptime = daemon_status(settings)
     assert running is False
 
 
@@ -76,7 +79,7 @@ def test_daemon_status_stale_pid() -> None:
 def test_current_mode_no_file() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         settings = _make_settings(tmp, mode=Mode.AMBIENT)
-        result = _current_mode(settings)
+        result = current_mode(settings)
     assert result == "ambient"
 
 
@@ -85,7 +88,7 @@ def test_current_mode_reads_file() -> None:
         settings = _make_settings(tmp, mode=Mode.AMBIENT)
         settings.mode_file.parent.mkdir(parents=True, exist_ok=True)
         settings.mode_file.write_text("focus")
-        result = _current_mode(settings)
+        result = current_mode(settings)
     assert result == "focus"
 
 
@@ -95,7 +98,7 @@ def test_current_mode_reads_file() -> None:
 
 def test_fmt_time() -> None:
     ts = 1700000000.0
-    result = _fmt_time(ts)
+    result = fmt_time(ts)
     # Should be HH:MM:SS format
     parts = result.split(":")
     assert len(parts) == 3
@@ -110,13 +113,13 @@ def test_fmt_time() -> None:
 # ---------------------------------------------------------------------------
 
 def test_truncate() -> None:
-    result = _truncate("hello world", 5)
+    result = truncate("hello world", 5)
     assert len(result) <= 5 + 1  # allow for the ellipsis character
     assert result.startswith("hell")
 
 
 def test_truncate_short_string() -> None:
-    result = _truncate("hi", 10)
+    result = truncate("hi", 10)
     assert result == "hi"
 
 
@@ -130,11 +133,11 @@ def test_counts_empty_db() -> None:
         _create_schema(db_path)
         con = sqlite3.connect(str(db_path))
         try:
-            counts = _counts(con)
+            counts_result = counts(con)
         finally:
             con.close()
-    assert counts["transcripts"] == 0
-    assert counts["actions"] == 0
+    assert counts_result["transcripts"] == 0
+    assert counts_result["actions"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +148,7 @@ def test_open_db_readonly() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "heare.db"
         _create_schema(db_path)
-        con = _open_db(db_path)
+        con = open_db(db_path)
         assert con is not None
         # Read-only: writing should raise an error
         with pytest.raises(sqlite3.OperationalError):
@@ -156,7 +159,7 @@ def test_open_db_readonly() -> None:
 def test_open_db_missing_file() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "nonexistent.db"
-        con = _open_db(db_path)
+        con = open_db(db_path)
     assert con is None
 
 

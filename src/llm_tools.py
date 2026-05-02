@@ -446,12 +446,12 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
             },
             "context": {
                 "type": "object",
-                "description": "Skill-specific context dict. Contents depend on the skill. Call list_skills first to learn what parameters each skill expects.",
+                "description": "Skill-specific context dict. Contents depend on the skill. Pass {} if the skill needs no parameters. Call list_skills first to learn what each skill expects.",
                 "properties": {},
                 "additionalProperties": True,
             },
         },
-        ["name"],
+        ["name", "context"],
         _json_args,
     ),
     "set_provider": (
@@ -471,6 +471,10 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
             "intent": {
                 "type": "string",
                 "description": "The user's intent / transcript describing what they want. Example: 'weather in kyiv'.",
+            },
+            "prefer_remote": {
+                "type": "boolean",
+                "description": "Set true when the user explicitly asks about marketplace/online skills (e.g. 'what skills exist online', 'search the marketplace'). Skips local index and queries skillsmp.com directly. Default false.",
             },
         },
         ["intent"],

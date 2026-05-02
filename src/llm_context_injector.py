@@ -118,26 +118,58 @@ def render_native_system_prompt(
         if mcp:
             parts.append(mcp)
 
+    parts.append("")
+    parts.append("### Capabilities")
+    parts.append(
+        "Three categories you can use:"
+    )
+    parts.append(
+        "- **Built-in tools**: code-backed functions always available. Just call them by name."
+    )
+    parts.append(
+        "- **Installed skills**: markdown procedures in ~/.heare/skills/. List them with `list_skills`. Run one with `run_skill(name=..., context=...)`."
+    )
+    parts.append(
+        "- **MCP servers**: external services configured per-workspace. Restart needed after install."
+    )
+    parts.append(
+        "Anything not in those three is on the **marketplace** (skillsmp.com / MCP registry) — search with `discover_capability(intent=...)`, then `install_skill_tool` / `install_mcp_server_tool` after voice consent."
+    )
+
     try:
         from .agent_skills import get_skills_loader
 
         skills = get_skills_loader(None).discover()
         if skills:
             parts.append("")
-            parts.append("### Available Skills")
-            parts.append(", ".join(s.name for s in skills))
-            parts.append("(Use `run_skill(name=..., context=...)` to execute. Call `list_skills` for descriptions.)")
+            parts.append("Installed skills:")
+            for s in skills:
+                desc = (s.description or "").strip().splitlines()[0] if s.description else ""
+                parts.append(f"- {s.name}: {desc}" if desc else f"- {s.name}")
     except Exception:
         pass
 
     if capability_hints:
-        parts.append("")
-        parts.append("### Possibly relevant tools (try these first if applicable)")
+        by_source: dict[str, list[dict]] = {}
         for hint in capability_hints:
-            name = hint.get("name", "")
-            source = hint.get("source", "")
-            desc = hint.get("description", "")
-            parts.append(f"- {name} ({source}): {desc}")
+            by_source.setdefault(hint.get("source", "other"), []).append(hint)
+        labels = {
+            "tool": "Built-in tools",
+            "dynamic_tool": "Built-in tools",
+            "skill": "Installed skills",
+            "mcp": "MCP servers",
+        }
+        parts.append("")
+        parts.append("Relevant for this turn (try these first):")
+        for source in ("tool", "dynamic_tool", "skill", "mcp"):
+            entries = by_source.get(source) or []
+            if not entries:
+                continue
+            for hint in entries:
+                name = hint.get("name", "")
+                desc = hint.get("description", "")
+                label = labels.get(source, source)
+                parts.append(f"- [{label}] {name}: {desc}")
 
     parts.append("")
     parts.append("Reply rules:")
@@ -166,6 +198,24 @@ def render_native_system_prompt(
         "- If discovery returns nothing, refuse politely in the user's "
         "language: English 'I don't have a tool for that. Want me to look one "
         "up?'; Ukrainian 'Не маю інструменту для цього. Хочеш, я пошукаю?'."
+    )
+    parts.append(
+        "- Capability questions route as follows: "
+        "'what skills/tools do I have', 'what's installed', 'list my skills' "
+        "→ call list_skills (skills only) or list_capabilities (everything installed). "
+        "'what skills exist online', 'search the marketplace' "
+        "→ call discover_capability(intent=…, prefer_remote=true). "
+        "'find a skill for X', 'is there a skill that …' "
+        "→ call discover_capability(intent=…) (defaults to local-first). "
+        "If the user says 'search for skills' or 'find me one' with no topic, "
+        "ask one short clarifier (e.g. 'For what — code, writing, automation?') "
+        "before calling discover_capability."
+    )
+    parts.append(
+        "- run_skill returns the skill's SKILL.md instructions as text. "
+        "Read those instructions and follow them using your existing tools "
+        "(bash, read, web_search, etc.). Do NOT call run_skill again for "
+        "the same skill in the same turn — the body is already in your context."
     )
 
     return "\n".join(parts).strip() + "\n"
