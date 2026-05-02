@@ -1,0 +1,10 @@
+/* Dashboard styling - minimal CSS for now */
+
+/* Focus highlight */
+DataTable:focus {
+    border: tall $accent;
+}
+
+RichLog:focus {
+    border: tall $accent;
+}
