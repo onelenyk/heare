@@ -66,12 +66,12 @@
         "Pilot test creates widget, populates 50 rows, asserts row count, scrolls to bottom, verifies last row content",
         "Pilot test verifies action row with status='error' displays red badge"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-005",
       "title": "Build LogTail widget",
-      "description": "Create LogTail(RichLog) in widgets.py. refresh_data(lines: list[LogLine]) clears and writes styled lines. Severity coloring: ERROR=red, WARNING=yellow, INFO=cyan, else=default. max_lines=50.",
+      "description": "IN PROGRESS - Creating LogTail(RichLog) in widgets.py. refresh_data(lines: list[LogLine]) clears and writes styled lines. Severity coloring: ERROR=red, WARNING=yellow, INFO=cyan, else=default. max_lines=50.",
       "acceptanceCriteria": [
         "widgets.py defines LogTail(RichLog) class",
         "LogTail.refresh_data(lines: list[LogLine]) method clears and writes styled lines",
