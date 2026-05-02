@@ -242,3 +242,25 @@ async def test_install_message_en_uk_both_present(settings, fake_home):
     assert result.message_uk
     assert "foo" in result.message_en
     assert "foo" in result.message_uk
+
+
+def _make_traversal_tarball() -> bytes:
+    """Build a tarball containing a path-traversal member name."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        data = b"evil"
+        info = tarfile.TarInfo(name="../etc/passwd")
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_install_skill_rejects_archive_with_path_traversal(settings, fake_home):
+    tarball = _make_traversal_tarball()
+    with _patch_download(tarball):
+        with pytest.raises(installer.InstallFailed) as exc:
+            await installer.install_skill(_entry(), settings=settings, user_confirmed=True)
+    assert str(exc.value) in ("unsafe_archive_path", "invalid_archive")
+    target = fake_home / ".heare" / "skills" / "_marketplace" / "foo"
+    assert not (target.parent.parent.parent.parent / "etc" / "passwd").exists()

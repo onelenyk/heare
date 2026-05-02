@@ -623,3 +623,20 @@ description: No sidecar skill
 
         assert len(discovered) == 1
         assert discovered[0].installed_via_discovery is False
+
+
+def test_oversized_skill_md_is_skipped():
+    """A SKILL.md larger than 1 MB is silently skipped; discover() returns empty list."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        skill_dir = tmpdir_path / "big-skill"
+        skill_dir.mkdir()
+        skill_md = skill_dir / "SKILL.md"
+        # Write 2 MB of data (well over the 1 MB cap)
+        skill_md.write_bytes(b"x" * (2 * 1024 * 1024))
+
+        loader = SkillsLoader([tmpdir_path])
+        discovered = loader.discover()
+
+        assert discovered == []

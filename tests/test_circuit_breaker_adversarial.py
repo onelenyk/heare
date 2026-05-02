@@ -102,3 +102,36 @@ def test_adversarial_full_sequence_2sig_1safety_3net():
     # Final state assertions.
     assert breaker.net_fails == 3
     assert breaker.safety_blocks == 3
+
+
+def test_breaker_with_2_sig_1_safety_3_net():
+    """PRD scenario: sig_fail counts toward threshold alongside net_fail.
+
+    Sequence: sig, sig, safety, net, net, net
+    With threshold=3: sig(1) + sig(2) + safety(no count) + net(3 total — TRIPS).
+    Breaker trips on the first net_fail because sig_fails already at 2.
+    """
+    breaker = CircuitBreaker(threshold=3)
+
+    breaker.record_sig_fail()
+    assert breaker.tripped is False
+    assert breaker.sig_fails == 1
+
+    breaker.record_sig_fail()
+    assert breaker.tripped is False
+    assert breaker.sig_fails == 2
+
+    breaker.record_safety_block()
+    assert breaker.tripped is False
+    assert breaker.safety_blocks == 1
+
+    # First net_fail: combined = 2 sig + 1 net = 3 >= threshold — trips here.
+    breaker.record_net_fail()
+    assert breaker.tripped is True, "combined sig+net must trip at threshold"
+    assert breaker.net_fails == 1
+    assert breaker.sig_fails == 2
+
+    # Subsequent calls after trip are no-ops.
+    breaker.record_net_fail()
+    breaker.record_net_fail()
+    assert breaker.net_fails == 1  # frozen after trip

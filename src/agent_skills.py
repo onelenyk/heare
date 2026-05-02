@@ -18,6 +18,8 @@ from typing import Optional
 
 logger = logging.getLogger("heare.agent_skills")
 
+_MAX_SKILL_MD_BYTES = 1 << 20  # 1 MB
+
 
 @dataclass(frozen=True)
 class SkillMetadata:
@@ -176,7 +178,15 @@ class SkillsLoader:
         Optional[SkillMetadata]
             Metadata if parsing succeeds, None if frontmatter is invalid.
         """
-        content = skill_md.read_text(encoding="utf-8")
+        try:
+            size = skill_md.stat().st_size
+            if size > _MAX_SKILL_MD_BYTES:
+                logger.warning(f"Skipping oversized SKILL.md: {skill_md} ({size} bytes > {_MAX_SKILL_MD_BYTES})")
+                return None
+            content = skill_md.read_text(encoding="utf-8")
+        except OSError as e:
+            logger.warning(f"Cannot read {skill_md}: {e}")
+            return None
 
         # Extract YAML frontmatter (between --- markers)
         match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)

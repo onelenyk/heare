@@ -191,21 +191,39 @@ async def discover_capability_local(
 class CircuitBreaker:
     """Simple counter-based circuit breaker.
 
-    Counts only ``net_fail`` (execution_error) failures. ``safety_block`` events
-    are recorded but never counted toward tripping. Trips after
-    ``threshold`` (default 3) consecutive net failures.
+    Three event categories:
+    - ``net_fail``: network/execution errors — counted toward trip threshold.
+    - ``sig_fail``: signature verification failures — counted toward trip threshold.
+    - ``safety_block``: content safety rejections — recorded but never counted.
+
+    Trips after ``threshold`` (default 3) combined net_fail + sig_fail events.
     """
 
     def __init__(self, threshold: int = 3) -> None:
         self.threshold = threshold
         self._net_fails = 0
+        self._sig_fails = 0
         self._safety_blocks = 0
         self._tripped = False
 
-    def record_net_fail(self) -> None:
-        self._net_fails += 1
-        if self._net_fails >= self.threshold:
+    def _update_tripped(self) -> None:
+        """Trip if combined net_fails + sig_fails reaches threshold."""
+        if (self._net_fails + self._sig_fails) >= self.threshold:
             self._tripped = True
+
+    def record_net_fail(self) -> None:
+        """Record a network or execution failure. Counts toward the trip threshold."""
+        if self._tripped:
+            return
+        self._net_fails += 1
+        self._update_tripped()
+
+    def record_sig_fail(self) -> None:
+        """Record a signature verification failure. Counts toward the trip threshold."""
+        if self._tripped:
+            return
+        self._sig_fails += 1
+        self._update_tripped()
 
     def record_safety_block(self) -> None:
         self._safety_blocks += 1
@@ -222,11 +240,16 @@ class CircuitBreaker:
         return self._net_fails
 
     @property
+    def sig_fails(self) -> int:
+        return self._sig_fails
+
+    @property
     def safety_blocks(self) -> int:
         return self._safety_blocks
 
     def reset(self) -> None:
         self._net_fails = 0
+        self._sig_fails = 0
         self._safety_blocks = 0
         self._tripped = False
 

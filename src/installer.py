@@ -131,10 +131,21 @@ async def _download(url: str, *, timeout: float = 2.5) -> bytes:
     return resp.content
 
 
+def _check_member_safety(member: tarfile.TarInfo) -> None:
+    """Raise InstallFailed for members that could escape the destination directory."""
+    if member.name.startswith("/") or ".." in Path(member.name).parts:
+        raise InstallFailed("unsafe_archive_path")
+    if member.issym() or member.islnk():
+        target = Path(member.linkname)
+        if target.is_absolute() or ".." in target.parts:
+            raise InstallFailed("unsafe_archive_link")
+
+
 def _extract_tarball(content: bytes, dest: Path) -> None:
     """Extract the tarball into dest. Strips a single top-level directory if present.
 
     Raises tarfile.TarError on bad archives.
+    Raises InstallFailed on path-traversal or unsafe symlinks.
     """
     dest.mkdir(parents=True, exist_ok=True)
     with tarfile.open(fileobj=BytesIO(content), mode="r:*") as tf:
@@ -146,8 +157,7 @@ def _extract_tarball(content: bytes, dest: Path) -> None:
             if any(m.name != sole and m.name.startswith(sole + "/") for m in members):
                 strip_prefix = sole + "/"
         for m in members:
-            if m.name.startswith("/") or ".." in Path(m.name).parts:
-                continue
+            _check_member_safety(m)
             target_name = m.name[len(strip_prefix):] if strip_prefix and m.name.startswith(strip_prefix) else m.name
             if not target_name:
                 continue
