@@ -176,14 +176,20 @@
     },
     {
       "path": "src/config.py",
-      "accessCount": 77,
-      "lastAccessed": 1777755155147,
+      "accessCount": 79,
+      "lastAccessed": 1777797834639,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_watch.py",
+      "accessCount": 51,
+      "lastAccessed": 1777797838500,
       "type": "file"
     },
     {
       "path": "src/tool_registry.py",
-      "accessCount": 49,
-      "lastAccessed": 1777754196359,
+      "accessCount": 50,
+      "lastAccessed": 1777797835541,
       "type": "file"
     },
     {
@@ -193,27 +199,27 @@
       "type": "file"
     },
     {
-      "path": "tests/test_watch.py",
-      "accessCount": 48,
-      "lastAccessed": 1777758782582,
-      "type": "file"
-    },
-    {
       "path": "src/storage.py",
-      "accessCount": 39,
-      "lastAccessed": 1777758212809,
+      "accessCount": 41,
+      "lastAccessed": 1777797831178,
       "type": "file"
     },
     {
       "path": "src/main.py",
-      "accessCount": 31,
-      "lastAccessed": 1777755378996,
+      "accessCount": 33,
+      "lastAccessed": 1777797835390,
       "type": "file"
     },
     {
       "path": "src/transcription_gate.py",
       "accessCount": 23,
       "lastAccessed": 1777668389555,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_watch_controls.py",
+      "accessCount": 18,
+      "lastAccessed": 1777798195425,
       "type": "file"
     },
     {
@@ -242,14 +248,8 @@
     },
     {
       "path": "src/watch_controls.py",
-      "accessCount": 10,
-      "lastAccessed": 1777756243949,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_watch_controls.py",
-      "accessCount": 10,
-      "lastAccessed": 1777758919223,
+      "accessCount": 11,
+      "lastAccessed": 1777797718821,
       "type": "file"
     },
     {
@@ -379,6 +379,12 @@
       "type": "file"
     },
     {
+      "path": "src/text_injector.py",
+      "accessCount": 2,
+      "lastAccessed": 1777797775684,
+      "type": "file"
+    },
+    {
       "path": "src/text_scrub.py",
       "accessCount": 1,
       "lastAccessed": 1777393525622,
@@ -388,12 +394,6 @@
       "path": ".venv/lib/python3.13/site-packages/pipecat/services/tts_service.py",
       "accessCount": 1,
       "lastAccessed": 1777401383729,
-      "type": "file"
-    },
-    {
-      "path": "src/text_injector.py",
-      "accessCount": 1,
-      "lastAccessed": 1777403004630,
       "type": "file"
     },
     {

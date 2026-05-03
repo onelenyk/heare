@@ -1,10 +1,119 @@
-/* Dashboard styling - minimal CSS for now */
+/* Dashboard styling for Textual TUI */
 
-/* Focus highlight */
+Screen {
+    overflow: hidden;
+}
+
+/* Unified border-title styling across the dashboard. */
+HeaderBar, ActivityTable, LogTail, ControlsBar, AIBar {
+    border-title-color: $accent;
+    border-title-style: bold;
+    border-title-align: left;
+}
+
+/* ActivityTable width presets for column resize */
+.activity-fit {
+    width: auto;
+}
+
+.activity-half {
+    width: 50%;
+}
+
+.activity-full {
+    width: 100%;
+}
+
+ActivityTable {
+    height: 1fr;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
+ActivityTable:focus {
+    border: round $accent-lighten-1;
+}
+
+/* Focus highlight for any other DataTable in the app */
 DataTable:focus {
     border: tall $accent;
 }
 
 RichLog:focus {
     border: tall $accent;
+}
+
+/* Widget heights and borders */
+LogTail {
+    height: 8;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
+LogTail:focus {
+    border: round $accent-lighten-1;
+}
+
+HeaderBar {
+    height: 4;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
+#bottom-bar {
+    height: 8;
+}
+
+ControlsBar {
+    width: 1fr;
+    height: 100%;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
+ControlsBar:focus-within {
+    border: round $accent-lighten-1;
+}
+
+ControlsBar #status-line {
+    height: 1;
+}
+
+ControlsBar #sections-row {
+    height: 3;
+}
+
+ControlsBar Section {
+    border: round $surface-darken-2;
+    width: auto;
+    height: 3;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+ControlsBar #extras-line {
+    height: 1;
+    color: $text-muted;
+}
+
+ControlsBar.input-mode #sections-row,
+ControlsBar.input-mode #extras-line {
+    display: none;
+}
+
+ControlsBar Input {
+    border: tall $accent;
+    margin-top: 1;
+}
+
+AIBar {
+    width: 1fr;
+    height: 100%;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
 }

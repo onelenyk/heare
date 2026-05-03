@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sqlite3
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ import pytest
 from src.config import Settings, Mode
 from src.storage import SCHEMA
 from src.watch.data import (
-    ActivityRow,
     DashboardSnapshot,
     fetch_activity,
     fetch_dashboard_state,

@@ -5,16 +5,18 @@ binds hotkeys, and manages the refresh loop.
 """
 from __future__ import annotations
 
-from textual.app import App
+from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header
+from textual.containers import Horizontal
+from textual.css.query import NoMatches
 
 from ..config import Settings
 from ..mute_gate import toggle_input_mute, toggle_mute
-from ..text_injector import inject_text
-from ..watch_controls import daemon_pid, restart_daemon, start_daemon, stop_daemon
-from .data import DashboardSnapshot, fetch_dashboard_state
-from .widgets import ActivityTable, ControlsBar, HeaderBar, LogTail
+from ..watch_controls import restart_daemon, start_daemon, stop_daemon
+from . import models
+from .data import fetch_dashboard_state
+from .screens import ModelSelectScreen
+from .widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail
 
 
 class HeareDashboard(App):
@@ -35,9 +37,12 @@ class HeareDashboard(App):
         Binding("M", "toggle_mute_mic", "Mute mic", show=True),
         Binding("t", "text_input", "Text inject", show=True),
         Binding("p", "toggle_provider", "Provider", show=False),
+        Binding("o", "pick_model", "Pick model", show=False),
         Binding("q", "quit", "Quit", show=True),
-        Binding("left", "shrink_left", "Shrink left", show=False),
-        Binding("right", "grow_left", "Grow left", show=False),
+        Binding("[", "shrink_left", "Shrink", show=False),
+        Binding("]", "grow_left", "Grow", show=False),
+        Binding("f5", "refresh_now", "Refresh", show=False),
+        Binding("ctrl+r", "respawn", "Respawn", show=False),
     ]
 
     def __init__(self, settings: Settings, interval: float = 0.5) -> None:
@@ -51,36 +56,64 @@ class HeareDashboard(App):
         self.settings = settings
         self.interval = interval
         self._refresh_timer = None
+        self._activity_width_index = 2  # default to "full"
+        self._width_presets = ("fit", "half", "full")
+
+    def compose(self) -> ComposeResult:
+        yield ActivityTable()
+        yield LogTail()
+        yield HeaderBar(self.settings)
+        yield Horizontal(
+            ControlsBar(self.settings),
+            AIBar(self.settings),
+            id="bottom-bar",
+        )
 
     def on_mount(self) -> None:
-        """Called when app is mounted. Set up widgets and refresh timer."""
-        # Create and mount widgets
-        header = HeaderBar(self.settings)
-        activity = ActivityTable()
-        log_tail = LogTail()
-        controls = ControlsBar()
-
-        # Mount in Vertical layout (default is vertical stacking)
-        self.mount(header, activity, log_tail, controls)
-
-        # Set up refresh timer
+        """Called when app is mounted. Wire timers and initial state."""
         self._refresh_timer = self.set_interval(self.interval, self._refresh_data)
+        # Defer first paint until the compose() children are actually mounted.
+        self.call_after_refresh(self._apply_activity_width)
+        self.call_after_refresh(self._refresh_data)
 
-        # Initial data load
-        self._refresh_data()
+    # Daemon-control actions are blocked while the text-input widget is open,
+    # so a stray "q" or "x" while typing doesn't quit the app or stop the daemon.
+    _GUARDED_ACTIONS = frozenset({
+        "start_daemon", "stop_daemon", "restart_daemon",
+        "toggle_mute_bot", "toggle_mute_mic", "toggle_provider",
+        "pick_model", "shrink_left", "grow_left", "quit",
+        "refresh_now", "respawn",
+    })
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in self._GUARDED_ACTIONS:
+            try:
+                if self.query_one(ControlsBar)._showing_input:
+                    return False
+            except Exception:
+                pass
+        return True
 
     def _refresh_data(self) -> None:
-        """Fetch fresh data and update all widgets."""
+        """Fetch fresh data and update all widgets.
+
+        Skips silently if widgets aren't mounted yet (early on_mount tick) or
+        a modal screen has hidden them (e.g. during ModelSelectScreen).
+        """
+        try:
+            header = self.query_one(HeaderBar)
+            activity = self.query_one(ActivityTable)
+            log_tail = self.query_one(LogTail)
+            ai_bar = self.query_one(AIBar)
+        except NoMatches:
+            return
+
         snapshot = fetch_dashboard_state(self.settings)
-
-        # Update each widget with its data slice
-        header = self.query_one(HeaderBar)
-        activity = self.query_one(ActivityTable)
-        log_tail = self.query_one(LogTail)
-
         header.refresh_data(snapshot.header)
         activity.refresh_data(snapshot.activity_rows)
         log_tail.refresh_data(snapshot.log_lines)
+        provider = snapshot.header.provider
+        ai_bar.refresh_data(provider, models.read_current_model(self.settings, provider))
 
     # -----------------------------------------------------------------------
     # Daemon control actions
@@ -126,16 +159,55 @@ class HeareDashboard(App):
         """Enter text injection mode (t key)."""
         self.query_one(ControlsBar).show_input()
 
+    def action_pick_model(self) -> None:
+        """Open the model-select dialog (o key)."""
+        provider = self.query_one(AIBar)._provider
+        current = models.read_current_model(self.settings, provider)
+
+        def _on_dismiss(picked: str | None) -> None:
+            if picked:
+                models.write_current_model(self.settings, picked)
+                self.query_one(AIBar).refresh_data(provider, picked)
+                self.query_one(ControlsBar).update_status(f"model: {picked}")
+
+        self.push_screen(ModelSelectScreen(self.settings, provider, current), _on_dismiss)
+
+    def action_refresh_now(self) -> None:
+        """Force a full data refresh + repaint (F5)."""
+        self._refresh_data()
+        self.refresh(layout=True, repaint=True)
+        try:
+            self.query_one(ControlsBar).update_status("refreshed")
+        except NoMatches:
+            pass
+
+    def action_respawn(self) -> None:
+        """Quit the dashboard and signal the caller to re-launch (Ctrl+R)."""
+        self.exit("__respawn__")
+
     # -----------------------------------------------------------------------
     # Column resize actions
     # -----------------------------------------------------------------------
 
+    def _apply_activity_width(self) -> None:
+        """Toggle the activity-{fit,half,full} CSS class on ActivityTable."""
+        try:
+            activity = self.query_one(ActivityTable)
+            controls = self.query_one(ControlsBar)
+        except NoMatches:
+            return
+        new_preset = self._width_presets[self._activity_width_index]
+        for preset in self._width_presets:
+            activity.remove_class(f"activity-{preset}")
+        activity.add_class(f"activity-{new_preset}")
+        controls.update_status(f"activity panel: {new_preset}")
+
     def action_shrink_left(self) -> None:
         """Shrink activity panel width (left arrow)."""
-        # TODO: Implement column width cycling in US-009
-        self.query_one(ControlsBar).update_status("shrink panel")
+        self._activity_width_index = (self._activity_width_index - 1) % len(self._width_presets)
+        self._apply_activity_width()
 
     def action_grow_left(self) -> None:
         """Grow activity panel width (right arrow)."""
-        # TODO: Implement column width cycling in US-009
-        self.query_one(ControlsBar).update_status("grow panel")
+        self._activity_width_index = (self._activity_width_index + 1) % len(self._width_presets)
+        self._apply_activity_width()

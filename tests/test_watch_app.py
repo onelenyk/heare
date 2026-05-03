@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
 import pytest
-from textual.app import App
 
 from src.config import Settings, Mode
 from src.storage import SCHEMA
@@ -101,8 +100,8 @@ async def test_app_boots_with_seeded_db() -> None:
 
         async with HeareDashboard(settings=settings).run_test() as pilot:
             assert pilot.app is not None
-            # Verify widgets are mounted and have data
-            from src.watch.widgets import ActivityTable, HeaderBar, LogTail
+            await pilot.pause()  # let deferred _refresh_data fire
+            from src.watch.widgets import ActivityTable
 
             activity = pilot.app.query_one(ActivityTable)
             assert activity.row_count >= 1  # Should have our test data
@@ -130,8 +129,6 @@ async def test_quit_key_exits_app() -> None:
 @pytest.mark.asyncio
 async def test_start_key_calls_start_daemon(monkeypatch: Mock) -> None:
     """Pressing s key calls start_daemon."""
-    from src.watch_controls import start_daemon
-
     mock_start = MagicMock(return_value="daemon started")
     monkeypatch.setattr("src.watch.app.start_daemon", mock_start)
 
@@ -148,8 +145,6 @@ async def test_start_key_calls_start_daemon(monkeypatch: Mock) -> None:
 @pytest.mark.asyncio
 async def test_mute_bot_toggles_mute() -> None:
     """Pressing m key toggles bot mute."""
-    from src.mute_gate import toggle_mute
-
     mock_toggle = MagicMock(return_value=True)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -247,3 +242,71 @@ def test_legacy_env_var_routing() -> None:
             os.environ["HEARE_WATCH_LEGACY"] = old_env
         # Reload to restore normal behavior
         importlib.reload(src.watch)
+
+
+@pytest.mark.asyncio
+async def test_daemon_hotkeys_suppressed_during_text_input(monkeypatch: Mock) -> None:
+    """Pressing daemon-control keys while text-input is active is a no-op."""
+    mock_start = MagicMock(return_value="daemon started")
+    monkeypatch.setattr("src.watch.app.start_daemon", mock_start)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        (Path(tmp) / "logs").mkdir()
+
+        async with HeareDashboard(settings=settings).run_test() as pilot:
+            await pilot.press("t")  # enter input mode
+            await pilot.press("s")  # would normally fire start_daemon
+            mock_start.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pick_model_opens_modal() -> None:
+    """Pressing o pushes ModelSelectScreen onto the screen stack."""
+    from src.watch.screens import ModelSelectScreen
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        (Path(tmp) / "logs").mkdir()
+
+        async with HeareDashboard(settings=settings).run_test() as pilot:
+            await pilot.press("o")
+            assert isinstance(pilot.app.screen, ModelSelectScreen)
+
+
+@pytest.mark.asyncio
+async def test_select_model_writes_model_file() -> None:
+    """Dismissing ModelSelectScreen with a model id writes it to model_file."""
+    from src.watch import models
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        (Path(tmp) / "logs").mkdir()
+
+        async with HeareDashboard(settings=settings).run_test() as pilot:
+            await pilot.press("o")
+            pilot.app.screen.dismiss("anthropic/claude-haiku-4.5")
+            await pilot.pause()
+            assert models.read_current_model(settings, "openrouter") == "anthropic/claude-haiku-4.5"
+
+
+@pytest.mark.asyncio
+async def test_grow_action_cycles_activity_width_class() -> None:
+    """action_grow_left swaps the activity-N CSS class on ActivityTable."""
+    from src.watch.widgets import ActivityTable
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        (Path(tmp) / "logs").mkdir()
+
+        async with HeareDashboard(settings=settings).run_test() as pilot:
+            await pilot.pause()  # let deferred _apply_activity_width fire
+            activity = pilot.app.query_one(ActivityTable)
+            before = {c for c in activity.classes if c.startswith("activity-")}
+            assert before, "expected an activity-N class on mount"
+
+            pilot.app.action_grow_left()
+            await pilot.pause()
+            after = {c for c in activity.classes if c.startswith("activity-")}
+            assert len(after) == 1
+            assert after != before

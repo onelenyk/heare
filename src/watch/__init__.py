@@ -12,7 +12,7 @@ from rich.table import Table
 from ..config import Settings
 from ..identity import load_identity
 from .app import HeareDashboard
-from .data import DashboardSnapshot, fetch_dashboard_state
+from .data import fetch_dashboard_state
 
 
 def run_watch(settings: Settings, interval: float, once: bool = False) -> int:
@@ -36,13 +36,16 @@ def run_watch(settings: Settings, interval: float, once: bool = False) -> int:
     if once:
         return _run_once(settings)
 
-    # Interactive mode: run Textual TUI
-    app = HeareDashboard(settings=settings, interval=interval)
-    try:
-        app.run()
-        return 0
-    except Exception:
-        return 1
+    # Interactive mode: run Textual TUI. Loop while the user requests a
+    # respawn (Ctrl+R) so the app gets a fresh instance from scratch.
+    while True:
+        app = HeareDashboard(settings=settings, interval=interval)
+        try:
+            result = app.run()
+        except Exception:
+            return 1
+        if result != "__respawn__":
+            return 0
 
 
 def _run_once(settings: Settings) -> int:

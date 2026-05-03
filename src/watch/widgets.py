@@ -1,14 +1,15 @@
 """Dashboard widgets for Textual watch TUI."""
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
-
-from rich.console import RenderableType
 from rich.text import Text
-from textual.widgets import DataTable, Static
+from textual import events
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal
+from textual.css.query import NoMatches
+from textual.widgets import DataTable, Input, RichLog, Static
 
 from ..config import Settings
+from ..text_injector import inject_text
 from .data import ActivityRow, HeaderData, LogLine, fmt_time
 
 
@@ -28,6 +29,7 @@ class HeaderBar(Static):
         """
         super().__init__()
         self.settings = settings
+        self.border_title = "📡 status"
 
     def refresh_data(self, header: HeaderData) -> None:
         """Update header display from dashboard snapshot.
@@ -89,8 +91,9 @@ class ActivityTable(DataTable):
 
     def __init__(self) -> None:
         """Initialize activity table."""
-        super().__init__()
+        super().__init__(zebra_stripes=True, cursor_type="row")
         self._setup_columns()
+        self.border_title = "📋 activity"
 
     def _setup_columns(self) -> None:
         """Configure table columns."""
@@ -160,20 +163,20 @@ def status_color(status: str | None) -> str:
     return "white"
 
 
-class LogTail(Static):
+class LogTail(RichLog):
     """Log tail widget showing last N lines from daemon.log.
 
-    Displays log lines with severity-based coloring:
-    - ERROR=red, WARNING=yellow, INFO=cyan, other=default
-    Enforces max_lines=50 to cap memory.
+    Inherits from Textual's RichLog for native scrollback. Displays log
+    lines with severity-based coloring: ERROR=red, WARNING=yellow,
+    INFO=cyan, other=default. RichLog's max_lines caps memory.
     """
 
     MAX_LINES = 50
 
     def __init__(self) -> None:
-        """Initialize log tail widget."""
-        super().__init__()
-        self.lines: list[LogLine] = []
+        super().__init__(max_lines=self.MAX_LINES, highlight=False, markup=False, wrap=False)
+        self._log_lines: list[LogLine] = []
+        self.border_title = "📜 daemon log"
 
     def refresh_data(self, lines: list[LogLine]) -> None:
         """Update log display from dashboard snapshot.
@@ -181,79 +184,200 @@ class LogTail(Static):
         Args:
             lines: Log lines from read_log_tail()
         """
-        # Enforce max lines limit
-        self.lines = lines[-self.MAX_LINES :] if len(lines) > self.MAX_LINES else lines
+        self._log_lines = lines[-self.MAX_LINES :] if len(lines) > self.MAX_LINES else lines
+        self.clear()
+        if not self._log_lines:
+            self.write(Text("(no log lines yet)", style="dim italic"))
+            return
+        for line in self._log_lines:
+            self.write(self._style_line(line))
 
-        # Build styled output
-        output_lines: list[str] = []
-        for line in self.lines:
-            styled = self._style_line(line)
-            output_lines.append(styled)
-
-        # Update display
-        if output_lines:
-            self.update("\n".join(output_lines))
-        else:
-            self.update(Text("(no log lines yet)", style="dim italic"))
-
-    def _style_line(self, line: LogLine) -> str:
-        """Apply Rich styling based on severity.
-
-        Args:
-            line: LogLine with text and severity
-
-        Returns:
-            Styled text string (ANSI codes for terminal)
-        """
-        # For now, just return the text - Rich styling will be applied
-        # by the Textual framework when rendered
-        return line.text
+    def _style_line(self, line: LogLine) -> Text:
+        if line.severity == "error":
+            return Text(line.text, style="red")
+        if line.severity == "warning":
+            return Text(line.text, style="yellow")
+        if line.severity == "info":
+            return Text(line.text, style="cyan")
+        return Text(line.text)
 
 
-class ControlsBar(Static):
-    """Control bar showing status, hints, and text input widget.
+class Section(Static):
+    """A bordered hotkey-section panel rendered inside ControlsBar.
 
-    Displays:
-    - Status indicator with last action feedback
-    - Hotkey hints
-    - Hidden Input widget for text injection (shown via 't' key)
+    The section title (e.g. "AGENT") is shown as the border-title; the body
+    is a Rich `Text` of `key label` pairs.
     """
 
-    def __init__(self) -> None:
-        """Initialize control bar."""
+    def __init__(self, label: str, hotkeys: tuple[tuple[str, str], ...]) -> None:
         super().__init__()
+        self.border_title = label
+        self._hotkeys = hotkeys
+
+    def render(self) -> Text:
+        text = Text()
+        for i, (key, name) in enumerate(self._hotkeys):
+            if i > 0:
+                text.append("  ", style="dim")
+            text.append(key, style="bold cyan")
+            text.append(" ", style="")
+            text.append(name, style="white")
+        return text
+
+
+class ControlsBar(Container):
+    """Control bar — outer bordered region holding three Section panels.
+
+    Layout (top → bottom):
+      • status line  (the last-action message, or blank)
+      • horizontal row with three Sections: AGENT / MUTE / INPUT
+      • extras line  ([] resize, F5 refresh, ^R respawn, q quit)
+      • Input widget (mounted dynamically when text-input mode is active)
+    """
+
+    SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+        ("AGENT", (("s", "start"), ("x", "stop"), ("r", "restart"))),
+        ("MUTE",  (("m", "bot"),   ("M", "mic"))),
+        ("INPUT", (("t", "text"),)),
+    )
+    EXTRAS: tuple[tuple[str, str], ...] = (
+        ("[]", "resize"),
+        ("F5", "refresh"),
+        ("^R", "respawn"),
+        ("q", "quit"),
+    )
+
+    def __init__(self, settings: Settings) -> None:
+        super().__init__()
+        self._settings = settings
         self._status_message = ""
+        self._input_widget: Input | None = None
         self._showing_input = False
+        self.border_title = "🎛 controls"
+
+    def compose(self) -> ComposeResult:
+        yield Static(Text(""), id="status-line")
+        with Horizontal(id="sections-row"):
+            for label, hotkeys in self.SECTIONS:
+                yield Section(label, hotkeys)
+        yield Static(self._build_extras(), id="extras-line")
+
+    def on_mount(self) -> None:
+        self._refresh_status()
+
+    def _build_extras(self) -> Text:
+        text = Text()
+        for i, (key, label) in enumerate(self.EXTRAS):
+            if i > 0:
+                text.append("   ", style="dim")
+            text.append(key, style="bold cyan")
+            text.append(" ", style="")
+            text.append(label, style="dim white")
+        return text
 
     def update_status(self, msg: str) -> None:
-        """Update the status message display.
-
-        Args:
-            msg: Status message from last action
-        """
+        """Update the status message display."""
         self._status_message = msg
-        self._refresh_display()
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        try:
+            line = self.query_one("#status-line", Static)
+        except NoMatches:
+            return
+        if self._showing_input:
+            line.update(Text("⤷ awaiting input…", style="bold yellow"))
+            return
+        if self._status_message:
+            text = Text()
+            text.append("⤷ ", style="dim")
+            text.append(self._status_message, style="bold yellow")
+            line.update(text)
+        else:
+            line.update(Text(""))
 
     def show_input(self) -> None:
-        """Show input widget and hide hotkey hints."""
+        """Show the Input widget and hide the section panels."""
+        if self._showing_input:
+            return
         self._showing_input = True
-        self._refresh_display()
+        self.add_class("input-mode")
+        self._input_widget = Input(
+            placeholder="Type a message — Enter to send, Esc to cancel",
+        )
+        self.mount(self._input_widget)
+        self._input_widget.focus()
+        self._refresh_status()
 
     def hide_input(self) -> None:
-        """Hide input widget and show hotkey hints."""
+        if not self._showing_input:
+            return
         self._showing_input = False
-        self._refresh_display()
+        self.remove_class("input-mode")
+        if self._input_widget:
+            self._input_widget.remove()
+            self._input_widget = None
+        self._refresh_status()
 
-    def _refresh_display(self) -> None:
-        """Refresh the display based on current state."""
-        if self._showing_input:
-            # TODO: Show Input widget (will be implemented in US-006)
-            self.update("[INPUT MODE - Type text and press Enter to submit, Escape to cancel]")
-        else:
-            # Show hotkey hints
-            hints = "s=start x=stop r=restart m=bot-mute M=mic-mute t=text p=provider q=quit ←→=resize"
-            if self._status_message:
-                display = f"[{self._status_message}]  {hints}"
-            else:
-                display = f"[{hints}]"
-            self.update(display)
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        text = event.value
+        if text:
+            try:
+                inject_text(self._settings.inject_dir, text)
+                self.update_status(
+                    f"injected: {text[:30]}{'...' if len(text) > 30 else ''}"
+                )
+            except Exception as e:
+                self.update_status(f"error: {e}")
+        self.hide_input()
+
+    def on_key(self, event: events.Key) -> None:
+        if self._showing_input and event.key == "escape":
+            self.hide_input()
+            event.stop()
+
+
+class AIBar(Static):
+    """AI configuration panel showing the active provider and model.
+
+    Operator changes provider via `p` (cycles openrouter↔zai) and picks a
+    model via `o` (opens ModelSelectScreen). The widget itself is read-only;
+    the App writes to provider_file / model_file.
+    """
+
+    HOTKEYS: tuple[tuple[str, str], ...] = (
+        ("p", "switch provider"),
+        ("o", "pick model"),
+    )
+
+    def __init__(self, settings: Settings) -> None:
+        super().__init__()
+        self._settings = settings
+        self._provider = "openrouter"
+        self._model = ""
+        self.border_title = "🤖 AI"
+
+    def refresh_data(self, provider: str, model: str) -> None:
+        self._provider = provider
+        self._model = model
+        self.update(self._build_text())
+
+    def _build_text(self) -> Text:
+        text = Text()
+        prov_style = "cyan" if self._provider == "zai" else "yellow"
+        text.append("provider  ", style="dim")
+        text.append(self._provider, style=f"bold {prov_style}")
+        text.append("\n")
+        text.append("model     ", style="dim")
+        text.append(self._model or "(default)", style="bold white")
+        text.append("\n\n")
+        for i, (key, label) in enumerate(self.HOTKEYS):
+            if i > 0:
+                text.append("   ", style="dim")
+            text.append(key, style="bold cyan")
+            text.append(" ", style="")
+            text.append(label, style="white")
+        return text
+
+    def render(self) -> Text:
+        return self._build_text()
