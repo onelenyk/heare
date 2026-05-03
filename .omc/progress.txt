@@ -1,51 +1,32 @@
-# Ralph Session: Proactive Agent Capability Discovery v1
-Started: 2026-05-02T12:58Z (iteration 1)
-Plan: .omc/plans/proactive-agent-capability-discovery.md
-PRD: .omc/prd-capability-discovery.json
+# Ralph Session: Watch Dashboard Textual Migration
+Started: 2026-05-03T10:00:00Z (iteration 1)
+Plan: .omc/plans/watch-textual-migration.md
 
-## Stories Completed (7/7)
-- US-001 ✓ Capability Index foundation (src/capability_index.py + 8 tests)
-- US-002 ✓ SkillsLoader extensions for marketplace (5 tests)
-- US-003 ✓ MCP write_mcp_servers helper (5 tests)
-- US-004 ✓ Discovery + HMAC cache (src/discovery.py + 9 tests)
-- US-005 ✓ Marketplace fetcher (src/marketplace.py + 12 tests)
-- US-006 ✓ Installer with consent gate (src/installer.py + 14 tests)
-- US-007 ✓ Tools + system prompt + e2e (5 new tools + 25 tests)
+## Stories Completed
+- US-001 ✓ Scaffold package + add Textual dependency
+  * Created src/watch/ package with __init__.py, app.py, widgets.py, data.py, dashboard.tcss
+  * Added textual>=1.0.0,<2.0.0 to pyproject.toml
+  * Copied old watch.py to _legacy.py for rollback
+  * Re-exported legacy functions from __init__.py for backward compatibility
+  * 904 tests pass (data-layer tests verified)
+  * 12 expected failures (old layout/_dispatch_key/_handle_input_key tests - to be rewritten/deleted in US-010)
 
-## Reviewer Verification (Step 7)
-- Architect THOROUGH-tier verdict: REVISE → fixed via 3 hardening commits
-- 41/43 sub-checks VERIFIED, 2 spec-literalism gaps closed
-- Fixes applied: tarball path-traversal protection, SKILL.md 1MB cap,
-  CircuitBreaker.record_sig_fail()
-- 906 tests passing, 0 new regressions
+## Stories In Progress
+- US-002: Extract and refactor data layer (data.py) (IN PROGRESS)
 
-## Deslop Pass (Step 7.5)
-- Ran on 8 src/ files via code-simplifier
-- Cleanups: dead code removal, f-string→%s logging, removed redundant
-  docstrings/comments, inline variable elimination
-- discovery.py / marketplace.py / installer.py: no slop (security-critical
-  intentionally explicit)
+## Stories Pending
+- US-003: Build HeaderBar widget
+- US-004: Build ActivityTable widget
+- US-005: Build LogTail widget
+- US-006: Build ControlsBar with TextInput
+- US-007: Assemble HeareDashboard App with bindings
+- US-008: Implement run_watch() with once mode
+- US-009: Column resize + CSS polish
+- US-010: Migrate tests + cleanup
 
-## v1.1 Follow-ups (deferred, documented for next iteration)
-- Replace user_confirmed boolean with server-validated consent token
-  (binds to recent speaker-ID utterance; closes prompt-injection bypass)
-- signature_verified field always False until skillsmp.com signs (config
-  default already set False)
-- Strengthen homoglyph detection table (currently relies on ASCII-only
-  check + small substitution map; allowlist carries the load)
-- Multi-marketplace support (currently single-vendor skillsmp.com)
-- Quantitative validation of "marketplace covers majority" claim
+## Progress Log
 
-## Learnings for future iterations
-- Pre-existing test_run_skill_tool_spec_registered failure is unrelated
-  to capability discovery; lives in test_agent_skills.py
-- SkillsLoader caches discovery results; invalidate() must be called
-  after install for mid-session callability
-- Pipecat's CapabilityIndex wires through SystemPromptInjector
-  constructor (capability_index param) — set at pipeline build time
-- Tarball extraction: use Python 3.12+ tarfile data filter where available;
-  fall back to manual member safety check
-- HMAC cache keys derived from ~/.heare/identity.json fields
-  (name+creature+generated_at SHA-256); graceful skip if identity missing
-- Cache dir mkdir(mode=0o700) is masked by umask — must follow with
-  explicit chmod(0o700) for the perms to actually stick
+### US-001 Learnings
+- Import fix in _legacy.py: changed relative imports from `from .config` to `from ..config`
+- Re-exporting legacy functions from __init__.py maintains backward compatibility during migration
+- Test failures match plan: old layout (4), tools table (2), _dispatch_key/_handle_input_key (6) = 12 total

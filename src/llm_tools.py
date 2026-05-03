@@ -446,12 +446,12 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
             },
             "context": {
                 "type": "object",
-                "description": "Skill-specific context dict. Contents depend on the skill. Call list_skills first to learn what parameters each skill expects.",
+                "description": "Skill-specific context dict. Contents depend on the skill. Pass {} if the skill needs no parameters. Call list_skills first to learn what each skill expects.",
                 "properties": {},
                 "additionalProperties": True,
             },
         },
-        ["name"],
+        ["name", "context"],
         _json_args,
     ),
     "set_provider": (
@@ -471,6 +471,10 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
             "intent": {
                 "type": "string",
                 "description": "The user's intent / transcript describing what they want. Example: 'weather in kyiv'.",
+            },
+            "prefer_remote": {
+                "type": "boolean",
+                "description": "Set true when the user explicitly asks about marketplace/online skills (e.g. 'what skills exist online', 'search the marketplace'). Skips local index and queries skillsmp.com directly. Default false.",
             },
         },
         ["intent"],
@@ -492,6 +496,62 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
             },
         },
         ["slug", "user_confirmed"],
+        _json_args,
+    ),
+    "stop_daemon": (
+        {
+            "user_confirmed": {
+                "type": "boolean",
+                "description": "Set true ONLY after explicit voice consent. Stops the daemon — the conversation will end.",
+            },
+        },
+        ["user_confirmed"],
+        _json_args,
+    ),
+    "restart_daemon": (
+        {
+            "user_confirmed": {
+                "type": "boolean",
+                "description": "Set true ONLY after explicit voice consent. Restarts the daemon — there will be a brief silence as the new process comes up.",
+            },
+        },
+        ["user_confirmed"],
+        _json_args,
+    ),
+    "create_skill": (
+        {
+            "name": {
+                "type": "string",
+                "description": (
+                    "Skill slug — lowercase letters, digits, hyphens; 1–64 chars; "
+                    "must start and end with [a-z0-9]. Example: 'audio-debug'."
+                ),
+            },
+            "description": {
+                "type": "string",
+                "description": (
+                    "One-line summary the user (and the LLM) will see when "
+                    "listing skills. Max 200 chars."
+                ),
+            },
+            "body": {
+                "type": "string",
+                "description": (
+                    "Markdown body of the skill — the procedure the LLM will "
+                    "follow when run_skill is invoked. Use existing tools "
+                    "(bash, read, write, web_search). Max 1 MB."
+                ),
+            },
+            "user_confirmed": {
+                "type": "boolean",
+                "description": "Set true ONLY after the user said yes via voice. Never set true otherwise.",
+            },
+            "replace": {
+                "type": "boolean",
+                "description": "Overwrite an existing skill with the same name. Default false.",
+            },
+        },
+        ["name", "description", "body", "user_confirmed"],
         _json_args,
     ),
     "install_mcp_server_tool": (

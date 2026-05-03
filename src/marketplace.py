@@ -165,13 +165,27 @@ def _coerce_skillsmp_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -
 
 
 async def _fetch_json(url: str, timeout: float) -> object | None:
+    import time as _time
+    started = _time.monotonic()
+    logger.info("[MARKETPLACE] → GET %s (timeout=%.1fs)", url, timeout)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(url)
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        body = resp.text
+        preview = body[:500] + ("…" if len(body) > 500 else "")
+        logger.info(
+            "[MARKETPLACE] ← status=%d bytes=%d latency_ms=%d body=%s",
+            resp.status_code, len(body), latency_ms, preview,
+        )
         resp.raise_for_status()
         return resp.json()
     except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
-        logger.warning("fetch %s failed: %s", url, exc)
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.warning(
+            "[MARKETPLACE] ✗ fetch %s failed after %dms: %s",
+            url, latency_ms, exc,
+        )
         return None
 
 
@@ -180,15 +194,18 @@ async def fetch_skill_candidates(
 ) -> list[IndexEntry]:
     base = getattr(settings, "marketplace_url", "") or ""
     if not base:
+        logger.info("[MARKETPLACE] skill search skipped: marketplace_url not configured")
         return []
     url = f"{base.rstrip('/')}/api/v1/skills/search?q={urllib.parse.quote(query)}"
     if not _validate_url(url, DEFAULT_HOSTNAME_ALLOWLIST):
-        logger.warning("marketplace_url rejected: %r", base)
+        logger.warning("[MARKETPLACE] marketplace_url rejected: %r", base)
         return []
     payload = await _fetch_json(url, timeout)
     if payload is None:
         return []
-    return _parse_results(payload, "skill", DEFAULT_HOSTNAME_ALLOWLIST)
+    results = _parse_results(payload, "skill", DEFAULT_HOSTNAME_ALLOWLIST)
+    logger.info("[MARKETPLACE] skill search query=%r → %d entries after validation", query, len(results))
+    return results
 
 
 async def fetch_mcp_candidates(
@@ -196,15 +213,18 @@ async def fetch_mcp_candidates(
 ) -> list[IndexEntry]:
     base = getattr(settings, "mcp_registry_url", "") or ""
     if not base:
+        logger.info("[MARKETPLACE] mcp search skipped: mcp_registry_url not configured")
         return []
     url = f"{base.rstrip('/')}/api/search?q={urllib.parse.quote(query)}"
     if not _validate_url(url, DEFAULT_HOSTNAME_ALLOWLIST):
-        logger.warning("mcp_registry_url rejected: %r", base)
+        logger.warning("[MARKETPLACE] mcp_registry_url rejected: %r", base)
         return []
     payload = await _fetch_json(url, timeout)
     if payload is None:
         return []
-    return _parse_results(payload, "mcp", DEFAULT_HOSTNAME_ALLOWLIST)
+    results = _parse_results(payload, "mcp", DEFAULT_HOSTNAME_ALLOWLIST)
+    logger.info("[MARKETPLACE] mcp search query=%r → %d entries after validation", query, len(results))
+    return results
 
 
 __all__ = [

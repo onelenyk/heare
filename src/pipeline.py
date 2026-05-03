@@ -33,6 +33,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Tuple
 
 from .assistant_response_logger import create_assistant_response_logger
+from .tts_scrub_processor import create_tts_scrub_processor
 from .mute_gate import create_input_mute_gate, create_mute_gate
 from .config import Settings
 from .language_state import LanguageState
@@ -122,6 +123,7 @@ def _assemble_native_stages(
     llm_service: Any,
     tts: Any,
     assistant_response_logger: Any = None,
+    tts_scrub: Any = None,
     tts_fade_observer: Any = None,
     assistant_aggregator: Any,
     system_prompt_injector: Any = None,
@@ -162,6 +164,12 @@ def _assemble_native_stages(
     # capture must happen on the LLM side.
     if assistant_response_logger is not None:
         stages.append(assistant_response_logger)
+    # tts_scrub sits AFTER assistant_response_logger so the logger
+    # records the model's intended (raw) text for debugging, but BEFORE
+    # tts so the user never hears tool-name-only utterances like
+    # ``list_tools`` that the model emitted as text instead of invoking.
+    if tts_scrub is not None:
+        stages.append(tts_scrub)
     stages.append(tts)
     if tts_fade_observer is not None:
         stages.append(tts_fade_observer)
@@ -501,6 +509,12 @@ async def build_pipeline(
         store=store, settings=settings
     )
 
+    # Strip tool-name narration before TTS speaks it. Without this, the LLM
+    # occasionally emits raw tool names (``list_tools``, ``list_capabilities``,
+    # ``bash: <command>``) as plain text instead of invoking the function — and
+    # those words go straight to the user's speakers.
+    tts_scrub = create_tts_scrub_processor()
+
     # Mute gate — drops TTSAudioRawFrame when ``settings.mute_file`` exists.
     # Toggled from the watch dashboard (or any other process) by creating /
     # removing the file. Bot text is still logged because capture happens
@@ -525,6 +539,7 @@ async def build_pipeline(
         user_aggregator=user_aggregator,
         llm_service=llm_service,
         assistant_response_logger=assistant_response_logger,
+        tts_scrub=tts_scrub,
         tts=tts,
         tts_fade_observer=tts_fade_observer,
         assistant_aggregator=assistant_aggregator,

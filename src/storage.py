@@ -97,6 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_transcripts_ts ON transcripts(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_decision ON events(decision_id, ts);
+CREATE INDEX IF NOT EXISTS idx_actions_ts ON actions(ts DESC);
 
 CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

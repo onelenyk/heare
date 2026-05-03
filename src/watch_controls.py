@@ -54,16 +54,16 @@ def start_daemon(settings: "Settings") -> str:
     project_dir = Path(__file__).resolve().parent.parent
     cmd = [sys.executable, "-m", "src.main", "start"]
     try:
-        log_fh = open(log_path, "ab")
-        subprocess.Popen(  # noqa: S603 — command is a fixed argv list
-            cmd,
-            cwd=str(project_dir),
-            stdout=log_fh,
-            stderr=log_fh,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            close_fds=True,
-        )
+        with open(log_path, "ab") as log_fh:
+            subprocess.Popen(  # noqa: S603 — command is a fixed argv list
+                cmd,
+                cwd=str(project_dir),
+                stdout=log_fh,
+                stderr=log_fh,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
     except Exception as e:  # pragma: no cover — defensive
         return f"start failed: {e}"
 

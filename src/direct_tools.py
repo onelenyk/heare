@@ -157,6 +157,12 @@ async def execute_direct(
         return await _execute_discover_capability(args, settings)
     elif tool == "install_skill_tool":
         return await _execute_install_skill_tool(args, settings)
+    elif tool == "create_skill":
+        return await _execute_create_skill(args, settings)
+    elif tool == "stop_daemon":
+        return await _execute_stop_daemon(args, settings)
+    elif tool == "restart_daemon":
+        return await _execute_restart_daemon(args, settings)
     elif tool == "install_mcp_server_tool":
         return await _execute_install_mcp_server_tool(args, settings)
     elif tool == "revoke_capability":
@@ -178,8 +184,44 @@ async def _execute_bash(args: str, settings: "Settings | None" = None) -> dict:
     child it spawns share a single process group. On cancellation the
     process group is signalled (SIGTERM, 2s grace, then SIGKILL) via
     ``os.killpg`` so no orphan child processes survive.
+
+    Daemon-self-protection: refuses commands that would terminate or
+    restart the running daemon (``make restart``, ``hearectl stop``,
+    ``kill <self>``, etc.). The bash subprocess shares fate with the
+    daemon, so a self-targeted restart kills the agent without bringing
+    it back up — see ``daemon_control.is_dangerous_self_command`` and
+    the ``stop_daemon`` / ``restart_daemon`` native tools instead.
     """
     import subprocess
+
+    from .daemon_control import is_dangerous_self_command
+
+    if is_dangerous_self_command(args):
+        logger.warning(
+            "[BASH GUARD] refused self-targeting command: %r",
+            (args or "")[:200],
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": (
+                "self_targeted_restart: this command would kill the "
+                "daemon you're running in. Call the native tool "
+                "`restart_daemon(user_confirmed=true)` (or "
+                "`stop_daemon`) instead — those handle detached "
+                "respawn correctly."
+            ),
+            "spoken": {
+                "en": (
+                    "I can't run that — it would shut me down without "
+                    "starting back up. I'll use the restart tool instead."
+                ),
+                "uk": (
+                    "Не можу виконати — це вимкне мене без перезапуску. "
+                    "Скористаюсь нативним інструментом для рестарту."
+                ),
+            },
+        }
 
     workspace = settings.workspace_dir if settings else Path.cwd()
 
@@ -3112,26 +3154,43 @@ async def _execute_list_skills(args: str, settings: "Settings | None" = None) ->
 
 
 async def _execute_run_skill(args: str, settings: "Settings | None" = None) -> dict:
-    """Execute a skill by name with context dict."""
+    """Execute a skill by name with context dict.
+
+    Args is JSON: ``{"name": "<skill>", "context": {...}}``. Both fields are
+    required by the tool schema.
+    """
     try:
         from .agent_skills import get_skills_loader
 
-        # args format from llm_tools: "skill-name:{json-context}"
-        if ":" not in args:
+        try:
+            payload = json.loads(args) if args else {}
+        except json.JSONDecodeError as e:
             return {
                 "success": False,
-                "error": f"Invalid skill invocation format (expected 'name:context_json'): {args}",
+                "error": f"Invalid run_skill JSON args: {e}",
                 "spoken": {"en": "Invalid skill parameters."},
             }
 
-        try:
-            name_part, context_json = args.split(":", 1)
-            context = json.loads(context_json)
-        except (ValueError, json.JSONDecodeError) as e:
+        if not isinstance(payload, dict):
             return {
                 "success": False,
-                "error": f"Invalid skill invocation format: {e}",
+                "error": "run_skill args must be a JSON object",
                 "spoken": {"en": "Invalid skill parameters."},
+            }
+
+        name_part = str(payload.get("name", "")).strip()
+        if not name_part:
+            return {
+                "success": False,
+                "error": "run_skill requires 'name'",
+                "spoken": {"en": "Missing skill name."},
+            }
+        context = payload.get("context") or {}
+        if not isinstance(context, dict):
+            return {
+                "success": False,
+                "error": "run_skill 'context' must be an object",
+                "spoken": {"en": "Invalid skill context."},
             }
 
         loader = get_skills_loader(settings)
@@ -3169,67 +3228,52 @@ async def _execute_skill_internal(
     settings: "Settings | None" = None,
     action_timeout_seconds: int = 120,
 ) -> dict:
-    """Execute a skill's instruction set internally.
+    """Deliver the skill's SKILL.md body to the LLM as a tool result.
 
-    Parses instructions and dispatches to heare tools. Returns a single
-    composite result (not per-tool). The LLM sees this as one action log
-    entry, not N entries for internal sub-tool calls.
+    Per the agentskills.io spec, SKILL.md is a *prompt* for the LLM to
+    read and follow using its existing tools — not a DSL with embedded
+    tool calls. This function substitutes any ``{var}`` placeholders
+    from ``context`` and returns the body in ``output`` so the LLM
+    consumes it on the next turn and acts on it via bash/read/etc.
     """
+    body = instructions
+    skill_dir = ""
     try:
-        # Extract tool calls from skill instructions
-        tool_calls = _extract_tool_calls_from_instructions(instructions, context)
+        from .agent_skills import get_skills_loader
 
-        if not tool_calls:
-            return {
-                "success": False,
-                "error": f"Skill '{skill_name}' has no executable tool calls",
-                "spoken": {"en": f"Skill {skill_name} has no tool calls."},
-            }
+        loader = get_skills_loader(settings)
+        for meta in loader.discover():
+            if meta.name == skill_name:
+                skill_dir = str(meta.path)
+                break
+    except Exception:  # noqa: BLE001
+        logger.warning("[RUN_SKILL] could not resolve skill_dir for %s", skill_name)
 
-        results = []
-        start_time = asyncio.get_event_loop().time()
+    if skill_dir:
+        body = body.replace("${CLAUDE_SKILL_DIR}", skill_dir)
 
-        for tool_name, tool_args in tool_calls:
-            # Check timeout
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > action_timeout_seconds:
-                return {
-                    "success": False,
-                    "error": f"Skill '{skill_name}' timed out after {action_timeout_seconds}s",
-                    "spoken": {"en": f"Skill {skill_name} took too long."},
-                }
+    if context:
+        for key, value in context.items():
+            body = body.replace(f"{{{key}}}", str(value))
 
-            try:
-                # Call tools without recording to action log (no conversation_manager)
-                tool_result = await execute_direct(
-                    tool=tool_name, args=tool_args, settings=settings
-                )
-                results.append({"tool": tool_name, "result": tool_result})
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Skill '{skill_name}' failed at tool '{tool_name}': {e}",
-                    "spoken": {"en": f"Skill {skill_name} failed."},
-                }
+    header = f"You are now executing skill '{skill_name}'. Follow the instructions below using your existing tools (bash, read, web_search, etc.). Do not call run_skill again for this skill."
+    if context:
+        header += f" Context provided: {json.dumps(context)}"
+    if skill_dir:
+        header += f" Skill directory: {skill_dir}"
 
-        # Compile composite result
-        summary = f"Completed {skill_name}: {len(results)} tool(s) executed"
-        return {
-            "success": True,
-            "output": summary,
-            "spoken": {"en": summary},
-        }
+    output = f"{header}\n\n--- SKILL.md ---\n{body}"
 
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Skill '{skill_name}' execution error: {str(e)}",
-            "spoken": {"en": f"Skill {skill_name} failed."},
-        }
+    return {
+        "success": True,
+        "output": output,
+        "skill": skill_name,
+        "skill_dir": skill_dir,
+        "spoken": {
+            "en": f"Loaded {skill_name}.",
+            "uk": f"Завантажив {skill_name}.",
+        },
+    }
 
 
 def _extract_tool_calls_from_instructions(instructions: str, context: dict) -> list[tuple[str, str]]:
@@ -3319,6 +3363,7 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
 # ============================================================================
 
 _capability_index_singleton = None
+_LAST_DISCOVERY: dict = {}
 
 
 def set_capability_index(index) -> None:
@@ -3362,6 +3407,7 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
             "spoken": {"en": "Bad arguments."},
         }
     intent = str(payload.get("intent", "")).strip()
+    prefer_remote = bool(payload.get("prefer_remote", False))
     if not intent:
         return {
             "success": False,
@@ -3374,17 +3420,25 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
 
     started = _time.monotonic()
     index = _get_or_build_capability_index(settings)
-    local_entries = await discovery.discover_capability_local(intent, index, top_k=3)
 
-    source = "local"
-    entries = local_entries
-    if not entries:
+    if prefer_remote:
         try:
             entries = await discovery.discover_capability_remote(intent, settings=settings)
             source = "remote"
         except Exception as e:  # noqa: BLE001
             logger.warning("[CAPABILITY DISCOVERY] remote failed: %s", e)
             entries = []
+    else:
+        local_entries = await discovery.discover_capability_local(intent, index, top_k=3)
+        entries = local_entries
+        source = "local"
+        if not entries:
+            try:
+                entries = await discovery.discover_capability_remote(intent, settings=settings)
+                source = "remote"
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[CAPABILITY DISCOVERY] remote failed: %s", e)
+                entries = []
 
     latency_ms = int((_time.monotonic() - started) * 1000)
     logger.info(
@@ -3404,6 +3458,8 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
         }
 
     top = entries[:3]
+    for e in top:
+        _LAST_DISCOVERY[e.name] = e
     summaries = [_entry_to_summary(e) for e in top]
     lines = [f"- {s['name']} ({s['source']}): {s['description']}" for s in summaries]
     output = "\n".join(lines)
@@ -3449,13 +3505,13 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
         return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
 
     index = _get_or_build_capability_index(settings)
-    entry = _find_entry_by_slug(index, slug)
+    entry = _find_entry_by_slug(index, slug) or _LAST_DISCOVERY.get(slug)
     if entry is None:
         return {
             "success": False,
             "output": "",
-            "error": f"Unknown slug: {slug}",
-            "spoken": {"en": f"I don't know {slug}."},
+            "error": f"Unknown slug: {slug}. Run discover_capability first.",
+            "spoken": {"en": f"I don't know {slug}. Search for it first."},
         }
 
     started = _time.monotonic()
@@ -3507,6 +3563,207 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
     }
 
 
+async def _execute_create_skill(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"name": "...", "description": "...", "body": "...",
+    "user_confirmed": true, "replace": false}.
+
+    Authors a user-supplied skill at ``~/.heare/skills/<name>/``. Same
+    consent gate as install_skill — refuses without ``user_confirmed=true``
+    and a configured consent method (speaker-ID or passphrase).
+    """
+    import time as _time
+    from . import installer as _installer
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    name = str(payload.get("name", "")).strip()
+    description = str(payload.get("description", "")).strip()
+    body = payload.get("body", "")
+    if not isinstance(body, str):
+        body = str(body)
+    user_confirmed = bool(payload.get("user_confirmed", False))
+    replace = bool(payload.get("replace", False))
+
+    index = _get_or_build_capability_index(settings)
+    started = _time.monotonic()
+    try:
+        result = await _installer.create_skill(
+            name=name,
+            description=description,
+            body=body,
+            settings=settings,
+            capability_index=index,
+            user_confirmed=user_confirmed,
+            replace=replace,
+        )
+    except _installer.InstallRefused as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY CREATE] slug=%s source=skill success=False latency_ms=%d reason=%s",
+            name, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"refused: {exc}",
+            "error_code": str(exc),
+            "spoken": {"en": "Create refused."},
+        }
+    except _installer.InstallFailed as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY CREATE] slug=%s source=skill success=False latency_ms=%d reason=%s",
+            name, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"failed: {exc}",
+            "error_code": str(exc),
+            "spoken": {"en": "Create failed."},
+        }
+
+    return {
+        "success": result.success,
+        "output": result.message_en,
+        "slug": result.slug,
+        "requires_restart": result.requires_restart,
+        "error_code": result.error_code,
+        "spoken": {"en": result.message_en, "uk": result.message_uk},
+    }
+
+
+async def _execute_stop_daemon(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"user_confirmed": true}.
+
+    Schedules a SIGTERM to ``os.getpid()`` after a short delay so any
+    in-flight TTS finishes playing. Does NOT block — returns
+    immediately so the LLM's "shutting down" reply can finish
+    streaming and reach TTS before the daemon actually exits.
+    """
+    from . import daemon_control
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    if not bool(payload.get("user_confirmed", False)):
+        return {
+            "success": False,
+            "output": "",
+            "error": "user_not_confirmed",
+            "error_code": "user_not_confirmed",
+            "spoken": {
+                "en": "I need explicit confirmation to stop.",
+                "uk": "Потрібне явне підтвердження для зупинки.",
+            },
+        }
+
+    delay_s = float(payload.get("delay_s", 4.0))
+    asyncio.create_task(daemon_control.schedule_self_exit(delay_s=delay_s))
+    logger.info("[CAPABILITY DAEMON] stop scheduled delay=%.2fs", delay_s)
+
+    return {
+        "success": True,
+        "output": "stop scheduled",
+        "spoken": {
+            "en": "Shutting down now. Goodbye.",
+            "uk": "Завершую роботу. До зустрічі.",
+        },
+    }
+
+
+async def _execute_restart_daemon(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"user_confirmed": true}.
+
+    Two-step:
+    1. Spawn a detached child that waits ``respawn_delay_s`` then
+       runs ``hearectl start``. Detachment via ``start_new_session``
+       means the child outlives this process.
+    2. Schedule a SIGTERM to self after ``self_exit_delay_s`` so TTS
+       has time to read the spoken-result message.
+
+    If the detached spawn fails (e.g. ``hearectl`` missing), nothing
+    is killed — we report failure and let the conversation continue.
+    """
+    from . import daemon_control
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    if not bool(payload.get("user_confirmed", False)):
+        return {
+            "success": False,
+            "output": "",
+            "error": "user_not_confirmed",
+            "error_code": "user_not_confirmed",
+            "spoken": {
+                "en": "I need explicit confirmation to restart.",
+                "uk": "Потрібне явне підтвердження для перезапуску.",
+            },
+        }
+
+    self_exit_delay_s = float(payload.get("self_exit_delay_s", 4.0))
+    # Respawn delay must be >= self_exit_delay_s so the child waits
+    # until after this process is gone before calling cmd_start (which
+    # otherwise refuses with "already running").
+    respawn_delay_s = float(payload.get("respawn_delay_s", self_exit_delay_s + 1.5))
+
+    try:
+        respawner_pid = daemon_control.spawn_detached_respawn(delay_s=respawn_delay_s)
+    except FileNotFoundError as exc:
+        logger.warning("[CAPABILITY DAEMON] respawn spawn failed: %s", exc)
+        return {
+            "success": False,
+            "output": "",
+            "error": f"respawn_failed: {exc}",
+            "error_code": "respawn_failed",
+            "spoken": {
+                "en": "Couldn't find the launcher script — staying up.",
+                "uk": "Не знайшов скрипт запуску — лишаюсь онлайн.",
+            },
+        }
+
+    asyncio.create_task(
+        daemon_control.schedule_self_exit(delay_s=self_exit_delay_s)
+    )
+    logger.info(
+        "[CAPABILITY DAEMON] restart scheduled respawner_pid=%d "
+        "respawn_delay=%.2fs self_exit_delay=%.2fs",
+        respawner_pid, respawn_delay_s, self_exit_delay_s,
+    )
+
+    return {
+        "success": True,
+        "output": f"restart scheduled (respawner pid={respawner_pid})",
+        "spoken": {
+            "en": "Restarting now. Be right back.",
+            "uk": "Перезапускаюся. За мить повернуся.",
+        },
+    }
+
+
 async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None" = None) -> dict:
     """Args is JSON: {"slug": "...", "user_confirmed": true, "replace": false}."""
     import time as _time
@@ -3529,13 +3786,13 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
         return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
 
     index = _get_or_build_capability_index(settings)
-    entry = _find_entry_by_slug(index, slug)
+    entry = _find_entry_by_slug(index, slug) or _LAST_DISCOVERY.get(slug)
     if entry is None:
         return {
             "success": False,
             "output": "",
-            "error": f"Unknown slug: {slug}",
-            "spoken": {"en": f"I don't know {slug}."},
+            "error": f"Unknown slug: {slug}. Run discover_capability first.",
+            "spoken": {"en": f"I don't know {slug}. Search for it first."},
         }
 
     started = _time.monotonic()

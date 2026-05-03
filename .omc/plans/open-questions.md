@@ -96,3 +96,12 @@
 - [ ] **US-WU-05: Are sibling decider-tests (`test_audio`, `test_feature_flags`, `test_mode_hot_reload`, `test_silent_timeout`, `test_stranger_integration`, `test_yes_no`) testing live `GeneratorProcessor` behaviour via `create_decider_processor` shim, or are they dormant tests of dormant code?** — Determines whether each is migrated to `create_generator_processor` or deleted in a follow-up bulk pass. Blocks decision on whether `src/decider.py` can be deleted entirely (instead of partially).
 - [ ] **US-WU-01: Should the `[INTENT CANCELLED id=N]` log line format be preserved exactly for downstream log scrapers, or is reformat acceptable?** — One-line diff either way; needs ops sign-off before merging the live cancel-path swap.
 - [ ] **US-WU-02: After moving `_is_standalone_cancel_imperative` into `src/language.py`, should `check_cancel` (regex keyword match) be deleted or kept as a back-compat alias?** — Affects API surface of `src/language.py`. Plan currently recommends delete if no remaining callers.
+
+## watch-textual-migration - 2026-05-02
+
+- [x] **Did panel: fold into Activity or keep separate?** — RESOLVED (iteration 1): Fold Did into the unified Activity table. Actions show `status` as a colored badge in the TYPE column. Enter on an action row opens a detail overlay (follow-up). Architecture supports re-adding a separate DidTable trivially if needed.
+- [x] **Mouse drag resize: defer or attempt?** — RESOLVED (iteration 1): Deferred. Keyboard-only column resize with 3 presets (50%/65%/80%) for v1. Mouse drag tracked as follow-up in Section 11.
+- [ ] **Textual version pin range** — Plan pins `textual>=1.0.0,<2.0.0`. If the project needs to support Textual 0.x for compatibility with other tools, the pin must be loosened and API usage audited. Confirm that 1.x is acceptable.
+- [x] **`once` mode output format** — RESOLVED (iteration 1): Option (b) -- bypass Textual App entirely. `data.py` produces a `DashboardSnapshot`; `__init__.py` renders it via `rich.Console` to stdout and exits. Explicit `test_once_mode_outputs_to_stdout` test added.
+- [x] **Tools panel fate** — RESOLVED (iteration 1): Deferred from migration. `_tools_table()` has no equivalent in the new package. Existing tests deleted. Follow-up ticket for toggleable tools overlay (via hotkey `i`) tracked in Section 11.
+- [x] **Legacy rollback duration** — RESOLVED (iteration 1): 2 release cycles (~4 weeks) confirmed per Architect recommendation. `test_legacy_env_var_returns_callable` test added to verify rollback path.
