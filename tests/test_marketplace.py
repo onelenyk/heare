@@ -194,3 +194,187 @@ async def test_empty_marketplace_url_returns_empty():
     settings = _FakeSettings(marketplace_url="")
     out = await marketplace.fetch_skill_candidates("anything", settings=settings)
     assert out == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_mcp_candidates_parses_launch_block():
+    payload = {
+        "results": [
+            {
+                "name": "fs",
+                "description": "filesystem mcp",
+                "install_url": "https://github.com/foo/fs",
+                "launch": {
+                    "command": "npx",
+                    "args": ["-y", "@foo/fs-mcp"],
+                    "env": {"FS_ROOT": "/tmp"},
+                },
+            }
+        ]
+    }
+    settings = _FakeSettings()
+    with _patch_get(_mock_response(payload)):
+        out = await marketplace.fetch_mcp_candidates("files", settings=settings)
+    assert len(out) == 1
+    assert out[0].launch == {
+        "command": "npx",
+        "args": ["-y", "@foo/fs-mcp"],
+        "env": {"FS_ROOT": "/tmp"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_fetch_mcp_candidates_drops_entry_with_missing_launch_command(caplog):
+    payload = {
+        "results": [
+            {
+                "name": "broken",
+                "description": "no command",
+                "install_url": "https://github.com/foo/broken",
+                "launch": {"args": ["only", "args"]},
+            }
+        ]
+    }
+    settings = _FakeSettings()
+    caplog.set_level(logging.WARNING, logger="heare.marketplace")
+    with _patch_get(_mock_response(payload)):
+        out = await marketplace.fetch_mcp_candidates("broken", settings=settings)
+    assert out == []
+    assert any("command must be a non-empty string" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_fetch_mcp_candidates_drops_entry_with_non_list_args(caplog):
+    payload = {
+        "results": [
+            {
+                "name": "broken",
+                "description": "non-list args",
+                "install_url": "https://github.com/foo/broken",
+                "launch": {"command": "npx", "args": "not-a-list"},
+            }
+        ]
+    }
+    settings = _FakeSettings()
+    caplog.set_level(logging.WARNING, logger="heare.marketplace")
+    with _patch_get(_mock_response(payload)):
+        out = await marketplace.fetch_mcp_candidates("broken", settings=settings)
+    assert out == []
+    assert any("args must be a list of strings" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_fetch_mcp_candidates_drops_entry_with_non_string_env_values(caplog):
+    payload = {
+        "results": [
+            {
+                "name": "broken",
+                "description": "bad env",
+                "install_url": "https://github.com/foo/broken",
+                "launch": {"command": "npx", "args": [], "env": {"FOO": 123}},
+            }
+        ]
+    }
+    settings = _FakeSettings()
+    caplog.set_level(logging.WARNING, logger="heare.marketplace")
+    with _patch_get(_mock_response(payload)):
+        out = await marketplace.fetch_mcp_candidates("broken", settings=settings)
+    assert out == []
+    assert any("env must be a dict of str->str" in r.message for r in caplog.records)
+
+
+def test_coerce_launch_returns_none_when_absent():
+    assert marketplace._coerce_launch(None) is None
+
+
+def test_coerce_launch_normalizes_args_to_list():
+    out = marketplace._coerce_launch({"command": "npx", "args": ["a", "b"]})
+    assert out == {"command": "npx", "args": ["a", "b"]}
+
+
+def test_coerce_launch_rejects_non_dict():
+    with pytest.raises(ValueError):
+        marketplace._coerce_launch("not a dict")
+
+
+# ----------------------------------------------------------------------
+# US-002: built-in MCP catalog
+# ----------------------------------------------------------------------
+
+
+def test_builtin_catalog_has_three_curated_entries():
+    slugs = {e.name for e in marketplace._BUILTIN_MCP_CATALOG}
+    assert slugs == {"chrome-devtools", "fetch", "memory"}
+    for entry in marketplace._BUILTIN_MCP_CATALOG:
+        assert entry.source == "mcp"
+        assert entry.description
+        assert entry.launch is not None
+        assert isinstance(entry.launch.get("command"), str) and entry.launch["command"]
+        assert isinstance(entry.launch.get("args"), list)
+
+
+def test_query_builtin_catalog_matches_keyword_browser():
+    out = marketplace._query_builtin_catalog("browser")
+    names = [e.name for e in out]
+    assert "chrome-devtools" in names
+
+
+def test_query_builtin_catalog_matches_phrase_fetch_url():
+    out = marketplace._query_builtin_catalog("fetch url")
+    names = [e.name for e in out]
+    assert "fetch" in names
+
+
+def test_query_builtin_catalog_returns_empty_for_irrelevant_query():
+    out = marketplace._query_builtin_catalog("salesforce crm")
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_mcp_candidates_returns_catalog_when_registry_empty():
+    settings = _FakeSettings(mcp_registry_url="")
+    out = await marketplace.fetch_mcp_candidates("browser automation", settings=settings)
+    names = [e.name for e in out]
+    assert "chrome-devtools" in names
+
+
+@pytest.mark.asyncio
+async def test_fetch_mcp_candidates_network_overrides_catalog_on_slug_collision():
+    payload = {
+        "results": [
+            {
+                "name": "chrome-devtools",
+                "description": "registry override",
+                "install_url": "https://github.com/foo/chrome-devtools",
+                "launch": {"command": "node", "args": ["server.js"]},
+            }
+        ]
+    }
+    settings = _FakeSettings()
+    with _patch_get(_mock_response(payload)):
+        out = await marketplace.fetch_mcp_candidates("browser", settings=settings)
+    names = [e.name for e in out]
+    assert names.count("chrome-devtools") == 1
+    overridden = next(e for e in out if e.name == "chrome-devtools")
+    assert overridden.description == "registry override"
+    assert overridden.launch == {"command": "node", "args": ["server.js"]}
+
+
+@pytest.mark.asyncio
+async def test_fetch_mcp_candidates_merges_network_and_catalog_disjoint_slugs():
+    payload = {
+        "results": [
+            {
+                "name": "github",
+                "description": "github registry entry",
+                "install_url": "https://github.com/foo/github-mcp",
+                "launch": {"command": "npx", "args": ["@github/mcp"]},
+            }
+        ]
+    }
+    settings = _FakeSettings()
+    with _patch_get(_mock_response(payload)):
+        out = await marketplace.fetch_mcp_candidates("browser github", settings=settings)
+    names = {e.name for e in out}
+    assert "github" in names
+    assert "chrome-devtools" in names

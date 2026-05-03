@@ -80,6 +80,35 @@ def _validate_url(url: str, allowlist: tuple[str, ...]) -> bool:
     return _is_allowed_hostname(url, allowlist) and not _is_homoglyph_or_lookalike(url)
 
 
+def _coerce_launch(raw: object) -> dict | None:
+    """Validate and normalize an optional `launch` block from a registry entry.
+
+    Shape: {"command": str (non-empty), "args": list[str], "env"?: dict[str,str]}.
+    Returns the normalized dict, or None if absent. Raises ValueError on
+    malformed input so the caller can drop the whole entry.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"launch must be a dict, got {type(raw).__name__}")
+    command = raw.get("command")
+    if not isinstance(command, str) or not command.strip():
+        raise ValueError("launch.command must be a non-empty string")
+    args = raw.get("args", [])
+    if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
+        raise ValueError("launch.args must be a list of strings")
+    env = raw.get("env")
+    if env is not None:
+        if not isinstance(env, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in env.items()
+        ):
+            raise ValueError("launch.env must be a dict of str->str")
+    out: dict = {"command": command, "args": list(args)}
+    if env is not None:
+        out["env"] = dict(env)
+    return out
+
+
 def _coerce_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEntry | None:
     if not isinstance(raw, dict):
         return None
@@ -97,6 +126,11 @@ def _coerce_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEn
     pop = raw.get("popularity_score")
     popularity_score = float(pop) if isinstance(pop, (int, float)) else None
     checksum = raw.get("checksum") if isinstance(raw.get("checksum"), str) else None
+    try:
+        launch = _coerce_launch(raw.get("launch"))
+    except ValueError as exc:
+        logger.warning("rejecting %s entry %r: %s", source, name, exc)
+        return None
     return IndexEntry(
         source=source,  # type: ignore[arg-type]
         name=name,
@@ -106,6 +140,7 @@ def _coerce_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEn
         popularity_score=popularity_score,
         install_url=install_url,
         checksum=checksum,
+        launch=launch,
     )
 
 
@@ -191,20 +226,97 @@ async def fetch_skill_candidates(
     return _parse_results(payload, "skill", DEFAULT_HOSTNAME_ALLOWLIST)
 
 
+# Built-in MCP catalog: a small curated set so `discover_capability` returns
+# something useful even when ``mcp_registry_url`` is not configured. Entries
+# must be installable out of the box (no required env vars, no required path
+# args). Network-sourced entries take precedence on slug collision so a
+# registry can override these.
+_BUILTIN_MCP_CATALOG: tuple[IndexEntry, ...] = (
+    IndexEntry(
+        source="mcp",
+        name="chrome-devtools",
+        description=(
+            "Browser automation via Chrome DevTools Protocol — navigate, click, "
+            "evaluate JS, capture network logs, take screenshots. Headless and "
+            "isolated profile by default."
+        ),
+        install_url="https://github.com/ChromeDevTools/chrome-devtools-mcp",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "chrome-devtools-mcp@latest", "--isolated", "--headless=true"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="fetch",
+        description="Fetch content from a URL and convert to markdown for the agent.",
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={"command": "uvx", "args": ["mcp-server-fetch"]},
+    ),
+    IndexEntry(
+        source="mcp",
+        name="memory",
+        description="Persistent key-value memory store for cross-session recall.",
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=False,
+        launch={"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]},
+    ),
+)
+
+
+# Keyword aliases per slug — natural-language queries that should surface
+# the entry even when they don't substring-match name/description.
+_BUILTIN_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "chrome-devtools": (
+        "browser", "chrome", "devtools", "automate", "automation",
+        "screenshot", "navigate", "click", "scrape", "web page", "headless",
+    ),
+    "fetch": ("fetch", "url", "http", "download", "request", "web content"),
+    "memory": ("memory", "remember", "recall", "store", "persist", "key-value"),
+}
+
+
+def _query_builtin_catalog(query: str) -> list[IndexEntry]:
+    """Filter the built-in catalog by case-insensitive substring match against
+    name, description, and per-slug keyword aliases.
+    """
+    q = query.lower().strip()
+    if not q:
+        return []
+    out: list[IndexEntry] = []
+    for entry in _BUILTIN_MCP_CATALOG:
+        haystack_parts = [entry.name.lower(), entry.description.lower()]
+        haystack_parts.extend(_BUILTIN_KEYWORDS.get(entry.name, ()))
+        haystack = " ".join(haystack_parts)
+        if q in haystack or any(tok in haystack for tok in q.split()):
+            out.append(entry)
+    return out
+
+
 async def fetch_mcp_candidates(
     query: str, *, settings, timeout: float = 2.5
 ) -> list[IndexEntry]:
+    """Return MCP candidates for ``query`` from the built-in catalog plus any
+    configured remote registry. Network results take precedence on slug
+    collision so a registry can override the bundled entry.
+    """
+    builtin = _query_builtin_catalog(query)
+
     base = getattr(settings, "mcp_registry_url", "") or ""
-    if not base:
-        return []
-    url = f"{base.rstrip('/')}/api/search?q={urllib.parse.quote(query)}"
-    if not _validate_url(url, DEFAULT_HOSTNAME_ALLOWLIST):
-        logger.warning("mcp_registry_url rejected: %r", base)
-        return []
-    payload = await _fetch_json(url, timeout)
-    if payload is None:
-        return []
-    return _parse_results(payload, "mcp", DEFAULT_HOSTNAME_ALLOWLIST)
+    network: list[IndexEntry] = []
+    if base:
+        url = f"{base.rstrip('/')}/api/search?q={urllib.parse.quote(query)}"
+        if _validate_url(url, DEFAULT_HOSTNAME_ALLOWLIST):
+            payload = await _fetch_json(url, timeout)
+            if payload is not None:
+                network = _parse_results(payload, "mcp", DEFAULT_HOSTNAME_ALLOWLIST)
+        else:
+            logger.warning("mcp_registry_url rejected: %r", base)
+
+    network_slugs = {e.name for e in network}
+    return network + [e for e in builtin if e.name not in network_slugs]
 
 
 __all__ = [

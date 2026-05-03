@@ -297,6 +297,22 @@ TOOLS: dict[str, Tool] = {
         description="Install an MCP server from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
         enabled=True,
     ),
+    "register_mcp_server": Tool(
+        name="register_mcp_server",
+        sdk_name="RegisterMcpServer",
+        execution="direct",
+        description=(
+            "Register an MCP server directly from user-supplied launch info "
+            "(e.g., the user reads a README aloud). Use ONLY when "
+            "discover_capability has no matching entry. BEFORE setting "
+            "user_confirmed=true, ALWAYS read the proposed slug, command, args, "
+            "and env back to the user verbatim and wait for an explicit yes — "
+            "the user is consenting to the exact launch configuration, not the "
+            "slug. Requires user_confirmed=true. Daemon restart needed to use "
+            "the server."
+        ),
+        enabled=True,
+    ),
     "revoke_capability": Tool(
         name="revoke_capability",
         sdk_name="RevokeCapability",

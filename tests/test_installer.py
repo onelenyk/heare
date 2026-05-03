@@ -197,31 +197,71 @@ async def test_install_skill_no_skillmd_in_archive_rolls_back(settings, fake_hom
     assert not target.exists()
 
 
+def _mcp_entry(name: str = "bar", *, launch: dict | None = None, install_url: str | None = "https://github.com/foo/bar") -> IndexEntry:
+    if launch is None:
+        launch = {"command": "npx", "args": ["-y", "test-mcp@latest"]}
+    return IndexEntry(
+        source="mcp",
+        name=name,
+        description="a test mcp",
+        install_url=install_url,
+        launch=launch,
+    )
+
+
 @pytest.mark.asyncio
 async def test_install_mcp_uses_write_mcp_servers_helper(settings, fake_home):
-    entry = IndexEntry(
-        source="mcp",
-        name="bar",
-        description="a test mcp",
-        install_url="https://github.com/foo/bar",
-    )
     with patch("src.installer.write_mcp_servers") as mock_write, patch("src.installer.read_mcp_servers", return_value={}):
-        result = await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
+        result = await installer.install_mcp_server(_mcp_entry(), settings=settings, user_confirmed=True)
     assert result.success is True
     mock_write.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_install_mcp_returns_requires_restart_true(settings, fake_home):
+    result = await installer.install_mcp_server(_mcp_entry(), settings=settings, user_confirmed=True)
+    assert result.success is True
+    assert result.requires_restart is True
+
+
+@pytest.mark.asyncio
+async def test_install_mcp_writes_launch_command_args_into_mcp_json(settings, fake_home):
+    entry = _mcp_entry(launch={"command": "npx", "args": ["-y", "@foo/server"], "env": {"FOO_TOKEN": "abc"}})
+    result = await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
+    assert result.success is True
+
+    mcp_json = settings.workspace_dir / ".mcp.json"
+    data = json.loads(mcp_json.read_text())
+    server = data["mcpServers"]["bar"]
+    assert server["command"] == "npx"
+    assert server["args"] == ["-y", "@foo/server"]
+    assert server["env"] == {"FOO_TOKEN": "abc"}
+    assert server["description"] == "a test mcp"
+
+
+@pytest.mark.asyncio
+async def test_install_mcp_omits_env_when_not_provided(settings, fake_home):
+    entry = _mcp_entry(launch={"command": "npx", "args": ["server"]})
+    result = await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
+    assert result.success is True
+
+    data = json.loads((settings.workspace_dir / ".mcp.json").read_text())
+    assert "env" not in data["mcpServers"]["bar"]
+
+
+@pytest.mark.asyncio
+async def test_install_mcp_refuses_when_launch_missing(settings, fake_home):
     entry = IndexEntry(
         source="mcp",
         name="bar",
         description="a test mcp",
         install_url="https://github.com/foo/bar",
+        launch=None,
     )
-    result = await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
-    assert result.success is True
-    assert result.requires_restart is True
+    with pytest.raises(installer.InstallFailed) as exc:
+        await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
+    assert str(exc.value) == "launch_required"
+    assert not (settings.workspace_dir / ".mcp.json").exists()
 
 
 @pytest.mark.asyncio

@@ -320,9 +320,19 @@ async def install_mcp_server(
     if getattr(settings, "installation_signature_required", False) and not entry.checksum:
         raise InstallRefused("signature_required")
 
+    if entry.launch is None:
+        # An MCP entry without launch info would write a useless bookmark — the
+        # SDK has no command to spawn, so the server never comes up. Refuse
+        # rather than persist a broken `.mcp.json`.
+        raise InstallFailed("launch_required")
+
     server_entry: dict = {"description": entry.description}
     if install_url:
         server_entry["install_url"] = install_url
+    server_entry["command"] = entry.launch["command"]
+    server_entry["args"] = list(entry.launch.get("args", []))
+    if entry.launch.get("env"):
+        server_entry["env"] = dict(entry.launch["env"])
     servers[slug] = server_entry
     write_mcp_servers(workspace_dir, servers)
 

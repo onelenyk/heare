@@ -253,3 +253,37 @@ async def test_no_identity_skips_cache_gracefully(
     assert out == fetched
     cache_path = discovery._cache_file(cache_dir, discovery._intent_hash("no identity intent"))
     assert not cache_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_cache_round_trip_preserves_launch_field(
+    settings_with_identity: _FakeSettings, cache_dir: Path
+):
+    intent = "browser automation"
+    entries = [
+        IndexEntry(
+            source="mcp",
+            name="chrome-devtools",
+            description="browser via CDP",
+            install_url="https://github.com/foo/chrome-devtools-mcp",
+            launch={
+                "command": "npx",
+                "args": ["-y", "chrome-devtools-mcp@latest"],
+                "env": {"DEBUG": "1"},
+            },
+        )
+    ]
+    discovery._write_cache(
+        cache_dir, discovery._intent_hash(intent), entries, settings=settings_with_identity
+    )
+    out = discovery._read_cache(
+        cache_dir, discovery._intent_hash(intent), settings=settings_with_identity
+    )
+    assert out is not None
+    assert len(out) == 1
+    restored = out[0]
+    assert restored.launch == {
+        "command": "npx",
+        "args": ["-y", "chrome-devtools-mcp@latest"],
+        "env": {"DEBUG": "1"},
+    }
