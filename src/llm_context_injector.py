@@ -239,7 +239,11 @@ def render_native_system_prompt(
         "install_mcp_server_tool with user_confirmed=true."
     )
     parts.append(
-        "- If discovery returns nothing, refuse politely in the user's "
+        "- If discovery returns nothing AND the user can describe how to launch "
+        "an MCP server (command + args, e.g., from a README), offer "
+        "register_mcp_server: read the proposed slug, command, args, and env "
+        "back verbatim, wait for explicit voice consent, then call with "
+        "user_confirmed=true. Otherwise refuse politely in the user's "
         "language: English 'I don't have a tool for that. Want me to look one "
         "up?'; Ukrainian 'Не маю інструменту для цього. Хочеш, я пошукаю?'."
     )

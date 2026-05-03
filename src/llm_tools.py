@@ -572,6 +572,45 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         ["slug", "user_confirmed"],
         _json_args,
     ),
+    "register_mcp_server": (
+        {
+            "slug": {
+                "type": "string",
+                "description": "Lowercase slug, [a-z0-9-]+. Becomes the key in .mcp.json and the prefix for mcp__<slug>__* tools.",
+            },
+            "description": {
+                "type": "string",
+                "description": "One-line description of what this MCP server does (max 200 chars).",
+            },
+            "command": {
+                "type": "string",
+                "description": "Launch command — typically 'npx', 'uvx', 'python', 'node', etc.",
+            },
+            "args": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Argument list passed to the command (e.g., ['-y', '@foo/server']).",
+            },
+            "env": {
+                "type": "object",
+                "description": "Optional env vars (str->str). Use sparingly and never embed secrets verbatim.",
+            },
+            "source_url": {
+                "type": "string",
+                "description": "Optional URL to the server's repo or docs (must be on github.com or skillsmp.com).",
+            },
+            "user_confirmed": {
+                "type": "boolean",
+                "description": "Set true ONLY after the user explicitly confirmed the read-back of slug, command, args, and env.",
+            },
+            "replace": {
+                "type": "boolean",
+                "description": "Overwrite an existing MCP server with the same slug. Default false.",
+            },
+        },
+        ["slug", "description", "command", "args", "user_confirmed"],
+        _json_args,
+    ),
     "revoke_capability": (
         {
             "slug": {

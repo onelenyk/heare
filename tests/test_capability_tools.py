@@ -344,3 +344,172 @@ def test_capability_tools_have_schemas():
         assert isinstance(properties, dict)
         assert isinstance(required, list)
         assert callable(serializer)
+
+
+# ---------------------------------------------------------------------------
+# US-003: register_mcp_server (direct install from user-supplied launch info)
+# ---------------------------------------------------------------------------
+
+
+def test_register_mcp_server_registered():
+    from src.tool_registry import TOOLS
+    from src.llm_tools import _TOOL_SPECS
+
+    assert "register_mcp_server" in TOOLS
+    assert TOOLS["register_mcp_server"].enabled is True
+    assert TOOLS["register_mcp_server"].execution == "direct"
+
+    assert "register_mcp_server" in _TOOL_SPECS
+    properties, required, _ = _TOOL_SPECS["register_mcp_server"]
+    assert {"slug", "description", "command", "args", "user_confirmed"} <= set(required)
+    assert "env" in properties
+    assert "source_url" in properties
+
+
+def _consent_settings(workspace: Path) -> _FakeSettings:
+    return _FakeSettings(
+        workspace_dir=workspace,
+        speaker_id_enabled=False,
+        confirmation_passphrase="open sesame",
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_writes_launch_block_to_mcp_json(settings, tmp_path: Path):
+    s = _consent_settings(tmp_path / "ws")
+    s.workspace_dir.mkdir()
+    direct_tools.set_capability_index(_make_index([]))
+
+    payload = {
+        "slug": "notion",
+        "description": "Notion workspace",
+        "command": "npx",
+        "args": ["-y", "@notionhq/notion-mcp-server"],
+        "env": {"NOTION_API_KEY": "abc"},
+        "user_confirmed": True,
+    }
+    result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
+
+    assert result["success"] is True
+    assert result["requires_restart"] is True
+    data = json.loads((s.workspace_dir / ".mcp.json").read_text())
+    server = data["mcpServers"]["notion"]
+    assert server["command"] == "npx"
+    assert server["args"] == ["-y", "@notionhq/notion-mcp-server"]
+    assert server["env"] == {"NOTION_API_KEY": "abc"}
+    assert server["description"] == "Notion workspace"
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_refuses_without_user_confirmed(tmp_path: Path):
+    s = _consent_settings(tmp_path / "ws")
+    s.workspace_dir.mkdir()
+    direct_tools.set_capability_index(_make_index([]))
+
+    payload = {
+        "slug": "notion",
+        "description": "Notion workspace",
+        "command": "npx",
+        "args": ["-y", "x"],
+        "user_confirmed": False,
+    }
+    result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
+    assert result["success"] is False
+    assert "user_not_confirmed" in result["error"]
+    assert not (s.workspace_dir / ".mcp.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_rejects_invalid_slug(tmp_path: Path):
+    s = _consent_settings(tmp_path / "ws")
+    s.workspace_dir.mkdir()
+    direct_tools.set_capability_index(_make_index([]))
+
+    payload = {
+        "slug": "Bad Slug!",
+        "description": "x",
+        "command": "npx",
+        "args": [],
+        "user_confirmed": True,
+    }
+    result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
+    assert result["success"] is False
+    assert "slug" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_rejects_non_list_args(tmp_path: Path):
+    s = _consent_settings(tmp_path / "ws")
+    s.workspace_dir.mkdir()
+    direct_tools.set_capability_index(_make_index([]))
+
+    payload = {
+        "slug": "x",
+        "description": "x",
+        "command": "npx",
+        "args": "not-a-list",
+        "user_confirmed": True,
+    }
+    result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
+    assert result["success"] is False
+    assert "args" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_rejects_non_string_args_elements(tmp_path: Path):
+    s = _consent_settings(tmp_path / "ws")
+    s.workspace_dir.mkdir()
+    direct_tools.set_capability_index(_make_index([]))
+
+    payload = {
+        "slug": "x",
+        "description": "x",
+        "command": "npx",
+        "args": ["a", 42],
+        "user_confirmed": True,
+    }
+    result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
+    assert result["success"] is False
+    assert "args" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_rejects_non_dict_env(tmp_path: Path):
+    s = _consent_settings(tmp_path / "ws")
+    s.workspace_dir.mkdir()
+    direct_tools.set_capability_index(_make_index([]))
+
+    payload = {
+        "slug": "x",
+        "description": "x",
+        "command": "npx",
+        "args": [],
+        "env": "not-a-dict",
+        "user_confirmed": True,
+    }
+    result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
+    assert result["success"] is False
+    assert "env" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_slug_collision_without_replace(tmp_path: Path):
+    s = _consent_settings(tmp_path / "ws")
+    s.workspace_dir.mkdir()
+    # Pre-seed an existing entry
+    (s.workspace_dir / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"notion": {"description": "old", "command": "npx", "args": []}}})
+    )
+    direct_tools.set_capability_index(_make_index([]))
+
+    payload = {
+        "slug": "notion",
+        "description": "new",
+        "command": "npx",
+        "args": ["-y", "@notionhq/notion-mcp-server"],
+        "user_confirmed": True,
+        "replace": False,
+    }
+    result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
+    assert result["success"] is False
+    assert "slug_collision" in result["error"]

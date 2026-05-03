@@ -41,6 +41,7 @@ class IndexEntry:
     install_url: str | None = None
     schema_version: int = 1
     checksum: str | None = None
+    launch: dict | None = None
 
 
 def _tokenize(text: str) -> list[str]:

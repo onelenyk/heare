@@ -165,6 +165,8 @@ async def execute_direct(
         return await _execute_restart_daemon(args, settings)
     elif tool == "install_mcp_server_tool":
         return await _execute_install_mcp_server_tool(args, settings)
+    elif tool == "register_mcp_server":
+        return await _execute_register_mcp_server(args, settings)
     elif tool == "revoke_capability":
         return await _execute_revoke_capability(args, settings)
     elif tool == "list_capabilities":
@@ -3832,6 +3834,110 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
     latency_ms = int((_time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY INSTALL] slug=%s source=mcp success=%s latency_ms=%d",
+        slug, result.success, latency_ms,
+    )
+    return {
+        "success": result.success,
+        "output": result.message_en,
+        "slug": result.slug,
+        "requires_restart": result.requires_restart,
+        "error_code": result.error_code,
+        "spoken": {"en": result.message_en, "uk": result.message_uk},
+    }
+
+
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+async def _execute_register_mcp_server(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {slug, description, command, args, env?, source_url?, user_confirmed, replace?}.
+
+    Builds an IndexEntry on the fly from user-supplied launch info and routes
+    through the same install_mcp_server path as catalog/registry entries —
+    same consent gate, same .mcp.json write, same restart prompt.
+    """
+    import time as _time
+    from . import installer as _installer
+    from . import marketplace as _market
+    from .capability_index import IndexEntry
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    slug = str(payload.get("slug", "")).strip().lower()
+    description = str(payload.get("description", "")).strip()
+    source_url = payload.get("source_url")
+    user_confirmed = bool(payload.get("user_confirmed", False))
+    replace = bool(payload.get("replace", False))
+
+    if not slug or not _SLUG_RE.match(slug):
+        return {"success": False, "error": "slug must match [a-z0-9][a-z0-9-]*", "spoken": {"en": "Bad slug."}}
+    if not description:
+        return {"success": False, "error": "description is required", "spoken": {"en": "Missing description."}}
+
+    raw_launch = {"command": payload.get("command"), "args": payload.get("args")}
+    if payload.get("env") is not None:
+        raw_launch["env"] = payload.get("env")
+    try:
+        launch = _market._coerce_launch(raw_launch)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc), "spoken": {"en": "Bad launch info."}}
+
+    install_url = str(source_url).strip() if isinstance(source_url, str) and source_url.strip() else None
+
+    entry = IndexEntry(
+        source="mcp",
+        name=slug,
+        description=description,
+        install_url=install_url,
+        launch=launch,
+    )
+
+    index = _get_or_build_capability_index(settings)
+    started = _time.monotonic()
+    try:
+        result = await _installer.install_mcp_server(
+            entry,
+            settings=settings,
+            capability_index=index,
+            user_confirmed=user_confirmed,
+            replace=replace,
+        )
+    except _installer.InstallRefused as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY REGISTER] slug=%s success=False latency_ms=%d reason=%s",
+            slug, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"refused: {exc}",
+            "spoken": {"en": "Install refused."},
+        }
+    except _installer.InstallFailed as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY REGISTER] slug=%s success=False latency_ms=%d reason=%s",
+            slug, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"failed: {exc}",
+            "spoken": {"en": "Install failed."},
+        }
+
+    latency_ms = int((_time.monotonic() - started) * 1000)
+    logger.info(
+        "[CAPABILITY REGISTER] slug=%s success=%s latency_ms=%d",
         slug, result.success, latency_ms,
     )
     return {

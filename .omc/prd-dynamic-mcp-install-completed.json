@@ -1,0 +1,67 @@
+{
+  "title": "Dynamic MCP Install — IndexEntry.launch + built-in catalog + register_mcp_server",
+  "description": "Make the agent capable of installing MCP servers end-to-end. Today install_mcp_server writes only description/install_url to .mcp.json — no command/args/env — so installs are unusable bookmarks. Three stories: (US-001) extend IndexEntry with launch and propagate through marketplace + installer + cache; (US-002) seed a small built-in catalog so discover_capability returns hits without external registry; (US-003) add register_mcp_server LLM tool for direct/external installs the agent can trigger from a README description. Constraint: no command allowlist (user explicitly skipped), no chrome-devtools-mcp hardcoding as a special case — chrome-devtools just happens to be one of the catalog seeds.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Plumbing: IndexEntry.launch + installer writes command/args/env",
+      "description": "Extend IndexEntry with optional launch dict, parse it in marketplace coercion, write it through install_mcp_server into .mcp.json. Discovery cache round-trips the field automatically via dataclasses.asdict / IndexEntry(**data); add a regression test. Refuse MCP installs that lack launch info (writing a launchless entry produces a useless bookmark).",
+      "acceptanceCriteria": [
+        "src/capability_index.py: IndexEntry has `launch: dict | None = None` field with default None",
+        "src/marketplace.py: _coerce_entry parses optional launch block, validates command is non-empty str and args is list[str], drops the entry if shape is wrong (logs warning)",
+        "src/marketplace.py: _coerce_entry parses optional env as dict[str,str], drops entry if env values are not strings",
+        "src/installer.py: install_mcp_server writes command/args/env from entry.launch into the .mcp.json server entry when launch is set",
+        "src/installer.py: install_mcp_server raises InstallFailed('launch_required') when source='mcp' and entry.launch is None",
+        "src/discovery.py: cache round-trip preserves launch (existing dataclasses.asdict path works automatically — verify with regression test)",
+        "tests/test_marketplace.py: new test verifies _coerce_entry parses valid launch block",
+        "tests/test_marketplace.py: new test verifies _coerce_entry rejects launch with missing command",
+        "tests/test_marketplace.py: new test verifies _coerce_entry rejects launch with non-list args",
+        "tests/test_installer.py: new test verifies install_mcp_server writes command/args into .mcp.json when entry.launch is set",
+        "tests/test_installer.py: new test verifies install_mcp_server raises InstallFailed('launch_required') when entry.launch is None",
+        "tests/test_discovery.py: new test verifies cache round-trip preserves launch field",
+        "make test passes: all existing tests + new ones",
+        "lsp_diagnostics on src/capability_index.py, src/marketplace.py, src/installer.py shows 0 errors"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "Built-in MCP catalog seeds discover_capability without external registry",
+      "description": "Add a small static catalog (3 entries: chrome-devtools, filesystem, fetch) inside marketplace.py. fetch_mcp_candidates returns built-in matches alongside (or instead of) network results. This makes discover_capability functional out of the box without mcp_registry_url being configured.",
+      "acceptanceCriteria": [
+        "src/marketplace.py: _BUILTIN_MCP_CATALOG is a tuple[IndexEntry, ...] with exactly 3 entries: chrome-devtools, filesystem, fetch",
+        "Each catalog entry has source='mcp', non-empty description, valid launch dict with command and args",
+        "src/marketplace.py: fetch_mcp_candidates merges built-in matches with network results (network results take precedence on slug collision so a registry can override)",
+        "src/marketplace.py: _query_builtin_catalog filters entries by query string (case-insensitive substring match against name + description, plus keyword aliases)",
+        "tests/test_marketplace.py: query for 'browser' returns chrome-devtools entry from catalog",
+        "tests/test_marketplace.py: query for 'fetch url' returns fetch entry from catalog",
+        "tests/test_marketplace.py: fetch_mcp_candidates returns catalog entries even when mcp_registry_url is empty",
+        "tests/test_marketplace.py: when network returns same slug as catalog, network entry wins (deduplication)",
+        "End-to-end: discover_capability_remote returns a catalog entry that flows through install_mcp_server unchanged (same launch info ends up in .mcp.json)",
+        "make test passes",
+        "lsp_diagnostics on src/marketplace.py shows 0 errors"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "register_mcp_server LLM tool for direct installs from user-supplied launch info",
+      "description": "Add a new LLM tool the agent can call when the user describes an MCP from a README. Tool takes slug, description, command, args, env?, source_url? and constructs an IndexEntry on the fly, then calls install_mcp_server. Same consent gate, same .mcp.json write, same restart prompt. The agent must read back the proposed config before treating user_confirmed=true as valid (this is a prompt-engineering rule in the tool description, not a code-side check).",
+      "acceptanceCriteria": [
+        "src/tool_registry.py: TOOLS contains 'register_mcp_server' entry with execution='direct', sdk_name='RegisterMcpServer', description that explicitly tells the LLM to read back proposed config before claiming user_confirmed=true",
+        "src/llm_tools.py: schema for register_mcp_server has required {slug, description, command, args, user_confirmed} and optional {env, source_url, replace}",
+        "src/direct_tools.py: _execute_register_mcp_server builds an IndexEntry(source='mcp', name=slug, description=description, install_url=source_url, launch={command, args, env}) and calls installer.install_mcp_server",
+        "src/direct_tools.py: dispatch in execute_tool routes 'register_mcp_server' to _execute_register_mcp_server",
+        "src/direct_tools.py: validation rejects empty slug, empty command, args that is not a list of strings, env that is not dict[str,str] (returns success=False with clear error)",
+        "src/llm_context_injector.py: prompt mentions register_mcp_server as fallback when discover_capability has no match",
+        "tests/test_direct_tools.py (or existing): new test verifies happy path — valid args produce a .mcp.json entry with command/args/env and require_restart=true",
+        "tests/test_direct_tools.py: new test verifies missing user_confirmed=true is refused",
+        "tests/test_direct_tools.py: new test verifies slug collision without replace=true is refused",
+        "tests/test_direct_tools.py: new test verifies malformed args (non-list, non-string elements) returns success=False",
+        "make test passes",
+        "lsp_diagnostics on src/tool_registry.py, src/llm_tools.py, src/direct_tools.py shows 0 errors"
+      ],
+      "passes": true
+    }
+  ]
+}
