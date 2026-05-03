@@ -381,3 +381,389 @@ def test_raw_url_for_builds_correct_path():
     assert installer._raw_url_for("o", "r", "main", "skills/foo", "SKILL.md") == (
         "https://raw.githubusercontent.com/o/r/main/skills/foo/SKILL.md"
     )
+
+
+# ---------------------------------------------------------------------------
+# _download — overall-timeout, size-cap, every-exit-path logging
+#
+# These tests exist because a real install hung silently for ~2 minutes:
+# the per-op httpx timeout is between chunks, so a slow-trickle stream
+# blew past it without firing, and no completion log ever appeared.
+
+
+import asyncio  # noqa: E402
+
+import httpx  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_download_overall_timeout_raises_install_failed(monkeypatch, caplog):
+    """A stream that never finishes within ``overall_timeout`` must raise
+    ``InstallFailed("download_timeout")`` and log a TIMEOUT line — not hang."""
+
+    async def _hang(_url):
+        await asyncio.sleep(10)
+        return httpx.Response(200, content=b"x")
+
+    transport = httpx.MockTransport(_hang)
+
+    real_async_client = installer.httpx.AsyncClient
+
+    class _StubClient:
+        def __init__(self, *a, **kw):
+            self._client = real_async_client(transport=transport, timeout=kw.get("timeout"))
+        async def __aenter__(self):
+            return self._client
+        async def __aexit__(self, *exc):
+            await self._client.aclose()
+
+    monkeypatch.setattr(installer.httpx, "AsyncClient", _StubClient)
+
+    caplog.set_level("WARNING", logger="heare.installer")
+    with pytest.raises(installer.InstallFailed, match="download_timeout"):
+        await installer._download(
+            "https://example.com/x.tar.gz", timeout=1.0, overall_timeout=0.05
+        )
+    assert any("TIMEOUT" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_download_size_cap_raises_install_failed(monkeypatch, caplog):
+    """A response larger than ``max_bytes`` must abort with
+    ``download_too_large`` rather than buffer unbounded into memory."""
+
+    big = b"A" * 4096
+
+    async def _big(_url):
+        return httpx.Response(200, content=big)
+
+    transport = httpx.MockTransport(_big)
+
+    real_async_client = installer.httpx.AsyncClient
+
+    class _StubClient:
+        def __init__(self, *a, **kw):
+            self._client = real_async_client(transport=transport, timeout=kw.get("timeout"))
+        async def __aenter__(self):
+            return self._client
+        async def __aexit__(self, *exc):
+            await self._client.aclose()
+
+    monkeypatch.setattr(installer.httpx, "AsyncClient", _StubClient)
+
+    caplog.set_level("WARNING", logger="heare.installer")
+    with pytest.raises(installer.InstallFailed, match="download_too_large"):
+        await installer._download(
+            "https://example.com/x.tar.gz",
+            timeout=2.0,
+            overall_timeout=5.0,
+            max_bytes=1024,
+        )
+    assert any("FAILED" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_download_logs_completion_on_success(monkeypatch, caplog):
+    """Successful download must emit the ``← status=`` line — silence on
+    success was the original symptom that masked the bug."""
+
+    async def _ok(_url):
+        return httpx.Response(200, content=b"hello")
+
+    transport = httpx.MockTransport(_ok)
+
+    real_async_client = installer.httpx.AsyncClient
+
+    class _StubClient:
+        def __init__(self, *a, **kw):
+            self._client = real_async_client(transport=transport, timeout=kw.get("timeout"))
+        async def __aenter__(self):
+            return self._client
+        async def __aexit__(self, *exc):
+            await self._client.aclose()
+
+    monkeypatch.setattr(installer.httpx, "AsyncClient", _StubClient)
+
+    caplog.set_level("INFO", logger="heare.installer")
+    out = await installer._download(
+        "https://example.com/x.tar.gz", timeout=2.0, overall_timeout=5.0
+    )
+    assert out == b"hello"
+    assert any("status=200" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_download_cancelled_logs_and_propagates(monkeypatch, caplog):
+    """``asyncio.CancelledError`` must propagate (not be silently
+    swallowed) AND emit a CANCELLED log line so a dropped tool-call
+    future is traceable."""
+
+    started = asyncio.Event()
+
+    async def _slow(_url):
+        started.set()
+        await asyncio.sleep(10)
+        return httpx.Response(200, content=b"x")
+
+    transport = httpx.MockTransport(_slow)
+
+    real_async_client = installer.httpx.AsyncClient
+
+    class _StubClient:
+        def __init__(self, *a, **kw):
+            self._client = real_async_client(transport=transport, timeout=kw.get("timeout"))
+        async def __aenter__(self):
+            return self._client
+        async def __aexit__(self, *exc):
+            await self._client.aclose()
+
+    monkeypatch.setattr(installer.httpx, "AsyncClient", _StubClient)
+
+    caplog.set_level("WARNING", logger="heare.installer")
+    task = asyncio.create_task(
+        installer._download(
+            "https://example.com/x.tar.gz", timeout=5.0, overall_timeout=5.0
+        )
+    )
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert any("CANCELLED" in rec.message for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# create_skill — author user-supplied skills locally
+#
+# Mirrors the install_skill consent contract but without download or
+# checksum: the body comes from the conversation, not the marketplace.
+
+
+@pytest.mark.asyncio
+async def test_create_skill_writes_skill_md_and_sidecar(settings, fake_home):
+    result = await installer.create_skill(
+        name="audio-debug",
+        description="Probe macOS audio devices and report what's connected.",
+        body="Run `system_profiler SPAudioDataType` and summarize.",
+        settings=settings,
+        user_confirmed=True,
+    )
+    assert result.success is True
+    assert result.slug == "audio-debug"
+    skill_dir = fake_home / ".heare" / "skills" / "audio-debug"
+    skill_md = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert skill_md.startswith("---\nname: audio-debug\n")
+    assert "description: Probe macOS audio devices" in skill_md
+    assert "system_profiler SPAudioDataType" in skill_md
+    sidecar = json.loads((skill_dir / ".install.json").read_text())
+    assert sidecar["source_marketplace"] == "user_authored"
+    assert sidecar["user_confirmed"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_skill_refuses_without_user_confirmed(settings, fake_home):
+    with pytest.raises(installer.InstallRefused, match="user_not_confirmed"):
+        await installer.create_skill(
+            name="x",
+            description="d",
+            body="b",
+            settings=settings,
+            user_confirmed=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_skill_refuses_without_consent_method(settings, fake_home):
+    settings.speaker_id_enabled = False
+    settings.confirmation_passphrase = None
+    settings.speakers_file = None
+    result = await installer.create_skill(
+        name="x",
+        description="d",
+        body="b",
+        settings=settings,
+        user_confirmed=True,
+    )
+    assert result.success is False
+    assert result.error_code == "no_consent_method"
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_invalid_name(settings, fake_home):
+    for bad in ["", "Foo", "foo bar", "-foo", "foo-", "foo_bar", "f" * 65]:
+        with pytest.raises(installer.InstallFailed):
+            await installer.create_skill(
+                name=bad,
+                description="d",
+                body="b",
+                settings=settings,
+                user_confirmed=True,
+            )
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_missing_description(settings, fake_home):
+    with pytest.raises(installer.InstallFailed, match="description_required"):
+        await installer.create_skill(
+            name="foo",
+            description="   ",
+            body="b",
+            settings=settings,
+            user_confirmed=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_missing_body(settings, fake_home):
+    with pytest.raises(installer.InstallFailed, match="body_required"):
+        await installer.create_skill(
+            name="foo",
+            description="d",
+            body="\n  \n",
+            settings=settings,
+            user_confirmed=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_skill_slug_collision_no_replace(settings, fake_home):
+    await installer.create_skill(
+        name="foo", description="d1", body="b1",
+        settings=settings, user_confirmed=True,
+    )
+    with pytest.raises(installer.InstallRefused, match="slug_collision"):
+        await installer.create_skill(
+            name="foo", description="d2", body="b2",
+            settings=settings, user_confirmed=True, replace=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_skill_replace_overwrites(settings, fake_home):
+    await installer.create_skill(
+        name="foo", description="old desc", body="old body",
+        settings=settings, user_confirmed=True,
+    )
+    result = await installer.create_skill(
+        name="foo", description="new desc", body="new body",
+        settings=settings, user_confirmed=True, replace=True,
+    )
+    assert result.success is True
+    skill_md = (fake_home / ".heare" / "skills" / "foo" / "SKILL.md").read_text()
+    assert "new desc" in skill_md
+    assert "new body" in skill_md
+    assert "old desc" not in skill_md
+    assert "old body" not in skill_md
+
+
+@pytest.mark.asyncio
+async def test_create_skill_invalidates_loader_and_rebuilds_index(settings, fake_home):
+    fake_loader = MagicMock()
+    fake_loader.invalidate = MagicMock()
+    fake_index = MagicMock()
+    fake_index.rebuild = MagicMock()
+    with patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
+        await installer.create_skill(
+            name="foo", description="d", body="b",
+            settings=settings, capability_index=fake_index, user_confirmed=True,
+        )
+    assert fake_loader.invalidate.called
+    assert fake_index.rebuild.called
+
+
+@pytest.mark.asyncio
+async def test_execute_create_skill_dispatcher_happy_path(settings, fake_home):
+    """The LLM-facing dispatcher unwraps JSON args and surfaces the
+    InstallResult in the spoken-en/uk shape that pipecat will read back."""
+    from src.direct_tools import _execute_create_skill
+
+    args = json.dumps({
+        "name": "audio-debug",
+        "description": "Probe macOS audio devices.",
+        "body": "Run system_profiler SPAudioDataType.",
+        "user_confirmed": True,
+    })
+    result = await _execute_create_skill(args, settings)
+    assert result["success"] is True
+    assert result["slug"] == "audio-debug"
+    assert "audio-debug" in result["spoken"]["en"]
+    assert "audio-debug" in result["spoken"]["uk"]
+
+
+@pytest.mark.asyncio
+async def test_execute_create_skill_dispatcher_surfaces_error_code(settings, fake_home):
+    """Validation failures must come back as ``error_code`` so the LLM can
+    route on it (e.g. ask for a different name) instead of a free-form
+    error string."""
+    from src.direct_tools import _execute_create_skill
+
+    args = json.dumps({
+        "name": "Foo Bar",  # invalid: uppercase + space
+        "description": "d",
+        "body": "b",
+        "user_confirmed": True,
+    })
+    result = await _execute_create_skill(args, settings)
+    assert result["success"] is False
+    assert result["error_code"] == "name_invalid_format"
+
+
+@pytest.mark.asyncio
+async def test_execute_create_skill_dispatcher_rejects_bad_json(settings, fake_home):
+    from src.direct_tools import _execute_create_skill
+
+    result = await _execute_create_skill("not json{", settings)
+    assert result["success"] is False
+    assert "Invalid JSON" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_create_skill_is_discoverable_by_skills_loader(settings, fake_home, monkeypatch):
+    """End-to-end: after create_skill, the SkillsLoader sees the new skill
+    and can return its body — proving the file layout matches the loader's
+    parser contract."""
+    from src import agent_skills
+
+    settings.skills_paths = [str(fake_home / ".heare" / "skills")]
+    # Fresh loader that scans the fake_home path so we don't pick up
+    # whatever's in the developer's real ~/.heare/skills/.
+    monkeypatch.setattr(agent_skills, "_loader", None)
+    monkeypatch.setattr(agent_skills, "_loader_paths", None)
+
+    await installer.create_skill(
+        name="audio-debug",
+        description="Probe macOS audio devices.",
+        body="Step 1: run `system_profiler SPAudioDataType`.",
+        settings=settings,
+        user_confirmed=True,
+    )
+
+    loader = agent_skills.get_skills_loader(settings)
+    loader.invalidate()
+    names = loader.get_skill_names()
+    assert "audio-debug" in names
+    body = loader.load_instructions("audio-debug")
+    assert "system_profiler SPAudioDataType" in body
+
+
+@pytest.mark.asyncio
+async def test_install_skill_extracts_off_event_loop(settings, fake_home):
+    """``_extract_tarball`` must be invoked via ``asyncio.to_thread`` so a
+    multi-MB archive cannot freeze TTS / transcription / heartbeat."""
+    tarball = _make_tarball()
+    entry = _entry()
+
+    seen: list[str] = []
+    real_to_thread = asyncio.to_thread
+
+    async def _spy(func, /, *args, **kwargs):
+        if func is installer._extract_tarball:
+            seen.append("extract_off_loop")
+        return await real_to_thread(func, *args, **kwargs)
+
+    with _patch_download(tarball), patch("asyncio.to_thread", _spy):
+        result = await installer.install_skill(
+            entry, settings=settings, user_confirmed=True
+        )
+    assert result.success is True
+    assert "extract_off_loop" in seen

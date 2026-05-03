@@ -82,6 +82,30 @@ def test_render_includes_context_blocks() -> None:
     assert "MCP servers: linear, github" in out
 
 
+def test_render_includes_host_os_line() -> None:
+    out = render_native_system_prompt(persona="", context=None, language="en")
+    assert "Host OS:" in out
+
+
+def test_render_prefers_bash_for_environment_questions() -> None:
+    """Environment/system questions must route to bash first, not
+    discover_capability — fixes the 'audio devices' regression where the
+    model claimed it had no tools instead of running a shell command."""
+    out = render_native_system_prompt(persona="", context=None, language="en")
+    # The bash-first reflex must appear before the discover_capability
+    # fallback so the model reads it first.
+    bash_idx = out.find("ALWAYS try `bash` first")
+    discover_idx = out.find("first call discover_capability")
+    assert bash_idx != -1, "bash-first rule missing"
+    assert discover_idx != -1, "discover_capability fallback missing"
+    assert bash_idx < discover_idx, (
+        "bash-first reflex must precede discover_capability fallback"
+    )
+    # Audio-device example should be present so the model has a concrete
+    # template for the failing case.
+    assert "audio" in out.lower()
+
+
 def test_render_skips_empty_context_blocks() -> None:
     ctx = {
         "time": "12:00:00",

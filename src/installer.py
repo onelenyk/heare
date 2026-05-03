@@ -6,6 +6,7 @@ LLM tool call before any filesystem mutation occurs.
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
 import logging
@@ -28,11 +29,26 @@ from .mcp_utils import read_mcp_servers, write_mcp_servers
 logger = logging.getLogger("heare.installer")
 
 
+# Hard wall-clock ceiling for any single download attempt. Higher than the
+# httpx per-op timeout so the per-op fires first on a clean read stall, but
+# bounds the worst case (slow trickle below the read window) to a value that
+# won't freeze the bot for minutes.
+_DOWNLOAD_OVERALL_TIMEOUT_S = 30.0
+
+# Max body size accepted from a tarball download. Codeload tarballs for
+# whole repos can be tens of MB; we still want a ceiling so a runaway
+# stream cannot exhaust memory or the event loop.
+_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024
+
+
 MSG_NO_CONSENT_EN = "Speaker ID or passphrase is required to install tools. Please configure one in settings."
 MSG_NO_CONSENT_UK = "Для встановлення інструментів потрібен Speaker ID або кодова фраза. Налаштуй у параметрах."
 
 MSG_INSTALLED_SKILL_EN = "Installed {slug}. You can use it now."
 MSG_INSTALLED_SKILL_UK = "Встановив {slug}. Можеш користуватися."
+
+MSG_CREATED_SKILL_EN = "Created skill {slug}. You can run it now."
+MSG_CREATED_SKILL_UK = "Створив навичку {slug}. Можеш користуватися."
 
 MSG_INSTALLED_MCP_EN = "Installed MCP server {slug}. Restart required to use it."
 MSG_INSTALLED_MCP_UK = "Встановив MCP сервер {slug}. Потрібен перезапуск, щоб використати."
@@ -125,18 +141,82 @@ def _source_marketplace(install_url: str | None) -> str:
     return host.lower()
 
 
-async def _download(url: str, *, timeout: float = 2.5) -> bytes:
+async def _download(
+    url: str,
+    *,
+    timeout: float = 2.5,
+    overall_timeout: float = _DOWNLOAD_OVERALL_TIMEOUT_S,
+    max_bytes: int = _DOWNLOAD_MAX_BYTES,
+) -> bytes:
+    """GET ``url`` with a hard wall-clock ceiling and a body-size cap.
+
+    ``timeout`` is the per-op httpx timeout (connect/read/write/pool).
+    ``overall_timeout`` is the total wall time after which the request is
+    aborted, regardless of per-chunk progress — guards against slow-trickle
+    streams that the per-op read timeout cannot detect.
+
+    Every exit path logs a single ``[INSTALL] ←`` line so a hung install
+    can never disappear silently.
+    """
     started = time.monotonic()
-    logger.info("[INSTALL] → GET %s (timeout=%.1fs)", url, timeout)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.get(url)
-    latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
-        "[INSTALL] ← status=%d bytes=%d latency_ms=%d",
-        resp.status_code, len(resp.content), latency_ms,
+        "[INSTALL] → GET %s (timeout=%.1fs, overall=%.1fs, max=%dMB)",
+        url, timeout, overall_timeout, max_bytes // (1024 * 1024),
     )
-    resp.raise_for_status()
-    return resp.content
+
+    async def _do_get() -> bytes:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("GET", url) as resp:
+                resp.raise_for_status()
+                buf = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    buf.extend(chunk)
+                    if len(buf) > max_bytes:
+                        raise InstallFailed(
+                            f"download_too_large:{len(buf)}>{max_bytes}"
+                        )
+                logger.info(
+                    "[INSTALL] ← status=%d bytes=%d latency_ms=%d",
+                    resp.status_code, len(buf),
+                    int((time.monotonic() - started) * 1000),
+                )
+                return bytes(buf)
+
+    try:
+        return await asyncio.wait_for(_do_get(), timeout=overall_timeout)
+    except asyncio.TimeoutError as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.warning(
+            "[INSTALL] ← TIMEOUT url=%s overall=%.1fs latency_ms=%d",
+            url, overall_timeout, latency_ms,
+        )
+        raise InstallFailed("download_timeout") from exc
+    except asyncio.CancelledError:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.warning(
+            "[INSTALL] ← CANCELLED url=%s latency_ms=%d", url, latency_ms,
+        )
+        raise
+    except httpx.HTTPError as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.warning(
+            "[INSTALL] ← HTTPError url=%s err=%s latency_ms=%d",
+            url, exc, latency_ms,
+        )
+        raise
+    except InstallFailed as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.warning(
+            "[INSTALL] ← FAILED url=%s err=%s latency_ms=%d",
+            url, exc, latency_ms,
+        )
+        raise
+    except Exception as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.exception(
+            "[INSTALL] ← UNEXPECTED url=%s latency_ms=%d", url, latency_ms,
+        )
+        raise InstallFailed("download_unexpected") from exc
 
 
 def _check_member_safety(member: tarfile.TarInfo) -> None:
@@ -438,6 +518,11 @@ async def install_skill(
 
         try:
             content = await _download(download_url, timeout=15.0)
+        except InstallFailed:
+            # _download already logged the specific failure (timeout, too
+            # large, unexpected). Propagate the original reason code so the
+            # tool result tells the LLM why we stopped.
+            raise
         except httpx.HTTPError as exc:
             logger.warning("download failed for %s: %s", download_url, exc)
             raise InstallFailed("download_failed") from exc
@@ -447,10 +532,22 @@ async def install_skill(
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp) / slug
+            extract_started = time.monotonic()
             try:
-                _extract_tarball(content, tmp_path, subpath=subpath)
+                # Tarball extraction is CPU/IO-bound and synchronous; run
+                # it off the event loop so TTS, transcription, and other
+                # async stages keep flowing while a multi-MB archive is
+                # being unpacked.
+                await asyncio.to_thread(
+                    _extract_tarball, content, tmp_path, subpath
+                )
             except tarfile.TarError as exc:
                 raise InstallFailed("invalid_archive") from exc
+            logger.info(
+                "[INSTALL] extracted %d bytes in %dms",
+                len(content),
+                int((time.monotonic() - extract_started) * 1000),
+            )
 
             if not (tmp_path / "SKILL.md").exists():
                 raise InstallFailed("invalid_archive")
@@ -486,6 +583,159 @@ async def install_skill(
         slug=slug,
         message_en=MSG_INSTALLED_SKILL_EN.format(slug=slug),
         message_uk=MSG_INSTALLED_SKILL_UK.format(slug=slug),
+        requires_restart=False,
+    )
+
+
+# Skill name validation mirrors agent_skills.SkillsLoader._parse_skill_metadata
+# (lowercase-hyphenated). Keeping the regex local avoids a circular import.
+_SKILL_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+_SKILL_NAME_MAX = 64
+_SKILL_DESC_MAX = 200
+_SKILL_BODY_MAX = _MAX_SKILL_MD_BYTES  # 1 MB — enforced by the loader too
+
+
+def _author_skill_md(name: str, description: str, body: str) -> str:
+    """Render a SKILL.md from user-supplied parts.
+
+    The frontmatter must satisfy the loader's parser exactly: ``name`` and
+    ``description`` keys, dash-fenced. We trim the body and ensure a single
+    trailing newline so the file is byte-stable across re-creates.
+    """
+    safe_desc = description.replace("\n", " ").strip()
+    safe_body = body.strip()
+    return (
+        "---\n"
+        f"name: {name}\n"
+        f"description: {safe_desc}\n"
+        "---\n"
+        f"{safe_body}\n"
+    )
+
+
+async def create_skill(
+    *,
+    name: str,
+    description: str,
+    body: str,
+    settings,
+    capability_index: CapabilityIndex | None = None,
+    user_confirmed: bool = False,
+    replace: bool = False,
+) -> InstallResult:
+    """Author a user-supplied skill at ``~/.heare/skills/<name>/``.
+
+    Mirrors ``install_skill`` for consent gating, slug-collision handling,
+    loader/index refresh, and result shape — but the body comes from the
+    conversation rather than the marketplace, so there is no download,
+    no checksum, and no signature requirement.
+
+    Raises:
+        InstallRefused: when consent is missing, ``user_confirmed`` is
+            False, or the slug already exists and ``replace`` is False.
+        InstallFailed: when the input fails validation (bad name,
+            missing description, oversize body).
+    """
+    started = time.monotonic()
+    slug = (name or "").strip()
+
+    # Validation goes BEFORE consent so a malformed call doesn't waste a
+    # confirmation event on the user.
+    if not slug:
+        raise InstallFailed("name_required")
+    if len(slug) > _SKILL_NAME_MAX:
+        raise InstallFailed("name_too_long")
+    if not _SKILL_NAME_RE.match(slug):
+        raise InstallFailed("name_invalid_format")
+
+    desc = (description or "").strip()
+    if not desc:
+        raise InstallFailed("description_required")
+    if len(desc) > _SKILL_DESC_MAX:
+        raise InstallFailed("description_too_long")
+
+    body_text = body or ""
+    if not body_text.strip():
+        raise InstallFailed("body_required")
+    if len(body_text.encode("utf-8")) > _SKILL_BODY_MAX:
+        raise InstallFailed("body_too_large")
+
+    try:
+        _check_consent(settings, user_confirmed)
+    except InstallRefused as exc:
+        if str(exc) == "no_consent_method":
+            return InstallResult(
+                success=False,
+                slug=slug,
+                message_en=MSG_NO_CONSENT_EN,
+                message_uk=MSG_NO_CONSENT_UK,
+                requires_restart=False,
+                error_code="no_consent_method",
+            )
+        raise
+
+    # User-authored skills live at ~/.heare/skills/<slug>/, NOT under
+    # _marketplace/, so the loader treats them as user-authored (no
+    # ``installed_via_discovery`` flag) and ``revoke_capability`` won't
+    # delete them — see SkillsLoader and revoke_capability.
+    target = Path.home() / ".heare" / "skills" / slug
+    if target.exists():
+        if not replace:
+            raise InstallRefused("slug_collision")
+        shutil.rmtree(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    skill_md = _author_skill_md(slug, desc, body_text)
+
+    # Atomic write: build in a tempdir, then move into place — same pattern
+    # ``install_skill`` uses so a failure mid-write cannot leave a partially
+    # created skill folder on disk.
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / slug
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "SKILL.md").write_text(skill_md, encoding="utf-8")
+        shutil.move(str(tmp_path), str(target))
+
+    # Sidecar marks provenance. ``source_marketplace`` deliberately uses
+    # the literal "user_authored" so test_user_authored_skill_no_sidecar_no_flag
+    # and downstream telemetry can distinguish authored from installed.
+    sidecar = {
+        "source_url": "",
+        "install_url": "",
+        "version": "",
+        "install_timestamp": _now_iso(),
+        "signature_verified": False,
+        "user_confirmed": user_confirmed,
+        "source_marketplace": "user_authored",
+        "checksum_sha256": "",
+    }
+    (target / ".install.json").write_text(json.dumps(sidecar, indent=2))
+
+    # Refresh runtime caches so the new skill is callable on the next turn.
+    try:
+        from .agent_skills import get_skills_loader
+
+        get_skills_loader(settings).invalidate()
+    except Exception:
+        logger.warning("SkillsLoader.invalidate() failed", exc_info=True)
+
+    if capability_index is not None:
+        try:
+            capability_index.rebuild()
+        except Exception:
+            logger.warning("capability_index.rebuild() failed", exc_info=True)
+
+    latency_ms = int((time.monotonic() - started) * 1000)
+    logger.info(
+        "[CAPABILITY CREATE] slug=%s source=skill success=True latency_ms=%d",
+        slug, latency_ms,
+    )
+
+    return InstallResult(
+        success=True,
+        slug=slug,
+        message_en=MSG_CREATED_SKILL_EN.format(slug=slug),
+        message_uk=MSG_CREATED_SKILL_UK.format(slug=slug),
         requires_restart=False,
     )
 

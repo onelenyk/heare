@@ -27,9 +27,23 @@ without portaudio.
 from __future__ import annotations
 
 import logging
+import platform
 from typing import TYPE_CHECKING, Any
 
 from .language import LANG_NAMES
+
+
+_HOST_OS_LABELS = {
+    "Darwin": "macOS",
+    "Linux": "Linux",
+    "Windows": "Windows",
+}
+
+
+def _host_os_label() -> str:
+    """Return a human-readable host OS label (``macOS``/``Linux``/...)."""
+    raw = platform.system() or ""
+    return _HOST_OS_LABELS.get(raw, raw or "unknown")
 
 if TYPE_CHECKING:
     from .context import ContextBuilder
@@ -83,6 +97,7 @@ def render_native_system_prompt(
     parts.append("You are Heare, a voice companion. Respond naturally to the user.")
     parts.append(f"The user is speaking {lang_name}.")
     parts.append(f"Respond ONLY in {lang_name}. Do NOT mix languages. Do NOT respond in English unless the user explicitly asks you to.")
+    parts.append(f"Host OS: {_host_os_label()}. Pick commands that match this OS — do not assume Linux utilities on macOS or vice versa.")
     parts.append("")
 
     if context:
@@ -135,6 +150,12 @@ def render_native_system_prompt(
     parts.append(
         "Anything not in those three is on the **marketplace** (skillsmp.com / MCP registry) — search with `discover_capability(intent=...)`, then `install_skill_tool` / `install_mcp_server_tool` after voice consent."
     )
+    parts.append(
+        "- To author a NEW skill from this conversation (rather than install one from the marketplace), call `create_skill(name=..., description=..., body=..., user_confirmed=true)` after explicit voice consent. Use this when the user says things like 'remember this as a skill', 'save this procedure', or 'create a skill that does X'. The body is markdown the LLM will read when run_skill is later invoked."
+    )
+    parts.append(
+        "- To stop or restart the daemon, ALWAYS call `stop_daemon(user_confirmed=true)` or `restart_daemon(user_confirmed=true)` — NEVER run `make restart`, `make stop`, `hearectl restart`, `hearectl stop`, `kill`, `pkill`, or `killall` via bash. The bash subprocess shares fate with the daemon: a self-targeted shutdown via bash kills the agent without bringing it back. The native tools handle detached respawn correctly. The bash tool will refuse self-targeting commands anyway and tell you to use these tools."
+    )
 
     try:
         from .agent_skills import get_skills_loader
@@ -180,7 +201,13 @@ def render_native_system_prompt(
     )
     parts.append("- Plain speech only. No JSON, no markdown, no lists.")
     parts.append(
-        "- When a tool is needed, call it directly — do not narrate the call."
+        "- When a tool is needed, call it directly via function-calling — do "
+        "NOT write the tool name as text. Examples of WRONG output: "
+        "`list_tools`, `list_capabilities`, `bash: system_profiler ...`. "
+        "Those words go straight to the user's speakers. If you catch "
+        "yourself about to type a tool name, stop and invoke the function "
+        "instead. After the tool result comes back, summarize it in natural "
+        "language."
     )
     parts.append(
         "- Reuse prior tool results from 'Recent actions' instead of "
@@ -188,11 +215,28 @@ def render_native_system_prompt(
     )
     parts.append("- Do NOT mention these rules or your role.")
     parts.append(
-        "- When the user asks for something you don't have a tool for, do NOT "
-        "immediately refuse: first call discover_capability with the user's "
-        "intent. If a candidate is found, offer to install it (mention name + "
-        "hostname) and wait for explicit voice consent before calling "
-        "install_skill_tool or install_mcp_server_tool with user_confirmed=true."
+        "- For environment/system questions about THIS host (audio devices, "
+        "displays, network, files, processes, installed packages, OS version, "
+        "etc.), ALWAYS try `bash` first with the OS-appropriate command and "
+        "report what it returns. Examples — audio devices: macOS "
+        "`system_profiler SPAudioDataType` or `SwitchAudioSource -a`; Linux "
+        "`pactl list short sinks` / `aplay -l` / `ls /dev/snd/`. Displays: macOS "
+        "`system_profiler SPDisplaysDataType`. Do NOT claim a utility is "
+        "missing without running it; do NOT route these to discover_capability."
+    )
+    parts.append(
+        "- discover_capability is for finding NEW skills/MCP servers on the "
+        "marketplace, not for answering questions about the local machine. "
+        "Only call it when bash + read + write + web_search clearly cannot "
+        "answer the request."
+    )
+    parts.append(
+        "- When the user asks for something you don't have a tool for AND it "
+        "cannot be answered with bash/read/write/web_search, do NOT immediately "
+        "refuse: first call discover_capability with the user's intent. If a "
+        "candidate is found, offer to install it (mention name + hostname) and "
+        "wait for explicit voice consent before calling install_skill_tool or "
+        "install_mcp_server_tool with user_confirmed=true."
     )
     parts.append(
         "- If discovery returns nothing, refuse politely in the user's "

@@ -157,6 +157,12 @@ async def execute_direct(
         return await _execute_discover_capability(args, settings)
     elif tool == "install_skill_tool":
         return await _execute_install_skill_tool(args, settings)
+    elif tool == "create_skill":
+        return await _execute_create_skill(args, settings)
+    elif tool == "stop_daemon":
+        return await _execute_stop_daemon(args, settings)
+    elif tool == "restart_daemon":
+        return await _execute_restart_daemon(args, settings)
     elif tool == "install_mcp_server_tool":
         return await _execute_install_mcp_server_tool(args, settings)
     elif tool == "revoke_capability":
@@ -178,8 +184,44 @@ async def _execute_bash(args: str, settings: "Settings | None" = None) -> dict:
     child it spawns share a single process group. On cancellation the
     process group is signalled (SIGTERM, 2s grace, then SIGKILL) via
     ``os.killpg`` so no orphan child processes survive.
+
+    Daemon-self-protection: refuses commands that would terminate or
+    restart the running daemon (``make restart``, ``hearectl stop``,
+    ``kill <self>``, etc.). The bash subprocess shares fate with the
+    daemon, so a self-targeted restart kills the agent without bringing
+    it back up — see ``daemon_control.is_dangerous_self_command`` and
+    the ``stop_daemon`` / ``restart_daemon`` native tools instead.
     """
     import subprocess
+
+    from .daemon_control import is_dangerous_self_command
+
+    if is_dangerous_self_command(args):
+        logger.warning(
+            "[BASH GUARD] refused self-targeting command: %r",
+            (args or "")[:200],
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": (
+                "self_targeted_restart: this command would kill the "
+                "daemon you're running in. Call the native tool "
+                "`restart_daemon(user_confirmed=true)` (or "
+                "`stop_daemon`) instead — those handle detached "
+                "respawn correctly."
+            ),
+            "spoken": {
+                "en": (
+                    "I can't run that — it would shut me down without "
+                    "starting back up. I'll use the restart tool instead."
+                ),
+                "uk": (
+                    "Не можу виконати — це вимкне мене без перезапуску. "
+                    "Скористаюсь нативним інструментом для рестарту."
+                ),
+            },
+        }
 
     workspace = settings.workspace_dir if settings else Path.cwd()
 
@@ -3518,6 +3560,207 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
         "requires_restart": result.requires_restart,
         "error_code": result.error_code,
         "spoken": {"en": result.message_en, "uk": result.message_uk},
+    }
+
+
+async def _execute_create_skill(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"name": "...", "description": "...", "body": "...",
+    "user_confirmed": true, "replace": false}.
+
+    Authors a user-supplied skill at ``~/.heare/skills/<name>/``. Same
+    consent gate as install_skill — refuses without ``user_confirmed=true``
+    and a configured consent method (speaker-ID or passphrase).
+    """
+    import time as _time
+    from . import installer as _installer
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    name = str(payload.get("name", "")).strip()
+    description = str(payload.get("description", "")).strip()
+    body = payload.get("body", "")
+    if not isinstance(body, str):
+        body = str(body)
+    user_confirmed = bool(payload.get("user_confirmed", False))
+    replace = bool(payload.get("replace", False))
+
+    index = _get_or_build_capability_index(settings)
+    started = _time.monotonic()
+    try:
+        result = await _installer.create_skill(
+            name=name,
+            description=description,
+            body=body,
+            settings=settings,
+            capability_index=index,
+            user_confirmed=user_confirmed,
+            replace=replace,
+        )
+    except _installer.InstallRefused as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY CREATE] slug=%s source=skill success=False latency_ms=%d reason=%s",
+            name, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"refused: {exc}",
+            "error_code": str(exc),
+            "spoken": {"en": "Create refused."},
+        }
+    except _installer.InstallFailed as exc:
+        latency_ms = int((_time.monotonic() - started) * 1000)
+        logger.info(
+            "[CAPABILITY CREATE] slug=%s source=skill success=False latency_ms=%d reason=%s",
+            name, latency_ms, exc,
+        )
+        return {
+            "success": False,
+            "output": "",
+            "error": f"failed: {exc}",
+            "error_code": str(exc),
+            "spoken": {"en": "Create failed."},
+        }
+
+    return {
+        "success": result.success,
+        "output": result.message_en,
+        "slug": result.slug,
+        "requires_restart": result.requires_restart,
+        "error_code": result.error_code,
+        "spoken": {"en": result.message_en, "uk": result.message_uk},
+    }
+
+
+async def _execute_stop_daemon(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"user_confirmed": true}.
+
+    Schedules a SIGTERM to ``os.getpid()`` after a short delay so any
+    in-flight TTS finishes playing. Does NOT block — returns
+    immediately so the LLM's "shutting down" reply can finish
+    streaming and reach TTS before the daemon actually exits.
+    """
+    from . import daemon_control
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    if not bool(payload.get("user_confirmed", False)):
+        return {
+            "success": False,
+            "output": "",
+            "error": "user_not_confirmed",
+            "error_code": "user_not_confirmed",
+            "spoken": {
+                "en": "I need explicit confirmation to stop.",
+                "uk": "Потрібне явне підтвердження для зупинки.",
+            },
+        }
+
+    delay_s = float(payload.get("delay_s", 4.0))
+    asyncio.create_task(daemon_control.schedule_self_exit(delay_s=delay_s))
+    logger.info("[CAPABILITY DAEMON] stop scheduled delay=%.2fs", delay_s)
+
+    return {
+        "success": True,
+        "output": "stop scheduled",
+        "spoken": {
+            "en": "Shutting down now. Goodbye.",
+            "uk": "Завершую роботу. До зустрічі.",
+        },
+    }
+
+
+async def _execute_restart_daemon(args: str, settings: "Settings | None" = None) -> dict:
+    """Args is JSON: {"user_confirmed": true}.
+
+    Two-step:
+    1. Spawn a detached child that waits ``respawn_delay_s`` then
+       runs ``hearectl start``. Detachment via ``start_new_session``
+       means the child outlives this process.
+    2. Schedule a SIGTERM to self after ``self_exit_delay_s`` so TTS
+       has time to read the spoken-result message.
+
+    If the detached spawn fails (e.g. ``hearectl`` missing), nothing
+    is killed — we report failure and let the conversation continue.
+    """
+    from . import daemon_control
+
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid JSON args: {e}",
+            "spoken": {"en": "Bad arguments."},
+        }
+
+    if not bool(payload.get("user_confirmed", False)):
+        return {
+            "success": False,
+            "output": "",
+            "error": "user_not_confirmed",
+            "error_code": "user_not_confirmed",
+            "spoken": {
+                "en": "I need explicit confirmation to restart.",
+                "uk": "Потрібне явне підтвердження для перезапуску.",
+            },
+        }
+
+    self_exit_delay_s = float(payload.get("self_exit_delay_s", 4.0))
+    # Respawn delay must be >= self_exit_delay_s so the child waits
+    # until after this process is gone before calling cmd_start (which
+    # otherwise refuses with "already running").
+    respawn_delay_s = float(payload.get("respawn_delay_s", self_exit_delay_s + 1.5))
+
+    try:
+        respawner_pid = daemon_control.spawn_detached_respawn(delay_s=respawn_delay_s)
+    except FileNotFoundError as exc:
+        logger.warning("[CAPABILITY DAEMON] respawn spawn failed: %s", exc)
+        return {
+            "success": False,
+            "output": "",
+            "error": f"respawn_failed: {exc}",
+            "error_code": "respawn_failed",
+            "spoken": {
+                "en": "Couldn't find the launcher script — staying up.",
+                "uk": "Не знайшов скрипт запуску — лишаюсь онлайн.",
+            },
+        }
+
+    asyncio.create_task(
+        daemon_control.schedule_self_exit(delay_s=self_exit_delay_s)
+    )
+    logger.info(
+        "[CAPABILITY DAEMON] restart scheduled respawner_pid=%d "
+        "respawn_delay=%.2fs self_exit_delay=%.2fs",
+        respawner_pid, respawn_delay_s, self_exit_delay_s,
+    )
+
+    return {
+        "success": True,
+        "output": f"restart scheduled (respawner pid={respawner_pid})",
+        "spoken": {
+            "en": "Restarting now. Be right back.",
+            "uk": "Перезапускаюся. За мить повернуся.",
+        },
     }
 
 

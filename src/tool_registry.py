@@ -290,6 +290,44 @@ TOOLS: dict[str, Tool] = {
         description="Install a skill from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
         enabled=True,
     ),
+    "create_skill": Tool(
+        name="create_skill",
+        sdk_name="CreateSkill",
+        execution="direct",
+        description=(
+            "Author a new local skill from the conversation. Use when the user "
+            "asks to remember a procedure or workflow as a reusable skill. The "
+            "skill body is markdown instructions the LLM will read when "
+            "run_skill is later invoked. Requires user_confirmed=true after "
+            "explicit voice consent."
+        ),
+        enabled=True,
+    ),
+    "stop_daemon": Tool(
+        name="stop_daemon",
+        sdk_name="StopDaemon",
+        execution="direct",
+        description=(
+            "Gracefully stop the running daemon. Use ONLY when the user "
+            "explicitly asks to stop / shut down / quit / kill the bot. "
+            "Never call this to 'free resources' or as part of any other "
+            "task. Requires user_confirmed=true after explicit voice consent."
+        ),
+        enabled=True,
+    ),
+    "restart_daemon": Tool(
+        name="restart_daemon",
+        sdk_name="RestartDaemon",
+        execution="direct",
+        description=(
+            "Restart the running daemon. Use when the user asks to restart "
+            "/ reload after config or code changes. This is the ONLY safe "
+            "way to restart from inside the daemon — never run `make "
+            "restart` or `hearectl restart` via bash, those terminate the "
+            "agent without bringing it back. Requires user_confirmed=true."
+        ),
+        enabled=True,
+    ),
     "install_mcp_server_tool": Tool(
         name="install_mcp_server_tool",
         sdk_name="InstallMcpServerTool",
