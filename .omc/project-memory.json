@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1777751069387,
+  "lastScanned": 1777878883884,
   "projectRoot": "/Users/lenyk/myprojects/heare",
   "techStack": {
     "languages": [
@@ -61,7 +61,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1777751069374,
+      "lastAccessed": 1777878883872,
       "keyFiles": [
         "action_execution_flow.md",
         "conversation_logic.md",
@@ -73,7 +73,7 @@
       "path": "migrations",
       "purpose": "Database migrations",
       "fileCount": 2,
-      "lastAccessed": 1777751069375,
+      "lastAccessed": 1777878883872,
       "keyFiles": [
         "01_add_conversations.sql",
         "02_dynamic_tools.sql"
@@ -83,7 +83,7 @@
       "path": "prompts",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1777751069375,
+      "lastAccessed": 1777878883873,
       "keyFiles": [
         "decider.txt",
         "identity-bootstrap.txt",
@@ -94,7 +94,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 3,
-      "lastAccessed": 1777751069375,
+      "lastAccessed": 1777878883873,
       "keyFiles": [
         "bench_claude_ttft.py",
         "bench_openrouter.py",
@@ -105,7 +105,7 @@
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1777751069375,
+      "lastAccessed": 1777878883873,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -115,8 +115,8 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 48,
-      "lastAccessed": 1777751069376,
+      "fileCount": 52,
+      "lastAccessed": 1777878883873,
       "keyFiles": [
         "__init__.py",
         "agent_skills.py",
@@ -128,8 +128,8 @@
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 58,
-      "lastAccessed": 1777751069376,
+      "fileCount": 69,
+      "lastAccessed": 1777878883873,
       "keyFiles": [
         "__init__.py",
         "test_agent_skills.py",
@@ -142,7 +142,7 @@
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
       "fileCount": 3,
-      "lastAccessed": 1777751069376,
+      "lastAccessed": 1777878883874,
       "keyFiles": [
         "cancel_stopwords.txt",
         "decider_prompt_flag_off.golden.txt"
@@ -152,14 +152,14 @@
   "hotPaths": [
     {
       "path": "src/pipeline.py",
-      "accessCount": 105,
-      "lastAccessed": 1777754182068,
+      "accessCount": 117,
+      "lastAccessed": 1777830762589,
       "type": "file"
     },
     {
       "path": "src/direct_tools.py",
-      "accessCount": 97,
-      "lastAccessed": 1777755519496,
+      "accessCount": 99,
+      "lastAccessed": 1777830438657,
       "type": "file"
     },
     {
@@ -181,33 +181,33 @@
       "type": "file"
     },
     {
+      "path": "src/tool_registry.py",
+      "accessCount": 54,
+      "lastAccessed": 1777830444180,
+      "type": "file"
+    },
+    {
       "path": "tests/test_watch.py",
       "accessCount": 51,
       "lastAccessed": 1777797838500,
       "type": "file"
     },
     {
-      "path": "src/tool_registry.py",
-      "accessCount": 50,
-      "lastAccessed": 1777797835541,
-      "type": "file"
-    },
-    {
       "path": "src/llm_context_injector.py",
-      "accessCount": 49,
-      "lastAccessed": 1777755545185,
+      "accessCount": 51,
+      "lastAccessed": 1777830445789,
       "type": "file"
     },
     {
       "path": "src/storage.py",
-      "accessCount": 41,
-      "lastAccessed": 1777797831178,
+      "accessCount": 49,
+      "lastAccessed": 1777828926198,
       "type": "file"
     },
     {
       "path": "src/main.py",
-      "accessCount": 33,
-      "lastAccessed": 1777797835390,
+      "accessCount": 34,
+      "lastAccessed": 1777888439790,
       "type": "file"
     },
     {
@@ -224,20 +224,20 @@
     },
     {
       "path": "src/mcp_utils.py",
-      "accessCount": 14,
-      "lastAccessed": 1777728605368,
+      "accessCount": 15,
+      "lastAccessed": 1777830315714,
+      "type": "file"
+    },
+    {
+      "path": "Makefile",
+      "accessCount": 15,
+      "lastAccessed": 1777888543539,
       "type": "file"
     },
     {
       "path": "src/assistant_response_logger.py",
       "accessCount": 13,
       "lastAccessed": 1777634212646,
-      "type": "file"
-    },
-    {
-      "path": "Makefile",
-      "accessCount": 12,
-      "lastAccessed": 1777754832132,
       "type": "file"
     },
     {
