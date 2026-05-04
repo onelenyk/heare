@@ -249,6 +249,9 @@ async def fetch_skill_candidates(
 # args). Network-sourced entries take precedence on slug collision so a
 # registry can override these.
 _BUILTIN_MCP_CATALOG: tuple[IndexEntry, ...] = (
+    # ------------------------------------------------------------------
+    # Zero-config MCPs — install and run with no further setup.
+    # ------------------------------------------------------------------
     IndexEntry(
         source="mcp",
         name="chrome-devtools",
@@ -280,6 +283,270 @@ _BUILTIN_MCP_CATALOG: tuple[IndexEntry, ...] = (
         network_required=False,
         launch={"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]},
     ),
+    IndexEntry(
+        source="mcp",
+        name="time",
+        description="Current time and timezone conversions — IANA zones, DST-aware.",
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=False,
+        launch={"command": "uvx", "args": ["mcp-server-time"]},
+    ),
+    IndexEntry(
+        source="mcp",
+        name="sequential-thinking",
+        description=(
+            "Structured chain-of-thought scratchpad — lets the agent break "
+            "complex problems into ordered steps with revisable thoughts."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=False,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="puppeteer",
+        description=(
+            "Browser automation via Puppeteer — navigate, screenshot, fill "
+            "forms, run JS. Use when a Chromium-only feature is needed."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="playwright",
+        description=(
+            "Cross-browser automation via Playwright — Chromium, Firefox, "
+            "WebKit. Snapshot-based interactions, accessibility tree access."
+        ),
+        install_url="https://github.com/microsoft/playwright-mcp",
+        network_required=True,
+        launch={"command": "npx", "args": ["-y", "@playwright/mcp@latest"]},
+    ),
+    IndexEntry(
+        source="mcp",
+        name="context7",
+        description=(
+            "Fetch up-to-date library/SDK documentation — version-specific "
+            "code examples for any package, sourced live."
+        ),
+        install_url="https://github.com/upstash/context7",
+        network_required=True,
+        launch={"command": "npx", "args": ["-y", "@upstash/context7-mcp@latest"]},
+    ),
+    # ------------------------------------------------------------------
+    # Path-required MCPs — discovery surfaces them, but the user must
+    # supply a path arg via ``register_mcp_server`` after install.
+    # ------------------------------------------------------------------
+    IndexEntry(
+        source="mcp",
+        name="filesystem",
+        description=(
+            "Sandboxed filesystem access — list, read, write, search files "
+            "under one or more allowed roots. Pass each root as an arg."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=False,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="git",
+        description=(
+            "Read git repository state — log, diff, blame, branch, status. "
+            "Pass the repository path with ``--repository <path>``."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=False,
+        launch={"command": "uvx", "args": ["mcp-server-git"]},
+    ),
+    IndexEntry(
+        source="mcp",
+        name="sqlite",
+        description=(
+            "SQLite database access — query, schema introspection. "
+            "Pass the database path with ``--db-path <path>``."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=False,
+        launch={"command": "uvx", "args": ["mcp-server-sqlite"]},
+    ),
+    IndexEntry(
+        source="mcp",
+        name="postgres",
+        description=(
+            "PostgreSQL database access — query and schema. Pass the "
+            "connection string as an arg, e.g. ``postgresql://user@host/db``."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-postgres"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="redis",
+        description=(
+            "Redis key-value store access — get, set, list keys, run "
+            "commands. Pass the URL as an arg, e.g. ``redis://localhost``."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-redis"],
+        },
+    ),
+    # ------------------------------------------------------------------
+    # API-key-required MCPs — discovery surfaces them; install needs the
+    # key supplied via ``register_mcp_server`` env.
+    # ------------------------------------------------------------------
+    IndexEntry(
+        source="mcp",
+        name="github",
+        description=(
+            "GitHub API — issues, pull requests, files, commits, search. "
+            "Requires GITHUB_PERSONAL_ACCESS_TOKEN env var."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-github"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="gitlab",
+        description=(
+            "GitLab API — issues, merge requests, files, pipelines. "
+            "Requires GITLAB_PERSONAL_ACCESS_TOKEN env var."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-gitlab"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="slack",
+        description=(
+            "Slack API — read channels, send messages, manage threads. "
+            "Requires SLACK_BOT_TOKEN and SLACK_TEAM_ID env vars."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-slack"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="brave-search",
+        description=(
+            "Web search via Brave Search API — text and image. "
+            "Requires BRAVE_API_KEY env var (free tier available)."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="google-maps",
+        description=(
+            "Google Maps — geocode, directions, place lookup, distance "
+            "matrix. Requires GOOGLE_MAPS_API_KEY env var."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-google-maps"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="gdrive",
+        description=(
+            "Google Drive — list and read files, search by query. "
+            "Requires Google OAuth credentials (one-time browser auth)."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="sentry",
+        description=(
+            "Sentry — fetch error and performance issues by ID. "
+            "Requires SENTRY_AUTH_TOKEN env var."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-sentry"],
+        },
+    ),
+    IndexEntry(
+        source="mcp",
+        name="notion",
+        description=(
+            "Notion — read and update pages, databases, comments. "
+            "Requires NOTION_API_KEY env var (Notion integration token)."
+        ),
+        install_url="https://github.com/makenotion/notion-mcp-server",
+        network_required=True,
+        launch={"command": "npx", "args": ["-y", "@notionhq/notion-mcp-server"]},
+    ),
+    IndexEntry(
+        source="mcp",
+        name="linear",
+        description=(
+            "Linear — issues, projects, cycles. "
+            "Requires LINEAR_API_KEY env var."
+        ),
+        install_url="https://github.com/jerhadf/linear-mcp-server",
+        network_required=True,
+        launch={"command": "npx", "args": ["-y", "mcp-linear"]},
+    ),
+    IndexEntry(
+        source="mcp",
+        name="everart",
+        description=(
+            "Image generation via EverArt — multiple models. "
+            "Requires EVERART_API_KEY env var."
+        ),
+        install_url="https://github.com/modelcontextprotocol/servers",
+        network_required=True,
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-everart"],
+        },
+    ),
 )
 
 
@@ -289,19 +556,95 @@ _BUILTIN_KEYWORDS: dict[str, tuple[str, ...]] = {
     "chrome-devtools": (
         "browser", "chrome", "devtools", "automate", "automation",
         "screenshot", "navigate", "click", "scrape", "web page", "headless",
+        "web", "navigate", "click", "form", "javascript", "cdp",
     ),
-    "fetch": ("fetch", "url", "http", "download", "request", "web content"),
-    "memory": ("memory", "remember", "recall", "store", "persist", "key-value"),
+    "fetch": ("fetch", "url", "http", "download", "request", "web content", "scrape", "markdown"),
+    "memory": ("memory", "remember", "recall", "store", "persist", "key-value", "kv", "storage"),
+    "time": ("time", "clock", "timezone", "date", "timestamp", "iana", "dst"),
+    "sequential-thinking": (
+        "thinking", "reasoning", "chain of thought", "scratchpad", "steps",
+        "plan", "break down", "thought", "reason",
+    ),
+    "puppeteer": (
+        "browser", "puppeteer", "chromium", "automation", "screenshot",
+        "scrape", "headless", "chrome", "navigate", "click", "form",
+    ),
+    "playwright": (
+        "browser", "playwright", "automation", "cross-browser", "firefox",
+        "webkit", "screenshot", "scrape", "headless", "navigate", "click",
+    ),
+    "context7": ("docs", "documentation", "library", "sdk", "examples", "reference", "code"),
+    "filesystem": (
+        "file", "files", "filesystem", "directory", "folder", "read", "write",
+        "search", "list", "path", "disk", "storage", "access",
+    ),
+    "git": (
+        "git", "repository", "repo", "version control", "commit", "diff",
+        "log", "blame", "branch", "status", "code", "history",
+    ),
+    "sqlite": (
+        "database", "sqlite", "db", "sql", "query", "schema", "table",
+        "sqlite3", "local database",
+    ),
+    "postgres": (
+        "database", "postgres", "postgresql", "db", "sql", "query", "schema",
+        "table", "rdbms", "relational",
+    ),
+    "redis": ("redis", "cache", "key-value", "kv", "store", "database", "nosql"),
+    "github": (
+        "github", "git", "issue", "pr", "pull request", "repository", "repo",
+        "commit", "code", "search", "api", "integration",
+    ),
+    "gitlab": (
+        "gitlab", "issue", "merge request", "pipeline", "repository", "repo",
+        "commit", "code", "api", "ci/cd",
+    ),
+    "slack": (
+        "slack", "chat", "message", "channel", "thread", "team", "communication",
+        "workspace", "im",
+    ),
+    "brave-search": (
+        "search", "web search", "brave", "query", "internet", "lookup",
+        "find", "google alternative",
+    ),
+    "google-maps": (
+        "maps", "google maps", "location", "geocode", "directions", "route",
+        "distance", "places", "address", "navigation", "gps",
+    ),
+    "gdrive": (
+        "google drive", "gdrive", "drive", "files", "google", "cloud storage",
+        "documents", "sheets", "storage",
+    ),
+    "sentry": (
+        "sentry", "error", "errors", "monitoring", "logging", "performance",
+        "issues", "bugs", "crash", "tracking",
+    ),
+    "notion": (
+        "notion", "notes", "database", "wiki", "docs", "pages", "knowledge",
+        "documentation", "collaboration",
+    ),
+    "linear": (
+        "linear", "issue", "project", "task", "bug", "cycle", "sprint",
+        "planning", "management", "workflow",
+    ),
+    "everart": ("image", "generate", "ai", "art", "everart", "create", "visual"),
 }
 
 
 def _query_builtin_catalog(query: str) -> list[IndexEntry]:
     """Filter the built-in catalog by case-insensitive substring match against
     name, description, and per-slug keyword aliases.
+
+    Special "list all" queries return the full catalog: "all", "available",
+    "list", "everything", "mcp", "mcps".
     """
     q = query.lower().strip()
     if not q:
         return []
+    # Special case: list all entries for broad "show me everything" queries
+    list_all_triggers = ("all", "available", "list", "everything", "mcp", "mcps")
+    if q in list_all_triggers:
+        return list(_BUILTIN_MCP_CATALOG)
     out: list[IndexEntry] = []
     for entry in _BUILTIN_MCP_CATALOG:
         haystack_parts = [entry.name.lower(), entry.description.lower()]

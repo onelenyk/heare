@@ -171,6 +171,8 @@ async def test_per_result_install_url_validated():
 
 @pytest.mark.asyncio
 async def test_fetch_mcp_candidates_happy_path():
+    """Network results are returned, and built-in catalog results are merged
+    (with network taking precedence on slug collision)."""
     payload = {
         "results": [
             {
@@ -183,10 +185,15 @@ async def test_fetch_mcp_candidates_happy_path():
     settings = _FakeSettings()
     with _patch_get(_mock_response(payload)):
         out = await marketplace.fetch_mcp_candidates("files", settings=settings)
-    assert len(out) == 1
+    # Network result + built-in catalog entries that match "files"
+    assert len(out) > 1
+    # First result is from network
     assert out[0].source == "mcp"
     assert out[0].name == "fs"
     assert out[0].install_url == "https://github.com/foo/fs"
+    # Built-in catalog entries that match "files" are also included
+    names = [e.name for e in out]
+    assert "filesystem" in names
 
 
 @pytest.mark.asyncio
@@ -198,6 +205,7 @@ async def test_empty_marketplace_url_returns_empty():
 
 @pytest.mark.asyncio
 async def test_fetch_mcp_candidates_parses_launch_block():
+    """Launch blocks from network results are parsed and included in entries."""
     payload = {
         "results": [
             {
@@ -215,7 +223,9 @@ async def test_fetch_mcp_candidates_parses_launch_block():
     settings = _FakeSettings()
     with _patch_get(_mock_response(payload)):
         out = await marketplace.fetch_mcp_candidates("files", settings=settings)
-    assert len(out) == 1
+    # Network result + built-in catalog entries that match "files"
+    assert len(out) > 1
+    # First result is from network with launch block parsed
     assert out[0].launch == {
         "command": "npx",
         "args": ["-y", "@foo/fs-mcp"],
@@ -302,9 +312,29 @@ def test_coerce_launch_rejects_non_dict():
 # ----------------------------------------------------------------------
 
 
-def test_builtin_catalog_has_three_curated_entries():
+def test_builtin_catalog_has_expanded_entries():
+    """The built-in catalog now includes 26 verified stdio MCP servers."""
     slugs = {e.name for e in marketplace._BUILTIN_MCP_CATALOG}
-    assert slugs == {"chrome-devtools", "fetch", "memory"}
+    # Zero-config MCPs
+    assert "chrome-devtools" in slugs
+    assert "fetch" in slugs
+    assert "memory" in slugs
+    assert "time" in slugs
+    assert "sequential-thinking" in slugs
+    # Path-required MCPs
+    assert "filesystem" in slugs
+    assert "git" in slugs
+    assert "sqlite" in slugs
+    assert "postgres" in slugs
+    assert "redis" in slugs
+    # API-key-required MCPs
+    assert "github" in slugs
+    assert "slack" in slugs
+    assert "brave-search" in slugs
+    assert "notion" in slugs
+    assert "linear" in slugs
+
+    # All entries must have required fields
     for entry in marketplace._BUILTIN_MCP_CATALOG:
         assert entry.source == "mcp"
         assert entry.description
