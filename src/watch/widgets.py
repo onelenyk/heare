@@ -10,7 +10,8 @@ from textual.widgets import DataTable, Input, RichLog, Static
 
 from ..config import Settings
 from ..text_injector import inject_text
-from .data import ActivityRow, HeaderData, LogLine, fmt_time
+from ..version import app_version
+from .data import ActivityRow, HeaderData, LogLine, UsageData, fmt_time
 
 
 class HeaderBar(Static):
@@ -69,12 +70,17 @@ class HeaderBar(Static):
             provider_text,
         )
 
-        # Line 2: transcripts actions
+        # Line 2: transcripts actions   <version>
+        # Version sits at the trailing edge of line 2 in dim style so it's
+        # visible at a glance but never competes with the live counters
+        # for attention.
         line2 = Text.assemble(
             ("transcripts=", "dim"),
             (f"{header.transcripts_count}", "white"),
             ("  actions=", "dim"),
             (f"{header.actions_count}", "white"),
+            ("   ", ""),
+            (app_version(), "dim italic"),
         )
 
         # Update display with both lines
@@ -231,7 +237,7 @@ class ControlsBar(Container):
     Layout (top → bottom):
       • status line  (the last-action message, or blank)
       • horizontal row with three Sections: AGENT / MUTE / INPUT
-      • extras line  ([] resize, F5 refresh, ^R respawn, q quit)
+      • extras line  ([] resize, f refresh, ^R respawn, q quit)
       • Input widget (mounted dynamically when text-input mode is active)
     """
 
@@ -242,7 +248,7 @@ class ControlsBar(Container):
     )
     EXTRAS: tuple[tuple[str, str], ...] = (
         ("[]", "resize"),
-        ("F5", "refresh"),
+        ("f", "refresh"),
         ("^R", "respawn"),
         ("q", "quit"),
     )
@@ -377,6 +383,93 @@ class AIBar(Static):
             text.append(key, style="bold cyan")
             text.append(" ", style="")
             text.append(label, style="white")
+        return text
+
+    def render(self) -> Text:
+        return self._build_text()
+
+
+class UsageBar(Static):
+    """Running token / cost ledger.
+
+    Reads from ``usage_events`` via the dashboard snapshot. Costs are
+    cumulative since the table was created — not just the current
+    session — so a glance shows lifetime spend on the configured
+    models. Unknown-model calls render with ``?`` so a missing entry
+    in :mod:`src.pricing` doesn't silently zero the bill.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._usage = UsageData(
+            llm_calls=0, llm_input_tokens=0, llm_output_tokens=0, llm_cost_usd=0.0,
+            stt_calls=0, stt_audio_seconds=0.0, stt_cost_usd=0.0,
+            tts_calls=0, tts_char_count=0, tts_cost_usd=0.0,
+            total_cost_usd=0.0,
+        )
+        self.border_title = "💰 usage"
+
+    def refresh_data(self, usage: UsageData) -> None:
+        self._usage = usage
+        self.update(self._build_text())
+
+    @staticmethod
+    def _fmt_tokens(n: int) -> str:
+        """``8412 -> '8.4k'``, ``500 -> '500'``. Keeps the panel width
+        bounded so a long-running daemon's columns don't drift."""
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        if n >= 1_000:
+            return f"{n / 1_000:.1f}k"
+        return str(n)
+
+    @staticmethod
+    def _fmt_minutes(seconds: float) -> str:
+        """Audio duration as ``M.m min`` for readability."""
+        return f"{seconds / 60.0:.1f} min"
+
+    @staticmethod
+    def _fmt_cost(cost: float) -> str:
+        """Costs are usually cents-of-dollars; show 4 decimals so a
+        $0.0021 charge isn't rounded down to $0.00."""
+        return f"${cost:.4f}"
+
+    def _build_text(self) -> Text:
+        u = self._usage
+        text = Text()
+
+        text.append("llm  ", style="dim")
+        text.append(f"{u.llm_calls}", style="bold white")
+        text.append(" calls, ", style="dim")
+        text.append(self._fmt_tokens(u.llm_input_tokens), style="white")
+        text.append(" in / ", style="dim")
+        text.append(self._fmt_tokens(u.llm_output_tokens), style="white")
+        text.append(" out  → ", style="dim")
+        text.append(self._fmt_cost(u.llm_cost_usd), style="bold green")
+        text.append("\n")
+
+        text.append("stt  ", style="dim")
+        text.append(f"{u.stt_calls}", style="bold white")
+        text.append(" calls, ", style="dim")
+        text.append(self._fmt_minutes(u.stt_audio_seconds), style="white")
+        text.append("        → ", style="dim")
+        text.append(self._fmt_cost(u.stt_cost_usd), style="bold green")
+        text.append("\n")
+
+        text.append("tts  ", style="dim")
+        text.append(f"{u.tts_calls}", style="bold white")
+        text.append(" calls", style="dim")
+        text.append("                  → ", style="dim")
+        if u.tts_cost_usd == 0.0 and u.tts_calls > 0:
+            text.append("free", style="bold green")
+        else:
+            text.append(self._fmt_cost(u.tts_cost_usd), style="bold green")
+        text.append("\n")
+
+        text.append("─" * 40, style="dim")
+        text.append("\n")
+        text.append("total                         → ", style="dim")
+        text.append(self._fmt_cost(u.total_cost_usd), style="bold yellow")
         return text
 
     def render(self) -> Text:

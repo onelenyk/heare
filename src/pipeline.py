@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, Tuple
 
 from .assistant_response_logger import create_assistant_response_logger
 from .tts_scrub_processor import create_tts_scrub_processor
+from .usage_recorder import create_usage_recorder
 from .mute_gate import create_input_mute_gate, create_mute_gate
 from .config import Settings
 from .language_state import LanguageState
@@ -124,6 +125,7 @@ def _assemble_native_stages(
     tts: Any,
     assistant_response_logger: Any = None,
     tts_scrub: Any = None,
+    usage_recorder: Any = None,
     tts_fade_observer: Any = None,
     assistant_aggregator: Any,
     system_prompt_injector: Any = None,
@@ -171,6 +173,13 @@ def _assemble_native_stages(
     if tts_scrub is not None:
         stages.append(tts_scrub)
     stages.append(tts)
+    # usage_recorder sits AFTER tts so it observes every metrics frame
+    # in the pipeline — LLMUsageMetricsData (from llm_service),
+    # TTSUsageMetricsData (from tts), and the VAD bracket frames +
+    # TranscriptionFrame that bound STT calls. Observe-only: forwards
+    # every frame unchanged.
+    if usage_recorder is not None:
+        stages.append(usage_recorder)
     if tts_fade_observer is not None:
         stages.append(tts_fade_observer)
     if sound_cue_processor is not None:
@@ -515,6 +524,21 @@ async def build_pipeline(
     # those words go straight to the user's speakers.
     tts_scrub = create_tts_scrub_processor()
 
+    # Record token-usage events to ``usage_events`` so the dashboard
+    # can show running cost. The recorder watches three Pipecat signals:
+    # LLMUsageMetricsData, TTSUsageMetricsData, and finalized
+    # TranscriptionFrame (with VAD-bracketed audio_seconds). Provider
+    # getter reads the live ``llm_service.active_provider`` so a
+    # mid-session switch via ``SwitchableLLMService`` flows through to
+    # the ledger; STT/TTS providers are static here because pipecat's
+    # metrics frames don't carry the slug pricing.py expects.
+    usage_recorder = create_usage_recorder(
+        store=store,
+        provider_getter=lambda: getattr(llm_service, "active_provider", "unknown"),
+        stt_provider="groq-whisper-large-v3",
+        tts_provider="edge_tts",
+    )
+
     # Mute gate — drops TTSAudioRawFrame when ``settings.mute_file`` exists.
     # Toggled from the watch dashboard (or any other process) by creating /
     # removing the file. Bot text is still logged because capture happens
@@ -540,6 +564,7 @@ async def build_pipeline(
         llm_service=llm_service,
         assistant_response_logger=assistant_response_logger,
         tts_scrub=tts_scrub,
+        usage_recorder=usage_recorder,
         tts=tts,
         tts_fade_observer=tts_fade_observer,
         assistant_aggregator=assistant_aggregator,
@@ -567,7 +592,15 @@ async def build_pipeline(
         # words ("stop"/"відміни"/etc.) still work — TranscriptionGate
         # detects them and pushes InterruptionFrame upstream, which the
         # _TtsFadeOnInterruption observer routes to the TTS fade-out.
-        params=PipelineParams(allow_interruptions=False),
+        # enable_metrics + enable_usage_metrics make the OpenAI-style LLM
+        # service emit MetricsFrame[LLMUsageMetricsData] after each
+        # completion — the UsageRecorder stage feeds those into
+        # usage_events so the dashboard can show running cost.
+        params=PipelineParams(
+            allow_interruptions=False,
+            enable_metrics=True,
+            enable_usage_metrics=True,
+        ),
         cancel_on_idle_timeout=False,
         enable_turn_tracking=False,
     )

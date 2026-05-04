@@ -12,7 +12,7 @@ from typing import Any
 import aiosqlite
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class EventKind(StrEnum):
@@ -143,6 +143,28 @@ CREATE TABLE IF NOT EXISTS user_profile (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL
 );
+
+-- USE-001: append-only ledger of every paid API call so the dashboard
+-- can show running token / cost totals. ``kind`` discriminates the
+-- type-specific columns: 'llm' uses input/output_tokens; 'stt' uses
+-- audio_seconds; 'tts' uses char_count. ``cost_usd`` is precomputed
+-- via src/pricing.py at insert time so reads stay aggregate-only and
+-- a future price-table change doesn't retroactively rewrite history.
+CREATE TABLE IF NOT EXISTS usage_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    kind TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    audio_seconds REAL,
+    char_count INTEGER,
+    cost_usd REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_events_kind ON usage_events(kind);
 """
 
 
@@ -955,3 +977,116 @@ class TranscriptStore:
                     return True
 
         return False
+
+    # ------------------------------------------------------------------
+    # USE-001: usage_events — append-only ledger of paid API calls.
+
+    async def record_usage_event(
+        self,
+        *,
+        kind: str,
+        provider: str | None = None,
+        model: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        audio_seconds: float | None = None,
+        char_count: int | None = None,
+        cost_usd: float | None = None,
+        ts: float | None = None,
+    ) -> None:
+        """Append one paid-API event to ``usage_events``.
+
+        ``kind`` is one of ``'llm'``, ``'stt'``, ``'tts'`` — discriminates
+        which type-specific columns are populated. ``cost_usd`` is
+        precomputed by the caller via :mod:`src.pricing`; we store the
+        snapshot rather than the inputs so a future price-table change
+        doesn't retroactively rewrite the ledger.
+        """
+        await self.db.execute(
+            """
+            INSERT INTO usage_events
+                (ts, kind, provider, model,
+                 input_tokens, output_tokens, audio_seconds, char_count, cost_usd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                ts if ts is not None else time.time(),
+                kind,
+                provider,
+                model,
+                input_tokens,
+                output_tokens,
+                audio_seconds,
+                char_count,
+                cost_usd,
+            ),
+        )
+        await self.db.commit()
+
+    async def get_usage_summary(self, *, since: float = 0.0) -> dict[str, Any]:
+        """Aggregate usage across the ledger from ``since`` (epoch
+        seconds) to now.
+
+        Returns the shape the dashboard widget consumes:
+
+        ``{"llm": {"calls", "input_tokens", "output_tokens", "cost_usd"},
+           "stt": {"calls", "audio_seconds", "cost_usd"},
+           "tts": {"calls", "char_count", "cost_usd"},
+           "total_cost_usd": float,
+           "since": float}``
+
+        Aggregating in SQL keeps the watch refresh tight: even with a
+        long-running daemon the query stays index-bound on
+        ``idx_usage_events_ts``.
+        """
+        cursor = await self.db.execute(
+            """
+            SELECT kind,
+                   COUNT(*),
+                   COALESCE(SUM(input_tokens), 0),
+                   COALESCE(SUM(output_tokens), 0),
+                   COALESCE(SUM(audio_seconds), 0.0),
+                   COALESCE(SUM(char_count), 0),
+                   COALESCE(SUM(cost_usd), 0.0)
+            FROM usage_events
+            WHERE ts >= ?
+            GROUP BY kind
+            """,
+            (since,),
+        )
+        rows = await cursor.fetchall()
+
+        empty_llm = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+        empty_stt = {"calls": 0, "audio_seconds": 0.0, "cost_usd": 0.0}
+        empty_tts = {"calls": 0, "char_count": 0, "cost_usd": 0.0}
+        summary: dict[str, Any] = {
+            "llm": dict(empty_llm),
+            "stt": dict(empty_stt),
+            "tts": dict(empty_tts),
+            "total_cost_usd": 0.0,
+            "since": since,
+        }
+
+        for kind, calls, in_tok, out_tok, audio_s, chars, cost in rows:
+            if kind == "llm":
+                summary["llm"] = {
+                    "calls": int(calls),
+                    "input_tokens": int(in_tok),
+                    "output_tokens": int(out_tok),
+                    "cost_usd": float(cost),
+                }
+            elif kind == "stt":
+                summary["stt"] = {
+                    "calls": int(calls),
+                    "audio_seconds": float(audio_s),
+                    "cost_usd": float(cost),
+                }
+            elif kind == "tts":
+                summary["tts"] = {
+                    "calls": int(calls),
+                    "char_count": int(chars),
+                    "cost_usd": float(cost),
+                }
+            summary["total_cost_usd"] += float(cost)
+
+        return summary

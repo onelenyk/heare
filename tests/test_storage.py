@@ -218,13 +218,15 @@ async def test_migration_idempotent() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_schema_version_v5_on_fresh_install(store: TranscriptStore) -> None:
+async def test_schema_version_current_on_fresh_install(store: TranscriptStore) -> None:
+    from src.storage import SCHEMA_VERSION
+
     cursor = await store.db.execute(
         "SELECT value FROM meta WHERE key = ?", ("schema_version",)
     )
     row = await cursor.fetchone()
     assert row is not None
-    assert int(row[0]) == 5
+    assert int(row[0]) == SCHEMA_VERSION
 
 
 async def test_schema_upgrade_v2_to_v3() -> None:
@@ -284,13 +286,15 @@ async def test_schema_upgrade_v2_to_v3() -> None:
         # Now open via TranscriptStore — init() must upgrade in place
         s = TranscriptStore(db_path)
         await s.init()
-        # meta.schema_version is now 5 (after dynamic_tools migration)
+        # meta.schema_version matches the current SCHEMA_VERSION constant
+        from src.storage import SCHEMA_VERSION
+
         cursor = await s.db.execute(
             "SELECT value FROM meta WHERE key = ?", ("schema_version",)
         )
         row = await cursor.fetchone()
         assert row is not None
-        assert int(row[0]) == 5
+        assert int(row[0]) == SCHEMA_VERSION
         # events table exists
         cursor = await s.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
@@ -683,3 +687,122 @@ async def test_load_recent_action_log_excludes_legacy_decision_only_rows(
     rows = await store.load_recent_action_log()
     ids = {r["intent_id"] for r in rows}
     assert ids == {300}
+
+
+# ----------------------------------------------------------------------
+# USE-001: usage_events ledger — paid API call tracking.
+
+
+async def test_empty_usage_summary_returns_zero(store: TranscriptStore) -> None:
+    summary = await store.get_usage_summary()
+    assert summary["llm"] == {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+    assert summary["stt"] == {"calls": 0, "audio_seconds": 0.0, "cost_usd": 0.0}
+    assert summary["tts"] == {"calls": 0, "char_count": 0, "cost_usd": 0.0}
+    assert summary["total_cost_usd"] == 0.0
+
+
+async def test_record_and_summarize_llm_usage(store: TranscriptStore) -> None:
+    await store.record_usage_event(
+        kind="llm",
+        provider="openrouter",
+        model="google/gemini-3.1-flash-lite",
+        input_tokens=10_000,
+        output_tokens=5_000,
+        cost_usd=0.00225,
+    )
+    summary = await store.get_usage_summary()
+    assert summary["llm"]["calls"] == 1
+    assert summary["llm"]["input_tokens"] == 10_000
+    assert summary["llm"]["output_tokens"] == 5_000
+    assert abs(summary["llm"]["cost_usd"] - 0.00225) < 1e-9
+    assert abs(summary["total_cost_usd"] - 0.00225) < 1e-9
+
+
+async def test_record_and_summarize_stt_usage(store: TranscriptStore) -> None:
+    await store.record_usage_event(
+        kind="stt",
+        provider="groq",
+        audio_seconds=120.0,
+        cost_usd=0.00133,
+    )
+    summary = await store.get_usage_summary()
+    assert summary["stt"]["calls"] == 1
+    assert abs(summary["stt"]["audio_seconds"] - 120.0) < 1e-9
+    assert abs(summary["stt"]["cost_usd"] - 0.00133) < 1e-9
+    assert summary["llm"]["calls"] == 0
+    assert summary["tts"]["calls"] == 0
+
+
+async def test_record_and_summarize_tts_usage(store: TranscriptStore) -> None:
+    await store.record_usage_event(
+        kind="tts",
+        provider="edge_tts",
+        char_count=2_500,
+        cost_usd=0.0,
+    )
+    summary = await store.get_usage_summary()
+    assert summary["tts"]["calls"] == 1
+    assert summary["tts"]["char_count"] == 2_500
+    assert summary["tts"]["cost_usd"] == 0.0
+
+
+async def test_summary_aggregates_multiple_events(store: TranscriptStore) -> None:
+    """Two LLM calls + one STT → calls summed per kind, total spans all kinds."""
+    await store.record_usage_event(
+        kind="llm", provider="openrouter",
+        model="google/gemini-3.1-flash-lite",
+        input_tokens=10_000, output_tokens=5_000, cost_usd=0.00225,
+    )
+    await store.record_usage_event(
+        kind="llm", provider="openrouter",
+        model="google/gemini-3.1-flash-lite",
+        input_tokens=2_000, output_tokens=1_000, cost_usd=0.00045,
+    )
+    await store.record_usage_event(
+        kind="stt", provider="groq",
+        audio_seconds=60.0, cost_usd=0.000667,
+    )
+    summary = await store.get_usage_summary()
+    assert summary["llm"]["calls"] == 2
+    assert summary["llm"]["input_tokens"] == 12_000
+    assert summary["llm"]["output_tokens"] == 6_000
+    assert abs(summary["llm"]["cost_usd"] - 0.0027) < 1e-9
+    assert summary["stt"]["calls"] == 1
+    expected_total = 0.00225 + 0.00045 + 0.000667
+    assert abs(summary["total_cost_usd"] - expected_total) < 1e-9
+
+
+async def test_summary_since_filters_old_events(store: TranscriptStore) -> None:
+    """``since`` cutoff filters by ts — old events drop out of the window."""
+    now = time.time()
+    await store.record_usage_event(
+        kind="llm", provider="openrouter",
+        model="google/gemini-3.1-flash-lite",
+        input_tokens=1_000, output_tokens=500, cost_usd=0.000225,
+        ts=now - 7200,
+    )
+    await store.record_usage_event(
+        kind="llm", provider="openrouter",
+        model="google/gemini-3.1-flash-lite",
+        input_tokens=2_000, output_tokens=1_000, cost_usd=0.00045,
+        ts=now - 60,
+    )
+    summary = await store.get_usage_summary(since=now - 3600)
+    assert summary["llm"]["calls"] == 1
+    assert summary["llm"]["input_tokens"] == 2_000
+    assert abs(summary["llm"]["cost_usd"] - 0.00045) < 1e-9
+
+
+async def test_record_with_unknown_cost_stores_null(store: TranscriptStore) -> None:
+    """Unknown model → cost_usd is None; row still recorded so call counts
+    remain accurate. SUM(NULL) → COALESCE → 0.0 in the summary."""
+    await store.record_usage_event(
+        kind="llm", provider="openrouter",
+        model="some/unknown-model",
+        input_tokens=1_000, output_tokens=500, cost_usd=None,
+    )
+    summary = await store.get_usage_summary()
+    assert summary["llm"]["calls"] == 1
+    assert summary["llm"]["input_tokens"] == 1_000
+    assert summary["llm"]["cost_usd"] == 0.0
+    assert summary["total_cost_usd"] == 0.0

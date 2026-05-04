@@ -5,7 +5,7 @@ Screen {
 }
 
 /* Unified border-title styling across the dashboard. */
-HeaderBar, ActivityTable, LogTail, ControlsBar, AIBar {
+HeaderBar, ActivityTable, LogTail, ControlsBar, AIBar, UsageBar {
     border-title-color: $accent;
     border-title-style: bold;
     border-title-align: left;
@@ -111,6 +111,14 @@ ControlsBar Input {
 }
 
 AIBar {
+    width: 1fr;
+    height: 100%;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
+UsageBar {
     width: 1fr;
     height: 100%;
     border: round $accent;

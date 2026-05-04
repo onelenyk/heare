@@ -7,8 +7,16 @@ from pathlib import Path
 from textual.widgets import Static
 
 from src.config import Settings, Mode
-from src.watch.data import HeaderData, LogLine
-from src.watch.widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail, status_color
+from src.watch.data import HeaderData, LogLine, UsageData
+from src.watch.widgets import (
+    ActivityTable,
+    AIBar,
+    ControlsBar,
+    HeaderBar,
+    LogTail,
+    UsageBar,
+    status_color,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +92,34 @@ def test_header_bar_refresh_data_displays_all_fields() -> None:
         assert "zai" in content
         assert "42" in content
         assert "7" in content
+
+
+def test_header_bar_renders_app_version() -> None:
+    """HeaderBar must surface the running app version so a glance at
+    the dashboard tells you which build is live. Asserts both the
+    leading 'v' and the literal __version__ value appear in the
+    rendered content — guards against the version being silently
+    dropped during widget refactors."""
+    from src.version import __version__
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        header = HeaderBar(settings)
+        header_data = HeaderData(
+            name="test",
+            emoji="🧪",
+            running=True,
+            pid=1,
+            uptime="1s",
+            mode="focus",
+            provider="zai",
+            transcripts_count=0,
+            actions_count=0,
+        )
+        header.refresh_data(header_data)
+        content = str(header.render())
+
+    assert f"v{__version__}" in content
 
 
 def test_header_bar_shows_stopped_status() -> None:
@@ -291,3 +327,99 @@ def test_status_color_function() -> None:
     assert status_color("pending") == "yellow"
     assert status_color("unknown") == "white"
     assert status_color(None) == "white"
+
+
+# ---------------------------------------------------------------------------
+# UsageBar (USE-001)
+# ---------------------------------------------------------------------------
+
+
+def _zero_usage() -> UsageData:
+    return UsageData(
+        llm_calls=0, llm_input_tokens=0, llm_output_tokens=0, llm_cost_usd=0.0,
+        stt_calls=0, stt_audio_seconds=0.0, stt_cost_usd=0.0,
+        tts_calls=0, tts_char_count=0, tts_cost_usd=0.0,
+        total_cost_usd=0.0,
+    )
+
+
+def test_usage_bar_initial_state_is_zeroed() -> None:
+    bar = UsageBar()
+    output = str(bar.render())
+    # Three rows + total all start at $0.0000
+    assert output.count("$0.0000") >= 3
+    assert "0 calls" in output
+
+
+def test_usage_bar_refresh_data_renders_llm_row() -> None:
+    bar = UsageBar()
+    bar.refresh_data(UsageData(
+        llm_calls=3, llm_input_tokens=12_000, llm_output_tokens=6_000, llm_cost_usd=0.00270,
+        stt_calls=0, stt_audio_seconds=0.0, stt_cost_usd=0.0,
+        tts_calls=0, tts_char_count=0, tts_cost_usd=0.0,
+        total_cost_usd=0.00270,
+    ))
+    output = str(bar.render())
+    # Tokens compacted via _fmt_tokens: 12000 -> '12.0k', 6000 -> '6.0k'
+    assert "12.0k" in output
+    assert "6.0k" in output
+    assert "$0.0027" in output
+    assert "3" in output  # call count
+
+
+def test_usage_bar_renders_stt_minutes() -> None:
+    bar = UsageBar()
+    bar.refresh_data(UsageData(
+        llm_calls=0, llm_input_tokens=0, llm_output_tokens=0, llm_cost_usd=0.0,
+        stt_calls=2, stt_audio_seconds=120.0, stt_cost_usd=0.00133,
+        tts_calls=0, tts_char_count=0, tts_cost_usd=0.0,
+        total_cost_usd=0.00133,
+    ))
+    output = str(bar.render())
+    # 120s → 2.0 min via _fmt_minutes
+    assert "2.0 min" in output
+    assert "$0.0013" in output
+
+
+def test_usage_bar_tts_zero_cost_renders_free() -> None:
+    """edge_tts is $0/char — when there are TTS calls but cost is zero,
+    the row reads 'free' instead of '$0.0000' so the user knows it's
+    intentional, not a missing-price-table bug."""
+    bar = UsageBar()
+    bar.refresh_data(UsageData(
+        llm_calls=0, llm_input_tokens=0, llm_output_tokens=0, llm_cost_usd=0.0,
+        stt_calls=0, stt_audio_seconds=0.0, stt_cost_usd=0.0,
+        tts_calls=5, tts_char_count=12_345, tts_cost_usd=0.0,
+        total_cost_usd=0.0,
+    ))
+    output = str(bar.render())
+    assert "free" in output
+
+
+def test_usage_bar_total_uses_yellow_accent() -> None:
+    """Total cost is the eye-catching number — verify the value renders
+    even with a chunky four-decimal format."""
+    bar = UsageBar()
+    bar.refresh_data(UsageData(
+        llm_calls=1, llm_input_tokens=1000, llm_output_tokens=500, llm_cost_usd=0.001,
+        stt_calls=1, stt_audio_seconds=10.0, stt_cost_usd=0.001,
+        tts_calls=1, tts_char_count=100, tts_cost_usd=0.0,
+        total_cost_usd=0.002,
+    ))
+    output = str(bar.render())
+    assert "total" in output
+    assert "$0.0020" in output
+
+
+def test_usage_bar_format_helpers() -> None:
+    """Static formatters used by the panel — pinned so changes flag."""
+    assert UsageBar._fmt_tokens(500) == "500"
+    assert UsageBar._fmt_tokens(8_412) == "8.4k"
+    assert UsageBar._fmt_tokens(1_500_000) == "1.5M"
+    assert UsageBar._fmt_minutes(60.0) == "1.0 min"
+    assert UsageBar._fmt_minutes(0.0) == "0.0 min"
+    # 0.00227 rounds unambiguously to 4dp; banker's rounding can pull
+    # 0.00225 either way depending on float repr, so keep the test
+    # deterministic.
+    assert UsageBar._fmt_cost(0.00227) == "$0.0023"
+    assert UsageBar._fmt_cost(0.0) == "$0.0000"

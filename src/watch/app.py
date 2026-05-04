@@ -16,7 +16,7 @@ from ..watch_controls import restart_daemon, start_daemon, stop_daemon
 from . import models
 from .data import fetch_dashboard_state
 from .screens import ModelSelectScreen
-from .widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail
+from .widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail, UsageBar
 
 
 class HeareDashboard(App):
@@ -41,7 +41,7 @@ class HeareDashboard(App):
         Binding("q", "quit", "Quit", show=True),
         Binding("[", "shrink_left", "Shrink", show=False),
         Binding("]", "grow_left", "Grow", show=False),
-        Binding("f5", "refresh_now", "Refresh", show=False),
+        Binding("f", "refresh_now", "Refresh", show=True),
         Binding("ctrl+r", "respawn", "Respawn", show=False),
     ]
 
@@ -66,6 +66,7 @@ class HeareDashboard(App):
         yield Horizontal(
             ControlsBar(self.settings),
             AIBar(self.settings),
+            UsageBar(),
             id="bottom-bar",
         )
 
@@ -105,6 +106,7 @@ class HeareDashboard(App):
             activity = self.query_one(ActivityTable)
             log_tail = self.query_one(LogTail)
             ai_bar = self.query_one(AIBar)
+            usage_bar = self.query_one(UsageBar)
         except NoMatches:
             return
 
@@ -114,6 +116,7 @@ class HeareDashboard(App):
         log_tail.refresh_data(snapshot.log_lines)
         provider = snapshot.header.provider
         ai_bar.refresh_data(provider, models.read_current_model(self.settings, provider))
+        usage_bar.refresh_data(snapshot.usage)
 
     # -----------------------------------------------------------------------
     # Daemon control actions
@@ -173,7 +176,7 @@ class HeareDashboard(App):
         self.push_screen(ModelSelectScreen(self.settings, provider, current), _on_dismiss)
 
     def action_refresh_now(self) -> None:
-        """Force a full data refresh + repaint (F5)."""
+        """Force a full data refresh + repaint (f)."""
         self._refresh_data()
         self.refresh(layout=True, repaint=True)
         try:

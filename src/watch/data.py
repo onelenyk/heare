@@ -326,6 +326,32 @@ class HeaderData:
 
 
 @dataclass(frozen=True)
+class UsageData:
+    """Aggregated usage / cost numbers for the dashboard's UsageBar.
+
+    Mirrors the shape of ``TranscriptStore.get_usage_summary`` but as
+    a frozen dataclass so widgets get type-checked, immutable
+    snapshots. Token / second / char counts are sums across the full
+    ledger; ``total_cost_usd`` is the running spend.
+    """
+
+    llm_calls: int
+    llm_input_tokens: int
+    llm_output_tokens: int
+    llm_cost_usd: float
+
+    stt_calls: int
+    stt_audio_seconds: float
+    stt_cost_usd: float
+
+    tts_calls: int
+    tts_char_count: int
+    tts_cost_usd: float
+
+    total_cost_usd: float
+
+
+@dataclass(frozen=True)
 class DashboardSnapshot:
     """Complete dashboard state snapshot.
 
@@ -338,6 +364,69 @@ class DashboardSnapshot:
     log_lines: list[LogLine]
     is_muted: bool
     is_input_muted: bool
+    usage: UsageData
+
+
+def fetch_usage(con: sqlite3.Connection | None) -> UsageData:
+    """Aggregate ``usage_events`` into a UsageData snapshot.
+
+    Returns zeroed UsageData when the DB is unavailable or the table
+    doesn't exist yet (older DB without USE-001 migration). The
+    aggregation is index-bound on ``idx_usage_events_kind`` so this
+    stays cheap even on long-running daemons.
+    """
+    zero = UsageData(
+        llm_calls=0, llm_input_tokens=0, llm_output_tokens=0, llm_cost_usd=0.0,
+        stt_calls=0, stt_audio_seconds=0.0, stt_cost_usd=0.0,
+        tts_calls=0, tts_char_count=0, tts_cost_usd=0.0,
+        total_cost_usd=0.0,
+    )
+    if con is None:
+        return zero
+    try:
+        rows = fetch(
+            con,
+            """
+            SELECT kind,
+                   COUNT(*),
+                   COALESCE(SUM(input_tokens), 0),
+                   COALESCE(SUM(output_tokens), 0),
+                   COALESCE(SUM(audio_seconds), 0.0),
+                   COALESCE(SUM(char_count), 0),
+                   COALESCE(SUM(cost_usd), 0.0)
+            FROM usage_events
+            GROUP BY kind
+            """,
+        )
+    except sqlite3.OperationalError:
+        # Table missing on a pre-USE-001 DB; show zeros until first event.
+        return zero
+
+    llm = stt = tts = None
+    total = 0.0
+    for kind, calls, in_tok, out_tok, audio_s, chars, cost in rows:
+        cost_f = float(cost or 0.0)
+        total += cost_f
+        if kind == "llm":
+            llm = (int(calls), int(in_tok), int(out_tok), cost_f)
+        elif kind == "stt":
+            stt = (int(calls), float(audio_s or 0.0), cost_f)
+        elif kind == "tts":
+            tts = (int(calls), int(chars), cost_f)
+
+    return UsageData(
+        llm_calls=llm[0] if llm else 0,
+        llm_input_tokens=llm[1] if llm else 0,
+        llm_output_tokens=llm[2] if llm else 0,
+        llm_cost_usd=llm[3] if llm else 0.0,
+        stt_calls=stt[0] if stt else 0,
+        stt_audio_seconds=stt[1] if stt else 0.0,
+        stt_cost_usd=stt[2] if stt else 0.0,
+        tts_calls=tts[0] if tts else 0,
+        tts_char_count=tts[1] if tts else 0,
+        tts_cost_usd=tts[2] if tts else 0.0,
+        total_cost_usd=total,
+    )
 
 
 def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
@@ -383,6 +472,9 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     is_muted_val = is_muted(settings.mute_file)
     is_input_muted_val = is_input_muted(settings.mute_input_file)
 
+    # Fetch usage / cost ledger
+    usage = fetch_usage(con)
+
     # Close DB if open
     if con is not None:
         con.close()
@@ -393,4 +485,5 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
         log_lines=log_lines,
         is_muted=is_muted_val,
         is_input_muted=is_input_muted_val,
+        usage=usage,
     )
