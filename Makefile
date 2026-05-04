@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs watch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer
+.PHONY: help install start stop restart status logs watch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -124,3 +124,10 @@ mcp-edit-catalog:
 # Speaker Recognition Testing
 test-recognizer:
 	@uv run python -m src.main test-recognizer
+
+# Identity / Session Reset
+reset-identity:
+	@uv run python -m src.main reset-identity
+
+reset-session:
+	@uv run python -m src.main reset-session
