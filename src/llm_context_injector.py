@@ -250,7 +250,7 @@ def render_native_system_prompt(
     parts.append(
         "- Capability questions route as follows: "
         "'what skills/tools do I have', 'what's installed', 'list my skills' "
-        "→ call list_skills (skills only) or list_capabilities (everything installed). "
+        "→ call list_skills (skills only) or list_capabilities (returns three buckets — built_in / skills / mcps — with totals). "
         "'what skills exist online', 'search the marketplace' "
         "→ call discover_capability(intent=…, prefer_remote=true). "
         "'find a skill for X', 'is there a skill that …' "

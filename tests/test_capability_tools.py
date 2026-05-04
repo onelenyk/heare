@@ -250,37 +250,54 @@ def _stub_skill_meta(name: str, *, installed_via_discovery: bool = True):
 
 
 @pytest.mark.asyncio
-async def test_list_capabilities_summary_form_when_count_above_5(settings):
-    skills = [_stub_skill_meta(f"sk-{i}") for i in range(12)]
-    fake_loader = MagicMock()
-    fake_loader.discover.return_value = skills
-
-    with patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
-        result = await direct_tools._execute_list_capabilities("{}", settings)
-
-    assert result["success"] is True
-    assert result["summary"] is True
-    assert result["count"] == 12
-    assert "12" in result["spoken"]["en"]
-
-
-@pytest.mark.asyncio
-async def test_list_capabilities_full_form_when_count_below_5(settings):
+async def test_list_capabilities_returns_three_buckets(settings):
+    """The new contract returns explicit ``built_in``/``skills``/``mcps``
+    categories so the LLM can answer 'what can you do' without guessing."""
     skills = [_stub_skill_meta(f"sk-{i}") for i in range(3)]
     fake_loader = MagicMock()
     fake_loader.discover.return_value = skills
 
-    with patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
+    with (
+        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+    ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
     assert result["success"] is True
-    assert result["summary"] is False
-    assert result["count"] == 3
-    assert all(item["name"].startswith("sk-") for item in result["items"])
+    assert "totals" in result
+    assert "categories" in result
+    assert set(result["categories"].keys()) == {"built_in", "skills", "mcps"}
+    # Built-in tools always come from tool_registry — non-empty in practice.
+    assert result["totals"]["built_in"] > 0
+    assert result["totals"]["skills"] == 3
+    assert result["totals"]["mcps"] == 0
+    assert result["count"] == result["totals"]["all"]
 
 
 @pytest.mark.asyncio
-async def test_list_capabilities_skips_user_authored(settings):
+async def test_list_capabilities_summary_flag_when_total_above_threshold(settings):
+    """``summary=True`` flips when the flat total exceeds the threshold so
+    the LLM can ask before reading the full list aloud."""
+    skills = [_stub_skill_meta(f"sk-{i}") for i in range(20)]
+    fake_loader = MagicMock()
+    fake_loader.discover.return_value = skills
+
+    with (
+        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+    ):
+        result = await direct_tools._execute_list_capabilities("{}", settings)
+
+    assert result["success"] is True
+    assert result["summary"] is True
+    assert result["count"] >= 20
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_includes_user_authored_skills_with_flag(settings):
+    """User-authored and discovery-installed skills both surface; the
+    ``installed_via_discovery`` flag distinguishes them so the LLM can
+    explain provenance if asked."""
     skills = [
         _stub_skill_meta("user-skill", installed_via_discovery=False),
         _stub_skill_meta("market-skill", installed_via_discovery=True),
@@ -288,25 +305,94 @@ async def test_list_capabilities_skips_user_authored(settings):
     fake_loader = MagicMock()
     fake_loader.discover.return_value = skills
 
-    with patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
+    with (
+        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+    ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
-    assert result["success"] is True
-    names = [i["name"] for i in result["items"]]
-    assert "market-skill" in names
-    assert "user-skill" not in names
+    skill_rows = result["categories"]["skills"]
+    by_name = {r["name"]: r for r in skill_rows}
+    assert by_name["user-skill"]["installed_via_discovery"] is False
+    assert by_name["market-skill"]["installed_via_discovery"] is True
 
 
 @pytest.mark.asyncio
-async def test_list_capabilities_empty(settings):
+async def test_list_capabilities_lists_mcps_from_workspace_config(settings):
+    """MCPs come from the workspace ``.mcp.json`` — every server visible
+    to the daemon must appear, including ones marked ``disabled``."""
     fake_loader = MagicMock()
     fake_loader.discover.return_value = []
-    with patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
+    servers = {
+        "android-adb": {"command": "npx", "args": ["@x/adb"], "disabled": True},
+        "mobile": {"command": "npx", "args": ["-y", "@m/mobile"]},
+    }
+    with (
+        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.mcp_utils.read_mcp_servers", return_value=servers),
+    ):
+        result = await direct_tools._execute_list_capabilities("{}", settings)
+
+    mcp_rows = result["categories"]["mcps"]
+    names = {r["name"] for r in mcp_rows}
+    assert names == {"android-adb", "mobile"}
+    adb = next(r for r in mcp_rows if r["name"] == "android-adb")
+    assert adb["disabled"] is True
+    assert "(disabled)" in adb["description"]
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_category_filter(settings):
+    """``category`` filter scopes the result to one bucket and accepts
+    friendly aliases (``tools`` → built_in, ``mcp`` → mcps)."""
+    fake_loader = MagicMock()
+    fake_loader.discover.return_value = [_stub_skill_meta("sk-a")]
+    with (
+        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.mcp_utils.read_mcp_servers", return_value={"foo": {}}),
+    ):
+        only_skills = await direct_tools._execute_list_capabilities(
+            json.dumps({"category": "skills"}), settings
+        )
+        only_mcps = await direct_tools._execute_list_capabilities(
+            json.dumps({"category": "mcp"}), settings
+        )
+        only_built = await direct_tools._execute_list_capabilities(
+            json.dumps({"category": "tools"}), settings
+        )
+
+    assert only_skills["totals"]["built_in"] == 0
+    assert only_skills["totals"]["mcps"] == 0
+    assert only_skills["totals"]["skills"] == 1
+
+    assert only_mcps["totals"]["mcps"] == 1
+    assert only_mcps["totals"]["skills"] == 0
+    assert only_mcps["totals"]["built_in"] == 0
+
+    assert only_built["totals"]["built_in"] > 0
+    assert only_built["totals"]["skills"] == 0
+    assert only_built["totals"]["mcps"] == 0
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_empty_skills_and_mcps_still_lists_built_in(settings):
+    """Even with zero skills and zero MCPs, the response must surface the
+    built-in tool registry — those are the real 'what can you do' answer
+    on a fresh install."""
+    fake_loader = MagicMock()
+    fake_loader.discover.return_value = []
+    with (
+        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+    ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
     assert result["success"] is True
-    assert result["count"] == 0
-    assert result["items"] == []
+    assert result["totals"]["built_in"] > 0
+    assert result["totals"]["skills"] == 0
+    assert result["totals"]["mcps"] == 0
+    # The flat ``items`` list still exists for backwards compat.
+    assert any(i["source"] == "built_in" for i in result["items"])
 
 
 # ---------------------------------------------------------------------------

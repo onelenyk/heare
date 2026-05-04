@@ -4059,92 +4059,177 @@ async def _execute_revoke_capability(args: str, settings: "Settings | None" = No
     }
 
 
-async def _execute_list_capabilities(args: str, settings: "Settings | None" = None) -> dict:
-    """Args is JSON: {"category": "..."} or {}. Lists installed-via-discovery items."""
+_CATEGORY_ALIASES = {
+    "built_in": "built_in", "built-in": "built_in", "builtin": "built_in",
+    "tool": "built_in", "tools": "built_in",
+    "skill": "skills", "skills": "skills",
+    "mcp": "mcps", "mcps": "mcps",
+    "mcp_server": "mcps", "mcp_servers": "mcps", "mcp-server": "mcps",
+}
+
+
+def _list_built_in_tools() -> list[dict]:
+    """Enumerate every enabled tool from the static + dynamic registries.
+
+    These are the code-backed functions the LLM can call directly via
+    function-calling — bash, read, write, list_skills, run_skill, etc.
+    Disabled tools are skipped so the LLM doesn't pitch a tool it can't
+    actually invoke."""
+    out: list[dict] = []
     try:
-        payload = json.loads(args) if args else {}
-    except json.JSONDecodeError:
-        payload = {}
-    category = str(payload.get("category", "")).strip().lower() or None
+        from .tool_registry import get_all_tools
 
-    items: list[dict] = []
+        for tool in get_all_tools().values():
+            if not tool.enabled:
+                continue
+            out.append({"name": tool.name, "description": tool.description})
+    except Exception:  # noqa: BLE001
+        logger.warning("list_capabilities: built-in scan failed", exc_info=True)
+    out.sort(key=lambda i: i["name"])
+    return out
 
+
+def _list_skills(settings: "Settings | None") -> list[dict]:
+    """Every skill the loader can see — bundled and discovery-installed.
+
+    Each row carries an ``installed_via_discovery`` flag so the LLM (and
+    the user) can tell apart skills that shipped with the install from
+    skills the user pulled at runtime."""
+    out: list[dict] = []
     try:
         from .agent_skills import get_skills_loader
 
         loader = get_skills_loader(settings)
         for meta in loader.discover():
-            if not getattr(meta, "installed_via_discovery", False):
-                continue
-            items.append({
+            out.append({
                 "name": meta.name,
-                "source": "skill",
                 "description": meta.description,
+                "installed_via_discovery": bool(
+                    getattr(meta, "installed_via_discovery", False)
+                ),
             })
     except Exception:  # noqa: BLE001
         logger.warning("list_capabilities: skills discovery failed", exc_info=True)
+    out.sort(key=lambda i: i["name"])
+    return out
 
-    workspace = settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
-    sidecar_dir = Path(workspace) / ".mcp_install"
-    if sidecar_dir.is_dir():
-        try:
-            from .mcp_utils import read_mcp_servers
 
-            servers = read_mcp_servers(Path(workspace))
-            for sidecar in sidecar_dir.glob("*.json"):
-                slug = sidecar.stem
-                desc = ""
-                entry = servers.get(slug)
-                if isinstance(entry, dict):
-                    desc = entry.get("description", "") or ""
-                items.append({
-                    "name": slug,
-                    "source": "mcp",
-                    "description": desc or f"MCP server: {slug}",
-                })
-        except Exception:  # noqa: BLE001
-            logger.warning("list_capabilities: mcp scan failed", exc_info=True)
+def _list_mcp_servers(settings: "Settings | None") -> list[dict]:
+    """All MCP servers from the workspace ``.mcp.json`` config.
 
-    if category:
-        items = [i for i in items if i["source"] == category]
+    This is the same file the daemon's MCP client reads on startup, so
+    every server here is one the LLM can address via the
+    ``mcp__<slug>__*`` family of tools (assuming it isn't disabled)."""
+    out: list[dict] = []
+    try:
+        from .mcp_utils import read_mcp_servers
 
-    count = len(items)
-    if count > 5:
-        names_short = ", ".join(i["name"] for i in items[:3])
-        return {
-            "success": True,
-            "output": f"{count} installed: {names_short} ...",
-            "summary": True,
-            "count": count,
-            "items": items,
-            "spoken": {
-                "en": f"I have {count} installed tools. Want me to name them all, or filter by category?",
-                "uk": f"У мене {count} встановлених інструментів. Назвати всі, чи відфільтрувати за категорією?",
-            },
-        }
+        workspace = (
+            settings.workspace_dir
+            if settings is not None
+            else Path.home() / ".heare" / "workspace"
+        )
+        servers = read_mcp_servers(Path(workspace))
+        for slug, entry in servers.items():
+            desc = ""
+            disabled = False
+            if isinstance(entry, dict):
+                desc = (entry.get("description") or "").strip()
+                disabled = bool(entry.get("disabled"))
+                if not desc:
+                    cmd = entry.get("command") or ""
+                    args_list = entry.get("args") or []
+                    if cmd:
+                        joined = " ".join(str(a) for a in args_list)
+                        desc = f"{cmd} {joined}".strip()
+            if not desc:
+                desc = f"MCP server: {slug}"
+            if disabled:
+                desc = f"{desc} (disabled)"
+            out.append({"name": slug, "description": desc, "disabled": disabled})
+    except Exception:  # noqa: BLE001
+        logger.warning("list_capabilities: mcp scan failed", exc_info=True)
+    out.sort(key=lambda i: i["name"])
+    return out
 
-    if count == 0:
-        return {
-            "success": True,
-            "output": "No installed capabilities.",
-            "summary": False,
-            "count": 0,
-            "items": [],
-            "spoken": {
-                "en": "Nothing installed via discovery yet.",
-                "uk": "Поки нічого не встановлено через відкриття.",
-            },
-        }
 
-    lines = [f"- {i['name']} ({i['source']}): {i['description']}" for i in items]
+async def _execute_list_capabilities(args: str, settings: "Settings | None" = None) -> dict:
+    """List everything the agent can call, grouped into three buckets:
+      * ``built_in`` — code-backed tools from :mod:`tool_registry`
+      * ``skills``  — markdown procedures from the skills loader
+      * ``mcps``    — external MCP servers from the workspace ``.mcp.json``
+
+    Args is JSON: ``{"category": "..."}`` or ``{}``. ``category`` filters
+    to one bucket and accepts friendly aliases (``tool``/``tools``,
+    ``built-in``, ``skill``/``skills``, ``mcp``/``mcps``)."""
+    try:
+        payload = json.loads(args) if args else {}
+    except json.JSONDecodeError:
+        payload = {}
+    raw_cat = str(payload.get("category", "")).strip().lower()
+    category = _CATEGORY_ALIASES.get(raw_cat) if raw_cat else None
+
+    built_in = _list_built_in_tools()
+    skills = _list_skills(settings)
+    mcps = _list_mcp_servers(settings)
+
+    if category == "built_in":
+        skills, mcps = [], []
+    elif category == "skills":
+        built_in, mcps = [], []
+    elif category == "mcps":
+        built_in, skills = [], []
+
+    totals = {
+        "built_in": len(built_in),
+        "skills": len(skills),
+        "mcps": len(mcps),
+        "all": len(built_in) + len(skills) + len(mcps),
+    }
+    items = (
+        [{"name": i["name"], "source": "built_in", "description": i["description"]} for i in built_in]
+        + [{"name": i["name"], "source": "skill", "description": i["description"]} for i in skills]
+        + [{"name": i["name"], "source": "mcp", "description": i["description"]} for i in mcps]
+    )
+
+    # Human-readable text the LLM can echo if the user wants the long form.
+    sections: list[str] = []
+    if built_in:
+        names = ", ".join(i["name"] for i in built_in[:8])
+        more = f" +{len(built_in) - 8} more" if len(built_in) > 8 else ""
+        sections.append(f"Built-in ({len(built_in)}): {names}{more}")
+    if skills:
+        names = ", ".join(i["name"] for i in skills[:8])
+        more = f" +{len(skills) - 8} more" if len(skills) > 8 else ""
+        sections.append(f"Skills ({len(skills)}): {names}{more}")
+    if mcps:
+        sections.append(
+            f"MCP ({len(mcps)}): " + ", ".join(i["name"] for i in mcps)
+        )
+    output = "\n".join(sections) if sections else "No capabilities."
+
+    spoken_en = (
+        f"I have {totals['built_in']} built-in tools, "
+        f"{totals['skills']} skills, and {totals['mcps']} MCP servers."
+    )
+    spoken_uk = (
+        f"У мене {totals['built_in']} вбудованих інструментів, "
+        f"{totals['skills']} скілів і {totals['mcps']} MCP серверів."
+    )
+
     return {
         "success": True,
-        "output": "\n".join(lines),
-        "summary": False,
-        "count": count,
-        "items": items,
-        "spoken": {
-            "en": f"I have {count} installed: {', '.join(i['name'] for i in items)}.",
-            "uk": f"У мене {count} встановлених: {', '.join(i['name'] for i in items)}.",
+        "output": output,
+        # ``summary`` stays for backward-compat: True when the flat list
+        # is large enough that the LLM should ask before reading aloud.
+        "summary": totals["all"] > 12,
+        "count": totals["all"],
+        "totals": totals,
+        "categories": {
+            "built_in": built_in,
+            "skills": skills,
+            "mcps": mcps,
         },
+        "items": items,
+        "spoken": {"en": spoken_en, "uk": spoken_uk},
     }

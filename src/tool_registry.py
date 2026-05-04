@@ -362,7 +362,7 @@ TOOLS: dict[str, Tool] = {
         name="list_capabilities",
         sdk_name="ListCapabilities",
         execution="direct",
-        description="List all skills and MCP servers installed via discovery. Optional category filter.",
+        description="List everything the agent can call, grouped into three buckets: built_in (code-backed tools), skills (markdown procedures), mcps (external MCP servers). Optional 'category' filter: built_in | skills | mcps.",
         enabled=True,
     ),
 }
