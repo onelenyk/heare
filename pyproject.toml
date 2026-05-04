@@ -1,6 +1,6 @@
 [project]
 name = "heare"
-version = "0.1.0"
+version = "0.1.1"
 description = "Proactive ambient voice AI assistant powered by Claude Code"
 requires-python = ">=3.11"
 dependencies = [
