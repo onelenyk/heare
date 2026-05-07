@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.indication import IndicationKind, IndicationLevel
-from src.indication_backends.notification import NotificationBackend
+from src.voice.indication.core import IndicationKind, IndicationLevel
+from src.voice.indication.backends.notification import NotificationBackend
 
 
 # ---------------------------------------------------------------------------

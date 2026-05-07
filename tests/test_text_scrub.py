@@ -1,7 +1,7 @@
 """Tests for text_scrub — defends TTS against tool-name narration."""
 from __future__ import annotations
 
-from src.text_scrub import scrub_tts_text
+from src.pipeline.stages.text_scrub import scrub_tts_text
 
 
 class TestExistingPatterns:

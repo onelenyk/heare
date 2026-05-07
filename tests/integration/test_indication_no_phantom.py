@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 
-from src import indication_assets
-from src.indication import IndicationCueFrame, build_sound_cue_processor
+from src.voice.indication import assets as indication_assets
+from src.voice.indication.core import IndicationCueFrame, build_sound_cue_processor
 
 
 async def test_sound_cue_propagates_through_real_pipeline() -> None:

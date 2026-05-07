@@ -10,9 +10,9 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.css.query import NoMatches
 
-from ..config import Settings
-from ..mute_gate import toggle_input_mute, toggle_mute
-from ..watch_controls import restart_daemon, start_daemon, stop_daemon
+from src.config import Settings
+from src.pipeline.stages.mute_gate import toggle_input_mute, toggle_mute
+from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
 from . import models
 from .data import fetch_dashboard_state
 from .screens import ModelSelectScreen

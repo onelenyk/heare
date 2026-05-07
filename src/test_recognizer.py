@@ -16,8 +16,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src.config import Settings
-from src.speaker_gallery import SpeakerGallery
-from src import speaker_id as speaker_id_mod
+from src.voice.speaker.gallery import SpeakerGallery
+from src.voice.speaker import id as speaker_id_mod
 
 console = Console()
 

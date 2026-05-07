@@ -5,7 +5,7 @@ are NEVER counted toward tripping; the breaker trips on the third net-fail.
 """
 from __future__ import annotations
 
-from src.discovery import CircuitBreaker
+from src.skills.discovery import CircuitBreaker
 
 
 def test_safety_blocks_never_count_toward_trip():

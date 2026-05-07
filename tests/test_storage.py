@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src.storage import TranscriptStore
+from src.store.storage import TranscriptStore
 
 
 @pytest.fixture
@@ -175,7 +175,7 @@ async def test_schema_version_fresh_install(store: TranscriptStore) -> None:
     )
     row = await cursor.fetchone()
     assert row is not None
-    from src.storage import SCHEMA_VERSION
+    from src.store.storage import SCHEMA_VERSION
 
     assert int(row[0]) == SCHEMA_VERSION
 
@@ -219,7 +219,7 @@ async def test_migration_idempotent() -> None:
 
 
 async def test_schema_version_current_on_fresh_install(store: TranscriptStore) -> None:
-    from src.storage import SCHEMA_VERSION
+    from src.store.storage import SCHEMA_VERSION
 
     cursor = await store.db.execute(
         "SELECT value FROM meta WHERE key = ?", ("schema_version",)
@@ -287,7 +287,7 @@ async def test_schema_upgrade_v2_to_v3() -> None:
         s = TranscriptStore(db_path)
         await s.init()
         # meta.schema_version matches the current SCHEMA_VERSION constant
-        from src.storage import SCHEMA_VERSION
+        from src.store.storage import SCHEMA_VERSION
 
         cursor = await s.db.execute(
             "SELECT value FROM meta WHERE key = ?", ("schema_version",)
@@ -336,7 +336,7 @@ async def test_log_event_null_fks(store: TranscriptStore) -> None:
 
 
 async def test_log_event_accepts_strenum(store: TranscriptStore) -> None:
-    from src.storage import EventKind
+    from src.store.storage import EventKind
 
     eid = await store.log_event(EventKind.DECIDER_START)
     cursor = await store.db.execute(

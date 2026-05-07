@@ -5,7 +5,7 @@ import asyncio
 from dataclasses import dataclass, field
 
 from src.config import IndicationSettings
-from src.indication import (
+from src.voice.indication.core import (
     Indication,
     IndicationKind,
     IndicationLevel,
@@ -107,7 +107,7 @@ async def test_sighup_handler_pattern_reaches_facade_via_singleton(
     This test simulates what _handle_sighup does end-to-end: reads settings,
     looks up the facade via get_indication(), then schedules reload.
     """
-    from src import indication as ind_mod
+    from src.voice.indication import core as ind_mod
     from src.config import load_settings
 
     backend = RecordingBackend()

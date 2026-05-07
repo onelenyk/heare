@@ -8,13 +8,13 @@ import pytest
 
 
 def test_is_muted_false_when_flag_missing(tmp_path: Path):
-    from src.mute_gate import is_muted
+    from src.pipeline.stages.mute_gate import is_muted
 
     assert is_muted(tmp_path / "mute.flag") is False
 
 
 def test_is_muted_true_when_flag_exists(tmp_path: Path):
-    from src.mute_gate import is_muted
+    from src.pipeline.stages.mute_gate import is_muted
 
     flag = tmp_path / "mute.flag"
     flag.touch()
@@ -22,7 +22,7 @@ def test_is_muted_true_when_flag_exists(tmp_path: Path):
 
 
 def test_set_mute_creates_and_removes(tmp_path: Path):
-    from src.mute_gate import is_muted, set_mute
+    from src.pipeline.stages.mute_gate import is_muted, set_mute
 
     flag = tmp_path / "nested" / "mute.flag"
     assert set_mute(flag, True) is True
@@ -33,7 +33,7 @@ def test_set_mute_creates_and_removes(tmp_path: Path):
 
 
 def test_toggle_mute_flips(tmp_path: Path):
-    from src.mute_gate import toggle_mute
+    from src.pipeline.stages.mute_gate import toggle_mute
 
     flag = tmp_path / "mute.flag"
     assert toggle_mute(flag) is True
@@ -44,7 +44,7 @@ def test_toggle_mute_flips(tmp_path: Path):
 async def test_gate_drops_tts_audio_when_muted(tmp_path: Path):
     from pipecat.frames.frames import TTSAudioRawFrame, TTSStoppedFrame
 
-    from src.mute_gate import create_mute_gate, set_mute
+    from src.pipeline.stages.mute_gate import create_mute_gate, set_mute
 
     flag = tmp_path / "mute.flag"
     set_mute(flag, True)
@@ -72,7 +72,7 @@ async def test_gate_drops_tts_audio_when_muted(tmp_path: Path):
 async def test_gate_passes_audio_when_not_muted(tmp_path: Path):
     from pipecat.frames.frames import TTSAudioRawFrame
 
-    from src.mute_gate import create_mute_gate
+    from src.pipeline.stages.mute_gate import create_mute_gate
 
     flag = tmp_path / "mute.flag"  # does not exist → unmuted
     proc = create_mute_gate(flag_path=flag)
@@ -97,7 +97,7 @@ async def test_gate_passes_audio_when_not_muted(tmp_path: Path):
 
 def test_input_mute_helpers_independent_from_output(tmp_path: Path):
     """Mic and bot mutes are independent flag files."""
-    from src.mute_gate import (
+    from src.pipeline.stages.mute_gate import (
         is_input_muted,
         is_muted,
         toggle_input_mute,
@@ -120,7 +120,7 @@ def test_input_mute_helpers_independent_from_output(tmp_path: Path):
 async def test_input_gate_drops_input_audio_when_muted(tmp_path: Path):
     from pipecat.frames.frames import InputAudioRawFrame, TTSStartedFrame
 
-    from src.mute_gate import create_input_mute_gate, set_input_mute
+    from src.pipeline.stages.mute_gate import create_input_mute_gate, set_input_mute
 
     flag = tmp_path / "mute_input.flag"
     set_input_mute(flag, True)
@@ -148,7 +148,7 @@ async def test_input_gate_drops_input_audio_when_muted(tmp_path: Path):
 async def test_input_gate_passes_audio_when_not_muted(tmp_path: Path):
     from pipecat.frames.frames import InputAudioRawFrame
 
-    from src.mute_gate import create_input_mute_gate
+    from src.pipeline.stages.mute_gate import create_input_mute_gate
 
     flag = tmp_path / "mute_input.flag"  # absent → unmuted
     proc = create_input_mute_gate(flag_path=flag)

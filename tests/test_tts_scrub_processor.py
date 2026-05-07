@@ -17,7 +17,7 @@ from pipecat.frames.frames import (  # noqa: E402
     TTSSpeakFrame,
 )
 
-from src.tts_scrub_processor import create_tts_scrub_processor  # noqa: E402
+from src.pipeline.stages.tts_scrub_processor import create_tts_scrub_processor  # noqa: E402
 
 
 def _make_processor():

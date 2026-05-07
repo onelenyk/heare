@@ -29,9 +29,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.config import Settings
-from src.llm_tools import build_tools_schema, register_all_tools
-from src.pipeline import _assemble_native_stages
-from src.tool_registry import get_enabled_tools
+from src.agent.tools.schemas import build_tools_schema, register_all_tools
+from src.pipeline.build import _assemble_native_stages
+from src.agent.tools.registry import get_enabled_tools
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ async def test_bash_handler_dispatches_to_execute_direct(
         captured["args"] = args
         return {"success": True, "summary": "load average: 1.42"}
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", fake_execute_direct)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_execute_direct)
 
     register_all_tools(fake_llm, settings=Settings())
     handler, _cancel_flag = fake_llm.registered["bash"]
@@ -129,8 +129,8 @@ def test_no_intent_or_action_tag_grammar_in_native_stages() -> None:
     """AC5: zero live IntentQueue / ActionWorker / intent_parser
     surface in the post-cutover wiring path. Imports of legacy modules
     must be gone (the modules themselves were deleted)."""
-    import src.pipeline as pipeline_mod
-    import src.transcription_gate as gate_mod
+    import src.pipeline.build as pipeline_mod
+    import src.pipeline.stages.transcription_gate as gate_mod
     import src.main as main_mod
 
     forbidden_imports = (

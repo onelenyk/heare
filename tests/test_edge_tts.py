@@ -15,8 +15,8 @@ import pytest
 pytest.importorskip("pipecat.services.tts_service")
 pytest.importorskip("edge_tts")
 
-import src.tts_edge as tts_mod  # noqa: E402
-from src.tts_edge import create_edge_tts_service  # noqa: E402
+import src.voice.tts.edge as tts_mod  # noqa: E402
+from src.voice.tts.edge import create_edge_tts_service  # noqa: E402
 
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
@@ -83,7 +83,7 @@ async def test_run_tts_empty_text_yields_only_stopped() -> None:
 
 def test_apply_fade_out_ramps_amplitude_to_zero() -> None:
     """Helper: 50ms fade-out is monotonically decreasing across the last samples."""
-    from src.tts_edge import _apply_fade_out
+    from src.voice.tts.edge import _apply_fade_out
 
     sample_rate = 24000
     fade_ms = 50
@@ -114,7 +114,7 @@ def test_apply_fade_out_ramps_amplitude_to_zero() -> None:
 
 
 def test_apply_fade_out_no_op_for_empty_pcm() -> None:
-    from src.tts_edge import _apply_fade_out
+    from src.voice.tts.edge import _apply_fade_out
 
     assert _apply_fade_out(b"", 24000) == b""
 

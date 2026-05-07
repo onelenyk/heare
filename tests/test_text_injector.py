@@ -9,7 +9,7 @@ import pytest
 
 
 def test_inject_text_writes_atomic_file(tmp_path: Path):
-    from src.text_injector import inject_text
+    from src.pipeline.stages.text_injector import inject_text
 
     folder = tmp_path / "inject"
     path = inject_text(folder, "  hello world  ")
@@ -22,14 +22,14 @@ def test_inject_text_writes_atomic_file(tmp_path: Path):
 
 
 def test_inject_text_rejects_empty(tmp_path: Path):
-    from src.text_injector import inject_text
+    from src.pipeline.stages.text_injector import inject_text
 
     with pytest.raises(ValueError):
         inject_text(tmp_path, "   ")
 
 
 def test_drain_once_orders_chronologically(tmp_path: Path):
-    from src.text_injector import _drain_once, inject_text
+    from src.pipeline.stages.text_injector import _drain_once, inject_text
 
     p1 = inject_text(tmp_path, "first")
     p2 = inject_text(tmp_path, "second")
@@ -40,7 +40,7 @@ def test_drain_once_orders_chronologically(tmp_path: Path):
 
 
 def test_drain_once_skips_non_txt(tmp_path: Path):
-    from src.text_injector import _drain_once, inject_text
+    from src.pipeline.stages.text_injector import _drain_once, inject_text
 
     inject_text(tmp_path, "real")
     (tmp_path / "stray.tmp").write_text("ignore me")
@@ -52,7 +52,7 @@ def test_drain_once_skips_non_txt(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_run_injector_loop_drains_and_deletes(tmp_path: Path):
-    from src.text_injector import inject_text, run_injector_loop
+    from src.pipeline.stages.text_injector import inject_text, run_injector_loop
 
     inject_text(tmp_path, "alpha")
     inject_text(tmp_path, "beta")
@@ -78,7 +78,7 @@ async def test_run_injector_loop_drains_and_deletes(tmp_path: Path):
 async def test_run_injector_loop_keeps_message_when_push_raises(tmp_path: Path):
     """If push() raises we still delete (best-effort) so a poison message
     can't deadlock the queue. Verify deletion happens after push error."""
-    from src.text_injector import inject_text, run_injector_loop
+    from src.pipeline.stages.text_injector import inject_text, run_injector_loop
 
     inject_text(tmp_path, "boom")
 
@@ -101,7 +101,7 @@ async def test_run_injector_loop_keeps_message_when_push_raises(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_make_transcription_pusher_pushes_finalized_frame(tmp_path: Path):
-    from src.text_injector import make_transcription_pusher
+    from src.pipeline.stages.text_injector import make_transcription_pusher
 
     captured: list = []
 

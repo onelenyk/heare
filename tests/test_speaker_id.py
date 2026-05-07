@@ -12,7 +12,7 @@ import pytest
 def mock_speechbrain(monkeypatch):
     """Install a fake speechbrain + torch so speaker_id.load_model() works."""
     # Reset cached model
-    import src.speaker_id as sid_mod
+    import src.voice.speaker.id as sid_mod
 
     monkeypatch.setattr(sid_mod, "_model", None)
 
@@ -73,7 +73,7 @@ def mock_speechbrain(monkeypatch):
 
 
 def test_load_model_caches(mock_speechbrain) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     m1 = sid.load_model()
     m2 = sid.load_model()
@@ -81,14 +81,14 @@ def test_load_model_caches(mock_speechbrain) -> None:
 
 
 def test_warmup_runs_without_error(mock_speechbrain) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     model = sid.load_model()
     sid.warmup(model, sample_rate=16000)
 
 
 def test_embed_returns_192_dim_vector(mock_speechbrain) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     model = sid.load_model()
     pcm = np.full(16000, 100, dtype=np.int16).tobytes()
@@ -100,14 +100,14 @@ def test_embed_returns_192_dim_vector(mock_speechbrain) -> None:
 
 
 def test_cosine_identical_vectors() -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     v = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     assert abs(sid.cosine(v, v) - 1.0) < 1e-6
 
 
 def test_cosine_orthogonal_vectors() -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     a = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     b = np.array([0.0, 1.0, 0.0], dtype=np.float32)
@@ -115,7 +115,7 @@ def test_cosine_orthogonal_vectors() -> None:
 
 
 def test_cosine_opposite_vectors() -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     a = np.array([1.0, 0.0], dtype=np.float32)
     b = np.array([-1.0, 0.0], dtype=np.float32)
@@ -123,7 +123,7 @@ def test_cosine_opposite_vectors() -> None:
 
 
 def test_cosine_zero_vector_safe() -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     a = np.array([0.0, 0.0], dtype=np.float32)
     b = np.array([1.0, 0.0], dtype=np.float32)

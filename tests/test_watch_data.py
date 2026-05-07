@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.config import Settings, Mode
-from src.storage import SCHEMA
+from src.store.storage import SCHEMA
 from src.watch.data import (
     DashboardSnapshot,
     UsageData,

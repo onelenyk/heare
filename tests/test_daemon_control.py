@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src import daemon_control
+from src.daemon import control as daemon_control
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +124,7 @@ def test_spawn_detached_respawn_uses_start_new_session(tmp_path) -> None:
             captured["kwargs"] = kw
 
     with patch.object(daemon_control, "_hearectl_path", return_value=fake_hearectl), \
-         patch("src.daemon_control.subprocess.Popen", _FakePopen):
+         patch("src.daemon.control.subprocess.Popen", _FakePopen):
         pid = daemon_control.spawn_detached_respawn(delay_s=2.5)
 
     assert pid == 99999

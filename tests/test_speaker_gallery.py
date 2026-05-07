@@ -7,7 +7,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from src.speaker_gallery import (
+from src.voice.speaker.gallery import (
     LABEL_MAX_LEN,
     LabelValidationError,
     SpeakerGallery,
@@ -123,7 +123,7 @@ def test_atomic_save_preserves_original_on_failure(tmp_path: Path) -> None:
     original_bytes = p.read_bytes()
 
     # Simulate mid-write failure by patching json.dump
-    with patch("src.speaker_gallery.json.dump", side_effect=OSError("disk full")):
+    with patch("src.voice.speaker.gallery.json.dump", side_effect=OSError("disk full")):
         with pytest.raises(OSError):
             g.save()
 

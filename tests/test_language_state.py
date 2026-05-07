@@ -1,7 +1,7 @@
 """Tests for LanguageState (Phase 2 PH2-04)."""
 from __future__ import annotations
 
-from src.language_state import LanguageState
+from src.pipeline.language_state import LanguageState
 
 
 def test_initial_default_is_english() -> None:

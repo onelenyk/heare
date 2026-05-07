@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.language import parse_yes_no
+from src.voice.language.core import parse_yes_no
 
 
 @pytest.mark.parametrize(

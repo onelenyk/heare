@@ -9,8 +9,8 @@ import pytest
 
 pytest.importorskip("pipecat.adapters.schemas.function_schema")
 
-from src.llm_tools import build_tools_schema, register_all_tools  # noqa: E402
-from src.tool_registry import get_enabled_tools  # noqa: E402
+from src.agent.tools.schemas import build_tools_schema, register_all_tools  # noqa: E402
+from src.agent.tools.registry import get_enabled_tools  # noqa: E402
 
 
 class _FakeLLM:
@@ -88,7 +88,7 @@ async def test_handler_dispatches_to_execute_direct(monkeypatch) -> None:
         captured["settings"] = settings
         return {"success": True, "output": "ok", "error": None}
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", fake_execute_direct)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_execute_direct)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -122,7 +122,7 @@ async def test_handler_serializes_complex_args_for_write(
         captured["args"] = args
         return {"success": True, "output": "wrote"}
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", fake_execute_direct)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_execute_direct)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -150,7 +150,7 @@ async def test_handler_swallows_exception_into_failure_result(
     async def boom(*args, **kwargs) -> dict:
         raise RuntimeError("dispatch failed")
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", boom)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", boom)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -180,7 +180,7 @@ async def test_handler_cancellation_propagates(monkeypatch) -> None:
     async def cancelled(*args, **kwargs) -> dict:
         raise asyncio.CancelledError()
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", cancelled)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", cancelled)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -234,7 +234,7 @@ async def test_handler_records_pending_then_result(monkeypatch) -> None:
             "items": [{"title": "h1"}],
         }
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", fake_exec)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_exec)
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
@@ -263,7 +263,7 @@ async def test_handler_records_error_when_execute_raises(monkeypatch) -> None:
     async def boom(*args, **kwargs):
         raise RuntimeError("dispatch failed")
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", boom)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", boom)
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
@@ -289,7 +289,7 @@ async def test_handler_records_cancelled_when_execute_cancels(monkeypatch) -> No
     async def cancelled(*args, **kwargs):
         raise asyncio.CancelledError()
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", cancelled)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", cancelled)
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
@@ -316,7 +316,7 @@ async def test_handler_without_conversation_manager_is_noop(monkeypatch) -> None
     async def fake_exec(name, args, settings):
         return {"success": True, "summary": "ok"}
 
-    monkeypatch.setattr("src.llm_tools.execute_direct", fake_exec)
+    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_exec)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)  # no conversation_manager
@@ -345,7 +345,7 @@ def _switchable_service(tmp_path):
     pytest.importorskip("pipecat.services.openai.llm")
     pytest.importorskip("pipecat.services.anthropic.llm")
 
-    from src.switchable_llm import SwitchableLLMService
+    from src.agent.llm.switchable import SwitchableLLMService
 
     return SwitchableLLMService(
         openrouter_api_key="sk-or-test",
@@ -381,7 +381,7 @@ async def test_set_provider_tool_writes_file_and_takes_effect(
     """I2: the set_provider direct tool writes the provider file and the
     SwitchableLLMService picks it up on next sync."""
     from src.config import Settings
-    from src.direct_tools import _execute_set_provider
+    from src.agent.tools.direct import _execute_set_provider
 
     swit = _switchable_service
 

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.config import Settings, load_settings
-from src.language import (
+from src.voice.language.core import (
     detect_language_from_frame,
     detect_script_language,
     is_standalone_cancel_imperative,

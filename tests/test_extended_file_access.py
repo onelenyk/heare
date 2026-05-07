@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.direct_tools import (
+from src.agent.tools.direct import (
     _execute_list_directory,
     _execute_find_files,
     _execute_get_tree_view,
@@ -20,8 +20,7 @@ from src.direct_tools import (
     _execute_extract_archive,
     _execute_batch_operation,
 )
-from src.user_profile import ProfileManager
-from src.permission_manager import PermissionManager
+from src.store.user_profile import ProfileManager
 from src.config import Settings
 
 
@@ -195,39 +194,6 @@ class TestUserProfile(unittest.TestCase):
         # Check data persists
         favorites = new_manager.get_favorites()
         self.assertEqual(len(favorites), 2)
-
-
-class TestPermissionManager(unittest.TestCase):
-    """Test cases for permission manager."""
-
-    def setUp(self):
-        """Set up test environment."""
-        self.profile_path = Path(tempfile.mkdtemp()) / "profile.json"
-        self.perm_manager = PermissionManager(self.profile_path)
-        self.perm_manager.auto_approve_workspace = False
-
-    async def test_directory_permission_checking(self):
-        """Test directory permission checking."""
-        test_path = Path("/test/dir")
-
-        # Initially should not be allowed
-        self.assertFalse(await self.perm_manager.is_allowed(test_path))
-
-        # Add permanent permission
-        await self.perm_manager.grant_permanent_access(test_path, "Test Directory")
-        self.assertTrue(await self.perm_manager.is_allowed(test_path))
-
-    async def test_temporary_permissions(self):
-        """Test temporary permission expiration."""
-        test_path = Path("/test/temp")
-
-        # Grant temporary permission
-        await self.perm_manager.grant_temporary_permission(test_path, "Temp", duration_hours=1)
-        self.assertTrue(self.perm_manager.is_temporarily_allowed(test_path))
-
-        # Simulate time passage (would need proper time mocking in real tests)
-        # For now, just check the permission exists
-        self.assertTrue(str(test_path) in self.perm_manager.temp_permissions)
 
 
 class TestIntegration(unittest.TestCase):

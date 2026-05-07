@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.config import Mode, Settings
-from src.conversation import ConversationManager
-from src.storage import TranscriptStore
-from src.turn_aggregator import TurnAggregator, TurnAggregatorProcessor
+from src.store.conversation import ConversationManager
+from src.store.storage import TranscriptStore
+from src.pipeline.stages.turn_aggregator import TurnAggregator, TurnAggregatorProcessor
 
 
 @pytest.fixture

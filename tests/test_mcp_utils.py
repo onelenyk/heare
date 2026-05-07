@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.mcp_utils import (
+from src.skills.mcp_utils import (
     build_mcp_allowed_patterns,
     build_mcp_prompt_block,
     read_mcp_servers,

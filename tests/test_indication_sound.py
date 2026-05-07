@@ -5,14 +5,14 @@ import asyncio
 
 import pytest
 
-from src import indication_assets
-from src.indication import (
+from src.voice.indication import assets as indication_assets
+from src.voice.indication.core import (
     IndicationCueFrame,
     IndicationKind,
     IndicationLevel,
     build_sound_cue_processor,
 )
-from src.indication_backends.sound import SoundBackend
+from src.voice.indication.backends.sound import SoundBackend
 
 
 def _patch_push_frame(processor):

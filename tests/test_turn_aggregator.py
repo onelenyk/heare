@@ -7,7 +7,7 @@ import time
 import pytest
 
 from src.config import Mode
-from src.turn_aggregator import TurnAggregator
+from src.pipeline.stages.turn_aggregator import TurnAggregator
 
 
 @pytest.fixture

@@ -86,11 +86,11 @@ def _ensure_workspace_mcp(workspace_dir: Path) -> None:
 async def _cmd_start(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
-    from .context import ContextBuilder
-    from .heartbeat import WarmupTask
-    from .identity import build_openrouter_bootstrap, ensure_identity, render_persona
-    from .pipeline import build_pipeline
-    from .storage import TranscriptStore
+    from src.store.context import ContextBuilder
+    from src.daemon.heartbeat import WarmupTask
+    from src.agent.identity import build_openrouter_bootstrap, ensure_identity, render_persona
+    from src.pipeline.build import build_pipeline
+    from src.store.storage import TranscriptStore
 
     load_dotenv(Path(__file__).parent.parent / ".env")
     settings = load_settings()
@@ -147,7 +147,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
         conversation_manager = None
         if settings.conversation_memory_enabled:
-            from .conversation import ConversationManager
+            from src.store.conversation import ConversationManager
 
             conversation_manager = ConversationManager(store)
             try:
@@ -166,8 +166,8 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         speaker_namer = None
         if settings.speaker_id_enabled:
             try:
-                from . import speaker_id as _sid_mod
-                from .speaker_gallery import SpeakerGallery as _Gallery
+                from src.voice.speaker import id as _sid_mod
+                from src.voice.speaker.gallery import SpeakerGallery as _Gallery
 
                 speaker_gallery = _Gallery.load(settings.speakers_file)
                 loop = asyncio.get_running_loop()
@@ -186,7 +186,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 speaker_model = None
 
         if speaker_gallery is not None and speaker_model is not None:
-            from .speaker_namer import maybe_build_namer
+            from src.voice.speaker.namer import maybe_build_namer
 
             context_builder.speaker_gallery = speaker_gallery
 
@@ -221,8 +221,8 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
         from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
 
-        from .tts_edge import synthesize_to_pcm
-        from .tts_phrases import FIXED_PHRASES
+        from src.voice.tts.edge import synthesize_to_pcm
+        from src.voice.tts.phrases import FIXED_PHRASES
 
         try:
             await tts_cache.warmup(
@@ -236,7 +236,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
         async def _push_greeting() -> None:
             await asyncio.sleep(1.0)
-            from .indication import IndicationKind, get_indication
+            from src.voice.indication.core import IndicationKind, get_indication
 
             _ind = get_indication()
             if _ind is not None:
@@ -266,7 +266,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         # dashboard) drops .txt files into ``settings.inject_dir`` and we
         # push them as TranscriptionFrame, taking the same path as STT
         # output through the transcription_gate.
-        from .text_injector import make_transcription_pusher, run_injector_loop
+        from src.pipeline.stages.text_injector import make_transcription_pusher, run_injector_loop
 
         inject_pusher = make_transcription_pusher(
             transcription_gate,
@@ -297,7 +297,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         ind = locals().get("indication")
         if ind is not None:
             try:
-                from .indication import IndicationKind
+                from src.voice.indication.core import IndicationKind
 
                 ind.notify(IndicationKind.DAEMON_SHUTDOWN)
             except Exception:  # noqa: BLE001
@@ -337,7 +337,7 @@ async def run_until_stopped(
     def _handle_sighup() -> None:
         logger.info("received SIGHUP — reloading indication settings")
         from .config import load_settings
-        from .indication import get_indication
+        from src.voice.indication.core import get_indication
 
         ind = get_indication()
         if ind is None:
@@ -502,7 +502,7 @@ def _cmd_reset_session(args: argparse.Namespace) -> int:
 
 
 def _cmd_reset_identity(args: argparse.Namespace) -> int:
-    from .identity import reset_identity
+    from src.agent.identity import reset_identity
 
     settings = load_settings()
     backup = reset_identity(settings)
@@ -535,8 +535,8 @@ def _cmd_enroll_owner(args: argparse.Namespace) -> int:
         print(f"enroll-owner requires sounddevice + numpy: {e}")
         return 1
 
-    from . import speaker_id as speaker_id_mod
-    from .speaker_gallery import (
+    from src.voice.speaker import id as speaker_id_mod
+    from src.voice.speaker.gallery import (
         LabelValidationError,
         SpeakerGallery,
         sanitize_label,
@@ -602,7 +602,7 @@ def _cmd_test_recognizer(args: argparse.Namespace) -> int:
 
 
 def _cmd_speakers_list(args: argparse.Namespace) -> int:
-    from .speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     settings = load_settings()
     gallery = SpeakerGallery.load(settings.speakers_file)
@@ -622,7 +622,7 @@ def _cmd_speakers_list(args: argparse.Namespace) -> int:
 def _cmd_speakers_info(args: argparse.Namespace) -> int:
     import numpy as np
 
-    from .speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     settings = load_settings()
     gallery = SpeakerGallery.load(settings.speakers_file)
@@ -645,7 +645,7 @@ def _cmd_speakers_info(args: argparse.Namespace) -> int:
 
 
 def _cmd_speakers_rm(args: argparse.Namespace) -> int:
-    from .speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     settings = load_settings()
     if not args.yes:
@@ -660,7 +660,7 @@ def _cmd_speakers_rm(args: argparse.Namespace) -> int:
 
 
 def _cmd_speakers_rename(args: argparse.Namespace) -> int:
-    from .speaker_gallery import LabelValidationError, SpeakerGallery
+    from src.voice.speaker.gallery import LabelValidationError, SpeakerGallery
 
     settings = load_settings()
     gallery = SpeakerGallery.load(settings.speakers_file)
@@ -694,7 +694,7 @@ def _cmd_speakers(args: argparse.Namespace) -> int:
 
 
 def _cmd_speakers_audit(args: argparse.Namespace) -> int:
-    from .speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     settings = load_settings()
     gallery = SpeakerGallery.load(settings.speakers_file)

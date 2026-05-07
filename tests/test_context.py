@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from src.config import Settings, load_settings
-from src.context import ContextBuilder
-from src.storage import TranscriptStore
+from src.store.context import ContextBuilder
+from src.store.storage import TranscriptStore
 
 
 @pytest.fixture
@@ -354,7 +354,7 @@ async def test_build_for_generator_user_language_mapping(store: TranscriptStore)
 
 async def test_build_for_generator_recent_actions_formatting(store: TranscriptStore) -> None:
     """recent_actions reflects ConversationManager._action_log entries."""
-    from src.conversation import ConversationManager
+    from src.store.conversation import ConversationManager
 
     settings = load_settings()
     mgr = ConversationManager(store)
@@ -374,7 +374,7 @@ async def test_build_for_generator_recent_actions_formatting(store: TranscriptSt
 
 async def test_build_for_generator_recent_actions_limit(store: TranscriptStore) -> None:
     """Formatter shows at most 5 entries."""
-    from src.conversation import ConversationManager
+    from src.store.conversation import ConversationManager
 
     settings = load_settings()
     mgr = ConversationManager(store)
@@ -394,7 +394,7 @@ async def test_format_recent_actions_keeps_web_search_content(
 ) -> None:
     """web_search results must survive past the 80-char truncation cap so the
     generator can answer follow-ups from prior search content."""
-    from src.conversation import ConversationManager
+    from src.store.conversation import ConversationManager
 
     settings = load_settings()
     mgr = ConversationManager(store)
@@ -422,7 +422,7 @@ async def test_format_recent_actions_truncates_other_tools(
     store: TranscriptStore,
 ) -> None:
     """Non-web tools stay capped at the 80-char tail to keep prompts tight."""
-    from src.conversation import ConversationManager
+    from src.store.conversation import ConversationManager
 
     settings = load_settings()
     mgr = ConversationManager(store)
@@ -446,7 +446,7 @@ async def test_format_recent_actions_items_first_for_web_search(
 ) -> None:
     """When a web_search entry has structured `items`, render numbered
     1./2./3. blocks from items, NOT the legacy `result` blob."""
-    from src.conversation import ConversationManager
+    from src.store.conversation import ConversationManager
 
     settings = load_settings()
     mgr = ConversationManager(store)
@@ -474,7 +474,7 @@ async def test_format_recent_actions_truncates_long_items_tail_first(
     """5 items × ~250-char snippets exceed 1800 chars → tail is dropped
     and a '(N more items truncated)' suffix is appended. Total length
     must remain <= 1800 chars (per AC)."""
-    from src.conversation import ConversationManager
+    from src.store.conversation import ConversationManager
 
     settings = load_settings()
     mgr = ConversationManager(store)
@@ -508,7 +508,7 @@ async def test_format_recent_actions_falls_back_to_result_when_no_items(
 ) -> None:
     """Entry with `result` only (no `items`) hits the legacy fallback path
     — substring of `result` appears in the output."""
-    from src.conversation import ConversationManager
+    from src.store.conversation import ConversationManager
 
     settings = load_settings()
     mgr = ConversationManager(store)
@@ -528,7 +528,7 @@ async def test_format_recent_actions_falls_back_to_result_when_no_items(
 async def test_context_builder_keys_accounted_for(store: TranscriptStore) -> None:
     """Drift guard: every key in build() must be either propagated to the generator
     view or explicitly listed in _EXCLUDED_FROM_GENERATOR_CTX."""
-    from src.context import _EXCLUDED_FROM_GENERATOR_CTX
+    from src.store.context import _EXCLUDED_FROM_GENERATOR_CTX
 
     settings = load_settings()
     ctx = ContextBuilder(store, settings)

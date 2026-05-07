@@ -17,8 +17,8 @@ import pytest
 pytest.importorskip("pipecat.services.tts_service")
 pytest.importorskip("edge_tts")
 
-import src.tts_edge as tts_mod  # noqa: E402
-from src.tts_edge import create_edge_tts_service  # noqa: E402
+import src.voice.tts.edge as tts_mod  # noqa: E402
+from src.voice.tts.edge import create_edge_tts_service  # noqa: E402
 
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
 

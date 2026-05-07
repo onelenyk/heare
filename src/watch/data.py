@@ -15,7 +15,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from ..config import Settings
+from src.config import Settings
 
 
 # ---------------------------------------------------------------------------
@@ -435,8 +435,8 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     Returns a frozen DashboardSnapshot with all data needed by widgets.
     This isolation makes background threading trivial if needed.
     """
-    from ..identity import load_identity
-    from ..mute_gate import is_input_muted, is_muted
+    from src.agent.identity import load_identity
+    from src.pipeline.stages.mute_gate import is_input_muted, is_muted
 
     # Open DB
     con = open_db(settings.db_path)

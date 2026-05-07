@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src import indication_assets as ia
+from src.voice.indication import assets as ia
 
 
 LEVELS = ("attention", "error", "long_running", "success", "info", "input_waiting", "countdown")

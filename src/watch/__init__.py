@@ -9,8 +9,8 @@ import os
 from rich.console import Console
 from rich.table import Table
 
-from ..config import Settings
-from ..identity import load_identity
+from src.config import Settings
+from src.agent.identity import load_identity
 from .app import HeareDashboard
 from .data import fetch_dashboard_state
 

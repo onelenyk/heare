@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from src.conversation import ConversationManager
-from src.storage import TranscriptStore
+from src.store.conversation import ConversationManager
+from src.store.storage import TranscriptStore
 
 
 @pytest.fixture

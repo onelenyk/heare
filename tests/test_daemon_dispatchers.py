@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.direct_tools import (
+from src.agent.tools.direct import (
     _execute_bash,
     _execute_restart_daemon,
     _execute_stop_daemon,
@@ -43,7 +43,7 @@ async def test_stop_daemon_schedules_self_exit_when_confirmed() -> None:
         # No-op — real impl would signal os.getpid() and kill the test runner.
         await asyncio.sleep(0)
 
-    with patch("src.daemon_control.schedule_self_exit", AsyncMock(side_effect=fake_schedule)) as mock:
+    with patch("src.daemon.control.schedule_self_exit", AsyncMock(side_effect=fake_schedule)) as mock:
         args = json.dumps({"user_confirmed": True, "delay_s": 0.01})
         result = await _execute_stop_daemon(args)
 
@@ -90,8 +90,8 @@ async def test_restart_daemon_spawns_respawner_then_schedules_exit() -> None:
         call_order.append("schedule_exit")
         await asyncio.sleep(0)
 
-    with patch("src.daemon_control.spawn_detached_respawn", side_effect=fake_spawn) as spawn_mock, \
-         patch("src.daemon_control.schedule_self_exit", AsyncMock(side_effect=fake_schedule)) as exit_mock:
+    with patch("src.daemon.control.spawn_detached_respawn", side_effect=fake_spawn) as spawn_mock, \
+         patch("src.daemon.control.schedule_self_exit", AsyncMock(side_effect=fake_schedule)) as exit_mock:
         args = json.dumps({
             "user_confirmed": True,
             "self_exit_delay_s": 0.01,
@@ -120,8 +120,8 @@ async def test_restart_daemon_does_not_exit_if_respawn_fails() -> None:
 
     schedule_mock = AsyncMock()
 
-    with patch("src.daemon_control.spawn_detached_respawn", side_effect=fake_spawn), \
-         patch("src.daemon_control.schedule_self_exit", schedule_mock):
+    with patch("src.daemon.control.spawn_detached_respawn", side_effect=fake_spawn), \
+         patch("src.daemon.control.schedule_self_exit", schedule_mock):
         args = json.dumps({"user_confirmed": True})
         result = await _execute_restart_daemon(args)
 
@@ -147,8 +147,8 @@ async def test_restart_daemon_respawn_delay_exceeds_self_exit_delay() -> None:
 
     schedule_mock = AsyncMock()
 
-    with patch("src.daemon_control.spawn_detached_respawn", side_effect=fake_spawn), \
-         patch("src.daemon_control.schedule_self_exit", schedule_mock):
+    with patch("src.daemon.control.spawn_detached_respawn", side_effect=fake_spawn), \
+         patch("src.daemon.control.schedule_self_exit", schedule_mock):
         # No explicit overrides — exercise the defaults.
         args = json.dumps({"user_confirmed": True})
         await _execute_restart_daemon(args)

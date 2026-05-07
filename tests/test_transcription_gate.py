@@ -15,9 +15,9 @@ pipecat = pytest.importorskip("pipecat.frames.frames")
 TranscriptionFrame = pipecat.TranscriptionFrame
 
 from src.config import Mode, Settings  # noqa: E402
-from src.language_state import LanguageState  # noqa: E402
-from src.storage import TranscriptStore  # noqa: E402
-from src.transcription_gate import create_transcription_gate  # noqa: E402
+from src.pipeline.language_state import LanguageState  # noqa: E402
+from src.store.storage import TranscriptStore  # noqa: E402
+from src.pipeline.stages.transcription_gate import create_transcription_gate  # noqa: E402
 
 
 def _make_transcription_frame(text: str, whisper_lang: str | None = None):

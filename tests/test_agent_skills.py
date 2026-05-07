@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from src.agent_skills import SkillsLoader, SkillMetadata
-from src.direct_tools import execute_direct
-from src.tool_registry import TOOLS, get_enabled_tools
-from src.llm_tools import _TOOL_SPECS
+from src.skills.agent_skills import SkillsLoader, SkillMetadata
+from src.agent.tools.direct import execute_direct
+from src.agent.tools.registry import TOOLS, get_enabled_tools
+from src.agent.tools.schemas import _TOOL_SPECS
 
 
 # ============================================================================
@@ -300,7 +300,7 @@ description: Skill {i}
 
 def test_system_prompt_includes_skill_names_when_present():
     """Render system prompt with skills; assert 'Available Skills' section appears."""
-    from src.llm_context_injector import render_native_system_prompt
+    from src.agent.llm.context_injector import render_native_system_prompt
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
@@ -333,7 +333,7 @@ description: A test skill
 
 def test_system_prompt_omits_skill_section_when_no_skills():
     """Render with no skills; assert 'Available Skills' does NOT appear."""
-    from src.llm_context_injector import render_native_system_prompt
+    from src.agent.llm.context_injector import render_native_system_prompt
 
     prompt = render_native_system_prompt(
         persona="Test persona",
@@ -434,7 +434,7 @@ async def test_list_skills_returns_success():
 
 def test_extract_tool_calls_ignores_prose():
     """Prose containing word(text) should not produce tool calls."""
-    from src.direct_tools import _extract_tool_calls_from_instructions
+    from src.agent.tools.direct import _extract_tool_calls_from_instructions
 
     instructions = """
     This skill demonstrates the feature(awesome syntax). You can also use function(args) inline.
@@ -454,7 +454,7 @@ def test_extract_tool_calls_ignores_prose():
 
 def test_extract_tool_calls_with_context_substitution():
     """Context variable substitution should work correctly."""
-    from src.direct_tools import _extract_tool_calls_from_instructions
+    from src.agent.tools.direct import _extract_tool_calls_from_instructions
 
     instructions = "read({filepath}) and bash({command})"
     context = {"filepath": "/tmp/test.txt", "command": "echo done"}
@@ -470,7 +470,7 @@ def test_extract_tool_calls_with_context_substitution():
 
 def test_extract_tool_calls_missing_context_keys():
     """Missing context keys should be left as placeholders."""
-    from src.direct_tools import _extract_tool_calls_from_instructions
+    from src.agent.tools.direct import _extract_tool_calls_from_instructions
 
     instructions = "read({filepath}) and bash({missing_key})"
     context = {"filepath": "/tmp/test.txt"}  # missing_key not provided

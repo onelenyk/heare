@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import asyncio
 
-from src import indication as ind_mod
+from src.voice.indication import core as ind_mod
 from src.config import IndicationSettings
-from src.indication import IndicationKind
-from src.mcp_utils import (
+from src.voice.indication.core import IndicationKind
+from src.skills.mcp_utils import (
     notify_mcp_auth_required,
     notify_mcp_disconnected,
     reset_mcp_indication_debounce,

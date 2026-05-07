@@ -9,8 +9,8 @@ import pytest
 pytest.importorskip("pipecat.frames.frames")
 from pipecat.frames.frames import TextFrame, TranscriptionFrame  # noqa: E402
 
-from src.language_state import LanguageState  # noqa: E402
-from src.llm_context_injector import (  # noqa: E402
+from src.pipeline.language_state import LanguageState  # noqa: E402
+from src.agent.llm.context_injector import (  # noqa: E402
     _replace_system_message,
     create_system_prompt_injector,
     render_native_system_prompt,

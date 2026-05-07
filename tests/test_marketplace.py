@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src import marketplace
-from src.capability_index import IndexEntry
+from src.skills import marketplace
+from src.agent.tools.capability_index import IndexEntry
 
 
 @dataclass
@@ -38,7 +38,7 @@ def _patch_get(response_or_exc):
         client.get = AsyncMock(side_effect=response_or_exc)
     else:
         client.get = AsyncMock(return_value=response_or_exc)
-    return patch("src.marketplace.httpx.AsyncClient", return_value=client)
+    return patch("src.skills.marketplace.httpx.AsyncClient", return_value=client)
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ async def test_fetch_skill_candidates_happy_path():
 async def test_bad_hostname_blocked():
     settings = _FakeSettings(marketplace_url="https://evil.com")
     client_factory = MagicMock()
-    with patch("src.marketplace.httpx.AsyncClient", client_factory):
+    with patch("src.skills.marketplace.httpx.AsyncClient", client_factory):
         out = await marketplace.fetch_skill_candidates("weather", settings=settings)
     assert out == []
     client_factory.assert_not_called()
@@ -88,7 +88,7 @@ async def test_bad_hostname_blocked():
 async def test_homoglyph_blocked():
     settings = _FakeSettings(marketplace_url="https://g1thub.com")
     client_factory = MagicMock()
-    with patch("src.marketplace.httpx.AsyncClient", client_factory):
+    with patch("src.skills.marketplace.httpx.AsyncClient", client_factory):
         out = await marketplace.fetch_skill_candidates("weather", settings=settings)
     assert out == []
     client_factory.assert_not_called()
@@ -98,7 +98,7 @@ async def test_homoglyph_blocked():
 async def test_subdomain_takeover_blocked():
     settings = _FakeSettings(marketplace_url="https://github.com.evil.com")
     client_factory = MagicMock()
-    with patch("src.marketplace.httpx.AsyncClient", client_factory):
+    with patch("src.skills.marketplace.httpx.AsyncClient", client_factory):
         out = await marketplace.fetch_skill_candidates("weather", settings=settings)
     assert out == []
     client_factory.assert_not_called()

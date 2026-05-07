@@ -27,7 +27,7 @@ from pipecat.frames.frames import (  # noqa: E402
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor  # noqa: E402
 
-from src.switchable_llm import SwitchableLLMService  # noqa: E402
+from src.agent.llm.switchable import SwitchableLLMService  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

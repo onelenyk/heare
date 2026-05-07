@@ -11,8 +11,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src import direct_tools, installer
-from src.capability_index import IndexEntry
+from src.agent.tools import direct as direct_tools
+from src.skills import installer
+from src.agent.tools.capability_index import IndexEntry
 
 
 @dataclass
@@ -93,7 +94,7 @@ async def test_discover_install_flow_smoke(settings, fake_home):
     )
 
     with patch(
-        "src.discovery.discover_capability_remote",
+        "src.skills.discovery.discover_capability_remote",
         AsyncMock(return_value=[remote_entry]),
     ):
         disc = await direct_tools._execute_discover_capability(
@@ -110,7 +111,7 @@ async def test_discover_install_flow_smoke(settings, fake_home):
     populated_index.rebuild = MagicMock()
     direct_tools.set_capability_index(populated_index)
 
-    with patch("src.installer._download", AsyncMock(return_value=tarball)):
+    with patch("src.skills.installer._download", AsyncMock(return_value=tarball)):
         inst = await direct_tools._execute_install_skill_tool(
             json.dumps({"slug": "weather-pro", "user_confirmed": True}),
             settings,
@@ -132,7 +133,7 @@ async def test_discover_returns_empty_when_no_match(settings, fake_home):
     direct_tools.set_capability_index(empty_index)
 
     with patch(
-        "src.discovery.discover_capability_remote",
+        "src.skills.discovery.discover_capability_remote",
         AsyncMock(return_value=[]),
     ):
         disc = await direct_tools._execute_discover_capability(

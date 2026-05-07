@@ -181,7 +181,7 @@ def test_speakers_list_empty(capsys) -> None:
 def test_speakers_list_prints_all(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)
@@ -199,7 +199,7 @@ def test_speakers_list_prints_all(capsys) -> None:
 def test_speakers_info_prints_fields(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)
@@ -227,7 +227,7 @@ def test_speakers_info_missing_returns_1(capsys) -> None:
 def test_speakers_rm_requires_yes_flag(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)
@@ -245,7 +245,7 @@ def test_speakers_rm_requires_yes_flag(capsys) -> None:
 def test_speakers_rm_with_yes_removes(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)
@@ -262,7 +262,7 @@ def test_speakers_rm_with_yes_removes(capsys) -> None:
 def test_speakers_rename_success(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)
@@ -279,7 +279,7 @@ def test_speakers_rename_success(capsys) -> None:
 def test_speakers_rename_invalid_label(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)
@@ -299,7 +299,7 @@ def test_speakers_rename_invalid_label(capsys) -> None:
 def test_speakers_audit_prints_ok_for_healthy(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)
@@ -316,7 +316,7 @@ def test_speakers_audit_prints_ok_for_healthy(capsys) -> None:
 def test_speakers_audit_prints_drift_marker(capsys) -> None:
     import numpy as np
 
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _speakers_tmp_settings(tmp)

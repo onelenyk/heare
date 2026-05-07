@@ -46,7 +46,7 @@ async def test_logger_aggregates_llm_text_frames_per_response():
         LLMTextFrame,
     )
 
-    from src.assistant_response_logger import create_assistant_response_logger
+    from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
 
     store = _StoreSpy()
     proc = create_assistant_response_logger(store=store)
@@ -70,7 +70,7 @@ async def test_logger_skips_text_outside_response_window():
     """Text frames seen outside an LLM response window must be ignored."""
     from pipecat.frames.frames import LLMFullResponseEndFrame, LLMTextFrame
 
-    from src.assistant_response_logger import create_assistant_response_logger
+    from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
 
     store = _StoreSpy()
     proc = create_assistant_response_logger(store=store)
@@ -90,7 +90,7 @@ async def test_logger_logs_one_row_per_response():
         LLMTextFrame,
     )
 
-    from src.assistant_response_logger import create_assistant_response_logger
+    from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
 
     store = _StoreSpy()
     proc = create_assistant_response_logger(store=store)
@@ -114,7 +114,7 @@ async def test_logger_logs_standalone_tts_speak_frame():
     utterance (e.g. startup greeting) and logged immediately."""
     from pipecat.frames.frames import TTSSpeakFrame
 
-    from src.assistant_response_logger import create_assistant_response_logger
+    from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
 
     store = _StoreSpy()
     proc = create_assistant_response_logger(store=store)
@@ -133,7 +133,7 @@ async def test_logger_passes_frames_through_downstream():
         LLMTextFrame,
     )
 
-    from src.assistant_response_logger import create_assistant_response_logger
+    from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
 
     proc = create_assistant_response_logger(store=None)
     captured = _patch_push_frame(proc)

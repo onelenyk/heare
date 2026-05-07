@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.indication import IndicationKind, IndicationLevel
-from src.indication_backends.visual import VisualBackend
+from src.voice.indication.core import IndicationKind, IndicationLevel
+from src.voice.indication.backends.visual import VisualBackend
 
 
 async def test_fire_writes_one_valid_json_line(tmp_path: Path) -> None:

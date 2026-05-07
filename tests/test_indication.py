@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 
 from src.config import IndicationKindToggle, IndicationSettings, Mode
-from src.indication import (
+from src.voice.indication.core import (
     Indication,
     IndicationKind,
     IndicationLevel,

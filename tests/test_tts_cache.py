@@ -1,7 +1,7 @@
 """Tests for src/tts_cache.py — in-memory PCM cache for fixed phrases."""
 from __future__ import annotations
 
-from src.tts_cache import TTSCache
+from src.voice.tts.cache import TTSCache
 
 
 async def test_tts_cache_get_miss() -> None:
@@ -93,7 +93,7 @@ async def test_tts_cache_warmup_skips_empty_pcm() -> None:
 
 def test_fixed_phrases_list_exposed() -> None:
     """Phase 2.1 US-P2.1-07b: FIXED_PHRASES now lives in src/tts_phrases."""
-    from src.tts_phrases import FIXED_PHRASES
+    from src.voice.tts.phrases import FIXED_PHRASES
 
     assert isinstance(FIXED_PHRASES, list)
     assert "okay" in FIXED_PHRASES

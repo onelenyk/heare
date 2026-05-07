@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from src.identity import (
+from src.agent.identity import (
     Identity,
     _validate,
     build_openrouter_bootstrap,

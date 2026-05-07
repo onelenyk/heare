@@ -20,13 +20,13 @@ def _settings(tmp: Path):
 
 
 def test_daemon_pid_returns_none_when_no_pid_file(tmp_path: Path):
-    from src.watch_controls import daemon_pid
+    from src.daemon.watch_controls import daemon_pid
 
     assert daemon_pid(_settings(tmp_path)) is None
 
 
 def test_daemon_pid_returns_none_for_dead_process(tmp_path: Path):
-    from src.watch_controls import daemon_pid
+    from src.daemon.watch_controls import daemon_pid
 
     s = _settings(tmp_path)
     s.pid_file.write_text("999999999")  # almost certainly dead
@@ -34,7 +34,7 @@ def test_daemon_pid_returns_none_for_dead_process(tmp_path: Path):
 
 
 def test_daemon_pid_returns_pid_for_live_process(tmp_path: Path):
-    from src.watch_controls import daemon_pid
+    from src.daemon.watch_controls import daemon_pid
 
     s = _settings(tmp_path)
     # Use this test process as the "live" daemon.
@@ -43,7 +43,7 @@ def test_daemon_pid_returns_pid_for_live_process(tmp_path: Path):
 
 
 def test_daemon_pid_returns_none_for_garbage_pid_file(tmp_path: Path):
-    from src.watch_controls import daemon_pid
+    from src.daemon.watch_controls import daemon_pid
 
     s = _settings(tmp_path)
     s.pid_file.write_text("not-a-number")
@@ -51,7 +51,7 @@ def test_daemon_pid_returns_none_for_garbage_pid_file(tmp_path: Path):
 
 
 def test_stop_daemon_when_not_running_cleans_stale_pid(tmp_path: Path):
-    from src.watch_controls import stop_daemon
+    from src.daemon.watch_controls import stop_daemon
 
     s = _settings(tmp_path)
     s.pid_file.write_text("999999999")
@@ -61,7 +61,7 @@ def test_stop_daemon_when_not_running_cleans_stale_pid(tmp_path: Path):
 
 
 def test_stop_daemon_when_no_pid_file(tmp_path: Path):
-    from src.watch_controls import stop_daemon
+    from src.daemon.watch_controls import stop_daemon
 
     s = _settings(tmp_path)
     msg = stop_daemon(s)
@@ -71,7 +71,7 @@ def test_stop_daemon_when_no_pid_file(tmp_path: Path):
 def test_stop_daemon_sigterm_pathway(tmp_path: Path, monkeypatch):
     """stop_daemon must SIGTERM the live pid and report success when the
     process exits within the timeout."""
-    from src import watch_controls
+    from src.daemon import watch_controls
 
     s = _settings(tmp_path)
     s.pid_file.write_text("12345")
@@ -94,7 +94,7 @@ def test_stop_daemon_sigterm_pathway(tmp_path: Path, monkeypatch):
 
 
 def test_start_daemon_refuses_when_already_running(tmp_path: Path):
-    from src.watch_controls import start_daemon
+    from src.daemon.watch_controls import start_daemon
 
     s = _settings(tmp_path)
     s.pid_file.write_text(str(os.getpid()))  # this test process IS the "daemon"
@@ -103,5 +103,5 @@ def test_start_daemon_refuses_when_already_running(tmp_path: Path):
 
 
 def test_start_daemon_spawns_subprocess(tmp_path: Path, monkeypatch):
-    from src import watch_controls
+    from src.daemon import watch_controls
 

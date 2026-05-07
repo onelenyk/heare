@@ -2,7 +2,7 @@
 
 Validates UK/RU/EN reply quality matches the current bar by checking
 that the model replies in the same script as the prompt for at least
-14 of 15 prompts. Uses ``src.language.detect_script_language`` (which
+14 of 15 prompts. Uses ``src.voice.language.core.detect_script_language`` (which
 returns ``'cyrillic' | 'latin' | 'unknown'``) — Ukrainian and Russian
 both fall under cyrillic, English under latin.
 
@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from src.language import detect_script_language
+from src.voice.language.core import detect_script_language
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 

@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src import installer
-from src.capability_index import IndexEntry
+from src.skills import installer
+from src.agent.tools.capability_index import IndexEntry
 
 
 @dataclass
@@ -76,7 +76,7 @@ def _entry(name: str = "foo", install_url: str = "https://github.com/foo/foo/arc
 
 
 def _patch_download(content: bytes):
-    return patch("src.installer._download", AsyncMock(return_value=content))
+    return patch("src.skills.installer._download", AsyncMock(return_value=content))
 
 
 @pytest.mark.asyncio
@@ -168,7 +168,7 @@ async def test_install_skill_checksum_mismatch(settings, fake_home):
 async def test_install_skill_invalidates_loader(settings, fake_home):
     tarball = _make_tarball()
     fake_loader = MagicMock()
-    with _patch_download(tarball), patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
+    with _patch_download(tarball), patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader):
         result = await installer.install_skill(_entry(), settings=settings, user_confirmed=True)
     assert result.success is True
     fake_loader.invalidate.assert_called_once()
@@ -211,7 +211,7 @@ def _mcp_entry(name: str = "bar", *, launch: dict | None = None, install_url: st
 
 @pytest.mark.asyncio
 async def test_install_mcp_uses_write_mcp_servers_helper(settings, fake_home):
-    with patch("src.installer.write_mcp_servers") as mock_write, patch("src.installer.read_mcp_servers", return_value={}):
+    with patch("src.skills.installer.write_mcp_servers") as mock_write, patch("src.skills.installer.read_mcp_servers", return_value={}):
         result = await installer.install_mcp_server(_mcp_entry(), settings=settings, user_confirmed=True)
     assert result.success is True
     mock_write.assert_called_once()
@@ -360,8 +360,8 @@ def _make_repo_tarball_with_subpath(subpath: str) -> bytes:
 async def test_install_skill_extracts_subpath_from_github_tree_url(settings, fake_home):
     tarball = _make_repo_tarball_with_subpath("skills/foo")
     entry = _entry(install_url="https://github.com/owner/repo/tree/main/skills/foo")
-    with patch("src.installer._try_raw_fast_path", AsyncMock(return_value=None)), \
-         patch("src.installer._download", AsyncMock(return_value=tarball)) as dl:
+    with patch("src.skills.installer._try_raw_fast_path", AsyncMock(return_value=None)), \
+         patch("src.skills.installer._download", AsyncMock(return_value=tarball)) as dl:
         result = await installer.install_skill(entry, settings=settings, user_confirmed=True)
     assert result.success
     dl.assert_awaited_once()
@@ -377,8 +377,8 @@ async def test_install_skill_extracts_subpath_from_github_tree_url(settings, fak
 async def test_install_skill_subpath_missing_in_archive(settings, fake_home):
     tarball = _make_repo_tarball_with_subpath("skills/other")
     entry = _entry(install_url="https://github.com/owner/repo/tree/main/skills/foo")
-    with patch("src.installer._try_raw_fast_path", AsyncMock(return_value=None)), \
-         patch("src.installer._download", AsyncMock(return_value=tarball)):
+    with patch("src.skills.installer._try_raw_fast_path", AsyncMock(return_value=None)), \
+         patch("src.skills.installer._download", AsyncMock(return_value=tarball)):
         with pytest.raises(installer.InstallFailed) as exc:
             await installer.install_skill(entry, settings=settings, user_confirmed=True)
     assert str(exc.value) in ("subpath_not_found", "invalid_archive")
@@ -392,9 +392,9 @@ async def test_install_skill_uses_raw_fast_path_when_no_assets(settings, fake_ho
     skill_md = "---\nname: foo\ndescription: A test skill\n---\nplain body, no assets.\n"
     entry = _entry(install_url="https://github.com/owner/repo/tree/main/skills/foo")
     with patch(
-        "src.installer._try_raw_fast_path",
+        "src.skills.installer._try_raw_fast_path",
         AsyncMock(return_value=(skill_md, [])),
-    ), patch("src.installer._download", AsyncMock()) as dl:
+    ), patch("src.skills.installer._download", AsyncMock()) as dl:
         result = await installer.install_skill(entry, settings=settings, user_confirmed=True)
     assert result.success
     dl.assert_not_awaited()
@@ -702,7 +702,7 @@ async def test_create_skill_invalidates_loader_and_rebuilds_index(settings, fake
     fake_loader.invalidate = MagicMock()
     fake_index = MagicMock()
     fake_index.rebuild = MagicMock()
-    with patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
+    with patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader):
         await installer.create_skill(
             name="foo", description="d", body="b",
             settings=settings, capability_index=fake_index, user_confirmed=True,
@@ -715,7 +715,7 @@ async def test_create_skill_invalidates_loader_and_rebuilds_index(settings, fake
 async def test_execute_create_skill_dispatcher_happy_path(settings, fake_home):
     """The LLM-facing dispatcher unwraps JSON args and surfaces the
     InstallResult in the spoken-en/uk shape that pipecat will read back."""
-    from src.direct_tools import _execute_create_skill
+    from src.agent.tools.direct import _execute_create_skill
 
     args = json.dumps({
         "name": "audio-debug",
@@ -735,7 +735,7 @@ async def test_execute_create_skill_dispatcher_surfaces_error_code(settings, fak
     """Validation failures must come back as ``error_code`` so the LLM can
     route on it (e.g. ask for a different name) instead of a free-form
     error string."""
-    from src.direct_tools import _execute_create_skill
+    from src.agent.tools.direct import _execute_create_skill
 
     args = json.dumps({
         "name": "Foo Bar",  # invalid: uppercase + space
@@ -750,7 +750,7 @@ async def test_execute_create_skill_dispatcher_surfaces_error_code(settings, fak
 
 @pytest.mark.asyncio
 async def test_execute_create_skill_dispatcher_rejects_bad_json(settings, fake_home):
-    from src.direct_tools import _execute_create_skill
+    from src.agent.tools.direct import _execute_create_skill
 
     result = await _execute_create_skill("not json{", settings)
     assert result["success"] is False
@@ -762,7 +762,7 @@ async def test_create_skill_is_discoverable_by_skills_loader(settings, fake_home
     """End-to-end: after create_skill, the SkillsLoader sees the new skill
     and can return its body — proving the file layout matches the loader's
     parser contract."""
-    from src import agent_skills
+    from src.skills import agent_skills
 
     settings.skills_paths = [str(fake_home / ".heare" / "skills")]
     # Fresh loader that scans the fake_home path so we don't pick up

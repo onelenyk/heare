@@ -1,4 +1,4 @@
-"""Tests for src.pricing — static catalog + cost calculators.
+"""Tests for src.agent.llm.pricing — static catalog + cost calculators.
 
 The catalog is the single source of truth for cost calculation, so
 these tests focus on:
@@ -8,7 +8,7 @@ these tests focus on:
 """
 from __future__ import annotations
 
-from src.pricing import is_known_model, llm_cost, stt_cost, tts_cost
+from src.agent.llm.pricing import is_known_model, llm_cost, stt_cost, tts_cost
 
 
 class TestLLMCost:

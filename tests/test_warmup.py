@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.heartbeat import WarmupTask
+from src.daemon.heartbeat import WarmupTask
 
 
 @pytest.fixture(autouse=True)

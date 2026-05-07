@@ -17,8 +17,8 @@ import numpy as np
 import pytest
 
 from src.config import Settings
-from src.speaker_gallery import SpeakerGallery
-from src.speaker_processor import (
+from src.voice.speaker.gallery import SpeakerGallery
+from src.voice.speaker.processor import (
     _SLOT_RETAIN,
     _AccumBuffer,
     _TurnSlot,
@@ -78,7 +78,7 @@ def _mk_gallery(tmp_path: Path) -> SpeakerGallery:
 async def test_audio_buffer_captures_pcm_between_start_and_stop(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -114,7 +114,7 @@ async def test_audio_buffer_captures_pcm_between_start_and_stop(
 async def test_sample_rate_assertion_raises(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -131,7 +131,7 @@ async def test_sample_rate_assertion_raises(
 async def test_tagger_ignores_interim_transcriptions(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     embed_calls = {"n": 0}
 
@@ -153,7 +153,7 @@ async def test_tagger_ignores_interim_transcriptions(
 async def test_tagger_ignores_transcription_with_finalized_false(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -170,7 +170,7 @@ async def test_tagger_ignores_transcription_with_finalized_false(
 async def test_tagger_skips_during_bot_speaking(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -188,7 +188,7 @@ async def test_tagger_skips_during_bot_speaking(
 async def test_tagger_fail_closed_on_slot_timeout(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     # embed never completes — slot.event is never set
     async def never_embed(*args, **kwargs):
@@ -222,7 +222,7 @@ async def test_tagger_fail_closed_on_slot_timeout(
 async def test_tagger_matches_owner_via_mocked_embed(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -255,7 +255,7 @@ async def test_tagger_matches_owner_via_mocked_embed(
 async def test_tagger_stranger_returns_none(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery(tmp_path)
@@ -286,7 +286,7 @@ async def test_tagger_stranger_returns_none(
 async def test_short_turn_inherits_prev_label(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -328,7 +328,7 @@ async def test_short_turn_inherits_prev_label(
 async def test_gc_cancels_in_flight_task(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     # Slow embed so we can cancel it before completion
     def slow_embed(pcm, sr, model):
@@ -359,7 +359,7 @@ async def test_gc_cancels_in_flight_task(
 async def test_shutdown_cancels_pending_tasks(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     def slow_embed(pcm, sr, model):
         import time as _t
@@ -405,7 +405,7 @@ async def test_prev_id_cleared_on_non_owner_turn(
     """SPK2-B1: a non-owner turn (no gallery match) must clear _prev_id
     so a subsequent short turn does NOT inherit the previous owner label.
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     state = {"vec": _owner_vector()}
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: state["vec"].copy())
@@ -467,7 +467,7 @@ async def test_sticky_window_expires_after_timeout(
     internals), we artificially age self._prev_at by subtracting the
     sticky window + slack directly on the tagger instance.
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -525,7 +525,7 @@ async def test_short_turn_after_stranger_does_not_inherit_owner(
     'так' that arrives right after a non-matched long turn must fall
     through as None (not inherit the owner id from two turns ago).
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     state = {"vec": _owner_vector()}
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: state["vec"].copy())
@@ -591,7 +591,7 @@ async def test_accum_buffer_flushed_on_bot_speaking(
     """SPK2-B2: BotStartedSpeakingFrame flushes the rolling accumulator so
     TTS audio never contaminates the stored context.
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -619,7 +619,7 @@ async def test_short_turn_uses_accumulated_embedding(
     buffer has reached target, the slot receives an accum_embedding AND
     the tagger uses it (not the single-turn embedding) for gallery.identify.
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     call_log: list[int] = []
 
@@ -681,7 +681,7 @@ async def test_long_turn_uses_single_turn_embedding(
     """SPK2-B2: a turn at/above the accum target ignores the accumulator
     and runs only the single-turn embed.
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     call_log: list[int] = []
 
@@ -731,7 +731,7 @@ async def test_tagger_auto_appends_high_confidence_long_turn(
     """SPK2-B4: a long, high-confidence owner turn should call
     gallery.append_reference so the centroid adapts over the session.
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -778,7 +778,7 @@ async def test_tagger_auto_appends_marginal_duration_turn(
     'high-confidence owner match', not turn length — we always feed the
     stable single-turn embedding regardless of which path identified.
     """
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -858,7 +858,7 @@ def _mk_empty_gallery(tmp_path: Path) -> SpeakerGallery:
 async def test_auto_enroll_owner_when_no_owner_exists(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_empty_gallery(tmp_path)
@@ -898,7 +898,7 @@ async def test_auto_enroll_owner_when_no_owner_exists(
 async def test_auto_enroll_owner_skipped_when_owner_exists(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     # Gallery already has an owner — must never overwrite.
@@ -920,7 +920,7 @@ async def test_auto_enroll_owner_skipped_when_owner_exists(
 async def test_auto_enroll_owner_respects_threshold(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_empty_gallery(tmp_path)
@@ -947,7 +947,7 @@ async def test_auto_enroll_owner_handles_enrollment_failure(
 ) -> None:
     import logging
 
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_empty_gallery(tmp_path)
@@ -989,7 +989,7 @@ async def test_auto_enroll_owner_tts_failure_does_not_revert_enrollment(
     """
     import pipecat.frames.frames as pf  # type: ignore
 
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
 
@@ -1013,7 +1013,7 @@ async def test_auto_enroll_owner_tts_failure_does_not_revert_enrollment(
 async def test_auto_enroll_owner_checks_enabled_flag(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_empty_gallery(tmp_path)
@@ -1034,7 +1034,7 @@ async def test_auto_enroll_owner_checks_enabled_flag(
 async def test_auto_enroll_when_disabled(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery(tmp_path)
@@ -1054,7 +1054,7 @@ async def test_auto_enroll_when_disabled(
 async def test_auto_enroll_enabled_by_default(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery(tmp_path)
@@ -1077,7 +1077,7 @@ async def test_auto_enroll_enabled_by_default(
 async def test_auto_enroll_triggers_after_threshold(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery(tmp_path)
@@ -1098,7 +1098,7 @@ async def test_auto_enroll_triggers_after_threshold(
 async def test_auto_enroll_ignores_dissimilar_candidates(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     # Rotate through three orthogonal vectors so no pair reaches the 0.75
     # similarity threshold.
@@ -1134,7 +1134,7 @@ async def test_auto_enroll_ignores_dissimilar_candidates(
 async def test_auto_enroll_ignores_short_turns(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery(tmp_path)
@@ -1157,7 +1157,7 @@ async def test_auto_enroll_ignores_short_turns(
 async def test_auto_enroll_clears_buffer_after_success(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery(tmp_path)
@@ -1210,7 +1210,7 @@ async def _run_one_turn_and_tag(buffer, tagger, fake_frames, text: str) -> objec
 async def test_tagger_calls_namer_enqueue_on_guest_match(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery_with_guest(tmp_path)
@@ -1234,7 +1234,7 @@ async def test_tagger_calls_namer_enqueue_on_guest_match(
 async def test_tagger_skips_namer_enqueue_for_owner(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _owner_vector())
     gallery = _mk_gallery(tmp_path)
@@ -1254,7 +1254,7 @@ async def test_tagger_skips_namer_enqueue_for_owner(
 async def test_tagger_skips_namer_enqueue_when_sid_none(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     # Unknown vector — no guest enrolled → sid stays None
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
@@ -1275,7 +1275,7 @@ async def test_tagger_skips_namer_enqueue_when_sid_none(
 async def test_tagger_skips_namer_enqueue_for_empty_text(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery_with_guest(tmp_path)
@@ -1295,7 +1295,7 @@ async def test_tagger_skips_namer_enqueue_for_empty_text(
 async def test_tagger_swallows_namer_enqueue_exception(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery_with_guest(tmp_path)
@@ -1318,7 +1318,7 @@ async def test_tagger_swallows_namer_enqueue_exception(
 async def test_tagger_without_namer_enqueue_behaves_as_before(
     fake_frames, tmp_path: Path, monkeypatch
 ) -> None:
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     monkeypatch.setattr(sid, "embed", lambda pcm, sr, model: _stranger_vector())
     gallery = _mk_gallery_with_guest(tmp_path)
@@ -1339,7 +1339,7 @@ async def test_tagger_skips_during_enrollment(
     """US-EG-2: tagger sets speaker_confidence=-1.0 and skips embedding during enrollment."""
     import logging
 
-    import src.speaker_id as sid
+    import src.voice.speaker.id as sid
 
     embed_calls = {"n": 0}
 
@@ -1355,7 +1355,7 @@ async def test_tagger_skips_during_enrollment(
     class _FakeIndication:
         is_enrollment_active = True
 
-    monkeypatch.setattr("src.indication.get_indication", lambda: _FakeIndication())
+    monkeypatch.setattr("src.voice.indication.core.get_indication", lambda: _FakeIndication())
 
     frame = fake_frames["transcript"](text="hello", user_id="u", timestamp="t")
     frame.finalized = True

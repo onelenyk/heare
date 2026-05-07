@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.config import Settings
-from src.direct_tools import (
+from src.agent.tools.direct import (
     _is_simple_tool,
     execute_direct,
     _execute_bash,
@@ -92,7 +92,7 @@ def test_unknown_tool_is_not_simple() -> None:
 # -------- execute_direct routing tests --------
 
 async def test_execute_direct_routes_to_bash() -> None:
-    with patch("src.direct_tools._execute_bash", new_callable=AsyncMock) as mock_bash:
+    with patch("src.agent.tools.direct._execute_bash", new_callable=AsyncMock) as mock_bash:
         mock_bash.return_value = {"success": True, "output": "hello", "error": None}
         result = await execute_direct("bash", "echo hello", None)
         assert result["success"] is True
@@ -101,7 +101,7 @@ async def test_execute_direct_routes_to_bash() -> None:
 
 
 async def test_execute_direct_routes_to_read() -> None:
-    with patch("src.direct_tools._execute_read", new_callable=AsyncMock) as mock_read:
+    with patch("src.agent.tools.direct._execute_read", new_callable=AsyncMock) as mock_read:
         mock_read.return_value = {"success": True, "output": "content", "error": None}
         result = await execute_direct("read", "/tmp/file.txt", None)
         assert result["success"] is True
@@ -295,7 +295,7 @@ async def test_bash_cancel_swallows_processlookuperror_when_already_finished() -
         mock_subprocess.return_value = mock_proc
 
         # Patch os.killpg to raise ProcessLookupError — handler must swallow.
-        with patch("src.direct_tools.os.killpg", side_effect=ProcessLookupError):
+        with patch("src.agent.tools.direct.os.killpg", side_effect=ProcessLookupError):
             with pytest.raises(asyncio.CancelledError):
                 await _execute_bash("sleep 1", None)
 
@@ -320,8 +320,8 @@ async def test_web_fetch_cancellation_propagates_within_1s() -> None:
             kwargs["transport"] = _SlowTransport()
             super().__init__(*args, **kwargs)
 
-    with patch("src.direct_tools.httpx.AsyncClient", _SlowClient):
-        from src.direct_tools import _execute_web_fetch
+    with patch("src.agent.tools.direct.httpx.AsyncClient", _SlowClient):
+        from src.agent.tools.direct import _execute_web_fetch
 
         task = asyncio.create_task(_execute_web_fetch("https://slow.test/x", None))
         await asyncio.wait_for(started.wait(), timeout=2.0)
@@ -524,7 +524,7 @@ async def test_web_search_duckduckgo_success() -> None:
     settings = Settings()
     settings.web_search_provider = "duckduckgo"
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
         result = await _execute_web_search("test query", settings)
@@ -552,7 +552,7 @@ async def test_web_search_duckduckgo_includes_snippets() -> None:
     settings = Settings()
     settings.web_search_provider = "duckduckgo"
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_response
         )
@@ -587,7 +587,7 @@ async def test_web_search_serper_includes_snippets() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+        with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
@@ -605,7 +605,7 @@ async def test_web_search_network_failure() -> None:
     settings = Settings()
     settings.web_search_provider = "duckduckgo"
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             side_effect=Exception("Network error")
         )
@@ -638,12 +638,12 @@ async def test_re_enroll_does_not_block_event_loop(
 
     import numpy as _np
 
-    from src import indication as indication_mod
-    from src import speaker_gallery as gallery_mod
-    from src import speaker_id as speaker_id_mod
+    from src.voice.indication import core as indication_mod
+    from src.voice.speaker import gallery as gallery_mod
+    from src.voice.speaker import id as speaker_id_mod
     from src import config as config_mod
-    from src.direct_tools import _execute_re_enroll
-    from src.indication import IndicationKind
+    from src.agent.tools.direct import _execute_re_enroll
+    from src.voice.indication.core import IndicationKind
 
     _skip_long_sleeps(monkeypatch)
 
@@ -747,11 +747,11 @@ async def test_re_enroll_blocks_concurrent_transcription(
 
     import numpy as _np
 
-    from src import speaker_gallery as gallery_mod
-    from src import speaker_id as speaker_id_mod
+    from src.voice.speaker import gallery as gallery_mod
+    from src.voice.speaker import id as speaker_id_mod
     from src import config as config_mod
-    from src.direct_tools import _execute_re_enroll
-    from src.indication import (
+    from src.agent.tools.direct import _execute_re_enroll
+    from src.voice.indication.core import (
         Indication,
         IndicationSettings,
         set_indication,
@@ -832,7 +832,7 @@ async def test_re_enroll_blocks_concurrent_transcription(
     # during the window (we cannot construct a full GeneratorProcessor here
     # without pipecat fixtures, but the helper is a thin lazy-import — we
     # can mimic it via the same get_indication() call).
-    from src.indication import get_indication
+    from src.voice.indication.core import get_indication
 
     set_indication(real_ind)
     real_ind._enrollment_active = True
@@ -860,11 +860,11 @@ async def test_re_enroll_plays_countdown_before_recording(
 
     import numpy as _np
 
-    from src import speaker_gallery as gallery_mod
-    from src import speaker_id as speaker_id_mod
+    from src.voice.speaker import gallery as gallery_mod
+    from src.voice.speaker import id as speaker_id_mod
     from src import config as config_mod
-    from src.direct_tools import _execute_re_enroll
-    from src.indication import (
+    from src.agent.tools.direct import _execute_re_enroll
+    from src.voice.indication.core import (
         Indication,
         IndicationKind,
         IndicationSettings,
@@ -944,7 +944,7 @@ async def test_re_enroll_plays_countdown_before_recording(
 @pytest.mark.asyncio
 async def test_list_profiles_show_table(settings: Settings) -> None:
     """list_profiles returns a formatted table of all speakers."""
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
     from unittest.mock import patch
 
     # Mock gallery with 2 speakers
@@ -963,7 +963,7 @@ async def test_list_profiles_show_table(settings: Settings) -> None:
         },
     ]
 
-    with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+    with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
         result = await _execute_list_profiles("", settings)
 
     assert result["success"] is True
@@ -985,13 +985,13 @@ async def test_list_profiles_show_table(settings: Settings) -> None:
 @pytest.mark.asyncio
 async def test_list_profiles_empty(settings: Settings) -> None:
     """list_profiles returns a message when no profiles exist."""
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
     from unittest.mock import patch
 
     mock_gallery = MagicMock(spec=SpeakerGallery)
     mock_gallery.list_speakers.return_value = []
 
-    with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+    with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
         result = await _execute_list_profiles("", settings)
 
     assert result["success"] is True
@@ -1005,8 +1005,8 @@ async def test_list_profiles_empty(settings: Settings) -> None:
 @pytest.mark.asyncio
 async def test_create_profile_placeholder(settings: Settings) -> None:
     """create_profile creates a placeholder guest profile with empty embeddings."""
-    from src.speaker_gallery import SpeakerGallery
-    from src.indication import set_indication, Indication, IndicationSettings
+    from src.voice.speaker.gallery import SpeakerGallery
+    from src.voice.indication.core import set_indication, Indication, IndicationSettings
 
     # Use a real Indication with no backends to test notification
     ind = Indication(IndicationSettings(enabled=False, cooldown_seconds=0.0), backends=[])
@@ -1016,7 +1016,7 @@ async def test_create_profile_placeholder(settings: Settings) -> None:
         mock_gallery._speakers = {}
         mock_gallery.save = MagicMock()
 
-        with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+        with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
             result = await _execute_create_profile("Alice", settings)
 
         assert result["success"] is True
@@ -1040,14 +1040,14 @@ async def test_create_profile_placeholder(settings: Settings) -> None:
 @pytest.mark.asyncio
 async def test_create_profile_max_guests(settings: Settings) -> None:
     """create_profile returns error when 99 guests already exist."""
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
     from unittest.mock import patch
 
     mock_gallery = MagicMock(spec=SpeakerGallery)
     # Simulate 99 existing guests
     mock_gallery._speakers = {f"guest_{i:02d}": {} for i in range(1, 100)}
 
-    with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+    with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
         result = await _execute_create_profile("Alice", settings)
 
     assert result["success"] is False
@@ -1061,8 +1061,8 @@ async def test_create_profile_max_guests(settings: Settings) -> None:
 @pytest.mark.asyncio
 async def test_rename_profile_success(settings: Settings) -> None:
     """rename_profile successfully renames a speaker."""
-    from src.speaker_gallery import SpeakerGallery
-    from src.indication import set_indication, Indication, IndicationSettings
+    from src.voice.speaker.gallery import SpeakerGallery
+    from src.voice.indication.core import set_indication, Indication, IndicationSettings
     from unittest.mock import patch
 
     ind = Indication(IndicationSettings(enabled=False, cooldown_seconds=0.0), backends=[])
@@ -1071,7 +1071,7 @@ async def test_rename_profile_success(settings: Settings) -> None:
         mock_gallery = MagicMock(spec=SpeakerGallery)
         mock_gallery.rename_speaker.return_value = True
 
-        with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+        with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
             result = await _execute_rename_profile("guest_01 Alice", settings)
 
         assert result["success"] is True
@@ -1088,13 +1088,13 @@ async def test_rename_profile_success(settings: Settings) -> None:
 @pytest.mark.asyncio
 async def test_rename_profile_not_found(settings: Settings) -> None:
     """rename_profile returns error when speaker not found."""
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
     from unittest.mock import patch
 
     mock_gallery = MagicMock(spec=SpeakerGallery)
     mock_gallery.rename_speaker.return_value = False
 
-    with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+    with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
         result = await _execute_rename_profile("unknown Bob", settings)
 
     assert result["success"] is False
@@ -1113,8 +1113,8 @@ async def test_rename_profile_usage_error(settings: Settings) -> None:
 @pytest.mark.asyncio
 async def test_delete_profile_success(settings: Settings) -> None:
     """delete_profile successfully deletes a guest profile."""
-    from src.speaker_gallery import SpeakerGallery
-    from src.indication import set_indication, Indication, IndicationSettings
+    from src.voice.speaker.gallery import SpeakerGallery
+    from src.voice.indication.core import set_indication, Indication, IndicationSettings
     from unittest.mock import patch
 
     ind = Indication(IndicationSettings(enabled=False, cooldown_seconds=0.0), backends=[])
@@ -1123,7 +1123,7 @@ async def test_delete_profile_success(settings: Settings) -> None:
         mock_gallery = MagicMock(spec=SpeakerGallery)
         mock_gallery.remove_speaker.return_value = True
 
-        with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+        with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
             result = await _execute_delete_profile("guest_01", settings)
 
         assert result["success"] is True
@@ -1153,13 +1153,13 @@ async def test_delete_profile_owner_blocked(settings: Settings) -> None:
 @pytest.mark.asyncio
 async def test_delete_profile_not_found(settings: Settings) -> None:
     """delete_profile returns error when speaker not found."""
-    from src.speaker_gallery import SpeakerGallery
+    from src.voice.speaker.gallery import SpeakerGallery
     from unittest.mock import patch
 
     mock_gallery = MagicMock(spec=SpeakerGallery)
     mock_gallery.remove_speaker.return_value = False
 
-    with patch("src.speaker_gallery.SpeakerGallery.load", return_value=mock_gallery):
+    with patch("src.voice.speaker.gallery.SpeakerGallery.load", return_value=mock_gallery):
         result = await _execute_delete_profile("unknown", settings)
 
     assert result["success"] is False
@@ -1179,11 +1179,11 @@ async def test_re_enroll_spoken_field(
 
     import numpy as _np
 
-    from src import indication as indication_mod
-    from src import speaker_gallery as gallery_mod
-    from src import speaker_id as speaker_id_mod
+    from src.voice.indication import core as indication_mod
+    from src.voice.speaker import gallery as gallery_mod
+    from src.voice.speaker import id as speaker_id_mod
     from src import config as config_mod
-    from src.direct_tools import _execute_re_enroll
+    from src.agent.tools.direct import _execute_re_enroll
 
     _skip_long_sleeps(monkeypatch)
 
@@ -1421,7 +1421,7 @@ async def test_web_search_spoken_with_results() -> None:
     settings = Settings()
     settings.web_search_provider = "duckduckgo"
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
         result = await _execute_web_search("python asyncio", settings)
@@ -1450,7 +1450,7 @@ async def test_web_search_spoken_zero_results() -> None:
     settings = Settings()
     settings.web_search_provider = "duckduckgo"
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
         result = await _execute_web_search("xyzzy42 nonexistent", settings)
@@ -1467,7 +1467,7 @@ async def test_web_search_spoken_error() -> None:
     settings = Settings()
     settings.web_search_provider = "duckduckgo"
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             side_effect=Exception("connection refused")
         )
@@ -1508,7 +1508,7 @@ async def test_web_search_chains_web_fetch_when_enabled(settings: Settings) -> N
         request=httpx.Request("GET", "https://html.duckduckgo.com/html/")
     )
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=ddg_response
         )
@@ -1522,7 +1522,7 @@ async def test_web_search_chains_web_fetch_when_enabled(settings: Settings) -> N
                 "spoken": {"en": "Fetched. Want a summary?"},
             }
 
-        with patch("src.direct_tools._execute_web_fetch", new=fake_fetch):
+        with patch("src.agent.tools.direct._execute_web_fetch", new=fake_fetch):
             result = await _execute_web_search("chili recipe", settings)
 
     assert result["success"] is True
@@ -1550,11 +1550,11 @@ async def test_web_search_skips_fetch_when_disabled(settings: Settings) -> None:
         fetch_calls.append(url)
         return {"success": True, "output": "should-not-appear"}
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=ddg_response
         )
-        with patch("src.direct_tools._execute_web_fetch", new=fake_fetch):
+        with patch("src.agent.tools.direct._execute_web_fetch", new=fake_fetch):
             result = await _execute_web_search("anything", settings)
 
     assert result["success"] is True
@@ -1579,11 +1579,11 @@ async def test_web_search_swallows_top_fetch_error(settings: Settings) -> None:
     async def failing_fetch(url, _settings):
         return {"success": False, "output": "", "error": "boom"}
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=ddg_response
         )
-        with patch("src.direct_tools._execute_web_fetch", new=failing_fetch):
+        with patch("src.agent.tools.direct._execute_web_fetch", new=failing_fetch):
             result = await _execute_web_search("anything", settings)
 
     assert result["success"] is True
@@ -1616,7 +1616,7 @@ async def test_serper_returns_numbered_output_and_items() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+        with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
@@ -1665,7 +1665,7 @@ async def test_duckduckgo_returns_numbered_output_and_items() -> None:
     settings = Settings()
     settings.web_search_provider = "duckduckgo"
 
-    with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+    with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_response
         )
@@ -1704,7 +1704,7 @@ async def test_serper_knowledge_graph_at_position_0() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+        with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
@@ -1725,7 +1725,7 @@ async def test_search_serper_empty_results_has_empty_items() -> None:
     mock_response.raise_for_status = MagicMock()
 
     with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}, clear=False):
-        with patch("src.direct_tools.httpx.AsyncClient") as mock_client:
+        with patch("src.agent.tools.direct.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )

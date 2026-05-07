@@ -14,7 +14,7 @@ from pathlib import Path
 
 # Import tool registry defaults (lazy import to avoid circular dependency)
 def _get_default_sdk_tools():
-    from .tool_registry import DEFAULT_SDK_ALLOWED_TOOLS
+    from src.agent.tools.registry import DEFAULT_SDK_ALLOWED_TOOLS
     return DEFAULT_SDK_ALLOWED_TOOLS
 
 logger = logging.getLogger("heare.config")

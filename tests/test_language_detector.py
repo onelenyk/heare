@@ -1,5 +1,5 @@
 """Tests for language detection module."""
-from src.language_detector import (
+from src.voice.language.detector import (
     get_voice_for_language,
     get_language_name,
     _detect_language_heuristic,

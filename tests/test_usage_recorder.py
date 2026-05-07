@@ -4,7 +4,7 @@ events into ``usage_events`` rows.
 The recorder is observe-only: it forwards every frame downstream and
 schedules a fire-and-forget DB write. The tests cover:
   * MetricsFrame containing LLMUsageMetricsData → record_usage_event called
-  * known model → cost computed via :mod:`src.pricing` and persisted
+  * known model → cost computed via :mod:`src.agent.llm.pricing` and persisted
   * unknown model → cost recorded as None (caller renders '?')
   * non-MetricsFrame → forwarded untouched, no DB call
   * provider_getter raising → does not crash; provider is empty string
@@ -32,7 +32,7 @@ from pipecat.metrics.metrics import (  # noqa: E402
     TTSUsageMetricsData,
 )
 
-from src.usage_recorder import create_usage_recorder  # noqa: E402
+from src.pipeline.stages.usage_recorder import create_usage_recorder  # noqa: E402
 
 
 class _FakeStore:
@@ -345,7 +345,7 @@ async def test_vad_bracket_attaches_audio_seconds_to_next_transcription() -> Non
     # UserStartedSpeaking, once on UserStoppedSpeaking. Returning the
     # last value indefinitely guards against any incidental call
     # pipecat internals make.
-    import src.usage_recorder as ur
+    import src.pipeline.stages.usage_recorder as ur
 
     values = [100.0, 102.5]
     idx = {"i": 0}
@@ -381,7 +381,7 @@ async def test_audio_seconds_consumed_per_transcription() -> None:
     store = _FakeStore()
     proc = _make_recorder_with_providers(store)
 
-    import src.usage_recorder as ur
+    import src.pipeline.stages.usage_recorder as ur
 
     values = [0.0, 1.0]
     idx = {"i": 0}

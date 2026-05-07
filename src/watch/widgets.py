@@ -8,9 +8,9 @@ from textual.containers import Container, Horizontal
 from textual.css.query import NoMatches
 from textual.widgets import DataTable, Input, RichLog, Static
 
-from ..config import Settings
-from ..text_injector import inject_text
-from ..version import app_version
+from src.config import Settings
+from src.pipeline.stages.text_injector import inject_text
+from src.version import app_version
 from .data import ActivityRow, HeaderData, LogLine, UsageData, fmt_time
 
 
@@ -396,7 +396,7 @@ class UsageBar(Static):
     cumulative since the table was created — not just the current
     session — so a glance shows lifetime spend on the configured
     models. Unknown-model calls render with ``?`` so a missing entry
-    in :mod:`src.pricing` doesn't silently zero the bill.
+    in :mod:`src.agent.llm.pricing` doesn't silently zero the bill.
     """
 
     def __init__(self) -> None:

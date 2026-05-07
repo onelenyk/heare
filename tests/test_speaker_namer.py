@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from src.config import Settings
-from src.speaker_namer import (
+from src.voice.speaker.namer import (
     SpeakerNamer,
     TurnRecord,
     _parse_prediction_json,

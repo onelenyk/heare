@@ -6,8 +6,8 @@ without portaudio.
 """
 from __future__ import annotations
 
-from src.language_state import LanguageState
-from src.pipeline import (
+from src.pipeline.language_state import LanguageState
+from src.pipeline.build import (
     _assemble_native_stages,
     _build_system_prompt,
     _wire_language_state,

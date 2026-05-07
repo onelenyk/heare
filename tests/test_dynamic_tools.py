@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.tool_registry import ToolDefinition, register_dynamic_tool, unregister_dynamic_tool, Tool, get_tool, is_dynamic_tool
-from src.dynamic_tools import execute_bash_tool, execute_fetch_tool, execute_python_tool
+from src.agent.tools.registry import ToolDefinition, register_dynamic_tool, unregister_dynamic_tool, Tool, get_tool, is_dynamic_tool
+from src.agent.tools.dynamic import execute_bash_tool, execute_fetch_tool, execute_python_tool
 
 
 @pytest.mark.asyncio

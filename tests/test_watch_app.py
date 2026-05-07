@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from src.config import Settings, Mode
-from src.storage import SCHEMA
+from src.store.storage import SCHEMA
 from src.watch.app import HeareDashboard
 from src.watch import run_watch
 
@@ -58,7 +58,7 @@ async def test_app_boots_without_db() -> None:
 @pytest.mark.asyncio
 async def test_app_boots_with_empty_db() -> None:
     """Dashboard starts with an empty (schema-only) DB."""
-    from src.storage import SCHEMA
+    from src.store.storage import SCHEMA
     import sqlite3
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -78,7 +78,7 @@ async def test_app_boots_with_empty_db() -> None:
 async def test_app_boots_with_seeded_db() -> None:
     """Dashboard shows real data from a populated DB."""
     import sqlite3
-    from src.storage import SCHEMA
+    from src.store.storage import SCHEMA
 
     with tempfile.TemporaryDirectory() as tmp:
         settings = _make_settings(tmp)

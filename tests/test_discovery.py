@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src import discovery
-from src.capability_index import IndexEntry
+from src.skills import discovery
+from src.agent.tools.capability_index import IndexEntry
 
 
 @dataclass

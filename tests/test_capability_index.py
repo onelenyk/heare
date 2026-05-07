@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src.capability_index import CapabilityIndex, IndexEntry, _tokenize
+from src.agent.tools.capability_index import CapabilityIndex, IndexEntry, _tokenize
 
 
 @dataclass
@@ -27,7 +27,7 @@ def _make_skill(parent: Path, name: str, description: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def _reset_skills_singleton():
-    import src.agent_skills as agent_skills
+    import src.skills.agent_skills as agent_skills
     agent_skills._loader = None
     agent_skills._loader_paths = None
     yield
@@ -72,7 +72,7 @@ def test_four_source_merge(tmp_path: Path):
         }
     }))
 
-    from src.tool_registry import register_dynamic_tool, unregister_dynamic_tool, Tool
+    from src.agent.tools.registry import register_dynamic_tool, unregister_dynamic_tool, Tool
     register_dynamic_tool(Tool(
         name="dyn_test_tool",
         sdk_name="DynTestTool",
@@ -168,7 +168,7 @@ def test_build_performance_under_50ms(tmp_path: Path):
     mcp_servers = {f"server-{i}": {"description": f"MCP server {i}"} for i in range(10)}
     (workspace / ".mcp.json").write_text(json.dumps({"mcpServers": mcp_servers}))
 
-    from src.tool_registry import register_dynamic_tool, unregister_dynamic_tool, Tool
+    from src.agent.tools.registry import register_dynamic_tool, unregister_dynamic_tool, Tool
     dyn_names = []
     for i in range(50):
         nm = f"dyn_perf_{i}"

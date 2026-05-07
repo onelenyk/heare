@@ -1,7 +1,7 @@
 """Tests for the user-facing capability discovery tools (US-007).
 
 Covers ``discover_capability``, ``install_skill_tool``, ``revoke_capability``,
-and ``list_capabilities`` direct-tool handlers in ``src.direct_tools``.
+and ``list_capabilities`` direct-tool handlers in ``src.agent.tools.direct``.
 """
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src import direct_tools
-from src.capability_index import IndexEntry
+from src.agent.tools import direct as direct_tools
+from src.agent.tools.capability_index import IndexEntry
 
 
 @dataclass
@@ -78,7 +78,7 @@ async def test_discover_capability_falls_through_to_remote_on_local_miss(setting
     direct_tools.set_capability_index(_make_index([]))
     remote = [IndexEntry(source="skill", name="weather-pro", description="weather")]
 
-    with patch("src.discovery.discover_capability_remote", AsyncMock(return_value=remote)):
+    with patch("src.skills.discovery.discover_capability_remote", AsyncMock(return_value=remote)):
         result = await direct_tools._execute_discover_capability(
             json.dumps({"intent": "weather kyiv"}), settings
         )
@@ -91,7 +91,7 @@ async def test_discover_capability_falls_through_to_remote_on_local_miss(setting
 @pytest.mark.asyncio
 async def test_discover_capability_returns_refusal_when_empty(settings):
     direct_tools.set_capability_index(_make_index([]))
-    with patch("src.discovery.discover_capability_remote", AsyncMock(return_value=[])):
+    with patch("src.skills.discovery.discover_capability_remote", AsyncMock(return_value=[])):
         result = await direct_tools._execute_discover_capability(
             json.dumps({"intent": "weather kyiv"}), settings
         )
@@ -139,7 +139,7 @@ async def test_install_skill_tool_dispatch(settings):
     fake_result.error_code = None
 
     fake_install = AsyncMock(return_value=fake_result)
-    with patch("src.installer.install_skill", fake_install):
+    with patch("src.skills.installer.install_skill", fake_install):
         result = await direct_tools._execute_install_skill_tool(
             json.dumps({"slug": "weather-pro", "user_confirmed": True}),
             settings,
@@ -217,7 +217,7 @@ async def test_revoke_capability_invalidates_loader_and_rebuilds_index(settings,
     fake_index = _make_index([])
     direct_tools.set_capability_index(fake_index)
 
-    with patch("src.agent_skills.get_skills_loader", return_value=fake_loader):
+    with patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader):
         result = await direct_tools._execute_revoke_capability(
             json.dumps({"slug": "weather-pro"}), settings
         )
@@ -258,8 +258,8 @@ async def test_list_capabilities_returns_three_buckets(settings):
     fake_loader.discover.return_value = skills
 
     with (
-        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
-        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+        patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.skills.mcp_utils.read_mcp_servers", return_value={}),
     ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
@@ -283,8 +283,8 @@ async def test_list_capabilities_summary_flag_when_total_above_threshold(setting
     fake_loader.discover.return_value = skills
 
     with (
-        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
-        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+        patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.skills.mcp_utils.read_mcp_servers", return_value={}),
     ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
@@ -306,8 +306,8 @@ async def test_list_capabilities_includes_user_authored_skills_with_flag(setting
     fake_loader.discover.return_value = skills
 
     with (
-        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
-        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+        patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.skills.mcp_utils.read_mcp_servers", return_value={}),
     ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
@@ -328,8 +328,8 @@ async def test_list_capabilities_lists_mcps_from_workspace_config(settings):
         "mobile": {"command": "npx", "args": ["-y", "@m/mobile"]},
     }
     with (
-        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
-        patch("src.mcp_utils.read_mcp_servers", return_value=servers),
+        patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.skills.mcp_utils.read_mcp_servers", return_value=servers),
     ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
@@ -348,8 +348,8 @@ async def test_list_capabilities_category_filter(settings):
     fake_loader = MagicMock()
     fake_loader.discover.return_value = [_stub_skill_meta("sk-a")]
     with (
-        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
-        patch("src.mcp_utils.read_mcp_servers", return_value={"foo": {}}),
+        patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.skills.mcp_utils.read_mcp_servers", return_value={"foo": {}}),
     ):
         only_skills = await direct_tools._execute_list_capabilities(
             json.dumps({"category": "skills"}), settings
@@ -382,8 +382,8 @@ async def test_list_capabilities_empty_skills_and_mcps_still_lists_built_in(sett
     fake_loader = MagicMock()
     fake_loader.discover.return_value = []
     with (
-        patch("src.agent_skills.get_skills_loader", return_value=fake_loader),
-        patch("src.mcp_utils.read_mcp_servers", return_value={}),
+        patch("src.skills.agent_skills.get_skills_loader", return_value=fake_loader),
+        patch("src.skills.mcp_utils.read_mcp_servers", return_value={}),
     ):
         result = await direct_tools._execute_list_capabilities("{}", settings)
 
@@ -401,7 +401,7 @@ async def test_list_capabilities_empty_skills_and_mcps_still_lists_built_in(sett
 
 
 def test_capability_tools_registered():
-    from src.tool_registry import TOOLS
+    from src.agent.tools.registry import TOOLS
 
     for name in (
         "discover_capability",
@@ -416,7 +416,7 @@ def test_capability_tools_registered():
 
 
 def test_capability_tools_have_schemas():
-    from src.llm_tools import _TOOL_SPECS
+    from src.agent.tools.schemas import _TOOL_SPECS
 
     for name in (
         "discover_capability",
@@ -438,8 +438,8 @@ def test_capability_tools_have_schemas():
 
 
 def test_register_mcp_server_registered():
-    from src.tool_registry import TOOLS
-    from src.llm_tools import _TOOL_SPECS
+    from src.agent.tools.registry import TOOLS
+    from src.agent.tools.schemas import _TOOL_SPECS
 
     assert "register_mcp_server" in TOOLS
     assert TOOLS["register_mcp_server"].enabled is True

@@ -20,12 +20,12 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from ..config import Settings
-from ..identity import load_identity
-from ..mute_gate import is_input_muted, is_muted, toggle_input_mute, toggle_mute
-from ..text_injector import inject_text
-from ..tool_registry import TOOLS
-from ..watch_controls import daemon_pid, restart_daemon, start_daemon, stop_daemon
+from src.config import Settings
+from src.agent.identity import load_identity
+from src.pipeline.stages.mute_gate import is_input_muted, is_muted, toggle_input_mute, toggle_mute
+from src.pipeline.stages.text_injector import inject_text
+from src.agent.tools.registry import TOOLS
+from src.daemon.watch_controls import daemon_pid, restart_daemon, start_daemon, stop_daemon
 
 
 def _fmt_time(ts: float) -> str:
