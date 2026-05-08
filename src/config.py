@@ -156,6 +156,10 @@ class Settings:
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
     mode_file: Path = field(default_factory=lambda: HEARE_HOME / "mode")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
+    capabilities_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "capabilities.json"
+    )
+    capabilities_max_age_hours: float = 24.0
     mute_file: Path = field(default_factory=lambda: HEARE_HOME / "mute.flag")
     mute_input_file: Path = field(
         default_factory=lambda: HEARE_HOME / "mute_input.flag"

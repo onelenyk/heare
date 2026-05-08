@@ -46,43 +46,6 @@ def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
     return handler
 
 
-def _ensure_workspace_mcp(workspace_dir: Path) -> None:
-    """Seed workspace/.mcp.json from the user's global ~/.claude.json on first run.
-
-    Without this, claude -p invocations from heare's workspace start with no MCP
-    servers — sessions can succeed inconsistently depending on resume state.
-    Users can edit the resulting file to add or remove servers.
-    """
-    import json
-
-    workspace_dir.mkdir(parents=True, exist_ok=True)
-    target = workspace_dir / ".mcp.json"
-    if target.exists():
-        return
-    global_cfg = Path.home() / ".claude.json"
-    mcp_servers: dict = {}
-    if global_cfg.exists():
-        try:
-            data = json.loads(global_cfg.read_text())
-            mcp_servers = data.get("mcpServers", {}) or {}
-        except (OSError, json.JSONDecodeError):
-            pass
-    target.write_text(json.dumps({"mcpServers": mcp_servers}, indent=2))
-    logger.info(
-        "seeded %s with %d MCP server(s) from global config",
-        target,
-        len(mcp_servers),
-    )
-    if mcp_servers:
-        names = ", ".join(mcp_servers.keys())
-        logger.warning(
-            "Auto-authorized MCP servers from ~/.claude.json: %s. "
-            "All servers in workspace/.mcp.json are now callable by the agent. "
-            "Review and remove any unwanted entries.",
-            names,
-        )
-
-
 async def _cmd_start(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
@@ -96,7 +59,33 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     settings = load_settings()
     settings.ensure_dirs()
     _setup_logging(settings.log_dir)
-    _ensure_workspace_mcp(settings.workspace_dir)
+    from src.daemon.workspace import ensure_workspace_mcp
+    ensure_workspace_mcp(settings.workspace_dir)
+
+    # Onboarding gate — must run AFTER ensure_workspace_mcp so upgrading
+    # users whose ~/.claude.json has MCPs but who haven't run heare since
+    # the upgrade get their workspace seeded before the migration check.
+    from src.daemon.onboarding import is_onboarded, list_pending, migrate_existing_install
+
+    migrate_existing_install(settings)
+    if not is_onboarded(settings):
+        pending = list_pending(settings)
+        print("heare not fully set up. Pending steps:")
+        for step in pending:
+            print(f"  - {step.id}: {step.title}")
+        print("\nRun `heare setup` to continue.")
+        return 1
+
+    # Refresh Claude capabilities (skills + MCPs) in the background.
+    from src.daemon.claude_capabilities import refresh_capabilities
+
+    asyncio.create_task(
+        refresh_capabilities(
+            settings.capabilities_file,
+            workspace_dir=settings.workspace_dir,
+            max_age_hours=settings.capabilities_max_age_hours,
+        )
+    )
 
     if settings.pid_file.exists():
         try:
@@ -735,6 +724,105 @@ def _cmd_logs(args: argparse.Namespace) -> int:
     return 0  # unreachable
 
 
+def _cmd_setup(args: argparse.Namespace) -> int:
+    """Run or inspect heare onboarding."""
+    from src.daemon.onboarding import (
+        STEPS,
+        list_pending,
+        migrate_existing_install,
+        record_done,
+        reset,
+        step_status,
+    )
+    from src.daemon.workspace import ensure_workspace_mcp
+
+    settings = load_settings()
+    settings.ensure_dirs()
+    # Seed workspace before migration so upgrading users' existing
+    # ~/.claude.json is reflected in workspace/.mcp.json on first
+    # `heare setup`.
+    ensure_workspace_mcp(settings.workspace_dir)
+    migrate_existing_install(settings)
+
+    if args.reset:
+        if not args.yes:
+            print(
+                "This will wipe ~/.heare/onboarding.json and "
+                "~/.heare/capabilities.json. workspace/.mcp.json is preserved."
+            )
+            try:
+                ans = input("Continue? [y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\naborted")
+                return 1
+            if ans not in ("y", "yes"):
+                print("aborted")
+                return 1
+        reset(settings)
+        print("onboarding state wiped — run `heare setup` to re-onboard")
+        return 0
+
+    if args.status:
+        for step, done in step_status(settings):
+            mark = "✓" if done else "✗"
+            print(f"  {mark} {step.id:<24s} {step.title}")
+        if list_pending(settings):
+            print("\nRun `heare setup` to walk pending steps.")
+        else:
+            print("\nAll steps complete. Run `heare start` to launch the daemon.")
+        return 0
+
+    if args.confirm:
+        step = next((s for s in STEPS if s.id == args.confirm), None)
+        if step is None:
+            print(f"unknown step: {args.confirm}")
+            print(f"available: {', '.join(s.id for s in STEPS)}")
+            return 1
+        if step.requires_attestation and not args.yes:
+            print(
+                f"warning: {step.id!r} normally requires interactive attestation. "
+                "Pass --yes to confirm non-interactively, or run `heare setup` "
+                "(without --confirm) to walk it interactively."
+            )
+            return 1
+        try:
+            step.on_confirm(settings)
+        except Exception as exc:  # noqa: BLE001
+            print(f"step {step.id!r} failed: {exc}")
+            return 1
+        record_done(settings, step.id)
+        print(f"✓ {step.id}")
+        return 0
+
+    pending = list_pending(settings)
+    if not pending:
+        print("Already onboarded. Run `heare start` to launch the daemon.")
+        return 0
+
+    print(f"Heare onboarding: {len(pending)} step(s) remaining.\n")
+    for step in pending:
+        print(f"--- {step.title} ---")
+        print(step.instructions)
+        try:
+            ans = input("\n[enter to confirm, q to quit] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\naborted — partial progress saved")
+            return 1
+        if ans == "q":
+            print("aborted — partial progress saved")
+            return 1
+        try:
+            step.on_confirm(settings)
+        except Exception as exc:  # noqa: BLE001
+            print(f"step {step.id!r} failed: {exc}")
+            return 1
+        record_done(settings, step.id)
+        print(f"✓ {step.id}\n")
+
+    print("Onboarding complete. Run `heare start` to launch the daemon.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="heare",
@@ -761,6 +849,16 @@ def build_parser() -> argparse.ArgumentParser:
     watch_p = sub.add_parser("watch", help="Live status view (Ctrl+C to exit)")
     watch_p.add_argument("--interval", type=float, default=0.5, help="Refresh seconds")
     watch_p.add_argument("--once", action="store_true", help="Print once and exit")
+
+    setup_p = sub.add_parser("setup", help="Run or inspect heare onboarding")
+    setup_p.add_argument("--status", action="store_true",
+                         help="Show step status without prompting")
+    setup_p.add_argument("--confirm", metavar="ID",
+                         help="Mark one specific step done (advanced)")
+    setup_p.add_argument("--reset", action="store_true",
+                         help="Wipe onboarding state")
+    setup_p.add_argument("--yes", action="store_true",
+                         help="Skip confirmation (--reset) or allow attestation override (--confirm)")
 
     logs_p = sub.add_parser("logs", help="Tail the daemon log")
     logs_p.add_argument("-f", "--follow", action="store_true", help="Stream new entries")
@@ -814,6 +912,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_reset_identity(args)
     if cmd == "set-passphrase":
         return _cmd_set_wake_word(args)
+    if cmd == "setup":
+        return _cmd_setup(args)
     if cmd == "watch":
         return _cmd_watch(args)
     if cmd == "logs":
