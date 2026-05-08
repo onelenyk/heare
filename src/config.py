@@ -327,6 +327,7 @@ class Settings:
     indication: IndicationSettings = field(default_factory=IndicationSettings)
 
     # File access settings for extended workspace management
+    memory_db_path: Path = field(default_factory=lambda: HEARE_HOME / "memory.db")
     file_access_profile_path: Path = field(default_factory=lambda: HEARE_HOME / "profile.json")
     file_access_auto_approve_workspace: bool = True
     file_access_ask_for_new_dirs: bool = True
@@ -399,6 +400,9 @@ def load_settings() -> Settings:
     settings.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
     settings.zai_api_key = os.environ.get("ZAI_API_KEY")
     settings.serper_api_key = os.environ.get("SERPER_API_KEY")
+    memory_db_env = os.environ.get("HEARE_MEMORY_DB")
+    if memory_db_env is not None:
+        settings.memory_db_path = Path(memory_db_env).expanduser()
 
     # CCS-05a: env override for cancel_stop_words (comma-separated). Empty
     # tokens are dropped; surrounding whitespace stripped; case preserved

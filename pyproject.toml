@@ -20,6 +20,9 @@ dependencies = [
 local = [
     "pyaudio>=0.2.14",
 ]
+memory = [
+    "fastmcp>=2.14,<3",
+]
 speaker = [
     "speechbrain>=1.0",
     "torch>=2.0",
