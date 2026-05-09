@@ -1,254 +1,445 @@
 # heare
 
-**heare** is a proactive, ambient, agentic voice AI assistant powered by
-Claude Code. It lives in your headphones, listens continuously, and decides
-autonomously when to speak or act.
+**heare** is a proactive ambient voice AI assistant powered by Claude. It listens continuously via your microphone, decides when to speak, and can execute actions via browser automation, bash, and file manipulation — all gated by verbal confirmation.
 
-- **Listens continuously** via your microphone
-- **Decides autonomously** whether each utterance warrants a response
-- **Speaks Ukrainian** via free edge-tts voices
-- **Can take actions** — it's not just a chatbot; it has Read/Write/Edit/Bash
-  via Claude Code, gated by verbal confirmation
-- **Remembers everything** across sessions via a persistent Claude Code session
-- **Self-names on first run** — auto-generates its own persona via `claude -p`
+Not a wake-word assistant. Not a dictation tool. A voice-first Claude agent.
 
-Not a wake-word assistant. Not a dictation tool. A voice-first Claude Code
-agent.
+## Features
 
-## Architecture
+- **Continuous listening** — VAD-gated mic input, no wake word needed
+- **Autonomous decision-making** — silent/focus/ambient modes determine when to respond
+- **Multilingual** — detects and switches TTS voice per utterance (English, Ukrainian, Russian default; Groq's Whisper detects others)
+- **Ukrainian voice persona** — auto-generates name and personality on first run
+- **Browser automation** — via sideloaded Chrome extension (list tabs, read page, click, fill, navigate, extract, open/activate tabs)
+- **Agent tools** — bash, read, write, edit files; web search/fetch; dynamic tool creation; skill execution
+- **Persistent memory** — SQLite database with FTS5; optional MCP server for agent self-querying
+- **Audio event detection** (opt-in) — YAMNet classifier detects laughter, cough, dog bark, etc. via `heare[audio-event]`
+- **Speaker recognition** — ECAPA model optional; auto-enroll + name speakers
+- **Live dashboard** — separate Textual TUI process showing state, activity, cost, voice events
+- **Hot-reload settings** — switch mode/LLM provider without restarting daemon
 
-```
-Mic ──► SileroVAD ──► GroqSTT ──► SmartTurnV3
-                                      │
-                                      ▼
-                         ┌────────────────────────┐
-                         │  DeciderProcessor      │
-                         │  state: LISTENING /    │
-                         │  AWAITING_CONFIRMATION │
-                         │  / EXECUTING           │
-                         │  shells out to         │
-                         │  claude -p --resume    │
-                         └─────────┬──────────────┘
-                                   ▼ TextFrame
-                         ┌────────────────────────┐
-                         │  EdgeTTSService        │
-                         └─────────┬──────────────┘
-                                   ▼ AudioFrame
-                                Speaker
-```
-
-See `.omc/plans/heare-scaffold.md` for the full plan and decisions.
-
-## Prerequisites
+## Requirements
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
-- [Claude Code CLI](https://docs.claude.com/claude-code) installed and
-  authenticated (`claude --version` should print a version)
-- A [Groq API key](https://console.groq.com/keys) (free tier works)
-- macOS microphone + speaker
-- **For the actual pipeline** (Phase B+): `brew install portaudio` and
-  `uv sync --extra local` — pyaudio needs portaudio's headers
+- [Claude Code CLI](https://docs.claude.com/claude-code) (v7+)
+- macOS with microphone + speaker (Linux support in progress)
+- [Groq API key](https://console.groq.com/keys) (free tier works; for STT)
+- OpenRouter OR z.ai API key (for LLM)
+- `brew install portaudio` + `uv sync --extra local` for audio pipeline
 
-## Install
+## Installation
 
 ```bash
-cd /Users/lenyk/myprojects/heare
+git clone <repo>
+cd heare
 uv sync
+uv sync --extra local  # For full audio pipeline (portaudio required)
+
 cp .env.example .env
-$EDITOR .env   # set GROQ_API_KEY=
+$EDITOR .env  # Set GROQ_API_KEY, OPENROUTER_API_KEY (or ZAI_API_KEY)
 ```
 
-For the full voice pipeline you also need portaudio + pyaudio:
+Run onboarding:
 
 ```bash
-brew install portaudio
-uv sync --extra local
+uv run python -m src.main setup
 ```
 
-## Configuration
+This walks through MCP server setup, workspace seeding, confirmation passphrase, and browser extension pairing.
 
-Optional settings in `~/.heare/config.toml`:
+## Quick start
 
-```toml
-# Use the persistent claude-agent-sdk backend instead of spawning
-# a new `claude -p` subprocess per call (~500-800 ms saved per tick).
-# Requires: pip install claude-agent-sdk (included in uv sync)
-use_agent_sdk = true
-
-# Override the Claude Code CLI path used by the SDK backend.
-# Defaults to whatever `claude` resolves to on $PATH.
-# claude_sdk_cli_path = "/usr/local/bin/claude"
-```
-
-All other settings (mode, voice, timeouts, speaker recognition, etc.) are
-documented as inline comments in `src/config.py`.
-
-## MCP servers
-
-heare's Claude Agent SDK backend can call MCP tools — browser automation,
-filesystem, memory, etc. — in addition to Bash/Read/Write/Edit/WebFetch/
-WebSearch.
-
-**Edit `workspace/.mcp.json` to add servers; restart heare.**
-
-heare seeds `~/.heare/workspace/.mcp.json` from your global `~/.claude.json`
-on first run. Every server listed in `.mcp.json` is automatically callable by
-the agent — no separate allowlist needed. Example:
-
-```json
-{
-  "mcpServers": {
-    "chrome-devtools": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
-    },
-    "filesystem": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "/Users/you/Documents"
-      ]
-    }
-  }
-}
-```
-
-You can add an optional `"description"` field to each entry; heare uses it
-to describe the server's purpose in the generator prompt. Restart the daemon
-after editing `.mcp.json`.
-
-## Run
-
-First start bootstraps both the Claude Code session and heare's persona.
-The first thing heare says will be its own self-chosen name.
+Start the daemon in the foreground:
 
 ```bash
 uv run python -m src.main start
 ```
 
-Subcommands:
+In another terminal, launch the dashboard:
 
 ```bash
-uv run python -m src.main status         # is the daemon running?
-uv run python -m src.main stop            # SIGTERM via pid file
-uv run python -m src.main mode silent     # hot-reload mode
+uv run python -m src.main watch
+```
+
+Speak into the microphone. heare will transcribe, decide whether to respond, and speak back.
+
+Admin commands:
+
+```bash
+uv run python -m src.main status              # Check if running
+uv run python -m src.main stop                # Graceful shutdown
+uv run python -m src.main mode silent         # Hot-reload mode
 uv run python -m src.main mode focus
 uv run python -m src.main mode ambient
-uv run python -m src.main reset-session   # backup session.json
-uv run python -m src.main reset-identity  # backup identity.json
+uv run python -m src.main provider zai        # Hot-reload LLM provider
+uv run python -m src.main provider openrouter
+uv run python -m src.main logs -f             # Tail daemon log
 ```
 
 ## Modes
 
-| Mode      | Decider behavior                                                                                  | Actions allowed      |
-| --------- | ------------------------------------------------------------------------------------------------- | -------------------- |
-| `silent`  | Never speak, never act. Log only.                                                                 | None                 |
-| `focus`   | Speak only when directly addressed ("Heare, ...") or on a clear question into silence.           | Yes, with confirmation |
-| `ambient` | Also speaks on stuck-user heuristics.                                                              | Yes, with confirmation |
+| Mode | Behavior | Actions |
+|------|----------|---------|
+| **silent** | Transcribes only; never speaks or acts | None |
+| **focus** | Responds when directly addressed ("heare...") or to clear questions in silence | Yes, with verbal confirmation |
+| **ambient** | Also responds to stuck-user heuristics; more proactive | Yes, with verbal confirmation |
+
+## Architecture
+
+```
+──────────────────────────────────────────────────────────────────
+
+Mic ──► input_mute_gate ──► audio_event_observer ──► speaker_buffer
+        │                                              (diarization)
+        ├─ [optional YAMNet ─► ~/ audio_event.json]   │
+        │                                              ▼
+        └─────────────────────────────────────────────► GroqSTT
+                                                        │
+                    ┌───────────────────────────────────┤
+                    ▼                                   ▼
+               voice_state_observer            speaker_tagger
+               (~/.heare/voice_state.json)    (speaker ID + namer)
+                    │                                   │
+                    └───────────┬───────────────────────┘
+                                ▼
+                        transcription_gate
+                        (debounce, cancel-word detect,
+                         language switch, bot-speaking drop)
+                                │
+                                ▼
+                        system_prompt_injector
+                        (per-turn context rebuild)
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+                user_aggregator      SwitchableLLMService
+                (VAD + turn           (OpenRouter or z.ai)
+                 analyzer)                 │
+                    │                      │
+                    └──────────┬───────────┘
+                               ▼
+                       assistant_response_logger
+                       (log LLM text to transcripts)
+                               │
+                               ▼
+                         tts_scrub_processor
+                         (strip tool narration)
+                               │
+                               ▼
+                         EdgeTTSService + cache
+                               │
+                      ┌────────┴────────┐
+                      ▼                 ▼
+                  usage_recorder    speaker output
+                  (cost ledger)
+
+The daemon runs all stages in a single asyncio event loop. The watch
+dashboard is a separate process reading the SQLite database + daemon log.
+The Chrome extension runs in the user's browser, connected via WebSocket
+to the daemon's browser bridge on 127.0.0.1:9333.
+
+```
+
+**Key points:**
+
+- **Single daemon process** — one asyncio loop, no thread pool
+- **Watch dashboard** — separate Textual TUI reading `~/.heare/heare.db` + `daemon.log`
+- **Browser bridge** — MV3 extension on 127.0.0.1:9333 (WebSocket + token auth, single client)
+- **Pipeline stages** — see `src/pipeline/build.py` for exact order and optional conditionals
+- **LLM backend** — Pipecat-native `SwitchableLLMService` with hot-reload support via `src/config.py:provider_file`
+
+## Watch dashboard
+
+Run in a separate terminal to monitor daemon activity:
+
+```bash
+uv run python -m src.main watch [--interval 0.5] [--once]
+```
+
+Features:
+- Live activity feed (transcriptions, LLM responses, tool calls)
+- Mute toggle (mic/output)
+- Mode/provider switching hotkeys
+- Usage/cost ledger
+- Audio event timeline (laughter, cough, etc. if enabled)
+- Voice state indicator (idle/listening/stt/result)
+
+## Browser bridge (Chrome extension)
+
+The sideloaded extension at `extensions/heare-bridge/` (MV3, Chrome 109+) exposes 8 browser tools to the LLM:
+
+- `list_browser_tabs` — list open tabs
+- `read_browser_page` — read current tab's text content
+- `click_in_browser` — click element by CSS selector
+- `fill_in_browser` — fill form field by CSS selector
+- `navigate_browser` — load URL in tab
+- `extract_in_browser` — extract DOM elements by CSS selector
+- `open_browser_tab` — open new tab
+- `activate_browser_tab` — bring tab to foreground
+
+**Install:**
+
+1. Navigate to `chrome://extensions`
+2. Enable "Developer mode" (top right)
+3. Click "Load unpacked"
+4. Select `extensions/heare-bridge/`
+5. Enter pair code from `~/.heare/browser_bridge.status` or dashboard hotkey
+
+The extension runs an offscreen document that owns the persistent WebSocket. The daemon accepts one client at a time; second connections are rejected with close code 4002.
+
+## Memory (SQLite + optional MCP)
+
+Persistent cross-session storage:
+
+- `~/.heare/heare.db` — transcripts, decisions, actions, usage events, dynamic tools
+- `~/.heare/workspace/.mcp.json` — MCP server configs (seeded from `~/.claude.json`)
+
+Optional fast-MCP server (if `heare[memory]` installed):
+
+```bash
+uv sync --extra memory
+# Then in config.toml: memory_mcp_enabled = true (not yet implemented)
+```
+
+## MCP servers
+
+heare automatically seeds `~/.heare/workspace/.mcp.json` from `~/.claude.json` on first run. Every server listed in that file is callable by the agent.
+
+Edit the file directly to add servers, then restart the daemon:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem", "/Users/you/Documents"]
+    }
+  }
+}
+```
+
+## Audio event detection (opt-in YAMNet)
+
+Detect non-speech audio (laughter, cough, dog bark, etc.):
+
+```bash
+uv sync --extra audio-event
+# Download model: wget https://storage.googleapis.com/…/yamnet.onnx -O ~/.heare/models/yamnet.onnx
+```
+
+In `~/.heare/config.toml`:
+
+```toml
+audio_event_detection_enabled = true
+audio_event_threshold = 0.4
+yamnet_model_path = "~/.heare/models/yamnet.onnx"
+```
+
+Events are written to `~/.heare/audio_event.json` and surfaced on the watch dashboard.
+
+## Tools
+
+Built-in tools available to the LLM:
+
+- **bash** — execute shell commands
+- **read** / **write** / **edit** — file operations
+- **web_search** / **web_fetch** — web access (Serper or DuckDuckGo)
+- **workflow** — multi-step action sequences
+- **list_skills** / **run_skill** / **create_skill** — Agent Skills (agentskills.io format)
+- **list_capabilities** / **discover_capability** / **install_skill_tool** / **install_mcp_server_tool** / **revoke_capability** — capability discovery + install
+- **re_enroll** / **list_profiles** / **create_profile** / **delete_profile** / **rename_profile** — speaker gallery management
+- **create_tool** / **update_tool** / **delete_tool** / **list_tools** — dynamic tool CRUD
+- **create_archive** / **extract_archive** / **batch_operation** — file batch ops
+- **set_provider** — switch LLM provider (openrouter ↔ zai)
+- **stop_daemon** / **restart_daemon** — daemon control
+
+All actions require verbal confirmation via `heare set-passphrase <phrase>` or default yes/no flow.
+
+## Configuration
+
+Most settings live in `~/.heare/config.toml`. See `src/config.py:Settings` for the canonical reference with defaults and descriptions.
+
+Most-used keys:
+
+```toml
+mode = "ambient"                # silent | focus | ambient
+tts_voice = "en-US-AriaNeural"  # or any supported Edge TTS voice
+groq_language = "uk"            # STT language hint (Groq detects + may override)
+speaker_id_enabled = true       # Enable speaker recognition
+audio_event_detection_enabled = false  # Set to true + add yamnet.onnx to enable
+browser_bridge_enabled = true   # Enable Chrome extension bridge
+
+openrouter_api_key = "…"        # OR set OPENROUTER_API_KEY env var
+openrouter_model = "google/gemini-3.1-flash-lite-preview-20260303"
+
+[indication]
+enabled = true
+sound_enabled = true
+quiet_hours = ["22:00-07:00"]
+
+[browser_bridge]
+port = 9333
+token = "…"  # Auto-generated; rotate with `heare rotate-browser-token`
+```
 
 ## State layout
 
 ```
 ~/.heare/
-├── session.json          # Claude Code session id (persistent)
-├── identity.json         # Auto-generated persona — name, creature, vibe
-├── heare.db              # SQLite: transcripts, decisions, actions, heartbeats
-├── heare.pid             # Running daemon pid
-├── mode                  # Current mode (hot-reloadable)
-├── workspace/            # cwd for claude -p — heare writes here by default
-└── logs/
-    ├── daemon.log
-    └── claude-<ts>.log   # One file per claude -p invocation
+├── heare.db                    # SQLite: transcripts, decisions, tools, usage_events
+├── heare.pid                   # Running daemon PID (single-instance lock)
+├── daemon.log                  # Daemon output (rotating, 10MB max, 3 backups)
+├── config.toml                 # User settings (optional; defaults in code)
+├── mode                        # Current mode: silent | focus | ambient (hot-reloadable)
+├── provider                    # Current LLM provider: openrouter | zai (hot-reloadable)
+├── session.json                # Claude Code session ID (persistent)
+├── identity.json               # Auto-generated persona: {name, emoji, voice_type, …}
+├── voice_state.json            # Current VAD state: {state, since_ts, last_*}
+├── audio_event.json            # Latest YAMNet event: {label, score, ts} (if enabled)
+├── speakers.json               # Speaker gallery: ECAPA embeddings + labels
+├── capabilities.json           # Capability index cache (auto-refreshed)
+├── onboarding.json             # Setup progress
+├── heare.log                   # Tail via `heare logs -f`
+├── browser_bridge.status       # Pair-code + server status (for dashboard)
+├── browser_bridge.token        # Token convenience file (chmod 600)
+├── mute.flag                   # Touch to mute speaker; rm to unmute
+├── mute_input.flag             # Touch to mute mic; rm to unmute
+├── inject/                     # Text injection: drop .txt files → TranscriptionFrame
+├── logs/
+│   ├── daemon.log              # Main daemon log
+│   └── indication.jsonl        # Visual+sound cue events (JSON lines)
+├── models/
+│   └── yamnet.onnx             # Audio event model (if using audio-event extra)
+└── workspace/
+    ├── .mcp.json               # MCP server configs (seeded from ~/.claude.json)
+    └── …                       # Working directory for file operations
 ```
 
 ## Verbal confirmation flow
 
-heare never runs a risky action without verbally asking first.
+Actions that modify state (file write, bash execute) require verbal confirmation:
 
-1. You: _"створи файл test.txt в scratch"_
-2. heare: _"Хочу create test.txt, можна?"_
-3. You: _"так"_ → heare runs the action, speaks a summary
-4. You: _"ні"_ → heare cancels, speaks "okay"
-5. Silence for 30s → heare auto-cancels and speaks "nevermind, cancelled"
+1. User: _"create a file called test.txt"_
+2. heare: _"I want to write test.txt, okay?"_
+3. User: _"yes"_ → executes, speaks result
+4. User: _"no"_ → cancels, speaks "okay"
+5. Silence 30s → auto-cancels, speaks "nevermind"
 
-## Tests
+Set a custom passphrase to confirm without yes/no:
 
 ```bash
-uv run pytest tests/
+uv run python -m src.main set-passphrase "авторизую"  # Restart daemon
 ```
 
-Unit tests cover the yes/no parser, SQLite store, context builder, and
-DeciderProcessor state machine. Tests that require pipecat internals are
-auto-skipped when pipecat isn't available.
+Then: User: _"create file test.txt авторизую"_ → executes immediately.
+
+## Development
+
+### Tests
+
+```bash
+uv run pytest tests/ -v
+```
+
+Unit tests cover:
+- Mode hot-reload
+- Speaker recognition
+- Transcription debounce + cancellation
+- TTSCache warmup
+- Usage ledger
+- Dynamic tool CRUD
+- Browser bridge token rotation
+- Watch dashboard widget rendering
+
+### Project layout
+
+```
+src/
+├── main.py                     # CLI entry point + daemon startup
+├── config.py                   # Settings dataclass (canonical config reference)
+├── pipeline/
+│   ├── build.py                # Pipecat pipeline assembly
+│   ├── stages/                 # Custom processors (gate, observer, logger, etc.)
+│   └── language_state.py       # Detected language tracking
+├── agent/
+│   ├── browser_bridge.py       # WebSocket server + RPC dispatch
+│   ├── tools/
+│   │   ├── registry.py         # Tool definitions
+│   │   ├── schemas.py          # JSON schemas + handlers
+│   │   ├── direct.py           # Direct tool execution (bash, read, write, etc.)
+│   │   ├── dynamic.py          # User-created tools
+│   │   └── capability_index.py # Skill/MCP discovery
+│   └── llm/
+│       ├── switchable.py       # OpenRouter ↔ z.ai hot-reload
+│       └── context_injector.py # Per-turn system prompt rebuild
+├── voice/
+│   ├── stt/                    # Groq Whisper service
+│   ├── tts/
+│   │   ├── edge.py             # Edge TTS service
+│   │   └── cache.py            # TTSCache with warmup
+│   ├── speaker/
+│   │   ├── id.py               # ECAPA embedding + matching
+│   │   ├── gallery.py          # Speaker enrollment store
+│   │   └── namer.py            # LLM-driven speaker naming
+│   └── indication/             # Sound + visual + notification backends
+├── audio_event/
+│   └── observer.py             # YAMNet classifier (optional)
+├── store/
+│   ├── storage.py              # SQLite DAO (transcripts, tools, usage)
+│   └── context.py              # Context builder (recent transcripts, etc.)
+├── watch/
+│   ├── app.py                  # Textual TUI entry point
+│   ├── screens.py              # Screen definitions
+│   ├── widgets.py              # Custom Textual widgets
+│   ├── data.py                 # Watch dashboard data layer
+│   └── dashboard.tcss          # Textual CSS
+└── daemon/
+    ├── onboarding.py           # Setup flow
+    ├── workspace.py            # MCP seeding
+    └── heartbeat.py            # Periodic TTS keep-alive
+```
 
 ## Troubleshooting
 
-- **`claude --version` fails** — install the Claude Code CLI first, heare's
-  brain is the CLI, not the API.
-- **macOS mic permission denied** — the detached daemon might not inherit
-  mic permission. Try `nohup` in the foreground first, then background.
-- **Groq rate limit** — the free tier has per-minute caps. heare logs a
-  warning as you approach them.
-- **Session corruption** — run `uv run python -m src.main reset-session`.
-- **Persona feels wrong** — run `uv run python -m src.main reset-identity`
-  and restart. heare will pick a new name.
-
-## Status
-
-- **Phase A (scaffold):** complete — 63 tests passing.
-- **Phase B-E code readiness:** complete in code. Portaudio + pyaudio
-  installed via `uv sync --extra local`. Bugs flagged in the first
-  architect review (mode hot-reload, silent-timeout, SIGTERM cancel,
-  edge-tts general errors, log rotation, rate limiter) are fixed and
-  covered by new unit tests (`test_mode_hot_reload.py`, `test_silent_timeout.py`,
-  `test_shutdown.py`, `test_log_rotation.py`, `test_edge_tts_errors.py`,
-  `test_rate_limit.py`).
-- **Live-hardware verification remaining (only thing left):**
-  1. Copy `.env.example` to `.env` and set `GROQ_API_KEY`.
-  2. Grant mic permission to your terminal / Python in System Settings.
-  3. `uv run python -m src.main start` and speak Ukrainian into the mic.
-  4. Phase B/C/D/E criteria that need a live voice loop (§6 of
-     `.omc/plans/heare-scaffold.md`) are verifiable by the user at that
-     point; everything else is already green.
-
-### Rate-limit caveat
-
-heare caps its own `claude -p` decider + action calls at
-`claude_max_calls_per_minute` (default 30) via `src/rate_limit.py`.
-GroqSTTService runs inside Pipecat and is NOT rate-limited by heare —
-if you hit the Groq free tier ceiling, pipecat surfaces the error and
-heare logs it via the daemon log. This is deliberate: the biggest cost
-center is our own claude calls, not Groq STT.
-
-### Architecture (post Phase 2.1)
-
-```
-mic ──▶ transport.input() ──▶ GroqSTTService ──▶ GeneratorProcessor ──▶ EdgeTTSService ──▶ transport.output() ──▶ speaker
-                                                     │
-                                                     └─ emits ──▶ IntentQueue ──▶ ActionWorker (claude CLI + tools)
+**Claude Code CLI not found**
+```bash
+claude --version
+# If it fails, install: https://docs.claude.com/claude-code
 ```
 
-Every user utterance gets a reply — the generator always speaks.
-Action requests (explicit "запусти", "додай", …) are emitted as
-`<intent>...</intent>` tags in the LLM stream, parsed out before TTS,
-and executed asynchronously by `ActionWorker` so conversation never
-blocks on Claude tool use.
+**Mic permission denied**
+- Grant microphone access in System Settings → Privacy & Security
+- Try `heare start` in foreground first (not backgrounded)
 
-Required config:
+**Groq rate limit**
+- Free tier has per-minute caps. Set `groq_api_key` via `.env` or env var
+- heare logs warnings as you approach limits
 
-```toml
-# ~/.heare/config.toml
-openrouter_api_key = "…"          # OR set OPENROUTER_API_KEY in .env
-openrouter_model = "google/gemini-3.1-flash-lite-preview-20260303"
-openrouter_timeout_seconds = 5.0
-action_timeout_seconds = 120.0
-intent_queue_max_pending = 32
+**STT hanging or slow**
+- Groq Whisper is the bottleneck, not heare. Check your network.
+
+**Speaker recognition drifting**
+- Run `uv run python -m src.main speakers audit` to check embedding health
+- Re-enroll if centroid drift exceeds threshold: `heare enroll-owner --label owner`
+
+**Browser extension not connecting**
+- Verify `chrome://extensions` shows "Heare Bridge" as enabled
+- Check daemon log: `heare logs -f | grep browser`
+- Restart daemon: `heare stop && heare start`
+
+**Cost is too high**
+- Reduce `context_recent_transcripts_count` (fewer history tokens)
+- Switch to a cheaper model: `heare provider zai` + adjust `zai_model`
+- Use cheaper TTS provider (Edge TTS is free)
+
+**Session corruption**
+```bash
+uv run python -m src.main reset-session  # Backs up session.json
 ```
 
-Target latency: time-to-first-audio ≤2s. Cancellation: say "скасуй" or
-"відміни" to drop the newest pending (not-yet-started) intent.
-In-flight action cancellation is a Phase 2.7 follow-up.
+**Persona feels wrong**
+```bash
+uv run python -m src.main reset-identity  # Backs up identity.json, regenerates
+```

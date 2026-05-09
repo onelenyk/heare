@@ -1,8 +1,7 @@
 # Heare System Architecture — Visual Overview
 
-> Last verified against commit `8cb49ef` (refactor: sort flat src/ into packages).
-> All paths and line references are current as of that commit. The earlier
-> diagram (committed in `b73003c`) targeted the pre-refactor flat layout.
+> Last verified against commit `3686961` (feat: browser-bridge + audio-event detection).
+> All paths and line references are current as of that commit.
 
 This document gives a precise, multi-layer picture of every component in the
 heare system and how they interact. It complements `ARCHITECTURE_ANALYSIS.md`
@@ -50,6 +49,8 @@ The diagrams are organized as:
    │     ◾ greeting (one-shot)   "<bot> ready" via TTSSpeakFrame                   │
    │     ◾ inject poller         ~/.heare/inject/ → TranscriptionFrame             │
    │     ◾ heartbeat             writes ~/.heare/heartbeat (alive proof)           │
+   │     ◾ browser_bridge        WS server on 127.0.0.1:9333 (Chrome ext RPC)      │
+   │                              src/daemon/browser.py:start/stop                  │
    └──────────────────────────────┬────────────────────────────────────────────────┘
                                   │ reads/writes (filesystem IPC)
                                   ▼
@@ -71,6 +72,15 @@ The diagrams are organized as:
    │ ADMIN CLI  (heare {stop,status,mode,provider,reset-*,enroll-owner,…})         │
    │   Same src/main.py module; argparse subcommands. Most commands DO NOT load    │
    │   pipecat — pipecat imports are deferred to _cmd_start only.                  │
+   └───────────────────────────────────────────────────────────────────────────────┘
+
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │ CHROME EXTENSION  (extensions/heare-bridge/, MV3, sideloaded)                │
+   │   Runs in user's Chrome browser process (NOT the daemon process).            │
+   │   Connected to daemon via WebSocket on 127.0.0.1:9333.                       │
+   │   Provides 8 RPC methods: list_tabs, read_page, click, fill, extract,        │
+   │     navigate, open_tab, activate_tab.                                        │
+   │   Architecture: service-worker + offscreen document (persistent WS owner).    │
    └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -134,6 +144,24 @@ mic ─► ┌──────────────────────
        │   ◾ Embeds buffered audio with ECAPA, looks up gallery                  │
        │   ◾ Annotates: TranscriptionFrame.speaker_id + speaker_confidence       │
        │   ◾ namer_enqueue: pushes unknown speakers to async LLM-naming task    │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ [audio_event_observer]  (optional — audio_event_detection_enabled)      │
+       │   src/audio_event/observer.py:create_audio_event_observer               │
+       │   ◾ Pass-through YAMNet classifier (ONNX, 16kHz, 0.96s windows)         │
+       │   ◾ Detects non-speech: laughter, cough, bark, etc. (curated 17-label)  │
+       │   ◾ Drop-on-busy + 2-window confirmation before event emit              │
+       │   ◾ Writes: ~/.heare/audio_event.json {label, score, ts}               │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ voice_state_observer                                                     │
+       │   src/pipeline/stages/voice_state_observer.py:create_voice_state_observer
+       │   ◾ Writes: ~/.heare/voice_state.json {state, since_ts, last_*}        │
+       │   ◾ state ∈ {idle, listening, stt, result} per STT transition          │
+       │   ◾ result auto-decays → idle after 4s (dashboard-side timer)           │
+       │   ◾ Read by watch dashboard: VoiceStateBar widget                       │
        └────────────────────────────────────┬────────────────────────────────────┘
                                             ▼
    ┌────┼─────────────────────────────────────────────────────────────────────────┐
@@ -438,6 +466,22 @@ mic ─► ┌──────────────────────
 │   ◾ Pre-warmed at startup: TTSCache.warmup(FIXED_PHRASES, synthesize_to_pcm)    │
 │   ◾ Reads/writes by tts service alone                                            │
 └─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ BrowserBridge  (src/agent/browser_bridge.py)                                     │
+│                                                                                   │
+│   ◾ Singleton WebSocket server on 127.0.0.1:9333 (single auth'd client max)      │
+│   ◾ Token-authenticated + WPS-style 6-digit pair-code (60s TTL, 5-attempt)       │
+│   ◾ Lonely-watcher mints fresh pair code every 30s while disconnected            │
+│   ◾ Wire protocol versioned: v=1, messages: auth, pair, request, response, ping  │
+│                                                                                   │
+│   WRITERS:                                                                       │
+│     ▸ BrowserBridge.call(method, params) → async RPC through Chrome ext         │
+│                                                                                   │
+│   READERS (8 LLM-facing tools in direct.py):                                     │
+│     ▸ list_browser_tabs, read_browser_page, click_in_browser, fill_in_browser    │
+│     ▸ extract_in_browser, navigate_browser, open_browser_tab, activate_browser_tab
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -484,6 +528,8 @@ mic ─► ┌──────────────────────
    │     ║   ▸ register_all_tools(llm_service, ...)              ║     │
    │     ║   ▸ load dynamic_tools from DB → register             ║     │
    │     ║   ▸ build_capability_index → set_capability_index     ║     │
+   │     ║   ▸ create_audio_event_observer (opt, deferred)        ║     │
+   │     ║   ▸ create_voice_state_observer                        ║     │
    │     ║   ▸ system_prompt_injector wired to ContextBuilder    ║     │
    │     ║   ▸ assistant_response_logger / tts_scrub             ║     │
    │     ║   ▸ usage_recorder                                    ║     │
@@ -514,12 +560,14 @@ mic ─► ┌──────────────────────
    │     ║ Inside run_until_stopped (src/main.py:317):          ║     │
    │     ║   pipeline_task = create_task(runner.run(pipeline))   ║     │
    │     ║   warmup_task   = create_task(warmup.run())           ║     │
+   │     ║   browser_bridge_task = create_task(bridge.start())   ║     │
    │     ║   stop_event    = Event()                             ║     │
    │     ║                                                        ║     │
    │     ║   add_signal_handler(SIGTERM/SIGINT  → stop_event.set)║     │
    │     ║   add_signal_handler(SIGHUP          → indication.reload)║  │
    │     ║                                                        ║     │
    │     ║   await asyncio.wait({pipeline_task, warmup_task,    ║     │
+   │     ║                       browser_bridge_task,            ║     │
    │     ║                       stop_waiter, namer_task},      ║     │
    │     ║                      return_when=FIRST_COMPLETED)    ║     │
    │     ║                                                        ║     │
@@ -642,6 +690,9 @@ mic ─► ┌──────────────────────
 │                 install_mcp_server, register_mcp_server, revoke_capability    │
 │   skills        list_skills, list_capabilities, run_skill                     │
 │   speaker       re_enroll, list_profiles                                      │
+│   browser       list_browser_tabs, read_browser_page, click_in_browser,        │
+│                 fill_in_browser, extract_in_browser, navigate_browser,         │
+│                 open_browser_tab, activate_browser_tab  (via BrowserBridge RPC)│
 │   daemon        stop_daemon, restart_daemon (self-control via daemon/control) │
 │   batch         batch_operation                                               │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -717,9 +768,14 @@ mic ─► ┌──────────────────────
 
    CACHED / DERIVED STATE
    ────────────────────────────────────────────────────────────────────────────────
+   audio_event.json        {label, score, ts} — YAMNet detection (read by watch)
+   browser_bridge.status   {connected, ts, port, pair_code, pair_remaining_s}
+   browser_bridge.token    Convenience copy of token (mode 0600, in config.toml)
    capabilities.json       Snapshot of CapabilityIndex (skills + MCP + tools)
+   heare_memory.db         SQLite FTS5 persistent memory (optional fastmcp server)
    session.json            Persistent Claude Code session ID (legacy)
    mcp.json                MCP server config (read by skills/mcp_utils)
+   voice_state.json        {state, since_ts, last_partial, last_final} (auto-decay)
    skills/_marketplace/    Installed marketplace skills (currently 0)
    skills/<custom>/        User-authored skills (markdown procedures)
    inject/                 Drop directory for text-injection (.txt files)
@@ -730,6 +786,13 @@ mic ─► ┌──────────────────────
    config.toml             Optional override of Settings dataclass fields
                              (parsed by config.load_settings)
    workspace/              CLI/agent CWD; .mcp.json seeded from ~/.claude.json
+
+   MODELS & EXTENSIONS
+   ────────────────────────────────────────────────────────────────────────────────
+   models/                 ML model artifacts (user-supplied)
+      yamnet.onnx          YAMNet audio classifier (ONNX, mel-input variant, ~14MB)
+   extensions/heare-bridge/  Chrome MV3 extension (sideloaded)
+      manifest.json, background.js, offscreen.js, content_script.js, icons/, …
 ```
 
 ### SQLite schema highlights
@@ -1093,6 +1156,15 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
    src/daemon/control.py             start/stop/restart helpers
    src/daemon/heartbeat.py           heartbeat + WarmupTask
    src/daemon/watch_controls.py      dashboard → daemon bridge
+   src/daemon/browser.py             Chrome bridge lifecycle (start/stop)
+   src/agent/browser_bridge.py       BrowserBridge WS server + pair-code logic
+
+   src/audio_event/class_map.py      AUDIOSET_CLASSES (521 labels) + ALLOWLIST (17)
+   src/audio_event/classifier.py     YamnetClassifier (ONNX wrapper, mel-input)
+   src/audio_event/observer.py       AudioEventObserver pipeline stage
+   src/audio_event/writer.py         Atomic JSON write to audio_event.json
+
+   src/pipeline/stages/voice_state_observer.py  VoiceStateObserver pipeline stage
 
    src/skills/agent_skills.py        SkillsLoader for ~/.heare/skills/
    src/skills/marketplace.py         remote catalog client
@@ -1101,6 +1173,153 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
    src/skills/mcp_utils.py           ~/.heare/mcp.json read/write
 
    src/watch/                        Textual dashboard (separate process)
+   extensions/heare-bridge/          Chrome MV3 extension (offscreen-doc RPC owner)
+```
+
+---
+
+## 16. Chrome Extension Subsystem
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+          extensions/heare-bridge/  (MV3, Chrome 109+, sideloaded)
+══════════════════════════════════════════════════════════════════════════════════════
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Manifest & Permissions                                                  │
+   │   manifest.json (v3):                                                   │
+   │     - permissions: tabs, scripting, activeTab, storage, alarms,         │
+   │       webNavigation, offscreen                                           │
+   │     - minimum_chrome_version: "109"  (offscreen API requirement)        │
+   │     - host_permissions: <all_urls> (no CSP block of chrome-extension://)│
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Service Worker (background.js)                                          │
+   │   - Thin RPC dispatcher: chrome.runtime.onConnect listener for          │
+   │     port "heare-rpc"                                                    │
+   │   - Maintains HANDLERS map (8 methods):                                 │
+   │       list_tabs, read_page, click, fill, extract, navigate,             │
+   │       open_tab, activate_tab                                            │
+   │   - chrome.alarms keepalive (redundant with offscreen ownership)         │
+   │   - Badge management (green = connected, red = auth failed, grey = idle)│
+   │   - Forwards storage_remove, open_options_page, reconnect msgs to       │
+   │     offscreen via port.postMessage (chrome.storage proxy quirk)         │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Offscreen Document (offscreen.html + offscreen.js)                      │
+   │   - CRITICAL: owns the persistent WebSocket to 127.0.0.1:9333           │
+   │   - Reason: MV3 service workers idle out within ~30s; WS gets dropped.  │
+   │     Offscreen documents are NOT subject to SW lifetime rules.            │
+   │   - Connects to SW via: chrome.runtime.connect({name:'heare-rpc'})      │
+   │   - Keepalive: 24s ping + 35s pong watchdog (terminates WS on hang)     │
+   │   - Wire protocol: {v:1, type:'auth'|'request'|'response'|'ping'|'pong'}│
+   │   - Auth: token-authenticated; pair-code fallback (60s TTL, 5-attempt)  │
+   │   - Token stored in: chrome.storage.local (persisted by browser)        │
+   │   - Forwards handler results back to SW via rpc_response port message   │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Popup & Options Pages                                                   │
+   │   popup.html/js:        Status display + "Open Options" button          │
+   │   options.html/js:      Token entry + pair-code entry UI                │
+   │                         Sends reconnect message to SW on submit         │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Connection Lifecycle                                                    │
+   │   Daemon BrowserBridge.start() → WS server on 127.0.0.1:9333            │
+   │   Chrome ext offscreen.js → WSS handshake + auth (token or pair-code)   │
+   │   Token validation:                                                      │
+   │     - WIRE_VERSION = 1                                                   │
+   │     - CLOSE_AUTH_FAILED = 4001                                           │
+   │     - CLOSE_ALREADY_CONNECTED = 4002 (refuse-new policy)                │
+   │     - DEFAULT_RPC_TIMEOUT = 5.0s, LONG_RPC_TIMEOUT = 15.0s for          │
+   │       screenshot, wait_for                                              │
+   │   Pair-code flow:                                                        │
+   │     - PAIR_CODE_TTL_S = 60.0                                             │
+   │     - PAIR_CODE_REGEN_AFTER_LONELY_S = 30.0 (refreshed while lonely)    │
+   │     - PAIR_MAX_ATTEMPTS = 5; PAIR_CODE_DIGITS = 6                        │
+   │   Refuse-new policy: second client → close 4002 (avoid kick-war)        │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ chrome.storage Proxy Quirk                                              │
+   │   Issue: chrome.storage.local is NOT exposed to offscreen documents     │
+   │   on every Chrome build (security boundary varies by version).           │
+   │   Solution: offscreen proxies storage access through the SW via port    │
+   │   messages: load_config, storage_remove, open_options_page             │
+   │   Impact: all credential/token storage reads go through SW message      │
+   │   handler, not direct document.storage API.                             │
+   └─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 17. Audio Event Detection (YAMNet)
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+     src/audio_event/  + pipeline integration (opt-in, feature flag)
+══════════════════════════════════════════════════════════════════════════════════════
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ YAMNet Classifier (src/audio_event/classifier.py)                       │
+   │   - ONNX Runtime wrapper around mel-input YAMNet variant (~14 MB)        │
+   │   - Input: 16kHz PCM, 0.96s window (15,360 samples) → log-mel patch    │
+   │   - SAMPLE_RATE = 16000                                                 │
+   │   - WINDOW_SAMPLES = 15360  (0.96s @ 16kHz)                             │
+   │   - STFT params: 25ms frames, 10ms hop, 512 FFT, 64 mel bands           │
+   │   - Output: 521-class softmax scores (AUDIOSET_CLASSES)                 │
+   │   - Inference: single-threaded, ~5ms per window (benchmarked)           │
+   │   - Failure: FileNotFoundError (model missing) → logged, returns None   │
+   │   - Optional deps: onnxruntime, numpy → pyproject.toml audio-event extra│
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Class Map & Curation (src/audio_event/class_map.py)                     │
+   │   - AUDIOSET_CLASSES: full 521 AudioSet ontology                        │
+   │   - ALLOWLIST: 17-label curated subset for heare:                       │
+   │       laughter, giggle, cry, cough, sneeze, sniff, snore, bark, meow,  │
+   │       yowl, howl, yell, grunt, sigh, throat_clearing, scream, hiss     │
+   │   - Inference outputs scores; filter against allowlist before emitting  │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Pipeline Integration (src/audio_event/observer.py)                      │
+   │   - Pass-through FrameProcessor: every frame forwards unchanged          │
+   │   - Offload inference to asyncio.to_thread (non-blocking to audio loop) │
+   │   - Drop-on-busy policy: while task._running=True, new windows dropped  │
+   │   - 2-window confirmation rule: emit only after seeing label 2x in a row│
+   │   - Config settings (src/config.py):                                    │
+   │       audio_event_detection_enabled: bool = False  (feature flag)       │
+   │       audio_event_threshold: float = 0.4  (confidence cutoff)           │
+   │       yamnet_model_path: Path = ~/.heare/models/yamnet.onnx (user-orig) │
+   │       audio_event_file: Path = ~/.heare/audio_event.json                │
+   │   - Failure modes (factory returns None + WARNING log):                 │
+   │       1. feature flag off → silent no-op                                │
+   │       2. onnxruntime not installed → install hint                       │
+   │       3. model file missing → tf2onnx hint                              │
+   │       4. exception in _infer → logged, _running resets, continue        │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Output State (src/audio_event/writer.py)                                │
+   │   - Writes: ~/.heare/audio_event.json {label, score, ts}  (atomic)      │
+   │   - Read by: watch dashboard (src/watch/data.py:read_audio_event)       │
+   │   - Rendered by: VoiceStateBar widget with 5s TTL auto-decay            │
+   │   - File format: single JSON object (not JSONL), overwritten per event  │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Voice-State Observer (src/pipeline/stages/voice_state_observer.py)      │
+   │   - NEW: writes ~/.heare/voice_state.json on every STT state change    │
+   │   - States: idle, listening, stt, result                                │
+   │   - Schema: {state, since_ts, last_partial, last_final}                │
+   │   - Auto-decay: dashboard-side 4s timer (state="result" → "idle")      │
+   │   - Read by: VoiceStateBar widget for visual feedback                  │
+   └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

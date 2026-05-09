@@ -161,20 +161,26 @@
   "hotPaths": [
     {
       "path": "extensions/heare-bridge/background.js",
-      "accessCount": 63,
-      "lastAccessed": 1778338283935,
+      "accessCount": 64,
+      "lastAccessed": 1778341212303,
       "type": "file"
     },
     {
       "path": "src/agent/browser_bridge.py",
-      "accessCount": 50,
-      "lastAccessed": 1778340620274,
+      "accessCount": 52,
+      "lastAccessed": 1778341788596,
       "type": "file"
     },
     {
       "path": "src/watch/data.py",
       "accessCount": 31,
       "lastAccessed": 1778333367240,
+      "type": "file"
+    },
+    {
+      "path": "ARCHITECTURE_DIAGRAM.md",
+      "accessCount": 30,
+      "lastAccessed": 1778341784520,
       "type": "file"
     },
     {
@@ -191,8 +197,8 @@
     },
     {
       "path": "src/main.py",
-      "accessCount": 19,
-      "lastAccessed": 1778319974122,
+      "accessCount": 20,
+      "lastAccessed": 1778341780873,
       "type": "file"
     },
     {
@@ -203,8 +209,8 @@
     },
     {
       "path": "extensions/heare-bridge/manifest.json",
-      "accessCount": 14,
-      "lastAccessed": 1778335693214,
+      "accessCount": 15,
+      "lastAccessed": 1778341781163,
       "type": "file"
     },
     {
@@ -215,8 +221,8 @@
     },
     {
       "path": "src/config.py",
-      "accessCount": 11,
-      "lastAccessed": 1778319963510,
+      "accessCount": 13,
+      "lastAccessed": 1778341780694,
       "type": "file"
     },
     {
@@ -238,6 +244,12 @@
       "type": "file"
     },
     {
+      "path": "src/agent/tools/registry.py",
+      "accessCount": 8,
+      "lastAccessed": 1778341780925,
+      "type": "file"
+    },
+    {
       "path": "src/watch/app.py",
       "accessCount": 7,
       "lastAccessed": 1778324066281,
@@ -256,9 +268,9 @@
       "type": "file"
     },
     {
-      "path": "src/agent/tools/registry.py",
-      "accessCount": 6,
-      "lastAccessed": 1778338294746,
+      "path": "ARCHITECTURE_ANALYSIS.md",
+      "accessCount": 5,
+      "lastAccessed": 1778341386538,
       "type": "file"
     },
     {
@@ -275,14 +287,20 @@
     },
     {
       "path": "src/daemon/browser.py",
-      "accessCount": 2,
-      "lastAccessed": 1778333367122,
+      "accessCount": 3,
+      "lastAccessed": 1778341198658,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 3,
+      "lastAccessed": 1778341841070,
       "type": "file"
     },
     {
       "path": "pyproject.toml",
-      "accessCount": 1,
-      "lastAccessed": 1778318767248,
+      "accessCount": 2,
+      "lastAccessed": 1778341788349,
       "type": "file"
     },
     {
@@ -295,6 +313,12 @@
       "path": "tests/test_watch_widgets.py",
       "accessCount": 1,
       "lastAccessed": 1778324123644,
+      "type": "file"
+    },
+    {
+      "path": "src/audio_event/classifier.py",
+      "accessCount": 1,
+      "lastAccessed": 1778341202009,
       "type": "file"
     }
   ],

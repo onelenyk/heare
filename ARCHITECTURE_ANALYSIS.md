@@ -1,5 +1,7 @@
 # Heare Architecture Analysis & Data Flow
 
+> Last verified against commit `3686961` (feat: browser-bridge + audio-event detection).
+
 ## System Overview
 
 **Heare** is a proactive, ambient, agentic voice AI assistant powered by Claude Code. It lives in your headphones, listens continuously, and decides autonomously when to speak or act.
@@ -868,5 +870,61 @@ The architecture is modular, extensible, and designed for continuous operation a
 - **Agentic**: Can execute actions, not just chat
 - **Safe**: Confirmation for risky actions, redacted logs
 - **Observable**: Comprehensive logging and dashboard
+
+---
+
+## Browser Bridge Subsystem
+
+The daemon can now control the user's Chrome browser via a WebSocket-based RPC bridge. This enables autonomous web browsing, search, navigation, and page reading without the user's direct involvement.
+
+**Architecture**: The bridge consists of three layers:
+1. **Server** (`src/agent/browser_bridge.py`): A WebSocket server bound to `127.0.0.1:9333` inside the daemon process, accepting a single authenticated client at a time.
+2. **Chrome Extension** (`extensions/heare-bridge/`, MV3): A sideloaded extension that maintains the persistent connection. It uses an **offscreen document** (not the service worker) to own the WebSocket, since MV3 service workers suspend within ~30s.
+3. **RPC Protocol** (wire version 1): Token-authenticated with a WPS-style 6-digit pair-code fallback (60s TTL, 5-attempt lockout). The server regenerates a fresh pair code every 30s while no client is connected. A second connection attempt is refused with close code 4002 to prevent "kick-wars" between multiple Chrome profiles.
+
+**Authentication**: The daemon generates a strong random token at startup and persists it to `~/.heare/browser_bridge.token` (mode 0600) for convenience. The browser extension stores the token in `chrome.storage.local` and includes it in the initial auth handshake.
+
+**Chrome Extension Details**: The extension provides 8 RPC methods dispatched through the offscreen document:
+- `list_tabs` — enumerate open tabs
+- `read_page` — extract page text + title
+- `click` — click a selector
+- `fill` — fill a form field and dispatch input events
+- `extract` — query selector and return element attributes
+- `navigate` — load a URL and await navigation completion
+- `open_tab` — create a new tab
+- `activate_tab` — focus a tab and window
+
+Each method is wired as an LLM-facing tool in the agent (`list_browser_tabs`, `read_browser_page`, `click_in_browser`, etc.), so the LLM can autonomously decide when to interact with the browser. All methods use a per-method timeout (5s default, 15s for slow operations like screenshots).
+
+**Notable Implementation Details**:
+- The offscreen document proxies `chrome.storage.local` access through the service worker because the storage API is not available in offscreen documents on all Chrome versions.
+- The service worker sends periodic "are you alive?" alarms, but this is now redundant with the offscreen document ownership (defer cleanup once multi-day stability is proven).
+- The URL blocklist prevents access to `chrome://`, `file://`, and other extension:// URLs to avoid side-channel attacks.
+
+**Failure Modes**: If the extension is not installed, any call to a browser tool returns `{success: false, error: "Browser not connected", retryable: false}`. The daemon and LLM handle this gracefully by either retrying later or explaining to the user that the feature is unavailable.
+
+---
+
+## Audio Event Detection (YAMNet)
+
+An optional, non-speech sound classifier runs in the pipeline to detect ambient events (laughter, coughing, barking, etc.) and react autonomously—for example, laughing back when someone laughs, or offering help when someone coughs.
+
+**Model**: YAMNet is a lightweight convolutional neural network trained on the AudioSet ontology (521 classes). The daemon uses the ONNX mel-input variant (~14 MB) to avoid importing TensorFlow at runtime. It processes 0.96-second (16 kHz) windows and outputs softmax scores for each class.
+
+**Curation**: Rather than surfacing all 521 classes, a curated allowlist of 17 human-relevant sounds is defined: laughter, giggle, cry, cough, sneeze, sniff, snore, bark, meow, yowl, howl, yell, grunt, sigh, throat-clearing, scream, hiss.
+
+**Pipeline Integration**: The `AudioEventObserver` is a pass-through stage inserted early in the frame chain (before the transcription gate). It offloads inference to a background thread via `asyncio.to_thread` so that long model runs don't block the audio input loop.
+
+**Debouncing**: To avoid chattering on borderline detections, the observer uses a 2-window confirmation rule: it must see the same label in two consecutive windows before emitting an event. While inference is in flight, fully-buffered new windows are dropped (drop-on-busy policy).
+
+**Output**: When an event is detected, it writes to `~/.heare/audio_event.json` with the label, confidence score, and timestamp. The watch dashboard reads this file and renders a transient indicator (5s TTL auto-decay).
+
+**Optional Dependency**: YAMNet requires `onnxruntime` and `numpy`, which are not installed by default. Users who want the feature install the optional dependency group (`pip install heare[audio-event]`). If the model file is missing or `onnxruntime` is not available, the observer factory returns `None` and the pipeline skips the stage with a warning log.
+
+**Failure Resilience**: If inference throws an exception (out-of-memory, corrupt model, etc.), the exception is caught, logged, and the `_running` flag is reset in a `finally` block, preventing deadlock. The frame is always forwarded unchanged.
+
+**Voice-State Observer**: A companion stage `VoiceStateObserver` writes `~/.heare/voice_state.json` on every speech-state transition. This file tracks the current mode (idle, listening, stt, result) and timestamps, allowing the dashboard to display a synchronized status bar showing whether the daemon is currently processing audio.
+
+---
 
 This architecture analysis covers the complete data flow from microphone input to speaker output, with detailed descriptions of all major components and their relationships.
