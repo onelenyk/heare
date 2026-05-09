@@ -1,0 +1,6 @@
+## Handoff: team-plan → team-exec
+- **Decided**: Architecture B (MV3 extension + WebSocket bridge on 127.0.0.1:9333). Persistent token in `config.toml` + `~/.heare/browser_bridge.token` (0o600). 7 Phase-1 tools. `run_until_stopped` extended with `bridge_task` kwarg following `namer_task` pattern exactly. URL blocklist (`chrome://`, `chrome-extension://`, `file://`) in extension dispatcher. Origin header validation. Single-connection policy (close 4002). Wire protocol versioned (`"v": 1`).
+- **Rejected**: Native Messaging (per-OS install paths, no push), AppleScript (macOS-only), CDP attach (Chrome 136+ blocks default profile), per-restart token rotation (terrible UX given frequent restarts).
+- **Risks**: MV3 service worker suspension drops WS — mitigated via `chrome.alarms` 24s keepalive + reconnect with exponential backoff (1/2/4/8/30s) + structured `retryable: true` errors. `<all_urls>` is broad — mitigated by sideload-only + audit log + future per-domain allowlist.
+- **Files**: `.omc/plans/browser-extension-bridge.md` (REVISION 2, consensus-approved), `.omc/plans/open-questions.md`.
+- **Remaining**: Implement 11 tasks across Python core (T1-T4, T10), extension (T5-T7), tools (T8-T9), tests (T11). All acceptance criteria spelled out per step in plan body.

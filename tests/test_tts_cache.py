@@ -1,6 +1,8 @@
 """Tests for src/tts_cache.py — in-memory PCM cache for fixed phrases."""
 from __future__ import annotations
 
+import asyncio
+
 from src.voice.tts.cache import TTSCache
 
 
@@ -89,6 +91,23 @@ async def test_tts_cache_warmup_skips_empty_pcm() -> None:
 
     await cache.warmup(["x"], empty_synth)
     assert not cache.has("x")  # empty PCM treated as miss
+
+
+async def test_tts_cache_warmup_runs_concurrently() -> None:
+    """All missing phrases must synth in parallel — a sequential implementation
+    deadlocks here because the barrier requires N callers to converge."""
+    cache = TTSCache()
+    phrases = ["a", "b", "c", "d"]
+    barrier = asyncio.Barrier(len(phrases))
+
+    async def fake_synth(text: str) -> bytes:
+        await barrier.wait()
+        return text.encode()
+
+    await asyncio.wait_for(cache.warmup(phrases, fake_synth), timeout=1.0)
+
+    for p in phrases:
+        assert cache.has(p)
 
 
 def test_fixed_phrases_list_exposed() -> None:

@@ -74,7 +74,7 @@ def test_header_bar_refresh_data_displays_all_fields() -> None:
             provider="zai",
             transcripts_count=42,
             actions_count=7,
-        )
+            chrome_attached=False)
 
         # Refresh with the data
         header.refresh_data(header_data)
@@ -115,7 +115,7 @@ def test_header_bar_renders_app_version() -> None:
             provider="zai",
             transcripts_count=0,
             actions_count=0,
-        )
+            chrome_attached=False)
         header.refresh_data(header_data)
         content = str(header.render())
 
@@ -138,7 +138,7 @@ def test_header_bar_shows_stopped_status() -> None:
             provider="openrouter",
             transcripts_count=0,
             actions_count=0,
-        )
+            chrome_attached=False)
 
         header.refresh_data(header_data)
         content = str(header.render())
@@ -163,7 +163,7 @@ def test_header_bar_providers_have_correct_colors() -> None:
             provider="zai",
             transcripts_count=0,
             actions_count=0,
-        )
+            chrome_attached=False)
         header.refresh_data(header_data_zai)
         content_zai = str(header.render())
         assert "zai" in content_zai
@@ -179,7 +179,7 @@ def test_header_bar_providers_have_correct_colors() -> None:
             provider="openrouter",
             transcripts_count=0,
             actions_count=0,
-        )
+            chrome_attached=False)
         header.refresh_data(header_data_or)
         content_or = str(header.render())
         assert "openrouter" in content_or

@@ -11,7 +11,7 @@ from textual.widgets import DataTable, Input, RichLog, Static
 from src.config import Settings
 from src.pipeline.stages.text_injector import inject_text
 from src.version import app_version
-from .data import ActivityRow, HeaderData, LogLine, UsageData, fmt_time
+from .data import ActivityRow, AudioEventData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
 
 
 class HeaderBar(Static):
@@ -70,15 +70,15 @@ class HeaderBar(Static):
             provider_text,
         )
 
-        # Line 2: transcripts actions   <version>
-        # Version sits at the trailing edge of line 2 in dim style so it's
-        # visible at a glance but never competes with the live counters
-        # for attention.
+        # Line 2: transcripts actions chrome   <version>
+        # Chrome shows green ● when extension is connected, grey ○ otherwise.
         line2 = Text.assemble(
             ("transcripts=", "dim"),
             (f"{header.transcripts_count}", "white"),
             ("  actions=", "dim"),
             (f"{header.actions_count}", "white"),
+            ("  chrome=", "dim"),
+            (("●", "bold green") if header.chrome_attached else ("○", "dim")),
             ("   ", ""),
             (app_version(), "dim italic"),
         )
@@ -242,9 +242,9 @@ class ControlsBar(Container):
     """
 
     SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
-        ("AGENT", (("s", "start"), ("x", "stop"), ("r", "restart"))),
-        ("MUTE",  (("m", "bot"),   ("M", "mic"))),
-        ("INPUT", (("t", "text"),)),
+        ("AGENT",   (("s", "start"), ("x", "stop"), ("r", "restart"))),
+        ("MUTE",    (("m", "bot"),   ("M", "mic"))),
+        ("INPUT",   (("t", "text"),)),
     )
     EXTRAS: tuple[tuple[str, str], ...] = (
         ("[]", "resize"),
@@ -383,6 +383,85 @@ class AIBar(Static):
             text.append(key, style="bold cyan")
             text.append(" ", style="")
             text.append(label, style="white")
+        return text
+
+    def render(self) -> Text:
+        return self._build_text()
+
+
+class VoiceStateBar(Static):
+    """Live voice-state panel: idle / listening / stt / result + last audio event.
+
+    Reads ``DashboardSnapshot.voice_state`` (written by the pipeline's
+    ``VoiceStateObserver`` to a JSON file) and ``DashboardSnapshot.audio_event``
+    (written by ``src/audio_event/writer.py``). The "result" state auto-decays
+    to idle after ``RESULT_TTL_S`` and event lines auto-decay after
+    ``EVENT_TTL_S``, so the panel returns to a calm state without writer-side
+    timers.
+    """
+
+    RESULT_TTL_S: float = 4.0
+    EVENT_TTL_S: float = 5.0
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._voice = VoiceStateData(
+            state="idle", since_ts=0.0, last_partial=None, last_final=None
+        )
+        self._event = AudioEventData(label=None, score=0.0, ts=0.0)
+        self.border_title = "🎤 voice"
+
+    def refresh_data(
+        self, voice: VoiceStateData, audio_event: AudioEventData | None = None
+    ) -> None:
+        self._voice = voice
+        if audio_event is not None:
+            self._event = audio_event
+        self.update(self._build_text())
+
+    def _effective_state(self) -> str:
+        import time
+
+        if self._voice.state == "result":
+            if time.time() - self._voice.since_ts > self.RESULT_TTL_S:
+                return "idle"
+        return self._voice.state
+
+    def _build_text(self) -> Text:
+        state = self._effective_state()
+        labels = {
+            "idle":      ("○ idle",      "dim"),
+            "listening": ("● listening", "bold green"),
+            "stt":       ("◐ transcribing", "bold yellow"),
+            "result":    ("✓ result",    "bold cyan"),
+        }
+        label, style = labels.get(state, (state, "white"))
+        text = Text()
+        text.append(label, style=style)
+        text.append("\n")
+
+        if state == "stt" and self._voice.last_partial:
+            text.append("partial  ", style="dim")
+            text.append(
+                self._voice.last_partial[:60],
+                style="italic white",
+            )
+        elif state == "result" and self._voice.last_final:
+            text.append("said     ", style="dim")
+            text.append(self._voice.last_final[:60], style="white")
+        elif state == "listening":
+            text.append("(speak now)", style="dim italic")
+        else:
+            text.append("(no audio)", style="dim italic")
+
+        if self._event.label is not None:
+            import time
+
+            if time.time() - self._event.ts < self.EVENT_TTL_S:
+                text.append("\n")
+                text.append("event    ", style="dim")
+                text.append(self._event.label, style="bold magenta")
+                text.append(f" ({self._event.score:.2f})", style="dim magenta")
         return text
 
     def render(self) -> Text:

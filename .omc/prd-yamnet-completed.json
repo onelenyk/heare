@@ -1,0 +1,153 @@
+{
+  "title": "YAMNet audio event detection",
+  "description": "Implement plan at .omc/plans/yamnet-audio-event-detection.md (REVISION 2). Detect non-speech audio events (laughter, cough, pet sounds, etc.) via locally-run YAMNet ONNX classifier wired into the Pipecat pipeline. Opt-in via Settings, surfaced on the watch dashboard.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Static data + class map (src/audio_event/__init__.py, class_map.py)",
+      "description": "Create the audio_event package with the 521-entry AUDIOSET_CLASSES list and a hardcoded ALLOWLIST dict mapping ~18 curated AudioSet indices to display labels. label_for_index(idx) returns the allowlisted label or None.",
+      "acceptanceCriteria": [
+        "src/audio_event/__init__.py exists",
+        "src/audio_event/class_map.py exports AUDIOSET_CLASSES with len == 521",
+        "ALLOWLIST is a literal dict[int, str] (no substring matching, no runtime construction)",
+        "ALLOWLIST contains entries for: Laughter, Giggle, Cough, Sneeze, Screaming, Crying, Yawn, Whispering, Bark, Howl, Bow-wow, Whimper (dog), Meow, Purr, Hiss, Caterwaul, Bird vocalization, Crowing",
+        "label_for_index(0) returns None (Speech is not allowlisted)",
+        "label_for_index(idx) returns 'Laughter' for the laughter index",
+        "Module imports do not require numpy or onnxruntime"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "Classifier wrapper (src/audio_event/classifier.py)",
+      "description": "YamnetClassifier wraps onnxruntime.InferenceSession. classify(waveform) takes float32 mono 16 kHz audio (15360 samples = 0.96 s) and returns 521 (idx, score) pairs sorted descending. Module docstring contains tf2onnx conversion recipe.",
+      "acceptanceCriteria": [
+        "src/audio_event/classifier.py defines class YamnetClassifier",
+        "Class constants WINDOW_SAMPLES = 15360 and SAMPLE_RATE = 16000",
+        "__init__(model_path) raises FileNotFoundError if path missing",
+        "classify(waveform) raises ValueError if len(waveform) != WINDOW_SAMPLES",
+        "classify returns list[tuple[int, float]] of length 521 sorted descending by score",
+        "Module-level docstring includes tf2onnx conversion recipe with --opset 13 and the tfhub.dev/google/yamnet/1 source URL"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "Atomic writer (src/audio_event/writer.py)",
+      "description": "write_audio_event(path, label, score) writes {label, score, ts} JSON atomically via tmpfile + os.replace. Lives in src/audio_event/, NOT in voice_state_observer.py.",
+      "acceptanceCriteria": [
+        "src/audio_event/writer.py defines write_audio_event(path: Path, label: str, score: float) -> None",
+        "Output JSON has exactly the keys {label, score, ts}",
+        "score is rounded to 3 decimals",
+        "Write is atomic (tmpfile + os.replace)",
+        "Parent directory is created if missing",
+        "OSError during write is caught and logged (does not raise)",
+        "src/pipeline/stages/voice_state_observer.py is not modified"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "Observer + factory (src/audio_event/observer.py)",
+      "description": "AudioEventObserver(FrameProcessor) accumulates InputAudioRawFrame bytes, schedules inference via asyncio.create_task(asyncio.to_thread(_infer)) with task.add_done_callback(_on_result). Drops next window when _running. Emits event on 2-consecutive-window agreement above threshold. _on_result resets _running in finally block. Factory create_audio_event_observer returns None on disabled / missing onnxruntime / missing model file with a warning log.",
+      "acceptanceCriteria": [
+        "src/audio_event/observer.py defines class AudioEventObserver(FrameProcessor)",
+        "process_frame uses asyncio.create_task(asyncio.to_thread(self._infer, ...)) + task.add_done_callback",
+        "_on_result reads fut.result() inside try/except and resets self._running in finally",
+        "When _running is True, accumulated buffer is discarded for the next window",
+        "Event is emitted only when current label matches _prev_label (2-window confirmation)",
+        "Below-threshold predictions do not trigger event emission",
+        "Observer is pass-through (always pushes the frame downstream)",
+        "create_audio_event_observer returns None when settings.audio_event_detection_enabled is False",
+        "create_audio_event_observer returns None when onnxruntime ImportError occurs (logged)",
+        "create_audio_event_observer returns None when model file missing (logged)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-005",
+      "title": "Settings fields (src/config.py)",
+      "description": "Add audio_event_detection_enabled, audio_event_threshold, yamnet_model_path, audio_event_file fields to Settings dataclass.",
+      "acceptanceCriteria": [
+        "Settings.audio_event_detection_enabled: bool = False",
+        "Settings.audio_event_threshold: float = 0.4",
+        "Settings.yamnet_model_path defaults to HEARE_HOME / 'models' / 'yamnet.onnx'",
+        "Settings.audio_event_file defaults to HEARE_HOME / 'audio_event.json'"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-006",
+      "title": "Pipeline wiring (src/pipeline/build.py)",
+      "description": "_assemble_native_stages gains audio_event_observer kwarg (placed immediately after input_mute_gate parameter). build_pipeline conditionally constructs the observer behind a try/except guarded by settings.audio_event_detection_enabled and inserts it between input_mute_gate and speaker_buffer in the stage list.",
+      "acceptanceCriteria": [
+        "_assemble_native_stages signature includes audio_event_observer: Any = None",
+        "audio_event_observer kwarg is positioned after input_mute_gate kwarg in the signature",
+        "Stage list places audio_event_observer between input_mute_gate and speaker_buffer when supplied",
+        "build_pipeline imports src.audio_event.observer ONLY inside the if settings.audio_event_detection_enabled block (no top-level import)",
+        "Observer construction is wrapped in try/except so failure logs and continues without crashing",
+        "Existing pipeline still builds with audio_event_detection_enabled=False (default)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-007",
+      "title": "Dashboard data layer (src/watch/data.py)",
+      "description": "Add AudioEventData frozen dataclass + read_audio_event(path) reader that returns defaults on missing/corrupt file. Add audio_event field to DashboardSnapshot. fetch_dashboard_state populates it.",
+      "acceptanceCriteria": [
+        "AudioEventData(label: str | None, score: float, ts: float) frozen dataclass exists",
+        "read_audio_event(path) returns AudioEventData(label=None, score=0.0, ts=0.0) on missing file",
+        "read_audio_event returns defaults on corrupt JSON (no exception escapes)",
+        "DashboardSnapshot has audio_event: AudioEventData field",
+        "fetch_dashboard_state populates audio_event via read_audio_event(settings.audio_event_file)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-008",
+      "title": "Widget + app wiring (src/watch/widgets.py, src/watch/app.py)",
+      "description": "VoiceStateBar.refresh_data gains audio_event parameter. Renders event line when label is present and ts within EVENT_TTL_S (5.0s) decay window. app.py call site is updated to pass both args.",
+      "acceptanceCriteria": [
+        "VoiceStateBar.refresh_data(self, voice, audio_event) \u2014 second parameter added",
+        "VoiceStateBar.EVENT_TTL_S = 5.0",
+        "Widget renders an event line when audio_event.label is not None and time.time() - audio_event.ts < EVENT_TTL_S",
+        "Event line is hidden when ts is older than EVENT_TTL_S (auto-decay)",
+        "src/watch/app.py call site invokes voice_bar.refresh_data(snapshot.voice_state, snapshot.audio_event)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-009",
+      "title": "Optional dependency group (pyproject.toml)",
+      "description": "Add audio-event optional dep group with onnxruntime>=1.17 and numpy>=1.24.",
+      "acceptanceCriteria": [
+        "pyproject.toml [project.optional-dependencies] has audio-event = ['onnxruntime>=1.17', 'numpy>=1.24']",
+        "onnxruntime is NOT in core dependencies"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-010",
+      "title": "Test suite (tests/test_audio_event.py)",
+      "description": "Tests covering static data, classifier guard paths, observer state machine, factory, writer, dashboard reader, widget, settings. Smoke test gated on HEARE_TEST_YAMNET=1. All non-smoke tests pass without the ONNX model file present.",
+      "acceptanceCriteria": [
+        "tests/test_audio_event.py exists",
+        "Includes test_class_map_length, test_allowlist_is_hardcoded_dict, test_label_for_index_speech_excluded, test_label_for_index_laughter",
+        "Includes test_observer_passthrough, test_observer_drops_when_busy, test_observer_two_window_confirmation, test_observer_label_change_resets, test_observer_below_threshold",
+        "Includes test_observer_running_resets_on_infer_exception",
+        "Includes test_factory_disabled, test_factory_missing_model, test_factory_missing_onnxruntime",
+        "Includes test_write_audio_event_atomic, test_read_audio_event_missing_file, test_read_audio_event_corrupt",
+        "Includes test_dashboard_snapshot_includes_audio_event, test_settings_defaults",
+        "Smoke test gated by env var HEARE_TEST_YAMNET=1 (skipped by default)",
+        "uv run pytest tests/test_audio_event.py exits 0 without the ONNX model file present"
+      ],
+      "passes": true
+    }
+  ],
+  "metadata": {
+    "createdAt": "2026-05-08T13:55:00Z",
+    "iteration": 1,
+    "maxIterations": 5,
+    "taskDescription": "Implement YAMNet audio event detection per .omc/plans/yamnet-audio-event-detection.md (REVISION 2). Consensus-approved by Architect (SOUND) and Critic (APPROVE)."
+  }
+}

@@ -12,11 +12,12 @@ from textual.css.query import NoMatches
 
 from src.config import Settings
 from src.pipeline.stages.mute_gate import toggle_input_mute, toggle_mute
+from src.daemon.browser import ensure_debug_chrome, is_debug_reachable, list_chrome_profiles
 from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
 from . import models
 from .data import fetch_dashboard_state
-from .screens import ModelSelectScreen
-from .widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail, UsageBar
+from .screens import ChromeProfileSelectScreen, ModelSelectScreen
+from .widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail, UsageBar, VoiceStateBar
 
 
 class HeareDashboard(App):
@@ -36,6 +37,7 @@ class HeareDashboard(App):
         Binding("m", "toggle_mute_bot", "Mute bot", show=True),
         Binding("M", "toggle_mute_mic", "Mute mic", show=True),
         Binding("t", "text_input", "Text inject", show=True),
+        Binding("b", "launch_chrome", "Chrome (CDP)", show=True),
         Binding("p", "toggle_provider", "Provider", show=False),
         Binding("o", "pick_model", "Pick model", show=False),
         Binding("q", "quit", "Quit", show=True),
@@ -66,6 +68,7 @@ class HeareDashboard(App):
         yield Horizontal(
             ControlsBar(self.settings),
             AIBar(self.settings),
+            VoiceStateBar(),
             UsageBar(),
             id="bottom-bar",
         )
@@ -83,7 +86,7 @@ class HeareDashboard(App):
         "start_daemon", "stop_daemon", "restart_daemon",
         "toggle_mute_bot", "toggle_mute_mic", "toggle_provider",
         "pick_model", "shrink_left", "grow_left", "quit",
-        "refresh_now", "respawn",
+        "refresh_now", "respawn", "launch_chrome",
     })
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -107,6 +110,7 @@ class HeareDashboard(App):
             log_tail = self.query_one(LogTail)
             ai_bar = self.query_one(AIBar)
             usage_bar = self.query_one(UsageBar)
+            voice_bar = self.query_one(VoiceStateBar)
         except NoMatches:
             return
 
@@ -117,6 +121,7 @@ class HeareDashboard(App):
         provider = snapshot.header.provider
         ai_bar.refresh_data(provider, models.read_current_model(self.settings, provider))
         usage_bar.refresh_data(snapshot.usage)
+        voice_bar.refresh_data(snapshot.voice_state, snapshot.audio_event)
 
     # -----------------------------------------------------------------------
     # Daemon control actions
@@ -161,6 +166,36 @@ class HeareDashboard(App):
     def action_text_input(self) -> None:
         """Enter text injection mode (t key)."""
         self.query_one(ControlsBar).show_input()
+
+    def action_launch_chrome(self) -> None:
+        """Launch (or attach to) Chrome with the CDP debug port (b key).
+
+        If ``localhost:9222`` already responds, reports already-attached.
+        Otherwise opens a profile picker so the user names which profile to
+        launch — naming is required because Chrome's profile picker silently
+        drops ``--remote-debugging-port`` when the user picks a profile from
+        it, breaking CDP attach.
+        """
+        if is_debug_reachable():
+            self.query_one(ControlsBar).update_status(
+                "chrome already attached on :9222"
+            )
+            return
+
+        profiles = list_chrome_profiles()
+        if not profiles:
+            # No Chrome user-data dir — try a bare launch as a fallback.
+            self.query_one(ControlsBar).update_status(ensure_debug_chrome())
+            return
+
+        def _on_dismiss(picked: str | None) -> None:
+            if picked is None:
+                self.query_one(ControlsBar).update_status("chrome launch cancelled")
+                return
+            msg = ensure_debug_chrome(profile_directory=picked)
+            self.query_one(ControlsBar).update_status(msg)
+
+        self.push_screen(ChromeProfileSelectScreen(profiles), _on_dismiss)
 
     def action_pick_model(self) -> None:
         """Open the model-select dialog (o key)."""

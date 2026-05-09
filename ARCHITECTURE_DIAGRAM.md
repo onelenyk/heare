@@ -1,450 +1,1113 @@
-# Heare System Architecture - Visual Overview
+# Heare System Architecture — Visual Overview
 
-## Component Relationship Diagram
+> Last verified against commit `8cb49ef` (refactor: sort flat src/ into packages).
+> All paths and line references are current as of that commit. The earlier
+> diagram (committed in `b73003c`) targeted the pre-refactor flat layout.
+
+This document gives a precise, multi-layer picture of every component in the
+heare system and how they interact. It complements `ARCHITECTURE_ANALYSIS.md`
+(narrative deep-dive) — this file is the visual + structural index.
+
+The diagrams are organized as:
+
+1. Process topology — what runs where
+2. The complete frame chain (the main pipeline)
+3. Shared-state graph — who reads/writes which in-memory objects
+4. Daemon lifecycle (startup → run → shutdown)
+5. Tool dispatch mechanics
+6. Hot-reload surface
+7. Filesystem state
+8. Common-case sequence diagrams
+9. Special frame paths (upstream, system frames, frame relay)
+10. Known defects flagged inline
+
+---
+
+## 1. Process Topology
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                              HEARE SYSTEM ARCHITECTURE                              │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+══════════════════════════════════════════════════════════════════════════════════════
+                              EXTERNAL SERVICES (network)
+   ┌──────────────┬──────────────────┬────────────┬─────────────┬──────────────────┐
+   │ Groq Whisper │ OpenRouter API   │ z.ai API   │ Edge TTS    │ skillsmp.com /   │
+   │ (STT)        │ (LLM, OpenAI sh) │ (LLM, Anth)│ (TTS, ws)   │ MCP registry     │
+   └──────┬───────┴────────┬─────────┴─────┬──────┴──────┬──────┴────────┬─────────┘
+          │ HTTPS          │ HTTPS         │ HTTPS       │ wss          │ HTTPS
+══════════╪════════════════╪═══════════════╪═════════════╪═══════════════╪═════════════
+          ▼                ▼               ▼             ▼               ▼
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │ HEARE DAEMON  (single Python 3.11 process, single asyncio event loop)         │
+   │ ────────────────────────────────────────────────────────────────────────────  │
+   │   Entry:        src/main.py:_cmd_start          (asyncio.run)                 │
+   │   Supervisor:   src/main.py:run_until_stopped   (asyncio.wait FIRST_COMPLETED)│
+   │   Frame loop:   pipecat.PipelineRunner.run(pipeline)                          │
+   │   PID file:     ~/.heare/heare.pid              (single-instance lock)        │
+   │                                                                               │
+   │   Background tasks (asyncio.create_task):                                     │
+   │     ◾ pipeline_task         the pipecat frame loop                            │
+   │     ◾ warmup_task           periodic Edge TTS keep-alive                      │
+   │     ◾ namer_task            speaker-naming LLM caller (optional)              │
+   │     ◾ greeting (one-shot)   "<bot> ready" via TTSSpeakFrame                   │
+   │     ◾ inject poller         ~/.heare/inject/ → TranscriptionFrame             │
+   │     ◾ heartbeat             writes ~/.heare/heartbeat (alive proof)           │
+   └──────────────────────────────┬────────────────────────────────────────────────┘
+                                  │ reads/writes (filesystem IPC)
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │ FILESYSTEM (~/.heare/) — see §7 for full schema                                │
+   │   heare.db (SQLite WAL) ▪ heare.pid ▪ provider ▪ mute.flag ▪ mute_input.flag  │
+   │   capabilities.json ▪ identity.json ▪ speakers.json ▪ inject/ ▪ logs/         │
+   └──────────────────────────────┬────────────────────────────────────────────────┘
+                                  │ reads (separate process)
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │ WATCH DASHBOARD  (separate Python process, Textual TUI)                       │
+   │   src/watch/{app,data,widgets,screens,_legacy}.py                             │
+   │   Reads heare.db + daemon.log; toggles flag files via hotkeys.                │
+   │   Runs `heare watch` (src/main.py:_cmd_watch) — does NOT load pipecat.        │
+   └───────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ EXTERNAL INTERFACES                                                                  │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │ ADMIN CLI  (heare {stop,status,mode,provider,reset-*,enroll-owner,…})         │
+   │   Same src/main.py module; argparse subcommands. Most commands DO NOT load    │
+   │   pipecat — pipecat imports are deferred to _cmd_start only.                  │
+   └───────────────────────────────────────────────────────────────────────────────┘
+```
 
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│   Microphone     │  │  Watch Dashboard │  │   CLI Control    │  │  Systemd Service │
-│   (Audio Input)  │  │   (Textual TUI)  │  │   (hearectl)     │  │   (heare.service)│
-└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
-         │                     │                     │                     │
-         │ Audio               │ Control             │ Commands            │ Signals
-         │                     │                     │                     │
-         ▼                     ▼                     ▼                     ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                           MAIN ENTRY POINT (src/main.py)                              │
-│                                                                                      │
-│  • _cmd_start()   - Initialize pipeline, start daemon                                │
-│  • _cmd_stop()    - Graceful shutdown via SIGTERM                                     │
-│  • _cmd_mode()    - Hot-reload behavior mode                                         │
-│  • _cmd_provider()- Hot-reload LLM provider                                          │
-└──────────────────────────────────────────────────────────────────────────────────────┘
-                                       │
-                                       │ Initialize
-                                       ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                        AUDIO PROCESSING PIPELINE (src/pipeline.py)                   │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+---
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STAGE 1: INPUT PROCESSING                                                            │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+## 2. The Frame Chain (Pipecat pipeline)
 
-  Microphone
-      │
-      ▼
-┌─────────────────┐
-│ LocalAudioTransport │
-│ • SileroVAD        │ ← Voice Activity Detection (stop: 0.5s, start: 0.3s)
-│ • SmartTurnV3      │ ← Turn-taking logic (stop: 1.0s)
-│ • 16kHz in/24kHz out│
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STAGE 2: OPTIONAL INPUT FILTERS                                                      │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+Composed by `src/pipeline/build.py:build_pipeline` and `_assemble_native_stages`.
+DOWNSTREAM is top-to-bottom. UPSTREAM frames (interrupt, cancel) flow the other way.
 
-         │
-         ├──► [Input Mute Gate] ◄──── ~/.heare/mute_input (toggle from dashboard)
-         │      • Drops audio when muted
-         │
-         ├──► [Speaker Buffer] ◄──── Optional (if speaker_id_enabled)
-         │      • Buffers for speaker recognition
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STAGE 3: SPEECH-TO-TEXT                                                              │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+══════════════════════════════════════════════════════════════════════════════════════
+                          PIPECAT FRAME CHAIN (downstream ↓)
+══════════════════════════════════════════════════════════════════════════════════════
 
-┌─────────────────┐
-│  GroqSTTService  │
-│ • Whisper-large │ ← Groq API (fast STT)
-│ • Language det  │ ← Auto/UK/EN/RU
-│ • Prob metrics  │ ← Confidence scores
-└────────┬─────────┘
-         │ TranscriptionFrame
-         ▼
-┌─────────────────┐
-│ STT Error Observer│
-│ • Catches errors│ → Indication system
-└────────┬─────────┘
-         │
-         ├──► [Speaker Tagger] ◄──── Optional (if speaker_id_enabled)
-         │      • ECAPA embedding
-         │      • Speaker recognition
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STAGE 4: TRANSCRIPTION GATE (src/transcription_gate.py)                             │
-│ ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│ │  TranscriptionGateProcessor                                                    │   │
-│ │  ┌─────────────────────────────────────────────────────────────────────────┐  │   │
-│ │  │ Decision Filters:                                                       │  │   │
-│ │  │  ✓ Feedback-loop guard (drop while bot speaking)                        │  │   │
-│ │  │  ✓ STT debounce (0.3s window)                                           │  │   │
-│ │  │  ✓ Language hysteresis (2-turn confirmation)                            │  │   │
-│ │  │  ✓ Cancel keyword detection ("stop", "відміни", "стоп", etc.)           │  │   │
-│ │  │  ✓ Transcript logging to SQLite                                         │  │   │
-│ │  │  ✓ TTS voice swap on language change                                    │  │   │
-│ │  └─────────────────────────────────────────────────────────────────────────┘  │   │
-│ │                                                                                │   │
-│ │  Language State Management:                                                    │   │
-│ │    ┌─────────────────┐    ┌─────────────────┐                                 │   │
-│ │    │ Current Language│◄──►│ Language Change │                                 │   │
-│ │    │ (uk/en/ru)      │    │ Listener         │                                 │   │
-│ │    └─────────────────┘    └─────────────────┘                                 │   │
-│ │           │                                                                  │   │
-│ │           ├────►►► Updates system prompt when changes                        │   │
-│ │           ├────►►► Swaps TTS voice                                          │   │
-│ │           └────►►► Notifies LLM service                                     │   │
-│ └────────────────────────────────────────────────────────────────────────────────┘   │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STAGE 5: CONTEXT BUILDING (src/context.py, src/llm_context_injector.py)            │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+mic ─► ┌─────────────────────────────────────────────────────────────────────────┐
+       │ transport.input  (LocalAudioTransport)                                  │
+       │   src/pipeline/build.py:260                                              │
+       │   ◾ audio_in_sample_rate = 16000                                          │
+       │   ◾ VAD: SileroVADAnalyzer(stop=0.5, start=0.3, conf=0.7, min_vol=0.6)   │
+       │   ◾ Smart-turn: LocalSmartTurnAnalyzerV3(stop=1.0)                       │
+       │   ◾ Emits: InputAudioRawFrame, UserStarted/StoppedSpeakingFrame,        │
+       │            BotStarted/StoppedSpeakingFrame, MetricsFrame                │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ input_mute_gate                                                          │
+       │   src/pipeline/stages/mute_gate.py:114-134                               │
+       │   ◾ Reads: ~/.heare/mute_input.flag (file existence per InputAudioRawFrame)│
+       │   ◾ Drop: InputAudioRawFrame when flag exists                            │
+       │   ◾ Pass: everything else unchanged                                      │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ [speaker_buffer]   (optional — speaker_id_enabled)                      │
+       │   src/voice/speaker/processor.py:create_speaker_processors               │
+       │   ◾ Buffers raw audio per VAD bracket for diarization                   │
+       │   ◾ Loaded ECAPA model: src/voice/speaker/id.py:load_model              │
+       │   ◾ Voiceprint store: src/voice/speaker/gallery.py SpeakerGallery        │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ stt = GroqSTTService                                                     │
+       │   src/pipeline/build.py:274                                              │
+       │   ◾ Model: Whisper-large-v3 (Groq cloud)                                 │
+       │   ◾ Language: HINT (settings.groq_language); Groq detects + may override │
+       │   ◾ include_prob_metrics=True (per-utterance language confidence)        │
+       │   ◾ Emits: TranscriptionFrame(text, language, …) on speech-end          │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ stt_error_observer  (inline anonymous class)                            │
+       │   src/pipeline/build.py:351-365                                          │
+       │   ◾ Observes ErrorFrame from stt → indication.notify(STT_ERROR, body=…) │
+       │   ◾ Forwards every frame unchanged (observer pattern)                   │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ [speaker_tagger]  (optional — speaker_id_enabled)                       │
+       │   src/voice/speaker/processor.py                                         │
+       │   ◾ Embeds buffered audio with ECAPA, looks up gallery                  │
+       │   ◾ Annotates: TranscriptionFrame.speaker_id + speaker_confidence       │
+       │   ◾ namer_enqueue: pushes unknown speakers to async LLM-naming task    │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+   ┌────┼─────────────────────────────────────────────────────────────────────────┐
+   │    │                  TRANSCRIPTION GATE  ★ critical chokepoint              │
+   │    ▼                                                                         │
+   │ ┌─────────────────────────────────────────────────────────────────────────┐  │
+   │ │ transcription_gate   (TranscriptionGateProcessor)                       │  │
+   │ │   src/pipeline/stages/transcription_gate.py:106-417                     │  │
+   │ │                                                                         │  │
+   │ │   On BotStartedSpeakingFrame  → bot_speaking=True                       │  │
+   │ │   On BotStoppedSpeakingFrame  → bot_speaking=False; cooldown=now+2.0s   │  │
+   │ │   On IndicationCueFrame       → indication_speaking=frame.start        │  │
+   │ │                                                                         │  │
+   │ │   On TranscriptionFrame:                                               │  │
+   │ │     1. (optional) debounce-coalesce within transcript_debounce_seconds │  │
+   │ │     2. Drop if bot_speaking | indication_speaking | enrollment | cooldown│  │
+   │ │     3. detect_language_from_frame → 2-turn hysteresis → LanguageState  │  │
+   │ │     4. _set_tts_voice(active_lang) — calls tts.set_voice(...)         │  │
+   │ │     5. store.log_transcript(text, mode, speaker_id, …)  [DB write]    │  │
+   │ │     6. is_standalone_cancel_imperative → push InterruptionFrame ↑↑↑   │  │
+   │ │     7. forward TranscriptionFrame downstream                          │  │
+   │ │                                                                         │  │
+   │ │   ⚠ DEFECT: cancel-keyword check is AFTER bot_speaking drop. Cancel   │  │
+   │ │     words spoken DURING bot speech are silently swallowed. The 2s     │  │
+   │ │     cooldown means cancel only works ≥2s after bot stops. See         │  │
+   │ │     ARCHITECTURE_ANALYSIS Risk #3.                                    │  │
+   │ └─────────────────────────────────────────────────────────────────────────┘  │
+   └────┼─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ system_prompt_injector   (SystemPromptInjector)                         │
+       │   src/agent/llm/context_injector.py:295-394                              │
+       │                                                                          │
+       │   On TranscriptionFrame (every user turn):                              │
+       │     1. language = LanguageState.language                                │
+       │     2. conversation_id = await conversation_manager.get_or_create_active│
+       │     3. ctx = await context_builder.build_for_generator(transcript,     │
+       │              persona, conversation_id, user_language)        ←DB heavy │
+       │     4. matches = capability_index.query(transcript, top_k=5)          │
+       │     5. new_prompt = render_native_system_prompt(persona, ctx, lang,   │
+       │                       capability_hints=matches)                       │
+       │     6. _replace_system_message(llm_context, new_prompt)               │
+       │     7. forward TranscriptionFrame                                     │
+       │                                                                          │
+       │   render_native_system_prompt assembles:                                │
+       │     ▪ persona block          (name/creature/vibe/emoji/tagline)         │
+       │     ▪ language directive     ("Respond ONLY in <lang>")                 │
+       │     ▪ Host OS hint                                                       │
+       │     ▪ Recent transcripts / conversation_summary / topics / entities     │
+       │     ▪ Recent action log (deduplicates old searches)                     │
+       │     ▪ MCP server prompt block                                           │
+       │     ▪ "Capabilities" section with category rules                       │
+       │     ▪ Installed skills list (from skills/agent_skills loader)           │
+       │     ▪ Top-K relevant capability hints for this turn                    │
+       │     ▪ Reply rules (≤1 sentence, no markdown, no tool-name leakage)     │
+       │                                                                          │
+       │   ⚠ This runs SYNCHRONOUSLY before the user_aggregator. Slow DB or     │
+       │     capability_index.query stalls every turn. See Risk #1.             │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ user_aggregator  (LLMContextAggregatorPair.user())                      │
+       │   pipecat.processors.aggregators.llm_response_universal                  │
+       │   ◾ Appends user TranscriptionFrame to shared LLMContext.messages       │
+       │   ◾ Emits: LLMContextFrame   (start of LLM turn)                        │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+   ┌────┼─────────────────────────────────────────────────────────────────────────┐
+   │    │                   LLM CORE  ★ provider switch + tools                  │
+   │    ▼                                                                         │
+   │ ┌─────────────────────────────────────────────────────────────────────────┐  │
+   │ │ llm_service = SwitchableLLMService                                      │  │
+   │ │   src/agent/llm/switchable.py:37-352                                    │  │
+   │ │                                                                          │  │
+   │ │   Composition (NOT inheritance):                                        │  │
+   │ │     ┌──────────────────────────────────────────────────────────────┐    │  │
+   │ │     │ wrapper (linked into pipeline)                              │    │  │
+   │ │     │                                                              │    │  │
+   │ │     │   ┌────────────────────┐    ┌─────────────────────────┐     │    │  │
+   │ │     │   │ _or_service         │    │ _zai_service             │     │    │  │
+   │ │     │   │  OpenAILLMService  │    │  AnthropicLLMService     │     │    │  │
+   │ │     │   │  → OpenRouter API  │    │  → z.ai API              │     │    │  │
+   │ │     │   └─────────┬──────────┘    └────────────┬─────────────┘     │    │  │
+   │ │     │             │ patched push_frame        │ patched push_frame│    │  │
+   │ │     │             ▼                            ▼                   │    │  │
+   │ │     │   "frame relay" — delegates' frames are captured by         │    │  │
+   │ │     │   wrapper.push_frame because their _next/_prev are NULL.    │    │  │
+   │ │     └──────────────────────────────────────────────────────────────┘    │  │
+   │ │                                                                          │  │
+   │ │   Provider routing:                                                     │  │
+   │ │     ◾ ~/.heare/provider read mtime-gated, ONLY at turn-start frames    │  │
+   │ │       (LLMContextFrame, OpenAILLMContextFrame, LLMMessagesFrame)       │  │
+   │ │     ◾ Sticky-turn lock: _turn_in_flight=True until LLMFullResponseEnd  │  │
+   │ │     ◾ Mid-turn provider changes are deferred to next turn              │  │
+   │ │                                                                          │  │
+   │ │   Tool registration (register_function fan-out):                       │  │
+   │ │     ◾ register_all_tools(llm_service, settings, conversation_manager)  │  │
+   │ │       called once at build (src/agent/tools/schemas.py)                │  │
+   │ │     ◾ Each tool's handler is registered on BOTH delegates              │  │
+   │ │     ◾ cancel_on_interruption=True per registration                     │  │
+   │ │                                                                          │  │
+   │ │   Failure handling:                                                     │  │
+   │ │     ◾ z.ai AuthError/APIStatusError/Timeout → permanent process-wide   │  │
+   │ │       z.ai disable, fallback to OpenRouter, ErrorFrame upstream        │  │
+   │ │     ◾ Rate-limited log: 1 ERROR per 60s window                         │  │
+   │ │     ◾ Other exceptions re-raise (crash the turn)                       │  │
+   │ │                                                                          │  │
+   │ │   ⚠ z.ai disable is one-way and process-lifetime. See Risk #17.        │  │
+   │ │   ⚠ No tool timeout enforcement at this layer. See Risk #4.            │  │
+   │ │                                                                          │  │
+   │ │   Emits per turn:                                                       │  │
+   │ │     LLMFullResponseStartFrame                                           │  │
+   │ │     ▸ LLMTextFrame * N        (streamed text chunks)                    │  │
+   │ │     OR ▸ FunctionCallInProgressFrame → handler runs → result feedback  │  │
+   │ │     LLMFullResponseEndFrame                                             │  │
+   │ │     MetricsFrame[LLMUsageMetricsData]                                   │  │
+   │ └─────────────────────────────────────────────────────────────────────────┘  │
+   └────┼─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ assistant_response_logger   (AssistantResponseProcessor)                │
+       │   src/pipeline/stages/assistant_response_logger.py                      │
+       │   ◾ Buffers LLMTextFrame.text between Start/End                         │
+       │   ◾ On End: store.log_transcript(text, mode="assistant", speaker_id="bot")│
+       │   ◾ Standalone TTSSpeakFrame is logged directly (startup greeting)      │
+       │   ◾ Forwards every frame unchanged                                      │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ tts_scrub   (TTSScrubProcessor)                                         │
+       │   src/pipeline/stages/tts_scrub_processor.py                            │
+       │   ◾ Buffers LLMTextFrame between Start/End                              │
+       │   ◾ On End: _scrub_buffered_response (joined-text rule:                 │
+       │             if joined scrubs to "" → blank ALL frames)                  │
+       │   ◾ TTSSpeakFrame: _scrub_speak_frame in-place                          │
+       │   ◾ Strips tool-name narration ("list_tools", "bash:foo", …)            │
+       │   ◾ Logger UPSTREAM sees raw text; user hears scrubbed text             │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ tts = EdgeTTSService (via create_edge_tts_service)                      │
+       │   src/voice/tts/edge.py                                                  │
+       │   ◾ Streams speech via Edge TTS websocket                               │
+       │   ◾ Voice swap on transcription_gate language change                    │
+       │   ◾ TTSCache (LRU, key=text+voice): src/voice/tts/cache.py             │
+       │   ◾ Pre-warmed via TTSCache.warmup(FIXED_PHRASES) at startup           │
+       │   ◾ Emits: TTSAudioRawFrame chunks + BotStarted/StoppedSpeakingFrame   │
+       │   ◾ MetricsFrame[TTSUsageMetricsData] on completion                    │
+       │                                                                          │
+       │   ⚠ No fallback if Edge TTS fails. Reply is silent. See Risk #19.      │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ usage_recorder   (observer)                                              │
+       │   src/pipeline/stages/usage_recorder.py                                  │
+       │   ◾ Watches MetricsFrame[LLMUsageMetricsData] (from llm_service)        │
+       │   ◾ Watches MetricsFrame[TTSUsageMetricsData] (from tts)                │
+       │   ◾ Watches finalized TranscriptionFrame + VAD bracket frames           │
+       │   ◾ Writes: store.log_usage_event(provider, kind, tokens|chars|seconds) │
+       │   ◾ provider_getter: lambda: llm_service.active_provider (live)         │
+       │   ◾ stt_provider="groq-whisper-large-v3", tts_provider="edge_tts"       │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ tts_fade_observer   (inline _TtsFadeOnInterruption class)               │
+       │   src/pipeline/build.py:377-398                                          │
+       │   ◾ On InterruptionFrame: await tts.cancel_pending() (~50ms fade)       │
+       │   ◾ Polish layer on top of pipecat's native cancel_on_interruption      │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ [sound_cue_processor]  (optional — indication.sound_enabled)            │
+       │   src/voice/indication/core.py:build_sound_cue_processor                 │
+       │   ◾ Mixes audio cues (start/end/blocked) into TTSAudioRawFrame stream  │
+       │   ◾ Emits IndicationCueFrame so transcription_gate can suppress STT    │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ mute_gate                                                                │
+       │   src/pipeline/stages/mute_gate.py:91-111                                │
+       │   ◾ Reads: ~/.heare/mute.flag (file existence per TTSAudioRawFrame)     │
+       │   ◾ Drop: TTSAudioRawFrame when flag exists                             │
+       │   ◾ Bot text is still logged (logger sits UPSTREAM of TTS)              │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ transport.output  →  speakers                                            │
+       │   audio_out_sample_rate = settings.tts_sample_rate (24000)               │
+       └────────────────────────────────────┬────────────────────────────────────┘
+                                            ▼
+       ┌─────────────────────────────────────────────────────────────────────────┐
+       │ assistant_aggregator  (LLMContextAggregatorPair.assistant())            │
+       │   ◾ Appends bot turn back to shared LLMContext.messages                 │
+       │   ◾ Closes the round-trip — the same LLMContext is reused next turn    │
+       └─────────────────────────────────────────────────────────────────────────┘
+```
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  System Prompt Injector                                                            │
-│  ┌──────────────────────────────────────────────────────────────────────────────┐  │
-│  │ Builds System Message:                                                      │  │
-│  │  • Persona (name, creature, vibe, emoji, tagline)                            │  │
-│  │  • Language (current language from LanguageState)                            │  │
-│  │  • Mode (silent/focus/ambient)                                               │  │
-│  │  • Conversation summary (ConversationManager)                                │  │
-│  │  • Active topics & entities                                                 │  │
-│  │  • Recent action log (last 16 actions)                                       │  │
-│  │  • Recent transcripts (last 20, configurable)                                │  │
-│  │  • MCP server descriptions                                                  │  │
-│  │  • Top-K relevant capabilities (CapabilityIndex)                             │  │
-│  └──────────────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  User Aggregator (LLMContextAggregatorPair.user)                                  │
-│  • Appends user transcription to LLM context                                        │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STAGE 6: LLM PROCESSING (src/switchable_llm.py)                                    │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+### Frame propagation rules
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  SwitchableLLMService                                                             │
-│  ┌──────────────────────────────────────────────────────────────────────────────┐  │
-│  │ Provider Switching:                                                         │  │
-│  │  ~/.heare/provider ─────► "openrouter" or "zai"                              │  │
-│  │        │                                                                      │  │
-│  │        ├──► OpenRouter (OpenAI-compatible)                                   │  │
-│  │        │    └──► Model: google/gemini-2.0-flash-exp                          │  │
-│  │        │                                                                      │  │
-│  │        └──► z.ai (Anthropic-compatible)                                      │  │
-│  │             └──► Model: claude-sonnet-4-20250514                             │  │
-│  │                                                                             │  │
-│  │  Features:                                                                  │  │
-│  │  • Hot-swappable at runtime (sticky-turn gate)                              │  │
-│  │  • Lazy provider reload (mtime-based)                                       │  │
-│  │  • Tool registration (fans out to both providers)                           │  │
-│  │  • Fallback on z.ai errors → OpenRouter                                     │  │
-│  └──────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                      │
-│  ┌──────────────────────────────────────────────────────────────────────────────┐  │
-│  │ Tool System (src/tool_registry.py, src/llm_tools.py, src/direct_tools.py)   │  │
-│  │                                                                              │  │
-│  │  ┌──────────────────────────────────────────────────────────────────────┐   │  │
-│  │  │ Direct Tools (fast path, no Claude):                                 │   │  │
-│  │  │  • bash   - Execute shell commands                                   │   │  │
-│  │  │  • read   - Read file contents                                       │   │  │
-│  │  │  │ write  - Write content to file                                   │   │  │
-│  │  │  • web_fetch  - Fetch URL via HTTP                                   │   │  │
-│  │  │  • web_search - Search via WebSearch API                            │   │  │
-│  │  │  • re_enroll   - Re-enroll speaker profile                          │   │  │
-│  │  │  • list_profiles - List speaker profiles                            │   │  │
-│  │  └──────────────────────────────────────────────────────────────────────┘   │  │
-│  │                                                                              │  │
-│  │  ┌──────────────────────────────────────────────────────────────────────┐   │  │
-│  │  │ Claude Tools (needs reasoning):                                      │   │  │
-│  │  │  • edit   - Edit files (complex)                                     │   │  │
-│  │  │  • MCP tools - Via Model Context Protocol                            │   │  │
-│  │  └──────────────────────────────────────────────────────────────────────┘   │  │
-│  │                                                                              │  │
-│  │  Tool Execution Flow:                                                       │  │
-│  │    LLM emits tool call → register_function handler → execute_direct()       │  │
-│  │           │                                                                  │  │
-│  │           └──► Returns: {success, output, error, exit_code, spoken}          │  │
-│  └──────────────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │ LLMFullResponseEndFrame
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STAGE 7: OUTPUT PROCESSING                                                          │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ Frame routing in pipecat                                                         │
+│                                                                                  │
+│  • DataFrame (TranscriptionFrame, LLMTextFrame, TTSAudioRawFrame, etc.)         │
+│      → routed via per-stage asyncio queue, processed in order                   │
+│                                                                                  │
+│  • SystemFrame (StartFrame, EndFrame, CancelFrame, InterruptionFrame,           │
+│                 ErrorFrame)                                                       │
+│      → bypass per-stage queues, routed IMMEDIATELY through every stage          │
+│      → this is why InterruptionFrame UPSTREAM works                             │
+│                                                                                  │
+│  • ControlFrame (BotStarted/Stopped, MetricsFrame, etc.)                        │
+│      → routed via queue but at higher priority                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  Assistant Response Logger (BOTLOG-02)                                             │
-│  • Captures LLM text before TTS                                                    │
-│  • Logs to transcripts table                                                       │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  TTS Scrub Processor                                                               │
-│  • Strips tool-name narration ("list_tools", "bash:", etc.)                        │
-│  • Prevents tool names from being spoken                                           │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  EdgeTTSService (src/tts_edge.py)                                                  │
-│  • Microsoft Edge TTS (free, no API key)                                           │
-│  • Ukrainian voices: Polina, Ostap                                                 │
-│  • English voices: Jenny, Guy                                                       │
-│  • Russian voices: Svetlana, Dmitry                                                 │
-│  • Caching via TTSCache                                                             │
-│  • Emits TTSAudioRawFrame                                                           │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  TTS Fade Observer (PH2-05)                                                         │
-│  • On InterruptionFrame → 50ms fade-out                                             │
-│  • Clean audio stop on cancel                                                       │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ├──► [Sound Cue Processor] ◄──── Optional (indication)
-                               │      • Plays audio cues
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  Mute Gate                                                                          │
-│  • Drops audio when ~/.heare/mute exists                                            │
-│  • Toggled from watch dashboard                                                     │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  Transport Output → Speaker                                                         │
-└──────────────────────────────┬───────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  Assistant Aggregator (LLMContextAggregatorPair.assistant)                         │
-│  • Appends response to context for next turn                                        │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+---
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ SUPPORTING SYSTEMS                                                                  │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+## 3. Shared-State Graph
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ STORAGE LAYER (src/storage.py)                                                      │
-│ ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│ │ SQLite Database (~/.heare/heare.db)                                          │   │
-│ │                                                                                │   │
-│ │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │   │
-│ │  │ transcripts  │  │  decisions   │  │   actions    │  │ heartbeats   │       │   │
-│ │  │              │  │              │  │              │  │              │       │   │
-│ │  │ • text       │  │ • type       │  │ • tool       │  │ • timestamp  │       │   │
-│ │  │ • speaker_id │  │ • confidence │  │ • args       │  │ • reply      │       │   │
-│ │  │ • language   │  │ • intent     │  │ • result     │  │              │       │   │
-│ │  │ • timestamp  │  │ • reply      │  │ • status     │  │              │       │   │
-│ │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘       │   │
-│ │                                                                                │   │
-│ │  ┌──────────────┐                                                              │   │
-│ │  │    events    │ ← Fine-grained event log                                     │   │
-│ │  │              │   (decider.start, action.executing, etc.)                    │   │
-│ │  └──────────────┘                                                              │   │
-│ └────────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-│  • Async operations (aiosqlite) - never blocks audio pipeline                        │
-│  • Indexed timestamps for fast recent queries                                        │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+══════════════════════════════════════════════════════════════════════════════════════
+            IN-MEMORY OBJECTS  (single-process, asyncio-safe)
+══════════════════════════════════════════════════════════════════════════════════════
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ CONVERSATION MANAGER (src/conversation.py)                                          │
-│ ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│ │ In-Memory State:                                                               │   │
-│ │  • Action log (deque, maxlen=16) - Recent tool executions                      │   │
-│ │  • Conversation summary - LLM-generated summary                                │   │
-│ │  • Active topics - Currently discussed topics                                   │   │
-│ │  • Entities - Recognized entities (people, places, etc.)                        │   │
-│ │  • Recent turns - Last N user/bot exchanges                                     │   │
-│ └────────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-│  • Write-through projection: Actions → SQLite UPSERTs (async, fire-and-forget)       │
-│  • Loaded by context builder for each LLM turn                                      │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ LanguageState  (src/pipeline/language_state.py)                                  │
+│                                                                                   │
+│   single attribute: language ("en" | "uk" | "ru")                               │
+│   listener registered via .set_change_listener(fn)                              │
+│                                                                                   │
+│   WRITERS:                                                                       │
+│     ▸ transcription_gate:      .set_language(lang) after 2-turn hysteresis      │
+│                                                                                   │
+│   READERS:                                                                       │
+│     ▸ system_prompt_injector:  .language → render_native_system_prompt          │
+│     ▸ build._wire_language_state:  on change → rewrite messages[0] in LLMContext│
+│     ▸ transcription_gate._set_tts_voice:  → tts.set_voice(...)                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ INDICATION SYSTEM (src/indication.py)                                               │
-│ ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│ │ Indication Types:                                                              │   │
-│ │  • attention     - Bot wants attention                                         │   │
-│ │  • error         - Error occurred                                              │   │
-│ │  • long_running  - Long-running action                                         │   │
-│ │  • success       - Action completed                                            │   │
-│ │  • info          - Informational                                              │   │
-│ │  • input_waiting - Waiting for user input (confirmation)                       │   │
-│ │  • countdown     - Countdown timer active                                      │   │
-│ └────────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-│ ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│ │ Backends:                                                                      │   │
-│ │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐                      │   │
-│ │  │   Sound      │  │   Visual     │  │  Notification    │                      │   │
-│ │  │              │  │              │  │   Center         │                      │   │
-│ │  │ Audio cues   │  │ JSONL log    │  │  macOS notify   │                      │   │
-│ │  │ from assets/ │  │ indication.  │  │                  │                      │   │
-│ │  │              │  │ jsonl        │  │                  │                      │   │
-│ │  └──────────────┘  └──────────────┘  └──────────────────┘                      │   │
-│ └────────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-│  • Cooldown system (1.5s default) prevents spam                                     │
-│  • Quiet hours support (22:00-07:00 default)                                        │
-│  • Per-type toggles (sound/visual/notification)                                     │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ LLMContext  (pipecat.processors.aggregators.llm_context.LLMContext)             │
+│                                                                                   │
+│   ◾ messages = [{system}, {user|assistant}, ...]                                 │
+│   ◾ tools = ToolsSchema (built once by agent/tools/schemas.build_tools_schema)   │
+│                                                                                   │
+│   WRITERS:                                                                       │
+│     ▸ system_prompt_injector:    rewrite messages[0]                            │
+│     ▸ _wire_language_state:      rewrite messages[0]                            │
+│     ▸ user_aggregator:           append user message                            │
+│     ▸ assistant_aggregator:      append bot message                             │
+│                                                                                   │
+│   READERS:                                                                       │
+│     ▸ llm_service:               .get_messages() each turn                      │
+│                                                                                   │
+│   ⚠ Single shared object across the pipeline lifetime.                          │
+└─────────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ IDENTITY SYSTEM (src/identity.py)                                                    │
-│ ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│ │ Persona Components:                                                            │   │
-│ │  • name      - Chosen name (Alex, Mara, Zorya, etc.)                          │   │
-│ │  • creature  - Creature type (fox, owl, star, etc.)                           │   │
-│ │  • vibe      - Personality vibe (playful, wise, energetic)                    │   │
-│ │  • emoji     - Visual representation (🦊 🦉 ⭐)                               │   │
-│ │  • tagline   - Short tagline                                                   │   │
-│ └────────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-│  • Auto-generated on first run via OpenRouter API                                   │
-│  • Stored in ~/.heare/identity.json                                                  │
-│  • Reset via `heare reset-identity`                                                 │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ CapabilityIndex  (src/agent/tools/capability_index.py)                          │
+│                                                                                   │
+│   ◾ Combined index over: built-in tools + installed skills + MCP servers        │
+│   ◾ Built once at startup: build_capability_index(settings, workspace_dir)      │
+│   ◾ Stored as global singleton: set_capability_index(idx)                       │
+│   ◾ Persisted snapshot: ~/.heare/capabilities.json                              │
+│                                                                                   │
+│   WRITERS:                                                                       │
+│     ▸ build_pipeline at startup                                                  │
+│     ▸ install_skill / install_mcp_server tools (rebuild on side effect)         │
+│                                                                                   │
+│   READERS:                                                                       │
+│     ▸ system_prompt_injector:    .query(transcript, top_k=5)                    │
+│     ▸ direct.py tools:           discover/install/revoke handlers               │
+└─────────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ WATCH DASHBOARD (src/watch/)                                                        │
-│ ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│ │ UI Components (Textual TUI):                                                   │   │
-│ │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │   │
-│ │  │ HeaderBar    │  │ActivityTable │  │  LogTail     │  │ControlsBar   │       │   │
-│ │  │              │  │              │  │              │  │              │       │   │
-│ │  │ Status, mode │  │ Recent events│  │ Live logs    │  │ Mute buttons │       │   │
-│ │  │ provider,    │  │ transcripts, │  │ last 40 lines│  │ daemon ctrl  │       │   │
-│ │  │ model, lang  │  │ decisions,   │  │              │  │ text inject  │       │   │
-│ │  │              │  │ actions      │  │              │  │              │       │   │
-│ │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘       │   │
-│ │                                                                                │   │
-│ │  ┌──────────────┐                                                              │   │
-│ │  │    AIBar     │ ← Provider toggle, model selector                            │   │
-│ │  └──────────────┘                                                              │   │
-│ └────────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-│  Hotkeys: s=start, x=stop, r=restart, m=mute, M=mute_mic, t=text_inject, p=provider │
-│  Data source: SQLite + daemon log                                                   │
-│  Refresh interval: 0.5s (configurable)                                               │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ Indication  (src/voice/indication/core.py)                                       │
+│                                                                                   │
+│   ◾ Multi-backend event router; global singleton via set_indication / get_indication│
+│   ◾ Backends:                                                                     │
+│       SoundBackend         src/voice/indication/backends/sound.py                │
+│       VisualBackend        src/voice/indication/backends/visual.py (JSONL log)   │
+│       NotificationBackend  src/voice/indication/backends/notification.py (macOS) │
+│                                                                                   │
+│   WRITERS (notify):                                                              │
+│     ▸ stt_error_observer:        STT_ERROR                                       │
+│     ▸ direct.py tools:           ACTION_*                                         │
+│     ▸ build._cmd_start:          DAEMON_STARTED, DAEMON_SHUTDOWN                  │
+│     ▸ heartbeat / namer / etc.   (occasional)                                     │
+│                                                                                   │
+│   READERS (state):                                                               │
+│     ▸ transcription_gate:        is_enrollment_active()                          │
+│     ▸ sound_cue_processor:       state-driven cue timing                          │
+└─────────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ CONFIGURATION & STATE                                                               │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ TTSCache  (src/voice/tts/cache.py)                                               │
+│                                                                                   │
+│   ◾ LRU cache keyed on (text, voice)                                             │
+│   ◾ Pre-warmed at startup: TTSCache.warmup(FIXED_PHRASES, synthesize_to_pcm)    │
+│   ◾ Reads/writes by tts service alone                                            │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ Configuration Files:                                                                │
-│                                                                                      │
-│  ~/.heare/config.toml           - Main settings (API keys, voices, timeouts)       │
-│  ~/.heare/workspace/.mcp.json   - MCP server definitions                            │
-│  ~/.heare/heare.env             - Environment for systemd                           │
-│  .env                           - Environment for dev                               │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+---
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ Runtime State Files:                                                                │
-│                                                                                      │
-│  ~/.heare/mode                  - Current mode (silent/focus/ambient)              │
-│  ~/.heare/provider              - Current LLM provider (openrouter/zai)            │
-│  ~/.heare/mute                  - Bot mute flag (exists=muted)                     │
-│  ~/.heare/mute_input            - Mic mute flag (exists=muted)                     │
-│  ~/.heare/heare.pid             - Running daemon PID                                │
-│  ~/.heare/session.json          - Persistent Claude Code session ID                 │
-│  ~/.heare/identity.json         - Auto-generated persona                            │
-│  ~/.heare/speakers.json         - Speaker recognition profiles                      │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+## 4. Daemon Lifecycle
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ CONTROL FLOWS                                                                       │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+══════════════════════════════════════════════════════════════════════════════════════
+                       STARTUP SEQUENCE  (src/main.py:_cmd_start)
+══════════════════════════════════════════════════════════════════════════════════════
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ 1. Hot-Reload Operations (No daemon restart):                                      │
-│    heare mode <silent|focus|ambient>  → Writes ~/.heare/mode                        │
-│    heare provider <openrouter|zai>   → Writes ~/.heare/provider                    │
-│    Watch dashboard M/M buttons     → Create/remove ~/.heare/mute* files            │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ Phase A. Pre-flight                                                │
+   │   ▸ load_dotenv(.env)                                             │
+   │   ▸ load_settings()  ← config.toml + env vars                     │
+   │   ▸ ensure_dirs()    ← mkdir ~/.heare/{logs, inject, ...}         │
+   │   ▸ _setup_logging() ← RotatingFileHandler(daemon.log)            │
+   │   ▸ _ensure_workspace_mcp() ← seed workspace/.mcp.json            │
+   │   ▸ PID file lock or refuse                                       │
+   └──────────────────────────────────────────────────────────────────┘
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ Phase B. Build                                                     │
+   │   ▸ TranscriptStore(db_path) → store.init() → purge_older_than()  │
+   │   ▸ build_openrouter_bootstrap → ensure_identity                  │
+   │       ↳ if ~/.heare/identity.json missing: HTTPS call → JSON write│
+   │   ▸ render_persona(template, identity)                            │
+   │   ▸ ConversationManager(store)  (if memory enabled)               │
+   │       ↳ hydrate_action_log(since_ts=now-conversation_idle_seconds)│
+   │   ▸ ContextBuilder(store, settings, conversation_manager)         │
+   │   ▸ Optional: SpeakerGallery.load + speaker_id.load_model         │
+   │   ▸ Optional: maybe_build_namer (if speaker subsystem ready)      │
+   │   ▸ build_pipeline(...) → 6-tuple                                 │
+   │     ╔═══════════════════════════════════════════════════════╗     │
+   │     ║ Inside build_pipeline (src/pipeline/build.py:193):   ║     │
+   │     ║   ▸ create transport, stt, tts                        ║     │
+   │     ║   ▸ create indication + register backends             ║     │
+   │     ║   ▸ create stt_error_observer + tts_fade_observer     ║     │
+   │     ║   ▸ create LanguageState                              ║     │
+   │     ║   ▸ create transcription_gate                         ║     │
+   │     ║   ▸ create SwitchableLLMService (both delegates)      ║     │
+   │     ║   ▸ build_tools_schema → LLMContext(messages, tools)  ║     │
+   │     ║   ▸ user/assistant_aggregator from LLMContextAggrPair ║     │
+   │     ║   ▸ register_all_tools(llm_service, ...)              ║     │
+   │     ║   ▸ load dynamic_tools from DB → register             ║     │
+   │     ║   ▸ build_capability_index → set_capability_index     ║     │
+   │     ║   ▸ system_prompt_injector wired to ContextBuilder    ║     │
+   │     ║   ▸ assistant_response_logger / tts_scrub             ║     │
+   │     ║   ▸ usage_recorder                                    ║     │
+   │     ║   ▸ mute_gate / input_mute_gate                       ║     │
+   │     ║   ▸ _assemble_native_stages → Pipeline(stages)        ║     │
+   │     ║   ▸ wrap in PipelineTask(allow_interruptions=False,   ║     │
+   │     ║       enable_metrics=True, enable_usage_metrics=True) ║     │
+   │     ╚═══════════════════════════════════════════════════════╝     │
+   └──────────────────────────────────────────────────────────────────┘
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ Phase C. Warmup + side rails                                       │
+   │   ▸ tts_cache.warmup(FIXED_PHRASES, synthesize_fn)                │
+   │   ▸ create_task(_push_greeting)                                   │
+   │       ↳ 1s delay → indication.notify(DAEMON_STARTED)              │
+   │       ↳ llm_service.push_frame(TTSSpeakFrame("<bot> online"))     │
+   │   ▸ create_task(speaker_namer.run) if enabled                    │
+   │   ▸ create_task(run_injector_loop(inject_dir, ...))              │
+   │       ↳ polls ~/.heare/inject/ for .txt drops → TranscriptionFrame│
+   │   ▸ WarmupTask(voice, interval) prepared                          │
+   └──────────────────────────────────────────────────────────────────┘
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ Phase D. Run                                                       │
+   │   ▸ runner = PipelineRunner()                                     │
+   │   ▸ await run_until_stopped(runner, pipeline, warmup, namer_task) │
+   │     ╔═══════════════════════════════════════════════════════╗     │
+   │     ║ Inside run_until_stopped (src/main.py:317):          ║     │
+   │     ║   pipeline_task = create_task(runner.run(pipeline))   ║     │
+   │     ║   warmup_task   = create_task(warmup.run())           ║     │
+   │     ║   stop_event    = Event()                             ║     │
+   │     ║                                                        ║     │
+   │     ║   add_signal_handler(SIGTERM/SIGINT  → stop_event.set)║     │
+   │     ║   add_signal_handler(SIGHUP          → indication.reload)║  │
+   │     ║                                                        ║     │
+   │     ║   await asyncio.wait({pipeline_task, warmup_task,    ║     │
+   │     ║                       stop_waiter, namer_task},      ║     │
+   │     ║                      return_when=FIRST_COMPLETED)    ║     │
+   │     ║                                                        ║     │
+   │     ║   for t in all_tasks: t.cancel(); await t             ║     │
+   │     ╚═══════════════════════════════════════════════════════╝     │
+   └──────────────────────────────────────────────────────────────────┘
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ Phase E. Cleanup (in finally)                                      │
+   │   ▸ indication.notify(DAEMON_SHUTDOWN); indication.aclose()       │
+   │   ▸ store.close()                                                 │
+   │   ▸ pid_file.unlink()                                              │
+   │   ▸ "heare stopped"                                                │
+   └──────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ 2. Graceful Shutdown:                                                               │
-│    SIGTERM/SIGINT → run_until_stopped() → Pipeline cancellation → Cleanup → Exit   │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+══════════════════════════════════════════════════════════════════════════════════════
+                              SHUTDOWN PATHS
+══════════════════════════════════════════════════════════════════════════════════════
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ 3. Interruption Flow:                                                               │
-│    Cancel keyword → TranscriptionGate pushes InterruptionFrame →                   │
-│      TTS fade-out (50ms) + Cancel in-flight tool calls → Bot stops                 │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+   ① Graceful (user)        SIGTERM → stop_event.set → cancel all → Phase E
+   ② External (heare stop)   SIGTERM via PID; if 30×100ms timeout → SIGKILL
+   ③ Pipeline self-end       EndFrame propagates → pipeline_task done → Phase E
+   ④ Pipeline crash          unhandled exc in runner → pipeline_task done → Phase E
+   ⑤ User cancel mid-bot     InterruptionFrame UPSTREAM → tts.cancel_pending +
+                                pipecat cancels register_function in flight (does NOT
+                                end the pipeline; conversation continues)
+```
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ KEY RELATIONSHIPS                                                                   │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+---
 
-LanguageState ←→ TranscriptionGate (language detection)
+## 5. Tool Dispatch Mechanics
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+                         TOOL SUBSYSTEM (src/agent/tools/)
+══════════════════════════════════════════════════════════════════════════════════════
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ schemas.py:build_tools_schema()                                          │
+   │   ▸ Returns ToolsSchema(standard_tools=[FunctionSchema, ...])           │
+   │   ▸ Used to seed LLMContext.tools at startup                            │
+   └────────────────┬────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ schemas.py:register_all_tools(llm_service, settings, ...)               │
+   │   ▸ For each tool name, call llm_service.register_function(name, fn,    │
+   │       cancel_on_interruption=True)                                      │
+   │   ▸ SwitchableLLMService.register_function fans out to BOTH delegates    │
+   │   ▸ The handler `fn` looks up the actual implementation in              │
+   │       agent/tools/direct.py (e.g. _execute_bash, _execute_read, …)      │
+   └────────────────┬────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Dynamic tools (DB-backed, hot-loaded)                                   │
+   │   ▸ store.load_all_dynamic_tools() at startup                            │
+   │   ▸ For each: register_dynamic_tool, register_dynamic_tool_schema,      │
+   │       register_dynamic_tool_handler                                     │
+   │   ▸ Definition JSON contains: arguments schema, implementation_type,    │
+   │       implementation (e.g. bash command template)                       │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════════════
+                            TOOL CALL FLOW (per turn)
+══════════════════════════════════════════════════════════════════════════════════════
+
+   user: "read config.toml"
+        │
+        ▼
+   transcription_gate forwards TranscriptionFrame
+        │
+        ▼
+   system_prompt_injector rebuilds prompt
+        │
+        ▼
+   user_aggregator emits LLMContextFrame
+        │
+        ▼
+   SwitchableLLMService → delegate (e.g. OpenAI shape)
+        │  ◾ delegate decides to call function "read"
+        │  ◾ emits FunctionCallInProgressFrame + tool args JSON
+        ▼
+   pipecat dispatches: registered handler "read" → _execute_read(args, settings)
+        │
+        ├──► subprocess / file IO / httpx / etc.
+        │
+        ▼
+   handler returns dict {success, output, error, exit_code, spoken}
+        │  (cancellable via CancelledError if InterruptionFrame fires)
+        ▼
+   pipecat re-injects tool result as another LLMContextFrame turn
+        │
+        ▼
+   SwitchableLLMService runs ANOTHER LLM round on the same delegate
+        │
+        ▼
+   LLM emits final text response (LLMTextFrame chunks + LLMFullResponseEndFrame)
+        │
+        ▼
+   ...continues through assistant_response_logger, tts_scrub, tts, etc.
+
+   ⚠ No timeout on tool dispatch in the wiring layer. Hangs hang the turn.
+   ⚠ No iteration cap on recursive tool calls. Misbehaving LLM can chain.
+   ⚠ Tool arguments and the LLM context grow on each iteration.
+```
+
+### Tool families (in `src/agent/tools/direct.py`)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ ~50 _execute_* functions in direct.py (4,235 LOC, future split target):       │
+│                                                                                │
+│   filesystem    bash, read, write, edit, list_directory, find_files,          │
+│                 get_tree_view, get_file_info, copy_file, move_file,           │
+│                 delete_file, create_directory, create_archive, extract_archive│
+│   web           web_search, web_fetch, _search_serper, _search_duckduckgo     │
+│   memory        recall, remember, list_memories, log_action                   │
+│   capability    discover_capability, install_skill, create_skill,             │
+│                 install_mcp_server, register_mcp_server, revoke_capability    │
+│   skills        list_skills, list_capabilities, run_skill                     │
+│   speaker       re_enroll, list_profiles                                      │
+│   daemon        stop_daemon, restart_daemon (self-control via daemon/control) │
+│   batch         batch_operation                                               │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 6. Hot-Reload Surface
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+       What can change without restarting the daemon, and how
+══════════════════════════════════════════════════════════════════════════════════════
+
+   Surface                  Mechanism                                Granularity
+   ──────────────────────── ──────────────────────────────────────── ──────────────
+   LLM provider             ~/.heare/provider                        per-turn
+                              SwitchableLLMService._sync_provider()
+                              mtime-gated, fires only at turn-start
+   Bot mute (output)        ~/.heare/mute.flag                       per-frame
+                              mute_gate checks .exists() per frame
+   Mic mute (input)         ~/.heare/mute_input.flag                 per-frame
+                              input_mute_gate checks .exists() per frame
+   Active mode              ~/.heare/mode (silent/focus/ambient)     lazy read
+   Indication config        SIGHUP → indication.reload(...)          on signal
+   Active language          STT detection → 2-turn hysteresis        per-turn
+   System prompt            rebuilt from LanguageState + ctx_builder per-turn
+   TTS voice                tts.set_voice(...) on language change    on lang change
+   Skill / MCP installs     install_skill_tool → rebuild capability  on tool call
+                              index → next prompt sees new skill
+   Capability index         direct.py tools rebuild on install/      explicit
+                              revoke; otherwise startup-only
+
+   Surface that REQUIRES restart:
+     ▸ Dynamic tools       loaded from DB once at startup
+     ▸ Speaker gallery     loaded once at startup
+     ▸ Persona / identity  loaded once at startup (or via reset-identity)
+     ▸ API keys            from .env — no live reload
+     ▸ Pipeline shape      stages list is fixed at build_pipeline
+```
+
+---
+
+## 7. Filesystem State (`~/.heare/`)
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+       ~/.heare/   (settings.HEARE_HOME)
+══════════════════════════════════════════════════════════════════════════════════════
+
+   PERSISTENT DATA (DB + JSON)
+   ────────────────────────────────────────────────────────────────────────────────
+   heare.db                SQLite (WAL mode), all events + transcripts
+                             tables: transcripts, actions, action_log,
+                                     usage_events, conversations, turns,
+                                     dynamic_tools, allowed_directories,
+                                     user_profile, decisions, events, heartbeats
+   identity.json           {name, creature, vibe, emoji, tagline, generated_at}
+                             — bootstrapped via OpenRouter on first run
+                             — backed up on `heare reset-identity`
+   speakers.json           SpeakerGallery — voiceprints + labels + turn counts
+                             — populated by `heare enroll-owner` and namer task
+
+   RUNTIME FLAGS (file existence is the signal)
+   ────────────────────────────────────────────────────────────────────────────────
+   heare.pid               Daemon PID (single-instance lock)
+   heartbeat               Periodic alive timestamp
+   provider                "openrouter" | "zai" — read by SwitchableLLMService
+   mute.flag               Bot output muted when present
+   mute_input.flag         Mic input muted when present
+   mode                    Behavior mode: silent | focus | ambient
+   .onboarded              Marker that onboarding wizard ran
+
+   CACHED / DERIVED STATE
+   ────────────────────────────────────────────────────────────────────────────────
+   capabilities.json       Snapshot of CapabilityIndex (skills + MCP + tools)
+   session.json            Persistent Claude Code session ID (legacy)
+   mcp.json                MCP server config (read by skills/mcp_utils)
+   skills/_marketplace/    Installed marketplace skills (currently 0)
+   skills/<custom>/        User-authored skills (markdown procedures)
+   inject/                 Drop directory for text-injection (.txt files)
+   logs/                   daemon.log (rotating), indication.jsonl
+
+   CONFIGURATION
+   ────────────────────────────────────────────────────────────────────────────────
+   config.toml             Optional override of Settings dataclass fields
+                             (parsed by config.load_settings)
+   workspace/              CLI/agent CWD; .mcp.json seeded from ~/.claude.json
+```
+
+### SQLite schema highlights
+
+```
+   transcripts(ts, text, mode, speaker_id, speaker_confidence, language, ...)
+   actions(ts, tool, args_json, result_json, status, exit_code, ...)
+   action_log(ts, intent, decision, ...)        ← intents (legacy)
+   usage_events(ts, provider, kind, value, ...)  ← tokens / chars / audio_seconds
+   conversations(id, started_at, ended_at, summary, ...)
+   turns(id, conversation_id, role, content, ...)
+   dynamic_tools(name, sdk_name, description, definition_json, enabled)
+   user_profile, allowed_directories, decisions, events, heartbeats
+```
+
+---
+
+## 8. Common-Case Sequence Diagrams
+
+### 8.1 Chitchat ("how are you?")
+
+```
+USER          mic     vad/turn      stt              gate     injector  user_aggr  llm        tts           speaker
+ │              │        │           │                │           │         │        │          │              │
+ ┝━━╾ "how…"━━━▶│        │           │                │           │         │        │          │              │
+ │              ┝━━ raw audio ━━━━━━▶│                │           │         │        │          │              │
+ │              │        ┝▶ UserStartedSpeakingFrame  │           │         │        │          │              │
+ │              │        │           │ buffering...    │           │         │        │          │              │
+ │              │        ┝▶ UserStoppedSpeakingFrame  │           │         │        │          │              │
+ │              │        │  + smart-turn confirms 1.0s│           │         │        │          │              │
+ │              │        │           ┝━━ Groq STT API ━━━━━╾ json │         │        │          │              │
+ │              │        │           ┝▶ TranscriptionFrame────────▶ guards  │         │        │          │              │
+ │              │        │           │                │  pass     │         │        │          │              │
+ │              │        │           │                │  log txt  │         │        │          │              │
+ │              │        │           │                │  forward──▶ build_  │        │          │              │
+ │              │        │           │                │           │  for_…  │        │          │              │
+ │              │        │           │                │           │  cap.q  │        │          │              │
+ │              │        │           │                │           │  rewrite│        │          │              │
+ │              │        │           │                │           │  prompt │        │          │              │
+ │              │        │           │                │           │  forward▶ append │          │              │
+ │              │        │           │                │           │         │ user   │          │              │
+ │              │        │           │                │           │         │ emit ──▶ LLMContext│             │
+ │              │        │           │                │           │         │        │  Frame   │              │
+ │              │        │           │                │           │         │        ┝━ HTTPS ━━╾ stream chunks │
+ │              │        │           │                │           │         │        ┝▶ LLMText * N─▶ logger     │
+ │              │        │           │                │           │         │        │              │ scrub      │
+ │              │        │           │                │           │         │        │              ▶ TTS service│
+ │              │        │           │                │           │         │        │              │ websocket  │
+ │              │        │           │                │           │         │        │              ┝▶ TTSAudio ─▶ speakers
+ │◀━━━ audio ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┙
+ │              │        │           │                │           │         │        │              │              │
+                                                                  ★ usage_recorder logs metrics here
+                                                                  ★ assistant_aggregator appends bot to LLMContext
+```
+
+### 8.2 Tool call ("read config.toml")
+
+```
+   ... same up to LLMContext message append ...
+     ▶ SwitchableLLMService → delegate → emits FunctionCallInProgressFrame
+     ▶ pipecat invokes registered handler → _execute_read("config.toml", settings)
+        │
+        ├── reads file → returns {success: true, output: "<contents>", ...}
+        │  (or returns {success: false, error: ...} on failure)
+        │
+     ▶ result wrapped as another LLM context message → SECOND LLM round
+     ▶ delegate emits final natural-language summary as LLMTextFrame stream
+     ▶ logger / scrub / tts as usual
+```
+
+### 8.3 Cancel mid-speech ("stop") — ⚠ DEFECT VISIBLE
+
+```
+   bot is mid-utterance:    BotStartedSpeakingFrame already fired
+   transcription_gate.bot_speaking = True
+
+   user: "stop"
      │
-     ├──►►► SystemPromptInjector (update system prompt)
-     ├──►►► EdgeTTSService (swap voice)
-     └──►►► SwitchableLLMService (notify provider)
-
-ConversationManager ←→ ContextBuilder (conversation state)
+     ▼
+   stt emits TranscriptionFrame("stop")
      │
-     ├─── Tool calls → record_action_pending()
-     └─── Tool results → record_action_result()
+     ▼
+   transcription_gate._handle_transcription:
+     1. enrollment_active = False
+     2. bot_speaking = TRUE  ←  GUARD HITS
+     ┝━━━━━━━━ DROP (return) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ⚠
+     6. cancel-keyword check  ← NEVER REACHED
+     7. forward                ← NEVER REACHED
 
-CapabilityIndex ←→ SystemPromptInjector (relevant capabilities)
-     │
-     ├──► Skills (agent_skills.py)
-     ├──► MCP servers (mcp_utils.py)
-     └──► Direct tools (tool_registry.py)
+   Net result: bot keeps speaking. User must wait until BotStoppedSpeakingFrame
+   AND the 2.0s cooldown elapses before "stop" actually fires.
 
-Indication ←→ All components (event notifications)
-     │
-     ├──► STT errors
-     ├──► Action events
-     ├──► Bot speaking status
-     └────► System events (startup, shutdown)
+   FIX:  reorder so the cancel-keyword check runs BEFORE the bot_speaking guard.
+         Add a small guard that ignores cancel-detection if the last bot text
+         contained the same word (so the bot can't cancel itself).
+```
 
-Watch Dashboard ←→ SQLite + Daemon Log
-     │
-     ├──► Polls transcripts/decisions/actions tables
-     └───► Tails daemon.log
+---
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ DATA FLOW SUMMARY                                                                   │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+## 9. Special Frame Paths
 
-INPUT:  Mic → VAD → STT → TranscriptionGate → ContextBuilder → LLM
-OUTPUT: LLM → TTS Scrub → TTS → MuteGate → Speaker
-STATE:   All events → SQLite ← Watch Dashboard
-CONTROL: CLI/Dashboard → Runtime state files → Pipeline behavior
+```
+══════════════════════════════════════════════════════════════════════════════════════
+                          NON-OBVIOUS FRAME ROUTING
+══════════════════════════════════════════════════════════════════════════════════════
 
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ END OF ARCHITECTURE DIAGRAM                                                         │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+   ① InterruptionFrame UPSTREAM
+        ┌───────────────────────────────────────────────────────────────┐
+        │  transcription_gate detects cancel keyword                    │
+        │      → push_frame(InterruptionFrame(), UPSTREAM)              │
+        │  Pipecat routes SystemFrames immediately through every stage │
+        │  (no per-stage queue). Two consumers:                         │
+        │    a. tts_fade_observer → tts.cancel_pending() (50ms fade)    │
+        │    b. SwitchableLLMService → cancel in-flight register_function│
+        │       handler (raises CancelledError in the handler task)     │
+        └───────────────────────────────────────────────────────────────┘
+
+   ② Frame relay (SwitchableLLMService delegates)
+        ┌───────────────────────────────────────────────────────────────┐
+        │  Both delegates (_or_service, _zai_service) are NOT linked   │
+        │  into the pipeline graph. Their _next/_prev are None.         │
+        │  Frames they emit would be lost if not relayed.               │
+        │                                                               │
+        │  Wrapper monkey-patches each delegate's:                      │
+        │    .push_frame  → wrapper.push_frame                          │
+        │    .broadcast_frame → wrapper.broadcast_frame                 │
+        │                                                               │
+        │  The patch also observes LLMFullResponseEndFrame to clear    │
+        │  the sticky-turn lock (_turn_in_flight=False).                │
+        └───────────────────────────────────────────────────────────────┘
+
+   ③ Greeting injection (bypasses user_aggregator)
+        ┌───────────────────────────────────────────────────────────────┐
+        │  _push_greeting() does:                                       │
+        │    await llm_service.push_frame(TTSSpeakFrame(text))          │
+        │  Pushed DOWNSTREAM from llm_service stage so it bypasses      │
+        │  user_aggregator (which would treat unknown frames oddly).    │
+        │  TTSSpeakFrame goes directly to scrub → tts.                  │
+        └───────────────────────────────────────────────────────────────┘
+
+   ④ Text injection (dashboard → daemon IPC)
+        ┌───────────────────────────────────────────────────────────────┐
+        │  Watch dashboard writes a .txt file into ~/.heare/inject/.   │
+        │  Daemon background task run_injector_loop polls that dir.     │
+        │  On new file: make_transcription_pusher emits a synthetic    │
+        │  TranscriptionFrame(text=..., user_id="injected", language)  │
+        │  pushed into transcription_gate → same path as STT output.   │
+        └───────────────────────────────────────────────────────────────┘
+
+   ⑤ allow_interruptions=False
+        ┌───────────────────────────────────────────────────────────────┐
+        │  PipelineParams in build.py:599 sets this False.              │
+        │  Reason: bot's own audio leaking into mic would constantly    │
+        │  trigger pipecat's NATIVE barge-in, preempting itself.        │
+        │  Cancellation now flows ONLY via the explicit cancel-keyword  │
+        │  fast path (which has the defect noted in §8.3).              │
+        └───────────────────────────────────────────────────────────────┘
+
+   ⑥ enable_turn_tracking=False
+        ┌───────────────────────────────────────────────────────────────┐
+        │  Smart-turn analyzer (V3) handles turn segmentation. The      │
+        │  higher-level pipecat turn tracker would double-count.        │
+        └───────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 10. Background Tasks (asyncio)
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+   Task                      Source                                  Lifetime
+   ─────────────────────────────────────────────────────────────────────────────────
+   pipeline_task             runner.run(pipeline)                    until EndFrame
+                                                                      or cancel
+   warmup_task               WarmupTask.run                           until .stop()
+                                                                      keeps Edge TTS
+                                                                      websocket warm
+   namer_task                speaker_namer.run                        self-ending
+                                                                      LLM-driven name
+                                                                      inference
+   greeting (one-shot)       create_task(_push_greeting)              ~1s sleep + push
+   inject poller             create_task(run_injector_loop)           until cancel
+                                                                      filesystem poll
+   heartbeat                 (in indication / daemon helpers)          background ping
+   identity bootstrap        ensure_identity (one-shot, blocking)     startup only
+                                                                      OpenRouter call
+   conversation hydration    conversation_manager.hydrate_action_log  startup only
+                                                                      DB read + LLM
+```
+
+---
+
+## 11. Watch Dashboard
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+                  src/watch/   (separate Python process)
+══════════════════════════════════════════════════════════════════════════════════════
+
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ Files:                                                                  │
+   │   __init__.py     run_watch(settings, interval, once)                  │
+   │   app.py          HeareDashboard(App), bindings, refresh loop           │
+   │   data.py         fetch_dashboard_state(settings) → DashboardSnapshot   │
+   │                     reads heare.db (transcripts/actions/usage)          │
+   │                     reads logs/daemon.log tail                          │
+   │                     reads mute flags, provider file, identity, pid      │
+   │   widgets.py      HeaderBar, ActivityTable, LogTail, ControlsBar        │
+   │   screens.py      ModelSelectScreen (provider picker)                   │
+   │   models.py       NamedTuple/dataclass schema                           │
+   │   _legacy.py      Pre-Textual rich-live impl (rollback path)            │
+   │   dashboard.tcss  CSS                                                    │
+   └─────────────────────────────────────────────────────────────────────────┘
+
+   Hotkeys → daemon control:
+     s/x/r          → src/daemon/control:start/stop/restart_daemon
+                      (subprocess: heare start/stop, kill/SIGTERM)
+     m/M            → toggle ~/.heare/mute.flag / mute_input.flag
+     p              → rewrite ~/.heare/provider (openrouter ↔ zai)
+     t              → show input → src/pipeline/stages/text_injector.inject_text
+                      (writes ~/.heare/inject/<ts>.txt)
+     q              → quit
+     left/right     → resize ActivityTable column
+```
+
+---
+
+## 12. Configuration
+
+```
+══════════════════════════════════════════════════════════════════════════════════════
+                            src/config.py:Settings
+══════════════════════════════════════════════════════════════════════════════════════
+
+   Loaded by:  load_settings()  →  config.toml + env vars + defaults
+
+   Critical fields:
+     groq_api_key, groq_language ("uk" by default — language HINT not lock)
+     openrouter_api_key, openrouter_model
+     zai_api_key, zai_model, zai_base_url
+     provider_file (~/.heare/provider)
+     mode_file, pid_file, mute_file, mute_input_file
+     workspace_dir, log_dir, db_path, identity_file, speakers_file
+     skills_paths, capabilities_file
+     tts_voice, tts_sample_rate (24000)
+     transcript_debounce_seconds, bot_speaking_cooldown_seconds (2.0)
+     conversation_idle_seconds (1800), conversation_memory_enabled
+     speaker_id_enabled, speaker_namer_enabled, …
+     cancel_stop_words = ["stop", "cancel", "halt", "відміни", "отмени", "стоп"]
+     indication.{enabled,sound_enabled,visual_enabled,notification_center_enabled}
+
+   Dotfiles:
+     ~/.heare/config.toml    user overrides
+     .env                    secrets (API keys) — never in config.toml
+     ~/.heare/heare.env      systemd service env
+```
+
+---
+
+## 13. Key Defects (cross-reference to ARCHITECTURE_ANALYSIS.md)
+
+```
+   #3   Cancel keyword unreachable during bot speech            CRITICAL  §2 / §8.3
+   #4   No tool timeouts                                        HIGH      §5
+   #7   Unbounded recursive tool calls                          HIGH      §5
+   #17  z.ai disabled permanently on first failure              HIGH      §2 (LLM)
+   #19  No TTS fallback on Edge TTS failure                     HIGH      §2 (TTS)
+   #1   Per-turn DB cost in system_prompt_injector              MEDIUM    §2
+   #5   User feels ignored during long tool calls               MEDIUM    §5
+   #8   One-turn lag on language switch                         MEDIUM    §2 (gate)
+   #12  Static 2s feedback cooldown                             MEDIUM    §2 (gate)
+   #15  Long pauses bloat audio buffer + STT cost               MEDIUM    §2 (transport)
+   #24  Static prompt rebuilt every turn                        MEDIUM    §2 (injector)
+```
+
+---
+
+## 14. Summary Cheatsheet
+
+```
+   INPUT   mic → VAD/smart-turn → input_mute_gate → [speaker_buffer] → stt
+                → stt_error_observer → [speaker_tagger]
+                → transcription_gate (★ feedback guard, lang hyst, cancel)
+                → system_prompt_injector (rebuilds every turn)
+                → user_aggregator → LLMContextFrame
+
+   LLM     SwitchableLLMService (OpenRouter | z.ai, sticky-turn lock)
+                ↳ tools: register_function fan-out to both delegates
+                ↳ recursive same-turn rounds for tool calls
+                → LLMTextFrame stream + LLMFullResponseEndFrame
+
+   OUTPUT  assistant_response_logger (DB) → tts_scrub (mutates text)
+                → tts (EdgeTTS + cache) → usage_recorder (DB metrics)
+                → tts_fade_observer (50ms fade on Interrupt)
+                → [sound_cue_processor] → mute_gate
+                → transport.output → speakers
+                → assistant_aggregator (back into LLMContext)
+
+   STATE   LanguageState  ←→  transcription_gate / injector / tts / context
+           LLMContext     ←→  injector / aggregators / llm
+           CapabilityIndex ↔  injector / install tools
+           Indication     ←→  observers / direct.py / lifecycle hooks
+           heare.db       ←→  store / context_builder / dashboard / usage_recorder
+
+   CONTROL CLI / dashboard → ~/.heare/{provider, mute*, mode} → live behavior
+                         → SIGHUP → indication reload
+                         → SIGTERM → graceful shutdown via run_until_stopped
+```
+
+---
+
+## 15. Where to find things (post-refactor map)
+
+```
+   src/main.py                       daemon entry, CLI, supervisor
+   src/config.py                     Settings dataclass, load_settings
+   src/version.py                    __version__, app_version
+   src/test_recognizer.py            dev script (NOT a test)
+
+   src/agent/identity.py             persona bootstrap
+   src/agent/llm/switchable.py       LLM service with provider hot-swap
+   src/agent/llm/context_injector.py per-turn system prompt builder
+   src/agent/llm/pricing.py          token / char / audio cost table
+   src/agent/tools/registry.py       tool registry runtime cache
+   src/agent/tools/schemas.py        ToolsSchema + register_all_tools
+   src/agent/tools/direct.py         ~50 _execute_* implementations
+   src/agent/tools/dynamic.py        DB-backed dynamic tool helpers
+   src/agent/tools/capability_index.py FTS over skills+MCP+tools
+
+   src/pipeline/build.py             build_pipeline composition root
+   src/pipeline/__init__.py          re-exports build_pipeline
+   src/pipeline/language_state.py    shared language singleton
+   src/pipeline/stages/transcription_gate.py   pre-LLM gate
+   src/pipeline/stages/mute_gate.py            in/out mute gates
+   src/pipeline/stages/text_injector.py        ~/.heare/inject/ → frame
+   src/pipeline/stages/text_scrub.py           tool-name regex
+   src/pipeline/stages/tts_scrub_processor.py  pre-TTS scrub
+   src/pipeline/stages/turn_aggregator.py      (legacy, gated off)
+   src/pipeline/stages/usage_recorder.py       metrics → DB
+   src/pipeline/stages/assistant_response_logger.py LLM text → DB
+
+   src/voice/language/core.py        detect_language_from_frame, voice_for_language
+   src/voice/language/detector.py    Claude-based detector + heuristic fallback
+   src/voice/tts/edge.py             EdgeTTSService factory
+   src/voice/tts/cache.py            TTSCache (LRU)
+   src/voice/tts/phrases.py          FIXED_PHRASES warmup list
+   src/voice/indication/core.py      Indication facade + cue processor
+   src/voice/indication/assets.py    audio cue file table
+   src/voice/indication/backends/    Sound, Visual, Notification
+   src/voice/speaker/processor.py    speaker_buffer + speaker_tagger
+   src/voice/speaker/id.py           ECAPA model wrapper
+   src/voice/speaker/gallery.py      voiceprint store
+   src/voice/speaker/namer.py        async LLM naming task
+
+   src/store/storage.py              TranscriptStore (sqlite + WAL, ~1k LOC)
+   src/store/conversation.py         ConversationManager
+   src/store/context.py              ContextBuilder.build_for_generator
+   src/store/user_profile.py         per-user prefs
+
+   src/daemon/control.py             start/stop/restart helpers
+   src/daemon/heartbeat.py           heartbeat + WarmupTask
+   src/daemon/watch_controls.py      dashboard → daemon bridge
+
+   src/skills/agent_skills.py        SkillsLoader for ~/.heare/skills/
+   src/skills/marketplace.py         remote catalog client
+   src/skills/installer.py           install_skill / create_skill / install_mcp
+   src/skills/discovery.py           capability discovery
+   src/skills/mcp_utils.py           ~/.heare/mcp.json read/write
+
+   src/watch/                        Textual dashboard (separate process)
+```
+
+---
+
+## END
+
+This diagram should remain accurate as long as the package shape from `8cb49ef`
+holds. If files move or major stages are added/removed, regenerate from
+`build_pipeline` (the composition root in `src/pipeline/build.py`) and the
+shared-state graph in §3.

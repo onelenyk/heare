@@ -55,7 +55,7 @@ class WarmupTask:
         # Imported lazily so tests can patch edge_tts without pulling pipecat.
         import edge_tts
 
-        comm = edge_tts.Communicate(".", self.voice)
+        comm = edge_tts.Communicate("ok", self.voice)
         async for chunk in comm.stream():
             # Discard everything; we only need the connection to be touched.
             if chunk.get("type") == "audio":

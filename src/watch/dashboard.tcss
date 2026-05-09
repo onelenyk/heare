@@ -5,7 +5,7 @@ Screen {
 }
 
 /* Unified border-title styling across the dashboard. */
-HeaderBar, ActivityTable, LogTail, ControlsBar, AIBar, UsageBar {
+HeaderBar, ActivityTable, LogTail, ControlsBar, AIBar, UsageBar, VoiceStateBar {
     border-title-color: $accent;
     border-title-style: bold;
     border-title-align: left;
@@ -68,11 +68,15 @@ HeaderBar {
 }
 
 ControlsBar {
-    width: 1fr;
+    width: 2fr;
     height: 100%;
     border: round $accent;
     padding: 0 1;
     background: $surface;
+}
+
+ControlsBar #sections-row {
+    overflow-x: auto;
 }
 
 ControlsBar:focus-within {
@@ -119,6 +123,14 @@ AIBar {
 }
 
 UsageBar {
+    width: 1fr;
+    height: 100%;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
+VoiceStateBar {
     width: 1fr;
     height: 100%;
     border: round $accent;

@@ -418,6 +418,35 @@ async def test_write_workspace_relative(settings: Settings) -> None:
     assert expected_file.read_text() == "workspace content"
 
 
+# -------- Path-traversal guard tests --------
+
+async def test_read_rejects_path_outside_workspace(settings: Settings, tmp_path: Path) -> None:
+    """An absolute path outside settings.workspace_dir must be rejected."""
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("secret")
+    result = await _execute_read(str(outside), settings)
+    assert result["success"] is False
+    assert "outside" in result["error"]
+
+
+async def test_read_rejects_dot_dot_escape(settings: Settings) -> None:
+    """A relative path with `..` that escapes the workspace must be rejected."""
+    result = await _execute_read("../../../etc/passwd", settings)
+    assert result["success"] is False
+    assert "outside" in result["error"]
+
+
+async def test_write_rejects_path_outside_workspace(settings: Settings, tmp_path: Path) -> None:
+    # Distinct filename so we don't collide with leftover data from sibling tests.
+    outside = tmp_path.parent / "write_should_not_create.txt"
+    if outside.exists():
+        outside.unlink()
+    result = await _execute_write(f"{outside}: hostile", settings)
+    assert result["success"] is False
+    assert "outside" in result["error"]
+    assert not outside.exists()
+
+
 # -------- _execute_web_fetch tests --------
 
 async def test_web_fetch_success() -> None:

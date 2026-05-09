@@ -631,6 +631,102 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         [],
         _json_args,
     ),
+    # Browser bridge tools (Phase 1)
+    "read_browser_page": (
+        {
+            "tab_id": {
+                "type": "integer",
+                "description": "Chrome tab ID to read. Omit to use the active tab.",
+            },
+        },
+        [],
+        _json_args,
+    ),
+    "list_browser_tabs": (
+        {},
+        [],
+        _empty_args,
+    ),
+    "click_in_browser": (
+        {
+            "selector": {
+                "type": "string",
+                "description": "CSS selector identifying the element to click.",
+            },
+            "tab_id": {
+                "type": "integer",
+                "description": "Chrome tab ID. Omit to use the active tab.",
+            },
+        },
+        ["selector"],
+        _json_args,
+    ),
+    "fill_in_browser": (
+        {
+            "selector": {
+                "type": "string",
+                "description": "CSS selector identifying the input element to fill.",
+            },
+            "value": {
+                "type": "string",
+                "description": "Text value to enter into the field.",
+            },
+            "tab_id": {
+                "type": "integer",
+                "description": "Chrome tab ID. Omit to use the active tab.",
+            },
+        },
+        ["selector", "value"],
+        _json_args,
+    ),
+    "navigate_browser": (
+        {
+            "url": {
+                "type": "string",
+                "description": "URL to navigate the tab to (must start with http:// or https://).",
+            },
+            "tab_id": {
+                "type": "integer",
+                "description": "Chrome tab ID. Omit to use the active tab.",
+            },
+        },
+        ["url"],
+        _json_args,
+    ),
+    "extract_in_browser": (
+        {
+            "selector": {
+                "type": "string",
+                "description": "CSS selector to match DOM elements.",
+            },
+            "tab_id": {
+                "type": "integer",
+                "description": "Chrome tab ID. Omit to use the active tab.",
+            },
+        },
+        ["selector"],
+        _json_args,
+    ),
+    "open_browser_tab": (
+        {
+            "url": {
+                "type": "string",
+                "description": "URL to open in a new tab (must start with http:// or https://).",
+            },
+        },
+        ["url"],
+        _json_args,
+    ),
+    "activate_browser_tab": (
+        {
+            "tab_id": {
+                "type": "integer",
+                "description": "Chrome tab ID to bring to the foreground. Omit to use the currently-active tab (no-op in that case).",
+            },
+        },
+        [],
+        _json_args,
+    ),
 }
 
 

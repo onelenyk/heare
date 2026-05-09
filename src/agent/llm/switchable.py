@@ -30,6 +30,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessorSet
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.llm_service import LLMService
 from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.settings import LLMSettings
 
 logger = logging.getLogger("heare.switchable_llm")
 
@@ -81,7 +82,25 @@ class SwitchableLLMService(LLMService):
         **kwargs,
     ):
         """Initialize with both providers."""
-        super().__init__(**kwargs)
+        # Pipecat 0.0.105+ requires every LLMSettings field to be initialized
+        # in the service's __init__ (use None for unsupported fields). The
+        # wrapper itself delegates all real LLM calls, so its settings are
+        # cosmetic — but validate_complete() still logs an ERROR if any
+        # field is left as NOT_GIVEN.
+        wrapper_settings = LLMSettings(
+            model=openrouter_model or zai_model,
+            system_instruction=None,
+            temperature=None,
+            max_tokens=None,
+            top_p=None,
+            top_k=None,
+            frequency_penalty=None,
+            presence_penalty=None,
+            seed=None,
+            filter_incomplete_user_turns=False,
+            user_turn_completion_config=None,
+        )
+        super().__init__(settings=wrapper_settings, **kwargs)
 
         self._or_service: OpenAILLMService | None = None
         if openrouter_api_key:
@@ -101,14 +120,6 @@ class SwitchableLLMService(LLMService):
                 client=AsyncAnthropic(api_key=zai_api_key, base_url=zai_base_url),
             )
             self._install_frame_relay(self._zai_service)
-
-        if zai_api_key:
-            # Validate API key shape at boot (no live call — just construction).
-            # Live smoke test deferred to first actual turn to avoid per-restart cost.
-            if not zai_api_key.startswith("sk-"):
-                logger.warning(
-                    "switchable_llm: ZAI_API_KEY doesn't start with 'sk-'; may be invalid"
-                )
 
         # State variables for turn-gated switching and error recovery
         self._last_error_log_ts: float = 0.0

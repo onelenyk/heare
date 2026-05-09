@@ -16,6 +16,19 @@ async def test_execute_bash_tool_success():
 
 
 @pytest.mark.asyncio
+async def test_execute_bash_tool_quotes_args(tmp_path):
+    """Argument values must be shell-quoted so an LLM cannot graft extra
+    commands. The classic injection ``"; touch HOSTILE; "`` should land
+    verbatim in the echoed text instead of executing ``touch``."""
+    sentinel = tmp_path / "HOSTILE"
+    hostile = f'"; touch {sentinel}; "'
+    result = await execute_bash_tool("echo {msg}", {"msg": hostile}, None)
+    assert result["success"] is True
+    assert "; touch" in result["output"]  # echoed literally
+    assert not sentinel.exists()  # injected command did NOT run
+
+
+@pytest.mark.asyncio
 async def test_execute_bash_tool_failure():
     """Test bash tool with failing command."""
     result = await execute_bash_tool("exit 1", {}, None)
@@ -68,18 +81,11 @@ async def test_execute_fetch_tool_with_substitution():
 
 
 @pytest.mark.asyncio
-async def test_execute_python_tool_success():
-    """Test python tool with simple expression."""
+async def test_execute_python_tool_rejected():
+    """Python dynamic tools were removed for security; the executor must refuse."""
     result = await execute_python_tool("args['x'] * 2", {"x": 3}, None)
-    assert result["success"] is True
-    assert result["output"] == "6"
-
-
-@pytest.mark.asyncio
-async def test_execute_python_tool_error():
-    """Test python tool with invalid expression."""
-    result = await execute_python_tool("args['undefined_key']", {}, None)
     assert result["success"] is False
+    assert "no longer supported" in result["error"]
 
 
 def test_tool_definition_validation_valid():

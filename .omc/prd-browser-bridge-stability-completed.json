@@ -1,0 +1,102 @@
+{
+  "title": "Browser Bridge Stability \u2014 Offscreen Document migration",
+  "description": "Implement the approved plan at .omc/plans/browser-bridge-stability.md (rev 2). Move the WebSocket from the MV3 service worker into a Chrome Offscreen Document with a long-lived chrome.runtime.connect port for offscreen\u2194SW RPC, and debounce the Python-side lonely-watcher pair-code regeneration. Fixes the 10-second connect/disconnect cycle.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Manifest: add offscreen permission and minimum_chrome_version",
+      "description": "Update extensions/heare-bridge/manifest.json to enable the Offscreen API and gate the extension to Chrome 109+.",
+      "acceptanceCriteria": [
+        "extensions/heare-bridge/manifest.json `permissions` array contains the literal string 'offscreen'",
+        "extensions/heare-bridge/manifest.json top-level object contains `\"minimum_chrome_version\": \"109\"`",
+        "Existing permissions (tabs, scripting, activeTab, storage, alarms, webNavigation) are preserved",
+        "Existing host_permissions, background.service_worker, options_page, action, icons fields are preserved",
+        "`python -m json.tool < extensions/heare-bridge/manifest.json` exits 0"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "Create offscreen.html host document",
+      "description": "Minimal HTML file whose only purpose is to host offscreen.js. Loaded via chrome.offscreen.createDocument.",
+      "acceptanceCriteria": [
+        "extensions/heare-bridge/offscreen.html exists",
+        "File contains a <script src=\"offscreen.js\"></script> tag",
+        "File is valid HTML5 (has <!DOCTYPE html>)",
+        "No inline JavaScript in the HTML"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "Create offscreen.js \u2014 WebSocket owner with port-based RPC forwarding",
+      "description": "Move all WebSocket lifecycle (connect, auth/pair handshake, pong-check, reconnect/backoff) from background.js into offscreen.js. Open a long-lived chrome.runtime.connect port to the SW with name 'heare-rpc'. Forward daemon RPC requests to the SW via port.postMessage and resolve pending Promises on port.onMessage. Forward connection-state changes to the SW for badge updates. Reconnect the port on onDisconnect.",
+      "acceptanceCriteria": [
+        "extensions/heare-bridge/offscreen.js exists",
+        "File defines `let swPort = null` and a `pendingRPCs` Map for in-flight RPC tracking",
+        "File defines `connectPort()` that calls `chrome.runtime.connect({name: 'heare-rpc'})` and reconnects on `onDisconnect` after a short setTimeout delay",
+        "File defines `sendRPCToSW(id, method, params)` returning a Promise; rejected via setTimeout on RPC timeout (>= 30s)",
+        "WebSocket constants DEFAULT_PORT, BACKOFF_STEPS, PONG_TIMEOUT_MS are present in this file (no longer in background.js)",
+        "`ws.onopen` sends auth or pair handshake via JSON.stringify({v:1, type:'auth'|'pair', ...})",
+        "`ws.onmessage` handles 'auth_result', 'pair_result', 'pong', and 'request' message types from the daemon",
+        "On daemon `request`, the handler calls `sendRPCToSW(id, method, params)` and writes the resolved {ok,result/error} back to the WS as `{v:1, id, type:'response', ...}`",
+        "Connection-state transitions (connected/auth_failed/pair_failed/disconnected) are forwarded to the SW via `swPort.postMessage({type:'connection_state', state:...})`",
+        "Successful pairing forwards token to SW via `swPort.postMessage({type:'pair_success', token})`",
+        "`pong` messages from the daemon update `lastPongTime`; the in-offscreen pong-check setInterval triggers reconnect if PONG_TIMEOUT_MS exceeded"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "background.js: refactor SW into thin RPC + ensureOffscreen proxy",
+      "description": "Remove WebSocket lifecycle from background.js. Keep all 7 RPC handlers (list_tabs, read_page, click, fill, extract, navigate, open_tab) plus HANDLERS map and badge helpers. Add `ensureOffscreen()` with try/catch + HAS_OFFSCREEN fallback (M3). Add `chrome.runtime.onConnect` listener for the 'heare-rpc' port that dispatches rpc_request to HANDLERS, returns rpc_response, updates badge on connection_state, and stores pair_success token. Replace the existing reconnect message-loop bug (M2) by forwarding popup/options reconnect to offscreen via the port, never via sendMessage re-broadcast.",
+      "acceptanceCriteria": [
+        "extensions/heare-bridge/background.js no longer defines `let ws`, `connect()`, `disconnect()`, `scheduleReconnect()`, `startPongCheck()`, `stopPongCheck()`, or `loadConfig()` at module scope (these moved to offscreen.js)",
+        "All 7 RPC handler functions (handleListTabs, handleReadPage, handleClick, handleFill, handleExtract, handleNavigate, handleOpenTab) and HANDLERS map remain present",
+        "Badge helpers badgeGreen, badgeRed, badgePairFailed, badgeGrey remain present",
+        "File defines `let HAS_OFFSCREEN = typeof chrome.offscreen !== 'undefined'` (let, not const, for M3 fallback)",
+        "File defines `async function ensureOffscreen()` that wraps `chrome.offscreen.hasDocument()` + `chrome.offscreen.createDocument({url:'offscreen.html', reasons:[chrome.offscreen.Reason.WORKERS], justification:...})` in try/catch and sets HAS_OFFSCREEN=false on error",
+        "No occurrence of `chrome.offscreen.Reason.WEB_RTC` anywhere in background.js (S4)",
+        "`chrome.runtime.onConnect.addListener` registers a listener that filters by `port.name === 'heare-rpc'`, stores `offscreenPort`, dispatches `rpc_request` to HANDLERS, returns `rpc_response` via `port.postMessage`, updates badge on `connection_state`, and stores token on `pair_success`",
+        "`chrome.runtime.onMessage` listener for `{type:'reconnect'}` forwards via `offscreenPort.postMessage({type:'reconnect'})` \u2014 does NOT call `chrome.runtime.sendMessage({type:'reconnect'})` (no self-delivery loop)",
+        "onInstalled and onStartup lifecycle listeners call `ensureOffscreen()` (and fall back to legacy `connect()` only when `HAS_OFFSCREEN === false`)",
+        "Existing `chrome.alarms.create('keepalive', {periodInMinutes: 0.4})` is preserved as belt-and-suspenders"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-005",
+      "title": "Python: bump PAIR_CODE_REGEN_AFTER_LONELY_S 5.0 \u2192 30.0",
+      "description": "Single-constant change in src/agent/browser_bridge.py to debounce the lonely-watcher pair-code regeneration. No other Python changes; wire protocol unchanged.",
+      "acceptanceCriteria": [
+        "src/agent/browser_bridge.py defines `PAIR_CODE_REGEN_AFTER_LONELY_S = 30.0` at module scope",
+        "No other module-level constant or function signature in browser_bridge.py changes",
+        "`grep -n 'PAIR_CODE_REGEN_AFTER_LONELY_S' src/agent/browser_bridge.py` shows the constant only at the module-level definition site (not redefined elsewhere)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-006",
+      "title": "Tests: add fast debounce test (S5) and rapid-cycling test",
+      "description": "Two new tests in tests/test_browser_bridge.py. The debounce test monkey-patches PAIR_CODE_REGEN_AFTER_LONELY_S to 2.0 to keep CI fast (<5s total).",
+      "acceptanceCriteria": [
+        "tests/test_browser_bridge.py defines `test_lonely_watcher_debounce` that monkey-patches `src.agent.browser_bridge.PAIR_CODE_REGEN_AFTER_LONELY_S` to 2.0, asserts no pair code is generated within 1s of disconnect, and asserts a new pair code IS generated by ~2.5s after disconnect",
+        "tests/test_browser_bridge.py defines `test_rapid_cycling_no_pair_codes` that connects/disconnects 5 times in a loop with ~1s gaps and asserts no pair code was minted during the cycling",
+        "Both new tests pass under `uv run pytest tests/test_browser_bridge.py::test_lonely_watcher_debounce tests/test_browser_bridge.py::test_rapid_cycling_no_pair_codes -v`",
+        "Combined runtime of both new tests is < 10 seconds"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-007",
+      "title": "Regression: 12 previously-passing tests still pass",
+      "description": "Confirm none of the existing tests in tests/test_browser_bridge.py regress. The pre-existing failure of test_single_connection (close code 4002 vs 1000) is out of scope for this plan and stays red \u2014 but no other test should newly fail.",
+      "acceptanceCriteria": [
+        "`uv run pytest tests/test_browser_bridge.py -v` shows exactly 1 failure (test_single_connection) \u2014 same as the baseline on main",
+        "All other tests in the file pass (the 12 previously-passing tests + the 2 new tests = 14 passing, 1 failing)",
+        "No test was deleted or `@pytest.mark.skip`-decorated to make this pass"
+      ],
+      "passes": true
+    }
+  ]
+}

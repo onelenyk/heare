@@ -1,0 +1,47 @@
+YAMNet audio event detection — implementation progress
+========================================================
+
+Plan: .omc/plans/yamnet-audio-event-detection.md (REVISION 2, consensus-approved)
+PRD:  .omc/prd.json (10 stories, all passes:true)
+
+Iteration 1 — 2026-05-08 14:00
+- All 10 stories implemented in one pass.
+- 22 unit tests pass; 1 smoke test correctly skipped (HEARE_TEST_YAMNET=1 not set).
+- Adjacent regression suites pass (test_warmup, test_tts_cache, test_voice_state_observer, test_text_injector).
+- ruff check clean on touched files.
+
+## Files added
+- src/audio_event/__init__.py
+- src/audio_event/class_map.py — 521 AudioSet display names + hardcoded ALLOWLIST dict (17 entries)
+- src/audio_event/classifier.py — YamnetClassifier ONNX wrapper with tf2onnx conversion recipe in docstring
+- src/audio_event/writer.py — atomic write_audio_event helper
+- src/audio_event/observer.py — AudioEventObserver FrameProcessor + create_audio_event_observer factory
+- tests/test_audio_event.py — 22 tests + 1 gated smoke test
+
+## Files edited
+- src/config.py — 4 new Settings fields (audio_event_detection_enabled, audio_event_threshold, yamnet_model_path, audio_event_file)
+- src/pipeline/build.py — new audio_event_observer kwarg in _assemble_native_stages, conditional construction in build_pipeline (deferred import gated by flag)
+- src/watch/data.py — AudioEventData dataclass + read_audio_event reader + DashboardSnapshot field + fetch_dashboard_state populates it
+- src/watch/widgets.py — VoiceStateBar.refresh_data accepts audio_event; renders event line with 5s TTL auto-decay
+- src/watch/app.py — call site updated
+- pyproject.toml — audio-event optional dep group (onnxruntime, numpy)
+
+## Plan deviations (documented)
+- Yawn dropped from ALLOWLIST. Yawn is in the AudioSet ontology but NOT in YAMNet's published 521-class subset (verified against the canonical yamnet_class_map.csv from tensorflow/models). Final allowlist count: 17 (was planned as 18). The PRD acceptance criterion that lists Yawn is impossible to satisfy literally; the test_allowlist_covers_curated_set test asserts the achievable subset.
+- Class map is a hardcoded Python list (567 LOC class_map.py) — generated from the canonical CSV at https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_class_map.csv
+
+## Async pattern (per Architect/Critic consensus)
+- process_frame uses asyncio.create_task(asyncio.to_thread(self._infer, ...)) + task.add_done_callback(self._on_result)
+- _on_result(fut) reads fut.result() inside try/except and resets _running in finally — exception cannot deadlock the observer.
+
+## Drop policy
+- _running flag guards inference scheduling. While inference is in flight, fully-buffered windows are discarded (del _buf[:WINDOW_BYTES]). No queueing.
+
+## Confirmation rule
+- Two consecutive 0.96 s windows must agree on the same allowlisted label above threshold (default 0.4) before write_audio_event is called.
+
+## Failure modes (all return None from factory + log WARNING)
+- Feature flag off (silent no-op)
+- onnxruntime not installed (logs "onnxruntime not installed — install heare[audio-event]")
+- Model file missing at settings.yamnet_model_path (logs path + tf2onnx hint)
+- Inference exception inside _infer (logged, _running resets via finally, _prev_label resets)

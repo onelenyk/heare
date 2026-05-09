@@ -76,6 +76,10 @@ async def synthesize_to_pcm(text: str, voice: str, sample_rate: int) -> bytes:
     """
     import edge_tts
 
+    text = (text or "").strip()
+    if not text or not any(c.isalnum() for c in text):
+        return b""
+
     mp3 = bytearray()
     comm = edge_tts.Communicate(text, voice)
     async for chunk in comm.stream():
@@ -195,7 +199,8 @@ def _build_edge_tts_class():
             self, text: str, context_id: str | None = None
         ) -> AsyncGenerator[Frame, None]:
             text = (text or "").strip()
-            if not text:
+            if not text or not any(c.isalnum() for c in text):
+                # edge-tts rejects punctuation-only text with NoAudioReceived.
                 yield TTSStoppedFrame()
                 return
 

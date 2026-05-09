@@ -40,8 +40,9 @@ class ToolDefinition:
     name: str  # lowercase, no spaces
     description: str  # what the tool does
     arguments: dict[str, dict]  # JSON schema format
-    implementation_type: Literal["bash", "fetch", "python"]  # how to execute
-    implementation: str  # command/url/code
+    # The legacy "python" type used eval() and was removed for security.
+    implementation_type: Literal["bash", "fetch"]  # how to execute
+    implementation: str  # command/url
 
     def validate(self) -> list[str]:
         """Validate the tool definition, returning a list of errors."""
@@ -57,7 +58,12 @@ class ToolDefinition:
         if not self.description:
             errors.append("description is required")
 
-        if self.implementation_type not in ("bash", "fetch", "python"):
+        if self.implementation_type == "python":
+            errors.append(
+                "implementation_type 'python' is no longer supported "
+                "(use 'bash' or 'fetch' instead)"
+            )
+        elif self.implementation_type not in ("bash", "fetch"):
             errors.append(f"invalid implementation_type: {self.implementation_type}")
 
         if not self.implementation:
@@ -363,6 +369,63 @@ TOOLS: dict[str, Tool] = {
         sdk_name="ListCapabilities",
         execution="direct",
         description="List everything the agent can call, grouped into three buckets: built_in (code-backed tools), skills (markdown procedures), mcps (external MCP servers). Optional 'category' filter: built_in | skills | mcps.",
+        enabled=True,
+    ),
+    # Browser bridge tools (Phase 1)
+    "read_browser_page": Tool(
+        name="read_browser_page",
+        sdk_name="ReadBrowserPage",
+        execution="direct",
+        description="Read the URL, title, and text content of a browser tab via the Heare Bridge extension. Optional tab_id; defaults to the active tab.",
+        enabled=True,
+    ),
+    "list_browser_tabs": Tool(
+        name="list_browser_tabs",
+        sdk_name="ListBrowserTabs",
+        execution="direct",
+        description="List all open tabs in the connected Chrome browser with their id, url, title, and active state.",
+        enabled=True,
+    ),
+    "click_in_browser": Tool(
+        name="click_in_browser",
+        sdk_name="ClickInBrowser",
+        execution="direct",
+        description="Click an element in a browser tab identified by a CSS selector. Optional tab_id; defaults to the active tab.",
+        enabled=True,
+    ),
+    "fill_in_browser": Tool(
+        name="fill_in_browser",
+        sdk_name="FillInBrowser",
+        execution="direct",
+        description="Fill a form field in a browser tab identified by a CSS selector. Optional tab_id; defaults to the active tab.",
+        enabled=True,
+    ),
+    "navigate_browser": Tool(
+        name="navigate_browser",
+        sdk_name="NavigateBrowser",
+        execution="direct",
+        description="Navigate a browser tab to a URL and wait for the page to load. Optional tab_id; defaults to the active tab.",
+        enabled=True,
+    ),
+    "extract_in_browser": Tool(
+        name="extract_in_browser",
+        sdk_name="ExtractInBrowser",
+        execution="direct",
+        description="Extract matching DOM elements (tag, text, attrs) from a browser tab by CSS selector. Optional tab_id; defaults to the active tab.",
+        enabled=True,
+    ),
+    "open_browser_tab": Tool(
+        name="open_browser_tab",
+        sdk_name="OpenBrowserTab",
+        execution="direct",
+        description="Open a new tab in the connected Chrome browser and navigate it to the given URL.",
+        enabled=True,
+    ),
+    "activate_browser_tab": Tool(
+        name="activate_browser_tab",
+        sdk_name="ActivateBrowserTab",
+        execution="direct",
+        description="Bring an existing browser tab to the foreground without changing its URL or reloading it. Optional tab_id; defaults to the active tab.",
         enabled=True,
     ),
 }

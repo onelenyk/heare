@@ -1,0 +1,75 @@
+# Browser Bridge Stability — Progress Log
+
+## Plan
+.omc/plans/browser-bridge-stability.md (rev 2, consensus-approved by Architect + Critic on 2026-05-09)
+
+## Goal
+Fix the 10-second connect/disconnect cycle on the Heare browser bridge by moving the
+WebSocket out of the MV3 service worker into a Chrome Offscreen Document, with a
+long-lived chrome.runtime.connect port for offscreen↔SW RPC. Python-side: bump
+PAIR_CODE_REGEN_AFTER_LONELY_S 5.0 → 30.0 to stop pair-code carousel.
+
+## Design notes carried from planning
+- Offscreen doc owns the WS; SW becomes thin RPC dispatcher.
+- Port name: 'heare-rpc'. Single port channel for ALL rpc_request/rpc_response,
+  connection_state, pair_success, and reconnect messages.
+- Reason.WORKERS (NOT WEB_RTC).
+- HAS_OFFSCREEN is `let`, not `const`, so the M3 try/catch fallback can flip it false.
+- Popup/options pages use chrome.runtime.sendMessage (no port access); SW forwards
+  their `reconnect` over the port — never via sendMessage re-broadcast (M2 self-loop fix).
+- Production constant stays 30.0; tests monkey-patch to 2.0 for fast CI (S5).
+
+## Pre-existing failure (out of scope)
+tests/test_browser_bridge.py::test_single_connection fails on main (expects close 4002,
+gets 1000 because the server kicks the OLD client with 1000 and accepts the new one).
+Do NOT touch this test as part of this PRD.
+
+## Iterations
+
+### Iter 1 (2026-05-09) — full implementation in single pass
+- US-001 manifest: added "offscreen" permission + "minimum_chrome_version": "109"
+- US-002 offscreen.html: minimal host doc with <script src="offscreen.js">
+- US-003 offscreen.js: NEW — owns WS + auth/pair + 35s pong-check + 24s ping setInterval +
+  long-lived chrome.runtime.connect({name:'heare-rpc'}) port to SW with pendingRPCs map
+  and 30s RPC timeout. Reconnects port 500ms after onDisconnect.
+- US-004 background.js: stripped WS state/lifecycle. Kept 7 RPC handlers + HANDLERS
+  map + badge helpers. Added: let HAS_OFFSCREEN, ensureOffscreen() with try/catch +
+  HAS_OFFSCREEN=false fallback (M3), chrome.runtime.onConnect listener that dispatches
+  rpc_request through HANDLERS and posts rpc_response back over the port. Forwards
+  popup/options reconnect via offscreenPort.postMessage (NOT sendMessage — M2 fix).
+  Reason.WORKERS, never WEB_RTC (S4).
+- US-005 Python: PAIR_CODE_REGEN_AFTER_LONELY_S 5.0 → 30.0 in src/agent/browser_bridge.py
+- US-006 Tests: 2 new tests appended to tests/test_browser_bridge.py:
+    - test_lonely_watcher_debounce: monkey-patches threshold to 2.0; verifies no code
+      within 1s and a code by ~2.5s after disconnect
+    - test_rapid_cycling_no_pair_codes: 5 connect/disconnect cycles with 0.5s gaps,
+      asserts no code minted during cycling
+- US-007 Regression: 14 passed, 1 failed (pre-existing test_single_connection — close
+  4002 vs 1000, unrelated to this PRD).
+
+### Iter 2 (2026-05-09) — post-completion polish
+- chrome.storage proxy: offscreen documents on this Chrome build don't expose
+  chrome.storage. Added 3 new SW port message types (load_config, storage_remove,
+  open_options_page); offscreen.js now proxies all storage and openOptionsPage
+  through the SW. The user hit "Cannot read properties of undefined (reading 'local')"
+  at offscreen.js:24 on first reload; fix verified live.
+- activate_browser_tab tool added end-to-end (background.js handler + HANDLERS,
+  direct.py dispatcher + executor, registry.py Tool entry, schemas.py params).
+  Fixes "make tab X active" being mis-mapped to navigate (which reloads) or
+  open_tab (which duplicates).
+- Server-side connection policy reverted from "kick old, accept new" (close 1000)
+  to "refuse new while old is alive" (close 4002). Reason: with offscreen-doc
+  architecture WS no longer dies on SW suspension, so a second client almost
+  always means a second Chrome profile competing — accepting it created a
+  kick-war. Side effect: pre-existing test_single_connection failure
+  (out-of-scope per US-007 baseline) is now green. 16/16 tests pass.
+
+### Final test count: 16/16
+
+### Deviations from plan (acknowledged)
+- Legacy SW WebSocket fallback for Chrome <109 dropped. Plan offered "no-op + console.warn"
+  as the simpler option; executor took it. Manifest minimum_chrome_version: 109 makes
+  this branch unreachable in practice.
+- Ping moved to in-offscreen setInterval(24s) instead of being driven by SW alarm.
+  Simpler, and the SW alarm already calls ensureOffscreen() defensively each fire.
+

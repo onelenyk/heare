@@ -24,7 +24,6 @@ truncating the raw ``output``.
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
 import json
 import logging
 import os
@@ -45,6 +44,33 @@ from src.agent.tools.registry import get_direct_tools, get_claude_tools, is_mcp_
 
 SIMPLE_TOOLS = get_direct_tools()
 COMPLEX_TOOLS = get_claude_tools()
+
+
+class _PathOutsideWorkspace(Exception):
+    """Raised when an LLM-supplied path resolves outside the workspace root."""
+
+
+def _resolve_in_workspace(filepath: str, workspace: Path) -> Path:
+    """Resolve ``filepath`` and verify it stays inside ``workspace``.
+
+    Relative paths anchor to ``workspace``. Absolute paths are allowed but only
+    if they resolve under ``workspace``. ``..`` traversal that escapes the
+    workspace is rejected. Symlinks are resolved before the check, so a link
+    pointing at ``/etc/shadow`` cannot be used to bypass the guard.
+    """
+    workspace_real = workspace.resolve()
+    candidate = Path(filepath)
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+    candidate_real = candidate.resolve()
+    try:
+        candidate_real.relative_to(workspace_real)
+    except ValueError as exc:
+        raise _PathOutsideWorkspace(
+            f"path {filepath!r} resolves to {candidate_real} which is outside "
+            f"workspace {workspace_real}"
+        ) from exc
+    return candidate_real
 
 
 def _is_simple_tool(tool: str) -> bool:
@@ -111,28 +137,6 @@ async def execute_direct(
         return await _execute_list_tools(args, settings)
     elif tool == "delete_profile":
         return await _execute_delete_profile(args, settings)
-    elif tool == "list_directory":
-        return await _execute_list_directory(args, settings)
-    elif tool == "find_files":
-        return await _execute_find_files(args, settings)
-    elif tool == "get_tree_view":
-        return await _execute_get_tree_view(args, settings)
-    elif tool == "get_current_directory":
-        return await _execute_get_current_directory(args, settings)
-    elif tool == "get_file_info":
-        return await _execute_get_file_info(args, settings)
-    elif tool == "get_disk_usage":
-        return await _execute_get_disk_usage(args, settings)
-    elif tool == "get_file_hash":
-        return await _execute_get_file_hash(args, settings)
-    elif tool == "copy_file":
-        return await _execute_copy_file(args, settings)
-    elif tool == "move_file":
-        return await _execute_move_file(args, settings)
-    elif tool == "delete_file":
-        return await _execute_delete_file(args, settings)
-    elif tool == "create_directory":
-        return await _execute_create_directory(args, settings)
     elif tool == "create_archive":
         return await _execute_create_archive(args, settings)
     elif tool == "extract_archive":
@@ -171,6 +175,22 @@ async def execute_direct(
         return await _execute_revoke_capability(args, settings)
     elif tool == "list_capabilities":
         return await _execute_list_capabilities(args, settings)
+    elif tool == "read_browser_page":
+        return await _execute_read_browser_page(args, settings)
+    elif tool == "list_browser_tabs":
+        return await _execute_list_browser_tabs(args, settings)
+    elif tool == "click_in_browser":
+        return await _execute_click_in_browser(args, settings)
+    elif tool == "fill_in_browser":
+        return await _execute_fill_in_browser(args, settings)
+    elif tool == "navigate_browser":
+        return await _execute_navigate_browser(args, settings)
+    elif tool == "extract_in_browser":
+        return await _execute_extract_in_browser(args, settings)
+    elif tool == "open_browser_tab":
+        return await _execute_open_browser_tab(args, settings)
+    elif tool == "activate_browser_tab":
+        return await _execute_activate_browser_tab(args, settings)
     else:
         return {
             "success": False,
@@ -324,13 +344,28 @@ async def _execute_bash(args: str, settings: "Settings | None" = None) -> dict:
 async def _execute_read(args: str, settings: "Settings | None" = None) -> dict:
     """Read a file from the workspace."""
 
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
     # Support "path: extra" format - extract only the path part
     filepath = args.split(":", 1)[0] if ":" in args else args
-    path = Path(filepath)
-    if not path.is_absolute():
-        path = workspace / path
+    if settings is not None:
+        try:
+            path = _resolve_in_workspace(filepath, settings.workspace_dir)
+        except _PathOutsideWorkspace as exc:
+            return {
+                "success": False,
+                "output": "",
+                "error": str(exc),
+                "spoken": {
+                    "en": "Path is outside the workspace.",
+                    "uk": "Шлях за межами робочої теки.",
+                    "ru": "Путь вне рабочей папки.",
+                },
+            }
+    else:
+        # Settings-less callers (unit tests, scripts) skip the workspace
+        # guard. Production LLM dispatch always supplies settings.
+        path = Path(filepath)
+        if not path.is_absolute():
+            path = Path.cwd() / path
 
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
@@ -382,12 +417,28 @@ async def _execute_write(args: str, settings: "Settings | None" = None) -> dict:
             "error": "Write requires 'path: content' format",
         }
 
-    workspace = settings.workspace_dir if settings else Path.cwd()
     filepath, content = args.split(":", 1)
     content = content.lstrip()  # Remove leading space after colon
-    path = Path(filepath)
-    if not path.is_absolute():
-        path = workspace / path
+    if settings is not None:
+        try:
+            path = _resolve_in_workspace(filepath, settings.workspace_dir)
+        except _PathOutsideWorkspace as exc:
+            return {
+                "success": False,
+                "output": "",
+                "error": str(exc),
+                "spoken": {
+                    "en": "Cannot write outside the workspace.",
+                    "uk": "Не можу писати за межами робочої теки.",
+                    "ru": "Не могу писать вне рабочей папки.",
+                },
+            }
+    else:
+        # Settings-less callers (unit tests, scripts) skip the workspace
+        # guard. Production LLM dispatch always supplies settings.
+        path = Path(filepath)
+        if not path.is_absolute():
+            path = Path.cwd() / path
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1478,568 +1529,6 @@ async def _execute_list_tools(args: str, settings: "Settings | None" = None) -> 
 # Navigation & Browsing Tools
 # ============================================================================
 
-async def _execute_list_directory(args: str, settings: "Settings | None" = None) -> dict:
-    """List contents of a directory with optional details."""
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path [show_hidden=bool] [detail=level]"
-    parts = args.strip().split()
-    if not parts:
-        path = workspace
-        show_hidden = False
-        detail = "standard"
-    else:
-        path = parts[0]
-        show_hidden = len(parts) > 1 and parts[1].lower() in ("true", "1", "yes")
-        detail = parts[2] if len(parts) > 2 else "standard"
-
-    # Resolve path
-    file_path = Path(path)
-    if not file_path.is_absolute():
-        file_path = workspace / file_path
-
-    if not file_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Directory not found: {path}",
-            "spoken": {
-                "en": f"Directory not found: {path}",
-                "uk": f"Директорію не знайдено: {path}",
-                "ru": f"Директория не найдена: {path}",
-            },
-        }
-
-    if not file_path.is_dir():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Not a directory: {path}",
-            "spoken": {
-                "en": f"Not a directory: {path}",
-                "uk": f"Не є директорією: {path}",
-                "ru": f"Не является каталогом: {path}",
-            },
-        }
-
-    try:
-        items = []
-        for item in sorted(file_path.iterdir()):
-            if not show_hidden and item.name.startswith("."):
-                continue
-
-            item_info = {"name": item.name, "path": str(item)}
-
-            if detail in ["standard", "detailed"]:
-                item_info["type"] = "directory" if item.is_dir() else "file"
-                item_info["size"] = item.stat().st_size if item.is_file() else 0
-
-                if detail == "detailed":
-                    stat = item.stat()
-                    item_info["modified"] = dt.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-                    item_info["permissions"] = oct(stat.st_mode)[-3:]
-
-        return {
-            "success": True,
-            "output": f"Directory contains {len(items)} items",
-            "items": items,
-            "error": None,
-            "spoken": {
-                "en": f"Directory contains {len(items)} items.",
-                "uk": f"Директорія містить {len(items)} елементів.",
-                "ru": f"Каталог содержит {len(items)} элементов.",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error listing directory: {str(e)}",
-                "uk": f"Помилка при переліку директорії: {str(e)}",
-                "ru": f"Ошибка при просмотре каталога: {str(e)}",
-            },
-        }
-
-
-async def _execute_find_files(args: str, settings: "Settings | None" = None) -> dict:
-    """Find files by pattern (name, extension, recursive)."""
-    import os
-    import fnmatch
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path pattern [recursive=bool]"
-    parts = args.strip().split()
-    if len(parts) < 2:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Usage: find_files <path> <pattern> [recursive]",
-            "spoken": {
-                "en": "Usage: find_files <path> <pattern> [recursive]",
-                "uk": "Використання: find_files <path> <pattern> [recursive]",
-                "ru": "Использование: find_files <path> <pattern> [recursive]",
-            },
-        }
-
-    path = parts[0]
-    pattern = parts[1]
-    recursive = len(parts) > 2 and parts[2].lower() in ("true", "1", "yes")
-
-    # Resolve path
-    search_path = Path(path)
-    if not search_path.is_absolute():
-        search_path = workspace / search_path
-
-    if not search_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Path not found: {path}",
-            "spoken": {
-                "en": f"Path not found: {path}",
-                "uk": f"Шлях не знайдено: {path}",
-                "ru": f"Путь не найден: {path}",
-            },
-        }
-
-    found_files = []
-
-    try:
-        if recursive:
-            for root, dirs, files in os.walk(search_path):
-                for file in fnmatch.filter(files, pattern):
-                    full_path = Path(root) / file
-                    found_files.append({
-                        "path": str(full_path),
-                        "name": file,
-                        "directory": str(full_path.parent),
-                    })
-        else:
-            if search_path.is_dir():
-                for item in search_path.iterdir():
-                    if item.is_file() and fnmatch.fnmatch(item.name, pattern):
-                        found_files.append({
-                            "path": str(item),
-                            "name": item.name,
-                            "directory": str(item.parent),
-                        })
-
-        return {
-            "success": True,
-            "output": f"Found {len(found_files)} matching files",
-            "items": found_files[:100],  # Limit to 100 results
-            "error": None,
-            "spoken": {
-                "en": f"Found {len(found_files)} matching files.",
-                "uk": f"Знайдено {len(found_files)} відповідних файлів.",
-                "ru": f"Найдено {len(found_files)} совпадающих файлов.",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error finding files: {str(e)}",
-                "uk": f"Помилка при пошуку файлів: {str(e)}",
-                "ru": f"Ошибка при поиске файлов: {str(e)}",
-            },
-        }
-
-
-async def _execute_get_tree_view(args: str, settings: "Settings | None" = None) -> dict:
-    """Get recursive directory tree structure."""
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path [max_depth=5] [show_hidden=false]"
-    parts = args.strip().split()
-    if not parts:
-        path = workspace
-        max_depth = 5
-        show_hidden = False
-    else:
-        path = parts[0]
-        max_depth = int(parts[1]) if len(parts) > 1 else 5
-        show_hidden = len(parts) > 2 and parts[2].lower() in ("true", "1", "yes")
-
-    # Resolve path
-    tree_path = Path(path)
-    if not tree_path.is_absolute():
-        tree_path = workspace / tree_path
-
-    if not tree_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Path not found: {path}",
-            "spoken": {
-                "en": f"Path not found: {path}",
-                "uk": f"Шлях не знайдено: {path}",
-                "ru": f"Путь не найден: {path}",
-            },
-        }
-
-    def build_tree(current_path, current_depth=0):
-        if current_depth >= max_depth:
-            return []
-
-        items = []
-        try:
-            for item in sorted(current_path.iterdir()):
-                if not show_hidden and item.name.startswith("."):
-                    continue
-
-                indent = "  " * current_depth
-                if item.is_dir():
-                    items.append(f"{indent}{item.name}/")
-                    subtree = build_tree(item, current_depth + 1)
-                    items.extend(subtree)
-                else:
-                    size = item.stat().st_size
-                    items.append(f"{indent}{item.name} ({size} bytes)")
-        except PermissionError:
-            items.append(f"{indent}[Permission Denied]")
-        except Exception as e:
-            items.append(f"{indent}[Error: {str(e)}]")
-
-        return items
-
-    try:
-        tree_lines = build_tree(tree_path)
-        return {
-            "success": True,
-            "output": "\n".join(tree_lines),
-            "error": None,
-            "spoken": {
-                "en": f"Directory tree with {len(tree_lines)} lines.",
-                "uk": f"Дерево директорій з {len(tree_lines)} рядків.",
-                "ru": f"Дерево каталогов из {len(tree_lines)} строк.",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error building tree: {str(e)}",
-                "uk": f"Помилка при побудові дерева: {str(e)}",
-                "ru": f"Ошибка при построении дерева: {str(e)}",
-            },
-        }
-
-
-async def _execute_get_current_directory(args: str, settings: "Settings | None" = None) -> dict:
-    """Get current working directory path."""
-    import os
-
-    try:
-        cwd = os.getcwd()
-        return {
-            "success": True,
-            "output": cwd,
-            "error": None,
-            "spoken": {
-                "en": f"Current directory: {cwd}",
-                "uk": f"Поточна директорія: {cwd}",
-                "ru": f"Текущий каталог: {cwd}",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error getting current directory: {str(e)}",
-                "uk": f"Помилка при отриманні поточної директорії: {str(e)}",
-                "ru": f"Ошибка при получении текущего каталога: {str(e)}",
-            },
-        }
-
-
-# ============================================================================
-# File Metadata Tools
-# ============================================================================
-
-async def _execute_get_file_info(args: str, settings: "Settings | None" = None) -> dict:
-    """Get detailed information about a file or directory."""
-    import os
-    import stat
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path"
-    path_str = args.strip()
-    if not path_str:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Usage: get_file_info <path>",
-            "spoken": {
-                "en": "Usage: get_file_info <path>",
-                "uk": "Використання: get_file_info <path>",
-                "ru": "Использование: get_file_info <path>",
-            },
-        }
-
-    # Resolve path
-    file_path = Path(path_str)
-    if not file_path.is_absolute():
-        file_path = workspace / file_path
-
-    if not file_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Path not found: {path_str}",
-            "spoken": {
-                "en": f"Path not found: {path_str}",
-                "uk": f"Шлях не знайдено: {path_str}",
-                "ru": f"Путь не найден: {path_str}",
-            },
-        }
-
-    try:
-        stat_info = file_path.stat()
-        is_dir = file_path.is_dir()
-        is_file = file_path.is_file()
-
-        info = {
-            "name": file_path.name,
-            "path": str(file_path),
-            "type": "directory" if is_dir else "file",
-            "size": stat_info.st_size,
-            "created": dt.datetime.fromtimestamp(stat_info.st_ctime).strftime("%Y-%m-%d %H:%M:%S"),
-            "modified": dt.datetime.fromtimestamp(stat_info.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-            "accessed": dt.datetime.fromtimestamp(stat_info.st_atime).strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-        if is_file:
-            # File-specific info
-            info["human_size"] = _human_readable_size(stat_info.st_size)
-        else:
-            # Directory-specific info - get total size recursively
-            total_size = sum(f.stat().st_size for f in file_path.rglob('*') if f.is_file())
-            info["total_size"] = total_size
-            info["item_count"] = sum(1 for _ in file_path.rglob('*') if _.is_file())
-            info["subdirectories"] = sum(1 for _ in file_path.rglob('*') if _.is_dir())
-
-        # Permissions
-        mode = stat_info.st_mode
-        info["permissions"] = {
-            "octal": oct(mode)[-3:],
-            "readable": os.access(file_path, os.R_OK),
-            "writable": os.access(file_path, os.W_OK),
-            "executable": os.access(file_path, os.X_OK),
-            "user_read": bool(mode & stat.S_IRUSR),
-            "user_write": bool(mode & stat.S_IWUSR),
-            "user_execute": bool(mode & stat.S_IXUSR),
-        }
-
-        return {
-            "success": True,
-            "output": str(info),
-            "info": info,
-            "error": None,
-            "spoken": {
-                "en": f"Info for {info['name']}: {info['type']} ({info['human_size'] if 'human_size' in info else _human_readable_size(info['total_size'])})",
-                "uk": f"Інформація для {info['name']}: {info['type']} ({info['human_size'] if 'human_size' in info else _human_readable_size(info['total_size'])})",
-                "ru": f"Информация о {info['name']}: {info['type']} ({info['human_size'] if 'human_size' in info else _human_readable_size(info['total_size'])})",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error getting file info: {str(e)}",
-                "uk": f"Помилка при отриманні інформації: {str(e)}",
-                "ru": f"Ошибка при получении информации: {str(e)}",
-            },
-        }
-
-
-async def _execute_get_disk_usage(args: str, settings: "Settings | None" = None) -> dict:
-    """Get disk usage for a path (total, used, free)."""
-    import shutil
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path"
-    path_str = args.strip()
-    if not path_str:
-        path = workspace
-    else:
-        # Resolve path
-        path = Path(path_str)
-        if not path.is_absolute():
-            path = workspace / path
-
-    if not path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Path not found: {path_str}",
-            "spoken": {
-                "en": f"Path not found: {path_str}",
-                "uk": f"Шлях не знайдено: {path_str}",
-                "ru": f"Путь не найден: {path_str}",
-            },
-        }
-
-    try:
-        total, used, free = shutil.disk_usage(path)
-        usage = {
-            "path": str(path),
-            "total_bytes": total,
-            "used_bytes": used,
-            "free_bytes": free,
-            "total": _human_readable_size(total),
-            "used": _human_readable_size(used),
-            "free": _human_readable_size(free),
-            "usage_percent": round((used / total) * 100, 1) if total > 0 else 0,
-            "file_count": sum(1 for _ in path.rglob('*') if _.is_file()) if path.is_dir() else 0,
-            "dir_count": sum(1 for _ in path.rglob('*') if _.is_dir()) if path.is_dir() else 0,
-        }
-
-        return {
-            "success": True,
-            "output": str(usage),
-            "usage": usage,
-            "error": None,
-            "spoken": {
-                "en": f"Disk usage: {usage['used']} of {usage['total']} used ({usage['usage_percent']}%)",
-                "uk": f"Використання диска: {usage['used']} з {usage['total']} використано ({usage['usage_percent']}%)",
-                "ru": f"Использование диска: {usage['used']} из {usage['total']} занято ({usage['usage_percent']}%)",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error getting disk usage: {str(e)}",
-                "uk": f"Помилка при отриманні використання диска: {str(e)}",
-                "ru": f"Ошибка при получении использования диска: {str(e)}",
-            },
-        }
-
-
-async def _execute_get_file_hash(args: str, settings: "Settings | None" = None) -> dict:
-    """Calculate MD5 or SHA256 hash of a file."""
-    import hashlib
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path [algorithm=md5]"
-    parts = args.strip().split()
-    if not parts:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Usage: get_file_hash <path> [algorithm]",
-            "spoken": {
-                "en": "Usage: get_file_hash <path> [algorithm]",
-                "uk": "Використання: get_file_hash <path> [algorithm]",
-                "ru": "Использование: get_file_hash <path> [algorithm]",
-            },
-        }
-
-    path_str = parts[0]
-    algorithm = parts[1].lower() if len(parts) > 1 else "md5"
-
-    if algorithm not in ("md5", "sha1", "sha256", "sha512"):
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Unsupported algorithm: {algorithm}. Supported: md5, sha1, sha256, sha512",
-            "spoken": {
-                "en": f"Unsupported algorithm: {algorithm}",
-                "uk": f"Непідтримуваний алгоритм: {algorithm}",
-                "ru": f"Неподдерживаемый алгоритм: {algorithm}",
-            },
-        }
-
-    # Resolve path
-    file_path = Path(path_str)
-    if not file_path.is_absolute():
-        file_path = workspace / file_path
-
-    if not file_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"File not found: {path_str}",
-            "spoken": {
-                "en": f"File not found: {path_str}",
-                "uk": f"Файл не знайдено: {path_str}",
-                "ru": f"Файл не найден: {path_str}",
-            },
-        }
-
-    if not file_path.is_file():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Not a file: {path_str}",
-            "spoken": {
-                "en": f"Not a file: {path_str}",
-                "uk": f"Не є файлом: {path_str}",
-                "ru": f"Не является файлом: {path_str}",
-            },
-        }
-
-    try:
-        hash_func = getattr(hashlib, algorithm)()
-        buffer_size = 65536  # 64KB chunks
-        file_size = file_path.stat().st_size
-
-        with open(file_path, 'rb') as f:
-            while chunk := f.read(buffer_size):
-                hash_func.update(chunk)
-
-        hash_result = {
-            "path": str(file_path),
-            "name": file_path.name,
-            "size": file_size,
-            "human_size": _human_readable_size(file_size),
-            "algorithm": algorithm.upper(),
-            "hash": hash_func.hexdigest(),
-        }
-
-        return {
-            "success": True,
-            "output": f"{algorithm.upper()}: {hash_result['hash']}",
-            "hash": hash_result,
-            "error": None,
-            "spoken": {
-                "en": f"{algorithm.upper()} hash: {hash_result['hash']}",
-                "uk": f"Хеш {algorithm.upper()}: {hash_result['hash']}",
-                "ru": f"Хеш {algorithm.upper()}: {hash_result['hash']}",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error calculating hash: {str(e)}",
-                "uk": f"Помилка при розрахунку хешу: {str(e)}",
-                "ru": f"Ошибка при расчете хеша: {str(e)}",
-            },
-        }
-
-
 def _human_readable_size(size_bytes: int) -> str:
     """Convert bytes to human readable format."""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -2051,389 +1540,6 @@ def _human_readable_size(size_bytes: int) -> str:
 
 # ============================================================================
 # File Operation Tools
-# ============================================================================
-
-async def _execute_copy_file(args: str, settings: "Settings | None" = None) -> dict:
-    """Copy a file or directory with progress reporting."""
-    import shutil
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "source destination [overwrite=true]"
-    parts = args.strip().split()
-    if len(parts) < 2:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Usage: copy_file <source> <destination> [overwrite]",
-            "spoken": {
-                "en": "Usage: copy_file <source> <destination> [overwrite]",
-                "uk": "Використання: copy_file <source> <destination> [overwrite]",
-                "ru": "Использование: copy_file <source> <destination> [overwrite]",
-            },
-        }
-
-    source = parts[0]
-    destination = parts[1]
-    overwrite = len(parts) > 2 and parts[2].lower() in ("true", "1", "yes")
-
-    # Resolve paths
-    src_path = Path(source)
-    if not src_path.is_absolute():
-        src_path = workspace / source
-
-    dest_path = Path(destination)
-    if not dest_path.is_absolute():
-        dest_path = workspace / destination
-
-    if not src_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Source not found: {source}",
-            "spoken": {
-                "en": f"Source not found: {source}",
-                "uk": f"Джерело не знайдено: {source}",
-                "ru": f"Источник не найден: {source}",
-            },
-        }
-
-    if dest_path.exists() and not overwrite:
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Destination already exists: {destination}. Use overwrite=true to replace.",
-            "spoken": {
-                "en": f"Destination already exists: {destination}. Use overwrite=true to replace.",
-                "uk": f"Призначення вже існує: {destination}. Використайте overwrite=true, щоб замінити.",
-                "ru": f"Назначение уже существует: {destination}. Используйте overwrite=true, чтобы заменить.",
-            },
-        }
-
-    try:
-        if src_path.is_file():
-            # Copy file
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_path, dest_path)
-            result = {
-                "source": str(src_path),
-                "destination": str(dest_path),
-                "type": "file",
-                "size": src_path.stat().st_size,
-            }
-        else:
-            # Copy directory
-            shutil.copytree(src_path, dest_path, dirs_exist_ok=overwrite)
-            result = {
-                "source": str(src_path),
-                "destination": str(dest_path),
-                "type": "directory",
-                "items": sum(1 for _ in dest_path.rglob('*') if _.is_file()),
-            }
-
-        return {
-            "success": True,
-            "output": f"Copied {result['type']}: {source} -> {destination}",
-            "result": result,
-            "error": None,
-            "spoken": {
-                "en": f"Copied {result['type']} to {destination}",
-                "uk": f"Скопійовано {result['type']} до {destination}",
-                "ru": f"Скопировано {result['type']} в {destination}",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error copying: {str(e)}",
-                "uk": f"Помилка при копіюванні: {str(e)}",
-                "ru": f"Ошибка при копировании: {str(e)}",
-            },
-        }
-
-
-async def _execute_move_file(args: str, settings: "Settings | None" = None) -> dict:
-    """Move/rename a file or directory."""
-    import shutil
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "source destination [overwrite=true]"
-    parts = args.strip().split()
-    if len(parts) < 2:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Usage: move_file <source> <destination> [overwrite]",
-            "spoken": {
-                "en": "Usage: move_file <source> <destination> [overwrite]",
-                "uk": "Використання: move_file <source> <destination> [overwrite]",
-                "ru": "Использование: move_file <source> <destination> [overwrite]",
-            },
-        }
-
-    source = parts[0]
-    destination = parts[1]
-    overwrite = len(parts) > 2 and parts[2].lower() in ("true", "1", "yes")
-
-    # Resolve paths
-    src_path = Path(source)
-    if not src_path.is_absolute():
-        src_path = workspace / source
-
-    dest_path = Path(destination)
-    if not dest_path.is_absolute():
-        dest_path = workspace / destination
-
-    if not src_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Source not found: {source}",
-            "spoken": {
-                "en": f"Source not found: {source}",
-                "uk": f"Джерело не знайдено: {source}",
-                "ru": f"Источник не найден: {source}",
-            },
-        }
-
-    if dest_path.exists() and not overwrite:
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Destination already exists: {destination}. Use overwrite=true to replace.",
-            "spoken": {
-                "en": f"Destination already exists: {destination}. Use overwrite=true to replace.",
-                "uk": f"Призначення вже існує: {destination}. Використайте overwrite=true, щоб замінити.",
-                "ru": f"Назначение уже существует: {destination}. Используйте overwrite=true, чтобы заменить.",
-            },
-        }
-
-    try:
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src_path), str(dest_path))
-        result = {
-            "source": str(src_path),
-            "destination": str(dest_path),
-            "type": "directory" if src_path.is_dir() else "file",
-        }
-
-        return {
-            "success": True,
-            "output": f"Moved {result['type']}: {source} -> {destination}",
-            "result": result,
-            "error": None,
-            "spoken": {
-                "en": f"Moved {result['type']} to {destination}",
-                "uk": f"Переміщено {result['type']} до {destination}",
-                "ru": f"Перемещено {result['type']} в {destination}",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error moving: {str(e)}",
-                "uk": f"Помилка при переміщенні: {str(e)}",
-                "ru": f"Ошибка при перемещении: {str(e)}",
-            },
-        }
-
-
-async def _execute_delete_file(args: str, settings: "Settings | None" = None) -> dict:
-    """Delete a file or directory with confirmation."""
-    import shutil
-
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path [recursive=true]"
-    parts = args.strip().split()
-    if not parts:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Usage: delete_file <path> [recursive]",
-            "spoken": {
-                "en": "Usage: delete_file <path> [recursive]",
-                "uk": "Використання: delete_file <path> [recursive]",
-                "ru": "Использование: delete_file <path> [recursive]",
-            },
-        }
-
-    path_str = parts[0]
-    recursive = len(parts) > 1 and parts[1].lower() in ("true", "1", "yes")
-
-    # Resolve path
-    file_path = Path(path_str)
-    if not file_path.is_absolute():
-        file_path = workspace / path_str
-
-    if not file_path.exists():
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Path not found: {path_str}",
-            "spoken": {
-                "en": f"Path not found: {path_str}",
-                "uk": f"Шлях не знайдено: {path_str}",
-                "ru": f"Путь не найден: {path_str}",
-            },
-        }
-
-    # Check if it's a git repository or important file
-    important_files = [".git", "README.md", "package.json", "requirements.txt"]
-    if file_path.name in important_files or (file_path == workspace):
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Cannot delete important file or directory: {path_str}",
-            "spoken": {
-                "en": f"Cannot delete important file or directory: {path_str}",
-                "uk": f"Не можна видалити важливий файл чи директорію: {path_str}",
-                "ru": f"Нельзя удалить важный файл или каталог: {path_str}",
-            },
-        }
-
-    try:
-        if file_path.is_file():
-            file_path.unlink()
-            result = {
-                "path": str(file_path),
-                "type": "file",
-                "size": file_path.stat().st_size if file_path.exists() else 0,
-            }
-        else:
-            if not recursive:
-                # List contents first to warn user
-                contents = list(file_path.iterdir())
-                if contents:
-                    return {
-                        "success": False,
-                        "output": "",
-                        "error": f"Directory not empty: {path_str}. Use recursive=true to delete all contents.",
-                        "spoken": {
-                            "en": f"Directory not empty: {path_str}. Use recursive=true to delete all contents.",
-                            "uk": f"Директорія не порожня: {path_str}. Використайте recursive=true, щоб видалити все вміст.",
-                            "ru": f"Каталог не пуст: {path_str}. Используйте recursive=true, чтобы удалить все содержимое.",
-                        },
-                    }
-            shutil.rmtree(file_path)
-            result = {
-                "path": str(file_path),
-                "type": "directory",
-                "items": sum(1 for _ in file_path.rglob('*')) if file_path.exists() else 0,
-            }
-
-        return {
-            "success": True,
-            "output": f"Deleted {result['type']}: {path_str}",
-            "result": result,
-            "error": None,
-            "spoken": {
-                "en": f"Deleted {result['type']}: {path_str}",
-                "uk": f"Видалено {result['type']}: {path_str}",
-                "ru": f"Удалено {result['type']}: {path_str}",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error deleting: {str(e)}",
-                "uk": f"Помилка при видаленні: {str(e)}",
-                "ru": f"Ошибка при удалении: {str(e)}",
-            },
-        }
-
-
-async def _execute_create_directory(args: str, settings: "Settings | None" = None) -> dict:
-    """Create a directory with parents."""
-    workspace = settings.workspace_dir if settings else Path.cwd()
-
-    # Parse arguments - format: "path"
-    path_str = args.strip()
-    if not path_str:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Usage: create_directory <path>",
-            "spoken": {
-                "en": "Usage: create_directory <path>",
-                "uk": "Використання: create_directory <path>",
-                "ru": "Использование: create_directory <path>",
-            },
-        }
-
-    # Resolve path
-    dir_path = Path(path_str)
-    if not dir_path.is_absolute():
-        dir_path = workspace / path_str
-
-    if dir_path.exists():
-        if dir_path.is_dir():
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Directory already exists: {path_str}",
-                "spoken": {
-                    "en": f"Directory already exists: {path_str}",
-                    "uk": f"Директорія вже існує: {path_str}",
-                    "ru": f"Каталог уже существует: {path_str}",
-                },
-            }
-        else:
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Path exists but is not a directory: {path_str}",
-                "spoken": {
-                    "en": f"Path exists but is not a directory: {path_str}",
-                    "uk": f"Шлях існує, але це не директорія: {path_str}",
-                    "ru": f"Путь существует, но это не каталог: {path_str}",
-                },
-            }
-
-    try:
-        dir_path.mkdir(parents=True, exist_ok=True)
-        result = {
-            "path": str(dir_path),
-            "parent": str(dir_path.parent),
-            "depth": len(dir_path.parts) - len(workspace.parts),
-        }
-
-        return {
-            "success": True,
-            "output": f"Created directory: {path_str}",
-            "result": result,
-            "error": None,
-            "spoken": {
-                "en": f"Created directory: {path_str}",
-                "uk": f"Створено директорію: {path_str}",
-                "ru": f"Создан каталог: {path_str}",
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": str(e),
-            "spoken": {
-                "en": f"Error creating directory: {str(e)}",
-                "uk": f"Помилка при створенні директорії: {str(e)}",
-                "ru": f"Ошибка при создании каталога: {str(e)}",
-            },
-        }
-
-
-# ============================================================================
-# Archive & Batch Tools
 # ============================================================================
 
 async def _execute_create_archive(args: str, settings: "Settings | None" = None) -> dict:
@@ -3276,41 +2382,6 @@ async def _execute_skill_internal(
             "uk": f"Завантажив {skill_name}.",
         },
     }
-
-
-def _extract_tool_calls_from_instructions(instructions: str, context: dict) -> list[tuple[str, str]]:
-    """Extract tool calls from skill instructions.
-
-    Phase 1 (MVP): Simple regex pattern matching with allowlist validation.
-    Pattern: `bash(command)`, `read(path)`, `web_search(query)`, etc.
-    Returns list of (tool_name, args_string) tuples for known tools only.
-
-    Unknown tool names are skipped with debug-level logging to avoid
-    false positives from prose (e.g., "use function(args)" in documentation).
-    """
-    # Get the set of enabled tools for validation
-    from src.agent.tools.registry import get_enabled_tools
-    enabled_tools = get_enabled_tools()
-
-    # Regex: match "tool_name(args)" patterns
-    pattern = r"(\w+)\(([^)]+)\)"
-    matches = re.findall(pattern, instructions)
-
-    result = []
-    for tool_name, args_str in matches:
-        # Skip if tool_name is not a known enabled tool
-        if tool_name not in enabled_tools:
-            logger.debug(f"Skill instruction references unknown tool: {tool_name}")
-            continue
-
-        # Substitute context vars: {variable_name} -> context['variable_name']
-        substituted_args = args_str
-        for key, value in context.items():
-            substituted_args = substituted_args.replace(f"{{{key}}}", str(value))
-
-        result.append((tool_name, substituted_args))
-
-    return result
 
 
 async def _execute_set_provider(args: str, settings: "Settings | None" = None) -> dict:
@@ -4233,3 +3304,123 @@ async def _execute_list_capabilities(args: str, settings: "Settings | None" = No
         "items": items,
         "spoken": {"en": spoken_en, "uk": spoken_uk},
     }
+
+
+# ── Browser bridge tools ──────────────────────────────────────────────────────
+
+_BROWSER_NOT_CONNECTED = {
+    "success": False,
+    "error": "Browser not connected. Install the Heare Bridge extension from "
+             "extensions/heare-bridge/ via chrome://extensions.",
+    "retryable": False,
+}
+
+
+def _get_bridge_or_none():
+    from src.agent.browser_bridge import _get_bridge
+    return _get_bridge()
+
+
+async def _execute_read_browser_page(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    params: dict = {}
+    if parsed.get("tab_id") is not None:
+        params["tab_id"] = parsed["tab_id"]
+    return await bridge.call("read_page", params)
+
+
+async def _execute_list_browser_tabs(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    return await bridge.call("list_tabs", {})
+
+
+async def _execute_click_in_browser(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    params: dict = {"selector": parsed.get("selector", "")}
+    if parsed.get("tab_id") is not None:
+        params["tab_id"] = parsed["tab_id"]
+    return await bridge.call("click", params)
+
+
+async def _execute_fill_in_browser(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    params: dict = {
+        "selector": parsed.get("selector", ""),
+        "value": parsed.get("value", ""),
+    }
+    if parsed.get("tab_id") is not None:
+        params["tab_id"] = parsed["tab_id"]
+    return await bridge.call("fill", params)
+
+
+async def _execute_navigate_browser(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    params: dict = {"url": parsed.get("url", "")}
+    if parsed.get("tab_id") is not None:
+        params["tab_id"] = parsed["tab_id"]
+    return await bridge.call("navigate", params)
+
+
+async def _execute_extract_in_browser(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    params: dict = {"selector": parsed.get("selector", "")}
+    if parsed.get("tab_id") is not None:
+        params["tab_id"] = parsed["tab_id"]
+    return await bridge.call("extract", params)
+
+
+async def _execute_open_browser_tab(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    return await bridge.call("open_tab", {"url": parsed.get("url", "")})
+
+
+async def _execute_activate_browser_tab(args: str, settings: "Settings | None" = None) -> dict:
+    bridge = _get_bridge_or_none()
+    if bridge is None:
+        return dict(_BROWSER_NOT_CONNECTED)
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    params: dict = {}
+    if parsed.get("tab_id") is not None:
+        params["tab_id"] = parsed["tab_id"]
+    return await bridge.call("activate_tab", params)

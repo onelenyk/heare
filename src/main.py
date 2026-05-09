@@ -5,11 +5,16 @@ subcommands work on machines without portaudio.
 """
 from __future__ import annotations
 
+import os
+
+# Silence transformers' "PyTorch was not found" advice triggered by
+# pipecat's smart-turn import path. Must be set before transformers loads.
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+
 import argparse
 import asyncio
 import logging
 import logging.handlers
-import os
 import signal
 import sys
 import time
@@ -167,6 +172,14 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                     "Speaker subsystem: gallery loaded (%d speakers), ECAPA model ready",
                     len(speaker_gallery.list_speakers()),
                 )
+            except ModuleNotFoundError as e:
+                logger.info(
+                    "Speaker ID disabled: %s not installed "
+                    "(pip install heare[speaker] to enable).",
+                    e.name,
+                )
+                speaker_gallery = None
+                speaker_model = None
             except Exception:
                 logger.exception(
                     "Speaker subsystem init failed — continuing without diarization"
@@ -213,15 +226,17 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         from src.voice.tts.edge import synthesize_to_pcm
         from src.voice.tts.phrases import FIXED_PHRASES
 
-        try:
-            await tts_cache.warmup(
+        # Fire-and-forget: cache populates in background while the pipeline
+        # comes up. First greeting may hit edge-tts live (~1-3s) before the
+        # cache is ready; all subsequent identical phrases hit the cache.
+        tts_cache_warmup_task = asyncio.create_task(
+            tts_cache.warmup(
                 FIXED_PHRASES,
                 lambda text: synthesize_to_pcm(
                     text, settings.tts_voice, settings.tts_sample_rate
                 ),
             )
-        except Exception as e:
-            logger.warning("TTS cache warmup failed (non-fatal): %s", e)
+        )
 
         async def _push_greeting() -> None:
             await asyncio.sleep(1.0)
@@ -249,6 +264,20 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         namer_task = None
         if speaker_namer is not None:
             namer_task = asyncio.create_task(speaker_namer.run())
+
+        bridge = None
+        bridge_task = None
+        if settings.browser_bridge_enabled:
+            try:
+                from src.agent.browser_bridge import BrowserBridge, set_bridge
+                bridge = BrowserBridge(settings)
+                set_bridge(bridge)
+                bridge_task = asyncio.create_task(bridge.start(), name="browser-bridge")
+            except Exception:  # noqa: BLE001
+                logger.exception("browser_bridge failed to start (continuing without it)")
+                bridge = None
+                bridge_task = None
+
         asyncio.create_task(_push_greeting())
 
         # Text-injection poller: a separate process (e.g. the watch
@@ -281,8 +310,20 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             pipeline,
             warmup,
             namer_task=namer_task,
+            bridge_task=bridge_task,
         )
     finally:
+        bridge = locals().get("bridge")
+        if bridge is not None:
+            try:
+                await bridge.stop()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("bridge.stop failed (non-fatal): %s", e)
+            try:
+                from src.agent.browser_bridge import set_bridge
+                set_bridge(None)
+            except Exception:  # noqa: BLE001
+                pass
         ind = locals().get("indication")
         if ind is not None:
             try:
@@ -304,7 +345,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
 
 async def run_until_stopped(
-    runner, pipeline, warmup=None, *, namer_task=None,
+    runner, pipeline, warmup=None, *, namer_task=None, bridge_task=None,
 ) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
@@ -348,6 +389,8 @@ async def run_until_stopped(
         watch_set.add(warmup_task)
     if namer_task is not None:
         watch_set.add(namer_task)
+    if bridge_task is not None:
+        watch_set.add(bridge_task)
     try:
         done, _ = await asyncio.wait(watch_set, return_when=asyncio.FIRST_COMPLETED)
     finally:
@@ -358,6 +401,8 @@ async def run_until_stopped(
             background_tasks.append(warmup_task)
         if namer_task is not None:
             background_tasks.append(namer_task)
+        if bridge_task is not None:
+            background_tasks.append(bridge_task)
         for task in background_tasks:
             if not task.done():
                 task.cancel()
@@ -366,6 +411,8 @@ async def run_until_stopped(
             named_tasks.append((warmup_task, "warmup"))
         if namer_task is not None:
             named_tasks.append((namer_task, "speaker-namer"))
+        if bridge_task is not None:
+            named_tasks.append((bridge_task, "browser-bridge"))
         for task, name in named_tasks:
             try:
                 await task
@@ -469,6 +516,32 @@ def _cmd_set_wake_word(args: argparse.Namespace) -> int:
     (HEARE_HOME / ".onboarded").touch()
 
     print(f"confirmation passphrase set to '{word}' — restart daemon to apply")
+    return 0
+
+
+def _cmd_rotate_browser_token(args: argparse.Namespace) -> int:
+    """Generate a new browser-bridge token, persist it, and update the
+    convenience file. Daemon must be restarted for the new token to take
+    effect."""
+    import secrets
+    from .config import HEARE_HOME, write_browser_bridge_token
+
+    settings = load_settings()
+    token = secrets.token_urlsafe(32)
+    write_browser_bridge_token(settings, token)
+
+    token_path = HEARE_HOME / "browser_bridge.token"
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(token_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(token + "\n")
+
+    print(
+        "New browser bridge token written. Paste into the extension options "
+        "page. If daemon is running, restart it for the new token to take "
+        "effect."
+    )
+    print(f"Token file: {token_path}")
     return 0
 
 
@@ -842,6 +915,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("reset-session", help="Backup session.json and start fresh")
     sub.add_parser("reset-identity", help="Backup identity.json and regenerate")
+    sub.add_parser(
+        "rotate-browser-token",
+        help="Generate a new browser-bridge token (restart daemon to apply)",
+    )
 
     set_word_p = sub.add_parser("set-passphrase", help="Set the confirmation passphrase (restart required)")
     set_word_p.add_argument("word", help="Secret word to confirm actions (e.g. авторизую)")
@@ -910,6 +987,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_reset_session(args)
     if cmd == "reset-identity":
         return _cmd_reset_identity(args)
+    if cmd == "rotate-browser-token":
+        return _cmd_rotate_browser_token(args)
     if cmd == "set-passphrase":
         return _cmd_set_wake_word(args)
     if cmd == "setup":

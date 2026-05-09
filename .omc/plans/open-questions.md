@@ -105,3 +105,24 @@
 - [x] **`once` mode output format** — RESOLVED (iteration 1): Option (b) -- bypass Textual App entirely. `data.py` produces a `DashboardSnapshot`; `__init__.py` renders it via `rich.Console` to stdout and exits. Explicit `test_once_mode_outputs_to_stdout` test added.
 - [x] **Tools panel fate** — RESOLVED (iteration 1): Deferred from migration. `_tools_table()` has no equivalent in the new package. Existing tests deleted. Follow-up ticket for toggleable tools overlay (via hotkey `i`) tracked in Section 11.
 - [x] **Legacy rollback duration** — RESOLVED (iteration 1): 2 release cycles (~4 weeks) confirmed per Architect recommendation. `test_legacy_env_var_returns_callable` test added to verify rollback path.
+
+## yamnet-audio-event-detection - 2026-05-08
+
+- [ ] **Exact ONNX model URL** — The official TensorFlow YAMNet does not ship a prebuilt `.onnx`. The download script needs a pinned URL (community conversion on Hugging Face, or self-hosted). Executor must identify a reliable source and pin the SHA256 in the script. Blocks Step 7 (download script).
+- [ ] **Event TTL on dashboard** — Proposed 5.0 s for `EVENT_TTL_S` in `VoiceStateBar`. Should this match the existing `RESULT_TTL_S` (4.0 s) for visual consistency, or be longer since events are rarer? Affects Step 6 (dashboard integration).
+- [ ] **Thread-safety of `_on_result` callback** — The done-callback from `asyncio.to_thread` runs on the event loop, so `_running` and `_prev_label` mutations are single-threaded. Confirm this assumption holds with Pipecat's task runner. Affects Step 2 (observer implementation).
+- [ ] **NumPy in main deps vs optional** — The `speaker` optional group already pulls `numpy` via `torch`. Audio-event should not assume speaker is installed. Keep it in the `audio-event` optional group. Confirm this is acceptable vs promoting to main deps. Affects Step 7 (pyproject.toml).
+
+## browser-bridge-stability - 2026-05-09
+
+- [x] **Offscreen `Reason` enum value** -- RESOLVED (rev 2, S4): Pinned `Reason.WORKERS`. WebSocket is not WebRTC; `WORKERS` ("workers -- for Web Workers and persistent background processing") is the correct semantic match.
+- [x] **`ensureOffscreen` re-creation race** -- RESOLVED (rev 2, M3): `ensureOffscreen()` now wraps `hasDocument()` + `createDocument()` in try/catch. On failure, sets `HAS_OFFSCREEN = false` for the current SW lifetime and falls back to legacy SW-based WS.
+- [x] **`sendMessage` routing when popup is open** -- RESOLVED (rev 2, M1): All offscreen-to-SW RPC traffic now uses a long-lived `chrome.runtime.connect` port (`name: 'heare-rpc'`). No broadcast to popup/options. Only user-initiated `reconnect` from popup/options still uses `sendMessage`, which the SW forwards via the port (M2 -- no self-delivery loop).
+
+## browser-extension-bridge - 2026-05-09
+
+- [x] **Token auto-refresh on daemon restart** — RESOLVED (REVISION 2): Token persists in `config.toml` as `browser_bridge_token`. Generated on first use if absent. No per-restart rotation. Explicit rotation via `heare rotate-browser-token` CLI subcommand. No re-paste needed on normal daemon restart.
+- [ ] **CDP indicator coexistence** — The dashboard currently shows a CDP-attached indicator. Should the extension-connected indicator replace it entirely, or should both be shown (two dots)? The CDP launcher still works for dev/debug. Affects Step 4 (dashboard updates).
+- [ ] **`read_page` content format** — Should `read_page` return `innerText` (clean, LLM-friendly), `innerHTML` (preserves structure but large), or both? Recommendation: `innerText` default with optional `include_html` param. Affects Step 2 (content script) and Step 3 (tool schema).
+- [x] **Service worker suspension recovery** — RESOLVED (REVISION 2): Accept the timeout and return structured error with `retryable: true`. The LLM retries automatically. No queuing complexity. Alarm-based keepalive prevents most suspensions during active use.
+- [ ] **Token display in dashboard** — Should the dashboard show the full token (easy copy-paste, minor shoulder-surfing risk) or just a "token exists" indicator with a file path hint? Affects Step 4 (dashboard UX).

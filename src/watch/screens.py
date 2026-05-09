@@ -109,3 +109,74 @@ class ModelSelectScreen(ModalScreen[str | None]):
 
     def action_dismiss_none(self) -> None:
         self.dismiss(None)
+
+
+class ChromeProfileSelectScreen(ModalScreen[str | None]):
+    """Modal dialog: pick which Chrome profile to launch with the CDP debug port.
+
+    Reads profiles from ``list_chrome_profiles()`` (Chrome's ``Local State``
+    file). Returns the chosen ``--profile-directory`` value via ``dismiss()``;
+    ``None`` on Esc.
+    """
+
+    BINDINGS = (
+        Binding("escape", "dismiss_none", "Cancel"),
+    )
+
+    DEFAULT_CSS = """
+    ChromeProfileSelectScreen {
+        align: center middle;
+    }
+
+    #chrome-dialog {
+        width: 70;
+        height: auto;
+        max-height: 80%;
+        border: round $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #chrome-dialog Label.title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #chrome-dialog ListView {
+        height: auto;
+        max-height: 16;
+        border: tall $surface-darken-2;
+    }
+    """
+
+    def __init__(self, profiles) -> None:
+        super().__init__()
+        self._profiles = profiles
+
+    def compose(self) -> ComposeResult:
+        items: list[ListItem] = []
+        for i, p in enumerate(self._profiles):
+            marker = "● " if p.last_used else "  "
+            label = f"{marker}{p.directory}"
+            if p.name:
+                label += f"  —  {p.name}"
+            if p.email:
+                label += f"  ({p.email})"
+            items.append(ListItem(Label(label), id=f"cp-{i}"))
+        with Vertical(id="chrome-dialog"):
+            yield Label("Select Chrome profile to launch with CDP", classes="title")
+            if not items:
+                yield Label("(no profiles found — has Chrome ever run?)")
+                return
+            yield ListView(*items, id="chrome-profile-list")
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        item = event.item
+        if item is None or item.id is None or not item.id.startswith("cp-"):
+            return
+        idx = int(item.id.split("-", 1)[1])
+        self.dismiss(self._profiles[idx].directory)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)

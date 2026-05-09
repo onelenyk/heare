@@ -44,6 +44,7 @@ from src.agent.llm.context_injector import (
 )
 from src.agent.tools.schemas import build_tools_schema, register_all_tools
 from src.pipeline.stages.transcription_gate import create_transcription_gate
+from src.pipeline.stages.voice_state_observer import create_voice_state_observer
 from src.voice.tts.cache import TTSCache
 from src.voice.tts.edge import create_edge_tts_service
 
@@ -120,6 +121,7 @@ def _assemble_native_stages(
     stt: Any,
     stt_error_observer: Any,
     transcription_gate: Any,
+    voice_state_observer: Any = None,
     user_aggregator: Any,
     llm_service: Any,
     tts: Any,
@@ -134,6 +136,7 @@ def _assemble_native_stages(
     sound_cue_processor: Any = None,
     mute_gate: Any = None,
     input_mute_gate: Any = None,
+    audio_event_observer: Any = None,
 ) -> list:
     """Pure stage-list assembly, factored out for unit testing.
 
@@ -151,11 +154,22 @@ def _assemble_native_stages(
     # before STT (and any speaker buffering) runs.
     if input_mute_gate is not None:
         stages.append(input_mute_gate)
+    # audio_event_observer sits AFTER input_mute_gate so muted mic audio is
+    # never wasted on YAMNet inference, and BEFORE speaker_buffer / STT so it
+    # operates on the raw mic stream.
+    if audio_event_observer is not None:
+        stages.append(audio_event_observer)
     if speaker_buffer is not None:
         stages.append(speaker_buffer)
     stages.extend([stt, stt_error_observer])
     if speaker_tagger is not None:
         stages.append(speaker_tagger)
+    # voice_state_observer sits BEFORE transcription_gate so it sees every
+    # raw TranscriptionFrame (the gate may suppress some for cancel words /
+    # debounce). UserStartedSpeaking / UserStoppedSpeaking SystemFrames also
+    # flow through this point, giving the dashboard a live state read.
+    if voice_state_observer is not None:
+        stages.append(voice_state_observer)
     stages.append(transcription_gate)
     if system_prompt_injector is not None:
         stages.append(system_prompt_injector)
@@ -225,12 +239,15 @@ async def build_pipeline(
     from pipecat.processors.aggregators.llm_context import LLMContext
     from pipecat.processors.aggregators.llm_response_universal import (
         LLMContextAggregatorPair,
+        LLMUserAggregatorParams,
     )
     from pipecat.processors.frame_processor import (
         FrameProcessor as _FP,
     )
     from pipecat.services.groq.stt import GroqSTTService
     from pipecat.transcriptions.language import Language
+    from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+    from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
     from src.agent.llm.switchable import SwitchableLLMService
     from pipecat.transports.local.audio import (
@@ -257,14 +274,14 @@ async def build_pipeline(
         )
     )
     smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
+    # Pipecat 0.0.108 moved vad_analyzer/turn_analyzer off the transport and
+    # onto the LLMUserAggregator (see LLMUserAggregatorParams below).
     transport = LocalAudioTransport(
         params=LocalAudioTransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
             audio_in_sample_rate=16000,
             audio_out_sample_rate=settings.tts_sample_rate,
-            vad_analyzer=vad,
-            turn_analyzer=smart_turn,
         )
     )
     # STT language is a HINT for Groq's Whisper, not a hard force. Groq will detect
@@ -273,7 +290,9 @@ async def build_pipeline(
     # language and dynamically updates TTS voice to match.
     stt = GroqSTTService(
         api_key=settings.groq_api_key,
-        language=Language(settings.groq_language),
+        settings=GroqSTTService.Settings(
+            language=Language(settings.groq_language),
+        ),
         include_prob_metrics=True,
     )
     tts_cache = TTSCache()
@@ -411,6 +430,7 @@ async def build_pipeline(
         tts_service=tts,
         language_state=language_state,
     )
+    voice_state_observer = create_voice_state_observer(settings.voice_state_file)
 
     llm_service = SwitchableLLMService(
         openrouter_api_key=settings.openrouter_api_key,
@@ -430,7 +450,17 @@ async def build_pipeline(
         ],
         tools=tools_schema,
     )
-    aggregator_pair = LLMContextAggregatorPair(llm_context)
+    # vad_analyzer + user_turn_strategies migrated here from transport params
+    # (deprecated since pipecat 0.0.108).
+    aggregator_pair = LLMContextAggregatorPair(
+        llm_context,
+        user_params=LLMUserAggregatorParams(
+            vad_analyzer=vad,
+            user_turn_strategies=UserTurnStrategies(
+                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_turn)],
+            ),
+        ),
+    )
     user_aggregator = aggregator_pair.user()
     assistant_aggregator = aggregator_pair.assistant()
 
@@ -550,6 +580,26 @@ async def build_pipeline(
     # pipeline so STT never even sees the muted audio.
     input_mute_gate = create_input_mute_gate(flag_path=settings.mute_input_file)
 
+    # Audio event detection (YAMNet) — opt-in, off by default. The observer
+    # is constructed lazily so a daemon with the flag off never imports
+    # ``onnxruntime`` or ``numpy``. Any failure here logs and degrades to a
+    # no-op stage; the pipeline must keep building.
+    audio_event_observer = None
+    if settings.audio_event_detection_enabled:
+        try:
+            from src.audio_event.observer import create_audio_event_observer
+
+            audio_event_observer = create_audio_event_observer(settings)
+            if audio_event_observer is not None:
+                logger.info(
+                    "audio_event: YAMNet observer active (threshold=%.2f, model=%s)",
+                    settings.audio_event_threshold,
+                    settings.yamnet_model_path,
+                )
+        except Exception:  # noqa: BLE001 — feature must never crash the daemon
+            logger.exception("audio_event: observer creation failed (non-fatal)")
+            audio_event_observer = None
+
     # ------------------------------------------------------------------
     # Compose stages and build the task
     # ------------------------------------------------------------------
@@ -559,6 +609,7 @@ async def build_pipeline(
         stt=stt,
         stt_error_observer=stt_error_observer,
         transcription_gate=transcription_gate,
+        voice_state_observer=voice_state_observer,
         system_prompt_injector=system_prompt_injector,
         user_aggregator=user_aggregator,
         llm_service=llm_service,
@@ -573,6 +624,7 @@ async def build_pipeline(
         sound_cue_processor=sound_cue_processor,
         mute_gate=mute_gate,
         input_mute_gate=input_mute_gate,
+        audio_event_observer=audio_event_observer,
     )
 
     logger.info(

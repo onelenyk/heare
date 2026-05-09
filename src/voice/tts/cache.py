@@ -36,21 +36,25 @@ class TTSCache:
     async def warmup(self, phrases: list[str], synthesizer: Synthesizer) -> None:
         """Pre-render every phrase that isn't already cached.
 
-        Calls synthesizer(text) once per missing phrase. Failures are logged
-        and skipped — a missing cache entry just falls back to live TTS.
+        Synthesizes missing phrases concurrently via asyncio.gather. Per-phrase
+        failures are logged and skipped — a missing cache entry just falls back
+        to live TTS.
         """
         missing = [p for p in phrases if p not in self._store]
         if not missing:
             return
         logger.info("warming up TTS cache for %d phrase(s)", len(missing))
-        for phrase in missing:
+
+        async def _synth_one(phrase: str) -> None:
             try:
                 pcm = await synthesizer(phrase)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.warning("cache warmup failed for %r: %s", phrase[:40], e)
-                continue
+                return
             if pcm:
                 self._store[phrase] = pcm
+
+        await asyncio.gather(*(_synth_one(p) for p in missing))
         logger.info("TTS cache populated: %d entries", len(self._store))

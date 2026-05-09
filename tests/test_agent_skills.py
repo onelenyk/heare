@@ -427,61 +427,6 @@ async def test_list_skills_returns_success():
     assert "en" in result["spoken"]
 
 
-# ============================================================================
-# Edge Case Tests — Tool Extraction
-# ============================================================================
-
-
-def test_extract_tool_calls_ignores_prose():
-    """Prose containing word(text) should not produce tool calls."""
-    from src.agent.tools.direct import _extract_tool_calls_from_instructions
-
-    instructions = """
-    This skill demonstrates the feature(awesome syntax). You can also use function(args) inline.
-    But the real tools are bash(echo hello) and read(/tmp/file).
-    """
-
-    tool_calls = _extract_tool_calls_from_instructions(instructions, {})
-
-    # Should only find bash and read (feature, function are not real tools)
-    tool_names = [name for name, _ in tool_calls]
-    assert "bash" in tool_names
-    assert "read" in tool_names
-    assert "feature" not in tool_names
-    assert "function" not in tool_names
-    assert len(tool_calls) == 2
-
-
-def test_extract_tool_calls_with_context_substitution():
-    """Context variable substitution should work correctly."""
-    from src.agent.tools.direct import _extract_tool_calls_from_instructions
-
-    instructions = "read({filepath}) and bash({command})"
-    context = {"filepath": "/tmp/test.txt", "command": "echo done"}
-
-    tool_calls = _extract_tool_calls_from_instructions(instructions, context)
-
-    assert len(tool_calls) == 2
-    # First call should be read with substituted path
-    assert tool_calls[0] == ("read", "/tmp/test.txt")
-    # Second call should be bash with substituted command
-    assert tool_calls[1] == ("bash", "echo done")
-
-
-def test_extract_tool_calls_missing_context_keys():
-    """Missing context keys should be left as placeholders."""
-    from src.agent.tools.direct import _extract_tool_calls_from_instructions
-
-    instructions = "read({filepath}) and bash({missing_key})"
-    context = {"filepath": "/tmp/test.txt"}  # missing_key not provided
-
-    tool_calls = _extract_tool_calls_from_instructions(instructions, context)
-
-    assert len(tool_calls) == 2
-    assert tool_calls[0] == ("read", "/tmp/test.txt")
-    # Missing key remains as placeholder
-    assert tool_calls[1] == ("bash", "{missing_key}")
-
 
 # ============================================================================
 # US-002 Tests — SkillsLoader marketplace extensions

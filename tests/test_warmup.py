@@ -58,7 +58,7 @@ async def test_warmup_task_pings_edge_tts(fake_edge_tts) -> None:
 
     assert len(fake_edge_tts.instances) >= 1
     first = fake_edge_tts.instances[0]
-    assert first.text == "."
+    assert first.text == "ok"
     assert first.voice == "uk-UA-PolinaNeural"
 
 

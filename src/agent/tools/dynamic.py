@@ -1,12 +1,16 @@
 """Execution engine for dynamically created tools.
 
 Provides async functions to execute user-created tools with different
-implementation types: bash commands, HTTP fetches, and Python expressions.
+implementation types: bash commands and HTTP fetches. The legacy ``python``
+implementation type used ``eval()`` and was removed for security; new
+python-typed dynamic tools are rejected at registration time, and any
+already-stored python definitions error out at execution.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import shlex
 from typing import Any
 
 try:
@@ -20,14 +24,16 @@ logger = logging.getLogger("heare.dynamic_tools")
 async def execute_bash_tool(command: str, args: dict[str, Any], settings: Any) -> dict[str, Any]:
     """Execute a bash tool with argument substitution.
 
-    Args are substituted into the command using {arg} placeholders.
+    Args are substituted into the command using ``{arg}`` placeholders;
+    each substituted value is passed through ``shlex.quote`` so an LLM
+    cannot break out of the intended command via crafted argument text.
     The command runs in a subprocess with a 30-second timeout.
     """
-    # Substitute {arg} placeholders
+    # Substitute {arg} placeholders, shell-quoting each value.
     for key, value in args.items():
         placeholder = f"{{{key}}}"
         if placeholder in command:
-            command = command.replace(placeholder, str(value))
+            command = command.replace(placeholder, shlex.quote(str(value)))
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -70,11 +76,14 @@ async def execute_fetch_tool(url: str, args: dict[str, Any], settings: Any) -> d
     if httpx is None:
         return {"success": False, "error": "httpx is not installed"}
 
-    # Substitute {arg} placeholders
+    # Substitute {arg} placeholders, URL-quoting each value so a `?` or `&`
+    # in user input can't graft extra query parameters onto the request.
+    import urllib.parse as _urllib_parse
+
     for key, value in args.items():
         placeholder = f"{{{key}}}"
         if placeholder in url:
-            url = url.replace(placeholder, str(value))
+            url = url.replace(placeholder, _urllib_parse.quote(str(value), safe=""))
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -97,24 +106,21 @@ async def execute_fetch_tool(url: str, args: dict[str, Any], settings: Any) -> d
 async def execute_python_tool(
     code: str, args: dict[str, Any], settings: Any
 ) -> dict[str, Any]:
-    """Execute a Python expression with args available.
+    """Refuse: the python implementation type was removed.
 
-    WARNING: eval is dangerous and should only be used for trusted input.
-    The `args` dict is available as a local variable.
-
-    For safety, builtins are restricted and only safe operations are allowed.
+    The legacy version called ``eval(code, {"__builtins__": {}}, ...)`` which is
+    trivially escapable (``().__class__.__bases__[0].__subclasses__()`` chain),
+    giving an LLM-defined dynamic tool full process privileges. New python-typed
+    dynamic tools should now be rejected at registration time; this stub keeps
+    any already-persisted definitions from executing.
     """
-    try:
-        # WARNING: eval is dangerous, only for trusted use
-        # Restrict builtins for basic safety
-        result = eval(code, {"__builtins__": {}}, {"args": args})
-        return {
-            "success": True,
-            "output": str(result),
-        }
-    except Exception as e:
-        logger.exception("python tool execution failed")
-        return {"success": False, "error": str(e)}
+    return {
+        "success": False,
+        "error": (
+            "python dynamic tools are no longer supported "
+            "(use a bash or fetch tool instead)"
+        ),
+    }
 
 
 __all__ = [

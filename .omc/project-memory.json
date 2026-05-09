@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1777878883884,
+  "lastScanned": 1778318494689,
   "projectRoot": "/Users/lenyk/myprojects/heare",
   "techStack": {
     "languages": [
@@ -61,7 +61,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1777878883872,
+      "lastAccessed": 1778318494675,
       "keyFiles": [
         "action_execution_flow.md",
         "conversation_logic.md",
@@ -73,7 +73,7 @@
       "path": "migrations",
       "purpose": "Database migrations",
       "fileCount": 2,
-      "lastAccessed": 1777878883872,
+      "lastAccessed": 1778318494675,
       "keyFiles": [
         "01_add_conversations.sql",
         "02_dynamic_tools.sql"
@@ -83,7 +83,7 @@
       "path": "prompts",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1777878883873,
+      "lastAccessed": 1778318494676,
       "keyFiles": [
         "decider.txt",
         "identity-bootstrap.txt",
@@ -93,19 +93,21 @@
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 3,
-      "lastAccessed": 1777878883873,
+      "fileCount": 5,
+      "lastAccessed": 1778318494676,
       "keyFiles": [
         "bench_claude_ttft.py",
         "bench_openrouter.py",
-        "bench_persistent_claude.py"
+        "bench_persistent_claude.py",
+        "yamnet_mic.py",
+        "yamnet_probe.py"
       ]
     },
     "skills": {
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1777878883873,
+      "lastAccessed": 1778318494676,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -115,34 +117,41 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 52,
-      "lastAccessed": 1777878883873,
+      "fileCount": 5,
+      "lastAccessed": 1778318494676,
       "keyFiles": [
         "__init__.py",
-        "agent_skills.py",
-        "assistant_response_logger.py",
-        "capability_index.py",
-        "config.py"
+        "config.py",
+        "main.py",
+        "test_recognizer.py",
+        "version.py"
       ]
+    },
+    "testowanie_bota": {
+      "path": "testowanie_bota",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1778318494676,
+      "keyFiles": []
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 69,
-      "lastAccessed": 1777878883873,
+      "fileCount": 71,
+      "lastAccessed": 1778318494677,
       "keyFiles": [
         "__init__.py",
         "test_agent_skills.py",
         "test_assistant_response_logger.py",
-        "test_capability_e2e.py",
-        "test_capability_index.py"
+        "test_audio_event.py",
+        "test_capability_e2e.py"
       ]
     },
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
       "fileCount": 3,
-      "lastAccessed": 1777878883874,
+      "lastAccessed": 1778318494677,
       "keyFiles": [
         "cancel_stopwords.txt",
         "decider_prompt_flag_off.golden.txt"
@@ -151,303 +160,141 @@
   },
   "hotPaths": [
     {
-      "path": "src/pipeline.py",
-      "accessCount": 117,
-      "lastAccessed": 1777830762589,
+      "path": "extensions/heare-bridge/background.js",
+      "accessCount": 63,
+      "lastAccessed": 1778338283935,
       "type": "file"
     },
     {
-      "path": "src/direct_tools.py",
-      "accessCount": 99,
-      "lastAccessed": 1777830438657,
+      "path": "src/agent/browser_bridge.py",
+      "accessCount": 50,
+      "lastAccessed": 1778340620274,
       "type": "file"
     },
     {
-      "path": "src/watch.py",
-      "accessCount": 95,
-      "lastAccessed": 1777757952003,
+      "path": "src/watch/data.py",
+      "accessCount": 31,
+      "lastAccessed": 1778333367240,
       "type": "file"
     },
     {
-      "path": "src/llm_tools.py",
-      "accessCount": 85,
-      "lastAccessed": 1777754333240,
+      "path": "src/watch/widgets.py",
+      "accessCount": 22,
+      "lastAccessed": 1778327223639,
       "type": "file"
     },
     {
-      "path": "src/config.py",
-      "accessCount": 79,
-      "lastAccessed": 1777797834639,
-      "type": "file"
-    },
-    {
-      "path": "src/tool_registry.py",
-      "accessCount": 54,
-      "lastAccessed": 1777830444180,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_watch.py",
-      "accessCount": 51,
-      "lastAccessed": 1777797838500,
-      "type": "file"
-    },
-    {
-      "path": "src/llm_context_injector.py",
-      "accessCount": 51,
-      "lastAccessed": 1777830445789,
-      "type": "file"
-    },
-    {
-      "path": "src/storage.py",
-      "accessCount": 49,
-      "lastAccessed": 1777828926198,
+      "path": "src/agent/tools/direct.py",
+      "accessCount": 20,
+      "lastAccessed": 1778338290871,
       "type": "file"
     },
     {
       "path": "src/main.py",
-      "accessCount": 34,
-      "lastAccessed": 1777888439790,
+      "accessCount": 19,
+      "lastAccessed": 1778319974122,
       "type": "file"
     },
     {
-      "path": "src/transcription_gate.py",
-      "accessCount": 23,
-      "lastAccessed": 1777668389555,
+      "path": "tests/test_browser_bridge.py",
+      "accessCount": 16,
+      "lastAccessed": 1778340633357,
       "type": "file"
     },
     {
-      "path": "tests/test_watch_controls.py",
-      "accessCount": 18,
-      "lastAccessed": 1777798195425,
+      "path": "extensions/heare-bridge/manifest.json",
+      "accessCount": 14,
+      "lastAccessed": 1778335693214,
       "type": "file"
     },
     {
-      "path": "src/mcp_utils.py",
-      "accessCount": 15,
-      "lastAccessed": 1777830315714,
+      "path": "extensions/heare-bridge/options.js",
+      "accessCount": 14,
+      "lastAccessed": 1778337193961,
       "type": "file"
     },
     {
-      "path": "Makefile",
-      "accessCount": 15,
-      "lastAccessed": 1777888543539,
-      "type": "file"
-    },
-    {
-      "path": "src/assistant_response_logger.py",
-      "accessCount": 13,
-      "lastAccessed": 1777634212646,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/services/llm_service.py",
+      "path": "src/config.py",
       "accessCount": 11,
-      "lastAccessed": 1777663225663,
+      "lastAccessed": 1778319963510,
       "type": "file"
     },
     {
-      "path": "src/watch_controls.py",
-      "accessCount": 11,
-      "lastAccessed": 1777797718821,
-      "type": "file"
-    },
-    {
-      "path": "src/conversation.py",
-      "accessCount": 9,
-      "lastAccessed": 1777641264138,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_assistant_response_logger.py",
+      "path": "extensions/heare-bridge/options.html",
       "accessCount": 8,
-      "lastAccessed": 1777402649667,
+      "lastAccessed": 1778334033801,
       "type": "file"
     },
     {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/frames/frames.py",
+      "path": "extensions/heare-bridge/offscreen.js",
       "accessCount": 8,
-      "lastAccessed": 1777639542881,
+      "lastAccessed": 1778337393577,
       "type": "file"
     },
     {
-      "path": "tests/integration/test_conversation_flow.py",
+      "path": "src/agent/tools/schemas.py",
       "accessCount": 8,
-      "lastAccessed": 1777646834140,
+      "lastAccessed": 1778338297199,
       "type": "file"
     },
     {
-      "path": "tests/test_llm_tools.py",
-      "accessCount": 8,
-      "lastAccessed": 1777664159729,
+      "path": "src/watch/app.py",
+      "accessCount": 7,
+      "lastAccessed": 1778324066281,
       "type": "file"
     },
     {
-      "path": "src/context.py",
+      "path": "extensions/heare-bridge/popup.js",
+      "accessCount": 7,
+      "lastAccessed": 1778337193626,
+      "type": "file"
+    },
+    {
+      "path": "extensions/heare-bridge/content_script.js",
       "accessCount": 6,
-      "lastAccessed": 1777641264667,
+      "lastAccessed": 1778334043392,
       "type": "file"
     },
     {
-      "path": "src/language_state.py",
+      "path": "src/agent/tools/registry.py",
       "accessCount": 6,
-      "lastAccessed": 1777668394058,
+      "lastAccessed": 1778338294746,
       "type": "file"
     },
     {
-      "path": "src/identity.py",
-      "accessCount": 6,
-      "lastAccessed": 1777727648214,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_mcp_utils.py",
-      "accessCount": 6,
-      "lastAccessed": 1777728625775,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/processors/frame_processor.py",
-      "accessCount": 5,
-      "lastAccessed": 1777662372365,
-      "type": "file"
-    },
-    {
-      "path": "src/speaker_namer.py",
+      "path": "extensions/heare-bridge/popup.html",
       "accessCount": 4,
-      "lastAccessed": 1777647938579,
+      "lastAccessed": 1778334034252,
       "type": "file"
     },
     {
-      "path": "README.md",
-      "accessCount": 4,
-      "lastAccessed": 1777659750095,
-      "type": "file"
-    },
-    {
-      "path": "src/tts_edge.py",
-      "accessCount": 4,
-      "lastAccessed": 1777665645717,
-      "type": "file"
-    },
-    {
-      "path": "src/mute_gate.py",
+      "path": "extensions/heare-bridge/offscreen.html",
       "accessCount": 3,
-      "lastAccessed": 1777634206008,
+      "lastAccessed": 1778335693673,
       "type": "file"
     },
     {
-      "path": "tests/integration/test_tool_result_speech.py",
-      "accessCount": 3,
-      "lastAccessed": 1777647840949,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_conversation.py",
+      "path": "src/daemon/browser.py",
       "accessCount": 2,
-      "lastAccessed": 1777393588504,
+      "lastAccessed": 1778333367122,
       "type": "file"
     },
     {
-      "path": "tests/test_mute_gate.py",
-      "accessCount": 2,
-      "lastAccessed": 1777403126246,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_mcp_indication.py",
-      "accessCount": 2,
-      "lastAccessed": 1777411400534,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/schemas/tools_schema.py",
-      "accessCount": 2,
-      "lastAccessed": 1777639537901,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/services/anthropic_adapter.py",
-      "accessCount": 2,
-      "lastAccessed": 1777659753187,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/services/ai_service.py",
-      "accessCount": 2,
-      "lastAccessed": 1777661918993,
-      "type": "file"
-    },
-    {
-      "path": "src/text_injector.py",
-      "accessCount": 2,
-      "lastAccessed": 1777797775684,
-      "type": "file"
-    },
-    {
-      "path": "src/text_scrub.py",
+      "path": "pyproject.toml",
       "accessCount": 1,
-      "lastAccessed": 1777393525622,
+      "lastAccessed": 1778318767248,
       "type": "file"
     },
     {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/services/tts_service.py",
+      "path": "tests/test_direct_tools.py",
       "accessCount": 1,
-      "lastAccessed": 1777401383729,
+      "lastAccessed": 1778318795010,
       "type": "file"
     },
     {
-      "path": "tests/test_text_injector.py",
+      "path": "tests/test_watch_widgets.py",
       "accessCount": 1,
-      "lastAccessed": 1777403145481,
-      "type": "file"
-    },
-    {
-      "path": "src/speaker_processor.py",
-      "accessCount": 1,
-      "lastAccessed": 1777410575204,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/schemas/function_schema.py",
-      "accessCount": 1,
-      "lastAccessed": 1777411352107,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/schemas/direct_function.py",
-      "accessCount": 1,
-      "lastAccessed": 1777411354723,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/base_llm_adapter.py",
-      "accessCount": 1,
-      "lastAccessed": 1777411370811,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/services/open_ai_adapter.py",
-      "accessCount": 1,
-      "lastAccessed": 1777411374347,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/services/mcp_service.py",
-      "accessCount": 1,
-      "lastAccessed": 1777411388259,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/services/__init__.py",
-      "accessCount": 1,
-      "lastAccessed": 1777411390487,
-      "type": "file"
-    },
-    {
-      "path": ".venv/lib/python3.13/site-packages/pipecat/adapters/services/gemini_adapter.py",
-      "accessCount": 1,
-      "lastAccessed": 1777411394886,
+      "lastAccessed": 1778324123644,
       "type": "file"
     }
   ],

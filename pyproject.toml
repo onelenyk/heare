@@ -28,6 +28,10 @@ speaker = [
     "torch>=2.0",
     "numpy>=1.24",
 ]
+audio-event = [
+    "onnxruntime>=1.17",
+    "numpy>=1.24",
+]
 
 [dependency-groups]
 dev = [
