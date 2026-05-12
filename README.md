@@ -165,6 +165,30 @@ Features:
 - Audio event timeline (laughter, cough, etc. if enabled)
 - Voice state indicator (idle/listening/stt/result)
 
+## Overlay UI (always-on-top)
+
+A small frameless window that floats over every app, showing live agent
+state, the running transcript, and three quick-action buttons.
+
+```bash
+uv pip install -e '.[overlay]'           # one-time: pywebview + fastapi + uvicorn
+hearectl overlay                          # launch overlay (daemon optional)
+hearectl overlay-stop                     # close it
+HEARE_OVERLAY=1 hearectl start            # daemon + overlay together (opt-in)
+```
+
+`hearectl stop` always closes the overlay if it's running.
+
+- Status pill — bound to the same `voice_state.json` the watch dashboard reads (idle/listening/stt/result/offline).
+- 🎤 button — toggles `~/.heare/mute_input.flag` (input_mute_gate drops mic frames).
+- 🔊 button — toggles `~/.heare/mute.flag` (mute_gate drops TTS frames).
+- ⏹ button — touches `~/.heare/cancel.flag`; the new cancel_flag_gate stage picks it up on the next frame and pushes an `InterruptionFrame` upstream (same path as a spoken stop-word).
+- Debug accordion — last audio event (YAMNet), current state, last partial.
+
+The overlay is a single Python process: `pywebview` on the main thread,
+`uvicorn` on a random localhost port in a daemon thread. No remote
+access, no auth — it binds `127.0.0.1` only.
+
 ## Browser bridge (Chrome extension)
 
 The sideloaded extension at `extensions/heare-bridge/` (MV3, Chrome 109+) exposes 8 browser tools to the LLM:

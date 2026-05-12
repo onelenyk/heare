@@ -182,6 +182,9 @@ class Settings:
     mute_input_file: Path = field(
         default_factory=lambda: HEARE_HOME / "mute_input.flag"
     )
+    cancel_flag_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "cancel.flag"
+    )
     voice_state_file: Path = field(
         default_factory=lambda: HEARE_HOME / "voice_state.json"
     )

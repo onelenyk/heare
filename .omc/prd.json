@@ -1,0 +1,91 @@
+{
+  "title": "Agent Overlay UI",
+  "source_plan": ".omc/plan-overlay-ui.md",
+  "created": "2026-05-12",
+  "reviewer": "architect",
+  "notes": "All 6 stories implemented + verified headlessly. Visual pywebview window must be verified by the user on the host.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Cancel-flag pipeline gate",
+      "passes": true,
+      "rationale": "Overlay-driven cancel needs a way to push InterruptionFrame from outside the pipeline. Mirror the mute-gate flag-file pattern.",
+      "acceptanceCriteria": [
+        "src/config.py Settings has cancel_flag_file: Path defaulting to HEARE_HOME / 'cancel.flag'",
+        "src/pipeline/stages/cancel_flag_gate.py defines create_cancel_flag_gate(flag_path: Path) returning a FrameProcessor",
+        "On every frame, gate checks flag_path.exists(); when True it deletes the flag and pushes InterruptionFrame upstream exactly once; all frames pass through unchanged",
+        "src/pipeline/build.py imports and inserts the cancel_flag_gate into the stage list (after input_mute_gate, before audio_event_observer)",
+        "tests/test_cancel_flag_gate.py covers: (a) flag absent => no InterruptionFrame; (b) flag present => InterruptionFrame pushed upstream, flag deleted, original frame still forwarded; (c) flag re-created after delete => fires again",
+        "uv run pytest tests/test_cancel_flag_gate.py exits 0"
+      ],
+      "evidence": "5/5 tests pass in tests/test_cancel_flag_gate.py"
+    },
+    {
+      "id": "US-002",
+      "title": "Overlay FastAPI server",
+      "passes": true,
+      "rationale": "Single-process backend the pywebview window talks to. Reads daemon state files, writes flag files.",
+      "acceptanceCriteria": [
+        "src/overlay/server.py exposes a create_app(settings) -> FastAPI factory",
+        "GET /api/state returns JSON: {voice_state, audio_event, mute_output, mute_input, daemon_online}. daemon_online=true iff voice_state_file mtime is within 10s.",
+        "POST /api/mute/output {on: bool} toggles settings.mute_file; returns {muted: bool}",
+        "POST /api/mute/input  {on: bool} toggles settings.mute_input_file; returns {muted: bool}",
+        "POST /api/cancel touches settings.cancel_flag_file and returns {ok: true}",
+        "GET / serves static/index.html; GET /static/* serves the static directory",
+        "tests/test_overlay_server.py uses fastapi.testclient.TestClient and tmp_path settings to exercise all 5 routes; uv run pytest tests/test_overlay_server.py exits 0",
+        "Server binds 127.0.0.1 only (verified in code, not just doc)"
+      ],
+      "evidence": "8/8 tests pass in tests/test_overlay_server.py; bind_host() returns '127.0.0.1'"
+    },
+    {
+      "id": "US-003",
+      "title": "Overlay static frontend",
+      "passes": true,
+      "rationale": "Minimal HTML/CSS/JS that the pywebview window renders.",
+      "acceptanceCriteria": [
+        "src/overlay/static/index.html exists and contains: status pill, transcript region, three action buttons (mic mute, output mute, cancel), debug accordion",
+        "src/overlay/static/overlay.css styles frameless/translucent body and the four UI regions",
+        "src/overlay/static/overlay.js polls /api/state every ~200ms, renders state, wires three POST handlers, pauses polling on document.hidden",
+        "All three POST endpoints are referenced by overlay.js with correct paths"
+      ],
+      "evidence": "Files present; test_index_route_serves_html confirms index.html is served and contains <title>heare</title>; overlay.js references /api/mute/input, /api/mute/output, /api/cancel"
+    },
+    {
+      "id": "US-004",
+      "title": "pywebview launcher + optional dep group",
+      "passes": true,
+      "rationale": "One-process entry point; pywebview opens the window pointed at the local server.",
+      "acceptanceCriteria": [
+        "pyproject.toml has [project.optional-dependencies].overlay including pywebview, pyobjc (darwin-only), fastapi, uvicorn",
+        "src/overlay/app.py defines run() that: imports settings, starts uvicorn on 127.0.0.1:RANDOM in a daemon thread, then calls webview.create_window + webview.start with on_top=True, frameless=True",
+        "src/overlay/__main__.py invokes app.run() and prints a clear hint if pywebview/fastapi imports fail",
+        "Headless smoke: python -c 'from src.overlay.server import create_app; from src.config import load_settings; create_app(load_settings())' exits 0 (proves server side imports + factory work without pywebview installed)"
+      ],
+      "evidence": "Headless smoke prints 'factory OK, routes: [..., /api/state, /api/mute/output, /api/mute/input, /api/cancel, /static, /]'"
+    },
+    {
+      "id": "US-005",
+      "title": "hearectl overlay subcommand",
+      "passes": true,
+      "rationale": "Match daemon ergonomics so the overlay starts/stops the same way.",
+      "acceptanceCriteria": [
+        "hearectl gains an 'overlay' subcommand that launches python -m src.overlay in the background and writes $HEARE_HOME/overlay.pid",
+        "hearectl gains an 'overlay-stop' subcommand that reads overlay.pid and TERMs the process",
+        "Running 'hearectl' with no args lists 'overlay' and 'overlay-stop' in the help/usage output",
+        "bash -n hearectl exits 0 (syntax check)"
+      ],
+      "evidence": "bash -n exits 0; help output lists 'overlay' and 'overlay-stop'"
+    },
+    {
+      "id": "US-006",
+      "title": "README / docs update",
+      "passes": true,
+      "rationale": "Document the new feature so the user can find it.",
+      "acceptanceCriteria": [
+        "README.md adds a section 'Overlay UI' explaining: install via 'uv pip install -e .[overlay]', launch via 'hearectl overlay', what each button does, and the file-flag contract",
+        ".omc/plan-overlay-ui.md status flipped from 'draft' to 'implemented' with a brief retrospective note (drift from plan, if any)"
+      ],
+      "evidence": "README has new 'Overlay UI' section between 'Watch dashboard' and 'Browser bridge'; plan-overlay-ui.md status='implemented' with retro section"
+    }
+  ]
+}

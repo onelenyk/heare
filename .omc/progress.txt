@@ -1,0 +1,44 @@
+Ralph progress log — Overlay UI
+=================================
+
+Iteration 1 (2026-05-12)
+- PRD scaffolded with 6 stories, task-specific AC.
+- Patterns identified before coding:
+  * Flag-file gate pattern: src/pipeline/stages/mute_gate.py
+  * InterruptionFrame push: transcription_gate.py:350 (FrameDirection.UPSTREAM)
+  * Settings paths: HEARE_HOME / 'name.ext' via field_factory
+  * Deferred pipecat imports inside _build_*_class() closures
+- Implemented US-001 → US-006 in a single iteration.
+
+Files added:
+- src/pipeline/stages/cancel_flag_gate.py (~85 LOC)
+- src/overlay/__init__.py
+- src/overlay/server.py (~115 LOC)
+- src/overlay/app.py (~75 LOC)
+- src/overlay/__main__.py
+- src/overlay/static/index.html
+- src/overlay/static/overlay.css
+- src/overlay/static/overlay.js (~130 LOC)
+- tests/test_cancel_flag_gate.py (5 tests)
+- tests/test_overlay_server.py (8 tests)
+
+Files edited:
+- src/config.py — new field: cancel_flag_file: Path = HEARE_HOME / "cancel.flag"
+- src/pipeline/build.py — imports + wiring of cancel_flag_gate
+- pyproject.toml — new optional dep group: overlay (fastapi, uvicorn, pywebview, pyobjc-*)
+- hearectl — new subcommands: overlay, overlay-stop + OVERLAY_PID_FILE
+- README.md — new section "Overlay UI"
+- .omc/plan-overlay-ui.md — status: implemented + retro
+
+Verification:
+- tests/test_cancel_flag_gate.py: 5 passed
+- tests/test_overlay_server.py: 8 passed
+- Full suite: 1169 passed, 2 skipped, 0 failed
+- Headless smoke: from src.overlay.server import create_app; create_app(load_settings()) → OK
+- bash -n hearectl: exit 0
+- hearectl help: lists overlay and overlay-stop
+
+Not verified in sandbox:
+- Visual pywebview window opening on the host display (no GUI in sandbox)
+- Actual cancel during a live pipeline run (requires running daemon)
+Both are user-side smoke tests after installing the [overlay] extras.

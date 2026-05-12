@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, Tuple
 from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
 from src.pipeline.stages.tts_scrub_processor import create_tts_scrub_processor
 from src.pipeline.stages.usage_recorder import create_usage_recorder
+from src.pipeline.stages.cancel_flag_gate import create_cancel_flag_gate
 from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_gate
 from src.config import Settings
 from src.pipeline.language_state import LanguageState
@@ -137,6 +138,7 @@ def _assemble_native_stages(
     mute_gate: Any = None,
     input_mute_gate: Any = None,
     audio_event_observer: Any = None,
+    cancel_flag_gate: Any = None,
 ) -> list:
     """Pure stage-list assembly, factored out for unit testing.
 
@@ -154,6 +156,13 @@ def _assemble_native_stages(
     # before STT (and any speaker buffering) runs.
     if input_mute_gate is not None:
         stages.append(input_mute_gate)
+    # cancel_flag_gate sits AFTER input_mute_gate (so a cancel during a muted
+    # session still fires) and BEFORE every heavy stage — the gate emits
+    # InterruptionFrame upstream which propagates immediately as a SystemFrame,
+    # so its physical position only matters for the order in which it observes
+    # frames, not for cancel latency.
+    if cancel_flag_gate is not None:
+        stages.append(cancel_flag_gate)
     # audio_event_observer sits AFTER input_mute_gate so muted mic audio is
     # never wasted on YAMNet inference, and BEFORE speaker_buffer / STT so it
     # operates on the raw mic stream.
@@ -580,6 +589,14 @@ async def build_pipeline(
     # pipeline so STT never even sees the muted audio.
     input_mute_gate = create_input_mute_gate(flag_path=settings.mute_input_file)
 
+    # Cancel-flag gate — external "interrupt now" trigger. Mirrors the
+    # mute-gate flag-file contract: any process (overlay, watch dashboard,
+    # hotkey daemon) touches ``settings.cancel_flag_file`` and the next
+    # pipeline frame pushes an InterruptionFrame upstream.
+    cancel_flag_gate = create_cancel_flag_gate(
+        flag_path=settings.cancel_flag_file
+    )
+
     # Audio event detection (YAMNet) — opt-in, off by default. The observer
     # is constructed lazily so a daemon with the flag off never imports
     # ``onnxruntime`` or ``numpy``. Any failure here logs and degrades to a
@@ -625,6 +642,7 @@ async def build_pipeline(
         mute_gate=mute_gate,
         input_mute_gate=input_mute_gate,
         audio_event_observer=audio_event_observer,
+        cancel_flag_gate=cancel_flag_gate,
     )
 
     logger.info(
