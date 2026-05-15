@@ -5,7 +5,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, ListItem, ListView
+from textual.widgets import DataTable, Input, Label, ListItem, ListView
 
 from . import models
 
@@ -177,6 +177,94 @@ class ChromeProfileSelectScreen(ModalScreen[str | None]):
             return
         idx = int(item.id.split("-", 1)[1])
         self.dismiss(self._profiles[idx].directory)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
+class ToolingScreen(ModalScreen[None]):
+    """Read-only modal: every capability the agent can call, in one table.
+
+    Three buckets (built-in tools, skills, MCP servers) are concatenated
+    into a single DataTable with a SOURCE column so the operator can scan
+    them all without flipping panes. Data is fetched synchronously from
+    the same helpers the LLM's list_capabilities tool uses, so the table
+    is authoritative — what you see here is what the agent sees.
+    """
+
+    BINDINGS = (
+        Binding("escape", "dismiss_none", "Close"),
+        Binding("q", "dismiss_none", "Close"),
+    )
+
+    DEFAULT_CSS = """
+    ToolingScreen {
+        align: center middle;
+    }
+
+    #tooling-dialog {
+        width: 90%;
+        max-width: 120;
+        height: 80%;
+        border: round $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #tooling-dialog Label.title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #tooling-dialog DataTable {
+        height: 1fr;
+    }
+    """
+
+    def __init__(self, settings) -> None:
+        super().__init__()
+        self._settings = settings
+
+    def compose(self) -> ComposeResult:
+        rows, totals = self._gather()
+        title = (
+            f"Available tooling — "
+            f"{totals['built_in']} built-in · "
+            f"{totals['skills']} skills · "
+            f"{totals['mcps']} MCP   (Esc to close)"
+        )
+        with Vertical(id="tooling-dialog"):
+            yield Label(title, classes="title")
+            table: DataTable = DataTable(zebra_stripes=True, cursor_type="row")
+            table.add_columns("SOURCE", "NAME", "DESCRIPTION")
+            for source, name, description in rows:
+                table.add_row(source, name, description)
+            yield table
+
+    def _gather(self) -> tuple[list[tuple[str, str, str]], dict[str, int]]:
+        from src.agent.tools.direct import (
+            _list_built_in_tools,
+            _list_mcp_servers,
+            _list_skills,
+        )
+
+        built_in = _list_built_in_tools()
+        skills = _list_skills(self._settings)
+        mcps = _list_mcp_servers(self._settings)
+        rows: list[tuple[str, str, str]] = []
+        for item in built_in:
+            rows.append(("built-in", item["name"], item.get("description", "")))
+        for item in skills:
+            rows.append(("skill", item["name"], item.get("description", "")))
+        for item in mcps:
+            rows.append(("mcp", item["name"], item.get("description", "")))
+        totals = {
+            "built_in": len(built_in),
+            "skills": len(skills),
+            "mcps": len(mcps),
+        }
+        return rows, totals
 
     def action_dismiss_none(self) -> None:
         self.dismiss(None)

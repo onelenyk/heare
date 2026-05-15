@@ -16,7 +16,7 @@ from src.daemon.browser import ensure_debug_chrome, is_debug_reachable, list_chr
 from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
 from . import models
 from .data import fetch_dashboard_state
-from .screens import ChromeProfileSelectScreen, ModelSelectScreen
+from .screens import ChromeProfileSelectScreen, ModelSelectScreen, ToolingScreen
 from .widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail, UsageBar, VoiceStateBar
 
 
@@ -38,6 +38,7 @@ class HeareDashboard(App):
         Binding("M", "toggle_mute_mic", "Mute mic", show=True),
         Binding("t", "text_input", "Text inject", show=True),
         Binding("b", "launch_chrome", "Chrome (CDP)", show=True),
+        Binding("l", "show_tools", "Tools", show=True),
         Binding("p", "toggle_provider", "Provider", show=False),
         Binding("o", "pick_model", "Pick model", show=False),
         Binding("q", "quit", "Quit", show=True),
@@ -86,7 +87,7 @@ class HeareDashboard(App):
         "start_daemon", "stop_daemon", "restart_daemon",
         "toggle_mute_bot", "toggle_mute_mic", "toggle_provider",
         "pick_model", "shrink_left", "grow_left", "quit",
-        "refresh_now", "respawn", "launch_chrome",
+        "refresh_now", "respawn", "launch_chrome", "show_tools",
     })
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -196,6 +197,10 @@ class HeareDashboard(App):
             self.query_one(ControlsBar).update_status(msg)
 
         self.push_screen(ChromeProfileSelectScreen(profiles), _on_dismiss)
+
+    def action_show_tools(self) -> None:
+        """Open the available-tooling dialog (l key)."""
+        self.push_screen(ToolingScreen(self.settings))
 
     def action_pick_model(self) -> None:
         """Open the model-select dialog (o key)."""

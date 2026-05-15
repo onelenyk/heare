@@ -291,6 +291,35 @@ async def test_select_model_writes_model_file() -> None:
 
 
 @pytest.mark.asyncio
+async def test_show_tools_opens_modal() -> None:
+    """Pressing l pushes ToolingScreen onto the screen stack."""
+    from src.watch.screens import ToolingScreen
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        (Path(tmp) / "logs").mkdir()
+
+        async with HeareDashboard(settings=settings).run_test() as pilot:
+            await pilot.press("l")
+            assert isinstance(pilot.app.screen, ToolingScreen)
+
+
+@pytest.mark.asyncio
+async def test_show_tools_suppressed_during_text_input() -> None:
+    """Pressing l while text-input is active is a no-op."""
+    from src.watch.screens import ToolingScreen
+
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = _make_settings(tmp)
+        (Path(tmp) / "logs").mkdir()
+
+        async with HeareDashboard(settings=settings).run_test() as pilot:
+            await pilot.press("t")  # enter input mode
+            await pilot.press("l")
+            assert not isinstance(pilot.app.screen, ToolingScreen)
+
+
+@pytest.mark.asyncio
 async def test_grow_action_cycles_activity_width_class() -> None:
     """action_grow_left swaps the activity-N CSS class on ActivityTable."""
     from src.watch.widgets import ActivityTable
