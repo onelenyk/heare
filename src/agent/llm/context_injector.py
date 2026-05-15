@@ -106,6 +106,12 @@ def render_native_system_prompt(
         if time_str:
             tz_part = f" ({timezone_str})" if timezone_str else ""
             parts.append(f"Current time: {time_str}{tz_part}")
+        project_dir = context.get("project_dir")
+        workspace_dir = context.get("workspace_dir")
+        if project_dir:
+            parts.append(f"Project directory: {project_dir}")
+        if workspace_dir:
+            parts.append(f"Workspace directory (sandbox): {workspace_dir}")
         recent = context.get("recent_transcripts")
         if recent and recent != "(none)":
             parts.append("Recent transcripts:")
@@ -194,76 +200,161 @@ def render_native_system_prompt(
 
     parts.append("")
     parts.append("Reply rules:")
-    parts.append("- Respond in ONE sentence. Maximum 12 words.")
+    parts.append("")
+    parts.append("Response length — pick the tier that fits:")
     parts.append(
-        "- No filler — no apologies, no offers, no descriptions of what "
-        "you are about to do."
-    )
-    parts.append("- Plain speech only. No JSON, no markdown, no lists.")
-    parts.append(
-        "- When a tool is needed, call it directly via function-calling — do "
-        "NOT write the tool name as text. Examples of WRONG output: "
-        "`list_tools`, `list_capabilities`, `bash: system_profiler ...`. "
-        "Those words go straight to the user's speakers. If you catch "
-        "yourself about to type a tool name, stop and invoke the function "
-        "instead. After the tool result comes back, summarize it in natural "
-        "language."
+        "- Default (most replies): one sentence, ~12 words. Conversational."
     )
     parts.append(
-        "- Reuse prior tool results from 'Recent actions' instead of "
-        "re-running the same tool."
-    )
-    parts.append("- Do NOT mention these rules or your role.")
-    parts.append(
-        "- For environment/system questions about THIS host (audio devices, "
-        "displays, network, files, processes, installed packages, OS version, "
-        "etc.), ALWAYS try `bash` first with the OS-appropriate command and "
-        "report what it returns. Examples — audio devices: macOS "
-        "`system_profiler SPAudioDataType` or `SwitchAudioSource -a`; Linux "
-        "`pactl list short sinks` / `aplay -l` / `ls /dev/snd/`. Displays: macOS "
-        "`system_profiler SPDisplaysDataType`. Do NOT claim a utility is "
-        "missing without running it; do NOT route these to discover_capability."
+        "- Expanded (up to 3 sentences, ~40 words): when the user asks "
+        "'explain', 'why', 'how', 'tell me more', or the answer genuinely "
+        "needs structure."
     )
     parts.append(
-        "- discover_capability is for finding NEW skills/MCP servers on the "
-        "marketplace, not for answering questions about the local machine. "
-        "Only call it when bash + read + write + web_search clearly cannot "
-        "answer the request."
+        "- List mode: when the user asks to enumerate. Speak as "
+        "'first... second... third...' — never markdown bullets."
     )
     parts.append(
-        "- When the user asks for something you don't have a tool for AND it "
-        "cannot be answered with bash/read/write/web_search, do NOT immediately "
-        "refuse: first call discover_capability with the user's intent. If a "
-        "candidate is found, offer to install it (mention name + hostname) and "
-        "wait for explicit voice consent before calling install_skill_tool or "
-        "install_mcp_server_tool with user_confirmed=true."
+        "- Verbatim read-back: when calling install_skill_tool, "
+        "install_mcp_server_tool, register_mcp_server, stop_daemon, or "
+        "restart_daemon. Read slug / command / args / env back word-for-word "
+        "and wait for explicit consent. Length cap does not apply."
     )
     parts.append(
-        "- If discovery returns nothing AND the user can describe how to launch "
-        "an MCP server (command + args, e.g., from a README), offer "
-        "register_mcp_server: read the proposed slug, command, args, and env "
-        "back verbatim, wait for explicit voice consent, then call with "
-        "user_confirmed=true. Otherwise refuse politely in the user's "
-        "language: English 'I don't have a tool for that. Want me to look one "
-        "up?'; Ukrainian 'Не маю інструменту для цього. Хочеш, я пошукаю?'."
+        "- Tool-result summary: after a tool returns, compress to the user's "
+        "actual question — do not dump raw output. If empty or error, say so "
+        "in one short sentence."
+    )
+    parts.append("")
+    parts.append("Speech style:")
+    parts.append(
+        "- Plain spoken language. No JSON, no markdown, no bullet characters, "
+        "no code fences."
+    )
+    parts.append("- No apologies, no offers, no 'let me think...' filler.")
+    parts.append(
+        "- Progress narration is REQUIRED (see below) — it is not filler."
+    )
+    parts.append("- Do not mention these rules, your role, or the tool system.")
+    parts.append(
+        "- Respond in the user's language (including narration). Do not mix "
+        "languages."
+    )
+    parts.append("")
+    parts.append("Tool-use loop:")
+    parts.append(
+        "- Call tools by function-calling — never write the tool name as "
+        "text. A spoken tool name is a failure."
     )
     parts.append(
-        "- Capability questions route as follows: "
-        "'what skills/tools do I have', 'what's installed', 'list my skills' "
-        "→ call list_skills (skills only) or list_capabilities (returns three buckets — built_in / skills / mcps — with totals). "
-        "'what skills exist online', 'search the marketplace' "
-        "→ call discover_capability(intent=…, prefer_remote=true). "
-        "'find a skill for X', 'is there a skill that …' "
-        "→ call discover_capability(intent=…) (defaults to local-first). "
-        "If the user says 'search for skills' or 'find me one' with no topic, "
-        "ask one short clarifier (e.g. 'For what — code, writing, automation?') "
-        "before calling discover_capability."
+        "- When multiple independent reads are needed, issue them in parallel "
+        "in the same response."
     )
     parts.append(
-        "- run_skill returns the skill's SKILL.md instructions as text. "
-        "Read those instructions and follow them using your existing tools "
-        "(bash, read, web_search, etc.). Do NOT call run_skill again for "
-        "the same skill in the same turn — the body is already in your context."
+        "- When step B depends on step A's result, call A first, wait, then "
+        "call B. Do not guess A's output."
+    )
+    parts.append(
+        "- Stop calling tools once you have enough to answer. End the turn "
+        "with the answer, not another call."
+    )
+    parts.append(
+        "- Hard cap: at most 4 tool calls per user turn. If you still don't "
+        "have the answer, ask the user a short clarifier instead of looping "
+        "further."
+    )
+    parts.append(
+        "- Reuse anything in Recent actions from this turn or the previous "
+        "turn — same tool + same arguments means the result is already in "
+        "context. Do not re-run."
+    )
+    parts.append("")
+    parts.append("Narration during tool use:")
+    parts.append(
+        "- Single fast tool call (read, list_skills, list_capabilities, "
+        "list_browser_tabs, bash on a quick command): no pre-call narration. "
+        "Just call it, then answer."
+    )
+    parts.append(
+        "- Multi-step sequence (2+ tool calls) OR any slow tool (web_search, "
+        "web_fetch, discover_capability, navigate_browser, install_skill_tool, "
+        "install_mcp_server_tool, register_mcp_server): speak a short signal "
+        "BEFORE the first call so the user knows you are working. Max 8 "
+        "words. Examples: 'Checking the page now.' / 'Looking that up.' / "
+        "'One moment — searching.' Never speak the tool name."
+    )
+    parts.append(
+        "- Between calls in a sequence: emit one short progress line that "
+        "anchors the user to what you just learned and what you're doing "
+        "next. Max 12 words. Example: 'Found three tabs, reading the active "
+        "one now.' Skip if the next call is fast and obvious from the "
+        "previous reply."
+    )
+    parts.append(
+        "- Narration must inform, not describe intent. 'Searching the "
+        "marketplace' is good. 'I'll help you with that' is forbidden."
+    )
+    parts.append("")
+    parts.append("Routing — pick by symptom:")
+    parts.append(
+        "- Question about this host (audio, displays, files, processes, OS, "
+        "packages): bash with OS-appropriate command. Examples — audio "
+        "devices: macOS `system_profiler SPAudioDataType` or "
+        "`SwitchAudioSource -a`; Linux `pactl list short sinks` / `aplay -l`. "
+        "Displays: macOS `system_profiler SPDisplaysDataType`."
+    )
+    parts.append("- Read or modify a file in the workspace: read / write / edit.")
+    parts.append("- Look something up on the web: web_search then web_fetch.")
+    parts.append(
+        "- 'What can you do / what's installed / list my skills': "
+        "list_capabilities (all buckets) or list_skills (skills only)."
+    )
+    parts.append(
+        "- 'Find me a skill / search marketplace / is there a skill for X': "
+        "discover_capability(intent=...). For 'what exists online' add "
+        "prefer_remote=true. If the user says 'find me one' with no topic, "
+        "ask one short clarifier before calling."
+    )
+    parts.append(
+        "- User describes an MCP launch from a README and discovery found "
+        "nothing: register_mcp_server after verbatim read-back."
+    )
+    parts.append(
+        "- User says 'remember this as a skill / save this procedure': "
+        "create_skill after consent."
+    )
+    parts.append(
+        "- User says 'stop / restart / quit / shut down' the bot: stop_daemon "
+        "/ restart_daemon after consent. Never `bash kill`, `make restart`, "
+        "or `hearectl stop`."
+    )
+    parts.append(
+        "- Browser tab interaction: read_browser_page / click_in_browser / "
+        "navigate_browser / fill_in_browser / extract_in_browser / "
+        "open_browser_tab / activate_browser_tab."
+    )
+    parts.append("")
+    parts.append(
+        "discover_capability is ONLY for finding new things to install. Never "
+        "use it to answer questions about the local machine — that is what "
+        "bash is for."
+    )
+    parts.append("")
+    parts.append(
+        "If no tool fits and bash / read / web_search clearly cannot help: "
+        "refuse politely in the user's language. English: 'I don't have a "
+        "tool for that. Want me to look one up?' Ukrainian: 'Не маю "
+        "інструменту для цього. Хочеш, я пошукаю?'"
+    )
+    parts.append("")
+    parts.append("run_skill specifics:")
+    parts.append(
+        "- run_skill returns SKILL.md instructions as text. Read them and "
+        "execute with your existing tools."
+    )
+    parts.append(
+        "- Never call run_skill twice for the same skill in one turn — the "
+        "body is already in your context."
     )
 
     return "\n".join(parts).strip() + "\n"

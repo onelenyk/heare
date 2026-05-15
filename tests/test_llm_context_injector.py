@@ -92,14 +92,17 @@ def test_render_prefers_bash_for_environment_questions() -> None:
     discover_capability — fixes the 'audio devices' regression where the
     model claimed it had no tools instead of running a shell command."""
     out = render_native_system_prompt(persona="", context=None, language="en")
-    # The bash-first reflex must appear before the discover_capability
-    # fallback so the model reads it first.
-    bash_idx = out.find("ALWAYS try `bash` first")
-    discover_idx = out.find("first call discover_capability")
-    assert bash_idx != -1, "bash-first rule missing"
-    assert discover_idx != -1, "discover_capability fallback missing"
+    # The bash routing rule must appear before the constraint that
+    # restricts discover_capability, so the model reads the positive
+    # routing first.
+    bash_idx = out.find("bash with OS-appropriate command")
+    discover_idx = out.find(
+        "discover_capability is ONLY for finding new things to install"
+    )
+    assert bash_idx != -1, "bash routing rule missing"
+    assert discover_idx != -1, "discover_capability constraint missing"
     assert bash_idx < discover_idx, (
-        "bash-first reflex must precede discover_capability fallback"
+        "bash routing must precede discover_capability constraint"
     )
     # Audio-device example should be present so the model has a concrete
     # template for the failing case.

@@ -67,6 +67,8 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     from src.daemon.workspace import ensure_workspace_mcp
     ensure_workspace_mcp(settings.workspace_dir)
 
+    project_dir = str(Path(__file__).parent.parent.resolve())
+
     # Onboarding gate — must run AFTER ensure_workspace_mcp so upgrading
     # users whose ~/.claude.json has MCPs but who haven't run heare since
     # the upgrade get their workspace seeded before the migration check.
@@ -153,7 +155,10 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                     "action_log hydrate failed (non-fatal) — starting empty"
                 )
 
-        context_builder = ContextBuilder(store, settings, conversation_manager)
+        context_builder = ContextBuilder(
+            store, settings, conversation_manager,
+            project_dir=project_dir,
+        )
 
         speaker_gallery = None
         speaker_model = None
@@ -219,6 +224,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             speaker_gallery=speaker_gallery,
             speaker_model=speaker_model,
             namer_enqueue=namer_enqueue,
+            project_dir=project_dir,
         )
 
         from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402

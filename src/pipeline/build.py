@@ -57,7 +57,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger("heare.pipeline_native")
 
 
-def _build_system_prompt(persona: str, language: str) -> str:
+def _build_system_prompt(
+    persona: str,
+    language: str,
+    project_dir: str | None = None,
+    workspace_dir: str | None = None,
+) -> str:
     """Construction-time system message — minimal, no conversation context.
 
     The pipeline-native graph also wires a ``SystemPromptInjector``
@@ -67,9 +72,18 @@ def _build_system_prompt(persona: str, language: str) -> str:
     seed the LLMContext at construction time before any utterance has
     arrived. Tests cover both the seed shape and the per-turn rebuild
     path independently.
+
+    ``project_dir`` and ``workspace_dir`` are passed so the agent knows
+    its code root and file-operation sandbox even at construction time
+    (and on language switches via ``_wire_language_state``).
     """
+    ctx: dict[str, str] = {}
+    if project_dir:
+        ctx["project_dir"] = project_dir
+    if workspace_dir:
+        ctx["workspace_dir"] = workspace_dir
     return render_native_system_prompt(
-        persona=persona, context=None, language=language
+        persona=persona, context=ctx or None, language=language
     )
 
 
@@ -77,6 +91,8 @@ def _wire_language_state(
     state: LanguageState,
     llm_context: Any,
     persona: str,
+    project_dir: str | None = None,
+    workspace_dir: str | None = None,
 ) -> None:
     """Update the LLMContext's first system message whenever the
     LanguageState changes. The user_aggregator reads the same context
@@ -95,7 +111,11 @@ def _wire_language_state(
                     "LLMContext messages; skipping update"
                 )
                 return
-        new_system = _build_system_prompt(persona, new_lang)
+        new_system = _build_system_prompt(
+            persona, new_lang,
+            project_dir=project_dir,
+            workspace_dir=workspace_dir,
+        )
         for i, msg in enumerate(messages):
             if isinstance(msg, dict) and msg.get("role") == "system":
                 messages[i] = {"role": "system", "content": new_system}
@@ -223,6 +243,7 @@ async def build_pipeline(
     speaker_gallery: Any = None,
     speaker_model: Any = None,
     namer_enqueue: Any = None,
+    project_dir: str | None = None,
 ) -> Tuple[object, object, object, object, object, object]:
     """Build the Pipecat-native pipeline.
 
@@ -454,7 +475,12 @@ async def build_pipeline(
         messages=[
             {
                 "role": "system",
-                "content": _build_system_prompt(persona, language_state.language),
+                "content": _build_system_prompt(
+                    persona,
+                    language_state.language,
+                    project_dir=project_dir,
+                    workspace_dir=str(settings.workspace_dir),
+                ),
             }
         ],
         tools=tools_schema,
@@ -478,7 +504,11 @@ async def build_pipeline(
         settings=settings,
         conversation_manager=conversation_manager,
     )
-    _wire_language_state(language_state, llm_context, persona)
+    _wire_language_state(
+        language_state, llm_context, persona,
+        project_dir=project_dir,
+        workspace_dir=str(settings.workspace_dir),
+    )
 
     # Load dynamic tools from database and register them
     dynamic_tools = await store.load_all_dynamic_tools()

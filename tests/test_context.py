@@ -325,7 +325,7 @@ async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) 
         "recent_actions",
         "user_language",
     }
-    optional = {"mcp_servers"}
+    optional = {"mcp_servers", "workspace_dir"}
     assert required <= set(result.keys())
     assert set(result.keys()) - required <= optional
     assert result["persona"] == "Ти Heare."

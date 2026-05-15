@@ -42,11 +42,13 @@ class ContextBuilder:
         settings: "Settings",
         conversation_manager: "ConversationManager | None" = None,
         speaker_gallery: "SpeakerGallery | None" = None,
+        project_dir: str | None = None,
     ) -> None:
         self.store = store
         self.settings = settings
         self.conversation_manager = conversation_manager
         self.speaker_gallery = speaker_gallery
+        self._project_dir = project_dir
         self._mcp_descriptions: str | None = None
         try:
             from src.skills.mcp_utils import build_mcp_prompt_block, read_mcp_servers
@@ -145,6 +147,9 @@ class ContextBuilder:
             )
         else:
             result["recent_actions"] = "(none)"
+        if self._project_dir:
+            result["project_dir"] = self._project_dir
+        result["workspace_dir"] = str(self.settings.workspace_dir)
         if self._mcp_descriptions:
             result["mcp_servers"] = self._mcp_descriptions
         return result
