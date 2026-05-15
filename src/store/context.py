@@ -193,10 +193,27 @@ class ContextBuilder:
             stamp = dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
             if labelled:
                 label = self._resolve_label(row.get("speaker_id"))
-                lines.append(f"  - [{stamp}] {label}: {row['text']}")
+                line = f"  - [{stamp}] {label}: {row['text']}"
             else:
-                lines.append(f"  - [{stamp}] {row['text']}")
+                line = f"  - [{stamp}] {row['text']}"
+            lines.append(line + self._audio_event_suffix(row))
         return "\n".join(lines)
+
+    @staticmethod
+    def _audio_event_suffix(row: dict[str, Any]) -> str:
+        """Render the ambient-sound tag for a transcript row, if any.
+
+        Surfaces what YAMNet heard around the utterance (e.g. Music) so
+        the LLM can discount a short/garbled turn that was likely picked
+        up from a TV or speakers rather than spoken to it.
+        """
+        ev_label = row.get("audio_event_label")
+        if not ev_label:
+            return ""
+        ev_score = row.get("audio_event_score")
+        if isinstance(ev_score, (int, float)):
+            return f"  [audio: {ev_label} {float(ev_score):.2f}]"
+        return f"  [audio: {ev_label}]"
 
     def _resolve_label(self, speaker_id: str | None) -> str:
         if speaker_id is None:

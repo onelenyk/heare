@@ -66,6 +66,33 @@ async def test_recent_transcripts_rendering(store: TranscriptStore) -> None:
     assert "два" in result["recent_transcripts"]
 
 
+async def test_recent_transcripts_renders_audio_event_tag(
+    store: TranscriptStore,
+) -> None:
+    await store.log_transcript(
+        "what",
+        "ambient",
+        audio_event_label="Music",
+        audio_event_score=0.83,
+    )
+    settings = load_settings()
+    settings.speaker_id_enabled = False
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build("hi", heartbeat=False)
+    assert "[audio: Music 0.83]" in result["recent_transcripts"]
+
+
+async def test_recent_transcripts_no_tag_when_no_audio_event(
+    store: TranscriptStore,
+) -> None:
+    await store.log_transcript("clean turn", "ambient")
+    settings = load_settings()
+    settings.speaker_id_enabled = False
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build("hi", heartbeat=False)
+    assert "[audio:" not in result["recent_transcripts"]
+
+
 async def test_render_real_decider_template(store: TranscriptStore) -> None:
     """prompts/decider.txt contains literal { and } from the JSON example.
     render() must substitute named placeholders without choking on braces."""

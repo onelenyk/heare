@@ -32,6 +32,25 @@ async def test_log_and_read_transcript(store: TranscriptStore) -> None:
     assert recent[0]["mode"] == "ambient"
 
 
+async def test_audio_event_columns_round_trip(store: TranscriptStore) -> None:
+    await store.log_transcript(
+        "hello there",
+        "ambient",
+        audio_event_label="Music",
+        audio_event_score=0.82,
+    )
+    recent = await store.recent_transcripts(5)
+    assert recent[0]["audio_event_label"] == "Music"
+    assert recent[0]["audio_event_score"] == pytest.approx(0.82)
+
+
+async def test_audio_event_columns_default_null(store: TranscriptStore) -> None:
+    await store.log_transcript("plain turn", "ambient")
+    recent = await store.recent_transcripts(5)
+    assert recent[0]["audio_event_label"] is None
+    assert recent[0]["audio_event_score"] is None
+
+
 async def test_log_decision_and_action(store: TranscriptStore) -> None:
     tid = await store.log_transcript("запусти тести", "focus")
     decision = {

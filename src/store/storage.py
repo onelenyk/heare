@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS transcripts (
     text TEXT NOT NULL,
     mode TEXT NOT NULL,
     speaker_id TEXT,
-    speaker_confidence REAL
+    speaker_confidence REAL,
+    audio_event_label TEXT,
+    audio_event_score REAL
 );
 
 CREATE TABLE IF NOT EXISTS decisions (
@@ -196,6 +198,8 @@ class TranscriptStore:
             "ALTER TABLE transcripts ADD COLUMN speaker_id TEXT",
             "ALTER TABLE transcripts ADD COLUMN speaker_confidence REAL",
             "ALTER TABLE transcripts ADD COLUMN turn_id INTEGER REFERENCES turns(id)",
+            "ALTER TABLE transcripts ADD COLUMN audio_event_label TEXT",
+            "ALTER TABLE transcripts ADD COLUMN audio_event_score REAL",
         ):
             try:
                 await self.db.execute(col_ddl)
@@ -325,6 +329,8 @@ class TranscriptStore:
         mode: str,
         speaker_id: str | None = None,
         speaker_confidence: float | None = None,
+        audio_event_label: str | None = None,
+        audio_event_score: float | None = None,
     ) -> int:
         now = time.time()
         # Deduplication: ignore identical transcript text within 2 seconds.
@@ -340,9 +346,18 @@ class TranscriptStore:
             return row[0]
 
         cursor = await self.db.execute(
-            "INSERT INTO transcripts (ts, text, mode, speaker_id, speaker_confidence)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (now, text, mode, speaker_id, speaker_confidence),
+            "INSERT INTO transcripts (ts, text, mode, speaker_id,"
+            " speaker_confidence, audio_event_label, audio_event_score)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                now,
+                text,
+                mode,
+                speaker_id,
+                speaker_confidence,
+                audio_event_label,
+                audio_event_score,
+            ),
         )
         await self.db.commit()
         assert cursor.lastrowid is not None
@@ -508,7 +523,8 @@ class TranscriptStore:
 
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
         cursor = await self.db.execute(
-            "SELECT id, ts, text, mode, speaker_id FROM transcripts"
+            "SELECT id, ts, text, mode, speaker_id, audio_event_label,"
+            " audio_event_score FROM transcripts"
             " ORDER BY ts DESC LIMIT ?",
             (n,),
         )
@@ -520,6 +536,8 @@ class TranscriptStore:
                 "text": r[2],
                 "mode": r[3],
                 "speaker_id": r[4],
+                "audio_event_label": r[5],
+                "audio_event_score": r[6],
             }
             for r in reversed(rows)
         ]

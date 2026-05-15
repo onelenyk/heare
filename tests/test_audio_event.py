@@ -359,3 +359,38 @@ def test_smoke_classifier():
     waveform = np.zeros(YamnetClassifier.WINDOW_SAMPLES, dtype=np.float32)
     scores = classifier.classify(waveform)
     assert len(scores) == 521
+
+
+# ---------------------------------------------------------------------------
+# reader.read_latest_audio_event
+
+
+def test_reader_returns_triple_for_valid_file(tmp_path: Path) -> None:
+    from src.audio_event.reader import read_latest_audio_event
+
+    p = tmp_path / "audio_event.json"
+    p.write_text(json.dumps({"label": "Music", "score": 0.91, "ts": 123.0}))
+    result = read_latest_audio_event(p)
+    assert result == ("Music", 0.91, 123.0)
+
+
+def test_reader_returns_none_for_missing_file(tmp_path: Path) -> None:
+    from src.audio_event.reader import read_latest_audio_event
+
+    assert read_latest_audio_event(tmp_path / "nope.json") is None
+
+
+def test_reader_returns_none_for_malformed_file(tmp_path: Path) -> None:
+    from src.audio_event.reader import read_latest_audio_event
+
+    p = tmp_path / "audio_event.json"
+    p.write_text("{not json")
+    assert read_latest_audio_event(p) is None
+
+
+def test_reader_returns_none_when_label_empty(tmp_path: Path) -> None:
+    from src.audio_event.reader import read_latest_audio_event
+
+    p = tmp_path / "audio_event.json"
+    p.write_text(json.dumps({"label": "", "score": 0.9, "ts": 1.0}))
+    assert read_latest_audio_event(p) is None
