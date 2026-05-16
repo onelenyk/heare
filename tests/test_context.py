@@ -93,6 +93,41 @@ async def test_recent_transcripts_no_tag_when_no_audio_event(
     assert "[audio:" not in result["recent_transcripts"]
 
 
+async def test_live_mcp_bridge_block_overrides_static(
+    store: TranscriptStore,
+) -> None:
+    """When a connected bridge is attached, build_for_generator must
+    advertise its live tool block instead of the static .mcp.json one."""
+
+    class _FakeBridge:
+        def prompt_block(self) -> str:
+            return "Connected MCP servers (1) — callable: mcp__x__do"
+
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+    ctx._mcp_descriptions = "STATIC should not appear"
+    ctx.set_mcp_bridge(_FakeBridge())
+    result = await ctx.build_for_generator("hi", persona="p")
+    assert result["mcp_servers"] == (
+        "Connected MCP servers (1) — callable: mcp__x__do"
+    )
+
+
+async def test_static_mcp_block_used_when_bridge_empty(
+    store: TranscriptStore,
+) -> None:
+    class _EmptyBridge:
+        def prompt_block(self) -> str:
+            return ""
+
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+    ctx._mcp_descriptions = "STATIC fallback"
+    ctx.set_mcp_bridge(_EmptyBridge())
+    result = await ctx.build_for_generator("hi", persona="p")
+    assert result["mcp_servers"] == "STATIC fallback"
+
+
 async def test_render_real_decider_template(store: TranscriptStore) -> None:
     """prompts/decider.txt contains literal { and } from the JSON example.
     render() must substitute named placeholders without choking on braces."""

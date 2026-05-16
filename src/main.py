@@ -215,6 +215,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             indication,
             llm_service,
             language_state,
+            mcp_bridge,
         ) = await build_pipeline(
             settings,
             store,
@@ -330,6 +331,14 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 set_bridge(None)
             except Exception:  # noqa: BLE001
                 pass
+        mcp_bridge = locals().get("mcp_bridge")
+        if mcp_bridge is not None:
+            try:
+                await mcp_bridge.aclose()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "mcp_bridge.aclose failed (non-fatal): %s", e
+                )
         ind = locals().get("indication")
         if ind is not None:
             try:

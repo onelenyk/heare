@@ -166,7 +166,7 @@ def render_native_system_prompt(
         "- **Installed skills**: markdown procedures in ~/.heare/skills/. List them with `list_skills`. Run one with `run_skill(name=..., context=...)`."
     )
     parts.append(
-        "- **MCP servers**: external services configured per-workspace. Restart needed after install."
+        "- **MCP servers**: external services. Any listed under 'Connected MCP servers' above are registered and callable RIGHT NOW — use them directly. A restart is only needed to pick up a server you just installed, never to use one already connected."
     )
     parts.append(
         "Anything not in those three is on the **marketplace** (skillsmp.com / MCP registry) — search with `discover_capability(intent=...)`, then `install_skill_tool` / `install_mcp_server_tool` after voice consent."

@@ -244,7 +244,7 @@ async def build_pipeline(
     speaker_model: Any = None,
     namer_enqueue: Any = None,
     project_dir: str | None = None,
-) -> Tuple[object, object, object, object, object, object]:
+) -> Tuple[object, object, object, object, object, object, object]:
     """Build the Pipecat-native pipeline.
 
     Returns
@@ -471,6 +471,26 @@ async def build_pipeline(
         provider_file=settings.provider_file,
     )
     tools_schema = build_tools_schema()
+    # Connect stdio MCP servers from workspace/.mcp.json and fold their
+    # tools into the LLM's surface BEFORE the context is built so the
+    # model sees them on turn one. Always returns a bridge (never raises).
+    from src.agent.mcp_bridge import connect_mcp_servers
+
+    mcp_bridge = await connect_mcp_servers(settings)
+    # Let the system prompt advertise the *actually connected* tools
+    # instead of the static .mcp.json name-only block.
+    try:
+        context_builder.set_mcp_bridge(mcp_bridge)
+    except AttributeError:
+        logger.debug("context_builder has no set_mcp_bridge; skipping")
+    mcp_schemas = mcp_bridge.function_schemas()
+    if mcp_schemas:
+        tools_schema.standard_tools.extend(mcp_schemas)
+        logger.info(
+            "mcp_bridge: %d tool(s) from %d server(s) added to LLM surface",
+            len(mcp_schemas),
+            len(mcp_bridge.connected_servers),
+        )
     llm_context = LLMContext(
         messages=[
             {
@@ -504,6 +524,12 @@ async def build_pipeline(
         settings=settings,
         conversation_manager=conversation_manager,
     )
+    mcp_registered = mcp_bridge.register(llm_service, conversation_manager)
+    if mcp_registered:
+        logger.info(
+            "mcp_bridge: registered handlers: %s",
+            ", ".join(mcp_registered),
+        )
     _wire_language_state(
         language_state, llm_context, persona,
         project_dir=project_dir,
@@ -711,6 +737,7 @@ async def build_pipeline(
         indication,
         llm_service,
         language_state,
+        mcp_bridge,
     )
 
 

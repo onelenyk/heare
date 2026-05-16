@@ -49,6 +49,7 @@ class ContextBuilder:
         self.conversation_manager = conversation_manager
         self.speaker_gallery = speaker_gallery
         self._project_dir = project_dir
+        self._mcp_bridge: Any = None
         self._mcp_descriptions: str | None = None
         try:
             from src.skills.mcp_utils import build_mcp_prompt_block, read_mcp_servers
@@ -59,6 +60,14 @@ class ContextBuilder:
                 self._mcp_descriptions = block
         except Exception:  # noqa: BLE001 — MCP discovery is best-effort
             self._mcp_descriptions = None
+
+    def set_mcp_bridge(self, bridge: Any) -> None:
+        """Attach the live MCP bridge so the system prompt advertises the
+        actually-connected tools instead of the static .mcp.json names.
+
+        Called from build_pipeline once connect_mcp_servers() has run.
+        """
+        self._mcp_bridge = bridge
 
     async def build(
         self,
@@ -150,7 +159,15 @@ class ContextBuilder:
         if self._project_dir:
             result["project_dir"] = self._project_dir
         result["workspace_dir"] = str(self.settings.workspace_dir)
-        if self._mcp_descriptions:
+        live_mcp = None
+        if self._mcp_bridge is not None:
+            try:
+                live_mcp = self._mcp_bridge.prompt_block()
+            except Exception:  # noqa: BLE001 — never break the turn
+                live_mcp = None
+        if live_mcp:
+            result["mcp_servers"] = live_mcp
+        elif self._mcp_descriptions:
             result["mcp_servers"] = self._mcp_descriptions
         return result
 
