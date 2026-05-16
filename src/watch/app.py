@@ -17,7 +17,7 @@ from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
 from . import models
 from .data import fetch_dashboard_state
 from .screens import ChromeProfileSelectScreen, ModelSelectScreen, ToolingScreen
-from .widgets import ActivityTable, AIBar, ControlsBar, HeaderBar, LogTail, UsageBar, VoiceStateBar
+from .widgets import ActivityTable, AgentResponseBar, AIBar, ControlsBar, DisplayPanel, HeaderBar, LogTail, UsageBar, VoiceStateBar
 
 
 class HeareDashboard(App):
@@ -66,6 +66,8 @@ class HeareDashboard(App):
         yield ActivityTable()
         yield LogTail()
         yield HeaderBar(self.settings)
+        yield DisplayPanel()
+        yield AgentResponseBar()
         yield Horizontal(
             ControlsBar(self.settings),
             AIBar(self.settings),
@@ -112,6 +114,8 @@ class HeareDashboard(App):
             ai_bar = self.query_one(AIBar)
             usage_bar = self.query_one(UsageBar)
             voice_bar = self.query_one(VoiceStateBar)
+            agent_resp_bar = self.query_one(AgentResponseBar)
+            display_panel = self.query_one(DisplayPanel)
         except NoMatches:
             return
 
@@ -123,6 +127,8 @@ class HeareDashboard(App):
         ai_bar.refresh_data(provider, models.read_current_model(self.settings, provider))
         usage_bar.refresh_data(snapshot.usage)
         voice_bar.refresh_data(snapshot.voice_state, snapshot.audio_event)
+        agent_resp_bar.refresh_data(snapshot.agent_response)
+        display_panel.refresh_data(snapshot.display)
 
     # -----------------------------------------------------------------------
     # Daemon control actions

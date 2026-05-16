@@ -69,6 +69,60 @@ async def test_gate_drops_tts_audio_when_muted(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_gate_drops_tts_audio_in_silent_and_meeting_mode(
+    tmp_path: Path,
+):
+    """silent / meeting must mechanically mute TTS even with no mute flag."""
+    from pipecat.frames.frames import TTSAudioRawFrame, TTSStoppedFrame
+
+    from src.pipeline.language_state import LanguageState
+    from src.pipeline.session_state import SessionState
+    from src.pipeline.stages.mute_gate import create_mute_gate
+
+    flag = tmp_path / "mute.flag"  # absent → manual mute OFF
+    ss = SessionState(LanguageState(), initial_mode="silent")
+    proc = create_mute_gate(flag_path=flag, session_state=ss)
+
+    captured: list = []
+
+    async def fake_push(frame, direction=None):
+        captured.append(frame)
+
+    proc.push_frame = fake_push  # type: ignore[method-assign]
+
+    audio = TTSAudioRawFrame(audio=b"\x00\x00", sample_rate=24000, num_channels=1)
+    stopped = TTSStoppedFrame()
+    await proc.process_frame(audio, None)
+    await proc.process_frame(stopped, None)
+    assert audio not in captured  # silent → dropped
+    assert stopped in captured  # control frame still flows
+
+    # Switch to meeting → still muted.
+    ss.set_mode("meeting")
+    captured.clear()
+    a2 = TTSAudioRawFrame(audio=b"\x00\x00", sample_rate=24000, num_channels=1)
+    await proc.process_frame(a2, None)
+    assert a2 not in captured
+
+    # Switch to ambient → speech flows again (live, no restart).
+    ss.set_mode("ambient")
+    captured.clear()
+    a3 = TTSAudioRawFrame(audio=b"\x00\x00", sample_rate=24000, num_channels=1)
+    await proc.process_frame(a3, None)
+    assert captured == [a3]
+
+
+def test_mute_output_flags_per_mode():
+    from src.agent.modes import MODE_PROFILES
+
+    assert MODE_PROFILES["silent"].mute_output is True
+    assert MODE_PROFILES["meeting"].mute_output is True
+    assert MODE_PROFILES["ambient"].mute_output is False
+    assert MODE_PROFILES["focus"].mute_output is False
+    assert MODE_PROFILES["assistant"].mute_output is False
+
+
+@pytest.mark.asyncio
 async def test_gate_passes_audio_when_not_muted(tmp_path: Path):
     from pipecat.frames.frames import TTSAudioRawFrame
 

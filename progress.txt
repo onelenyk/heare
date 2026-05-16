@@ -1,0 +1,97 @@
+Mode Behavior-Profile System — ralph progress
+
+US-001 ModeProfile + registry — DONE
+  src/agent/modes.py: frozen ModeProfile, MODE_PROFILES (ambient/focus/
+  silent/assistant/meeting), resolve() fail-safe→ambient, is_tool_allowed
+  glob matcher, set_mode unconditional exemption. tests/test_modes.py 8/8.
+
+US-002 SessionState composition — DONE
+  src/pipeline/session_state.py: composes (does NOT absorb) the untouched
+  LanguageState + ModeProfile, own separate mode listener, flush hook,
+  module-level active accessor for the set_mode direct tool.
+  language_state.py git-diff-verified unmodified. 7/7.
+
+US-003 tool-deny gate — DONE
+  schemas._make_handler + mcp_bridge handler take session_state; deny
+  short-circuits with spoken refusal + action-log + 'mode_gate' log line;
+  allowed path byte-identical. register_all_tools/McpBridge.register take
+  session_state; build.py constructs SessionState before register_all_tools
+  AND before connect_mcp_servers. 7/7.
+
+US-004 set_mode tool — DONE
+  registry + schema(enum 5 modes) + direct._execute_set_mode: validate,
+  flush_pending() BEFORE set_mode(), persist mode_file. Exempt from gating.
+  Module accessor set in build.py. 5/5.
+
+US-005 wire-ins — DONE
+  turn_aggregator: optional session_state → profile.turn_timeout (legacy
+  focus/ambient path preserved when unset).
+  indication._mode_allows_sound: now profile.sound_policy driven; accepts
+  Mode enum / str / ModeProfile so legacy callers+tests unchanged; build.py
+  mode_provider late-binds to live SessionState.profile.
+  context.py set_session_state + ctx['mode_block']; context_injector
+  renders it. 6/6.
+
+DESLOP — DONE
+  Duplicated deny-gate (schemas._make_handler + mcp_bridge handler,
+  ~30 lines each) consolidated into modes.mode_gate_refusal(); both
+  handlers keep their own action-log bracketing. Behavior preserved
+  (tool-result error string unchanged; tests green).
+  Post-deslop full suite: 1232 passed, 2 skipped (== pre-deslop).
+  Architect verification: APPROVED, all 6 criteria, no must-fix.
+
+US-006 characterization + suite — DONE (1232 passed, 2 skipped; ruff clean)
+  Characterization assertions live in test_modes.py
+  (test_turn_timeouts_match_prechange, test_sound_policy_matches_prechange)
+  + test_mode_wireins.py (legacy Mode-enum behavior pinned). Ruff clean on
+  all 11 changed files. Full suite running.
+
+KEY LEARNINGS / CAVEATS
+- TurnAggregator is LEGACY and NOT wired into the native Pipecat pipeline
+  (build.py has no TurnAggregator reference; native turn-finalisation is
+  smart_turn + transcription_gate debounce). The profile.turn_timeout
+  wire-in is structurally correct and forward-compatible but does NOT
+  change live native-pipeline turn timing today. Likewise the
+  session_state flush hook has no native turn-flush target yet, so
+  set_mode's flush_pending() is a safe no-op in the live pipeline.
+  Both are documented follow-ups, surfaced not hidden.
+- Phase 0 spike (LLMUpdateSettingsFrame schema-strip) and Phase 4b are
+  intentionally OUT OF SCOPE per the approved ADR. Execution-time deny
+  ships independently; denied tools remain visible in the schema (mitigated
+  by the mode prompt_addendum naming the restriction).
+- indication tests pass Mode enum to mode_provider; _mode_allows_sound was
+  made polymorphic (Mode/str/ModeProfile) to preserve that contract.
+
+FOLLOW-UP: hard TTS mute for silent/meeting — DONE
+  ModeProfile.mute_output (True for silent+meeting). Output MuteGate-
+  Processor now drops TTSAudioRawFrame when profile.mute_output OR the
+  manual mute flag — keyed off live SessionState, switchable without
+  restart. silent/meeting addenda updated (speech not heard). Fixes the
+  "silent still talked" bug. Full suite 1234.
+
+FOLLOW-UP: text-response channel + dashboard panel — DONE
+  No file (rejected as wrong primitive); SQLite store IS the channel.
+  transcripts gains agent_mode/agent_spoken columns (idempotent ALTER);
+  assistant_response_logger tags every bot row from live SessionState
+  (spoken = not mute_output). storage.latest_bot_response() +
+  data.fetch_agent_response() sync read. New 💬 agent response dashboard
+  panel (text + mode + 🔊/🔇). Live mode status already shown in header
+  (current_mode reads mode_file each tick; set_mode writes it).
+  Speech control = mode-gate only (user decision; no model speak flag).
+  Cleaned a pre-existing unused import in watch/data.py. Full suite 1244,
+  ruff clean.
+
+FOLLOW-UP: display panel (show_display rich-output surface) — DONE
+  New 📋 display dashboard panel reserving space for the agent's long /
+  ASCII / formatted / structured / code output. displays table +
+  store.log_display()/latest_display(); show_display direct tool (format
+  enum text/code/ascii/table/markdown, latest-only replace) + context-
+  injector routing rule (long/code/structured → show_display, speak a
+  one-line pointer). data.fetch_latest_display() sync read + DisplayData.
+  DisplayPanel renders code→Syntax, markdown→Markdown, ascii/table/text→
+  no-wrap Text (shape preserved). KEY FIX: the widget's render helper was
+  named _render(), which SHADOWED Textual's internal Widget._render and
+  crashed every dashboard boot with "'str' object has no attribute
+  render_strips". Renamed to _build_renderable() (matches the _build_text
+  convention of the other Static widgets, which never shadowed it).
+  Full suite + ruff clean.

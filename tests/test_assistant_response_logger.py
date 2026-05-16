@@ -31,9 +31,19 @@ class _StoreSpy:
         mode: str,
         speaker_id: str | None = None,
         speaker_confidence: float | None = None,
+        audio_event_label: str | None = None,
+        audio_event_score: float | None = None,
+        agent_mode: str | None = None,
+        agent_spoken: bool | None = None,
     ) -> int:
         self.calls.append(
-            {"text": text, "mode": mode, "speaker_id": speaker_id}
+            {
+                "text": text,
+                "mode": mode,
+                "speaker_id": speaker_id,
+                "agent_mode": agent_mode,
+                "agent_spoken": agent_spoken,
+            }
         )
         return len(self.calls)
 
@@ -147,3 +157,61 @@ async def test_logger_passes_frames_through_downstream():
     await proc.process_frame(ended, None)
 
     assert captured == [started, text, ended]
+
+
+@pytest.mark.asyncio
+async def test_logger_tags_mode_and_spoken_from_session_state():
+    """Text-response channel: each bot row carries the active mode and
+    whether TTS spoke it (spoken = not profile.mute_output)."""
+    from pipecat.frames.frames import (
+        LLMFullResponseEndFrame,
+        LLMFullResponseStartFrame,
+        LLMTextFrame,
+    )
+
+    from src.pipeline.language_state import LanguageState
+    from src.pipeline.session_state import SessionState
+    from src.pipeline.stages.assistant_response_logger import (
+        create_assistant_response_logger,
+    )
+
+    # silent → muted → agent_spoken False
+    store = _StoreSpy()
+    ss = SessionState(LanguageState(), initial_mode="silent")
+    proc = create_assistant_response_logger(store=store, session_state=ss)
+    _patch_push_frame(proc)
+    await proc.process_frame(LLMFullResponseStartFrame(), None)
+    await proc.process_frame(LLMTextFrame("hidden words"), None)
+    await proc.process_frame(LLMFullResponseEndFrame(), None)
+    assert store.calls[-1]["agent_mode"] == "silent"
+    assert store.calls[-1]["agent_spoken"] is False
+
+    # ambient → not muted → agent_spoken True
+    ss.set_mode("ambient")
+    await proc.process_frame(LLMFullResponseStartFrame(), None)
+    await proc.process_frame(LLMTextFrame("out loud"), None)
+    await proc.process_frame(LLMFullResponseEndFrame(), None)
+    assert store.calls[-1]["agent_mode"] == "ambient"
+    assert store.calls[-1]["agent_spoken"] is True
+
+
+@pytest.mark.asyncio
+async def test_logger_no_session_state_leaves_tags_none():
+    from pipecat.frames.frames import (
+        LLMFullResponseEndFrame,
+        LLMFullResponseStartFrame,
+        LLMTextFrame,
+    )
+
+    from src.pipeline.stages.assistant_response_logger import (
+        create_assistant_response_logger,
+    )
+
+    store = _StoreSpy()
+    proc = create_assistant_response_logger(store=store)
+    _patch_push_frame(proc)
+    await proc.process_frame(LLMFullResponseStartFrame(), None)
+    await proc.process_frame(LLMTextFrame("hi"), None)
+    await proc.process_frame(LLMFullResponseEndFrame(), None)
+    assert store.calls[-1]["agent_mode"] is None
+    assert store.calls[-1]["agent_spoken"] is None

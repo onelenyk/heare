@@ -82,6 +82,15 @@ def _provider_args(args: dict[str, Any]) -> str:
     return str(args.get("provider", "")).strip()
 
 
+def _mode_args(args: dict[str, Any]) -> str:
+    return str(args.get("mode", "")).strip()
+
+
+def _display_args(args: dict[str, Any]) -> str:
+    # content can be long and contain newlines → JSON blob.
+    return json.dumps(args)
+
+
 def _id_args(args: dict[str, Any]) -> str:
     return str(args.get("speaker_id", args.get("id", ""))).strip()
 
@@ -465,6 +474,42 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         ["provider"],
         _provider_args,
     ),
+    "set_mode": (
+        {
+            "mode": {
+                "type": "string",
+                "enum": [
+                    "ambient",
+                    "focus",
+                    "silent",
+                    "assistant",
+                    "meeting",
+                ],
+                "description": "Behavior mode to switch to",
+            },
+        },
+        ["mode"],
+        _mode_args,
+    ),
+    "show_display": (
+        {
+            "content": {
+                "type": "string",
+                "description": "The full block to render on the dashboard (may be long, multi-line).",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["text", "code", "ascii", "table", "markdown"],
+                "description": "How to render content. 'code' = syntax-highlighted, 'ascii' = monospace as-is, 'markdown'/'table' = rich, 'text' = plain.",
+            },
+            "title": {
+                "type": "string",
+                "description": "Optional short heading for the panel.",
+            },
+        },
+        ["content", "format"],
+        _display_args,
+    ),
     # Capability discovery (US-007)
     "discover_capability": (
         {
@@ -789,6 +834,7 @@ def _make_handler(
     serializer: ArgsSerializer,
     settings: "Settings | None",
     conversation_manager: Any = None,
+    session_state: Any = None,
 ) -> Callable[[Any], Awaitable[None]]:
     """Build a Pipecat ``FunctionCallParams`` handler for one tool.
 
@@ -797,11 +843,35 @@ def _make_handler(
     / ``record_action_cancelled`` / ``record_action_error`` so the
     conversation memory's recent-actions block stays populated for the
     next-turn LLM context (CCS-02 / CCS-04 grounding rules).
+
+    When ``session_state`` is supplied, the current mode's tool-deny
+    policy is enforced at execution time (the model still sees the tool
+    in its schema, but a denied call is short-circuited with a spoken
+    refusal). This is also the seam the audio-bleed safety gate will use.
     """
 
     async def handler(params: Any) -> None:
         args_str = serializer(dict(params.arguments or {}))
         intent_id = next(_intent_id_seq)
+        from src.agent.modes import mode_gate_refusal
+
+        refusal = mode_gate_refusal(session_state, tool_name)
+        if refusal is not None:
+            if conversation_manager is not None:
+                try:
+                    conversation_manager.record_action_pending(
+                        intent_id, tool_name, args_str
+                    )
+                    conversation_manager.record_action_error(
+                        intent_id, refusal["error"]
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "llm_tools: mode_gate action-log failed "
+                        "(non-fatal)"
+                    )
+            await params.result_callback(refusal)
+            return
         if conversation_manager is not None:
             try:
                 conversation_manager.record_action_pending(
@@ -879,6 +949,7 @@ def register_all_tools(
     *,
     settings: "Settings | None" = None,
     conversation_manager: Any = None,
+    session_state: Any = None,
 ) -> list[str]:
     """Register one ``FunctionCallParams`` handler per enabled tool.
 
@@ -902,7 +973,9 @@ def register_all_tools(
             )
             continue
         _, _, serializer = spec
-        handler = _make_handler(name, serializer, settings, conversation_manager)
+        handler = _make_handler(
+            name, serializer, settings, conversation_manager, session_state
+        )
         # cancel is an InterruptionFrame-driven concept after PH2-05; the
         # handler itself never executes for real cancels but we register
         # it so the LLM has a parsable function name in its tool surface.

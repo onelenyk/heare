@@ -384,8 +384,17 @@ async def build_pipeline(
             from src.voice.indication.backends.notification import NotificationBackend
 
             backends.append(NotificationBackend())
+    def _mode_provider():
+        # Late-bound: SessionState is constructed after Indication, so
+        # resolve it at notify-time. Falls back to the static settings
+        # mode until the pipeline finishes wiring.
+        from src.pipeline.session_state import get_active_session_state
+
+        ss = get_active_session_state()
+        return ss.profile if ss is not None else settings.mode
+
     indication = Indication(
-        settings.indication, backends, mode_provider=lambda: settings.mode
+        settings.indication, backends, mode_provider=_mode_provider
     )
     set_indication(indication)
     logger.info(
@@ -454,6 +463,19 @@ async def build_pipeline(
         if settings.groq_language not in ("auto", "")
         else "en"
     )
+    # Single source of truth for the active mode. Constructed here so it
+    # exists before connect_mcp_servers() and register_all_tools() — both
+    # capture it for the execution-time tool-deny gate.
+    from src.pipeline.session_state import (
+        SessionState,
+        set_active_session_state,
+    )
+
+    session_state = SessionState(
+        language_state, initial_mode=settings.mode.value
+    )
+    # Module-level handle for the set_mode direct tool.
+    set_active_session_state(session_state)
     transcription_gate = create_transcription_gate(
         store=store,
         settings=settings,
@@ -483,6 +505,10 @@ async def build_pipeline(
         context_builder.set_mcp_bridge(mcp_bridge)
     except AttributeError:
         logger.debug("context_builder has no set_mcp_bridge; skipping")
+    try:
+        context_builder.set_session_state(session_state)
+    except AttributeError:
+        logger.debug("context_builder has no set_session_state; skipping")
     mcp_schemas = mcp_bridge.function_schemas()
     if mcp_schemas:
         tools_schema.standard_tools.extend(mcp_schemas)
@@ -523,8 +549,11 @@ async def build_pipeline(
         llm_service,
         settings=settings,
         conversation_manager=conversation_manager,
+        session_state=session_state,
     )
-    mcp_registered = mcp_bridge.register(llm_service, conversation_manager)
+    mcp_registered = mcp_bridge.register(
+        llm_service, conversation_manager, session_state=session_state
+    )
     if mcp_registered:
         logger.info(
             "mcp_bridge: registered handlers: %s",
@@ -610,7 +639,7 @@ async def build_pipeline(
 
     # Capture LLM text upstream of TTS and log per-response to transcripts.
     assistant_response_logger = create_assistant_response_logger(
-        store=store, settings=settings
+        store=store, settings=settings, session_state=session_state
     )
 
     # Strip tool-name narration before TTS speaks it. Without this, the LLM
@@ -638,7 +667,9 @@ async def build_pipeline(
     # Toggled from the watch dashboard (or any other process) by creating /
     # removing the file. Bot text is still logged because capture happens
     # upstream of TTS.
-    mute_gate = create_mute_gate(flag_path=settings.mute_file)
+    mute_gate = create_mute_gate(
+        flag_path=settings.mute_file, session_state=session_state
+    )
 
     # Input (mic) mute gate — drops InputAudioRawFrame when
     # ``settings.mute_input_file`` exists. Sits at the very front of the

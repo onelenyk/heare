@@ -1,91 +1,96 @@
 {
-  "title": "Agent Overlay UI",
-  "source_plan": ".omc/plan-overlay-ui.md",
-  "created": "2026-05-12",
+  "title": "Mode Behavior-Profile System",
+  "source_plan": "consensus plan (Planner/Architect/Critic APPROVED, deliberate mode)",
+  "created": "2026-05-16",
   "reviewer": "architect",
-  "notes": "All 6 stories implemented + verified headlessly. Visual pywebview window must be verified by the user on the host.",
+  "notes": "5 modes (ambient/focus/silent/assistant/meeting), data-driven profiles, runtime voice-switchable via set_mode tool, execution-time tool-deny gate. Phase 0 spike + Phase 4b schema-strip are explicitly OUT OF SCOPE for this PRD (deferred follow-ups per ADR); execution-time deny ships independently. focus/silent/ambient timing+sound must be characterization-pinned (no regression).",
   "stories": [
     {
       "id": "US-001",
-      "title": "Cancel-flag pipeline gate",
+      "title": "ModeProfile dataclass + registry (src/agent/modes.py)",
       "passes": true,
-      "rationale": "Overlay-driven cancel needs a way to push InterruptionFrame from outside the pipeline. Mirror the mute-gate flag-file pattern.",
+      "rationale": "Data-driven profiles so new modes are data not code; fail-safe to AMBIENT.",
       "acceptanceCriteria": [
-        "src/config.py Settings has cancel_flag_file: Path defaulting to HEARE_HOME / 'cancel.flag'",
-        "src/pipeline/stages/cancel_flag_gate.py defines create_cancel_flag_gate(flag_path: Path) returning a FrameProcessor",
-        "On every frame, gate checks flag_path.exists(); when True it deletes the flag and pushes InterruptionFrame upstream exactly once; all frames pass through unchanged",
-        "src/pipeline/build.py imports and inserts the cancel_flag_gate into the stage list (after input_mute_gate, before audio_event_observer)",
-        "tests/test_cancel_flag_gate.py covers: (a) flag absent => no InterruptionFrame; (b) flag present => InterruptionFrame pushed upstream, flag deleted, original frame still forwarded; (c) flag re-created after delete => fires again",
-        "uv run pytest tests/test_cancel_flag_gate.py exits 0"
+        "src/agent/modes.py defines frozen dataclass ModeProfile(name:str, prompt_addendum:str, denied_tool_patterns:tuple[str,...], turn_timeout:float, sound_policy, proactivity:str)",
+        "MODE_PROFILES dict has exactly keys: ambient, focus, silent, assistant, meeting",
+        "ambient/focus/silent profiles carry turn_timeout + sound_policy equal to CURRENT behavior",
+        "meeting denied_tool_patterns blocks bash, write, edit, stop_daemon, restart_daemon, and patterns 'mcp__*' and 'macos-use*'; assistant denies nothing",
+        "resolve(name) returns the matching ModeProfile; unknown/empty returns ambient profile and logs a warning",
+        "is_tool_allowed(profile, tool_name) returns False on denied glob match else True; 'set_mode' ALWAYS True regardless of profile",
+        "uv run pytest tests/test_modes.py exits 0"
       ],
-      "evidence": "5/5 tests pass in tests/test_cancel_flag_gate.py"
+      "evidence": "verified: per-story tests green + full suite 1232 passed"
     },
     {
       "id": "US-002",
-      "title": "Overlay FastAPI server",
+      "title": "SessionState composition wrapper",
       "passes": true,
-      "rationale": "Single-process backend the pywebview window talks to. Reads daemon state files, writes flag files.",
+      "rationale": "Single source of truth; compose (not absorb) the untouched LanguageState to avoid language-switch regression.",
       "acceptanceCriteria": [
-        "src/overlay/server.py exposes a create_app(settings) -> FastAPI factory",
-        "GET /api/state returns JSON: {voice_state, audio_event, mute_output, mute_input, daemon_online}. daemon_online=true iff voice_state_file mtime is within 10s.",
-        "POST /api/mute/output {on: bool} toggles settings.mute_file; returns {muted: bool}",
-        "POST /api/mute/input  {on: bool} toggles settings.mute_input_file; returns {muted: bool}",
-        "POST /api/cancel touches settings.cancel_flag_file and returns {ok: true}",
-        "GET / serves static/index.html; GET /static/* serves the static directory",
-        "tests/test_overlay_server.py uses fastapi.testclient.TestClient and tmp_path settings to exercise all 5 routes; uv run pytest tests/test_overlay_server.py exits 0",
-        "Server binds 127.0.0.1 only (verified in code, not just doc)"
+        "src/pipeline/session_state.py defines SessionState holding a reference to an existing LanguageState plus a current ModeProfile",
+        "SessionState.profile returns the live ModeProfile; SessionState.set_mode(name) resolves via modes.resolve and updates it, firing its OWN mode-change listener separate from LanguageState's",
+        "SessionState exposes register_flush_hook(callable) and flush_pending() for the set_mode tool to force-submit the turn buffer",
+        "src/pipeline/language_state.py is unmodified (git diff empty for that file)",
+        "SessionState seeded from settings.mode at construction",
+        "uv run pytest tests/test_session_state.py exits 0"
       ],
-      "evidence": "8/8 tests pass in tests/test_overlay_server.py; bind_host() returns '127.0.0.1'"
+      "evidence": "verified: per-story tests green + full suite 1232 passed"
     },
     {
       "id": "US-003",
-      "title": "Overlay static frontend",
+      "title": "Execution-time tool-deny gate at handler chokepoints",
       "passes": true,
-      "rationale": "Minimal HTML/CSS/JS that the pywebview window renders.",
+      "rationale": "Tools register once but modes switch at runtime; gate at execution time. Same seam as future audio-bleed gate.",
       "acceptanceCriteria": [
-        "src/overlay/static/index.html exists and contains: status pill, transcript region, three action buttons (mic mute, output mute, cancel), debug accordion",
-        "src/overlay/static/overlay.css styles frameless/translucent body and the four UI regions",
-        "src/overlay/static/overlay.js polls /api/state every ~200ms, renders state, wires three POST handlers, pauses polling on document.hidden",
-        "All three POST endpoints are referenced by overlay.js with correct paths"
+        "schemas.py _make_handler and mcp_bridge handler accept SessionState and at entry check is_tool_allowed(session_state.profile, tool_name)",
+        "Denied => result_callback {success:False, output:'', error:'<tool> is unavailable in <mode> mode'} and execute_direct/session.call_tool NOT called",
+        "Denied path records a conversation_manager action when present and logs a line containing 'mode_gate' with tool and mode",
+        "Allowed path behavior byte-identical to before",
+        "register_all_tools and McpBridge.register accept session_state; build.py constructs SessionState before register_all_tools AND before connect_mcp_servers/McpBridge.register and passes it",
+        "uv run pytest tests/test_mode_tool_gate.py exits 0"
       ],
-      "evidence": "Files present; test_index_route_serves_html confirms index.html is served and contains <title>heare</title>; overlay.js references /api/mute/input, /api/mute/output, /api/cancel"
+      "evidence": "verified: per-story tests green + full suite 1232 passed"
     },
     {
       "id": "US-004",
-      "title": "pywebview launcher + optional dep group",
+      "title": "set_mode tool with buffer flush",
       "passes": true,
-      "rationale": "One-process entry point; pywebview opens the window pointed at the local server.",
+      "rationale": "Runtime voice switching; flush pending turn buffer before switching so mid-sentence speech is not dropped.",
       "acceptanceCriteria": [
-        "pyproject.toml has [project.optional-dependencies].overlay including pywebview, pyobjc (darwin-only), fastapi, uvicorn",
-        "src/overlay/app.py defines run() that: imports settings, starts uvicorn on 127.0.0.1:RANDOM in a daemon thread, then calls webview.create_window + webview.start with on_top=True, frameless=True",
-        "src/overlay/__main__.py invokes app.run() and prints a clear hint if pywebview/fastapi imports fail",
-        "Headless smoke: python -c 'from src.overlay.server import create_app; from src.config import load_settings; create_app(load_settings())' exits 0 (proves server side imports + factory work without pywebview installed)"
+        "registry.py + schemas.py register a set_mode tool with arg 'mode' (string); _execute_set_mode in direct.py",
+        "Invalid mode name => success:False with spoken-legible error listing valid modes; valid => success:True confirmation naming the mode",
+        "Valid switch calls session_state.flush_pending() BEFORE session_state.set_mode(), writes mode_file, updates live SessionState",
+        "Test asserts is_tool_allowed(meeting_profile,'set_mode') is True (exempt in every mode)",
+        "uv run pytest tests/test_set_mode_tool.py exits 0"
       ],
-      "evidence": "Headless smoke prints 'factory OK, routes: [..., /api/state, /api/mute/output, /api/mute/input, /api/cancel, /static, /]'"
+      "evidence": "verified: per-story tests green + full suite 1232 passed"
     },
     {
       "id": "US-005",
-      "title": "hearectl overlay subcommand",
+      "title": "Wire-ins: turn_aggregator, indication, prompt addendum",
       "passes": true,
-      "rationale": "Match daemon ergonomics so the overlay starts/stops the same way.",
+      "rationale": "Mode must actually drive timing, sound, and prompt behavior via the single SessionState.",
       "acceptanceCriteria": [
-        "hearectl gains an 'overlay' subcommand that launches python -m src.overlay in the background and writes $HEARE_HOME/overlay.pid",
-        "hearectl gains an 'overlay-stop' subcommand that reads overlay.pid and TERMs the process",
-        "Running 'hearectl' with no args lists 'overlay' and 'overlay-stop' in the help/usage output",
-        "bash -n hearectl exits 0 (syntax check)"
+        "turn_aggregator turn-timeout selection reads SessionState.profile.turn_timeout instead of the hardcoded focus/ambient branch",
+        "indication sound gating reads SessionState.profile.sound_policy instead of hardcoded _mode_allows_sound; SILENT/FOCUS/AMBIENT semantics preserved",
+        "context_injector renders active profile.prompt_addendum AND a one-line available-mode list into the system prompt via the context dict",
+        "build.py constructs SessionState and threads it to turn_aggregator, indication mode_provider, and the system prompt injector",
+        "uv run pytest tests/test_mode_wireins.py exits 0"
       ],
-      "evidence": "bash -n exits 0; help output lists 'overlay' and 'overlay-stop'"
+      "evidence": "verified: per-story tests green + full suite 1232 passed"
     },
     {
       "id": "US-006",
-      "title": "README / docs update",
+      "title": "No-regression characterization + full suite",
       "passes": true,
-      "rationale": "Document the new feature so the user can find it.",
+      "rationale": "focus/silent/ambient timing+sound byte-identical to pre-change; whole suite green.",
       "acceptanceCriteria": [
-        "README.md adds a section 'Overlay UI' explaining: install via 'uv pip install -e .[overlay]', launch via 'hearectl overlay', what each button does, and the file-flag contract",
-        ".omc/plan-overlay-ui.md status flipped from 'draft' to 'implemented' with a brief retrospective note (drift from plan, if any)"
+        "tests pin ambient/focus/silent turn_timeout values and sound_policy decisions to pre-change behavior (FOCUS shorter timeout; SILENT no sound; FOCUS only attention/error/input; AMBIENT all)",
+        "make test full suite exits 0 with >=1199 passed (no decrease vs pre-change)",
+        "uv run ruff check on changed files reports no new errors",
+        "progress.txt records files changed and learnings"
       ],
-      "evidence": "README has new 'Overlay UI' section between 'Watch dashboard' and 'Browser bridge'; plan-overlay-ui.md status='implemented' with retro section"
+      "evidence": "verified: per-story tests green + full suite 1232 passed"
     }
   ]
 }

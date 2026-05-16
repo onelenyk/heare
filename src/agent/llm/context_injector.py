@@ -153,6 +153,9 @@ def render_native_system_prompt(
         mcp = context.get("mcp_servers")
         if mcp:
             parts.append(mcp)
+        mode_block = context.get("mode_block")
+        if mode_block:
+            parts.append(mode_block)
 
     parts.append("")
     parts.append("### Capabilities")
@@ -341,6 +344,12 @@ def render_native_system_prompt(
         "Displays: macOS `system_profiler SPDisplaysDataType`."
     )
     parts.append("- Read or modify a file in the workspace: read / write / edit.")
+    parts.append(
+        "- Output that is long, code, ASCII/diagram, a table, or "
+        "structured: call show_display(content=..., format=...) and "
+        "speak only a one-line pointer ('showing it on screen'). Never "
+        "read code or long structured text aloud."
+    )
     parts.append("- Look something up on the web: web_search then web_fetch.")
     parts.append(
         "- 'What can you do / what's installed / list my skills': "

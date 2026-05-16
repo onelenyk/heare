@@ -50,6 +50,7 @@ class ContextBuilder:
         self.speaker_gallery = speaker_gallery
         self._project_dir = project_dir
         self._mcp_bridge: Any = None
+        self._session_state: Any = None
         self._mcp_descriptions: str | None = None
         try:
             from src.skills.mcp_utils import build_mcp_prompt_block, read_mcp_servers
@@ -60,6 +61,11 @@ class ContextBuilder:
                 self._mcp_descriptions = block
         except Exception:  # noqa: BLE001 — MCP discovery is best-effort
             self._mcp_descriptions = None
+
+    def set_session_state(self, session_state: Any) -> None:
+        """Attach the live SessionState so the system prompt carries the
+        active mode's behavior addendum + the available-mode list."""
+        self._session_state = session_state
 
     def set_mcp_bridge(self, bridge: Any) -> None:
         """Attach the live MCP bridge so the system prompt advertises the
@@ -169,6 +175,18 @@ class ContextBuilder:
             result["mcp_servers"] = live_mcp
         elif self._mcp_descriptions:
             result["mcp_servers"] = self._mcp_descriptions
+        if self._session_state is not None:
+            try:
+                profile = self._session_state.profile
+                from src.agent.modes import VALID_MODES
+
+                result["mode_block"] = (
+                    f"{profile.prompt_addendum}\n"
+                    f"Available modes (switch with set_mode): "
+                    f"{', '.join(VALID_MODES)}."
+                )
+            except Exception:  # noqa: BLE001 — never break the turn
+                pass
         return result
 
     def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:

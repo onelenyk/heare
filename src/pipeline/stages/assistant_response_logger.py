@@ -73,10 +73,16 @@ def _build_logger_class():
             *,
             store: "TranscriptStore | None" = None,
             settings: "Settings | None" = None,
+            session_state: Any = None,
         ) -> None:
             super().__init__()
             self.store = store
             self.settings = settings
+            # The text-response channel: every LLM answer is persisted
+            # here tagged with the active mode and whether TTS spoke it,
+            # so consumers (dashboard, future Telegram/web) read the
+            # agent's words without coupling to the speech path.
+            self.session_state = session_state
             self._buffer: list[str] = []
             self._collecting = False
 
@@ -115,11 +121,23 @@ def _build_logger_class():
         async def _log(self, text: str) -> None:
             if not text or self.store is None:
                 return
+            agent_mode: str | None = None
+            agent_spoken: bool | None = None
+            if self.session_state is not None:
+                try:
+                    profile = self.session_state.profile
+                    agent_mode = profile.name
+                    agent_spoken = not profile.mute_output
+                except Exception:
+                    agent_mode = None
+                    agent_spoken = None
             try:
                 await self.store.log_transcript(
                     text=text,
                     mode="assistant",
                     speaker_id="bot",
+                    agent_mode=agent_mode,
+                    agent_spoken=agent_spoken,
                 )
                 logger.debug("logged bot response: %s", text[:60])
             except Exception:
@@ -133,6 +151,7 @@ def create_assistant_response_logger(
     *,
     store: "TranscriptStore | None" = None,
     settings: "Settings | None" = None,
+    session_state: Any = None,
 ) -> Any:
     """Factory returning an AssistantResponseProcessor instance.
 
@@ -141,7 +160,7 @@ def create_assistant_response_logger(
     TextFrame, LLMFullResponseEndFrame) before TTS consumes it.
     """
     cls = _build_logger_class()
-    return cls(store=store, settings=settings)
+    return cls(store=store, settings=settings, session_state=session_state)
 
 
 __all__ = ["create_assistant_response_logger"]

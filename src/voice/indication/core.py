@@ -15,7 +15,7 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from pipecat.frames.frames import SystemFrame  # type: ignore
 
@@ -386,16 +386,27 @@ class Indication:
                 )
 
     @staticmethod
-    def _mode_allows_sound(mode: Mode, level: IndicationLevel) -> bool:
-        if mode == Mode.SILENT:
-            return False
-        if mode == Mode.FOCUS:
-            return level in (
-                IndicationLevel.ATTENTION,
-                IndicationLevel.ERROR,
-                IndicationLevel.INPUT_WAITING,
-            )
-        return True  # ambient
+    def _mode_allows_sound(mode: Any, level: IndicationLevel) -> bool:
+        """Whether *level* may chime under the active mode.
+
+        Driven by the mode's ``sound_policy`` (single source of truth in
+        src/agent/modes.py): ``None`` = allow all, a set = allow only
+        those IndicationLevel values, empty set = silent. Accepts a
+        ModeProfile, a Mode enum, or a mode-name str (the latter two are
+        resolved through the registry) so legacy callers/tests that pass
+        ``Mode.SILENT`` keep their exact prior behavior.
+        """
+        from src.agent.modes import ModeProfile, resolve
+
+        if isinstance(mode, ModeProfile):
+            profile = mode
+        else:
+            name = getattr(mode, "value", mode)
+            profile = resolve(str(name))
+        policy = profile.sound_policy
+        if policy is None:
+            return True
+        return level.value in policy
 
     async def aclose(self) -> None:
         """Close every backend; best-effort, never raises. Idempotent."""

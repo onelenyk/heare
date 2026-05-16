@@ -11,7 +11,7 @@ from textual.widgets import DataTable, Input, RichLog, Static
 from src.config import Settings
 from src.pipeline.stages.text_injector import inject_text
 from src.version import app_version
-from .data import ActivityRow, AudioEventData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
+from .data import ActivityRow, AgentResponseData, AudioEventData, DisplayData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
 
 
 class HeaderBar(Static):
@@ -549,6 +549,103 @@ class UsageBar(Static):
         text.append("\n")
         text.append("total                         → ", style="dim")
         text.append(self._fmt_cost(u.total_cost_usd), style="bold yellow")
+        return text
+
+    def render(self) -> Text:
+        return self._build_text()
+
+
+class DisplayPanel(Static):
+    """Reserved space for the agent's rich output (show_display tool).
+
+    Renders the latest displays-table row by format: code →
+    syntax-highlighted, markdown → rich Markdown, ascii/table/text →
+    monospace as-is (no wrap so diagrams/tables keep their shape).
+    Latest-only: each show_display replaces what's here.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._data = DisplayData(
+            content=None, fmt="text", title=None, ts=0.0
+        )
+        self.border_title = "📋 display"
+        self.update(self.render())
+
+    def refresh_data(self, data: DisplayData) -> None:
+        self._data = data
+        self.update(self.render())
+
+    def _build_renderable(self):
+        d = self._data
+        if not d.content:
+            return "(nothing displayed yet)"
+        title = d.title or d.fmt
+        if d.fmt == "code":
+            from rich.syntax import Syntax
+
+            return Syntax(
+                d.content,
+                "python",
+                theme="ansi_dark",
+                word_wrap=False,
+                indent_guides=True,
+            )
+        if d.fmt == "markdown":
+            from rich.markdown import Markdown
+
+            return Markdown(d.content)
+        # ascii / table / text → raw monospace, shape preserved.
+        return f"{title}\n{d.content}"
+
+    def render(self):
+        r = self._build_renderable()
+        return Text(r, no_wrap=True) if isinstance(r, str) else r
+
+
+class AgentResponseBar(Static):
+    """Latest agent text response + whether it was spoken.
+
+    Reads ``DashboardSnapshot.agent_response`` (the read side of the
+    text-response channel). Shows the answer the agent produced even
+    when TTS was muted (silent / meeting), so the operator can see the
+    bot is working without hearing it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._data = AgentResponseData(
+            text=None, ts=0.0, mode=None, spoken=None
+        )
+        self.border_title = "💬 agent response"
+
+    def refresh_data(self, data: AgentResponseData) -> None:
+        self._data = data
+        self.update(self._build_text())
+
+    def _build_text(self) -> Text:
+        d = self._data
+        text = Text()
+        if not d.text:
+            text.append("(no response yet)", style="dim italic")
+            return text
+        if d.spoken is True:
+            text.append("🔊 spoken", style="bold green")
+        elif d.spoken is False:
+            text.append("🔇 silent", style="bold yellow")
+        else:
+            text.append("· response", style="dim")
+        if d.mode:
+            text.append("  mode ", style="dim")
+            text.append(d.mode, style="bold cyan")
+        if d.ts:
+            text.append("  ", style="dim")
+            text.append(fmt_time(d.ts), style="dim")
+        text.append("\n")
+        body = d.text.strip().replace("\n", " ")
+        if len(body) > 220:
+            body = body[:220] + "…"
+        text.append(body, style="white")
         return text
 
     def render(self) -> Text:

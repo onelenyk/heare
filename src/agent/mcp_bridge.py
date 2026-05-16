@@ -196,12 +196,17 @@ class McpBridge:
             )
         return schemas
 
-    def register(self, llm: Any, conversation_manager: Any = None) -> list[str]:
+    def register(
+        self,
+        llm: Any,
+        conversation_manager: Any = None,
+        session_state: Any = None,
+    ) -> list[str]:
         """Register one ``register_function`` handler per MCP tool."""
         registered: list[str] = []
         for fn_name, _description, _schema, session in self._tools:
             handler = self._make_handler(
-                fn_name, session, conversation_manager
+                fn_name, session, conversation_manager, session_state
             )
             llm.register_function(
                 fn_name, handler, cancel_on_interruption=True
@@ -211,7 +216,10 @@ class McpBridge:
 
     @staticmethod
     def _make_handler(
-        fn_name: str, session: Any, conversation_manager: Any
+        fn_name: str,
+        session: Any,
+        conversation_manager: Any,
+        session_state: Any = None,
     ) -> Callable[[Any], Any]:
         # mcp__<slug>__<tool> → bare tool name the server expects.
         tool_name = fn_name.split("__", 2)[2]
@@ -219,6 +227,26 @@ class McpBridge:
         async def handler(params: Any) -> None:
             args = dict(params.arguments or {})
             intent_id = next(_mcp_intent_seq)
+            # Gate on the full mcp__slug__tool name so mode globs like
+            # "mcp__*" / "macos-use*" match as intended.
+            from src.agent.modes import mode_gate_refusal
+
+            refusal = mode_gate_refusal(session_state, fn_name)
+            if refusal is not None:
+                if conversation_manager is not None:
+                    try:
+                        conversation_manager.record_action_pending(
+                            intent_id, fn_name, str(args)
+                        )
+                        conversation_manager.record_action_error(
+                            intent_id, refusal["error"]
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.exception(
+                            "mcp_bridge: mode_gate action-log failed"
+                        )
+                await params.result_callback(refusal)
+                return
             if conversation_manager is not None:
                 try:
                     conversation_manager.record_action_pending(

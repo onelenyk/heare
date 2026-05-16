@@ -72,6 +72,10 @@ class TurnAggregator:
         self.max_turn_duration = max_turn_duration
         self.max_buffer_size = max_buffer_size
         self.on_turn_complete = on_turn_complete
+        # Optional single-source-of-truth mode state. When set, the
+        # silence timeout follows the active mode profile instead of the
+        # legacy focus/ambient pair, so all 5 modes get correct timing.
+        self.session_state: object | None = None
 
         # Buffer state
         self.buffer: list[dict] = []  # Each: {"text": str, "utterance_ts": float}
@@ -130,7 +134,14 @@ class TurnAggregator:
             self._timeout_task.cancel()
 
         # Determine timeout based on mode
-        timeout = self.focus_timeout if self.mode == Mode.FOCUS else self.ambient_timeout
+        if self.session_state is not None:
+            timeout = self.session_state.profile.turn_timeout
+        else:
+            timeout = (
+                self.focus_timeout
+                if self.mode == Mode.FOCUS
+                else self.ambient_timeout
+            )
 
         # Start new timeout task
         self._timeout_task = asyncio.create_task(self._timeout_handler(timeout))

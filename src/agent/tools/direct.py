@@ -157,6 +157,10 @@ async def execute_direct(
         return await _execute_run_skill(args, settings)
     elif tool == "set_provider":
         return await _execute_set_provider(args, settings)
+    elif tool == "set_mode":
+        return await _execute_set_mode(args, settings)
+    elif tool == "show_display":
+        return await _execute_show_display(args, settings)
     elif tool == "discover_capability":
         return await _execute_discover_capability(args, settings)
     elif tool == "install_skill_tool":
@@ -2428,6 +2432,136 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
             "output": "",
             "error": f"Failed to set provider: {str(e)}",
             "spoken": {"en": "Failed to switch provider."},
+        }
+
+
+async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> dict:
+    """Switch the agent behavior mode at runtime.
+
+    Flushes any half-spoken turn (so the switch does not eat the user's
+    current sentence), persists to ``mode_file``, and flips the live
+    SessionState so timing / sound / prompt / tool-gating all follow the
+    new profile on the next turn. Always callable (exempt from gating).
+    """
+    try:
+        from src.agent.modes import VALID_MODES
+        from src.pipeline.session_state import get_active_session_state
+
+        mode = args.strip().lower()
+        if mode not in VALID_MODES:
+            valid = ", ".join(VALID_MODES)
+            return {
+                "success": False,
+                "output": "",
+                "error": f"Invalid mode: {mode!r}. Valid modes: {valid}",
+                "spoken": {
+                    "en": f"I don't have a {mode} mode. "
+                    f"Try: {valid}.",
+                    "uk": f"Немає режиму {mode}. Доступні: {valid}.",
+                },
+            }
+
+        if settings is None:
+            from src.config import load_settings
+
+            settings = load_settings()
+
+        # Persist so a daemon restart keeps the chosen mode.
+        settings.mode_file.parent.mkdir(parents=True, exist_ok=True)
+        settings.mode_file.write_text(mode)
+
+        # Flush BEFORE flipping so a mid-sentence utterance is finalised
+        # under the old mode rather than silently dropped.
+        ss = get_active_session_state()
+        if ss is not None:
+            ss.flush_pending()
+            ss.set_mode(mode)
+
+        return {
+            "success": True,
+            "output": f"Mode set to {mode}",
+            "spoken": {
+                "en": f"Switched to {mode} mode.",
+                "uk": f"Перейшов у режим {mode}.",
+            },
+        }
+    except Exception as e:
+        logger.exception("_execute_set_mode failed")
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Failed to set mode: {str(e)}",
+            "spoken": {"en": "Failed to switch mode."},
+        }
+
+
+_DISPLAY_FORMATS = {"text", "code", "ascii", "table", "markdown"}
+
+
+async def _execute_show_display(
+    args: str, settings: "Settings | None" = None
+) -> dict:
+    """Render a rich block on the watch dashboard display panel.
+
+    Args is a JSON blob {content, format, title?}. Persists to the
+    displays table (latest-only channel); the dashboard renders the
+    newest row. Speech is unaffected — the agent should speak a short
+    pointer and put the full block here.
+    """
+    try:
+        try:
+            payload = json.loads(args) if args else {}
+        except json.JSONDecodeError:
+            payload = {}
+        content = str(payload.get("content", "")).strip()
+        fmt = str(payload.get("format", "text")).strip().lower()
+        title = payload.get("title")
+        title = str(title).strip() if title else None
+        if not content:
+            return {
+                "success": False,
+                "output": "",
+                "error": "show_display requires non-empty content",
+                "spoken": {"en": "Nothing to display."},
+            }
+        if fmt not in _DISPLAY_FORMATS:
+            fmt = "text"
+
+        if settings is None:
+            from src.config import load_settings
+
+            settings = load_settings()
+        if not settings.db_path:
+            return {
+                "success": False,
+                "output": "",
+                "error": "no db_path configured",
+            }
+        from src.store.storage import TranscriptStore
+
+        store = TranscriptStore(settings.db_path)
+        try:
+            await store.init()
+            await store.log_display(content, fmt, title=title)
+        finally:
+            await store.close()
+
+        return {
+            "success": True,
+            "output": f"Displayed {fmt} block ({len(content)} chars)"
+            + (f": {title}" if title else ""),
+            "spoken": {
+                "en": "Showing it on the screen.",
+                "uk": "Показую на екрані.",
+            },
+        }
+    except Exception as e:
+        logger.exception("_execute_show_display failed")
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Failed to show display: {str(e)}",
+            "spoken": {"en": "Could not show that."},
         }
 
 

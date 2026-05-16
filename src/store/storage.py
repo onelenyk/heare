@@ -48,7 +48,17 @@ CREATE TABLE IF NOT EXISTS transcripts (
     speaker_id TEXT,
     speaker_confidence REAL,
     audio_event_label TEXT,
-    audio_event_score REAL
+    audio_event_score REAL,
+    agent_mode TEXT,
+    agent_spoken INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS displays (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    title TEXT,
+    format TEXT NOT NULL,
+    content TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS decisions (
@@ -200,6 +210,8 @@ class TranscriptStore:
             "ALTER TABLE transcripts ADD COLUMN turn_id INTEGER REFERENCES turns(id)",
             "ALTER TABLE transcripts ADD COLUMN audio_event_label TEXT",
             "ALTER TABLE transcripts ADD COLUMN audio_event_score REAL",
+            "ALTER TABLE transcripts ADD COLUMN agent_mode TEXT",
+            "ALTER TABLE transcripts ADD COLUMN agent_spoken INTEGER",
         ):
             try:
                 await self.db.execute(col_ddl)
@@ -331,6 +343,8 @@ class TranscriptStore:
         speaker_confidence: float | None = None,
         audio_event_label: str | None = None,
         audio_event_score: float | None = None,
+        agent_mode: str | None = None,
+        agent_spoken: bool | None = None,
     ) -> int:
         now = time.time()
         # Deduplication: ignore identical transcript text within 2 seconds.
@@ -347,8 +361,9 @@ class TranscriptStore:
 
         cursor = await self.db.execute(
             "INSERT INTO transcripts (ts, text, mode, speaker_id,"
-            " speaker_confidence, audio_event_label, audio_event_score)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " speaker_confidence, audio_event_label, audio_event_score,"
+            " agent_mode, agent_spoken)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 now,
                 text,
@@ -357,11 +372,71 @@ class TranscriptStore:
                 speaker_confidence,
                 audio_event_label,
                 audio_event_score,
+                agent_mode,
+                None if agent_spoken is None else int(agent_spoken),
             ),
         )
         await self.db.commit()
         assert cursor.lastrowid is not None
         return cursor.lastrowid
+
+    async def latest_bot_response(self) -> dict[str, Any] | None:
+        """Most recent agent text response (speaker_id='bot'), or None.
+
+        This is the read side of the text-response channel: the assistant
+        response logger persists every LLM answer here regardless of
+        whether TTS spoke it, so any consumer (watch dashboard, future
+        Telegram/web) can show what the agent said/would say without
+        coupling to the speech path.
+        """
+        cursor = await self.db.execute(
+            "SELECT ts, text, agent_mode, agent_spoken FROM transcripts"
+            " WHERE speaker_id = 'bot' ORDER BY ts DESC LIMIT 1",
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "ts": row[0],
+            "text": row[1],
+            "agent_mode": row[2],
+            "agent_spoken": None if row[3] is None else bool(row[3]),
+        }
+
+    async def log_display(
+        self, content: str, fmt: str, title: str | None = None
+    ) -> int:
+        """Persist a rich display block (the latest-only display channel).
+
+        The agent calls the ``show_display`` tool to surface long /
+        code / ASCII / structured output the dashboard renders visually
+        instead of speaking it. Any consumer reads the newest row.
+        """
+        now = time.time()
+        cursor = await self.db.execute(
+            "INSERT INTO displays (ts, title, format, content)"
+            " VALUES (?, ?, ?, ?)",
+            (now, title, fmt, content),
+        )
+        await self.db.commit()
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+    async def latest_display(self) -> dict[str, Any] | None:
+        """Most recent display block, or None."""
+        cursor = await self.db.execute(
+            "SELECT ts, title, format, content FROM displays"
+            " ORDER BY ts DESC LIMIT 1",
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "ts": row[0],
+            "title": row[1],
+            "format": row[2],
+            "content": row[3],
+        }
 
     async def log_decision(
         self,

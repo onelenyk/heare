@@ -63,6 +63,20 @@ HeaderBar {
     background: $surface;
 }
 
+DisplayPanel {
+    height: 12;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
+AgentResponseBar {
+    height: 4;
+    border: round $accent;
+    padding: 0 1;
+    background: $surface;
+}
+
 #bottom-bar {
     height: 8;
 }

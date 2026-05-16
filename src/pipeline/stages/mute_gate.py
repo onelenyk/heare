@@ -97,13 +97,29 @@ def _build_output_gate_class():
     from pipecat.processors.frame_processor import FrameProcessor
 
     class MuteGateProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
-        def __init__(self, *, flag_path: Path) -> None:
+        def __init__(
+            self, *, flag_path: Path, session_state: Any = None
+        ) -> None:
             super().__init__()
             self._flag_path = flag_path
+            # Optional: when the active mode profile has mute_output set
+            # (silent / meeting), drop TTS audio the same way the manual
+            # output-mute flag does — a hard gate, not a prompt hint.
+            self._session_state = session_state
+
+        def _mode_muted(self) -> bool:
+            if self._session_state is None:
+                return False
+            try:
+                return bool(self._session_state.profile.mute_output)
+            except Exception:
+                return False
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
-            if isinstance(frame, TTSAudioRawFrame) and is_muted(self._flag_path):
+            if isinstance(frame, TTSAudioRawFrame) and (
+                is_muted(self._flag_path) or self._mode_muted()
+            ):
                 return
             await self.push_frame(frame, direction)
 
@@ -134,9 +150,9 @@ def _build_input_gate_class():
     return _input_gate_cls
 
 
-def create_mute_gate(*, flag_path: Path) -> Any:
+def create_mute_gate(*, flag_path: Path, session_state: Any = None) -> Any:
     cls = _build_output_gate_class()
-    return cls(flag_path=flag_path)
+    return cls(flag_path=flag_path, session_state=session_state)
 
 
 def create_input_mute_gate(*, flag_path: Path) -> Any:

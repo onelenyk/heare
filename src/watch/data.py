@@ -401,7 +401,6 @@ class PairCodeData:
 
 def read_pair_code() -> PairCodeData:
     """Read the pair code from browser_bridge.status. Returns defaults on missing."""
-    import time as _time
     path = HEARE_HOME / "browser_bridge.status"
     try:
         raw = json.loads(path.read_text())
@@ -426,6 +425,79 @@ def read_voice_state(path: Path) -> VoiceStateData:
         since_ts=float(raw.get("since_ts", 0.0)),
         last_partial=raw.get("last_partial"),
         last_final=raw.get("last_final"),
+    )
+
+
+@dataclass(frozen=True)
+class AgentResponseData:
+    """Latest agent text response — the read side of the text-response
+    channel. The assistant response logger persists every LLM answer to
+    the transcripts table (speaker_id='bot') tagged with the active mode
+    and whether TTS spoke it, so the dashboard can show what the agent
+    said/would say even when muted (silent/meeting). ``text`` is None
+    when no bot response exists yet.
+    """
+
+    text: str | None
+    ts: float
+    mode: str | None
+    spoken: bool | None
+
+
+def fetch_agent_response(con: "sqlite3.Connection | None") -> AgentResponseData:
+    """Most recent speaker_id='bot' row. Empty on missing rows/columns
+    (fetch() swallows sqlite errors, so an un-migrated DB is safe)."""
+    empty = AgentResponseData(text=None, ts=0.0, mode=None, spoken=None)
+    if con is None:
+        return empty
+    rows = fetch(
+        con,
+        "SELECT ts, text, agent_mode, agent_spoken FROM transcripts"
+        " WHERE speaker_id = 'bot' ORDER BY ts DESC LIMIT 1",
+    )
+    if not rows:
+        return empty
+    ts, text, mode, spoken = rows[0]
+    return AgentResponseData(
+        text=text,
+        ts=float(ts or 0.0),
+        mode=mode,
+        spoken=None if spoken is None else bool(spoken),
+    )
+
+
+@dataclass(frozen=True)
+class DisplayData:
+    """Latest rich display block the agent pushed via show_display.
+
+    Latest-only channel: the displays table keeps every block but the
+    dashboard renders only the newest. ``content`` is None when the
+    agent has not shown anything yet (or the table is absent on an
+    un-migrated DB — fetch() swallows the error)."""
+
+    content: str | None
+    fmt: str
+    title: str | None
+    ts: float
+
+
+def fetch_latest_display(con: "sqlite3.Connection | None") -> DisplayData:
+    empty = DisplayData(content=None, fmt="text", title=None, ts=0.0)
+    if con is None:
+        return empty
+    rows = fetch(
+        con,
+        "SELECT ts, title, format, content FROM displays"
+        " ORDER BY ts DESC LIMIT 1",
+    )
+    if not rows:
+        return empty
+    ts, title, fmt, content = rows[0]
+    return DisplayData(
+        content=content,
+        fmt=fmt or "text",
+        title=title,
+        ts=float(ts or 0.0),
     )
 
 
@@ -474,6 +546,8 @@ class DashboardSnapshot:
     usage: UsageData
     voice_state: VoiceStateData
     audio_event: AudioEventData
+    agent_response: AgentResponseData
+    display: DisplayData
     pair_code: PairCodeData
 
 
@@ -589,6 +663,8 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
 
     voice_state = read_voice_state(settings.voice_state_file)
     audio_event = read_audio_event(settings.audio_event_file)
+    agent_response = fetch_agent_response(con)
+    display = fetch_latest_display(con)
 
     pair_code = read_pair_code()
 
@@ -605,5 +681,7 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
         usage=usage,
         voice_state=voice_state,
         audio_event=audio_event,
+        agent_response=agent_response,
+        display=display,
         pair_code=pair_code,
     )

@@ -281,6 +281,20 @@ TOOLS: dict[str, Tool] = {
         description="Switch the active LLM provider (openrouter or zai). Change takes effect on the next user utterance.",
         enabled=True,
     ),
+    "set_mode": Tool(
+        name="set_mode",
+        sdk_name="SetMode",
+        execution="direct",
+        description="Switch the agent's behavior mode: ambient (default conversational), focus (terse/fast), silent (speak only when addressed), assistant (proactive, full tools), meeting (passive note-taker, no side-effect tools). Takes effect immediately.",
+        enabled=True,
+    ),
+    "show_display": Tool(
+        name="show_display",
+        sdk_name="ShowDisplay",
+        execution="direct",
+        description="Render a long/structured block on the watch dashboard's display panel instead of speaking it: code, ASCII diagrams, tables, formatted/structured text. Use this for anything that would be unreadable or annoying as speech. Speak a one-line pointer ('showing it on screen') and put the full content here.",
+        enabled=True,
+    ),
     # Capability discovery (US-007) — proactive skill/MCP install + revoke.
     "discover_capability": Tool(
         name="discover_capability",
