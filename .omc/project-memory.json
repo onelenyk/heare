@@ -1,67 +1,18 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1778318494689,
+  "lastScanned": 1779208537665,
   "projectRoot": "/Users/lenyk/myprojects/heare",
-  "techStack": {
-    "languages": [
-      {
-        "name": "Python",
-        "version": null,
-        "confidence": "high",
-        "markers": [
-          "pyproject.toml"
-        ]
-      },
-      {
-        "name": "C/C++",
-        "version": null,
-        "confidence": "high",
-        "markers": [
-          "Makefile"
-        ]
-      }
-    ],
-    "frameworks": [
-      {
-        "name": "pytest",
-        "version": null,
-        "category": "testing"
-      }
-    ],
-    "packageManager": null,
-    "runtime": null
-  },
-  "build": {
-    "buildCommand": "make build",
-    "testCommand": "make test",
-    "lintCommand": "ruff check",
-    "devCommand": null,
-    "scripts": {}
-  },
-  "conventions": {
-    "namingStyle": "snake_case",
-    "importStyle": null,
-    "testPattern": null,
-    "fileOrganization": null
-  },
-  "structure": {
-    "isMonorepo": false,
-    "workspaces": [],
-    "mainDirectories": [
-      "docs",
-      "scripts",
-      "src",
-      "tests"
-    ],
-    "gitBranches": null
-  },
+  "techStack": "Python 3.11+, Pipecat (audio pipeline), Groq Whisper (STT), Edge TTS, OpenRouter/z.ai (LLM), SQLite/aiosqlite, Textual (TUI), Silero VAD, ONNX/YAMNet, ECAPA (speaker recognition)",
+  "build": "uv sync, uv run python -m src.main {start|stop|watch}, uv run pytest tests/ -v, Makefile wrapper",
+  "conventions": "asyncio single-process, pipecat frame pipeline, file-based IPC for flags/modes, deferred pipecat imports for CLI-only commands, composition over inheritance for LLM service, dataclass Settings with TOML override, str Enum for constants",
+  "structure": "src/main.py (CLI) → src/pipeline/build.py (pipeline) → stages/ (frame processors), src/agent/llm/ (LLM), src/agent/tools/ (tool dispatch), src/store/ (SQLite DAO), src/voice/ (STT/TTS/speaker/indication), src/watch/ (TUI dashboard), src/overlay/ (pywebview), src/daemon/ (onboarding/workspace/control)",
   "customNotes": [],
   "directoryMap": {
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1778318494675,
+      "lastAccessed": 1779208537652,
       "keyFiles": [
         "action_execution_flow.md",
         "conversation_logic.md",
@@ -69,11 +20,18 @@
         "test_coverage.md"
       ]
     },
+    "extensions": {
+      "path": "extensions",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1779208537653,
+      "keyFiles": []
+    },
     "migrations": {
       "path": "migrations",
       "purpose": "Database migrations",
       "fileCount": 2,
-      "lastAccessed": 1778318494675,
+      "lastAccessed": 1779208537653,
       "keyFiles": [
         "01_add_conversations.sql",
         "02_dynamic_tools.sql"
@@ -83,7 +41,7 @@
       "path": "prompts",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1778318494676,
+      "lastAccessed": 1779208537653,
       "keyFiles": [
         "decider.txt",
         "identity-bootstrap.txt",
@@ -93,21 +51,21 @@
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 5,
-      "lastAccessed": 1778318494676,
+      "fileCount": 6,
+      "lastAccessed": 1779208537653,
       "keyFiles": [
         "bench_claude_ttft.py",
         "bench_openrouter.py",
         "bench_persistent_claude.py",
-        "yamnet_mic.py",
-        "yamnet_probe.py"
+        "fetch_speaker_onnx.py",
+        "yamnet_mic.py"
       ]
     },
     "skills": {
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1778318494676,
+      "lastAccessed": 1779208537654,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -118,7 +76,7 @@
       "path": "src",
       "purpose": "Source code",
       "fileCount": 5,
-      "lastAccessed": 1778318494676,
+      "lastAccessed": 1779208537654,
       "keyFiles": [
         "__init__.py",
         "config.py",
@@ -131,27 +89,27 @@
       "path": "testowanie_bota",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1778318494676,
+      "lastAccessed": 1779208537654,
       "keyFiles": []
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 71,
-      "lastAccessed": 1778318494677,
+      "fileCount": 82,
+      "lastAccessed": 1779208537654,
       "keyFiles": [
         "__init__.py",
         "test_agent_skills.py",
         "test_assistant_response_logger.py",
         "test_audio_event.py",
-        "test_capability_e2e.py"
+        "test_barge_in.py"
       ]
     },
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
       "fileCount": 3,
-      "lastAccessed": 1778318494677,
+      "lastAccessed": 1779208537655,
       "keyFiles": [
         "cancel_stopwords.txt",
         "decider_prompt_flag_off.golden.txt"
@@ -166,15 +124,33 @@
       "type": "file"
     },
     {
+      "path": "src/watch/data.py",
+      "accessCount": 56,
+      "lastAccessed": 1779209438270,
+      "type": "file"
+    },
+    {
       "path": "src/agent/browser_bridge.py",
       "accessCount": 52,
       "lastAccessed": 1778341788596,
       "type": "file"
     },
     {
-      "path": "src/watch/data.py",
+      "path": "src/watch/widgets.py",
+      "accessCount": 46,
+      "lastAccessed": 1779209423136,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/tools/direct.py",
+      "accessCount": 32,
+      "lastAccessed": 1779210271139,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/tools/schemas.py",
       "accessCount": 31,
-      "lastAccessed": 1778333367240,
+      "lastAccessed": 1778962653260,
       "type": "file"
     },
     {
@@ -184,21 +160,33 @@
       "type": "file"
     },
     {
-      "path": "src/watch/widgets.py",
-      "accessCount": 22,
-      "lastAccessed": 1778327223639,
+      "path": "src/config.py",
+      "accessCount": 28,
+      "lastAccessed": 1779049022056,
       "type": "file"
     },
     {
-      "path": "src/agent/tools/direct.py",
-      "accessCount": 20,
-      "lastAccessed": 1778338290871,
+      "path": "src/agent/llm/context_injector.py",
+      "accessCount": 27,
+      "lastAccessed": 1779210291036,
       "type": "file"
     },
     {
       "path": "src/main.py",
-      "accessCount": 20,
-      "lastAccessed": 1778341780873,
+      "accessCount": 26,
+      "lastAccessed": 1779046068317,
+      "type": "file"
+    },
+    {
+      "path": "src/watch/app.py",
+      "accessCount": 24,
+      "lastAccessed": 1779209145825,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/stages/transcription_gate.py",
+      "accessCount": 21,
+      "lastAccessed": 1779049122378,
       "type": "file"
     },
     {
@@ -220,9 +208,15 @@
       "type": "file"
     },
     {
-      "path": "src/config.py",
-      "accessCount": 13,
-      "lastAccessed": 1778341780694,
+      "path": "hearectl",
+      "accessCount": 12,
+      "lastAccessed": 1778606300108,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/tools/registry.py",
+      "accessCount": 12,
+      "lastAccessed": 1778962638174,
       "type": "file"
     },
     {
@@ -238,21 +232,9 @@
       "type": "file"
     },
     {
-      "path": "src/agent/tools/schemas.py",
+      "path": "README.md",
       "accessCount": 8,
-      "lastAccessed": 1778338297199,
-      "type": "file"
-    },
-    {
-      "path": "src/agent/tools/registry.py",
-      "accessCount": 8,
-      "lastAccessed": 1778341780925,
-      "type": "file"
-    },
-    {
-      "path": "src/watch/app.py",
-      "accessCount": 7,
-      "lastAccessed": 1778324066281,
+      "lastAccessed": 1778606303549,
       "type": "file"
     },
     {
@@ -262,9 +244,21 @@
       "type": "file"
     },
     {
+      "path": "pyproject.toml",
+      "accessCount": 7,
+      "lastAccessed": 1778964491504,
+      "type": "file"
+    },
+    {
       "path": "extensions/heare-bridge/content_script.js",
       "accessCount": 6,
       "lastAccessed": 1778334043392,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/stages/mute_gate.py",
+      "accessCount": 6,
+      "lastAccessed": 1779046077875,
       "type": "file"
     },
     {
@@ -274,9 +268,33 @@
       "type": "file"
     },
     {
+      "path": "tests/test_llm_context_injector.py",
+      "accessCount": 5,
+      "lastAccessed": 1778879124373,
+      "type": "file"
+    },
+    {
       "path": "extensions/heare-bridge/popup.html",
       "accessCount": 4,
       "lastAccessed": 1778334034252,
+      "type": "file"
+    },
+    {
+      "path": "src/overlay/app.py",
+      "accessCount": 4,
+      "lastAccessed": 1778588244999,
+      "type": "file"
+    },
+    {
+      "path": "src/watch/screens.py",
+      "accessCount": 4,
+      "lastAccessed": 1778876326559,
+      "type": "file"
+    },
+    {
+      "path": "src/watch/dashboard.tcss",
+      "accessCount": 4,
+      "lastAccessed": 1779208553963,
       "type": "file"
     },
     {
@@ -292,21 +310,87 @@
       "type": "file"
     },
     {
-      "path": "README.md",
+      "path": "src/overlay/server.py",
       "accessCount": 3,
-      "lastAccessed": 1778341841070,
+      "lastAccessed": 1778588240330,
       "type": "file"
     },
     {
-      "path": "pyproject.toml",
-      "accessCount": 2,
-      "lastAccessed": 1778341788349,
+      "path": "tests/test_mute_gate.py",
+      "accessCount": 3,
+      "lastAccessed": 1778959424013,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/stages/cancel_flag_gate.py",
+      "accessCount": 3,
+      "lastAccessed": 1779046073807,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_cancel_flag_gate.py",
+      "accessCount": 3,
+      "lastAccessed": 1779046089174,
       "type": "file"
     },
     {
       "path": "tests/test_direct_tools.py",
-      "accessCount": 1,
-      "lastAccessed": 1778318795010,
+      "accessCount": 3,
+      "lastAccessed": 1779210441326,
+      "type": "file"
+    },
+    {
+      "path": "src/overlay/static/overlay.js",
+      "accessCount": 2,
+      "lastAccessed": 1778588113351,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_overlay_server.py",
+      "accessCount": 2,
+      "lastAccessed": 1778588113809,
+      "type": "file"
+    },
+    {
+      "path": "src/overlay/__init__.py",
+      "accessCount": 2,
+      "lastAccessed": 1778588117521,
+      "type": "file"
+    },
+    {
+      "path": "src/overlay/__main__.py",
+      "accessCount": 2,
+      "lastAccessed": 1778588117710,
+      "type": "file"
+    },
+    {
+      "path": "src/overlay/static/index.html",
+      "accessCount": 2,
+      "lastAccessed": 1778588118151,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_watch_app.py",
+      "accessCount": 2,
+      "lastAccessed": 1778876354961,
+      "type": "file"
+    },
+    {
+      "path": "src/audio_event/observer.py",
+      "accessCount": 2,
+      "lastAccessed": 1778877808362,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/stages/voice_state_observer.py",
+      "accessCount": 2,
+      "lastAccessed": 1778877808773,
+      "type": "file"
+    },
+    {
+      "path": "src/audio_event/writer.py",
+      "accessCount": 2,
+      "lastAccessed": 1778877883666,
       "type": "file"
     },
     {
@@ -320,7 +404,20 @@
       "accessCount": 1,
       "lastAccessed": 1778341202009,
       "type": "file"
+    },
+    {
+      "path": "src/overlay/static/overlay.css",
+      "accessCount": 1,
+      "lastAccessed": 1778587764036,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/llm/switchable.py",
+      "accessCount": 1,
+      "lastAccessed": 1778606492072,
+      "type": "file"
     }
   ],
-  "userDirectives": []
+  "userDirectives": [],
+  "notes": "Reference at .sisyphus/PROJECT_REFERENCE.md. Critical choke point: src/pipeline/stages/transcription_gate.py. Known defect: cancel words during bot speech silently swallowed. System prompt injector runs synchronously (DB-heavy)."
 }

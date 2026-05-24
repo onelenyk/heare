@@ -37,6 +37,7 @@ class HeareDashboard(App):
         Binding("m", "toggle_mute_bot", "Mute bot", show=True),
         Binding("M", "toggle_mute_mic", "Mute mic", show=True),
         Binding("t", "text_input", "Text inject", show=True),
+        Binding("c", "toggle_select_mode", "Select", show=True),
         Binding("b", "launch_chrome", "Chrome (CDP)", show=True),
         Binding("l", "show_tools", "Tools", show=True),
         Binding("p", "toggle_provider", "Provider", show=False),
@@ -61,13 +62,14 @@ class HeareDashboard(App):
         self._refresh_timer = None
         self._activity_width_index = 2  # default to "full"
         self._width_presets = ("fit", "half", "full")
+        self._select_mode = False
 
     def compose(self) -> ComposeResult:
+        yield AgentResponseBar()
+        yield DisplayPanel()
         yield ActivityTable()
         yield LogTail()
         yield HeaderBar(self.settings)
-        yield DisplayPanel()
-        yield AgentResponseBar()
         yield Horizontal(
             ControlsBar(self.settings),
             AIBar(self.settings),
@@ -90,6 +92,7 @@ class HeareDashboard(App):
         "toggle_mute_bot", "toggle_mute_mic", "toggle_provider",
         "pick_model", "shrink_left", "grow_left", "quit",
         "refresh_now", "respawn", "launch_chrome", "show_tools",
+        "toggle_select_mode",
     })
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -228,6 +231,56 @@ class HeareDashboard(App):
         try:
             self.query_one(ControlsBar).update_status("refreshed")
         except NoMatches:
+            pass
+
+    def action_toggle_select_mode(self) -> None:
+        """Toggle mouse passthrough for native text selection (c key).
+
+        When select mode is ON, Textual stops capturing mouse events so
+        the terminal handles them natively — you can click-drag to
+        highlight text and copy via Cmd+C / right-click. Press ``c``
+        again to re-enable widget interaction.
+        """
+        self._select_mode = not self._select_mode
+        if self._select_mode:
+            self.screen.capture_mouse = "none"
+            self.screen.add_class("select-mode")
+            # Disable terminal mouse reporting so the terminal emulator
+            # handles selection natively instead of forwarding events to
+            # the app. Without this, capture_mouse="none" only changes
+            # Textual's internal routing — the terminal is still in
+            # Application Mouse Mode.
+            self._toggle_terminal_mouse(enable=False)
+            msg = "select mode ON — drag to select, Cmd+C to copy"
+        else:
+            self.screen.capture_mouse = "all"
+            self.screen.remove_class("select-mode")
+            self._toggle_terminal_mouse(enable=True)
+            msg = "select mode OFF — interactive"
+        try:
+            self.query_one(ControlsBar).update_status(msg)
+        except NoMatches:
+            pass
+
+    def _toggle_terminal_mouse(self, enable: bool) -> None:
+        """Enable or disable the terminal's Application Mouse Mode.
+
+        Sends the DEC private mode sequences that control whether mouse
+        events are forwarded to the application or handled natively by
+        the terminal emulator for text selection.
+
+        Uses the same escape sequences Textual's LinuxDriver uses in
+        ``_enable_mouse_support`` / ``_disable_mouse_support``.
+        """
+        if self._driver is None:
+            return
+        try:
+            if enable:
+                self._driver.write("\x1b[?1000h\x1b[?1003h\x1b[?1015h\x1b[?1006h")
+            else:
+                self._driver.write("\x1b[?1000l\x1b[?1003l\x1b[?1015l\x1b[?1006l")
+            self._driver.flush()
+        except Exception:
             pass
 
     def action_respawn(self) -> None:

@@ -324,6 +324,8 @@ class HeaderData:
     transcripts_count: int
     actions_count: int
     chrome_attached: bool
+    bot_muted: bool = False
+    mic_muted: bool = False
 
 
 @dataclass(frozen=True)
@@ -635,6 +637,11 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     name = identity["name"] if identity else "heare"
     emoji = identity["emoji"] if identity else "🪶"
 
+    # Mute states — surfaced in the header so the operator can observe
+    # bot/mic mute live (toggled via m/M from any process).
+    is_muted_val = is_muted(settings.mute_file)
+    is_input_muted_val = is_input_muted(settings.mute_input_file)
+
     header = HeaderData(
         name=name,
         emoji=emoji,
@@ -646,6 +653,8 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
         transcripts_count=count_dict["transcripts"],
         actions_count=count_dict["actions"],
         chrome_attached=chrome_attached,
+        bot_muted=is_muted_val,
+        mic_muted=is_input_muted_val,
     )
 
     # Fetch activity
@@ -653,10 +662,6 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
 
     # Fetch log tail
     log_lines = read_log_tail(settings.log_dir / "daemon.log", lines=20)
-
-    # Fetch mute states
-    is_muted_val = is_muted(settings.mute_file)
-    is_input_muted_val = is_input_muted(settings.mute_input_file)
 
     # Fetch usage / cost ledger
     usage = fetch_usage(con)
@@ -685,3 +690,102 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
         display=display,
         pair_code=pair_code,
     )
+
+
+# ---------------------------------------------------------------------------
+# Public API: Plain-text snapshot formatter (for copy-to-clipboard)
+# ---------------------------------------------------------------------------
+
+
+def format_snapshot_text(snapshot: DashboardSnapshot) -> str:
+    """Render a ``DashboardSnapshot`` as readable plain text.
+
+    Produces a clean text representation of every widget on the dashboard
+    without any escape codes or box-drawing characters, suitable for
+    clipboard paste into an email, bug report, or chat message.
+    """
+    lines: list[str] = []
+
+    # ── Header ────────────────────────────────────────────────────────
+    h = snapshot.header
+    status = "running" if h.running else "stopped"
+    bot_label = "muted" if h.bot_muted else "live"
+    mic_label = "muted" if h.mic_muted else "live"
+    chrome_label = "connected" if h.chrome_attached else "disconnected"
+    pair = snapshot.pair_code
+    pair_info = f"  pair-code: {pair.code} ({pair.remaining_s:.0f}s)" if pair.code else ""
+
+    lines.append(f"{h.name} {h.emoji}  {status}   pid={h.pid or '-'}   uptime={h.uptime}")
+    lines.append(f"mode={h.mode}   provider={h.provider}   chrome={chrome_label}{pair_info}")
+    lines.append(f"transcripts={h.transcripts_count}   actions={h.actions_count}")
+    lines.append(f"bot={bot_label}   mic={mic_label}")
+    lines.append("")
+
+    # ── Agent response ─────────────────────────────────────────────────
+    ar = snapshot.agent_response
+    if ar.text:
+        spoken_label = ("spoken" if ar.spoken is True
+                        else "silent" if ar.spoken is False
+                        else "?")
+        lines.append(f"--- Agent response ({spoken_label}) ---")
+        lines.append(ar.text.strip().replace("\n", " "))
+        lines.append("")
+
+    # ── Display panel ──────────────────────────────────────────────────
+    dp = snapshot.display
+    if dp.content:
+        lines.append(f"--- Display ({dp.fmt}) ---")
+        if dp.title:
+            lines.append(f"title: {dp.title}")
+        lines.append(dp.content)
+        lines.append("")
+
+    # ── Activity feed ──────────────────────────────────────────────────
+    lines.append(f"--- Activity (most recent {len(snapshot.activity_rows)}) ---")
+    if not snapshot.activity_rows:
+        lines.append("(no activity yet)")
+    else:
+        # Header
+        lines.append(f"{'Time':>8s}  {'WHO':<12s}  {'TYPE':<10s}  Content")
+        lines.append(f"{'-'*8}  {'-'*12}  {'-'*10}  {'-'*60}")
+        for row in snapshot.activity_rows:
+            ts_str = fmt_time(row.ts)
+            content = row.content.replace("\n", " ") if row.content else ""
+            if len(content) > 80:
+                content = content[:77] + "..."
+            lines.append(f"{ts_str:>8s}  {row.who:<12s}  {row.type_:<10s}  {content}")
+    lines.append("")
+
+    # ── Voice state ────────────────────────────────────────────────────
+    vs = snapshot.voice_state
+    lines.append("--- Voice state ---")
+    lines.append(f"state: {vs.state}")
+    if vs.last_partial:
+        lines.append(f"partial: {vs.last_partial[:80]}")
+    if vs.last_final:
+        lines.append(f"final: {vs.last_final[:80]}")
+    ae = snapshot.audio_event
+    if ae.label is not None:
+        lines.append(f"audio event: {ae.label} ({ae.score:.2f})")
+    lines.append("")
+
+    # ── Usage / cost ───────────────────────────────────────────────────
+    u = snapshot.usage
+    lines.append("--- Usage ---")
+    lines.append(f"LLM: {u.llm_calls} calls, {u.llm_input_tokens} in / {u.llm_output_tokens} out  ${u.llm_cost_usd:.4f}")
+    lines.append(f"STT: {u.stt_calls} calls, {u.stt_audio_seconds:.1f}s audio  ${u.stt_cost_usd:.4f}")
+    tts_cost = f"${u.tts_cost_usd:.4f}" if u.tts_cost_usd > 0 else "free"
+    lines.append(f"TTS: {u.tts_calls} calls  {tts_cost}")
+    lines.append(f"total: ${u.total_cost_usd:.4f}")
+    lines.append("")
+
+    # ── Log tail ───────────────────────────────────────────────────────
+    lines.append(f"--- Log tail (last {len(snapshot.log_lines)}) ---")
+    if not snapshot.log_lines:
+        lines.append("(no log lines)")
+    else:
+        for lf in snapshot.log_lines:
+            lines.append(lf.text)
+    lines.append("")
+
+    return "\n".join(lines)

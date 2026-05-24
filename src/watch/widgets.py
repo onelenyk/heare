@@ -4,9 +4,9 @@ from __future__ import annotations
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, VerticalScroll
 from textual.css.query import NoMatches
-from textual.widgets import DataTable, Input, RichLog, Static
+from textual.widgets import Button, DataTable, Input, RichLog, Static
 
 from src.config import Settings
 from src.pipeline.stages.text_injector import inject_text
@@ -70,7 +70,20 @@ class HeaderBar(Static):
             provider_text,
         )
 
-        # Line 2: transcripts actions chrome   <version>
+        # Bot/mic mute badges — red 🔇 when muted, green when live, so the
+        # operator can observe m/M toggles (set from any process) live.
+        bot_badge = (
+            ("🔇 muted", "bold red")
+            if header.bot_muted
+            else ("🔊 live", "bold green")
+        )
+        mic_badge = (
+            ("🔇 muted", "bold red")
+            if header.mic_muted
+            else ("🎤 live", "bold green")
+        )
+
+        # Line 2: transcripts actions chrome bot mic   <version>
         # Chrome shows green ● when extension is connected, grey ○ otherwise.
         line2 = Text.assemble(
             ("transcripts=", "dim"),
@@ -79,6 +92,10 @@ class HeaderBar(Static):
             (f"{header.actions_count}", "white"),
             ("  chrome=", "dim"),
             (("●", "bold green") if header.chrome_attached else ("○", "dim")),
+            ("   bot=", "dim"),
+            bot_badge,
+            ("   mic=", "dim"),
+            mic_badge,
             ("   ", ""),
             (app_version(), "dim italic"),
         )
@@ -106,7 +123,7 @@ class ActivityTable(DataTable):
         self.add_column("time", width=8)
         self.add_column("WHO", width=12)
         self.add_column("TYPE", width=10)
-        self.add_column("content", width=100)  # Fixed width, will truncate in refresh_data
+        self.add_column("content", width=100)  # wraps; row auto-heights to fit
 
     def refresh_data(self, rows: list[ActivityRow]) -> None:
         """Update table with new activity data.
@@ -141,10 +158,12 @@ class ActivityTable(DataTable):
                 # Action: show status with color coding
                 type_text = Text(row.type_, style=status_color(row.status))
 
-            # Content column
-            content_str = row.content[:100] + "…" if len(row.content) > 100 else row.content
+            # Content column — full content, wrapped; row grows to fit.
+            content_text = Text(row.content, no_wrap=False)
 
-            self.add_row(time_str, who_text, type_text, content_str)
+            self.add_row(
+                time_str, who_text, type_text, content_text, height=None
+            )
 
 
 def status_color(status: str | None) -> str:
@@ -555,13 +574,14 @@ class UsageBar(Static):
         return self._build_text()
 
 
-class DisplayPanel(Static):
+class DisplayPanel(Container):
     """Reserved space for the agent's rich output (show_display tool).
 
     Renders the latest displays-table row by format: code →
     syntax-highlighted, markdown → rich Markdown, ascii/table/text →
     monospace as-is (no wrap so diagrams/tables keep their shape).
     Latest-only: each show_display replaces what's here.
+    A small "copy" button in the header copies the raw content to clipboard.
     """
 
     def __init__(self) -> None:
@@ -570,11 +590,28 @@ class DisplayPanel(Static):
             content=None, fmt="text", title=None, ts=0.0
         )
         self.border_title = "📋 display"
-        self.update(self.render())
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="display-header"):
+            yield Static(id="display-title-filler")
+            yield Button("copy", id="copy-display-btn", variant="default")
+        with VerticalScroll(id="display-content"):
+            yield Static(id="display-content-inner")
+
+    def on_mount(self) -> None:
+        self._update_content_widget()
 
     def refresh_data(self, data: DisplayData) -> None:
         self._data = data
-        self.update(self.render())
+        self._update_content_widget()
+
+    def _update_content_widget(self) -> None:
+        try:
+            widget = self.query_one("#display-content-inner", Static)
+        except NoMatches:
+            return
+        r = self._build_renderable()
+        widget.update(r)
 
     def _build_renderable(self):
         d = self._data
@@ -598,9 +635,14 @@ class DisplayPanel(Static):
         # ascii / table / text → raw monospace, shape preserved.
         return f"{title}\n{d.content}"
 
-    def render(self):
-        r = self._build_renderable()
-        return Text(r, no_wrap=True) if isinstance(r, str) else r
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle copy button press — copy raw display content to clipboard."""
+        if event.button.id != "copy-display-btn":
+            return
+        content = self._data.content
+        if not content:
+            return
+        self.app.copy_to_clipboard(content)
 
 
 class AgentResponseBar(Static):

@@ -71,6 +71,64 @@ _DEFAULT_STOP_WORDS: tuple[str, ...] = (
 )
 
 
+def _normalize_words(text: str) -> list[str]:
+    """Lowercase, strip non-alphanumerics, split to word tokens."""
+    out: list[str] = []
+    for raw in text.lower().split():
+        token = "".join(ch for ch in raw if ch.isalnum())
+        if token:
+            out.append(token)
+    return out
+
+
+def _is_echo(transcript: str, bot_text: str, ratio: float) -> bool:
+    """True if ``transcript`` is likely the bot's own speech bleeding
+    back through the mic rather than a genuine human barge-in.
+
+    Two-level heuristic:
+
+    1. **Word overlap** — fraction of transcript words that also appear in
+       the bot's current spoken text (fast, works when both sides use the
+       same script and the STT output is clean).
+    2. **Character bigram overlap** — fallback when word-level fails.
+       Handles script mismatch (e.g. Latin bot-name "VEX" → STT transcribes
+       as Cyrillic "ВЕКС") and STT errors (e.g. "зв'язку" → "звяіску").
+       Character n-grams are resilient to both because the echoed audio
+       overwhelmingly shares the same character sequence regardless of
+       script encoding or minor transcription drift.
+
+    When the bot has said nothing yet there is nothing to echo,
+    so it cannot be echo.
+    """
+    words = _normalize_words(transcript)
+    if not words:
+        return True
+    bot_words_set = set(_normalize_words(bot_text))
+    if not bot_words_set:
+        return False
+
+    # Level 1: word overlap
+    hits = sum(1 for w in words if w in bot_words_set)
+    if (hits / len(words)) >= ratio:
+        return True
+
+    # Level 2: character bigram overlap — robust to script mismatch
+    # and STT errors that preserve the character skeleton of the text.
+    bot_raw = bot_text.lower()
+    tx_raw = transcript.lower()
+
+    def _bigrams(text: str) -> set[str]:
+        clean = "".join(ch for ch in text if ch.isalnum())
+        return {clean[i : i + 2] for i in range(len(clean) - 1)}
+
+    tx_bigrams = _bigrams(tx_raw)
+    bt_bigrams = _bigrams(bot_raw)
+    if not bt_bigrams:
+        return False
+    hits_bigram = len(tx_bigrams & bt_bigrams)
+    return (hits_bigram / len(bt_bigrams)) >= ratio
+
+
 def _load_pipecat_base():
     from pipecat.frames.frames import (
         BotStartedSpeakingFrame,
@@ -121,11 +179,24 @@ def _build_transcription_gate_class():
             settings: "Settings | None" = None,
             tts_service: Any = None,
             language_state: LanguageState | None = None,
+            bot_speech_state: Any = None,
         ) -> None:
             super().__init__()
             self.store = store
             self.settings = settings
             self._tts_service = tts_service
+            self._bot_speech_state = bot_speech_state
+            self._barge_in_enabled = (
+                settings.barge_in_enabled if settings is not None else True
+            )
+            self._barge_in_min_chars = (
+                settings.barge_in_min_chars if settings is not None else 4
+            )
+            self._barge_in_echo_ratio = (
+                settings.barge_in_echo_ratio
+                if settings is not None
+                else 0.6
+            )
 
             self._current_voice: str = (
                 settings.tts_voice if settings is not None else "en-US-AriaNeural"
@@ -252,22 +323,108 @@ def _build_transcription_gate_class():
             if not transcript:
                 return
 
+            # Cancel keyword fast-path (PH2-05): check BEFORE the bot-active
+            # guard so cancel words ("stop", "стоп", etc.) always interrupt
+            # the bot regardless of barge-in mode or bot-speaking state.
+            stop_words = (
+                tuple(self.settings.cancel_stop_words)
+                if self.settings is not None
+                else _DEFAULT_STOP_WORDS
+            )
+            if is_standalone_cancel_imperative(transcript, stop_words):
+                logger.info(
+                    "[CANCEL FAST-PATH] transcript=%r", transcript[:80]
+                )
+                try:
+                    await self.push_frame(
+                        InterruptionFrame(), FrameDirection.UPSTREAM
+                    )
+                except Exception:
+                    logger.exception(
+                        "transcription_gate: cancel InterruptionFrame "
+                        "push failed (non-fatal)"
+                    )
+                # Also clear speaking state so the post-cancel silence
+                # does not re-trigger the cooldown guard.
+                self._bot_speaking = False
+                self._bot_cooldown_until = 0.0
+                return
+
             from src.voice.indication.core import is_enrollment_active
             enrollment_active = is_enrollment_active()
-            if (
-                self._bot_speaking
-                or self._indication_speaking
-                or enrollment_active
-                or time.monotonic() < self._bot_cooldown_until
-            ):
+
+            # Hard block: never interrupt a sound cue or an active
+            # speaker-enrollment flow — those are not conversational
+            # turns and barging in would corrupt them.
+            if self._indication_speaking or enrollment_active:
                 logger.debug(
-                    "transcription_gate: dropping transcript (bot=%s indication=%s enrollment=%s): %r",
-                    self._bot_speaking,
+                    "transcription_gate: dropping transcript "
+                    "(indication=%s enrollment=%s): %r",
                     self._indication_speaking,
                     enrollment_active,
                     transcript[:60],
                 )
                 return
+
+            bot_active = (
+                self._bot_speaking
+                or time.monotonic() < self._bot_cooldown_until
+            )
+            if bot_active:
+                # Without barge-in, preserve the legacy behaviour:
+                # everything heard while the bot speaks is dropped.
+                if not self._barge_in_enabled:
+                    logger.debug(
+                        "transcription_gate: dropping transcript "
+                        "(bot speaking, barge-in disabled): %r",
+                        transcript[:60],
+                    )
+                    return
+                # Too short to be a real interruption — almost always a
+                # noise blip or a one-word echo fragment.
+                if len(transcript) < self._barge_in_min_chars:
+                    logger.debug(
+                        "transcription_gate: dropping transcript "
+                        "(bot speaking, too short for barge-in): %r",
+                        transcript,
+                    )
+                    return
+                bot_text = (
+                    self._bot_speech_state.text
+                    if self._bot_speech_state is not None
+                    else ""
+                )
+                if _is_echo(
+                    transcript, bot_text, self._barge_in_echo_ratio
+                ):
+                    logger.debug(
+                        "transcription_gate: dropping transcript "
+                        "(echo of bot speech): %r",
+                        transcript[:60],
+                    )
+                    return
+                # Genuine barge-in: the human said something the bot is
+                # not currently saying. Stop the bot (Pipecat routes the
+                # SystemFrame immediately, cascading to the TTS fade /
+                # ffmpeg kill) and fall through so this transcript drives
+                # a fresh user turn.
+                logger.info(
+                    "[BARGE-IN] interrupting bot speech: %r",
+                    transcript[:80],
+                )
+                try:
+                    await self.push_frame(
+                        InterruptionFrame(), FrameDirection.UPSTREAM
+                    )
+                except Exception:
+                    logger.exception(
+                        "transcription_gate: barge-in InterruptionFrame "
+                        "push failed (non-fatal)"
+                    )
+                # Clear the speaking/cooldown state so the just-spoken
+                # text does not re-block the turn we are about to drive.
+                self._bot_speaking = False
+                self._bot_cooldown_until = 0.0
 
             # Language detection + 2-turn hysteresis (US-I18N-03/05)
             raw_lang = detect_language_from_frame(
@@ -338,45 +495,6 @@ def _build_transcription_gate_class():
                         "transcription_gate: failed to log transcript "
                         "(non-fatal)"
                     )
-
-            # Cancel keyword fast-path (PH2-05): the smart detector
-            # (US-WU-02) is shared by both the legacy and Pipecat-native
-            # paths. Native path: push InterruptionFrame upstream so
-            # Pipecat cancels in-flight LLM/TTS plus any in-flight
-            # register_function call (e.g. bash → CancelledError →
-            # os.killpg in execute_direct). Legacy path: also call
-            # IntentQueue.cancel_active() when an intent_queue is
-            # plumbed in for backward compatibility — main.py's
-            # post-PH2-06 rewrite drops the queue entirely.
-            stop_words = (
-                tuple(self.settings.cancel_stop_words)
-                if self.settings is not None
-                else _DEFAULT_STOP_WORDS
-            )
-            cancel_detected = is_standalone_cancel_imperative(
-                transcript, stop_words
-            )
-            if cancel_detected:
-                logger.info(
-                    "[CANCEL FAST-PATH transcript=%r]", transcript[:80]
-                )
-                # Native interruption: push the frame upstream so the
-                # transport sees it before downstream TTS/LLM frames.
-                # Pipecat's pipeline routes SystemFrames immediately,
-                # bypassing per-stage queues.
-                try:
-                    await self.push_frame(
-                        InterruptionFrame(), FrameDirection.UPSTREAM
-                    )
-                except Exception:
-                    logger.exception(
-                        "transcription_gate: InterruptionFrame push "
-                        "failed (non-fatal)"
-                    )
-                # On cancel we do NOT push the transcript downstream —
-                # there is no LLM turn to drive; the user said "stop",
-                # not a new request.
-                return
 
             # Push the (possibly coalesced) transcript downstream so the
             # LLM context aggregator can drive the turn. When override_text
@@ -491,6 +609,7 @@ def create_transcription_gate(
     settings: "Settings | None" = None,
     tts_service: Any = None,
     language_state: LanguageState | None = None,
+    bot_speech_state: Any = None,
 ):
     """Factory returning a TranscriptionGateProcessor instance."""
     cls = _build_transcription_gate_class()
@@ -499,6 +618,7 @@ def create_transcription_gate(
         settings=settings,
         tts_service=tts_service,
         language_state=language_state,
+        bot_speech_state=bot_speech_state,
     )
 
 
