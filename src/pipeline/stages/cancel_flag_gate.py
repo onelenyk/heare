@@ -56,14 +56,21 @@ def _build_cancel_flag_gate_class():
                     self._flag_path.unlink()
                 except FileNotFoundError:
                     pass
+                # Push downstream so the PipelineTask (with
+                # allow_interruptions=True) cancels TTS/LLM/tool calls,
+                # and the _TtsFadeOnInterruption observer fires the
+                # fade-out. Also push upstream for any upstream-only
+                # stages that need to react.
                 try:
                     await self.push_frame(
-                        InterruptionFrame(), FrameDirection.UPSTREAM
+                        InterruptionFrame(), FrameDirection.DOWNSTREAM
                     )
-                    logger.info("cancel_flag_gate: InterruptionFrame pushed")
+                    logger.info(
+                        "cancel_flag_gate: InterruptionFrame pushed downstream"
+                    )
                 except Exception:
                     logger.exception(
-                        "cancel_flag_gate: InterruptionFrame push failed (non-fatal)"
+                        "cancel_flag_gate: downstream push failed (non-fatal)"
                     )
             await self.push_frame(frame, direction)
 

@@ -371,7 +371,7 @@ def _build_transcription_gate_class():
                 )
                 try:
                     await self.push_frame(
-                        InterruptionFrame(), FrameDirection.UPSTREAM
+                        InterruptionFrame(), FrameDirection.DOWNSTREAM
                     )
                 except Exception:
                     logger.exception(
@@ -448,7 +448,7 @@ def _build_transcription_gate_class():
                 )
                 try:
                     await self.push_frame(
-                        InterruptionFrame(), FrameDirection.UPSTREAM
+                        InterruptionFrame(), FrameDirection.DOWNSTREAM
                     )
                 except Exception:
                     logger.exception(
