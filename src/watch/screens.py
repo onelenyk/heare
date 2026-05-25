@@ -268,3 +268,116 @@ class ToolingScreen(ModalScreen[None]):
 
     def action_dismiss_none(self) -> None:
         self.dismiss(None)
+
+
+class AudioDeviceSelectScreen(ModalScreen[str | None]):
+    """Modal dialog: pick an audio input/output device.
+
+    Lists all sounddevice devices. When the user picks one, it writes
+    the device name to the appropriate hot-reload file (input, output,
+    or both depending on the device's capabilities). The daemon's
+    background watcher picks up the change within ~3s.
+    """
+
+    BINDINGS = (
+        Binding("escape", "dismiss_none", "Cancel"),
+    )
+
+    DEFAULT_CSS = """
+    AudioDeviceSelectScreen {
+        align: center middle;
+    }
+
+    #audio-dialog {
+        width: 70;
+        height: auto;
+        max-height: 80%;
+        border: round $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #audio-dialog Label.title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #audio-dialog Label.status {
+        color: $text-muted;
+        text-style: italic;
+        margin-top: 1;
+    }
+
+    #audio-dialog ListView {
+        height: auto;
+        max-height: 16;
+        border: tall $surface-darken-2;
+    }
+    """
+
+    def __init__(self, settings) -> None:
+        super().__init__()
+        self._settings = settings
+
+    def compose(self) -> ComposeResult:
+        import sounddevice as sd
+
+        current_in = self._settings.audio_input_device or "(default)"
+        current_out = self._settings.audio_output_device or "(default)"
+        devices = sd.query_devices()
+        items: list[ListItem] = []
+        for i, dev in enumerate(devices):
+            name = dev["name"]
+            has_in = int(dev.get("max_input_channels", 0)) > 0
+            has_out = int(dev.get("max_output_channels", 0)) > 0
+            tags = []
+            if has_in:
+                tags.append("IN")
+            if has_out:
+                tags.append("OUT")
+            label = f"  {name}  [{','.join(tags)}]"
+            items.append(ListItem(Label(label), id=f"ad-{i}"))
+
+        with Vertical(id="audio-dialog"):
+            yield Label("Select audio device — Esc to cancel", classes="title")
+            yield Label(f"input:  {current_in}", classes="status")
+            yield Label(f"output: {current_out}", classes="status")
+            yield Label("", classes="status")  # spacer
+            if not items:
+                yield Label("(no audio devices found)")
+                return
+            yield ListView(*items, id="audio-device-list")
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        import sounddevice as sd
+
+        item = event.item
+        if item is None or item.id is None or not item.id.startswith("ad-"):
+            return
+        idx = int(item.id.split("-", 1)[1])
+        dev = sd.query_devices()[idx]
+        name = dev["name"]
+        has_in = int(dev.get("max_input_channels", 0)) > 0
+        has_out = int(dev.get("max_output_channels", 0)) > 0
+
+        # Write to the appropriate hot-reload file(s).
+        set_msg = ""
+        if has_out:
+            self._settings.audio_output_device_file.parent.mkdir(
+                parents=True, exist_ok=True
+            )
+            self._settings.audio_output_device_file.write_text(name)
+            set_msg += f"output -> {name}"
+        if has_in:
+            self._settings.audio_input_device_file.parent.mkdir(
+                parents=True, exist_ok=True
+            )
+            self._settings.audio_input_device_file.write_text(name)
+            if set_msg:
+                set_msg += "; "
+            set_msg += f"input -> {name}"
+        self.dismiss(set_msg)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)

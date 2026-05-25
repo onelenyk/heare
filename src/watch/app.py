@@ -17,7 +17,7 @@ from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
 from src.pipeline.stages.cancel_flag_gate import request_cancel
 from . import models
 from .data import fetch_dashboard_state
-from .screens import ChromeProfileSelectScreen, ModelSelectScreen, ToolingScreen
+from .screens import AudioDeviceSelectScreen, ChromeProfileSelectScreen, ModelSelectScreen, ToolingScreen
 from .widgets import ActivityTable, AgentResponseBar, AIBar, ControlsBar, DisplayPanel, HeaderBar, LogTail, UsageBar, VoiceStateBar
 
 
@@ -38,6 +38,7 @@ class HeareDashboard(App):
         Binding("m", "toggle_mute_bot", "Mute bot", show=True),
         Binding("M", "toggle_mute_mic", "Mute mic", show=True),
         Binding("k", "cancel_bot", "Interrupt", show=True),
+        Binding("a", "pick_audio_device", "Audio dev", show=True),
         Binding("t", "text_input", "Text inject", show=True),
         Binding("c", "toggle_select_mode", "Select", show=True),
         Binding("b", "launch_chrome", "Chrome (CDP)", show=True),
@@ -94,7 +95,7 @@ class HeareDashboard(App):
         "toggle_mute_bot", "toggle_mute_mic", "toggle_provider",
         "pick_model", "shrink_left", "grow_left", "quit",
         "refresh_now", "respawn", "launch_chrome", "show_tools",
-        "toggle_select_mode", "cancel_bot",
+        "toggle_select_mode", "cancel_bot", "pick_audio_device",
     })
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -180,6 +181,14 @@ class HeareDashboard(App):
             self.query_one(ControlsBar).update_status("interrupted")
         except NoMatches:
             pass
+
+    def action_pick_audio_device(self) -> None:
+        """Open the audio device picker (a key)."""
+        def _on_dismiss(msg: str | None) -> None:
+            if msg:
+                self.query_one(ControlsBar).update_status(msg)
+
+        self.push_screen(AudioDeviceSelectScreen(self.settings), _on_dismiss)
 
     def action_toggle_provider(self) -> None:
         """Toggle LLM provider between openrouter and zai (p key)."""
