@@ -247,6 +247,13 @@ def _build_transcription_gate_class():
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
 
+            if isinstance(frame, TranscriptionFrame):
+                logger.debug(
+                    "transcription_gate: raw STT text=%r bot_speaking=%s",
+                    (frame.text or "")[:120],
+                    self._bot_speaking,
+                )
+
             if isinstance(frame, BotStartedSpeakingFrame):
                 self._bot_speaking = True
                 await self.push_frame(frame, direction)

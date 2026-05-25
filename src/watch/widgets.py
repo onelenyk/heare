@@ -262,7 +262,7 @@ class ControlsBar(Container):
 
     SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         ("AGENT",   (("s", "start"), ("x", "stop"), ("r", "restart"))),
-        ("MUTE",    (("m", "bot"),   ("M", "mic"))),
+        ("MUTE",    (("m", "bot"),   ("M", "mic"), ("k", "interrupt"))),
         ("INPUT",   (("t", "text"),)),
     )
     EXTRAS: tuple[tuple[str, str], ...] = (

@@ -14,6 +14,7 @@ from src.config import Settings
 from src.pipeline.stages.mute_gate import toggle_input_mute, toggle_mute
 from src.daemon.browser import ensure_debug_chrome, is_debug_reachable, list_chrome_profiles
 from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
+from src.pipeline.stages.cancel_flag_gate import request_cancel
 from . import models
 from .data import fetch_dashboard_state
 from .screens import ChromeProfileSelectScreen, ModelSelectScreen, ToolingScreen
@@ -36,6 +37,7 @@ class HeareDashboard(App):
         Binding("r", "restart_daemon", "Restart", show=True),
         Binding("m", "toggle_mute_bot", "Mute bot", show=True),
         Binding("M", "toggle_mute_mic", "Mute mic", show=True),
+        Binding("k", "cancel_bot", "Interrupt", show=True),
         Binding("t", "text_input", "Text inject", show=True),
         Binding("c", "toggle_select_mode", "Select", show=True),
         Binding("b", "launch_chrome", "Chrome (CDP)", show=True),
@@ -92,7 +94,7 @@ class HeareDashboard(App):
         "toggle_mute_bot", "toggle_mute_mic", "toggle_provider",
         "pick_model", "shrink_left", "grow_left", "quit",
         "refresh_now", "respawn", "launch_chrome", "show_tools",
-        "toggle_select_mode",
+        "toggle_select_mode", "cancel_bot",
     })
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -163,6 +165,21 @@ class HeareDashboard(App):
         muted = toggle_input_mute(self.settings.mute_input_file)
         msg = "mic muted" if muted else "mic unmuted"
         self.query_one(ControlsBar).update_status(msg)
+
+    def action_cancel_bot(self) -> None:
+        """Interrupt the bot immediately (k key).
+
+        Touches the cancel flag file — the pipeline's cancel_flag_gate
+        picks it up on the next frame and pushes an InterruptionFrame
+        upstream, which stops TTS and cancels any in-flight tool calls.
+        This bypasses VAD/STT entirely — works even when the bot's
+        audio drowns out the mic.
+        """
+        request_cancel(self.settings.cancel_flag_file)
+        try:
+            self.query_one(ControlsBar).update_status("interrupted")
+        except NoMatches:
+            pass
 
     def action_toggle_provider(self) -> None:
         """Toggle LLM provider between openrouter and zai (p key)."""
