@@ -166,6 +166,16 @@ class Settings:
     transcript_retention_days: int = 30
     min_action_confidence: float = 0.8
     bot_speaking_cooldown_seconds: float = 2.0
+    # Open-mic barge-in: while the bot is speaking, a genuine human
+    # interruption should stop it. Without headphones the bot's own
+    # audio echoes back through the mic, so we only treat heard speech
+    # as a barge-in when it does NOT closely match what the bot is
+    # currently saying (echo suppression) and is long enough to not be
+    # a noise fragment. Disable to restore the old "drop everything
+    # while bot speaks" behaviour.
+    barge_in_enabled: bool = True
+    barge_in_min_chars: int = 4
+    barge_in_echo_ratio: float = 0.6
     warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")
     session_file: Path = field(default_factory=lambda: HEARE_HOME / "session.json")
@@ -219,9 +229,12 @@ class Settings:
     # Multi-language conversation: Groq detects other languages when spoken, TTS voice
     # automatically swaps to match detected language via TranscriptionGateProcessor.
     groq_language: str = "uk"
-    # Speaker recognition (off by default — torch/speechbrain live under
-    # [project.optional-dependencies].speaker and are lazy-imported)
+    # Speaker recognition. Runs on onnxruntime (already required for
+    # audio-event detection) — no torch/speechbrain. The ONNX embedding
+    # model is lazy-loaded from speaker_id_onnx_path; empty = default
+    # ~/.heare/speaker_model/speaker.onnx.
     speaker_id_enabled: bool = True
+    speaker_id_onnx_path: str = ""
     speaker_id_threshold_match: float = 0.50
     speaker_id_threshold_unknown: float = 0.55
     speaker_id_sticky_threshold: float = 0.80
@@ -385,6 +398,13 @@ class Settings:
     browser_bridge_port: int = 9333
     browser_bridge_token: str = ""
 
+    # Audio device selection (optional). Substring-matched against
+    # sounddevice device names at daemon start. When None (default) the
+    # system default device is used. Set these in ~/.heare/config.toml,
+    # e.g.: ``audio_output_device = "AirPods Pro"``
+    audio_input_device: str | None = None
+    audio_output_device: str | None = None
+
     def __post_init__(self) -> None:
         # CCS-01 invariant: a refinement window longer than the idle
         # hydration window would let the generator refine a query that
@@ -464,6 +484,24 @@ def load_settings() -> Settings:
         parsed = [w.strip() for w in cancel_words_env.split(",") if w.strip()]
         if parsed:
             settings.cancel_stop_words = parsed
+
+    barge_in_env = os.environ.get("HEARE_BARGE_IN")
+    if barge_in_env is not None:
+        settings.barge_in_enabled = barge_in_env.strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+    barge_in_ratio_env = os.environ.get("HEARE_BARGE_IN_ECHO_RATIO")
+    if barge_in_ratio_env is not None:
+        try:
+            settings.barge_in_echo_ratio = float(barge_in_ratio_env)
+        except ValueError:
+            logger.warning(
+                "HEARE_BARGE_IN_ECHO_RATIO is not a float; ignoring (got %r)",
+                barge_in_ratio_env,
+            )
 
     mode_override = os.environ.get("HEARE_MODE")
     if mode_override:

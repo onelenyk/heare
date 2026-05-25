@@ -58,6 +58,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger("heare.pipeline_native")
 
 
+def _resolve_device_index(
+    name: str, devices: list, kind: str
+) -> int | None:
+    """Find a sounddevice index by substring match on device name.
+
+    ``kind`` is ``"input"`` (device must have input channels) or
+    ``"output"`` (must have output channels). Returns the first match
+    or ``None``.
+    """
+    name_lower = name.lower()
+    for i, dev in enumerate(devices):
+        if name_lower in dev["name"].lower():
+            has_input = int(dev.get("max_input_channels", 0)) > 0
+            has_output = int(dev.get("max_output_channels", 0)) > 0
+            if kind == "input" and has_input:
+                return i
+            if kind == "output" and has_output:
+                return i
+    return None
+
+
 def _build_system_prompt(
     persona: str,
     language: str,
@@ -307,12 +328,49 @@ async def build_pipeline(
     smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
     # Pipecat 0.0.108 moved vad_analyzer/turn_analyzer off the transport and
     # onto the LLMUserAggregator (see LLMUserAggregatorParams below).
+
+    # Resolve optional device names to sounddevice indices so audio
+    # goes to/from the user's chosen device instead of the system default.
+    audio_in_idx: int | None = None
+    audio_out_idx: int | None = None
+    if settings.audio_input_device or settings.audio_output_device:
+        try:
+            import sounddevice as _sd
+            devices = _sd.query_devices()
+            if settings.audio_input_device:
+                audio_in_idx = _resolve_device_index(
+                    settings.audio_input_device, devices, kind="input"
+                )
+                if audio_in_idx is None:
+                    logger.warning(
+                        "audio_input_device=%r not found; using default",
+                        settings.audio_input_device,
+                    )
+            if settings.audio_output_device:
+                audio_out_idx = _resolve_device_index(
+                    settings.audio_output_device, devices, kind="output"
+                )
+                if audio_out_idx is None:
+                    logger.warning(
+                        "audio_output_device=%r not found; using default",
+                        settings.audio_output_device,
+                    )
+            if audio_in_idx is not None or audio_out_idx is not None:
+                logger.info(
+                    "audio devices: input=%s output=%s",
+                    audio_in_idx, audio_out_idx,
+                )
+        except Exception:
+            logger.exception("audio device resolution failed (using defaults)")
+
     transport = LocalAudioTransport(
         params=LocalAudioTransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
             audio_in_sample_rate=16000,
             audio_out_sample_rate=settings.tts_sample_rate,
+            input_device_index=audio_in_idx,
+            output_device_index=audio_out_idx,
         )
     )
     # STT language is a HINT for Groq's Whisper, not a hard force. Groq will detect
