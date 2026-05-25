@@ -275,7 +275,11 @@ def _build_transcription_gate_class():
         async def _schedule_transcription(
             self, frame: Any, direction: Any
         ) -> None:
-            """Buffer a TranscriptionFrame; debounce-fire after silence window."""
+            """Buffer a TranscriptionFrame; debounce-fire after silence window.
+
+            Cancel words bypass the debounce entirely and are handled
+            immediately so the bot stops without the debounce delay.
+            """
             import asyncio as _asyncio
 
             text = (frame.text or "").strip()
@@ -283,6 +287,29 @@ def _build_transcription_gate_class():
                 self._debounce_buffer.append(text)
             self._debounce_frame = frame
             self._debounce_direction = direction
+
+            # Fast-path: check for cancel words before debouncing so the
+            # bot stops immediately instead of waiting for the timer.
+            stop_words = (
+                tuple(self.settings.cancel_stop_words)
+                if self.settings is not None
+                else _DEFAULT_STOP_WORDS
+            )
+            if is_standalone_cancel_imperative(text, stop_words):
+                # Cancel any pending debounce so stale subsequent frames
+                # don't spawn a new LLM turn after we interrupt.
+                if (
+                    self._debounce_task is not None
+                    and not self._debounce_task.done()
+                ):
+                    self._debounce_task.cancel()
+                    self._debounce_task = None
+                self._debounce_buffer = []
+                await self._handle_transcription(
+                    frame, direction, override_text=text
+                )
+                return
+
             if (
                 self._debounce_task is not None
                 and not self._debounce_task.done()
