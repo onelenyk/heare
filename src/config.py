@@ -398,12 +398,20 @@ class Settings:
     browser_bridge_port: int = 9333
     browser_bridge_token: str = ""
 
-    # Audio device selection (optional). Substring-matched against
-    # sounddevice device names at daemon start. When None (default) the
-    # system default device is used. Set these in ~/.heare/config.toml,
-    # e.g.: ``audio_output_device = "AirPods Pro"``
+    # Audio device selection (optional). Set via config.toml or at
+    # runtime via ``heare audio-input <name>`` / ``heare audio-output
+    # <name>``. When None (default) the system default device is used.
+    # Substring-matched against sounddevice device names.
     audio_input_device: str | None = None
     audio_output_device: str | None = None
+    # Hot-reload files (same pattern as mode/provider). Written by the
+    # CLI commands; read by the daemon's background device watcher.
+    audio_input_device_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "audio_input_device"
+    )
+    audio_output_device_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "audio_output_device"
+    )
 
     def __post_init__(self) -> None:
         # CCS-01 invariant: a refinement window longer than the idle
@@ -515,6 +523,16 @@ def load_settings() -> Settings:
         raw = settings.provider_file.read_text().strip().lower()
         if raw in ("openrouter", "zai"):
             settings.llm_provider = raw
+
+    if settings.audio_input_device_file.exists():
+        raw = settings.audio_input_device_file.read_text().strip()
+        if raw:
+            settings.audio_input_device = raw
+
+    if settings.audio_output_device_file.exists():
+        raw = settings.audio_output_device_file.read_text().strip()
+        if raw:
+            settings.audio_output_device = raw
 
     # DEPRECATED (Phase 2): HEARE_CLAUDE_CLI override no longer used.
     claude_override = os.environ.get("HEARE_CLAUDE_CLI")

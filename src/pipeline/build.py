@@ -57,6 +57,79 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("heare.pipeline_native")
 
+# Module-level transport reference so ``heare audio-input`` /
+# ``heare audio-output`` can change the device at runtime without
+# restarting the daemon. Set by build_pipeline; read by reload_audio_device.
+_transport_ref: dict[str, object] = {"transport": None}
+
+
+def reload_audio_device(settings: "Settings") -> bool:
+    """Reconfigure the audio output device at runtime.
+
+    Reads the device name from ``settings.audio_output_device_file``,
+    resolves it to a sounddevice index, and updates the running
+    transport's output stream. Returns True on success.
+    """
+    transport = _transport_ref.get("transport")
+    if transport is None:
+        logger.warning("reload_audio_device: no transport reference")
+        return False
+
+    name = settings.audio_output_device
+    if not name:
+        logger.info("reload_audio_device: no device configured")
+        return False
+
+    try:
+        import sounddevice as _sd
+
+        devices = _sd.query_devices()
+        idx = _resolve_device_index(name, devices, kind="output")
+        if idx is None:
+            logger.warning(
+                "reload_audio_device: device %r not found", name
+            )
+            return False
+    except Exception:
+        logger.exception("reload_audio_device: device lookup failed")
+        return False
+
+    # Access the transport's internal params and reopen the stream.
+    try:
+        output = getattr(transport, "_output", None)
+        if output is None:
+            logger.warning("reload_audio_device: no output transport")
+            return False
+
+        # Stop the current stream.
+        stream = getattr(output, "_out_stream", None)
+        if stream is not None:
+            try:
+                stream.stop_stream()
+                stream.close()
+            except Exception:
+                logger.exception(
+                    "reload_audio_device: stream close failed"
+                )
+            output._out_stream = None  # type: ignore[attr-defined]
+
+        output._params.output_device_index = idx  # type: ignore[attr-defined]
+        # start() recreates the stream with the new device index.
+        import asyncio
+
+        from pipecat.frames.frames import StartFrame
+
+        asyncio.create_task(output.start(StartFrame()))
+        logger.info(
+            "reload_audio_device: output switched to device %d (%s)",
+            idx,
+            name,
+        )
+        return True
+    except Exception:
+        logger.exception("reload_audio_device: reconfiguration failed")
+        return False
+
 
 def _resolve_device_index(
     name: str, devices: list, kind: str
@@ -373,6 +446,7 @@ async def build_pipeline(
             output_device_index=audio_out_idx,
         )
     )
+    _transport_ref["transport"] = transport
     # STT language is a HINT for Groq's Whisper, not a hard force. Groq will detect
     # the language from audio and can override this hint if confident (e.g., English
     # speech despite "uk" hint). The TranscriptionGateProcessor reads Groq's detected

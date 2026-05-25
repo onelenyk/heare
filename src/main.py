@@ -316,6 +316,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             runner,
             pipeline,
             warmup,
+            settings=settings,
             namer_task=namer_task,
             bridge_task=bridge_task,
         )
@@ -360,7 +361,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
 
 async def run_until_stopped(
-    runner, pipeline, warmup=None, *, namer_task=None, bridge_task=None,
+    runner, pipeline, warmup=None, *, settings=None, namer_task=None, bridge_task=None,
 ) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
@@ -398,6 +399,49 @@ async def run_until_stopped(
     except (NotImplementedError, AttributeError):
         pass
 
+    # Audio device hot-reload: every 3s check if the device files changed
+    # and if so, reconfigure the transport's output stream.
+    audio_dev_task: asyncio.Task | None = None
+    if settings is not None:
+
+        async def _watch_audio_devices() -> None:
+            from src.pipeline.build import reload_audio_device
+
+            last_mtime_out = 0.0
+            last_mtime_in = 0.0
+            while True:
+                try:
+                    await asyncio.sleep(3)
+                    from .config import load_settings
+
+                    s = load_settings()
+                    # Check output device file
+                    if s.audio_output_device_file.exists():
+                        mtime = s.audio_output_device_file.stat().st_mtime
+                        if mtime > last_mtime_out:
+                            last_mtime_out = mtime
+                            if reload_audio_device(s):
+                                logger.info(
+                                    "audio device: output switched to %r",
+                                    s.audio_output_device,
+                                )
+                    # Check input device file
+                    if s.audio_input_device_file.exists():
+                        mtime_in = s.audio_input_device_file.stat().st_mtime
+                        if mtime_in > last_mtime_in:
+                            last_mtime_in = mtime_in
+                            logger.info(
+                                "audio device: input change detected %r "
+                                "(input hot-reload not yet implemented)",
+                                s.audio_input_device,
+                            )
+                except asyncio.CancelledError:
+                    break
+                except Exception:
+                    logger.exception("audio device watcher error (non-fatal)")
+
+        audio_dev_task = asyncio.create_task(_watch_audio_devices())
+
     stop_waiter = loop.create_task(stop_event.wait())
     watch_set = {pipeline_task, stop_waiter}
     if warmup_task is not None:
@@ -406,6 +450,8 @@ async def run_until_stopped(
         watch_set.add(namer_task)
     if bridge_task is not None:
         watch_set.add(bridge_task)
+    if audio_dev_task is not None:
+        watch_set.add(audio_dev_task)
     try:
         done, _ = await asyncio.wait(watch_set, return_when=asyncio.FIRST_COMPLETED)
     finally:
@@ -418,6 +464,8 @@ async def run_until_stopped(
             background_tasks.append(namer_task)
         if bridge_task is not None:
             background_tasks.append(bridge_task)
+        if audio_dev_task is not None:
+            background_tasks.append(audio_dev_task)
         for task in background_tasks:
             if not task.done():
                 task.cancel()
@@ -428,6 +476,8 @@ async def run_until_stopped(
             named_tasks.append((namer_task, "speaker-namer"))
         if bridge_task is not None:
             named_tasks.append((bridge_task, "browser-bridge"))
+        if audio_dev_task is not None:
+            named_tasks.append((audio_dev_task, "audio-device"))
         for task, name in named_tasks:
             try:
                 await task
@@ -498,6 +548,22 @@ def _cmd_provider(args: argparse.Namespace) -> int:
     settings.provider_file.parent.mkdir(parents=True, exist_ok=True)
     settings.provider_file.write_text(provider)
     print(f"LLM provider set to {provider} (effective on next user utterance)")
+    return 0
+
+
+def _cmd_audio_input(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    settings.audio_input_device_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.audio_input_device_file.write_text(args.name)
+    print(f"audio input device set to {args.name!r} — hot-reloaded")
+    return 0
+
+
+def _cmd_audio_output(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    settings.audio_output_device_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.audio_output_device_file.write_text(args.name)
+    print(f"audio output device set to {args.name!r} — hot-reloaded")
     return 0
 
 
@@ -928,6 +994,12 @@ def build_parser() -> argparse.ArgumentParser:
     prov_p = sub.add_parser("provider", help="Set the LLM provider (hot-reloaded)")
     prov_p.add_argument("provider_name", choices=["openrouter", "zai"])
 
+    audio_in_p = sub.add_parser("audio-input", help="Set the audio input device (hot-reloaded)")
+    audio_in_p.add_argument("name", help="Device name substring (e.g. AirPods Pro)")
+
+    audio_out_p = sub.add_parser("audio-output", help="Set the audio output device (hot-reloaded)")
+    audio_out_p.add_argument("name", help="Device name substring (e.g. AirPods Pro)")
+
     sub.add_parser("reset-session", help="Backup session.json and start fresh")
     sub.add_parser("reset-identity", help="Backup identity.json and regenerate")
     sub.add_parser(
@@ -998,6 +1070,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_mode(args)
     if cmd == "provider":
         return _cmd_provider(args)
+    if cmd == "audio-input":
+        return _cmd_audio_input(args)
+    if cmd == "audio-output":
+        return _cmd_audio_output(args)
     if cmd == "reset-session":
         return _cmd_reset_session(args)
     if cmd == "reset-identity":
