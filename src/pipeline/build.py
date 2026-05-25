@@ -38,6 +38,7 @@ from src.pipeline.stages.usage_recorder import create_usage_recorder
 from src.pipeline.stages.cancel_flag_gate import create_cancel_flag_gate
 from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_gate
 from src.config import Settings
+from src.pipeline.bot_speech_state import BotSpeechState
 from src.pipeline.language_state import LanguageState
 from src.agent.llm.context_injector import (
     create_system_prompt_injector,
@@ -476,11 +477,13 @@ async def build_pipeline(
     )
     # Module-level handle for the set_mode direct tool.
     set_active_session_state(session_state)
+    bot_speech_state = BotSpeechState()
     transcription_gate = create_transcription_gate(
         store=store,
         settings=settings,
         tts_service=tts,
         language_state=language_state,
+        bot_speech_state=bot_speech_state,
     )
     voice_state_observer = create_voice_state_observer(settings.voice_state_file)
 
@@ -639,7 +642,10 @@ async def build_pipeline(
 
     # Capture LLM text upstream of TTS and log per-response to transcripts.
     assistant_response_logger = create_assistant_response_logger(
-        store=store, settings=settings, session_state=session_state
+        store=store,
+        settings=settings,
+        session_state=session_state,
+        bot_speech_state=bot_speech_state,
     )
 
     # Strip tool-name narration before TTS speaks it. Without this, the LLM
@@ -743,18 +749,22 @@ async def build_pipeline(
     pipeline = Pipeline(stages)
     task = PipelineTask(
         pipeline,
-        # Native barge-in is OFF: any VAD trigger (including the bot's
-        # own audio leaking back through the mic) would preempt the
-        # current TTS turn and cause choppy playback. Explicit cancel
-        # words ("stop"/"відміни"/etc.) still work — TranscriptionGate
-        # detects them and pushes InterruptionFrame upstream, which the
-        # _TtsFadeOnInterruption observer routes to the TTS fade-out.
+        # Interruption is ON for deliberate cancel words ("stop"/"стоп"
+        # /"відміни"/etc.) — TranscriptionGate detects them and pushes
+        # InterruptionFrame upstream, which Pipecat routes through every
+        # stage immediately, cancelling in-flight TTS, LLM generation,
+        # and tool calls. The _TtsFadeOnInterruption observer additionally
+        # fires a 50ms TTS fade-out as a polish layer.
+        # VAD-triggered barge-in is still OFF: the bot's own audio leaking
+        # back through the mic would otherwise preempt TTS and cause
+        # choppy playback. The TranscriptionGate's barge-in + echo checks
+        # gate genuine interruptions from VAD-triggered frames separately.
         # enable_metrics + enable_usage_metrics make the OpenAI-style LLM
         # service emit MetricsFrame[LLMUsageMetricsData] after each
         # completion — the UsageRecorder stage feeds those into
         # usage_events so the dashboard can show running cost.
         params=PipelineParams(
-            allow_interruptions=False,
+            allow_interruptions=True,
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
