@@ -52,7 +52,10 @@ class HeaderBar(Static):
         mode_text = Text(header.mode, style=f"bold {mode_style}")
 
         # Provider styling
-        prov_style = "cyan" if header.provider == "zai" else "yellow"
+        prov_style = {
+            "zai": "cyan",
+            "opencode": "green",
+        }.get(header.provider, "yellow")
         provider_text = Text(header.provider, style=f"bold {prov_style}")
 
         # Line 1: name emoji status pid uptime mode provider
@@ -389,7 +392,10 @@ class AIBar(Static):
 
     def _build_text(self) -> Text:
         text = Text()
-        prov_style = "cyan" if self._provider == "zai" else "yellow"
+        prov_style = {
+            "zai": "cyan",
+            "opencode": "green",
+        }.get(self._provider, "yellow")
         text.append("provider  ", style="dim")
         text.append(self._provider, style=f"bold {prov_style}")
         text.append("\n")

@@ -54,6 +54,9 @@ def _make_service(provider_file: Path) -> SwitchableLLMService:
         zai_api_key="sk-zai-test",
         zai_model="claude-3-5-sonnet",
         zai_base_url="https://api.z.ai/api/anthropic",
+        opencode_api_key=None,
+        opencode_base_url="https://opencode.ai/zen/go/v1",
+        opencode_model="minimax-m2.7",
         provider_file=provider_file,
     )
 

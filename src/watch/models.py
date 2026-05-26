@@ -32,13 +32,20 @@ ZAI_MODELS: tuple[str, ...] = (
 OPENCODE_MODELS: tuple[str, ...] = (
     "minimax-m2.7",
     "minimax-m2.5",
-    "glm-5",
-    "glm-5.1",
+    "kimi-k2.6",
     "kimi-k2.5",
-    "mimo-v2-omni",
-    "mimo-v2-pro",
-    "qwen3.5-plus",
+    "glm-5.1",
+    "glm-5",
+    "deepseek-v4-pro",
+    "deepseek-v4-flash",
+    "qwen3.7-max",
     "qwen3.6-plus",
+    "qwen3.5-plus",
+    "mimo-v2.5-pro",
+    "mimo-v2.5",
+    "mimo-v2-pro",
+    "mimo-v2-omni",
+    "hy3-preview",
 )
 
 DEFAULT_MODEL: dict[str, str] = {

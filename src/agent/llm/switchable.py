@@ -215,6 +215,23 @@ class SwitchableLLMService(LLMService):
             return self._oc_service
         return None
 
+    def _provider_for_delegate(self, delegate: LLMService) -> str:
+        """Return the provider name for a delegate instance."""
+        if delegate is self._or_service:
+            return "openrouter"
+        if delegate is self._zai_service:
+            return "zai"
+        if delegate is self._oc_service:
+            return "opencode"
+        return "openrouter"
+
+    def _first_available_provider(self) -> str:
+        """Return the provider name of the first available delegate."""
+        all_d = self._all_delegates()
+        if all_d:
+            return self._provider_for_delegate(all_d[0])
+        return "openrouter"
+
     def _active_delegate(self) -> LLMService:
         """Return currently active delegate. Does NOT call _sync_provider."""
         d = self._delegate_for(self._active_provider)
@@ -230,9 +247,8 @@ class SwitchableLLMService(LLMService):
         """Read provider file (mtime-gated). Returns provider name."""
         try:
             if not self._provider_file.exists():
-                all_d = self._all_delegates()
-                if all_d:
-                    self._active_provider = "openrouter"
+                if not self._delegate_for(self._active_provider):
+                    self._active_provider = self._first_available_provider()
                 return self._active_provider
 
             current_mtime = os.path.getmtime(self._provider_file)
@@ -242,7 +258,6 @@ class SwitchableLLMService(LLMService):
             self._provider_file_mtime = current_mtime
             raw = self._provider_file.read_text().strip().lower()
 
-            # Try the requested provider; fall back if unavailable.
             d = self._delegate_for(raw)
             if d is not None:
                 self._active_provider = raw
@@ -250,18 +265,16 @@ class SwitchableLLMService(LLMService):
                     "switchable_llm: switched to %s provider (configured)", raw
                 )
             else:
-                all_d = self._all_delegates()
-                if all_d:
-                    self._active_provider = "openrouter"
-                    logger.warning(
-                        "switchable_llm: provider %r unavailable, falling back to openrouter",
-                        raw,
-                    )
+                fallback = self._first_available_provider()
+                self._active_provider = fallback
+                logger.warning(
+                    "switchable_llm: provider %r unavailable, falling back to %s",
+                    raw, fallback,
+                )
 
         except Exception as e:
             logger.exception("switchable_llm: error reading provider file: %s", e)
-            all_d = self._all_delegates()
-            self._active_provider = "openrouter" if self._or_service else "zai"
+            self._active_provider = self._first_available_provider()
 
         return self._active_provider
 

@@ -69,6 +69,9 @@ def _build_service(tmp_path: Path) -> SwitchableLLMService:
         zai_base_url=os.environ.get(
             "HEARE_ZAI_BASE_URL", "https://api.z.ai/api/anthropic"
         ),
+        opencode_api_key=None,
+        opencode_base_url="https://opencode.ai/zen/go/v1",
+        opencode_model="minimax-m2.7",
         provider_file=tmp_path / "provider",
     )
 

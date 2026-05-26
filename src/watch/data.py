@@ -89,7 +89,7 @@ def current_provider(settings: Settings) -> str:
     """Get current LLM provider from file or default."""
     if settings.provider_file.exists():
         raw = settings.provider_file.read_text().strip().lower()
-        if raw in ("openrouter", "zai"):
+        if raw in ("openrouter", "zai", "opencode"):
             return raw
     return "openrouter"
 
