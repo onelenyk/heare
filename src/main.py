@@ -992,7 +992,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode_p.add_argument("mode_name", choices=[m.value for m in Mode])
 
     prov_p = sub.add_parser("provider", help="Set the LLM provider (hot-reloaded)")
-    prov_p.add_argument("provider_name", choices=["openrouter", "zai"])
+    prov_p.add_argument("provider_name", choices=["openrouter", "zai", "opencode"])
 
     audio_in_p = sub.add_parser("audio-input", help="Set the audio input device (hot-reloaded)")
     audio_in_p.add_argument("name", help="Device name substring (e.g. AirPods Pro)")

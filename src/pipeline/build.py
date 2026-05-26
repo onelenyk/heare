@@ -625,6 +625,9 @@ async def build_pipeline(
         zai_api_key=settings.zai_api_key,
         zai_model=settings.zai_model,
         zai_base_url=settings.zai_base_url,
+        opencode_api_key=settings.opencode_api_key,
+        opencode_base_url=settings.opencode_base_url,
+        opencode_model=settings.opencode_model,
         provider_file=settings.provider_file,
     )
     tools_schema = build_tools_schema()

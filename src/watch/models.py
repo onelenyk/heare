@@ -29,9 +29,22 @@ ZAI_MODELS: tuple[str, ...] = (
     "claude-haiku-4.5",
 )
 
+OPENCODE_MODELS: tuple[str, ...] = (
+    "minimax-m2.7",
+    "minimax-m2.5",
+    "glm-5",
+    "glm-5.1",
+    "kimi-k2.5",
+    "mimo-v2-omni",
+    "mimo-v2-pro",
+    "qwen3.5-plus",
+    "qwen3.6-plus",
+)
+
 DEFAULT_MODEL: dict[str, str] = {
     "openrouter": OPENROUTER_MODELS[0],
     "zai": ZAI_MODELS[0],
+    "opencode": OPENCODE_MODELS[0],
 }
 
 
@@ -91,7 +104,11 @@ def add_custom_model(settings, provider: str, model: str) -> None:
 
 def models_for_provider(settings, provider: str) -> list[str]:
     """Return the full ordered list (hardcoded + custom) for a provider."""
-    base = OPENROUTER_MODELS if provider == "openrouter" else ZAI_MODELS
+    base = {
+        "openrouter": OPENROUTER_MODELS,
+        "zai": ZAI_MODELS,
+        "opencode": OPENCODE_MODELS,
+    }.get(provider, OPENROUTER_MODELS)
     custom = read_custom_models(settings).get(provider, [])
     seen: set[str] = set()
     out: list[str] = []

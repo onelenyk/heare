@@ -319,12 +319,17 @@ class Settings:
     topic_extraction_backend: str = "openrouter"
     topic_extraction_openrouter_model: str = "google/gemini-3.1-flash-lite-preview-20260303"
     topic_extraction_openrouter_timeout_seconds: float = 5.0
-    # LLM provider switching (openrouter | zai)
+    # LLM provider switching (openrouter | zai | opencode)
     llm_provider: str = "openrouter"
     provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")
     zai_api_key: str | None = None
     zai_base_url: str = "https://api.z.ai/api/anthropic"
     zai_model: str = "claude-3-5-sonnet"
+    # OpenCode Go — OpenAI-compatible API at opencode.ai/zen/go/v1.
+    # API key is read from OPENCODE_API_KEY env var.
+    opencode_api_key: str | None = None
+    opencode_base_url: str = "https://opencode.ai/zen/go/v1"
+    opencode_model: str = "minimax-m2.7"
     # Phase 2.1 — action worker.
     action_timeout_seconds: float = 120.0
     intent_queue_max_pending: int = 32
@@ -479,6 +484,7 @@ def load_settings() -> Settings:
     settings.groq_api_key = os.environ.get("GROQ_API_KEY")
     settings.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
     settings.zai_api_key = os.environ.get("ZAI_API_KEY")
+    settings.opencode_api_key = os.environ.get("OPENCODE_API_KEY")
     settings.serper_api_key = os.environ.get("SERPER_API_KEY")
     memory_db_env = os.environ.get("HEARE_MEMORY_DB")
     if memory_db_env is not None:
@@ -521,7 +527,7 @@ def load_settings() -> Settings:
 
     if settings.provider_file.exists():
         raw = settings.provider_file.read_text().strip().lower()
-        if raw in ("openrouter", "zai"):
+        if raw in ("openrouter", "zai", "opencode"):
             settings.llm_provider = raw
 
     if settings.audio_input_device_file.exists():

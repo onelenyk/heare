@@ -191,10 +191,11 @@ class HeareDashboard(App):
         self.push_screen(AudioDeviceSelectScreen(self.settings), _on_dismiss)
 
     def action_toggle_provider(self) -> None:
-        """Toggle LLM provider between openrouter and zai (p key)."""
+        """Toggle between openrouter/zai/opencode (p key)."""
         pf = self.settings.provider_file
         current = pf.read_text().strip().lower() if pf.exists() else "openrouter"
-        new_provider = "zai" if current == "openrouter" else "openrouter"
+        cycle = {"openrouter": "zai", "zai": "opencode", "opencode": "openrouter"}
+        new_provider = cycle.get(current, "openrouter")
         pf.parent.mkdir(parents=True, exist_ok=True)
         pf.write_text(new_provider)
         self.query_one(ControlsBar).update_status(f"provider: {new_provider}")
