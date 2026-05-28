@@ -281,6 +281,7 @@ class AudioDeviceSelectScreen(ModalScreen[str | None]):
 
     BINDINGS = (
         Binding("escape", "dismiss_none", "Cancel"),
+        Binding("r", "refresh_devices", "Refresh"),
     )
 
     DEFAULT_CSS = """
@@ -290,7 +291,7 @@ class AudioDeviceSelectScreen(ModalScreen[str | None]):
 
     #audio-dialog {
         width: 70;
-        height: auto;
+        height: 80%;
         max-height: 80%;
         border: round $accent;
         background: $surface;
@@ -310,7 +311,7 @@ class AudioDeviceSelectScreen(ModalScreen[str | None]):
     }
 
     #audio-dialog ListView {
-        height: auto;
+        height: 1fr;
         max-height: 16;
         border: tall $surface-darken-2;
     }
@@ -319,15 +320,33 @@ class AudioDeviceSelectScreen(ModalScreen[str | None]):
     def __init__(self, settings) -> None:
         super().__init__()
         self._settings = settings
+        self._devices: list[dict] = []
 
     def compose(self) -> ComposeResult:
         import sounddevice as sd
 
-        current_in = self._settings.audio_input_device or "(default)"
-        current_out = self._settings.audio_output_device or "(default)"
-        devices = sd.query_devices()
+        active_in = self._settings.audio_input_device
+        if self._settings.audio_input_device_file.exists():
+            active_in = self._settings.audio_input_device_file.read_text().strip() or None
+        active_out = self._settings.audio_output_device
+        if self._settings.audio_output_device_file.exists():
+            active_out = self._settings.audio_output_device_file.read_text().strip() or None
+
+        current_in = active_in or "(default)"
+        current_out = active_out or "(default)"
+
+        try:
+            sd._terminate()
+            sd._initialize()
+        except Exception:
+            pass
+
+        self._devices = list(sd.query_devices())
         items: list[ListItem] = []
-        for i, dev in enumerate(devices):
+
+        items.append(ListItem(Label("  (system default)  [default]"), id="ad-default"))
+
+        for i, dev in enumerate(self._devices):
             name = dev["name"]
             has_in = int(dev.get("max_input_channels", 0)) > 0
             has_out = int(dev.get("max_output_channels", 0)) > 0
@@ -336,27 +355,59 @@ class AudioDeviceSelectScreen(ModalScreen[str | None]):
                 tags.append("IN")
             if has_out:
                 tags.append("OUT")
-            label = f"  {name}  [{','.join(tags)}]"
+
+            try:
+                hostapi = sd.query_hostapis(dev["hostapi"])["name"]
+            except Exception:
+                hostapi = "?"
+
+            marker = ""
+            if active_in and active_in.lower() in name.lower():
+                marker += "●in "
+            if active_out and active_out.lower() in name.lower():
+                marker += "●out"
+            if marker:
+                marker = marker.strip() + "  "
+            else:
+                marker = "  "
+
+            label = f"{marker}{name}  [{','.join(tags)}]  ({hostapi})"
             items.append(ListItem(Label(label), id=f"ad-{i}"))
 
         with Vertical(id="audio-dialog"):
-            yield Label("Select audio device — Esc to cancel", classes="title")
+            yield Label("Select audio device — Esc to cancel, r to refresh", classes="title")
             yield Label(f"input:  {current_in}", classes="status")
             yield Label(f"output: {current_out}", classes="status")
-            yield Label("", classes="status")  # spacer
+            yield Label(f"found {len(self._devices)} device(s)", classes="status")
             if not items:
                 yield Label("(no audio devices found)")
                 return
             yield ListView(*items, id="audio-device-list")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        import sounddevice as sd
-
         item = event.item
         if item is None or item.id is None or not item.id.startswith("ad-"):
             return
-        idx = int(item.id.split("-", 1)[1])
-        dev = sd.query_devices()[idx]
+        item_id = item.id
+
+        if item_id == "ad-default":
+            set_msg = ""
+            if self._settings.audio_input_device_file.exists():
+                self._settings.audio_input_device_file.unlink()
+                set_msg += "input -> default"
+            if self._settings.audio_output_device_file.exists():
+                self._settings.audio_output_device_file.unlink()
+                if set_msg:
+                    set_msg += "; "
+                set_msg += "output -> default"
+            if not set_msg:
+                set_msg = "already using system defaults"
+            self.dismiss(set_msg)
+            return
+
+        idx = int(item_id.split("-", 1)[1])
+        dev = self._devices[idx]
+
         name = dev["name"]
         has_in = int(dev.get("max_input_channels", 0)) > 0
         has_out = int(dev.get("max_output_channels", 0)) > 0
@@ -378,6 +429,72 @@ class AudioDeviceSelectScreen(ModalScreen[str | None]):
                 set_msg += "; "
             set_msg += f"input -> {name}"
         self.dismiss(set_msg)
+
+    def action_refresh_devices(self) -> None:
+        self._devices = []
+        self.compose()
+        list_view = self.query_one("#audio-device-list")
+        if list_view:
+            list_view.remove()
+        self._rebuild_list()
+
+    def _rebuild_list(self) -> None:
+        import sounddevice as sd
+
+        active_in = self._settings.audio_input_device
+        if self._settings.audio_input_device_file.exists():
+            active_in = self._settings.audio_input_device_file.read_text().strip() or None
+        active_out = self._settings.audio_output_device
+        if self._settings.audio_output_device_file.exists():
+            active_out = self._settings.audio_output_device_file.read_text().strip() or None
+
+        try:
+            sd._terminate()
+            sd._initialize()
+        except Exception:
+            pass
+
+        self._devices = list(sd.query_devices())
+        items: list[ListItem] = []
+
+        items.append(ListItem(Label("  (system default)  [default]"), id="ad-default"))
+
+        for i, dev in enumerate(self._devices):
+            name = dev["name"]
+            has_in = int(dev.get("max_input_channels", 0)) > 0
+            has_out = int(dev.get("max_output_channels", 0)) > 0
+            tags = []
+            if has_in:
+                tags.append("IN")
+            if has_out:
+                tags.append("OUT")
+
+            try:
+                hostapi = sd.query_hostapis(dev["hostapi"])["name"]
+            except Exception:
+                hostapi = "?"
+
+            marker = ""
+            if active_in and active_in.lower() in name.lower():
+                marker += "●in "
+            if active_out and active_out.lower() in name.lower():
+                marker += "●out"
+            if marker:
+                marker = marker.strip() + "  "
+            else:
+                marker = "  "
+
+            label = f"{marker}{name}  [{','.join(tags)}]  ({hostapi})"
+            items.append(ListItem(Label(label), id=f"ad-{i}"))
+
+        container = self.query_one("#audio-dialog")
+        if container:
+            list_view = container.query_one("#audio-device-list")
+            if list_view:
+                list_view.remove()
+            new_list = ListView(*items, id="audio-device-list")
+            container.mount(new_list)
+            new_list.focus()
 
     def action_dismiss_none(self) -> None:
         self.dismiss(None)

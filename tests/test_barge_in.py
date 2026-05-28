@@ -168,3 +168,31 @@ async def test_no_bot_text_treated_as_genuine_interruption(harness) -> None:
 
     kinds = [type(f).__name__ for f, _ in pushed]
     assert "InterruptionFrame" in kinds
+
+
+async def test_partial_echo_is_dropped(harness) -> None:
+    """A short fragment of the bot's speech picked up by the mic
+    must be dropped even when the word-overlap ratio is low.
+
+    Bot says:  "the weather today is sunny and quite warm outside" (9 words)
+    Mic hears: "weather today sunny" (3 words)
+
+    Word overlap ratio = 3/9 = 0.33 — below the default 0.5 threshold.
+    Without the containment check this would slip through as a
+    false barge-in. The containment level catches it because every
+    transcript word is present in the bot text.
+    """
+    store, settings = harness
+    bss = BotSpeechState()
+    bss.set_text(
+        "the weather today is sunny and quite warm outside"
+    )
+    gate = create_transcription_gate(
+        store=store, settings=settings, bot_speech_state=bss
+    )
+    pushed = _capture(gate)
+
+    gate._bot_speaking = True
+    await gate._handle_transcription(_frame("weather today sunny"), None)
+
+    assert pushed == []

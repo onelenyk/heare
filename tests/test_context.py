@@ -113,6 +113,30 @@ async def test_live_mcp_bridge_block_overrides_static(
     )
 
 
+async def test_current_display_injected_when_present(
+    store: TranscriptStore,
+) -> None:
+    """build_for_generator surfaces the latest show_display content so the
+    agent is aware of what is on screen (two-way wiring)."""
+    settings = load_settings()
+    await store.log_display("col1 | col2\n1 | 2", "table", title="metrics")
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build_for_generator("hi", persona="p")
+    cd = result["current_display"]
+    assert "metrics" in cd
+    assert "col1 | col2" in cd
+    assert "format=table" in cd
+
+
+async def test_current_display_absent_when_no_display(
+    store: TranscriptStore,
+) -> None:
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build_for_generator("hi", persona="p")
+    assert "current_display" not in result
+
+
 async def test_static_mcp_block_used_when_bridge_empty(
     store: TranscriptStore,
 ) -> None:

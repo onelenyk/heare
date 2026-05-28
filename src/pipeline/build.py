@@ -131,6 +131,70 @@ def reload_audio_device(settings: "Settings") -> bool:
         return False
 
 
+def reload_audio_input_device(settings: "Settings") -> bool:
+    """Reconfigure the audio input device at runtime.
+
+    Mirrors ``reload_audio_device`` but targets the input stream.
+    Returns True on success.
+    """
+    transport = _transport_ref.get("transport")
+    if transport is None:
+        logger.warning("reload_audio_input_device: no transport reference")
+        return False
+
+    name = settings.audio_input_device
+    if not name:
+        logger.info("reload_audio_input_device: no device configured")
+        return False
+
+    try:
+        import sounddevice as _sd
+
+        devices = _sd.query_devices()
+        idx = _resolve_device_index(name, devices, kind="input")
+        if idx is None:
+            logger.warning(
+                "reload_audio_input_device: device %r not found", name
+            )
+            return False
+    except Exception:
+        logger.exception("reload_audio_input_device: device lookup failed")
+        return False
+
+    try:
+        inp = getattr(transport, "_input", None)
+        if inp is None:
+            logger.warning("reload_audio_input_device: no input transport")
+            return False
+
+        stream = getattr(inp, "_in_stream", None)
+        if stream is not None:
+            try:
+                stream.stop_stream()
+                stream.close()
+            except Exception:
+                logger.exception(
+                    "reload_audio_input_device: stream close failed"
+                )
+            inp._in_stream = None  # type: ignore[attr-defined]
+
+        inp._params.input_device_index = idx  # type: ignore[attr-defined]
+        import asyncio
+
+        from pipecat.frames.frames import StartFrame
+
+        asyncio.create_task(inp.start(StartFrame()))
+        logger.info(
+            "reload_audio_input_device: input switched to device %d (%s)",
+            idx,
+            name,
+        )
+        return True
+    except Exception:
+        logger.exception("reload_audio_input_device: reconfiguration failed")
+        return False
+
+
 def _resolve_device_index(
     name: str, devices: list, kind: str
 ) -> int | None:
@@ -254,6 +318,8 @@ def _assemble_native_stages(
     input_mute_gate: Any = None,
     audio_event_observer: Any = None,
     cancel_flag_gate: Any = None,
+    echo_gate: Any = None,
+    echo_collector: Any = None,
 ) -> list:
     """Pure stage-list assembly, factored out for unit testing.
 
@@ -278,6 +344,11 @@ def _assemble_native_stages(
     # frames, not for cancel latency.
     if cancel_flag_gate is not None:
         stages.append(cancel_flag_gate)
+    # echo_gate sits AFTER cancel_flag_gate and BEFORE audio_event_observer /
+    # speaker_buffer / STT. It drops mic audio that correlates with recent
+    # bot output, preventing the bot's own echo from reaching STT.
+    if echo_gate is not None:
+        stages.append(echo_gate)
     # audio_event_observer sits AFTER input_mute_gate so muted mic audio is
     # never wasted on YAMNet inference, and BEFORE speaker_buffer / STT so it
     # operates on the raw mic stream.
@@ -324,6 +395,10 @@ def _assemble_native_stages(
         stages.append(sound_cue_processor)
     if mute_gate is not None:
         stages.append(mute_gate)
+    # echo_collector sits AFTER mute_gate so it only captures bot audio
+    # that is actually being played (muted audio is not echoed).
+    if echo_collector is not None:
+        stages.append(echo_collector)
     stages.extend([transport_output, assistant_aggregator])
     return stages
 
@@ -825,6 +900,33 @@ async def build_pipeline(
         flag_path=settings.cancel_flag_file
     )
 
+    # Acoustic echo gate — cross-correlates mic input against recent bot
+    # output audio and drops correlated frames before they reach STT.
+    echo_gate_proc = None
+    echo_collector = None
+    if settings.echo_gate_enabled:
+        try:
+            from src.pipeline.echo_state import EchoState
+            from src.pipeline.stages.echo_gate import create_echo_gate_stages
+
+            echo_state = EchoState(
+                buffer_seconds=settings.echo_gate_buffer_seconds,
+                target_sample_rate=16000,
+            )
+            echo_collector, echo_gate_proc = create_echo_gate_stages(
+                echo_state, settings
+            )
+            logger.info(
+                "echo_gate: active (threshold=%.2f, buffer=%.1fs, cooldown=%.1fs)",
+                settings.echo_gate_threshold,
+                settings.echo_gate_buffer_seconds,
+                settings.echo_gate_cooldown_seconds,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("echo_gate: creation failed (non-fatal)")
+            echo_gate_proc = None
+            echo_collector = None
+
     # Audio event detection (YAMNet) — opt-in, off by default. The observer
     # is constructed lazily so a daemon with the flag off never imports
     # ``onnxruntime`` or ``numpy``. Any failure here logs and degrades to a
@@ -871,6 +973,8 @@ async def build_pipeline(
         input_mute_gate=input_mute_gate,
         audio_event_observer=audio_event_observer,
         cancel_flag_gate=cancel_flag_gate,
+        echo_gate=echo_gate_proc,
+        echo_collector=echo_collector,
     )
 
     logger.info(

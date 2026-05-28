@@ -418,33 +418,40 @@ async def test_write_workspace_relative(settings: Settings) -> None:
     assert expected_file.read_text() == "workspace content"
 
 
-# -------- Path-traversal guard tests --------
+# -------- Full filesystem access tests --------
+# The workspace is a default anchor, not a sandbox: absolute / `..` /
+# `~` paths reach anywhere; only unqualified relative paths stay in it.
 
-async def test_read_rejects_path_outside_workspace(settings: Settings, tmp_path: Path) -> None:
-    """An absolute path outside settings.workspace_dir must be rejected."""
+async def test_read_allows_absolute_path_outside_workspace(
+    settings: Settings, tmp_path: Path
+) -> None:
+    """An absolute path outside the workspace is read, not rejected."""
     outside = tmp_path.parent / "outside.txt"
     outside.write_text("secret")
     result = await _execute_read(str(outside), settings)
-    assert result["success"] is False
-    assert "outside" in result["error"]
+    assert result["success"] is True
+    assert result["output"] == "secret"
 
 
-async def test_read_rejects_dot_dot_escape(settings: Settings) -> None:
-    """A relative path with `..` that escapes the workspace must be rejected."""
-    result = await _execute_read("../../../etc/passwd", settings)
-    assert result["success"] is False
-    assert "outside" in result["error"]
+async def test_read_allows_dot_dot_escape(settings: Settings, tmp_path: Path) -> None:
+    """A relative `..` path resolves freely (anchored to the workspace)."""
+    target = settings.workspace_dir.parent / "escaped.txt"
+    target.write_text("reachable")
+    result = await _execute_read("../escaped.txt", settings)
+    assert result["success"] is True
+    assert result["output"] == "reachable"
 
 
-async def test_write_rejects_path_outside_workspace(settings: Settings, tmp_path: Path) -> None:
-    # Distinct filename so we don't collide with leftover data from sibling tests.
-    outside = tmp_path.parent / "write_should_not_create.txt"
+async def test_write_allows_path_outside_workspace(
+    settings: Settings, tmp_path: Path
+) -> None:
+    """Writing to an absolute path outside the workspace succeeds."""
+    outside = tmp_path.parent / "write_outside.txt"
     if outside.exists():
         outside.unlink()
-    result = await _execute_write(f"{outside}: hostile", settings)
-    assert result["success"] is False
-    assert "outside" in result["error"]
-    assert not outside.exists()
+    result = await _execute_write(f"{outside}: hello", settings)
+    assert result["success"] is True
+    assert outside.read_text() == "hello"
 
 
 # -------- _execute_web_fetch tests --------

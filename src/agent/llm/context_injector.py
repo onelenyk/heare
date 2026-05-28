@@ -111,7 +111,12 @@ def render_native_system_prompt(
         if project_dir:
             parts.append(f"Project directory: {project_dir}")
         if workspace_dir:
-            parts.append(f"Workspace directory (sandbox): {workspace_dir}")
+            parts.append(
+                f"Workspace directory: {workspace_dir}. This is your default "
+                "location only — relative paths and unqualified filenames "
+                "resolve here. You have full filesystem access: use absolute "
+                "or ~ paths to read/write anywhere when a location is given."
+            )
         current_audio = context.get("current_audio_event")
         if current_audio:
             parts.append(
@@ -156,6 +161,9 @@ def render_native_system_prompt(
         mode_block = context.get("mode_block")
         if mode_block:
             parts.append(mode_block)
+        current_display = context.get("current_display")
+        if current_display:
+            parts.append(current_display)
 
     parts.append("")
     parts.append("### Capabilities")
@@ -345,10 +353,17 @@ def render_native_system_prompt(
     )
     parts.append("- Read or modify a file in the workspace: read / write / edit.")
     parts.append(
-        "- Output that is long, code, ASCII/diagram, a table, or "
-        "structured: call show_display(content=..., format=...) and "
-        "speak only a one-line pointer ('showing it on screen'). Never "
-        "read code or long structured text aloud."
+        "- show_display(content=..., format=...) is your screen. Use it "
+        "OFTEN and proactively — you are a voice agent, so anything that "
+        "is clearer seen than heard belongs there: code, ASCII art / "
+        "diagrams, tables, comparisons, lists, step-by-step plans, JSON, "
+        "numbers/metrics, search results, anything long or structured. "
+        "Prefer it even when the user did not explicitly ask to 'show' it "
+        "— if formatting helps, display it. Pick the right format "
+        "(text/code/ascii/table/markdown). When you display, speak only a "
+        "short one-line pointer ('put it on screen', 'see the table'); "
+        "never read code or long structured text aloud. The display is "
+        "latest-only: each call replaces it, so keep it the current focus."
     )
     parts.append("- Look something up on the web: web_search then web_fetch.")
     parts.append(

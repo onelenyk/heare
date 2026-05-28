@@ -74,10 +74,14 @@ def _build_logger_class():
             store: "TranscriptStore | None" = None,
             settings: "Settings | None" = None,
             session_state: Any = None,
+            bot_speech_state: Any = None,
         ) -> None:
             super().__init__()
             self.store = store
             self.settings = settings
+            # Shared with the (upstream) TranscriptionGateProcessor so it
+            # can tell the bot's own echoed audio from a real barge-in.
+            self._bot_speech_state = bot_speech_state
             # The text-response channel: every LLM answer is persisted
             # here tagged with the active mode and whether TTS spoke it,
             # so consumers (dashboard, future Telegram/web) read the
@@ -92,6 +96,10 @@ def _build_logger_class():
             if isinstance(frame, LLMFullResponseStartFrame):
                 self._buffer = []
                 self._collecting = True
+                # New turn — the previous utterance is no longer being
+                # spoken; reset the echo-comparison text.
+                if self._bot_speech_state is not None:
+                    self._bot_speech_state.clear()
 
             elif isinstance(frame, LLMFullResponseEndFrame):
                 if self._collecting:
@@ -99,6 +107,9 @@ def _build_logger_class():
                     spoken = "".join(self._buffer).strip()
                     self._buffer = []
                     await self._log(spoken)
+                # NOTE: do not clear bot_speech_state here — TTS is still
+                # playing this text out loud, so the gate needs it for
+                # echo suppression until the next response starts.
 
             elif self._collecting and isinstance(
                 frame, (LLMTextFrame, TextFrame)
@@ -109,11 +120,19 @@ def _build_logger_class():
                 text = getattr(frame, "text", "") or ""
                 if text:
                     self._buffer.append(text)
+                    # Publish the running text as it streams so a
+                    # barge-in mid-utterance can be matched against it.
+                    if self._bot_speech_state is not None:
+                        self._bot_speech_state.set_text(
+                            "".join(self._buffer)
+                        )
 
             elif isinstance(frame, TTSSpeakFrame):
                 # Standalone speak (e.g. startup greeting). Log it directly —
                 # it's not part of an LLM response cycle.
                 text = getattr(frame, "text", "") or ""
+                if self._bot_speech_state is not None:
+                    self._bot_speech_state.set_text(text.strip())
                 await self._log(text.strip())
 
             await self.push_frame(frame, direction)
@@ -152,6 +171,7 @@ def create_assistant_response_logger(
     store: "TranscriptStore | None" = None,
     settings: "Settings | None" = None,
     session_state: Any = None,
+    bot_speech_state: Any = None,
 ) -> Any:
     """Factory returning an AssistantResponseProcessor instance.
 
@@ -160,7 +180,12 @@ def create_assistant_response_logger(
     TextFrame, LLMFullResponseEndFrame) before TTS consumes it.
     """
     cls = _build_logger_class()
-    return cls(store=store, settings=settings, session_state=session_state)
+    return cls(
+        store=store,
+        settings=settings,
+        session_state=session_state,
+        bot_speech_state=bot_speech_state,
+    )
 
 
 __all__ = ["create_assistant_response_logger"]

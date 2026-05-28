@@ -51,26 +51,23 @@ class _PathOutsideWorkspace(Exception):
 
 
 def _resolve_in_workspace(filepath: str, workspace: Path) -> Path:
-    """Resolve ``filepath`` and verify it stays inside ``workspace``.
+    """Resolve ``filepath`` against ``workspace`` as the *default* root.
 
-    Relative paths anchor to ``workspace``. Absolute paths are allowed but only
-    if they resolve under ``workspace``. ``..`` traversal that escapes the
-    workspace is rejected. Symlinks are resolved before the check, so a link
-    pointing at ``/etc/shadow`` cannot be used to bypass the guard.
+    The workspace is a convenience anchor, not a sandbox: the agent has
+    full filesystem access by design. Resolution rules:
+
+    * Relative paths anchor to ``workspace`` — so an unqualified filename
+      lands in the agent's own dir when no location is specified.
+    * Absolute paths and ``~``-prefixed paths are honoured as-is,
+      anywhere on the filesystem.
+
+    Never raises ``_PathOutsideWorkspace``; the class is kept only so
+    existing callers' ``except`` blocks stay valid.
     """
-    workspace_real = workspace.resolve()
-    candidate = Path(filepath)
+    candidate = Path(filepath).expanduser()
     if not candidate.is_absolute():
         candidate = workspace / candidate
-    candidate_real = candidate.resolve()
-    try:
-        candidate_real.relative_to(workspace_real)
-    except ValueError as exc:
-        raise _PathOutsideWorkspace(
-            f"path {filepath!r} resolves to {candidate_real} which is outside "
-            f"workspace {workspace_real}"
-        ) from exc
-    return candidate_real
+    return candidate.resolve()
 
 
 def _is_simple_tool(tool: str) -> bool:

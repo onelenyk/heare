@@ -183,10 +183,30 @@ class ContextBuilder:
                 result["mode_block"] = (
                     f"{profile.prompt_addendum}\n"
                     f"Available modes (switch with set_mode): "
-                    f"{', '.join(VALID_MODES)}."
+                    f"{', '.join(VALID_MODES)}.\n"
+                    "If the user tells you to be quiet / stop talking "
+                    "(e.g. 'помовчи', 'тихо', 'be quiet', 'stop talking', "
+                    "'hush'), offer to switch to silent mode — ask a brief "
+                    "one-line confirmation, and on agreement call "
+                    "set_mode('silent')."
                 )
             except Exception:  # noqa: BLE001 — never break the turn
                 pass
+        try:
+            disp = await self.store.latest_display()
+        except Exception:  # noqa: BLE001 — never break the turn
+            disp = None
+        if disp and disp.get("content"):
+            content = str(disp["content"])
+            preview = content if len(content) <= 600 else content[:600] + " …"
+            label = disp.get("title") or disp.get("format") or "display"
+            result["current_display"] = (
+                f"Currently shown on the screen panel "
+                f"({label}, format={disp.get('format')}):\n{preview}\n"
+                "This is what the user sees right now — you put it there with "
+                "show_display. Refer to it naturally ('as shown on screen'); "
+                "call show_display again to replace it with updated content."
+            )
         return result
 
     def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:

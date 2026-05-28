@@ -430,11 +430,13 @@ async def run_until_stopped(
                         mtime_in = s.audio_input_device_file.stat().st_mtime
                         if mtime_in > last_mtime_in:
                             last_mtime_in = mtime_in
-                            logger.info(
-                                "audio device: input change detected %r "
-                                "(input hot-reload not yet implemented)",
-                                s.audio_input_device,
-                            )
+                            from src.pipeline.build import reload_audio_input_device
+
+                            if reload_audio_input_device(s):
+                                logger.info(
+                                    "audio device: input switched to %r",
+                                    s.audio_input_device,
+                                )
                 except asyncio.CancelledError:
                     break
                 except Exception:

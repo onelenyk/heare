@@ -85,12 +85,16 @@ def _is_echo(transcript: str, bot_text: str, ratio: float) -> bool:
     """True if ``transcript`` is likely the bot's own speech bleeding
     back through the mic rather than a genuine human barge-in.
 
-    Two-level heuristic:
+    Three-level heuristic:
 
-    1. **Word overlap** — fraction of transcript words that also appear in
+    1. **Full containment** — if every word in the transcript also appears
+       in the bot's current spoken text, the transcript is almost certainly a
+       partial echo (the mic only caught a fragment of a longer sentence).
+       This is the most reliable check for the common "speaker echo" case.
+    2. **Word overlap** — fraction of transcript words that also appear in
        the bot's current spoken text (fast, works when both sides use the
        same script and the STT output is clean).
-    2. **Character bigram overlap** — fallback when word-level fails.
+    3. **Character bigram overlap** — fallback when word-level fails.
        Handles script mismatch (e.g. Latin bot-name "VEX" → STT transcribes
        as Cyrillic "ВЕКС") and STT errors (e.g. "зв'язку" → "звяіску").
        Character n-grams are resilient to both because the echoed audio
@@ -107,12 +111,20 @@ def _is_echo(transcript: str, bot_text: str, ratio: float) -> bool:
     if not bot_words_set:
         return False
 
-    # Level 1: word overlap
+    # Level 1: full containment — catches partial echoes where the mic
+    # only picks up a short fragment of the bot's longer sentence.
+    # e.g. bot says "the weather today is sunny and quite warm outside",
+    # mic hears "weather today sunny" — ratio check fails (3/9=0.33)
+    # but every word is in the bot text, so it's clearly echo.
+    if all(w in bot_words_set for w in words):
+        return True
+
+    # Level 2: word overlap
     hits = sum(1 for w in words if w in bot_words_set)
     if (hits / len(words)) >= ratio:
         return True
 
-    # Level 2: character bigram overlap — robust to script mismatch
+    # Level 3: character bigram overlap — robust to script mismatch
     # and STT errors that preserve the character skeleton of the text.
     bot_raw = bot_text.lower()
     tx_raw = transcript.lower()

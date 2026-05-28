@@ -24,6 +24,8 @@ class Mode(str, Enum):
     SILENT = "silent"
     FOCUS = "focus"
     AMBIENT = "ambient"
+    ASSISTANT = "assistant"
+    MEETING = "meeting"
 
 
 class DeciderState(str, Enum):
@@ -175,7 +177,16 @@ class Settings:
     # while bot speaks" behaviour.
     barge_in_enabled: bool = True
     barge_in_min_chars: int = 4
-    barge_in_echo_ratio: float = 0.6
+    barge_in_echo_ratio: float = 0.5
+    # Acoustic echo gate: cross-correlates mic input against recent bot
+    # output audio and drops mic frames when correlation exceeds the
+    # threshold. Operates before STT so it is immune to transcription
+    # errors. Disable if using headphones (no echo) or if it drops
+    # legitimate speech.
+    echo_gate_enabled: bool = True
+    echo_gate_threshold: float = 0.3
+    echo_gate_buffer_seconds: float = 1.0
+    echo_gate_cooldown_seconds: float = 0.5
     warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")
     session_file: Path = field(default_factory=lambda: HEARE_HOME / "session.json")

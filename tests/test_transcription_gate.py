@@ -68,6 +68,7 @@ def _capture_pushed(processor) -> list[Any]:
 
 async def test_bot_speaking_guard_drops_transcript(harness) -> None:
     store, settings = harness
+    settings.barge_in_enabled = False  # legacy drop-everything path
     gate = create_transcription_gate(store=store, settings=settings)
     pushed = _capture_pushed(gate)
 
@@ -92,6 +93,7 @@ async def test_bot_speaking_clears_lets_transcript_through(harness) -> None:
 
 async def test_cooldown_guard_drops_transcript_within_window(harness) -> None:
     store, settings = harness
+    settings.barge_in_enabled = False  # legacy drop-everything path
     gate = create_transcription_gate(store=store, settings=settings)
     pushed = _capture_pushed(gate)
 
