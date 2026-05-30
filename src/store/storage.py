@@ -12,7 +12,7 @@ from typing import Any
 import aiosqlite
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 class EventKind(StrEnum):
@@ -45,12 +45,9 @@ CREATE TABLE IF NOT EXISTS transcripts (
     ts REAL NOT NULL,
     text TEXT NOT NULL,
     mode TEXT NOT NULL,
-    speaker_id TEXT,
-    speaker_confidence REAL,
-    audio_event_label TEXT,
-    audio_event_score REAL,
     agent_mode TEXT,
-    agent_spoken INTEGER
+    agent_spoken INTEGER,
+    turn_id INTEGER REFERENCES turns(id)
 );
 
 CREATE TABLE IF NOT EXISTS displays (
@@ -196,29 +193,8 @@ class TranscriptStore:
         await self._db.execute("PRAGMA foreign_keys=ON")
         await self._db.executescript(SCHEMA)
         await self._db.commit()
-        await self._migrate_speaker_columns()
         await self._migrate_action_log_columns()
         await self._check_schema_version()
-
-    async def _migrate_speaker_columns(self) -> None:
-        # Idempotent ALTER — upgrades older DBs created before SPK-001 where
-        # the transcripts table did not have speaker_id/speaker_confidence.
-        # Fresh installs already have the columns via SCHEMA above.
-        for col_ddl in (
-            "ALTER TABLE transcripts ADD COLUMN speaker_id TEXT",
-            "ALTER TABLE transcripts ADD COLUMN speaker_confidence REAL",
-            "ALTER TABLE transcripts ADD COLUMN turn_id INTEGER REFERENCES turns(id)",
-            "ALTER TABLE transcripts ADD COLUMN audio_event_label TEXT",
-            "ALTER TABLE transcripts ADD COLUMN audio_event_score REAL",
-            "ALTER TABLE transcripts ADD COLUMN agent_mode TEXT",
-            "ALTER TABLE transcripts ADD COLUMN agent_spoken INTEGER",
-        ):
-            try:
-                await self.db.execute(col_ddl)
-            except sqlite3.OperationalError as e:
-                if "duplicate column" not in str(e).lower():
-                    raise
-        await self.db.commit()
 
     async def _migrate_action_log_columns(self) -> None:
         # CCS-01: persist the in-memory action log to the actions table.
@@ -339,10 +315,6 @@ class TranscriptStore:
         self,
         text: str,
         mode: str,
-        speaker_id: str | None = None,
-        speaker_confidence: float | None = None,
-        audio_event_label: str | None = None,
-        audio_event_score: float | None = None,
         agent_mode: str | None = None,
         agent_spoken: bool | None = None,
     ) -> int:
@@ -360,18 +332,12 @@ class TranscriptStore:
             return row[0]
 
         cursor = await self.db.execute(
-            "INSERT INTO transcripts (ts, text, mode, speaker_id,"
-            " speaker_confidence, audio_event_label, audio_event_score,"
-            " agent_mode, agent_spoken)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO transcripts (ts, text, mode, agent_mode, agent_spoken)"
+            " VALUES (?, ?, ?, ?, ?)",
             (
                 now,
                 text,
                 mode,
-                speaker_id,
-                speaker_confidence,
-                audio_event_label,
-                audio_event_score,
                 agent_mode,
                 None if agent_spoken is None else int(agent_spoken),
             ),
@@ -381,7 +347,7 @@ class TranscriptStore:
         return cursor.lastrowid
 
     async def latest_bot_response(self) -> dict[str, Any] | None:
-        """Most recent agent text response (speaker_id='bot'), or None.
+        """Most recent agent text response (mode='assistant'), or None.
 
         This is the read side of the text-response channel: the assistant
         response logger persists every LLM answer here regardless of
@@ -391,7 +357,7 @@ class TranscriptStore:
         """
         cursor = await self.db.execute(
             "SELECT ts, text, agent_mode, agent_spoken FROM transcripts"
-            " WHERE speaker_id = 'bot' ORDER BY ts DESC LIMIT 1",
+            " WHERE mode = 'assistant' ORDER BY ts DESC LIMIT 1",
         )
         row = await cursor.fetchone()
         if row is None:
@@ -598,8 +564,7 @@ class TranscriptStore:
 
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
         cursor = await self.db.execute(
-            "SELECT id, ts, text, mode, speaker_id, audio_event_label,"
-            " audio_event_score FROM transcripts"
+            "SELECT id, ts, text, mode FROM transcripts"
             " ORDER BY ts DESC LIMIT ?",
             (n,),
         )
@@ -610,9 +575,6 @@ class TranscriptStore:
                 "ts": r[1],
                 "text": r[2],
                 "mode": r[3],
-                "speaker_id": r[4],
-                "audio_event_label": r[5],
-                "audio_event_score": r[6],
             }
             for r in reversed(rows)
         ]

@@ -86,17 +86,6 @@ def _display_args(args: dict[str, Any]) -> str:
     return json.dumps(args)
 
 
-def _id_args(args: dict[str, Any]) -> str:
-    return str(args.get("speaker_id", args.get("id", ""))).strip()
-
-
-def _rename_args(args: dict[str, Any]) -> str:
-    sid = str(args.get("speaker_id", "")).strip()
-    new = str(args.get("new_name", "")).strip()
-    # Legacy execute_direct expects "id new_name".
-    return f"{sid} {new}".strip()
-
-
 def _empty_args(_args: dict[str, Any]) -> str:
     return ""
 
@@ -174,50 +163,6 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         },
         ["name"],
         _workflow_args,
-    ),
-    "re_enroll": (
-        {},
-        [],
-        _empty_args,
-    ),
-    "list_profiles": (
-        {},
-        [],
-        _empty_args,
-    ),
-    "create_profile": (
-        {
-            "name": {
-                "type": "string",
-                "description": "Display name for the new voice profile.",
-            }
-        },
-        ["name"],
-        _name_args,
-    ),
-    "delete_profile": (
-        {
-            "speaker_id": {
-                "type": "string",
-                "description": "ID of the speaker profile to delete.",
-            }
-        },
-        ["speaker_id"],
-        _id_args,
-    ),
-    "rename_profile": (
-        {
-            "speaker_id": {
-                "type": "string",
-                "description": "ID of the speaker profile to rename.",
-            },
-            "new_name": {
-                "type": "string",
-                "description": "New display name.",
-            },
-        },
-        ["speaker_id", "new_name"],
-        _rename_args,
     ),
     "cancel": (
         {},

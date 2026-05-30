@@ -21,17 +21,14 @@ and is unrelated to this system.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from src.config import HEARE_HOME, Settings
-from src.daemon.workspace import ensure_workspace_mcp
 
 
 logger = logging.getLogger("heare.onboarding")
@@ -63,100 +60,7 @@ class OnboardingStep:
 # ---------------------------------------------------------------------------
 
 
-def _check_claude_installed(_settings: Settings) -> bool:
-    return shutil.which("claude") is not None
-
-
-def _confirm_claude_installed(_settings: Settings) -> None:
-    if shutil.which("claude") is None:
-        raise RuntimeError(
-            "claude CLI not found on PATH — install from "
-            "https://docs.claude.com/claude-code"
-        )
-
-
-def _check_claude_configured(settings: Settings) -> bool:
-    mcp = settings.workspace_dir / ".mcp.json"
-    if not mcp.exists():
-        return False
-    try:
-        data = json.loads(mcp.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return isinstance(data, dict) and "mcpServers" in data
-
-
-def _confirm_claude_configured(settings: Settings) -> None:
-    # Idempotent: no-ops if target exists.
-    ensure_workspace_mcp(settings.workspace_dir)
-
-
-def _check_capabilities_cached(settings: Settings) -> bool:
-    cache = settings.capabilities_file
-    return cache.exists() and cache.stat().st_size > 2
-
-
-def _confirm_capabilities_cached(settings: Settings) -> None:
-    """Run ``refresh_capabilities`` synchronously.
-
-    Sync CLI entry point only. If a future caller invokes this from inside
-    a running event loop, raise a clear error rather than letting
-    ``asyncio.run`` fail opaquely.
-    """
-    from src.daemon.claude_capabilities import refresh_capabilities
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        # Expected: no running loop, sync caller.
-        asyncio.run(refresh_capabilities(
-            settings.capabilities_file,
-            workspace_dir=settings.workspace_dir,
-            force=True,
-        ))
-        return
-    raise RuntimeError(
-        "_confirm_capabilities_cached must be called from a sync context. "
-        "Inside an event loop, await refresh_capabilities directly."
-    )
-
-
-STEPS: list[OnboardingStep] = [
-    OnboardingStep(
-        id="claude_installed",
-        title="claude CLI on PATH",
-        instructions=(
-            "Install Claude Code: https://docs.claude.com/claude-code\n"
-            "Then re-run `heare setup`."
-        ),
-        is_done=_check_claude_installed,
-        on_confirm=_confirm_claude_installed,
-    ),
-    OnboardingStep(
-        id="claude_configured",
-        title="claude is authenticated and MCPs are configured",
-        instructions=(
-            "Run `claude` interactively and ensure:\n"
-            "  1. Authentication is complete (login if first run)\n"
-            "  2. Run `/mcp` to view connected MCP servers\n"
-            "  3. Authenticate any unauthenticated remote MCPs you want voice-accessible\n"
-            "When done, return here and press [enter] to confirm."
-        ),
-        is_done=_check_claude_configured,
-        on_confirm=_confirm_claude_configured,
-        requires_attestation=True,
-    ),
-    OnboardingStep(
-        id="capabilities_cached",
-        title="initial capability snapshot built",
-        instructions=(
-            "Building the initial capability snapshot — reads "
-            "workspace/.mcp.json and ~/.claude/skills. Should take <1s."
-        ),
-        is_done=_check_capabilities_cached,
-        on_confirm=_confirm_capabilities_cached,
-    ),
-]
+STEPS: list[OnboardingStep] = []
 
 
 # ---------------------------------------------------------------------------

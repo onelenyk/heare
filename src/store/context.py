@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.config import Settings
     from src.store.conversation import ConversationManager
-    from src.voice.speaker.gallery import SpeakerGallery
     from src.store.storage import TranscriptStore
 
 from src.voice.language.core import LANG_NAMES
@@ -26,7 +25,6 @@ _EXCLUDED_FROM_GENERATOR_CTX: frozenset[str] = frozenset({
     "mode",
     "heartbeat_flag",
     "transcript_or_heartbeat",
-    "speaker_rule_block",
     "silence_block",
     "proactivity_block",
     "conversation_active",  # internal yes/no flag, not surfaced to generator
@@ -41,13 +39,11 @@ class ContextBuilder:
         store: "TranscriptStore",
         settings: "Settings",
         conversation_manager: "ConversationManager | None" = None,
-        speaker_gallery: "SpeakerGallery | None" = None,
         project_dir: str | None = None,
     ) -> None:
         self.store = store
         self.settings = settings
         self.conversation_manager = conversation_manager
-        self.speaker_gallery = speaker_gallery
         self._project_dir = project_dir
         self._mcp_bridge: Any = None
         self._session_state: Any = None
@@ -80,7 +76,6 @@ class ContextBuilder:
         transcript: str | None,
         heartbeat: bool = False,
         keep_placeholders: list[str] | None = None,
-        speaker_id: str | None = None,
         conversation_id: int | None = None,
     ) -> dict[str, Any]:
         now = dt.datetime.now().astimezone()
@@ -115,7 +110,6 @@ class ContextBuilder:
             "heartbeat_flag": "yes" if heartbeat else "no",
             "recent_transcripts": self._format_recent(recent),
             "transcript_or_heartbeat": self._format_input(transcript, heartbeat),
-            "speaker_rule_block": self._render_rule_block(speaker_id=speaker_id),
             "silence_block": self._render_silence_block(recent, now.timestamp()),
             "proactivity_block": self._render_proactivity_block(),
             "conversation_active": conversation_ctx["conversation_active"],
@@ -230,54 +224,15 @@ class ContextBuilder:
             return "PROACTIVITY OVERRIDE: high — be very engaged, initiate topics, ask follow-ups freely.\n"
         return ""  # medium: prompt defaults apply, no override needed
 
-    def _render_rule_block(self, speaker_id: str | None = None) -> str:
-        if not self.settings.speaker_id_enabled:
-            return ""
-        if speaker_id == "owner":
-            return "Speaker: owner (high confidence)"
-        if speaker_id is None:
-            return "Speaker: likely owner (utterance below ID threshold — treat as owner)"
-        return f"Speaker: {speaker_id} (not owner)"
-
     def _format_recent(self, rows: list[dict[str, Any]]) -> str:
         if not rows:
             return "(none)"
-        labelled = self.settings.speaker_id_enabled
         lines = []
         for row in rows:
             stamp = dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
-            if labelled:
-                label = self._resolve_label(row.get("speaker_id"))
-                line = f"  - [{stamp}] {label}: {row['text']}"
-            else:
-                line = f"  - [{stamp}] {row['text']}"
-            lines.append(line + self._audio_event_suffix(row))
+            line = f"  - [{stamp}] {row['text']}"
+            lines.append(line)
         return "\n".join(lines)
-
-    @staticmethod
-    def _audio_event_suffix(row: dict[str, Any]) -> str:
-        """Render the ambient-sound tag for a transcript row, if any.
-
-        Surfaces what YAMNet heard around the utterance (e.g. Music) so
-        the LLM can discount a short/garbled turn that was likely picked
-        up from a TV or speakers rather than spoken to it.
-        """
-        ev_label = row.get("audio_event_label")
-        if not ev_label:
-            return ""
-        ev_score = row.get("audio_event_score")
-        if isinstance(ev_score, (int, float)):
-            return f"  [audio: {ev_label} {float(ev_score):.2f}]"
-        return f"  [audio: {ev_label}]"
-
-    def _resolve_label(self, speaker_id: str | None) -> str:
-        if speaker_id is None:
-            return "unknown"
-        if self.speaker_gallery is not None:
-            label = self.speaker_gallery.get_label(speaker_id)
-            if label:
-                return label
-        return speaker_id
 
     def _format_input(self, transcript: str | None, heartbeat: bool) -> str:
         if heartbeat:

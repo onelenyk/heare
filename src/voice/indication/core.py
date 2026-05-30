@@ -44,13 +44,7 @@ class IndicationKind(str, Enum):
     ACTION_REJECTED = "action_rejected"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
     CONFIRMATION_DEADLINE = "confirmation_deadline"
-    REENROLL_RECORDING_START = "reenroll_recording_start"
-    REENROLL_RECORDING_END = "reenroll_recording_end"
-    REENROLL_COUNTDOWN = "reenroll_countdown"
     OPENROUTER_TIMEOUT = "openrouter_timeout"
-    PROFILE_CREATED = "profile_created"
-    PROFILE_RENAMED = "profile_renamed"
-    PROFILE_DELETED = "profile_deleted"
     STT_ERROR = "stt_error"
     TTS_FAILURE = "tts_failure"
     AUDIO_DEVICE_LOST = "audio_device_lost"
@@ -59,9 +53,6 @@ class IndicationKind(str, Enum):
     INTENT_SUBMITTED = "intent_submitted"
     INTENT_COMPLETED = "intent_completed"
     INTENT_CANCELLED = "intent_cancelled"
-    OWNER_AUTO_ENROLLED = "owner_auto_enrolled"
-    GUEST_AUTO_ENROLLED = "guest_auto_enrolled"
-    GUEST_RENAMED = "guest_renamed"
     WAKE_WORD_DETECTED = "wake_word_detected"
     MODE_CHANGED = "mode_changed"
     DAEMON_STARTED = "daemon_started"
@@ -72,7 +63,6 @@ class IndicationKind(str, Enum):
     WORKFLOW_RUN_START = "workflow_run_start"
     WORKFLOW_RUN_END = "workflow_run_end"
     # Tier 3
-    SPEAKER_DRIFT = "speaker_drift"
     MULTI_INTENT_START = "multi_intent_start"
     MULTI_INTENT_END = "multi_intent_end"
     NETWORK_UNREACHABLE = "network_unreachable"
@@ -94,17 +84,11 @@ KIND_TO_LEVEL: dict[IndicationKind, IndicationLevel] = {
     # Tier 1 attention/error/input_waiting
     IndicationKind.AWAITING_CONFIRMATION: IndicationLevel.INPUT_WAITING,
     IndicationKind.CONFIRMATION_DEADLINE: IndicationLevel.ATTENTION,
-    IndicationKind.REENROLL_RECORDING_START: IndicationLevel.INPUT_WAITING,
-    IndicationKind.REENROLL_RECORDING_END: IndicationLevel.SUCCESS,
-    IndicationKind.REENROLL_COUNTDOWN: IndicationLevel.COUNTDOWN,
     IndicationKind.MCP_AUTH_REQUIRED: IndicationLevel.INPUT_WAITING,
     IndicationKind.ACTION_FAILED: IndicationLevel.ERROR,
     IndicationKind.ACTION_REJECTED: IndicationLevel.ERROR,
     IndicationKind.ACTION_LONG_RUNNING: IndicationLevel.LONG_RUNNING,
     IndicationKind.OPENROUTER_TIMEOUT: IndicationLevel.ERROR,
-    IndicationKind.PROFILE_CREATED: IndicationLevel.SUCCESS,
-    IndicationKind.PROFILE_RENAMED: IndicationLevel.SUCCESS,
-    IndicationKind.PROFILE_DELETED: IndicationLevel.INFO,
     IndicationKind.STT_ERROR: IndicationLevel.ERROR,
     IndicationKind.TTS_FAILURE: IndicationLevel.ERROR,
     IndicationKind.AUDIO_DEVICE_LOST: IndicationLevel.ERROR,
@@ -112,9 +96,6 @@ KIND_TO_LEVEL: dict[IndicationKind, IndicationLevel] = {
     IndicationKind.INTENT_SUBMITTED: IndicationLevel.INFO,
     IndicationKind.INTENT_COMPLETED: IndicationLevel.SUCCESS,
     IndicationKind.INTENT_CANCELLED: IndicationLevel.INFO,
-    IndicationKind.OWNER_AUTO_ENROLLED: IndicationLevel.SUCCESS,
-    IndicationKind.GUEST_AUTO_ENROLLED: IndicationLevel.SUCCESS,
-    IndicationKind.GUEST_RENAMED: IndicationLevel.INFO,
     IndicationKind.WAKE_WORD_DETECTED: IndicationLevel.INFO,
     IndicationKind.MODE_CHANGED: IndicationLevel.INFO,
     IndicationKind.DAEMON_STARTED: IndicationLevel.SUCCESS,
@@ -125,7 +106,6 @@ KIND_TO_LEVEL: dict[IndicationKind, IndicationLevel] = {
     IndicationKind.WORKFLOW_RUN_START: IndicationLevel.INFO,
     IndicationKind.WORKFLOW_RUN_END: IndicationLevel.SUCCESS,
     # Tier 3 info
-    IndicationKind.SPEAKER_DRIFT: IndicationLevel.INFO,
     IndicationKind.MULTI_INTENT_START: IndicationLevel.INFO,
     IndicationKind.MULTI_INTENT_END: IndicationLevel.INFO,
     IndicationKind.NETWORK_UNREACHABLE: IndicationLevel.ERROR,
@@ -138,9 +118,6 @@ _DEFAULTS: dict[IndicationKind, tuple[str, str]] = {
     IndicationKind.AWAITING_CONFIRMATION: ("heare: confirm?", "Say 'гава так' or 'гава ні' (30s)"),
     IndicationKind.CONFIRMATION_DEADLINE: ("heare: 5s left", "Confirmation will expire"),
     IndicationKind.CONFIRMATION_TIMED_OUT: ("heare: timeout", "Confirmation window closed"),
-    IndicationKind.REENROLL_RECORDING_START: ("heare: speak now", "Recording 15s for re-enrollment"),
-    IndicationKind.REENROLL_RECORDING_END: ("heare: voice updated", "Re-enrollment complete"),
-    IndicationKind.REENROLL_COUNTDOWN: ("heare: countdown", "Recording in 3-2-1..."),
     IndicationKind.MCP_AUTH_REQUIRED: ("heare: MCP auth needed", "MCP server needs authentication — check terminal"),
     IndicationKind.ACTION_FAILED: ("heare: action failed", ""),
     IndicationKind.ACTION_REJECTED: ("heare: action rejected", ""),
@@ -149,15 +126,9 @@ _DEFAULTS: dict[IndicationKind, tuple[str, str]] = {
     IndicationKind.STT_ERROR: ("heare: STT error", ""),
     IndicationKind.TTS_FAILURE: ("heare: TTS failure", ""),
     IndicationKind.AUDIO_DEVICE_LOST: ("heare: audio lost", "Mic or speaker disconnected"),
-    IndicationKind.PROFILE_CREATED: ("heare: profile ready", "Voice profile created"),
-    IndicationKind.PROFILE_RENAMED: ("heare: renamed", "Profile renamed"),
-    IndicationKind.PROFILE_DELETED: ("heare: deleted", "Profile deleted"),
     IndicationKind.INTENT_SUBMITTED: ("heare: queued", ""),
     IndicationKind.INTENT_COMPLETED: ("heare: done", ""),
     IndicationKind.INTENT_CANCELLED: ("heare: cancelled", ""),
-    IndicationKind.OWNER_AUTO_ENROLLED: ("heare: owner learned", "Auto-enrolled your voice"),
-    IndicationKind.GUEST_AUTO_ENROLLED: ("heare: new guest", ""),
-    IndicationKind.GUEST_RENAMED: ("heare: guest renamed", ""),
     IndicationKind.WAKE_WORD_DETECTED: ("heare: wake", ""),
     IndicationKind.MODE_CHANGED: ("heare: mode change", ""),
     IndicationKind.DAEMON_STARTED: ("heare: ready", "Listening"),
@@ -166,7 +137,6 @@ _DEFAULTS: dict[IndicationKind, tuple[str, str]] = {
     IndicationKind.WORKFLOW_SAVED: ("heare: workflow saved", ""),
     IndicationKind.WORKFLOW_RUN_START: ("heare: workflow start", ""),
     IndicationKind.WORKFLOW_RUN_END: ("heare: workflow done", ""),
-    IndicationKind.SPEAKER_DRIFT: ("heare: voice drift", ""),
     IndicationKind.MULTI_INTENT_START: ("heare: chain start", ""),
     IndicationKind.MULTI_INTENT_END: ("heare: chain end", ""),
     IndicationKind.NETWORK_UNREACHABLE: ("heare: network down", ""),
@@ -236,28 +206,10 @@ class Indication:
         self._lock = asyncio.Lock()
         # Track tasks so reload() can drain them without races.
         self._inflight: set[asyncio.Task] = set()
-        # Enrollment-active flag: flipped True/False by REENROLL_RECORDING_START
-        # / REENROLL_RECORDING_END notify calls. Generator and SpeakerTagger read
-        # this via is_enrollment_active to drop input frames during the 15s
-        # recording window in src/direct_tools.py:_execute_re_enroll. Updated
-        # BEFORE the _enabled and cooldown checks so input gating works even
-        # when indication backends are disabled.
-        self._enrollment_active: bool = False
 
     @property
     def is_enabled(self) -> bool:
         return self._enabled
-
-    @property
-    def is_enrollment_active(self) -> bool:
-        """True between REENROLL_RECORDING_START and REENROLL_RECORDING_END notify calls.
-
-        Generator and SpeakerTagger read this to drop transcripts and embeddings
-        during the recording window so the user's voice-sample audio does not get
-        interpreted as a new command (which would otherwise spawn a duplicate
-        re_enroll intent).
-        """
-        return self._enrollment_active
 
     def notify(
         self,
@@ -269,12 +221,6 @@ class Indication:
     ) -> None:
         """Sync, thread-safe, fire-and-forget. Never raises."""
         try:
-            # Track enrollment-active regardless of cue gating — flag must update
-            # even when indication is disabled or the kind is in cooldown.
-            if kind is IndicationKind.REENROLL_RECORDING_START:
-                self._enrollment_active = True
-            elif kind is IndicationKind.REENROLL_RECORDING_END:
-                self._enrollment_active = False
             if not self._enabled:
                 return
             level = KIND_TO_LEVEL.get(kind)
@@ -638,21 +584,6 @@ def get_indication() -> "Indication | None":
     return _INSTANCE
 
 
-def is_enrollment_active() -> bool:
-    """Convenience wrapper: True while a re_enroll recording window is open.
-
-    Reads the global Indication singleton's `is_enrollment_active` flag.
-    Used by GeneratorProcessor and SpeakerTaggerProcessor to drop incoming
-    transcripts and skip embedding work while the user's voice is being
-    sampled — see direct_tools._execute_re_enroll for the producer.
-
-    Returns False when no Indication facade is registered (subsystem
-    disabled or not yet constructed at startup).
-    """
-    ind = get_indication()
-    return ind is not None and ind.is_enrollment_active
-
-
 __all__ = [
     "Backend",
     "IndicationCueFrame",
@@ -665,5 +596,4 @@ __all__ = [
     "build_sound_cue_processor",
     "set_indication",
     "get_indication",
-    "is_enrollment_active",
 ]

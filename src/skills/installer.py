@@ -1,8 +1,8 @@
 """Installer for skills + MCP servers sourced from discovery (US-006).
 
-Security-critical. All installs require a hard consent gate (speaker-ID OR
-configured passphrase) and an explicit ``user_confirmed=True`` flag from the
-LLM tool call before any filesystem mutation occurs.
+Security-critical. All installs require a hard consent gate (configured
+passphrase) and an explicit ``user_confirmed=True`` flag from the LLM tool
+call before any filesystem mutation occurs.
 """
 from __future__ import annotations
 
@@ -78,37 +78,7 @@ class InstallFailed(Exception):
     """Raised when install began but could not complete (best-effort rollback ran)."""
 
 
-def is_owner_enrolled(settings) -> bool:
-    """Check whether the owner is enrolled in the speaker gallery.
-
-    Module-level so tests can monkeypatch. Reads ``settings.speakers_file``
-    and looks for an "owner" entry with at least one embedding.
-    """
-    path = getattr(settings, "speakers_file", None)
-    if path is None:
-        return False
-    p = Path(path)
-    if not p.exists():
-        return False
-    try:
-        data = json.loads(p.read_text())
-    except (OSError, json.JSONDecodeError):
-        return False
-    if not isinstance(data, dict):
-        return False
-    speakers = data.get("speakers")
-    if not isinstance(speakers, dict):
-        return False
-    owner = speakers.get("owner")
-    if not isinstance(owner, dict):
-        return False
-    embeddings = owner.get("embeddings")
-    return bool(embeddings)
-
-
 def _consent_available(settings) -> tuple[bool, str]:
-    if getattr(settings, "speaker_id_enabled", False) and is_owner_enrolled(settings):
-        return True, "speaker_id"
     phrase = getattr(settings, "confirmation_passphrase", None)
     if isinstance(phrase, str) and phrase.strip():
         return True, "passphrase"
@@ -822,7 +792,6 @@ __all__ = [
     "InstallResult",
     "InstallRefused",
     "InstallFailed",
-    "is_owner_enrolled",
     "install_skill",
     "install_mcp_server",
     "MSG_NO_CONSENT_EN",

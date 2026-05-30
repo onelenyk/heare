@@ -117,25 +117,10 @@ def render_native_system_prompt(
                 "resolve here. You have full filesystem access: use absolute "
                 "or ~ paths to read/write anywhere when a location is given."
             )
-        current_audio = context.get("current_audio_event")
-        if current_audio:
-            parts.append(
-                f"Ambient sound right now: {current_audio}. You cannot "
-                "hear directly — this detector tag is your ONLY sense of "
-                "room audio. If the user asks whether you hear music or a "
-                "sound, answer truthfully from this tag (yes, and name it)."
-            )
         recent = context.get("recent_transcripts")
         if recent and recent != "(none)":
             parts.append("Recent transcripts:")
             parts.append(recent)
-            if "[audio:" in recent:
-                parts.append(
-                    "A trailing [audio: Label score] on a line means that "
-                    "sound was detected in the room while that turn was "
-                    "transcribed — it may be ambient (Music, TV, Speech "
-                    "from a device), not something the user said to you."
-                )
         summary = context.get("conversation_summary")
         if summary:
             parts.append(f"Conversation summary: {summary}")
@@ -265,28 +250,6 @@ def render_native_system_prompt(
     parts.append(
         "- Respond in the user's language (including narration). Do not mix "
         "languages."
-    )
-    parts.append("")
-    parts.append("Ambient audio:")
-    parts.append(
-        "- The 'Ambient sound right now' line and [audio: ...] tags are "
-        "your only hearing. When the user asks if you hear music / a "
-        "sound / what's playing, answer from that tag — say yes and name "
-        "it when present, no when absent. Never claim you cannot hear."
-    )
-    parts.append(
-        "- If the latest turn carries an audio tag AND the text is "
-        "short, off-topic, or looks like a mis-transcription, treat it as "
-        "low-confidence: it may be Music/TV bleed, not speech to you."
-    )
-    parts.append(
-        "- In that case do NOT act on it or invent a reply — ask a brief "
-        "'Sorry, did you say something?' in the user's language, or stay "
-        "silent if nothing was plausibly addressed to you."
-    )
-    parts.append(
-        "- A clear, on-topic request still stands even with an audio tag — "
-        "the tag lowers confidence, it is not a hard mute."
     )
     parts.append("")
     parts.append("Tool-use loop:")
@@ -476,12 +439,6 @@ def _build_injector_class():
             if isinstance(frame, TranscriptionFrame):
                 await self._refresh_system_prompt(
                     frame.text or "",
-                    audio_event_label=getattr(
-                        frame, "audio_event_label", None
-                    ),
-                    audio_event_score=getattr(
-                        frame, "audio_event_score", None
-                    ),
                 )
 
             await self.push_frame(frame, direction)
@@ -489,8 +446,6 @@ def _build_injector_class():
         async def _refresh_system_prompt(
             self,
             transcript: str,
-            audio_event_label: str | None = None,
-            audio_event_score: float | None = None,
         ) -> None:
             language = (
                 self._language_state.language
@@ -525,13 +480,6 @@ def _build_injector_class():
                     "leaving prior system prompt in place"
                 )
                 return
-            if audio_event_label:
-                if isinstance(audio_event_score, (int, float)):
-                    ctx["current_audio_event"] = (
-                        f"{audio_event_label} {float(audio_event_score):.2f}"
-                    )
-                else:
-                    ctx["current_audio_event"] = str(audio_event_label)
             capability_hints: list[dict] | None = None
             if self._capability_index is not None and transcript:
                 try:

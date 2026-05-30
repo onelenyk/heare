@@ -83,17 +83,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         print("\nRun `heare setup` to continue.")
         return 1
 
-    # Refresh Claude capabilities (skills + MCPs) in the background.
-    from src.daemon.claude_capabilities import refresh_capabilities
-
-    asyncio.create_task(
-        refresh_capabilities(
-            settings.capabilities_file,
-            workspace_dir=settings.workspace_dir,
-            max_age_hours=settings.capabilities_max_age_hours,
-        )
-    )
-
     if settings.pid_file.exists():
         try:
             existing_pid = int(settings.pid_file.read_text().strip())
@@ -160,54 +149,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             project_dir=project_dir,
         )
 
-        speaker_gallery = None
-        speaker_model = None
-        speaker_namer = None
-        if settings.speaker_id_enabled:
-            try:
-                from src.voice.speaker import id as _sid_mod
-                from src.voice.speaker.gallery import SpeakerGallery as _Gallery
-
-                speaker_gallery = _Gallery.load(settings.speakers_file)
-                loop = asyncio.get_running_loop()
-                speaker_model = await loop.run_in_executor(
-                    None, _sid_mod.load_model
-                )
-                logger.info(
-                    "Speaker subsystem: gallery loaded (%d speakers), ECAPA model ready",
-                    len(speaker_gallery.list_speakers()),
-                )
-            except ModuleNotFoundError as e:
-                logger.info(
-                    "Speaker ID disabled: %s not installed "
-                    "(pip install heare[speaker] to enable).",
-                    e.name,
-                )
-                speaker_gallery = None
-                speaker_model = None
-            except Exception:
-                logger.exception(
-                    "Speaker subsystem init failed — continuing without diarization"
-                )
-                speaker_gallery = None
-                speaker_model = None
-
-        if speaker_gallery is not None and speaker_model is not None:
-            from src.voice.speaker.namer import maybe_build_namer
-
-            context_builder.speaker_gallery = speaker_gallery
-
-            speaker_namer = maybe_build_namer(
-                settings, speaker_gallery, settings.openrouter_api_key
-            )
-            if speaker_namer is not None:
-                logger.info(
-                    "Speaker namer: enabled, model=%s",
-                    settings.speaker_namer_model,
-                )
-
-        namer_enqueue = speaker_namer.enqueue if speaker_namer is not None else None
-
         from src.state import State
 
         state = State(settings.db_path)
@@ -228,9 +169,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             persona=persona,
             state=state,
             conversation_manager=conversation_manager,
-            speaker_gallery=speaker_gallery,
-            speaker_model=speaker_model,
-            namer_enqueue=namer_enqueue,
             project_dir=project_dir,
         )
 
@@ -280,10 +218,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             except Exception:
                 logger.exception("startup greeting push failed (non-fatal)")
 
-        namer_task = None
-        if speaker_namer is not None:
-            namer_task = asyncio.create_task(speaker_namer.run())
-
         bridge = None
         bridge_task = None
         if settings.browser_bridge_enabled:
@@ -329,7 +263,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             pipeline,
             warmup,
             settings=settings,
-            namer_task=namer_task,
             bridge_task=bridge_task,
         )
     finally:
@@ -379,7 +312,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
 
 async def run_until_stopped(
-    runner, pipeline, warmup=None, *, settings=None, namer_task=None, bridge_task=None,
+    runner, pipeline, warmup=None, *, settings=None, bridge_task=None,
 ) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
@@ -466,8 +399,6 @@ async def run_until_stopped(
     watch_set = {pipeline_task, stop_waiter}
     if warmup_task is not None:
         watch_set.add(warmup_task)
-    if namer_task is not None:
-        watch_set.add(namer_task)
     if bridge_task is not None:
         watch_set.add(bridge_task)
     if audio_dev_task is not None:
@@ -480,8 +411,6 @@ async def run_until_stopped(
         background_tasks = [pipeline_task, stop_waiter]
         if warmup_task is not None:
             background_tasks.append(warmup_task)
-        if namer_task is not None:
-            background_tasks.append(namer_task)
         if bridge_task is not None:
             background_tasks.append(bridge_task)
         if audio_dev_task is not None:
@@ -492,8 +421,6 @@ async def run_until_stopped(
         named_tasks = [(pipeline_task, "pipeline")]
         if warmup_task is not None:
             named_tasks.append((warmup_task, "warmup"))
-        if namer_task is not None:
-            named_tasks.append((namer_task, "speaker-namer"))
         if bridge_task is not None:
             named_tasks.append((bridge_task, "browser-bridge"))
         if audio_dev_task is not None:
@@ -687,208 +614,7 @@ def _cmd_watch(args: argparse.Namespace) -> int:
 
     settings = load_settings()
     return run_watch(settings, interval=args.interval, once=args.once)
-
-
-def _cmd_enroll_owner(args: argparse.Namespace) -> int:
-    settings = load_settings()
-    if not settings.speaker_id_enabled:
-        print(
-            "speaker_id_enabled is False — set it to True in ~/.heare/config.toml"
-            " before enrolling an owner."
-        )
-        return 1
-    try:
-        import numpy as np
-        import sounddevice as sd
-    except ImportError as e:
-        print(f"enroll-owner requires sounddevice + numpy: {e}")
-        return 1
-
-    from src.voice.speaker import id as speaker_id_mod
-    from src.voice.speaker.gallery import (
-        LabelValidationError,
-        SpeakerGallery,
-        sanitize_label,
-    )
-
-    try:
-        label = sanitize_label(args.label)
-    except LabelValidationError as e:
-        print(f"invalid label: {e}")
-        return 1
-
-    duration = max(1, int(args.duration))
-    sample_rate = 16000
-    print(f"Recording {duration}s at {sample_rate} Hz — speak now.")
-    for i in range(3, 0, -1):
-        print(f"  {i}...")
-        time.sleep(1)
-    recording = sd.rec(
-        int(duration * sample_rate),
-        samplerate=sample_rate,
-        channels=1,
-        dtype="int16",
-    )
-    sd.wait()
-    pcm = recording.astype(np.int16).tobytes()
-
-    print("Loading ECAPA model (first run downloads ~17MB) ...")
-    model = speaker_id_mod.load_model()
-    vector = speaker_id_mod.embed(pcm, sample_rate, model)
-
-    settings.speakers_file.parent.mkdir(parents=True, exist_ok=True)
-    gallery = SpeakerGallery.load(settings.speakers_file)
-    gallery.enroll_owner(vector, label=label)
-    print(
-        f"enrolled owner='{label}' from {duration}s of audio "
-        f"(embedding dim {vector.shape[0]})"
-    )
-    return 0
-
-
-def _cmd_test_recognizer(args: argparse.Namespace) -> int:
-    """Interactive speaker recognition tester."""
-    try:
-        from . import test_recognizer
-    except ImportError as e:
-        print(f"test-recognizer requires pyaudio: {e}")
-        print("Install with: pip install pyaudio")
-        return 1
-
-    import asyncio
-
-    sys.argv = ["test-recognizer"]
-    if args.threshold:
-        sys.argv.extend(["--threshold", str(args.threshold)])
-    if args.duration:
-        sys.argv.extend(["--duration", str(args.duration)])
-
-    try:
-        asyncio.run(test_recognizer.main())
-    except (KeyboardInterrupt, EOFError):
-        print("\nExiting...")
-    return 0
-
-
-def _cmd_speakers_list(args: argparse.Namespace) -> int:
-    from src.voice.speaker.gallery import SpeakerGallery
-
-    settings = load_settings()
-    gallery = SpeakerGallery.load(settings.speakers_file)
-    ids = gallery.list_speakers()
-    if not ids:
-        print("(no speakers enrolled)")
-        return 0
-    for sid in ids:
-        entry = gallery.get_entry(sid) or {}
-        label = entry.get("label", "?")
-        turn_count = entry.get("turn_count", 0)
-        updated = entry.get("updated_at", "?")
-        print(f"{sid}\t{label}\tturn_count={turn_count}\tupdated={updated}")
-    return 0
-
-
-def _cmd_speakers_info(args: argparse.Namespace) -> int:
-    import numpy as np
-
-    from src.voice.speaker.gallery import SpeakerGallery
-
-    settings = load_settings()
-    gallery = SpeakerGallery.load(settings.speakers_file)
-    entry = gallery.get_entry(args.speaker_id)
-    if not entry:
-        print(f"speaker not found: {args.speaker_id}")
-        return 1
-    embeddings = entry.get("embeddings") or []
-    ref_count = len(embeddings)
-    centroid = gallery.get_centroid(args.speaker_id)
-    centroid_norm = float(np.linalg.norm(centroid)) if centroid is not None else 0.0
-    print(f"id: {args.speaker_id}")
-    print(f"label: {entry.get('label', '?')}")
-    print(f"created_at: {entry.get('created_at', '?')}")
-    print(f"updated_at: {entry.get('updated_at', '?')}")
-    print(f"turn_count: {entry.get('turn_count', 0)}")
-    print(f"ref_count: {ref_count}")
-    print(f"centroid_norm: {centroid_norm:.4f}")
-    return 0
-
-
-def _cmd_speakers_rm(args: argparse.Namespace) -> int:
-    from src.voice.speaker.gallery import SpeakerGallery
-
-    settings = load_settings()
-    if not args.yes:
-        print("pass --yes to confirm")
-        return 1
-    gallery = SpeakerGallery.load(settings.speakers_file)
-    if not gallery.remove_speaker(args.speaker_id):
-        print(f"speaker not found: {args.speaker_id}")
-        return 1
-    print(f"removed: {args.speaker_id}")
-    return 0
-
-
-def _cmd_speakers_rename(args: argparse.Namespace) -> int:
-    from src.voice.speaker.gallery import LabelValidationError, SpeakerGallery
-
-    settings = load_settings()
-    gallery = SpeakerGallery.load(settings.speakers_file)
-    try:
-        ok = gallery.rename_speaker(args.speaker_id, args.new_label)
-    except LabelValidationError as e:
-        print(f"invalid label: {e}")
-        return 1
-    if not ok:
-        print(f"speaker not found: {args.speaker_id}")
-        return 1
-    stored_label = gallery.get_label(args.speaker_id)
-    print(f"renamed: {args.speaker_id} -> {stored_label}")
-    return 0
-
-
-def _cmd_speakers(args: argparse.Namespace) -> int:
-    sub = args.speakers_cmd
-    if sub == "list":
-        return _cmd_speakers_list(args)
-    if sub == "info":
-        return _cmd_speakers_info(args)
-    if sub == "rm":
-        return _cmd_speakers_rm(args)
-    if sub == "rename":
-        return _cmd_speakers_rename(args)
-    if sub == "audit":
-        return _cmd_speakers_audit(args)
-    print("unknown speakers subcommand")
-    return 1
-
-
-def _cmd_speakers_audit(args: argparse.Namespace) -> int:
-    from src.voice.speaker.gallery import SpeakerGallery
-
-    settings = load_settings()
-    gallery = SpeakerGallery.load(settings.speakers_file)
-    target_ids = [args.speaker_id] if args.speaker_id else gallery.list_speakers()
-    if not target_ids:
-        print("(no speakers enrolled)")
-        return 0
-    any_missing = False
-    for sid in target_ids:
-        report = gallery.audit(sid)
-        if report is None:
-            print(f"{sid}: not found")
-            any_missing = True
-            continue
-        status = "DRIFT" if report["enrollment_cos_floor_hit"] else "OK"
-        print(
-            f"{sid} refs={report['ref_count']} "
-            f"centroid[min={report['min_cos_vs_centroid']:.3f} "
-            f"mean={report['mean_cos_vs_centroid']:.3f} "
-            f"max={report['max_cos_vs_centroid']:.3f}] "
-            f"enrollment[mean={report['mean_cos_vs_enrollment']:.3f}] "
-            f"{status}"
-        )
-    return 1 if any_missing else 0
-
+    
 
 def _cmd_logs(args: argparse.Namespace) -> int:
     settings = load_settings()
@@ -1054,31 +780,6 @@ def build_parser() -> argparse.ArgumentParser:
     logs_p.add_argument("-f", "--follow", action="store_true", help="Stream new entries")
     logs_p.add_argument("-n", "--lines", type=int, default=40, help="How many lines")
 
-    enroll_p = sub.add_parser(
-        "enroll-owner",
-        help="Record ~15s of your voice and set as the owner reference",
-    )
-    enroll_p.add_argument("--duration", type=int, default=15, help="Recording seconds")
-    enroll_p.add_argument("--label", type=str, default="owner", help="Human label")
-
-    test_p = sub.add_parser("test-recognizer", help="Interactive speaker recognition tester")
-    test_p.add_argument("--threshold", type=float, default=None, help="Override match threshold")
-    test_p.add_argument("--duration", type=int, default=None, help="Recording duration (ms)")
-
-    speakers_p = sub.add_parser("speakers", help="Manage the speaker gallery")
-    speakers_sub = speakers_p.add_subparsers(dest="speakers_cmd", required=True)
-    speakers_sub.add_parser("list", help="List enrolled speakers")
-    info_p = speakers_sub.add_parser("info", help="Show details for a speaker")
-    info_p.add_argument("speaker_id", help="Speaker id (e.g. owner)")
-    rm_p = speakers_sub.add_parser("rm", help="Remove a speaker")
-    rm_p.add_argument("speaker_id")
-    rm_p.add_argument("--yes", action="store_true", help="Confirm removal")
-    rename_p = speakers_sub.add_parser("rename", help="Rename a speaker label")
-    rename_p.add_argument("speaker_id")
-    rename_p.add_argument("new_label")
-    audit_p = speakers_sub.add_parser("audit", help="Cosine drift report")
-    audit_p.add_argument("speaker_id", nargs="?", default=None)
-
     return parser
 
 
@@ -1114,12 +815,6 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_watch(args)
     if cmd == "logs":
         return _cmd_logs(args)
-    if cmd == "enroll-owner":
-        return _cmd_enroll_owner(args)
-    if cmd == "test-recognizer":
-        return _cmd_test_recognizer(args)
-    if cmd == "speakers":
-        return _cmd_speakers(args)
     parser.print_help()
     return 1
 

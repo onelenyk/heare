@@ -3,10 +3,8 @@
 Pipeline shape (top-level):
 
     transport.input
-      → [optional speaker_buffer]
       → stt
       → stt_error_observer
-      → [optional speaker_tagger]
       → TranscriptionGateProcessor      (PH2-01)
       → user_aggregator                 (LLMContextAggregatorPair.user())
       → OpenRouterLLMService            (Pipecat-native LLM)
@@ -312,12 +310,9 @@ def _assemble_native_stages(
     tts_fade_observer: Any = None,
     assistant_aggregator: Any,
     system_prompt_injector: Any = None,
-    speaker_buffer: Any = None,
-    speaker_tagger: Any = None,
     sound_cue_processor: Any = None,
     mute_gate: Any = None,
     input_mute_gate: Any = None,
-    audio_event_observer: Any = None,
     cancel_flag_gate: Any = None,
     echo_gate: Any = None,
     echo_collector: Any = None,
@@ -345,21 +340,12 @@ def _assemble_native_stages(
     # frames, not for cancel latency.
     if cancel_flag_gate is not None:
         stages.append(cancel_flag_gate)
-    # echo_gate sits AFTER cancel_flag_gate and BEFORE audio_event_observer /
-    # speaker_buffer / STT. It drops mic audio that correlates with recent
-    # bot output, preventing the bot's own echo from reaching STT.
+    # echo_gate sits AFTER cancel_flag_gate and BEFORE STT. It drops mic
+    # audio that correlates with recent bot output, preventing the bot's
+    # own echo from reaching STT.
     if echo_gate is not None:
         stages.append(echo_gate)
-    # audio_event_observer sits AFTER input_mute_gate so muted mic audio is
-    # never wasted on YAMNet inference, and BEFORE speaker_buffer / STT so it
-    # operates on the raw mic stream.
-    if audio_event_observer is not None:
-        stages.append(audio_event_observer)
-    if speaker_buffer is not None:
-        stages.append(speaker_buffer)
     stages.extend([stt, stt_error_observer])
-    if speaker_tagger is not None:
-        stages.append(speaker_tagger)
     # voice_state_observer sits BEFORE transcription_gate so it sees every
     # raw TranscriptionFrame (the gate may suppress some for cancel words /
     # debounce). UserStartedSpeaking / UserStoppedSpeaking SystemFrames also
@@ -412,9 +398,6 @@ async def build_pipeline(
     *,
     state: State | None = None,
     conversation_manager: Any = None,
-    speaker_gallery: Any = None,
-    speaker_model: Any = None,
-    namer_enqueue: Any = None,
     project_dir: str | None = None,
 ) -> Tuple[object, object, object, object, object, object, object]:
     """Build the Pipecat-native pipeline.
@@ -541,29 +524,6 @@ async def build_pipeline(
         sample_rate=settings.tts_sample_rate,
         cache=tts_cache,
     )
-
-    # ------------------------------------------------------------------
-    # Speaker chain (optional — same gating as legacy)
-    # ------------------------------------------------------------------
-    speaker_buffer = None
-    speaker_tagger = None
-    if (
-        settings.speaker_id_enabled
-        and speaker_gallery is not None
-        and speaker_model is not None
-    ):
-        from src.voice.speaker.processor import create_speaker_processors
-
-        speaker_buffer, speaker_tagger = create_speaker_processors(
-            settings,
-            speaker_gallery,
-            speaker_model,
-            namer_enqueue=namer_enqueue,
-        )
-        logger.info(
-            "Speaker chain active: tagger wired; namer_enqueue=%s",
-            "on" if namer_enqueue is not None else "off",
-        )
 
     # ------------------------------------------------------------------
     # Indication subsystem (identical to legacy)
@@ -932,26 +892,6 @@ async def build_pipeline(
             echo_gate_proc = None
             echo_collector = None
 
-    # Audio event detection (YAMNet) — opt-in, off by default. The observer
-    # is constructed lazily so a daemon with the flag off never imports
-    # ``onnxruntime`` or ``numpy``. Any failure here logs and degrades to a
-    # no-op stage; the pipeline must keep building.
-    audio_event_observer = None
-    if settings.audio_event_detection_enabled:
-        try:
-            from src.audio_event.observer import create_audio_event_observer
-
-            audio_event_observer = create_audio_event_observer(settings)
-            if audio_event_observer is not None:
-                logger.info(
-                    "audio_event: YAMNet observer active (threshold=%.2f, model=%s)",
-                    settings.audio_event_threshold,
-                    settings.yamnet_model_path,
-                )
-        except Exception:  # noqa: BLE001 — feature must never crash the daemon
-            logger.exception("audio_event: observer creation failed (non-fatal)")
-            audio_event_observer = None
-
     # ------------------------------------------------------------------
     # Compose stages and build the task
     # ------------------------------------------------------------------
@@ -971,12 +911,9 @@ async def build_pipeline(
         tts=tts,
         tts_fade_observer=tts_fade_observer,
         assistant_aggregator=assistant_aggregator,
-        speaker_buffer=speaker_buffer,
-        speaker_tagger=speaker_tagger,
         sound_cue_processor=sound_cue_processor,
         mute_gate=mute_gate,
         input_mute_gate=input_mute_gate,
-        audio_event_observer=audio_event_observer,
         cancel_flag_gate=cancel_flag_gate,
         echo_gate=echo_gate_proc,
         echo_collector=echo_collector,

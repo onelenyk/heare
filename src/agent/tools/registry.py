@@ -124,41 +124,6 @@ TOOLS: dict[str, Tool] = {
         description="Execute saved multi-step action sequences",
         enabled=True,
     ),
-    "re_enroll": Tool(
-        name="re_enroll",
-        sdk_name="ReEnroll",  # Not exposed to SDK
-        execution="direct",
-        description="Re-train the voice recognition model",
-        enabled=True,
-    ),
-    "list_profiles": Tool(
-        name="list_profiles",
-        sdk_name="ListProfiles",  # Not exposed to SDK
-        execution="direct",
-        description="Show all voice profiles with details",
-        enabled=True,
-    ),
-    "create_profile": Tool(
-        name="create_profile",
-        sdk_name="CreateProfile",  # Not exposed to SDK
-        execution="direct",
-        description="Create a new voice profile",
-        enabled=True,
-    ),
-    "delete_profile": Tool(
-        name="delete_profile",
-        sdk_name="DeleteProfile",  # Not exposed to SDK
-        execution="direct",
-        description="Delete a speaker profile by ID",
-        enabled=True,
-    ),
-    "rename_profile": Tool(
-        name="rename_profile",
-        sdk_name="RenameProfile",  # Not exposed to SDK
-        execution="direct",
-        description="Rename a speaker profile",
-        enabled=True,
-    ),
     # CCS-05b: stable identifier for cancellation rows in the action log.
     # The cancel "tool" never executes — IntentQueue.cancel_active /
     # ActionWorker.cancel_in_flight short-circuit before dispatch — but
