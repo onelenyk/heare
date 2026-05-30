@@ -193,22 +193,11 @@ class Settings:
     identity_file: Path = field(default_factory=lambda: HEARE_HOME / "identity.json")
     db_path: Path = field(default_factory=lambda: HEARE_HOME / "heare.db")
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
-    mode_file: Path = field(default_factory=lambda: HEARE_HOME / "mode")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
     capabilities_file: Path = field(
         default_factory=lambda: HEARE_HOME / "capabilities.json"
     )
     capabilities_max_age_hours: float = 24.0
-    mute_file: Path = field(default_factory=lambda: HEARE_HOME / "mute.flag")
-    mute_input_file: Path = field(
-        default_factory=lambda: HEARE_HOME / "mute_input.flag"
-    )
-    cancel_flag_file: Path = field(
-        default_factory=lambda: HEARE_HOME / "cancel.flag"
-    )
-    voice_state_file: Path = field(
-        default_factory=lambda: HEARE_HOME / "voice_state.json"
-    )
     audio_event_detection_enabled: bool = False
     audio_event_threshold: float = 0.4
     yamnet_model_path: Path = field(
@@ -332,7 +321,6 @@ class Settings:
     topic_extraction_openrouter_timeout_seconds: float = 5.0
     # LLM provider switching (openrouter | zai | opencode)
     llm_provider: str = "openrouter"
-    provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")
     zai_api_key: str | None = None
     zai_base_url: str = "https://api.z.ai/api/anthropic"
     zai_model: str = "claude-3-5-sonnet"
@@ -535,15 +523,6 @@ def load_settings() -> Settings:
     mode_override = os.environ.get("HEARE_MODE")
     if mode_override:
         settings.mode = Mode(mode_override)
-    elif settings.mode_file.exists():
-        raw = settings.mode_file.read_text().strip()
-        if raw:
-            settings.mode = Mode(raw)
-
-    if settings.provider_file.exists():
-        raw = settings.provider_file.read_text().strip().lower()
-        if raw in ("openrouter", "zai", "opencode", "deepseek"):
-            settings.llm_provider = raw
 
     if settings.audio_input_device_file.exists():
         raw = settings.audio_input_device_file.read_text().strip()

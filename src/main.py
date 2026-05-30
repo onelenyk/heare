@@ -553,20 +553,26 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_mode(args: argparse.Namespace) -> int:
+async def _cmd_mode(args: argparse.Namespace) -> int:
+    from src.state import State
+
     settings = load_settings()
     mode = Mode(args.mode_name)
-    settings.mode_file.parent.mkdir(parents=True, exist_ok=True)
-    settings.mode_file.write_text(mode.value)
+    state = State(settings.db_path)
+    await state.init()
+    await state.set("mode", mode.value)
     print(f"mode set to {mode.value}")
     return 0
 
 
-def _cmd_provider(args: argparse.Namespace) -> int:
+async def _cmd_provider(args: argparse.Namespace) -> int:
+    from src.state import State
+
     settings = load_settings()
     provider = args.provider_name
-    settings.provider_file.parent.mkdir(parents=True, exist_ok=True)
-    settings.provider_file.write_text(provider)
+    state = State(settings.db_path)
+    await state.init()
+    await state.set("provider", provider)
     print(f"LLM provider set to {provider} (effective on next user utterance)")
     return 0
 
@@ -1087,9 +1093,9 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "status":
         return _cmd_status(args)
     if cmd == "mode":
-        return _cmd_mode(args)
+        return asyncio.run(_cmd_mode(args))
     if cmd == "provider":
-        return _cmd_provider(args)
+        return asyncio.run(_cmd_provider(args))
     if cmd == "audio-input":
         return _cmd_audio_input(args)
     if cmd == "audio-output":
