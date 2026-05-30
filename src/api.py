@@ -1,5 +1,7 @@
 """Minimal HTTP API for daemon control — backs the desktop app."""
 from aiohttp import web
+from src.agent.modes import VALID_MODES
+
 
 class API:
     def __init__(self, state, config, daemon_control=None):
@@ -39,7 +41,7 @@ class API:
     async def _handle_mode(self, request):
         body = await request.json()
         mode = body.get("mode", "focus")
-        if mode not in ("silent", "focus"):
+        if mode not in VALID_MODES:
             return web.json_response({"ok": False}, status=400)
         await self.state.set("mode", mode)
         return web.json_response({"ok": True, "mode": mode})

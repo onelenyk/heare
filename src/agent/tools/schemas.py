@@ -61,11 +61,6 @@ def _write_args(args: dict[str, Any]) -> str:
     return f"{path}: {content}"
 
 
-def _edit_args(args: dict[str, Any]) -> str:
-    """edit is currently a Claude-routed tool — wrap into a JSON blob."""
-    return json.dumps(args)
-
-
 def _url_args(args: dict[str, Any]) -> str:
     return str(args.get("url", "")).strip()
 
@@ -149,24 +144,6 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         },
         ["path", "content"],
         _write_args,
-    ),
-    "edit": (
-        {
-            "path": {
-                "type": "string",
-                "description": "Absolute path to the file to edit.",
-            },
-            "old_string": {
-                "type": "string",
-                "description": "Exact text to find and replace.",
-            },
-            "new_string": {
-                "type": "string",
-                "description": "Replacement text.",
-            },
-        },
-        ["path", "old_string", "new_string"],
-        _edit_args,
     ),
     "web_fetch": (
         {

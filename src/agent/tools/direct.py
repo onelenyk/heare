@@ -40,10 +40,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger("heare.direct_tools")
 
 # Import tool definitions from central registry
-from src.agent.tools.registry import get_direct_tools, get_claude_tools, is_mcp_tool  # noqa: E402
+from src.agent.tools.registry import get_direct_tools, is_mcp_tool  # noqa: E402
 
 SIMPLE_TOOLS = get_direct_tools()
-COMPLEX_TOOLS = get_claude_tools()
 
 
 class _PathOutsideWorkspace(Exception):
@@ -2386,11 +2385,11 @@ async def _execute_skill_internal(
 
 
 async def _execute_set_provider(args: str, settings: "Settings | None" = None) -> dict:
-    """Switch the active LLM provider (openrouter or zai).
+    """Switch the active LLM provider via the State API.
 
     Args:
-        args: Provider name (openrouter or zai)
-        settings: heare Settings
+        args: Provider name (openrouter or deepseek)
+        settings: heare Settings (unused, kept for signature compat)
 
     Returns:
         dict with success status and message
@@ -2398,21 +2397,28 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
     try:
         provider = args.strip().lower()
 
-        if provider not in ("openrouter", "zai"):
+        if provider not in ("openrouter", "deepseek"):
             return {
                 "success": False,
                 "output": "",
-                "error": f"Invalid provider: {provider}. Must be 'openrouter' or 'zai'",
-                "spoken": {"en": f"Invalid provider {provider}. Use openrouter or zai."},
+                "error": f"Invalid provider: {provider}. Must be 'openrouter' or 'deepseek'",
+                "spoken": {
+                    "en": f"Invalid provider {provider}. Use openrouter or deepseek.",
+                },
             }
 
-        if settings is None:
-            from src.config import load_settings
-
-            settings = load_settings()
-
-        settings.provider_file.parent.mkdir(parents=True, exist_ok=True)
-        settings.provider_file.write_text(provider)
+        # Persist via State API
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(
+                    "http://127.0.0.1:9778/provider",
+                    json={"provider": provider},
+                    timeout=5,
+                )
+                if resp.status_code != 200:
+                    logger.warning("State API returned %s for provider", resp.status_code)
+            except httpx.RequestError as api_err:
+                logger.warning("State API unavailable for provider: %s", api_err)
 
         return {
             "success": True,
@@ -2436,9 +2442,10 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
     """Switch the agent behavior mode at runtime.
 
     Flushes any half-spoken turn (so the switch does not eat the user's
-    current sentence), persists to ``mode_file``, and flips the live
-    SessionState so timing / sound / prompt / tool-gating all follow the
-    new profile on the next turn. Always callable (exempt from gating).
+    current sentence), persists via the State API so a daemon restart
+    keeps the chosen mode, and flips the live SessionState so timing /
+    sound / prompt / tool-gating all follow the new profile on the next
+    turn. Always callable (exempt from gating).
     """
     try:
         from src.agent.modes import VALID_MODES
@@ -2458,14 +2465,18 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
                 },
             }
 
-        if settings is None:
-            from src.config import load_settings
-
-            settings = load_settings()
-
-        # Persist so a daemon restart keeps the chosen mode.
-        settings.mode_file.parent.mkdir(parents=True, exist_ok=True)
-        settings.mode_file.write_text(mode)
+        # Persist via State API
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(
+                    "http://127.0.0.1:9778/mode",
+                    json={"mode": mode},
+                    timeout=5,
+                )
+                if resp.status_code != 200:
+                    logger.warning("State API returned %s for mode", resp.status_code)
+            except httpx.RequestError as api_err:
+                logger.warning("State API unavailable for mode: %s", api_err)
 
         # Flush BEFORE flipping so a mid-sentence utterance is finalised
         # under the old mode rather than silently dropped.

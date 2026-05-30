@@ -1,0 +1,6 @@
+=== QA Verification ===
+PASS: claude_capabilities.py deleted
+PASS: bench_claude_ttft.py deleted
+PASS: bench_persistent_claude.py deleted
+PASS: bench_openrouter.py deleted
+claude refs in hearectl: 0

@@ -117,7 +117,6 @@ MODE_PROFILES: dict[str, ModeProfile] = {
         denied_tool_patterns=(
             "bash",
             "write",
-            "edit",
             "stop_daemon",
             "restart_daemon",
             "mcp__*",

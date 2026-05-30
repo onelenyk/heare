@@ -3,7 +3,7 @@
 Defines available tools with their metadata:
 - name: lowercase identifier used in intents/prompts
 - sdk_name: CamelCase identifier for claude-agent-sdk
-- execution: "direct" (fast) | "claude" (needs reasoning) | "workflow" (special)
+- execution: "direct" (fast) | "workflow" (special)
 - description: human-readable purpose
 - enabled: whether the tool is active
 
@@ -16,7 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-ExecutionType = Literal["direct", "claude", "workflow", "mcp"]
+ExecutionType = Literal["direct", "workflow", "mcp"]
 
 
 @dataclass(frozen=True)
@@ -101,13 +101,6 @@ TOOLS: dict[str, Tool] = {
         sdk_name="Write",
         execution="direct",
         description="Write content to a file (format: 'filepath: content')",
-        enabled=True,
-    ),
-    "edit": Tool(
-        name="edit",
-        sdk_name="Edit",
-        execution="claude",
-        description="Edit files with diff/apply (requires Claude reasoning)",
         enabled=True,
     ),
     "web_fetch": Tool(
@@ -503,11 +496,6 @@ def get_direct_tools() -> set[str]:
     return {t.name for t in TOOLS.values() if t.enabled and t.execution == "direct"}
 
 
-def get_claude_tools() -> set[str]:
-    """Get tools that require Claude reasoning."""
-    return {t.name for t in TOOLS.values() if t.enabled and t.execution == "claude"}
-
-
 def is_tool_allowed(name: str) -> bool:
     """Check if a tool name is allowed and enabled.
 
@@ -558,4 +546,3 @@ DEFAULT_SDK_ALLOWED_TOOLS = get_sdk_tools()
 
 # Legacy: direct_tools.py used this
 SIMPLE_TOOLS = get_direct_tools()
-COMPLEX_TOOLS = get_claude_tools() | {t for t in TOOLS if is_mcp_tool(t)}

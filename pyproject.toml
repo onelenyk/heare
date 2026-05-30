@@ -16,33 +16,6 @@ dependencies = [
     "aiohttp>=3.13.5",
 ]
 
-[project.optional-dependencies]
-local = [
-    "pyaudio>=0.2.14",
-]
-memory = [
-    "fastmcp>=2.14,<3",
-]
-# Speaker recognition runs on onnxruntime (no torch/speechbrain). The
-# embedding model is fetched via scripts/fetch_speaker_onnx.py.
-speaker = [
-    "onnxruntime>=1.17",
-    "numpy>=1.24",
-    "huggingface-hub>=0.23",
-]
-audio-event = [
-    "onnxruntime>=1.17",
-    "numpy>=1.24",
-]
-overlay = [
-    "fastapi>=0.110",
-    "uvicorn>=0.30",
-    "pywebview>=5",
-    "pyobjc-core>=10; sys_platform == 'darwin'",
-    "pyobjc-framework-cocoa>=10; sys_platform == 'darwin'",
-    "pyobjc-framework-webkit>=10; sys_platform == 'darwin'",
-]
-
 [dependency-groups]
 dev = [
     "pytest>=8.0",

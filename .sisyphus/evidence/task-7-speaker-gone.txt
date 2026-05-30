@@ -1,0 +1,16 @@
+=== Task 7: Speaker Recognition Deletion ===
+--- QA Verification ---
+PASS: src/voice/speaker/ deleted
+PASS: src/test_recognizer.py deleted
+PASS: tests/test_speaker_id.py deleted
+PASS: tests/test_speaker_gallery.py deleted
+PASS: tests/test_speaker_processor.py deleted
+PASS: tests/test_speaker_namer.py deleted
+PASS: scripts/fetch_speaker_onnx.py deleted
+PASS: speaker-recognition.md deleted
+PASS: speaker-recognition-phase-2.md deleted
+PASS: prd-speaker-phase-1-completed.json deleted
+PASS: prd-speaker-phase-2-track-b-completed.json deleted
+
+--- Summary ---
+All 11 deletion targets verified removed.

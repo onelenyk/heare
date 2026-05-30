@@ -1,0 +1,11 @@
+=== QA Verification: task-6-audioevent-gone ===
+src/audio_event/ exists:
+PASS
+scripts/yamnet_mic.py exists:
+PASS
+scripts/yamnet_probe.py exists:
+PASS
+tests/test_audio_event.py exists:
+PASS
+.omc/plans/yamnet-audio-event-detection.md exists:
+PASS

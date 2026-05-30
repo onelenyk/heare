@@ -17,7 +17,6 @@ fi
 
 HEARE_HOME="$HOME/.heare"
 PID_FILE="$HEARE_HOME/heare.pid"
-OVERLAY_PID_FILE="$HEARE_HOME/overlay.pid"
 
 # Colors for output
 RED='\033[0;31m'
@@ -78,23 +77,9 @@ cmd_start() {
         exit 1
     fi
 
-    # Overlay is opt-in. Set HEARE_OVERLAY=1 before `hearectl start` to launch
-    # it alongside the daemon, or run `hearectl overlay` separately.
-    if [ -n "$HEARE_OVERLAY" ]; then
-        if ! "$PYTHON" -c "import webview" 2>/dev/null; then
-            log_warn "HEARE_OVERLAY set but deps missing — install: uv pip install -e '.[overlay]'"
-            return 0
-        fi
-        cmd_overlay
-    fi
 }
 
 cmd_stop() {
-    # Close the overlay first (no-op if not running).
-    if [ -f "$OVERLAY_PID_FILE" ]; then
-        cmd_overlay_stop
-    fi
-
     if ! check_running; then
         log_warn "Heare is not running"
         exit 0
@@ -183,52 +168,6 @@ cmd_watch() {
     "$PYTHON" -m src.main watch
 }
 
-cmd_overlay() {
-    # Reuse an existing overlay if its PID is alive.
-    if [ -f "$OVERLAY_PID_FILE" ]; then
-        local existing
-        existing=$(cat "$OVERLAY_PID_FILE")
-        if ps -p "$existing" > /dev/null 2>&1; then
-            log_warn "Overlay already running (PID: $existing)"
-            return 0
-        fi
-        rm -f "$OVERLAY_PID_FILE"
-    fi
-
-    log_info "Starting overlay UI..."
-    mkdir -p "$HEARE_HOME"
-    cd "$PROJECT_DIR"
-    "$PYTHON" -m src.overlay >> "$HEARE_HOME/logs/overlay.log" 2>&1 &
-    local pid=$!
-    echo "$pid" > "$OVERLAY_PID_FILE"
-    sleep 1
-
-    if ps -p "$pid" > /dev/null 2>&1; then
-        log_info "Overlay started (PID: $pid)"
-        log_info "If nothing opens, install deps: uv pip install -e '.[overlay]'"
-    else
-        rm -f "$OVERLAY_PID_FILE"
-        log_error "Overlay failed to start (see $HEARE_HOME/logs/overlay.log)"
-        exit 1
-    fi
-}
-
-cmd_overlay_stop() {
-    if [ ! -f "$OVERLAY_PID_FILE" ]; then
-        log_warn "Overlay is not running"
-        return 0
-    fi
-    local pid
-    pid=$(cat "$OVERLAY_PID_FILE")
-    if ps -p "$pid" > /dev/null 2>&1; then
-        kill "$pid"
-        log_info "Overlay stopped (PID: $pid)"
-    else
-        log_warn "Stale overlay PID file"
-    fi
-    rm -f "$OVERLAY_PID_FILE"
-}
-
 cmd_install() {
     log_info "Installing Heare as a system service..."
 
@@ -291,8 +230,6 @@ Commands:
     status        Show Heare status
     logs          Show/follow Heare logs
     watch         Start watch dashboard
-    overlay       Launch the always-on-top overlay UI (background)
-    overlay-stop  Stop the overlay UI
     install       Install as systemd user service
     uninstall     Remove systemd service
     help          Show this help message
@@ -327,12 +264,6 @@ case "${1:-help}" in
         ;;
     watch)
         cmd_watch
-        ;;
-    overlay)
-        cmd_overlay
-        ;;
-    overlay-stop)
-        cmd_overlay_stop
         ;;
     install)
         cmd_install

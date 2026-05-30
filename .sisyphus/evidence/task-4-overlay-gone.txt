@@ -1,0 +1,29 @@
+Task 4: Delete overlay UI package and clean hearectl of overlay references
+Date: 2026-05-31
+
+=== VERIFICATION RESULTS ===
+
+1. Directory deleted: src/overlay/
+   test -d src/overlay → FAIL → PASS (deleted)
+
+2. File deleted: tests/test_overlay_server.py
+   test -f tests/test_overlay_server.py → FAIL → PASS (deleted)
+
+3. File deleted: .omc/plan-overlay-ui.md
+   test -f .omc/plan-overlay-ui.md → FAIL → PASS (deleted)
+
+4. Overlay references in hearectl:
+   grep -c 'overlay' hearectl → 0 (PASS)
+
+=== Summary ===
+- Removed 7 files from src/overlay/
+- Deleted tests/test_overlay_server.py
+- Deleted .omc/plan-overlay-ui.md
+- Applied 7 edits to hearectl:
+  1. Removed OVERLAY_PID_FILE variable
+  2. Removed overlay startup block from cmd_start()
+  3. Removed overlay stop from cmd_stop()
+  4. Removed entire cmd_overlay() function
+  5. Removed entire cmd_overlay_stop() function
+  6. Removed overlay/overlay-stop from help text
+  7. Removed overlay/overlay-stop case branches

@@ -1,0 +1,16 @@
+=== Task 3: Remove edit tool + dead execution="claude" code ===
+Verified: 2026-05-31
+
+grep results:
+  grep -c '"edit"' src/agent/tools/registry.py               → 0
+  grep -c 'execution.*claude' src/agent/tools/registry.py     → 0
+  grep -c 'get_claude_tools\|COMPLEX_TOOLS' src/agent/tools/direct.py → 0
+  grep -c '"edit"' src/agent/modes.py                         → 0
+  grep -c '_edit_args\|\"edit\"' src/agent/tools/schemas.py   → 0
+
+Files modified:
+  - src/agent/tools/registry.py   (removed edit Tool entry, get_claude_tools(), 
+                                    COMPLEX_TOOLS, "claude" from ExecutionType + docstring)
+  - src/agent/tools/schemas.py    (removed _edit_args function + edit entry from _TOOL_SPECS)
+  - src/agent/tools/direct.py     (removed get_claude_tools import + COMPLEX_TOOLS assignment)
+  - src/agent/modes.py            (removed "edit" from meeting mode denied_tool_patterns)

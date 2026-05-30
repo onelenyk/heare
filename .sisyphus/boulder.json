@@ -1,0 +1,23 @@
+{
+  "active_plan": "/Users/lenyk/myprojects/heare/.sisyphus/plans/heare-slimdown.md",
+  "started_at": "2026-05-30T22:06:30.340Z",
+  "session_ids": [
+    "ses_1852fafb1ffetkYmhWPAITBcgl"
+  ],
+  "session_origins": {
+    "ses_1852fafb1ffetkYmhWPAITBcgl": "direct"
+  },
+  "plan_name": "heare-slimdown",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Clean pyproject.toml — remove 5 optional extras",
+      "session_id": "ses_18512a5dcffecCIx4wM8HCua6K",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-30T22:07:55.801Z"
+    }
+  }
+}
