@@ -156,18 +156,17 @@ class SwitchableLLMService(LLMService):
         self._saved_start_frame: Optional[Frame] = None
 
         available = []
-        if openrouter_api_key:
-            available.append("openrouter")
-        if zai_api_key:
-            available.append("zai")
-        if opencode_api_key:
-            available.append("opencode")
+        # if openrouter_api_key:
+        #     available.append("openrouter")
+        # if zai_api_key:
+        #     available.append("zai")
+        # if opencode_api_key:
+        #     available.append("opencode")
         if deepseek_api_key:
             available.append("deepseek")
         if not available:
             raise ValueError(
-                "At least one provider key (OPENROUTER_API_KEY, ZAI_API_KEY, "
-                "OPENCODE_API_KEY, or DEEPSEEK_API_KEY) must be set"
+                "DEEPSEEK_API_KEY must be set"
             )
 
         self._active_provider = available[0]
