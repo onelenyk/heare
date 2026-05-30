@@ -1,10 +1,28 @@
-"""Tests for src/mute_gate.py — file-flag mute and the audio-dropping
+"""Tests for src/mute_gate.py — state-based mute and the audio-dropping
 processor placed after TTS in the pipeline."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+
+
+class _MockState:
+    """Minimal State mock for testing mute gate processors."""
+    def __init__(self, **initial):
+        self._data = dict(initial)
+
+    def get_bool(self, key: str) -> bool:
+        return self._data.get(key) == "1"
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._data.get(key, default)
+
+    async def set(self, key: str, value: str):
+        self._data[key] = value
+
+    async def set_bool(self, key: str, value: bool):
+        self._data[key] = "1" if value else "0"
 
 
 def test_is_muted_false_when_flag_missing(tmp_path: Path):
@@ -44,12 +62,10 @@ def test_toggle_mute_flips(tmp_path: Path):
 async def test_gate_drops_tts_audio_when_muted(tmp_path: Path):
     from pipecat.frames.frames import TTSAudioRawFrame, TTSStoppedFrame
 
-    from src.pipeline.stages.mute_gate import create_mute_gate, set_mute
+    from src.pipeline.stages.mute_gate import create_mute_gate
 
-    flag = tmp_path / "mute.flag"
-    set_mute(flag, True)
-
-    proc = create_mute_gate(flag_path=flag)
+    state = _MockState(mute_bot="1")
+    proc = create_mute_gate(state=state)
 
     captured: list = []
 
@@ -79,9 +95,9 @@ async def test_gate_drops_tts_audio_in_silent_and_meeting_mode(
     from src.pipeline.session_state import SessionState
     from src.pipeline.stages.mute_gate import create_mute_gate
 
-    flag = tmp_path / "mute.flag"  # absent → manual mute OFF
+    state = _MockState()
     ss = SessionState(LanguageState(), initial_mode="silent")
-    proc = create_mute_gate(flag_path=flag, session_state=ss)
+    proc = create_mute_gate(state=state, session_state=ss)
 
     captured: list = []
 
@@ -128,8 +144,8 @@ async def test_gate_passes_audio_when_not_muted(tmp_path: Path):
 
     from src.pipeline.stages.mute_gate import create_mute_gate
 
-    flag = tmp_path / "mute.flag"  # does not exist → unmuted
-    proc = create_mute_gate(flag_path=flag)
+    state = _MockState()
+    proc = create_mute_gate(state=state)
 
     captured: list = []
 
@@ -174,11 +190,10 @@ def test_input_mute_helpers_independent_from_output(tmp_path: Path):
 async def test_input_gate_drops_input_audio_when_muted(tmp_path: Path):
     from pipecat.frames.frames import InputAudioRawFrame, TTSStartedFrame
 
-    from src.pipeline.stages.mute_gate import create_input_mute_gate, set_input_mute
+    from src.pipeline.stages.mute_gate import create_input_mute_gate
 
-    flag = tmp_path / "mute_input.flag"
-    set_input_mute(flag, True)
-    proc = create_input_mute_gate(flag_path=flag)
+    state = _MockState(mute_mic="1")
+    proc = create_input_mute_gate(state=state)
 
     captured: list = []
 
@@ -204,8 +219,8 @@ async def test_input_gate_passes_audio_when_not_muted(tmp_path: Path):
 
     from src.pipeline.stages.mute_gate import create_input_mute_gate
 
-    flag = tmp_path / "mute_input.flag"  # absent → unmuted
-    proc = create_input_mute_gate(flag_path=flag)
+    state = _MockState()
+    proc = create_input_mute_gate(state=state)
 
     captured: list = []
 

@@ -23,6 +23,24 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor  #
 from src.agent.llm.switchable import SwitchableLLMService  # noqa: E402
 
 
+class _MockState:
+    """Minimal State mock for testing SwitchableLLMService."""
+    def __init__(self, **initial):
+        self._data = dict(initial)
+
+    def get_bool(self, key: str) -> bool:
+        return self._data.get(key) == "1"
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._data.get(key, default)
+
+    async def set(self, key: str, value: str):
+        self._data[key] = value
+
+    async def set_bool(self, key: str, value: bool):
+        self._data[key] = "1" if value else "0"
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers (mirrors test_switchable_llm.py — kept minimal to avoid
 # coupling test files together).
@@ -47,7 +65,7 @@ def _mark_started(p: FrameProcessor) -> None:
     p._FrameProcessor__started = True  # type: ignore[attr-defined]
 
 
-def _make_service(provider_file: Path) -> SwitchableLLMService:
+def _make_service(state: _MockState) -> SwitchableLLMService:
     return SwitchableLLMService(
         openrouter_api_key="sk-or-test",
         openrouter_model="mock-or",
@@ -57,7 +75,10 @@ def _make_service(provider_file: Path) -> SwitchableLLMService:
         opencode_api_key=None,
         opencode_base_url="https://opencode.ai/zen/go/v1",
         opencode_model="minimax-m2.7",
-        provider_file=provider_file,
+        deepseek_api_key=None,
+        deepseek_base_url="https://api.deepseek.com/v1",
+        deepseek_model="deepseek-chat",
+        state=state,
     )
 
 
@@ -71,8 +92,9 @@ def _wire_spy(svc: SwitchableLLMService) -> _FrameSpy:
 
 
 @pytest.fixture
-def provider_file(tmp_path: Path) -> Path:
-    return tmp_path / "provider"
+def state():
+    """Mock State with no initial provider set."""
+    return _MockState()
 
 
 # ---------------------------------------------------------------------------
@@ -81,21 +103,17 @@ def provider_file(tmp_path: Path) -> Path:
 
 
 def test_provider_switch_logged_once_per_change(
-    provider_file: Path, caplog: pytest.LogCaptureFixture
+    state: _MockState, caplog: pytest.LogCaptureFixture
 ) -> None:
-    svc = _make_service(provider_file)
+    svc = _make_service(state)
 
     with caplog.at_level(logging.INFO, logger="heare.switchable_llm"):
         # Toggle provider 5 times — alternate between zai and openrouter.
-        # Each toggle is a distinct mtime so the file is re-read, but the
-        # "switched to z.ai provider" line should only fire on the real
-        # zai-direction transitions.
+        # Each toggle changes the state value; the "switched to" line should
+        # only fire on actual transitions, not re-reads.
         sequence = ["zai", "openrouter", "zai", "openrouter", "zai"]
-        for i, value in enumerate(sequence, start=1):
-            provider_file.write_text(value)
-            # Force a distinct mtime so _sync_provider re-reads.
-            stat = provider_file.stat()
-            os.utime(provider_file, (stat.st_atime, stat.st_mtime + i))
+        for value in sequence:
+            state._data["provider"] = value
             svc._sync_provider()
 
     switch_logs = [
@@ -105,8 +123,8 @@ def test_provider_switch_logged_once_per_change(
         and r.levelno == logging.INFO
         and "switched to" in r.getMessage()
     ]
-    # The current implementation logs only on transitions INTO zai (3 of 5).
-    # The contract that matters: at most one log per change, never duplicates.
+    # The current implementation logs only on actual provider changes.
+    # Each transition should produce one log.
     assert len(switch_logs) >= 1
     assert len(switch_logs) <= len(sequence)
 
@@ -117,34 +135,16 @@ def test_provider_switch_logged_once_per_change(
 
 
 def test_active_provider_exposed_for_dashboard(
-    provider_file: Path, monkeypatch: pytest.MonkeyPatch
+    state: _MockState
 ) -> None:
-    svc = _make_service(provider_file)
-    provider_file.write_text("zai")
+    svc = _make_service(state)
+    state._data["provider"] = "zai"
 
-    real_read_text = Path.read_text
-    read_calls: list[int] = []
-
-    def counting_read_text(self: Path, *args, **kwargs):
-        if self == provider_file:
-            read_calls.append(1)
-        return real_read_text(self, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "read_text", counting_read_text)
-    monkeypatch.setattr(os.path, "getmtime", lambda _p: 1234.0)
-
-    # First read populates mtime cache and reads the file once.
     assert svc.active_provider == "zai"
-    initial_reads = len(read_calls)
 
-    # Subsequent dashboard ticks must NOT cause additional reads.
+    # Subsequent dashboard ticks must be O(1) — no file I/O.
     for _ in range(20):
         assert svc.active_provider == "zai"
-
-    assert len(read_calls) == initial_reads, (
-        "active_provider read the provider file when mtime was unchanged; "
-        "dashboard tick is supposed to be O(1)."
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +154,9 @@ def test_active_provider_exposed_for_dashboard(
 
 @pytest.mark.asyncio
 async def test_metric_per_turn_tagged_with_provider(
-    provider_file: Path, monkeypatch: pytest.MonkeyPatch
+    state: _MockState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    svc = _make_service(provider_file)
+    svc = _make_service(state)
     _wire_spy(svc)
 
     captured_metrics: list[Any] = []
@@ -191,7 +191,7 @@ async def test_metric_per_turn_tagged_with_provider(
     svc._turn_delegate = None
 
     # Switch to zai for the next turn.
-    provider_file.write_text("zai")
+    state._data["provider"] = "zai"
     await svc.process_frame(
         LLMContextFrame(context=None),  # type: ignore[arg-type]
         FrameDirection.DOWNSTREAM,
@@ -209,12 +209,12 @@ async def test_metric_per_turn_tagged_with_provider(
 
 @pytest.mark.asyncio
 async def test_indication_fires_on_zai_fallback(
-    provider_file: Path, monkeypatch: pytest.MonkeyPatch
+    state: _MockState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    svc = _make_service(provider_file)
+    svc = _make_service(state)
     spy = _wire_spy(svc)
 
-    provider_file.write_text("zai")
+    state._data["provider"] = "zai"
     svc._sync_provider()
 
     from httpx import Request, Response

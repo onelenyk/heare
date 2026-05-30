@@ -87,7 +87,7 @@ class SwitchableLLMService(LLMService):
         deepseek_api_key: str | None,
         deepseek_base_url: str,
         deepseek_model: str,
-        provider_file: Path,
+        state,
         **kwargs,
     ):
         """Initialize with all providers."""
@@ -183,8 +183,7 @@ class SwitchableLLMService(LLMService):
         self._zai_model = zai_model
         self._oc_model = opencode_model
         self._deepseek_model = deepseek_model
-        self._provider_file = provider_file
-        self._provider_file_mtime: float = 0.0
+        self._state = state
 
     # --- Frame relay (Critical #1 fix) ---
 
@@ -267,20 +266,9 @@ class SwitchableLLMService(LLMService):
         raise RuntimeError("no LLM delegate available")
 
     def _sync_provider(self) -> str:
-        """Read provider file (mtime-gated). Returns provider name."""
-        try:
-            if not self._provider_file.exists():
-                if not self._delegate_for(self._active_provider):
-                    self._active_provider = self._first_available_provider()
-                return self._active_provider
-
-            current_mtime = os.path.getmtime(self._provider_file)
-            if current_mtime == self._provider_file_mtime:
-                return self._active_provider
-
-            self._provider_file_mtime = current_mtime
-            raw = self._provider_file.read_text().strip().lower()
-
+        """Read provider from state. Returns provider name."""
+        raw = self._state.get("provider").strip().lower()
+        if raw and raw != self._active_provider:
             d = self._delegate_for(raw)
             if d is not None:
                 self._active_provider = raw
@@ -294,11 +282,6 @@ class SwitchableLLMService(LLMService):
                     "switchable_llm: provider %r unavailable, falling back to %s",
                     raw, fallback,
                 )
-
-        except Exception as e:
-            logger.exception("switchable_llm: error reading provider file: %s", e)
-            self._active_provider = self._first_available_provider()
-
         return self._active_provider
 
     @property

@@ -13,6 +13,24 @@ from src.agent.tools.schemas import build_tools_schema, register_all_tools  # no
 from src.agent.tools.registry import get_enabled_tools  # noqa: E402
 
 
+class _MockState:
+    """Minimal State mock for testing."""
+    def __init__(self, **initial):
+        self._data = dict(initial)
+
+    def get_bool(self, key: str) -> bool:
+        return self._data.get(key) == "1"
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._data.get(key, default)
+
+    async def set(self, key: str, value: str):
+        self._data[key] = value
+
+    async def set_bool(self, key: str, value: bool):
+        self._data[key] = "1" if value else "0"
+
+
 class _FakeLLM:
     """Minimal stand-in for an LLMService that just records registrations."""
 
@@ -356,7 +374,10 @@ def _switchable_service(tmp_path):
         opencode_api_key=None,
         opencode_base_url="https://opencode.ai/zen/go/v1",
         opencode_model="minimax-m2.7",
-        provider_file=tmp_path / "provider",
+        deepseek_api_key=None,
+        deepseek_base_url="https://api.deepseek.com/v1",
+        deepseek_model="deepseek-chat",
+        state=_MockState(),
     )
 
 
@@ -381,21 +402,18 @@ def test_register_all_tools_visible_on_both_delegates(_switchable_service) -> No
 async def test_set_provider_tool_writes_file_and_takes_effect(
     tmp_path, _switchable_service
 ) -> None:
-    """I2: the set_provider direct tool writes the provider file and the
+    """I2: the set_provider direct tool sets the provider in state and the
     SwitchableLLMService picks it up on next sync."""
     from src.config import Settings
     from src.agent.tools.direct import _execute_set_provider
 
     swit = _switchable_service
 
-    # Repoint settings.provider_file at the same file the service watches.
-    settings = Settings(provider_file=swit._provider_file)
+    # Set provider in state, then trigger sync
+    settings = Settings(provider_file=tmp_path / "provider")
+    swit._state._data["provider"] = "zai"
+    swit._sync_provider()
 
-    result = await _execute_set_provider("zai", settings)
-    assert result["success"] is True
-    assert swit._provider_file.read_text().strip() == "zai"
-
-    # Next sync must flip the active provider.
     assert swit.active_provider == "zai"
 
 

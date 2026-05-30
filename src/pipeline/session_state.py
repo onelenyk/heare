@@ -34,9 +34,14 @@ class SessionState:
         self,
         language_state: LanguageState,
         *,
+        state=None,
         initial_mode: str = "ambient",
     ) -> None:
         self._language_state = language_state
+        if state is not None:
+            mode = state.get("mode", initial_mode)
+            if mode:
+                initial_mode = mode
         self._profile: ModeProfile = resolve(initial_mode)
         self._mode_listener: Optional[Callable[[ModeProfile], None]] = None
         self._flush_hook: Optional[Callable[[], None]] = None

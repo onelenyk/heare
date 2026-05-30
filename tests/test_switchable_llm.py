@@ -35,14 +35,32 @@ from src.agent.llm.switchable import SwitchableLLMService  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
+class _MockState:
+    """Minimal State mock for testing SwitchableLLMService."""
+    def __init__(self, **initial):
+        self._data = dict(initial)
+
+    def get_bool(self, key: str) -> bool:
+        return self._data.get(key) == "1"
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._data.get(key, default)
+
+    async def set(self, key: str, value: str):
+        self._data[key] = value
+
+    async def set_bool(self, key: str, value: bool):
+        self._data[key] = "1" if value else "0"
+
+
 @pytest.fixture
-def provider_file(tmp_path: Path) -> Path:
-    """Provider file path; not yet created so default applies."""
-    return tmp_path / "provider"
+def state():
+    """Mock State with no initial provider set."""
+    return _MockState()
 
 
 def _make_service(
-    provider_file: Path,
+    state: _MockState,
     *,
     openrouter_api_key: str | None = "sk-or-test",
     zai_api_key: str | None = "sk-zai-test",
@@ -56,7 +74,10 @@ def _make_service(
         opencode_api_key=None,
         opencode_base_url="https://opencode.ai/zen/go/v1",
         opencode_model="minimax-m2.7",
-        provider_file=provider_file,
+        deepseek_api_key=None,
+        deepseek_base_url="https://api.deepseek.com/v1",
+        deepseek_model="deepseek-chat",
+        state=state,
     )
 
 
@@ -117,8 +138,8 @@ def _wire_spy_as_next(svc: SwitchableLLMService) -> FrameSpy:
 # ---------------------------------------------------------------------------
 
 
-def test_init_with_both_keys(provider_file: Path) -> None:
-    svc = _make_service(provider_file)
+def test_init_with_both_keys(state: _MockState) -> None:
+    svc = _make_service(state)
     assert svc._or_service is not None
     assert svc._zai_service is not None
     assert svc.active_provider == "openrouter"
@@ -130,13 +151,13 @@ def test_init_with_both_keys(provider_file: Path) -> None:
 
 
 def test_init_zai_key_missing_no_zai_delegate(
-    provider_file: Path, caplog: pytest.LogCaptureFixture
+    state: _MockState, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO, logger="heare.switchable_llm"):
-        svc = _make_service(provider_file, zai_api_key=None)
+        svc = _make_service(state, zai_api_key=None)
     assert svc._zai_service is None
-    # Write "zai" to the provider file and try to switch.
-    provider_file.write_text("zai")
+    # Write "zai" to state and try to switch.
+    state._data["provider"] = "zai"
     # _sync_provider should keep us on openrouter because no zai delegate.
     assert svc.active_provider == "openrouter"
 
@@ -147,24 +168,24 @@ def test_init_zai_key_missing_no_zai_delegate(
 
 
 def test_init_only_zai_key(
-    provider_file: Path, caplog: pytest.LogCaptureFixture
+    state: _MockState, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO, logger="heare.switchable_llm"):
-        svc = _make_service(provider_file, openrouter_api_key=None)
+        svc = _make_service(state, openrouter_api_key=None)
     # Init must succeed and not raise.
     assert svc._or_service is None
     assert svc._zai_service is not None
     assert svc.active_provider == "zai"
 
     # Attempting to switch to openrouter is a no-op (stays zai).
-    provider_file.write_text("openrouter")
+    state._data["provider"] = "openrouter"
     assert svc.active_provider == "zai"
 
 
-def test_init_no_keys_raises(provider_file: Path) -> None:
+def test_init_no_keys_raises(state: _MockState) -> None:
     """Defensive: at least one provider key must be set."""
     with pytest.raises(ValueError):
-        _make_service(provider_file, openrouter_api_key=None, zai_api_key=None)
+        _make_service(state, openrouter_api_key=None, zai_api_key=None)
 
 
 # ---------------------------------------------------------------------------
@@ -173,35 +194,22 @@ def test_init_no_keys_raises(provider_file: Path) -> None:
 
 
 def test_sync_provider_mtime_gated(
-    provider_file: Path, monkeypatch: pytest.MonkeyPatch
+    state: _MockState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    svc = _make_service(provider_file)
-    provider_file.write_text("zai")
-
-    read_calls: list[int] = []
-    real_read_text = Path.read_text
-
-    def counting_read_text(self: Path, *args, **kwargs):
-        if self == provider_file:
-            read_calls.append(1)
-        return real_read_text(self, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "read_text", counting_read_text)
-
-    # Stable mtime — three reads should hit the file once.
-    fake_mtime = {"v": 1000.0}
-    monkeypatch.setattr(os.path, "getmtime", lambda _p: fake_mtime["v"])
+    svc = _make_service(state)
+    state._data["provider"] = "zai"
 
     svc._sync_provider()
-    svc._sync_provider()
-    svc._sync_provider()
-    assert len(read_calls) == 1
     assert svc._active_provider == "zai"
 
-    # Bump mtime — next call must re-read.
-    fake_mtime["v"] = 2000.0
+    # No change → provider stays zai
     svc._sync_provider()
-    assert len(read_calls) == 2
+    assert svc._active_provider == "zai"
+
+    # Switch to openrouter
+    state._data["provider"] = "openrouter"
+    svc._sync_provider()
+    assert svc._active_provider == "openrouter"
 
 
 # ---------------------------------------------------------------------------
@@ -209,8 +217,8 @@ def test_sync_provider_mtime_gated(
 # ---------------------------------------------------------------------------
 
 
-def test_register_function_fans_out_to_both_delegates(provider_file: Path) -> None:
-    svc = _make_service(provider_file)
+def test_register_function_fans_out_to_both_delegates(state: _MockState) -> None:
+    svc = _make_service(state)
 
     async def _bash_handler(_params: Any) -> None:
         return None
@@ -233,9 +241,9 @@ def test_register_function_fans_out_to_both_delegates(provider_file: Path) -> No
 
 @pytest.mark.asyncio
 async def test_provider_flip_during_turn_defers_to_next_turn(
-    provider_file: Path, monkeypatch: pytest.MonkeyPatch
+    state: _MockState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    svc = _make_service(provider_file)
+    svc = _make_service(state)
     spy = _wire_spy_as_next(svc)  # noqa: F841 — spy attached for relay path
 
     # Stub delegates to avoid lifecycle / network and observe routing.
@@ -266,8 +274,8 @@ async def test_provider_flip_during_turn_defers_to_next_turn(
     assert ctx1 in or_calls
     assert ctx1 not in zai_calls
 
-    # Mid-turn: flip the provider file to zai.
-    provider_file.write_text("zai")
+    # Mid-turn: flip the provider state to zai.
+    state._data["provider"] = "zai"
 
     # Push a follow-up frame within the same turn — must still go to OR.
     text = LLMTextFrame("partial")
@@ -294,15 +302,15 @@ async def test_provider_flip_during_turn_defers_to_next_turn(
 
 @pytest.mark.asyncio
 async def test_zai_auth_error_falls_back_and_rate_limits_logs(
-    provider_file: Path,
+    state: _MockState,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    svc = _make_service(provider_file)
+    svc = _make_service(state)
     _wire_spy_as_next(svc)
 
     # Force zai active.
-    provider_file.write_text("zai")
+    state._data["provider"] = "zai"
     svc._sync_provider()
     assert svc._active_provider == "zai"
 
@@ -367,12 +375,12 @@ async def test_zai_auth_error_falls_back_and_rate_limits_logs(
 # ---------------------------------------------------------------------------
 
 
-def test_active_provider_property(provider_file: Path) -> None:
-    svc = _make_service(provider_file)
+def test_active_provider_property(state: _MockState) -> None:
+    svc = _make_service(state)
     assert svc.active_provider == "openrouter"
-    provider_file.write_text("zai")
+    state._data["provider"] = "zai"
     assert svc.active_provider == "zai"
-    provider_file.write_text("openrouter")
+    state._data["provider"] = "openrouter"
     assert svc.active_provider == "openrouter"
 
 
@@ -383,9 +391,9 @@ def test_active_provider_property(provider_file: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_delegate_frames_reach_downstream(
-    provider_file: Path, monkeypatch: pytest.MonkeyPatch
+    state: _MockState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    svc = _make_service(provider_file)
+    svc = _make_service(state)
     spy = _wire_spy_as_next(svc)
 
     # We don't need a real LLM call; we just want to confirm the relay path.
@@ -430,12 +438,12 @@ async def test_delegate_frames_reach_downstream(
 
 @pytest.mark.asyncio
 async def test_auth_error_pushes_error_frame(
-    provider_file: Path, monkeypatch: pytest.MonkeyPatch
+    state: _MockState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    svc = _make_service(provider_file)
+    svc = _make_service(state)
     spy = _wire_spy_as_next(svc)
 
-    provider_file.write_text("zai")
+    state._data["provider"] = "zai"
     svc._sync_provider()
 
     from httpx import Request, Response

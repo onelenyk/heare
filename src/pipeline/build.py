@@ -40,6 +40,7 @@ from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_ga
 from src.config import Settings
 from src.pipeline.bot_speech_state import BotSpeechState
 from src.pipeline.language_state import LanguageState
+from src.state import State
 from src.agent.llm.context_injector import (
     create_system_prompt_injector,
     render_native_system_prompt,
@@ -409,6 +410,7 @@ async def build_pipeline(
     context_builder: "ContextBuilder",
     persona: str = "",
     *,
+    state: State | None = None,
     conversation_manager: Any = None,
     speaker_gallery: Any = None,
     speaker_model: Any = None,
@@ -680,7 +682,7 @@ async def build_pipeline(
     )
 
     session_state = SessionState(
-        language_state, initial_mode=settings.mode.value
+        language_state, state=state, initial_mode=settings.mode.value
     )
     # Module-level handle for the set_mode direct tool.
     set_active_session_state(session_state)
@@ -692,7 +694,7 @@ async def build_pipeline(
         language_state=language_state,
         bot_speech_state=bot_speech_state,
     )
-    voice_state_observer = create_voice_state_observer(settings.voice_state_file)
+    voice_state_observer = create_voice_state_observer(state)
 
     llm_service = SwitchableLLMService(
         openrouter_api_key=settings.openrouter_api_key,
@@ -706,7 +708,7 @@ async def build_pipeline(
         deepseek_api_key=settings.deepseek_api_key,
         deepseek_base_url=settings.deepseek_base_url,
         deepseek_model=settings.deepseek_model,
-        provider_file=settings.provider_file,
+        state=state,
     )
     tools_schema = build_tools_schema()
     # Connect stdio MCP servers from workspace/.mcp.json and fold their
@@ -887,20 +889,20 @@ async def build_pipeline(
     # removing the file. Bot text is still logged because capture happens
     # upstream of TTS.
     mute_gate = create_mute_gate(
-        flag_path=settings.mute_file, session_state=session_state
+        state=state, session_state=session_state
     )
 
     # Input (mic) mute gate — drops InputAudioRawFrame when
     # ``settings.mute_input_file`` exists. Sits at the very front of the
     # pipeline so STT never even sees the muted audio.
-    input_mute_gate = create_input_mute_gate(flag_path=settings.mute_input_file)
+    input_mute_gate = create_input_mute_gate(state=state)
 
     # Cancel-flag gate — external "interrupt now" trigger. Mirrors the
     # mute-gate flag-file contract: any process (overlay, watch dashboard,
     # hotkey daemon) touches ``settings.cancel_flag_file`` and the next
     # pipeline frame pushes an InterruptionFrame upstream.
     cancel_flag_gate = create_cancel_flag_gate(
-        flag_path=settings.cancel_flag_file
+        state=state
     )
 
     # Acoustic echo gate — cross-correlates mic input against recent bot

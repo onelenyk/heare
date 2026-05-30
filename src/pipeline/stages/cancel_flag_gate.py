@@ -45,17 +45,15 @@ def _build_cancel_flag_gate_class():
     from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
     class CancelFlagGate(FrameProcessor):  # type: ignore[misc,valid-type]
-        def __init__(self, *, flag_path: Path) -> None:
+        def __init__(self, *, state) -> None:
             super().__init__()
-            self._flag_path = flag_path
+            self._state = state
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
-            if self._flag_path.exists():
-                try:
-                    self._flag_path.unlink()
-                except FileNotFoundError:
-                    pass
+            if self._state.get_bool("cancel"):
+                # Clear after read so next frame doesn't re-trigger
+                await self._state.set("cancel", "0")
                 # Push downstream so the PipelineTask (with
                 # allow_interruptions=True) cancels TTS/LLM/tool calls,
                 # and the _TtsFadeOnInterruption observer fires the
@@ -78,9 +76,9 @@ def _build_cancel_flag_gate_class():
     return _gate_cls
 
 
-def create_cancel_flag_gate(*, flag_path: Path) -> Any:
+def create_cancel_flag_gate(*, state) -> Any:
     cls = _build_cancel_flag_gate_class()
-    return cls(flag_path=flag_path)
+    return cls(state=state)
 
 
 def request_cancel(flag_path: Path) -> None:

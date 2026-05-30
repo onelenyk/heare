@@ -65,16 +65,16 @@ def write_voice_state(
 
 
 class VoiceStateObserver(FrameProcessor):
-    """Pipeline pass-through that mirrors STT state into a JSON file.
+    """Pipeline pass-through that mirrors STT state into the State store.
 
     Forwards every frame unchanged; the only side effect is the
-    ``write_voice_state`` call on the four transition frames listed in
+    ``state.set("voice_state", ...)`` call on the four transition frames listed in
     the module docstring.
     """
 
-    def __init__(self, state_file: Path) -> None:
+    def __init__(self, state) -> None:
         super().__init__()
-        self._state_file = state_file
+        self._state = state
         self._last_partial: str | None = None
         self._last_final: str | None = None
 
@@ -82,26 +82,40 @@ class VoiceStateObserver(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, UserStartedSpeakingFrame):
             self._last_partial = None
-            write_voice_state(self._state_file, "listening")
+            await self._state.set("voice_state", json.dumps({
+                "state": "listening",
+                "since_ts": time.time(),
+                "last_partial": None,
+                "last_final": self._last_final,
+            }))
         elif isinstance(frame, UserStoppedSpeakingFrame):
-            write_voice_state(
-                self._state_file, "stt", last_partial=self._last_partial
-            )
+            await self._state.set("voice_state", json.dumps({
+                "state": "stt",
+                "since_ts": time.time(),
+                "last_partial": self._last_partial,
+                "last_final": self._last_final,
+            }))
         elif isinstance(frame, InterimTranscriptionFrame):
             self._last_partial = (frame.text or "").strip() or self._last_partial
-            write_voice_state(
-                self._state_file, "stt", last_partial=self._last_partial
-            )
+            await self._state.set("voice_state", json.dumps({
+                "state": "stt",
+                "since_ts": time.time(),
+                "last_partial": self._last_partial,
+                "last_final": self._last_final,
+            }))
         elif isinstance(frame, TranscriptionFrame):
             self._last_final = (frame.text or "").strip() or self._last_final
-            write_voice_state(
-                self._state_file, "result", last_final=self._last_final
-            )
+            await self._state.set("voice_state", json.dumps({
+                "state": "result",
+                "since_ts": time.time(),
+                "last_partial": self._last_partial,
+                "last_final": self._last_final,
+            }))
         await self.push_frame(frame, direction)
 
 
-def create_voice_state_observer(state_file: Path) -> VoiceStateObserver:
-    return VoiceStateObserver(state_file)
+def create_voice_state_observer(state) -> VoiceStateObserver:
+    return VoiceStateObserver(state)
 
 
 __all__ = [

@@ -98,10 +98,10 @@ def _build_output_gate_class():
 
     class MuteGateProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
         def __init__(
-            self, *, flag_path: Path, session_state: Any = None
+            self, *, state, session_state: Any = None
         ) -> None:
             super().__init__()
-            self._flag_path = flag_path
+            self._state = state
             # Optional: when the active mode profile has mute_output set
             # (silent / meeting), drop TTS audio the same way the manual
             # output-mute flag does — a hard gate, not a prompt hint.
@@ -118,7 +118,7 @@ def _build_output_gate_class():
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
             if isinstance(frame, TTSAudioRawFrame) and (
-                is_muted(self._flag_path) or self._mode_muted()
+                self._state.get_bool("mute_bot") or self._mode_muted()
             ):
                 return
             await self.push_frame(frame, direction)
@@ -136,13 +136,13 @@ def _build_input_gate_class():
     from pipecat.processors.frame_processor import FrameProcessor
 
     class InputMuteGateProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
-        def __init__(self, *, flag_path: Path) -> None:
+        def __init__(self, *, state) -> None:
             super().__init__()
-            self._flag_path = flag_path
+            self._state = state
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
-            if isinstance(frame, InputAudioRawFrame) and is_input_muted(self._flag_path):
+            if isinstance(frame, InputAudioRawFrame) and self._state.get_bool("mute_mic"):
                 return
             await self.push_frame(frame, direction)
 
@@ -150,14 +150,14 @@ def _build_input_gate_class():
     return _input_gate_cls
 
 
-def create_mute_gate(*, flag_path: Path, session_state: Any = None) -> Any:
+def create_mute_gate(*, state, session_state: Any = None) -> Any:
     cls = _build_output_gate_class()
-    return cls(flag_path=flag_path, session_state=session_state)
+    return cls(state=state, session_state=session_state)
 
 
-def create_input_mute_gate(*, flag_path: Path) -> Any:
+def create_input_mute_gate(*, state) -> Any:
     cls = _build_input_gate_class()
-    return cls(flag_path=flag_path)
+    return cls(state=state)
 
 
 __all__ = [
