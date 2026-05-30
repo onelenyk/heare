@@ -459,9 +459,9 @@ async def build_pipeline(
         raise RuntimeError(
             "GROQ_API_KEY is not set — copy .env.example to .env and fill it in"
         )
-    if not settings.openrouter_api_key and not settings.zai_api_key:
+    if not settings.openrouter_api_key and not settings.zai_api_key and not settings.deepseek_api_key:
         raise RuntimeError(
-            "Neither OPENROUTER_API_KEY nor ZAI_API_KEY is set — "
+            "Neither OPENROUTER_API_KEY, ZAI_API_KEY, nor DEEPSEEK_API_KEY is set — "
             "at least one is required for the LLM service"
         )
 
@@ -703,6 +703,9 @@ async def build_pipeline(
         opencode_api_key=settings.opencode_api_key,
         opencode_base_url=settings.opencode_base_url,
         opencode_model=settings.opencode_model,
+        deepseek_api_key=settings.deepseek_api_key,
+        deepseek_base_url=settings.deepseek_base_url,
+        deepseek_model=settings.deepseek_model,
         provider_file=settings.provider_file,
     )
     tools_schema = build_tools_schema()

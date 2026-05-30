@@ -1,4 +1,4 @@
-"""Runtime-switchable LLM service between OpenRouter, z.ai, and OpenCode Go."""
+"""Runtime-switchable LLM service between OpenRouter, z.ai, OpenCode Go, and DeepSeek."""
 from __future__ import annotations
 
 import logging
@@ -37,13 +37,14 @@ logger = logging.getLogger("heare.switchable_llm")
 
 class SwitchableLLMService(LLMService):
     """LLM service that hot-swaps between OpenRouter (OpenAI shape), z.ai
-    (Anthropic shape), and OpenCode Go (OpenAI shape) at runtime without
-    rebuilding the pipeline.
+    (Anthropic shape), OpenCode Go (OpenAI shape), and DeepSeek (OpenAI
+    shape) at runtime without rebuilding the pipeline.
 
     Architecture: composition over inheritance.
-        - Holds up to three fully-formed Pipecat delegates: ``_or_service``
+        - Holds up to four fully-formed Pipecat delegates: ``_or_service``
           (``OpenAILLMService``), ``_zai_service`` (``AnthropicLLMService``),
-          and ``_oc_service`` (``OpenAILLMService``).
+          ``_oc_service`` (``OpenAILLMService``), and ``_deepseek_service``
+          (``OpenAILLMService``).
         - The wrapper itself is what the pipeline links into; the delegates
           are NOT linked into the pipeline graph (their ``_next``/``_prev`` are
           None). To make delegate-emitted frames reach downstream stages, this
@@ -53,7 +54,7 @@ class SwitchableLLMService(LLMService):
 
     Provider routing:
         - ``~/.heare/provider`` (a single text file containing
-          ``openrouter``, ``zai``, or ``opencode``) is the source of truth.
+          ``openrouter``, ``zai``, ``opencode``, or ``deepseek``) is the source of truth.
         - ``_sync_provider()`` re-reads the file lazily, gated on mtime, and
           ONLY at turn-start frames (``LLMContextFrame`` /
           ``OpenAILLMContextFrame`` / ``LLMMessagesFrame``) — never per-frame.
@@ -83,11 +84,14 @@ class SwitchableLLMService(LLMService):
         opencode_api_key: str | None,
         opencode_base_url: str,
         opencode_model: str,
+        deepseek_api_key: str | None,
+        deepseek_base_url: str,
+        deepseek_model: str,
         provider_file: Path,
         **kwargs,
     ):
         """Initialize with all providers."""
-        fallback_model = openrouter_model or zai_model or opencode_model
+        fallback_model = openrouter_model or zai_model or opencode_model or deepseek_model
         wrapper_settings = LLMSettings(
             model=fallback_model,
             system_instruction=None,
@@ -132,6 +136,16 @@ class SwitchableLLMService(LLMService):
             )
             self._install_frame_relay(self._oc_service)
 
+        self._deepseek_service: OpenAILLMService | None = None
+        if deepseek_api_key:
+            self._deepseek_service = OpenAILLMService(
+                api_key=deepseek_api_key,
+                base_url=deepseek_base_url,
+                settings=OpenAILLMService.Settings(model=deepseek_model),
+                **kwargs,
+            )
+            self._install_frame_relay(self._deepseek_service)
+
         # State variables for turn-gated switching and error recovery
         self._last_error_log_ts: float = 0.0
         self._zai_disabled: bool = False
@@ -148,10 +162,12 @@ class SwitchableLLMService(LLMService):
             available.append("zai")
         if opencode_api_key:
             available.append("opencode")
+        if deepseek_api_key:
+            available.append("deepseek")
         if not available:
             raise ValueError(
                 "At least one provider key (OPENROUTER_API_KEY, ZAI_API_KEY, "
-                "or OPENCODE_API_KEY) must be set"
+                "OPENCODE_API_KEY, or DEEPSEEK_API_KEY) must be set"
             )
 
         self._active_provider = available[0]
@@ -166,6 +182,7 @@ class SwitchableLLMService(LLMService):
         self._or_model = openrouter_model
         self._zai_model = zai_model
         self._oc_model = opencode_model
+        self._deepseek_model = deepseek_model
         self._provider_file = provider_file
         self._provider_file_mtime: float = 0.0
 
@@ -204,6 +221,8 @@ class SwitchableLLMService(LLMService):
             result.append(self._zai_service)
         if self._oc_service is not None:
             result.append(self._oc_service)
+        if self._deepseek_service is not None:
+            result.append(self._deepseek_service)
         return result
 
     def _delegate_for(self, provider: str) -> LLMService | None:
@@ -213,6 +232,8 @@ class SwitchableLLMService(LLMService):
             return None if self._zai_disabled else self._zai_service
         if provider == "opencode":
             return self._oc_service
+        if provider == "deepseek":
+            return self._deepseek_service
         return None
 
     def _provider_for_delegate(self, delegate: LLMService) -> str:
@@ -223,6 +244,8 @@ class SwitchableLLMService(LLMService):
             return "zai"
         if delegate is self._oc_service:
             return "opencode"
+        if delegate is self._deepseek_service:
+            return "deepseek"
         return "openrouter"
 
     def _first_available_provider(self) -> str:
@@ -341,6 +364,7 @@ class SwitchableLLMService(LLMService):
                 key = (
                     "zai" if self._turn_delegate is self._zai_service
                     else "oc" if self._turn_delegate is self._oc_service
+                    else "ds" if self._turn_delegate is self._deepseek_service
                     else "or"
                 )
                 await self._ensure_delegate_started(self._turn_delegate, key)
@@ -348,6 +372,7 @@ class SwitchableLLMService(LLMService):
                 model = (
                     self._zai_model if self._active_provider == "zai"
                     else self._oc_model if self._active_provider == "opencode"
+                    else self._deepseek_model if self._active_provider == "deepseek"
                     else self._or_model
                 )
                 self.set_core_metrics_data(
@@ -378,6 +403,8 @@ class SwitchableLLMService(LLMService):
             result.append(self._zai_service)
         if self._oc_service is not None:
             result.append(self._oc_service)
+        if self._deepseek_service is not None:
+            result.append(self._deepseek_service)
         return result
 
     async def setup(self, setup_obj: FrameProcessorSetup):
@@ -393,7 +420,12 @@ class SwitchableLLMService(LLMService):
         await super().start(frame)
         self._saved_start_frame = frame
         active = self._active_delegate()
-        key = "zai" if active is self._zai_service else "oc" if active is self._oc_service else "or"
+        key = (
+            "zai" if active is self._zai_service
+            else "oc" if active is self._oc_service
+            else "ds" if active is self._deepseek_service
+            else "or"
+        )
         await active.start(frame)
         self._started_delegates.add(key)
 

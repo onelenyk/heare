@@ -341,6 +341,9 @@ class Settings:
     opencode_api_key: str | None = None
     opencode_base_url: str = "https://opencode.ai/zen/go/v1"
     opencode_model: str = "minimax-m2.7"
+    deepseek_api_key: str | None = None
+    deepseek_model: str = "deepseek-chat"
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
     # Phase 2.1 — action worker.
     action_timeout_seconds: float = 120.0
     intent_queue_max_pending: int = 32
@@ -496,6 +499,7 @@ def load_settings() -> Settings:
     settings.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
     settings.zai_api_key = os.environ.get("ZAI_API_KEY")
     settings.opencode_api_key = os.environ.get("OPENCODE_API_KEY")
+    settings.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
     settings.serper_api_key = os.environ.get("SERPER_API_KEY")
     memory_db_env = os.environ.get("HEARE_MEMORY_DB")
     if memory_db_env is not None:
@@ -538,7 +542,7 @@ def load_settings() -> Settings:
 
     if settings.provider_file.exists():
         raw = settings.provider_file.read_text().strip().lower()
-        if raw in ("openrouter", "zai", "opencode"):
+        if raw in ("openrouter", "zai", "opencode", "deepseek"):
             settings.llm_provider = raw
 
     if settings.audio_input_device_file.exists():
