@@ -863,6 +863,7 @@ name = "heare"
 version = "0.1.1"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "anthropic" },
     { name = "edge-tts" },
@@ -909,6 +910,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "anthropic", specifier = ">=0.40.0" },
     { name = "edge-tts", specifier = ">=7.0.0" },

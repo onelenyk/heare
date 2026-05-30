@@ -208,6 +208,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
         namer_enqueue = speaker_namer.enqueue if speaker_namer is not None else None
 
+        from src.state import State
+
+        state = State(settings.db_path)
+        await state.init()
+
         (
             pipeline,
             transcription_gate,
@@ -221,12 +226,19 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             store,
             context_builder,
             persona=persona,
+            state=state,
             conversation_manager=conversation_manager,
             speaker_gallery=speaker_gallery,
             speaker_model=speaker_model,
             namer_enqueue=namer_enqueue,
             project_dir=project_dir,
         )
+
+        from src.api import API
+
+        api = API(state, settings)
+        await api.start()
+        logger.info("HTTP API server on 127.0.0.1:9778")
 
         from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
 
@@ -340,6 +352,12 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 logger.warning(
                     "mcp_bridge.aclose failed (non-fatal): %s", e
                 )
+        api = locals().get("api")
+        if api is not None:
+            try:
+                await api.stop()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("api.stop failed (non-fatal): %s", e)
         ind = locals().get("indication")
         if ind is not None:
             try:
