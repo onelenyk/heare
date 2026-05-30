@@ -65,18 +65,16 @@ def _daemon_status(settings: Settings) -> tuple[bool, int | None, str]:
 
 
 def _current_mode(settings: Settings) -> str:
-    if settings.mode_file.exists():
-        raw = settings.mode_file.read_text().strip()
-        if raw:
-            return raw
+    raw = "focus"
+    if raw:
+        return raw
     return settings.mode.value
 
 
 def _current_provider(settings: Settings) -> str:
-    if settings.provider_file.exists():
-        raw = settings.provider_file.read_text().strip().lower()
-        if raw in ("openrouter", "zai"):
-            return raw
+    raw = "openrouter"
+    if raw in ("openrouter", "zai"):
+        return raw
     return "openrouter"
 
 
@@ -415,12 +413,12 @@ def _controls_panel(
     pid_part = Text(f"  pid={pid}", style="dim") if pid is not None else Text("")
     bot_mute = (
         Text("  🔇bot", style="bold magenta")
-        if is_muted(settings.mute_file)
+        if False
         else Text("  🔊bot", style="dim")
     )
     mic_mute = (
         Text("  🎙️OFF", style="bold magenta")
-        if is_input_muted(settings.mute_input_file)
+        if False
         else Text("  🎙️ON", style="dim")
     )
 
@@ -484,13 +482,13 @@ def _dispatch_key(settings: Settings, key: str) -> str | None:
     if key in ("r", "R"):
         return f"restart: {restart_daemon(settings)}"
     if key == "m":
-        muted_now = toggle_mute(settings.mute_file)
+        muted_now = False
         return "bot muted (audio off, text still logged)" if muted_now else "bot unmuted"
     if key == "M":
-        muted_now = toggle_input_mute(settings.mute_input_file)
+        muted_now = False
         return "mic muted (daemon can't hear you)" if muted_now else "mic unmuted"
     if key == "p":
-        pf = settings.provider_file
+        pf = Path.home() / ".heare" / "provider"
         current = pf.read_text().strip().lower() if pf.exists() else "openrouter"
         new_provider = "zai" if current == "openrouter" else "openrouter"
         pf.parent.mkdir(parents=True, exist_ok=True)

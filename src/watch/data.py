@@ -350,7 +350,7 @@ class UsageData:
 class VoiceStateData:
     """Live STT state for the voice-state widget.
 
-    Written by ``VoiceStateObserver`` to ``settings.voice_state_file`` on
+    Written by ``VoiceStateObserver`` to ``State`` on
     every frame transition; read here on each dashboard tick.
     ``state`` is one of ``idle / listening / stt / result``.
     ``since_ts`` lets the widget auto-decay ``result`` back to idle

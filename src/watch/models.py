@@ -57,12 +57,12 @@ DEFAULT_MODEL: dict[str, str] = {
 
 def model_file(settings) -> Path:
     """File holding the currently-selected model id."""
-    return settings.provider_file.parent / "model"
+    return Path.home() / ".heare" / "model"
 
 
 def custom_models_file(settings) -> Path:
     """File holding user-added custom model ids per provider."""
-    return settings.provider_file.parent / "custom_models.json"
+    return Path.home() / ".heare" / "custom_models.json"
 
 
 def read_current_model(settings, provider: str) -> str:

@@ -370,7 +370,7 @@ class AIBar(Static):
 
     Operator changes provider via `p` (cycles openrouter↔zai) and picks a
     model via `o` (opens ModelSelectScreen). The widget itself is read-only;
-    the App writes to provider_file / model_file.
+    the App writes to State.
     """
 
     HOTKEYS: tuple[tuple[str, str], ...] = (

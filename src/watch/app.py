@@ -5,6 +5,8 @@ binds hotkeys, and manages the refresh loop.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -157,13 +159,13 @@ class HeareDashboard(App):
 
     def action_toggle_mute_bot(self) -> None:
         """Toggle bot mute (m key)."""
-        muted = toggle_mute(self.settings.mute_file)
+        muted = False  # TODO: use State
         msg = "bot muted" if muted else "bot unmuted"
         self.query_one(ControlsBar).update_status(msg)
 
     def action_toggle_mute_mic(self) -> None:
         """Toggle mic mute (M key, Shift+m)."""
-        muted = toggle_input_mute(self.settings.mute_input_file)
+        muted = False  # TODO: use State
         msg = "mic muted" if muted else "mic unmuted"
         self.query_one(ControlsBar).update_status(msg)
 
@@ -176,7 +178,7 @@ class HeareDashboard(App):
         This bypasses VAD/STT entirely — works even when the bot's
         audio drowns out the mic.
         """
-        request_cancel(self.settings.cancel_flag_file)
+        pass  # TODO: POST /cancel
         try:
             self.query_one(ControlsBar).update_status("interrupted")
         except NoMatches:
@@ -192,7 +194,7 @@ class HeareDashboard(App):
 
     def action_toggle_provider(self) -> None:
         """Toggle between openrouter/zai/opencode (p key)."""
-        pf = self.settings.provider_file
+        pf = Path.home() / ".heare" / "provider"
         current = pf.read_text().strip().lower() if pf.exists() else "openrouter"
         cycle = {"openrouter": "zai", "zai": "opencode", "opencode": "openrouter"}
         new_provider = cycle.get(current, "openrouter")
