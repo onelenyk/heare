@@ -49,7 +49,7 @@ def daemon_status(settings: Settings) -> tuple[bool, int | None, str]:
     Returns:
         (running, pid, uptime_string)
     """
-    pid_file = settings.pid_file
+    pid_file = Path.home() / ".heare" / "heare.pid"
     if not pid_file.exists():
         return False, None, "-"
     try:
@@ -617,7 +617,7 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     from src.pipeline.stages.mute_gate import is_input_muted
 
     # Open DB
-    con = open_db(settings.db_path)
+    con = open_db(Path.home() / ".heare" / "heare.db")
 
     # Fetch header data
     running, pid, uptime = daemon_status(settings)
@@ -625,7 +625,7 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     provider = current_provider(settings)
     count_dict = counts(con)
     chrome_attached = bridge_connected(settings)
-    identity = load_identity(settings.identity_file)
+    identity = load_identity(Path.home() / ".heare" / "identity.json")
     name = identity["name"] if identity else "heare"
     emoji = identity["emoji"] if identity else "🪶"
 
@@ -653,13 +653,13 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     activity_rows = fetch_activity(con, limit=50, speakers_file=None)
 
     # Fetch log tail
-    log_lines = read_log_tail(settings.log_dir / "daemon.log", lines=20)
+    log_lines = read_log_tail(Path.home() / ".heare" / "logs" / "daemon.log", lines=20)
 
     # Fetch usage / cost ledger
     usage = fetch_usage(con)
 
     voice_state = VoiceStateData(state="idle", since_ts=0.0, last_partial=None, last_final=None)  # voice state is now in State, not file
-    audio_event = read_audio_event(settings.audio_event_file)
+    audio_event = read_audio_event(Path.home() / ".heare" / "audio_event.json")
     agent_response = fetch_agent_response(con)
     display = fetch_latest_display(con)
 
