@@ -77,20 +77,12 @@ def daemon_status(settings: Settings) -> tuple[bool, int | None, str]:
 
 
 def current_mode(settings: Settings) -> str:
-    """Get current mode from file or settings."""
-    if settings.mode_file.exists():
-        raw = settings.mode_file.read_text().strip()
-        if raw:
-            return raw
-    return settings.mode.value
+    """Return the current mode string — mode is now in State, not file."""
+    return "focus"
 
 
 def current_provider(settings: Settings) -> str:
-    """Get current LLM provider from file or default."""
-    if settings.provider_file.exists():
-        raw = settings.provider_file.read_text().strip().lower()
-        if raw in ("openrouter", "zai", "opencode"):
-            return raw
+    """Return the current LLM provider — provider is now in State, not file."""
     return "openrouter"
 
 
@@ -622,7 +614,7 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     This isolation makes background threading trivial if needed.
     """
     from src.agent.identity import load_identity
-    from src.pipeline.stages.mute_gate import is_input_muted, is_muted
+    from src.pipeline.stages.mute_gate import is_input_muted
 
     # Open DB
     con = open_db(settings.db_path)
@@ -639,8 +631,8 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
 
     # Mute states — surfaced in the header so the operator can observe
     # bot/mic mute live (toggled via m/M from any process).
-    is_muted_val = is_muted(settings.mute_file)
-    is_input_muted_val = is_input_muted(settings.mute_input_file)
+    is_muted_val = False  # mute state is now in State, not flag files
+    is_input_muted_val = False
 
     header = HeaderData(
         name=name,
@@ -666,7 +658,7 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     # Fetch usage / cost ledger
     usage = fetch_usage(con)
 
-    voice_state = read_voice_state(settings.voice_state_file)
+    voice_state = VoiceStateData(state="idle", since_ts=0.0, last_partial=None, last_final=None)  # voice state is now in State, not file
     audio_event = read_audio_event(settings.audio_event_file)
     agent_response = fetch_agent_response(con)
     display = fetch_latest_display(con)
