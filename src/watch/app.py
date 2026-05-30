@@ -196,8 +196,8 @@ class HeareDashboard(App):
         """Toggle between openrouter/zai/opencode (p key)."""
         pf = Path.home() / ".heare" / "provider"
         current = pf.read_text().strip().lower() if pf.exists() else "openrouter"
-        cycle = {"openrouter": "zai", "zai": "opencode", "opencode": "openrouter"}
-        new_provider = cycle.get(current, "openrouter")
+        # Only DeepSeek is available
+        new_provider = "deepseek"
         pf.parent.mkdir(parents=True, exist_ok=True)
         pf.write_text(new_provider)
         self.query_one(ControlsBar).update_status(f"provider: {new_provider}")
