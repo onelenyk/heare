@@ -45,7 +45,7 @@ The diagrams are organized as:
    │   Background tasks (asyncio.create_task):                                     │
    │     ◾ pipeline_task         the pipecat frame loop                            │
    │     ◾ warmup_task           periodic Edge TTS keep-alive                      │
-   │     ◾ namer_task            speaker-naming LLM caller (optional)              │
+   
    │     ◾ greeting (one-shot)   "<bot> ready" via TTSSpeakFrame                   │
    │     ◾ inject poller         ~/.heare/inject/ → TranscriptionFrame             │
    │     ◾ heartbeat             writes ~/.heare/heartbeat (alive proof)           │
@@ -56,8 +56,8 @@ The diagrams are organized as:
                                   ▼
    ┌──────────────────────────────────────────────────────────────────────────────┐
    │ FILESYSTEM (~/.heare/) — see §7 for full schema                                │
-   │   heare.db (SQLite WAL) ▪ heare.pid ▪ provider ▪ mute.flag ▪ mute_input.flag  │
-   │   capabilities.json ▪ identity.json ▪ speakers.json ▪ inject/ ▪ logs/         │
+│   heare.db (SQLite WAL) ▪ heare.pid ▪ provider ▪ mute.flag ▪ mute_input.flag  │
+│   capabilities.json ▪ identity.json ▪ inject/ ▪ logs/                         │
    └──────────────────────────────┬────────────────────────────────────────────────┘
                                   │ reads (separate process)
                                   ▼
@@ -107,56 +107,31 @@ mic ─► ┌──────────────────────
        └────────────────────────────────────┬────────────────────────────────────┘
                                             ▼
        ┌─────────────────────────────────────────────────────────────────────────┐
-       │ input_mute_gate                                                          │
-       │   src/pipeline/stages/mute_gate.py:114-134                               │
-       │   ◾ Reads: ~/.heare/mute_input.flag (file existence per InputAudioRawFrame)│
-       │   ◾ Drop: InputAudioRawFrame when flag exists                            │
-       │   ◾ Pass: everything else unchanged                                      │
-       └────────────────────────────────────┬────────────────────────────────────┘
-                                            ▼
-       ┌─────────────────────────────────────────────────────────────────────────┐
-       │ [speaker_buffer]   (optional — speaker_id_enabled)                      │
-       │   src/voice/speaker/processor.py:create_speaker_processors               │
-       │   ◾ Buffers raw audio per VAD bracket for diarization                   │
-       │   ◾ Loaded ECAPA model: src/voice/speaker/id.py:load_model              │
-       │   ◾ Voiceprint store: src/voice/speaker/gallery.py SpeakerGallery        │
-       └────────────────────────────────────┬────────────────────────────────────┘
-                                            ▼
-       ┌─────────────────────────────────────────────────────────────────────────┐
-       │ stt = GroqSTTService                                                     │
+        │ input_mute_gate                                                          │
+        │   src/pipeline/stages/mute_gate.py:114-134                               │
+        │   ◾ Reads: ~/.heare/mute_input.flag (file existence per InputAudioRawFrame)│
+        │   ◾ Drop: InputAudioRawFrame when flag exists                            │
+        │   ◾ Pass: everything else unchanged                                      │
+        └────────────────────────────────────┬────────────────────────────────────┘
+                                             ▼
+        ┌─────────────────────────────────────────────────────────────────────────┐
+        │ stt = GroqSTTService                                                     │
        │   src/pipeline/build.py:274                                              │
        │   ◾ Model: Whisper-large-v3 (Groq cloud)                                 │
        │   ◾ Language: HINT (settings.groq_language); Groq detects + may override │
        │   ◾ include_prob_metrics=True (per-utterance language confidence)        │
-       │   ◾ Emits: TranscriptionFrame(text, language, …) on speech-end          │
-       └────────────────────────────────────┬────────────────────────────────────┘
-                                            ▼
-       ┌─────────────────────────────────────────────────────────────────────────┐
-       │ stt_error_observer  (inline anonymous class)                            │
-       │   src/pipeline/build.py:351-365                                          │
-       │   ◾ Observes ErrorFrame from stt → indication.notify(STT_ERROR, body=…) │
-       │   ◾ Forwards every frame unchanged (observer pattern)                   │
-       └────────────────────────────────────┬────────────────────────────────────┘
-                                            ▼
-       ┌─────────────────────────────────────────────────────────────────────────┐
-       │ [speaker_tagger]  (optional — speaker_id_enabled)                       │
-       │   src/voice/speaker/processor.py                                         │
-       │   ◾ Embeds buffered audio with ECAPA, looks up gallery                  │
-       │   ◾ Annotates: TranscriptionFrame.speaker_id + speaker_confidence       │
-       │   ◾ namer_enqueue: pushes unknown speakers to async LLM-naming task    │
-       └────────────────────────────────────┬────────────────────────────────────┘
-                                            ▼
-       ┌─────────────────────────────────────────────────────────────────────────┐
-       │ [audio_event_observer]  (optional — audio_event_detection_enabled)      │
-       │   src/audio_event/observer.py:create_audio_event_observer               │
-       │   ◾ Pass-through YAMNet classifier (ONNX, 16kHz, 0.96s windows)         │
-       │   ◾ Detects non-speech: laughter, cough, bark, etc. (curated 17-label)  │
-       │   ◾ Drop-on-busy + 2-window confirmation before event emit              │
-       │   ◾ Writes: ~/.heare/audio_event.json {label, score, ts}               │
-       └────────────────────────────────────┬────────────────────────────────────┘
-                                            ▼
-       ┌─────────────────────────────────────────────────────────────────────────┐
-       │ voice_state_observer                                                     │
+        │ ◾ Emits: TranscriptionFrame(text, language, …) on speech-end          │
+        └────────────────────────────────────┬────────────────────────────────────┘
+                                             ▼
+        ┌─────────────────────────────────────────────────────────────────────────┐
+        │ stt_error_observer  (inline anonymous class)                            │
+        │   src/pipeline/build.py:351-365                                          │
+        │   ◾ Observes ErrorFrame from stt → indication.notify(STT_ERROR, body=…) │
+        │   ◾ Forwards every frame unchanged (observer pattern)                   │
+        └────────────────────────────────────┬────────────────────────────────────┘
+                                             ▼
+        ┌─────────────────────────────────────────────────────────────────────────┐
+        │ voice_state_observer                                                     │
        │   src/pipeline/stages/voice_state_observer.py:create_voice_state_observer
        │   ◾ Writes: ~/.heare/voice_state.json {state, since_ts, last_*}        │
        │   ◾ state ∈ {idle, listening, stt, result} per STT transition          │
@@ -512,9 +487,7 @@ mic ─► ┌──────────────────────
    │   ▸ ConversationManager(store)  (if memory enabled)               │
    │       ↳ hydrate_action_log(since_ts=now-conversation_idle_seconds)│
    │   ▸ ContextBuilder(store, settings, conversation_manager)         │
-   │   ▸ Optional: SpeakerGallery.load + speaker_id.load_model         │
-   │   ▸ Optional: maybe_build_namer (if speaker subsystem ready)      │
-   │   ▸ build_pipeline(...) → 6-tuple                                 │
+    │   ▸ build_pipeline(...) → 6-tuple                                 │
    │     ╔═══════════════════════════════════════════════════════╗     │
    │     ║ Inside build_pipeline (src/pipeline/build.py:193):   ║     │
    │     ║   ▸ create transport, stt, tts                        ║     │
@@ -545,9 +518,8 @@ mic ─► ┌──────────────────────
    │   ▸ tts_cache.warmup(FIXED_PHRASES, synthesize_fn)                │
    │   ▸ create_task(_push_greeting)                                   │
    │       ↳ 1s delay → indication.notify(DAEMON_STARTED)              │
-   │       ↳ llm_service.push_frame(TTSSpeakFrame("<bot> online"))     │
-   │   ▸ create_task(speaker_namer.run) if enabled                    │
-   │   ▸ create_task(run_injector_loop(inject_dir, ...))              │
+    │       ↳ llm_service.push_frame(TTSSpeakFrame("<bot> online"))     │
+    │   ▸ create_task(run_injector_loop(inject_dir, ...))              │
    │       ↳ polls ~/.heare/inject/ for .txt drops → TranscriptionFrame│
    │   ▸ WarmupTask(voice, interval) prepared                          │
    └──────────────────────────────────────────────────────────────────┘
@@ -555,7 +527,7 @@ mic ─► ┌──────────────────────
    ┌──────────────────────────────────────────────────────────────────┐
    │ Phase D. Run                                                       │
    │   ▸ runner = PipelineRunner()                                     │
-   │   ▸ await run_until_stopped(runner, pipeline, warmup, namer_task) │
+    │   ▸ await run_until_stopped(runner, pipeline, warmup)             │
    │     ╔═══════════════════════════════════════════════════════╗     │
    │     ║ Inside run_until_stopped (src/main.py:317):          ║     │
    │     ║   pipeline_task = create_task(runner.run(pipeline))   ║     │
@@ -566,9 +538,9 @@ mic ─► ┌──────────────────────
    │     ║   add_signal_handler(SIGTERM/SIGINT  → stop_event.set)║     │
    │     ║   add_signal_handler(SIGHUP          → indication.reload)║  │
    │     ║                                                        ║     │
-   │     ║   await asyncio.wait({pipeline_task, warmup_task,    ║     │
-   │     ║                       browser_bridge_task,            ║     │
-   │     ║                       stop_waiter, namer_task},      ║     │
+    │     ║   await asyncio.wait({pipeline_task, warmup_task,    ║     │
+    │     ║                       browser_bridge_task,            ║     │
+    │     ║                       stop_waiter},                   ║     │
    │     ║                      return_when=FIRST_COMPLETED)    ║     │
    │     ║                                                        ║     │
    │     ║   for t in all_tasks: t.cancel(); await t             ║     │
@@ -689,7 +661,7 @@ mic ─► ┌──────────────────────
 │   capability    discover_capability, install_skill, create_skill,             │
 │                 install_mcp_server, register_mcp_server, revoke_capability    │
 │   skills        list_skills, list_capabilities, run_skill                     │
-│   speaker       re_enroll, list_profiles                                      │
+
 │   browser       list_browser_tabs, read_browser_page, click_in_browser,        │
 │                 fill_in_browser, extract_in_browser, navigate_browser,         │
 │                 open_browser_tab, activate_browser_tab  (via BrowserBridge RPC)│
@@ -728,7 +700,7 @@ mic ─► ┌──────────────────────
 
    Surface that REQUIRES restart:
      ▸ Dynamic tools       loaded from DB once at startup
-     ▸ Speaker gallery     loaded once at startup
+
      ▸ Persona / identity  loaded once at startup (or via reset-identity)
      ▸ API keys            from .env — no live reload
      ▸ Pipeline shape      stages list is fixed at build_pipeline
@@ -750,13 +722,11 @@ mic ─► ┌──────────────────────
                                      usage_events, conversations, turns,
                                      dynamic_tools, allowed_directories,
                                      user_profile, decisions, events, heartbeats
-   identity.json           {name, creature, vibe, emoji, tagline, generated_at}
-                             — bootstrapped via OpenRouter on first run
-                             — backed up on `heare reset-identity`
-   speakers.json           SpeakerGallery — voiceprints + labels + turn counts
-                             — populated by `heare enroll-owner` and namer task
+    identity.json           {name, creature, vibe, emoji, tagline, generated_at}
+                              — bootstrapped via OpenRouter on first run
+                              — backed up on `heare reset-identity`
 
-   RUNTIME FLAGS (file existence is the signal)
+    RUNTIME FLAGS (file existence is the signal)
    ────────────────────────────────────────────────────────────────────────────────
    heare.pid               Daemon PID (single-instance lock)
    heartbeat               Periodic alive timestamp
@@ -768,12 +738,10 @@ mic ─► ┌──────────────────────
 
    CACHED / DERIVED STATE
    ────────────────────────────────────────────────────────────────────────────────
-   audio_event.json        {label, score, ts} — YAMNet detection (read by watch)
-   browser_bridge.status   {connected, ts, port, pair_code, pair_remaining_s}
+    browser_bridge.status   {connected, ts, port, pair_code, pair_remaining_s}
    browser_bridge.token    Convenience copy of token (mode 0600, in config.toml)
-   capabilities.json       Snapshot of CapabilityIndex (skills + MCP + tools)
-   heare_memory.db         SQLite FTS5 persistent memory (optional fastmcp server)
-   session.json            Persistent Claude Code session ID (legacy)
+    capabilities.json       Snapshot of CapabilityIndex (skills + MCP + tools)
+    session.json            Persistent Claude Code session ID (legacy)
    mcp.json                MCP server config (read by skills/mcp_utils)
    voice_state.json        {state, since_ts, last_partial, last_final} (auto-decay)
    skills/_marketplace/    Installed marketplace skills (currently 0)
@@ -789,9 +757,7 @@ mic ─► ┌──────────────────────
 
    MODELS & EXTENSIONS
    ────────────────────────────────────────────────────────────────────────────────
-   models/                 ML model artifacts (user-supplied)
-      yamnet.onnx          YAMNet audio classifier (ONNX, mel-input variant, ~14MB)
-   extensions/heare-bridge/  Chrome MV3 extension (sideloaded)
+    extensions/heare-bridge/  Chrome MV3 extension (sideloaded)
       manifest.json, background.js, offscreen.js, content_script.js, icons/, …
 ```
 
@@ -815,7 +781,7 @@ mic ─► ┌──────────────────────
 ### 8.1 Chitchat ("how are you?")
 
 ```
-USER          mic     vad/turn      stt              gate     injector  user_aggr  llm        tts           speaker
+USER          mic     vad/turn      stt              gate     injector  user_aggr  llm        tts
  │              │        │           │                │           │         │        │          │              │
  ┝━━╾ "how…"━━━▶│        │           │                │           │         │        │          │              │
  │              ┝━━ raw audio ━━━━━━▶│                │           │         │        │          │              │
@@ -968,13 +934,10 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
    ─────────────────────────────────────────────────────────────────────────────────
    pipeline_task             runner.run(pipeline)                    until EndFrame
                                                                       or cancel
-   warmup_task               WarmupTask.run                           until .stop()
-                                                                      keeps Edge TTS
-                                                                      websocket warm
-   namer_task                speaker_namer.run                        self-ending
-                                                                      LLM-driven name
-                                                                      inference
-   greeting (one-shot)       create_task(_push_greeting)              ~1s sleep + push
+    warmup_task               WarmupTask.run                           until .stop()
+                                                                       keeps Edge TTS
+                                                                       websocket warm
+    greeting (one-shot)       create_task(_push_greeting)              ~1s sleep + push
    inject poller             create_task(run_injector_loop)           until cancel
                                                                       filesystem poll
    heartbeat                 (in indication / daemon helpers)          background ping
@@ -1041,7 +1004,7 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
      tts_voice, tts_sample_rate (24000)
      transcript_debounce_seconds, bot_speaking_cooldown_seconds (2.0)
      conversation_idle_seconds (1800), conversation_memory_enabled
-     speaker_id_enabled, speaker_namer_enabled, …
+
      cancel_stop_words = ["stop", "cancel", "halt", "відміни", "отмени", "стоп"]
      indication.{enabled,sound_enabled,visual_enabled,notification_center_enabled}
 
@@ -1074,8 +1037,8 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
 ## 14. Summary Cheatsheet
 
 ```
-   INPUT   mic → VAD/smart-turn → input_mute_gate → [speaker_buffer] → stt
-                → stt_error_observer → [speaker_tagger]
+   INPUT   mic → VAD/smart-turn → input_mute_gate → stt
+                → stt_error_observer
                 → transcription_gate (★ feedback guard, lang hyst, cancel)
                 → system_prompt_injector (rebuilds every turn)
                 → user_aggregator → LLMContextFrame
@@ -1142,13 +1105,9 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
    src/voice/tts/phrases.py          FIXED_PHRASES warmup list
    src/voice/indication/core.py      Indication facade + cue processor
    src/voice/indication/assets.py    audio cue file table
-   src/voice/indication/backends/    Sound, Visual, Notification
-   src/voice/speaker/processor.py    speaker_buffer + speaker_tagger
-   src/voice/speaker/id.py           ECAPA model wrapper
-   src/voice/speaker/gallery.py      voiceprint store
-   src/voice/speaker/namer.py        async LLM naming task
+    src/voice/indication/backends/    Sound, Visual, Notification
 
-   src/store/storage.py              TranscriptStore (sqlite + WAL, ~1k LOC)
+    src/store/storage.py              TranscriptStore (sqlite + WAL, ~1k LOC)
    src/store/conversation.py         ConversationManager
    src/store/context.py              ContextBuilder.build_for_generator
    src/store/user_profile.py         per-user prefs
@@ -1157,14 +1116,9 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
    src/daemon/heartbeat.py           heartbeat + WarmupTask
    src/daemon/watch_controls.py      dashboard → daemon bridge
    src/daemon/browser.py             Chrome bridge lifecycle (start/stop)
-   src/agent/browser_bridge.py       BrowserBridge WS server + pair-code logic
+    src/agent/browser_bridge.py       BrowserBridge WS server + pair-code logic
 
-   src/audio_event/class_map.py      AUDIOSET_CLASSES (521 labels) + ALLOWLIST (17)
-   src/audio_event/classifier.py     YamnetClassifier (ONNX wrapper, mel-input)
-   src/audio_event/observer.py       AudioEventObserver pipeline stage
-   src/audio_event/writer.py         Atomic JSON write to audio_event.json
-
-   src/pipeline/stages/voice_state_observer.py  VoiceStateObserver pipeline stage
+    src/pipeline/stages/voice_state_observer.py  VoiceStateObserver pipeline stage
 
    src/skills/agent_skills.py        SkillsLoader for ~/.heare/skills/
    src/skills/marketplace.py         remote catalog client
@@ -1252,73 +1206,6 @@ USER          mic     vad/turn      stt              gate     injector  user_agg
    │   messages: load_config, storage_remove, open_options_page             │
    │   Impact: all credential/token storage reads go through SW message      │
    │   handler, not direct document.storage API.                             │
-   └─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 17. Audio Event Detection (YAMNet)
-
-```
-══════════════════════════════════════════════════════════════════════════════════════
-     src/audio_event/  + pipeline integration (opt-in, feature flag)
-══════════════════════════════════════════════════════════════════════════════════════
-
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ YAMNet Classifier (src/audio_event/classifier.py)                       │
-   │   - ONNX Runtime wrapper around mel-input YAMNet variant (~14 MB)        │
-   │   - Input: 16kHz PCM, 0.96s window (15,360 samples) → log-mel patch    │
-   │   - SAMPLE_RATE = 16000                                                 │
-   │   - WINDOW_SAMPLES = 15360  (0.96s @ 16kHz)                             │
-   │   - STFT params: 25ms frames, 10ms hop, 512 FFT, 64 mel bands           │
-   │   - Output: 521-class softmax scores (AUDIOSET_CLASSES)                 │
-   │   - Inference: single-threaded, ~5ms per window (benchmarked)           │
-   │   - Failure: FileNotFoundError (model missing) → logged, returns None   │
-   │   - Optional deps: onnxruntime, numpy → pyproject.toml audio-event extra│
-   └─────────────────────────────────────────────────────────────────────────┘
-
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ Class Map & Curation (src/audio_event/class_map.py)                     │
-   │   - AUDIOSET_CLASSES: full 521 AudioSet ontology                        │
-   │   - ALLOWLIST: 17-label curated subset for heare:                       │
-   │       laughter, giggle, cry, cough, sneeze, sniff, snore, bark, meow,  │
-   │       yowl, howl, yell, grunt, sigh, throat_clearing, scream, hiss     │
-   │   - Inference outputs scores; filter against allowlist before emitting  │
-   └─────────────────────────────────────────────────────────────────────────┘
-
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ Pipeline Integration (src/audio_event/observer.py)                      │
-   │   - Pass-through FrameProcessor: every frame forwards unchanged          │
-   │   - Offload inference to asyncio.to_thread (non-blocking to audio loop) │
-   │   - Drop-on-busy policy: while task._running=True, new windows dropped  │
-   │   - 2-window confirmation rule: emit only after seeing label 2x in a row│
-   │   - Config settings (src/config.py):                                    │
-   │       audio_event_detection_enabled: bool = False  (feature flag)       │
-   │       audio_event_threshold: float = 0.4  (confidence cutoff)           │
-   │       yamnet_model_path: Path = ~/.heare/models/yamnet.onnx (user-orig) │
-   │       audio_event_file: Path = ~/.heare/audio_event.json                │
-   │   - Failure modes (factory returns None + WARNING log):                 │
-   │       1. feature flag off → silent no-op                                │
-   │       2. onnxruntime not installed → install hint                       │
-   │       3. model file missing → tf2onnx hint                              │
-   │       4. exception in _infer → logged, _running resets, continue        │
-   └─────────────────────────────────────────────────────────────────────────┘
-
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ Output State (src/audio_event/writer.py)                                │
-   │   - Writes: ~/.heare/audio_event.json {label, score, ts}  (atomic)      │
-   │   - Read by: watch dashboard (src/watch/data.py:read_audio_event)       │
-   │   - Rendered by: VoiceStateBar widget with 5s TTL auto-decay            │
-   │   - File format: single JSON object (not JSONL), overwritten per event  │
-   └─────────────────────────────────────────────────────────────────────────┘
-
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ Voice-State Observer (src/pipeline/stages/voice_state_observer.py)      │
-   │   - NEW: writes ~/.heare/voice_state.json on every STT state change    │
-   │   - States: idle, listening, stt, result                                │
-   │   - Schema: {state, since_ts, last_partial, last_final}                │
-   │   - Auto-decay: dashboard-side 4s timer (state="result" → "idle")      │
-   │   - Read by: VoiceStateBar widget for visual feedback                  │
    └─────────────────────────────────────────────────────────────────────────┘
 ```
 

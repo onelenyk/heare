@@ -12,9 +12,7 @@ Not a wake-word assistant. Not a dictation tool. A voice-first Claude agent.
 - **Ukrainian voice persona** — auto-generates name and personality on first run
 - **Browser automation** — via sideloaded Chrome extension (list tabs, read page, click, fill, navigate, extract, open/activate tabs)
 - **Agent tools** — bash, read, write, edit files; web search/fetch; dynamic tool creation; skill execution
-- **Persistent memory** — SQLite database with FTS5; optional MCP server for agent self-querying
-- **Audio event detection** (opt-in) — YAMNet classifier detects laughter, cough, dog bark, etc. via `heare[audio-event]`
-- **Speaker recognition** — ECAPA model optional; auto-enroll + name speakers
+- **Persistent memory** — SQLite database (`~/.heare/heare.db`) with transcripts, decisions, and usage events
 - **Live dashboard** — separate Textual TUI process showing state, activity, cost, voice events
 - **Hot-reload settings** — switch mode/LLM provider without restarting daemon
 
@@ -22,7 +20,6 @@ Not a wake-word assistant. Not a dictation tool. A voice-first Claude agent.
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
-- [Claude Code CLI](https://docs.claude.com/claude-code) (v7+)
 - macOS with microphone + speaker (Linux support in progress)
 - [Groq API key](https://console.groq.com/keys) (free tier works; for STT)
 - OpenRouter OR z.ai API key (for LLM)
@@ -90,19 +87,13 @@ uv run python -m src.main logs -f             # Tail daemon log
 ```
 ──────────────────────────────────────────────────────────────────
 
-Mic ──► input_mute_gate ──► audio_event_observer ──► speaker_buffer
-        │                                              (diarization)
-        ├─ [optional YAMNet ─► ~/ audio_event.json]   │
-        │                                              ▼
-        └─────────────────────────────────────────────► GroqSTT
-                                                        │
-                    ┌───────────────────────────────────┤
-                    ▼                                   ▼
-               voice_state_observer            speaker_tagger
-               (~/.heare/voice_state.json)    (speaker ID + namer)
-                    │                                   │
-                    └───────────┬───────────────────────┘
-                                ▼
+Mic ──► input_mute_gate ──► GroqSTT
+                               │
+                               ▼
+                       voice_state_observer
+                       (~/.heare/voice_state.json)
+                               │
+                               ▼
                         transcription_gate
                         (debounce, cancel-word detect,
                          language switch, bot-speaking drop)
@@ -162,32 +153,7 @@ Features:
 - Mute toggle (mic/output)
 - Mode/provider switching hotkeys
 - Usage/cost ledger
-- Audio event timeline (laughter, cough, etc. if enabled)
 - Voice state indicator (idle/listening/stt/result)
-
-## Overlay UI (always-on-top)
-
-A small frameless window that floats over every app, showing live agent
-state, the running transcript, and three quick-action buttons.
-
-```bash
-uv pip install -e '.[overlay]'           # one-time: pywebview + fastapi + uvicorn
-hearectl overlay                          # launch overlay (daemon optional)
-hearectl overlay-stop                     # close it
-HEARE_OVERLAY=1 hearectl start            # daemon + overlay together (opt-in)
-```
-
-`hearectl stop` always closes the overlay if it's running.
-
-- Status pill — bound to the same `voice_state.json` the watch dashboard reads (idle/listening/stt/result/offline).
-- 🎤 button — toggles `~/.heare/mute_input.flag` (input_mute_gate drops mic frames).
-- 🔊 button — toggles `~/.heare/mute.flag` (mute_gate drops TTS frames).
-- ⏹ button — touches `~/.heare/cancel.flag`; the new cancel_flag_gate stage picks it up on the next frame and pushes an `InterruptionFrame` upstream (same path as a spoken stop-word).
-- Debug accordion — last audio event (YAMNet), current state, last partial.
-
-The overlay is a single Python process: `pywebview` on the main thread,
-`uvicorn` on a random localhost port in a daemon thread. No remote
-access, no auth — it binds `127.0.0.1` only.
 
 ## Browser bridge (Chrome extension)
 
@@ -212,20 +178,6 @@ The sideloaded extension at `extensions/heare-bridge/` (MV3, Chrome 109+) expose
 
 The extension runs an offscreen document that owns the persistent WebSocket. The daemon accepts one client at a time; second connections are rejected with close code 4002.
 
-## Memory (SQLite + optional MCP)
-
-Persistent cross-session storage:
-
-- `~/.heare/heare.db` — transcripts, decisions, actions, usage events, dynamic tools
-- `~/.heare/workspace/.mcp.json` — MCP server configs (seeded from `~/.claude.json`)
-
-Optional fast-MCP server (if `heare[memory]` installed):
-
-```bash
-uv sync --extra memory
-# Then in config.toml: memory_mcp_enabled = true (not yet implemented)
-```
-
 ## MCP servers
 
 heare automatically seeds `~/.heare/workspace/.mcp.json` from `~/.claude.json` on first run. Every server listed in that file is callable by the agent.
@@ -244,25 +196,6 @@ Edit the file directly to add servers, then restart the daemon:
 }
 ```
 
-## Audio event detection (opt-in YAMNet)
-
-Detect non-speech audio (laughter, cough, dog bark, etc.):
-
-```bash
-uv sync --extra audio-event
-# Download model: wget https://storage.googleapis.com/…/yamnet.onnx -O ~/.heare/models/yamnet.onnx
-```
-
-In `~/.heare/config.toml`:
-
-```toml
-audio_event_detection_enabled = true
-audio_event_threshold = 0.4
-yamnet_model_path = "~/.heare/models/yamnet.onnx"
-```
-
-Events are written to `~/.heare/audio_event.json` and surfaced on the watch dashboard.
-
 ## Tools
 
 Built-in tools available to the LLM:
@@ -273,7 +206,6 @@ Built-in tools available to the LLM:
 - **workflow** — multi-step action sequences
 - **list_skills** / **run_skill** / **create_skill** — Agent Skills (agentskills.io format)
 - **list_capabilities** / **discover_capability** / **install_skill_tool** / **install_mcp_server_tool** / **revoke_capability** — capability discovery + install
-- **re_enroll** / **list_profiles** / **create_profile** / **delete_profile** / **rename_profile** — speaker gallery management
 - **create_tool** / **update_tool** / **delete_tool** / **list_tools** — dynamic tool CRUD
 - **create_archive** / **extract_archive** / **batch_operation** — file batch ops
 - **set_provider** — switch LLM provider (openrouter ↔ zai)
@@ -291,8 +223,6 @@ Most-used keys:
 mode = "ambient"                # silent | focus | ambient
 tts_voice = "en-US-AriaNeural"  # or any supported Edge TTS voice
 groq_language = "uk"            # STT language hint (Groq detects + may override)
-speaker_id_enabled = true       # Enable speaker recognition
-audio_event_detection_enabled = false  # Set to true + add yamnet.onnx to enable
 browser_bridge_enabled = true   # Enable Chrome extension bridge
 
 openrouter_api_key = "…"        # OR set OPENROUTER_API_KEY env var
@@ -321,8 +251,6 @@ token = "…"  # Auto-generated; rotate with `heare rotate-browser-token`
 ├── session.json                # Claude Code session ID (persistent)
 ├── identity.json               # Auto-generated persona: {name, emoji, voice_type, …}
 ├── voice_state.json            # Current VAD state: {state, since_ts, last_*}
-├── audio_event.json            # Latest YAMNet event: {label, score, ts} (if enabled)
-├── speakers.json               # Speaker gallery: ECAPA embeddings + labels
 ├── capabilities.json           # Capability index cache (auto-refreshed)
 ├── onboarding.json             # Setup progress
 ├── heare.log                   # Tail via `heare logs -f`
@@ -334,8 +262,6 @@ token = "…"  # Auto-generated; rotate with `heare rotate-browser-token`
 ├── logs/
 │   ├── daemon.log              # Main daemon log
 │   └── indication.jsonl        # Visual+sound cue events (JSON lines)
-├── models/
-│   └── yamnet.onnx             # Audio event model (if using audio-event extra)
 └── workspace/
     ├── .mcp.json               # MCP server configs (seeded from ~/.claude.json)
     └── …                       # Working directory for file operations
@@ -369,7 +295,6 @@ uv run pytest tests/ -v
 
 Unit tests cover:
 - Mode hot-reload
-- Speaker recognition
 - Transcription debounce + cancellation
 - TTSCache warmup
 - Usage ledger
@@ -403,13 +328,7 @@ src/
 │   ├── tts/
 │   │   ├── edge.py             # Edge TTS service
 │   │   └── cache.py            # TTSCache with warmup
-│   ├── speaker/
-│   │   ├── id.py               # ECAPA embedding + matching
-│   │   ├── gallery.py          # Speaker enrollment store
-│   │   └── namer.py            # LLM-driven speaker naming
 │   └── indication/             # Sound + visual + notification backends
-├── audio_event/
-│   └── observer.py             # YAMNet classifier (optional)
 ├── store/
 │   ├── storage.py              # SQLite DAO (transcripts, tools, usage)
 │   └── context.py              # Context builder (recent transcripts, etc.)
@@ -427,12 +346,6 @@ src/
 
 ## Troubleshooting
 
-**Claude Code CLI not found**
-```bash
-claude --version
-# If it fails, install: https://docs.claude.com/claude-code
-```
-
 **Mic permission denied**
 - Grant microphone access in System Settings → Privacy & Security
 - Try `heare start` in foreground first (not backgrounded)
@@ -443,10 +356,6 @@ claude --version
 
 **STT hanging or slow**
 - Groq Whisper is the bottleneck, not heare. Check your network.
-
-**Speaker recognition drifting**
-- Run `uv run python -m src.main speakers audit` to check embedding health
-- Re-enroll if centroid drift exceeds threshold: `heare enroll-owner --label owner`
 
 **Browser extension not connecting**
 - Verify `chrome://extensions` shows "Heare Bridge" as enabled

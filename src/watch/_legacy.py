@@ -6,7 +6,6 @@ daemon.log. Read-only — the viewer never touches daemon state.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import os
 import sqlite3
 import time
@@ -148,34 +147,7 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     )
 
 
-def _load_speaker_labels(speakers_file: Path) -> dict[str, str]:
-    """Return {speaker_id: label} from the gallery JSON. Fails silently."""
-    if not speakers_file.exists():
-        return {}
-    try:
-        data = json.loads(speakers_file.read_text())
-    except (OSError, ValueError):
-        return {}
-    speakers = data.get("speakers") or {}
-    return {
-        sid: (entry.get("label") or sid)
-        for sid, entry in speakers.items()
-        if isinstance(entry, dict)
-    }
-
-
-def _speaker_style(sid: str | None) -> str:
-    if sid is None:
-        return "dim"
-    if sid == "owner":
-        return "bold green"
-    return "yellow"
-
-
-def _you_table(
-    con: sqlite3.Connection | None, labels: dict[str, str] | None = None
-) -> Table:
-    labels = labels or {}
+def _you_table(con: sqlite3.Connection | None) -> Table:
     """Column 1 — what the user said, with speaker labels."""
     table = Table(title="🧑 You", expand=True, header_style="bold cyan")
     table.add_column("time", width=8, style="dim")
@@ -190,10 +162,11 @@ def _you_table(
             "ORDER BY ts DESC LIMIT 8",
         )
         for ts, sid, text in reversed(rows):
-            display = labels.get(sid, sid) if sid else "unknown"
+            display = sid if sid else "you"
+            style = "dim" if sid is None else ("bold green" if sid == "owner" else "yellow")
             table.add_row(
                 _fmt_time(ts),
-                Text(_truncate(display, 10), style=_speaker_style(sid)),
+                Text(_truncate(display, 10), style=style),
                 _truncate(text, 80),
             )
     if con is None or not rows:
@@ -443,7 +416,6 @@ def _build_layout(
     input_buffer: str | None = None,
 ) -> Layout:
     con = _open_db(settings.db_path)
-    labels = {}
     try:
         layout = Layout()
         # header=3 + activity=10 + body=ratio + log=6 + controls=3
@@ -460,7 +432,7 @@ def _build_layout(
         )
         # 3-column body: you | bot | did (each gets equal space)
         layout["body"].split_row(
-            Layout(_you_table(con, labels), name="you"),
+            Layout(_you_table(con), name="you"),
             Layout(_bot_table(con), name="bot"),
             Layout(_did_table(con), name="did"),
         )

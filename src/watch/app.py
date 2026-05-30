@@ -134,7 +134,7 @@ class HeareDashboard(App):
         provider = snapshot.header.provider
         ai_bar.refresh_data(provider, models.read_current_model(self.settings, provider))
         usage_bar.refresh_data(snapshot.usage)
-        voice_bar.refresh_data(snapshot.voice_state, snapshot.audio_event)
+        voice_bar.refresh_data(snapshot.voice_state)
         agent_resp_bar.refresh_data(snapshot.agent_response)
         display_panel.refresh_data(snapshot.display)
 

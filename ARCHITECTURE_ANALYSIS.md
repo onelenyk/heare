@@ -4,13 +4,13 @@
 
 ## System Overview
 
-**Heare** is a proactive, ambient, agentic voice AI assistant powered by Claude Code. It lives in your headphones, listens continuously, and decides autonomously when to speak or act.
+**Heare** is a proactive, ambient, agentic voice AI assistant powered by Claude. It lives in your headphones, listens continuously, and decides autonomously when to speak or act.
 
 ### Core Characteristics
 - **Continuous Listening** via microphone with Silero VAD
 - **Autonomous Decision Making** about when to respond
 - **Ukrainian Voice Output** via Edge TTS
-- **Action Capabilities** through Claude Code tools (Read/Write/Edit/Bash)
+- **Action Capabilities** through LLM tools (Read/Write/Edit/Bash)
 - **Persistent Memory** across sessions
 - **Self-Generated Persona** on first run
 
@@ -44,11 +44,6 @@
 │  │  • Toggled from watch dashboard                                  │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  Speaker Buffer (Optional)                                       │  │
-│  │  • Buffers audio for speaker identification                      │  │
-│  │  • Enabled when speaker_id_enabled=True                         │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │  GroqSTTService (Speech-to-Text)                                 │  │
 │  │  • Whisper-large-v3-turbo via Groq API                           │  │
 │  │  • Language detection (auto/uk/en/ru)                           │  │
@@ -57,11 +52,6 @@
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │  STT Error Observer                                              │  │
 │  │  • Catches ErrorFrame → indication notification                  │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  Speaker Tagger (Optional)                                       │  │
-│  │  • Tags transcriptions with speaker_id                           │  │
-│  │  • Uses ECAPA embeddings for recognition                        │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────┬──────────────────────────────────────────┘
                                │
@@ -222,8 +212,7 @@ LanguageState (shared state)
 4. **Action log**: Recent tool executions (ConversationManager._action_log, maxlen=16)
 5. **MCP server descriptions**: Available MCP servers and their tools
 6. **Capabilities index**: Top-K relevant capabilities (skills + MCP + tools)
-7. **Speaker gallery**: Recognized speakers and their labels
-8. **Current mode**: silent/focus/ambient
+7. **Current mode**: silent/focus/ambient
 9. **Time & timezone**: For temporal reasoning
 
 **System Prompt Structure**:
@@ -690,10 +679,6 @@ mode = "ambient"  # silent | focus | ambient
 conversation_memory_enabled = true
 conversation_idle_seconds = 3600
 
-# Speaker Recognition
-speaker_id_enabled = true
-speakers_file = "~/.heare/speakers.json"
-
 # Indication
 [indication]
 enabled = true
@@ -741,8 +726,6 @@ intent_queue_max_pending = 32
 ### Memory Usage
 - **Idle**: ~150-200MB
 - **During speech**: ~200-250MB
-- **With speaker recognition**: +50MB (ECAPA model)
-
 ### CPU Usage
 - **Idle**: <5%
 - **During speech**: 20-30%
@@ -777,11 +760,6 @@ intent_queue_max_pending = 32
 - Stored in `~/.heare/config.toml` (plaintext)
 - Redacted from logs
 - Default: "авторизую"
-
-### 5. Speaker Profiles
-- Stored in `~/.heare/speakers.json`
-- Contains ECAPA embeddings (vectors, not audio)
-- Owner flag grants special privileges
 
 ---
 
@@ -838,7 +816,7 @@ intent_queue_max_pending = 32
 ### API Stability
 - **Stable**: Pipeline core, tool registry, storage schema
 - **Evolving**: Indication system, conversation manager, capability index
-- **Experimental**: Speaker recognition, MCP integration, custom workflows
+- **Experimental**: MCP integration, custom workflows
 
 ---
 
@@ -861,7 +839,6 @@ The architecture is modular, extensible, and designed for continuous operation a
 - Multi-modal feedback (sound, visual, notifications)
 - Rich context building for intelligent responses
 - Extensible tool system
-- Speaker recognition for personalization
 - Bilingual support (Ukrainian/English/Russian)
 
 **Design Philosophy**:
@@ -902,28 +879,6 @@ Each method is wired as an LLM-facing tool in the agent (`list_browser_tabs`, `r
 - The URL blocklist prevents access to `chrome://`, `file://`, and other extension:// URLs to avoid side-channel attacks.
 
 **Failure Modes**: If the extension is not installed, any call to a browser tool returns `{success: false, error: "Browser not connected", retryable: false}`. The daemon and LLM handle this gracefully by either retrying later or explaining to the user that the feature is unavailable.
-
----
-
-## Audio Event Detection (YAMNet)
-
-An optional, non-speech sound classifier runs in the pipeline to detect ambient events (laughter, coughing, barking, etc.) and react autonomously—for example, laughing back when someone laughs, or offering help when someone coughs.
-
-**Model**: YAMNet is a lightweight convolutional neural network trained on the AudioSet ontology (521 classes). The daemon uses the ONNX mel-input variant (~14 MB) to avoid importing TensorFlow at runtime. It processes 0.96-second (16 kHz) windows and outputs softmax scores for each class.
-
-**Curation**: Rather than surfacing all 521 classes, a curated allowlist of 17 human-relevant sounds is defined: laughter, giggle, cry, cough, sneeze, sniff, snore, bark, meow, yowl, howl, yell, grunt, sigh, throat-clearing, scream, hiss.
-
-**Pipeline Integration**: The `AudioEventObserver` is a pass-through stage inserted early in the frame chain (before the transcription gate). It offloads inference to a background thread via `asyncio.to_thread` so that long model runs don't block the audio input loop.
-
-**Debouncing**: To avoid chattering on borderline detections, the observer uses a 2-window confirmation rule: it must see the same label in two consecutive windows before emitting an event. While inference is in flight, fully-buffered new windows are dropped (drop-on-busy policy).
-
-**Output**: When an event is detected, it writes to `~/.heare/audio_event.json` with the label, confidence score, and timestamp. The watch dashboard reads this file and renders a transient indicator (5s TTL auto-decay).
-
-**Optional Dependency**: YAMNet requires `onnxruntime` and `numpy`, which are not installed by default. Users who want the feature install the optional dependency group (`pip install heare[audio-event]`). If the model file is missing or `onnxruntime` is not available, the observer factory returns `None` and the pipeline skips the stage with a warning log.
-
-**Failure Resilience**: If inference throws an exception (out-of-memory, corrupt model, etc.), the exception is caught, logged, and the `_running` flag is reset in a `finally` block, preventing deadlock. The frame is always forwarded unchanged.
-
-**Voice-State Observer**: A companion stage `VoiceStateObserver` writes `~/.heare/voice_state.json` on every speech-state transition. This file tracks the current mode (idle, listening, stt, result) and timestamps, allowing the dashboard to display a synchronized status bar showing whether the daemon is currently processing audio.
 
 ---
 

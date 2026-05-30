@@ -121,36 +121,6 @@ def counts(con: sqlite3.Connection | None) -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
-# Public API: Speaker labels
-# ---------------------------------------------------------------------------
-
-
-def load_speaker_labels(speakers_file: Path) -> dict[str, str]:
-    """Return {speaker_id: label} from the gallery JSON. Fails silently."""
-    if not speakers_file.exists():
-        return {}
-    try:
-        data = json.loads(speakers_file.read_text())
-    except (OSError, ValueError):
-        return {}
-    speakers = data.get("speakers") or {}
-    return {
-        sid: (entry.get("label") or sid)
-        for sid, entry in speakers.items()
-        if isinstance(entry, dict)
-    }
-
-
-def speaker_style(sid: str | None) -> str:
-    """Get Rich style string for speaker ID."""
-    if sid is None:
-        return "dim"
-    if sid == "owner":
-        return "bold green"
-    return "yellow"
-
-
-# ---------------------------------------------------------------------------
 # Public API: Activity feed (unified transcripts + actions)
 # ---------------------------------------------------------------------------
 
@@ -192,7 +162,7 @@ class ActivityRow(NamedTuple):
     status: str | None  # Raw status from actions table (NULL for transcripts)
 
 
-def fetch_activity(con: sqlite3.Connection | None, limit: int = 50, speakers_file: Path | None = None) -> list[ActivityRow]:
+def fetch_activity(con: sqlite3.Connection | None, limit: int = 50) -> list[ActivityRow]:
     """Fetch unified activity feed with transcripts and actions.
 
     Uses UNION ALL query for efficiency. Returns newest first.
@@ -201,7 +171,6 @@ def fetch_activity(con: sqlite3.Connection | None, limit: int = 50, speakers_fil
     Args:
         con: Database connection
         limit: Max rows to fetch
-        speakers_file: Optional path to speakers.json for labels
     """
     activities: list[ActivityRow] = []
     if con is None:
@@ -223,7 +192,6 @@ def fetch_activity(con: sqlite3.Connection | None, limit: int = 50, speakers_fil
     """
 
     rows = fetch(con, query, limit)
-    labels = load_speaker_labels(speakers_file) if speakers_file else {}
 
     for ts, type_, content, who_key, tool, status in rows:
         if type_ == "said":
@@ -235,8 +203,8 @@ def fetch_activity(con: sqlite3.Connection | None, limit: int = 50, speakers_fil
                 who = "you"
                 style = "dim"
             else:
-                who = labels.get(who_key, who_key)
-                style = speaker_style(who_key)
+                who = who_key
+                style = "yellow"
             activities.append(ActivityRow(ts, who, "said", content, style, status))
         else:
             # Action row
@@ -496,35 +464,6 @@ def fetch_latest_display(con: "sqlite3.Connection | None") -> DisplayData:
 
 
 @dataclass(frozen=True)
-class AudioEventData:
-    """Most recent confirmed audio event from the YAMNet observer.
-
-    Written by ``src/audio_event/writer.py`` to
-    ``settings.audio_event_file`` on every confirmed event; read here
-    on each dashboard tick. ``label`` is ``None`` when no event has
-    fired yet (or the file is missing). ``ts`` lets the widget
-    auto-decay stale entries without a writer-side timer.
-    """
-
-    label: str | None
-    score: float
-    ts: float
-
-
-def read_audio_event(path: Path) -> AudioEventData:
-    """Read the on-disk audio event. Returns defaults on missing/corrupt file."""
-    try:
-        raw = json.loads(path.read_text())
-    except (FileNotFoundError, OSError, ValueError):
-        return AudioEventData(label=None, score=0.0, ts=0.0)
-    return AudioEventData(
-        label=raw.get("label"),
-        score=float(raw.get("score", 0.0)),
-        ts=float(raw.get("ts", 0.0)),
-    )
-
-
-@dataclass(frozen=True)
 class DashboardSnapshot:
     """Complete dashboard state snapshot.
 
@@ -539,7 +478,6 @@ class DashboardSnapshot:
     is_input_muted: bool
     usage: UsageData
     voice_state: VoiceStateData
-    audio_event: AudioEventData
     agent_response: AgentResponseData
     display: DisplayData
     pair_code: PairCodeData
@@ -650,7 +588,7 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     )
 
     # Fetch activity
-    activity_rows = fetch_activity(con, limit=50, speakers_file=None)
+    activity_rows = fetch_activity(con, limit=50)
 
     # Fetch log tail
     log_lines = read_log_tail(Path.home() / ".heare" / "logs" / "daemon.log", lines=20)
@@ -659,7 +597,6 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     usage = fetch_usage(con)
 
     voice_state = VoiceStateData(state="idle", since_ts=0.0, last_partial=None, last_final=None)  # voice state is now in State, not file
-    audio_event = read_audio_event(Path.home() / ".heare" / "audio_event.json")
     agent_response = fetch_agent_response(con)
     display = fetch_latest_display(con)
 
@@ -677,7 +614,6 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
         is_input_muted=is_input_muted_val,
         usage=usage,
         voice_state=voice_state,
-        audio_event=audio_event,
         agent_response=agent_response,
         display=display,
         pair_code=pair_code,
@@ -756,9 +692,6 @@ def format_snapshot_text(snapshot: DashboardSnapshot) -> str:
         lines.append(f"partial: {vs.last_partial[:80]}")
     if vs.last_final:
         lines.append(f"final: {vs.last_final[:80]}")
-    ae = snapshot.audio_event
-    if ae.label is not None:
-        lines.append(f"audio event: {ae.label} ({ae.score:.2f})")
     lines.append("")
 
     # ── Usage / cost ───────────────────────────────────────────────────

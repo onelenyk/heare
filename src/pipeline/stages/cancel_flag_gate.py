@@ -1,8 +1,8 @@
 """Cancel-flag gate — external "interrupt now" trigger.
 
 Symmetric with :mod:`src.pipeline.stages.mute_gate`: a flag file at
-``settings.cancel_flag_file`` acts as the contract between any outside
-process (overlay UI, watch dashboard, hotkey daemon) and the running
+ ``settings.cancel_flag_file`` acts as the contract between any outside
+process (watch dashboard, hotkey daemon) and the running
 Pipecat pipeline.
 
 Lifecycle

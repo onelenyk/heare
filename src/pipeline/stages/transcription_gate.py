@@ -49,15 +49,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("heare.transcription_gate")
 
 
-# Audio-event forwarding policy. The detection threshold
-# (settings.audio_event_threshold, default 0.4) decides when YAMNet
-# *confirms* an event; this higher floor decides when that event is
-# confident enough to tag a user turn for the LLM. Stale events are
-# dropped: an old "Music" tag must not bleed onto an utterance spoken
-# minutes later in silence.
-_AUDIO_EVENT_FORWARD_MIN_SCORE: float = 0.7
-_AUDIO_EVENT_MAX_AGE_S: float = 12.0
-
 
 # Default stop-word list used when the gate is constructed without a
 # Settings object (test paths). Mirrors src/config.py:cancel_stop_words.
@@ -516,25 +507,12 @@ def _build_transcription_gate_class():
             # Voice swap follows the active (post-hysteresis) language.
             self._set_tts_voice(self._active_lang)
 
-            # Resolve the ambient audio context (e.g. "Music" was playing)
-            # once: it is both persisted with the transcript AND carried
-            # on the outbound frame so the system-prompt injector can tell
-            # the LLM what the room sounded like for THIS turn — the model
-            # has no other sense of hearing.
-            ae_label, ae_score = self._latest_audio_event()
-
             # Persist transcript so the watch dashboard sees user activity.
             if self.store is not None and self.settings is not None:
                 try:
                     await self.store.log_transcript(
                         transcript,
                         self.settings.mode.value,
-                        speaker_id=getattr(frame, "speaker_id", None),
-                        speaker_confidence=getattr(
-                            frame, "speaker_confidence", None
-                        ),
-                        audio_event_label=ae_label,
-                        audio_event_score=ae_score,
                     )
                 except Exception:
                     logger.exception(
@@ -550,17 +528,6 @@ def _build_transcription_gate_class():
                 outbound = self._clone_with_text(frame, transcript)
             else:
                 outbound = frame
-            # Carry the current turn's ambient audio onto the frame so the
-            # system-prompt injector can surface it as THIS turn's hearing
-            # (not just buried in recent-transcript history).
-            try:
-                outbound.audio_event_label = ae_label
-                outbound.audio_event_score = ae_score
-            except Exception:
-                logger.debug(
-                    "transcription_gate: could not attach audio_event to "
-                    "frame (non-fatal)"
-                )
             await self.push_frame(outbound, direction)
 
         @staticmethod
@@ -593,41 +560,6 @@ def _build_transcription_gate_class():
                 )
                 return frame
             return clone
-
-        def _latest_audio_event(
-            self,
-        ) -> tuple[str | None, float | None]:
-            """Return ``(label, score)`` of the freshest confirmed audio
-            event worth surfacing to the LLM, else ``(None, None)``.
-
-            Forwards any label (Music, Speech, Applause, …) above
-            ``_AUDIO_EVENT_FORWARD_MIN_SCORE`` as long as it fired within
-            ``_AUDIO_EVENT_MAX_AGE_S`` of now, so a stale tag never bleeds
-            onto a later utterance. Best-effort: any failure yields no tag.
-            """
-            if self.settings is None:
-                return None, None
-            try:
-                from src.audio_event.reader import read_latest_audio_event
-
-                result = read_latest_audio_event(
-                    self.settings.audio_event_file
-                )
-            except Exception:
-                logger.debug(
-                    "transcription_gate: audio-event read failed "
-                    "(non-fatal)",
-                    exc_info=True,
-                )
-                return None, None
-            if result is None:
-                return None, None
-            label, score, ts = result
-            if score < _AUDIO_EVENT_FORWARD_MIN_SCORE:
-                return None, None
-            if time.time() - ts > _AUDIO_EVENT_MAX_AGE_S:
-                return None, None
-            return label, round(score, 3)
 
         def _set_tts_voice(self, lang: str) -> None:
             if self._tts_service is None:

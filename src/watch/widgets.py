@@ -11,7 +11,7 @@ from textual.widgets import Button, DataTable, Input, RichLog, Static
 from src.config import Settings
 from src.pipeline.stages.text_injector import inject_text
 from src.version import app_version
-from .data import ActivityRow, AgentResponseData, AudioEventData, DisplayData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
+from .data import ActivityRow, AgentResponseData, DisplayData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
 
 
 class HeaderBar(Static):
@@ -415,33 +415,25 @@ class AIBar(Static):
 
 
 class VoiceStateBar(Static):
-    """Live voice-state panel: idle / listening / stt / result + last audio event.
+    """Live voice-state panel: idle / listening / stt / result.
 
     Reads ``DashboardSnapshot.voice_state`` (written by the pipeline's
-    ``VoiceStateObserver`` to a JSON file) and ``DashboardSnapshot.audio_event``
-    (written by ``src/audio_event/writer.py``). The "result" state auto-decays
-    to idle after ``RESULT_TTL_S`` and event lines auto-decay after
-    ``EVENT_TTL_S``, so the panel returns to a calm state without writer-side
-    timers.
+    ``VoiceStateObserver``). The "result" state auto-decays
+    to idle after ``RESULT_TTL_S``, so the panel returns to a calm
+    state without writer-side timers.
     """
 
     RESULT_TTL_S: float = 4.0
-    EVENT_TTL_S: float = 5.0
 
     def __init__(self) -> None:
         super().__init__()
         self._voice = VoiceStateData(
             state="idle", since_ts=0.0, last_partial=None, last_final=None
         )
-        self._event = AudioEventData(label=None, score=0.0, ts=0.0)
         self.border_title = "🎤 voice"
 
-    def refresh_data(
-        self, voice: VoiceStateData, audio_event: AudioEventData | None = None
-    ) -> None:
+    def refresh_data(self, voice: VoiceStateData) -> None:
         self._voice = voice
-        if audio_event is not None:
-            self._event = audio_event
         self.update(self._build_text())
 
     def _effective_state(self) -> str:
@@ -479,14 +471,6 @@ class VoiceStateBar(Static):
         else:
             text.append("(no audio)", style="dim italic")
 
-        if self._event.label is not None:
-            import time
-
-            if time.time() - self._event.ts < self.EVENT_TTL_S:
-                text.append("\n")
-                text.append("event    ", style="dim")
-                text.append(self._event.label, style="bold magenta")
-                text.append(f" ({self._event.score:.2f})", style="dim magenta")
         return text
 
     def render(self) -> Text:

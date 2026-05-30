@@ -14,7 +14,7 @@ CREATE TABLE transcripts_new (
 );
 
 INSERT INTO transcripts_new (id, ts, text, mode, agent_mode, agent_spoken, turn_id)
-    SELECT id, ts, text, mode, agent_mode, agent_spoken, turn_id
+    SELECT id, ts, text, mode, agent_mode, agent_spoken, NULL
     FROM transcripts;
 
 DROP TABLE transcripts;

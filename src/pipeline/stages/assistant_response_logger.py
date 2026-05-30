@@ -3,7 +3,7 @@
 Sits BETWEEN the LLM service and the TTS service so it sees the LLM's text
 output stream before TTS consumes it. We accumulate ``LLMTextFrame``/
 ``TextFrame`` chunks between ``LLMFullResponseStartFrame`` and
-``LLMFullResponseEndFrame`` and log a single ``speaker_id='bot'`` row per
+``LLMFullResponseEndFrame`` and log a single row per
 response.
 
 We also log standalone ``TTSSpeakFrame`` payloads (e.g. the startup
@@ -154,7 +154,6 @@ def _build_logger_class():
                 await self.store.log_transcript(
                     text=text,
                     mode="assistant",
-                    speaker_id="bot",
                     agent_mode=agent_mode,
                     agent_spoken=agent_spoken,
                 )
