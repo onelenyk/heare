@@ -650,7 +650,7 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     )
 
     # Fetch activity
-    activity_rows = fetch_activity(con, limit=50, speakers_file=settings.speakers_file)
+    activity_rows = fetch_activity(con, limit=50, speakers_file=None)
 
     # Fetch log tail
     log_lines = read_log_tail(settings.log_dir / "daemon.log", lines=20)

@@ -443,7 +443,7 @@ def _build_layout(
     input_buffer: str | None = None,
 ) -> Layout:
     con = _open_db(settings.db_path)
-    labels = _load_speaker_labels(settings.speakers_file)
+    labels = {}
     try:
         layout = Layout()
         # header=3 + activity=10 + body=ratio + log=6 + controls=3
