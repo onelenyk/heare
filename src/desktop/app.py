@@ -51,13 +51,18 @@ async function poll() {
   try {
     const r = await fetch(API + "/state");
     const s = await r.json();
+    const running = !!s.running || (s.mode && s.provider);
     document.getElementById("name").textContent = (s.agent||"heare") + " " + (s.emoji||"");
-    document.getElementById("status").className = "status " + (s.running ? "active" : "");
-    document.getElementById("status").textContent = s.running ? "active" : "offline";
+    document.getElementById("status").className = "status " + (running ? "active" : "");
+    document.getElementById("status").textContent = running ? "active" : "offline";
     document.getElementById("mode").textContent = "mode: " + (s.mode||"?");
     document.getElementById("provider").textContent = " | " + (s.provider||"?");
-    document.getElementById("mute-mic").className = s.mute_mic ? "on" : "";
-    document.getElementById("mute-bot").className = s.mute_bot ? "on" : "";
+    const micOn = s.mute_mic === "1" || s.mute_mic === true;
+    const botOn = s.mute_bot === "1" || s.mute_bot === true;
+    document.getElementById("mute-mic").textContent = micOn ? "🔇 mic" : "🔈 mic";
+    document.getElementById("mute-mic").className = micOn ? "on" : "";
+    document.getElementById("mute-bot").textContent = botOn ? "🔇 bot" : "🔈 bot";
+    document.getElementById("mute-bot").className = botOn ? "on" : "";
   } catch(e) {}
 
   try {
@@ -73,9 +78,11 @@ setInterval(poll, 500); poll();
 
 async function toggleMute(target) {
   await fetch(API + "/mute", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({target:target})});
+  poll();
 }
 async function setMode(m) {
   await fetch(API + "/mode", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({mode:m})});
+  poll();
 }
 async function cancel() {
   await fetch(API + "/cancel", {method:"POST"});
