@@ -146,6 +146,9 @@ def render_native_system_prompt(
         mode_block = context.get("mode_block")
         if mode_block:
             parts.append(mode_block)
+        output_routing_block = context.get("output_routing_block")
+        if output_routing_block:
+            parts.append(output_routing_block)
         current_display = context.get("current_display")
         if current_display:
             parts.append(current_display)

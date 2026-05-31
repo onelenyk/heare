@@ -128,14 +128,32 @@ async def test_gate_drops_tts_audio_in_silent_and_meeting_mode(
     assert captured == [a3]
 
 
-def test_mute_output_flags_per_mode():
+def test_voice_muted_flags_per_mode():
     from src.agent.modes import MODE_PROFILES
 
+    # Deprecated alias still works.
     assert MODE_PROFILES["silent"].mute_output is True
     assert MODE_PROFILES["meeting"].mute_output is True
     assert MODE_PROFILES["ambient"].mute_output is False
     assert MODE_PROFILES["focus"].mute_output is False
     assert MODE_PROFILES["assistant"].mute_output is False
+    # Canonical field.
+    assert MODE_PROFILES["silent"].voice_muted is True
+    assert MODE_PROFILES["meeting"].voice_muted is True
+    assert MODE_PROFILES["ambient"].voice_muted is False
+    assert MODE_PROFILES["focus"].voice_muted is False
+    assert MODE_PROFILES["assistant"].voice_muted is False
+
+
+def test_outputs_per_mode():
+    from src.agent.modes import MODE_PROFILES
+
+    _ALL = frozenset({"voice", "text", "canvas"})
+    assert MODE_PROFILES["ambient"].outputs == _ALL
+    assert MODE_PROFILES["focus"].outputs == _ALL
+    assert MODE_PROFILES["assistant"].outputs == _ALL
+    assert MODE_PROFILES["silent"].outputs == frozenset({"text", "canvas"})
+    assert MODE_PROFILES["meeting"].outputs == frozenset({"text"})
 
 
 @pytest.mark.asyncio
@@ -234,3 +252,101 @@ async def test_input_gate_passes_audio_when_not_muted(tmp_path: Path):
     )
     await proc.process_frame(audio, None)
     assert captured == [audio]
+
+
+# ---------------------------------------------------------------------------
+# Text / canvas frame survival — mute_bot gate only drops TTSAudioRawFrame.
+# TextContentFrame and CanvasContentFrame flow through different stages
+# (output_router → assistant_response_logger) and MUST survive mute.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_gate_passes_text_frame_when_muted(tmp_path: Path):
+    """TextContentFrame survives mute_bot=1 — text bypasses the output gate."""
+    from pipecat.frames.frames import TTSAudioRawFrame
+
+    from src.pipeline.stages.mute_gate import create_mute_gate
+    from src.pipeline.stages.output_router import TextContentFrame
+
+    state = _MockState(mute_bot="1")
+    proc = create_mute_gate(state=state)
+
+    captured: list = []
+
+    async def fake_push(frame, direction=None):
+        captured.append(frame)
+
+    proc.push_frame = fake_push  # type: ignore[method-assign]
+
+    text_frame = TextContentFrame(text="hello")
+    tts_frame = TTSAudioRawFrame(
+        audio=b"\x00\x00", sample_rate=24000, num_channels=1
+    )
+
+    await proc.process_frame(text_frame, None)
+    await proc.process_frame(tts_frame, None)
+
+    assert text_frame in captured
+    assert tts_frame not in captured  # TTS still dropped
+
+
+@pytest.mark.asyncio
+async def test_gate_passes_canvas_frame_when_muted(tmp_path: Path):
+    """CanvasContentFrame survives mute_bot=1 — canvas bypasses the output gate."""
+    from pipecat.frames.frames import TTSAudioRawFrame
+
+    from src.pipeline.stages.mute_gate import create_mute_gate
+    from src.pipeline.stages.output_router import CanvasContentFrame
+
+    state = _MockState(mute_bot="1")
+    proc = create_mute_gate(state=state)
+
+    captured: list = []
+
+    async def fake_push(frame, direction=None):
+        captured.append(frame)
+
+    proc.push_frame = fake_push  # type: ignore[method-assign]
+
+    canvas_frame = CanvasContentFrame(text="<div>canvas</div>")
+    tts_frame = TTSAudioRawFrame(
+        audio=b"\x00\x00", sample_rate=24000, num_channels=1
+    )
+
+    await proc.process_frame(canvas_frame, None)
+    await proc.process_frame(tts_frame, None)
+
+    assert canvas_frame in captured
+    assert tts_frame not in captured  # TTS still dropped
+
+
+@pytest.mark.asyncio
+async def test_gate_passes_all_frames_when_not_muted(tmp_path: Path):
+    """mute_bot=0 → TTS, text, and canvas frames all pass through."""
+    from pipecat.frames.frames import TTSAudioRawFrame
+
+    from src.pipeline.stages.mute_gate import create_mute_gate
+    from src.pipeline.stages.output_router import CanvasContentFrame, TextContentFrame
+
+    state = _MockState()  # mute_bot defaults to unmuted
+    proc = create_mute_gate(state=state)
+
+    captured: list = []
+
+    async def fake_push(frame, direction=None):
+        captured.append(frame)
+
+    proc.push_frame = fake_push  # type: ignore[method-assign]
+
+    tts = TTSAudioRawFrame(audio=b"\x00", sample_rate=24000, num_channels=1)
+    text = TextContentFrame(text="hello")
+    canvas = CanvasContentFrame(text="<div>c</div>")
+
+    await proc.process_frame(tts, None)
+    await proc.process_frame(text, None)
+    await proc.process_frame(canvas, None)
+
+    assert tts in captured
+    assert text in captured
+    assert canvas in captured

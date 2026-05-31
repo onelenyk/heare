@@ -71,6 +71,12 @@ class SessionState:
 
         Returns True if the effective profile changed. Fires the
         mode-change listener only on an actual change.
+
+        Mode changes take effect on the **next** LLM turn (system prompt
+        rebuild), not mid-response.  In-flight voice completes before the
+        switch — there is no jarring TTS cutoff.  The upstream caller
+        (:func:`_execute_set_mode`) must call :meth:`flush_pending` first
+        to finalise any buffered partial utterance under the old mode.
         """
         new_profile = resolve(name)
         if new_profile.name == self._profile.name:

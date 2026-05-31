@@ -546,3 +546,99 @@ async def test_build_for_generator_omits_mcp_servers_when_none(
     ctx = ContextBuilder(store, settings)
     result = await ctx.build_for_generator(transcript="hi", persona="p")
     assert "mcp_servers" not in result
+
+
+# ---------------------------------------------------------------------------
+# T10: Mode-aware prompt injection — output_routing_block per profile.outputs
+# ---------------------------------------------------------------------------
+
+
+class _FakeSessionState:
+    def __init__(self, profile: ModeProfile) -> None:
+        self.profile = profile
+
+
+async def test_output_routing_block_silent_mode_disables_voice(
+    store: TranscriptStore,
+) -> None:
+    from src.agent.modes import MODE_PROFILES
+
+    settings = Settings()
+    ctx = ContextBuilder(store, settings)
+    ctx.set_session_state(_FakeSessionState(MODE_PROFILES["silent"]))
+    result = await ctx.build_for_generator(transcript="hi", persona="p")
+
+    block = result.get("output_routing_block", "")
+    assert block
+    assert "[voice] tag is UNAVAILABLE in silent mode" in block
+    assert "[text]" in block
+    assert "[canvas]" in block
+    assert "DO NOT use [voice]" in block
+
+
+async def test_output_routing_block_meeting_mode_only_text(
+    store: TranscriptStore,
+) -> None:
+    from src.agent.modes import MODE_PROFILES
+
+    settings = Settings()
+    ctx = ContextBuilder(store, settings)
+    ctx.set_session_state(_FakeSessionState(MODE_PROFILES["meeting"]))
+    result = await ctx.build_for_generator(transcript="hi", persona="p")
+
+    block = result.get("output_routing_block", "")
+    assert block
+    assert "[voice] tag is UNAVAILABLE in meeting mode" in block
+    assert "[canvas] tag is UNAVAILABLE in meeting mode" in block
+    assert "DO NOT use [voice]" in block
+    assert "DO NOT use [canvas]" in block
+    assert "Choose" not in block
+
+
+async def test_output_routing_block_ambient_mode_all_channels(
+    store: TranscriptStore,
+) -> None:
+    from src.agent.modes import MODE_PROFILES
+
+    settings = Settings()
+    ctx = ContextBuilder(store, settings)
+    ctx.set_session_state(_FakeSessionState(MODE_PROFILES["ambient"]))
+    result = await ctx.build_for_generator(transcript="hi", persona="p")
+
+    block = result.get("output_routing_block", "")
+    assert block
+    assert "UNAVAILABLE" not in block
+    assert "[voice]spoken text[/voice]" in block
+    assert "[text]written text[/text]" in block
+    assert "[canvas]html code[/canvas]" in block
+    assert "Choose" in block
+
+
+async def test_output_routing_block_absent_without_session_state(
+    store: TranscriptStore,
+) -> None:
+    settings = Settings()
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build_for_generator(transcript="hi", persona="p")
+    assert "output_routing_block" not in result
+
+
+async def test_output_routing_block_injected_into_render(
+    store: TranscriptStore,
+) -> None:
+    from src.agent.modes import MODE_PROFILES
+
+    settings = Settings()
+    ctx = ContextBuilder(store, settings)
+    ctx.set_session_state(_FakeSessionState(MODE_PROFILES["silent"]))
+    result = await ctx.build_for_generator(transcript="hi", persona="p")
+
+    block = result.get("output_routing_block", "")
+    assert block
+
+    parts: list[str] = ["You are Heare."]
+    output_routing_block = result.get("output_routing_block")
+    if output_routing_block:
+        parts.append(output_routing_block)
+    rendered = "\n".join(parts)
+    assert "[voice] tag is UNAVAILABLE in silent mode" in rendered

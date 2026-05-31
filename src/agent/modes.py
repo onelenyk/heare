@@ -48,21 +48,28 @@ class ModeProfile:
     """
 
     name: str
-    prompt_addendum: str
-    denied_tool_patterns: tuple[str, ...]
-    turn_timeout: float
-    sound_policy: frozenset[str] | None
-    proactivity: str  # "off" | "low" | "medium" | "high"
+    outputs: frozenset[str] = frozenset({"voice", "text", "canvas"})
+    prompt_addendum: str = ""
+    denied_tool_patterns: tuple[str, ...] = ()
+    turn_timeout: float = _AMBIENT_TIMEOUT
+    sound_policy: frozenset[str] | None = None
+    proactivity: str = "medium"  # "off" | "low" | "medium" | "high"
     # Hard output gate: when True the pipeline drops the bot's TTS audio
     # entirely (it still hears, thinks, and may run side-effect-free
     # tools — it just does not speak). This is a mechanical mute, not a
     # prompt hint, so "silent" actually means silent.
-    mute_output: bool = False
+    voice_muted: bool = False
+
+    @property
+    def mute_output(self) -> bool:
+        """Deprecated: use ``voice_muted`` instead."""
+        return self.voice_muted
 
 
 MODE_PROFILES: dict[str, ModeProfile] = {
     "ambient": ModeProfile(
         name="ambient",
+        outputs=frozenset({"voice", "text", "canvas"}),
         prompt_addendum=(
             "Mode: ambient. Normal conversational assistant — engaged but "
             "not pushy."
@@ -74,6 +81,7 @@ MODE_PROFILES: dict[str, ModeProfile] = {
     ),
     "focus": ModeProfile(
         name="focus",
+        outputs=frozenset({"voice", "text", "canvas"}),
         prompt_addendum=(
             "Mode: focus. Be terse and fast. No chit-chat, no follow-up "
             "questions unless essential. Answer and stop."
@@ -85,6 +93,7 @@ MODE_PROFILES: dict[str, ModeProfile] = {
     ),
     "silent": ModeProfile(
         name="silent",
+        outputs=frozenset({"text", "canvas"}),
         prompt_addendum=(
             "Mode: silent. Your speech is muted — replies are NOT heard. "
             "Do not converse. Only act when a request needs a side-effect-"
@@ -94,10 +103,11 @@ MODE_PROFILES: dict[str, ModeProfile] = {
         turn_timeout=_AMBIENT_TIMEOUT,
         sound_policy=frozenset(),
         proactivity="low",
-        mute_output=True,
+        voice_muted=True,
     ),
     "assistant": ModeProfile(
         name="assistant",
+        outputs=frozenset({"voice", "text", "canvas"}),
         prompt_addendum=(
             "Mode: assistant. Proactive helper — full tool access, may "
             "offer relevant follow-ups and do multi-step work."
@@ -109,6 +119,7 @@ MODE_PROFILES: dict[str, ModeProfile] = {
     ),
     "meeting": ModeProfile(
         name="meeting",
+        outputs=frozenset({"text"}),
         prompt_addendum=(
             "Mode: meeting. Passive note-taker. Your speech is muted — "
             "replies are NOT heard. Do not converse or act; side-effect "
@@ -125,7 +136,7 @@ MODE_PROFILES: dict[str, ModeProfile] = {
         turn_timeout=_AMBIENT_TIMEOUT,
         sound_policy=frozenset(),
         proactivity="off",
-        mute_output=True,
+        voice_muted=True,
     ),
 }
 

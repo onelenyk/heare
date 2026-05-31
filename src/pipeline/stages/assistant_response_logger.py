@@ -9,6 +9,19 @@ response.
 We also log standalone ``TTSSpeakFrame`` payloads (e.g. the startup
 greeting or other explicit one-shot speech that bypasses the LLM).
 
+NOTE on TextOutputProcessor (src/pipeline/stages/text_output.py):
+assistant_response_logger captures LLM text BEFORE the output router
+(via LLMTextFrame/TextFrame from the LLM stream) and logs it with
+agent_spoken set according to the mode's voice_muted flag. This
+is the speech path.
+
+TextOutputProcessor captures ONLY text-routed output from the
+OutputRouter (via TextContentFrame) and logs it with agent_spoken=False.
+This is the text-only path.
+
+The two are complementary, NOT duplicative — they capture different
+output flows (speech vs text-only) from different pipeline positions.
+
 Pipecat imports are deferred so the module can be imported in tests
 without pulling the full stack.
 """
@@ -146,7 +159,7 @@ def _build_logger_class():
                 try:
                     profile = self.session_state.profile
                     agent_mode = profile.name
-                    agent_spoken = not profile.mute_output
+                    agent_spoken = not profile.voice_muted
                 except Exception:
                     agent_mode = None
                     agent_spoken = None

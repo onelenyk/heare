@@ -81,6 +81,12 @@ def toggle_input_mute(flag_path: Path) -> bool:
 
 # ---------------------------------------------------------------------------
 # Pipecat processors.
+#
+# IMPORTANT: The output gate below ONLY mutes voice output
+# (TTSAudioRawFrame). Text and canvas frames (TextContentFrame,
+# CanvasContentFrame) flow through completely different stages
+# (output_router → assistant_response_logger) and bypass this
+# processor entirely. Do NOT add text/canvas mute logic here.
 # ---------------------------------------------------------------------------
 
 
@@ -102,7 +108,7 @@ def _build_output_gate_class():
         ) -> None:
             super().__init__()
             self._state = state
-            # Optional: when the active mode profile has mute_output set
+            # Optional: when the active mode profile has voice_muted set
             # (silent / meeting), drop TTS audio the same way the manual
             # output-mute flag does — a hard gate, not a prompt hint.
             self._session_state = session_state
@@ -111,7 +117,7 @@ def _build_output_gate_class():
             if self._session_state is None:
                 return False
             try:
-                return bool(self._session_state.profile.mute_output)
+                return bool(self._session_state.profile.voice_muted)
             except Exception:
                 return False
 

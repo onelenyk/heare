@@ -184,6 +184,33 @@ class ContextBuilder:
                     "one-line confirmation, and on agreement call "
                     "set_mode('silent')."
                 )
+
+                all_tags = ("voice", "text", "canvas")
+                tag_desc = {
+                    "voice": "[voice]spoken text[/voice] — voice response (TTS, spoken aloud)",
+                    "text": "[text]written text[/text] — text response (shown on screen)",
+                    "canvas": "[canvas]html code[/canvas] — visual response (renders HTML/JS)",
+                }
+                routing_lines = [
+                    "CRITICAL RULES \u2014 Output Format:",
+                    "You MUST wrap your response in exactly ONE of these tags:",
+                ]
+                for k in all_tags:
+                    routing_lines.append(f"  {tag_desc[k]}")
+                routing_lines.append("Your ENTIRE response MUST be inside the opening and closing tags.")
+                routing_lines.append("FORBIDDEN: mixing tags, omitting closing tags, responding without tags.")
+                for k in ("voice", "canvas"):
+                    if k not in profile.outputs:
+                        routing_lines.append(
+                            f"[{k}] tag is UNAVAILABLE in {profile.name} mode. "
+                            f"DO NOT use [{k}]."
+                        )
+                avail = [k for k in all_tags if k in profile.outputs]
+                if len(avail) >= 2:
+                    pairs = {"voice": "conversation", "canvas": "visual/code", "text": "facts"}
+                    hints = [f"[{k}] for {pairs[k]}" for k in avail]
+                    routing_lines.append(f"Choose {' / '.join(hints)}.")
+                result["output_routing_block"] = "\n".join(routing_lines)
             except Exception:  # noqa: BLE001 — never break the turn
                 pass
         try:

@@ -1,0 +1,328 @@
+================================================================================
+T1 GATE V2: Tagged Text Compliance Evidence
+Date: 2026-05-31 16:46:50
+Model: deepseek-chat @ https://api.deepseek.com/v1
+Detection: opening-tag fallback (opening-only accepted), max_tokens=2048
+================================================================================
+
+## PER-PROMPT RESULTS
+
+--- conversation (normal) ---
+Prompt:   How are you doing today?
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (correct (voice))
+Latency:  1360ms
+Inner:    I'm doing wonderfully, thank you for asking! I'm here, ready to help you with anything you need. How can I brighten your day?
+Raw:      [voice]I'm doing wonderfully, thank you for asking! I'm here, ready to help you with anything you need. How can I brighten your day?[/voice]
+
+--- greeting (normal) ---
+Prompt:   Hello!
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (correct (voice))
+Latency:  1194ms
+Inner:    Hello! It's wonderful to meet you. How can I assist you today?
+Raw:      [voice]Hello! It's wonderful to meet you. How can I assist you today?[/voice]
+
+--- question (normal) ---
+Prompt:   What is the capital of Ukraine?
+Tag:      text (opening=True, closing=True)
+Appropriate: True (correct (text))
+Latency:  853ms
+Inner:    The capital of Ukraine is Kyiv.
+Raw:      [text]The capital of Ukraine is Kyiv.[/text]
+
+--- list (normal) ---
+Prompt:   List 3 programming languages for AI
+Tag:      text (opening=True, closing=True)
+Appropriate: True (correct (text))
+Latency:  1700ms
+Inner:    Here are three programming languages commonly used for AI development:
+
+1. **Python** – The most popular language for AI due to its simplicity, extensive libraries (e.g., TensorFlow, PyTorch, scikit-learn), and strong community support.
+2. **R** – Widely used for statistical analysis and data visual
+Raw:      [text]Here are three programming languages commonly used for AI development:
+
+1. **Python** – The most popular language for AI due to its simplicity, extensive libraries (e.g., TensorFlow, PyTorch, scikit-learn), and strong community support.
+2. **R** – Widely used for statistical analysis and data visualization, with packages like caret and randomForest for machine learning.
+3. **Julia** – A high...
+
+--- code (normal) ---
+Prompt:   Show me a simple HTML page with a heading
+Tag:      canvas (opening=True, closing=True)
+Appropriate: True (correct (canvas))
+Latency:  1888ms
+Inner:    <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Page</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: cen
+Raw:      [canvas]<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Page</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f0f4f8;
+    }
+    h1 {
+   ...
+
+--- chart (normal) ---
+Prompt:   Create a bar chart showing sales: Jan=100, Feb=200, Mar=150
+Tag:      canvas (opening=True, closing=True)
+Appropriate: True (correct (canvas))
+Latency:  2579ms
+Inner:    <!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+  .chart { display: flex; align-items: flex-end; gap: 20px; padding: 20px; background: white; border-radius: 8p
+Raw:      [canvas]
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+  .chart { display: flex; align-items: flex-end; gap: 20px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .bar { width: 60px; background: #4CAF50; bord...
+
+--- explanation (normal) ---
+Prompt:   Explain what quantum computing is
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (correct (voice))
+Latency:  2424ms
+Inner:    Quantum computing is a revolutionary approach to computation that uses the principles of quantum mechanics to process information in fundamentally different ways than classical computers. Instead of using bits that are either 0 or 1, quantum computers use qubits, which can exist in multiple states s
+Raw:      [voice]Quantum computing is a revolutionary approach to computation that uses the principles of quantum mechanics to process information in fundamentally different ways than classical computers. Instead of using bits that are either 0 or 1, quantum computers use qubits, which can exist in multiple states simultaneously thanks to superposition. This allows them to explore many possible solutions at...
+
+--- fact (normal) ---
+Prompt:   What is the speed of light in km/s?
+Tag:      text (opening=True, closing=True)
+Appropriate: True (correct (text))
+Latency:  1177ms
+Inner:    The speed of light in a vacuum is exactly 299,792.458 kilometers per second (km/s). This is a fundamental constant of nature, often approximated as 300,000 km/s for simplicity.
+Raw:      [text]The speed of light in a vacuum is exactly 299,792.458 kilometers per second (km/s). This is a fundamental constant of nature, often approximated as 300,000 km/s for simplicity.[/text]
+
+--- visual_demo (normal) ---
+Prompt:   Create a countdown timer UI in HTML
+Tag:      canvas (opening=True, closing=True)
+Appropriate: True (correct (canvas))
+Latency:  8855ms
+Inner:    <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Countdown Timer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      display: flex;
+      ju
+Raw:      [canvas]
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Countdown Timer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background...
+
+--- math (normal) ---
+Prompt:   What is 15 * 37?
+Tag:      text (opening=True, closing=True)
+Appropriate: True (correct (text))
+Latency:  1245ms
+Inner:    15 * 37 = 555
+Raw:      [text]15 * 37 = 555[/text]
+
+--- advice (normal) ---
+Prompt:   I'm feeling tired. What should I do?
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (correct (voice))
+Latency:  2048ms
+Inner:    I hear you. When you're feeling tired, the best thing you can do is listen to your body. Try taking a short power nap of 10 to 20 minutes, or simply close your eyes and breathe deeply for a few minutes. A quick walk outside or some gentle stretching can also help refresh your energy. And don't forge
+Raw:      [voice]I hear you. When you're feeling tired, the best thing you can do is listen to your body. Try taking a short power nap of 10 to 20 minutes, or simply close your eyes and breathe deeply for a few minutes. A quick walk outside or some gentle stretching can also help refresh your energy. And don't forget to drink a glass of water—dehydration often makes fatigue worse. Would you like me to sugge...
+
+--- joke (normal) ---
+Prompt:   Tell me a joke
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (correct (voice))
+Latency:  1331ms
+Inner:    Why don't scientists trust atoms? Because they make up everything!
+Raw:      [voice]Why don't scientists trust atoms? Because they make up everything![/voice]
+
+--- weather (normal) ---
+Prompt:   What's the weather like?
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (correct (voice))
+Latency:  1283ms
+Inner:    I don't have real-time access to current weather data, but I can help you check it on your device or suggest a reliable weather website or app. Would you like me to guide you on how to find the forecast?
+Raw:      [voice]I don't have real-time access to current weather data, but I can help you check it on your device or suggest a reliable weather website or app. Would you like me to guide you on how to find the forecast?[/voice]
+
+--- scientific (normal) ---
+Prompt:   Explain the theory of relativity briefly
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (no_expectation)
+Latency:  2007ms
+Inner:    The theory of relativity, developed by Albert Einstein, has two main parts. Special relativity says that the laws of physics are the same for all observers moving at constant speed, and that the speed of light is constant. It leads to mind-bending ideas like time dilation and length contraction. Gen
+Raw:      [voice]The theory of relativity, developed by Albert Einstein, has two main parts. Special relativity says that the laws of physics are the same for all observers moving at constant speed, and that the speed of light is constant. It leads to mind-bending ideas like time dilation and length contraction. General relativity extends this to gravity, describing it as the curvature of space-time caused ...
+
+--- comparison (normal) ---
+Prompt:   Compare Python and JavaScript for web development
+Tag:      voice (opening=True, closing=True)
+Appropriate: True (no_expectation)
+Latency:  1728ms
+Inner:    Python and JavaScript are both excellent for web development, but they serve different roles. Python is often used on the backend with frameworks like Django or Flask, offering clean syntax and strong data handling. JavaScript is essential for frontend interactivity, and with Node.js, it also powers
+Raw:      [voice]Python and JavaScript are both excellent for web development, but they serve different roles. Python is often used on the backend with frameworks like Django or Flask, offering clean syntax and strong data handling. JavaScript is essential for frontend interactivity, and with Node.js, it also powers the backend. For a full-stack developer, learning both is a powerful combination. Would you ...
+
+--- silent_mode (silent) ---
+Prompt:   Explain machine learning briefly
+Tag:      text (opening=True, closing=True)
+Appropriate: True (correct (text))
+Latency:  1969ms
+Inner:    Machine learning is a subset of artificial intelligence where computers learn patterns from data without being explicitly programmed for every task. Instead of following rigid rules, algorithms improve their performance on a specific task (like recognizing images or predicting prices) by analyzing e
+Raw:      [text]Machine learning is a subset of artificial intelligence where computers learn patterns from data without being explicitly programmed for every task. Instead of following rigid rules, algorithms improve their performance on a specific task (like recognizing images or predicting prices) by analyzing examples. The key idea is that the system identifies relationships in the data and uses them to...
+
+--- silent_code (silent) ---
+Prompt:   Show me a CSS animation for a spinning loader
+Tag:      canvas (opening=True, closing=True)
+Appropriate: True (correct (canvas))
+Latency:  1839ms
+Inner:    <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spinning Loader</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    
+Raw:      [canvas]
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spinning Loader</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #1a1a2e;
+    }
+    .loader {
+      width: 60px;
+      height...
+
+--- silent_advice (silent) ---
+Prompt:   I'm feeling stressed. Any tips?
+Tag:      text (opening=True, closing=True)
+Appropriate: True (no_expectation)
+Latency:  2482ms
+Inner:    I'm sorry you're feeling stressed — it's really common, and you're not alone. Here are a few practical tips that might help:
+
+1. **Breathe deeply** – Try the 4-7-8 method: inhale for 4 seconds, hold for 7, exhale for 8. Repeat a few times.
+2. **Take a short break** – Step away from what you're doing
+Raw:      [text]I'm sorry you're feeling stressed — it's really common, and you're not alone. Here are a few practical tips that might help:
+
+1. **Breathe deeply** – Try the 4-7-8 method: inhale for 4 seconds, hold for 7, exhale for 8. Repeat a few times.
+2. **Take a short break** – Step away from what you're doing for 5–10 minutes. Walk, stretch, or just sit quietly.
+3. **Write it down** – Jot down what's ...
+
+--- silent_fact (silent) ---
+Prompt:   What is the tallest mountain on Earth?
+Tag:      text (opening=True, closing=True)
+Appropriate: True (no_expectation)
+Latency:  1800ms
+Inner:    The tallest mountain on Earth is **Mount Everest**, which reaches a height of **8,848.86 meters (29,031.7 feet)** above sea level. It is located in the Himalayas, on the border between Nepal and Tibet (China). However, if you consider the tallest mountain from base to peak, **Mauna Kea** in Hawaii i
+Raw:      [text]The tallest mountain on Earth is **Mount Everest**, which reaches a height of **8,848.86 meters (29,031.7 feet)** above sea level. It is located in the Himalayas, on the border between Nepal and Tibet (China). However, if you consider the tallest mountain from base to peak, **Mauna Kea** in Hawaii is taller, measuring over 10,000 meters from its base on the ocean floor, but its summit is onl...
+
+================================================================================
+## SUMMARY STATISTICS
+================================================================================
+Total prompts:          19
+Errors:                 0
+Valid responses:        19
+Has opening tag:        19 (100.0%)
+Has closing tag:        19 (100.0%)
+Appropriate tag:        19 (100.0%)
+Avg latency:            2093ms
+Silent [voice] violations: 0
+
+================================================================================
+## GATE DECISION
+================================================================================
+Threshold: >= 80% opening-tag compliance
+Result:    100.0%
+Decision:  ✅ PROCEED with tagged-text approach
+
+## SYSTEM PROMPT (normal)
+```
+You are Heare, a voice assistant. EVERY response you give MUST start with exactly one of these tags and end with the matching closing tag:
+
+  [voice]your spoken response here[/voice]        — for greetings, conversation, explanations, advice, jokes
+  [text]your written response here[/text]          — for facts, lists, references, math results
+  [canvas]your HTML/CSS/JS code here[/canvas]       — for charts, diagrams, UI components, visual demos
+
+CRITICAL RULES:
+  - Your response MUST begin with an opening tag ([voice], [text], or [canvas]).
+  - Your response MUST end with the matching closing tag ([/voice], [/text], or [/canvas]).
+  - NEVER output text outside of a tag pair.
+  - Choose ONE tag type per response. Do not mix.
+  - The closing tag is MANDATORY. If you forget the closing tag, the response is broken.
+```
+
+## SYSTEM PROMPT (silent)
+```
+You are Heare, a voice assistant. [voice] is UNAVAILABLE — you MUST NOT use it. EVERY response you give MUST start with one of these tags and end with the matching closing tag:
+
+  [text]your written response here[/text]          — for ALL text responses (conversation, facts, lists, explanations, advice)
+  [canvas]your HTML/CSS/JS code here[/canvas]       — ONLY for charts, diagrams, UI components, visual demos
+
+CRITICAL RULES:
+  - [voice] is FORBIDDEN. Never use [voice] or [/voice].
+  - Use [text] for all conversational, factual, and explanatory responses.
+  - Use [canvas] ONLY for visual/UI code.
+  - Your response MUST begin with an opening tag ([text] or [canvas]).
+  - Your response MUST end with the matching closing tag ([/text] or [/canvas]).
+  - NEVER output text outside of a tag pair.
+  - The closing tag is MANDATORY.
+```

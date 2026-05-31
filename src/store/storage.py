@@ -12,7 +12,7 @@ from typing import Any
 import aiosqlite
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 class EventKind(StrEnum):
@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS displays (
     ts REAL NOT NULL,
     title TEXT,
     format TEXT NOT NULL,
+    content_type TEXT,
     content TEXT NOT NULL
 );
 
@@ -194,6 +195,7 @@ class TranscriptStore:
         await self._db.executescript(SCHEMA)
         await self._db.commit()
         await self._migrate_action_log_columns()
+        await self._migrate_displays_content_type()
         await self._check_schema_version()
 
     async def _migrate_action_log_columns(self) -> None:
@@ -274,6 +276,15 @@ class TranscriptStore:
             "ON actions(intent_id)"
         )
         await self.db.commit()
+
+    async def _migrate_displays_content_type(self) -> None:
+        try:
+            await self.db.execute(
+                "ALTER TABLE displays ADD COLUMN content_type TEXT"
+            )
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
     async def _check_schema_version(self) -> None:
         cursor = await self.db.execute(
@@ -388,10 +399,17 @@ class TranscriptStore:
         assert cursor.lastrowid is not None
         return cursor.lastrowid
 
+    async def insert_display(self, content_type: str, content: str) -> None:
+        await self.db.execute(
+            "INSERT INTO displays (ts, content_type, content) VALUES (?, ?, ?)",
+            (time.time(), content_type, content),
+        )
+        await self.db.commit()
+
     async def latest_display(self) -> dict[str, Any] | None:
         """Most recent display block, or None."""
         cursor = await self.db.execute(
-            "SELECT ts, title, format, content FROM displays"
+            "SELECT ts, title, format, content_type, content FROM displays"
             " ORDER BY ts DESC LIMIT 1",
         )
         row = await cursor.fetchone()
@@ -401,7 +419,8 @@ class TranscriptStore:
             "ts": row[0],
             "title": row[1],
             "format": row[2],
-            "content": row[3],
+            "content_type": row[3],
+            "content": row[4],
         }
 
     async def log_decision(

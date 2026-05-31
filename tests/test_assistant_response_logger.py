@@ -156,7 +156,7 @@ async def test_logger_passes_frames_through_downstream():
 @pytest.mark.asyncio
 async def test_logger_tags_mode_and_spoken_from_session_state():
     """Text-response channel: each bot row carries the active mode and
-    whether TTS spoke it (spoken = not profile.mute_output)."""
+    whether TTS spoke it (spoken = not profile.voice_muted)."""
     from pipecat.frames.frames import (
         LLMFullResponseEndFrame,
         LLMFullResponseStartFrame,

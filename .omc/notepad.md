@@ -21,6 +21,27 @@ T9 completed: Replaced hardcoded provider enum/validation with `all_keys()` / `P
 - Both files import from `src.agent.llm.providers`
 - Verified: python syntax compiles, imports resolve correctly, `all_keys()` == `['deepseek', 'zai', 'opencode']`
 ### 2026-05-31 10:03
+### 2026-05-31 14:23
+## F3 QA — Multi-Output Scenarios: ALL 9/9 PASS ✅
+Full suite: 1075 passed, 1 skipped, 0 failures. VERDICT: APPROVE.
+
+
+
+## 2026-05-30 22:30
+Task 9: Cleaned `src/pipeline/build.py` — removed speaker and YAMNet stages from pipeline assembly.
+
+**What**: Removed 3 params from `_assemble_native_stages()`: `speaker_buffer`, `speaker_tagger`, `audio_event_observer`. Removed speaker chain creation block (where `create_speaker_processors` was called). Removed YAMNet observer creation block (where `create_audio_event_observer` was called). Removed `speaker_gallery`, `speaker_model`, `namer_enqueue` from `build_pipeline()` signature. Updated call site and pipeline diagram comments.
+
+**Where**: `src/pipeline/build.py` — 6 edits, clean grep verification (no leftover references).
+
+**Verification**: inspect.signature assertions passed; all 9 todos completed.
+### 2026-05-31 09:55
+T9 completed: Replaced hardcoded provider enum/validation with `all_keys()` / `PROVIDERS` from providers registry.
+- schemas.py: `"enum": ["deepseek", "zai", "opencode"]` → `"enum": all_keys()`
+- direct.py: `if provider not in ("deepseek", "zai", "opencode")` → `if provider not in PROVIDERS`
+- Both files import from `src.agent.llm.providers`
+- Verified: python syntax compiles, imports resolve correctly, `all_keys()` == `['deepseek', 'zai', 'opencode']`
+### 2026-05-31 10:03
 ## T17: Dead Code Audit Report
 
 ### CLEAN ✅
