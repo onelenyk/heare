@@ -6,86 +6,397 @@ HTML = r"""
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
+  :root {
+    --bg: #1a1a2e;
+    --card: #1e1e35;
+    --border: #333;
+    --text: #c0c0c0;
+    --muted: #666;
+    --accent: #00ff88;
+    --accent-red: #ff4444;
+    --accent-cyan: #00d4ff;
+    --accent-orange: #ff8c42;
+    --accent-magenta: #e040fb;
+    --accent-yellow: #ffd740;
+    --mono: 'SF Mono','Cascadia Code','Fira Code','JetBrains Mono','Menlo','Consolas',monospace;
+    --sans: -apple-system,'Segoe UI',system-ui,sans-serif;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 12px; }
-  .header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .name { font-size: 18px; font-weight: bold; }
-  .status { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
-  .status.active { background: #0f0; color: #000; }
-  .controls { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-  button { padding: 4px 12px; border: 1px solid #444; border-radius: 4px; background: #2a2a4a; color: #ccc; cursor: pointer; font-size: 12px; }
-  button:hover { background: #3a3a5a; }
-  button.on { background: #4a4a; border-color: #0f0; color: #0f0; }
-  .canvas { border: 1px dashed #444; border-radius: 6px; min-height: 120px; padding: 10px; margin-bottom: 10px; background: #0d0d1a; overflow: auto; }
-  .canvas:empty::after { content: "canvas — LLM output appears here"; color: #555; font-style: italic; }
-  .activity { font-size: 11px; color: #888; max-height: 80px; overflow-y: auto; }
-  .activity .user { color: #69f; }
-  .activity .bot { color: #f96; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    padding: 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    min-width: 400px;
+    overflow-x: hidden;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .card-header {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .card-header span.label { flex: 1; }
+  .card-header span.extra { color: var(--muted); font-size: 9px; }
+
+  #status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 10px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  #status-bar .dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    flex-shrink: 0;
+  }
+  #status-bar .dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  #status-bar .dot.off { background: var(--accent-red); box-shadow: 0 0 4px var(--accent-red); }
+  #status-bar .identity { font-weight: 700; font-size: 14px; white-space: nowrap; }
+  #status-bar .meta { color: var(--muted); font-size: 10px; white-space: nowrap; }
+  #status-bar .meta em { font-style: normal; color: var(--accent-cyan); }
+
+  .row { display: flex; gap: 6px; }
+  .col { flex: 1; min-width: 0; }
+  .col-wide { flex: 2; }
+
+  #controls .btn-row { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
+  #controls button {
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 10px;
+    font-family: var(--mono);
+    white-space: nowrap;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  #controls button:hover { border-color: var(--accent-cyan); background: #252540; }
+  #controls button.active { border-color: var(--accent); color: var(--accent); }
+  #controls button.on { border-color: var(--accent); color: var(--accent); background: #0a2a1a; }
+
+  #ai-panel .info-line {
+    font-family: var(--mono); font-size: 11px; margin-bottom: 3px; color: var(--muted);
+  }
+  #ai-panel .info-line strong { color: var(--accent-cyan); font-weight: 400; }
+  #ai-panel .usage-line { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; }
+  #ai-panel .cost { color: var(--accent-yellow); }
+
+  #response-panel .text {
+    font-family: var(--mono); font-size: 11px; color: var(--accent-orange);
+    max-height: 60px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  #response-panel .meta { font-size: 9px; color: var(--muted); margin-top: 3px; }
+
+  #canvas {
+    min-height: 80px; max-height: 220px; overflow: auto;
+    padding: 6px; font-size: 11px; line-height: 1.5;
+  }
+  #canvas:empty::after {
+    content: "canvas — LLM output appears here";
+    color: var(--muted); font-style: italic; font-size: 10px;
+  }
+  #canvas img { max-width: 100%; height: auto; }
+  #canvas pre {
+    background: #0d0d1a; border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px; overflow-x: auto;
+    font-family: var(--mono); font-size: 10px; color: var(--text);
+  }
+
+  .data-table {
+    width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px;
+    table-layout: fixed;
+  }
+  .data-table th {
+    text-align: left; color: var(--muted); font-weight: 400; padding: 1px 6px;
+    border-bottom: 1px solid #2a2a44; font-size: 9px; text-transform: uppercase;
+  }
+  .data-table td {
+    padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-bottom: 1px solid #1f1f35;
+  }
+  .data-table .ts { width: 48px; color: var(--muted); }
+  .data-table .who { width: 36px; }
+  .data-table .type { width: 44px; }
+  .data-table .content { overflow: hidden; text-overflow: ellipsis; }
+  .data-table .who-bot { color: var(--accent-orange); }
+  .data-table .who-you { color: var(--accent-cyan); }
+  .data-table .log-error { color: var(--accent-red); }
+  .data-table .log-warn { color: var(--accent-yellow); }
+
+  .scroll-panel { max-height: 120px; overflow-y: auto; }
+  .scroll-panel.short { max-height: 80px; }
+
+  #voice-indicator {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 9px; font-family: var(--mono); margin-left: 6px;
+  }
+  #voice-indicator.listening { background: #0a2a1a; color: var(--accent); }
+  #voice-indicator.stt { background: #2a1a0a; color: var(--accent-yellow); }
+  #voice-indicator.idle { background: #1a1a2e; color: var(--muted); }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 </style>
 </head>
 <body>
-  <div class="header">
-    <span class="name" id="name">—</span>
-    <span class="status" id="status">•</span>
-    <span id="mode" style="font-size:12px;color:#888"></span>
-    <span id="provider" style="font-size:12px;color:#888"></span>
+
+<div id="status-bar">
+  <span id="status-dot" class="dot off"></span>
+  <span class="identity"><span id="agent-name">heare</span> <span id="agent-emoji">&#x1FA76;</span></span>
+  <span class="meta" id="status-text">stopped</span>
+  <span class="meta" id="pid-text"></span>
+  <span class="meta" id="uptime-text"></span>
+  <span style="flex:1"></span>
+  <span class="meta">mode <em id="mode-text">?</em></span>
+  <span class="meta">provider <em id="provider-text">?</em></span>
+  <span class="meta" id="counts-text"></span>
+  <span id="voice-indicator" class="idle">idle</span>
+</div>
+
+<div class="row">
+  <div class="col" id="controls">
+    <div class="card">
+      <div class="card-header"><span class="label">controls</span></div>
+      <div class="btn-row">
+        <button onclick="setMode('silent')" id="btn-silent">silent</button>
+        <button onclick="setMode('focus')" id="btn-focus">focus</button>
+        <button onclick="setMode('ambient')" id="btn-ambient">ambient</button>
+      </div>
+      <div class="btn-row">
+        <button onclick="toggleMute('bot')" id="btn-mute-bot">mute bot</button>
+        <button onclick="toggleMute('mic')" id="btn-mute-mic">mute mic</button>
+        <button onclick="cancel()" id="btn-cancel">cancel</button>
+      </div>
+      <div class="btn-row">
+        <button onclick="switchProvider()" id="btn-provider">switch provider</button>
+      </div>
+    </div>
   </div>
-  <div class="controls">
-    <button id="mute-mic" onclick="toggleMute('mic')">🔇 mic</button>
-    <button id="mute-bot" onclick="toggleMute('bot')">🔇 bot</button>
-    <button onclick="setMode('silent')">silent</button>
-    <button onclick="setMode('focus')">focus</button>
-    <button onclick="setMode('ambient')">ambient</button>
-    <button onclick="setMode('assistant')">assistant</button>
-    <button onclick="cancel()">✕ cancel</button>
+
+  <div class="col col-wide" id="ai-panel">
+    <div class="card">
+      <div class="card-header"><span class="label">AI</span></div>
+      <div class="info-line">provider: <strong id="ai-provider">—</strong></div>
+      <div class="info-line">model: <strong id="ai-model">—</strong></div>
+      <div class="usage-line" id="usage-text">usage —</div>
+    </div>
   </div>
-  <div class="canvas" id="canvas"></div>
-  <div class="activity" id="activity"></div>
+</div>
+
+<div class="card" id="response-panel">
+  <div class="card-header">
+    <span class="label">latest response</span>
+    <span class="extra" id="response-meta"></span>
+  </div>
+  <div class="text" id="response-text">—</div>
+</div>
+
+<div class="card" id="canvas-panel">
+  <div class="card-header">
+    <span class="label">display / canvas</span>
+    <span class="extra" id="canvas-meta"></span>
+  </div>
+  <div id="canvas"></div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="label">activity (recent transcripts)</span>
+    <span class="extra" id="activity-count"></span>
+  </div>
+  <div class="scroll-panel" id="activity-scroll">
+    <table class="data-table">
+      <thead><tr><th class="ts">time</th><th class="who">who</th><th class="type">type</th><th class="content">content</th></tr></thead>
+      <tbody id="activity-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="label">daemon log</span>
+    <span class="extra" id="log-count"></span>
+  </div>
+  <div class="scroll-panel short" id="log-scroll">
+    <table class="data-table">
+      <tbody id="log-body"></tbody>
+    </table>
+  </div>
+</div>
 
 <script>
 const API = "http://127.0.0.1:9778";
 let lastCanvasTs = 0;
 
-async function poll() {
-  try {
-    const r = await fetch(API + "/state");
-    const s = await r.json();
-    const running = !!s.running || (s.mode && s.provider);
-    document.getElementById("name").textContent = (s.agent||"heare") + " " + (s.emoji||"");
-    document.getElementById("status").className = "status " + (running ? "active" : "");
-    document.getElementById("status").textContent = running ? "active" : "offline";
-    document.getElementById("mode").textContent = "mode: " + (s.mode||"?");
-    document.getElementById("provider").textContent = " | " + (s.provider||"?");
-    const micOn = s.mute_mic === "1" || s.mute_mic === true;
-    const botOn = s.mute_bot === "1" || s.mute_bot === true;
-    document.getElementById("mute-mic").textContent = micOn ? "🔇 mic" : "🔈 mic";
-    document.getElementById("mute-mic").className = micOn ? "on" : "";
-    document.getElementById("mute-bot").textContent = botOn ? "🔇 bot" : "🔈 bot";
-    document.getElementById("mute-bot").className = botOn ? "on" : "";
-  } catch(e) {}
+function fmtTime(ts) {
+  if (!ts) return "";
+  var d = new Date(ts * 1000);
+  return d.toTimeString().slice(0, 8);
+}
 
+async function pollState() {
   try {
-    const r = await fetch(API + "/canvas");
-    const c = await r.json();
+    var r = await fetch(API + "/state");
+    var s = await r.json();
+    var running = s.running === true;
+    var dot = document.getElementById("status-dot");
+    dot.className = "dot " + (running ? "on" : "off");
+    document.getElementById("status-text").textContent = running ? "running" : "stopped";
+    document.getElementById("pid-text").textContent = s.pid ? "pid=" + s.pid : "";
+    document.getElementById("uptime-text").textContent = s.uptime || "";
+    document.getElementById("agent-name").textContent = s.agent || "heare";
+    document.getElementById("agent-emoji").textContent = s.emoji || "";
+    document.getElementById("mode-text").textContent = s.mode || "?";
+    document.getElementById("provider-text").textContent = s.provider || "?";
+    var tc = s.transcripts_count || 0;
+    var ac = s.actions_count || 0;
+    document.getElementById("counts-text").textContent = tc + " msgs | " + ac + " actions";
+
+    document.getElementById("ai-provider").textContent = s.provider || "—";
+    document.getElementById("ai-model").textContent = s.model || "—";
+
+    if (s.usage) {
+      var u = s.usage;
+      document.getElementById("usage-text").innerHTML =
+        "llm " + u.llm_calls + " calls | $" + (u.llm_cost_usd || 0).toFixed(4) +
+        " &nbsp; stt " + (u.stt_audio_seconds || 0).toFixed(1) + "s";
+    }
+
+    var vi = document.getElementById("voice-indicator");
+    if (s.voice_state) {
+      vi.textContent = s.voice_state.state || "idle";
+      vi.className = s.voice_state.state || "idle";
+      if (s.voice_state.last_partial) {
+        vi.textContent += ": " + s.voice_state.last_partial.slice(0, 24);
+      }
+    } else {
+      vi.textContent = "idle";
+      vi.className = "idle";
+    }
+
+    var micOn = s.mute_mic === "1" || s.mute_mic === true;
+    var botOn = s.mute_bot === "1" || s.mute_bot === true;
+    document.getElementById("btn-mute-mic").textContent = micOn ? "unmute mic" : "mute mic";
+    document.getElementById("btn-mute-mic").className = micOn ? "on" : "";
+    document.getElementById("btn-mute-bot").textContent = botOn ? "unmute bot" : "mute bot";
+    document.getElementById("btn-mute-bot").className = botOn ? "on" : "";
+
+    var mode = s.mode || "";
+    ["silent", "focus", "ambient"].forEach(function(m) {
+      var btn = document.getElementById("btn-" + m);
+      if (btn) btn.className = (mode === m) ? "active" : "";
+    });
+  } catch(e) {}
+}
+
+async function pollCanvas() {
+  try {
+    var r = await fetch(API + "/canvas");
+    var c = await r.json();
     if (c.html && c.ts !== lastCanvasTs) {
       lastCanvasTs = c.ts;
       document.getElementById("canvas").innerHTML = c.html;
+      document.getElementById("canvas-meta").textContent = c.ts ? fmtTime(c.ts) : "";
     }
   } catch(e) {}
 }
-setInterval(poll, 500); poll();
+
+async function pollActivity() {
+  try {
+    var r = await fetch(API + "/activity");
+    var rows = await r.json();
+    if (!rows || !rows.length) {
+      document.getElementById("activity-body").innerHTML = '<tr><td colspan="4" style="color:var(--muted)">(no activity)</td></tr>';
+      document.getElementById("activity-count").textContent = "";
+      return;
+    }
+    document.getElementById("activity-count").textContent = rows.length + " rows";
+    var html = "";
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var wc = row.who === "bot" ? "who-bot" : "who-you";
+      var content = (row.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      html += "<tr>" +
+        "<td class='ts'>" + fmtTime(row.ts) + "</td>" +
+        "<td class='who " + wc + "'>" + row.who + "</td>" +
+        "<td class='type'>" + row.type + "</td>" +
+        "<td class='content'>" + content + "</td></tr>";
+    }
+    document.getElementById("activity-body").innerHTML = html;
+  } catch(e) {}
+}
+
+async function pollLogs() {
+  try {
+    var r = await fetch(API + "/logs");
+    var data = await r.json();
+    var lines = data.lines || [];
+    document.getElementById("log-count").textContent = lines.length + " lines";
+    if (!lines.length) {
+      document.getElementById("log-body").innerHTML = '<tr><td style="color:var(--muted)">(no log lines)</td></tr>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var cls = "";
+      var u = line.toUpperCase();
+      if (u.indexOf("ERROR") !== -1 || u.indexOf("CRITICAL") !== -1 || u.indexOf("ERR ") !== -1) cls = "log-error";
+      else if (u.indexOf("WARN") !== -1) cls = "log-warn";
+      html += "<tr><td class='" + cls + "' style='white-space:pre-wrap;word-break:break-all'>" +
+        line.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</td></tr>";
+    }
+    document.getElementById("log-body").innerHTML = html;
+  } catch(e) {}
+}
+
+function pollAll() {
+  pollState();
+  pollCanvas();
+  pollActivity();
+  pollLogs();
+}
+setInterval(pollAll, 800);
+pollAll();
 
 async function toggleMute(target) {
   await fetch(API + "/mute", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({target:target})});
-  poll();
+  pollState();
 }
 async function setMode(m) {
   await fetch(API + "/mode", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({mode:m})});
-  poll();
+  pollState();
 }
 async function cancel() {
   await fetch(API + "/cancel", {method:"POST"});
+}
+async function switchProvider() {
+  var p = prompt("Provider (e.g. openrouter, zai):");
+  if (p) {
+    await fetch(API + "/provider", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({provider:p})});
+    pollState();
+  }
 }
 </script>
 </body>
@@ -94,5 +405,5 @@ async function cancel() {
 
 
 def run():
-    window = webview.create_window("heare", html=HTML, width=420, height=520, resizable=True)
+    window = webview.create_window("heare", html=HTML, width=540, height=680, resizable=True)
     webview.start()
