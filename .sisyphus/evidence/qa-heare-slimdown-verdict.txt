@@ -1,0 +1,62 @@
+QA Verdict: heare-slimdown — HANDS-ON QA
+==========================================
+
+VERDICT: ✅ ALL 5 TESTS PASSED — NO ERRORS
+
+Test 1: Import src.main
+  Command: uv run python -c "import src.main; print('main OK')"
+  Result:  "main OK"
+  Status:  PASS
+
+Test 2: --help subcommands
+  Command: uv run python -m src.main --help 2>&1 | grep -c 'start\|stop\|status\|mode\|provider\|watch\|logs\|setup'
+  Result:  13 (matching lines)
+  Verified: start, stop, status, mode, provider, watch, logs, setup ALL present
+  Status:  PASS
+
+Test 3: Settings instantiation
+  Command: uv run python -c "from src.config import Settings; s = Settings(); print(type(s).__name__)"
+  Result:  "Settings"
+  Status:  PASS
+
+Test 4: TranscriptStore import
+  Command: uv run python -c "from src.store.storage import TranscriptStore; print('storage OK')"
+  Result:  "storage OK"
+  Status:  PASS
+
+Test 5: Migration 007 on test DB
+  Setup:   Created v6 DB with transcripts table including speaker_id, speaker_confidence,
+           audio_event_label, audio_event_score columns + 3 test rows
+  Run:     Executed migrations/007_drop_speaker_audioevent.sql
+  Verify:
+    - speaker_id column:       REMOVED ✅
+    - speaker_confidence:      REMOVED ✅
+    - audio_event_label:       REMOVED ✅
+    - audio_event_score:       REMOVED ✅
+    - Data rows preserved:     3/3 ✅ (hello world, test two, third test)
+    - schema_version:          7 ✅
+  Status:  PASS
+
+--- BONUS CHECKS ---
+
+Test 6: Storage test suite
+  Command: uv run pytest tests/test_storage.py -v
+  Result:  42 passed in 0.32s
+  Status:  PASS
+
+Test 7: Forbidden import check (onnxruntime, pyaudio, pywebview, fastmcp)
+  Command: grep -r 'import onnxruntime\|import pyaudio\|import pywebview\|import fastmcp' src/ --include='*.py'
+  Result:  IMPORT-CLEAN (no actual imports; 1 comment-only match in config.py is benign)
+  Status:  PASS
+
+Test 8: Forbidden Claude patterns (shutil.which("claude"), execution="claude", get_claude_tools, COMPLEX_TOOLS)
+  Command: grep -r 'shutil.which...claude\|execution.*claude\|get_claude_tools\|COMPLEX_TOOLS' src/ --include='*.py'
+  Result:  CLEAN
+  Status:  PASS
+
+--- FINAL SUMMARY ---
+All mandatory QA checks passed.
+Core daemon imports work, CLI exposes all expected subcommands,
+Settings/TranscriptStore instantiate cleanly, migration 007 correctly
+drops 4 columns and preserves data, storage tests pass (42/42),
+and no forbidden dependencies or dead Claude code remain in src/.

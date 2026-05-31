@@ -1,0 +1,7 @@
+=== task-17-stages-clean.txt ===
+Date: Sun May 31 01:44:36 EEST 2026
+
+speaker_id/audio_event grep count in stages:
+src/pipeline/stages/transcription_gate.py:0
+src/pipeline/stages/assistant_response_logger.py:0
+src/pipeline/stages/cancel_flag_gate.py:0

@@ -1,0 +1,37 @@
+Task 11: Clean src/main.py — remove deleted module references
+=================================================================
+
+Verification Results:
+---------------------
+
+1. Speaker commands in help output: 0 (expected: 0)
+   Command: uv run python -m src.main --help 2>&1 | grep -c 'enroll-owner\|speakers\|test-recognizer'
+   Result: 0
+
+2. Import check: OK
+   Command: uv run python -c "import src.main; print('OK')"
+   Result: OK
+
+3. Remaining references scan: 0
+   Command: grep -n 'claude_capabilities\|speaker\|SpeakerGallery\|speaker_id\|speaker_namer\|namer_task\|_sid_mod\|enroll-owner\|test-recognizer\|_cmd_speakers' src/main.py
+   Result: (no output)
+
+4. Help output shows all expected commands:
+   start, stop, status, mode, provider, audio-input, audio-output,
+   reset-session, reset-identity, rotate-browser-token, set-passphrase,
+   watch, setup, logs
+
+Removals Completed:
+-------------------
+- Line removed: from src.daemon.claude_capabilities import refresh_capabilities
+- Line removed: asyncio.create_task(refresh_capabilities(...)) in daemon startup
+- Block removed: speaker_gallery/speaker_model/speaker_namer init (~47 lines)
+- Line removed: context_builder.speaker_gallery = speaker_gallery
+- Lines removed: speaker_gallery/speaker_model/namer_enqueue params from build_pipeline()
+- Lines removed: namer_task = asyncio.create_task(speaker_namer.run())
+- Param removed: namer_task from run_until_stopped() signature and body
+- Functions deleted: _cmd_enroll_owner, _cmd_test_recognizer,
+  _cmd_speakers_list, _cmd_speakers_info, _cmd_speakers_rm,
+  _cmd_speakers_rename, _cmd_speakers, _cmd_speakers_audit
+- Argparse entries deleted: enroll-owner, test-recognizer, speakers (with subcommands)
+- Command routing deleted: enroll-owner, test-recognizer, speakers in main()

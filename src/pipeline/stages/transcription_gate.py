@@ -387,18 +387,13 @@ def _build_transcription_gate_class():
                 self._bot_cooldown_until = 0.0
                 return
 
-            from src.voice.indication.core import is_enrollment_active
-            enrollment_active = is_enrollment_active()
-
-            # Hard block: never interrupt a sound cue or an active
-            # speaker-enrollment flow — those are not conversational
-            # turns and barging in would corrupt them.
-            if self._indication_speaking or enrollment_active:
+            # Hard block: never interrupt a sound cue — those are not
+            # conversational turns and barging in would corrupt them.
+            if self._indication_speaking:
                 logger.debug(
                     "transcription_gate: dropping transcript "
-                    "(indication=%s enrollment=%s): %r",
+                    "(indication=%s): %r",
                     self._indication_speaking,
-                    enrollment_active,
                     transcript[:60],
                 )
                 return

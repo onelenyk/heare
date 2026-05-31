@@ -1,8 +1,6 @@
-# Learnings
+# Learnings — heare-slimdown QA
 
-## 2026-05-31: Removed optional-dependencies from pyproject.toml
-
-- Removed all 5 extras (`local`, `memory`, `speaker`, `audio-event`, `overlay`) from `[project.optional-dependencies]` in pyproject.toml (lines 19-44)
-- `uv lock` resolved 94 packages — previously 72 transitive packages were pruned from uv.lock (pyaudio, fastapi, uvicorn, pywebview, pyobjc-*, fastmcp, onnxruntime, numpy, huggingface-hub and all their transitive deps)
-- Core deps (sounddevice, pipecat-ai, etc.) and dev deps (pytest, mypy, ruff) left untouched
-- Pre-existing minor issue noted: line `"pyobjc-framework-cocoa>=10;"` in overlay had a double `>=` — removed as part of the section deletion
+- Migration 007 uses table recreation (CREATE transcripts_new → INSERT → DROP → RENAME) because SQLite lacks ALTER TABLE DROP COLUMN for older versions. This is the standard SQLite pattern.
+- `pyaudio` was only used in `test_recognizer.py` (deleted with speaker); actual runtime uses `sounddevice`.
+- The `onnxruntime` match in `grep -r src/` is a stale comment in config.py line 243; no actual import exists.
+- Storage test suite (test_storage.py) has 42 tests, all pass at v7 schema.

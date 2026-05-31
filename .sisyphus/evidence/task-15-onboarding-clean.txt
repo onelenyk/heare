@@ -1,0 +1,7 @@
+=== src/daemon/onboarding.py ===
+
+=== src/daemon/workspace.py ===
+
+=== grep -c results ===
+src/daemon/onboarding.py:0
+src/daemon/workspace.py:0

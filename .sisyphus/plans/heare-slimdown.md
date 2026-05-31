@@ -456,7 +456,7 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
 
 ### Wave 2: Cross-Cut Source Changes (7 tasks, ALL parallel)
 
-- [ ] 9. Clean pipeline/build.py — remove speaker + YAMNet stages
+- [x] 9. Clean pipeline/build.py — remove speaker + YAMNet stages
 
   **What to do**: Remove `speaker_buffer`, `speaker_tagger`, `audio_event_observer` params from `_assemble_native_stages()`. Delete speaker chain creation block (lines 548-566). Delete YAMNet observer creation block (lines 935-953). Update pipeline diagram comments.
   **Must NOT do**: Do NOT remove always-on stages.
@@ -465,7 +465,7 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
   **QA**: `uv run python -c "from src.pipeline.build import _assemble_native_stages; import inspect; sig = inspect.signature(_assemble_native_stages); assert 'speaker_buffer' not in str(sig); print('OK')"`
   **Commit**: YES — `refactor: remove speaker and YAMNet stages from pipeline`
 
-- [ ] 10. Clean agent/tools/ — unregister speaker tools, remove edit + claude type
+- [x] 10. Clean agent/tools/ — unregister speaker tools, remove edit + claude type
 
   **What to do**: Remove 5 speaker tools from registry.py, schemas.py, direct.py. Remove `get_claude_tools()` dead code. Remove `execution="claude"` from ExecutionType literal. Remove `edit` tool registration.
   **Recommended Agent Profile**: `deep` | **Skills**: []
@@ -473,7 +473,7 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
   **QA**: `uv run python -c "from src.agent.tools.registry import TOOLS; print(f'{len(TOOLS)} tools'); assert len(TOOLS) < 48"`
   **Commit**: YES
 
-- [ ] 11. Clean main.py — remove speaker CLI + claude_capabilities import
+- [x] 11. Clean main.py — remove speaker CLI + claude_capabilities import
 
   **What to do**: Remove `refresh_capabilities` import/call, speaker imports/init, namer task, all speaker CLI functions (_cmd_enroll_owner, _cmd_test_recognizer, _cmd_speakers_*), argparse entries, command routing.
   **Recommended Agent Profile**: `unspecified-high`
@@ -481,7 +481,7 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
   **QA**: `uv run python -m src.main --help 2>&1 | grep -c 'enroll-owner\|speakers\|test-recognizer'` → 0
   **Commit**: YES
 
-- [ ] 12. Clean storage.py + create DB migration
+- [x] 12. Clean storage.py + create DB migration
 
   **What to do**: Remove `speaker_id`, `speaker_confidence`, `audio_event_label`, `audio_event_score` from CREATE TABLE, log_transcript signature, INSERT, and all SELECT queries. Bump SCHEMA_VERSION to 7. Create `migrations/007_drop_speaker_audioevent.sql` with table recreation.
   **Recommended Agent Profile**: `deep`
@@ -489,7 +489,7 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
   **QA**: `grep -c 'speaker_id\|audio_event' src/store/storage.py` → 0; migration file exists
   **Commit**: YES
 
-- [ ] 13. Clean context.py + context_injector.py
+- [x] 13. Clean context.py + context_injector.py
 
   **What to do**: Remove SpeakerGallery import, speaker_gallery field, _render_rule_block, _resolve_label, _audio_event_suffix from context.py. Remove current_audio_event injection from context_injector.py.
   **Recommended Agent Profile**: `unspecified-high`
@@ -497,7 +497,7 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
   **QA**: `grep -c 'SpeakerGallery\|audio_event\|current_audio' src/store/context.py src/agent/llm/context_injector.py` → 0
   **Commit**: YES
 
-- [ ] 14. Clean indication/core.py + skills/installer.py
+- [x] 14. Clean indication/core.py + skills/installer.py
 
   **What to do**: Remove 10 speaker IndicationKinds + _enrollment_active flag. Remove is_owner_enrolled() from installer.py.
   **Recommended Agent Profile**: `quick`
@@ -505,7 +505,7 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
   **QA**: `grep -c 'REENROLL\|is_owner_enrolled' src/voice/indication/core.py src/skills/installer.py` → 0
   **Commit**: YES
 
-- [ ] 15. Clean onboarding.py + workspace.py
+- [x] 15. Clean onboarding.py + workspace.py
 
   **What to do**: Remove claude_installed/claude_configured steps, refresh_capabilities import. Rewrite capabilities_cached to use local enumeration. Remove ~/.claude.json seeding from workspace.py.
   **Recommended Agent Profile**: `quick`
@@ -515,28 +515,28 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
 
 ### Wave 3: Dashboard + Stages + Docs (4 tasks)
 
-- [ ] 16. Clean watch/ dashboard files
+- [x] 16. Clean watch/ dashboard files
 
   **What to do**: Remove AudioEventData, read_audio_event, load_speaker_labels, speaker_style from data.py. Remove audio_event from widgets.py VoiceStateBar. Update app.py call.
   **Recommended Agent Profile**: `unspecified-high`
   **QA**: `uv run python -c "from src.watch.app import HeareDashboard; print('OK')"`
   **Commit**: YES
 
-- [ ] 17. Clean pipeline/stages/ files
+- [x] 17. Clean pipeline/stages/ files
 
   **What to do**: Remove audio_event constants and _latest_audio_event() from transcription_gate.py. Remove speaker_id/audio_event from assistant_response_logger.py. Update cancel_flag_gate.py comment.
   **Recommended Agent Profile**: `quick`
   **QA**: `grep -c 'speaker_id\|audio_event' src/pipeline/stages/transcription_gate.py src/pipeline/stages/assistant_response_logger.py` → 0
   **Commit**: YES
 
-- [ ] 18. Apply DB migration and verify
+- [x] 18. Apply DB migration and verify
 
   **What to do**: Create test DB with v6 schema + sample data. Run migration 007. Verify 4 columns removed, data preserved, version=7.
   **Recommended Agent Profile**: `deep`
   **QA**: Migration applies cleanly, recent_transcripts() works
   **Commit**: YES
 
-- [ ] 19. Update all documentation
+- [x] 19. Update all documentation
 
   **What to do**: README: remove overlay, memory MCP, YAMNet, speaker sections, Claude CLI prerequisite. ARCHITECTURE_*: remove relevant sections. heare.env.example: remove HEARE_CLAUDE_CLI.
   **Recommended Agent Profile**: `quick`
@@ -545,21 +545,21 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
 
 ### Wave 4: Test Cleanup + Verification (3 tasks)
 
-- [ ] 20. Delete dedicated test files + fix cross-references
+- [x] 20. Delete dedicated test files + fix cross-references
 
   **What to do**: Verify all dedicated test files deleted from Wave 1. Fix ~15 remaining test files that reference speaker/audio_event/claude/overlay. Remove FakeClaudeCLI, speaker settings overrides, audio_event fixtures.
   **Recommended Agent Profile**: `unspecified-high`
   **QA**: `uv run pytest tests/ --collect-only -q 2>&1 | tail -1`
   **Commit**: YES
 
-- [ ] 21. Run full test suite
+- [x] 21. Run full test suite
 
   **What to do**: `uv run pytest tests/ -v -x --tb=short 2>&1 | tee .sisyphus/evidence/task-21-test-run.txt`. Fix any failures.
   **Recommended Agent Profile**: `deep`
   **QA**: 0 failures, 0 errors
   **Commit**: NO (verification)
 
-- [ ] 22. Import smoke test + forbidden dep check
+- [x] 22. Import smoke test + forbidden dep check
 
   **What to do**: Import main, pipeline, tools, storage. Run forbidden import grep. Verify no onnxruntime, pyaudio, pywebview, fastmcp, shutil.which("claude"), execution="claude", or dead code.
   **Recommended Agent Profile**: `deep`
@@ -570,16 +570,16 @@ Wave FINAL (After Wave 4 — 4 parallel reviews):
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Verify all "Must Have" present, all "Must NOT Have" absent. Check evidence files. Output verdict.
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Lint + test run. Check dead imports, unused vars, broken docstrings.
 
-- [ ] F3. **Real Manual QA** — `unspecified-high`
+- [x] F3. **Real Manual QA** — `unspecified-high`
   Start clean. Verify daemon help, pipeline assembly, tool registry, DB migration, all imports.
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   Per-task diff review. Verify 1:1 spec-to-code. Check "Must NOT do" compliance.
 
 ---

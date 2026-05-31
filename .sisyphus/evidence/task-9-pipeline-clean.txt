@@ -1,0 +1,10 @@
+2026-05-31 01:30:28.927 | INFO     | pipecat:<module>:14 - ᓚᘏᗢ Pipecat 0.0.108 (Python 3.13.12 (main, Mar 25 2026, 02:48:22) [Clang 22.1.1 ]) ᓚᘏᗢ
+=== _assemble_native_stages signature ===
+(*, transport_input: 'Any', transport_output: 'Any', stt: 'Any', stt_error_observer: 'Any', transcription_gate: 'Any', voice_state_observer: 'Any' = None, user_aggregator: 'Any', llm_service: 'Any', tts: 'Any', assistant_response_logger: 'Any' = None, tts_scrub: 'Any' = None, usage_recorder: 'Any' = None, tts_fade_observer: 'Any' = None, assistant_aggregator: 'Any', system_prompt_injector: 'Any' = None, sound_cue_processor: 'Any' = None, mute_gate: 'Any' = None, input_mute_gate: 'Any' = None, cancel_flag_gate: 'Any' = None, echo_gate: 'Any' = None, echo_collector: 'Any' = None) -> 'list'
+
+=== build_pipeline signature ===
+(settings: 'Settings', store: "'TranscriptStore'", context_builder: "'ContextBuilder'", persona: 'str' = '', *, state: 'State | None' = None, conversation_manager: 'Any' = None, project_dir: 'str | None' = None) -> 'Tuple[object, object, object, object, object, object, object]'
+
+All assertions passed
+
+Basic stage assembly produces 9 stages: ['t_in', 'stt', 'stt_err', 'gate', 'ua', 'llm', 'tts', 't_out', 'aa']

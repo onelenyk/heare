@@ -1,0 +1,28 @@
+=== Task 10 — Speaker Tools Cleanup ===
+
+Files modified:
+  - src/agent/tools/registry.py
+  - src/agent/tools/schemas.py
+  - src/agent/tools/direct.py
+
+Registry:
+  - Removed 5 Tool entries: re_enroll, list_profiles, create_profile, delete_profile, rename_profile
+  - Tool count: 45 → 40
+
+Schemas:
+  - Removed 5 _TOOL_SPECS entries
+  - Removed helpers: _id_args, _rename_args
+  - Schema count: 45 → 40
+
+Direct:
+  - Removed 5 routing branches in execute_direct()
+  - Removed handlers: _execute_re_enroll, _execute_list_profiles, _execute_create_profile,
+    _execute_delete_profile, _execute_rename_profile
+  - Removed helpers: _join_names, _end_uk, _end_ru
+
+Verification:
+  - grep confirms zero references to removed tools in all 3 files
+  - All modules import cleanly
+  - Tool count matches expected (~40)
+
+PASS

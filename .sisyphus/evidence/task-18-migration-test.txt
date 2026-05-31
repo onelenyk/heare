@@ -1,0 +1,30 @@
+=== Migration 007 Test Results ===
+Date: 2026-05-31
+Task: Test DB migration 007_drop_speaker_audioevent.sql
+
+=== TEST SETUP ===
+- Created v6 schema DB matching commit eea77b2
+- Tables: conversations, turns, transcripts, meta
+- v6 transcripts columns: id, ts, text, mode, speaker_id, speaker_confidence, audio_event_label, audio_event_score, agent_mode, agent_spoken
+- Inserted 3 test rows with populated speaker_id, speaker_confidence, audio_event_label, audio_event_score
+
+=== BUG FIXED ===
+- Migration INSERT SELECT referenced turn_id which doesn't exist in v6 schema
+- Fixed: changed `SELECT ... turn_id` to `SELECT ... NULL` 
+- File: migrations/007_drop_speaker_audioevent.sql line 16-18
+
+=== TEST RESULTS (ALL PASSED) ===
+PASS: 4 speaker/audio_event columns removed (speaker_id, speaker_confidence, audio_event_label, audio_event_score)
+PASS: agent_mode, agent_spoken, turn_id columns present in v7 schema
+PASS: 3 rows preserved (no data loss)
+PASS: Data integrity verified (text, mode, agent_mode, agent_spoken preserved)
+PASS: Schema version bumped from 6 to 7
+PASS: idx_transcripts_ts index created
+PASS: idx_transcripts_turn index created
+PASS: recent_transcripts() query (SELECT id, ts, text, mode) works correctly
+
+=== POST-MIGRATION SCHEMA ===
+transcripts: id, ts, text, mode, agent_mode, agent_spoken, turn_id
+
+=== VERDICT ===
+Migration 007 applies cleanly. 4 speaker/audio_event columns removed. All data preserved. Schema version = 7.

@@ -1,0 +1,2 @@
+src/voice/indication/core.py:0
+src/skills/installer.py:0

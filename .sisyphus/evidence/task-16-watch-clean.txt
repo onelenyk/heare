@@ -1,0 +1,9 @@
+Task 16 — Clean src/watch/ of audio_event and speaker references
+
+Files modified:
+- src/watch/data.py — Removed AudioEventData, read_audio_event(), load_speaker_labels(), speaker_style(). Removed audio_event from DashboardSnapshot and fetch_dashboard_state(). Removed speaker label logic from fetch_activity().
+- src/watch/widgets.py — Removed AudioEventData import, EVENT_TTL_S constant. Simplified VoiceStateBar.refresh_data() to accept only voice_state. Removed event rendering from _build_text().
+- src/watch/app.py — Updated voice_bar.refresh_data() call to pass only snapshot.voice_state.
+- src/watch/_legacy.py — Removed _load_speaker_labels(), _speaker_style(). Removed speaker references in _you_table() and _build_layout(). Removed unused json import.
+
+Verification: uv run python -c "from src.watch.app import HeareDashboard; print('OK')" → OK

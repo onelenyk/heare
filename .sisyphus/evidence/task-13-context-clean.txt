@@ -1,0 +1,27 @@
+=== TASK 13 VERIFICATION: Context Clean ===
+Date: $(date)
+Command: grep -c 'SpeakerGallery\|audio_event\|current_audio\|speaker_gallery' src/store/context.py src/agent/llm/context_injector.py
+Result:
+  src/store/context.py:0
+  src/agent/llm/context_injector.py:0
+
+=== REMOVED FROM context.py ===
+- SpeakerGallery import (TYPE_CHECKING)
+- speaker_gallery constructor param and field
+- speaker_id param from build()
+- speaker_rule_block from ctx dict and _EXCLUDED_FROM_GENERATOR_CTX
+- _render_rule_block() method
+- _resolve_label() method
+- _audio_event_suffix() method
+- Speaker label logic from _format_recent() (simplified to timestamp + text only)
+
+=== REMOVED FROM context_injector.py ===
+- current_audio_event from render_native_system_prompt()
+- [audio: detection hint block for recent transcripts
+- Ambient audio rules section from system prompt
+- audio_event_label/audio_event_score getattrs from process_frame
+- audio_event_label/audio_event_score params from _refresh_system_prompt()
+- current_audio_event ctx injection block
+
+=== SYNTAX CHECK ===
+Both files compile cleanly with py_compile.

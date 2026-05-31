@@ -1,0 +1,18 @@
+VERIFICATION RESULTS — Task: Clean storage.py and create migration 007
+
+1. Zero references to 4 removed columns in storage.py:
+   $ grep -c 'speaker_id\|speaker_confidence\|audio_event_label\|audio_event_score' src/store/storage.py
+   0 ✓
+
+2. Migration file created:
+   $ test -f migrations/007_drop_speaker_audioevent.sql && echo "PASS"
+   PASS ✓
+
+3. Changes applied in src/store/storage.py:
+   - SCHEMA_VERSION: 6 → 7
+   - Removed speaker_id, speaker_confidence, audio_event_label, audio_event_score from CREATE TABLE
+   - Added turn_id to base SCHEMA (was previously added via _migrate_speaker_columns)
+   - Removed _migrate_speaker_columns() method and its call from init()
+   - Removed 4 params from log_transcript() signature, INSERT column list, and VALUES
+   - Removed 4 columns from recent_transcripts() SELECT and row unpacking
+   - Updated latest_bot_response() to use mode='assistant' instead of speaker_id='bot'

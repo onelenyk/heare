@@ -1,0 +1,17 @@
+All 4 files verified clean at Sun May 31 01:46:40 EEST 2026
+README.md:      378 lines
+ARCHITECTURE_DIAGRAM.md:     1219 lines
+ARCHITECTURE_ANALYSIS.md:      885 lines
+heare.env.example:       17 lines
+
+Removed references verified gone:
+  yamnet - clean
+  overlay UI - clean
+  speaker recognition - clean
+  claude CLI - clean
+  HEARE_CLAUDE_CLI - clean
+  audio_event_detection - clean
+  speaker_id_enabled - clean
+  speakers.json - clean
+  namer_task - clean
+  heare_memory.db - clean
