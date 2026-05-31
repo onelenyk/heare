@@ -149,11 +149,13 @@ async def test_mute_bot_toggles_mute() -> None:
         (Path(tmp) / "logs").mkdir()
 
         async with HeareDashboard(settings=settings).run_test() as pilot:
+            # Mock _api_post to simulate daemon accepting mute toggle
+            pilot.app._api_post = MagicMock(return_value={"ok": True, "muted": True})
             await pilot.pause()  # let deferred _apply_activity_width fire
             await pilot.press("m")
 
             from src.watch.widgets import ControlsBar
-            assert "daemon unreachable" in pilot.app.query_one(ControlsBar)._status_message
+            assert "bot muted" in pilot.app.query_one(ControlsBar)._status_message
 
 
 @pytest.mark.asyncio

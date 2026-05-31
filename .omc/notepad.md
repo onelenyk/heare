@@ -22,6 +22,42 @@ T9 completed: Replaced hardcoded provider enum/validation with `all_keys()` / `P
 - Verified: python syntax compiles, imports resolve correctly, `all_keys()` == `['deepseek', 'zai', 'opencode']`
 ### 2026-05-31 10:03
 ### 2026-05-31 14:23
+### 2026-05-31 16:27
+## T2: Created src/agent/llm/prompt_sections.py
+
+### What
+Extracted the monolithic render_native_system_prompt from context_injector.py into a modular PromptSection-driven renderer.
+
+### Decisions
+- Context section includes current_display (lines 152–154 of original) alongside time/transcripts/summary/topics/entities/turns/actions/mcp. This display field was rendered in the same block as other context fields in the original code.
+- Template files already exist at prompts/capabilities.txt, reply_rules.txt, speech_style.txt, tool_use_loop.txt, narration.txt, routing.txt — created by prior refactoring work.
+- _read_template returns None (with warning) for missing files so the pipeline degrades gracefully.
+- _host_os_label duplicated from context_injector.py to keep the module self-contained and dependency-free (no pipecat import).
+
+### Key pattern
+render_prompt sorts sections by order, renders each by source type:
+- Inline (persona): persona block + language + OS hint
+- Dynamic (context/mode/hints/output_routing): from context dict or capability_hints param
+- Template (capabilities/reply_rules/speech_style/tool_use/narration/routing): Path.read_text()
+Sections joined with "\n\n" (double newlines), output_routing always last at order=800.
+
+
+## 2026-05-30 22:30
+Task 9: Cleaned `src/pipeline/build.py` — removed speaker and YAMNet stages from pipeline assembly.
+
+**What**: Removed 3 params from `_assemble_native_stages()`: `speaker_buffer`, `speaker_tagger`, `audio_event_observer`. Removed speaker chain creation block (where `create_speaker_processors` was called). Removed YAMNet observer creation block (where `create_audio_event_observer` was called). Removed `speaker_gallery`, `speaker_model`, `namer_enqueue` from `build_pipeline()` signature. Updated call site and pipeline diagram comments.
+
+**Where**: `src/pipeline/build.py` — 6 edits, clean grep verification (no leftover references).
+
+**Verification**: inspect.signature assertions passed; all 9 todos completed.
+### 2026-05-31 09:55
+T9 completed: Replaced hardcoded provider enum/validation with `all_keys()` / `PROVIDERS` from providers registry.
+- schemas.py: `"enum": ["deepseek", "zai", "opencode"]` → `"enum": all_keys()`
+- direct.py: `if provider not in ("deepseek", "zai", "opencode")` → `if provider not in PROVIDERS`
+- Both files import from `src.agent.llm.providers`
+- Verified: python syntax compiles, imports resolve correctly, `all_keys()` == `['deepseek', 'zai', 'opencode']`
+### 2026-05-31 10:03
+### 2026-05-31 14:23
 ## F3 QA — Multi-Output Scenarios: ALL 9/9 PASS ✅
 Full suite: 1075 passed, 1 skipped, 0 failures. VERDICT: APPROVE.
 

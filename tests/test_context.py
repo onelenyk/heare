@@ -642,3 +642,170 @@ async def test_output_routing_block_injected_into_render(
         parts.append(output_routing_block)
     rendered = "\n".join(parts)
     assert "[voice] tag is UNAVAILABLE in silent mode" in rendered
+
+
+def test_output_routing_is_last_section() -> None:
+    """Verify output_routing has the highest order in PROMPT_SECTIONS."""
+    from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+
+    last = sorted(PROMPT_SECTIONS, key=lambda s: s.order)[-1]
+    assert last.key == "output_routing", f"Expected output_routing last, got {last.key}"
+    for s in PROMPT_SECTIONS:
+        if s.key != "output_routing":
+            assert s.order < 800, f"{s.key} has order {s.order} >= 800"
+
+
+# ---------------------------------------------------------------------------
+# T7: Prompt section system — ordering, templates, and rendering
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_sections_count_and_keys() -> None:
+    """All registered prompt sections are present with unique keys."""
+    from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+
+    assert len(PROMPT_SECTIONS) >= 11, (
+        f"Expected at least 11 prompt sections, got {len(PROMPT_SECTIONS)}"
+    )
+    keys = [s.key for s in PROMPT_SECTIONS]
+    assert len(keys) == len(set(keys)), f"Duplicate section keys: {keys}"
+
+
+def test_prompt_sections_sorted_order() -> None:
+    """Sections sorted by order must produce a valid sequence with
+    output_routing last and no order collisions."""
+    from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+
+    sorted_sections = sorted(PROMPT_SECTIONS, key=lambda s: s.order)
+
+    # output_routing must be last
+    assert sorted_sections[-1].key == "output_routing", (
+        f"output_routing must be last, got {sorted_sections[-1].key} (order={sorted_sections[-1].order})"
+    )
+
+    # Orders must be strictly increasing (no collisions)
+    orders = [s.order for s in sorted_sections]
+    for i in range(1, len(orders)):
+        assert orders[i] > orders[i - 1], (
+            f"Section order not strictly increasing at index {i}: "
+            f"{sorted_sections[i-1].key}={orders[i-1]}, "
+            f"{sorted_sections[i].key}={orders[i]}"
+        )
+
+
+def test_prompt_sections_template_paths_exist() -> None:
+    """Every template_path in PROMPT_SECTIONS points to an existing,
+    readable file under the project root."""
+    from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+
+    root = Path(__file__).parent.parent
+    missing: list[str] = []
+    for section in PROMPT_SECTIONS:
+        if section.source == "template" and section.template_path:
+            full = root / section.template_path
+            if not full.is_file():
+                missing.append(f"{section.key} -> {section.template_path}")
+    assert not missing, (
+        f"Template files not found:\n" + "\n".join(missing)
+    )
+
+
+def test_render_prompt_section_ordering() -> None:
+    """Rendered prompt respects section order: output_routing_block content
+    appears after all other templated sections."""
+    from src.agent.llm.prompt_sections import render_prompt
+
+    ctx = {
+        "mode": "ambient",
+        "mode_block": "MODE BLOCK",
+        "output_routing_block": "OUTPUT ROUTING LAST",
+    }
+    out = render_prompt(persona="Test", context=ctx, language="en")
+
+    # output_routing_block content MUST be present
+    assert "OUTPUT ROUTING LAST" in out
+
+    # All templated sections that render unconditionally must appear
+    # BEFORE output_routing
+    token_positions: dict[str, int] = {}
+    # Tokens from template sections (sorted by order): capabilities(400),
+    # installed_skills(410), hints(500 — unless capability_hints),
+    # reply_rules(600), speech_style(610), tool_use(620), narration(630),
+    # routing(640), run_skill(650)
+    markers = [
+        ("tool_marker", out.find("Tool-use loop:")),
+        ("narration_marker", out.find("Narration during tool use:")),
+        ("routing_marker", out.find("Routing \u2014 pick by symptom:")),
+        ("reply_marker", out.find("Reply rules:")),
+        ("speech_marker", out.find("Speech style:")),
+        ("output_marker", out.find("OUTPUT ROUTING LAST")),
+    ]
+    for name, idx in markers:
+        if idx != -1:
+            token_positions[name] = idx
+
+    assert token_positions, "No section markers found in rendered prompt"
+
+    # Every non-output section must appear before output_routing
+    output_pos = token_positions.get("output_marker", -1)
+    assert output_pos != -1, "OUTPUT ROUTING LAST not found"
+    for name, pos in token_positions.items():
+        if name != "output_marker":
+            assert pos < output_pos, (
+                f"{name} at position {pos} must be before "
+                f"output_routing at position {output_pos}"
+            )
+
+
+def test_full_prompt_contains_all_required_sections() -> None:
+    """A full prompt render includes persona, context, reply rules,
+    routing, tool use, and output routing sections."""
+    from src.agent.llm.prompt_sections import render_prompt
+
+    ctx = {
+        "time": "2026-01-01 12:00:00",
+        "timezone": "UTC",
+        "mode": "ambient",
+        "mode_block": "Mode: ambient",
+        "recent_transcripts": "(none)",
+        "conversation_summary": "No history.",
+        "active_topics": "",
+        "entities": "",
+        "recent_turns": "(none)",
+        "recent_actions": "(none)",
+        "mcp_servers": "None connected.",
+        "output_routing_block": "OUTPUT ROUTING LAST",
+    }
+    out = render_prompt(
+        persona="I am Heare.", context=ctx, language="en"
+    )
+
+    # All required sections must produce content
+    required_checks = [
+        ("persona", "I am Heare."),
+        ("context", "2026-01-01 12:00:00"),
+        ("reply_rules", "Reply rules:"),
+        ("routing", "Routing \u2014 pick by symptom:"),
+        ("tool_use", "Tool-use loop:"),
+        ("speech_style", "Speech style:"),
+        ("narration", "Narration during tool use:"),
+        ("capabilities", "### Capabilities"),
+        ("output_routing", "OUTPUT ROUTING LAST"),
+    ]
+    for name, token in required_checks:
+        assert token in out, (
+            f"Section '{name}' not found or token '{token}' missing"
+        )
+
+    # output_routing MUST be the final section
+    output_idx = out.rfind("OUTPUT ROUTING LAST")
+    assert output_idx != -1
+    # After output_routing's position, no other section markers should appear
+    tail = out[output_idx + len("OUTPUT ROUTING LAST"):]
+    other_markers = ["Reply rules:", "Routing \u2014 pick by symptom:",
+                     "Tool-use loop:", "Speech style:", "### Capabilities",
+                     "Narration during tool use:"]
+    for marker in other_markers:
+        assert marker not in tail, (
+            f"'{marker}' found AFTER output_routing in prompt"
+        )
