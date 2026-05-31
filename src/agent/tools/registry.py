@@ -253,6 +253,20 @@ TOOLS: dict[str, Tool] = {
         description="Render a long/structured block on the watch dashboard's display panel instead of speaking it: code, ASCII diagrams, tables, formatted/structured text. Use this for anything that would be unreadable or annoying as speech. Speak a one-line pointer ('showing it on screen') and put the full content here.",
         enabled=True,
     ),
+    "show_text": Tool(
+        name="show_text",
+        sdk_name="ShowText",
+        execution="direct",
+        enabled=True,
+        description="Show text on the display panel. Use when voice is unavailable (muted/silent) or when content is better read than heard: facts, lists, references, explanations. Speak a short pointer ('showing on screen') then call this.",
+    ),
+    "show_canvas": Tool(
+        name="show_canvas",
+        sdk_name="ShowCanvas",
+        execution="direct",
+        enabled=True,
+        description="Render HTML/JS in the canvas panel. Use for charts, diagrams, visual demos, UI components. Speak a short pointer ('rendering chart') then call this.",
+    ),
     # Capability discovery (US-007) — proactive skill/MCP install + revoke.
     "discover_capability": Tool(
         name="discover_capability",

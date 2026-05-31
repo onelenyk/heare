@@ -149,6 +149,10 @@ async def execute_direct(
         return await _execute_set_mode(args, settings)
     elif tool == "show_display":
         return await _execute_show_display(args, settings)
+    elif tool == "show_text":
+        return await _execute_show_display(args, settings)
+    elif tool == "show_canvas":
+        return await _execute_show_display(args, settings)
     elif tool == "discover_capability":
         return await _execute_discover_capability(args, settings)
     elif tool == "install_skill_tool":
@@ -2063,7 +2067,7 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
         }
 
 
-_DISPLAY_FORMATS = {"text", "code", "ascii", "table", "markdown"}
+_DISPLAY_FORMATS = {"text", "code", "ascii", "table", "markdown", "html"}
 
 
 async def _execute_show_display(

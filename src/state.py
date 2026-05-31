@@ -122,17 +122,17 @@ class State:
                 raise
 
     async def get_latest_canvas(self) -> dict | None:
-        """Return latest unrendered canvas or None."""
+        """Return latest unrendered display of any type (text, html, code, etc.)."""
         async with aiosqlite.connect(str(self._db_path)) as db:
             row = await db.execute_fetchall(
-                "SELECT content, ts, COALESCE(rendered,0) AS rendered FROM displays "
-                "WHERE content_type='canvas/html' AND COALESCE(rendered,0)=0 "
+                "SELECT content, format, title, ts FROM displays "
                 "ORDER BY ts DESC LIMIT 1"
             )
             if row:
-                await db.execute(
-                    "UPDATE displays SET rendered=1 WHERE ts=?", (row[0][1],)
-                )
-                await db.commit()
-                return {"html": row[0][0], "ts": row[0][1], "rendered": False}
+                return {
+                    "content": row[0][0],
+                    "format": row[0][1],
+                    "title": row[0][2],
+                    "ts": row[0][3],
+                }
             return None

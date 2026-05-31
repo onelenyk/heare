@@ -257,7 +257,7 @@ HTML = r"""
 
 <div class="card" id="canvas-panel">
    <div class="card-header">
-    <span class="label">display / canvas</span>
+    <span class="label">display</span>
     <span class="extra" id="canvas-meta"></span>
     <button onclick="copyCanvas()" style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);cursor:pointer">copy</button>
   </div>
@@ -299,7 +299,30 @@ HTML = r"""
 
 <script>
 const API = "http://127.0.0.1:9778";
-let lastCanvasTs = 0;
+let lastDisplayTs = 0;
+
+async function pollDisplay() {
+  try {
+    var r = await fetch(API + "/display");
+    var d = await r.json();
+    if (d.content && d.ts !== lastDisplayTs) {
+      lastDisplayTs = d.ts;
+      var el = document.getElementById("canvas");
+      var fmt = d.format || "text";
+      if (fmt === "html") {
+        el.innerHTML = d.content;
+      } else {
+        el.innerHTML = "<pre>" + d.content.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</pre>";
+      }
+      var meta = (d.format || "text") + (d.title ? " · " + d.title : "");
+      document.getElementById("canvas-meta").textContent = meta;
+    }
+    if (!d.content) {
+      document.getElementById("canvas").innerHTML =
+        '<div style="color:var(--muted);font-style:italic;font-size:10px">LLM display output renders here</div>';
+    }
+  } catch(e) {}
+}
 
 function fmtTime(ts) {
   if (!ts) return "";
@@ -404,22 +427,6 @@ async function pollState() {
   } catch(e) {}
 }
 
-async function pollCanvas() {
-  try {
-    var r = await fetch(API + "/canvas");
-    var c = await r.json();
-    if (c.html && c.ts !== lastCanvasTs) {
-      lastCanvasTs = c.ts;
-      document.getElementById("canvas").innerHTML = c.html;
-      document.getElementById("canvas-meta").textContent = c.ts ? fmtTime(c.ts) : "";
-    }
-    if (!c.html && !document.getElementById("canvas").innerHTML) {
-      document.getElementById("canvas").innerHTML =
-        '<div style="color:var(--muted);font-style:italic;font-size:10px">LLM [canvas] output renders here</div>';
-    }
-  } catch(e) {}
-}
-
 async function pollActivity() {
   try {
     var r = await fetch(API + "/activity");
@@ -471,7 +478,7 @@ async function pollLogs() {
 
 function pollAll() {
   pollState();
-  pollCanvas();
+  pollDisplay();
   pollActivity();
   pollLogs();
 }

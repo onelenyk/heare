@@ -37,7 +37,8 @@ class API:
         self._app.router.add_get("/activity", self._handle_activity)
         self._app.router.add_get("/logs", self._handle_logs)
         self._app.router.add_get("/", self._handle_index)
-        self._app.router.add_get("/canvas", self._handle_canvas)
+        self._app.router.add_get("/display", self._handle_display)
+        self._app.router.add_get("/canvas", self._handle_display)
         self._app.router.add_post("/daemon", self._handle_daemon)
         self._app.router.add_post("/inject", self._handle_inject)
         self._runner = None
@@ -216,15 +217,15 @@ class API:
         await self.state.set("cancel", "1")
         return web.json_response({"ok": True})
 
-    async def _handle_canvas(self, request):
-        """Return latest unrendered canvas content."""
+    async def _handle_display(self, request):
+        """Return latest display of any type (text, html, code, etc.)."""
         try:
             row = await self.state.get_latest_canvas()
             if row:
                 return web.json_response(row)
-            return web.json_response({"html": None, "ts": None})
+            return web.json_response({"content": None, "format": None, "title": None, "ts": None})
         except Exception:
-            return web.json_response({"html": None, "ts": None})
+            return web.json_response({"content": None, "format": None, "title": None, "ts": None})
 
     async def _handle_daemon(self, request):
         body = await request.json()

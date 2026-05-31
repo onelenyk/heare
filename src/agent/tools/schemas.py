@@ -87,6 +87,16 @@ def _display_args(args: dict[str, Any]) -> str:
     return json.dumps(args)
 
 
+def _show_text_args(args: dict[str, Any]) -> str:
+    args["format"] = "text"
+    return json.dumps(args)
+
+
+def _show_canvas_args(args: dict[str, Any]) -> str:
+    args["format"] = "html"
+    return json.dumps(args)
+
+
 def _empty_args(_args: dict[str, Any]) -> str:
     return ""
 
@@ -432,6 +442,34 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         },
         ["content", "format"],
         _display_args,
+    ),
+    "show_text": (
+        {
+            "content": {
+                "type": "string",
+                "description": "Text to display.",
+            },
+            "title": {
+                "type": "string",
+                "description": "Optional heading.",
+            },
+        },
+        ["content"],
+        _show_text_args,
+    ),
+    "show_canvas": (
+        {
+            "content": {
+                "type": "string",
+                "description": "HTML/JS to render in canvas.",
+            },
+            "title": {
+                "type": "string",
+                "description": "Optional heading.",
+            },
+        },
+        ["content"],
+        _show_canvas_args,
     ),
     # Capability discovery (US-007)
     "discover_capability": (
