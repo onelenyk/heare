@@ -187,29 +187,38 @@ class ContextBuilder:
 
                 all_tags = ("voice", "text", "canvas")
                 tag_desc = {
-                    "voice": "[voice]spoken text[/voice] — voice response (TTS, spoken aloud)",
-                    "text": "[text]written text[/text] — text response (shown on screen)",
-                    "canvas": "[canvas]html code[/canvas] — visual response (renders HTML/JS)",
+                    "voice": "[voice]spoken text[/voice] — голосова відповідь (озвучується вголос)",
+                    "text": "[text]written text[/text] — текстова відповідь (показується на екрані)",
+                    "canvas": "[canvas]html code[/canvas] — візуальна відповідь (HTML/JS для канвасу)",
                 }
                 routing_lines = [
-                    "CRITICAL RULES \u2014 Output Format:",
-                    "You MUST wrap your response in exactly ONE of these tags:",
+                    "КРИТИЧНІ ПРАВИЛА — Формат відповіді:",
+                    "КОЖНА твоя відповідь ПОВИННА починатися з ОДНОГО з цих тегів і закінчуватися відповідним закриваючим тегом:",
                 ]
                 for k in all_tags:
                     routing_lines.append(f"  {tag_desc[k]}")
-                routing_lines.append("Your ENTIRE response MUST be inside the opening and closing tags.")
-                routing_lines.append("FORBIDDEN: mixing tags, omitting closing tags, responding without tags.")
+                routing_lines.extend([
+                    "ЗАБОРОНЕНО: відповідати без тегів, змішувати теги, забувати закриваючий тег.",
+                    "",
+                    "ПРИКЛАДИ:",
+                    "  Користувач: 'Привіт' → [voice]Привіт! Як справи?[/voice]",
+                    "  Користувач: 'Столиця України?' → [text]Столиця України — Київ.[/text]",
+                    "  Користувач: 'Покажи графік продажів' → [canvas]<h1>Графік продажів</h1><div style='display:flex'>...</div>[/canvas]",
+                    "  Користувач: 'Як справи?' → [voice]Все добре, дякую! А в тебе?[/voice]",
+                    "  Користувач: 'Список команд' → [text]Ось список: 1) bash 2) read 3) write[/text]",
+                    "",
+                    "ПРАВИЛА ВИБОРУ ТЕГУ:",
+                    "  [voice] — для розмов, привітань, пояснень, порад, жартів",
+                    "  [text] — для фактів, списків, довідок, чисел, коли відповідь краще прочитати",
+                    "  [canvas] — для графіків, діаграм, UI-компонентів, візуальних демонстрацій",
+                    "Використовуй [voice] за замовчуванням, якщо немає причини обрати інший тег.",
+                ])
                 for k in ("voice", "canvas"):
                     if k not in profile.outputs:
                         routing_lines.append(
-                            f"[{k}] tag is UNAVAILABLE in {profile.name} mode. "
-                            f"DO NOT use [{k}]."
+                            f"[{k}] НЕДОСТУПНИЙ у режимі {profile.name}. "
+                            f"НЕ використовуй [{k}]."
                         )
-                avail = [k for k in all_tags if k in profile.outputs]
-                if len(avail) >= 2:
-                    pairs = {"voice": "conversation", "canvas": "visual/code", "text": "facts"}
-                    hints = [f"[{k}] for {pairs[k]}" for k in avail]
-                    routing_lines.append(f"Choose {' / '.join(hints)}.")
                 result["output_routing_block"] = "\n".join(routing_lines)
             except Exception:  # noqa: BLE001 — never break the turn
                 pass

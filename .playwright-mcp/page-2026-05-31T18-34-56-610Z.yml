@@ -1,0 +1,265 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]: kort ⚡
+    - generic [ref=e5]: running
+    - generic [ref=e6]: pid=42628
+    - generic [ref=e7]: 26s
+    - generic [ref=e8]:
+      - text: mode
+      - emphasis [ref=e9]: focus
+    - generic [ref=e10]:
+      - text: provider
+      - combobox [ref=e11]:
+        - option "deepseek" [selected]
+    - generic [ref=e12]:
+      - text: model
+      - combobox [ref=e13]:
+        - option "deepseek-chat" [selected]
+        - option "deepseek-reasoner"
+    - generic [ref=e14]: 597 msgs | 0 actions
+    - generic "chrome bridge connected" [ref=e15]
+    - generic [ref=e17]: idle
+  - generic [ref=e18]:
+    - generic [ref=e20]:
+      - generic [ref=e22]: controls
+      - generic [ref=e23]:
+        - button "silent" [ref=e24] [cursor=pointer]
+        - button "focus" [ref=e25] [cursor=pointer]
+        - button "ambient" [ref=e26] [cursor=pointer]
+      - generic [ref=e27]:
+        - button "mute bot" [ref=e28] [cursor=pointer]
+        - button "mute mic" [ref=e29] [cursor=pointer]
+        - button "cancel" [ref=e30] [cursor=pointer]
+        - button "stop" [ref=e31] [cursor=pointer]
+    - generic [ref=e33]:
+      - generic [ref=e35]: AI
+      - generic [ref=e36]:
+        - text: "provider:"
+        - strong [ref=e37]: deepseek
+      - generic [ref=e38]:
+        - text: "model:"
+        - strong [ref=e39]: deepseek-chat
+      - generic [ref=e40]: "llm: 98 calls, 904.0k/3.5k tok, $0.0000 | stt: 0 calls, 0s, $0.0000 | tts: 0 calls, 0 ch, $0.0000"
+  - generic [ref=e41]:
+    - generic [ref=e42]:
+      - generic [ref=e43]: latest response
+      - generic [ref=e44]: · 31 chars
+    - generic [ref=e45]: Будь ласка, радий був показати.
+  - generic [ref=e46]:
+    - generic [ref=e47]:
+      - generic [ref=e48]: display / canvas
+      - button "copy" [ref=e49] [cursor=pointer]
+    - generic [ref=e51]: LLM [canvas] output renders here
+  - generic [ref=e52]:
+    - generic [ref=e53]:
+      - generic [ref=e54]: activity (recent transcripts)
+      - generic [ref=e55]: 30 rows
+    - table [ref=e57]:
+      - rowgroup [ref=e58]:
+        - row "time who type content" [ref=e59]:
+          - columnheader "time" [ref=e60]
+          - columnheader "who" [ref=e61]
+          - columnheader "type" [ref=e62]
+          - columnheader "content" [ref=e63]
+      - rowgroup [ref=e64]:
+        - row "21:34:37 bot said Будь ласка, радий був показати." [ref=e65]:
+          - cell "21:34:37" [ref=e66]
+          - cell "bot" [ref=e67]
+          - cell "said" [ref=e68]
+          - cell "Будь ласка, радий був показати." [ref=e69]
+        - row "21:34:37 bot said [voice]Будь ласка, радий був показати." [ref=e70]:
+          - cell "21:34:37" [ref=e71]
+          - cell "bot" [ref=e72]
+          - cell "said" [ref=e73]
+          - cell "[voice]Будь ласка, радий був показати." [ref=e74]
+        - row "21:34:36 you said Дякую за перегляд!" [ref=e75]:
+          - cell "21:34:36" [ref=e76]
+          - cell "you" [ref=e77]
+          - cell "said" [ref=e78]
+          - cell "Дякую за перегляд!" [ref=e79]
+        - row "21:34:31 bot said kort на зв'язку" [ref=e80]:
+          - cell "21:34:31" [ref=e81]
+          - cell "bot" [ref=e82]
+          - cell "said" [ref=e83]
+          - cell "kort на зв'язку" [ref=e84]
+        - row "21:30:40 bot said Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e85]:
+          - cell "21:30:40" [ref=e86]
+          - cell "bot" [ref=e87]
+          - cell "said" [ref=e88]
+          - cell "Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e89]
+        - row "21:30:40 bot said [voice]Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e90]:
+          - cell "21:30:40" [ref=e91]
+          - cell "bot" [ref=e92]
+          - cell "said" [ref=e93]
+          - cell "[voice]Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e94]
+        - row "21:30:39 bot said Не вийшло відразу. Давай я ще раз подивлюсь, як правильно запускати даемон у цьому проекті." [ref=e95]:
+          - cell "21:30:39" [ref=e96]
+          - cell "bot" [ref=e97]
+          - cell "said" [ref=e98]
+          - cell "Не вийшло відразу. Давай я ще раз подивлюсь, як правильно запускати даемон у цьому проекті." [ref=e99]
+        - row "21:30:39 bot said [voice]Не вийшло відразу. Давай я ще раз подивлюсь, як правильно запускати даемон у цьому проекті." [ref=e100]:
+          - cell "21:30:39" [ref=e101]
+          - cell "bot" [ref=e102]
+          - cell "said" [ref=e103]
+          - cell "[voice]Не вийшло відразу. Давай я ще раз подивлюсь, як правильно запускати даемон у цьому проекті." [ref=e104]
+        - row "21:30:37 bot said Звісно, перезапускаю демона зараз." [ref=e105]:
+          - cell "21:30:37" [ref=e106]
+          - cell "bot" [ref=e107]
+          - cell "said" [ref=e108]
+          - cell "Звісно, перезапускаю демона зараз." [ref=e109]
+        - row "21:30:30 you said Давайте отразмінити на полі." [ref=e110]:
+          - cell "21:30:30" [ref=e111]
+          - cell "you" [ref=e112]
+          - cell "said" [ref=e113]
+          - cell "Давайте отразмінити на полі." [ref=e114]
+        - row "21:27:54 bot said Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e115]:
+          - cell "21:27:54" [ref=e116]
+          - cell "bot" [ref=e117]
+          - cell "said" [ref=e118]
+          - cell "Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e119]
+        - row "21:27:54 bot said [voice]Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e120]:
+          - cell "21:27:54" [ref=e121]
+          - cell "bot" [ref=e122]
+          - cell "said" [ref=e123]
+          - cell "[voice]Та ні, я ще не вечеряв. А ти що їв сьогодні?" [ref=e124]
+        - row "21:27:52 you said Що, груш, ти поїв?" [ref=e125]:
+          - cell "21:27:52" [ref=e126]
+          - cell "you" [ref=e127]
+          - cell "said" [ref=e128]
+          - cell "Що, груш, ти поїв?" [ref=e129]
+        - row "21:27:49 bot said Будь ласка, завжди радий допомогти." [ref=e130]:
+          - cell "21:27:49" [ref=e131]
+          - cell "bot" [ref=e132]
+          - cell "said" [ref=e133]
+          - cell "Будь ласка, завжди радий допомогти." [ref=e134]
+        - row "21:27:49 bot said [voice]Будь ласка, завжди радий допомогти." [ref=e135]:
+          - cell "21:27:49" [ref=e136]
+          - cell "bot" [ref=e137]
+          - cell "said" [ref=e138]
+          - cell "[voice]Будь ласка, завжди радий допомогти." [ref=e139]
+        - row "21:27:47 you said Дякую." [ref=e140]:
+          - cell "21:27:47" [ref=e141]
+          - cell "you" [ref=e142]
+          - cell "said" [ref=e143]
+          - cell "Дякую." [ref=e144]
+        - row "21:24:52 bot said kort на зв'язку" [ref=e145]:
+          - cell "21:24:52" [ref=e146]
+          - cell "bot" [ref=e147]
+          - cell "said" [ref=e148]
+          - cell "kort на зв'язку" [ref=e149]
+        - row "21:20:58 bot said Привіт! Я на зв'язку. Чим можу допомогти?" [ref=e150]:
+          - cell "21:20:58" [ref=e151]
+          - cell "bot" [ref=e152]
+          - cell "said" [ref=e153]
+          - cell "Привіт! Я на зв'язку. Чим можу допомогти?" [ref=e154]
+        - row "21:20:58 bot said [voice]Привіт! Я на зв'язку. Чим можу допомогти?" [ref=e155]:
+          - cell "21:20:58" [ref=e156]
+          - cell "bot" [ref=e157]
+          - cell "said" [ref=e158]
+          - cell "[voice]Привіт! Я на зв'язку. Чим можу допомогти?" [ref=e159]
+        - row "21:20:57 you said Так, привіт!" [ref=e160]:
+          - cell "21:20:57" [ref=e161]
+          - cell "you" [ref=e162]
+          - cell "said" [ref=e163]
+          - cell "Так, привіт!" [ref=e164]
+        - row "21:19:47 bot said kort на зв'язку" [ref=e165]:
+          - cell "21:19:47" [ref=e166]
+          - cell "bot" [ref=e167]
+          - cell "said" [ref=e168]
+          - cell "kort на зв'язку" [ref=e169]
+        - row "21:12:33 bot said kort на зв'язку" [ref=e170]:
+          - cell "21:12:33" [ref=e171]
+          - cell "bot" [ref=e172]
+          - cell "said" [ref=e173]
+          - cell "kort на зв'язку" [ref=e174]
+        - row "21:10:27 you said Вздець не був тут-то. Був на етаж мені там, кстати, маложнічки є." [ref=e175]:
+          - cell "21:10:27" [ref=e176]
+          - cell "you" [ref=e177]
+          - cell "said" [ref=e178]
+          - cell "Вздець не був тут-то. Був на етаж мені там, кстати, маложнічки є." [ref=e179]
+        - row "21:09:54 you said Я не знаю. Навіть, можна керівниця." [ref=e180]:
+          - cell "21:09:54" [ref=e181]
+          - cell "you" [ref=e182]
+          - cell "said" [ref=e183]
+          - cell "Я не знаю. Навіть, можна керівниця." [ref=e184]
+        - row "21:09:51 you said А що ти глухий?" [ref=e185]:
+          - cell "21:09:51" [ref=e186]
+          - cell "you" [ref=e187]
+          - cell "said" [ref=e188]
+          - cell "А що ти глухий?" [ref=e189]
+        - row "21:09:45 bot said Схоже, я тебе не дуже розіСхоже, я гублюся в потоці — впізнаю окремі слова, але цілісного" [ref=e190]:
+          - cell "21:09:45" [ref=e191]
+          - cell "bot" [ref=e192]
+          - cell "said" [ref=e193]
+          - cell "Схоже, я тебе не дуже розіСхоже, я гублюся в потоці — впізнаю окремі слова, але цілісного" [ref=e194]
+        - row "21:09:43 you said Адже, відчутте мене?" [ref=e195]:
+          - cell "21:09:43" [ref=e196]
+          - cell "you" [ref=e197]
+          - cell "said" [ref=e198]
+          - cell "Адже, відчутте мене?" [ref=e199]
+        - row "21:09:41 you said Дякую." [ref=e200]:
+          - cell "21:09:41" [ref=e201]
+          - cell "you" [ref=e202]
+          - cell "said" [ref=e203]
+          - cell "Дякую." [ref=e204]
+        - row "21:09:37 you said Пояснюю, що за хорня." [ref=e205]:
+          - cell "21:09:37" [ref=e206]
+          - cell "you" [ref=e207]
+          - cell "said" [ref=e208]
+          - cell "Пояснюю, що за хорня." [ref=e209]
+        - row "21:09:35 you said Хм-хм." [ref=e210]:
+          - cell "21:09:35" [ref=e211]
+          - cell "you" [ref=e212]
+          - cell "said" [ref=e213]
+          - cell "Хм-хм." [ref=e214]
+  - generic [ref=e215]:
+    - generic [ref=e216]:
+      - generic [ref=e217]: daemon log
+      - generic [ref=e218]: 20 lines
+    - table [ref=e220]:
+      - rowgroup [ref=e221]:
+        - 'row "2026-05-31 21:34:31,469 WARNING heare.tts_cache cache warmup failed for ''Скажи пароль, або гава ні'': No audio was received. Please verify that your parameters are correct." [ref=e222]':
+          - 'cell "2026-05-31 21:34:31,469 WARNING heare.tts_cache cache warmup failed for ''Скажи пароль, або гава ні'': No audio was received. Please verify that your parameters are correct." [ref=e223]'
+        - 'row "2026-05-31 21:34:31,472 WARNING heare.tts_cache cache warmup failed for ''Минутку, что-то не так.'': No audio was received. Please verify that your parameters are correct." [ref=e224]':
+          - 'cell "2026-05-31 21:34:31,472 WARNING heare.tts_cache cache warmup failed for ''Минутку, что-то не так.'': No audio was received. Please verify that your parameters are correct." [ref=e225]'
+        - 'row "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''Скажи: да или нет?'': No audio was received. Please verify that your parameters are correct." [ref=e226]':
+          - 'cell "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''Скажи: да или нет?'': No audio was received. Please verify that your parameters are correct." [ref=e227]'
+        - 'row "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''Скажи: так чи ні?'': No audio was received. Please verify that your parameters are correct." [ref=e228]':
+          - 'cell "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''Скажи: так чи ні?'': No audio was received. Please verify that your parameters are correct." [ref=e229]'
+        - 'row "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''действие не удалось'': No audio was received. Please verify that your parameters are correct." [ref=e230]':
+          - 'cell "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''действие не удалось'': No audio was received. Please verify that your parameters are correct." [ref=e231]'
+        - 'row "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''дія не вдалася'': No audio was received. Please verify that your parameters are correct." [ref=e232]':
+          - 'cell "2026-05-31 21:34:31,473 WARNING heare.tts_cache cache warmup failed for ''дія не вдалася'': No audio was received. Please verify that your parameters are correct." [ref=e233]'
+        - 'row "2026-05-31 21:34:31,475 WARNING heare.tts_cache cache warmup failed for ''Хвилинку, щось не так.'': No audio was received. Please verify that your parameters are correct." [ref=e234]':
+          - 'cell "2026-05-31 21:34:31,475 WARNING heare.tts_cache cache warmup failed for ''Хвилинку, щось не так.'': No audio was received. Please verify that your parameters are correct." [ref=e235]'
+        - 'row "2026-05-31 21:34:31,481 WARNING heare.tts_cache cache warmup failed for ''Скажи: гава так, або гава ні'': No audio was received. Please verify that your parameters are correct." [ref=e236]':
+          - 'cell "2026-05-31 21:34:31,481 WARNING heare.tts_cache cache warmup failed for ''Скажи: гава так, або гава ні'': No audio was received. Please verify that your parameters are correct." [ref=e237]'
+        - 'row "2026-05-31 21:34:31,881 INFO heare.main startup greeting queued: \"kort на зв''язку\"" [ref=e238]':
+          - 'cell "2026-05-31 21:34:31,881 INFO heare.main startup greeting queued: \"kort на зв''язку\"" [ref=e239]'
+        - 'row "2026-05-31 21:34:31,970 INFO heare.tts_cache TTS cache populated: 4 entries" [ref=e240]':
+          - 'cell "2026-05-31 21:34:31,970 INFO heare.tts_cache TTS cache populated: 4 entries" [ref=e241]'
+        - row "2026-05-31 21:34:32,301 INFO heare.tts [TIMING] tts text=\"kort на зв'язку\" ttfb_mp3=363ms ttfb_pcm=370ms total=418ms 9216B->73728B" [ref=e242]:
+          - cell "2026-05-31 21:34:32,301 INFO heare.tts [TIMING] tts text=\"kort на зв'язку\" ttfb_mp3=363ms ttfb_pcm=370ms total=418ms 9216B->73728B" [ref=e243]
+        - 'row "2026-05-31 21:34:35,814 INFO httpx HTTP Request: POST https://api.groq.com/openai/v1/audio/transcriptions \"HTTP/1.1 200 OK\"" [ref=e244]':
+          - 'cell "2026-05-31 21:34:35,814 INFO httpx HTTP Request: POST https://api.groq.com/openai/v1/audio/transcriptions \"HTTP/1.1 200 OK\"" [ref=e245]'
+        - row "2026-05-31 21:34:36,421 INFO heare.transcription_gate [DETECTED] language=uk from transcript='Дякую за перегляд!'" [ref=e246]:
+          - cell "2026-05-31 21:34:36,421 INFO heare.transcription_gate [DETECTED] language=uk from transcript='Дякую за перегляд!'" [ref=e247]
+        - row "2026-05-31 21:34:36,421 INFO heare.transcription_gate [TTS VOICE SWAP] from=en-US-AriaNeural to=uk-UA-OstapNeural lang=uk" [ref=e248]:
+          - cell "2026-05-31 21:34:36,421 INFO heare.transcription_gate [TTS VOICE SWAP] from=en-US-AriaNeural to=uk-UA-OstapNeural lang=uk" [ref=e249]
+        - row "2026-05-31 21:34:36,422 INFO heare.llm_context_injector [SYSTEM PROMPT INJECT] language=uk from state" [ref=e250]:
+          - cell "2026-05-31 21:34:36,422 INFO heare.llm_context_injector [SYSTEM PROMPT INJECT] language=uk from state" [ref=e251]
+        - 'row "2026-05-31 21:34:37,192 INFO httpx HTTP Request: POST https://api.deepseek.com/v1/chat/completions \"HTTP/1.1 200 OK\"" [ref=e252]':
+          - 'cell "2026-05-31 21:34:37,192 INFO httpx HTTP Request: POST https://api.deepseek.com/v1/chat/completions \"HTTP/1.1 200 OK\"" [ref=e253]'
+        - 'row "2026-05-31 21:34:37,946 WARNING heare.output_router Unclosed tag(s) at end of response: current=voice stack=[]" [ref=e254]':
+          - 'cell "2026-05-31 21:34:37,946 WARNING heare.output_router Unclosed tag(s) at end of response: current=voice stack=[]" [ref=e255]'
+        - 'row "2026-05-31 21:34:37,946 WARNING heare.output_router Untagged text at end: ''Будь ласка, радий був показати.''" [ref=e256]':
+          - 'cell "2026-05-31 21:34:37,946 WARNING heare.output_router Untagged text at end: ''Будь ласка, радий був показати.''" [ref=e257]'
+        - row "2026-05-31 21:34:55,174 INFO websockets.server connection open" [ref=e258]:
+          - cell "2026-05-31 21:34:55,174 INFO websockets.server connection open" [ref=e259]
+        - row "2026-05-31 21:34:55,226 WARNING heare.browser_bridge browser_bridge auth failed (close 4001)" [ref=e260]:
+          - cell "2026-05-31 21:34:55,226 WARNING heare.browser_bridge browser_bridge auth failed (close 4001)" [ref=e261]
+  - generic [ref=e262]:
+    - generic [ref=e264]: text injection
+    - generic [ref=e265]:
+      - textbox "type text to inject..." [ref=e266]
+      - button "send" [ref=e267] [cursor=pointer]
