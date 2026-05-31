@@ -16,6 +16,7 @@ class API:
         self._app.router.add_post("/provider", self._handle_provider)
         self._app.router.add_post("/model", self._handle_model)
         self._app.router.add_post("/cancel", self._handle_cancel)
+        self._app.router.add_get("/", self._handle_index)
         self._app.router.add_get("/canvas", self._handle_canvas)
         self._runner = None
         self._site = None
@@ -33,6 +34,11 @@ class API:
             await self._runner.cleanup()
 
     # ── Handlers ───────────────────────────────────────────
+
+    async def _handle_index(self, request):
+        from src.desktop.app import HTML
+
+        return web.Response(text=HTML, content_type="text/html")
 
     async def _handle_state(self, request):
         data = self.state.snapshot()

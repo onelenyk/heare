@@ -15,6 +15,7 @@ dependencies = [
     "textual>=1.0.0,<2.0.0",
     "aiohttp>=3.13.5",
     "pywebview>=5.0",
+    "pyaudio>=0.2.14",
 ]
 
 [dependency-groups]
