@@ -169,6 +169,28 @@ HTML = r"""
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+  .dot.amber { background: var(--accent-yellow); box-shadow: 0 0 4px var(--accent-yellow); }
+  .dot.silent { background: var(--muted); box-shadow: none; }
+
+  #status-bar select {
+    background: #1e1e35; color: #c0c0c0; border: 1px solid #333;
+    font-size: 11px; padding: 2px; font-family: var(--mono);
+  }
+
+  #inject-row { display: flex; gap: 4px; align-items: center; }
+  #inject-row input {
+    background: #1e1e35; color: #c0c0c0; border: 1px solid #333;
+    font-size: 11px; font-family: var(--mono); padding: 3px 6px;
+    width: 200px; flex: 1; border-radius: 3px;
+  }
+  #inject-row button {
+    padding: 3px 8px; border: 1px solid var(--border);
+    border-radius: 3px; background: var(--bg); color: var(--text);
+    cursor: pointer; font-size: 10px; font-family: var(--mono);
+    white-space: nowrap;
+  }
+  #inject-row button:hover { border-color: var(--accent-cyan); background: #252540; }
 </style>
 </head>
 <body>
@@ -186,7 +208,13 @@ HTML = r"""
       style="background:#1e1e35;color:#c0c0c0;border:1px solid #333;font-size:11px;padding:2px">
     </select>
   </span>
+  <span class="meta">model
+    <select id="model-select" onchange="switchModel()"
+      style="background:#1e1e35;color:#c0c0c0;border:1px solid #333;font-size:11px;padding:2px">
+    </select>
+  </span>
   <span class="meta" id="counts-text"></span>
+  <span id="chrome-dot" class="dot silent" title="chrome bridge"></span>
   <span id="voice-dot"></span>
   <span id="voice-indicator" class="idle">idle</span>
 </div>
@@ -204,6 +232,7 @@ HTML = r"""
         <button onclick="toggleMute('bot')" id="btn-mute-bot">mute bot</button>
         <button onclick="toggleMute('mic')" id="btn-mute-mic">mute mic</button>
         <button onclick="cancel()" id="btn-cancel">cancel</button>
+        <button onclick="daemonAction('stop')" id="btn-stop" style="border-color:var(--accent-red)">stop</button>
       </div>
     </div>
   </div>
@@ -260,6 +289,14 @@ HTML = r"""
   </div>
 </div>
 
+<div class="card" id="inject-card">
+  <div class="card-header"><span class="label">text injection</span></div>
+  <div id="inject-row">
+    <input id="inject-text" type="text" placeholder="type text to inject...">
+    <button onclick="injectText()">send</button>
+  </div>
+</div>
+
 <script>
 const API = "http://127.0.0.1:9778";
 let lastCanvasTs = 0;
@@ -268,6 +305,12 @@ function fmtTime(ts) {
   if (!ts) return "";
   var d = new Date(ts * 1000);
   return d.toTimeString().slice(0, 8);
+}
+
+function fmtTok(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+  return String(n);
 }
 
 async function pollState() {
@@ -293,9 +336,14 @@ async function pollState() {
     if (s.usage) {
       var u = s.usage;
       document.getElementById("usage-text").innerHTML =
-        "llm " + u.llm_calls + " calls | $" + (u.llm_cost_usd || 0).toFixed(4) +
-        " &nbsp; stt " + (u.stt_audio_seconds || 0).toFixed(1) + "s";
+        "llm: " + u.llm_calls + " calls, " + fmtTok(u.llm_input_tokens || 0) + "/" + fmtTok(u.llm_output_tokens || 0) + " tok, $" + (u.llm_cost_usd || 0).toFixed(4) +
+        " | stt: " + (u.stt_calls || 0) + " calls, " + (u.stt_audio_seconds || 0).toFixed(0) + "s, $" + (u.stt_cost_usd || 0).toFixed(4) +
+        " | tts: " + (u.tts_calls || 0) + " calls, " + fmtTok(u.tts_char_count || 0) + " ch, $" + (u.tts_cost_usd || 0).toFixed(4);
     }
+
+    var cd = document.getElementById("chrome-dot");
+    cd.className = "dot " + (s.chrome ? "amber" : "silent");
+    cd.title = s.chrome ? "chrome bridge connected" : "chrome bridge offline";
 
     var vi = document.getElementById("voice-indicator");
     var vd = document.getElementById("voice-dot");
@@ -328,6 +376,17 @@ async function pollState() {
         opts += '<option value="' + p + '"' + (p === cur ? " selected" : "") + '>' + p + '</option>';
       }
       sel.innerHTML = opts;
+    }
+
+    if (s.models && s.models.length) {
+      var msel = document.getElementById("model-select");
+      var mcur = s.model || "";
+      var mopts = "";
+      for (var j = 0; j < s.models.length; j++) {
+        var m = s.models[j];
+        mopts += '<option value="' + m + '"' + (m === mcur ? " selected" : "") + '>' + m + '</option>';
+      }
+      msel.innerHTML = mopts;
     }
 
     var micOn = s.mute_mic === "1" || s.mute_mic === true;
@@ -447,6 +506,23 @@ async function cancel() {
 async function switchProvider(p) {
   await fetch(API + "/provider", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({provider:p})});
   pollState();
+}
+async function switchModel() {
+  var m = document.getElementById("model-select").value;
+  await fetch(API + "/model", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({model:m})});
+  pollState();
+}
+async function daemonAction(action) {
+  var r = await fetch(API + "/daemon", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:action})});
+  var d = await r.json();
+  if (d.ok) document.getElementById("status-text").textContent = d.action;
+}
+async function injectText() {
+  var el = document.getElementById("inject-text");
+  var text = el.value.trim();
+  if (!text) return;
+  await fetch(API + "/inject", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text:text})});
+  el.value = "";
 }
 </script>
 </body>

@@ -1,11 +1,17 @@
 """Minimal HTTP API for daemon control — backs the desktop app."""
 import logging
+import os
+import signal
 import sqlite3
+import time
+import uuid
+from pathlib import Path
 
 from aiohttp import web
 from src.agent.identity import load_identity
-from src.agent.llm.providers import get_available
+from src.agent.llm.providers import PROVIDERS, get_available, get_config
 from src.agent.modes import VALID_MODES
+from src.config import HEARE_HOME
 from src.watch.data import (
     counts,
     daemon_status,
@@ -32,6 +38,8 @@ class API:
         self._app.router.add_get("/logs", self._handle_logs)
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_get("/canvas", self._handle_canvas)
+        self._app.router.add_post("/daemon", self._handle_daemon)
+        self._app.router.add_post("/inject", self._handle_inject)
         self._runner = None
         self._site = None
 
@@ -57,6 +65,24 @@ class API:
     async def _handle_state(self, request):
         data = self.state.snapshot()
         data["providers"] = self._available_providers()
+
+        # Models for current provider
+        try:
+            provider_key = data.get("provider", "")
+            if provider_key in PROVIDERS:
+                cfg = get_config(provider_key)
+                data["models"] = list(cfg.model_whitelist) if cfg.model_whitelist else [cfg.default_model]
+            else:
+                data["models"] = []
+        except Exception:
+            data["models"] = []
+
+        # Chrome bridge status
+        try:
+            token_file = HEARE_HOME / "browser_bridge.token"
+            data["chrome"] = self.config.browser_bridge_enabled and token_file.exists()
+        except Exception:
+            data["chrome"] = False
 
         try:
             identity = load_identity(self.config.identity_file)
@@ -199,6 +225,30 @@ class API:
             return web.json_response({"html": None, "ts": None})
         except Exception:
             return web.json_response({"html": None, "ts": None})
+
+    async def _handle_daemon(self, request):
+        body = await request.json()
+        action = body.get("action", "")
+        if action == "stop":
+            try:
+                pid_file = self.config.pid_file
+                if pid_file.exists():
+                    pid = int(pid_file.read_text().strip())
+                    os.kill(pid, signal.SIGTERM)
+                return web.json_response({"ok": True, "action": "stopped"})
+            except (OSError, ValueError, ProcessLookupError):
+                return web.json_response({"ok": True, "action": "already_stopped"})
+        return web.json_response({"ok": False, "error": f"unknown action: {action}"}, status=400)
+
+    async def _handle_inject(self, request):
+        body = await request.json()
+        text = body.get("text", "").strip()
+        if not text:
+            return web.json_response({"ok": False, "error": "empty text"}, status=400)
+        fname = f"inject_{int(time.time())}_{uuid.uuid4().hex[:6]}.txt"
+        self.config.inject_dir.mkdir(parents=True, exist_ok=True)
+        (self.config.inject_dir / fname).write_text(text)
+        return web.json_response({"ok": True})
 
     def _available_providers(self):
         return get_available(self.config)
