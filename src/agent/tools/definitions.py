@@ -26,8 +26,11 @@ Handler type mapping (every tool maps to exactly ONE of these)::
     "skill_delete"  → delete_tool
     "skill_update"  → update_tool
     "skill_discover"→ discover_capability, revoke_capability
-    "misc"          → create_archive, extract_archive, batch_operation, workflow,
+    "misc"          → create_archive, extract_archive, batch_operation,
                        add_favorite, set_view_preference, show_profile, cancel
+    "mute_bot"      → mute_bot
+    "mute_mic"      → mute_mic
+    "audio_device"  → audio_input, audio_output
 
 Tools with no LLM arguments (like ``list_skills``, ``stop_daemon``) have an
 empty ``schema_fields`` dict.
@@ -50,7 +53,7 @@ class ToolDef:
 
 
 # ============================================================================
-# COMPLETE TOOL LIST — 41 built-in tools
+# COMPLETE TOOL LIST — 45 built-in tools
 # ============================================================================
 
 TOOLS: list[ToolDef] = [
@@ -591,14 +594,48 @@ TOOLS: list[ToolDef] = [
 
     ToolDef(
         name="workflow",
-        description="Execute saved multi-step action sequences",
-        handler="misc",
+        description="Execute a multi-step action sequence. Provide a list of tools to call in order. Each step waits for the previous one to complete.",
+        handler="batch_op",
         schema_fields={
-            "name": {
-                "type": "string",
-                "description": "Workflow name to execute.",
-            },
+            "steps": {"type": "array", "items": {"type": "object"}, "description": "List of actions with tool name and args."},
         },
+        required=["steps"],
+    ),
+    ToolDef(
+        name="mute_bot",
+        description="Mute or unmute the bot's voice output. When muted, the bot hears but does not speak.",
+        handler="mute_bot",
+        schema_fields={
+            "muted": {"type": "boolean", "description": "True to mute, False to unmute."},
+        },
+        required=["muted"],
+    ),
+    ToolDef(
+        name="mute_mic",
+        description="Mute or unmute the microphone input. When muted, the bot cannot hear anything.",
+        handler="mute_mic",
+        schema_fields={
+            "muted": {"type": "boolean", "description": "True to mute, False to unmute."},
+        },
+        required=["muted"],
+    ),
+    ToolDef(
+        name="audio_input",
+        description="Switch the audio input device (microphone). Provide the device name or substring to match.",
+        handler="audio_device",
+        schema_fields={
+            "name": {"type": "string", "description": "Device name or substring to match (e.g., 'AirPods Pro')."},
+        },
+        required=["name"],
+    ),
+    ToolDef(
+        name="audio_output",
+        description="Switch the audio output device (speakers). Provide the device name or substring to match.",
+        handler="audio_device",
+        schema_fields={
+            "name": {"type": "string", "description": "Device name or substring to match (e.g., 'AirPods Pro')."},
+        },
+        required=["name"],
     ),
     ToolDef(
         name="create_archive",

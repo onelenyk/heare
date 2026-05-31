@@ -472,6 +472,51 @@ TOOLS: list[ToolDef] = [
             "tab_id": {"type": "integer", "description": "Chrome tab ID to bring to the foreground."},
         },
     ),
+    ToolDef(
+        name="workflow",
+        description="Execute a multi-step action sequence. Provide a list of tools to call in order. Each step waits for the previous one to complete.",
+        handler="batch_op",
+        schema_fields={
+            "steps": {"type": "array", "items": {"type": "object"}, "description": "List of actions with tool name and args."},
+        },
+        required=["steps"],
+    ),
+    ToolDef(
+        name="mute_bot",
+        description="Mute or unmute the bot's voice output. When muted, the bot hears but does not speak.",
+        handler="mute_bot",
+        schema_fields={
+            "muted": {"type": "boolean", "description": "True to mute, False to unmute."},
+        },
+        required=["muted"],
+    ),
+    ToolDef(
+        name="mute_mic",
+        description="Mute or unmute the microphone input. When muted, the bot cannot hear anything.",
+        handler="mute_mic",
+        schema_fields={
+            "muted": {"type": "boolean", "description": "True to mute, False to unmute."},
+        },
+        required=["muted"],
+    ),
+    ToolDef(
+        name="audio_input",
+        description="Switch the audio input device (microphone). Provide the device name or substring to match.",
+        handler="audio_device",
+        schema_fields={
+            "name": {"type": "string", "description": "Device name or substring to match (e.g., 'AirPods Pro')."},
+        },
+        required=["name"],
+    ),
+    ToolDef(
+        name="audio_output",
+        description="Switch the audio output device (speakers). Provide the device name or substring to match.",
+        handler="audio_device",
+        schema_fields={
+            "name": {"type": "string", "description": "Device name or substring to match (e.g., 'AirPods Pro')."},
+        },
+        required=["name"],
+    ),
 ]
 
 
@@ -516,6 +561,11 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "extract_in_browser": _json_serializer,
     "open_browser_tab": _json_serializer,
     "activate_browser_tab": _json_serializer,
+    "workflow": _json_serializer,
+    "mute_bot": _json_serializer,
+    "mute_mic": _json_serializer,
+    "audio_input": _name_serializer,
+    "audio_output": _name_serializer,
 }
 
 
@@ -563,6 +613,9 @@ def _handler_for(tool: ToolDef):
         "browser_extract": direct._execute_extract_in_browser,
         "browser_open_tab": direct._execute_open_browser_tab,
         "browser_activate_tab": direct._execute_activate_browser_tab,
+        "mute_bot": direct._execute_mute_bot,
+        "mute_mic": direct._execute_mute_mic,
+        "audio_device": direct._execute_audio_device,
     }
 
     func = handler_map.get(tool.handler)

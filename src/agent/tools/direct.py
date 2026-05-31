@@ -185,6 +185,12 @@ async def execute_direct(
         return await _execute_open_browser_tab(args, settings)
     elif tool == "activate_browser_tab":
         return await _execute_activate_browser_tab(args, settings)
+    elif tool == "mute_bot":
+        return await _execute_mute_bot(args, settings)
+    elif tool == "mute_mic":
+        return await _execute_mute_mic(args, settings)
+    elif tool in ("audio_input", "audio_output"):
+        return await _execute_audio_device(args, settings)
     else:
         return {
             "success": False,
@@ -3128,3 +3134,94 @@ async def _execute_activate_browser_tab(args: str, settings: "Settings | None" =
     if parsed.get("tab_id") is not None:
         params["tab_id"] = parsed["tab_id"]
     return await bridge.call("activate_tab", params)
+
+
+# ============================================================================
+# Audio & mute tools
+# ============================================================================
+
+
+async def _execute_mute_bot(args: str, settings: "Settings | None" = None) -> dict:
+    """Mute/unmute bot via HTTP API."""
+    import json
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    muted = bool(parsed.get("muted", True))
+    target = "bot"
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "http://127.0.0.1:9778/mute",
+                json={"target": target},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                logger.warning("State API returned %s for mute", resp.status_code)
+        except httpx.RequestError as api_err:
+            logger.warning("State API unavailable for mute: %s", api_err)
+    return {
+        "success": True,
+        "output": f"Bot {'muted' if muted else 'unmuted'}",
+        "spoken": {
+            "en": f"Bot {'muted' if muted else 'unmuted'}.",
+            "uk": f"Бот {'заглушений' if muted else 'ввімкнений'}.",
+        },
+    }
+
+
+async def _execute_mute_mic(args: str, settings: "Settings | None" = None) -> dict:
+    """Mute/unmute mic via HTTP API."""
+    import json
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    target = "mic"
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "http://127.0.0.1:9778/mute",
+                json={"target": target},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                logger.warning("State API returned %s for mute", resp.status_code)
+        except httpx.RequestError as api_err:
+            logger.warning("State API unavailable for mute: %s", api_err)
+    return {
+        "success": True,
+        "output": "Mic toggled",
+        "spoken": {
+            "en": "Mic toggled.",
+            "uk": "Мікрофон перемкнено.",
+        },
+    }
+
+
+async def _execute_audio_device(args: str, settings: "Settings | None" = None) -> dict:
+    """Switch audio device."""
+    import json
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        parsed = {}
+    name = str(parsed.get("name", "")).strip()
+    if not name:
+        return {
+            "success": False,
+            "output": "",
+            "error": "Device name is required",
+            "spoken": {"en": "Device name is required."},
+        }
+    if settings and hasattr(settings, "audio_input_device_file"):
+        settings.audio_input_device_file.write_text(name)
+    return {
+        "success": True,
+        "output": f"Audio device set to {name}",
+        "spoken": {
+            "en": f"Audio device set to {name}.",
+            "uk": f"Аудіо пристрій встановлено на {name}.",
+        },
+    }
