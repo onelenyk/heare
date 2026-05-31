@@ -150,9 +150,17 @@ HTML = r"""
     display: inline-block; padding: 2px 8px; border-radius: 10px;
     font-size: 9px; font-family: var(--mono); margin-left: 6px;
   }
-  #voice-indicator.listening { background: #0a2a1a; color: var(--accent); }
+   #voice-indicator.listening { background: #0a2a1a; color: var(--accent); }
   #voice-indicator.stt { background: #2a1a0a; color: var(--accent-yellow); }
   #voice-indicator.idle { background: #1a1a2e; color: var(--muted); }
+
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
+  #voice-dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+    flex-shrink: 0; background: var(--accent); box-shadow: 0 0 8px var(--accent);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  #voice-dot.speaking { opacity: 1; animation: pulse 0.8s ease-in-out infinite; }
 
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -169,8 +177,13 @@ HTML = r"""
   <span class="meta" id="uptime-text"></span>
   <span style="flex:1"></span>
   <span class="meta">mode <em id="mode-text">?</em></span>
-  <span class="meta">provider <em id="provider-text">?</em></span>
+  <span class="meta">provider
+    <select id="provider-select" onchange="switchProvider(this.value)"
+      style="background:#1e1e35;color:#c0c0c0;border:1px solid #333;font-size:11px;padding:2px">
+    </select>
+  </span>
   <span class="meta" id="counts-text"></span>
+  <span id="voice-dot"></span>
   <span id="voice-indicator" class="idle">idle</span>
 </div>
 
@@ -187,9 +200,6 @@ HTML = r"""
         <button onclick="toggleMute('bot')" id="btn-mute-bot">mute bot</button>
         <button onclick="toggleMute('mic')" id="btn-mute-mic">mute mic</button>
         <button onclick="cancel()" id="btn-cancel">cancel</button>
-      </div>
-      <div class="btn-row">
-        <button onclick="switchProvider()" id="btn-provider">switch provider</button>
       </div>
     </div>
   </div>
@@ -213,9 +223,10 @@ HTML = r"""
 </div>
 
 <div class="card" id="canvas-panel">
-  <div class="card-header">
+   <div class="card-header">
     <span class="label">display / canvas</span>
     <span class="extra" id="canvas-meta"></span>
+    <button onclick="copyCanvas()" style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);cursor:pointer">copy</button>
   </div>
   <div id="canvas"></div>
 </div>
@@ -268,7 +279,6 @@ async function pollState() {
     document.getElementById("agent-name").textContent = s.agent || "heare";
     document.getElementById("agent-emoji").textContent = s.emoji || "";
     document.getElementById("mode-text").textContent = s.mode || "?";
-    document.getElementById("provider-text").textContent = s.provider || "?";
     var tc = s.transcripts_count || 0;
     var ac = s.actions_count || 0;
     document.getElementById("counts-text").textContent = tc + " msgs | " + ac + " actions";
@@ -284,15 +294,36 @@ async function pollState() {
     }
 
     var vi = document.getElementById("voice-indicator");
+    var vd = document.getElementById("voice-dot");
     if (s.voice_state) {
       vi.textContent = s.voice_state.state || "idle";
       vi.className = s.voice_state.state || "idle";
       if (s.voice_state.last_partial) {
         vi.textContent += ": " + s.voice_state.last_partial.slice(0, 24);
       }
+      var vs = s.voice_state || {};
+      var speaking = vs.state === "speaking" || vs.state === "stt" || vs.state === "listening";
+      vd.className = speaking ? "speaking" : "";
     } else {
       vi.textContent = "idle";
       vi.className = "idle";
+      vd.className = "";
+    }
+
+    if (s.last_response) {
+      document.getElementById("response-text").textContent = s.last_response;
+      document.getElementById("response-meta").textContent = (s.last_response_mode || "") + " · " + (s.last_response ? s.last_response.length + " chars" : "");
+    }
+
+    if (s.providers && s.providers.length) {
+      var sel = document.getElementById("provider-select");
+      var cur = s.provider || "";
+      var opts = "";
+      for (var i = 0; i < s.providers.length; i++) {
+        var p = s.providers[i];
+        opts += '<option value="' + p + '"' + (p === cur ? " selected" : "") + '>' + p + '</option>';
+      }
+      sel.innerHTML = opts;
     }
 
     var micOn = s.mute_mic === "1" || s.mute_mic === true;
@@ -318,6 +349,10 @@ async function pollCanvas() {
       lastCanvasTs = c.ts;
       document.getElementById("canvas").innerHTML = c.html;
       document.getElementById("canvas-meta").textContent = c.ts ? fmtTime(c.ts) : "";
+    }
+    if (!c.html && !document.getElementById("canvas").innerHTML) {
+      document.getElementById("canvas").innerHTML =
+        '<div style="color:var(--muted);font-style:italic;font-size:10px">LLM [canvas] output renders here</div>';
     }
   } catch(e) {}
 }
@@ -380,6 +415,20 @@ function pollAll() {
 setInterval(pollAll, 800);
 pollAll();
 
+async function copyCanvas() {
+  var el = document.getElementById("canvas");
+  try {
+    await navigator.clipboard.writeText(el.innerText || el.innerHTML);
+  } catch(e) {
+    var ta = document.createElement("textarea");
+    ta.value = el.innerText || el.innerHTML;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  }
+}
+
 async function toggleMute(target) {
   await fetch(API + "/mute", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({target:target})});
   pollState();
@@ -391,12 +440,9 @@ async function setMode(m) {
 async function cancel() {
   await fetch(API + "/cancel", {method:"POST"});
 }
-async function switchProvider() {
-  var p = prompt("Provider (e.g. openrouter, zai):");
-  if (p) {
-    await fetch(API + "/provider", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({provider:p})});
-    pollState();
-  }
+async function switchProvider(p) {
+  await fetch(API + "/provider", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({provider:p})});
+  pollState();
 }
 </script>
 </body>

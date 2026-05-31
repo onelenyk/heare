@@ -109,6 +109,18 @@ class API:
         except Exception:
             pass
 
+        try:
+            db = sqlite3.connect(str(self.config.db_path))
+            row = db.execute(
+                "SELECT text, agent_mode FROM transcripts WHERE mode='assistant' ORDER BY ts DESC LIMIT 1"
+            ).fetchone()
+            db.close()
+            if row:
+                data["last_response"] = row[0]
+                data["last_response_mode"] = row[1]
+        except Exception:
+            pass
+
         return web.json_response(data)
 
     async def _handle_activity(self, request):
