@@ -277,49 +277,6 @@ async def test_injector_swallows_context_builder_failure() -> None:
     assert llm_ctx.get_messages()[0]["content"] == "PRIOR"
 
 
-# ---------------------------------------------------------------------------
-# T7: render_native_system_prompt — output_routing ordering via prompt_sections
-# ---------------------------------------------------------------------------
-
-
-def test_render_native_output_routing_is_last_section() -> None:
-    """output_routing_block content MUST appear after all other sections
-    in the rendered system prompt."""
-    ctx = {
-        "time": "2026-01-01 12:00:00",
-        "timezone": "UTC",
-        "mode": "ambient",
-        "mode_block": "Mode: ambient",
-        "recent_transcripts": "(none)",
-        "conversation_summary": "No history.",
-        "active_topics": "",
-        "entities": "",
-        "recent_turns": "(none)",
-        "recent_actions": "(none)",
-        "mcp_servers": "None connected.",
-        "output_routing_block": "OUTPUT_ROUTING_LAST_MARKER",
-    }
-    out = render_native_system_prompt(
-        persona="Heare persona", context=ctx, language="en"
-    )
-
-    assert "OUTPUT_ROUTING_LAST_MARKER" in out
-
-    output_idx = out.rfind("OUTPUT_ROUTING_LAST_MARKER")
-    assert output_idx != -1
-
-    tail = out[output_idx + len("OUTPUT_ROUTING_LAST_MARKER"):]
-    other_markers = [
-        "Reply rules:", "Routing \u2014 pick by symptom:",
-        "Tool-use loop:", "Speech style:", "### Capabilities",
-        "Narration during tool use:", "Heare persona",
-    ]
-    for marker in other_markers:
-        assert marker not in tail, (
-            f"'{marker}' found AFTER output_routing in native prompt"
-        )
-
-
 @pytest.mark.asyncio
 async def test_injector_forwards_non_transcription_frames_unchanged() -> None:
     cb = _FakeContextBuilder(ctx={"time": "12:00:00"})

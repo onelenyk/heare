@@ -31,12 +31,8 @@ import logging
 from typing import TYPE_CHECKING, Any, Tuple
 
 from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
-from src.pipeline.stages.canvas_output import create_canvas_output
-from src.pipeline.stages.output_router import create_output_router
-from src.pipeline.stages.text_output import create_text_output
 from src.pipeline.stages.tts_scrub_processor import create_tts_scrub_processor
 from src.pipeline.stages.usage_recorder import create_usage_recorder
-from src.pipeline.stages.voice_output import create_voice_output
 from src.pipeline.stages.cancel_flag_gate import create_cancel_flag_gate
 from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_gate
 from src.agent.llm.providers import PROVIDERS, get_available
@@ -310,8 +306,6 @@ def _assemble_native_stages(
     llm_service: Any,
     tts: Any,
     assistant_response_logger: Any = None,
-    output_router: Any = None,
-    voice_output: Any = None,
     tts_scrub: Any = None,
     usage_recorder: Any = None,
     tts_fade_observer: Any = None,
@@ -323,8 +317,6 @@ def _assemble_native_stages(
     cancel_flag_gate: Any = None,
     echo_gate: Any = None,
     echo_collector: Any = None,
-    text_output: Any = None,
-    canvas_output: Any = None,
 ) -> list:
     """Pure stage-list assembly, factored out for unit testing.
 
@@ -371,16 +363,7 @@ def _assemble_native_stages(
     # capture must happen on the LLM side.
     if assistant_response_logger is not None:
         stages.append(assistant_response_logger)
-    # OutputRouter parses LLM text for [voice]/[text]/[canvas] tags
-    # and emits typed content frames for downstream routing.
-    if output_router is not None:
-        stages.append(output_router)
-    # VoiceOutputProcessor converts VoiceContentFrame to TTSSpeakFrame
-    # which flows downstream through the TTS chain stages below.
-    if voice_output is not None:
-        stages.append(voice_output)
-    # tts_scrub sits AFTER voice_output so tool-name narration is
-    # stripped before TTS speaks the text.
+    # tts_scrub strips tool-name narration before TTS speaks the text.
     if tts_scrub is not None:
         stages.append(tts_scrub)
     stages.append(tts)
@@ -401,14 +384,6 @@ def _assemble_native_stages(
     # that is actually being played (muted audio is not echoed).
     if echo_collector is not None:
         stages.append(echo_collector)
-    # Text output logs TextContentFrame to the transcripts table.
-    # Always active — never gated by mute or mode.
-    if text_output is not None:
-        stages.append(text_output)
-    # Canvas output persists CanvasContentFrame HTML to the displays
-    # table. Mode-gated by session_state.profile.outputs.
-    if canvas_output is not None:
-        stages.append(canvas_output)
     stages.extend([transport_output, assistant_aggregator])
     return stages
 
@@ -845,25 +820,6 @@ async def build_pipeline(
         bot_speech_state=bot_speech_state,
     )
 
-    # Output router — parses LLM text for [voice]/[text]/[canvas] tags
-    # and emits typed content frames for downstream routing.
-    output_router = create_output_router()
-
-    # Text output processor — logs TextContentFrame to transcripts
-    # table. Always active, never gated by mute or mode.
-    text_output = create_text_output(
-        store=store,
-        settings=settings,
-    )
-
-    # Canvas output processor — persists CanvasContentFrame HTML to
-    # the displays table. Mode-gated by session_state.profile.outputs.
-    canvas_output = create_canvas_output(
-        store=store,
-        settings=settings,
-        session_state=session_state,
-    )
-
     # Strip tool-name narration before TTS speaks it. Without this, the LLM
     # occasionally emits raw tool names (``list_tools``, ``list_capabilities``,
     # ``bash: <command>``) as plain text instead of invoking the function — and
@@ -891,16 +847,6 @@ async def build_pipeline(
     # upstream of TTS.
     mute_gate = create_mute_gate(
         state=state, session_state=session_state
-    )
-
-    # Voice output processor — converts VoiceContentFrame to
-    # TTSSpeakFrame, gated by mode profile outputs + voice_muted.
-    voice_output = create_voice_output(
-        tts_service=tts,
-        tts_scrub=tts_scrub,
-        tts_fade=tts_fade_observer,
-        mute_gate=mute_gate,
-        session_state=session_state,
     )
 
     # Input (mic) mute gate — drops InputAudioRawFrame when
@@ -957,8 +903,6 @@ async def build_pipeline(
         user_aggregator=user_aggregator,
         llm_service=llm_service,
         assistant_response_logger=assistant_response_logger,
-        output_router=output_router,
-        voice_output=voice_output,
         tts_scrub=tts_scrub,
         usage_recorder=usage_recorder,
         tts=tts,
@@ -970,8 +914,6 @@ async def build_pipeline(
         cancel_flag_gate=cancel_flag_gate,
         echo_gate=echo_gate_proc,
         echo_collector=echo_collector,
-        text_output=text_output,
-        canvas_output=canvas_output,
     )
 
     logger.info(

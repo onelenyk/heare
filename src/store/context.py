@@ -185,41 +185,7 @@ class ContextBuilder:
                     "set_mode('silent')."
                 )
 
-                all_tags = ("voice", "text", "canvas")
-                tag_desc = {
-                    "voice": "[voice]spoken text[/voice] — голосова відповідь (озвучується вголос)",
-                    "text": "[text]written text[/text] — текстова відповідь (показується на екрані)",
-                    "canvas": "[canvas]html code[/canvas] — візуальна відповідь (HTML/JS для канвасу)",
-                }
-                routing_lines = [
-                    "КРИТИЧНІ ПРАВИЛА — Формат відповіді:",
-                    "КОЖНА твоя відповідь ПОВИННА починатися з ОДНОГО з цих тегів і закінчуватися відповідним закриваючим тегом:",
-                ]
-                for k in all_tags:
-                    routing_lines.append(f"  {tag_desc[k]}")
-                routing_lines.extend([
-                    "ЗАБОРОНЕНО: відповідати без тегів, змішувати теги, забувати закриваючий тег.",
-                    "",
-                    "ПРИКЛАДИ:",
-                    "  Користувач: 'Привіт' → [voice]Привіт! Як справи?[/voice]",
-                    "  Користувач: 'Столиця України?' → [text]Столиця України — Київ.[/text]",
-                    "  Користувач: 'Покажи графік продажів' → [canvas]<h1>Графік продажів</h1><div style='display:flex'>...</div>[/canvas]",
-                    "  Користувач: 'Як справи?' → [voice]Все добре, дякую! А в тебе?[/voice]",
-                    "  Користувач: 'Список команд' → [text]Ось список: 1) bash 2) read 3) write[/text]",
-                    "",
-                    "ПРАВИЛА ВИБОРУ ТЕГУ:",
-                    "  [voice] — для розмов, привітань, пояснень, порад, жартів",
-                    "  [text] — для фактів, списків, довідок, чисел, коли відповідь краще прочитати",
-                    "  [canvas] — для графіків, діаграм, UI-компонентів, візуальних демонстрацій",
-                    "Використовуй [voice] за замовчуванням, якщо немає причини обрати інший тег.",
-                ])
-                for k in ("voice", "canvas"):
-                    if k not in profile.outputs:
-                        routing_lines.append(
-                            f"[{k}] НЕДОСТУПНИЙ у режимі {profile.name}. "
-                            f"НЕ використовуй [{k}]."
-                        )
-                result["output_routing_block"] = "\n".join(routing_lines)
+
             except Exception:  # noqa: BLE001 — never break the turn
                 pass
         try:

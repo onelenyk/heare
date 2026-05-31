@@ -91,7 +91,6 @@ PROMPT_SECTIONS: list[PromptSection] = [
     PromptSection("narration",        630, "template", "prompts/narration.txt"),
     PromptSection("routing",          640, "template", "prompts/routing.txt"),
     PromptSection("run_skill",        650, "template", "prompts/run_skill.txt"),
-    PromptSection("output_routing",   800, "dynamic"),  # LAST
 ]
 
 
@@ -325,10 +324,6 @@ def render_prompt(
                         content = header.strip() + "\n" + "\n".join(skill_lines)
                     else:
                         content = None
-
-        elif section.key == "output_routing" and section.source == "dynamic":
-            # Special case: read from context dict
-            content = context.get("output_routing_block") if context else None
 
         elif section.source == "dynamic":
             # Generic dynamic: try <key>_block first, then <key>
