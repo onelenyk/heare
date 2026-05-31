@@ -29,7 +29,7 @@ HTML = r"""
     background: var(--bg);
     color: var(--text);
     padding: 10px;
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.4;
     min-width: 400px;
     overflow-x: hidden;
@@ -42,9 +42,10 @@ HTML = r"""
     margin-bottom: 6px;
   }
   .card-header {
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.5px;
     color: var(--muted);
     margin-bottom: 5px;
     display: flex;
@@ -52,7 +53,7 @@ HTML = r"""
     gap: 5px;
   }
   .card-header span.label { flex: 1; }
-  .card-header span.extra { color: var(--muted); font-size: 9px; }
+  .card-header span.extra { color: var(--muted); font-size: 11px; }
 
   #status-bar {
     display: flex;
@@ -69,8 +70,8 @@ HTML = r"""
   }
   #status-bar .dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   #status-bar .dot.off { background: var(--accent-red); box-shadow: 0 0 4px var(--accent-red); }
-  #status-bar .identity { font-weight: 700; font-size: 14px; white-space: nowrap; }
-  #status-bar .meta { color: var(--muted); font-size: 10px; white-space: nowrap; }
+  #status-bar .identity { font-weight: 700; font-size: 20px; white-space: nowrap; }
+  #status-bar .meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
   #status-bar .meta em { font-style: normal; color: var(--accent-cyan); }
 
   .row { display: flex; gap: 6px; }
@@ -79,13 +80,14 @@ HTML = r"""
 
   #controls .btn-row { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
   #controls button {
-    padding: 3px 8px;
+    padding: 5px 14px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background: var(--bg);
     color: var(--text);
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 600;
     font-family: var(--mono);
     white-space: nowrap;
     transition: border-color 0.15s, background 0.15s;
@@ -102,14 +104,15 @@ HTML = r"""
   #ai-panel .cost { color: var(--accent-yellow); }
 
   #response-panel .text {
-    font-family: var(--mono); font-size: 11px; color: var(--accent-orange);
+    font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--accent-orange);
     max-height: 60px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
   }
+  #response-panel { padding: 12px; }
   #response-panel .meta { font-size: 9px; color: var(--muted); margin-top: 3px; }
 
   #canvas {
-    min-height: 80px; max-height: 220px; overflow: auto;
-    padding: 6px; font-size: 11px; line-height: 1.5;
+    min-height: 160px; max-height: 220px; overflow: auto;
+    padding: 6px; font-size: 14px; line-height: 1.5;
   }
   #canvas:empty::after {
     content: "canvas — LLM output appears here";
@@ -124,19 +127,20 @@ HTML = r"""
 
   .data-table {
     width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px;
-    table-layout: fixed;
+    table-layout: auto;
   }
   .data-table th {
-    text-align: left; color: var(--muted); font-weight: 400; padding: 1px 6px;
-    border-bottom: 1px solid #2a2a44; font-size: 9px; text-transform: uppercase;
+    text-align: left; color: var(--muted); font-weight: 700; padding: 3px 8px;
+    border-bottom: 1px solid #2a2a44; font-size: 11px; text-transform: uppercase;
   }
   .data-table td {
-    padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 3px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 12px; line-height: 1.5;
     border-bottom: 1px solid #1f1f35;
   }
-  .data-table .ts { width: 48px; color: var(--muted); }
-  .data-table .who { width: 36px; }
-  .data-table .type { width: 44px; }
+  .data-table .ts { width: 58px; color: var(--muted); }
+  .data-table .who { width: 40px; }
+  .data-table .type { width: 46px; }
   .data-table .content { overflow: hidden; text-overflow: ellipsis; }
   .data-table .who-bot { color: var(--accent-orange); }
   .data-table .who-you { color: var(--accent-cyan); }
@@ -451,5 +455,5 @@ async function switchProvider(p) {
 
 
 def run():
-    window = webview.create_window("heare", html=HTML, width=540, height=680, resizable=True)
+    window = webview.create_window("heare", html=HTML, width=620, height=800, resizable=True)
     webview.start()
