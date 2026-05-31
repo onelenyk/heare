@@ -168,6 +168,31 @@ cmd_watch() {
     "$PYTHON" -m src.main watch
 }
 
+cmd_launch() {
+    # Start daemon if not running
+    if ! check_running; then
+        log_info "Starting Heare daemon..."
+        "$PYTHON" -m src.main start &
+        local pid=$!
+        sleep 5
+        if ! ps -p "$pid" > /dev/null 2>&1; then
+            log_error "Failed to start Heare"
+            exit 1
+        fi
+        log_info "Heare started (PID: $pid)"
+    else
+        log_info "Heare already running (PID: $(cat "$PID_FILE"))"
+    fi
+
+    # Open desktop in browser
+    log_info "Opening desktop at http://127.0.0.1:9778/"
+    if command -v open >/dev/null 2>&1; then
+        open "http://127.0.0.1:9778/"
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "http://127.0.0.1:9778/"
+    fi
+}
+
 cmd_install() {
     log_info "Installing Heare as a system service..."
 
@@ -230,12 +255,14 @@ Commands:
     status        Show Heare status
     logs          Show/follow Heare logs
     watch         Start watch dashboard
+    launch        Start daemon + open desktop in browser
     install       Install as systemd user service
     uninstall     Remove systemd service
     help          Show this help message
 
 Examples:
     $0 start              # Start in background
+    $0 launch             # Start + open desktop
     $0 logs               # Follow logs
     $0 status             # Check if running
 
@@ -264,6 +291,9 @@ case "${1:-help}" in
         ;;
     watch)
         cmd_watch
+        ;;
+    launch)
+        cmd_launch
         ;;
     install)
         cmd_install
