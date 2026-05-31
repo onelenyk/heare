@@ -20,9 +20,7 @@ from src.agent.tools.capability_index import IndexEntry
 class _FakeSettings:
     workspace_dir: Path | None = None
     skills_paths: list[str] = field(default_factory=list)
-    speaker_id_enabled: bool = True
     confirmation_passphrase: str | None = None
-    speakers_file: Path | None = None
     identity_file: Path = field(default_factory=lambda: Path("/nonexistent"))
     marketplace_url: str = ""
     mcp_registry_url: str = ""
@@ -455,7 +453,6 @@ def test_register_mcp_server_registered():
 def _consent_settings(workspace: Path) -> _FakeSettings:
     return _FakeSettings(
         workspace_dir=workspace,
-        speaker_id_enabled=False,
         confirmation_passphrase="open sesame",
     )
 
