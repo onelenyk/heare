@@ -37,7 +37,6 @@ def _make_settings(tmp: str, **kwargs) -> Settings:
         provider_file=base / "provider",
         identity_file=base / "identity.json",
         inject_dir=base / "inject",
-        speakers_file=base / "speakers.json",
     )
     defaults.update(kwargs)
     return Settings(**defaults)

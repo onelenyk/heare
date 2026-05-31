@@ -24,7 +24,6 @@ async def test_agent_mode_spoken_round_trip(store: TranscriptStore) -> None:
     await store.log_transcript(
         "hello there",
         "assistant",
-        speaker_id="bot",
         agent_mode="silent",
         agent_spoken=False,
     )
@@ -38,11 +37,11 @@ async def test_agent_mode_spoken_round_trip(store: TranscriptStore) -> None:
 async def test_latest_bot_response_picks_newest_bot_row(
     store: TranscriptStore,
 ) -> None:
-    await store.log_transcript("old", "assistant", speaker_id="bot",
-                               agent_mode="ambient", agent_spoken=True)
-    await store.log_transcript("a user turn", "ambient", speaker_id="owner")
-    await store.log_transcript("newest", "assistant", speaker_id="bot",
-                               agent_mode="focus", agent_spoken=True)
+    await store.log_transcript("old", "assistant",
+                                agent_mode="ambient", agent_spoken=True)
+    await store.log_transcript("a user turn", "ambient")
+    await store.log_transcript("newest", "assistant",
+                                agent_mode="focus", agent_spoken=True)
     r = await store.latest_bot_response()
     assert r["text"] == "newest"
     assert r["agent_mode"] == "focus"
@@ -52,12 +51,12 @@ async def test_latest_bot_response_picks_newest_bot_row(
 async def test_latest_bot_response_none_when_no_bot_rows(
     store: TranscriptStore,
 ) -> None:
-    await store.log_transcript("just a user", "ambient", speaker_id="owner")
+    await store.log_transcript("just a user", "ambient")
     assert await store.latest_bot_response() is None
 
 
 async def test_agent_columns_default_null(store: TranscriptStore) -> None:
-    await store.log_transcript("legacy bot", "assistant", speaker_id="bot")
+    await store.log_transcript("legacy bot", "assistant")
     r = await store.latest_bot_response()
     assert r["agent_mode"] is None
     assert r["agent_spoken"] is None
@@ -69,11 +68,10 @@ async def test_fetch_agent_response_reads_latest_bot_row(store):
 
     from src.watch.data import fetch_agent_response
 
-    await store.log_transcript("user said hi", "ambient", speaker_id="owner")
+    await store.log_transcript("user said hi", "ambient")
     await store.log_transcript(
         "I won't say this aloud",
         "assistant",
-        speaker_id="bot",
         agent_mode="silent",
         agent_spoken=False,
     )

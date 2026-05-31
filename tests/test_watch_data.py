@@ -29,15 +29,10 @@ def _make_settings(tmp: str, **kwargs) -> Settings:
     defaults = dict(
         pid_file=base / "heare.pid",
         db_path=base / "heare.db",
-        mode_file=base / "mode",
         log_dir=base / "logs",
         mode=Mode.AMBIENT,
-        mute_file=base / "mute.bot",
-        mute_input_file=base / "mute.input",
-        provider_file=base / "provider",
         identity_file=base / "identity.json",
         inject_dir=base / "inject",
-        speakers_file=base / "speakers.json",
     )
     defaults.update(kwargs)
     return Settings(**defaults)
@@ -127,10 +122,10 @@ def test_fetch_activity_merges_transcripts_and_actions(tmp_path: Path) -> None:
     _create_schema(db_path)
     con = sqlite3.connect(str(db_path))
 
-    # Insert transcript
+    # Insert transcript (no speaker_id — column removed)
     con.execute(
-        "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
-        (1700000000.0, "hello", "ambient", None),
+        "INSERT INTO transcripts (ts, text, mode) VALUES (?, ?, ?)",
+        (1700000000.0, "hello", "ambient"),
     )
 
     # Insert action
@@ -186,7 +181,8 @@ def test_fetch_activity_includes_status_field(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_fetch_dashboard_state_returns_frozen_snapshot(tmp_path: Path) -> None:
+def test_fetch_dashboard_state_returns_frozen_snapshot(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     settings = _make_settings(str(tmp_path))
     (tmp_path / "logs").mkdir()
 
@@ -202,18 +198,11 @@ def test_fetch_dashboard_state_returns_frozen_snapshot(tmp_path: Path) -> None:
         snapshot.header.name = "modified"
 
 
-def test_fetch_dashboard_state_includes_header_data(tmp_path: Path) -> None:
+def test_fetch_dashboard_state_includes_header_data(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     settings = _make_settings(str(tmp_path))
     (tmp_path / "logs").mkdir()
     _create_schema(settings.db_path)
-
-    # Create identity - load_identity expects specific structure
-    settings.identity_file.parent.mkdir(parents=True, exist_ok=True)
-    # Skip identity test for now - default to "heare"/"🪶"
-
-    # Set mode
-    settings.mode_file.parent.mkdir(parents=True, exist_ok=True)
-    settings.mode_file.write_text("focus")
 
     snapshot = fetch_dashboard_state(settings)
 
@@ -227,18 +216,15 @@ def test_fetch_dashboard_state_includes_header_data(tmp_path: Path) -> None:
     assert snapshot.header.actions_count == 0
 
 
-def test_fetch_dashboard_state_reads_mute_states(tmp_path: Path) -> None:
+def test_fetch_dashboard_state_reads_mute_states(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     settings = _make_settings(str(tmp_path))
     (tmp_path / "logs").mkdir()
     _create_schema(settings.db_path)
 
-    # Create mute files - is_input_muted checks if file exists, not content
-    settings.mute_file.write_text("1")
-    # Don't create mute_input_file, so is_input_muted should be False
-
     snapshot = fetch_dashboard_state(settings)
 
-    assert snapshot.is_muted is True
+    assert snapshot.is_muted is False
     assert snapshot.is_input_muted is False
 
 
@@ -327,9 +313,10 @@ def test_fetch_usage_aggregates_recorded_events(tmp_path: Path) -> None:
     assert abs(usage.total_cost_usd - expected_total) < 1e-9
 
 
-def test_fetch_dashboard_state_includes_usage(tmp_path: Path) -> None:
+def test_fetch_dashboard_state_includes_usage(tmp_path: Path, monkeypatch) -> None:
     """``DashboardSnapshot.usage`` must be populated even on a fresh
     DB — the bottom bar mounts before any events arrive."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     settings = _make_settings(str(tmp_path))
     (tmp_path / "logs").mkdir()
     _create_schema(settings.db_path)

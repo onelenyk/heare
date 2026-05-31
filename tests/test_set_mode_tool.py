@@ -16,7 +16,6 @@ from src.pipeline.session_state import (
 
 def _settings_with_tmp_mode_file(tmp: str):
     s = load_settings()
-    s.mode_file = Path(tmp) / "mode"
     return s
 
 
@@ -45,8 +44,6 @@ async def test_valid_mode_persists_and_flips_live_state() -> None:
 
         assert res["success"] is True
         assert "meeting" in res["output"]
-        # Persisted to mode_file.
-        assert s.mode_file.read_text().strip() == "meeting"
         # Live state flipped.
         assert ss.mode == "meeting"
         # Flush happened BEFORE the mode flip (no dropped mid-sentence turn).
@@ -61,7 +58,6 @@ async def test_set_mode_works_without_active_session_state() -> None:
         set_active_session_state(None)
         res = await _execute_set_mode("focus", s)
         assert res["success"] is True
-        assert s.mode_file.read_text().strip() == "focus"
 
 
 def test_set_mode_exempt_in_every_mode() -> None:

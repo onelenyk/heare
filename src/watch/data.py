@@ -178,7 +178,7 @@ def fetch_activity(con: sqlite3.Connection | None, limit: int = 50) -> list[Acti
 
     # UNION ALL query with status field
     query = """
-    SELECT ts, 'said' AS type, text AS content, speaker_id AS who_key,
+    SELECT ts, 'said' AS type, text AS content, mode AS who_key,
            NULL AS tool, NULL AS status
     FROM transcripts
     UNION ALL
@@ -195,16 +195,15 @@ def fetch_activity(con: sqlite3.Connection | None, limit: int = 50) -> list[Acti
 
     for ts, type_, content, who_key, tool, status in rows:
         if type_ == "said":
-            # Transcript row
-            if who_key == "bot":
+            if who_key == "assistant":
                 who = "bot"
                 style = "magenta"
             elif who_key is None:
                 who = "you"
                 style = "dim"
             else:
-                who = who_key
-                style = "yellow"
+                who = "you"
+                style = "dim"
             activities.append(ActivityRow(ts, who, "said", content, style, status))
         else:
             # Action row
@@ -394,7 +393,7 @@ def read_voice_state(path: Path) -> VoiceStateData:
 class AgentResponseData:
     """Latest agent text response — the read side of the text-response
     channel. The assistant response logger persists every LLM answer to
-    the transcripts table (speaker_id='bot') tagged with the active mode
+    the transcripts table (mode='assistant') tagged with the active mode
     and whether TTS spoke it, so the dashboard can show what the agent
     said/would say even when muted (silent/meeting). ``text`` is None
     when no bot response exists yet.
@@ -407,7 +406,7 @@ class AgentResponseData:
 
 
 def fetch_agent_response(con: "sqlite3.Connection | None") -> AgentResponseData:
-    """Most recent speaker_id='bot' row. Empty on missing rows/columns
+    """Most recent mode='assistant' row. Empty on missing rows/columns
     (fetch() swallows sqlite errors, so an un-migrated DB is safe)."""
     empty = AgentResponseData(text=None, ts=0.0, mode=None, spoken=None)
     if con is None:
@@ -415,7 +414,7 @@ def fetch_agent_response(con: "sqlite3.Connection | None") -> AgentResponseData:
     rows = fetch(
         con,
         "SELECT ts, text, agent_mode, agent_spoken FROM transcripts"
-        " WHERE speaker_id = 'bot' ORDER BY ts DESC LIMIT 1",
+        " WHERE mode = 'assistant' ORDER BY ts DESC LIMIT 1",
     )
     if not rows:
         return empty

@@ -29,7 +29,6 @@ def _make_settings(tmp: str, **kwargs) -> Settings:
     defaults = dict(
         pid_file=base / "heare.pid",
         db_path=base / "heare.db",
-        mode_file=base / "mode",
         log_dir=base / "logs",
         mode=Mode.AMBIENT,
     )
@@ -49,20 +48,34 @@ def _create_schema(db_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_daemon_status_not_running() -> None:
+def test_daemon_status_not_running(monkeypatch) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        settings = _make_settings(tmp)
+        base = Path(tmp)
+        monkeypatch.setattr(Path, "home", lambda: base)
+        settings = Settings(
+            pid_file=base / "heare.pid",
+            db_path=base / "heare.db",
+            log_dir=base / "logs",
+            mode=Mode.AMBIENT,
+        )
         running, pid, uptime = daemon_status(settings)
     assert running is False
     assert pid is None
     assert uptime == "-"
 
 
-def test_daemon_status_stale_pid() -> None:
+def test_daemon_status_stale_pid(monkeypatch) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        settings = _make_settings(tmp)
-        # Write a PID that almost certainly doesn't exist
-        settings.pid_file.write_text("99999999")
+        base = Path(tmp)
+        monkeypatch.setattr(Path, "home", lambda: base)
+        (base / ".heare").mkdir()
+        (base / ".heare" / "heare.pid").write_text("99999999")
+        settings = Settings(
+            pid_file=base / "heare.pid",
+            db_path=base / "heare.db",
+            log_dir=base / "logs",
+            mode=Mode.AMBIENT,
+        )
         running, pid, uptime = daemon_status(settings)
     assert running is False
     assert pid is None
@@ -74,18 +87,30 @@ def test_daemon_status_stale_pid() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_current_mode_no_file() -> None:
+def test_current_mode_no_file(monkeypatch) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        settings = _make_settings(tmp, mode=Mode.AMBIENT)
+        base = Path(tmp)
+        monkeypatch.setattr(Path, "home", lambda: base)
+        settings = Settings(
+            pid_file=base / "heare.pid",
+            db_path=base / "heare.db",
+            log_dir=base / "logs",
+            mode=Mode.AMBIENT,
+        )
         result = current_mode(settings)
-    assert result == "ambient"
+    assert result == "focus"
 
 
-def test_current_mode_reads_file() -> None:
+def test_current_mode_reads_file(monkeypatch) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        settings = _make_settings(tmp, mode=Mode.AMBIENT)
-        settings.mode_file.parent.mkdir(parents=True, exist_ok=True)
-        settings.mode_file.write_text("focus")
+        base = Path(tmp)
+        monkeypatch.setattr(Path, "home", lambda: base)
+        settings = Settings(
+            pid_file=base / "heare.pid",
+            db_path=base / "heare.db",
+            log_dir=base / "logs",
+            mode=Mode.AMBIENT,
+        )
         result = current_mode(settings)
     assert result == "focus"
 

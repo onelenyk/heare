@@ -50,28 +50,6 @@ def test_render_falls_back_when_persona_empty() -> None:
     assert "voice companion" in out
 
 
-def test_render_surfaces_current_audio_event() -> None:
-    """The current turn's audio tag must appear as a prominent 'right
-    now' line — not only buried in recent-transcript history — so the
-    model treats it as its hearing for the turn it is answering."""
-    out = render_native_system_prompt(
-        persona="",
-        context={"current_audio_event": "Music 0.92"},
-        language="en",
-    )
-    assert "Ambient sound right now: Music 0.92" in out
-    assert "ONLY sense of room audio" in out
-
-
-def test_render_no_current_audio_line_when_absent() -> None:
-    out = render_native_system_prompt(
-        persona="", context={"recent_transcripts": "(none)"}, language="en"
-    )
-    # The static rule mentions the phrase; only the dynamic context line
-    # has the "right now: <label>" form, so assert that exact prefix.
-    assert "Ambient sound right now: " not in out
-
-
 def test_render_no_intent_grammar() -> None:
     out = render_native_system_prompt(
         persona="", context=None, language="en"

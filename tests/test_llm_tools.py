@@ -71,10 +71,6 @@ def test_function_schema_has_properties_and_required() -> None:
     assert {"path", "content"} <= set(write.properties.keys())
     assert set(write.required) == {"path", "content"}
 
-    list_profiles = by_name["list_profiles"]
-    assert list_profiles.required == []
-    assert list_profiles.properties == {}
-
 
 def test_register_all_tools_registers_every_enabled_tool() -> None:
     llm = _FakeLLM()

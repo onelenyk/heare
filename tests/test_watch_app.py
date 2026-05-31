@@ -31,7 +31,6 @@ def _make_settings(tmp: str, **kwargs) -> Settings:
         provider_file=base / "provider",
         identity_file=base / "identity.json",
         inject_dir=base / "inject",
-        speakers_file=base / "speakers.json",
     )
     defaults.update(kwargs)
     return Settings(**defaults)
@@ -88,8 +87,8 @@ async def test_app_boots_with_seeded_db() -> None:
         con = sqlite3.connect(str(settings.db_path))
         con.executescript(SCHEMA)
         con.execute(
-            "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
-            (1700000000.0, "test message", "ambient", None),
+            "INSERT INTO transcripts (ts, text, mode) VALUES (?, ?, ?)",
+            (1700000000.0, "test message", "ambient"),
         )
         con.execute(
             "INSERT INTO actions (ts, status, tool, args) VALUES (?, ?, ?, ?)",
@@ -145,44 +144,45 @@ async def test_start_key_calls_start_daemon(monkeypatch: Mock) -> None:
 @pytest.mark.asyncio
 async def test_mute_bot_toggles_mute() -> None:
     """Pressing m key toggles bot mute."""
-    mock_toggle = MagicMock(return_value=True)
-
     with tempfile.TemporaryDirectory() as tmp:
         settings = _make_settings(tmp)
         (Path(tmp) / "logs").mkdir()
 
         async with HeareDashboard(settings=settings).run_test() as pilot:
-            # Mock the toggle function
-            import src.watch.app
-            original_toggle = src.watch.app.toggle_mute
-            src.watch.app.toggle_mute = mock_toggle
-
+            await pilot.pause()  # let deferred _apply_activity_width fire
             await pilot.press("m")
 
-            # Restore
-            src.watch.app.toggle_mute = original_toggle
-
-            # Verify toggle was called
-            mock_toggle.assert_called_once()
+            # Verify status message set by action_toggle_mute_bot
+            from src.watch.widgets import ControlsBar
+            assert pilot.app.query_one(ControlsBar)._status_message == "bot unmuted"
 
 
 @pytest.mark.asyncio
 async def test_provider_toggle_works() -> None:
     """Pressing p key toggles provider file."""
+    import os
+
     with tempfile.TemporaryDirectory() as tmp:
         settings = _make_settings(tmp)
         (Path(tmp) / "logs").mkdir()
-        settings.provider_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Set initial provider
-        settings.provider_file.write_text("openrouter")
+        # Shuffle home so action_toggle_provider's hardcoded
+        # Path.home()/.heare/provider points at our temp dir
+        orig_home = Path.home()
+        os.environ["HOME"] = tmp
 
-        async with HeareDashboard(settings=settings).run_test() as pilot:
-            await pilot.press("p")
+        provider_path = Path(tmp) / ".heare" / "provider"
+        provider_path.parent.mkdir(parents=True, exist_ok=True)
+        provider_path.write_text("openrouter")
 
-            # Provider should have toggled to zai
-            new_provider = settings.provider_file.read_text().strip()
-            assert new_provider == "zai"
+        try:
+            async with HeareDashboard(settings=settings).run_test() as pilot:
+                await pilot.press("p")
+
+                new_provider = provider_path.read_text().strip()
+                assert new_provider == "deepseek"
+        finally:
+            os.environ["HOME"] = str(orig_home)
 
 
 # ---------------------------------------------------------------------------
@@ -202,8 +202,8 @@ def test_once_mode_outputs_to_stdout(capsys: pytest.fixture) -> None:
         con = sqlite3.connect(str(settings.db_path))
         con.executescript(SCHEMA)
         con.execute(
-            "INSERT INTO transcripts (ts, text, mode, speaker_id) VALUES (?, ?, ?, ?)",
-            (1700000000.0, "test message", "ambient", None),
+            "INSERT INTO transcripts (ts, text, mode) VALUES (?, ?, ?)",
+            (1700000000.0, "test message", "ambient"),
         )
         con.commit()
         con.close()

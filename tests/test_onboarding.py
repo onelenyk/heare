@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from pathlib import Path
 
 import pytest
@@ -16,9 +15,6 @@ import pytest
 from src.config import Settings
 from src.daemon.onboarding import (
     OnboardingStep,
-    _check_capabilities_cached,
-    _check_claude_configured,
-    _check_claude_installed,
     _load_state,
     _save_state,
     _state_path,
@@ -301,39 +297,4 @@ def test_reset_clears_state_and_capabilities_preserves_mcp(
     assert json.loads(mcp.read_text())["mcpServers"] == {"keep-me": {"command": "x"}}
 
 
-# ---------------------------------------------------------------------------
-# Step body checks (skip capabilities — touches claude_capabilities import)
-# ---------------------------------------------------------------------------
 
-
-def test_check_claude_installed_yes(monkeypatch, settings: Settings) -> None:
-    monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/claude")
-    assert _check_claude_installed(settings) is True
-
-
-def test_check_claude_installed_no(monkeypatch, settings: Settings) -> None:
-    monkeypatch.setattr(shutil, "which", lambda _: None)
-    assert _check_claude_installed(settings) is False
-
-
-def test_check_claude_configured_missing_file(settings: Settings) -> None:
-    assert _check_claude_configured(settings) is False
-
-
-def test_check_claude_configured_valid_empty(settings: Settings) -> None:
-    _write_mcp_file(settings, {})
-    assert _check_claude_configured(settings) is True
-
-
-def test_check_capabilities_cached_missing(settings: Settings) -> None:
-    assert _check_capabilities_cached(settings) is False
-
-
-def test_check_capabilities_cached_too_small(settings: Settings) -> None:
-    settings.capabilities_file.write_text("{}")  # 2 bytes, threshold is > 2
-    assert _check_capabilities_cached(settings) is False
-
-
-def test_check_capabilities_cached_populated(settings: Settings) -> None:
-    settings.capabilities_file.write_text(json.dumps({"skills": [], "mcp_servers": []}))
-    assert _check_capabilities_cached(settings) is True

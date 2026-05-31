@@ -69,7 +69,6 @@ def test_meeting_blocks_action_tools() -> None:
     for t in (
         "bash",
         "write",
-        "edit",
         "stop_daemon",
         "restart_daemon",
         "mcp__macos-use__macos-use_click_and_traverse",

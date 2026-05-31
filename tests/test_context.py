@@ -34,7 +34,6 @@ async def test_build_shape_on_transcript(store: TranscriptStore) -> None:
         "heartbeat_flag",
         "recent_transcripts",
         "transcript_or_heartbeat",
-        "speaker_rule_block",
         "silence_block",
         "proactivity_block",
         "conversation_active",
@@ -59,38 +58,10 @@ async def test_recent_transcripts_rendering(store: TranscriptStore) -> None:
     await store.log_transcript("один", "ambient")
     await store.log_transcript("два", "ambient")
     settings = load_settings()
-    settings.speaker_id_enabled = False
     ctx = ContextBuilder(store, settings)
     result = await ctx.build("три", heartbeat=False)
     assert "один" in result["recent_transcripts"]
     assert "два" in result["recent_transcripts"]
-
-
-async def test_recent_transcripts_renders_audio_event_tag(
-    store: TranscriptStore,
-) -> None:
-    await store.log_transcript(
-        "what",
-        "ambient",
-        audio_event_label="Music",
-        audio_event_score=0.83,
-    )
-    settings = load_settings()
-    settings.speaker_id_enabled = False
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build("hi", heartbeat=False)
-    assert "[audio: Music 0.83]" in result["recent_transcripts"]
-
-
-async def test_recent_transcripts_no_tag_when_no_audio_event(
-    store: TranscriptStore,
-) -> None:
-    await store.log_transcript("clean turn", "ambient")
-    settings = load_settings()
-    settings.speaker_id_enabled = False
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build("hi", heartbeat=False)
-    assert "[audio:" not in result["recent_transcripts"]
 
 
 async def test_live_mcp_bridge_block_overrides_static(
@@ -189,41 +160,6 @@ def test_decider_prompt_mandates_strict_key_order() -> None:
     assert strict_section.index('"t"') < strict_section.index('"r"')
 
 
-async def test_build_returns_speaker_rule_block_empty_when_flag_off(
-    store: TranscriptStore,
-) -> None:
-    settings = load_settings()
-    settings.speaker_id_enabled = False
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build("x", heartbeat=False)
-    assert result["speaker_rule_block"] == ""
-
-
-async def test_build_returns_speaker_rule_block_when_flag_on(
-    store: TranscriptStore,
-) -> None:
-    settings = load_settings()
-    settings.speaker_id_enabled = True
-    ctx = ContextBuilder(store, settings)
-    # No speaker_id → likely owner path (below ID threshold)
-    result = await ctx.build("x", heartbeat=False)
-    assert "Speaker: likely owner" in result["speaker_rule_block"]
-    # owner speaker_id → high confidence path
-    result_owner = await ctx.build("x", heartbeat=False, speaker_id="owner")
-    assert "Speaker: owner (high confidence)" in result_owner["speaker_rule_block"]
-
-
-async def test_build_keeps_placeholder_literal_with_keep_placeholders(
-    store: TranscriptStore,
-) -> None:
-    settings = load_settings()
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build(
-        "x", heartbeat=False, keep_placeholders=["speaker_rule_block"]
-    )
-    assert result["speaker_rule_block"] == "{speaker_rule_block}"
-
-
 async def test_build_keeps_transcript_placeholder_literal(
     store: TranscriptStore,
 ) -> None:
@@ -235,15 +171,14 @@ async def test_build_keeps_transcript_placeholder_literal(
     assert result["transcript_or_heartbeat"] == "{transcript_or_heartbeat}"
 
 
-async def test_golden_string_flag_off_render(store: TranscriptStore) -> None:
-    """Flag-off rendering must be byte-stable across runs.
+async def test_golden_string_render(store: TranscriptStore) -> None:
+    """Golden-file rendering must be byte-stable across runs.
 
     First run captures the rendered output (with a fixed ctx) into
-    tests/fixtures/decider_prompt_flag_off.golden.txt. Subsequent runs
+    tests/fixtures/decider_prompt.golden.txt. Subsequent runs
     re-render and diff against the golden.
     """
     settings = load_settings()
-    settings.speaker_id_enabled = False
     ctx = ContextBuilder(store, settings)
     # Fixed deterministic context — do NOT call ctx.build() because it
     # renders the current time, which breaks byte-stability.
@@ -254,7 +189,6 @@ async def test_golden_string_flag_off_render(store: TranscriptStore) -> None:
         "heartbeat_flag": "no",
         "recent_transcripts": "(none)",
         "transcript_or_heartbeat": "тест",
-        "speaker_rule_block": ctx._render_rule_block(),
         "silence_block": "",
         "proactivity_block": "",
     }
@@ -264,7 +198,7 @@ async def test_golden_string_flag_off_render(store: TranscriptStore) -> None:
     rendered = ctx.render(template, fixed_ctx)
 
     golden_path = (
-        Path(__file__).parent / "fixtures" / "decider_prompt_flag_off.golden.txt"
+        Path(__file__).parent / "fixtures" / "decider_prompt.golden.txt"
     )
     golden_path.parent.mkdir(parents=True, exist_ok=True)
     if not golden_path.exists():
@@ -275,70 +209,6 @@ async def test_golden_string_flag_off_render(store: TranscriptStore) -> None:
             "flag-off rendered prompt drifted from golden. "
             f"Delete {golden_path} to regenerate if the drift is intentional."
         )
-
-    # When flag is off, the rendered output must NOT contain the Speaker rule
-    assert "Speaker: owner" not in rendered
-
-
-async def test_format_recent_labels_speakers_when_flag_on(
-    store: TranscriptStore,
-) -> None:
-    await store.log_transcript("я тут", "ambient", speaker_id="owner")
-    await store.log_transcript("stranger speak", "ambient", speaker_id="guest_01")
-    settings = load_settings()
-    settings.speaker_id_enabled = True
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build("х", heartbeat=False)
-    rendered = result["recent_transcripts"]
-    assert "owner: я тут" in rendered
-    assert "guest_01: stranger speak" in rendered
-    assert "[REDACTED]" not in rendered
-
-
-async def test_format_recent_passthrough_when_flag_off(
-    store: TranscriptStore,
-) -> None:
-    await store.log_transcript("я тут", "ambient", speaker_id="owner")
-    await store.log_transcript("stranger speak", "ambient", speaker_id="unknown")
-    settings = load_settings()
-    settings.speaker_id_enabled = False
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build("х", heartbeat=False)
-    rendered = result["recent_transcripts"]
-    assert "я тут" in rendered
-    assert "stranger speak" in rendered
-    assert "owner:" not in rendered  # no speaker labels when flag is off
-    assert "[REDACTED]" not in rendered
-
-
-async def test_format_recent_none_speaker_id_marked_unknown(
-    store: TranscriptStore,
-) -> None:
-    await store.log_transcript("legacy row", "ambient", speaker_id=None)
-    settings = load_settings()
-    settings.speaker_id_enabled = True
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build("х", heartbeat=False)
-    rendered = result["recent_transcripts"]
-    assert "unknown: legacy row" in rendered
-    assert "[REDACTED]" not in rendered
-
-
-async def test_format_recent_uses_gallery_labels(
-    store: TranscriptStore,
-) -> None:
-    from unittest.mock import MagicMock
-
-    await store.log_transcript("hello", "ambient", speaker_id="guest_01")
-    settings = load_settings()
-    settings.speaker_id_enabled = True
-    gallery = MagicMock()
-    gallery.get_label = MagicMock(return_value="Alice")
-    ctx = ContextBuilder(store, settings, speaker_gallery=gallery)
-    result = await ctx.build("х", heartbeat=False)
-    rendered = result["recent_transcripts"]
-    assert "Alice: hello" in rendered
-    gallery.get_label.assert_called_with("guest_01")
 
 
 def test_render_with_template() -> None:

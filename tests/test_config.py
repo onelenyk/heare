@@ -11,7 +11,6 @@ def test_default_settings() -> None:
     assert s.tts_sample_rate == 24000
     assert s.confirmation_timeout_seconds == 30
     assert s.transcript_retention_days == 30
-    assert s.claude_cli == "claude"
     assert s.groq_api_key is None
     assert s.groq_language == "uk"  # Ukrainian hint for Groq, allows English detection
 
@@ -39,16 +38,6 @@ def test_load_settings_mode_from_env(monkeypatch, tmp_path) -> None:
     assert s.mode == Mode.SILENT
 
 
-def test_load_settings_claude_cli_override(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("HEARE_CLAUDE_CLI", "/usr/bin/claude")
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    s = load_settings()
-    assert s.claude_cli == "/usr/bin/claude"
-
-
 def test_mode_enum_values() -> None:
     assert Mode.SILENT.value == "silent"
     assert Mode.FOCUS.value == "focus"
@@ -59,24 +48,6 @@ def test_decider_state_enum_values() -> None:
     assert DeciderState.LISTENING.value == "listening"
     assert DeciderState.AWAITING_CONFIRMATION.value == "awaiting_confirmation"
     assert DeciderState.EXECUTING.value == "executing"
-
-
-def test_speaker_id_defaults() -> None:
-    s = Settings()
-    assert s.speaker_id_enabled is True
-    assert s.speaker_id_threshold_match == 0.50
-    assert s.speaker_id_threshold_unknown == 0.55
-    assert s.speaker_id_sticky_threshold == 0.80
-    assert s.speaker_id_sticky_seconds == 5.0
-    assert s.speaker_id_min_duration_ms == 400
-    assert s.speaker_id_accum_target_ms == 3000
-    assert s.speaker_id_centroid_k == 5
-    assert s.speaker_id_ema_alpha == 0.1
-    assert s.speaker_id_auto_enroll_after == 2
-    assert s.speaker_id_auto_enroll_enabled is True
-    assert s.speaker_id_auto_enroll_owner_enabled is True
-    assert s.speaker_id_auto_enroll_owner_after == 5
-    assert s.speakers_file.name == "speakers.json"
 
 
 def test_wake_word_default() -> None:
@@ -171,50 +142,6 @@ def test_load_settings_openrouter_from_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
     s = load_settings()
     assert s.openrouter_api_key == "sk-or-testkey123"
-
-
-def test_speaker_namer_defaults() -> None:
-    s = Settings()
-    assert s.speaker_namer_enabled is True
-    assert s.speaker_namer_model == "anthropic/claude-haiku-4.5"
-    assert s.speaker_namer_min_turns == 3
-    assert s.speaker_namer_debounce_seconds == 10.0
-    assert s.speaker_namer_confidence_threshold == 0.8
-    assert s.speaker_namer_confidence_hysteresis == 0.05
-    assert s.speaker_namer_buffer_size == 10
-    assert s.speaker_namer_queue_max == 64
-    assert s.speaker_namer_timeout_seconds == 15.0
-
-
-def test_speaker_namer_toml_roundtrip(monkeypatch, tmp_path) -> None:
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-
-    config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        "speaker_namer_enabled = true\n"
-        'speaker_namer_model = "anthropic/claude-sonnet-4.6"\n'
-        "speaker_namer_min_turns = 5\n"
-        "speaker_namer_debounce_seconds = 20.0\n"
-        "speaker_namer_confidence_threshold = 0.9\n"
-        "speaker_namer_confidence_hysteresis = 0.1\n"
-        "speaker_namer_buffer_size = 20\n"
-        "speaker_namer_queue_max = 128\n"
-        "speaker_namer_timeout_seconds = 30.0\n"
-    )
-    s = cfg_mod.load_settings()
-    assert s.speaker_namer_enabled is True
-    assert s.speaker_namer_model == "anthropic/claude-sonnet-4.6"
-    assert s.speaker_namer_min_turns == 5
-    assert s.speaker_namer_debounce_seconds == 20.0
-    assert s.speaker_namer_confidence_threshold == 0.9
-    assert s.speaker_namer_confidence_hysteresis == 0.1
-    assert s.speaker_namer_buffer_size == 20
-    assert s.speaker_namer_queue_max == 128
-    assert s.speaker_namer_timeout_seconds == 30.0
 
 
 def test_ensure_dirs_creates_directories(tmp_path) -> None:
@@ -366,7 +293,6 @@ def test_deprecated_enable_mcp_servers_warning(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("HEARE_MODE", raising=False)
-    monkeypatch.delenv("HEARE_CLAUDE_CLI", raising=False)
 
     config_file = tmp_path / "config.toml"
     config_file.write_text('enable_mcp_servers = ["github", "notion"]\n')

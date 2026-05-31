@@ -47,35 +47,6 @@ def test_assemble_native_stages_minimal_order() -> None:
     ]
 
 
-def test_assemble_native_stages_with_speaker_chain() -> None:
-    stages = _assemble_native_stages(
-        transport_input="INPUT",
-        transport_output="OUTPUT",
-        stt="STT",
-        stt_error_observer="STT_ERR",
-        transcription_gate="GATE",
-        user_aggregator="USER_AGG",
-        llm_service="LLM",
-        tts="TTS",
-        assistant_aggregator="ASSIST_AGG",
-        speaker_buffer="SPK_BUF",
-        speaker_tagger="SPK_TAG",
-    )
-    assert stages == [
-        "INPUT",
-        "SPK_BUF",
-        "STT",
-        "STT_ERR",
-        "SPK_TAG",
-        "GATE",
-        "USER_AGG",
-        "LLM",
-        "TTS",
-        "OUTPUT",
-        "ASSIST_AGG",
-    ]
-
-
 def test_assemble_native_stages_with_sound_cue() -> None:
     stages = _assemble_native_stages(
         transport_input="INPUT",

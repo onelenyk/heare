@@ -17,9 +17,7 @@ from src.agent.tools.capability_index import IndexEntry
 
 @dataclass
 class _FakeSettings:
-    speaker_id_enabled: bool = True
     confirmation_passphrase: str | None = "open sesame"
-    speakers_file: Path | None = None
     workspace_dir: Path | None = None
     installation_signature_required: bool = False
     skills_paths: list[str] = field(default_factory=list)
@@ -50,17 +48,10 @@ def fake_home(tmp_path: Path, monkeypatch):
 
 @pytest.fixture
 def settings(tmp_path: Path):
-    speakers_file = tmp_path / "speakers.json"
-    speakers_file.write_text(json.dumps({
-        "version": 1,
-        "speakers": {"owner": {"embeddings": [[0.1, 0.2, 0.3]]}},
-    }))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     return _FakeSettings(
-        speaker_id_enabled=True,
-        confirmation_passphrase=None,
-        speakers_file=speakers_file,
+        confirmation_passphrase="test-consent",
         workspace_dir=workspace,
     )
 
@@ -81,7 +72,6 @@ def _patch_download(content: bytes):
 
 @pytest.mark.asyncio
 async def test_install_refused_when_no_consent_method(settings, fake_home):
-    settings.speaker_id_enabled = False
     settings.confirmation_passphrase = None
 
     result = await installer.install_skill(_entry(), settings=settings, user_confirmed=True)
@@ -93,6 +83,7 @@ async def test_install_refused_when_no_consent_method(settings, fake_home):
 
 @pytest.mark.asyncio
 async def test_install_refused_when_user_not_confirmed(settings, fake_home):
+    settings.confirmation_passphrase = "test-pass"
     with pytest.raises(installer.InstallRefused) as exc:
         await installer.install_skill(_entry(), settings=settings, user_confirmed=False)
     assert str(exc.value) == "user_not_confirmed"
@@ -614,9 +605,7 @@ async def test_create_skill_refuses_without_user_confirmed(settings, fake_home):
 
 @pytest.mark.asyncio
 async def test_create_skill_refuses_without_consent_method(settings, fake_home):
-    settings.speaker_id_enabled = False
     settings.confirmation_passphrase = None
-    settings.speakers_file = None
     result = await installer.create_skill(
         name="x",
         description="d",

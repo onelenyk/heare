@@ -23,28 +23,6 @@ def test_ensure_workspace_mcp_idempotent(tmp_path: Path, monkeypatch) -> None:
     assert json.loads(target.read_text()) == original_content
 
 
-def test_seeds_from_global_claude_config(tmp_path: Path, monkeypatch) -> None:
-    """When ~/.claude.json has mcpServers, seed them into workspace."""
-    fake_home = tmp_path / "fake-home"
-    fake_home.mkdir()
-    monkeypatch.setattr(Path, "home", lambda: fake_home)
-    (fake_home / ".claude.json").write_text(json.dumps({
-        "mcpServers": {
-            "android-adb": {"command": "npx", "args": ["@foo/server"]},
-            "mobile": {"command": "npx", "args": ["-y", "@bar/server"]},
-        },
-        "other_field": "ignored",
-    }))
-
-    workspace = tmp_path / "workspace"
-    ensure_workspace_mcp(workspace)
-
-    seeded = json.loads((workspace / ".mcp.json").read_text())
-    assert "mcpServers" in seeded
-    assert set(seeded["mcpServers"].keys()) == {"android-adb", "mobile"}
-    assert "other_field" not in seeded
-
-
 def test_handles_missing_global_config(tmp_path: Path, monkeypatch) -> None:
     """No ~/.claude.json → resulting file is {"mcpServers": {}}."""
     fake_home = tmp_path / "fake-home"

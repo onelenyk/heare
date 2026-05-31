@@ -20,9 +20,7 @@ from src.agent.tools.capability_index import IndexEntry
 class _FakeSettings:
     workspace_dir: Path | None = None
     skills_paths: list[str] = field(default_factory=list)
-    speaker_id_enabled: bool = True
     confirmation_passphrase: str | None = None
-    speakers_file: Path | None = None
     identity_file: Path = field(default_factory=lambda: Path("/nonexistent"))
     marketplace_url: str = "https://skillsmp.com"
     mcp_registry_url: str = ""
@@ -57,17 +55,11 @@ def fake_home(tmp_path: Path, monkeypatch):
 
 @pytest.fixture
 def settings(tmp_path: Path, fake_home: Path) -> _FakeSettings:
-    speakers_file = tmp_path / "speakers.json"
-    speakers_file.write_text(json.dumps({
-        "version": 1,
-        "speakers": {"owner": {"embeddings": [[0.1, 0.2, 0.3]]}},
-    }))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     return _FakeSettings(
         workspace_dir=workspace,
-        speaker_id_enabled=True,
-        speakers_file=speakers_file,
+        confirmation_passphrase="test-pass",
     )
 
 

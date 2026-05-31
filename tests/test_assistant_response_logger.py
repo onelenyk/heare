@@ -1,5 +1,5 @@
 """AssistantResponseProcessor — capture LLM text streaming to TTS and log
-one row per response with speaker_id='bot'.
+one row per response.
 
 The processor sits BETWEEN the LLM service and the TTS service so it can
 observe LLMFullResponseStartFrame / LLMTextFrame / LLMFullResponseEndFrame
@@ -29,10 +29,6 @@ class _StoreSpy:
         self,
         text: str,
         mode: str,
-        speaker_id: str | None = None,
-        speaker_confidence: float | None = None,
-        audio_event_label: str | None = None,
-        audio_event_score: float | None = None,
         agent_mode: str | None = None,
         agent_spoken: bool | None = None,
     ) -> int:
@@ -40,7 +36,6 @@ class _StoreSpy:
             {
                 "text": text,
                 "mode": mode,
-                "speaker_id": speaker_id,
                 "agent_mode": agent_mode,
                 "agent_spoken": agent_spoken,
             }
@@ -70,7 +65,6 @@ async def test_logger_aggregates_llm_text_frames_per_response():
 
     assert len(store.calls) == 1
     call = store.calls[0]
-    assert call["speaker_id"] == "bot"
     assert call["mode"] == "assistant"
     assert call["text"] == "Hello there, friend."
 

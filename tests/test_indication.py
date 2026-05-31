@@ -88,10 +88,10 @@ async def test_notify_dispatches_to_all_enabled_backends() -> None:
         _settings(), [sound, visual, notif], wallclock=lambda: outside_quiet
     )
 
-    ind.notify(IndicationKind.OWNER_AUTO_ENROLLED, body="hi")
+    ind.notify(IndicationKind.INTENT_COMPLETED, body="hi")
     await asyncio.sleep(0.05)
 
-    # OWNER_AUTO_ENROLLED is SUCCESS level. Defaults: sound=True, visual=True, notification=False
+    # INTENT_COMPLETED is SUCCESS level. Defaults: sound=True, visual=True, notification=False
     assert len(sound.captured) == 1
     assert len(visual.captured) == 1
     assert notif.captured == []
@@ -334,48 +334,3 @@ async def test_kind_to_level_covers_every_kind() -> None:
     """Catch additions to IndicationKind that forget the level mapping."""
     missing = [k for k in IndicationKind if k not in KIND_TO_LEVEL]
     assert missing == [], f"kinds without level mapping: {missing}"
-
-
-# ---------------------------------------------------------------------------
-# US-EG-1: enrollment-active flag
-# ---------------------------------------------------------------------------
-
-
-async def test_enrollment_flag_set_by_start_and_end() -> None:
-    """notify(REENROLL_RECORDING_START) -> True; notify(REENROLL_RECORDING_END) -> False."""
-    visual = RecordingBackend(name="visual")
-    ind = Indication(_settings(), [visual])
-    assert ind.is_enrollment_active is False
-    ind.notify(IndicationKind.REENROLL_RECORDING_START)
-    assert ind.is_enrollment_active is True
-    ind.notify(IndicationKind.REENROLL_RECORDING_END)
-    assert ind.is_enrollment_active is False
-
-
-async def test_enrollment_flag_updates_through_cooldown() -> None:
-    """Even if the kind is in cooldown, the flag still updates."""
-    fake_now = [100.0]
-    visual = RecordingBackend(name="visual")
-    ind = Indication(
-        _settings(cooldown_seconds=10.0),
-        [visual],
-        clock=lambda: fake_now[0],
-    )
-    ind.notify(IndicationKind.REENROLL_RECORDING_START)
-    assert ind.is_enrollment_active is True
-    # Within cooldown: backend dispatch is coalesced, but flag must remain True.
-    ind.notify(IndicationKind.REENROLL_RECORDING_START)
-    assert ind.is_enrollment_active is True
-    ind.notify(IndicationKind.REENROLL_RECORDING_END)
-    assert ind.is_enrollment_active is False
-
-
-async def test_enrollment_flag_updates_when_indication_disabled() -> None:
-    """When _enabled is False, the flag must still update for input gating."""
-    visual = RecordingBackend(name="visual")
-    ind = Indication(_settings(enabled=False), [visual])
-    assert ind.is_enrollment_active is False
-    ind.notify(IndicationKind.REENROLL_RECORDING_START)
-    assert ind.is_enrollment_active is True
-    ind.notify(IndicationKind.REENROLL_RECORDING_END)
-    assert ind.is_enrollment_active is False

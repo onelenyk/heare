@@ -193,12 +193,30 @@ class Settings:
     identity_file: Path = field(default_factory=lambda: HEARE_HOME / "identity.json")
     db_path: Path = field(default_factory=lambda: HEARE_HOME / "heare.db")
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
+    mode_file: Path = field(default_factory=lambda: HEARE_HOME / "mode")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
     capabilities_file: Path = field(
         default_factory=lambda: HEARE_HOME / "capabilities.json"
     )
     capabilities_max_age_hours: float = 24.0
-
+    mute_file: Path = field(default_factory=lambda: HEARE_HOME / "mute.flag")
+    mute_input_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "mute_input.flag"
+    )
+    cancel_flag_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "cancel.flag"
+    )
+    voice_state_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "voice_state.json"
+    )
+    audio_event_detection_enabled: bool = False
+    audio_event_threshold: float = 0.4
+    yamnet_model_path: Path = field(
+        default_factory=lambda: HEARE_HOME / "models" / "yamnet.onnx"
+    )
+    audio_event_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "audio_event.json"
+    )
     # Chrome profile directory name (e.g. "Default", "Profile 1") — used by
     # the dashboard "launch debug Chrome" hotkey to skip the profile picker.
     # The picker drops --remote-debugging-port when it forks the chosen
@@ -209,7 +227,11 @@ class Settings:
     skills_paths: list[str] = field(default_factory=lambda: ["~/.heare/skills"])
     # DEPRECATED (Phase 2): Legacy AgentSDKCLI/decider removed. These fields
     # exist only for config file compatibility and are no longer used.
-
+    claude_cli: str = "claude"
+    claude_timeout_seconds: int = 60
+    claude_max_retries: int = 3
+    claude_max_calls_per_minute: int = 30
+    claude_decider_model: str = "haiku"
     groq_api_key: str | None = None
     # Whisper transcription language. ISO-639-1 code (e.g. "en", "uk", "ru").
     # This is a HINT for Groq's Whisper, not a hard force — Groq will detect the
@@ -218,7 +240,25 @@ class Settings:
     # Multi-language conversation: Groq detects other languages when spoken, TTS voice
     # automatically swaps to match detected language via TranscriptionGateProcessor.
     groq_language: str = "uk"
-
+    # Speaker recognition. Runs on onnxruntime (already required for
+    # audio-event detection) — no torch/speechbrain. The ONNX embedding
+    # model is lazy-loaded from speaker_id_onnx_path; empty = default
+    # ~/.heare/speaker_model/speaker.onnx.
+    speaker_id_enabled: bool = True
+    speaker_id_onnx_path: str = ""
+    speaker_id_threshold_match: float = 0.50
+    speaker_id_threshold_unknown: float = 0.55
+    speaker_id_sticky_threshold: float = 0.80
+    speaker_id_sticky_seconds: float = 5.0
+    speaker_id_min_duration_ms: int = 400
+    speaker_id_accum_target_ms: int = 3000
+    speaker_id_centroid_k: int = 5
+    speaker_id_ema_alpha: float = 0.1
+    speaker_id_auto_enroll_after: int = 2
+    speaker_id_auto_enroll_enabled: bool = True
+    speaker_id_auto_enroll_owner_enabled: bool = True
+    speaker_id_auto_enroll_owner_after: int = 5
+    speaker_command_keyword_required: bool = True
     # Optional shared-secret phrase. When non-empty, saying
     # `<wake-word> <passphrase>` confirms a pending action. Additive —
     # the existing yes/no + speaker-id flow still works. Never logged.
@@ -229,8 +269,19 @@ class Settings:
     # medium = prompt defaults; low = reserved; high = very engaged.
     proactivity_level: str = "medium"
     command_keyword_pattern: str = r"\b(гава|heare|гей)\b"
-
-
+    speakers_file: Path = field(default_factory=lambda: HEARE_HOME / "speakers.json")
+    # Speaker naming — LLM-driven identity inference for guest_NN slots.
+    # Runs as a standalone async task; never blocks audio/STT/TTS.
+    speaker_namer_enabled: bool = True
+    speaker_namer_model: str = "anthropic/claude-haiku-4.5"
+    speaker_namer_min_turns: int = 3
+    speaker_namer_debounce_seconds: float = 10.0
+    speaker_namer_confidence_threshold: float = 0.8
+    speaker_namer_confidence_hysteresis: float = 0.05
+    speaker_namer_buffer_size: int = 10
+    speaker_namer_queue_max: int = 64
+    speaker_namer_timeout_seconds: float = 15.0
+    claude_sdk_cli_path: str | None = None
     # Turn aggregation and conversation memory settings
     # Per plan US-010: default to False for gradual rollout
     turn_aggregation_enabled: bool = False
@@ -281,6 +332,7 @@ class Settings:
     topic_extraction_openrouter_timeout_seconds: float = 5.0
     # LLM provider switching (openrouter | zai | opencode)
     llm_provider: str = "openrouter"
+    provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")
     zai_api_key: str | None = None
     zai_base_url: str = "https://api.z.ai/api/anthropic"
     zai_model: str = "claude-3-5-sonnet"
@@ -349,7 +401,7 @@ class Settings:
     indication: IndicationSettings = field(default_factory=IndicationSettings)
 
     # File access settings for extended workspace management
-
+    memory_db_path: Path = field(default_factory=lambda: HEARE_HOME / "memory.db")
     file_access_profile_path: Path = field(default_factory=lambda: HEARE_HOME / "profile.json")
     file_access_auto_approve_workspace: bool = True
     file_access_ask_for_new_dirs: bool = True
@@ -449,6 +501,10 @@ def load_settings() -> Settings:
     settings.opencode_api_key = os.environ.get("OPENCODE_API_KEY")
     settings.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
     settings.serper_api_key = os.environ.get("SERPER_API_KEY")
+    memory_db_env = os.environ.get("HEARE_MEMORY_DB")
+    if memory_db_env is not None:
+        settings.memory_db_path = Path(memory_db_env).expanduser()
+
     # CCS-05a: env override for cancel_stop_words (comma-separated). Empty
     # tokens are dropped; surrounding whitespace stripped; case preserved
     # (the detector lowercases at match time).
@@ -479,6 +535,15 @@ def load_settings() -> Settings:
     mode_override = os.environ.get("HEARE_MODE")
     if mode_override:
         settings.mode = Mode(mode_override)
+    elif settings.mode_file.exists():
+        raw = settings.mode_file.read_text().strip()
+        if raw:
+            settings.mode = Mode(raw)
+
+    if settings.provider_file.exists():
+        raw = settings.provider_file.read_text().strip().lower()
+        if raw in ("openrouter", "zai", "opencode", "deepseek"):
+            settings.llm_provider = raw
 
     if settings.audio_input_device_file.exists():
         raw = settings.audio_input_device_file.read_text().strip()
@@ -489,6 +554,11 @@ def load_settings() -> Settings:
         raw = settings.audio_output_device_file.read_text().strip()
         if raw:
             settings.audio_output_device = raw
+
+    # DEPRECATED (Phase 2): HEARE_CLAUDE_CLI override no longer used.
+    claude_override = os.environ.get("HEARE_CLAUDE_CLI")
+    if claude_override:
+        settings.claude_cli = claude_override  # No-op: legacy field ignored
 
     if toml_data.get("enable_mcp_servers"):
         logger.warning(

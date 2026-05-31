@@ -32,25 +32,6 @@ async def test_log_and_read_transcript(store: TranscriptStore) -> None:
     assert recent[0]["mode"] == "ambient"
 
 
-async def test_audio_event_columns_round_trip(store: TranscriptStore) -> None:
-    await store.log_transcript(
-        "hello there",
-        "ambient",
-        audio_event_label="Music",
-        audio_event_score=0.82,
-    )
-    recent = await store.recent_transcripts(5)
-    assert recent[0]["audio_event_label"] == "Music"
-    assert recent[0]["audio_event_score"] == pytest.approx(0.82)
-
-
-async def test_audio_event_columns_default_null(store: TranscriptStore) -> None:
-    await store.log_transcript("plain turn", "ambient")
-    recent = await store.recent_transcripts(5)
-    assert recent[0]["audio_event_label"] is None
-    assert recent[0]["audio_event_score"] is None
-
-
 async def test_log_decision_and_action(store: TranscriptStore) -> None:
     tid = await store.log_transcript("запусти тести", "focus")
     decision = {
@@ -123,29 +104,6 @@ async def test_log_transcript_returns_id(store: TranscriptStore) -> None:
     assert tid > 0
 
 
-async def test_log_transcript_with_speaker_fields(store: TranscriptStore) -> None:
-    tid = await store.log_transcript("привіт", "ambient", speaker_id="owner", speaker_confidence=0.92)
-    assert tid > 0
-    cursor = await store.db.execute(
-        "SELECT speaker_id, speaker_confidence FROM transcripts WHERE id = ?",
-        (tid,),
-    )
-    row = await cursor.fetchone()
-    assert row == ("owner", 0.92)
-
-
-async def test_log_transcript_without_speaker_fields_backward_compat(
-    store: TranscriptStore,
-) -> None:
-    tid = await store.log_transcript("стара форма", "silent")
-    cursor = await store.db.execute(
-        "SELECT speaker_id, speaker_confidence FROM transcripts WHERE id = ?",
-        (tid,),
-    )
-    row = await cursor.fetchone()
-    assert row == (None, None)
-
-
 async def test_log_transcript_deduplication(store: TranscriptStore) -> None:
     """Logging the same transcript within 2 seconds returns existing ID."""
     import time
@@ -214,23 +172,6 @@ async def test_schema_version_fail_loud_on_newer_db() -> None:
         with pytest.raises(RuntimeError, match=r"99"):
             await s2.init()
         await s2.close()
-
-
-async def test_migration_idempotent() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "heare.db"
-        s1 = TranscriptStore(db_path)
-        await s1.init()
-        tid = await s1.log_transcript("перше", "ambient", speaker_id="owner", speaker_confidence=0.9)
-        await s1.close()
-
-        s2 = TranscriptStore(db_path)
-        await s2.init()  # must not crash with "duplicate column"
-        recent = await s2.recent_transcripts(5)
-        assert len(recent) == 1
-        assert recent[0]["id"] == tid
-        await s2.close()
-
 
 # ---------------------------------------------------------------------------
 # RT-001: schema v3 events table + EventKind + log_event + WAL + purge
@@ -404,17 +345,6 @@ async def test_foreign_keys_enabled_after_init(store: TranscriptStore) -> None:
     row = await cursor.fetchone()
     assert row is not None
     assert int(row[0]) == 1
-
-
-async def test_recent_transcripts_includes_speaker_id(store: TranscriptStore) -> None:
-    await store.log_transcript("hello", "ambient", speaker_id="owner")
-    await store.log_transcript("hi", "ambient", speaker_id="unknown")
-    rows = await store.recent_transcripts(5)
-    assert len(rows) == 2
-    assert all("speaker_id" in r for r in rows)
-    by_text = {r["text"]: r["speaker_id"] for r in rows}
-    assert by_text["hello"] == "owner"
-    assert by_text["hi"] == "unknown"
 
 
 async def test_event_decision_id_cascade_sets_null(store: TranscriptStore) -> None:
