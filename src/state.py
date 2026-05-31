@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 from pathlib import Path
 
 import aiosqlite
@@ -31,6 +32,7 @@ class State:
         logger.info("State loaded: %d keys", len(self._cache))
         # Held outside the lock: _migrate_legacy acquires lock internally via set_bulk
         await self._migrate_legacy()
+        await self._ensure_canvas_rendered_column()
 
     # ── Getters (sync — pipeline safe) ──────────────────────
 
@@ -106,3 +108,31 @@ class State:
         if migrated:
             await self.set_bulk(migrated)
             logger.info("State migrated from legacy files: %s", list(migrated.keys()))
+
+    async def _ensure_canvas_rendered_column(self):
+        """Add rendered column to displays table if missing."""
+        try:
+            async with aiosqlite.connect(str(self._db_path)) as db:
+                await db.execute(
+                    "ALTER TABLE displays ADD COLUMN rendered INTEGER DEFAULT 0"
+                )
+                await db.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
+    async def get_latest_canvas(self) -> dict | None:
+        """Return latest unrendered canvas or None."""
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            row = await db.execute_fetchall(
+                "SELECT content, ts, COALESCE(rendered,0) AS rendered FROM displays "
+                "WHERE content_type='canvas/html' AND COALESCE(rendered,0)=0 "
+                "ORDER BY ts DESC LIMIT 1"
+            )
+            if row:
+                await db.execute(
+                    "UPDATE displays SET rendered=1 WHERE ts=?", (row[0][1],)
+                )
+                await db.commit()
+                return {"html": row[0][0], "ts": row[0][1], "rendered": False}
+            return None

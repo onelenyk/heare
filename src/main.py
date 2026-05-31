@@ -633,6 +633,14 @@ def _cmd_logs(args: argparse.Namespace) -> int:
     return 0  # unreachable
 
 
+def _cmd_desktop(args: argparse.Namespace) -> int:
+    """Launch the PyWebView desktop window."""
+    from src.desktop.app import run
+
+    run()
+    return 0
+
+
 def _cmd_setup(args: argparse.Namespace) -> int:
     """Run or inspect heare onboarding."""
     from src.daemon.onboarding import (
@@ -781,6 +789,8 @@ def build_parser() -> argparse.ArgumentParser:
     setup_p.add_argument("--yes", action="store_true",
                          help="Skip confirmation (--reset) or allow attestation override (--confirm)")
 
+    sub.add_parser("desktop", help="Launch desktop app window")
+
     logs_p = sub.add_parser("logs", help="Tail the daemon log")
     logs_p.add_argument("-f", "--follow", action="store_true", help="Stream new entries")
     logs_p.add_argument("-n", "--lines", type=int, default=40, help="How many lines")
@@ -820,6 +830,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_watch(args)
     if cmd == "logs":
         return _cmd_logs(args)
+    if cmd == "desktop":
+        return _cmd_desktop(args)
     parser.print_help()
     return 1
 

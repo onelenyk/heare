@@ -16,6 +16,7 @@ class API:
         self._app.router.add_post("/provider", self._handle_provider)
         self._app.router.add_post("/model", self._handle_model)
         self._app.router.add_post("/cancel", self._handle_cancel)
+        self._app.router.add_get("/canvas", self._handle_canvas)
         self._runner = None
         self._site = None
 
@@ -74,6 +75,16 @@ class API:
     async def _handle_cancel(self, request):
         await self.state.set("cancel", "1")
         return web.json_response({"ok": True})
+
+    async def _handle_canvas(self, request):
+        """Return latest unrendered canvas content."""
+        try:
+            row = await self.state.get_latest_canvas()
+            if row:
+                return web.json_response(row)
+            return web.json_response({"html": None, "ts": None})
+        except Exception:
+            return web.json_response({"html": None, "ts": None})
 
     def _available_providers(self):
         return get_available(self.config)
