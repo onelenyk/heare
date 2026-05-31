@@ -82,11 +82,6 @@ def _mode_args(args: dict[str, Any]) -> str:
     return str(args.get("mode", "")).strip()
 
 
-def _display_args(args: dict[str, Any]) -> str:
-    # content can be long and contain newlines → JSON blob.
-    return json.dumps(args)
-
-
 def _show_text_args(args: dict[str, Any]) -> str:
     args["format"] = "text"
     return json.dumps(args)
@@ -423,25 +418,6 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         },
         ["mode"],
         _mode_args,
-    ),
-    "show_display": (
-        {
-            "content": {
-                "type": "string",
-                "description": "The full block to render on the dashboard (may be long, multi-line).",
-            },
-            "format": {
-                "type": "string",
-                "enum": ["text", "code", "ascii", "table", "markdown"],
-                "description": "How to render content. 'code' = syntax-highlighted, 'ascii' = monospace as-is, 'markdown'/'table' = rich, 'text' = plain.",
-            },
-            "title": {
-                "type": "string",
-                "description": "Optional short heading for the panel.",
-            },
-        },
-        ["content", "format"],
-        _display_args,
     ),
     "show_text": (
         {

@@ -1,0 +1,2 @@
+[   92598ms] SyntaxError: Failed to execute 'write' on 'Document': Identifier 'ctx' has already been declared
+    at update (https://htmledit.squarefree.com/:48:7)

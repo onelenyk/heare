@@ -246,13 +246,6 @@ TOOLS: dict[str, Tool] = {
         description="Switch the agent's behavior mode: ambient (default conversational), focus (terse/fast), silent (speak only when addressed), assistant (proactive, full tools), meeting (passive note-taker, no side-effect tools). Takes effect immediately.",
         enabled=True,
     ),
-    "show_display": Tool(
-        name="show_display",
-        sdk_name="ShowDisplay",
-        execution="direct",
-        description="Render a long/structured block on the watch dashboard's display panel instead of speaking it: code, ASCII diagrams, tables, formatted/structured text. Use this for anything that would be unreadable or annoying as speech. Speak a one-line pointer ('showing it on screen') and put the full content here.",
-        enabled=True,
-    ),
     "show_text": Tool(
         name="show_text",
         sdk_name="ShowText",

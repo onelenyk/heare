@@ -147,8 +147,6 @@ async def execute_direct(
         return await _execute_set_provider(args, settings)
     elif tool == "set_mode":
         return await _execute_set_mode(args, settings)
-    elif tool == "show_display":
-        return await _execute_show_display(args, settings)
     elif tool == "show_text":
         return await _execute_show_display(args, settings)
     elif tool == "show_canvas":
