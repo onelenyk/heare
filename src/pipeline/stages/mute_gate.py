@@ -18,6 +18,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from src.daemon.events import emit
+
 
 # ---------------------------------------------------------------------------
 # Generic flag-file helpers (shared by both gates).
@@ -55,7 +57,9 @@ def is_muted(flag_path: Path) -> bool:
 
 
 def set_mute(flag_path: Path, muted: bool) -> bool:
-    return _set_flag(flag_path, muted)
+    result = _set_flag(flag_path, muted)
+    emit("mute", "voice_muted" if muted else "voice_unmuted", level="info")
+    return result
 
 
 def toggle_mute(flag_path: Path) -> bool:
@@ -72,7 +76,9 @@ def is_input_muted(flag_path: Path) -> bool:
 
 
 def set_input_mute(flag_path: Path, muted: bool) -> bool:
-    return _set_flag(flag_path, muted)
+    result = _set_flag(flag_path, muted)
+    emit("mute", "input_muted" if muted else "input_unmuted", level="info")
+    return result
 
 
 def toggle_input_mute(flag_path: Path) -> bool:

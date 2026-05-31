@@ -26,6 +26,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
 from src.config import HEARE_HOME, Settings, write_browser_bridge_token
+from src.daemon.events import emit
 
 logger = logging.getLogger("heare.browser_bridge")
 
@@ -87,6 +88,7 @@ class BrowserBridge:
         self._pair_attempts: int = 0
         self._lonely_since: float | None = None
         self._lonely_task: asyncio.Task | None = None
+        self._last_auth_fail_log: float = 0.0
 
     # ── lifecycle ─────────────────────────────────────────────────────────
     async def start(self) -> None:
@@ -194,7 +196,10 @@ class BrowserBridge:
                 return
         elif mtype == "auth":
             if not secrets.compare_digest(str(msg.get("token", "")), self._token):
-                logger.warning("browser_bridge auth failed (close 4001)")
+                now = time.time()
+                if now - self._last_auth_fail_log > 300:  # once per 5 minutes
+                    logger.warning("browser_bridge auth failed (close 4001) — suppressing repeats for 5min")
+                    self._last_auth_fail_log = now
                 await ws.close(code=CLOSE_AUTH_FAILED, reason="bad auth")
                 return
         else:
@@ -226,6 +231,7 @@ class BrowserBridge:
             return
 
         logger.info("browser_bridge client authenticated")
+        emit("browser", "connected", level="info")
 
         try:
             async for raw in ws:

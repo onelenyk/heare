@@ -31,6 +31,7 @@ import platform
 from typing import TYPE_CHECKING, Any
 
 from src.agent.llm.prompt_sections import render_prompt
+from src.daemon.events import emit
 
 
 _HOST_OS_LABELS = {
@@ -227,6 +228,7 @@ def _build_injector_class():
                 len(new_prompt.split("\n")),
             )
             _replace_system_message(self._llm_context, new_prompt)
+            emit("prompt", "context_built", tokens=len(new_prompt.split()), lang=language, level="debug")
 
     _injector_cls = SystemPromptInjector
     return _injector_cls

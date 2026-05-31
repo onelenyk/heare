@@ -49,6 +49,7 @@ class ToolDef:
     description: str
     handler: str  # backend dispatch key — see module docstring
     params: dict = field(default_factory=dict)
+    required: list[str] = field(default_factory=list)
     schema_fields: dict = field(default_factory=dict)
 
 

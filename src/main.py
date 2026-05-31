@@ -65,6 +65,8 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     settings = load_settings()
     settings.ensure_dirs()
     _setup_logging(settings.log_dir)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("websockets.server").setLevel(logging.WARNING)
     from src.daemon.workspace import ensure_workspace_mcp
     ensure_workspace_mcp(settings.workspace_dir)
 

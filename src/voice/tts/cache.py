@@ -37,24 +37,38 @@ class TTSCache:
         """Pre-render every phrase that isn't already cached.
 
         Synthesizes missing phrases concurrently via asyncio.gather. Per-phrase
-        failures are logged and skipped — a missing cache entry just falls back
-        to live TTS.
+        failures are counted and logged as a summary — a missing cache entry
+        just falls back to live TTS.
         """
         missing = [p for p in phrases if p not in self._store]
         if not missing:
             return
         logger.info("warming up TTS cache for %d phrase(s)", len(missing))
 
+        success = 0
+        failed = 0
+
         async def _synth_one(phrase: str) -> None:
+            nonlocal success, failed
             try:
                 pcm = await synthesizer(phrase)
             except asyncio.CancelledError:
                 raise
-            except Exception as e:
-                logger.warning("cache warmup failed for %r: %s", phrase[:40], e)
+            except Exception:
+                failed += 1
                 return
             if pcm:
                 self._store[phrase] = pcm
+                success += 1
+            else:
+                failed += 1
 
         await asyncio.gather(*(_synth_one(p) for p in missing))
-        logger.info("TTS cache populated: %d entries", len(self._store))
+        total = len(missing)
+        if failed:
+            logger.info("TTS cache: %d/%d phrases cached (%d failed — Edge TTS unavailable for those)",
+                        success, total, failed)
+            if failed == total:
+                logger.warning("TTS cache: all %d phrases failed to pre-cache", total)
+        else:
+            logger.info("TTS cache populated: %d entries", len(self._store))

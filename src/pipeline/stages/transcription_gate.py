@@ -34,6 +34,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from src.daemon.events import emit
 from src.voice.language.core import (
     detect_language_from_frame,
     is_standalone_cancel_imperative,
@@ -342,6 +343,7 @@ def _build_transcription_gate_class():
             self._debounce_frame = None
             self._debounce_direction = None
             if not combined or frame is None:
+                emit("gate", "dropped", reason="debounce", text="", level="debug")
                 return
             await self._handle_transcription(
                 frame, direction, override_text=combined
@@ -372,6 +374,7 @@ def _build_transcription_gate_class():
                 logger.info(
                     "[CANCEL FAST-PATH] transcript=%r", transcript[:80]
                 )
+                emit("gate", "cancel_word", text=transcript[:80], level="important")
                 try:
                     await self.push_frame(
                         InterruptionFrame(), FrameDirection.DOWNSTREAM
@@ -396,6 +399,7 @@ def _build_transcription_gate_class():
                     self._indication_speaking,
                     transcript[:60],
                 )
+                emit("gate", "dropped", reason="indication", text=transcript[:40], level="debug")
                 return
 
             bot_active = (
@@ -411,6 +415,7 @@ def _build_transcription_gate_class():
                         "(bot speaking, barge-in disabled): %r",
                         transcript[:60],
                     )
+                    emit("gate", "dropped", reason="bot_active_no_bargein", text=transcript[:40], level="debug")
                     return
                 # Too short to be a real interruption — almost always a
                 # noise blip or a one-word echo fragment.
@@ -420,6 +425,7 @@ def _build_transcription_gate_class():
                         "(bot speaking, too short for barge-in): %r",
                         transcript,
                     )
+                    emit("gate", "dropped", reason="too_short", text=transcript[:40], level="debug")
                     return
                 bot_text = (
                     self._bot_speech_state.text
@@ -434,6 +440,7 @@ def _build_transcription_gate_class():
                         "(echo of bot speech): %r",
                         transcript[:60],
                     )
+                    emit("gate", "dropped", reason="echo", text=transcript[:40], level="debug")
                     return
                 # Genuine barge-in: the human said something the bot is
                 # not currently saying. Stop the bot (Pipecat routes the
@@ -444,6 +451,7 @@ def _build_transcription_gate_class():
                     "[BARGE-IN] interrupting bot speech: %r",
                     transcript[:80],
                 )
+                emit("gate", "barge_in", text=transcript[:80], level="important")
                 try:
                     await self.push_frame(
                         InterruptionFrame(), FrameDirection.DOWNSTREAM
@@ -523,6 +531,7 @@ def _build_transcription_gate_class():
                 outbound = self._clone_with_text(frame, transcript)
             else:
                 outbound = frame
+            emit("gate", "transcription_passed", text=transcript[:80], lang=self._active_lang)
             await self.push_frame(outbound, direction)
 
         @staticmethod

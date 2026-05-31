@@ -57,12 +57,20 @@ HTML = r"""
 
   #status-bar {
     display: flex;
+    flex-direction: column;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 6px;
+    padding: 0;
+  }
+  .status-row {
+    display: flex;
     align-items: center;
     gap: 10px;
     padding: 5px 10px;
-    border-bottom: 2px solid var(--border);
-    margin-bottom: 6px;
     flex-wrap: wrap;
+  }
+  .status-row + .status-row {
+    border-top: 1px solid var(--border);
   }
   #status-bar .dot {
     width: 8px; height: 8px; border-radius: 50%; display: inline-block;
@@ -196,27 +204,31 @@ HTML = r"""
 <body>
 
 <div id="status-bar">
-  <span id="status-dot" class="dot off"></span>
-  <span class="identity"><span id="agent-name">heare</span> <span id="agent-emoji">&#x1FA76;</span></span>
-  <span class="meta" id="status-text">stopped</span>
-  <span class="meta" id="pid-text"></span>
-  <span class="meta" id="uptime-text"></span>
-  <span style="flex:1"></span>
-  <span class="meta">mode <em id="mode-text">?</em></span>
-  <span class="meta">provider
-    <select id="provider-select" onchange="switchProvider(this.value)"
-      style="background:#1e1e35;color:#c0c0c0;border:1px solid #333;font-size:11px;padding:2px">
-    </select>
-  </span>
-  <span class="meta">model
-    <select id="model-select" onchange="switchModel()"
-      style="background:#1e1e35;color:#c0c0c0;border:1px solid #333;font-size:11px;padding:2px">
-    </select>
-  </span>
-  <span class="meta" id="counts-text"></span>
-  <span id="chrome-dot" class="dot silent" title="chrome bridge"></span> <span class="meta" id="chrome-label">chrome</span>
-  <span id="voice-dot"></span>
-  <span id="voice-indicator" class="idle">idle</span>
+  <div class="status-row">
+    <span id="status-dot" class="dot off"></span>
+    <span class="identity"><span id="agent-name">heare</span> <span id="agent-emoji">&#x1FA76;</span></span>
+    <span class="meta" id="status-text">stopped</span>
+    <span class="meta" id="pid-text"></span>
+    <span class="meta" id="uptime-text"></span>
+  </div>
+  <div class="status-row">
+    <span class="meta">mode <em id="mode-text">?</em></span>
+    <span class="meta">provider
+      <select id="provider-select" onchange="switchProvider(this.value)">
+      </select>
+    </span>
+    <span class="meta">model
+      <select id="model-select" onchange="switchModel()">
+      </select>
+    </span>
+  </div>
+  <div class="status-row">
+    <span class="meta" id="counts-text"></span>
+    <span id="chrome-dot" class="dot silent" title="chrome bridge"></span>
+    <span class="meta" id="chrome-label">chrome</span>
+    <span id="voice-dot"></span>
+    <span id="voice-indicator" class="idle">idle</span>
+  </div>
 </div>
 
 <div class="row">
@@ -227,10 +239,11 @@ HTML = r"""
         <button onclick="setMode('silent')" id="btn-silent">silent</button>
         <button onclick="setMode('focus')" id="btn-focus">focus</button>
         <button onclick="setMode('ambient')" id="btn-ambient">ambient</button>
+        <button onclick="setMode('assistant')" id="btn-assistant">assistant</button>
       </div>
       <div class="btn-row">
-        <button onclick="toggleMute('bot')" id="btn-mute-bot">mute bot</button>
-        <button onclick="toggleMute('mic')" id="btn-mute-mic">mute mic</button>
+        <button onclick="toggleMute('bot')" id="btn-mute-bot">🔇 bot</button>
+        <button onclick="toggleMute('mic')" id="btn-mute-mic">🔇 mic</button>
         <button onclick="cancel()" id="btn-cancel">cancel</button>
         <button onclick="daemonAction('stop')" id="btn-stop" style="border-color:var(--accent-red)">stop</button>
       </div>
@@ -416,13 +429,13 @@ async function pollState() {
 
     var micOn = s.mute_mic === "1" || s.mute_mic === true;
     var botOn = s.mute_bot === "1" || s.mute_bot === true;
-    document.getElementById("btn-mute-mic").textContent = micOn ? "unmute mic" : "mute mic";
+    document.getElementById("btn-mute-mic").textContent = micOn ? "🔊 mic" : "🔇 mic";
     document.getElementById("btn-mute-mic").className = micOn ? "on" : "";
-    document.getElementById("btn-mute-bot").textContent = botOn ? "unmute bot" : "mute bot";
+    document.getElementById("btn-mute-bot").textContent = botOn ? "🔊 bot" : "🔇 bot";
     document.getElementById("btn-mute-bot").className = botOn ? "on" : "";
 
     var mode = s.mode || "";
-    ["silent", "focus", "ambient"].forEach(function(m) {
+    ["silent", "focus", "ambient", "assistant"].forEach(function(m) {
       var btn = document.getElementById("btn-" + m);
       if (btn) btn.className = (mode === m) ? "active" : "";
     });

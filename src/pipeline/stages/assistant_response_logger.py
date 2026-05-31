@@ -30,6 +30,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from src.daemon.events import emit
+
 if TYPE_CHECKING:
     from src.config import Settings
     from src.store.storage import TranscriptStore
@@ -171,6 +173,7 @@ def _build_logger_class():
                     agent_spoken=agent_spoken,
                 )
                 logger.debug("logged bot response: %s", text[:60])
+                emit("llm", "response_logged", chars=len(text), mode=agent_mode or "unknown", level="info")
             except Exception:
                 logger.exception("failed to log bot response")
 
