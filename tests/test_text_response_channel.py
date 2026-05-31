@@ -182,15 +182,18 @@ async def test_show_display_unknown_format_falls_back_text(
 
 
 def test_show_display_registered():
-    from src.agent.tools.registry import TOOLS
+    from src.agent.tools.definitions import get_tool, get_tool_names
     from src.agent.tools.schemas import _TOOL_SPECS
 
-    assert TOOLS["show_display"].enabled is True
-    props, required, _ = _TOOL_SPECS["show_display"]
-    assert required == ["content", "format"]
-    assert set(props["format"]["enum"]) == {
-        "text", "code", "ascii", "table", "markdown"
-    }
+    # show_display was replaced by show_text + show_canvas in the new definitions
+    assert "show_text" in get_tool_names()
+    tool = get_tool("show_text")
+    assert tool is not None
+    assert tool.name == "show_text"
+    assert tool.handler == "display"
+    props, required, _ = _TOOL_SPECS["show_text"]
+    assert "content" in props
+    assert "title" in props
 
 
 def test_fetch_latest_display_empty_on_none():

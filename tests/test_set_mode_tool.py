@@ -66,11 +66,11 @@ def test_set_mode_exempt_in_every_mode() -> None:
 
 
 def test_set_mode_registered_in_registry_and_schema() -> None:
-    from src.agent.tools.registry import TOOLS
+    from src.agent.tools.definitions import get_tool_names, get_tool
     from src.agent.tools.schemas import _TOOL_SPECS
 
-    assert "set_mode" in TOOLS
-    assert TOOLS["set_mode"].enabled is True
+    assert "set_mode" in get_tool_names()
+    assert get_tool("set_mode") is not None
     assert "set_mode" in _TOOL_SPECS
     props, required, _ = _TOOL_SPECS["set_mode"]
     assert required == ["mode"]

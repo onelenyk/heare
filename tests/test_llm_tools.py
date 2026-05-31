@@ -9,8 +9,7 @@ import pytest
 
 pytest.importorskip("pipecat.adapters.schemas.function_schema")
 
-from src.agent.tools.schemas import build_tools_schema, register_all_tools  # noqa: E402
-from src.agent.tools.registry import get_enabled_tools  # noqa: E402
+from src.agent.tools.system import TOOLS as SYSTEM_TOOLS, build_tools_schema, register_all_tools  # noqa: E402
 
 
 class _MockState:
@@ -54,8 +53,9 @@ def test_build_tools_schema_covers_every_enabled_tool() -> None:
     schema = build_tools_schema()
     standard = schema.standard_tools
     names = {tool.name for tool in standard}
-    assert names == get_enabled_tools(), (
-        f"schema names {names!r} != enabled tools {get_enabled_tools()!r}"
+    enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
+    assert names == enabled, (
+        f"schema names {names!r} != enabled tools {enabled!r}"
     )
 
 
@@ -75,8 +75,9 @@ def test_function_schema_has_properties_and_required() -> None:
 def test_register_all_tools_registers_every_enabled_tool() -> None:
     llm = _FakeLLM()
     names = register_all_tools(llm, settings=None)
-    assert set(names) == get_enabled_tools()
-    assert set(llm.registered.keys()) == get_enabled_tools()
+    enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
+    assert set(names) == enabled
+    assert set(llm.registered.keys()) == enabled
 
 
 def test_register_all_tools_cancel_flag_for_cancel_is_false() -> None:
@@ -96,13 +97,12 @@ async def test_handler_dispatches_to_execute_direct(monkeypatch) -> None:
     the underlying tool and fires result_callback."""
     captured: dict[str, Any] = {}
 
-    async def fake_execute_direct(tool: str, args: str, settings: Any) -> dict:
-        captured["tool"] = tool
+    async def fake_execute_bash(args: str, settings: Any) -> dict:
         captured["args"] = args
         captured["settings"] = settings
         return {"success": True, "output": "ok", "error": None}
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_execute_direct)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", fake_execute_bash)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -116,7 +116,6 @@ async def test_handler_dispatches_to_execute_direct(monkeypatch) -> None:
 
     await bash_handler(params)
 
-    assert captured["tool"] == "bash"
     assert captured["args"] == "uptime"
     rcb.assert_awaited_once()
     result = rcb.await_args.args[0]
@@ -131,12 +130,11 @@ async def test_handler_serializes_complex_args_for_write(
     surface; verify the structured args dict is folded down correctly."""
     captured: dict[str, Any] = {}
 
-    async def fake_execute_direct(tool: str, args: str, settings: Any) -> dict:
-        captured["tool"] = tool
+    async def fake_execute_write(args: str, settings: Any) -> dict:
         captured["args"] = args
         return {"success": True, "output": "wrote"}
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_execute_direct)
+    monkeypatch.setattr("src.agent.tools.direct._execute_write", fake_execute_write)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -150,7 +148,6 @@ async def test_handler_serializes_complex_args_for_write(
 
     await handler(params)
 
-    assert captured["tool"] == "write"
     assert captured["args"] == "/tmp/x: hello\nworld"
 
 
@@ -164,7 +161,7 @@ async def test_handler_swallows_exception_into_failure_result(
     async def boom(*args, **kwargs) -> dict:
         raise RuntimeError("dispatch failed")
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", boom)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", boom)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -194,7 +191,7 @@ async def test_handler_cancellation_propagates(monkeypatch) -> None:
     async def cancelled(*args, **kwargs) -> dict:
         raise asyncio.CancelledError()
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", cancelled)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", cancelled)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)
@@ -241,14 +238,14 @@ class _FakeConvMgr:
 
 @pytest.mark.asyncio
 async def test_handler_records_pending_then_result(monkeypatch) -> None:
-    async def fake_exec(name, args, settings):
+    async def fake_exec(args, settings):
         return {
             "success": True,
             "summary": "load average: 1.42",
             "items": [{"title": "h1"}],
         }
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_exec)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", fake_exec)
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
@@ -277,7 +274,7 @@ async def test_handler_records_error_when_execute_raises(monkeypatch) -> None:
     async def boom(*args, **kwargs):
         raise RuntimeError("dispatch failed")
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", boom)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", boom)
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
@@ -303,7 +300,7 @@ async def test_handler_records_cancelled_when_execute_cancels(monkeypatch) -> No
     async def cancelled(*args, **kwargs):
         raise asyncio.CancelledError()
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", cancelled)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", cancelled)
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
@@ -327,10 +324,10 @@ async def test_handler_records_cancelled_when_execute_cancels(monkeypatch) -> No
 async def test_handler_without_conversation_manager_is_noop(monkeypatch) -> None:
     """Backwards-compat: existing call sites that omit conversation_manager
     keep their original behaviour (no-op on the action log)."""
-    async def fake_exec(name, args, settings):
+    async def fake_exec(args, settings):
         return {"success": True, "summary": "ok"}
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_exec)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", fake_exec)
 
     llm = _FakeLLM()
     register_all_tools(llm, settings=None)  # no conversation_manager
@@ -380,7 +377,7 @@ def test_register_all_tools_visible_on_both_delegates(_switchable_service) -> No
     swit = _switchable_service
     names = register_all_tools(swit, settings=None)
 
-    enabled = get_enabled_tools()
+    enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
     assert set(names) == enabled
 
     or_funcs = set(swit._deepseek_service._functions.keys())
@@ -413,9 +410,9 @@ async def test_set_provider_tool_writes_file_and_takes_effect(
 
 def test_tools_schema_is_provider_agnostic() -> None:
     """I3: build_tools_schema() yields a single ToolsSchema usable by both
-    the OpenAI and Anthropic adapters; tool counts must match the registry."""
+    the OpenAI and Anthropic adapters; tool counts must match the system TOOLS."""
     schema = build_tools_schema()
-    enabled = get_enabled_tools()
+    enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
     assert {t.name for t in schema.standard_tools} == enabled
 
     # The Pipecat adapters translate the schema per-provider. We assert that

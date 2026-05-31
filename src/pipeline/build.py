@@ -44,7 +44,7 @@ from src.agent.llm.context_injector import (
     create_system_prompt_injector,
     render_native_system_prompt,
 )
-from src.agent.tools.schemas import build_tools_schema, register_all_tools
+from src.agent.tools.system import build_tools_schema, register_all_tools
 from src.pipeline.stages.transcription_gate import create_transcription_gate
 from src.pipeline.stages.voice_state_observer import create_voice_state_observer
 from src.voice.tts.cache import TTSCache

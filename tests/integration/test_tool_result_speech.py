@@ -29,9 +29,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.config import Settings
-from src.agent.tools.schemas import build_tools_schema, register_all_tools
+from src.agent.tools.system import TOOLS as SYSTEM_TOOLS, build_tools_schema, register_all_tools
 from src.pipeline.build import _assemble_native_stages
-from src.agent.tools.registry import get_enabled_tools
 
 
 @pytest.fixture
@@ -55,9 +54,9 @@ def fake_llm():
 
 
 def test_all_enabled_tools_are_registered(fake_llm) -> None:
-    """AC1: tool_registry's 13 enabled tools become pipecat handlers."""
+    """AC1: all enabled tools in system TOOLS become pipecat handlers."""
     register_all_tools(fake_llm, settings=Settings())
-    enabled = set(get_enabled_tools())
+    enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
     assert set(fake_llm.registered.keys()) == enabled
 
 
@@ -76,12 +75,11 @@ async def test_bash_handler_dispatches_to_execute_direct(
     via result_callback (no raw exception raised into pipecat)."""
     captured: dict = {}
 
-    async def fake_execute_direct(tool_name, args, settings):
-        captured["tool"] = tool_name
+    async def fake_execute_bash(args, settings):
         captured["args"] = args
         return {"success": True, "summary": "load average: 1.42"}
 
-    monkeypatch.setattr("src.agent.tools.schemas.execute_direct", fake_execute_direct)
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", fake_execute_bash)
 
     register_all_tools(fake_llm, settings=Settings())
     handler, _cancel_flag = fake_llm.registered["bash"]
@@ -93,7 +91,6 @@ async def test_bash_handler_dispatches_to_execute_direct(
 
     await handler(params)
 
-    assert captured["tool"] == "bash"
     assert captured["args"] == "uptime"
     delivered.assert_awaited_once()
     payload = delivered.await_args.args[0]

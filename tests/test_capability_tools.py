@@ -399,7 +399,7 @@ async def test_list_capabilities_empty_skills_and_mcps_still_lists_built_in(sett
 
 
 def test_capability_tools_registered():
-    from src.agent.tools.registry import TOOLS
+    from src.agent.tools.definitions import get_tool, get_tool_names
 
     for name in (
         "discover_capability",
@@ -408,9 +408,10 @@ def test_capability_tools_registered():
         "revoke_capability",
         "list_capabilities",
     ):
-        assert name in TOOLS, f"{name} missing from TOOLS"
-        assert TOOLS[name].enabled is True
-        assert TOOLS[name].execution == "direct"
+        assert name in get_tool_names(), f"{name} missing from TOOLS"
+        tool = get_tool(name)
+        assert tool is not None
+        assert tool.name == name
 
 
 def test_capability_tools_have_schemas():
@@ -436,12 +437,13 @@ def test_capability_tools_have_schemas():
 
 
 def test_register_mcp_server_registered():
-    from src.agent.tools.registry import TOOLS
+    from src.agent.tools.definitions import get_tool, get_tool_names
     from src.agent.tools.schemas import _TOOL_SPECS
 
-    assert "register_mcp_server" in TOOLS
-    assert TOOLS["register_mcp_server"].enabled is True
-    assert TOOLS["register_mcp_server"].execution == "direct"
+    assert "register_mcp_server" in get_tool_names()
+    tool = get_tool("register_mcp_server")
+    assert tool is not None
+    assert tool.name == "register_mcp_server"
 
     assert "register_mcp_server" in _TOOL_SPECS
     properties, required, _ = _TOOL_SPECS["register_mcp_server"]

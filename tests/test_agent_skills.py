@@ -12,7 +12,8 @@ import pytest
 
 from src.skills.agent_skills import SkillsLoader, SkillMetadata
 from src.agent.tools.direct import execute_direct
-from src.agent.tools.registry import TOOLS, get_enabled_tools
+from src.agent.tools.definitions import get_tool, get_tool_names
+from src.agent.tools.registry import get_enabled_tools
 from src.agent.tools.schemas import _TOOL_SPECS
 
 
@@ -174,23 +175,21 @@ def test_run_skill_tool_spec_registered():
 
 
 def test_list_skills_tool_in_registry():
-    """Assert list_skills is in the TOOLS registry."""
-    assert "list_skills" in TOOLS
-    tool = TOOLS["list_skills"]
+    """Assert list_skills is in the TOOLS definitions."""
+    assert "list_skills" in get_tool_names()
+    tool = get_tool("list_skills")
+    assert tool is not None
     assert tool.name == "list_skills"
-    assert tool.sdk_name == "ListSkills"
-    assert tool.execution == "direct"
-    assert tool.enabled
+    assert tool.handler == "skill_list"
 
 
 def test_run_skill_tool_in_registry():
-    """Assert run_skill is in the TOOLS registry."""
-    assert "run_skill" in TOOLS
-    tool = TOOLS["run_skill"]
+    """Assert run_skill is in the TOOLS definitions."""
+    assert "run_skill" in get_tool_names()
+    tool = get_tool("run_skill")
+    assert tool is not None
     assert tool.name == "run_skill"
-    assert tool.sdk_name == "RunSkill"
-    assert tool.execution == "direct"
-    assert tool.enabled
+    assert tool.handler == "skill_run"
 
 
 def test_skill_tools_in_enabled_tools():
