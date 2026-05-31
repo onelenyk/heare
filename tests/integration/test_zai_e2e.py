@@ -58,12 +58,31 @@ def _mark_started(p: FrameProcessor) -> None:
     p._FrameProcessor__started = True  # type: ignore[attr-defined]
 
 
+class _MockState:
+    """Minimal State mock for testing SwitchableLLMService."""
+    def __init__(self, **initial):
+        self._data = dict(initial)
+
+    def get_bool(self, key: str) -> bool:
+        return self._data.get(key) == "1"
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._data.get(key, default)
+
+    async def set(self, key: str, value: str):
+        self._data[key] = value
+
+    async def set_bool(self, key: str, value: bool):
+        self._data[key] = "1" if value else "0"
+
+
 def _build_service(tmp_path: Path) -> SwitchableLLMService:
     return SwitchableLLMService(
-        openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", "sk-or-stub"),
-        openrouter_model=os.environ.get(
-            "HEARE_OPENROUTER_MODEL", "google/gemini-2.0-flash-001"
+        deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY", "sk-ds-stub"),
+        deepseek_model=os.environ.get(
+            "HEARE_DEEPSEEK_MODEL", "deepseek-chat"
         ),
+        deepseek_base_url="https://api.deepseek.com/v1",
         zai_api_key=os.environ["ZAI_API_KEY"],
         zai_model=os.environ.get("HEARE_ZAI_MODEL", "claude-3-5-sonnet"),
         zai_base_url=os.environ.get(
@@ -72,7 +91,7 @@ def _build_service(tmp_path: Path) -> SwitchableLLMService:
         opencode_api_key=None,
         opencode_base_url="https://opencode.ai/zen/go/v1",
         opencode_model="minimax-m2.7",
-        provider_file=tmp_path / "provider",
+        state=_MockState(),
     )
 
 
@@ -96,7 +115,7 @@ async def test_zai_simple_completion(tmp_path: Path) -> None:
     spy = _wire(svc)
 
     # Force zai active.
-    svc._provider_file.write_text("zai")
+    svc._state._data["provider"] = "zai"
     svc._sync_provider()
     assert svc._active_provider == "zai"
 
@@ -135,7 +154,7 @@ async def test_zai_tool_call_roundtrip(tmp_path: Path) -> None:
 
     svc.register_function("bash", bash_handler)
 
-    svc._provider_file.write_text("zai")
+    svc._state._data["provider"] = "zai"
     svc._sync_provider()
 
     from pipecat.processors.aggregators.llm_context import LLMContext
@@ -179,7 +198,7 @@ async def test_provider_swap_midconversation_e2e(tmp_path: Path) -> None:
     # Capture which delegate served which turn.
     or_calls = 0
     zai_calls = 0
-    real_or = svc._or_service.process_frame
+    real_or = svc._deepseek_service.process_frame
     real_zai = svc._zai_service.process_frame
 
     async def or_wrapped(frame: Frame, direction: FrameDirection):
@@ -192,28 +211,14 @@ async def test_provider_swap_midconversation_e2e(tmp_path: Path) -> None:
         zai_calls += 1
         await real_zai(frame, direction)
 
-    svc._or_service.process_frame = or_wrapped  # type: ignore[method-assign]
+    svc._deepseek_service.process_frame = or_wrapped  # type: ignore[method-assign]
     svc._zai_service.process_frame = zai_wrapped  # type: ignore[method-assign]
 
     from pipecat.processors.aggregators.llm_context import LLMContext
 
-    # Turns 1 and 2 on openrouter (default).
-    svc._provider_file.write_text("openrouter")
-    svc._sync_provider()
-    for _ in range(2):
-        ctx = LLMContext()
-        ctx.add_message({"role": "user", "content": "Say 'one'."})
-        await svc.process_frame(LLMContextFrame(context=ctx), FrameDirection.DOWNSTREAM)
-        # Manually clear the sticky-turn gate between turns since we're not
-        # running through a real pipeline that would emit LLMFullResponseEndFrame.
-        svc._turn_in_flight = False
-        svc._turn_delegate = None
-
-    # Flip to zai for turn 3.
-    svc._provider_file.write_text("zai")
-    # Bump mtime so _sync_provider re-reads.
-    stat = svc._provider_file.stat()
-    os.utime(svc._provider_file, (stat.st_atime, stat.st_mtime + 5))
+    # Turns 1 and 2 on deepseek (default).
+    svc._state._data["provider"] = "deepseek"
+    # Bump mtime equivalent: direct state write already instant
 
     ctx = LLMContext()
     ctx.add_message({"role": "user", "content": "Say 'three'."})

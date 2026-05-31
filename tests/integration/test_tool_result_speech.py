@@ -3,7 +3,7 @@
 This test asserts the wiring that makes the user story
 "ask 'check system status' → agent runs tool → agent SPEAKS the actual
 result" possible, without driving a live LLM call (which would require
-network + an OPENROUTER_API_KEY in CI).
+network + a DEEPSEEK_API_KEY in CI).
 
 Live verification of the spoken response (the manual smoke test in the
 PRD AC list) is intentionally NOT automated: it requires portaudio,
@@ -137,9 +137,7 @@ def test_no_intent_or_action_tag_grammar_in_native_stages() -> None:
         "from .actions",
         "from .intent_parser",
         "from .agent_sdk_cli",
-        "from .openrouter_cli",
         "from .zai_cli",
-        "from .openrouter_topic_extractor",
     )
     for mod in (pipeline_mod, gate_mod, main_mod):
         src_text = open(mod.__file__).read()

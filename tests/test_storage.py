@@ -653,7 +653,7 @@ async def test_empty_usage_summary_returns_zero(store: TranscriptStore) -> None:
 async def test_record_and_summarize_llm_usage(store: TranscriptStore) -> None:
     await store.record_usage_event(
         kind="llm",
-        provider="openrouter",
+        provider="deepseek",
         model="google/gemini-3.1-flash-lite",
         input_tokens=10_000,
         output_tokens=5_000,
@@ -698,12 +698,12 @@ async def test_record_and_summarize_tts_usage(store: TranscriptStore) -> None:
 async def test_summary_aggregates_multiple_events(store: TranscriptStore) -> None:
     """Two LLM calls + one STT → calls summed per kind, total spans all kinds."""
     await store.record_usage_event(
-        kind="llm", provider="openrouter",
+        kind="llm", provider="deepseek",
         model="google/gemini-3.1-flash-lite",
         input_tokens=10_000, output_tokens=5_000, cost_usd=0.00225,
     )
     await store.record_usage_event(
-        kind="llm", provider="openrouter",
+        kind="llm", provider="deepseek",
         model="google/gemini-3.1-flash-lite",
         input_tokens=2_000, output_tokens=1_000, cost_usd=0.00045,
     )
@@ -725,13 +725,13 @@ async def test_summary_since_filters_old_events(store: TranscriptStore) -> None:
     """``since`` cutoff filters by ts — old events drop out of the window."""
     now = time.time()
     await store.record_usage_event(
-        kind="llm", provider="openrouter",
+        kind="llm", provider="deepseek",
         model="google/gemini-3.1-flash-lite",
         input_tokens=1_000, output_tokens=500, cost_usd=0.000225,
         ts=now - 7200,
     )
     await store.record_usage_event(
-        kind="llm", provider="openrouter",
+        kind="llm", provider="deepseek",
         model="google/gemini-3.1-flash-lite",
         input_tokens=2_000, output_tokens=1_000, cost_usd=0.00045,
         ts=now - 60,
@@ -746,7 +746,7 @@ async def test_record_with_unknown_cost_stores_null(store: TranscriptStore) -> N
     """Unknown model → cost_usd is None; row still recorded so call counts
     remain accurate. SUM(NULL) → COALESCE → 0.0 in the summary."""
     await store.record_usage_event(
-        kind="llm", provider="openrouter",
+        kind="llm", provider="deepseek",
         model="some/unknown-model",
         input_tokens=1_000, output_tokens=500, cost_usd=None,
     )

@@ -8,6 +8,7 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, Input, Label, ListItem, ListView
 
 from . import models
+from src.agent.llm.providers import PROVIDERS
 
 ADD_MARKER = "+ Add custom…"
 
@@ -67,7 +68,9 @@ class ModelSelectScreen(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         items = self._build_items()
         with Vertical(id="model-dialog"):
-            yield Label(f"Select model — provider: {self._provider}", classes="title")
+            cfg = PROVIDERS.get(self._provider)
+            display_name = cfg.display_name if cfg else self._provider
+            yield Label(f"Select model — provider: {display_name}", classes="title")
             yield ListView(*items, id="model-list")
 
     def _build_items(self) -> list[ListItem]:

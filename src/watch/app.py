@@ -13,14 +13,16 @@ from textual.containers import Horizontal
 from textual.css.query import NoMatches
 
 from src.config import Settings
-from src.pipeline.stages.mute_gate import toggle_input_mute, toggle_mute
+import json
+import urllib.request
+
 from src.daemon.browser import ensure_debug_chrome, is_debug_reachable, list_chrome_profiles
 from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
-from src.pipeline.stages.cancel_flag_gate import request_cancel
 from . import models
 from .data import fetch_dashboard_state
 from .screens import AudioDeviceSelectScreen, ChromeProfileSelectScreen, ModelSelectScreen, ToolingScreen
 from .widgets import ActivityTable, AgentResponseBar, AIBar, ControlsBar, DisplayPanel, HeaderBar, LogTail, UsageBar, VoiceStateBar
+from src.agent.llm.providers import all_keys
 
 
 class HeareDashboard(App):
@@ -157,30 +159,56 @@ class HeareDashboard(App):
         msg = restart_daemon(self.settings)
         self.query_one(ControlsBar).update_status(msg)
 
+    def _api_post(self, endpoint: str, body: dict) -> dict | None:
+        """POST to the daemon HTTP API. Returns parsed JSON or None."""
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:9778{endpoint}",
+                data=json.dumps(body).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:  # noqa: S310 — localhost only
+                return json.loads(resp.read())
+        except Exception:
+            return None
+
     def action_toggle_mute_bot(self) -> None:
         """Toggle bot mute (m key)."""
-        muted = False  # TODO: use State
-        msg = "bot muted" if muted else "bot unmuted"
+        result = self._api_post("/mute", {"target": "speaker"})
+        if result and result.get("ok"):
+            muted = result["muted"]
+            msg = "bot muted" if muted else "bot unmuted"
+        else:
+            msg = "mute toggle failed (daemon unreachable?)"
         self.query_one(ControlsBar).update_status(msg)
 
     def action_toggle_mute_mic(self) -> None:
         """Toggle mic mute (M key, Shift+m)."""
-        muted = False  # TODO: use State
-        msg = "mic muted" if muted else "mic unmuted"
+        result = self._api_post("/mute", {"target": "mic"})
+        if result and result.get("ok"):
+            muted = result["muted"]
+            msg = "mic muted" if muted else "mic unmuted"
+        else:
+            msg = "mic mute toggle failed (daemon unreachable?)"
         self.query_one(ControlsBar).update_status(msg)
 
     def action_cancel_bot(self) -> None:
         """Interrupt the bot immediately (k key).
 
-        Touches the cancel flag file — the pipeline's cancel_flag_gate
+        POSTs /cancel to the daemon API — the pipeline's cancel_flag_gate
         picks it up on the next frame and pushes an InterruptionFrame
         upstream, which stops TTS and cancels any in-flight tool calls.
         This bypasses VAD/STT entirely — works even when the bot's
         audio drowns out the mic.
         """
-        pass  # TODO: POST /cancel
+        result = self._api_post("/cancel", {})
+        if result and result.get("ok"):
+            msg = "interrupted"
+        else:
+            msg = "cancel failed (daemon unreachable?)"
         try:
-            self.query_one(ControlsBar).update_status("interrupted")
+            self.query_one(ControlsBar).update_status(msg)
         except NoMatches:
             pass
 
@@ -193,11 +221,12 @@ class HeareDashboard(App):
         self.push_screen(AudioDeviceSelectScreen(self.settings), _on_dismiss)
 
     def action_toggle_provider(self) -> None:
-        """Toggle between openrouter/zai/opencode (p key)."""
+        """Cycle through all registered providers (p key)."""
         pf = Path.home() / ".heare" / "provider"
-        current = pf.read_text().strip().lower() if pf.exists() else "openrouter"
-        # Only DeepSeek is available
-        new_provider = "deepseek"
+        keys = all_keys()
+        current = pf.read_text().strip() if pf.exists() and pf.read_text().strip() in keys else "deepseek"
+        idx = keys.index(current) if current in keys else 0
+        new_provider = keys[(idx + 1) % len(keys)]
         pf.parent.mkdir(parents=True, exist_ok=True)
         pf.write_text(new_provider)
         self.query_one(ControlsBar).update_status(f"provider: {new_provider}")

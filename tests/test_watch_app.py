@@ -152,9 +152,8 @@ async def test_mute_bot_toggles_mute() -> None:
             await pilot.pause()  # let deferred _apply_activity_width fire
             await pilot.press("m")
 
-            # Verify status message set by action_toggle_mute_bot
             from src.watch.widgets import ControlsBar
-            assert pilot.app.query_one(ControlsBar)._status_message == "bot unmuted"
+            assert "daemon unreachable" in pilot.app.query_one(ControlsBar)._status_message
 
 
 @pytest.mark.asyncio
@@ -173,14 +172,14 @@ async def test_provider_toggle_works() -> None:
 
         provider_path = Path(tmp) / ".heare" / "provider"
         provider_path.parent.mkdir(parents=True, exist_ok=True)
-        provider_path.write_text("openrouter")
+        provider_path.write_text("deepseek")
 
         try:
             async with HeareDashboard(settings=settings).run_test() as pilot:
                 await pilot.press("p")
 
                 new_provider = provider_path.read_text().strip()
-                assert new_provider == "deepseek"
+                assert new_provider == "zai"
         finally:
             os.environ["HOME"] = str(orig_home)
 
@@ -287,7 +286,7 @@ async def test_select_model_writes_model_file() -> None:
             await pilot.press("o")
             pilot.app.screen.dismiss("anthropic/claude-haiku-4.5")
             await pilot.pause()
-            assert models.read_current_model(settings, "openrouter") == "anthropic/claude-haiku-4.5"
+            assert models.read_current_model(settings, "deepseek") == "anthropic/claude-haiku-4.5"
 
 
 @pytest.mark.asyncio

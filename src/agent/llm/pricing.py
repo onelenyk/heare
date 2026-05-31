@@ -13,21 +13,29 @@ from __future__ import annotations
 
 from typing import Optional
 
+from src.agent.llm.providers import PROVIDERS
+
 
 # (input_per_1m_tokens_usd, output_per_1m_tokens_usd)
-_LLM_PRICES_USD_PER_1M: dict[str, tuple[float, float]] = {
-    # Google Gemini — public list prices via OpenRouter / direct.
-    # Source: ai.google.dev/pricing — update on bump.
+# Built dynamically from PROVIDERS registry pricing entries so adding
+# a new model to a provider's ``pricing`` tuple automatically
+# populates the cost catalog — no second edit needed.
+_LLM_PRICES_USD_PER_1M: dict[str, tuple[float, float]] = {}
+for _cfg in PROVIDERS.values():
+    for _model_id, _in_price, _out_price in _cfg.pricing:
+        _LLM_PRICES_USD_PER_1M[_model_id] = (_in_price, _out_price)
+
+# Google Gemini — public list prices, served via OpenRouter (which
+# isn't a standalone ProviderConfig yet).  Source: ai.google.dev/pricing.
+# These entries fill gaps until a dedicated OpenRouter config exists.
+_GEMINI_FALLBACK: dict[str, tuple[float, float]] = {
     "google/gemini-3.1-flash-lite-preview-20260303": (0.075, 0.30),
     "google/gemini-3.1-flash-lite": (0.075, 0.30),
     "google/gemini-3.1-flash": (0.15, 0.60),
     "google/gemini-3.1-pro": (1.25, 5.00),
     "google/gemini-2.0-flash": (0.10, 0.40),
-    # Anthropic — list prices, applied when the bot is routed via Claude.
-    "claude-opus-4-7": (15.00, 75.00),
-    "claude-sonnet-4-6": (3.00, 15.00),
-    "claude-haiku-4-5": (0.80, 4.00),
 }
+_LLM_PRICES_USD_PER_1M.update(_GEMINI_FALLBACK)
 
 
 # Provider key → USD per second of input audio. Groq Whisper is sold at

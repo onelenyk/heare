@@ -62,21 +62,19 @@ def state():
 def _make_service(
     state: _MockState,
     *,
-    openrouter_api_key: str | None = "sk-or-test",
+    deepseek_api_key: str | None = "sk-ds-test",
     zai_api_key: str | None = "sk-zai-test",
 ) -> SwitchableLLMService:
     return SwitchableLLMService(
-        openrouter_api_key=openrouter_api_key,
-        openrouter_model="mock-or",
+        deepseek_api_key=deepseek_api_key,
+        deepseek_model="mock-ds",
+        deepseek_base_url="https://api.deepseek.com/v1",
         zai_api_key=zai_api_key,
         zai_model="claude-3-5-sonnet",
         zai_base_url="https://api.z.ai/api/anthropic",
         opencode_api_key=None,
         opencode_base_url="https://opencode.ai/zen/go/v1",
         opencode_model="minimax-m2.7",
-        deepseek_api_key=None,
-        deepseek_base_url="https://api.deepseek.com/v1",
-        deepseek_model="deepseek-chat",
         state=state,
     )
 
@@ -134,19 +132,19 @@ def _wire_spy_as_next(svc: SwitchableLLMService) -> FrameSpy:
 
 
 # ---------------------------------------------------------------------------
-# U1 — both keys present, default is openrouter
+# U1 — both keys present, default is deepseek
 # ---------------------------------------------------------------------------
 
 
 def test_init_with_both_keys(state: _MockState) -> None:
     svc = _make_service(state)
-    assert svc._or_service is not None
+    assert svc._deepseek_service is not None
     assert svc._zai_service is not None
-    assert svc.active_provider == "openrouter"
+    assert svc.active_provider == "deepseek"
 
 
 # ---------------------------------------------------------------------------
-# U2 — only openrouter key; switching to zai is a no-op with warning
+# U2 — only deepseek key; switching to zai is a no-op with warning
 # ---------------------------------------------------------------------------
 
 
@@ -158,12 +156,12 @@ def test_init_zai_key_missing_no_zai_delegate(
     assert svc._zai_service is None
     # Write "zai" to state and try to switch.
     state._data["provider"] = "zai"
-    # _sync_provider should keep us on openrouter because no zai delegate.
-    assert svc.active_provider == "openrouter"
+    # _sync_provider should keep us on deepseek because no zai delegate.
+    assert svc.active_provider == "deepseek"
 
 
 # ---------------------------------------------------------------------------
-# U3 — only zai key; init succeeds, default is zai, openrouter switch is no-op
+# U3 — only zai key; init succeeds, default is zai, deepseek switch is no-op
 # ---------------------------------------------------------------------------
 
 
@@ -171,21 +169,21 @@ def test_init_only_zai_key(
     state: _MockState, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO, logger="heare.switchable_llm"):
-        svc = _make_service(state, openrouter_api_key=None)
+        svc = _make_service(state, deepseek_api_key=None)
     # Init must succeed and not raise.
-    assert svc._or_service is None
+    assert svc._deepseek_service is None
     assert svc._zai_service is not None
     assert svc.active_provider == "zai"
 
-    # Attempting to switch to openrouter is a no-op (stays zai).
-    state._data["provider"] = "openrouter"
+    # Attempting to switch to deepseek is a no-op (stays zai).
+    state._data["provider"] = "deepseek"
     assert svc.active_provider == "zai"
 
 
 def test_init_no_keys_raises(state: _MockState) -> None:
     """Defensive: at least one provider key must be set."""
     with pytest.raises(ValueError):
-        _make_service(state, openrouter_api_key=None, zai_api_key=None)
+        _make_service(state,         deepseek_api_key=None, zai_api_key=None)
 
 
 # ---------------------------------------------------------------------------
@@ -206,10 +204,10 @@ def test_sync_provider_mtime_gated(
     svc._sync_provider()
     assert svc._active_provider == "zai"
 
-    # Switch to openrouter
-    state._data["provider"] = "openrouter"
+    # Switch to deepseek
+    state._data["provider"] = "deepseek"
     svc._sync_provider()
-    assert svc._active_provider == "openrouter"
+    assert svc._active_provider == "deepseek"
 
 
 # ---------------------------------------------------------------------------
@@ -225,12 +223,12 @@ def test_register_function_fans_out_to_both_delegates(state: _MockState) -> None
 
     svc.register_function("bash", _bash_handler)
 
-    assert "bash" in svc._or_service._functions
+    assert "bash" in svc._deepseek_service._functions
     assert "bash" in svc._zai_service._functions
 
     # And unregister fans out symmetrically.
     svc.unregister_function("bash")
-    assert "bash" not in svc._or_service._functions
+    assert "bash" not in svc._deepseek_service._functions
     assert "bash" not in svc._zai_service._functions
 
 
@@ -256,7 +254,7 @@ async def test_provider_flip_during_turn_defers_to_next_turn(
     async def zai_pf(frame: Frame, direction: FrameDirection):
         zai_calls.append(frame)
 
-    monkeypatch.setattr(svc._or_service, "process_frame", or_pf)
+    monkeypatch.setattr(svc._deepseek_service, "process_frame", or_pf)
     monkeypatch.setattr(svc._zai_service, "process_frame", zai_pf)
 
     # Make _ensure_delegate_started a no-op so we don't trigger StartFrame setup.
@@ -265,12 +263,12 @@ async def test_provider_flip_during_turn_defers_to_next_turn(
 
     monkeypatch.setattr(svc, "_ensure_delegate_started", noop_started)
 
-    # Turn 1: starts on openrouter (default).
+    # Turn 1: starts on deepseek (default).
     ctx1 = LLMContextFrame(context=None)  # type: ignore[arg-type]
     await svc.process_frame(ctx1, FrameDirection.DOWNSTREAM)
 
     assert svc._turn_in_flight is True
-    assert svc._turn_delegate is svc._or_service
+    assert svc._turn_delegate is svc._deepseek_service
     assert ctx1 in or_calls
     assert ctx1 not in zai_calls
 
@@ -314,11 +312,11 @@ async def test_zai_auth_error_falls_back_and_rate_limits_logs(
     svc._sync_provider()
     assert svc._active_provider == "zai"
 
-    # Stub openrouter to silently accept the fallback retry.
+    # Stub deepseek to silently accept the fallback retry.
     async def or_pf(_frame: Frame, _direction: FrameDirection):
         return None
 
-    monkeypatch.setattr(svc._or_service, "process_frame", or_pf)
+    monkeypatch.setattr(svc._deepseek_service, "process_frame", or_pf)
 
     # Stub zai to raise AuthenticationError every call.
     def make_auth_error() -> AuthenticationError:
@@ -345,9 +343,9 @@ async def test_zai_auth_error_falls_back_and_rate_limits_logs(
             LLMContextFrame(context=None),  # type: ignore[arg-type]
             FrameDirection.DOWNSTREAM,
         )
-        # _zai_disabled is True now and active is permanently openrouter.
+        # _zai_disabled is True now and active is permanently deepseek.
         assert svc._zai_disabled is True
-        assert svc._active_provider == "openrouter"
+        assert svc._active_provider == "deepseek"
         assert svc._turn_in_flight is False
         assert svc._turn_delegate is None
 
@@ -377,11 +375,11 @@ async def test_zai_auth_error_falls_back_and_rate_limits_logs(
 
 def test_active_provider_property(state: _MockState) -> None:
     svc = _make_service(state)
-    assert svc.active_provider == "openrouter"
+    assert svc.active_provider == "deepseek"
     state._data["provider"] = "zai"
     assert svc.active_provider == "zai"
-    state._data["provider"] = "openrouter"
-    assert svc.active_provider == "openrouter"
+    state._data["provider"] = "deepseek"
+    assert svc.active_provider == "deepseek"
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +396,7 @@ async def test_delegate_frames_reach_downstream(
 
     # We don't need a real LLM call; we just want to confirm the relay path.
     # Simulate the delegate emitting frames via its (now patched) push_frame.
-    delegate = svc._or_service
+    delegate = svc._deepseek_service
     # Use the patched push_frame that should relay through the wrapper.
 
     async def fake_process(_frame: Frame, _direction: FrameDirection):
@@ -460,7 +458,7 @@ async def test_auth_error_pushes_error_frame(
         return None
 
     monkeypatch.setattr(svc._zai_service, "process_frame", zai_boom)
-    monkeypatch.setattr(svc._or_service, "process_frame", or_ok)
+    monkeypatch.setattr(svc._deepseek_service, "process_frame", or_ok)
 
     async def noop_started(_d, _k):
         return None

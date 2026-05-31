@@ -1,17 +1,18 @@
-"""Runtime-switchable LLM service between OpenRouter, z.ai, OpenCode Go, and DeepSeek."""
+"""Runtime-switchable LLM service between DeepSeek, z.ai, and OpenCode Go.
+
+Fully data-driven: all provider metadata lives in :mod:`src.agent.llm.providers`.
+Adding a new provider requires zero changes to this file — just add an entry
+to the ``PROVIDERS`` registry.
+"""
 from __future__ import annotations
 
 import logging
-import os
 import time
-from pathlib import Path
-from typing import Optional
 
 import httpx
 from anthropic import (
     APIConnectionError,
     APIStatusError,
-    AsyncAnthropic,
     AuthenticationError,
 )
 from pipecat.frames.frames import (
@@ -24,27 +25,28 @@ from pipecat.frames.frames import (
     LLMMessagesFrame,
     StartFrame,
 )
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContextFrame
 from pipecat.metrics.metrics import MetricsData
+from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessorSetup
-from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.llm_service import LLMService
-from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.settings import LLMSettings
+
+from src.agent.llm.providers import (
+    PROVIDERS,
+    make_anthropic_service,
+    make_openai_service,
+)
 
 logger = logging.getLogger("heare.switchable_llm")
 
 
 class SwitchableLLMService(LLMService):
-    """LLM service that hot-swaps between OpenRouter (OpenAI shape), z.ai
-    (Anthropic shape), OpenCode Go (OpenAI shape), and DeepSeek (OpenAI
-    shape) at runtime without rebuilding the pipeline.
+    """LLM service that hot-swaps between providers at runtime without
+    rebuilding the pipeline.
 
     Architecture: composition over inheritance.
-        - Holds up to four fully-formed Pipecat delegates: ``_or_service``
-          (``OpenAILLMService``), ``_zai_service`` (``AnthropicLLMService``),
-          ``_oc_service`` (``OpenAILLMService``), and ``_deepseek_service``
-          (``OpenAILLMService``).
+        - Holds N fully-formed Pipecat delegates in ``_delegates`` (one per
+          configured provider from the PROVIDERS registry).
         - The wrapper itself is what the pipeline links into; the delegates
           are NOT linked into the pipeline graph (their ``_next``/``_prev`` are
           None). To make delegate-emitted frames reach downstream stages, this
@@ -53,11 +55,11 @@ class SwitchableLLMService(LLMService):
           (the "frame relay" mechanism).
 
     Provider routing:
-        - ``~/.heare/provider`` (a single text file containing
-          ``openrouter``, ``zai``, ``opencode``, or ``deepseek``) is the source of truth.
-        - ``_sync_provider()`` re-reads the file lazily, gated on mtime, and
-          ONLY at turn-start frames (``LLMContextFrame`` /
-          ``OpenAILLMContextFrame`` / ``LLMMessagesFrame``) — never per-frame.
+        - ``~/.heare/provider`` (a single text file containing a provider key
+          like ``deepseek``, ``zai``, or ``opencode``) is the source of truth.
+        - ``_sync_provider()`` re-reads the file lazily and ONLY at turn-start
+          frames (``LLMContextFrame`` / ``OpenAILLMContextFrame`` /
+          ``LLMMessagesFrame``) — never per-frame.
         - A sticky-turn gate locks the chosen delegate for the rest of the
           turn. The gate clears when the wrapper sees ``LLMFullResponseEndFrame``
           relayed from the delegate, so the next turn picks up any change.
@@ -68,16 +70,14 @@ class SwitchableLLMService(LLMService):
           of which one was active at boot.
 
     Failure mode:
-        - z.ai auth/5xx errors fall back to OpenRouter for the remainder of
-          the process, with a single ERROR log per 60-second window so the
-          log file does not balloon.
+        - Provider auth/5xx errors disable the failed provider and fall back
+          to the first available alternative, with a single ERROR log per
+          60-second window so the log file does not balloon.
     """
 
     def __init__(
         self,
         *,
-        openrouter_api_key: str | None,
-        openrouter_model: str,
         zai_api_key: str | None,
         zai_model: str,
         zai_base_url: str,
@@ -90,8 +90,33 @@ class SwitchableLLMService(LLMService):
         state,
         **kwargs,
     ):
-        """Initialize with all providers."""
-        fallback_model = openrouter_model or zai_model or opencode_model or deepseek_model
+        """Initialize delegates for every configured provider.
+
+        Backward-compatible: *all* keyword params above are kept so
+        existing callers do not break.  Internally only the api_key and
+        model params are used; base URLs and model defaults come from the
+        PROVIDERS registry (which is considered canonical).
+        """
+        # -- Build delegates from the registry --------------------------------
+        self._delegates: dict[str, LLMService] = {}
+        for key, cfg in PROVIDERS.items():
+            api_key = locals().get(cfg.api_key_attr)
+            if not api_key:
+                continue
+            model = locals().get(f"{key}_model", cfg.default_model)
+            if cfg.api_style == "anthropic":
+                svc = make_anthropic_service(cfg, api_key)
+            else:
+                svc = make_openai_service(cfg, api_key, model=model)
+            self._install_frame_relay(svc)
+            self._delegates[key] = svc
+
+        if not self._delegates:
+            raise ValueError("At least one provider API key must be set")
+
+        # -- Wrapper settings (cosmetic — the wrapper is a router) ------------
+        first_key = next(iter(self._delegates))
+        fallback_model = PROVIDERS[first_key].default_model
         wrapper_settings = LLMSettings(
             model=fallback_model,
             system_instruction=None,
@@ -107,68 +132,16 @@ class SwitchableLLMService(LLMService):
         )
         super().__init__(settings=wrapper_settings, **kwargs)
 
-        self._or_service: OpenAILLMService | None = None
-        if openrouter_api_key:
-            self._or_service = OpenAILLMService(
-                api_key=openrouter_api_key,
-                base_url="https://openrouter.ai/api/v1",
-                settings=OpenAILLMService.Settings(model=openrouter_model),
-                **kwargs,
-            )
-            self._install_frame_relay(self._or_service)
-
-        self._zai_service: AnthropicLLMService | None = None
-        if zai_api_key:
-            self._zai_service = AnthropicLLMService(
-                api_key=zai_api_key,
-                settings=AnthropicLLMService.Settings(model=zai_model),
-                client=AsyncAnthropic(api_key=zai_api_key, base_url=zai_base_url),
-            )
-            self._install_frame_relay(self._zai_service)
-
-        self._oc_service: OpenAILLMService | None = None
-        if opencode_api_key:
-            self._oc_service = OpenAILLMService(
-                api_key=opencode_api_key,
-                base_url=opencode_base_url,
-                settings=OpenAILLMService.Settings(model=opencode_model),
-                **kwargs,
-            )
-            self._install_frame_relay(self._oc_service)
-
-        self._deepseek_service: OpenAILLMService | None = None
-        if deepseek_api_key:
-            self._deepseek_service = OpenAILLMService(
-                api_key=deepseek_api_key,
-                base_url=deepseek_base_url,
-                settings=OpenAILLMService.Settings(model=deepseek_model),
-                **kwargs,
-            )
-            self._install_frame_relay(self._deepseek_service)
-
-        # State variables for turn-gated switching and error recovery
+        # -- State variables for turn-gated switching and error recovery ------
         self._last_error_log_ts: float = 0.0
-        self._zai_disabled: bool = False
+        self._disabled_providers: set[str] = set()
         self._turn_in_flight: bool = False
-        self._turn_delegate: Optional[LLMService] = None
+        self._turn_delegate: LLMService | None = None
         self._started_delegates: set[str] = set()
-        self._delegate_setup: Optional[FrameProcessorSetup] = None
-        self._saved_start_frame: Optional[Frame] = None
+        self._delegate_setup: FrameProcessorSetup | None = None
+        self._saved_start_frame: Frame | None = None
 
-        available = []
-        # if openrouter_api_key:
-        #     available.append("openrouter")
-        # if zai_api_key:
-        #     available.append("zai")
-        # if opencode_api_key:
-        #     available.append("opencode")
-        if deepseek_api_key:
-            available.append("deepseek")
-        if not available:
-            raise ValueError(
-                "DEEPSEEK_API_KEY must be set"
-            )
-
+        available = list(self._delegates.keys())
         self._active_provider = available[0]
         if len(available) > 1:
             logger.info(
@@ -178,11 +151,36 @@ class SwitchableLLMService(LLMService):
                 self._active_provider,
             )
 
-        self._or_model = openrouter_model
-        self._zai_model = zai_model
-        self._oc_model = opencode_model
-        self._deepseek_model = deepseek_model
         self._state = state
+
+    # -- Backward-compatible property aliases (tests access these) ------------
+
+    @property
+    def _zai_service(self) -> LLMService | None:
+        """Backward-compat: returns the z.ai delegate or None."""
+        return self._delegates.get("zai")
+
+    @property
+    def _oc_service(self) -> LLMService | None:
+        """Backward-compat: returns the OpenCode Go delegate or None."""
+        return self._delegates.get("opencode")
+
+    @property
+    def _deepseek_service(self) -> LLMService | None:
+        """Backward-compat: returns the DeepSeek delegate or None."""
+        return self._delegates.get("deepseek")
+
+    @property
+    def _zai_disabled(self) -> bool:
+        """Backward-compat: True when z.ai has been disabled by error handling."""
+        return "zai" in self._disabled_providers
+
+    @_zai_disabled.setter
+    def _zai_disabled(self, value: bool) -> None:
+        if value:
+            self._disabled_providers.add("zai")
+        else:
+            self._disabled_providers.discard("zai")
 
     # --- Frame relay (Critical #1 fix) ---
 
@@ -211,47 +209,32 @@ class SwitchableLLMService(LLMService):
     # --- Provider routing ---
 
     def _all_delegates(self) -> list[LLMService]:
-        """Return all available delegates."""
-        result: list[LLMService] = []
-        if self._or_service is not None:
-            result.append(self._or_service)
-        if self._zai_service is not None and not self._zai_disabled:
-            result.append(self._zai_service)
-        if self._oc_service is not None:
-            result.append(self._oc_service)
-        if self._deepseek_service is not None:
-            result.append(self._deepseek_service)
-        return result
+        """Return all available (non-disabled) delegates."""
+        return [
+            svc
+            for key, svc in self._delegates.items()
+            if key not in self._disabled_providers
+        ]
 
     def _delegate_for(self, provider: str) -> LLMService | None:
-        if provider == "openrouter":
-            return self._or_service
-        if provider == "zai":
-            return None if self._zai_disabled else self._zai_service
-        if provider == "opencode":
-            return self._oc_service
-        if provider == "deepseek":
-            return self._deepseek_service
-        return None
+        """Look up a delegate by provider key, respecting disabled state."""
+        if provider in self._disabled_providers:
+            return None
+        return self._delegates.get(provider)
 
     def _provider_for_delegate(self, delegate: LLMService) -> str:
-        """Return the provider name for a delegate instance."""
-        if delegate is self._or_service:
-            return "openrouter"
-        if delegate is self._zai_service:
-            return "zai"
-        if delegate is self._oc_service:
-            return "opencode"
-        if delegate is self._deepseek_service:
-            return "deepseek"
-        return "openrouter"
+        """Return the provider key for a delegate instance (identity check)."""
+        for key, svc in self._delegates.items():
+            if svc is delegate:
+                return key
+        return "deepseek"
 
     def _first_available_provider(self) -> str:
-        """Return the provider name of the first available delegate."""
+        """Return the provider key of the first available delegate."""
         all_d = self._all_delegates()
         if all_d:
             return self._provider_for_delegate(all_d[0])
-        return "openrouter"
+        return "deepseek"
 
     def _active_delegate(self) -> LLMService:
         """Return currently active delegate. Does NOT call _sync_provider."""
@@ -265,7 +248,7 @@ class SwitchableLLMService(LLMService):
         raise RuntimeError("no LLM delegate available")
 
     def _sync_provider(self) -> str:
-        """Read provider from state. Returns provider name."""
+        """Read provider from state. Returns provider key."""
         raw = self._state.get("provider").strip().lower()
         if raw and raw != self._active_provider:
             d = self._delegate_for(raw)
@@ -279,13 +262,14 @@ class SwitchableLLMService(LLMService):
                 self._active_provider = fallback
                 logger.warning(
                     "switchable_llm: provider %r unavailable, falling back to %s",
-                    raw, fallback,
+                    raw,
+                    fallback,
                 )
         return self._active_provider
 
     @property
     def active_provider(self) -> str:
-        """Return the currently active provider name."""
+        """Return the currently active provider key."""
         self._sync_provider()
         return self._active_provider
 
@@ -312,24 +296,26 @@ class SwitchableLLMService(LLMService):
         # Rate-limit: log at most once per 60 seconds
         if now - self._last_error_log_ts > 60:
             logger.error(
-                "switchable_llm: provider error on %s, falling back to openrouter: %s",
+                "switchable_llm: provider error on %s, disabling it: %s",
                 self._active_provider,
                 exc,
             )
             self._last_error_log_ts = now
 
-        # Permanently disable z.ai for this process
-        self._zai_disabled = True
-        self._active_provider = "openrouter"
+        # Disable current provider and fall back to first available
+        self._disabled_providers.add(self._active_provider)
+        fallback = self._first_available_provider()
+        self._active_provider = fallback
         self._turn_in_flight = False
         self._turn_delegate = None
 
         # Push ErrorFrame upstream for indication
         await self.push_frame(ErrorFrame(error=str(exc)))
 
-        # Forward to OpenRouter for retry
-        if self._or_service is not None:
-            await self._or_service.process_frame(frame, direction)
+        # Forward to fallback delegate for retry
+        fallback_delegate = self._delegates.get(fallback)
+        if fallback_delegate is not None:
+            await fallback_delegate.process_frame(frame, direction)
 
     # --- Turn-gated process_frame (Critical #2 fix) ---
 
@@ -340,25 +326,18 @@ class SwitchableLLMService(LLMService):
         # Turn-start: lock delegate, sync provider
         if isinstance(frame, (OpenAILLMContextFrame, LLMContextFrame, LLMMessagesFrame)):
             if not self._turn_in_flight:
-                self._sync_provider()  # mtime-gated file read
+                self._sync_provider()  # reads provider file
                 self._turn_delegate = self._active_delegate()
                 self._turn_in_flight = True
-                key = (
-                    "zai" if self._turn_delegate is self._zai_service
-                    else "oc" if self._turn_delegate is self._oc_service
-                    else "ds" if self._turn_delegate is self._deepseek_service
-                    else "or"
-                )
+                key = self._provider_for_delegate(self._turn_delegate)
                 await self._ensure_delegate_started(self._turn_delegate, key)
                 # Tag metrics with provider:model so dashboards can split costs/latency
-                model = (
-                    self._zai_model if self._active_provider == "zai"
-                    else self._oc_model if self._active_provider == "opencode"
-                    else self._deepseek_model if self._active_provider == "deepseek"
-                    else self._or_model
-                )
+                cfg = PROVIDERS[self._active_provider]
                 self.set_core_metrics_data(
-                    MetricsData(processor=self.name, model=f"{self._active_provider}:{model}")
+                    MetricsData(
+                        processor=self.name,
+                        model=f"{cfg.key}:{cfg.default_model}",
+                    )
                 )
 
         delegate = (
@@ -378,16 +357,8 @@ class SwitchableLLMService(LLMService):
     # --- Lifecycle (Critical #4 fix: active-only start, fan-out stop) ---
 
     def _all_services(self) -> list[LLMService]:
-        result: list[LLMService] = []
-        if self._or_service is not None:
-            result.append(self._or_service)
-        if self._zai_service is not None:
-            result.append(self._zai_service)
-        if self._oc_service is not None:
-            result.append(self._oc_service)
-        if self._deepseek_service is not None:
-            result.append(self._deepseek_service)
-        return result
+        """Return all delegates (including disabled) for lifecycle fan-out."""
+        return list(self._delegates.values())
 
     async def setup(self, setup_obj: FrameProcessorSetup):
         """Receive pipeline setup; propagate to active delegate."""
@@ -402,12 +373,7 @@ class SwitchableLLMService(LLMService):
         await super().start(frame)
         self._saved_start_frame = frame
         active = self._active_delegate()
-        key = (
-            "zai" if active is self._zai_service
-            else "oc" if active is self._oc_service
-            else "ds" if active is self._deepseek_service
-            else "or"
-        )
+        key = self._provider_for_delegate(active)
         await active.start(frame)
         self._started_delegates.add(key)
 

@@ -56,7 +56,8 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
     from src.store.context import ContextBuilder
     from src.daemon.heartbeat import WarmupTask
-    from src.agent.identity import build_openrouter_bootstrap, ensure_identity, render_persona
+    from src.agent.identity import ensure_identity, render_persona
+    from src.agent.llm.providers import PROVIDERS, get_available, make_identity_bootstrap
     from src.pipeline.build import build_pipeline
     from src.store.storage import TranscriptStore
 
@@ -107,9 +108,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
     settings.pid_file.write_text(str(os.getpid()))
 
-    if not settings.openrouter_api_key:
+    available = get_available(settings)
+    if not available:
         raise RuntimeError(
-            "OPENROUTER_API_KEY is not set — copy .env.example to .env and fill it in"
+            "No LLM provider configured — set at least one API key in .env "
+            "(e.g. DEEPSEEK_API_KEY, ZAI_API_KEY, or OPENCODE_API_KEY)"
         )
 
     store: TranscriptStore | None = None
@@ -118,12 +121,12 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         await store.init()
         await store.purge_older_than(settings.transcript_retention_days)
 
-        identity_bootstrap = build_openrouter_bootstrap(
-            api_key=settings.openrouter_api_key,
-            model=settings.openrouter_model,
-            timeout=settings.openrouter_timeout_seconds,
+        active_cfg = PROVIDERS.get(settings.llm_provider, PROVIDERS["deepseek"])
+        api_key = getattr(settings, active_cfg.api_key_attr)
+        identity_factory = make_identity_bootstrap(
+            active_cfg, api_key, active_cfg.default_model, active_cfg.timeout,
         )
-        identity = await ensure_identity(identity_bootstrap, settings)
+        identity = await ensure_identity(identity_factory, settings)
         persona_template = (
             Path(__file__).parent.parent / "prompts" / "persona.txt"
         ).read_text()
@@ -744,7 +747,9 @@ def build_parser() -> argparse.ArgumentParser:
     mode_p.add_argument("mode_name", choices=[m.value for m in Mode])
 
     prov_p = sub.add_parser("provider", help="Set the LLM provider (hot-reloaded)")
-    prov_p.add_argument("provider_name", choices=["openrouter", "zai", "opencode", "deepseek"])
+    from src.agent.llm.providers import all_keys
+
+    prov_p.add_argument("provider_name", choices=all_keys())
 
     audio_in_p = sub.add_parser("audio-input", help="Set the audio input device (hot-reloaded)")
     audio_in_p.add_argument("name", help="Device name substring (e.g. AirPods Pro)")

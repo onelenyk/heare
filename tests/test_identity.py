@@ -10,7 +10,7 @@ import pytest
 from src.agent.identity import (
     Identity,
     _validate,
-    build_openrouter_bootstrap,
+    build_deepseek_bootstrap,
     ensure_identity,
     load_identity,
     render_persona,
@@ -133,7 +133,7 @@ def test_reset_identity_creates_backup(tmp_path) -> None:
     assert "backup" in backup.name
 
 
-# ---------- callable bootstrap path + openrouter helper ----------
+# ---------- callable bootstrap path + deepseek helper ----------
 
 
 async def test_ensure_identity_accepts_callable(tmp_path) -> None:
@@ -158,7 +158,7 @@ async def test_ensure_identity_rejects_non_callable(tmp_path) -> None:
         await ensure_identity(object(), settings)
 
 
-async def test_openrouter_bootstrap_extracts_json() -> None:
+async def test_deepseek_bootstrap_extracts_json() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         body = {
             "choices": [
@@ -176,7 +176,7 @@ async def test_openrouter_bootstrap_extracts_json() -> None:
         }
         return httpx.Response(200, content=json.dumps(body).encode())
 
-    bootstrap = build_openrouter_bootstrap(
+    bootstrap = build_deepseek_bootstrap(
         api_key="k",
         model="m",
         transport=httpx.MockTransport(handler),
@@ -186,11 +186,11 @@ async def test_openrouter_bootstrap_extracts_json() -> None:
     assert payload["creature"] == "owl"
 
 
-async def test_openrouter_bootstrap_http_error_raises() -> None:
+async def test_deepseek_bootstrap_http_error_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="server oops")
 
-    bootstrap = build_openrouter_bootstrap(
+    bootstrap = build_deepseek_bootstrap(
         api_key="k",
         model="m",
         transport=httpx.MockTransport(handler),
@@ -199,7 +199,7 @@ async def test_openrouter_bootstrap_http_error_raises() -> None:
         await bootstrap("invent a persona")
 
 
-async def test_openrouter_bootstrap_no_json_in_reply_raises() -> None:
+async def test_deepseek_bootstrap_no_json_in_reply_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         body = {
             "choices": [
@@ -208,7 +208,7 @@ async def test_openrouter_bootstrap_no_json_in_reply_raises() -> None:
         }
         return httpx.Response(200, content=json.dumps(body).encode())
 
-    bootstrap = build_openrouter_bootstrap(
+    bootstrap = build_deepseek_bootstrap(
         api_key="k",
         model="m",
         transport=httpx.MockTransport(handler),

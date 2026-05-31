@@ -17,10 +17,8 @@ import logging
 import os
 import secrets
 import subprocess
-import sys
 import time
 import uuid
-from pathlib import Path
 from typing import Any
 
 from websockets.asyncio.server import ServerConnection, serve

@@ -19,9 +19,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from src.agent.llm.providers import PROVIDERS, get_active, all_keys
 from src.config import Settings
 from src.agent.identity import load_identity
-from src.pipeline.stages.mute_gate import is_input_muted, is_muted, toggle_input_mute, toggle_mute
 from src.pipeline.stages.text_injector import inject_text
 from src.agent.tools.registry import TOOLS
 from src.daemon.watch_controls import daemon_pid, restart_daemon, start_daemon, stop_daemon
@@ -71,10 +71,7 @@ def _current_mode(settings: Settings) -> str:
 
 
 def _current_provider(settings: Settings) -> str:
-    raw = "openrouter"
-    if raw in ("openrouter", "zai"):
-        return raw
-    return "openrouter"
+    return get_active(settings)
 
 
 def _open_db(path: Path) -> sqlite3.Connection | None:
@@ -117,7 +114,7 @@ def _build_header(settings: Settings, con: sqlite3.Connection | None) -> Panel:
     )
     mode_style = {"silent": "dim", "focus": "cyan", "ambient": "yellow"}.get(mode, "white")
     mode_text = Text(mode, style=f"bold {mode_style}")
-    prov_style = "cyan" if provider == "zai" else "yellow"
+    prov_style = PROVIDERS[provider].dashboard_color
     provider_text = Text(provider, style=f"bold {prov_style}")
 
     line1 = Text.assemble(
@@ -461,8 +458,10 @@ def _dispatch_key(settings: Settings, key: str) -> str | None:
         return "mic muted (daemon can't hear you)" if muted_now else "mic unmuted"
     if key == "p":
         pf = Path.home() / ".heare" / "provider"
-        current = pf.read_text().strip().lower() if pf.exists() else "openrouter"
-        new_provider = "zai" if current == "openrouter" else "openrouter"
+        keys = all_keys()
+        current = pf.read_text().strip().lower() if pf.exists() else (keys[0] if keys else "deepseek")
+        idx = keys.index(current) if current in keys else -1
+        new_provider = keys[(idx + 1) % len(keys)] if keys else "deepseek"
         pf.parent.mkdir(parents=True, exist_ok=True)
         pf.write_text(new_provider)
         return f"provider: {new_provider} (effective on next utterance)"

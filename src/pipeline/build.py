@@ -35,6 +35,7 @@ from src.pipeline.stages.tts_scrub_processor import create_tts_scrub_processor
 from src.pipeline.stages.usage_recorder import create_usage_recorder
 from src.pipeline.stages.cancel_flag_gate import create_cancel_flag_gate
 from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_gate
+from src.agent.llm.providers import PROVIDERS, get_available
 from src.config import Settings
 from src.pipeline.bot_speech_state import BotSpeechState
 from src.pipeline.language_state import LanguageState
@@ -444,10 +445,11 @@ async def build_pipeline(
         raise RuntimeError(
             "GROQ_API_KEY is not set — copy .env.example to .env and fill it in"
         )
-    if not settings.openrouter_api_key and not settings.zai_api_key and not settings.deepseek_api_key:
+    available = get_available(settings)
+    if not available:
         raise RuntimeError(
-            "Neither OPENROUTER_API_KEY, ZAI_API_KEY, nor DEEPSEEK_API_KEY is set — "
-            "at least one is required for the LLM service"
+            "No LLM provider configured. Set at least one of: "
+            + ", ".join(cfg.api_key_env for cfg in PROVIDERS.values())
         )
 
     # ------------------------------------------------------------------
@@ -657,8 +659,6 @@ async def build_pipeline(
     voice_state_observer = create_voice_state_observer(state)
 
     llm_service = SwitchableLLMService(
-        openrouter_api_key=settings.openrouter_api_key,
-        openrouter_model=settings.openrouter_model,
         zai_api_key=settings.zai_api_key,
         zai_model=settings.zai_model,
         zai_base_url=settings.zai_base_url,
@@ -922,7 +922,7 @@ async def build_pipeline(
     logger.info(
         "Pipecat-native pipeline assembled: provider=%s, model=%s, lang=%s, tools=%d",
         llm_service.active_provider,
-        settings.openrouter_model if llm_service.active_provider == "openrouter" else settings.zai_model,
+        getattr(settings, f"{llm_service.active_provider}_model", PROVIDERS[llm_service.active_provider].default_model),
         language_state.language,
         len(tools_schema.standard_tools),
     )

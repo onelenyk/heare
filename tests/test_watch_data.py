@@ -288,8 +288,8 @@ def test_fetch_usage_aggregates_recorded_events(tmp_path: Path) -> None:
             (ts, kind, provider, model, input_tokens, output_tokens,
              audio_seconds, char_count, cost_usd)
         VALUES
-            (1000.0, 'llm', 'openrouter', 'g/flash', 10000, 5000, NULL, NULL, 0.00225),
-            (1001.0, 'llm', 'openrouter', 'g/flash',  2000, 1000, NULL, NULL, 0.00045),
+            (1000.0, 'llm', 'deepseek', 'g/flash', 10000, 5000, NULL, NULL, 0.00225),
+            (1001.0, 'llm', 'deepseek', 'g/flash',  2000, 1000, NULL, NULL, 0.00045),
             (1002.0, 'stt', 'groq',        NULL,        NULL, NULL,  60.0, NULL, 0.000667),
             (1003.0, 'tts', 'edge_tts',    NULL,        NULL, NULL,  NULL, 1500, 0.0)
         """,

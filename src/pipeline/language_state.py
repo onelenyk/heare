@@ -1,7 +1,7 @@
 """Shared mutable language state for the Phase 2 Pipecat-native pipeline.
 
 PH2-04. The TranscriptionGateProcessor (pre-LLM) decides the active
-user language (with 2-turn hysteresis); the OpenRouterLLMService
+user language (with 2-turn hysteresis); the DeepSeekLLM service
 (LLM turn) needs to read that decision so it can inject the right
 ``{user_language}`` into the system prompt for each turn.
 

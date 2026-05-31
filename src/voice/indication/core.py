@@ -44,7 +44,6 @@ class IndicationKind(str, Enum):
     ACTION_REJECTED = "action_rejected"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
     CONFIRMATION_DEADLINE = "confirmation_deadline"
-    OPENROUTER_TIMEOUT = "openrouter_timeout"
     STT_ERROR = "stt_error"
     TTS_FAILURE = "tts_failure"
     AUDIO_DEVICE_LOST = "audio_device_lost"
@@ -88,7 +87,6 @@ KIND_TO_LEVEL: dict[IndicationKind, IndicationLevel] = {
     IndicationKind.ACTION_FAILED: IndicationLevel.ERROR,
     IndicationKind.ACTION_REJECTED: IndicationLevel.ERROR,
     IndicationKind.ACTION_LONG_RUNNING: IndicationLevel.LONG_RUNNING,
-    IndicationKind.OPENROUTER_TIMEOUT: IndicationLevel.ERROR,
     IndicationKind.STT_ERROR: IndicationLevel.ERROR,
     IndicationKind.TTS_FAILURE: IndicationLevel.ERROR,
     IndicationKind.AUDIO_DEVICE_LOST: IndicationLevel.ERROR,
@@ -122,7 +120,6 @@ _DEFAULTS: dict[IndicationKind, tuple[str, str]] = {
     IndicationKind.ACTION_FAILED: ("heare: action failed", ""),
     IndicationKind.ACTION_REJECTED: ("heare: action rejected", ""),
     IndicationKind.ACTION_LONG_RUNNING: ("heare: long action", ""),
-    IndicationKind.OPENROUTER_TIMEOUT: ("heare: LLM timeout", "OpenRouter unreachable, fallback fired"),
     IndicationKind.STT_ERROR: ("heare: STT error", ""),
     IndicationKind.TTS_FAILURE: ("heare: TTS failure", ""),
     IndicationKind.AUDIO_DEVICE_LOST: ("heare: audio lost", "Mic or speaker disconnected"),

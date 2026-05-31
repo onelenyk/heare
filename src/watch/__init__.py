@@ -11,6 +11,7 @@ from rich.table import Table
 
 from src.config import Settings
 from src.agent.identity import load_identity
+from src.agent.llm.providers import PROVIDERS
 from .app import HeareDashboard
 from .data import fetch_dashboard_state
 
@@ -72,7 +73,8 @@ def _run_once(settings: Settings) -> int:
     mode_style = {"silent": "dim", "focus": "cyan", "ambient": "yellow"}.get(
         snapshot.header.mode, "white"
     )
-    provider_style = "cyan" if snapshot.header.provider == "zai" else "yellow"
+    cfg = PROVIDERS.get(snapshot.header.provider)
+    provider_style = cfg.dashboard_color if cfg else "yellow"
 
     header_line = (
         f"{name} {emoji}  {status}   "

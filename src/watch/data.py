@@ -15,6 +15,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from src.agent.llm.providers import get_active
 from src.config import HEARE_HOME, Settings
 
 
@@ -82,8 +83,8 @@ def current_mode(settings: Settings) -> str:
 
 
 def current_provider(settings: Settings) -> str:
-    """Return the current LLM provider — provider is now in State, not file."""
-    return "openrouter"
+    """Return the current LLM provider — read from provider registry."""
+    return get_active(settings)
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +552,6 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     This isolation makes background threading trivial if needed.
     """
     from src.agent.identity import load_identity
-    from src.pipeline.stages.mute_gate import is_input_muted
 
     # Open DB
     con = open_db(Path.home() / ".heare" / "heare.db")

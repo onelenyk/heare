@@ -11,6 +11,7 @@ from textual.widgets import Button, DataTable, Input, RichLog, Static
 from src.config import Settings
 from src.pipeline.stages.text_injector import inject_text
 from src.version import app_version
+from src.agent.llm.providers import PROVIDERS
 from .data import ActivityRow, AgentResponseData, DisplayData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
 
 
@@ -51,12 +52,12 @@ class HeaderBar(Static):
         )
         mode_text = Text(header.mode, style=f"bold {mode_style}")
 
-        # Provider styling
-        prov_style = {
-            "zai": "cyan",
-            "opencode": "green",
-        }.get(header.provider, "yellow")
-        provider_text = Text(header.provider, style=f"bold {prov_style}")
+        cfg = PROVIDERS.get(header.provider)
+        prov_style = cfg.dashboard_color if cfg else "yellow"
+        provider_text = Text(
+            cfg.display_name if cfg else header.provider,
+            style=f"bold {prov_style}",
+        )
 
         # Line 1: name emoji status pid uptime mode provider
         line1 = Text.assemble(
@@ -368,7 +369,7 @@ class ControlsBar(Container):
 class AIBar(Static):
     """AI configuration panel showing the active provider and model.
 
-    Operator changes provider via `p` (cycles openrouter↔zai) and picks a
+    Operator changes provider via `p` (cycles deepseek↔zai) and picks a
     model via `o` (opens ModelSelectScreen). The widget itself is read-only;
     the App writes to State.
     """
@@ -381,7 +382,7 @@ class AIBar(Static):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
         self._settings = settings
-        self._provider = "openrouter"
+        self._provider = "deepseek"
         self._model = ""
         self.border_title = "🤖 AI"
 
@@ -392,12 +393,13 @@ class AIBar(Static):
 
     def _build_text(self) -> Text:
         text = Text()
-        prov_style = {
-            "zai": "cyan",
-            "opencode": "green",
-        }.get(self._provider, "yellow")
+        cfg = PROVIDERS.get(self._provider)
+        prov_style = cfg.dashboard_color if cfg else "yellow"
         text.append("provider  ", style="dim")
-        text.append(self._provider, style=f"bold {prov_style}")
+        text.append(
+            cfg.display_name if cfg else self._provider,
+            style=f"bold {prov_style}",
+        )
         text.append("\n")
         text.append("model     ", style="dim")
         text.append(self._model or "(default)", style="bold white")

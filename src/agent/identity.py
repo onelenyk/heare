@@ -30,8 +30,6 @@ class Identity(TypedDict):
 
 REQUIRED_KEYS = ("name", "creature", "vibe", "emoji", "tagline")
 
-_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
 
 def _validate(payload: dict) -> Identity:
     missing = [k for k in REQUIRED_KEYS if not payload.get(k)]
@@ -124,14 +122,14 @@ def reset_identity(settings: "Settings") -> Path | None:
     return backup
 
 
-def build_openrouter_bootstrap(
+def build_deepseek_bootstrap(
     *,
     api_key: str,
     model: str,
     timeout: float = 30.0,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> BootstrapFn:
-    """Return an async ``bootstrap(prompt) -> dict`` backed by OpenRouter.
+    """Return an async ``bootstrap(prompt) -> dict`` backed by DeepSeek.
 
     Asks the model for a single JSON object via /chat/completions and
     extracts the first ``{...}`` block from ``choices[0].message.content``.
@@ -139,8 +137,6 @@ def build_openrouter_bootstrap(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/onelenyk/heare",
-        "X-Title": "heare",
     }
 
     async def _bootstrap(prompt: str) -> dict:
@@ -164,23 +160,27 @@ def build_openrouter_bootstrap(
         if transport is not None:
             kwargs["transport"] = transport
         async with httpx.AsyncClient(**kwargs) as client:
-            resp = await client.post(_OPENROUTER_URL, json=payload, headers=headers)
+            resp = await client.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                json=payload,
+                headers=headers,
+            )
             resp.raise_for_status()
             data = resp.json()
         try:
             raw = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:
             raise RuntimeError(
-                f"openrouter identity bootstrap: malformed response: {e}"
+                f"identity bootstrap: malformed response: {e}"
             ) from e
         if not isinstance(raw, str):
-            raise RuntimeError("openrouter identity bootstrap: non-string content")
+            raise RuntimeError("identity bootstrap: non-string content")
         text = raw.strip()
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end == -1 or end <= start:
             raise RuntimeError(
-                "openrouter identity bootstrap: no JSON object in reply"
+                "identity bootstrap: no JSON object in reply"
             )
         return json.loads(text[start : end + 1])
 

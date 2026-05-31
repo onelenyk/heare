@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("heare.direct_tools")
 
+from src.agent.llm.providers import PROVIDERS
+
 # Import tool definitions from central registry
 from src.agent.tools.registry import get_direct_tools, is_mcp_tool  # noqa: E402
 
@@ -1946,7 +1948,7 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
     """Switch the active LLM provider via the State API.
 
     Args:
-        args: Provider name (openrouter or deepseek)
+        args: Provider name (deepseek or zai)
         settings: heare Settings (unused, kept for signature compat)
 
     Returns:
@@ -1955,13 +1957,13 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
     try:
         provider = args.strip().lower()
 
-        if provider not in ("openrouter", "deepseek"):
+        if provider not in PROVIDERS:
             return {
                 "success": False,
                 "output": "",
-                "error": f"Invalid provider: {provider}. Must be 'openrouter' or 'deepseek'",
+                "error": f"Invalid provider: {provider}. Must be 'deepseek', 'zai', or 'opencode'",
                 "spoken": {
-                    "en": f"Invalid provider {provider}. Use openrouter or deepseek.",
+                    "en": f"Invalid provider {provider}. Use 'deepseek', 'zai', or 'opencode'.",
                 },
             }
 

@@ -67,17 +67,15 @@ def _mark_started(p: FrameProcessor) -> None:
 
 def _make_service(state: _MockState) -> SwitchableLLMService:
     return SwitchableLLMService(
-        openrouter_api_key="sk-or-test",
-        openrouter_model="mock-or",
+        deepseek_api_key="sk-ds-test",
+        deepseek_model="mock-ds",
+        deepseek_base_url="https://api.deepseek.com/v1",
         zai_api_key="sk-zai-test",
         zai_model="claude-3-5-sonnet",
         zai_base_url="https://api.z.ai/api/anthropic",
         opencode_api_key=None,
         opencode_base_url="https://opencode.ai/zen/go/v1",
         opencode_model="minimax-m2.7",
-        deepseek_api_key=None,
-        deepseek_base_url="https://api.deepseek.com/v1",
-        deepseek_model="deepseek-chat",
         state=state,
     )
 
@@ -108,10 +106,10 @@ def test_provider_switch_logged_once_per_change(
     svc = _make_service(state)
 
     with caplog.at_level(logging.INFO, logger="heare.switchable_llm"):
-        # Toggle provider 5 times — alternate between zai and openrouter.
+        # Toggle provider 5 times — alternate between zai and deepseek.
         # Each toggle changes the state value; the "switched to" line should
         # only fire on actual transitions, not re-reads.
-        sequence = ["zai", "openrouter", "zai", "openrouter", "zai"]
+        sequence = ["zai", "deepseek", "zai", "deepseek", "zai"]
         for value in sequence:
             state._data["provider"] = value
             svc._sync_provider()
@@ -172,7 +170,7 @@ async def test_metric_per_turn_tagged_with_provider(
     async def zai_pf(_f: Frame, _d: FrameDirection):
         return None
 
-    monkeypatch.setattr(svc._or_service, "process_frame", or_pf)
+    monkeypatch.setattr(svc._deepseek_service, "process_frame", or_pf)
     monkeypatch.setattr(svc._zai_service, "process_frame", zai_pf)
 
     async def noop_started(_d, _k):
@@ -180,7 +178,7 @@ async def test_metric_per_turn_tagged_with_provider(
 
     monkeypatch.setattr(svc, "_ensure_delegate_started", noop_started)
 
-    # Turn on openrouter.
+    # Turn on deepseek.
     await svc.process_frame(
         LLMContextFrame(context=None),  # type: ignore[arg-type]
         FrameDirection.DOWNSTREAM,
@@ -198,7 +196,7 @@ async def test_metric_per_turn_tagged_with_provider(
     )
 
     assert len(captured_metrics) == 2
-    assert "openrouter:" in captured_metrics[0].model
+    assert "deepseek:" in captured_metrics[0].model
     assert "zai:" in captured_metrics[1].model
 
 
@@ -231,7 +229,7 @@ async def test_indication_fires_on_zai_fallback(
         return None
 
     monkeypatch.setattr(svc._zai_service, "process_frame", zai_boom)
-    monkeypatch.setattr(svc._or_service, "process_frame", or_ok)
+    monkeypatch.setattr(svc._deepseek_service, "process_frame", or_ok)
 
     async def noop_started(_d, _k):
         return None

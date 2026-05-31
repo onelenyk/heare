@@ -236,7 +236,7 @@ TOOLS: dict[str, Tool] = {
         name="set_provider",
         sdk_name="SetProvider",
         execution="direct",
-        description="Switch the active LLM provider (openrouter or zai). Change takes effect on the next user utterance.",
+        description="Switch the active LLM provider (deepseek, zai, or opencode). Change takes effect on the next user utterance.",
         enabled=True,
     ),
     "set_mode": Tool(

@@ -23,6 +23,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from src.agent.llm.providers import all_keys
 from src.agent.tools.direct import execute_direct
 from src.agent.tools.registry import TOOLS, get_enabled_tools, get_tool
 
@@ -389,8 +390,8 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         {
             "provider": {
                 "type": "string",
-                "enum": ["openrouter", "zai"],
-                "description": "LLM provider to switch to (openrouter or zai)",
+                "enum": all_keys(),
+                "description": "LLM provider to switch to (deepseek, zai, or opencode)",
             },
         },
         ["provider"],

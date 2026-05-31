@@ -362,17 +362,15 @@ def _switchable_service(tmp_path):
     from src.agent.llm.switchable import SwitchableLLMService
 
     return SwitchableLLMService(
-        openrouter_api_key="sk-or-test",
-        openrouter_model="mock-or",
+        deepseek_api_key="sk-ds-test",
+        deepseek_model="mock-ds",
+        deepseek_base_url="https://api.deepseek.com/v1",
         zai_api_key="sk-zai-test",
         zai_model="claude-3-5-sonnet",
         zai_base_url="https://api.z.ai/api/anthropic",
         opencode_api_key=None,
         opencode_base_url="https://opencode.ai/zen/go/v1",
         opencode_model="minimax-m2.7",
-        deepseek_api_key=None,
-        deepseek_base_url="https://api.deepseek.com/v1",
-        deepseek_model="deepseek-chat",
         state=_MockState(),
     )
 
@@ -385,12 +383,12 @@ def test_register_all_tools_visible_on_both_delegates(_switchable_service) -> No
     enabled = get_enabled_tools()
     assert set(names) == enabled
 
-    or_funcs = set(swit._or_service._functions.keys())
+    or_funcs = set(swit._deepseek_service._functions.keys())
     zai_funcs = set(swit._zai_service._functions.keys())
     # Pipecat may include a None entry for "default handlers"; ignore it.
     or_named = {n for n in or_funcs if n is not None}
     zai_named = {n for n in zai_funcs if n is not None}
-    assert enabled <= or_named, f"missing on OR delegate: {enabled - or_named}"
+    assert enabled <= or_named, f"missing on DS delegate: {enabled - or_named}"
     assert enabled <= zai_named, f"missing on ZAI delegate: {enabled - zai_named}"
 
 

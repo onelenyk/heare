@@ -63,7 +63,7 @@ def _make_metrics_frame(
     return MetricsFrame(data=[entry])
 
 
-def _make_recorder(store: _FakeStore, provider: str | None = "openrouter"):
+def _make_recorder(store: _FakeStore, provider: str | None = "deepseek"):
     proc = create_usage_recorder(
         store=store,
         provider_getter=(lambda: provider),
@@ -96,7 +96,7 @@ async def test_metrics_frame_with_known_model_records_cost() -> None:
     assert len(store.calls) == 1
     call = store.calls[0]
     assert call["kind"] == "llm"
-    assert call["provider"] == "openrouter"
+    assert call["provider"] == "deepseek"
     assert call["model"] == "google/gemini-3.1-flash-lite"
     assert call["input_tokens"] == 10_000
     assert call["output_tokens"] == 5_000
@@ -223,7 +223,7 @@ def _make_recorder_with_providers(
 ):
     proc = create_usage_recorder(
         store=store,
-        provider_getter=lambda: "openrouter",
+        provider_getter=lambda: "deepseek",
         stt_provider=stt_provider,
         tts_provider=tts_provider,
     )

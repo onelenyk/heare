@@ -1,5 +1,6 @@
 """Minimal HTTP API for daemon control — backs the desktop app."""
 from aiohttp import web
+from src.agent.llm.providers import get_available
 from src.agent.modes import VALID_MODES
 
 
@@ -75,9 +76,4 @@ class API:
         return web.json_response({"ok": True})
 
     def _available_providers(self):
-        providers = []
-        if self.config.openrouter_api_key:
-            providers.append("openrouter")
-        if self.config.deepseek_api_key:
-            providers.append("deepseek")
-        return providers
+        return get_available(self.config)

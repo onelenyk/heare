@@ -88,7 +88,7 @@ def test_header_bar_refresh_data_displays_all_fields() -> None:
         assert "12345" in content
         assert "10m30s" in content
         assert "focus" in content
-        assert "zai" in content
+        assert "Z.AI" in content
         assert "42" in content
         assert "7" in content
 
@@ -134,7 +134,7 @@ def test_header_bar_shows_stopped_status() -> None:
             pid=None,
             uptime="-",
             mode="ambient",
-            provider="openrouter",
+            provider="deepseek",
             transcripts_count=0,
             actions_count=0,
             chrome_attached=False)
@@ -165,9 +165,9 @@ def test_header_bar_providers_have_correct_colors() -> None:
             chrome_attached=False)
         header.refresh_data(header_data_zai)
         content_zai = str(header.render())
-        assert "zai" in content_zai
+        assert "Z.AI" in content_zai
 
-        # Test openrouter provider (should be yellow)
+        # Test deepseek provider (should be yellow)
         header_data_or = HeaderData(
             name="test",
             emoji="🧪",
@@ -175,13 +175,13 @@ def test_header_bar_providers_have_correct_colors() -> None:
             pid=None,
             uptime="-",
             mode="ambient",
-            provider="openrouter",
+            provider="deepseek",
             transcripts_count=0,
             actions_count=0,
             chrome_attached=False)
         header.refresh_data(header_data_or)
         content_or = str(header.render())
-        assert "openrouter" in content_or
+        assert "DeepSeek" in content_or
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +292,7 @@ def test_ai_bar_initialization() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         settings = _make_settings(tmp)
         bar = AIBar(settings)
-        assert bar._provider == "openrouter"
+        assert bar._provider == "deepseek"
         assert bar._model == ""
 
 
@@ -311,9 +311,9 @@ def test_ai_bar_render_includes_provider_and_model() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         settings = _make_settings(tmp)
         bar = AIBar(settings)
-        bar.refresh_data("openrouter", "anthropic/claude-haiku-4.5")
+        bar.refresh_data("deepseek", "anthropic/claude-haiku-4.5")
         output = str(bar.render())
-        assert "openrouter" in output
+        assert "DeepSeek" in output
         assert "anthropic/claude-haiku-4.5" in output
 
 

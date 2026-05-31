@@ -271,21 +271,8 @@ class Settings:
             "stop", "cancel", "halt", "відміни", "отмени", "стоп",
         ]
     )
-    # Phase 1/2.1 — generator pipeline via OpenRouter.
-    openrouter_api_key: str | None = None
-    openrouter_model: str = "google/gemini-3.1-flash-lite-preview-20260303"
-    openrouter_timeout_seconds: float = 5.0
-    # Topic extraction backend. "openrouter" (default) routes
-    # ConversationManager.extract_topics through a non-streaming
-    # OpenRouterTopicExtractorCLI client. "claude" routes through the live
-    # Claude SDK / CLI session. main.py auto-falls back to Claude with a
-    # warning when topic_extraction_backend=openrouter but no OPENROUTER_API_KEY
-    # is configured.
-    topic_extraction_backend: str = "openrouter"
-    topic_extraction_openrouter_model: str = "google/gemini-3.1-flash-lite-preview-20260303"
-    topic_extraction_openrouter_timeout_seconds: float = 5.0
-    # LLM provider switching (openrouter | zai | opencode)
-    llm_provider: str = "openrouter"
+    # LLM provider switching (deepseek | zai | opencode)
+    llm_provider: str = "deepseek"
     provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")
     zai_api_key: str | None = None
     zai_base_url: str = "https://api.z.ai/api/anthropic"
@@ -298,6 +285,7 @@ class Settings:
     deepseek_api_key: str | None = None
     deepseek_model: str = "deepseek-chat"
     deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_timeout_seconds: float = 5.0
     # Phase 2.1 — action worker.
     action_timeout_seconds: float = 120.0
     intent_queue_max_pending: int = 32
@@ -449,11 +437,12 @@ def load_settings() -> Settings:
                 )
 
     settings.groq_api_key = os.environ.get("GROQ_API_KEY")
-    settings.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
-    settings.zai_api_key = os.environ.get("ZAI_API_KEY")
-    settings.opencode_api_key = os.environ.get("OPENCODE_API_KEY")
-    settings.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
     settings.serper_api_key = os.environ.get("SERPER_API_KEY")
+
+    from src.agent.llm.providers import PROVIDERS
+
+    for key, cfg in PROVIDERS.items():
+        setattr(settings, cfg.api_key_attr, os.environ.get(cfg.api_key_env))
 
     # CCS-05a: env override for cancel_stop_words (comma-separated). Empty
     # tokens are dropped; surrounding whitespace stripped; case preserved
@@ -492,7 +481,7 @@ def load_settings() -> Settings:
 
     if settings.provider_file.exists():
         raw = settings.provider_file.read_text().strip().lower()
-        if raw in ("openrouter", "zai", "opencode", "deepseek"):
+        if raw in PROVIDERS:
             settings.llm_provider = raw
 
     if settings.audio_input_device_file.exists():
