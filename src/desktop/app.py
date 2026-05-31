@@ -214,7 +214,7 @@ HTML = r"""
     </select>
   </span>
   <span class="meta" id="counts-text"></span>
-  <span id="chrome-dot" class="dot silent" title="chrome bridge"></span>
+  <span id="chrome-dot" class="dot silent" title="chrome bridge"></span> <span class="meta" id="chrome-label">chrome</span>
   <span id="voice-dot"></span>
   <span id="voice-indicator" class="idle">idle</span>
 </div>
@@ -367,6 +367,8 @@ async function pollState() {
     var cd = document.getElementById("chrome-dot");
     cd.className = "dot " + (s.chrome ? "amber" : "silent");
     cd.title = s.chrome ? "chrome bridge connected" : "chrome bridge offline";
+    var cl = document.getElementById("chrome-label");
+    if (cl) cl.textContent = s.chrome ? "chrome" : "chrome ✗";
 
     var vi = document.getElementById("voice-indicator");
     var vd = document.getElementById("voice-dot");
