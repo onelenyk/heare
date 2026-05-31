@@ -1,4 +1,5 @@
 """Minimal HTTP API for daemon control — backs the desktop app."""
+import logging
 import sqlite3
 
 from aiohttp import web
@@ -20,6 +21,7 @@ class API:
         self.config = config
         self._control = daemon_control  # (start_fn, stop_fn, restart_fn)
         self._app = web.Application()
+        logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
         self._app.router.add_get("/state", self._handle_state)
         self._app.router.add_post("/mode", self._handle_mode)
         self._app.router.add_post("/mute", self._handle_mute)
