@@ -38,6 +38,7 @@ class API:
         self._app.router.add_get("/logs", self._handle_logs)
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_get("/display", self._handle_display)
+        self._app.router.add_get("/events", self._handle_events)
         self._app.router.add_get("/canvas", self._handle_display)
         self._app.router.add_post("/daemon", self._handle_daemon)
         self._app.router.add_post("/inject", self._handle_inject)
@@ -226,6 +227,11 @@ class API:
             return web.json_response({"content": None, "format": None, "title": None, "ts": None})
         except Exception:
             return web.json_response({"content": None, "format": None, "title": None, "ts": None})
+
+    async def _handle_events(self, request):
+        from src.daemon.events import recent
+
+        return web.json_response(recent(limit=50))
 
     async def _handle_daemon(self, request):
         body = await request.json()
