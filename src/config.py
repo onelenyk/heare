@@ -562,3 +562,20 @@ def write_browser_bridge_token(settings: Settings, token: str) -> None:
         raise
 
     settings.browser_bridge_token = token
+
+
+def write_env_var(key: str, value: str) -> None:
+    """Write or update an env var in .env file."""
+    env_path = HEARE_HOME.parent / ".env"
+    lines = []
+    found = False
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.strip().startswith(f"{key}="):
+                lines.append(f"{key}={value}")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(lines) + "\n")

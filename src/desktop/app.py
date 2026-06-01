@@ -323,6 +323,9 @@ HTML = r"""
         <button onclick="cancel()" id="btn-cancel">cancel</button>
         <button onclick="daemonAction('stop')" id="btn-stop">stop</button>
       </div>
+      <div class="btn-row">
+        <button onclick="toggleSettings()">⚙ settings</button>
+      </div>
     </div>
   </div>
 
@@ -387,6 +390,40 @@ HTML = r"""
   <div id="inject-row">
     <input id="inject-text" type="text" placeholder="type text to inject...">
     <button onclick="injectText()">send</button>
+  </div>
+</div>
+
+<div id="settings-panel" class="card" style="display:none">
+  <div class="card-header"><span class="label">⚙ settings</span></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px">
+    <div>
+      <label style="font-size:11px;color:var(--muted)">Groq API Key (STT)</label>
+      <input id="set-groq" type="password" placeholder="gsk_..." style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted)">DeepSeek API Key (LLM)</label>
+      <input id="set-deepseek" type="password" placeholder="sk-..." style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted)">Language</label>
+      <select id="set-lang" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
+        <option value="uk">Ukrainian</option>
+        <option value="en">English</option>
+        <option value="ru">Russian</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted)">Voice</label>
+      <select id="set-voice" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
+        <option value="uk-UA-OstapNeural">uk-UA-OstapNeural (male)</option>
+        <option value="uk-UA-PolinaNeural">uk-UA-PolinaNeural (female)</option>
+        <option value="en-US-AriaNeural">en-US-AriaNeural</option>
+        <option value="ru-RU-SvetlanaNeural">ru-RU-SvetlanaNeural</option>
+      </select>
+    </div>
+  </div>
+  <div style="padding:0 8px 8px">
+    <button onclick="saveSettings()" style="background:var(--accent);color:#000;font-weight:700;padding:6px 16px;width:100%">Save &amp; Restart</button>
   </div>
 </div>
 
@@ -579,6 +616,7 @@ function pollAll() {
 }
 setInterval(pollAll, 800);
 pollAll();
+checkSetup();
 
 async function copyCanvas() {
   var el = document.getElementById("canvas");
@@ -625,6 +663,37 @@ async function injectText() {
   if (!text) return;
   await fetch(API + "/inject", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text:text})});
   el.value = "";
+}
+
+async function checkSetup() {
+  try {
+    var r = await fetch(API + "/settings/status");
+    var s = await r.json();
+    if (!s.configured) {
+      document.getElementById("settings-panel").style.display = "block";
+    }
+    if (s.language) document.getElementById("set-lang").value = s.language;
+    if (s.tts_voice) document.getElementById("set-voice").value = s.tts_voice;
+  } catch(e) {}
+}
+
+function toggleSettings() {
+  var p = document.getElementById("settings-panel");
+  p.style.display = p.style.display === "none" ? "block" : "none";
+}
+
+async function saveSettings() {
+  var body = {
+    groq_api_key: document.getElementById("set-groq").value,
+    deepseek_api_key: document.getElementById("set-deepseek").value,
+    language: document.getElementById("set-lang").value,
+    tts_voice: document.getElementById("set-voice").value,
+  };
+  await fetch(API + "/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  document.getElementById("settings-panel").style.display = "none";
+  await fetch(API + "/daemon", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"stop"})});
+  document.getElementById("status-text").textContent = "restarting...";
+  setTimeout(function() { location.reload(); }, 3000);
 }
 </script>
 </body>

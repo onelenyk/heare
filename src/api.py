@@ -42,6 +42,8 @@ class API:
         self._app.router.add_get("/canvas", self._handle_display)
         self._app.router.add_post("/daemon", self._handle_daemon)
         self._app.router.add_post("/inject", self._handle_inject)
+        self._app.router.add_get("/settings/status", self._handle_settings_status)
+        self._app.router.add_post("/settings", self._handle_settings)
         self._runner = None
         self._site = None
 
@@ -256,6 +258,71 @@ class API:
         self.config.inject_dir.mkdir(parents=True, exist_ok=True)
         (self.config.inject_dir / fname).write_text(text)
         return web.json_response({"ok": True})
+
+    async def _handle_settings_status(self, request):
+        """Return current configuration status."""
+        import os
+        groq = bool(os.environ.get("GROQ_API_KEY", "").startswith("gsk_") or os.environ.get("GROQ_API_KEY", "").startswith("sk-"))
+        deepseek = bool(os.environ.get("DEEPSEEK_API_KEY", "").startswith("sk-"))
+        return web.json_response({
+            "configured": groq or deepseek,
+            "groq_key": groq,
+            "deepseek_key": deepseek,
+            "language": self.config.groq_language or "uk",
+            "tts_voice": self.config.tts_voice or "uk-UA-OstapNeural",
+            "mode": self.config.mode.value if hasattr(self.config.mode, 'value') else str(self.config.mode),
+        })
+
+    async def _handle_settings(self, request):
+        """Save settings to .env and config.toml."""
+        import os
+        body = await request.json()
+
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+
+        updates = {}
+        if body.get("groq_api_key"):
+            updates["GROQ_API_KEY"] = body["groq_api_key"]
+        if body.get("deepseek_api_key"):
+            updates["DEEPSEEK_API_KEY"] = body["deepseek_api_key"]
+
+        if updates:
+            existing = {}
+            if os.path.exists(env_path):
+                for line in open(env_path):
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        existing[k.strip()] = v.strip()
+            existing.update(updates)
+            with open(env_path, "w") as f:
+                for k, v in existing.items():
+                    f.write(f"{k}={v}\n")
+            os.environ.update(updates)
+
+        config_path = os.path.expanduser("~/.heare/config.toml")
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        config = {}
+        if os.path.exists(config_path):
+            import tomllib
+            with open(config_path, "rb") as f:
+                config = tomllib.load(f)
+        if "groq_language" not in config and body.get("language"):
+            config["groq_language"] = body["language"]
+        if "tts_voice" not in config and body.get("tts_voice"):
+            config["tts_voice"] = body["tts_voice"]
+        if body.get("mode"):
+            config["mode"] = body["mode"]
+        with open(config_path, "w") as f:
+            for section, items in config.items():
+                if isinstance(items, dict):
+                    f.write(f"[{section}]\n")
+                    for k, v in items.items():
+                        f.write(f'{k} = "{v}"\n')
+                else:
+                    f.write(f'{section} = "{items}"\n')
+
+        return web.json_response({"ok": True, "restart_needed": True})
 
     def _available_providers(self):
         return get_available(self.config)
