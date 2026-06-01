@@ -312,13 +312,12 @@ HTML = r"""
       <select id="model-select" onchange="switchModel()">
       </select>
     </span>
+    <span class="meta" id="counts-text"></span>
   </div>
   <div class="status-row">
-    <span class="meta" id="counts-text"></span>
-    <span id="chrome-dot" class="dot silent" title="chrome bridge"></span>
-    <span class="meta" id="chrome-label">chrome</span>
-    <span id="voice-dot"></span>
-    <span id="voice-indicator" class="idle">idle</span>
+    <span id="status-dot2" class="dot off"></span><span class="meta" id="status-label">agent</span>
+    <span class="meta">mode <em id="mode-label">ambient</em></span>
+    <span id="chrome-dot" class="dot silent" title="chrome bridge"></span><span class="meta" id="chrome-label">chrome</span>
   </div>
 </div>
 
@@ -478,6 +477,13 @@ async function pollState() {
     cd.title = s.chrome ? "chrome bridge connected" : "chrome bridge offline";
     var cl = document.getElementById("chrome-label");
     if (cl) cl.textContent = s.chrome ? "chrome" : "chrome ✗";
+
+    var d2 = document.getElementById("status-dot2");
+    if (d2) d2.className = "dot " + (running ? "on" : "off");
+    var sl = document.getElementById("status-label");
+    if (sl) sl.textContent = running ? "alive" : "dead";
+    var ml = document.getElementById("mode-label");
+    if (ml) ml.textContent = s.mode || "ambient";
 
     var vi = document.getElementById("voice-indicator");
     var vd = document.getElementById("voice-dot");
