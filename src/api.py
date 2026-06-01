@@ -1,4 +1,4 @@
-"""Minimal HTTP API for daemon control — backs the desktop app."""
+"""Minimal HTTP API for daemon control — backs the web frontend."""
 import logging
 import os
 import signal
@@ -6,6 +6,8 @@ import sqlite3
 import time
 import uuid
 from pathlib import Path
+
+_INDEX_HTML: str | None = None
 
 from aiohttp import web
 from src.agent.identity import load_identity
@@ -62,9 +64,14 @@ class API:
     # ── Handlers ───────────────────────────────────────────
 
     async def _handle_index(self, request):
-        from src.desktop.app import HTML
-
-        return web.Response(text=HTML, content_type="text/html")
+        global _INDEX_HTML
+        if _INDEX_HTML is None:
+            path = Path(__file__).resolve().parent.parent.parent / "src" / "frontend" / "index.html"
+            if path.exists():
+                _INDEX_HTML = path.read_text()
+            else:
+                return web.Response(text="Frontend not found", status=500)
+        return web.Response(text=_INDEX_HTML, content_type="text/html")
 
     async def _handle_state(self, request):
         data = self.state.snapshot()
