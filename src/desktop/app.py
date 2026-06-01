@@ -9,17 +9,19 @@ HTML = r"""
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   :root {
-    --bg: #1a1a2e;
-    --card: #1e1e35;
-    --border: #333;
-    --text: #c0c0c0;
-    --muted: #666;
-    --accent: #00ff88;
-    --accent-red: #ff4444;
-    --accent-cyan: #00d4ff;
-    --accent-orange: #ff8c42;
-    --accent-magenta: #e040fb;
-    --accent-yellow: #ffd740;
+    --bg: #0d1117;
+    --card: #161b22;
+    --card-hl: #1c2128;
+    --border: #21262d;
+    --border-hover: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #7ee787;
+    --accent-red: #ff7b72;
+    --accent-cyan: #79c0ff;
+    --accent-orange: #ffa657;
+    --accent-magenta: #d2a8ff;
+    --accent-yellow: #e3b341;
     --mono: 'SF Mono','Cascadia Code','Fira Code','JetBrains Mono','Menlo','Consolas',monospace;
     --sans: -apple-system,'Segoe UI',system-ui,sans-serif;
   }
@@ -28,12 +30,14 @@ HTML = r"""
     font-family: var(--sans);
     background: var(--bg);
     color: var(--text);
-    padding: 10px;
-    font-size: 14px;
-    line-height: 1.4;
-    min-width: 400px;
+    padding: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    min-width: 520px;
     overflow-x: hidden;
   }
+
+  /* ── CARD ── */
   .card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -42,163 +46,250 @@ HTML = r"""
     margin-bottom: 6px;
   }
   .card-header {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
     color: var(--muted);
-    margin-bottom: 5px;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
   }
   .card-header span.label { flex: 1; }
-  .card-header span.extra { color: var(--muted); font-size: 11px; }
+  .card-header span.extra { color: var(--muted); font-size: 9px; }
 
+  /* ── STATUS BAR ── */
   #status-bar {
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 8px;
+    padding: 0;
     display: flex;
     flex-direction: column;
-    border-bottom: 2px solid var(--border);
-    margin-bottom: 6px;
-    padding: 0;
   }
   .status-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 5px 10px;
+    gap: 8px;
+    padding: 3px 8px;
     flex-wrap: wrap;
   }
-  .status-row + .status-row {
-    border-top: 1px solid var(--border);
-  }
+  .status-row + .status-row { border-top: 1px solid var(--border); }
   #status-bar .dot {
-    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    width: 7px; height: 7px; border-radius: 50%; display: inline-block;
     flex-shrink: 0;
   }
   #status-bar .dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   #status-bar .dot.off { background: var(--accent-red); box-shadow: 0 0 4px var(--accent-red); }
-  #status-bar .identity { font-weight: 700; font-size: 20px; white-space: nowrap; }
-  #status-bar .meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  #status-bar .identity { font-weight: 700; font-size: 18px; white-space: nowrap; color: var(--text); }
+  #status-bar .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
   #status-bar .meta em { font-style: normal; color: var(--accent-cyan); }
+  #status-bar select {
+    background: var(--card); color: var(--text); border: 1px solid var(--border);
+    font-size: 10px; padding: 1px 4px; font-family: var(--mono); border-radius: 3px;
+  }
+  .dot.amber { background: var(--accent-yellow); box-shadow: 0 0 4px var(--accent-yellow); }
+  .dot.silent { background: var(--muted); box-shadow: none; }
 
+  /* ── 3-COLUMN ROW ── */
   .row { display: flex; gap: 6px; }
   .col { flex: 1; min-width: 0; }
-  .col-wide { flex: 2; }
 
+  /* ── CONTROLS ── */
   #controls .btn-row { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
   #controls button {
-    padding: 5px 14px;
+    padding: 4px 10px;
     border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg);
+    border-radius: 4px;
+    background: var(--card);
     color: var(--text);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    font-family: var(--mono);
+    font-family: var(--sans);
     white-space: nowrap;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
   }
-  #controls button:hover { border-color: var(--accent-cyan); background: #252540; }
+  #controls button:hover { border-color: var(--border-hover); background: #1c2128; }
   #controls button.active { border-color: var(--accent); color: var(--accent); }
-  #controls button.on { border-color: var(--accent); color: var(--accent); background: #0a2a1a; }
+  #controls button.on { border-color: var(--accent); color: var(--accent); background: #0d1f15; }
+  #btn-stop { border-color: #3a1f1f !important; }
+  #btn-stop:hover { background: #2a1515; }
 
+  /* ── RESPONSE PANEL ── */
+  .response-panel { background: var(--card-hl) !important; }
+  .response-panel .text {
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent-orange);
+    max-height: 80px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+  .response-panel .meta { font-size: 9px; color: var(--muted); margin-top: 4px; }
+
+  /* ── STATS PANEL (was AI panel) ── */
   #ai-panel .info-line {
-    font-family: var(--mono); font-size: 11px; margin-bottom: 3px; color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    margin-bottom: 2px;
+    color: var(--muted);
+    line-height: 1.5;
   }
   #ai-panel .info-line strong { color: var(--accent-cyan); font-weight: 400; }
-  #ai-panel .usage-line { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; }
+  #ai-panel .usage-line {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 5px;
+    line-height: 1.6;
+    word-break: break-word;
+  }
   #ai-panel .cost { color: var(--accent-yellow); }
 
-  #response-panel .text {
-    font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--accent-orange);
-    max-height: 60px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
-  }
-  #response-panel { padding: 12px; }
-  #response-panel .meta { font-size: 9px; color: var(--muted); margin-top: 3px; }
-
+  /* ── DISPLAY / CANVAS ── */
   #canvas {
-    min-height: 160px; max-height: 220px; overflow: auto;
-    padding: 6px; font-size: 14px; line-height: 1.5;
+    min-height: 120px;
+    max-height: 280px;
+    overflow: auto;
+    padding: 8px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+    font-family: var(--mono);
+    white-space: pre-wrap;
   }
   #canvas:empty::after {
     content: "canvas — LLM output appears here";
-    color: var(--muted); font-style: italic; font-size: 10px;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 10px;
   }
   #canvas img { max-width: 100%; height: auto; }
   #canvas pre {
-    background: #0d0d1a; border: 1px solid var(--border);
-    border-radius: 4px; padding: 6px; overflow-x: auto;
-    font-family: var(--mono); font-size: 10px; color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
+  /* ── DATA TABLE ── */
   .data-table {
-    width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px;
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 11px;
     table-layout: auto;
   }
   .data-table th {
-    text-align: left; color: var(--muted); font-weight: 700; padding: 3px 8px;
-    border-bottom: 1px solid #2a2a44; font-size: 11px; text-transform: uppercase;
+    text-align: left;
+    color: var(--muted);
+    font-weight: 700;
+    padding: 2px 6px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
   .data-table td {
-    padding: 3px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    font-size: 12px; line-height: 1.5;
-    border-bottom: 1px solid #1f1f35;
+    padding: 2px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    line-height: 1.5;
+    border-bottom: 1px solid var(--border);
   }
-  .data-table .ts { width: 58px; color: var(--muted); }
-  .data-table .who { width: 40px; }
-  .data-table .type { width: 46px; }
+  .data-table .ts { width: 56px; color: var(--muted); }
+  .data-table .who { width: 36px; }
+  .data-table .type { width: 42px; }
   .data-table .content { overflow: hidden; text-overflow: ellipsis; }
   .data-table .who-bot { color: var(--accent-orange); }
   .data-table .who-you { color: var(--accent-cyan); }
   .data-table .log-error { color: var(--accent-red); }
   .data-table .log-warn { color: var(--accent-yellow); }
 
-  .scroll-panel { max-height: 120px; overflow-y: auto; }
-  .scroll-panel.short { max-height: 80px; }
+  /* ── SCROLL PANELS ── */
+  .scroll-panel { max-height: 240px; overflow-y: auto; }
+  .scroll-panel.short { max-height: 150px; }
 
-  #voice-indicator {
-    display: inline-block; padding: 2px 8px; border-radius: 10px;
-    font-size: 9px; font-family: var(--mono); margin-left: 6px;
+  /* ── CANVAS HEADER BUTTON ── */
+  .canvas-copy-btn {
+    font-size: 10px;
+    padding: 1px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--muted);
+    cursor: pointer;
+    font-family: var(--sans);
+    transition: border-color 0.15s, color 0.15s;
   }
-   #voice-indicator.listening { background: #0a2a1a; color: var(--accent); }
-  #voice-indicator.stt { background: #2a1a0a; color: var(--accent-yellow); }
-  #voice-indicator.idle { background: #1a1a2e; color: var(--muted); }
+  .canvas-copy-btn:hover { border-color: var(--border-hover); color: var(--text); }
+
+  /* ── VOICE INDICATOR ── */
+  #voice-indicator {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-family: var(--mono);
+    margin-left: 4px;
+  }
+  #voice-indicator.listening { background: #0d1f15; color: var(--accent); }
+  #voice-indicator.stt { background: #1f150d; color: var(--accent-yellow); }
+  #voice-indicator.idle { background: var(--bg); color: var(--muted); }
 
   @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
   #voice-dot {
-    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
-    flex-shrink: 0; background: var(--accent); box-shadow: 0 0 8px var(--accent);
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    flex-shrink: 0; background: var(--accent); box-shadow: 0 0 6px var(--accent);
     opacity: 0; transition: opacity 0.2s;
   }
   #voice-dot.speaking { opacity: 1; animation: pulse 0.8s ease-in-out infinite; }
 
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  /* ── SCROLLBARS ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
-  .dot.amber { background: var(--accent-yellow); box-shadow: 0 0 4px var(--accent-yellow); }
-  .dot.silent { background: var(--muted); box-shadow: none; }
-
-  #status-bar select {
-    background: #1e1e35; color: #c0c0c0; border: 1px solid #333;
-    font-size: 11px; padding: 2px; font-family: var(--mono);
-  }
-
+  /* ── TEXT INJECTION ── */
   #inject-row { display: flex; gap: 4px; align-items: center; }
   #inject-row input {
-    background: #1e1e35; color: #c0c0c0; border: 1px solid #333;
-    font-size: 11px; font-family: var(--mono); padding: 3px 6px;
-    width: 200px; flex: 1; border-radius: 3px;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 3px 8px;
+    flex: 1;
+    border-radius: 4px;
+    transition: border-color 0.15s;
   }
+  #inject-row input:focus { border-color: var(--border-hover); outline: none; }
   #inject-row button {
-    padding: 3px 8px; border: 1px solid var(--border);
-    border-radius: 3px; background: var(--bg); color: var(--text);
-    cursor: pointer; font-size: 10px; font-family: var(--mono);
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--sans);
     white-space: nowrap;
+    transition: border-color 0.15s, background 0.15s;
   }
-  #inject-row button:hover { border-color: var(--accent-cyan); background: #252540; }
+  #inject-row button:hover { border-color: var(--border-hover); background: var(--card-hl); }
 </style>
 </head>
 <body>
@@ -232,6 +323,7 @@ HTML = r"""
 </div>
 
 <div class="row">
+  <!-- Controls column -->
   <div class="col" id="controls">
     <div class="card">
       <div class="card-header"><span class="label">controls</span></div>
@@ -245,14 +337,26 @@ HTML = r"""
         <button onclick="toggleMute('bot')" id="btn-mute-bot">🔇 bot</button>
         <button onclick="toggleMute('mic')" id="btn-mute-mic">🔇 mic</button>
         <button onclick="cancel()" id="btn-cancel">cancel</button>
-        <button onclick="daemonAction('stop')" id="btn-stop" style="border-color:var(--accent-red)">stop</button>
+        <button onclick="daemonAction('stop')" id="btn-stop">stop</button>
       </div>
     </div>
   </div>
 
-  <div class="col col-wide" id="ai-panel">
+  <!-- Response column -->
+  <div class="col">
+    <div class="card response-panel">
+      <div class="card-header">
+        <span class="label">💬 response</span>
+        <span class="extra" id="response-meta"></span>
+      </div>
+      <div class="text" id="response-text">—</div>
+    </div>
+  </div>
+
+  <!-- Stats column (was AI panel) -->
+  <div class="col" id="ai-panel">
     <div class="card">
-      <div class="card-header"><span class="label">AI</span></div>
+      <div class="card-header"><span class="label">📊 stats</span></div>
       <div class="info-line">provider: <strong id="ai-provider">—</strong></div>
       <div class="info-line">model: <strong id="ai-model">—</strong></div>
       <div class="usage-line" id="usage-text">usage —</div>
@@ -260,19 +364,11 @@ HTML = r"""
   </div>
 </div>
 
-<div class="card" id="response-panel">
-  <div class="card-header">
-    <span class="label">latest response</span>
-    <span class="extra" id="response-meta"></span>
-  </div>
-  <div class="text" id="response-text">—</div>
-</div>
-
 <div class="card" id="canvas-panel">
-   <div class="card-header">
+  <div class="card-header">
     <span class="label">display</span>
     <span class="extra" id="canvas-meta"></span>
-    <button onclick="copyCanvas()" style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);cursor:pointer">copy</button>
+    <button onclick="copyCanvas()" class="canvas-copy-btn">copy</button>
   </div>
   <div id="canvas"></div>
 </div>

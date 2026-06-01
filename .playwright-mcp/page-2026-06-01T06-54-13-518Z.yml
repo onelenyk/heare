@@ -1,0 +1,271 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]: kort ⚡
+      - generic [ref=e6]: running
+      - generic [ref=e7]: pid=25682
+      - generic [ref=e8]: 10s
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - text: mode
+        - emphasis [ref=e11]: ambient
+      - generic [ref=e12]:
+        - text: provider
+        - combobox [ref=e13]:
+          - option "deepseek" [selected]
+      - generic [ref=e14]:
+        - text: model
+        - combobox [ref=e15]:
+          - option "deepseek-chat" [selected]
+          - option "deepseek-reasoner"
+    - generic [ref=e16]:
+      - generic [ref=e17]: 816 msgs | 0 actions
+      - generic "chrome bridge connected" [ref=e18]
+      - generic [ref=e19]: chrome
+      - generic [ref=e21]: idle
+  - generic [ref=e22]:
+    - generic [ref=e24]:
+      - generic [ref=e26]: controls
+      - generic [ref=e27]:
+        - button "silent" [ref=e28] [cursor=pointer]
+        - button "focus" [ref=e29] [cursor=pointer]
+        - button "ambient" [ref=e30] [cursor=pointer]
+        - button "assistant" [ref=e31] [cursor=pointer]
+      - generic [ref=e32]:
+        - button "🔇 bot" [ref=e33] [cursor=pointer]
+        - button "🔇 mic" [ref=e34] [cursor=pointer]
+        - button "cancel" [ref=e35] [cursor=pointer]
+        - button "stop" [ref=e36] [cursor=pointer]
+    - generic [ref=e38]:
+      - generic [ref=e40]: AI
+      - generic [ref=e41]:
+        - text: "provider:"
+        - strong [ref=e42]: deepseek
+      - generic [ref=e43]:
+        - text: "model:"
+        - strong [ref=e44]: deepseek-chat
+      - generic [ref=e45]: "llm: 192 calls, 1.8M/14.3k tok, $0.0000 | stt: 0 calls, 0s, $0.0000 | tts: 0 calls, 0 ch, $0.0000"
+  - generic [ref=e46]:
+    - generic [ref=e47]:
+      - generic [ref=e48]: latest response
+      - generic [ref=e49]: ambient · 15 chars
+    - generic [ref=e50]: kort на зв'язку
+  - generic [ref=e51]:
+    - generic [ref=e52]:
+      - generic [ref=e53]: display
+      - generic [ref=e54]: text · Доступні інструменти (41 вбудований)
+      - button "copy" [ref=e55] [cursor=pointer]
+    - generic [ref=e57]: "=== Вбудовані інструменти === Файли та робоча область: read, write, bash, list_favorites, add_favorite, show_profile, set_view_preference create_archive, extract_archive, batch_operation Браузер: list_browser_tabs, read_browser_page, navigate_browser, open_browser_tab activate_browser_tab, click_in_browser, fill_in_browser, extract_in_browser Екран та відображення: show_text, show_canvas Інструменти та скіли: list_tools, create_tool, update_tool, delete_tool list_skills, run_skill, create_skill list_capabilities, discover_capability install_skill_tool, install_mcp_server_tool, revoke_capability register_mcp_server Веб: web_search, web_fetch Режими та провайдери: set_mode, set_provider Системні: stop_daemon, restart_daemon Інше: cancel, workflow === Скіли — 0 === (немає встановлених) === MCP сервери — 0 === (немає підключених)"
+  - generic [ref=e58]:
+    - generic [ref=e59]:
+      - generic [ref=e60]: activity (recent transcripts)
+      - generic [ref=e61]: 30 rows
+    - table [ref=e63]:
+      - rowgroup [ref=e64]:
+        - row "time who type content" [ref=e65]:
+          - columnheader "time" [ref=e66]
+          - columnheader "who" [ref=e67]
+          - columnheader "type" [ref=e68]
+          - columnheader "content" [ref=e69]
+      - rowgroup [ref=e70]:
+        - row "09:54:05 bot said kort на зв'язку" [ref=e71]:
+          - cell "09:54:05" [ref=e72]
+          - cell "bot" [ref=e73]
+          - cell "said" [ref=e74]
+          - cell "kort на зв'язку" [ref=e75]
+        - row "09:14:43 bot said Відкривналаштуваннязвуку.Подивисьувкладці«Вхід»—вибери«МікрофонMacBookPro»інатисними«Гучністьвходу»трохинижче,щобприбратиперевантаження." [ref=e76]:
+          - cell "09:14:43" [ref=e77]
+          - cell "bot" [ref=e78]
+          - cell "said" [ref=e79]
+          - cell "Відкривналаштуваннязвуку.Подивисьувкладці«Вхід»—вибери«МікрофонMacBookPro»інатисними«Гучністьвходу»трохинижче,щобприбратиперевантаження." [ref=e80]
+        - row "09:14:29 bot said Мікрофонпрацює,записнормальний.Проблемашвидшезавсьогозрівнемчутливостіабоналаштуваннямивходу.Давайвідкриюналаштуваннязвукуітизмінишвхіднийпристрійвручну." [ref=e81]:
+          - cell "09:14:29" [ref=e82]
+          - cell "bot" [ref=e83]
+          - cell "said" [ref=e84]
+          - cell "Мікрофонпрацює,записнормальний.Проблемашвидшезавсьогозрівнемчутливостіабоналаштуваннямивходу.Давайвідкриюналаштуваннязвукуітизмінишвхіднийпристрійвручну." [ref=e85]
+        - row "09:14:10 bot said Схоже,звуквсещеспотворенийаборветься.Давайперевіримо,чипрацюємікрофончерезпростийзапис." [ref=e86]:
+          - cell "09:14:10" [ref=e87]
+          - cell "bot" [ref=e88]
+          - cell "said" [ref=e89]
+          - cell "Схоже,звуквсещеспотворенийаборветься.Давайперевіримо,чипрацюємікрофончерезпростийзапис." [ref=e90]
+        - row "09:14:07 you said Його прям почував коробу." [ref=e91]:
+          - cell "09:14:07" [ref=e92]
+          - cell "you" [ref=e93]
+          - cell "said" [ref=e94]
+          - cell "Його прям почував коробу." [ref=e95]
+        - row "09:14:05 you said І потім він прям почав так..." [ref=e96]:
+          - cell "09:14:05" [ref=e97]
+          - cell "you" [ref=e98]
+          - cell "said" [ref=e99]
+          - cell "І потім він прям почав так..." [ref=e100]
+        - row "09:14:02 you said Він так..." [ref=e101]:
+          - cell "09:14:02" [ref=e102]
+          - cell "you" [ref=e103]
+          - cell "said" [ref=e104]
+          - cell "Він так..." [ref=e105]
+        - row "09:14:01 you said Він так спершу погикав наче, але він не гикав." [ref=e106]:
+          - cell "09:14:01" [ref=e107]
+          - cell "you" [ref=e108]
+          - cell "said" [ref=e109]
+          - cell "Він так спершу погикав наче, але він не гикав." [ref=e110]
+        - row "09:13:57 you said І він просто щирко з" [ref=e111]:
+          - cell "09:13:57" [ref=e112]
+          - cell "you" [ref=e113]
+          - cell "said" [ref=e114]
+          - cell "І він просто щирко з" [ref=e115]
+        - row "09:13:42 bot said Відкривналаштуваннязвуку.Оберитам«Вхід»→«МікрофонMacBookPro»." [ref=e116]:
+          - cell "09:13:42" [ref=e117]
+          - cell "bot" [ref=e118]
+          - cell "said" [ref=e119]
+          - cell "Відкривналаштуваннязвуку.Оберитам«Вхід»→«МікрофонMacBookPro»." [ref=e120]
+        - row "09:13:37 bot said Відкриваюналаштуваннязвуку." [ref=e121]:
+          - cell "09:13:37" [ref=e122]
+          - cell "bot" [ref=e123]
+          - cell "said" [ref=e124]
+          - cell "Відкриваюналаштуваннязвуку." [ref=e125]
+        - row "09:13:35 you said Прості, шевно, я не спаршишся з так пор." [ref=e126]:
+          - cell "09:13:35" [ref=e127]
+          - cell "you" [ref=e128]
+          - cell "said" [ref=e129]
+          - cell "Прості, шевно, я не спаршишся з так пор." [ref=e130]
+        - row "09:13:06 bot said Невийшлозмінитимікрофончерезтермінал—немаєутилітиSwitchAudioSource.Давайвручну:відкрий«Налаштування»→«Звук»→«Вхід»івибери«МікрофонMacBookPro».Яможувідкритиналаштуваннязвукупрямозараз." [ref=e131]:
+          - cell "09:13:06" [ref=e132]
+          - cell "bot" [ref=e133]
+          - cell "said" [ref=e134]
+          - cell "Невийшлозмінитимікрофончерезтермінал—немаєутилітиSwitchAudioSource.Давайвручну:відкрий«Налаштування»→«Звук»→«Вхід»івибери«МікрофонMacBookPro».Яможувідкритиналаштуваннязвукупрямозараз." [ref=e135]
+        - row "09:13:04 you said О боже" [ref=e136]:
+          - cell "09:13:04" [ref=e137]
+          - cell "you" [ref=e138]
+          - cell "said" [ref=e139]
+          - cell "О боже" [ref=e140]
+        - row "09:13:02 you said Санфетку, він не рыхав, бляда." [ref=e141]:
+          - cell "09:13:02" [ref=e142]
+          - cell "you" [ref=e143]
+          - cell "said" [ref=e144]
+          - cell "Санфетку, він не рыхав, бляда." [ref=e145]
+        - row "09:13:00 you said Так, ну, будь-яка." [ref=e146]:
+          - cell "09:13:00" [ref=e147]
+          - cell "you" [ref=e148]
+          - cell "said" [ref=e149]
+          - cell "Так, ну, будь-яка." [ref=e150]
+        - row "09:12:44 bot said Спробуючерезтермінал." [ref=e151]:
+          - cell "09:12:44" [ref=e152]
+          - cell "bot" [ref=e153]
+          - cell "said" [ref=e154]
+          - cell "Спробуючерезтермінал." [ref=e155]
+        - row "09:12:38 bot said Перемикаю на вбудований мікрофон MacBook Pro." [ref=e156]:
+          - cell "09:12:38" [ref=e157]
+          - cell "bot" [ref=e158]
+          - cell "said" [ref=e159]
+          - cell "Перемикаю на вбудований мікрофон MacBook Pro." [ref=e160]
+        - row "09:12:36 you said Поможай!" [ref=e161]:
+          - cell "09:12:36" [ref=e162]
+          - cell "you" [ref=e163]
+          - cell "said" [ref=e164]
+          - cell "Поможай!" [ref=e165]
+        - 'row "09:12:11 bot said Бачу два мікрофони: вбудований MacBook Pro та «iPhone Lenyk». Ти, мабуть, використовуєш «Мікрофон (iPhone Lenyk)» по Continuity. Спробуй перемкнутися на вбудований мікрофон MacBook — можливо, зв''язок з iPhone нестабільний. Перемкнути?" [ref=e166]':
+          - cell "09:12:11" [ref=e167]
+          - cell "bot" [ref=e168]
+          - cell "said" [ref=e169]
+          - 'cell "Бачу два мікрофони: вбудований MacBook Pro та «iPhone Lenyk». Ти, мабуть, використовуєш «Мікрофон (iPhone Lenyk)» по Continuity. Спробуй перемкнутися на вбудований мікрофон MacBook — можливо, зв''язок з iPhone нестабільний. Перемкнути?" [ref=e170]'
+        - row "09:12:04 bot said Давай гляну, які аудіопристрої зараз під'єднані." [ref=e171]:
+          - cell "09:12:04" [ref=e172]
+          - cell "bot" [ref=e173]
+          - cell "said" [ref=e174]
+          - cell "Давай гляну, які аудіопристрої зараз під'єднані." [ref=e175]
+        - row "09:12:02 you said Щось було рід." [ref=e176]:
+          - cell "09:12:02" [ref=e177]
+          - cell "you" [ref=e178]
+          - cell "said" [ref=e179]
+          - cell "Щось було рід." [ref=e180]
+        - row "08:57:04 bot said Схоже, в тебе якісь проблеми з аудіо — я тебе чую уривками або не розбираю. Давай перевіримо мікрофон. Який у тебе зараз пристрій введення?" [ref=e181]:
+          - cell "08:57:04" [ref=e182]
+          - cell "bot" [ref=e183]
+          - cell "said" [ref=e184]
+          - cell "Схоже, в тебе якісь проблеми з аудіо — я тебе чую уривками або не розбираю. Давай перевіримо мікрофон. Який у тебе зараз пристрій введення?" [ref=e185]
+        - row "08:57:02 you said Сиди." [ref=e186]:
+          - cell "08:57:02" [ref=e187]
+          - cell "you" [ref=e188]
+          - cell "said" [ref=e189]
+          - cell "Сиди." [ref=e190]
+        - row "08:56:58 bot said Схоже, в тебе якісь проблеми з аудіо — я тебе чую уривками або не розбираю. Давай перевіримо мікрофон. Який у тебе зараз пристрій введення?" [ref=e191]:
+          - cell "08:56:58" [ref=e192]
+          - cell "bot" [ref=e193]
+          - cell "said" [ref=e194]
+          - cell "Схоже, в тебе якісь проблеми з аудіо — я тебе чую уривками або не розбираю. Давай перевіримо мікрофон. Який у тебе зараз пристрій введення?" [ref=e195]
+        - row "08:56:56 you said Що з тобою є гроша, блядь?" [ref=e196]:
+          - cell "08:56:56" [ref=e197]
+          - cell "you" [ref=e198]
+          - cell "said" [ref=e199]
+          - cell "Що з тобою є гроша, блядь?" [ref=e200]
+        - row "08:56:54 you said Че, блядь?" [ref=e201]:
+          - cell "08:56:54" [ref=e202]
+          - cell "you" [ref=e203]
+          - cell "said" [ref=e204]
+          - cell "Че, блядь?" [ref=e205]
+        - row "08:56:51 you said Силу згебували вже." [ref=e206]:
+          - cell "08:56:51" [ref=e207]
+          - cell "you" [ref=e208]
+          - cell "said" [ref=e209]
+          - cell "Силу згебували вже." [ref=e210]
+        - row "08:56:49 you said Згибав мене." [ref=e211]:
+          - cell "08:56:49" [ref=e212]
+          - cell "you" [ref=e213]
+          - cell "said" [ref=e214]
+          - cell "Згибав мене." [ref=e215]
+        - row "23:38:15 bot said kort на зв'язку" [ref=e216]:
+          - cell "23:38:15" [ref=e217]
+          - cell "bot" [ref=e218]
+          - cell "said" [ref=e219]
+          - cell "kort на зв'язку" [ref=e220]
+  - generic [ref=e221]:
+    - generic [ref=e222]:
+      - generic [ref=e223]: daemon log
+      - generic [ref=e224]: 20 lines
+    - table [ref=e226]:
+      - rowgroup [ref=e227]:
+        - row "2026-06-01 09:24:46,650 WARNING heare.browser_bridge browser_bridge auth failed (close 4001) — suppressing repeats for 5min" [ref=e228]:
+          - cell "2026-06-01 09:24:46,650 WARNING heare.browser_bridge browser_bridge auth failed (close 4001) — suppressing repeats for 5min" [ref=e229]
+        - row "2026-06-01 09:25:30,350 INFO heare.browser_bridge browser_bridge pair code 039573 (60s TTL, clipboard=ok)" [ref=e230]:
+          - cell "2026-06-01 09:25:30,350 INFO heare.browser_bridge browser_bridge pair code 039573 (60s TTL, clipboard=ok)" [ref=e231]
+        - row "2026-06-01 09:26:28,800 INFO heare.main received SIGTERM — shutting down" [ref=e232]:
+          - cell "2026-06-01 09:26:28,800 INFO heare.main received SIGTERM — shutting down" [ref=e233]
+        - row "2026-06-01 09:26:28,847 INFO heare.heartbeat warmup task cancelled" [ref=e234]:
+          - cell "2026-06-01 09:26:28,847 INFO heare.heartbeat warmup task cancelled" [ref=e235]
+        - row "2026-06-01 09:26:28,849 INFO heare.heartbeat warmup task stopped" [ref=e236]:
+          - cell "2026-06-01 09:26:28,849 INFO heare.heartbeat warmup task stopped" [ref=e237]
+        - row "2026-06-01 09:26:29,249 INFO heare.main heare stopped" [ref=e238]:
+          - cell "2026-06-01 09:26:29,249 INFO heare.main heare stopped" [ref=e239]
+        - row "2026-06-01 09:54:02,921 INFO heare.main I am kort ⚡" [ref=e240]:
+          - cell "2026-06-01 09:54:02,921 INFO heare.main I am kort ⚡" [ref=e241]
+        - 'row "2026-06-01 09:54:02,923 INFO heare.state State loaded: 7 keys" [ref=e242]':
+          - 'cell "2026-06-01 09:54:02,923 INFO heare.state State loaded: 7 keys" [ref=e243]'
+        - 'row "2026-06-01 09:54:04,709 INFO heare.pipeline_native indication: 3 backend(s) ready (enabled=True)" [ref=e244]':
+          - 'cell "2026-06-01 09:54:04,709 INFO heare.pipeline_native indication: 3 backend(s) ready (enabled=True)" [ref=e245]'
+        - row "2026-06-01 09:54:04,715 INFO heare.agent_skills Loaded 0 skills from 1 paths" [ref=e246]:
+          - cell "2026-06-01 09:54:04,715 INFO heare.agent_skills Loaded 0 skills from 1 paths" [ref=e247]
+        - 'row "2026-06-01 09:54:04,720 INFO heare.pipeline_native echo_gate: active (threshold=0.30, buffer=1.0s, cooldown=0.5s)" [ref=e248]':
+          - 'cell "2026-06-01 09:54:04,720 INFO heare.pipeline_native echo_gate: active (threshold=0.30, buffer=1.0s, cooldown=0.5s)" [ref=e249]'
+        - 'row "2026-06-01 09:54:04,720 INFO heare.pipeline_native Pipecat-native pipeline assembled: provider=deepseek, model=deepseek-chat, lang=uk, tools=45" [ref=e250]':
+          - 'cell "2026-06-01 09:54:04,720 INFO heare.pipeline_native Pipecat-native pipeline assembled: provider=deepseek, model=deepseek-chat, lang=uk, tools=45" [ref=e251]'
+        - row "2026-06-01 09:54:04,797 INFO heare.main HTTP API server on 127.0.0.1:9778" [ref=e252]:
+          - cell "2026-06-01 09:54:04,797 INFO heare.main HTTP API server on 127.0.0.1:9778" [ref=e253]
+        - row "2026-06-01 09:54:04,800 INFO heare.tts_cache warming up TTS cache for 12 phrase(s)" [ref=e254]:
+          - cell "2026-06-01 09:54:04,800 INFO heare.tts_cache warming up TTS cache for 12 phrase(s)" [ref=e255]
+        - row "2026-06-01 09:54:04,801 INFO heare.heartbeat warmup task started (interval=240.0s)" [ref=e256]:
+          - cell "2026-06-01 09:54:04,801 INFO heare.heartbeat warmup task started (interval=240.0s)" [ref=e257]
+        - row "2026-06-01 09:54:04,887 INFO heare.browser_bridge browser_bridge listening on 127.0.0.1:9333 (token persisted in config.toml)" [ref=e258]:
+          - cell "2026-06-01 09:54:04,887 INFO heare.browser_bridge browser_bridge listening on 127.0.0.1:9333 (token persisted in config.toml)" [ref=e259]
+        - 'row "2026-06-01 09:54:05,720 INFO heare.tts_cache TTS cache: 4/12 phrases cached (8 failed — Edge TTS unavailable for those)" [ref=e260]':
+          - 'cell "2026-06-01 09:54:05,720 INFO heare.tts_cache TTS cache: 4/12 phrases cached (8 failed — Edge TTS unavailable for those)" [ref=e261]'
+        - 'row "2026-06-01 09:54:05,802 INFO heare.main startup greeting queued: \"kort на зв''язку\"" [ref=e262]':
+          - 'cell "2026-06-01 09:54:05,802 INFO heare.main startup greeting queued: \"kort на зв''язку\"" [ref=e263]'
+        - row "2026-06-01 09:54:05,805 INFO heare.events [🧠 LLM] response_logged (chars=15 mode=ambient)" [ref=e264]:
+          - cell "2026-06-01 09:54:05,805 INFO heare.events [🧠 LLM] response_logged (chars=15 mode=ambient)" [ref=e265]
+        - row "2026-06-01 09:54:06,181 INFO heare.tts [TIMING] tts text=\"kort на зв'язку\" ttfb_mp3=323ms ttfb_pcm=331ms total=376ms 9216B->73728B" [ref=e266]:
+          - cell "2026-06-01 09:54:06,181 INFO heare.tts [TIMING] tts text=\"kort на зв'язку\" ttfb_mp3=323ms ttfb_pcm=331ms total=376ms 9216B->73728B" [ref=e267]
+  - generic [ref=e268]:
+    - generic [ref=e270]: text injection
+    - generic [ref=e271]:
+      - textbox "type text to inject..." [ref=e272]
+      - button "send" [ref=e273] [cursor=pointer]
