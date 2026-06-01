@@ -632,6 +632,36 @@ async function injectText() {
 """
 
 
+def _ensure_daemon():
+    import subprocess, sys, time, os
+    from pathlib import Path
+    
+    pid_file = Path.home() / ".heare" / "heare.pid"
+    
+    def _is_running():
+        if not pid_file.exists():
+            return False
+        try:
+            os.kill(int(pid_file.read_text().strip()), 0)
+            return True
+        except (OSError, ValueError):
+            return False
+    
+    if _is_running():
+        return
+    
+    subprocess.Popen(
+        [sys.executable, "-m", "src.main", "start"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    for _ in range(10):
+        time.sleep(0.5)
+        if _is_running():
+            return
+
 def run():
+    import webview
+    _ensure_daemon()
     window = webview.create_window("heare", html=HTML, width=620, height=800, resizable=True)
     webview.start()
