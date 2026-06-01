@@ -66,10 +66,15 @@ class API:
     async def _handle_index(self, request):
         global _INDEX_HTML
         if _INDEX_HTML is None:
-            path = Path(__file__).resolve().parent.parent.parent / "src" / "frontend" / "index.html"
-            if path.exists():
-                _INDEX_HTML = path.read_text()
-            else:
+            for candidate in [
+                Path(__file__).resolve().parent.parent.parent / "src" / "frontend" / "index.html",
+                Path(__file__).resolve().parent / "frontend" / "index.html",
+                Path(__file__).resolve().parent.parent / "frontend" / "index.html",
+            ]:
+                if candidate.exists():
+                    _INDEX_HTML = candidate.read_text()
+                    break
+            if _INDEX_HTML is None:
                 return web.Response(text="Frontend not found", status=500)
         return web.Response(text=_INDEX_HTML, content_type="text/html")
 
