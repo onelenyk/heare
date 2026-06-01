@@ -719,10 +719,11 @@ def _ensure_daemon():
     if _is_running():
         return
     
+    project_dir = Path(__file__).resolve().parent.parent.parent
     subprocess.Popen(
         [sys.executable, "-m", "src.main", "start"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=True,
+        start_new_session=True, cwd=str(project_dir),
     )
     for _ in range(10):
         time.sleep(0.5)
