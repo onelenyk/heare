@@ -260,6 +260,20 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             interval_seconds=settings.warmup_interval_seconds,
         )
 
+        import webbrowser
+        import asyncio
+
+        async def _open_ui():
+            await asyncio.sleep(3)
+            try:
+                import urllib.request
+                urllib.request.urlopen("http://127.0.0.1:9778/")
+                webbrowser.open("http://127.0.0.1:9778/")
+            except Exception:
+                pass
+
+        asyncio.create_task(_open_ui())
+
         from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
 
         runner = PipelineRunner()

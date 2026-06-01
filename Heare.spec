@@ -49,6 +49,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['Heare.icns'],
 )
 coll = COLLECT(
     exe,
@@ -62,6 +63,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='Heare.app',
-    icon=None,
+    icon='Heare.icns',
     bundle_identifier=None,
 )
