@@ -63,18 +63,12 @@ HTML = r"""
   #status-bar {
     border-bottom: 2px solid var(--border);
     margin-bottom: 8px;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .status-row {
+    padding: 3px 8px;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 3px 8px;
     flex-wrap: wrap;
   }
-  .status-row + .status-row { border-top: 1px solid var(--border); }
   #status-bar .dot {
     width: 7px; height: 7px; border-radius: 50%; display: inline-block;
     flex-shrink: 0;
@@ -295,30 +289,21 @@ HTML = r"""
 <body>
 
 <div id="status-bar">
-  <div class="status-row">
-    <span id="status-dot" class="dot off"></span>
-    <span class="identity"><span id="agent-name">heare</span> <span id="agent-emoji">&#x1FA76;</span></span>
-    <span class="meta" id="status-text">stopped</span>
-    <span class="meta" id="pid-text"></span>
-    <span class="meta" id="uptime-text"></span>
-  </div>
-  <div class="status-row">
-    <span class="meta">mode <em id="mode-text">?</em></span>
-    <span class="meta">provider
-      <select id="provider-select" onchange="switchProvider(this.value)">
-      </select>
-    </span>
-    <span class="meta">model
-      <select id="model-select" onchange="switchModel()">
-      </select>
-    </span>
-    <span class="meta" id="counts-text"></span>
-  </div>
-  <div class="status-row">
-    <span id="status-dot2" class="dot off"></span><span class="meta" id="status-label">agent</span>
-    <span class="meta">mode <em id="mode-label">ambient</em></span>
-    <span id="chrome-dot" class="dot silent" title="chrome bridge"></span><span class="meta" id="chrome-label">chrome</span>
-  </div>
+  <span id="status-dot" class="dot off"></span>
+  <span class="identity"><span id="agent-name">heare</span> <span id="agent-emoji"></span></span>
+  <span class="meta" id="pid-text"></span>
+  <span class="meta" id="uptime-text"></span>
+  <span class="meta" id="status-text">stopped</span>
+  <span class="meta">mode <em id="mode-text">?</em></span>
+  <span class="meta">provider
+    <select id="provider-select" onchange="switchProvider(this.value)"></select>
+  </span>
+  <span class="meta">model
+    <select id="model-select" onchange="switchModel()"></select>
+  </span>
+  <span class="meta" id="counts-text"></span>
+  <span id="chrome-dot" class="dot silent" title="chrome bridge"></span>
+  <span class="meta" id="chrome-label">chrome</span>
 </div>
 
 <div class="row">
@@ -343,12 +328,12 @@ HTML = r"""
 
   <!-- Response column -->
   <div class="col">
-    <div class="card response-panel">
+    <div class="card response-panel" id="response-panel">
       <div class="card-header">
-        <span class="label">💬 response</span>
+        <span class="label">response</span>
         <span class="extra" id="response-meta"></span>
       </div>
-      <div class="text" id="response-text">—</div>
+      <div class="text" id="latest-content">—</div>
     </div>
   </div>
 
@@ -478,13 +463,6 @@ async function pollState() {
     var cl = document.getElementById("chrome-label");
     if (cl) cl.textContent = s.chrome ? "chrome" : "chrome ✗";
 
-    var d2 = document.getElementById("status-dot2");
-    if (d2) d2.className = "dot " + (running ? "on" : "off");
-    var sl = document.getElementById("status-label");
-    if (sl) sl.textContent = running ? "alive" : "dead";
-    var ml = document.getElementById("mode-label");
-    if (ml) ml.textContent = s.mode || "ambient";
-
     var vi = document.getElementById("voice-indicator");
     var vd = document.getElementById("voice-dot");
     if (s.voice_state) {
@@ -503,7 +481,7 @@ async function pollState() {
     }
 
     if (s.last_response) {
-      document.getElementById("response-text").textContent = s.last_response;
+      document.getElementById("latest-content").textContent = s.last_response;
       document.getElementById("response-meta").textContent = (s.last_response_mode || "") + " · " + (s.last_response ? s.last_response.length + " chars" : "");
     }
 
