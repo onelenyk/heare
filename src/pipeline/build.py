@@ -48,6 +48,7 @@ from src.agent.tools.system import build_tools_schema, register_all_tools
 from src.pipeline.stages.transcription_gate import create_transcription_gate
 from src.pipeline.stages.agent_state_observer import create_agent_state_observer
 from src.pipeline.stages.voice_state_observer import create_voice_state_observer
+from src.pipeline.stages.echo_classifier import create_echo_classifier
 from src.voice.tts.cache import TTSCache
 from src.voice.tts.edge import create_edge_tts_service
 
@@ -302,6 +303,7 @@ def _assemble_native_stages(
     stt: Any,
     stt_error_observer: Any,
     transcription_gate: Any,
+    echo_classifier: Any = None,
     voice_state_observer: Any = None,
     agent_state_observer: Any = None,
     user_aggregator: Any,
@@ -355,6 +357,8 @@ def _assemble_native_stages(
     # flow through this point, giving the dashboard a live state read.
     if voice_state_observer is not None:
         stages.append(voice_state_observer)
+    if echo_classifier is not None:
+        stages.append(echo_classifier)
     stages.append(transcription_gate)
     if system_prompt_injector is not None:
         stages.append(system_prompt_injector)
@@ -659,6 +663,17 @@ async def build_pipeline(
     voice_state_observer = create_voice_state_observer(state)
     agent_state_observer = create_agent_state_observer(state)
 
+    if settings.echo_classifier_enabled:
+        echo_classifier = create_echo_classifier(
+            state=state,
+            bot_speech_state=bot_speech_state,
+            settings=settings,
+        )
+        logger.info("LLM echo classifier: enabled")
+    else:
+        echo_classifier = None
+        logger.info("LLM echo classifier: disabled")
+
     llm_service = SwitchableLLMService(
         zai_api_key=settings.zai_api_key,
         zai_model=settings.zai_model,
@@ -903,6 +918,7 @@ async def build_pipeline(
         stt=stt,
         stt_error_observer=stt_error_observer,
         transcription_gate=transcription_gate,
+        echo_classifier=echo_classifier,
         voice_state_observer=voice_state_observer,
         agent_state_observer=agent_state_observer,
         system_prompt_injector=system_prompt_injector,
