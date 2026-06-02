@@ -8,7 +8,7 @@ datas = [
     ('skills', 'skills'),
 ]
 binaries = []
-hiddenimports = ['src.main', 'src.api']
+hiddenimports = ['src.main', 'src.api', 'pyloudnorm', 'scipy.signal', 'scipy.signal.firwin']
 tmp_ret = collect_all('pipecat')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('aiohttp')
@@ -32,7 +32,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['pyaudio', 'tkinter', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'matplotlib', 'scipy', 'notebook', 'jupyter', 'torch', 'transformers'],
+    excludes=['tkinter', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'matplotlib', 'notebook', 'jupyter', 'torch'],
     noarchive=False,
     optimize=0,
 )
@@ -48,7 +48,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

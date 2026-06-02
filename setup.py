@@ -15,6 +15,7 @@ OPTIONS = {
         "websockets",
         "httpx",
         "sounddevice",
+        "pyaudio",
         "anthropic",
         "edge_tts",
         "aiosqlite",
