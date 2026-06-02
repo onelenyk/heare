@@ -1,4 +1,5 @@
 """Minimal HTTP API for daemon control — backs the web frontend."""
+import json
 import logging
 import os
 import signal
@@ -6,6 +7,8 @@ import sqlite3
 import time
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _INDEX_HTML: str | None = None
 
@@ -39,6 +42,7 @@ class API:
         self._app.router.add_get("/activity", self._handle_activity)
         self._app.router.add_get("/logs", self._handle_logs)
         self._app.router.add_get("/", self._handle_index)
+        self._app.router.add_post("/", self._handle_index)
         self._app.router.add_get("/display", self._handle_display)
         self._app.router.add_get("/events", self._handle_events)
         self._app.router.add_get("/canvas", self._handle_display)
@@ -46,14 +50,19 @@ class API:
         self._app.router.add_post("/inject", self._handle_inject)
         self._app.router.add_get("/settings/status", self._handle_settings_status)
         self._app.router.add_post("/settings", self._handle_settings)
+        self._app.router.add_post("/setup", self._handle_setup)
+        self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._runner = None
         self._site = None
 
     async def start(self):
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
-        self._site = web.TCPSite(self._runner, "127.0.0.1", 9778)
-        await self._site.start()
+        self._site = web.TCPSite(self._runner, "127.0.0.1", 9778, reuse_address=True)
+        try:
+            await self._site.start()
+        except OSError:
+            logger.exception("non-fatal socket error during server start")
 
     async def stop(self):
         if self._site:
@@ -64,6 +73,10 @@ class API:
     # ── Handlers ───────────────────────────────────────────
 
     async def _handle_index(self, request):
+        if request.method == "POST":
+            post = await request.post()
+            await self._save_form_keys(post)
+            raise web.HTTPFound("/")
         global _INDEX_HTML
         if _INDEX_HTML is None:
             for candidate in [
@@ -78,7 +91,17 @@ class API:
                 return web.Response(text="Frontend not found", status=500)
         return web.Response(text=_INDEX_HTML, content_type="text/html")
 
+    async def _save_form_keys(self, post):
+        if self.state is None:
+            return
+        for attr in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+            val = post.get(attr, "").strip()
+            if val and len(val) >= 30:
+                await self.state.set(f"key_{attr}", val)
+
     async def _handle_state(self, request):
+        if self.state is None:
+            return web.json_response({"running": False})
         data = self.state.snapshot()
         data["providers"] = self._available_providers()
 
@@ -141,13 +164,38 @@ class API:
             pass
 
         try:
-            vs = read_voice_state(self.config.voice_state_file)
-            data["voice_state"] = {
-                "state": vs.state,
-                "since_ts": vs.since_ts,
-                "last_partial": vs.last_partial,
-                "last_final": vs.last_final,
-            }
+            raw = self.state.get("voice_state", "")
+            if raw:
+                vs = json.loads(raw)
+                data["voice_state"] = {
+                    "state": vs.get("state", "idle"),
+                    "since_ts": vs.get("since_ts", 0.0),
+                    "last_partial": vs.get("last_partial"),
+                    "last_final": vs.get("last_final"),
+                }
+            else:
+                data["voice_state"] = {
+                    "state": "idle",
+                    "since_ts": 0.0,
+                    "last_partial": None,
+                    "last_final": None,
+                }
+        except Exception:
+            pass
+
+        try:
+            raw = self.state.get("agent_state", "")
+            if raw:
+                ag = json.loads(raw)
+                data["agent_state"] = {
+                    "state": ag.get("state", "idle"),
+                    "since_ts": ag.get("since_ts", 0.0),
+                }
+            else:
+                data["agent_state"] = {
+                    "state": "idle",
+                    "since_ts": 0.0,
+                }
         except Exception:
             pass
 
@@ -197,6 +245,8 @@ class API:
             return web.json_response({"lines": []})
 
     async def _handle_mode(self, request):
+        if self.state is None:
+            return web.json_response({"ok": False, "error": "daemon initializing"})
         body = await request.json()
         mode = body.get("mode", "focus")
         if mode not in VALID_MODES:
@@ -205,6 +255,8 @@ class API:
         return web.json_response({"ok": True, "mode": mode})
 
     async def _handle_mute(self, request):
+        if self.state is None:
+            return web.json_response({"ok": False, "error": "daemon initializing"})
         body = await request.json()
         target = body.get("target", "speaker")
         key = "mute_mic" if target == "mic" else "mute_bot"
@@ -213,6 +265,8 @@ class API:
         return web.json_response({"ok": True, "target": target, "muted": not current})
 
     async def _handle_provider(self, request):
+        if self.state is None:
+            return web.json_response({"ok": False, "error": "daemon initializing"})
         body = await request.json()
         provider = body.get("provider", "")
         if provider not in self._available_providers():
@@ -221,6 +275,8 @@ class API:
         return web.json_response({"ok": True, "provider": provider})
 
     async def _handle_model(self, request):
+        if self.state is None:
+            return web.json_response({"ok": False, "error": "daemon initializing"})
         body = await request.json()
         model = body.get("model", "")
         if not model:
@@ -229,11 +285,15 @@ class API:
         return web.json_response({"ok": True, "model": model})
 
     async def _handle_cancel(self, request):
+        if self.state is None:
+            return web.json_response({"ok": False, "error": "daemon initializing"})
         await self.state.set("cancel", "1")
         return web.json_response({"ok": True})
 
     async def _handle_display(self, request):
         """Return latest display of any type (text, html, code, etc.)."""
+        if self.state is None:
+            return web.json_response({"content": None, "format": None, "title": None, "ts": None})
         try:
             row = await self.state.get_latest_canvas()
             if row:
@@ -286,17 +346,29 @@ class API:
         })
 
     async def _handle_settings(self, request):
-        """Save settings to .env and config.toml."""
+        """Save settings to .env, config.toml, and apply keys live."""
         import os
+        from dotenv import load_dotenv
         body = await request.json()
 
-        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+        env_path = str(Path.home() / ".heare" / ".env")
 
         updates = {}
         if body.get("groq_api_key"):
             updates["GROQ_API_KEY"] = body["groq_api_key"]
         if body.get("deepseek_api_key"):
             updates["DEEPSEEK_API_KEY"] = body["deepseek_api_key"]
+
+        errors = []
+        groq_key = body.get("groq_api_key", "").strip()
+        if groq_key and not (groq_key.startswith("gsk_") or groq_key.startswith("sk-")):
+            errors.append("Groq key must start with gsk_ or sk-")
+        for attr in ("deepseek_api_key", "zai_api_key", "opencode_api_key"):
+            val = body.get(attr, "").strip()
+            if val and not val.startswith("sk-"):
+                errors.append(f"{attr.replace('_', ' ').title()} key must start with sk-")
+        if errors:
+            return web.json_response({"ok": False, "errors": errors}, status=400)
 
         if updates:
             existing = {}
@@ -311,30 +383,77 @@ class API:
                 for k, v in existing.items():
                     f.write(f"{k}={v}\n")
             os.environ.update(updates)
+            load_dotenv(env_path, override=True)
 
-        config_path = os.path.expanduser("~/.heare/config.toml")
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
-        config = {}
-        if os.path.exists(config_path):
-            import tomllib
-            with open(config_path, "rb") as f:
-                config = tomllib.load(f)
-        if "groq_language" not in config and body.get("language"):
-            config["groq_language"] = body["language"]
-        if "tts_voice" not in config and body.get("tts_voice"):
-            config["tts_voice"] = body["tts_voice"]
-        if body.get("mode"):
-            config["mode"] = body["mode"]
-        with open(config_path, "w") as f:
-            for section, items in config.items():
-                if isinstance(items, dict):
-                    f.write(f"[{section}]\n")
-                    for k, v in items.items():
-                        f.write(f'{k} = "{v}"\n')
-                else:
-                    f.write(f'{section} = "{items}"\n')
+        for attr in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+            if body.get(attr):
+                setattr(self.config, attr, body[attr])
+                val = body.get(attr, "").strip()
+                if val and len(val) >= 30:
+                    await self.state.set(f"key_{attr}", val)
 
-        return web.json_response({"ok": True, "restart_needed": True})
+        return web.json_response({"ok": True, "applied": True})
+
+    async def _handle_setup(self, request):
+        post = await request.post()
+        updates = {}
+        for key in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+            val = post.get(key, "").strip()
+            if val:
+                updates[key.upper()] = val
+
+        if updates:
+            env_path = str(Path.home() / ".heare" / ".env")
+            existing = {}
+            if os.path.exists(env_path):
+                with open(env_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if "=" in line and not line.startswith("#"):
+                            k, v = line.split("=", 1)
+                            existing[k.strip()] = v.strip()
+            existing.update(updates)
+            with open(env_path, "w") as f:
+                for k, v in existing.items():
+                    f.write(f"{k}={v}\n")
+            os.environ.update(updates)
+            from dotenv import load_dotenv
+            load_dotenv(env_path, override=True)
+
+        for attr in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+            val = post.get(attr, "").strip()
+            if val:
+                setattr(self.config, attr, val)
+
+        return web.Response(
+            text=(
+                '<!DOCTYPE html><html><head><meta charset="utf-8">'
+                '<meta http-equiv="refresh" content="2;url=/">'
+                '<title>Heare — Starting</title>'
+                '<style>body{background:#0d1117;color:#c9d1d9;'
+                'font-family:-apple-system,sans-serif;display:flex;'
+                'align-items:center;justify-content:center;'
+                'min-height:100vh;margin:0;font-size:18px}'
+                '</style></head><body>'
+                'Starting Heare…</body></html>'
+            ),
+            content_type="text/html",
+        )
+
+    async def _handle_mic_status(self, request):
+        try:
+            import sounddevice as sd
+            devices = sd.query_devices()
+            inputs = [d for d in devices if d["max_input_channels"] > 0]
+            if not inputs:
+                return web.json_response({"ok": True, "mic_available": False, "reason": "no_input_device"})
+            try:
+                sd.check_input_settings(device=inputs[0]["name"])
+                return web.json_response({"ok": True, "mic_available": True})
+            except sd.PortAudioError:
+                return web.json_response({"ok": True, "mic_available": False, "reason": "permission_denied"})
+        except Exception:
+            return web.json_response({"ok": True, "mic_available": False, "reason": "unknown"})
 
     def _available_providers(self):
         return get_available(self.config)

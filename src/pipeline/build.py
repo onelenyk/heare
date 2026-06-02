@@ -46,6 +46,7 @@ from src.agent.llm.context_injector import (
 )
 from src.agent.tools.system import build_tools_schema, register_all_tools
 from src.pipeline.stages.transcription_gate import create_transcription_gate
+from src.pipeline.stages.agent_state_observer import create_agent_state_observer
 from src.pipeline.stages.voice_state_observer import create_voice_state_observer
 from src.voice.tts.cache import TTSCache
 from src.voice.tts.edge import create_edge_tts_service
@@ -302,6 +303,7 @@ def _assemble_native_stages(
     stt_error_observer: Any,
     transcription_gate: Any,
     voice_state_observer: Any = None,
+    agent_state_observer: Any = None,
     user_aggregator: Any,
     llm_service: Any,
     tts: Any,
@@ -376,6 +378,8 @@ def _assemble_native_stages(
         stages.append(usage_recorder)
     if tts_fade_observer is not None:
         stages.append(tts_fade_observer)
+    if agent_state_observer is not None:
+        stages.append(agent_state_observer)
     if sound_cue_processor is not None:
         stages.append(sound_cue_processor)
     if mute_gate is not None:
@@ -439,14 +443,13 @@ async def build_pipeline(
     )
 
     if not settings.groq_api_key:
-        raise RuntimeError(
-            "GROQ_API_KEY is not set — copy .env.example to .env and fill it in"
-        )
+        logger.warning("GROQ_API_KEY is not set — STT will be unavailable")
     available = get_available(settings)
     if not available:
-        raise RuntimeError(
-            "No LLM provider configured. Set at least one of: "
-            + ", ".join(cfg.api_key_env for cfg in PROVIDERS.values())
+        logger.warning(
+            "No LLM provider configured — LLM will be unavailable. "
+            "Set at least one of: %s",
+            ", ".join(cfg.api_key_env for cfg in PROVIDERS.values()),
         )
 
     # ------------------------------------------------------------------
@@ -454,7 +457,7 @@ async def build_pipeline(
     # ------------------------------------------------------------------
     vad = SileroVADAnalyzer(
         params=VADParams(
-            stop_secs=0.5, start_secs=0.3, confidence=0.7, min_volume=0.6
+            stop_secs=0.3, start_secs=0.2, confidence=0.5, min_volume=0.2
         )
     )
     smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
@@ -654,6 +657,7 @@ async def build_pipeline(
         bot_speech_state=bot_speech_state,
     )
     voice_state_observer = create_voice_state_observer(state)
+    agent_state_observer = create_agent_state_observer(state)
 
     llm_service = SwitchableLLMService(
         zai_api_key=settings.zai_api_key,
@@ -666,6 +670,7 @@ async def build_pipeline(
         deepseek_base_url=settings.deepseek_base_url,
         deepseek_model=settings.deepseek_model,
         state=state,
+        settings=settings,
     )
     tools_schema = build_tools_schema()
     # Connect stdio MCP servers from workspace/.mcp.json and fold their
@@ -899,6 +904,7 @@ async def build_pipeline(
         stt_error_observer=stt_error_observer,
         transcription_gate=transcription_gate,
         voice_state_observer=voice_state_observer,
+        agent_state_observer=agent_state_observer,
         system_prompt_injector=system_prompt_injector,
         user_aggregator=user_aggregator,
         llm_service=llm_service,
