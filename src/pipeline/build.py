@@ -441,8 +441,10 @@ async def build_pipeline(
     from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
     from src.agent.llm.switchable import SwitchableLLMService
+    from src.pipeline.transport_fix import (
+        FixedLocalAudioTransport,
+    )
     from pipecat.transports.local.audio import (
-        LocalAudioTransport,
         LocalAudioTransportParams,
     )
 
@@ -502,7 +504,7 @@ async def build_pipeline(
         except Exception:
             logger.exception("audio device resolution failed (using defaults)")
 
-    transport = LocalAudioTransport(
+    transport = FixedLocalAudioTransport(
         params=LocalAudioTransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
