@@ -14,3 +14,9 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# Sisyphus planning
+.sisyphus/
+
+# Playwright MCP artifacts
+.playwright-mcp/
