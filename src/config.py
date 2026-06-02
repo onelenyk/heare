@@ -187,6 +187,8 @@ class Settings:
     echo_gate_threshold: float = 0.3
     echo_gate_buffer_seconds: float = 1.0
     echo_gate_cooldown_seconds: float = 0.5
+
+    echo_classifier_enabled: bool = True
     warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")
     session_file: Path = field(default_factory=lambda: HEARE_HOME / "session.json")
