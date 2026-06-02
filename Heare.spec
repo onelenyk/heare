@@ -7,7 +7,9 @@ datas = [
     ('prompts', 'prompts'),
     ('skills', 'skills'),
 ]
-binaries = []
+binaries = [
+    ('/opt/homebrew/opt/libomp/lib/libomp.dylib', '.'),
+]
 hiddenimports = ['src.main', 'src.api', 'pyloudnorm', 'scipy.signal', 'scipy.signal.firwin']
 tmp_ret = collect_all('pipecat')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
