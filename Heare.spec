@@ -32,7 +32,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['pyaudio', 'tkinter', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'matplotlib', 'scipy', 'notebook', 'jupyter', 'torch', 'transformers'],
     noarchive=False,
     optimize=0,
 )
