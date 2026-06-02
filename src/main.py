@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from .config import Mode, load_settings
+from src.config import Mode, load_settings
 
 
 logger = logging.getLogger("heare.main")
@@ -52,6 +52,11 @@ def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
 
 
 async def _cmd_start(args: argparse.Namespace) -> int:
+    if getattr(sys, "frozen", False):
+        os.environ["PATH"] = (
+            "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")
+        )
+
     from dotenv import load_dotenv
 
     from src.store.context import ContextBuilder
@@ -61,7 +66,15 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     from src.pipeline.build import build_pipeline
     from src.store.storage import TranscriptStore
 
-    load_dotenv(Path(__file__).parent.parent / ".env")
+    for env_path in (
+        Path.home() / ".heare" / ".env",
+        Path(__file__).parent.parent / ".env",
+    ):
+        if env_path.exists():
+            load_dotenv(env_path)
+            break
+    else:
+        load_dotenv(Path(__file__).parent.parent / ".env")
     settings = load_settings()
     settings.ensure_dirs()
     _setup_logging(settings.log_dir)
@@ -70,7 +83,10 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     from src.daemon.workspace import ensure_workspace_mcp
     ensure_workspace_mcp(settings.workspace_dir)
 
-    project_dir = str(Path(__file__).parent.parent.resolve())
+    project_dir = (
+        sys._MEIPASS if getattr(sys, "frozen", False)
+        else str(Path(__file__).parent.parent.resolve())
+    )
 
     # Onboarding gate — must run AFTER ensure_workspace_mcp so upgrading
     # users whose ~/.claude.json has MCPs but who haven't run heare since
@@ -86,36 +102,55 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         print("\nRun `heare setup` to continue.")
         return 1
 
-    if settings.pid_file.exists():
-        try:
-            existing_pid = int(settings.pid_file.read_text().strip())
-            try:
-                os.kill(existing_pid, 0)
-                logger.error(
-                    "Daemon already running (PID %s). Stop it first with: heare stop",
-                    existing_pid,
-                )
-                print(f"❌ Error: Daemon already running (PID {existing_pid})")
-                print("   Stop it first: heare stop")
-                return 1
-            except OSError:
-                logger.info("Removing stale PID file %s", settings.pid_file)
-                settings.pid_file.unlink()
-        except (ValueError, OSError) as e:
-            logger.warning("Invalid PID file %s: %s. Removing.", settings.pid_file, e)
-            try:
-                settings.pid_file.unlink()
-            except OSError:
-                pass
+    # File lock on PID file — OS-level guard against multiple instances.
+    # Auto-releases on process death (crash, SIGKILL, etc.). Race-free.
+    import fcntl
+    try:
+        lock_fd = os.open(settings.pid_file, os.O_RDWR | os.O_CREAT, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        if getattr(sys, "frozen", False):
+            logger.info("Daemon already running (lock held) — opening dashboard")
+            import webbrowser
+            webbrowser.open("http://127.0.0.1:9778/")
+            return 0
+        print("❌ Error: Daemon already running. Stop it first: heare stop")
+        return 1
+    os.write(lock_fd, str(os.getpid()).encode())
+    os.fsync(lock_fd)
 
-    settings.pid_file.write_text(str(os.getpid()))
+    # Start API server early (no state yet — avoids SQLite lock contention
+    # with onboarding polling). State is init'd after pipeline build below.
+    from src.api import API
+    api = API(None, settings)
+    await api.start()
+    logger.info("HTTP API server on 127.0.0.1:9778")
+
+    import webbrowser
+    asyncio.get_running_loop().run_in_executor(
+        None, lambda: webbrowser.open("http://127.0.0.1:9778/")
+    )
 
     available = get_available(settings)
     if not available:
-        raise RuntimeError(
-            "No LLM provider configured — set at least one API key in .env "
-            "(e.g. DEEPSEEK_API_KEY, ZAI_API_KEY, or OPENCODE_API_KEY)"
-        )
+        logger.warning("No API keys configured — serving onboarding")
+        print("\n  ⚙  No API keys found. Setup page opened in your browser.\n")
+        print("  Enter your API keys in the browser to continue.\n")
+
+        while not get_available(settings):
+            await asyncio.sleep(1)
+            load_dotenv(Path.home() / ".heare" / ".env", override=True)
+            settings = load_settings()
+            settings.ensure_dirs()
+
+        print("✅ API keys configured — starting daemon...\n")
+
+    settings.pid_file.write_text(str(os.getpid()))
+
+    # Create state object (no .init() — avoids SQLite lock contention with
+    # API onboarding polls. Init'd after pipeline build below.)
+    from src.state import State
+    state = State(settings.db_path)
 
     store: TranscriptStore | None = None
     try:
@@ -130,7 +165,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         )
         identity = await ensure_identity(identity_factory, settings)
         persona_template = (
-            Path(__file__).parent.parent / "prompts" / "persona.txt"
+            Path(project_dir) / "prompts" / "persona.txt"
         ).read_text()
         persona = render_persona(persona_template, identity)
         logger.info("I am %s %s", identity["name"], identity["emoji"])
@@ -154,74 +189,104 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             project_dir=project_dir,
         )
 
-        from src.state import State
-
-        state = State(settings.db_path)
-        await state.init()
-
-        (
-            pipeline,
-            transcription_gate,
-            tts_cache,
-            indication,
-            llm_service,
-            language_state,
-            mcp_bridge,
-        ) = await build_pipeline(
-            settings,
-            store,
-            context_builder,
-            persona=persona,
-            state=state,
-            conversation_manager=conversation_manager,
-            project_dir=project_dir,
-        )
-
-        from src.api import API
-
-        api = API(state, settings)
-        await api.start()
-        logger.info("HTTP API server on 127.0.0.1:9778")
-
-        from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
-
-        from src.voice.tts.edge import synthesize_to_pcm
-        from src.voice.tts.phrases import FIXED_PHRASES
-
-        # Fire-and-forget: cache populates in background while the pipeline
-        # comes up. First greeting may hit edge-tts live (~1-3s) before the
-        # cache is ready; all subsequent identical phrases hit the cache.
-        tts_cache_warmup_task = asyncio.create_task(
-            tts_cache.warmup(
-                FIXED_PHRASES,
-                lambda text: synthesize_to_pcm(
-                    text, settings.tts_voice, settings.tts_sample_rate
-                ),
+        try:
+            (
+                pipeline,
+                transcription_gate,
+                tts_cache,
+                indication,
+                llm_service,
+                language_state,
+                mcp_bridge,
+            ) = await build_pipeline(
+                settings,
+                store,
+                context_builder,
+                persona=persona,
+                state=state,
+                conversation_manager=conversation_manager,
+                project_dir=project_dir,
             )
-        )
+        except Exception:
+            logger.exception("Pipeline build failed — running in dashboard-only mode")
+            pipeline = None
+            transcription_gate = None
+            tts_cache = None
+            indication = None
+            llm_service = None
+            language_state = None
+            mcp_bridge = None
 
-        async def _push_greeting() -> None:
-            await asyncio.sleep(1.0)
-            from src.voice.indication.core import IndicationKind, get_indication
+        # Init state now that pipeline is built — avoids SQLite lock contention
+        # during onboarding polling (API was started with state=None).
+        await state.init()
+        api.state = state
 
-            _ind = get_indication()
-            if _ind is not None:
-                _ind.notify(
-                    IndicationKind.DAEMON_STARTED,
-                    body=f"{identity.get('name') or settings.wake_word} ready",
+        if pipeline is not None:
+            from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
+
+            from src.voice.tts.edge import synthesize_to_pcm
+            from src.voice.tts.phrases import FIXED_PHRASES
+
+            tts_cache_warmup_task = asyncio.create_task(
+                tts_cache.warmup(
+                    FIXED_PHRASES,
+                    lambda text: synthesize_to_pcm(
+                        text, settings.tts_voice, settings.tts_sample_rate
+                    ),
                 )
-            greeting_name = identity.get("name") or settings.wake_word
-            _greetings = {"en": "online", "uk": "на зв'язку", "ru": "на связи"}
-            _greeting_suffix = _greetings.get(settings.groq_language, "online")
-            greeting = f"{greeting_name} {_greeting_suffix}"
-            try:
-                # Push from llm_service downstream so the frame goes straight
-                # to TTS without traversing the user_aggregator (which can
-                # consume/transform unknown frames).
-                await llm_service.push_frame(TTSSpeakFrame(greeting))
-                logger.info("startup greeting queued: %r", greeting)
-            except Exception:
-                logger.exception("startup greeting push failed (non-fatal)")
+            )
+
+            async def _push_greeting() -> None:
+                await asyncio.sleep(1.0)
+                # Wait for TTS cache to settle before speaking
+                if tts_cache_warmup_task is not None:
+                    try:
+                        await asyncio.wait_for(tts_cache_warmup_task, timeout=5.0)
+                    except (asyncio.TimeoutError, Exception):
+                        pass
+                    from src.voice.indication.core import IndicationKind, get_indication
+
+                    _ind = get_indication()
+                    if _ind is not None:
+                        _ind.notify(
+                            IndicationKind.DAEMON_STARTED,
+                            body=f"{identity.get('name') or settings.wake_word} ready",
+                        )
+                    greeting_name = identity.get("name") or settings.wake_word
+                    _greetings = {"en": "online", "uk": "на зв'язку", "ru": "на связи"}
+                    _greeting_suffix = _greetings.get(settings.groq_language, "online")
+                    greeting = f"{greeting_name} {_greeting_suffix}"
+                    try:
+                        await llm_service.push_frame(TTSSpeakFrame(greeting))
+                        logger.info("startup greeting queued: %r", greeting)
+                    except Exception:
+                        logger.exception("startup greeting push failed (non-fatal)")
+
+            asyncio.create_task(_push_greeting())
+
+            from src.pipeline.stages.text_injector import make_transcription_pusher, run_injector_loop
+
+            inject_pusher = make_transcription_pusher(
+                transcription_gate,
+                user_id="injected",
+                language=settings.groq_language
+                if settings.groq_language not in ("auto", "")
+                else None,
+            )
+            asyncio.create_task(
+                run_injector_loop(settings.inject_dir, inject_pusher)
+            )
+
+            warmup = WarmupTask(
+                voice=settings.tts_voice,
+                interval_seconds=settings.warmup_interval_seconds,
+            )
+        else:
+            tts_cache_warmup_task = None
+            tts_cache = None
+            indication = None
+            warmup = None
 
         bridge = None
         bridge_task = None
@@ -231,59 +296,30 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 bridge = BrowserBridge(settings)
                 set_bridge(bridge)
                 bridge_task = asyncio.create_task(bridge.start(), name="browser-bridge")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("browser_bridge failed to start (continuing without it)")
                 bridge = None
                 bridge_task = None
 
-        asyncio.create_task(_push_greeting())
-
-        # Text-injection poller: a separate process (e.g. the watch
-        # dashboard) drops .txt files into ``settings.inject_dir`` and we
-        # push them as TranscriptionFrame, taking the same path as STT
-        # output through the transcription_gate.
-        from src.pipeline.stages.text_injector import make_transcription_pusher, run_injector_loop
-
-        inject_pusher = make_transcription_pusher(
-            transcription_gate,
-            user_id="injected",
-            language=settings.groq_language
-            if settings.groq_language not in ("auto", "")
-            else None,
-        )
-        asyncio.create_task(
-            run_injector_loop(settings.inject_dir, inject_pusher)
-        )
-
-        warmup = WarmupTask(
-            voice=settings.tts_voice,
-            interval_seconds=settings.warmup_interval_seconds,
-        )
-
-        import webbrowser
-        import asyncio
-
-        async def _open_ui():
-            await asyncio.sleep(3)
-            try:
-                import urllib.request
-                urllib.request.urlopen("http://127.0.0.1:9778/")
-                webbrowser.open("http://127.0.0.1:9778/")
-            except Exception:
-                pass
-
-        asyncio.create_task(_open_ui())
-
-        from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
-
-        runner = PipelineRunner()
-        await run_until_stopped(
-            runner,
-            pipeline,
-            warmup,
-            settings=settings,
-            bridge_task=bridge_task,
-        )
+        if pipeline is not None:
+            from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
+            runner = PipelineRunner()
+            await run_until_stopped(
+                runner,
+                pipeline,
+                warmup,
+                settings=settings,
+                bridge_task=bridge_task,
+            )
+        else:
+            stop_event = asyncio.Event()
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                try:
+                    loop.add_signal_handler(sig, stop_event.set)
+                except NotImplementedError:
+                    pass
+            await stop_event.wait()
     finally:
         bridge = locals().get("bridge")
         if bridge is not None:
@@ -352,7 +388,7 @@ async def run_until_stopped(
 
     def _handle_sighup() -> None:
         logger.info("received SIGHUP — reloading indication settings")
-        from .config import load_settings
+        from src.config import load_settings
         from src.voice.indication.core import get_indication
 
         ind = get_indication()
@@ -382,7 +418,7 @@ async def run_until_stopped(
             while True:
                 try:
                     await asyncio.sleep(3)
-                    from .config import load_settings
+                    from src.config import load_settings
 
                     s = load_settings()
                     # Check output device file
@@ -540,7 +576,7 @@ def _cmd_audio_output(args: argparse.Namespace) -> int:
 
 
 def _cmd_set_wake_word(args: argparse.Namespace) -> int:
-    from .config import HEARE_HOME  # noqa: E402
+    from src.config import HEARE_HOME  # noqa: E402
 
     word = args.word.strip()
     if not word:
@@ -577,7 +613,7 @@ def _cmd_rotate_browser_token(args: argparse.Namespace) -> int:
     convenience file. Daemon must be restarted for the new token to take
     effect."""
     import secrets
-    from .config import HEARE_HOME, write_browser_bridge_token
+    from src.config import HEARE_HOME, write_browser_bridge_token
 
     settings = load_settings()
     token = secrets.token_urlsafe(32)
@@ -629,7 +665,7 @@ def _cmd_reset_identity(args: argparse.Namespace) -> int:
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:
-    from .watch import run_watch
+    from src.watch import run_watch
 
     settings = load_settings()
     return run_watch(settings, interval=args.interval, once=args.once)
@@ -751,7 +787,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="heare",
-        description="Proactive ambient voice AI assistant powered by Claude Code",
+        description="Proactive ambient voice AI assistant",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -805,6 +841,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # When run as a bundled .app (double-click from Finder), default to
+    # `start` so the daemon launches instead of showing argparse errors.
+    if argv is None and len(sys.argv) <= 1 and getattr(sys, "frozen", False):
+        argv = ["start"]
     parser = build_parser()
     args = parser.parse_args(argv)
     cmd = args.cmd

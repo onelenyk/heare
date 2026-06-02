@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import platform
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -235,10 +236,17 @@ def _render_hints_dynamic(capability_hints: list[dict] | None) -> str | None:
     return "\n".join(lines) if len(lines) > 1 else None
 
 
+def _get_project_root() -> Path:
+    """Return project root, handling PyInstaller frozen bundles."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent.parent.parent
+
+
 def _read_template(template_path: str) -> str | None:
     """Read a template file.  Returns ``None`` (with a warning) when the
     file does not exist so the pipeline does not crash."""
-    path = Path(template_path)
+    path = _get_project_root() / template_path
     try:
         return path.read_text()
     except FileNotFoundError:

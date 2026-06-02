@@ -1,7 +1,7 @@
 [project]
 name = "heare"
 version = "0.1.1"
-description = "Proactive ambient voice AI assistant powered by Claude Code"
+description = "Proactive ambient voice AI assistant"
 requires-python = ">=3.11"
 dependencies = [
     "pipecat-ai[groq,silero]>=0.0.50",

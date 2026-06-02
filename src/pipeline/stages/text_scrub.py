@@ -1,7 +1,7 @@
 """TTS text scrubbing — moved from src/generator.py for PH2-06.
 
 Defense-in-depth scrubber that strips tool-name literals, JSON
-fragments, and Claude Code status markers before TTS synthesis. Used
+fragments, and bash status markers before TTS synthesis. Used
 by both the legacy generator path and main.py's action-result speech
 path; once PH2-06 deletes generator.py the scrubber needs a stable
 home so the surviving callers still resolve.
@@ -23,7 +23,7 @@ _TOOL_NAME_ALT = "|".join(re.escape(n) for n in _TOOL_NAMES)
 
 # Phase 2.2 US-P2.2-07 + Phase AH2-02: post-parser TTS scrubber.
 _SCRUB_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    # AH2-02: Claude Code's bash tool emits this literal marker when a
+    # AH2-02: Bash tool emits this literal marker when a
     # command has no stdout. Drop the whole phrase (parens included)
     # so TTS never says any fragment of it. Must run BEFORE the
     # standalone ``bash`` word-boundary rule below or only "Bash"

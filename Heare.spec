@@ -1,7 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('src/frontend/index.html', 'src/frontend')]
+datas = [
+    ('src/frontend/index.html', 'src/frontend'),
+    ('src/frontend/onboarding.html', 'src/frontend'),
+    ('prompts', 'prompts'),
+    ('skills', 'skills'),
+]
 binaries = []
 hiddenimports = ['src.main', 'src.api']
 tmp_ret = collect_all('pipecat')
@@ -64,5 +69,8 @@ app = BUNDLE(
     coll,
     name='Heare.app',
     icon='Heare.icns',
-    bundle_identifier=None,
+    bundle_identifier='com.heare.app',
+    info_plist={
+        'NSMicrophoneUsageDescription': 'Heare needs microphone access to hear your voice.',
+    },
 )

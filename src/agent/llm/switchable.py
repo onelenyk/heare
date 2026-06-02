@@ -88,6 +88,7 @@ class SwitchableLLMService(LLMService):
         deepseek_base_url: str,
         deepseek_model: str,
         state,
+        settings=None,
         **kwargs,
     ):
         """Initialize delegates for every configured provider.
@@ -152,6 +153,14 @@ class SwitchableLLMService(LLMService):
             )
 
         self._state = state
+        self._config_settings = settings  # our Settings, stored separately from self._settings
+        self._key_snapshots: dict[str, str] = {}
+        if self._config_settings is not None:
+            for attr_name in ("deepseek_api_key", "zai_api_key", "opencode_api_key"):
+                key = getattr(self._config_settings, attr_name, None)
+                if key:
+                    provider_key = attr_name.replace("_api_key", "")
+                    self._key_snapshots[provider_key] = key
 
     # -- Backward-compatible property aliases (tests access these) ------------
 
@@ -236,6 +245,24 @@ class SwitchableLLMService(LLMService):
             return self._provider_for_delegate(all_d[0])
         return "deepseek"
 
+    def _rebuild_delegate(self, provider_key: str, api_key: str) -> None:
+        cfg = PROVIDERS.get(provider_key)
+        if not cfg:
+            return
+        svc = (
+            make_anthropic_service(cfg, api_key)
+            if cfg.api_style == "anthropic"
+            else make_openai_service(cfg, api_key, model=cfg.default_model)
+        )
+        self._install_frame_relay(svc)
+        old = self._delegates.get(provider_key)
+        self._delegates[provider_key] = svc
+        if self._active_provider == provider_key:
+            self._active_provider = provider_key
+        if old is not None and provider_key in self._started_delegates:
+            self._started_delegates.add(provider_key)
+        logger.info("switchable_llm: rebuilt %s delegate with new key", provider_key)
+
     def _active_delegate(self) -> LLMService:
         """Return currently active delegate. Does NOT call _sync_provider."""
         d = self._delegate_for(self._active_provider)
@@ -248,8 +275,33 @@ class SwitchableLLMService(LLMService):
         raise RuntimeError("no LLM delegate available")
 
     def _sync_provider(self) -> str:
-        """Read provider from state. Returns provider key."""
+        """Read provider from state and rebuild delegates on key changes."""
         raw = self._state.get("provider").strip().lower()
+
+        for key, attr in [
+            ("key_deepseek_api_key", "deepseek"),
+            ("key_zai_api_key", "zai"),
+            ("key_opencode_api_key", "opencode"),
+        ]:
+            new_key = self._state.get(key)
+            if new_key and len(new_key) >= 30 and new_key != self._key_snapshots.get(attr):
+                self._key_snapshots[attr] = new_key
+                if attr in self._delegates:
+                    self._rebuild_delegate(attr, new_key)
+
+        # Also check Settings config object for live key updates
+        for provider_key, attr_name in [
+            ("deepseek", "deepseek_api_key"),
+            ("zai", "zai_api_key"),
+            ("opencode", "opencode_api_key"),
+        ]:
+            if self._settings is not None:
+                new_key = getattr(self._settings, attr_name, None)
+                if new_key and new_key != self._key_snapshots.get(provider_key):
+                    self._key_snapshots[provider_key] = new_key
+                    if provider_key in self._delegates:
+                        self._rebuild_delegate(provider_key, new_key)
+
         if raw and raw != self._active_provider:
             d = self._delegate_for(raw)
             if d is not None:
