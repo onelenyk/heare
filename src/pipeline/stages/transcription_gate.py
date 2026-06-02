@@ -133,6 +133,105 @@ def _is_echo(transcript: str, bot_text: str, ratio: float) -> bool:
     return (hits_bigram / len(bt_bigrams)) >= ratio
 
 
+# ---- Garbage-transcript filter constants ----
+
+_CYRILLIC_VOWELS: frozenset[str] = frozenset("аеєиіїоууюяыэё")
+_LATIN_VOWELS: frozenset[str] = frozenset("aeiouy")
+
+_SHORT_ALLOW: frozenset[str] = frozenset({
+    # Cyrillic short words (conjunctions / confirmations / particles)
+    "да", "ні", "ни", "ну", "не", "на", "за", "по", "до", "що",
+    "та", "чи", "як", "він", "во", "жє", "от", "же", "би",
+    # Cyrillic interjections (2 chars)
+    "мм", "хм", "хе", "ай", "ой", "ох", "ах", "ех", "их", "ух",
+    "аа", "ее", "оо", "уу", "ии", "єє", "іі", "її", "юю", "яя",
+    # Latin short words
+    "ok", "no", "hi", "go", "oh", "ah", "ha", "um", "uh", "yo", "eh",
+    "if", "or", "in", "on", "at", "by", "to", "as", "so", "we", "he",
+    "it", "is", "am", "be", "do", "up", "my",
+})
+
+
+def is_garbage_transcript(text: str) -> bool:
+    """Return True if the transcript is likely STT garbage (TTS bleed).
+
+    Catches:
+    - Repeated syllables: "сь-сь-сь", "а-а-а", "ммммм"
+    - Word duplication: "приветпривет" (word run together)
+    - Consonant clusters: "чс-чс" (no vowels)
+    - Single-char repeats: "а а а"
+
+    Passes:
+    - Real short words: "стоп", "да", "ні", "ok", "ага", "хм"
+    - Natural multi-word: "да да"
+    - Real word fragments: "сегодняшнее" (echo detector handles these)
+    """
+    if not text or not text.strip():
+        return True
+
+    raw = text.strip()
+
+    # Natural word breaks indicate real speech, not TTS bleed.
+    # Exception: single-char repeats like "а а а" are still garbage.
+    raw_tokens = raw.split()
+    if len(raw_tokens) >= 2:
+        all_single = all(len(tok.strip(" -")) <= 1 for tok in raw_tokens)
+        if not all_single:
+            return False
+
+    # Normalize: lowercase, strip non-alphanumeric, collapse to one token.
+    cleaned = "".join(c for c in raw.lower() if c.isalnum())
+    if not cleaned:
+        return True
+
+    n = len(cleaned)
+
+    # Check 1: Repeated pattern
+    #   N >= 3, any unit              → GARBAGE  ("сьсьсь", "ааа", "ммммм")
+    #   N = 2, unit >= 4 chars        → GARBAGE  ("приветпривет")
+    #   N = 2, unit <= 3 chars        → ALLOW    ("дада" could be "да да")
+    for unit_len in range(1, n // 2 + 1):
+        if n % unit_len != 0:
+            continue
+        unit = cleaned[:unit_len]
+        reps = n // unit_len
+        if cleaned == unit * reps:
+            if reps >= 3:
+                return True
+            if reps == 2 and unit_len >= 4:
+                return True
+
+    # Check 2: Character diversity ratio (< 0.4 → GARBAGE)
+    unique = len(set(cleaned))
+    if unique / n < 0.4:
+        return True
+
+    # Check 3: Single-character dominance (> 60% → GARBAGE)
+    # Only for n >= 4 so short interjections ("ага"=66%) are not penalised.
+    if n >= 4:
+        counts: dict[str, int] = {}
+        for c in cleaned:
+            counts[c] = counts.get(c, 0) + 1
+        most_common = max(counts.values())
+        if most_common / n > 0.6:
+            return True
+
+    # Check 4: Very short non-word (1-2 chars not in allowlist)
+    if n <= 2:
+        if cleaned not in _SHORT_ALLOW:
+            return True
+
+    # Check 5: No vowels, length > 2 → GARBAGE
+    if n > 2:
+        has_vowel = any(
+            c in _CYRILLIC_VOWELS or c in _LATIN_VOWELS for c in cleaned
+        )
+        if not has_vowel:
+            return True
+
+    return False
+
+
 def _load_pipecat_base():
     from pipecat.frames.frames import (
         BotStartedSpeakingFrame,
@@ -416,6 +515,16 @@ def _build_transcription_gate_class():
                         transcript[:60],
                     )
                     emit("gate", "dropped", reason="bot_active_no_bargein", text=transcript[:40], level="debug")
+                    return
+                # Garbage filter — drop obvious STT noise (repeated syllables,
+                # consonant clusters, word duplication) before heavier checks.
+                if is_garbage_transcript(transcript):
+                    logger.debug(
+                        "transcription_gate: dropping transcript "
+                        "(garbage): %r",
+                        transcript[:60],
+                    )
+                    emit("gate", "dropped", reason="garbage", text=transcript[:40], level="debug")
                     return
                 # Too short to be a real interruption — almost always a
                 # noise blip or a one-word echo fragment.
