@@ -1,697 +1,620 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heare</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
   :root {
-    --bg: #0d1117;
-    --card: #161b22;
-    --card-hl: #1c2128;
-    --border: #21262d;
-    --border-hover: #30363d;
-    --text: #c9d1d9;
-    --muted: #8b949e;
-    --accent: #7ee787;
-    --accent-red: #ff7b72;
-    --accent-cyan: #79c0ff;
-    --accent-orange: #ffa657;
-    --accent-orange: #ffa657;
-    --accent-magenta: #d2a8ff;
-    --accent-yellow: #e3b341;
-    --mono: 'SF Mono','Cascadia Code','Fira Code','JetBrains Mono','Menlo','Consolas',monospace;
+    --bg: #0d1117; --card: #161b22; --border: #21262d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #7ee787;
+    --accent-red: #ff7b72; --accent-cyan: #79c0ff;
+    --accent-orange: #ffa657; --accent-yellow: #e3b341;
     --sans: -apple-system,'Segoe UI',system-ui,sans-serif;
+    --mono: 'SF Mono',monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: var(--sans);
-    background: var(--bg);
-    color: var(--text);
-    padding: 8px;
-    font-size: 13px;
-    line-height: 1.5;
-    min-width: 520px;
-    overflow-x: hidden;
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; }
+  input, select, button { font-family: var(--sans); }
+  .btn {
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--card); color: var(--text); cursor: pointer;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
   }
+  .btn:hover { border-color: #30363d; background: #1c2128; }
+  .btn.active { border-color: var(--accent); color: var(--accent); }
+  .btn.danger { border-color: #3a1f1f; }
+  .btn.danger:hover { background: #2a1515; }
+  .btn.primary { background: var(--accent); color: #000; border: none; font-weight: 700; padding: 8px 20px; font-size: 14px; }
 
-  /* ── CARD ── */
+  /* Onboarding */
+  .onboard-wrap {
+    display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;
+  }
+  .onboard-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 32px; max-width: 480px; width: 100%;
+  }
+  .onboard-card h1 { font-size: 48px; font-weight: 800; text-align: center; margin-bottom: 8px; letter-spacing: -1px; }
+  .onboard-card .sub { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  .field input, .field select {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); padding: 10px 12px; font-size: 14px;
+    border-radius: 6px; font-family: var(--mono);
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent-cyan); outline: none; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .hint a { color: var(--accent-cyan); }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .status-msg { text-align: center; margin-top: 12px; font-size: 13px; font-family: var(--mono); min-height: 20px; }
+  .status-msg.ok { color: var(--accent); }
+  .status-msg.err { color: var(--accent-red); }
+  .features { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; }
+  .features div { font-size: 12px; color: var(--muted); padding: 8px; background: var(--bg); border-radius: 6px; text-align: center; }
+  .features strong { color: var(--text); display: block; margin-bottom: 2px; font-size: 13px; }
+
+  /* Dashboard */
+  .dash { padding: 8px; min-width: 520px; }
+  .status-bar {
+    border-bottom: 2px solid var(--border); margin-bottom: 8px;
+    padding: 3px 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .dot.off { background: var(--accent-red); }
+  .identity { font-weight: 700; font-size: 18px; }
+  .meta { color: var(--muted); font-size: 11px; }
   .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin-bottom: 6px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
   }
   .card-header {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--muted);
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted); margin-bottom: 6px;
   }
-  .card-header span.label { flex: 1; }
-  .card-header span.extra { color: var(--muted); font-size: 9px; }
-
-  /* ── STATUS BAR ── */
-  #status-bar {
-    border-bottom: 2px solid var(--border);
-    margin-bottom: 8px;
-    padding: 3px 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  #status-bar .dot {
-    width: 7px; height: 7px; border-radius: 50%; display: inline-block;
-    flex-shrink: 0;
-  }
-  #status-bar .dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
-  #status-bar .dot.off { background: var(--accent-red); box-shadow: 0 0 4px var(--accent-red); }
-  #status-bar .identity { font-weight: 700; font-size: 18px; white-space: nowrap; color: var(--text); }
-  #status-bar .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
-  #status-bar .meta em { font-style: normal; color: var(--accent-cyan); }
-  #status-bar select {
-    background: var(--card); color: var(--text); border: 1px solid var(--border);
-    font-size: 10px; padding: 1px 4px; font-family: var(--mono); border-radius: 3px;
-  }
-  .dot.amber { background: var(--accent-yellow); box-shadow: 0 0 4px var(--accent-yellow); }
-  .dot.silent { background: var(--muted); box-shadow: none; }
-
-  /* ── 3-COLUMN ROW ── */
   .row { display: flex; gap: 6px; }
   .col { flex: 1; min-width: 0; }
-
-  /* ── CONTROLS ── */
-  #controls .btn-row { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
-  #controls button {
-    padding: 4px 10px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--card);
-    color: var(--text);
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
-    font-family: var(--sans);
-    white-space: nowrap;
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
-  }
-  #controls button:hover { border-color: var(--border-hover); background: #1c2128; }
-  #controls button.active { border-color: var(--accent); color: var(--accent); }
-  #controls button.on { border-color: var(--accent); color: var(--accent); background: #0d1f15; }
-  #btn-stop { border-color: #3a1f1f !important; }
-  #btn-stop:hover { background: #2a1515; }
-
-  /* ── RESPONSE PANEL ── */
-  .response-panel { background: var(--card-hl) !important; }
-  .response-panel .text {
-    font-family: var(--sans);
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--accent-orange);
-    max-height: 80px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    line-height: 1.4;
-  }
-  .response-panel .meta { font-size: 9px; color: var(--muted); margin-top: 4px; }
-
-  /* ── STATS PANEL (was AI panel) ── */
-  #ai-panel .info-line {
-    font-family: var(--mono);
-    font-size: 11px;
-    margin-bottom: 2px;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-  #ai-panel .info-line strong { color: var(--accent-cyan); font-weight: 400; }
-  #ai-panel .usage-line {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    margin-top: 5px;
-    line-height: 1.6;
-    word-break: break-word;
-  }
-  #ai-panel .cost { color: var(--accent-yellow); }
-
-  /* ── DISPLAY / CANVAS ── */
-  #canvas {
-    min-height: 120px;
-    max-height: 280px;
-    overflow: auto;
-    padding: 8px;
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--text);
-    font-family: var(--mono);
-    white-space: pre-wrap;
-  }
-  #canvas:empty::after {
-    content: "canvas — LLM output appears here";
-    color: var(--muted);
-    font-style: italic;
-    font-size: 10px;
-  }
-  #canvas img { max-width: 100%; height: auto; }
-  #canvas pre {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 8px;
-    overflow-x: auto;
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text);
-    white-space: pre-wrap;
-    word-break: break-word;
+  .btn-row { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
+  .response { font-size: 16px; font-weight: 600; color: var(--accent-orange); padding: 4px 0; }
+  .info-line { font-family: var(--mono); font-size: 11px; margin-bottom: 2px; color: var(--muted); }
+  .info-line strong { color: var(--accent-cyan); font-weight: 400; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+  th { text-align: left; color: var(--muted); font-weight: 700; padding: 2px 6px; border-bottom: 1px solid var(--border); font-size: 10px; text-transform: uppercase; }
+  td { padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--border); }
+  .scroll { max-height: 240px; overflow-y: auto; }
+  .settings-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+  .settings-panel input, .settings-panel select {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); padding: 4px 8px; font-size: 12px;
+    border-radius: 4px; margin-top: 2px;
   }
 
-  /* ── DATA TABLE ── */
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-family: var(--mono);
-    font-size: 11px;
-    table-layout: auto;
+  /* Voice Activity Bars */
+  .voice-bar, .agent-bar {
+    height: 8px; border-radius: 4px; width: 100%;
+    transition: all 0.3s ease;
   }
-  .data-table th {
-    text-align: left;
-    color: var(--muted);
-    font-weight: 700;
-    padding: 2px 6px;
-    border-bottom: 1px solid var(--border);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .data-table td {
-    padding: 2px 6px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 11px;
-    line-height: 1.5;
-    border-bottom: 1px solid var(--border);
-  }
-  .data-table .ts { width: 56px; color: var(--muted); }
-  .data-table .who { width: 36px; }
-  .data-table .type { width: 42px; }
-  .data-table .content { overflow: hidden; text-overflow: ellipsis; }
-  .data-table .who-bot { color: var(--accent-orange); }
-  .data-table .who-you { color: var(--accent-cyan); }
-  .data-table .log-error { color: var(--accent-red); }
-  .data-table .log-warn { color: var(--accent-yellow); }
+  .bar-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .bar-sub { font-size: 10px; color: var(--muted); margin-top: 2px; opacity: 0.7; }
 
-  /* ── SCROLL PANELS ── */
-  .scroll-panel { max-height: 240px; overflow-y: auto; }
-  .scroll-panel.short { max-height: 150px; }
-
-  /* ── CANVAS HEADER BUTTON ── */
-  .canvas-copy-btn {
-    font-size: 10px;
-    padding: 1px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--card);
-    color: var(--muted);
-    cursor: pointer;
-    font-family: var(--sans);
-    transition: border-color 0.15s, color 0.15s;
+  /* Voice bar states */
+  .voice-idle { background: var(--muted); opacity: 0.3; }
+  .voice-listening { background: #7ee787; animation: pulse 1.2s ease-in-out infinite; }
+  .voice-result { background: #79c0ff; }
+  .voice-stt {
+    background: linear-gradient(90deg, #e3b341 25%, #f0d060 50%, #e3b341 75%);
+    background-size: 200% 100%;
+    animation: wave 1.5s ease-in-out infinite;
   }
-  .canvas-copy-btn:hover { border-color: var(--border-hover); color: var(--text); }
 
-  /* ── VOICE INDICATOR ── */
-  #voice-indicator {
-    display: inline-block;
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 9px;
-    font-family: var(--mono);
-    margin-left: 4px;
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scaleY(1); }
+    50% { opacity: 0.6; transform: scaleY(0.75); }
   }
-  #voice-indicator.listening { background: #0d1f15; color: var(--accent); }
-  #voice-indicator.stt { background: #1f150d; color: var(--accent-yellow); }
-  #voice-indicator.idle { background: var(--bg); color: var(--muted); }
+  @keyframes wave {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
 
-  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
-  #voice-dot {
-    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
-    flex-shrink: 0; background: var(--accent); box-shadow: 0 0 6px var(--accent);
-    opacity: 0; transition: opacity 0.2s;
-  }
-  #voice-dot.speaking { opacity: 1; animation: pulse 0.8s ease-in-out infinite; }
+  /* Agent bar states */
+  .agent-idle { background: var(--muted); opacity: 0.3; }
+  .agent-talking { background: #ffa657; animation: fill 0.5s ease-out forwards; }
+  .agent-interrupted { background: #ff7b72; animation: flash 0.4s ease-in-out 3; }
 
-  /* ── SCROLLBARS ── */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+  @keyframes fill {
+    0% { width: 0%; }
+    100% { width: 100%; }
+  }
+  @keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
 
-  /* ── TEXT INJECTION ── */
-  #inject-row { display: flex; gap: 4px; align-items: center; }
-  #inject-row input {
-    background: var(--card);
-    color: var(--text);
-    border: 1px solid var(--border);
-    font-size: 11px;
-    font-family: var(--mono);
-    padding: 3px 8px;
-    flex: 1;
-    border-radius: 4px;
-    transition: border-color 0.15s;
+  .viz-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .viz-col { flex: 1; min-width: 0; }
+  .bar-section-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted); margin-bottom: 4px;
   }
-  #inject-row input:focus { border-color: var(--border-hover); outline: none; }
-  #inject-row button {
-    padding: 3px 10px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--card);
-    color: var(--text);
-    cursor: pointer;
-    font-size: 11px;
-    font-family: var(--sans);
-    white-space: nowrap;
-    transition: border-color 0.15s, background 0.15s;
-  }
-  #inject-row button:hover { border-color: var(--border-hover); background: var(--card-hl); }
 </style>
 </head>
 <body>
+<div id="root"></div>
 
-<div id="status-bar">
-  <span id="status-dot" class="dot off"></span>
-  <span class="identity"><span id="agent-name">heare</span> <span id="agent-emoji"></span></span>
-  <span class="meta" id="pid-text"></span>
-  <span class="meta" id="uptime-text"></span>
-  <span class="meta" id="status-text">stopped</span>
-  <span class="meta">mode <em id="mode-text">?</em></span>
-  <span class="meta">provider
-    <select id="provider-select" onchange="switchProvider(this.value)"></select>
-  </span>
-  <span class="meta">model
-    <select id="model-select" onchange="switchModel()"></select>
-  </span>
-  <span class="meta" id="counts-text"></span>
-  <span id="chrome-dot" class="dot silent" title="chrome bridge"></span>
-  <span class="meta" id="chrome-label">chrome</span>
-</div>
-
-<div class="row">
-  <!-- Controls column -->
-  <div class="col" id="controls">
-    <div class="card">
-      <div class="card-header"><span class="label">controls</span></div>
-      <div class="btn-row">
-        <button onclick="setMode('silent')" id="btn-silent">silent</button>
-        <button onclick="setMode('focus')" id="btn-focus">focus</button>
-        <button onclick="setMode('ambient')" id="btn-ambient">ambient</button>
-        <button onclick="setMode('assistant')" id="btn-assistant">assistant</button>
-      </div>
-      <div class="btn-row">
-        <button onclick="toggleMute('bot')" id="btn-mute-bot">🔇 bot</button>
-        <button onclick="toggleMute('mic')" id="btn-mute-mic">🔇 mic</button>
-        <button onclick="cancel()" id="btn-cancel">cancel</button>
-        <button onclick="daemonAction('stop')" id="btn-stop">stop</button>
-      </div>
-      <div class="btn-row">
-        <button onclick="toggleSettings()">⚙ settings</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Response column -->
-  <div class="col">
-    <div class="card response-panel" id="response-panel">
-      <div class="card-header">
-        <span class="label">response</span>
-        <span class="extra" id="response-meta"></span>
-      </div>
-      <div class="text" id="latest-content">—</div>
-    </div>
-  </div>
-
-  <!-- Stats column (was AI panel) -->
-  <div class="col" id="ai-panel">
-    <div class="card">
-      <div class="card-header"><span class="label">📊 stats</span></div>
-      <div class="info-line">provider: <strong id="ai-provider">—</strong></div>
-      <div class="info-line">model: <strong id="ai-model">—</strong></div>
-      <div class="usage-line" id="usage-text">usage —</div>
-    </div>
-  </div>
-</div>
-
-<div class="card" id="canvas-panel">
-  <div class="card-header">
-    <span class="label">display</span>
-    <span class="extra" id="canvas-meta"></span>
-    <button onclick="copyCanvas()" class="canvas-copy-btn">copy</button>
-  </div>
-  <div id="canvas"></div>
-</div>
-
-<div class="card">
-  <div class="card-header">
-    <span class="label">activity (recent transcripts)</span>
-    <span class="extra" id="activity-count"></span>
-  </div>
-  <div class="scroll-panel" id="activity-scroll">
-    <table class="data-table">
-      <thead><tr><th class="ts">time</th><th class="who">who</th><th class="type">type</th><th class="content">content</th></tr></thead>
-      <tbody id="activity-body"></tbody>
-    </table>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-header">
-    <span class="label">daemon log</span>
-    <span class="extra" id="log-count"></span>
-  </div>
-  <div class="scroll-panel short" id="log-scroll">
-    <table class="data-table">
-      <tbody id="log-body"></tbody>
-    </table>
-  </div>
-</div>
-
-<div class="card" id="inject-card">
-  <div class="card-header"><span class="label">text injection</span></div>
-  <div id="inject-row">
-    <input id="inject-text" type="text" placeholder="type text to inject...">
-    <button onclick="injectText()">send</button>
-  </div>
-</div>
-
-<div id="settings-panel" class="card" style="display:none">
-  <div class="card-header"><span class="label">⚙ settings</span></div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px">
-    <div>
-      <label style="font-size:11px;color:var(--muted)">Groq API Key (STT)</label>
-      <input id="set-groq" type="password" placeholder="gsk_..." style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
-    </div>
-    <div>
-      <label style="font-size:11px;color:var(--muted)">DeepSeek API Key (LLM)</label>
-      <input id="set-deepseek" type="password" placeholder="sk-..." style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
-    </div>
-    <div>
-      <label style="font-size:11px;color:var(--muted)">Language</label>
-      <select id="set-lang" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
-        <option value="uk">Ukrainian</option>
-        <option value="en">English</option>
-        <option value="ru">Russian</option>
-      </select>
-    </div>
-    <div>
-      <label style="font-size:11px;color:var(--muted)">Voice</label>
-      <select id="set-voice" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;font-size:12px;border-radius:4px;margin-top:2px">
-        <option value="uk-UA-OstapNeural">uk-UA-OstapNeural (male)</option>
-        <option value="uk-UA-PolinaNeural">uk-UA-PolinaNeural (female)</option>
-        <option value="en-US-AriaNeural">en-US-AriaNeural</option>
-        <option value="ru-RU-SvetlanaNeural">ru-RU-SvetlanaNeural</option>
-      </select>
-    </div>
-  </div>
-  <div style="padding:0 8px 8px">
-    <button onclick="saveSettings()" style="background:var(--accent);color:#000;font-weight:700;padding:6px 16px;width:100%">Save &amp; Restart</button>
-  </div>
-</div>
-
-<script>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
 const API = "http://127.0.0.1:9778";
-let lastDisplayTs = 0;
 
-async function pollDisplay() {
-  try {
-    var r = await fetch(API + "/display");
-    var d = await r.json();
-    if (d.content && d.ts !== lastDisplayTs) {
-      lastDisplayTs = d.ts;
-      var el = document.getElementById("canvas");
-      var fmt = d.format || "text";
-      if (fmt === "html") {
-        el.innerHTML = d.content;
-      } else {
-        el.innerHTML = "<pre>" + d.content.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</pre>";
-      }
-      var meta = (d.format || "text") + (d.title ? " · " + d.title : "");
-      document.getElementById("canvas-meta").textContent = meta;
+// ── App ──
+function App() {
+  const [view, setView] = useState("loading");
+
+  useEffect(() => {
+    checkStatus();
+    const t = setInterval(checkStatus, 2000);
+    return () => clearInterval(t);
+  }, []);
+
+  async function checkStatus() {
+    try {
+      const r = await fetch(API + "/settings/status");
+      const s = await r.json();
+      setView(s.configured ? "dashboard" : "onboarding");
+    } catch(e) {
+      setView("loading");
     }
-    if (!d.content) {
-      document.getElementById("canvas").innerHTML =
-        '<div style="color:var(--muted);font-style:italic;font-size:10px">LLM display output renders here</div>';
-    }
-  } catch(e) {}
-}
-
-function fmtTime(ts) {
-  if (!ts) return "";
-  var d = new Date(ts * 1000);
-  return d.toTimeString().slice(0, 8);
-}
-
-function fmtTok(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
-  return String(n);
-}
-
-async function pollState() {
-  try {
-    var r = await fetch(API + "/state");
-    var s = await r.json();
-    var running = s.running === true;
-    var dot = document.getElementById("status-dot");
-    dot.className = "dot " + (running ? "on" : "off");
-    document.getElementById("status-text").textContent = running ? "running" : "stopped";
-    document.getElementById("pid-text").textContent = s.pid ? "pid=" + s.pid : "";
-    document.getElementById("uptime-text").textContent = s.uptime || "";
-    document.getElementById("agent-name").textContent = s.agent || "heare";
-    document.getElementById("agent-emoji").textContent = s.emoji || "";
-    document.getElementById("mode-text").textContent = s.mode || "?";
-    var tc = s.transcripts_count || 0;
-    var ac = s.actions_count || 0;
-    document.getElementById("counts-text").textContent = tc + " msgs | " + ac + " actions";
-
-    document.getElementById("ai-provider").textContent = s.provider || "—";
-    document.getElementById("ai-model").textContent = s.model || "—";
-
-    if (s.usage) {
-      var u = s.usage;
-      document.getElementById("usage-text").innerHTML =
-        "llm: " + u.llm_calls + " calls, " + fmtTok(u.llm_input_tokens || 0) + "/" + fmtTok(u.llm_output_tokens || 0) + " tok, $" + (u.llm_cost_usd || 0).toFixed(4) +
-        " | stt: " + (u.stt_calls || 0) + " calls, " + (u.stt_audio_seconds || 0).toFixed(0) + "s, $" + (u.stt_cost_usd || 0).toFixed(4) +
-        " | tts: " + (u.tts_calls || 0) + " calls, " + fmtTok(u.tts_char_count || 0) + " ch, $" + (u.tts_cost_usd || 0).toFixed(4);
-    }
-
-    var cd = document.getElementById("chrome-dot");
-    cd.className = "dot " + (s.chrome ? "amber" : "silent");
-    cd.title = s.chrome ? "chrome bridge connected" : "chrome bridge offline";
-    var cl = document.getElementById("chrome-label");
-    if (cl) cl.textContent = s.chrome ? "chrome" : "chrome ✗";
-
-    var vi = document.getElementById("voice-indicator");
-    var vd = document.getElementById("voice-dot");
-    if (s.voice_state) {
-      vi.textContent = s.voice_state.state || "idle";
-      vi.className = s.voice_state.state || "idle";
-      if (s.voice_state.last_partial) {
-        vi.textContent += ": " + s.voice_state.last_partial.slice(0, 24);
-      }
-      var vs = s.voice_state || {};
-      var speaking = vs.state === "speaking" || vs.state === "stt" || vs.state === "listening";
-      vd.className = speaking ? "speaking" : "";
-    } else {
-      vi.textContent = "idle";
-      vi.className = "idle";
-      vd.className = "";
-    }
-
-    if (s.last_response) {
-      document.getElementById("latest-content").textContent = s.last_response;
-      document.getElementById("response-meta").textContent = (s.last_response_mode || "") + " · " + (s.last_response ? s.last_response.length + " chars" : "");
-    }
-
-    if (s.providers && s.providers.length) {
-      var sel = document.getElementById("provider-select");
-      var cur = s.provider || "";
-      var opts = "";
-      for (var i = 0; i < s.providers.length; i++) {
-        var p = s.providers[i];
-        opts += '<option value="' + p + '"' + (p === cur ? " selected" : "") + '>' + p + '</option>';
-      }
-      sel.innerHTML = opts;
-    }
-
-    if (s.models && s.models.length) {
-      var msel = document.getElementById("model-select");
-      var mcur = s.model || "";
-      var mopts = "";
-      for (var j = 0; j < s.models.length; j++) {
-        var m = s.models[j];
-        mopts += '<option value="' + m + '"' + (m === mcur ? " selected" : "") + '>' + m + '</option>';
-      }
-      msel.innerHTML = mopts;
-    }
-
-    var micOn = s.mute_mic === "1" || s.mute_mic === true;
-    var botOn = s.mute_bot === "1" || s.mute_bot === true;
-    document.getElementById("btn-mute-mic").textContent = micOn ? "🔊 mic" : "🔇 mic";
-    document.getElementById("btn-mute-mic").className = micOn ? "on" : "";
-    document.getElementById("btn-mute-bot").textContent = botOn ? "🔊 bot" : "🔇 bot";
-    document.getElementById("btn-mute-bot").className = botOn ? "on" : "";
-
-    var mode = s.mode || "";
-    ["silent", "focus", "ambient", "assistant"].forEach(function(m) {
-      var btn = document.getElementById("btn-" + m);
-      if (btn) btn.className = (mode === m) ? "active" : "";
-    });
-  } catch(e) {}
-}
-
-async function pollActivity() {
-  try {
-    var r = await fetch(API + "/activity");
-    var rows = await r.json();
-    if (!rows || !rows.length) {
-      document.getElementById("activity-body").innerHTML = '<tr><td colspan="4" style="color:var(--muted)">(no activity)</td></tr>';
-      document.getElementById("activity-count").textContent = "";
-      return;
-    }
-    document.getElementById("activity-count").textContent = rows.length + " rows";
-    var html = "";
-    for (var i = 0; i < rows.length; i++) {
-      var row = rows[i];
-      var wc = row.who === "bot" ? "who-bot" : "who-you";
-      var content = (row.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      html += "<tr>" +
-        "<td class='ts'>" + fmtTime(row.ts) + "</td>" +
-        "<td class='who " + wc + "'>" + row.who + "</td>" +
-        "<td class='type'>" + row.type + "</td>" +
-        "<td class='content'>" + content + "</td></tr>";
-    }
-    document.getElementById("activity-body").innerHTML = html;
-  } catch(e) {}
-}
-
-async function pollLogs() {
-  try {
-    var r = await fetch(API + "/logs");
-    var data = await r.json();
-    var lines = data.lines || [];
-    document.getElementById("log-count").textContent = lines.length + " lines";
-    if (!lines.length) {
-      document.getElementById("log-body").innerHTML = '<tr><td style="color:var(--muted)">(no log lines)</td></tr>';
-      return;
-    }
-    var html = "";
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      var cls = "";
-      var u = line.toUpperCase();
-      if (u.indexOf("ERROR") !== -1 || u.indexOf("CRITICAL") !== -1 || u.indexOf("ERR ") !== -1) cls = "log-error";
-      else if (u.indexOf("WARN") !== -1) cls = "log-warn";
-      html += "<tr><td class='" + cls + "' style='white-space:pre-wrap;word-break:break-all'>" +
-        line.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</td></tr>";
-    }
-    document.getElementById("log-body").innerHTML = html;
-  } catch(e) {}
-}
-
-function pollAll() {
-  pollState();
-  pollDisplay();
-  pollActivity();
-  pollLogs();
-}
-setInterval(pollAll, 800);
-pollAll();
-checkSetup();
-
-async function copyCanvas() {
-  var el = document.getElementById("canvas");
-  try {
-    await navigator.clipboard.writeText(el.innerText || el.innerHTML);
-  } catch(e) {
-    var ta = document.createElement("textarea");
-    ta.value = el.innerText || el.innerHTML;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
   }
-}
 
-async function toggleMute(target) {
-  await fetch(API + "/mute", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({target:target})});
-  pollState();
-}
-async function setMode(m) {
-  await fetch(API + "/mode", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({mode:m})});
-  pollState();
-}
-async function cancel() {
-  await fetch(API + "/cancel", {method:"POST"});
-}
-async function switchProvider(p) {
-  await fetch(API + "/provider", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({provider:p})});
-  pollState();
-}
-async function switchModel() {
-  var m = document.getElementById("model-select").value;
-  await fetch(API + "/model", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({model:m})});
-  pollState();
-}
-async function daemonAction(action) {
-  var r = await fetch(API + "/daemon", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:action})});
-  var d = await r.json();
-  if (d.ok) document.getElementById("status-text").textContent = d.action;
-}
-async function injectText() {
-  var el = document.getElementById("inject-text");
-  var text = el.value.trim();
-  if (!text) return;
-  await fetch(API + "/inject", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text:text})});
-  el.value = "";
-}
-
-async function checkSetup() {
-  try {
-    var r = await fetch(API + "/settings/status");
-    var s = await r.json();
-    if (!s.configured) {
-      document.getElementById("settings-panel").style.display = "block";
+  async function onKeysSaved() {
+    // Poll until daemon detects keys and serves dashboard
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const r = await fetch(API + "/settings/status");
+        const s = await r.json();
+        if (s.configured) { setView("dashboard"); return; }
+      } catch(e) {}
     }
-    if (s.language) document.getElementById("set-lang").value = s.language;
-    if (s.tts_voice) document.getElementById("set-voice").value = s.tts_voice;
-  } catch(e) {}
+    setView("dashboard"); // fallback
+  }
+
+  if (view === "loading") {
+    return <PermissionsGate onReady={() => setView("dashboard")} />;
+  }
+  if (view === "onboarding") {
+    return <Onboarding onSaved={onKeysSaved} />;
+  }
+  return <Dashboard />;
 }
 
-function toggleSettings() {
-  var p = document.getElementById("settings-panel");
-  p.style.display = p.style.display === "none" ? "block" : "none";
+// ── Permissions Gate ──
+function PermissionsGate({ onReady }) {
+  const [micOk, setMicOk] = useState(null);
+
+  useEffect(() => {
+    checkMic();
+    const t = setInterval(checkMic, 2000);
+    return () => clearInterval(t);
+  }, []);
+
+  async function checkMic() {
+    try {
+      const r = await fetch(API + "/mic/status");
+      const d = await r.json();
+      setMicOk(d.mic_available);
+      if (d.mic_available) onReady();
+    } catch(e) {
+      setMicOk(null);
+    }
+  }
+
+  if (micOk === null) {
+    return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",color:"var(--muted)",fontSize:18}}>Connecting to Heare…</div>;
+  }
+
+  if (!micOk) {
+    return (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:20}}>
+        <div style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:12,padding:32,maxWidth:480,width:"100%",textAlign:"center"}}>
+          <div style={{fontSize:48,marginBottom:16}}>🎤</div>
+          <h2 style={{marginBottom:8}}>Microphone Access Required</h2>
+          <p style={{color:"var(--muted)",marginBottom:20,lineHeight:1.6}}>
+            Heare needs microphone access to hear you.<br/>
+            Open <strong>System Settings → Privacy & Security → Microphone</strong><br/>
+            and enable Heare.
+          </p>
+          <p style={{color:"var(--accent)",fontSize:14}}>Waiting for permission…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",color:"var(--muted)",fontSize:18}}>Loading…</div>;
 }
 
-async function saveSettings() {
-  var body = {
-    groq_api_key: document.getElementById("set-groq").value,
-    deepseek_api_key: document.getElementById("set-deepseek").value,
-    language: document.getElementById("set-lang").value,
-    tts_voice: document.getElementById("set-voice").value,
+// ── Onboarding ──
+function Onboarding({ onSaved }) {
+  const [groq, setGroq] = useState("");
+  const [llm, setLlm] = useState("");
+  const [provider, setProvider] = useState("deepseek_api_key");
+  const [lang, setLang] = useState("en");
+  const [voice, setVoice] = useState("en-US-AriaNeural");
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const PROVIDER_NAMES = {
+    deepseek_api_key: "DEEPSEEK_API_KEY",
+    openrouter: "OPENROUTER_API_KEY",
+    zai: "ZAI_API_KEY",
+    opencode: "OPENCODE_API_KEY"
   };
-  await fetch(API + "/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
-  document.getElementById("settings-panel").style.display = "none";
-  await fetch(API + "/daemon", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"stop"})});
-  document.getElementById("status-text").textContent = "restarting...";
-  setTimeout(function() { location.reload(); }, 3000);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!groq.trim() && !llm.trim()) {
+      setStatus("At least one API key is required");
+      return;
+    }
+    setSaving(true);
+    setStatus("Saving…");
+    try {
+      const body = {
+        groq_api_key: groq.trim(),
+        language: lang,
+        tts_voice: voice,
+      };
+      body[provider] = llm.trim();
+      const r = await fetch(API + "/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        setStatus(d.errors ? d.errors.join(". ") : "Failed to save settings");
+        setSaving(false);
+        return;
+      }
+      setStatus("Keys saved! Starting daemon…");
+      setTimeout(() => onSaved(), 1000);
+    } catch(e) {
+      setStatus("Failed to save — is the daemon running?");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div class="onboard-wrap">
+      <form class="onboard-card" onSubmit={handleSubmit}>
+        <h1>heare</h1>
+        <div class="sub">Proactive ambient voice AI assistant</div>
+
+        <div class="field">
+          <label>Groq API Key (Speech-to-Text)</label>
+          <input type="password" value={groq} onInput={e => setGroq(e.target.value)} placeholder="gsk_..." autoFocus />
+          <div class="hint"><a href="https://console.groq.com/keys" target="_blank">Get a free key →</a></div>
+        </div>
+
+        <div class="field">
+          <label>LLM API Key</label>
+          <input type="password" value={llm} onInput={e => setLlm(e.target.value)} placeholder="sk-..." />
+          <div class="hint">
+            <select value={provider} onChange={e => setProvider(e.target.value)} style={{width:"auto",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"2px 6px",fontSize:11,borderRadius:3}}>
+              <option value="deepseek_api_key">DeepSeek</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="zai">z.ai</option>
+              <option value="opencode">OpenCode</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <div class="field">
+          <label>Language</label>
+          <select value={lang} onChange={e => setLang(e.target.value)}>
+            <option value="uk">Ukrainian</option>
+            <option value="en">English</option>
+            <option value="ru">Russian</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Voice</label>
+          <select value={voice} onChange={e => setVoice(e.target.value)}>
+            <option value="en-US-AriaNeural">en-US-AriaNeural</option>
+            <option value="uk-UA-OstapNeural">uk-UA-OstapNeural (male)</option>
+            <option value="uk-UA-PolinaNeural">uk-UA-PolinaNeural (female)</option>
+            <option value="ru-RU-SvetlanaNeural">ru-RU-SvetlanaNeural</option>
+          </select>
+        </div>
+
+        <button type="submit" class="btn primary" disabled={saving} style={{width:"100%"}}>
+          {saving ? "Saving…" : "Save & Start Heare"}
+        </button>
+        <div class={"status-msg " + (status.includes("Failed") ? "err" : "ok")}>{status}</div>
+
+        <div class="features">
+          <div><strong>🎤 Always listening</strong>VAD-gated</div>
+          <div><strong>🧠 Claude-powered</strong>Autonomous</div>
+          <div><strong>🌐 Browser control</strong>Chrome bridge</div>
+          <div><strong>🔧 Dev tools</strong>Bash, files, web</div>
+        </div>
+      </form>
+    </div>
+  );
 }
+
+// ── UserVoiceBar ──
+function UserVoiceBar({ voiceState }) {
+  const [effectiveState, setEffectiveState] = useState("idle");
+  const sinceRef = useRef(0);
+
+  useEffect(() => {
+    if (!voiceState) return;
+    sinceRef.current = voiceState.since_ts || 0;
+    setEffectiveState(voiceState.state || "idle");
+  }, [voiceState]);
+
+  // Auto-decay "result" to idle after 4s
+  useEffect(() => {
+    if (effectiveState !== "result") return;
+    const elapsed = (Date.now() / 1000) - sinceRef.current;
+    const remaining = Math.max(0, 4000 - elapsed * 1000);
+    if (remaining <= 0) { setEffectiveState("idle"); return; }
+    const t = setTimeout(() => setEffectiveState("idle"), remaining);
+    return () => clearTimeout(t);
+  }, [effectiveState]);
+
+  const labels = {
+    idle: "\u25cb idle",
+    listening: "\u25cf listening",
+    stt: "\u25d0 transcribing",
+    result: "\u2713 result"
+  };
+  const subs = {
+    idle: "(no audio)",
+    listening: "(speak now)",
+    stt: voiceState?.last_partial ? voiceState.last_partial.substring(0, 40) : "(processing...)",
+    result: voiceState?.last_final ? voiceState.last_final.substring(0, 40) : ""
+  };
+
+  return (
+    <div>
+      <div class="bar-label">{labels[effectiveState] || "\u25cb idle"}</div>
+      <div class={"voice-bar voice-" + effectiveState}></div>
+      <div class="bar-sub">{subs[effectiveState] || ""}</div>
+    </div>
+  );
+}
+
+// ── AgentStatusBar ──
+function AgentStatusBar({ agentState }) {
+  const [effectiveState, setEffectiveState] = useState("idle");
+  const sinceRef = useRef(0);
+
+  useEffect(() => {
+    if (!agentState) return;
+    sinceRef.current = agentState.since_ts || 0;
+    setEffectiveState(agentState.state || "idle");
+  }, [agentState]);
+
+  // Auto-decay "interrupted" to idle after 4s
+  useEffect(() => {
+    if (effectiveState !== "interrupted") return;
+    const elapsed = (Date.now() / 1000) - sinceRef.current;
+    const remaining = Math.max(0, 4000 - elapsed * 1000);
+    if (remaining <= 0) { setEffectiveState("idle"); return; }
+    const t = setTimeout(() => setEffectiveState("idle"), remaining);
+    return () => clearTimeout(t);
+  }, [effectiveState]);
+
+  const labels = {
+    idle: "\u25cb idle",
+    talking: "\u25cf talking",
+    interrupted: "\u26a1 interrupted"
+  };
+  const subs = {
+    idle: "(waiting...)",
+    talking: "(speaking)",
+    interrupted: "(interrupted)"
+  };
+
+  return (
+    <div>
+      <div class="bar-label">{labels[effectiveState] || "\u25cb idle"}</div>
+      <div class={"agent-bar agent-" + effectiveState}></div>
+      <div class="bar-sub">{subs[effectiveState] || ""}</div>
+    </div>
+  );
+}
+
+// ── Dashboard ──
+function Dashboard() {
+  const [state, setState] = useState({});
+  const [activity, setActivity] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const logRef = React.useRef(null);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  useEffect(() => {
+    poll();
+    const t = setInterval(poll, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  async function poll() {
+    try {
+      const [sr, ar, lr] = await Promise.all([
+        fetch(API + "/state"),
+        fetch(API + "/activity"),
+        fetch(API + "/logs"),
+      ]);
+      setState(await sr.json());
+      setActivity(await ar.json());
+      setLogs((await lr.json()).lines || []);
+    } catch(e) {}
+  }
+
+  async function post(url, body) {
+    await fetch(API + url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    poll();
+  }
+
+  async function saveSettings() {
+    const g = document.getElementById("set-groq").value;
+    const d = document.getElementById("set-deepseek").value;
+    if (g || d) {
+      await fetch(API + "/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groq_api_key: g, deepseek_api_key: d }),
+      });
+    }
+    setShowSettings(false);
+  }
+
+  const running = state.running === true;
+
+  return (
+    <div class="dash">
+      {/* Status Bar */}
+      <div class="status-bar">
+        <span class={"dot " + (running ? "on" : "off")}></span>
+        <span class="identity">{state.agent || "heare"} {state.emoji || ""}</span>
+        <span class="meta">{running ? "running" : "stopped — reopen Heare.app"}</span>
+        <span class="meta">mode <strong>{state.mode || "?"}</strong></span>
+        <span class="meta">
+          provider{" "}
+          <select value={state.provider || ""} onChange={e => { post("/provider", {provider: e.target.value}); }} style={{background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"1px 4px",fontSize:10,borderRadius:3}}>
+            {(state.providers || []).map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </span>
+        <span class="meta">
+          model{" "}
+          <select value={state.model || ""} onChange={e => { post("/model", {model: e.target.value}); }} style={{background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"1px 4px",fontSize:10,borderRadius:3}}>
+            {(state.models || []).map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </span>
+        <span class="meta">{state.transcripts_count || 0} msgs</span>
+      </div>
+
+      {/* Voice & Agent status bars */}
+      <div class="viz-row">
+        <div class="viz-col">
+          <div class="bar-section-label">🎤 you</div>
+          <UserVoiceBar voiceState={state.voice_state || {}} />
+        </div>
+        <div class="viz-col">
+          <div class="bar-section-label">🤖 agent</div>
+          <AgentStatusBar agentState={state.agent_state || {}} />
+        </div>
+      </div>
+
+      <div class="row">
+        {/* Controls */}
+        <div class="col">
+          <div class="card">
+            <div class="card-header">controls</div>
+            <div class="btn-row">
+              {["silent","focus","ambient","assistant"].map(m =>
+                <button key={m} class={"btn" + (state.mode === m ? " active" : "")} onClick={() => post("/mode", {mode: m})}>{m}</button>
+              )}
+            </div>
+            <div class="btn-row">
+            <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 bot" : "🔊 bot"}</button>
+            <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mic" : "🔊 mic"}</button>
+              <button class="btn" onClick={() => post("/cancel", {})}>cancel</button>
+              <button class="btn danger" onClick={() => post("/daemon", {action: "stop"})}>stop daemon</button>
+            </div>
+            <div class="btn-row">
+              <button class="btn" onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Response */}
+        <div class="col">
+          <div class="card">
+            <div class="card-header">response</div>
+            <div class="response">{state.last_response || "—"}</div>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div class="col">
+          <div class="card">
+            <div class="card-header">stats</div>
+            <div class="info-line">provider: <strong>{state.provider || "—"}</strong></div>
+            <div class="info-line">model: <strong>{state.model || "—"}</strong></div>
+            {state.usage && <div class="info-line">llm: {state.usage.llm_calls} calls, ${(state.usage.llm_cost_usd || 0).toFixed(4)}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div class="card">
+          <div class="card-header">⚙ settings</div>
+          <div class="settings-panel">
+            <div><label style={{fontSize:11,color:"var(--muted)"}}>Groq API Key</label><input id="set-groq" type="password" placeholder="gsk_..." /></div>
+            <div><label style={{fontSize:11,color:"var(--muted)"}}>DeepSeek API Key</label><input id="set-deepseek" type="password" placeholder="sk-..." /></div>
+          </div>
+          <div style={{padding:"0 8px 8px"}}>
+            <button class="btn primary" onClick={saveSettings} style={{width:"100%",fontSize:12}}>Save & Apply</button>
+          </div>
+        </div>
+      )}
+
+      {/* Activity */}
+      <div class="card">
+        <div class="card-header">activity ({activity.length})</div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>time</th><th>who</th><th>content</th></tr></thead>
+            <tbody>
+              {activity.map((row, i) => (
+                <tr key={i}>
+                  <td style={{color:"var(--muted)",width:56}}>{new Date(row.ts * 1000).toTimeString().slice(0,8)}</td>
+                  <td style={{color: row.who === "bot" ? "var(--accent-orange)" : "var(--accent-cyan)",width:36}}>{row.who}</td>
+                  <td style={{overflow:"hidden",textOverflow:"ellipsis"}}>{(row.content || "").substring(0, 80)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Logs */}
+      <div class="card">
+        <div class="card-header">daemon log ({logs.length})</div>
+        <div class="scroll" style={{maxHeight:150}} ref={logRef}>
+          <table>
+            <tbody>
+              {logs.map((line, i) => (
+                <tr key={i}><td style={{whiteSpace:"pre-wrap",wordBreak:"break-all",fontSize:11,color: line.toUpperCase().includes("ERROR") ? "var(--accent-red)" : line.toUpperCase().includes("WARN") ? "var(--accent-yellow)" : "var(--muted)"}}>{line}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
