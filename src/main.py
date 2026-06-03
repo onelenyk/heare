@@ -669,7 +669,16 @@ def _cmd_watch(args: argparse.Namespace) -> int:
 
     settings = load_settings()
     return run_watch(settings, interval=args.interval, once=args.once)
-    
+
+
+def _cmd_portal(args: argparse.Namespace) -> int:
+    from src.portal import main as portal_main
+
+    argv = ["--port", str(args.port)]
+    if args.stop:
+        argv.append("--stop")
+    return portal_main(argv)
+
 
 def _cmd_logs(args: argparse.Namespace) -> int:
     settings = load_settings()
@@ -823,6 +832,10 @@ def build_parser() -> argparse.ArgumentParser:
     watch_p.add_argument("--interval", type=float, default=0.5, help="Refresh seconds")
     watch_p.add_argument("--once", action="store_true", help="Print once and exit")
 
+    portal_p = sub.add_parser("portal", help="Run watchdog web UI portal")
+    portal_p.add_argument("--port", type=int, default=9780)
+    portal_p.add_argument("--stop", action="store_true")
+
     setup_p = sub.add_parser("setup", help="Run or inspect heare onboarding")
     setup_p.add_argument("--status", action="store_true",
                          help="Show step status without prompting")
@@ -874,6 +887,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_setup(args)
     if cmd == "watch":
         return _cmd_watch(args)
+    if cmd == "portal":
+        return _cmd_portal(args)
     if cmd == "logs":
         return _cmd_logs(args)
     parser.print_help()
