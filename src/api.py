@@ -3,8 +3,11 @@ import asyncio
 import json
 import logging
 import os
+import re
+import secrets
 import signal
 import sqlite3
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -17,7 +20,7 @@ from aiohttp import web
 from src.agent.identity import load_identity
 from src.agent.llm.providers import PROVIDERS, get_available, get_config
 from src.agent.modes import VALID_MODES
-from src.config import HEARE_HOME
+from src.config import HEARE_HOME, write_browser_bridge_token
 from src.dashboard_data import (
     counts,
     daemon_status,
@@ -59,6 +62,10 @@ class API:
         self._app.router.add_get("/api/tools", self._handle_tools)
         self._app.router.add_get("/api/chrome/profiles", self._handle_chrome_profiles)
         self._app.router.add_post("/api/audio-devices/select", self._handle_audio_device_select)
+        self._app.router.add_get("/api/bridge/status", self._handle_bridge_status)
+        self._app.router.add_get("/api/bridge/token", self._handle_bridge_token)
+        self._app.router.add_post("/api/bridge/rotate-token", self._handle_bridge_rotate_token)
+        self._app.router.add_post("/api/bridge/toggle", self._handle_bridge_toggle)
         self._runner = None
         self._site = None
 
@@ -693,6 +700,156 @@ class API:
                 "device": device_name,
             })
         except Exception as e:
+            return web.json_response(
+                {"ok": False, "error": str(e)}, status=500
+            )
+
+    async def _handle_bridge_status(self, request):
+        """Return full bridge state: enabled, connected, pair code, token, ws url, port."""
+        try:
+            status_path = HEARE_HOME / "browser_bridge.status"
+            port = self.config.browser_bridge_port
+            enabled = self.config.browser_bridge_enabled
+            has_token = bool(self.config.browser_bridge_token and len(self.config.browser_bridge_token) > 8)
+            connected = False
+            pair_code = None
+            pair_remaining_s = 0.0
+
+            try:
+                raw = json.loads(status_path.read_text())
+                connected = bool(raw.get("connected", False))
+                pc = raw.get("pair_code")
+                if pc:
+                    pair_code = str(pc)
+                    # Use stored remaining time from the status file
+                    if raw.get("pair_remaining_s") is not None:
+                        pair_remaining_s = max(0.0, float(raw["pair_remaining_s"]))
+            except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+                pass
+
+            token_hint = None
+            if has_token:
+                tok = self.config.browser_bridge_token
+                token_hint = "••••" + tok[-4:] if len(tok) >= 4 else "••••" + tok
+
+            return web.json_response({
+                "enabled": enabled,
+                "port": port,
+                "connected": connected,
+                "has_token": has_token,
+                "ws_url": f"ws://127.0.0.1:{port}",
+                "pair_code": pair_code,
+                "pair_remaining_s": round(pair_remaining_s, 1),
+                "token_hint": token_hint,
+            })
+        except Exception as e:
+            logger.exception("bridge/status failed")
+            return web.json_response({
+                "enabled": False,
+                "port": self.config.browser_bridge_port,
+                "connected": False,
+                "has_token": False,
+                "ws_url": f"ws://127.0.0.1:{self.config.browser_bridge_port}",
+                "pair_code": None,
+                "pair_remaining_s": 0.0,
+                "error": str(e),
+            })
+
+    async def _handle_bridge_token(self, request):
+        """Return the full bridge token (sensitive — requires explicit request)."""
+        try:
+            token = self.config.browser_bridge_token
+            if not token:
+                return web.json_response({"token": None})
+            return web.json_response({"token": token})
+        except Exception as e:
+            logger.exception("bridge/token failed")
+            return web.json_response({"token": None, "error": str(e)})
+
+    async def _handle_bridge_rotate_token(self, request):
+        """Generate a new browser-bridge token, persist it, return JSON."""
+        try:
+            token = secrets.token_urlsafe(32)
+            write_browser_bridge_token(self.config, token)
+
+            token_path = HEARE_HOME / "browser_bridge.token"
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(str(token_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write(token + "\n")
+
+            return web.json_response({
+                "ok": True,
+                "token": token,
+                "restart_required": True,
+                "message": "Restart the daemon for the new token to take effect.",
+            })
+        except Exception as e:
+            logger.exception("bridge/rotate-token failed")
+            return web.json_response(
+                {"ok": False, "error": str(e)}, status=500
+            )
+
+    async def _handle_bridge_toggle(self, request):
+        """Toggle browser_bridge_enabled in config.toml."""
+        try:
+            body = await request.json()
+            enabled = bool(body.get("enabled", True))
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON body"}, status=400)
+
+        try:
+            config_path = HEARE_HOME / "config.toml"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+
+            existing = config_path.read_text() if config_path.exists() else ""
+            section_re = re.compile(
+                r"(?ms)^\[browser_bridge\][^\[]*?(?=^\[|\Z)",
+            )
+            match = section_re.search(existing)
+
+            if match:
+                block = match.group(0)
+                enabled_re = re.compile(r'(?m)^\s*enabled\s*=.*$')
+                new_line = "enabled = true" if enabled else "enabled = false"
+                if enabled_re.search(block):
+                    new_block = enabled_re.sub(new_line, block, count=1)
+                else:
+                    new_block = re.sub(
+                        r"^\[browser_bridge\][^\n]*\n",
+                        lambda m: m.group(0) + new_line + "\n",
+                        block,
+                        count=1,
+                    )
+                content = existing[: match.start()] + new_block + existing[match.end():]
+            else:
+                new_section = (
+                    f"[browser_bridge]\n"
+                    f"enabled = {'true' if enabled else 'false'}\n"
+                    f"port = {self.config.browser_bridge_port}\n"
+                )
+                sep = "" if (existing == "" or existing.endswith("\n")) else "\n"
+                content = existing + sep + ("\n" if existing else "") + new_section
+
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=".config.toml.", suffix=".tmp", dir=str(config_path.parent),
+            )
+            with os.fdopen(fd, "w") as fh:
+                fh.write(content)
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, config_path)
+
+            # Also update the in-memory config
+            self.config.browser_bridge_enabled = enabled
+
+            return web.json_response({
+                "ok": True,
+                "enabled": enabled,
+                "restart_required": True,
+                "message": "Restart the daemon for the change to take effect.",
+            })
+        except Exception as e:
+            logger.exception("bridge/toggle failed")
             return web.json_response(
                 {"ok": False, "error": str(e)}, status=500
             )

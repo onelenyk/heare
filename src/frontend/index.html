@@ -214,6 +214,81 @@
   }
   .badge.in { background: rgba(121,192,255,0.15); color: var(--accent-cyan); }
   .badge.out { background: rgba(255,167,87,0.15); color: var(--accent-orange); }
+
+  /* Bridge modal */
+  .bridge-modal-card { max-width: 480px; }
+  .bridge-status-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-radius: 6px;
+    margin-bottom: 12px; font-size: 13px; font-weight: 600;
+  }
+  .bridge-status-connected { background: rgba(126,231,135,0.08); color: var(--accent); }
+  .bridge-status-pairing { background: rgba(227,179,65,0.08); color: var(--accent-yellow); }
+  .bridge-status-disabled { background: rgba(255,123,114,0.08); color: var(--accent-red); }
+  .bridge-status-idle { background: var(--card); color: var(--muted); }
+  .bridge-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .bridge-dot.green { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .bridge-dot.yellow { background: var(--accent-yellow); box-shadow: 0 0 6px var(--accent-yellow); }
+  .bridge-dot.gray { background: var(--muted); }
+  .bridge-dot.red { background: var(--accent-red); box-shadow: 0 0 6px var(--accent-red); }
+  .bridge-field {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .bridge-field:last-child { border-bottom: none; }
+  .bridge-label { color: var(--muted); font-size: 11px; }
+  .bridge-value { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .bridge-value.masked { color: var(--muted); font-size: 14px; letter-spacing: 2px; }
+  .bridge-pair-code {
+    font-family: var(--mono); font-size: 36px; font-weight: 800;
+    letter-spacing: 8px; color: var(--accent); text-align: center;
+    padding: 12px 0; background: rgba(126,231,135,0.04);
+    border: 1px dashed var(--border); border-radius: 6px;
+    margin-bottom: 4px;
+  }
+  .bridge-ttl {
+    text-align: center; font-size: 11px; color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .bridge-ttl.expired { color: var(--accent-red); }
+  .bridge-ttl.urgent { color: var(--accent-yellow); }
+  .bridge-btn-sm {
+    padding: 2px 8px; border: 1px solid var(--border); border-radius: 3px;
+    background: var(--bg); color: var(--text); cursor: pointer;
+    font-size: 10px; font-family: var(--sans);
+  }
+  .bridge-btn-sm:hover { border-color: #30363d; background: #1c2128; }
+  .bridge-toggle {
+    position: relative; width: 36px; height: 20px; cursor: pointer;
+  }
+  .bridge-toggle-track {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: var(--border); transition: background 0.2s;
+  }
+  .bridge-toggle-track.on { background: var(--accent); }
+  .bridge-toggle-thumb {
+    position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: white; transition: transform 0.2s;
+  }
+  .bridge-toggle-thumb.on { transform: translateX(16px); }
+  .bridge-footer {
+    margin-top: 12px; padding: 8px 12px; border-radius: 6px;
+    background: rgba(227,179,65,0.06); border: 1px solid rgba(227,179,65,0.15);
+    font-size: 11px; color: var(--accent-yellow);
+  }
+  .bridge-instructions {
+    margin-top: 12px; padding: 8px 12px; border-radius: 6px;
+    background: var(--bg); border: 1px solid var(--border);
+    font-size: 11px; color: var(--muted); line-height: 1.6;
+  }
+  .bridge-instructions summary { cursor: pointer; font-weight: 600; color: var(--text); }
+  .bridge-instructions ol { margin: 4px 0 0 16px; }
+  .bridge-instructions code { font-family: var(--mono); font-size: 10px; background: var(--card); padding: 1px 4px; border-radius: 2px; }
+  .bridge-no-code {
+    text-align: center; font-size: 11px; color: var(--muted);
+    padding: 12px 0;
+  }
 </style>
 </head>
 <body>
@@ -629,6 +704,165 @@ function ToolsModal({ data, onClose }) {
   );
 }
 
+// ═══ Bridge setup modal ═══
+function BridgeModal({ data, onClose, onRotate, onToggle, revealToken, onToggleReveal, onToast }) {
+  const [tokenFull, setTokenFull] = React.useState(null);
+  const [tokenLoading, setTokenLoading] = React.useState(false);
+
+  if (!data) return (
+    <div class="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="modal-card bridge-modal-card">
+        <div class="modal-header">
+          <span class="modal-title">bridge setup</span>
+          <button class="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="info-line">Loading…</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const pairRemaining = data.pair_remaining_s || 0;
+  const hasPairCode = data.pair_code && pairRemaining > 0;
+  const ttlText = hasPairCode ? Math.floor(pairRemaining) + "s" : "";
+  const ttlUrgent = hasPairCode && pairRemaining <= 15;
+  const ttlExpired = data.pair_code && pairRemaining <= 0;
+
+  let statusClass = "bridge-status-idle";
+  let dotClass = "gray";
+  let statusText = "idle";
+  if (data.connected) { statusClass = "bridge-status-connected"; dotClass = "green"; statusText = "connected"; }
+  else if (hasPairCode) { statusClass = "bridge-status-pairing"; dotClass = "yellow"; statusText = "pair pending"; }
+  else if (!data.enabled) { statusClass = "bridge-status-disabled"; dotClass = "red"; statusText = "disabled"; }
+
+  async function fetchToken() {
+    setTokenLoading(true);
+    try {
+      const r = await fetch(API + "/api/bridge/token");
+      const d = await r.json();
+      setTokenFull(d.token);
+    } catch(e) {
+      onToast("failed to fetch token", "err");
+    } finally {
+      setTokenLoading(false);
+    }
+  }
+
+  async function handleShowToken() {
+    if (!revealToken) {
+      if (!tokenFull) await fetchToken();
+    }
+    onToggleReveal();
+  }
+
+  function copy(text, label) {
+    navigator.clipboard.writeText(text).then(() => {
+      onToast(label + " copied", "ok");
+    }).catch(() => {
+      onToast("copy failed", "err");
+    });
+  }
+
+  return (
+    <div class="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="modal-card bridge-modal-card">
+        <div class="modal-header">
+          <span class="modal-title">bridge setup</span>
+          <button class="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class={"bridge-status-row " + statusClass}>
+            <span class={"bridge-dot " + dotClass}></span>
+            <span>{statusText}</span>
+            {hasPairCode && <span style={{marginLeft:"auto",fontSize:11,color:"var(--muted)"}}>{ttlText}</span>}
+          </div>
+
+          {hasPairCode && (
+            <div>
+              <div class="bridge-pair-code">{data.pair_code}</div>
+              <div class={"bridge-ttl" + (ttlExpired ? " expired" : ttlUrgent ? " urgent" : "")}>
+                {ttlExpired ? "expired" : "expires in " + ttlText}
+              </div>
+              <div style={{textAlign:"center",marginBottom:8}}>
+                <button class="bridge-btn-sm" onClick={() => copy(data.pair_code, "pair code")}>copy code</button>
+              </div>
+            </div>
+          )}
+
+          {!hasPairCode && (
+            <div class="bridge-no-code">
+              {data.enabled
+                ? "no active pair code — open the Chrome extension to generate one"
+                : "bridge is disabled — enable it above"}
+            </div>
+          )}
+
+          <div class="modal-section">
+            <h4>connection</h4>
+            <div class="bridge-field">
+              <span class="bridge-label">websocket url</span>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span class="bridge-value">{data.ws_url}</span>
+                <button class="bridge-btn-sm" onClick={() => copy(data.ws_url, "URL")}>copy</button>
+              </div>
+            </div>
+            <div class="bridge-field">
+              <span class="bridge-label">port</span>
+              <span class="bridge-value">{data.port}</span>
+            </div>
+            <div class="bridge-field">
+              <span class="bridge-label">token</span>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                {revealToken && tokenFull
+                  ? <span class="bridge-value" style={{maxWidth:180,overflow:"hidden",textOverflow:"ellipsis"}}>{tokenFull}</span>
+                  : <span class="bridge-value masked">{data.token_hint || "••••••••"}</span>
+                }
+                {data.has_token && (
+                  <button class="bridge-btn-sm" onClick={handleShowToken} disabled={tokenLoading}>
+                    {tokenLoading ? "..." : revealToken ? "hide" : "show"}
+                  </button>
+                )}
+                {revealToken && tokenFull && (
+                  <button class="bridge-btn-sm" onClick={() => copy(tokenFull, "token")}>copy</button>
+                )}
+                <button class="bridge-btn-sm" onClick={onRotate}>rotate</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-section">
+            <h4>enable</h4>
+            <div class="bridge-field">
+              <span class="bridge-label">bridge enabled</span>
+              <div class="bridge-toggle" onClick={() => onToggle(data.enabled)}>
+                <div class={"bridge-toggle-track" + (data.enabled ? " on" : "")}></div>
+                <div class={"bridge-toggle-thumb" + (data.enabled ? " on" : "")}></div>
+              </div>
+            </div>
+          </div>
+
+          {data.restart_notice && (
+            <div class="bridge-footer">
+              restart required for changes to take effect
+            </div>
+          )}
+
+          <details class="bridge-instructions">
+            <summary>how to install the extension</summary>
+            <ol>
+              <li>Open <code>chrome://extensions</code>, enable Developer mode</li>
+              <li>Click "Load unpacked", select <code>extensions/heare-bridge/</code></li>
+              <li>Enter the pair code shown above (or paste the token into the extension options)</li>
+              <li>Click "Connect"</li>
+            </ol>
+          </details>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ──
 function Dashboard() {
   const [state, setState] = useState({});
@@ -644,6 +878,12 @@ function Dashboard() {
   const [chromeProfiles, setChromeProfiles] = useState(null);
   const [chromeProfile, setChromeProfile] = useState("");
   const logRef = React.useRef(null);
+  // Bridge state
+  const [showBridge, setShowBridge] = useState(false);
+  const [bridge, setBridge] = useState(null);
+  const [bridgeRevealing, setBridgeRevealing] = useState(false);
+  const [bridgeRestartNotice, setBridgeRestartNotice] = useState(false);
+  const bridgeIntervalRef = React.useRef(null);
 
   useEffect(() => {
     if (logRef.current) {
@@ -781,6 +1021,82 @@ function Dashboard() {
     setShowTools(true);
   }
 
+  // ═══ Bridge setup ═══
+  async function fetchBridgeStatus() {
+    try {
+      const r = await fetch(API + "/api/bridge/status");
+      const d = await r.json();
+      // Compute token_hint from has_token (masked display)
+      if (d.has_token) {
+        // The full token isn't returned from /status for security;
+        // we'll just store a hint for the masked display.
+        d.token_hint = d.has_token ? "••••••••" : null;
+      }
+      setBridge(d);
+    } catch(e) {
+      setBridge({ enabled: false, connected: false, has_token: false, error: e.message });
+    }
+  }
+
+  async function openBridgeSetup() {
+    setBridgeRevealing(false);
+    setBridgeRestartNotice(false);
+    await fetchBridgeStatus();
+    setShowBridge(true);
+  }
+
+  function closeBridgeSetup() {
+    if (bridgeIntervalRef.current) { clearInterval(bridgeIntervalRef.current); bridgeIntervalRef.current = null; }
+    setShowBridge(false);
+    setBridge(null);
+  }
+
+  useEffect(() => {
+    if (!showBridge) {
+      if (bridgeIntervalRef.current) { clearInterval(bridgeIntervalRef.current); bridgeIntervalRef.current = null; }
+      return;
+    }
+    fetchBridgeStatus();
+    bridgeIntervalRef.current = setInterval(fetchBridgeStatus, 1000);
+    return () => {
+      if (bridgeIntervalRef.current) { clearInterval(bridgeIntervalRef.current); bridgeIntervalRef.current = null; }
+    };
+  }, [showBridge]);
+
+  async function handleBridgeRotate() {
+    if (!confirm("This will invalidate the current token. Continue?")) return;
+    try {
+      const r = await fetch(API + "/api/bridge/rotate-token", { method: "POST" });
+      const d = await r.json();
+      if (d.ok) {
+        setBridgeRestartNotice(true);
+        showToastMsg("new token generated (restart required): " + d.token, "ok");
+        fetchBridgeStatus();
+      } else {
+        showToastMsg("rotate failed: " + (d.error || ""), "err");
+      }
+    } catch(e) { showToastMsg("rotate failed: " + e.message, "err"); }
+  }
+
+  async function handleBridgeToggle(currentEnabled) {
+    const newEnabled = !currentEnabled;
+    try {
+      const r = await fetch(API + "/api/bridge/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: newEnabled }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setBridgeRestartNotice(true);
+        showToastMsg("bridge " + (newEnabled ? "enabled" : "disabled") + " (restart required)", "ok");
+        fetchBridgeStatus();
+      } else {
+        showToastMsg("toggle failed: " + (d.error || ""), "err");
+      }
+    } catch(e) { showToastMsg("toggle failed: " + e.message, "err"); }
+  }
+
   const running = state.running === true;
 
   return (
@@ -860,6 +1176,7 @@ function Dashboard() {
               <button class="btn" onClick={fetchAudioDevices}>🎧 audio</button>
               <button class="btn" onClick={fetchChromeProfiles}>🌐 chrome</button>
               <button class="btn" onClick={handleOpenTools}>🔧 tools</button>
+              <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
             </div>
             {/* 4f: Chrome profile picker */}
             {chromeProfiles !== null && (
@@ -954,6 +1271,19 @@ function Dashboard() {
 
       {/* 4g: Tools modal */}
       {showTools && <ToolsModal data={toolsData} onClose={() => setShowTools(false)} />}
+
+      {/* Bridge setup modal */}
+      {showBridge && (
+        <BridgeModal
+          data={bridge ? {...bridge, restart_notice: bridgeRestartNotice} : null}
+          onClose={closeBridgeSetup}
+          onRotate={handleBridgeRotate}
+          onToggle={handleBridgeToggle}
+          revealToken={bridgeRevealing}
+          onToggleReveal={() => setBridgeRevealing(!bridgeRevealing)}
+          onToast={showToastMsg}
+        />
+      )}
 
       {/* Toast */}
       {toast && <Toast message={toast.msg} type={toast.type} onDismiss={() => setToast(null)} />}
