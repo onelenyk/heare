@@ -884,6 +884,7 @@ function Dashboard() {
   const [bridgeRevealing, setBridgeRevealing] = useState(false);
   const [bridgeRestartNotice, setBridgeRestartNotice] = useState(false);
   const bridgeIntervalRef = React.useRef(null);
+  const [interruptEnabled, setInterruptEnabled] = useState(true);
 
   useEffect(() => {
     if (logRef.current) {
@@ -904,9 +905,11 @@ function Dashboard() {
         fetch(API + "/activity"),
         fetch(API + "/logs"),
       ]);
-      setState(await sr.json());
-      setActivity(await ar.json());
-      setLogs((await lr.json()).lines || []);
+      const [sData, aData, lData] = await Promise.all([sr.json(), ar.json(), lr.json()]);
+      setState(sData);
+      setInterruptEnabled(sData.interrupt_enabled !== false);
+      setActivity(aData);
+      setLogs(lData.lines || []);
     } catch(e) {}
   }
 
@@ -1124,6 +1127,7 @@ function Dashboard() {
           </select>
         </span>
         <span class="meta">{state.transcripts_count || 0} msgs</span>
+        <span class="meta">interrupt:<strong>{interruptEnabled ? "on" : "off"}</strong></span>
       </div>
 
       {/* Voice & Agent status bars */}
@@ -1152,6 +1156,23 @@ function Dashboard() {
             <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 bot" : "🔊 bot"}</button>
             <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mic" : "🔊 mic"}</button>
               <button class="btn" onClick={() => post("/cancel", {})}>cancel</button>
+              <button class="btn"
+                onClick={async () => {
+                  const newValue = !interruptEnabled;
+                  const r = await fetch(API + "/interrupt", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({enabled: newValue}),
+                  });
+                  const d = await r.json();
+                  if (d.ok) {
+                    setInterruptEnabled(d.enabled);
+                    showToastMsg(d.enabled ? "interrupt on — voice breaks bot" : "interrupt off — bot finishes speaking", "ok");
+                  }
+                }}
+                style={{background: interruptEnabled ? "var(--accent-blue)" : "var(--bg-elev)"}}
+                title={interruptEnabled ? "interrupt on (click to disable)" : "interrupt off (click to enable)"}
+              >{interruptEnabled ? "🗣 interrupt: on" : "🤐 interrupt: off"}</button>
             </div>
             {/* 4d: Daemon lifecycle */}
             <div class="btn-row">

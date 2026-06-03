@@ -41,6 +41,7 @@ class API:
         self._app.router.add_get("/state", self._handle_state)
         self._app.router.add_post("/mode", self._handle_mode)
         self._app.router.add_post("/mute", self._handle_mute)
+        self._app.router.add_post("/interrupt", self._handle_interrupt)
         self._app.router.add_post("/provider", self._handle_provider)
         self._app.router.add_post("/model", self._handle_model)
         self._app.router.add_post("/cancel", self._handle_cancel)
@@ -137,6 +138,8 @@ class API:
             data["chrome"] = self.config.browser_bridge_enabled and token_file.exists()
         except Exception:
             data["chrome"] = False
+
+        data["interrupt_enabled"] = not self.config.interrupt_enabled_file.exists()
 
         try:
             identity = load_identity(self.config.identity_file)
@@ -278,6 +281,22 @@ class API:
         current = self.state.get_bool(key)
         await self.state.set_bool(key, not current)
         return web.json_response({"ok": True, "target": target, "muted": not current})
+
+    async def _handle_interrupt(self, request):
+        if self.state is None:
+            return web.json_response({"ok": False, "error": "daemon initializing"}, status=503)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        enabled = body.get("enabled", True)
+        if enabled:
+            self.config.interrupt_enabled_file.unlink(missing_ok=True)
+        else:
+            self.config.interrupt_enabled_file.parent.mkdir(parents=True, exist_ok=True)
+            self.config.interrupt_enabled_file.touch()
+        new_state = not self.config.interrupt_enabled_file.exists()
+        return web.json_response({"ok": True, "enabled": new_state})
 
     async def _handle_provider(self, request):
         if self.state is None:

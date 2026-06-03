@@ -34,6 +34,7 @@ from src.pipeline.stages.assistant_response_logger import create_assistant_respo
 from src.pipeline.stages.tts_scrub_processor import create_tts_scrub_processor
 from src.pipeline.stages.usage_recorder import create_usage_recorder
 from src.pipeline.stages.cancel_flag_gate import create_cancel_flag_gate
+from src.pipeline.stages.interrupt_toggle_gate import create_interrupt_toggle_gate
 from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_gate
 from src.agent.llm.providers import PROVIDERS, get_available
 from src.config import Settings
@@ -318,6 +319,7 @@ def _assemble_native_stages(
     sound_cue_processor: Any = None,
     mute_gate: Any = None,
     input_mute_gate: Any = None,
+    interrupt_toggle_gate: Any = None,
     cancel_flag_gate: Any = None,
     echo_gate: Any = None,
     echo_collector: Any = None,
@@ -338,6 +340,11 @@ def _assemble_native_stages(
     # before STT (and any speaker buffering) runs.
     if input_mute_gate is not None:
         stages.append(input_mute_gate)
+    # interrupt_toggle_gate sits right after input_mute_gate so it can
+    # drop mic input while the bot is speaking when the user has disabled
+    # barge-in via the interrupt toggle (flag file present).
+    if interrupt_toggle_gate is not None:
+        stages.append(interrupt_toggle_gate)
     # cancel_flag_gate sits AFTER input_mute_gate (so a cancel during a muted
     # session still fires) and BEFORE every heavy stage — the gate emits
     # InterruptionFrame upstream which propagates immediately as a SystemFrame,
@@ -876,6 +883,12 @@ async def build_pipeline(
     # pipeline so STT never even sees the muted audio.
     input_mute_gate = create_input_mute_gate(state=state)
 
+    # Interrupt-toggle gate — flag-file-driven barge-in guard. When the
+    # user disables interrupt (via the dashboard button → /interrupt API),
+    # ``interrupt_enabled_file`` is created and this gate drops mic input
+    # while the bot is speaking, letting the bot finish its utterance.
+    interrupt_toggle_gate = create_interrupt_toggle_gate(settings=settings)
+
     # Cancel-flag gate — external "interrupt now" trigger. Mirrors the
     # mute-gate flag-file contract: any process (overlay, watch dashboard,
     # hotkey daemon) touches ``settings.cancel_flag_file`` and the next
@@ -935,6 +948,7 @@ async def build_pipeline(
         sound_cue_processor=sound_cue_processor,
         mute_gate=mute_gate,
         input_mute_gate=input_mute_gate,
+        interrupt_toggle_gate=interrupt_toggle_gate,
         cancel_flag_gate=cancel_flag_gate,
         echo_gate=echo_gate_proc,
         echo_collector=echo_collector,

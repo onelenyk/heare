@@ -208,6 +208,9 @@ class Settings:
     cancel_flag_file: Path = field(
         default_factory=lambda: HEARE_HOME / "cancel.flag"
     )
+    interrupt_enabled_file: Path = field(
+        default_factory=lambda: HEARE_HOME / "interrupt_enabled.off"
+    )
     voice_state_file: Path = field(
         default_factory=lambda: HEARE_HOME / "voice_state.json"
     )
@@ -415,6 +418,17 @@ def load_settings() -> Settings:
 
     settings.indication = _load_indication_settings(toml_data.get("indication", {}))
     _load_browser_bridge_settings(settings, toml_data.get("browser_bridge", {}))
+
+    # [interrupt] section — persistent default for barge-in behaviour.
+    # When enabled=false, the flag file is created on daemon start so the
+    # pipeline gate drops mic input while the bot is speaking. The
+    # /interrupt API endpoint toggles the flag at runtime independently.
+    interrupt_sec = toml_data.get("interrupt", {})
+    if isinstance(interrupt_sec, dict):
+        interrupt_enabled = interrupt_sec.get("enabled", True)
+        if not interrupt_enabled:
+            settings.interrupt_enabled_file.parent.mkdir(parents=True, exist_ok=True)
+            settings.interrupt_enabled_file.touch(exist_ok=True)
 
     # Build command_keyword_pattern from wake_word if the user customized it
     if settings.wake_word != "гава":
