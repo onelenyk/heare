@@ -375,6 +375,57 @@
     max-height: 2000px;
     padding-left: 20px;
   }
+
+  /* ── Display widget ── */
+  .display-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; margin: 0 0 8px; overflow: hidden;
+    transition: border-color 0.2s; animation: displayFadeIn 0.2s ease-out;
+  }
+  .display-card.flash { border-color: var(--accent-cyan); }
+  @keyframes displayFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .display-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--muted);
+  }
+  .display-icon { font-size: 14px; }
+  .display-fmt {
+    text-transform: uppercase; font-weight: 600; color: var(--text);
+    letter-spacing: 0.5px; font-size: 10px;
+  }
+  .display-title { color: var(--text); font-weight: 500; }
+  .display-ts {
+    margin-left: auto; font-family: var(--mono);
+    font-size: 10px; color: var(--muted);
+  }
+  .display-dismiss {
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); width: 20px; height: 20px;
+    border-radius: 3px; cursor: pointer; font-size: 12px;
+    line-height: 1; padding: 0; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0;
+  }
+  .display-dismiss:hover { color: var(--accent-red); border-color: var(--accent-red); }
+  .display-content {
+    padding: 10px; max-height: 380px; overflow-y: auto;
+  }
+  .display-text, .display-md {
+    font-family: inherit; white-space: pre-wrap; word-wrap: break-word;
+    color: var(--text); font-size: 13px; line-height: 1.5; margin: 0;
+  }
+  .display-code, .display-mono {
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    background: var(--bg); padding: 10px; border-radius: 4px;
+    overflow-x: auto; margin: 0; white-space: pre;
+  }
+  .display-html {
+    width: 100%; height: 300px; border: none;
+    background: white; border-radius: 4px;
+  }
 </style>
 </head>
 <body>
@@ -749,8 +800,11 @@ function inferBuiltInCategory(name) {
   // browser — any tool that touches the browser
   if (/browser/.test(n))
     return {key:"browser", label:"browser", icon:"🌐"};
+  // ui-output — tools that push content to the display/canvas widget
+  if (/^(show_text|show_canvas)$/.test(n))
+    return {key:"ui-output", label:"ui output", icon:"📺"};
   // agent — mode, config, capabilities, favorites, views
-  if (/^(set_(mode|provider|view_preference)|show_(canvas|profile|text)|discover_capability|install_(skill|mcp)_tool|list_capabilities|revoke_capability|add_favorite|list_favorites|cancel)$/.test(n))
+  if (/^(set_(mode|provider|view_preference)|show_profile|discover_capability|install_(skill|mcp)_tool|list_capabilities|revoke_capability|add_favorite|list_favorites|cancel)$/.test(n))
     return {key:"agent", label:"agent", icon:"🤖"};
   // daemon — process lifecycle
   if (/_daemon$/.test(n))
@@ -809,7 +863,7 @@ function ToolsModal({ data, onClose }) {
   var totalMatches = filteredBI.length + filteredSK.length + filteredMC.length;
 
   // ── group built-in by category (with stable order) ──
-  var BI_CATEGORY_ORDER = ["file", "browser", "agent", "daemon", "skill", "tooling", "other"];
+  var BI_CATEGORY_ORDER = ["file", "browser", "ui-output", "agent", "daemon", "skill", "tooling", "other"];
   var biGroups = {};
   filteredBI.forEach(function(t) {
     var cat = inferBuiltInCategory(t.name);
@@ -1193,6 +1247,10 @@ function Dashboard() {
   const [bridgeRestartNotice, setBridgeRestartNotice] = useState(false);
   const bridgeIntervalRef = React.useRef(null);
   const [interruptEnabled, setInterruptEnabled] = useState(true);
+  // Display widget state
+  const [display, setDisplay] = useState(null);
+  const [displayVisible, setDisplayVisible] = useState(true);
+  const [displayFlash, setDisplayFlash] = useState(false);
 
   useEffect(() => {
     if (logRef.current) {
@@ -1208,16 +1266,27 @@ function Dashboard() {
 
   async function poll() {
     try {
-      const [sr, ar, lr] = await Promise.all([
+      const [sr, ar, lr, dr] = await Promise.all([
         fetch(API + "/state"),
         fetch(API + "/activity"),
         fetch(API + "/logs"),
+        fetch(API + "/display"),
       ]);
-      const [sData, aData, lData] = await Promise.all([sr.json(), ar.json(), lr.json()]);
+      const [sData, aData, lData, dData] = await Promise.all([sr.json(), ar.json(), lr.json(), dr.json()]);
       setState(sData);
       setInterruptEnabled(sData.interrupt_enabled !== false);
       setActivity(aData);
       setLogs(lData.lines || []);
+      if (dData && dData.content) {
+        setDisplay(prev => {
+          if (!prev || prev.ts !== dData.ts) {
+            setDisplayFlash(true);
+            setTimeout(() => setDisplayFlash(false), 1200);
+            setDisplayVisible(true);
+          }
+          return dData;
+        });
+      }
     } catch(e) {}
   }
 
@@ -1449,6 +1518,26 @@ function Dashboard() {
           <AgentStatusBar agentState={state.agent_state || {}} />
         </div>
       </div>
+
+      {/* Display widget — renders show_text / show_canvas output */}
+      {display && display.content && displayVisible && (
+        <div className={`display-card${displayFlash ? ' flash' : ''}`}>
+          <div className="display-header">
+            <span className="display-icon">{display.format === 'html' ? '📺' : '📄'}</span>
+            <span className="display-fmt">{display.format}</span>
+            {display.title && <span className="display-title">{display.title}</span>}
+            <span className="display-ts">{new Date(display.ts * 1000).toLocaleTimeString()}</span>
+            <button className="display-dismiss" onClick={() => setDisplayVisible(false)}>✕</button>
+          </div>
+          <div className="display-content">
+            {display.format === 'text' && <pre className="display-text">{display.content}</pre>}
+            {display.format === 'code' && <pre className="display-code"><code>{display.content}</code></pre>}
+            {(display.format === 'ascii' || display.format === 'table') && <pre className="display-mono">{display.content}</pre>}
+            {display.format === 'markdown' && <pre className="display-md">{display.content}</pre>}
+            {display.format === 'html' && <iframe sandbox="" srcDoc={display.content} className="display-html" />}
+          </div>
+        </div>
+      )}
 
       <div class="row">
         {/* Controls */}
