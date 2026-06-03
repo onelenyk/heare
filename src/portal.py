@@ -55,6 +55,9 @@ class Portal:
         self.app.router.add_get("/api/audio-devices", self._proxy_simple)
         self.app.router.add_post("/api/chrome/launch", self._proxy_simple)
         self.app.router.add_get("/api/tools", self._proxy_simple)
+        # Catch-all: proxy every other path to the daemon.
+        # Specific routes above take precedence (static routes match first in aiohttp).
+        self.app.router.add_route("*", "/{path:.*}", self._proxy_simple)
 
     # ── Handlers ────────────────────────────────────────────
 
