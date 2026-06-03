@@ -499,5 +499,149 @@ class API:
         except Exception:
             return web.json_response({"ok": True, "mic_available": False, "reason": "unknown"})
 
+    async def _handle_audio_devices(self, request):
+        """List audio devices via sounddevice, with active device markers."""
+        try:
+            import sounddevice as sd
+
+            devices = []
+            active_input = None
+            active_output = None
+
+            try:
+                if self.config.audio_input_device_file.exists():
+                    active_input = self.config.audio_input_device_file.read_text().strip() or None
+            except Exception:
+                pass
+            try:
+                if self.config.audio_output_device_file.exists():
+                    active_output = self.config.audio_output_device_file.read_text().strip() or None
+            except Exception:
+                pass
+
+            try:
+                sd._terminate()
+                sd._initialize()
+            except Exception:
+                pass
+
+            for i, dev in enumerate(sd.query_devices()):
+                name = dev["name"]
+                try:
+                    hostapi_name = sd.query_hostapis(dev["hostapi"])["name"]
+                except Exception:
+                    hostapi_name = "?"
+                devices.append({
+                    "index": i,
+                    "name": name,
+                    "max_input_channels": int(dev.get("max_input_channels", 0)),
+                    "max_output_channels": int(dev.get("max_output_channels", 0)),
+                    "hostapi": hostapi_name,
+                    "active_in": bool(active_input and active_input.lower() in name.lower()),
+                    "active_out": bool(active_output and active_output.lower() in name.lower()),
+                })
+            return web.json_response({
+                "devices": devices,
+                "active_input": active_input,
+                "active_output": active_output,
+                "error": None,
+            })
+        except ImportError:
+            return web.json_response({
+                "devices": [],
+                "active_input": None,
+                "active_output": None,
+                "error": "sounddevice not installed",
+            })
+        except Exception as e:
+            return web.json_response({
+                "devices": [],
+                "active_input": None,
+                "active_output": None,
+                "error": str(e),
+            }, status=500)
+
+    async def _handle_chrome_launch(self, request):
+        """Launch Chrome with CDP debug port, auto-selecting profile."""
+        try:
+            from src.daemon.browser import (
+                ensure_debug_chrome,
+                is_debug_reachable,
+                list_chrome_profiles,
+            )
+
+            debug_port = 9222
+
+            if is_debug_reachable(debug_port):
+                return web.json_response({
+                    "ok": True,
+                    "status": f"chrome already attached on :{debug_port}",
+                    "debug_port": debug_port,
+                })
+
+            body = await request.json()
+            profile_directory = body.get("profile_directory")
+
+            if profile_directory is None:
+                profiles = list_chrome_profiles()
+                if profiles:
+                    profile_directory = profiles[0].directory
+
+            msg = await asyncio.to_thread(
+                ensure_debug_chrome, debug_port, profile_directory
+            )
+            return web.json_response({
+                "ok": True,
+                "status": msg,
+                "debug_port": debug_port,
+            })
+        except Exception as e:
+            return web.json_response(
+                {"ok": False, "status": str(e), "debug_port": 9222}, status=500
+            )
+
+    async def _handle_tools(self, request):
+        """List all available tools: built-in, skills, and MCP servers."""
+        try:
+            from src.agent.tools.direct import (
+                _list_built_in_tools,
+                _list_mcp_servers,
+                _list_skills,
+            )
+
+            built_in = _list_built_in_tools()
+            skills = []
+            mcps = []
+            error = None
+
+            try:
+                skills = _list_skills(self.config)
+            except Exception as e:
+                logger.warning("tools endpoint: skills list failed: %s", e)
+                error = f"skills: {e}"
+
+            try:
+                mcps = _list_mcp_servers(self.config)
+            except Exception as e:
+                logger.warning("tools endpoint: mcp list failed: %s", e)
+                if error:
+                    error += f"; mcps: {e}"
+                else:
+                    error = f"mcps: {e}"
+
+            return web.json_response({
+                "built_in": built_in,
+                "skills": skills,
+                "mcps": mcps,
+                "error": error,
+            })
+        except Exception as e:
+            return web.json_response({
+                "built_in": [],
+                "skills": [],
+                "mcps": [],
+                "error": str(e),
+            }, status=500)
+
     def _available_providers(self):
         return get_available(self.config)
