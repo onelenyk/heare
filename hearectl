@@ -162,12 +162,6 @@ cmd_logs() {
     fi
 }
 
-cmd_watch() {
-    log_info "Starting watch dashboard..."
-    cd "$PROJECT_DIR"
-    "$PYTHON" -m src.main watch
-}
-
 cmd_launch() {
     # Start daemon if not running
     if ! check_running; then
@@ -254,7 +248,6 @@ Commands:
     restart       Restart Heare daemon
     status        Show Heare status
     logs          Show/follow Heare logs
-    watch         Start watch dashboard
     launch        Start daemon + open desktop in browser
     install       Install as systemd user service
     uninstall     Remove systemd service
@@ -288,9 +281,6 @@ case "${1:-help}" in
         ;;
     logs)
         cmd_logs
-        ;;
-    watch)
-        cmd_watch
         ;;
     launch)
         cmd_launch

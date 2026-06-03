@@ -94,27 +94,6 @@ def test_fetch_agent_response_empty_on_none_con():
     assert r.text is None and r.spoken is None
 
 
-def test_agent_response_bar_renders_silent_and_spoken():
-    from src.dashboard_data import AgentResponseData
-    from src.watch.widgets import AgentResponseBar
-
-    bar = AgentResponseBar()
-    # default: no response
-    assert "no response yet" in bar._build_text().plain
-
-    bar.refresh_data(
-        AgentResponseData(text="hello world", ts=0.0, mode="silent", spoken=False)
-    )
-    out = bar._build_text().plain
-    assert "silent" in out and "hello world" in out
-
-    bar.refresh_data(
-        AgentResponseData(text="spoken reply", ts=0.0, mode="ambient", spoken=True)
-    )
-    out = bar._build_text().plain
-    assert "spoken" in out and "ambient" in out and "spoken reply" in out
-
-
 def test_dashboard_snapshot_has_agent_response_field():
     from src.dashboard_data import DashboardSnapshot
 
@@ -216,27 +195,6 @@ async def test_fetch_latest_display_reads_row(store: TranscriptStore) -> None:
     assert d.content == "graph TD"
     assert d.fmt == "markdown"
     assert d.title == "diagram"
-
-
-def test_display_panel_renders_each_format():
-    from src.dashboard_data import DisplayData
-    from src.watch.widgets import DisplayPanel
-
-    p = DisplayPanel()
-    assert "nothing displayed yet" in p._build_renderable()
-
-    p.refresh_data(DisplayData(content="x=1", fmt="code", title="c", ts=0.0))
-    from rich.syntax import Syntax
-    assert isinstance(p._build_renderable(), Syntax)
-
-    p.refresh_data(DisplayData(content="# Hi", fmt="markdown", title=None, ts=0.0))
-    from rich.markdown import Markdown
-    assert isinstance(p._build_renderable(), Markdown)
-
-    p.refresh_data(DisplayData(content="+--+\n|  |\n+--+", fmt="ascii",
-                               title="box", ts=0.0))
-    out = p._build_renderable()
-    assert "+--+" in out and "box" in out
 
 
 def test_dashboard_snapshot_has_display_field():

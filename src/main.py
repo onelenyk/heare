@@ -112,7 +112,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         if getattr(sys, "frozen", False):
             logger.info("Daemon already running (lock held) — opening dashboard")
             import webbrowser
-            webbrowser.open("http://127.0.0.1:9778/")
+            webbrowser.open("http://127.0.0.1:9780/")
             return 0
         print("❌ Error: Daemon already running. Stop it first: heare stop")
         return 1
@@ -128,7 +128,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
     import webbrowser
     asyncio.get_running_loop().run_in_executor(
-        None, lambda: webbrowser.open("http://127.0.0.1:9778/")
+        None, lambda: webbrowser.open("http://127.0.0.1:9780/")
     )
 
     available = get_available(settings)
@@ -665,10 +665,8 @@ def _cmd_reset_identity(args: argparse.Namespace) -> int:
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:
-    from src.watch import run_watch
-
-    settings = load_settings()
-    return run_watch(settings, interval=args.interval, once=args.once)
+    print("heare watch has been removed. Use the web UI at http://127.0.0.1:9780")
+    return 0
 
 
 def _cmd_portal(args: argparse.Namespace) -> int:
@@ -828,9 +826,7 @@ def build_parser() -> argparse.ArgumentParser:
     set_word_p = sub.add_parser("set-passphrase", help="Set the confirmation passphrase (restart required)")
     set_word_p.add_argument("word", help="Secret word to confirm actions (e.g. авторизую)")
 
-    watch_p = sub.add_parser("watch", help="Live status view (Ctrl+C to exit)")
-    watch_p.add_argument("--interval", type=float, default=0.5, help="Refresh seconds")
-    watch_p.add_argument("--once", action="store_true", help="Print once and exit")
+    watch_p = sub.add_parser("watch", help="(removed) TUI dashboard — use web UI at http://127.0.0.1:9780")
 
     portal_p = sub.add_parser("portal", help="Run watchdog web UI portal")
     portal_p.add_argument("--port", type=int, default=9780)

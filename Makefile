@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs watch launch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session
+.PHONY: help install start stop restart status logs launch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -16,7 +16,6 @@ help:
 	@echo "  make restart    - Restart daemon"
 	@echo "  make status     - Check daemon status"
 	@echo "  make logs       - Tail daemon logs"
-	@echo "  make watch      - Start watch dashboard"
 	@echo "  make launch     - Start daemon + open desktop in browser"
 	@echo ""
 	@echo "MCP Servers:"
@@ -51,10 +50,6 @@ status:
 
 logs:
 	@./hearectl logs
-
-watch:
-	@./hearectl status >/dev/null 2>&1 || ./hearectl start
-	@./hearectl watch
 
 launch:
 	@./hearectl launch

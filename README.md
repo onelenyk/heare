@@ -13,7 +13,6 @@ Not a wake-word assistant. Not a dictation tool. A voice-first Claude agent.
 - **Browser automation** — via sideloaded Chrome extension (list tabs, read page, click, fill, navigate, extract, open/activate tabs)
 - **Agent tools** — bash, read, write, edit files; web search/fetch; dynamic tool creation; skill execution
 - **Persistent memory** — SQLite database (`~/.heare/heare.db`) with transcripts, decisions, and usage events
-- **Live dashboard** — separate Textual TUI process showing state, activity, cost, voice events
 - **Hot-reload settings** — switch mode/LLM provider without restarting daemon
 
 ## Requirements
@@ -51,12 +50,6 @@ Start the daemon in the foreground:
 
 ```bash
 uv run python -m src.main start
-```
-
-In another terminal, launch the dashboard:
-
-```bash
-uv run python -m src.main watch
 ```
 
 Speak into the microphone. heare will transcribe, decide whether to respond, and speak back.
@@ -125,8 +118,8 @@ Mic ──► input_mute_gate ──► GroqSTT
                   usage_recorder    speaker output
                   (cost ledger)
 
-The daemon runs all stages in a single asyncio event loop. The watch
-dashboard is a separate process reading the SQLite database + daemon log.
+The daemon runs all stages in a single asyncio event loop. The web
+dashboard at http://127.0.0.1:9780 reads the SQLite database + daemon log.
 The Chrome extension runs in the user's browser, connected via WebSocket
 to the daemon's browser bridge on 127.0.0.1:9333.
 
@@ -135,25 +128,10 @@ to the daemon's browser bridge on 127.0.0.1:9333.
 **Key points:**
 
 - **Single daemon process** — one asyncio loop, no thread pool
-- **Watch dashboard** — separate Textual TUI reading `~/.heare/heare.db` + `daemon.log`
+- **Web dashboard** — browser UI at http://127.0.0.1:9780
 - **Browser bridge** — MV3 extension on 127.0.0.1:9333 (WebSocket + token auth, single client)
 - **Pipeline stages** — see `src/pipeline/build.py` for exact order and optional conditionals
 - **LLM backend** — Pipecat-native `SwitchableLLMService` with hot-reload support via `src/config.py:provider_file`
-
-## Watch dashboard
-
-Run in a separate terminal to monitor daemon activity:
-
-```bash
-uv run python -m src.main watch [--interval 0.5] [--once]
-```
-
-Features:
-- Live activity feed (transcriptions, LLM responses, tool calls)
-- Mute toggle (mic/output)
-- Mode/provider switching hotkeys
-- Usage/cost ledger
-- Voice state indicator (idle/listening/stt/result)
 
 ## Browser bridge (Chrome extension)
 
@@ -300,7 +278,6 @@ Unit tests cover:
 - Usage ledger
 - Dynamic tool CRUD
 - Browser bridge token rotation
-- Watch dashboard widget rendering
 
 ### Project layout
 
@@ -332,12 +309,6 @@ src/
 ├── store/
 │   ├── storage.py              # SQLite DAO (transcripts, tools, usage)
 │   └── context.py              # Context builder (recent transcripts, etc.)
-├── watch/
-│   ├── app.py                  # Textual TUI entry point
-│   ├── screens.py              # Screen definitions
-│   ├── widgets.py              # Custom Textual widgets
-│   ├── data.py                 # Watch dashboard data layer
-│   └── dashboard.tcss          # Textual CSS
 └── daemon/
     ├── onboarding.py           # Setup flow
     ├── workspace.py            # MCP seeding
