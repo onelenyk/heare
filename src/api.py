@@ -25,6 +25,7 @@ from src.dashboard_data import (
     open_db,
     read_voice_state,
 )
+from src.version import app_version
 
 
 class API:
@@ -56,6 +57,8 @@ class API:
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
         self._app.router.add_post("/api/chrome/launch", self._handle_chrome_launch)
         self._app.router.add_get("/api/tools", self._handle_tools)
+        self._app.router.add_get("/api/chrome/profiles", self._handle_chrome_profiles)
+        self._app.router.add_post("/api/audio-devices/select", self._handle_audio_device_select)
         self._runner = None
         self._site = None
 
@@ -107,6 +110,7 @@ class API:
         if self.state is None:
             return web.json_response({"running": False})
         data = self.state.snapshot()
+        data["version"] = app_version(include_sha=False)
         data["providers"] = self._available_providers()
 
         # Models for current provider
@@ -642,6 +646,56 @@ class API:
                 "mcps": [],
                 "error": str(e),
             }, status=500)
+
+    async def _handle_chrome_profiles(self, request):
+        """List Chrome profiles for the profile picker."""
+        try:
+            from src.daemon.browser import ChromeProfile, list_chrome_profiles
+
+            profiles = list_chrome_profiles()
+            return web.json_response({
+                "profiles": [
+                    {
+                        "directory": p.directory,
+                        "display_name": p.name or p.directory,
+                        "last_used": p.last_used,
+                    }
+                    for p in profiles
+                ],
+                "error": None,
+            })
+        except Exception as e:
+            return web.json_response({
+                "profiles": [],
+                "error": str(e),
+            }, status=500)
+
+    async def _handle_audio_device_select(self, request):
+        """Select an audio device by writing its name to the hot-reload file."""
+        try:
+            body = await request.json()
+            device_name = body.get("device_name", "").strip()
+            kind = body.get("kind", "")
+            if not device_name or kind not in ("input", "output"):
+                return web.json_response(
+                    {"ok": False, "error": "device_name and kind (input|output) required"},
+                    status=400,
+                )
+            if kind == "input":
+                self.config.audio_input_device_file.parent.mkdir(parents=True, exist_ok=True)
+                self.config.audio_input_device_file.write_text(device_name)
+            else:
+                self.config.audio_output_device_file.parent.mkdir(parents=True, exist_ok=True)
+                self.config.audio_output_device_file.write_text(device_name)
+            return web.json_response({
+                "ok": True,
+                "kind": kind,
+                "device": device_name,
+            })
+        except Exception as e:
+            return web.json_response(
+                {"ok": False, "error": str(e)}, status=500
+            )
 
     def _available_providers(self):
         return get_available(self.config)
