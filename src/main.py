@@ -16,6 +16,8 @@ import asyncio
 import logging
 import logging.handlers
 import signal
+import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -49,6 +51,42 @@ def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
     stream.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     root.addHandler(stream)
     return handler
+
+
+def _ensure_portal(timeout: float = 10.0) -> bool:
+    if not getattr(sys, "frozen", False):
+        return True
+
+    def _port_open() -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", 9780), timeout=0.5):
+                return True
+        except (OSError, socket.timeout):
+            return False
+
+    if _port_open():
+        return True
+
+    try:
+        # Detach so the portal survives the daemon if it dies, and so this
+        # .app launcher can exit without killing the portal it started.
+        subprocess.Popen(
+            [sys.executable, "portal"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to spawn portal subprocess: {e}")
+        return False
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _port_open():
+            return True
+        time.sleep(0.3)
+    return False
 
 
 async def _cmd_start(args: argparse.Namespace) -> int:
@@ -111,6 +149,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     except (OSError, IOError):
         if getattr(sys, "frozen", False):
             logger.info("Daemon already running (lock held) — opening dashboard")
+            _ensure_portal()
             import webbrowser
             webbrowser.open("http://127.0.0.1:9780/")
             return 0
@@ -126,6 +165,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     await api.start()
     logger.info("HTTP API server on 127.0.0.1:9778")
 
+    _ensure_portal()
     import webbrowser
     asyncio.get_running_loop().run_in_executor(
         None, lambda: webbrowser.open("http://127.0.0.1:9780/")
