@@ -8,7 +8,7 @@ import pytest
 
 from src.config import Settings, Mode
 from src.store.storage import SCHEMA
-from src.watch.data import (
+from src.dashboard_data import (
     DashboardSnapshot,
     UsageData,
     fetch_activity,

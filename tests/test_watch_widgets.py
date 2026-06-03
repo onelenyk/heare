@@ -7,7 +7,7 @@ from pathlib import Path
 from textual.widgets import Static
 
 from src.config import Settings, Mode
-from src.watch.data import HeaderData, LogLine, UsageData
+from src.dashboard_data import HeaderData, LogLine, UsageData
 from src.watch.widgets import (
     ActivityTable,
     AIBar,

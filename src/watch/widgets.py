@@ -12,7 +12,7 @@ from src.config import Settings
 from src.pipeline.stages.text_injector import inject_text
 from src.version import app_version
 from src.agent.llm.providers import PROVIDERS
-from .data import ActivityRow, AgentResponseData, DisplayData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
+from src.dashboard_data import ActivityRow, AgentResponseData, DisplayData, HeaderData, LogLine, UsageData, VoiceStateData, fmt_time
 
 
 class HeaderBar(Static):

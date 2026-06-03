@@ -19,7 +19,7 @@ import urllib.request
 from src.daemon.browser import ensure_debug_chrome, is_debug_reachable, list_chrome_profiles
 from src.daemon.watch_controls import restart_daemon, start_daemon, stop_daemon
 from . import models
-from .data import fetch_dashboard_state
+from src.dashboard_data import fetch_dashboard_state
 from .screens import AudioDeviceSelectScreen, ChromeProfileSelectScreen, ModelSelectScreen, ToolingScreen
 from .widgets import ActivityTable, AgentResponseBar, AIBar, ControlsBar, DisplayPanel, HeaderBar, LogTail, UsageBar, VoiceStateBar
 from src.agent.llm.providers import all_keys

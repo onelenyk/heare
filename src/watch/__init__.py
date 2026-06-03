@@ -13,7 +13,7 @@ from src.config import Settings
 from src.agent.identity import load_identity
 from src.agent.llm.providers import PROVIDERS
 from .app import HeareDashboard
-from .data import fetch_dashboard_state
+from src.dashboard_data import fetch_dashboard_state
 
 
 def run_watch(settings: Settings, interval: float, once: bool = False) -> int:

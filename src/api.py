@@ -1,4 +1,5 @@
 """Minimal HTTP API for daemon control — backs the web frontend."""
+import asyncio
 import json
 import logging
 import os
@@ -17,7 +18,7 @@ from src.agent.identity import load_identity
 from src.agent.llm.providers import PROVIDERS, get_available, get_config
 from src.agent.modes import VALID_MODES
 from src.config import HEARE_HOME
-from src.watch.data import (
+from src.dashboard_data import (
     counts,
     daemon_status,
     fetch_usage,
@@ -52,6 +53,9 @@ class API:
         self._app.router.add_post("/settings", self._handle_settings)
         self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
+        self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
+        self._app.router.add_post("/api/chrome/launch", self._handle_chrome_launch)
+        self._app.router.add_get("/api/tools", self._handle_tools)
         self._runner = None
         self._site = None
 
@@ -316,9 +320,49 @@ class API:
                 if pid_file.exists():
                     pid = int(pid_file.read_text().strip())
                     os.kill(pid, signal.SIGTERM)
-                return web.json_response({"ok": True, "action": "stopped"})
+                return web.json_response({"ok": True, "action": "stopped", "pid": None})
             except (OSError, ValueError, ProcessLookupError):
-                return web.json_response({"ok": True, "action": "already_stopped"})
+                return web.json_response({"ok": True, "action": "already_stopped", "pid": None})
+        if action == "start":
+            try:
+                from src.daemon.watch_controls import daemon_pid, start_daemon
+
+                running_pid = daemon_pid(self.config)
+                if running_pid is not None:
+                    return web.json_response({
+                        "ok": True,
+                        "action": "noop",
+                        "pid": running_pid,
+                        "message": "daemon already running",
+                    })
+                msg = await asyncio.to_thread(start_daemon, self.config)
+                pid = daemon_pid(self.config)
+                return web.json_response({
+                    "ok": True,
+                    "action": "started",
+                    "pid": pid,
+                    "message": msg,
+                })
+            except Exception as e:
+                return web.json_response(
+                    {"ok": False, "action": "start", "error": str(e)}, status=500
+                )
+        if action == "restart":
+            try:
+                from src.daemon.watch_controls import daemon_pid, restart_daemon
+
+                msg = await asyncio.to_thread(restart_daemon, self.config)
+                pid = daemon_pid(self.config)
+                return web.json_response({
+                    "ok": True,
+                    "action": "restarted",
+                    "pid": pid,
+                    "message": msg,
+                })
+            except Exception as e:
+                return web.json_response(
+                    {"ok": False, "action": "restart", "error": str(e)}, status=500
+                )
         return web.json_response({"ok": False, "error": f"unknown action: {action}"}, status=400)
 
     async def _handle_inject(self, request):

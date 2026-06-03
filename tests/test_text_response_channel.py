@@ -66,7 +66,7 @@ async def test_fetch_agent_response_reads_latest_bot_row(store):
     """Dashboard sync read path returns the newest bot row with tags."""
     import sqlite3
 
-    from src.watch.data import fetch_agent_response
+    from src.dashboard_data import fetch_agent_response
 
     await store.log_transcript("user said hi", "ambient")
     await store.log_transcript(
@@ -88,14 +88,14 @@ async def test_fetch_agent_response_reads_latest_bot_row(store):
 
 
 def test_fetch_agent_response_empty_on_none_con():
-    from src.watch.data import fetch_agent_response
+    from src.dashboard_data import fetch_agent_response
 
     r = fetch_agent_response(None)
     assert r.text is None and r.spoken is None
 
 
 def test_agent_response_bar_renders_silent_and_spoken():
-    from src.watch.data import AgentResponseData
+    from src.dashboard_data import AgentResponseData
     from src.watch.widgets import AgentResponseBar
 
     bar = AgentResponseBar()
@@ -116,7 +116,7 @@ def test_agent_response_bar_renders_silent_and_spoken():
 
 
 def test_dashboard_snapshot_has_agent_response_field():
-    from src.watch.data import DashboardSnapshot
+    from src.dashboard_data import DashboardSnapshot
 
     assert "agent_response" in DashboardSnapshot.__dataclass_fields__
 
@@ -197,14 +197,14 @@ def test_show_display_registered():
 
 
 def test_fetch_latest_display_empty_on_none():
-    from src.watch.data import fetch_latest_display
+    from src.dashboard_data import fetch_latest_display
     d = fetch_latest_display(None)
     assert d.content is None and d.fmt == "text"
 
 
 async def test_fetch_latest_display_reads_row(store: TranscriptStore) -> None:
     import sqlite3
-    from src.watch.data import fetch_latest_display
+    from src.dashboard_data import fetch_latest_display
 
     await store.log_display("graph TD", "markdown", title="diagram")
     await store.close()
@@ -219,7 +219,7 @@ async def test_fetch_latest_display_reads_row(store: TranscriptStore) -> None:
 
 
 def test_display_panel_renders_each_format():
-    from src.watch.data import DisplayData
+    from src.dashboard_data import DisplayData
     from src.watch.widgets import DisplayPanel
 
     p = DisplayPanel()
@@ -240,5 +240,5 @@ def test_display_panel_renders_each_format():
 
 
 def test_dashboard_snapshot_has_display_field():
-    from src.watch.data import DashboardSnapshot
+    from src.dashboard_data import DashboardSnapshot
     assert "display" in DashboardSnapshot.__dataclass_fields__
