@@ -791,7 +791,7 @@ function Dashboard() {
         <span class="identity">{state.agent || "heare"} {state.emoji || ""}</span>
         <span class="meta">{running ? "running" : "stopped"}</span>
         {state.pid != null && <span class="meta">pid=<strong>{state.pid}</strong></span>}
-        {state.uptime != null && <span class="meta">{Math.floor(state.uptime / 60)}m{state.uptime % 60}s</span>}
+        {state.uptime != null && state.uptime !== "" && <span class="meta">{state.uptime}</span>}
         <span class="meta">chrome:<strong>{state.chrome ? "connected" : "off"}</strong></span>
         {state.version && <span class="meta">{state.version}</span>}
         <span class="meta">mode <strong>{state.mode || "?"}</strong></span>
