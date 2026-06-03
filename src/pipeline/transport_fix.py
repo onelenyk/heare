@@ -26,7 +26,7 @@ class FixedLocalAudioOutputTransport(LocalAudioOutputTransport):
 
         self._sample_rate = self._params.audio_out_sample_rate or frame.audio_out_sample_rate
 
-        frames_per_buffer = int(self._sample_rate / 100) * 2
+        frames_per_buffer = int(self._sample_rate / 100) * 4
 
         self._out_stream = self._py_audio.open(
             format=self._py_audio.get_format_from_width(2),
