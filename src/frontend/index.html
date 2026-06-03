@@ -289,6 +289,92 @@
     text-align: center; font-size: 11px; color: var(--muted);
     padding: 12px 0;
   }
+
+  /* ── Tools modal: search ── */
+  .modal-search {
+    width: 100%; padding: 6px 10px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    font-size: 12px; font-family: var(--mono);
+    margin-bottom: 6px; outline: none;
+  }
+  .modal-search:focus { border-color: var(--accent-cyan); }
+  .modal-search::placeholder { color: var(--muted); }
+
+  /* ── Tools modal: match count ── */
+  .modal-match-count {
+    font-size: 10px; color: var(--muted);
+    padding: 1px 0 6px 0;
+  }
+
+  /* ── Tools modal: section header (clickable) ── */
+  .modal-section-hdr {
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer; user-select: none;
+    padding: 2px 0; margin-bottom: 0;
+  }
+  .modal-section-hdr:hover { opacity: 0.85; }
+  .modal-section-hdr .ms-chevron {
+    font-size: 10px; color: var(--muted);
+    display: inline-block; width: 12px; flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+  .modal-section-hdr.expanded .ms-chevron {
+    color: var(--text);
+  }
+  .modal-section-hdr h4 {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted); margin: 0;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .modal-section-count {
+    font-weight: 400; font-size: 10px;
+    color: var(--muted); background: rgba(139,148,158,0.12);
+    padding: 0 6px; border-radius: 8px;
+  }
+
+  .modal-section-body {
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+    max-height: 4000px;
+  }
+
+  /* ── Tools modal: sub-group ── */
+  .modal-subgroup {
+    margin-bottom: 4px;
+    padding-left: 16px;
+  }
+  .modal-subgroup-header {
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer; user-select: none;
+    font-size: 12px; font-weight: 600;
+    color: var(--text-dim, #8b949e);
+    padding: 3px 0;
+    transition: color 0.1s;
+  }
+  .modal-subgroup-header:hover { color: var(--text); }
+  .modal-subgroup-header .sg-chevron {
+    font-size: 9px; color: var(--muted);
+    display: inline-block; width: 10px; flex-shrink: 0;
+  }
+  .modal-subgroup-header .sg-icon {
+    font-size: 13px; flex-shrink: 0;
+  }
+  .modal-subgroup-header .sg-label {
+    flex: 1; min-width: 0;
+  }
+  .modal-subgroup-header .sg-badge {
+    font-size: 9px; font-weight: 600;
+    color: var(--muted); background: rgba(139,148,158,0.12);
+    padding: 0 5px; border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .modal-subgroup-content {
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+    max-height: 2000px;
+    padding-left: 20px;
+  }
 </style>
 </head>
 <body>
@@ -654,50 +740,272 @@ function AudioDevicePicker({ devices, activeInput, activeOutput, onSelect, onClo
   );
 }
 
+// ═══ Helper: infer built-in tool category from name ═══
+function inferBuiltInCategory(name) {
+  var n = name || "";
+  // file & shell — direct file ops and web access
+  if (/^(bash|read|write|web_search|web_fetch|create_archive|extract_archive|batch_operation)$/.test(n))
+    return {key:"file", label:"file & shell", icon:"🗂"};
+  // browser — any tool that touches the browser
+  if (/browser/.test(n))
+    return {key:"browser", label:"browser", icon:"🌐"};
+  // agent — mode, config, capabilities, favorites, views
+  if (/^(set_(mode|provider|view_preference)|show_(canvas|profile|text)|discover_capability|install_(skill|mcp)_tool|list_capabilities|revoke_capability|add_favorite|list_favorites|cancel)$/.test(n))
+    return {key:"agent", label:"agent", icon:"🤖"};
+  // daemon — process lifecycle
+  if (/_daemon$/.test(n))
+    return {key:"daemon", label:"daemon", icon:"⚙"};
+  // skill — agent skills lifecycle
+  if (/_skill/.test(n))
+    return {key:"skill", label:"skill", icon:"🧩"};
+  // tooling — MCP + dynamic tool management
+  if (/^(list_(mcp_servers|tools)|create_tool|update_tool|delete_tool|register_mcp_server)$/.test(n))
+    return {key:"tooling", label:"tooling", icon:"🔧"};
+  // anything else
+  return {key:"other", label:"other", icon:"📦"};
+}
+
 // ═══ 4g: Tools modal ═══
 function ToolsModal({ data, onClose }) {
-  const builtIn = (data && data.built_in) || [];
-  const skills = (data && data.skills) || [];
-  const mcps = (data && data.mcps) || [];
+  const [searchQuery, setSearchQuery] = useState("");
+  const [collapsedSections, setCollapsedSections] = useState(new Set());
+  const [collapsedSubgroups, setCollapsedSubgroups] = useState(new Set());
+
+  // ── loading / error guard ──
+  if (!data) {
+    return (
+      <div class="modal-overlay" onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+        <div class="modal-card">
+          <div class="modal-header">
+            <span class="modal-title">tools</span>
+            <button class="modal-close" onClick={onClose}>&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="info-line">Loading…</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── search helpers ──
+  var searchActive = searchQuery.trim().length > 0;
+  function itemMatches(item) {
+    if (!searchActive) return true;
+    var q = searchQuery.toLowerCase();
+    return (item.name || "").toLowerCase().indexOf(q) !== -1 ||
+           (item.description || "").toLowerCase().indexOf(q) !== -1;
+  }
+
+  // ── raw arrays ──
+  var builtInAll = data.built_in || [];
+  var skillsAll  = data.skills || [];
+  var mcpsAll    = data.mcps || [];
+
+  // ── filter ──
+  var filteredBI = searchActive ? builtInAll.filter(itemMatches) : builtInAll;
+  var filteredSK = searchActive ? skillsAll.filter(itemMatches) : skillsAll;
+  var filteredMC = searchActive ? mcpsAll.filter(itemMatches) : mcpsAll;
+  var totalMatches = filteredBI.length + filteredSK.length + filteredMC.length;
+
+  // ── group built-in by category (with stable order) ──
+  var BI_CATEGORY_ORDER = ["file", "browser", "agent", "daemon", "skill", "tooling", "other"];
+  var biGroups = {};
+  filteredBI.forEach(function(t) {
+    var cat = inferBuiltInCategory(t.name);
+    if (!biGroups[cat.key]) biGroups[cat.key] = {icon:cat.icon, label:cat.label, items:[]};
+    biGroups[cat.key].items.push(t);
+  });
+
+  // ── group skills ──
+  var bundledSkills   = filteredSK.filter(function(s) { return !s.installed_via_discovery; });
+  var discoverySkills = filteredSK.filter(function(s) { return s.installed_via_discovery; });
+
+  // ── group mcps ──
+  var activeMcps   = filteredMC.filter(function(m) { return !m.disabled; });
+  var disabledMcps = filteredMC.filter(function(m) { return m.disabled; });
+
+  // ── expand/collapse helpers ──
+  function secExpanded(name) {
+    return searchActive ? true : !collapsedSections.has(name);
+  }
+  function subExpanded(key) {
+    return searchActive ? true : !collapsedSubgroups.has(key);
+  }
+  function toggleSection(name) {
+    if (searchActive) return;
+    setCollapsedSections(function(prev) {
+      var next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
+  function toggleSubgroup(key) {
+    if (searchActive) return;
+    setCollapsedSubgroups(function(prev) {
+      var next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  // ── expand / collapse all ──
+  var anyCollapsed = collapsedSections.size > 0 || collapsedSubgroups.size > 0;
+  function toggleAll() {
+    if (searchActive) return;
+    if (anyCollapsed) {
+      setCollapsedSections(new Set());
+      setCollapsedSubgroups(new Set());
+    } else {
+      var newSec = new Set(["built-in","skills","mcps"]);
+      setCollapsedSections(newSec);
+      var allSubKeys = new Set();
+      BI_CATEGORY_ORDER.forEach(function(k) { if (biGroups[k]) allSubKeys.add("bi:"+k); });
+      if (bundledSkills.length > 0) allSubKeys.add("sk:bundled");
+      if (discoverySkills.length > 0) allSubKeys.add("sk:discovery");
+      if (activeMcps.length > 0) allSubKeys.add("mc:active");
+      if (disabledMcps.length > 0) allSubKeys.add("mc:disabled");
+      setCollapsedSubgroups(allSubKeys);
+    }
+  }
+
+  function hasAnySubgroupMatches(section) {
+    if (section === "built-in") {
+      return Object.keys(biGroups).length > 0;
+    }
+    if (section === "skills") {
+      return bundledSkills.length > 0 || discoverySkills.length > 0;
+    }
+    if (section === "mcps") {
+      return activeMcps.length > 0 || disabledMcps.length > 0;
+    }
+    return false;
+  }
+
+  // ── render a single tool item ──
+  function renderItem(t, i) {
+    return (
+      <div key={i} class="modal-item">
+        <span class="tool-name">{t.name || t}</span>
+        {t.description && <div class="tool-desc">{t.description}</div>}
+      </div>
+    );
+  }
+
+  // ── render a sub-group ──
+  function renderSubgroup(key, icon, label, items) {
+    if (items.length === 0) return null;
+    var expanded = subExpanded(key);
+    return (
+      <div class="modal-subgroup" key={key}>
+        <div
+          class={"modal-subgroup-header" + (expanded ? " expanded" : "")}
+          onClick={function() { toggleSubgroup(key); }}
+        >
+          <span class="sg-chevron">{expanded ? "▾" : "▸"}</span>
+          <span class="sg-icon">{icon}</span>
+          <span class="sg-label">{label}</span>
+          <span class="sg-badge">{items.length}</span>
+        </div>
+        {expanded && (
+          <div class="modal-subgroup-content">
+            {items.map(renderItem)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── render a top-level section ──
+  function renderSection(name, title, count, renderSubgroupsFn) {
+    // When searching, hide empty sections entirely
+    if (searchActive && !hasAnySubgroupMatches(name)) return null;
+    var expanded = secExpanded(name);
+    return (
+      <div class="modal-section" key={name}>
+        <div
+          class={"modal-section-hdr" + (expanded ? " expanded" : "")}
+          onClick={function() { toggleSection(name); }}
+        >
+          <span class="ms-chevron">{expanded ? "▾" : "▸"}</span>
+          <h4 style={{margin:0,flex:1}}>
+            {title}
+            <span class="modal-section-count">{count}</span>
+          </h4>
+        </div>
+        {expanded && (
+          <div class="modal-section-body">
+            {renderSubgroupsFn()}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div class="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div class="modal-card">
+    <div class="modal-overlay" onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="modal-card" style={{maxWidth:560}}>
         <div class="modal-header">
-          <span class="modal-title">tools</span>
-          <button class="modal-close" onClick={onClose}>&times;</button>
+          <span class="modal-title">tools ({data.built_in ? data.built_in.length : 0} built-in, {data.skills ? data.skills.length : 0} skills, {data.mcps ? data.mcps.length : 0} mcps)</span>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            {!searchActive && (
+              <button class="btn" style={{fontSize:10,padding:"2px 6px"}} onClick={toggleAll}>
+                {anyCollapsed ? "expand all" : "collapse all"}
+              </button>
+            )}
+            <button class="modal-close" onClick={onClose}>&times;</button>
+          </div>
         </div>
         <div class="modal-body">
-          {data && data.error && <div class="info-line" style={{color:"var(--accent-yellow)",marginBottom:8}}>{data.error}</div>}
-          <div class="modal-section">
-            <h4>built-in ({builtIn.length})</h4>
-            {builtIn.map((t, i) => (
-              <div key={i} class="modal-item">
-                <span class="tool-name">{t.name || t}</span>
-                {t.description && <div class="tool-desc">{t.description}</div>}
+          {data && data.error && (
+            <div class="info-line" style={{color:"var(--accent-yellow)",marginBottom:6}}>{data.error}</div>
+          )}
+          <input
+            type="text"
+            class="modal-search"
+            placeholder="search by name or description…"
+            value={searchQuery}
+            onChange={function(e) { setSearchQuery(e.target.value); }}
+            autoFocus
+          />
+          {searchActive && (
+            <div class="modal-match-count">
+              {totalMatches} item{totalMatches !== 1 ? "s" : ""} across {[filteredBI.length > 0, filteredSK.length > 0, filteredMC.length > 0].filter(Boolean).length} section{filteredBI.length + filteredSK.length + filteredMC.length !== 0 && [filteredBI.length > 0, filteredSK.length > 0, filteredMC.length > 0].filter(Boolean).length !== 1 ? "s" : ""}
+            </div>
+          )}
+
+          {/* ── built-in ── */}
+          {(!searchActive || filteredBI.length > 0) && renderSection("built-in", "built-in", builtInAll.length, function() {
+            return BI_CATEGORY_ORDER.map(function(catKey) {
+              var g = biGroups[catKey];
+              if (!g || g.items.length === 0) return null;
+              return renderSubgroup("bi:" + catKey, g.icon, g.label, g.items);
+            });
+          })}
+
+          {/* ── skills ── */}
+          {(!searchActive || filteredSK.length > 0) && renderSection("skills", "skills", skillsAll.length, function() {
+            return (
+              <div>
+                {renderSubgroup("sk:bundled", "📦", "bundled", bundledSkills)}
+                {renderSubgroup("sk:discovery", "⬇", "discovery-installed", discoverySkills)}
               </div>
-            ))}
-            {builtIn.length === 0 && <div class="info-line">none</div>}
-          </div>
-          <div class="modal-section">
-            <h4>skills ({skills.length})</h4>
-            {skills.map((t, i) => (
-              <div key={i} class="modal-item">
-                <span class="tool-name">{t.name || t}</span>
-                {t.description && <div class="tool-desc">{t.description}</div>}
+            );
+          })}
+
+          {/* ── mcps ── */}
+          {(!searchActive || filteredMC.length > 0) && renderSection("mcps", "mcps", mcpsAll.length, function() {
+            return (
+              <div>
+                {renderSubgroup("mc:active", "🟢", "active", activeMcps)}
+                {renderSubgroup("mc:disabled", "🔴", "disabled", disabledMcps)}
               </div>
-            ))}
-            {skills.length === 0 && <div class="info-line">none</div>}
-          </div>
-          <div class="modal-section">
-            <h4>mcps ({mcps.length})</h4>
-            {mcps.map((t, i) => (
-              <div key={i} class="modal-item">
-                <span class="tool-name">{t.name || t}</span>
-                {t.description && <div class="tool-desc">{t.description}</div>}
-              </div>
-            ))}
-            {mcps.length === 0 && <div class="info-line">none</div>}
-          </div>
+            );
+          })}
+
+          {totalMatches === 0 && (
+            <div class="info-line" style={{textAlign:"center",marginTop:12}}>no tools match "{searchQuery}"</div>
+          )}
         </div>
       </div>
     </div>
