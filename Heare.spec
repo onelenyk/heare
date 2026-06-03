@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from PyInstaller.utils.hooks import collect_all
 
 datas = [
@@ -33,11 +34,20 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['runtime-hook-portaudio.py'],
     excludes=['tkinter', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'matplotlib', 'notebook', 'jupyter', 'torch'],
     noarchive=False,
     optimize=0,
 )
+
+# Deduplicate PortAudio: remove sounddevice's copy, keep only brew's libportaudio.2.dylib
+final_binaries = []
+for item in a.binaries:
+    dest = item[0]
+    if 'portaudio-binaries/libportaudio.dylib' in dest:
+        continue  # Skip sounddevice's PortAudio
+    final_binaries.append(item)
+a.binaries = final_binaries
 pyz = PYZ(a.pure)
 
 exe = EXE(

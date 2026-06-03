@@ -20,3 +20,9 @@ build/
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# Pytest temporary artifacts (mock repr files at project root)
+<MagicMock*
+# Stray debug scripts at project root
+/pytest_debug_*.py
+/coverage_report.txt
