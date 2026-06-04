@@ -426,6 +426,12 @@
     width: 100%; height: 300px; border: none;
     background: white; border-radius: 4px;
   }
+  .warn-banner {
+    background: rgba(227,179,65,0.12); color: var(--accent-yellow);
+    border: 1px solid rgba(227,179,65,0.3); border-radius: 4px;
+    padding: 4px 10px; font-size: 12px; margin-bottom: 6px;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -636,7 +642,7 @@ function Onboarding({ onSaved }) {
 }
 
 // ── UserVoiceBar ──
-function UserVoiceBar({ voiceState }) {
+const UserVoiceBar = React.memo(function UserVoiceBar({ voiceState }) {
   const [effectiveState, setEffectiveState] = useState("idle");
   const sinceRef = useRef(0);
 
@@ -676,10 +682,10 @@ function UserVoiceBar({ voiceState }) {
       <div class="bar-sub">{subs[effectiveState] || ""}</div>
     </div>
   );
-}
+});
 
 // ── AgentStatusBar ──
-function AgentStatusBar({ agentState }) {
+const AgentStatusBar = React.memo(function AgentStatusBar({ agentState }) {
   const [effectiveState, setEffectiveState] = useState("idle");
   const sinceRef = useRef(0);
 
@@ -714,10 +720,9 @@ function AgentStatusBar({ agentState }) {
     <div>
       <div class="bar-label">{labels[effectiveState] || "\u25cb idle"}</div>
       <div class={"agent-bar agent-" + effectiveState}></div>
-      <div class="bar-sub">{subs[effectiveState] || ""}</div>
     </div>
   );
-}
+});
 
 // ═══ Toast ═══
 function Toast({ message, type, onDismiss }) {
@@ -729,7 +734,7 @@ function Toast({ message, type, onDismiss }) {
 }
 
 // ═══ 4a: Usage breakdown ═══
-function UsageCard({ usage }) {
+const UsageCard = React.memo(function UsageCard({ usage }) {
   if (!usage) return <div class="info-line">no usage data</div>;
   return (
     <div>
@@ -739,7 +744,7 @@ function UsageCard({ usage }) {
       <div class="usage-line"><span class="label usage-total">total</span><span class="value usage-total">${(usage.total_cost_usd || 0).toFixed(4)}</span></div>
     </div>
   );
-}
+});
 
 // ═══ 4e: Audio device picker ═══
 function AudioDevicePicker({ devices, activeInput, activeOutput, onSelect, onClose }) {
@@ -825,7 +830,6 @@ function ToolsModal({ data, onClose }) {
   const [collapsedSections, setCollapsedSections] = useState(new Set());
   const [collapsedSubgroups, setCollapsedSubgroups] = useState(new Set());
 
-  // ── loading / error guard ──
   if (!data) {
     return (
       <div class="modal-overlay" onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
@@ -842,7 +846,6 @@ function ToolsModal({ data, onClose }) {
     );
   }
 
-  // ── search helpers ──
   var searchActive = searchQuery.trim().length > 0;
   function itemMatches(item) {
     if (!searchActive) return true;
@@ -851,18 +854,15 @@ function ToolsModal({ data, onClose }) {
            (item.description || "").toLowerCase().indexOf(q) !== -1;
   }
 
-  // ── raw arrays ──
   var builtInAll = data.built_in || [];
   var skillsAll  = data.skills || [];
   var mcpsAll    = data.mcps || [];
 
-  // ── filter ──
   var filteredBI = searchActive ? builtInAll.filter(itemMatches) : builtInAll;
   var filteredSK = searchActive ? skillsAll.filter(itemMatches) : skillsAll;
   var filteredMC = searchActive ? mcpsAll.filter(itemMatches) : mcpsAll;
   var totalMatches = filteredBI.length + filteredSK.length + filteredMC.length;
 
-  // ── group built-in by category (with stable order) ──
   var BI_CATEGORY_ORDER = ["file", "browser", "ui-output", "agent", "daemon", "skill", "tooling", "other"];
   var biGroups = {};
   filteredBI.forEach(function(t) {
@@ -871,15 +871,12 @@ function ToolsModal({ data, onClose }) {
     biGroups[cat.key].items.push(t);
   });
 
-  // ── group skills ──
   var bundledSkills   = filteredSK.filter(function(s) { return !s.installed_via_discovery; });
   var discoverySkills = filteredSK.filter(function(s) { return s.installed_via_discovery; });
 
-  // ── group mcps ──
   var activeMcps   = filteredMC.filter(function(m) { return !m.disabled; });
   var disabledMcps = filteredMC.filter(function(m) { return m.disabled; });
 
-  // ── expand/collapse helpers ──
   function secExpanded(name) {
     return searchActive ? true : !collapsedSections.has(name);
   }
@@ -903,7 +900,6 @@ function ToolsModal({ data, onClose }) {
     });
   }
 
-  // ── expand / collapse all ──
   var anyCollapsed = collapsedSections.size > 0 || collapsedSubgroups.size > 0;
   function toggleAll() {
     if (searchActive) return;
@@ -936,7 +932,6 @@ function ToolsModal({ data, onClose }) {
     return false;
   }
 
-  // ── render a single tool item ──
   function renderItem(t, i) {
     return (
       <div key={i} class="modal-item">
@@ -946,7 +941,6 @@ function ToolsModal({ data, onClose }) {
     );
   }
 
-  // ── render a sub-group ──
   function renderSubgroup(key, icon, label, items) {
     if (items.length === 0) return null;
     var expanded = subExpanded(key);
@@ -970,7 +964,6 @@ function ToolsModal({ data, onClose }) {
     );
   }
 
-  // ── render a top-level section ──
   function renderSection(name, title, count, renderSubgroupsFn) {
     // When searching, hide empty sections entirely
     if (searchActive && !hasAnySubgroupMatches(name)) return null;
@@ -1251,6 +1244,7 @@ function Dashboard() {
   const [display, setDisplay] = useState(null);
   const [displayVisible, setDisplayVisible] = useState(true);
   const [displayFlash, setDisplayFlash] = useState(false);
+  const [pollFailed, setPollFailed] = useState(false);
 
   useEffect(() => {
     if (logRef.current) {
@@ -1287,12 +1281,14 @@ function Dashboard() {
           return dData;
         });
       }
-    } catch(e) {}
+      setPollFailed(false);
+    } catch(e) {
+      setPollFailed(true);
+    }
   }
 
   async function post(url, body) {
     await fetch(API + url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    poll();
   }
 
   async function saveSettings() {
@@ -1437,7 +1433,7 @@ function Dashboard() {
       return;
     }
     fetchBridgeStatus();
-    bridgeIntervalRef.current = setInterval(fetchBridgeStatus, 1000);
+    bridgeIntervalRef.current = setInterval(fetchBridgeStatus, 3000);
     return () => {
       if (bridgeIntervalRef.current) { clearInterval(bridgeIntervalRef.current); bridgeIntervalRef.current = null; }
     };
@@ -1507,15 +1503,17 @@ function Dashboard() {
         <span class="meta">interrupt:<strong>{interruptEnabled ? "on" : "off"}</strong></span>
       </div>
 
+      {pollFailed && <div class="warn-banner">⚠ connection lost — data may be stale</div>}
+
       {/* Voice & Agent status bars */}
       <div class="viz-row">
         <div class="viz-col">
           <div class="bar-section-label">🎤 you</div>
-          <UserVoiceBar voiceState={state.voice_state || {}} />
+          <UserVoiceBar voiceState={state.voice_state} />
         </div>
         <div class="viz-col">
           <div class="bar-section-label">🤖 agent</div>
-          <AgentStatusBar agentState={state.agent_state || {}} />
+          <AgentStatusBar agentState={state.agent_state} />
         </div>
       </div>
 

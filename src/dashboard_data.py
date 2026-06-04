@@ -1,6 +1,6 @@
 """Data layer for watch dashboard - DB access and snapshot generation.
 
-This module extracts all data-access functions from the legacy watch.py
+Data-access functions for the dashboard (replaces the old watch/ TUI)
 and provides a clean public API for the Textual dashboard widgets.
 """
 from __future__ import annotations
