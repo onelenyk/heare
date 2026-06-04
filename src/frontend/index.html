@@ -146,10 +146,13 @@
   /* Toast */
   .toast {
     position: fixed; bottom: 20px; right: 20px; z-index: 1000;
-    padding: 8px 16px; border-radius: 6px; font-size: 12px;
+    padding: 8px 14px; border-radius: 6px; font-size: 12px;
     font-weight: 600; animation: toastIn 0.3s ease-out;
-    max-width: 360px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    max-width: 380px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    display: flex; align-items: center; gap: 10px;
   }
+  .toast-close { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; opacity: 0.7; }
+  .toast-close:hover { opacity: 1; }
   .toast-ok { background: var(--accent); color: #000; }
   .toast-err { background: var(--accent-red); color: #fff; }
   .toast-info { background: var(--accent-cyan); color: #000; }
@@ -432,6 +435,10 @@
     padding: 4px 10px; font-size: 12px; margin-bottom: 6px;
     text-align: center;
   }
+  @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .loading-skeleton { text-align: center; }
+  .loading-pulse { animation: pulse 1.5s ease-in-out infinite; font-size: 18px; color: var(--muted); }
+</style>
 </style>
 </head>
 <body>
@@ -505,7 +512,14 @@ function PermissionsGate({ onReady }) {
   }
 
   if (micOk === null) {
-    return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",color:"var(--muted)",fontSize:18}}>Connecting to Heare…</div>;
+    return (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:20}}>
+        <div class="loading-skeleton">
+          <div style={{fontSize:48,marginBottom:16}}>🎤</div>
+          <div class="loading-pulse">connecting to Heare…</div>
+        </div>
+      </div>
+    );
   }
 
   if (!micOk) {
@@ -730,7 +744,7 @@ function Toast({ message, type, onDismiss }) {
     const t = setTimeout(onDismiss, 3000);
     return () => clearTimeout(t);
   }, []);
-  return <div className={"toast toast-" + (type || "ok")}>{message}</div>;
+  return <div className={"toast toast-" + (type || "ok")}><span style={{flex:1,minWidth:0}}>{message}</span><button class="toast-close" onClick={onDismiss}>&times;</button></div>;
 }
 
 // ═══ 4a: Usage breakdown ═══
@@ -798,7 +812,7 @@ function AudioDevicePicker({ devices, activeInput, activeOutput, onSelect, onClo
 
 // ═══ Helper: infer built-in tool category from name ═══
 function inferBuiltInCategory(name) {
-  var n = name || "";
+  const n = name || "";
   // file & shell — direct file ops and web access
   if (/^(bash|read|write|web_search|web_fetch|create_archive|extract_archive|batch_operation)$/.test(n))
     return {key:"file", label:"file & shell", icon:"🗂"};
@@ -846,36 +860,36 @@ function ToolsModal({ data, onClose }) {
     );
   }
 
-  var searchActive = searchQuery.trim().length > 0;
+  const searchActive = searchQuery.trim().length > 0;
   function itemMatches(item) {
     if (!searchActive) return true;
-    var q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase();
     return (item.name || "").toLowerCase().indexOf(q) !== -1 ||
            (item.description || "").toLowerCase().indexOf(q) !== -1;
   }
 
-  var builtInAll = data.built_in || [];
-  var skillsAll  = data.skills || [];
-  var mcpsAll    = data.mcps || [];
+  const builtInAll = data.built_in || [];
+  const skillsAll  = data.skills || [];
+  const mcpsAll    = data.mcps || [];
 
-  var filteredBI = searchActive ? builtInAll.filter(itemMatches) : builtInAll;
-  var filteredSK = searchActive ? skillsAll.filter(itemMatches) : skillsAll;
-  var filteredMC = searchActive ? mcpsAll.filter(itemMatches) : mcpsAll;
-  var totalMatches = filteredBI.length + filteredSK.length + filteredMC.length;
+  const filteredBI = searchActive ? builtInAll.filter(itemMatches) : builtInAll;
+  const filteredSK = searchActive ? skillsAll.filter(itemMatches) : skillsAll;
+  const filteredMC = searchActive ? mcpsAll.filter(itemMatches) : mcpsAll;
+  const totalMatches = filteredBI.length + filteredSK.length + filteredMC.length;
 
-  var BI_CATEGORY_ORDER = ["file", "browser", "ui-output", "agent", "daemon", "skill", "tooling", "other"];
-  var biGroups = {};
+  const BI_CATEGORY_ORDER = ["file", "browser", "ui-output", "agent", "daemon", "skill", "tooling", "other"];
+  const biGroups = {};
   filteredBI.forEach(function(t) {
-    var cat = inferBuiltInCategory(t.name);
+    const cat = inferBuiltInCategory(t.name);
     if (!biGroups[cat.key]) biGroups[cat.key] = {icon:cat.icon, label:cat.label, items:[]};
     biGroups[cat.key].items.push(t);
   });
 
-  var bundledSkills   = filteredSK.filter(function(s) { return !s.installed_via_discovery; });
-  var discoverySkills = filteredSK.filter(function(s) { return s.installed_via_discovery; });
+  const bundledSkills   = filteredSK.filter(function(s) { return !s.installed_via_discovery; });
+  const discoverySkills = filteredSK.filter(function(s) { return s.installed_via_discovery; });
 
-  var activeMcps   = filteredMC.filter(function(m) { return !m.disabled; });
-  var disabledMcps = filteredMC.filter(function(m) { return m.disabled; });
+  const activeMcps   = filteredMC.filter(function(m) { return !m.disabled; });
+  const disabledMcps = filteredMC.filter(function(m) { return m.disabled; });
 
   function secExpanded(name) {
     return searchActive ? true : !collapsedSections.has(name);
@@ -886,7 +900,7 @@ function ToolsModal({ data, onClose }) {
   function toggleSection(name) {
     if (searchActive) return;
     setCollapsedSections(function(prev) {
-      var next = new Set(prev);
+      const next = new Set(prev);
       if (next.has(name)) next.delete(name); else next.add(name);
       return next;
     });
@@ -894,22 +908,22 @@ function ToolsModal({ data, onClose }) {
   function toggleSubgroup(key) {
     if (searchActive) return;
     setCollapsedSubgroups(function(prev) {
-      var next = new Set(prev);
+      const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   }
 
-  var anyCollapsed = collapsedSections.size > 0 || collapsedSubgroups.size > 0;
+  const anyCollapsed = collapsedSections.size > 0 || collapsedSubgroups.size > 0;
   function toggleAll() {
     if (searchActive) return;
     if (anyCollapsed) {
       setCollapsedSections(new Set());
       setCollapsedSubgroups(new Set());
     } else {
-      var newSec = new Set(["built-in","skills","mcps"]);
+      const newSec = new Set(["built-in","skills","mcps"]);
       setCollapsedSections(newSec);
-      var allSubKeys = new Set();
+      const allSubKeys = new Set();
       BI_CATEGORY_ORDER.forEach(function(k) { if (biGroups[k]) allSubKeys.add("bi:"+k); });
       if (bundledSkills.length > 0) allSubKeys.add("sk:bundled");
       if (discoverySkills.length > 0) allSubKeys.add("sk:discovery");
@@ -943,7 +957,7 @@ function ToolsModal({ data, onClose }) {
 
   function renderSubgroup(key, icon, label, items) {
     if (items.length === 0) return null;
-    var expanded = subExpanded(key);
+    const expanded = subExpanded(key);
     return (
       <div class="modal-subgroup" key={key}>
         <div
@@ -967,7 +981,7 @@ function ToolsModal({ data, onClose }) {
   function renderSection(name, title, count, renderSubgroupsFn) {
     // When searching, hide empty sections entirely
     if (searchActive && !hasAnySubgroupMatches(name)) return null;
-    var expanded = secExpanded(name);
+    const expanded = secExpanded(name);
     return (
       <div class="modal-section" key={name}>
         <div
@@ -1024,7 +1038,7 @@ function ToolsModal({ data, onClose }) {
           {/* ── built-in ── */}
           {(!searchActive || filteredBI.length > 0) && renderSection("built-in", "built-in", builtInAll.length, function() {
             return BI_CATEGORY_ORDER.map(function(catKey) {
-              var g = biGroups[catKey];
+              const g = biGroups[catKey];
               if (!g || g.items.length === 0) return null;
               return renderSubgroup("bi:" + catKey, g.icon, g.label, g.items);
             });
@@ -1248,7 +1262,9 @@ function Dashboard() {
 
   useEffect(() => {
     if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
+      const el = logRef.current;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+      if (atBottom) el.scrollTop = el.scrollHeight;
     }
   }, [logs]);
 
@@ -1648,7 +1664,9 @@ function Dashboard() {
           <table>
             <thead><tr><th>time</th><th>who</th><th>content</th></tr></thead>
             <tbody>
-              {activity.map((row, i) => (
+              {activity.length === 0 ? (
+                <tr><td colspan="3" style={{textAlign:"center",color:"var(--muted)",padding:"24px 12px",fontSize:13}}>No activity yet — start speaking</td></tr>
+              ) : activity.map((row, i) => (
                 <tr key={i}>
                   <td style={{color:"var(--muted)",width:56}}>{new Date(row.ts * 1000).toTimeString().slice(0,8)}</td>
                   <td style={{color: row.who === "bot" ? "var(--accent-orange)" : "var(--accent-cyan)",width:36}}>{row.who}</td>
@@ -1666,7 +1684,9 @@ function Dashboard() {
         <div class="scroll" style={{maxHeight:150}} ref={logRef}>
           <table>
             <tbody>
-              {logs.map((line, i) => (
+              {logs.length === 0 ? (
+                <tr><td style={{textAlign:"center",color:"var(--muted)",padding:"16px 12px",fontSize:12}}>Daemon log lines appear here</td></tr>
+              ) : logs.map((line, i) => (
                 <tr key={i}><td style={{whiteSpace:"pre-wrap",wordBreak:"break-all",fontSize:11,color: line.toUpperCase().includes("ERROR") ? "var(--accent-red)" : line.toUpperCase().includes("WARN") ? "var(--accent-yellow)" : "var(--muted)"}}>{line}</td></tr>
               ))}
             </tbody>
