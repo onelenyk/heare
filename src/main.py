@@ -267,29 +267,23 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
             async def _push_greeting() -> None:
                 await asyncio.sleep(1.0)
-                # Wait for TTS cache to settle before speaking
-                if tts_cache_warmup_task is not None:
-                    try:
-                        await asyncio.wait_for(tts_cache_warmup_task, timeout=5.0)
-                    except (asyncio.TimeoutError, Exception):
-                        pass
-                    from src.voice.indication.core import IndicationKind, get_indication
+                from src.voice.indication.core import IndicationKind, get_indication
 
-                    _ind = get_indication()
-                    if _ind is not None:
-                        _ind.notify(
-                            IndicationKind.DAEMON_STARTED,
-                            body=f"{identity.get('name') or settings.wake_word} ready",
-                        )
-                    greeting_name = identity.get("name") or settings.wake_word
-                    _greetings = {"en": "online", "uk": "на зв'язку", "ru": "на связи"}
-                    _greeting_suffix = _greetings.get(settings.groq_language, "online")
-                    greeting = f"{greeting_name} {_greeting_suffix}"
-                    try:
-                        await llm_service.push_frame(TTSSpeakFrame(greeting))
-                        logger.info("startup greeting queued: %r", greeting)
-                    except Exception:
-                        logger.exception("startup greeting push failed (non-fatal)")
+                _ind = get_indication()
+                if _ind is not None:
+                    _ind.notify(
+                        IndicationKind.DAEMON_STARTED,
+                        body=f"{identity.get('name') or settings.wake_word} ready",
+                    )
+                greeting_name = identity.get("name") or settings.wake_word
+                _greetings = {"en": "online", "uk": "на зв'язку", "ru": "на связи"}
+                _greeting_suffix = _greetings.get(settings.groq_language, "online")
+                greeting = f"{greeting_name} {_greeting_suffix}"
+                try:
+                    await llm_service.push_frame(TTSSpeakFrame(greeting))
+                    logger.info("startup greeting queued: %r", greeting)
+                except Exception:
+                    logger.exception("startup greeting push failed (non-fatal)")
 
             asyncio.create_task(_push_greeting())
 
