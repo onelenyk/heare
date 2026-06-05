@@ -293,6 +293,16 @@
     padding: 12px 0;
   }
 
+  /* ── Prompt Manager ── */
+  .prompt-section-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 11px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .prompt-section-row:hover { background: rgba(139,148,158,0.08); }
+  .prompt-section-row.active { color: var(--accent-cyan); }
+  .prompt-source { color: var(--muted); font-size: 10px; text-transform: uppercase; width: 70px; }
+  .prompt-file { color: var(--text-dim, #8b949e); font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .prompt-chars { color: var(--muted); font-size: 10px; width: 60px; text-align: right; }
+  .prompt-editor { width: 100%; min-height: 200px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-family: var(--mono); font-size: 11px; resize: vertical; }
+  .prompt-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; max-height: 300px; overflow-y: auto; font-family: var(--mono); font-size: 10px; white-space: pre-wrap; color: var(--text); }
+
   /* ── Tools modal: search ── */
   .modal-search {
     width: 100%; padding: 6px 10px;
@@ -1240,6 +1250,103 @@ function BridgeModal({ data, onClose, onRotate, onToggle, revealToken, onToggleR
   );
 }
 
+// ═══ Prompt Manager modal ═══
+function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect, onPreview, onSave, onClose, onEditContent }) {
+  const [activeKey, setActiveKey] = React.useState(null);
+  const [search, setSearch] = React.useState("");
+
+  const filtered = React.useMemo(() => {
+    if (!prompts) return [];
+    if (!search) return prompts;
+    const q = search.toLowerCase();
+    return prompts.filter(p =>
+      p.key.toLowerCase().includes(q) ||
+      (p.template_path && p.template_path.toLowerCase().includes(q)) ||
+      p.source.toLowerCase().includes(q)
+    );
+  }, [prompts, search]);
+
+  return (
+    <div class="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="modal-card" style={{maxWidth: 640}}>
+        <div class="modal-header">
+          <span class="modal-title">prompt manager</span>
+          <button class="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="btn-row" style={{marginBottom: 8}}>
+            <button class="btn" onClick={onPreview}>preview</button>
+            <button class="btn" onClick={onClose}>close</button>
+          </div>
+
+          <div class="modal-section">
+            <h4>sections (ordered)</h4>
+            <input
+              class="modal-search"
+              type="text"
+              placeholder="filter sections…"
+              value={search}
+              onInput={e => setSearch(e.target.value)}
+            />
+            {!filtered || filtered.length === 0 ? (
+              <div class="info-line">Loading…</div>
+            ) : (
+              filtered.map(p => (
+                <div
+                  key={p.key}
+                  class={"prompt-section-row" + (activeKey === p.key ? " active" : "")}
+                  onClick={() => { setActiveKey(p.key); onSelect(p.key); }}
+                >
+                  <span style={{width: 30, color: "var(--muted)", fontSize: 10}}>{p.order}</span>
+                  <span style={{flex: 1, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis"}}>{p.key}</span>
+                  <span class="prompt-source">{p.source}</span>
+                  {p.template_path && <span class="prompt-file">{p.template_path.replace("prompts/", "")}</span>}
+                  <span class="prompt-chars">{p.char_count.toLocaleString()}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+          {selectedPrompt && (
+            <div class="modal-section">
+              <h4>selected: {selectedPrompt.key}</h4>
+              <div style={{fontSize: 10, color: "var(--muted)", marginBottom: 4}}>
+                {selectedPrompt.char_count != null && selectedPrompt.char_count > 0
+                  ? selectedPrompt.char_count.toLocaleString() + " chars · " + selectedPrompt.source
+                  : selectedPrompt.source
+                }
+                {selectedPrompt.template_path && <span> · {selectedPrompt.template_path}</span>}
+              </div>
+              {selectedPrompt.source === "template" && selectedPrompt.content != null ? (
+                <div>
+                  <textarea
+                    class="prompt-editor"
+                    value={editContent}
+                    onInput={e => onEditContent(e.target.value)}
+                  />
+                  <div class="btn-row" style={{marginTop: 6}}>
+                    <button class="btn" onClick={onSave}>save</button>
+                    <button class="btn" onClick={() => onEditContent(selectedPrompt.content)}>reset</button>
+                  </div>
+                </div>
+              ) : (
+                <div class="info-line">{selectedPrompt.note || "(no editable content)"}</div>
+              )}
+            </div>
+          )}
+
+          {preview !== null && (
+            <div class="modal-section">
+              <h4>preview — assembled system prompt</h4>
+              <div class="prompt-preview">{preview}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ──
 function Dashboard() {
   const [state, setState] = useState({});
@@ -1260,6 +1367,12 @@ function Dashboard() {
   const [bridge, setBridge] = useState(null);
   const [bridgeRevealing, setBridgeRevealing] = useState(false);
   const [bridgeRestartNotice, setBridgeRestartNotice] = useState(false);
+  // Prompt Manager state
+  const [showPrompts, setShowPrompts] = useState(false);
+  const [prompts, setPrompts] = useState(null);
+  const [selectedPrompt, setSelectedPrompt] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [editContent, setEditContent] = useState("");
   const bridgeIntervalRef = React.useRef(null);
   const [interruptEnabled, setInterruptEnabled] = useState(true);
   // Display widget state
@@ -1419,6 +1532,39 @@ function Dashboard() {
       setToolsData(d);
     } catch(e) { setToolsData({ error: e.message, built_in: [], skills: [], mcps: [] }); }
     setShowTools(true);
+  }
+
+  // ═══ Prompt Manager ═══
+  async function handleOpenPrompts() {
+    setShowPrompts(true);
+    const r = await fetch(API + "/api/prompts");
+    setPrompts(await r.json());
+  }
+  async function handlePromptEdit(key) {
+    const r = await fetch(API + "/api/prompts/" + key);
+    const d = await r.json();
+    setSelectedPrompt(d);
+    setEditContent(d.content || "");
+  }
+  async function handlePromptPreview() {
+    const r = await fetch(API + "/api/prompts/preview");
+    setPreview(await r.text());
+  }
+  async function handlePromptSave() {
+    if (!selectedPrompt) return;
+    const r = await fetch(API + "/api/prompts/" + selectedPrompt.key, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({content: editContent}),
+    });
+    const d = await r.json();
+    if (d.ok) showToastMsg("saved (" + d.char_count + " chars)", "ok");
+    else showToastMsg("save failed: " + (d.error || "unknown"), "err");
+  }
+  async function handlePromptClose() {
+    setShowPrompts(false);
+    setSelectedPrompt(null);
+    setPreview(null);
   }
 
   // ═══ Bridge setup ═══
@@ -1617,6 +1763,7 @@ function Dashboard() {
               <button class="btn" onClick={fetchChromeProfiles}>🌐 chrome</button>
               <button class="btn" onClick={handleOpenTools}>🔧 tools</button>
               <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
+              <button class="btn" onClick={handleOpenPrompts}>📝 prompts</button>
             </div>
             {/* 4f: Chrome profile picker */}
             {chromeProfiles !== null && (
@@ -1726,6 +1873,21 @@ function Dashboard() {
           revealToken={bridgeRevealing}
           onToggleReveal={() => setBridgeRevealing(!bridgeRevealing)}
           onToast={showToastMsg}
+        />
+      )}
+
+      {/* Prompt Manager modal */}
+      {showPrompts && (
+        <PromptManager
+          prompts={prompts}
+          selectedPrompt={selectedPrompt}
+          editContent={editContent}
+          preview={preview}
+          onSelect={handlePromptEdit}
+          onPreview={handlePromptPreview}
+          onSave={handlePromptSave}
+          onClose={handlePromptClose}
+          onEditContent={setEditContent}
         />
       )}
 

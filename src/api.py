@@ -67,6 +67,10 @@ class API:
         self._app.router.add_get("/api/bridge/token", self._handle_bridge_token)
         self._app.router.add_post("/api/bridge/rotate-token", self._handle_bridge_rotate_token)
         self._app.router.add_post("/api/bridge/toggle", self._handle_bridge_toggle)
+        self._app.router.add_get("/api/prompts", self._handle_prompts)
+        self._app.router.add_get("/api/prompts/preview", self._handle_prompt_preview)
+        self._app.router.add_get("/api/prompts/{key}", self._handle_prompt_section)
+        self._app.router.add_post("/api/prompts/{key}", self._handle_prompt_save)
         self._runner = None
         self._site = None
 
@@ -872,6 +876,153 @@ class API:
             return web.json_response(
                 {"ok": False, "error": str(e)}, status=500
             )
+
+    # ── Prompt Manager endpoints ─────────────────────────
+
+    async def _handle_prompts(self, request):
+        try:
+            from pathlib import Path
+            from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+
+            project_root = Path(__file__).resolve().parent.parent
+            results = []
+            for ps in PROMPT_SECTIONS:
+                char_count = 0
+                preview = ""
+                if ps.source == "template" and ps.template_path:
+                    tpath = project_root / ps.template_path
+                    if tpath.exists():
+                        content = tpath.read_text()
+                        char_count = len(content)
+                        preview = content[:120].replace("\n", " ")
+                elif ps.source == "inline":
+                    preview = "(computed from identity data at render time)"
+                elif ps.source == "dynamic":
+                    preview = f"(computed from current {ps.key} state at render time)"
+                results.append({
+                    "key": ps.key,
+                    "order": ps.order,
+                    "source": ps.source,
+                    "template_path": ps.template_path,
+                    "char_count": char_count,
+                    "content_preview": preview,
+                })
+            return web.json_response(results)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_prompt_section(self, request):
+        try:
+            from pathlib import Path
+            from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+
+            project_root = Path(__file__).resolve().parent.parent
+            key = request.match_info["key"]
+            section = None
+            for ps in PROMPT_SECTIONS:
+                if ps.key == key:
+                    section = ps
+                    break
+            if section is None:
+                return web.json_response({"error": f"unknown key: {key}"}, status=404)
+
+            if section.source == "template" and section.template_path:
+                tpath = project_root / section.template_path
+                if tpath.exists():
+                    content = tpath.read_text()
+                    return web.json_response({
+                        "key": section.key,
+                        "order": section.order,
+                        "source": section.source,
+                        "template_path": section.template_path,
+                        "char_count": len(content),
+                        "content": content,
+                    })
+                return web.json_response({
+                    "key": section.key,
+                    "source": section.source,
+                    "template_path": section.template_path,
+                    "content": None,
+                    "note": f"template not found: {section.template_path}",
+                })
+
+            return web.json_response({
+                "key": section.key,
+                "source": section.source,
+                "content": None,
+                "note": (
+                    "computed at render time from identity data"
+                    if section.source == "inline"
+                    else "computed at render time from context"
+                ),
+            })
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_prompt_save(self, request):
+        try:
+            from pathlib import Path
+            from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+
+            project_root = Path(__file__).resolve().parent.parent
+            key = request.match_info["key"]
+            section = None
+            for ps in PROMPT_SECTIONS:
+                if ps.key == key:
+                    section = ps
+                    break
+            if section is None:
+                return web.json_response({"ok": False, "error": f"unknown key: {key}"}, status=404)
+            if section.source != "template":
+                return web.json_response(
+                    {"ok": False, "error": f"section '{key}' is not template-backed"}, status=400
+                )
+            if not section.template_path:
+                return web.json_response(
+                    {"ok": False, "error": f"section '{key}' has no template_path"}, status=400
+                )
+
+            # Defense-in-depth: ensure template_path stays within prompts/
+            tpath = (project_root / section.template_path).resolve()
+            prompts_dir = (project_root / "prompts").resolve()
+            try:
+                tpath.relative_to(prompts_dir)
+            except ValueError:
+                return web.json_response({"ok": False, "error": "invalid template path"}, status=400)
+
+            body = await request.json()
+            content = body.get("content", "")
+            if not isinstance(content, str):
+                return web.json_response({"ok": False, "error": "content must be a string"}, status=400)
+
+            tpath.write_text(content)
+            return web.json_response({"ok": True, "key": key, "char_count": len(content)})
+        except Exception as e:
+            logger.exception("prompt save failed for key=%s", key)
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _handle_prompt_preview(self, request):
+        try:
+            from src.agent.llm.context_injector import render_native_system_prompt
+
+            preview = render_native_system_prompt(
+                persona=(
+                    "You are kort ⚡ — a digital creature.\n"
+                    "Vibe: curious, warm, helpful.\n"
+                    "You belong to Nazar. You speak Ukrainian."
+                ),
+                language="uk",
+                context={
+                    "recent_transcripts": [],
+                    "conversation_summary": "No previous conversation.",
+                    "active_topics": [],
+                    "entities": [],
+                    "recent_actions": [],
+                },
+            )
+            return web.Response(text=preview, content_type="text/plain; charset=utf-8")
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
 
     def _available_providers(self):
         return get_available(self.config)
