@@ -265,18 +265,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         if pipeline is not None:
             from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
 
-            from src.voice.tts.edge import synthesize_to_pcm
-            from src.voice.tts.phrases import FIXED_PHRASES
-
-            tts_cache_warmup_task = asyncio.create_task(
-                tts_cache.warmup(
-                    FIXED_PHRASES,
-                    lambda text: synthesize_to_pcm(
-                        text, settings.tts_voice, settings.tts_sample_rate
-                    ),
-                )
-            )
-
             async def _push_greeting() -> None:
                 await asyncio.sleep(1.0)
                 # Wait for TTS cache to settle before speaking
@@ -323,7 +311,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 interval_seconds=settings.warmup_interval_seconds,
             )
         else:
-            tts_cache_warmup_task = None
             tts_cache = None
             indication = None
             warmup = None
