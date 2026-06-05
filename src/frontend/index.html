@@ -337,7 +337,7 @@
   }
   .modal-section-hdr h4 {
     font-size: 11px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 1px; color: var(--muted); margin: 0;
+    letter-spacing: 1px; color: var(--muted); margin: 0; flex: 1;
     display: flex; align-items: center; gap: 6px;
   }
   .modal-section-count {
@@ -456,7 +456,56 @@
     .settings-panel { grid-template-columns: 1fr; }
     .onboard-card { margin: 10px; padding: 20px; }
   }
-</style>
+
+  /* ── Prompt Manager: tab buttons ── */
+  .tab-btn { background: none; border: 1px solid var(--border); color: var(--muted); cursor: pointer; font-size: 10px; padding: 2px 8px; border-radius: 4px; }
+  .tab-btn.active { background: var(--accent-cyan); color: #000; border-color: var(--accent-cyan); font-weight: 600; }
+
+  /* ── Prompt Manager: map view ── */
+  .map-view { padding: 12px; }
+  .map-stage { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px; overflow: hidden; }
+  .map-stage-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--border); font-size: 11px; }
+  .map-stage-header strong { color: var(--text); text-transform: uppercase; letter-spacing: 0.5px; }
+  .map-body { padding: 8px 12px 12px; }
+  .map-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; border-bottom: 1px solid rgba(48,54,61,0.3); }
+  .map-row:last-child { border-bottom: none; }
+  .map-key { font-weight: 600; color: var(--accent-cyan); width: 120px; flex-shrink: 0; }
+  .map-source { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 4px; border-radius: 2px; width: 55px; text-align: center; flex-shrink: 0; }
+  .map-source.template { color: var(--accent-orange); background: rgba(255,167,87,0.1); }
+  .map-source.inline { color: var(--accent); background: rgba(126,231,135,0.1); }
+  .map-source.dynamic { color: var(--accent-cyan); background: rgba(121,192,255,0.1); }
+  .map-file { color: var(--muted); font-family: var(--mono); font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .map-arrow { text-align: center; color: var(--muted); font-size: 16px; padding: 2px 0; }
+  .map-decider { background: rgba(227,179,65,0.08); border: 1px solid rgba(227,179,65,0.25); border-radius: 6px; padding: 8px 12px; font-size: 11px; margin-top: 4px; }
+  .map-decider-options { display: flex; gap: 8px; margin-top: 6px; font-size: 10px; }
+  .map-decider-opt { flex: 1; text-align: center; padding: 4px 0; border-radius: 4px; font-weight: 600; }
+  .map-decider-opt.nothing { background: rgba(139,148,158,0.1); color: var(--muted); }
+  .map-decider-opt.speak { background: rgba(126,231,135,0.1); color: var(--accent); }
+  .map-decider-opt.act { background: rgba(121,192,255,0.1); color: var(--accent-cyan); }
+
+/* ── Compiled utility classes ── */
+.compact-select { background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 1px 4px; font-size: 10px; border-radius: 3px; }
+.mono-input { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 4px 8px; font-size: 11px; border-radius: 4px; font-family: var(--mono); }
+.btn-ghost { background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; font-family: var(--sans); }
+.btn-ghost:hover { border-color: #30363d; background: #1c2128; }
+.cell-muted { color: var(--muted); }
+.cell-bot { color: var(--accent-orange); }
+.cell-you { color: var(--accent-cyan); }
+
+/* ── History tabs ── */
+.history-tab-btn { background: none; border: 1px solid var(--border); color: var(--muted); cursor: pointer; font-size: 10px; padding: 2px 8px; border-radius: 4px; }
+.history-tab-btn:hover { border-color: var(--muted); }
+.history-tab-btn.active { background: var(--accent-cyan); color: #000; border-color: var(--accent-cyan); font-weight: 600; }
+
+/* ── Controls layout ── */
+.controls-group { display: flex; flex-wrap: wrap; gap: 2px; }
+.controls-sep { border-bottom: 1px solid var(--border); margin: 6px 0 4px; }
+.response-line { font-size: 14px; font-weight: 600; color: var(--accent-orange); padding: 3px 10px; border-bottom: 1px solid var(--border); }
+
+/* ── Shared utilities ── */
+.flex-row { display: flex; align-items: center; gap: 6px; }
+.flex-row-sm { display: flex; align-items: center; gap: 4px; }
+.modal-card-wide { max-width: 560px; }
 </style>
 </head>
 <body>
@@ -1007,7 +1056,7 @@ function ToolsModal({ data, onClose }) {
           onClick={function() { toggleSection(name); }}
         >
           <span class="ms-chevron">{expanded ? "▾" : "▸"}</span>
-          <h4 style={{margin:0,flex:1}}>
+          <h4>
             {title}
             <span class="modal-section-count">{count}</span>
           </h4>
@@ -1023,10 +1072,10 @@ function ToolsModal({ data, onClose }) {
 
   return (
     <div class="modal-overlay" onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
-      <div class="modal-card" style={{maxWidth:560}}>
+      <div class="modal-card modal-card-wide">
         <div class="modal-header">
           <span class="modal-title">tools ({data.built_in ? data.built_in.length : 0} built-in, {data.skills ? data.skills.length : 0} skills, {data.mcps ? data.mcps.length : 0} mcps)</span>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div class="flex-row">
             {!searchActive && (
               <button class="btn" style={{fontSize:10,padding:"2px 6px"}} onClick={toggleAll}>
                 {anyCollapsed ? "expand all" : "collapse all"}
@@ -1189,7 +1238,7 @@ function BridgeModal({ data, onClose, onRotate, onToggle, revealToken, onToggleR
             <h4>connection</h4>
             <div class="bridge-field">
               <span class="bridge-label">websocket url</span>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <div class="flex-row-sm">
                 <span class="bridge-value">{data.ws_url}</span>
                 <button class="bridge-btn-sm" onClick={() => copy(data.ws_url, "URL")}>copy</button>
               </div>
@@ -1200,7 +1249,7 @@ function BridgeModal({ data, onClose, onRotate, onToggle, revealToken, onToggleR
             </div>
             <div class="bridge-field">
               <span class="bridge-label">token</span>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <div class="flex-row-sm">
                 {revealToken && tokenFull
                   ? <span class="bridge-value" style={{maxWidth:180,overflow:"hidden",textOverflow:"ellipsis"}}>{tokenFull}</span>
                   : <span class="bridge-value masked">{data.token_hint || "••••••••"}</span>
@@ -1254,6 +1303,7 @@ function BridgeModal({ data, onClose, onRotate, onToggle, revealToken, onToggleR
 function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect, onPreview, onSave, onClose, onEditContent }) {
   const [activeKey, setActiveKey] = React.useState(null);
   const [search, setSearch] = React.useState("");
+  const [pmTab, setPmTab] = React.useState("sections");
 
   const filtered = React.useMemo(() => {
     if (!prompts) return [];
@@ -1270,10 +1320,15 @@ function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect
     <div class="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="modal-card" style={{maxWidth: 640}}>
         <div class="modal-header">
-          <span class="modal-title">prompt manager</span>
+          <span class="modal-title">📝 prompts</span>
+          <span class="flex-row">
+            <button class={"tab-btn" + (pmTab === "sections" ? " active" : "")} onClick={() => setPmTab("sections")}>📋 sections</button>
+            <button class={"tab-btn" + (pmTab === "map" ? " active" : "")} onClick={() => setPmTab("map")}>🧭 map</button>
+          </span>
           <button class="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div class="modal-body">
+          {pmTab === "sections" ? (<>
           <div class="btn-row" style={{marginBottom: 8}}>
             <button class="btn" onClick={onPreview}>preview</button>
             <button class="btn" onClick={onClose}>close</button>
@@ -1341,6 +1396,86 @@ function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect
               <div class="prompt-preview">{preview}</div>
             </div>
           )}
+          </>) : (<>
+            <div class="map-view">
+
+              {/* ── Stage 1: Input Pipeline ── */}
+              <div class="map-stage">
+                <div class="map-stage-header">
+                  <strong>1 · Input Pipeline</strong>
+                </div>
+                <div class="map-body">
+                  <div class="map-row">
+                    <span class="map-key">Capture</span>
+                    <span class="map-source inline">audio</span>
+                    <span class="map-file">Microphone → VAD</span>
+                  </div>
+                  <div class="map-row">
+                    <span class="map-key">Transcribe</span>
+                    <span class="map-source inline">stt</span>
+                    <span class="map-file">GroqSTT (Whisper)</span>
+                  </div>
+                  <div class="map-row">
+                    <span class="map-key">Gate</span>
+                    <span class="map-source inline">filter</span>
+                    <span class="map-file">transcription_gate</span>
+                  </div>
+                  <div class="map-row">
+                    <span class="map-key">Injector</span>
+                    <span class="map-source dynamic">rebuild</span>
+                    <span class="map-file">context_injector.py</span>
+                  </div>
+                </div>
+              </div>
+              <div class="map-arrow">↓</div>
+
+              {/* ── Stage 2: System Prompt Assembly ── */}
+              <div class="map-stage">
+                <div class="map-stage-header">
+                  <strong>2 · System Prompt</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>render_native_system_prompt()</span>
+                </div>
+                <div class="map-body">
+                  {Array.isArray(prompts) && prompts.length > 0 ? (
+                    prompts.map(p => (
+                      <div class="map-row" key={p.key}>
+                        <span class="map-key">{p.key}</span>
+                        <span class={"map-source " + (p.source || "inline")}>{p.source || "inline"}</span>
+                        <span class="map-file">{p.template_path ? p.template_path.replace("prompts/", "") : (p.source === "dynamic" ? "per-turn" : "identity data")}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div class="info-line" style={{padding:8}}>Loading sections…</div>
+                  )}
+                  <div class="map-row" style={{borderTop:"1px solid var(--border)",marginTop:4,paddingTop:4}}>
+                    <span class="map-key">Assembled →</span>
+                    <span class="map-source dynamic">render</span>
+                    <span class="map-file">LLM system prompt</span>
+                  </div>
+                </div>
+              </div>
+              <div class="map-arrow">↓</div>
+
+              {/* ── Stage 3: Decider ── */}
+              <div class="map-stage">
+                <div class="map-stage-header">
+                  <strong>3 · Decider</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>prompts/decider.txt</span>
+                </div>
+                <div class="map-body">
+                  <div class="map-decider">
+                    "Should I respond?"
+                    <div class="map-decider-options">
+                      <div class="map-decider-opt nothing">🤫 nothing</div>
+                      <div class="map-decider-opt speak">🗣 speak</div>
+                      <div class="map-decider-opt act">🔧 act</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </>)}
         </div>
       </div>
     </div>
@@ -1380,6 +1515,7 @@ function Dashboard() {
   const [displayVisible, setDisplayVisible] = useState(true);
   const [displayFlash, setDisplayFlash] = useState(false);
   const [pollFailed, setPollFailed] = useState(false);
+  const [historyTab, setHistoryTab] = useState("activity");
 
   useEffect(() => {
     if (logRef.current) {
@@ -1659,18 +1795,21 @@ function Dashboard() {
         <span class="meta">mode <strong>{state.mode || "?"}</strong></span>
         <span class="meta">
           provider{" "}
-          <select value={state.provider || ""} onChange={e => { post("/provider", {provider: e.target.value}); }} style={{background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"1px 4px",fontSize:10,borderRadius:3}}>
+          <select class="compact-select" value={state.provider || ""} onChange={e => { post("/provider", {provider: e.target.value}); }}>
             {(state.providers || []).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </span>
         <span class="meta">
           model{" "}
-          <select value={state.model || ""} onChange={e => { post("/model", {model: e.target.value}); }} style={{background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"1px 4px",fontSize:10,borderRadius:3}}>
+          <select class="compact-select" value={state.model || ""} onChange={e => { post("/model", {model: e.target.value}); }}>
             {(state.models || []).map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </span>
         <span class="meta">{state.transcripts_count || 0} msgs</span>
         <span class="meta">interrupt:<strong>{interruptEnabled ? "on" : "off"}</strong></span>
+        {state.usage && (
+          <span class="meta">llm:{state.usage.llm_calls || 0} ${(state.usage.total_cost_usd || 0).toFixed(4)}</span>
+        )}
       </div>
 
       {pollFailed && <div class="warn-banner">⚠ connection lost — data may be stale</div>}
@@ -1707,95 +1846,83 @@ function Dashboard() {
         </div>
       )}
 
-      <div class="row">
-        {/* Controls */}
-        <div class="col">
-          <div class="card">
-            <div class="card-header">controls</div>
-            <div class="btn-row">
-              {["silent","focus","ambient","assistant"].map(m =>
-                <button key={m} class={"btn" + (state.mode === m ? " active" : "")} onClick={() => post("/mode", {mode: m})}>{m}</button>
-              )}
-            </div>
-            <div class="btn-row">
-            <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 bot" : "🔊 bot"}</button>
-            <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mic" : "🔊 mic"}</button>
-              <button class="btn" onClick={() => post("/cancel", {})}>cancel</button>
-              <button class="btn"
-                onClick={async () => {
-                  const newValue = !interruptEnabled;
-                  const r = await fetch(API + "/interrupt", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({enabled: newValue}),
-                  });
-                  const d = await r.json();
-                  if (d.ok) {
-                    setInterruptEnabled(d.enabled);
-                    showToastMsg(d.enabled ? "interrupt on — voice breaks bot" : "interrupt off — bot finishes speaking", "ok");
-                  }
-                }}
-                style={{background: interruptEnabled ? "var(--accent-blue)" : "var(--bg-elev)"}}
-                title={interruptEnabled ? "interrupt on (click to disable)" : "interrupt off (click to enable)"}
-              >{interruptEnabled ? "🗣 interrupt: on" : "🤐 interrupt: off"}</button>
-            </div>
-            {/* 4d: Daemon lifecycle */}
-            <div class="btn-row">
-              {!running && !state.starting && <button class="btn" onClick={() => handleDaemonAction("start")}>▶ start daemon</button>}
-              {running && <button class="btn danger" onClick={() => handleDaemonAction("stop")}>■ stop daemon</button>}
-              {running && <button class="btn" onClick={() => handleDaemonAction("restart")}>↻ restart</button>}
-              {!running && state.starting && <span class="info-line" style={{color:"var(--accent)"}}>starting…</span>}
-            </div>
-            {/* 4c: Text injection */}
-            <div class="btn-row" style={{marginTop:3}}>
-              <input
-                type="text" value={injectText}
-                onInput={e => setInjectText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") handleInject(); }}
-                placeholder="text to inject…"
-                style={{flex:1,minWidth:0,background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"4px 8px",fontSize:11,borderRadius:4,fontFamily:"var(--mono)"}}
-              />
-              <button class="btn" onClick={handleInject}>send</button>
-            </div>
-            <div class="btn-row" style={{marginTop:3}}>
-              <button class="btn" onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
-              <button class="btn" onClick={fetchAudioDevices}>🎧 audio</button>
-              <button class="btn" onClick={fetchChromeProfiles}>🌐 chrome</button>
-              <button class="btn" onClick={handleOpenTools}>🔧 tools</button>
-              <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
-              <button class="btn" onClick={handleOpenPrompts}>📝 prompts</button>
-            </div>
-            {/* 4f: Chrome profile picker */}
-            {chromeProfiles !== null && (
-              <div class="btn-row" style={{marginTop:3}}>
-                {chromeProfiles.length > 0 && (
-                  <select value={chromeProfile} onChange={e => setChromeProfile(e.target.value)}
-                    style={{flex:1,minWidth:0,background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"3px 6px",fontSize:11,borderRadius:4}}>
-                    {chromeProfiles.map(p => <option key={p.directory} value={p.directory}>{p.display_name}{p.last_used ? " (last)" : ""}</option>)}
-                  </select>
-                )}
-                <button class="btn" onClick={handleChromeLaunch}>launch chrome</button>
-                <button class="btn" onClick={() => setChromeProfiles(null)}>✕</button>
-              </div>
+      {/* Controls */}
+      <div class="card">
+        {state.last_response && (
+          <div class="response-line">{state.last_response}</div>
+        )}
+        <div class="card-header">controls</div>
+        {/* Mode buttons */}
+        <div class="controls-group">
+          {["silent","focus","ambient","assistant"].map(m =>
+            <button key={m} class={"btn" + (state.mode === m ? " active" : "")} onClick={() => post("/mode", {mode: m})}>{m}</button>
+          )}
+        </div>
+        <div class="controls-sep"></div>
+        {/* Audio controls */}
+        <div class="controls-group">
+          <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mute mic" : "🎤 mic on"}</button>
+          <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 mute bot" : "🔊 bot on"}</button>
+          <button class="btn" onClick={() => post("/cancel", {})}>⏹ cancel</button>
+          <button class="btn"
+            onClick={async () => {
+              const newValue = !interruptEnabled;
+              const r = await fetch(API + "/interrupt", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({enabled: newValue}),
+              });
+              const d = await r.json();
+              if (d.ok) {
+                setInterruptEnabled(d.enabled);
+                showToastMsg(d.enabled ? "interrupt on — voice breaks bot" : "interrupt off — bot finishes speaking", "ok");
+              }
+            }}
+          >{interruptEnabled ? "🗣 interrupt: on" : "🤐 interrupt: off"}</button>
+        </div>
+        <div class="controls-sep"></div>
+        {/* Daemon lifecycle */}
+        <div class="controls-group">
+          {!running && !state.starting && <button class="btn" onClick={() => handleDaemonAction("start")}>▶ start</button>}
+          {running && <button class="btn danger" onClick={() => handleDaemonAction("stop")}>■ stop</button>}
+          {running && <button class="btn" onClick={() => handleDaemonAction("restart")}>↻ restart</button>}
+          {!running && state.starting && <span class="info-line" style={{color:"var(--accent)"}}>starting…</span>}
+        </div>
+        <div class="controls-sep"></div>
+        {/* Configuration tools */}
+        <div class="controls-group">
+          <button class="btn" onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
+          <button class="btn" onClick={fetchAudioDevices}>🎧 audio</button>
+          <button class="btn" onClick={fetchChromeProfiles}>🌐 chrome</button>
+          <button class="btn" onClick={handleOpenTools}>🔧 tools</button>
+          <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
+          <button class="btn" onClick={handleOpenPrompts}>📝 prompts</button>
+        </div>
+        <div class="controls-sep"></div>
+        {/* Text injection */}
+        <div class="controls-group">
+          <input
+            type="text" value={injectText}
+            onInput={e => setInjectText(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleInject(); }}
+            placeholder="text to inject…"
+            class="mono-input"
+          />
+          <button class="btn" onClick={handleInject}>send</button>
+        </div>
+        {/* Chrome profile picker */}
+        {chromeProfiles !== null && (
+          <div class="controls-group" style={{marginTop:4}}>
+            {chromeProfiles.length > 0 && (
+              <select value={chromeProfile} onChange={e => setChromeProfile(e.target.value)}
+                style={{flex:1,minWidth:0,background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",padding:"3px 6px",fontSize:11,borderRadius:4}}>
+                {chromeProfiles.map(p => <option key={p.directory} value={p.directory}>{p.display_name}{p.last_used ? " (last)" : ""}</option>)}
+              </select>
             )}
+            <button class="btn" onClick={handleChromeLaunch}>launch chrome</button>
+            <button class="btn" onClick={() => setChromeProfiles(null)}>✕</button>
           </div>
-        </div>
-
-        {/* Response */}
-        <div class="col">
-          <div class="card">
-            <div class="card-header">response</div>
-            <div class="response">{state.last_response || "—"}</div>
-          </div>
-        </div>
-
-        {/* 4a: Usage breakdown */}
-        <div class="col">
-          <div class="card">
-            <div class="card-header">usage</div>
-            <UsageCard usage={state.usage} />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Settings Panel */}
@@ -1812,41 +1939,43 @@ function Dashboard() {
         </div>
       )}
 
-      {/* Activity */}
+      {/* History panel */}
       <div class="card">
-        <div class="card-header">activity ({activity.length})</div>
-        <div class="scroll">
-          <table>
-            <thead><tr><th>time</th><th>who</th><th>content</th></tr></thead>
-            <tbody>
-              {activity.length === 0 ? (
-                <tr><td colspan="3" style={{textAlign:"center",color:"var(--muted)",padding:"24px 12px",fontSize:13}}>No activity yet — start speaking</td></tr>
-              ) : activity.map((row, i) => (
-                <tr key={i}>
-                  <td style={{color:"var(--muted)",width:56}}>{new Date(row.ts * 1000).toTimeString().slice(0,8)}</td>
-                  <td style={{color: row.who === "bot" ? "var(--accent-orange)" : "var(--accent-cyan)",width:36}}>{row.who}</td>
-                  <td style={{overflow:"hidden",textOverflow:"ellipsis"}}>{(row.content || "").substring(0, 80)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div class="card-header" style={{display:"flex",alignItems:"center"}}>
+          <span style={{flex:1}}>history</span>
+          <button class={"history-tab-btn" + (historyTab === "activity" ? " active" : "")} onClick={() => setHistoryTab("activity")}>activity ({activity.length})</button>
+          <button class={"history-tab-btn" + (historyTab === "logs" ? " active" : "")} onClick={() => setHistoryTab("logs")}>logs ({logs.length})</button>
         </div>
-      </div>
-
-      {/* Logs */}
-      <div class="card">
-        <div class="card-header">daemon log ({logs.length})</div>
-        <div class="scroll" style={{maxHeight:150}} ref={logRef}>
-          <table>
-            <tbody>
-              {logs.length === 0 ? (
-                <tr><td style={{textAlign:"center",color:"var(--muted)",padding:"16px 12px",fontSize:12}}>Daemon log lines appear here</td></tr>
-              ) : logs.map((line, i) => (
-                <tr key={i}><td style={{whiteSpace:"pre-wrap",wordBreak:"break-all",fontSize:11,color: line.toUpperCase().includes("ERROR") ? "var(--accent-red)" : line.toUpperCase().includes("WARN") ? "var(--accent-yellow)" : "var(--muted)"}}>{line}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {historyTab === "activity" ? (
+          <div class="scroll">
+            <table>
+              <thead><tr><th>time</th><th>who</th><th>content</th></tr></thead>
+              <tbody>
+                {activity.length === 0 ? (
+                  <tr><td colspan="3" style={{textAlign:"center",color:"var(--muted)",padding:"24px 12px",fontSize:13}}>No activity yet — start speaking</td></tr>
+                ) : activity.map((row, i) => (
+                  <tr key={i}>
+                    <td class="cell-muted" style={{width:56}}>{new Date(row.ts * 1000).toTimeString().slice(0,8)}</td>
+                    <td class={row.who === "bot" ? "cell-bot" : "cell-you"} style={{width:36}}>{row.who}</td>
+                    <td style={{overflow:"hidden",textOverflow:"ellipsis"}}>{(row.content || "").substring(0, 80)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div class="scroll" style={{maxHeight:240}} ref={logRef}>
+            <table>
+              <tbody>
+                {logs.length === 0 ? (
+                  <tr><td style={{textAlign:"center",color:"var(--muted)",padding:"16px 12px",fontSize:12}}>Daemon log lines appear here</td></tr>
+                ) : logs.map((line, i) => (
+                  <tr key={i}><td style={{whiteSpace:"pre-wrap",wordBreak:"break-all",fontSize:11,color: line.toUpperCase().includes("ERROR") ? "var(--accent-red)" : line.toUpperCase().includes("WARN") ? "var(--accent-yellow)" : "var(--muted)"}}>{line}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* 4e: Audio device picker */}
