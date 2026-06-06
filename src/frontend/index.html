@@ -2243,38 +2243,6 @@ function Dashboard() {
 
       {pollFailed && <div class="warn-banner">⚠ connection lost — data may be stale</div>}
 
-      {/* Voice & Agent status bars */}
-      <div class="viz-row">
-        <div class="viz-col">
-          <div class="bar-section-label">🎤 you</div>
-          <UserVoiceBar voiceState={state.voice_state} />
-        </div>
-        <div class="viz-col">
-          <div class="bar-section-label">🤖 agent</div>
-          <AgentStatusBar agentState={state.agent_state} />
-        </div>
-      </div>
-
-      {/* Display widget — renders show_text / show_canvas output */}
-      {display && display.content && displayVisible && (
-        <div className={`display-card${displayFlash ? ' flash' : ''}`}>
-          <div className="display-header">
-            <span className="display-icon">{display.format === 'html' ? '📺' : '📄'}</span>
-            <span className="display-fmt">{display.format}</span>
-            {display.title && <span className="display-title">{display.title}</span>}
-            <span className="display-ts">{new Date(display.ts * 1000).toLocaleTimeString()}</span>
-            <button className="display-dismiss" onClick={() => setDisplayVisible(false)}>✕</button>
-          </div>
-          <div className="display-content">
-            {display.format === 'text' && <pre className="display-text">{display.content}</pre>}
-            {display.format === 'code' && <pre className="display-code"><code>{display.content}</code></pre>}
-            {(display.format === 'ascii' || display.format === 'table') && <pre className="display-mono">{display.content}</pre>}
-            {display.format === 'markdown' && <pre className="display-md">{display.content}</pre>}
-            {display.format === 'html' && <iframe sandbox="" srcDoc={display.content} className="display-html" />}
-          </div>
-        </div>
-      )}
-
       {/* Controls */}
       <div class="card">
         {state.last_response && (
@@ -2354,6 +2322,38 @@ function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Voice & Agent status bars */}
+      <div class="viz-row">
+        <div class="viz-col">
+          <div class="bar-section-label">🎤 you</div>
+          <UserVoiceBar voiceState={state.voice_state} />
+        </div>
+        <div class="viz-col">
+          <div class="bar-section-label">🤖 agent</div>
+          <AgentStatusBar agentState={state.agent_state} />
+        </div>
+      </div>
+
+      {/* Display widget — renders show_text / show_canvas output */}
+      {display && display.content && displayVisible && (
+        <div className={`display-card${displayFlash ? ' flash' : ''}`}>
+          <div className="display-header">
+            <span className="display-icon">{display.format === 'html' ? '📺' : '📄'}</span>
+            <span className="display-fmt">{display.format}</span>
+            {display.title && <span className="display-title">{display.title}</span>}
+            <span className="display-ts">{new Date(display.ts * 1000).toLocaleTimeString()}</span>
+            <button className="display-dismiss" onClick={() => setDisplayVisible(false)}>✕</button>
+          </div>
+          <div className="display-content">
+            {display.format === 'text' && <pre className="display-text">{display.content}</pre>}
+            {display.format === 'code' && <pre className="display-code"><code>{display.content}</code></pre>}
+            {(display.format === 'ascii' || display.format === 'table') && <pre className="display-mono">{display.content}</pre>}
+            {display.format === 'markdown' && <pre className="display-md">{display.content}</pre>}
+            {display.format === 'html' && <iframe sandbox="" srcDoc={display.content} className="display-html" />}
+          </div>
+        </div>
+      )}
 
       {/* Settings Panel */}
       {showSettings && (
