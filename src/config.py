@@ -363,6 +363,17 @@ class Settings:
     browser_bridge_port: int = 9333
     browser_bridge_token: str = ""
 
+    # OpenCode sub-agent settings
+    opencode_binary: str = "opencode"
+    opencode_default_model: str | None = None  # None = use opencode's own config
+    opencode_default_timeout: float = 120.0
+    opencode_max_output_chars: int = 8000
+    # Multi-agent background sub-agent settings
+    agent_max_concurrent: int = 5
+    agent_result_ttl_seconds: float = 600.0
+    agent_server_start_timeout: float = 10.0
+    agent_port_range_start: int = 14100
+
     # Audio device selection (optional). Set via config.toml or at
     # runtime via ``heare audio-input <name>`` / ``heare audio-output
     # <name>``. When None (default) the system default device is used.

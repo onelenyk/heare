@@ -1483,6 +1483,152 @@ function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect
 }
 
 // ── Dashboard ──
+// ═══ Agent Launcher ═══
+function AgentLauncher({ onStart, onToast }) {
+  const [prompt, setPrompt] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  async function handleStart() {
+    if (!prompt.trim()) return;
+    setLoading(true);
+    try {
+      const r = await fetch(API + "/api/agents/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompt.trim() }),
+      });
+      const d = await r.json();
+      if (d.session_id) {
+        onToast("agent started", "ok");
+        setPrompt("");
+        if (onStart) onStart();
+      } else {
+        onToast("failed: " + (d.error || "unknown"), "err");
+      }
+    } catch(e) { onToast("failed: " + e.message, "err"); }
+    setLoading(false);
+  }
+
+  return (
+    <div class="agent-launch-row">
+      <input
+        type="text" value={prompt}
+        onInput={e => setPrompt(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") handleStart(); }}
+        placeholder="agent prompt…"
+      />
+      <button class="btn" onClick={handleStart} disabled={loading} style={{flexShrink:0}}>
+        {loading ? "…" : "▶ start"}
+      </button>
+    </div>
+  );
+}
+
+// ═══ Agent List ═══
+function AgentList({ agents, onCancel, onToast }) {
+  const [detailId, setDetailId] = React.useState(null);
+  const [detailData, setDetailData] = React.useState(null);
+  const [detailOutput, setDetailOutput] = React.useState(null);
+  const [loadingDetail, setLoadingDetail] = React.useState(false);
+
+  async function loadDetail(sid) {
+    setDetailId(sid);
+    setLoadingDetail(true);
+    setDetailOutput(null);
+    try {
+      const [ar, rr] = await Promise.all([
+        fetch(API + "/api/agents"),
+        fetch(API + "/api/agents/" + sid + "/result"),
+      ]);
+      const ad = await ar.json();
+      const rd = await rr.json();
+      const agent = (ad.agents || []).find(a => a.session_id === sid);
+      setDetailData(agent || null);
+      if (rd && rd.output) {
+        setDetailOutput(rd.output);
+      }
+    } catch(e) {}
+    setLoadingDetail(false);
+  }
+
+  async function loadOutput(sid) {
+    setLoadingDetail(true);
+    try {
+      const r = await fetch(API + "/api/agents");
+      const d = await r.json();
+      const agent = (d.agents || []).find(a => a.session_id === sid);
+      if (agent) {
+        setDetailData(agent);
+        // The list_all() doesn't include full output, just metadata
+        // We need a separate endpoint or status call for full output
+      }
+    } catch(e) {}
+    setLoadingDetail(false);
+  }
+
+  if (!agents || agents.length === 0) {
+    return <div class="info-line" style={{padding: "8px 0"}}>No agents. Launch one above.</div>;
+  }
+
+  const statusClass = (s) => s || "";
+
+  return (
+    <div>
+      {agents.slice().reverse().map(a => (
+        <div key={a.session_id} class="agent-row">
+          <div class="agent-row-top">
+            <span class={"agent-status-tag " + statusClass(a.status)}>{a.status}</span>
+            <span class="agent-prompt-text" title={a.prompt} style={{flex:1,minWidth:0}}>{a.prompt}</span>
+            <span class="agent-meta-text">{a.tool_calls || 0} tools</span>
+            {a.cost != null && <span class="agent-meta-text">${a.cost.toFixed(4)}</span>}
+            <span class="agent-meta-text">{a.age_seconds}s</span>
+            <span style={{display:"flex",gap:2}}>
+              <button class="btn" style={{fontSize:10}} onClick={() => loadDetail(a.session_id)}>{"📋"}</button>
+              {(a.status === "running" || a.status === "starting" || a.status === "waiting_for_input") && (
+                <button class="btn danger" style={{fontSize:10}} onClick={() => onCancel(a.session_id)}>{"✕"}</button>
+              )}
+            </span>
+          </div>
+          {a.partial_output && (
+            <div class="agent-row-preview" title={a.partial_output}>{a.partial_output}</div>
+          )}
+        </div>
+      ))}
+
+      {/* Detail modal */}
+      {detailId && (
+        <div class="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setDetailId(null); }}>
+          <div class="modal-card agent-detail-modal">
+            <div class="modal-header">
+              <span class="modal-title">{"🤖"} agent {detailId.slice(0, 12)}</span>
+              <button class="modal-close" onClick={() => setDetailId(null)}>{"×"}</button>
+            </div>
+            <div class="modal-body">
+              {loadingDetail ? <div class="info-line">Loading…</div> : detailData ? (
+                <div>
+                  <div class="info-line"><strong>status:</strong> {detailData.status}</div>
+                  <div class="info-line"><strong>prompt:</strong> {detailData.prompt}</div>
+                  <div class="info-line"><strong>tools:</strong> {detailData.tool_calls || 0} {"·"} <strong>cost:</strong> ${(detailData.cost || 0).toFixed(4)}</div>
+                  <div class="info-line"><strong>session:</strong> {detailData.session_id}</div>
+                  <div class="info-line"><strong>age:</strong> {detailData.age_seconds}s {"·"} <strong>turn:</strong> {detailData.turn || 1}</div>
+                  {detailData.current_step && <div class="info-line"><strong>step:</strong> {detailData.current_step}</div>}
+                  {detailData.error_message && <div class="info-line" style={{color:"var(--accent-red)"}}><strong>error:</strong> {detailData.error_message}</div>}
+                </div>
+              ) : <div class="info-line">Agent not found</div>}
+              {detailOutput && (
+                <div class="agent-output-box">{detailOutput}</div>
+              )}
+              <div style={{marginTop: 8}}>
+                <button class="btn" onClick={() => setDetailId(null)}>close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Dashboard() {
   const [state, setState] = useState({});
   const [activity, setActivity] = useState([]);
@@ -1516,6 +1662,8 @@ function Dashboard() {
   const [displayFlash, setDisplayFlash] = useState(false);
   const [pollFailed, setPollFailed] = useState(false);
   const [historyTab, setHistoryTab] = useState("activity");
+  const [agents, setAgents] = useState([]);
+  const [showAgents, setShowAgents] = useState(false);
 
   useEffect(() => {
     if (logRef.current) {
@@ -1554,6 +1702,10 @@ function Dashboard() {
           return dData;
         });
       }
+      // Agents poll
+      fetch(API + "/api/agents").then(r => r.json()).then(d => {
+        setAgents(d.agents || []);
+      }).catch(() => {});
       setPollFailed(false);
     } catch(e) {
       setPollFailed(true);
@@ -1644,6 +1796,17 @@ function Dashboard() {
         setChromeProfile(lastUsed.directory);
       }
     } catch(e) { showToastMsg("profiles fetch failed: " + e.message, "err"); }
+  }
+
+  async function handleAgentCancel(sid) {
+    try {
+      await fetch(API + "/api/agents/cancel", { 
+        method: "POST", 
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({session_id: sid}) 
+      });
+      showToastMsg("agent cancelled", "ok");
+    } catch(e) { showToastMsg("cancel failed: " + e.message, "err"); }
   }
 
   async function handleChromeLaunch() {
@@ -1897,6 +2060,7 @@ function Dashboard() {
           <button class="btn" onClick={handleOpenTools}>🔧 tools</button>
           <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
           <button class="btn" onClick={handleOpenPrompts}>📝 prompts</button>
+          <button class={"btn" + (showAgents ? " active" : "")} onClick={() => setShowAgents(!showAgents)}>🤖 agents</button>
         </div>
         <div class="controls-sep"></div>
         {/* Text injection */}
@@ -1937,6 +2101,15 @@ function Dashboard() {
             <button class="btn primary" onClick={saveSettings} style={{width:"100%",fontSize:12}}>Save & Apply</button>
           </div>
         </div>
+      )}
+
+      {/* Agent management */}
+      {showAgents && (
+      <div class="card">
+        <div class="card-header">{"🤖"} agents ({agents.length})</div>
+        <AgentLauncher onStart={poll} onToast={showToastMsg} />
+        <AgentList agents={agents} onCancel={handleAgentCancel} onToast={showToastMsg} />
+      </div>
       )}
 
       {/* History panel */}

@@ -38,6 +38,7 @@ from src.pipeline.stages.interrupt_toggle_gate import create_interrupt_toggle_ga
 from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_gate
 from src.agent.llm.providers import PROVIDERS, get_available
 from src.config import Settings
+from src.agent.subagent_manager import SubAgentManager, set_agent_manager
 from src.pipeline.bot_speech_state import BotSpeechState
 from src.pipeline.language_state import LanguageState
 from src.state import State
@@ -412,7 +413,7 @@ async def build_pipeline(
     state: State | None = None,
     conversation_manager: Any = None,
     project_dir: str | None = None,
-) -> Tuple[object, object, object, object, object, object, object]:
+) -> Tuple[object, object, object, object, object, object, object, object]:
     """Build the Pipecat-native pipeline.
 
     Returns
@@ -828,6 +829,15 @@ async def build_pipeline(
     except Exception:
         logger.exception("pipeline_native: capability_index build failed (non-fatal)")
 
+    # Multi-agent background sub-agent system
+    agent_manager = SubAgentManager(settings)
+    set_agent_manager(agent_manager)
+    agent_manager.start_pruner()
+    logger.info(
+        "Sub-agent manager: ready (max=%d concurrent)",
+        settings.agent_max_concurrent,
+    )
+
     # PH2-07: per-turn dynamic system prompt — every TranscriptionFrame
     # passing the gate triggers the injector to rebuild the system
     # message with fresh persona+context+language before the
@@ -995,6 +1005,7 @@ async def build_pipeline(
         llm_service,
         language_state,
         mcp_bridge,
+        agent_manager,
     )
 
 

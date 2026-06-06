@@ -92,6 +92,7 @@ PROMPT_SECTIONS: list[PromptSection] = [
     PromptSection("narration",        630, "template", "prompts/narration.txt"),
     PromptSection("routing",          640, "template", "prompts/routing.txt"),
     PromptSection("run_skill",        650, "template", "prompts/run_skill.txt"),
+    PromptSection("sub_agents",       205, "dynamic"),
 ]
 
 

@@ -407,6 +407,71 @@ TOOLS: dict[str, Tool] = {
         description="Bring an existing browser tab to the foreground without changing its URL or reloading it. Optional tab_id; defaults to the active tab.",
         enabled=True,
     ),
+    "run_agent": Tool(
+        name="run_agent",
+        sdk_name="RunAgent",
+        execution="direct",
+        description="Delegate a complex multi-step task to an OpenCode sub-agent. Use for analysis, code changes, research, or any task that requires multiple tool calls. Returns structured results including the answer, cost, and session ID for follow-up.",
+        enabled=True,
+    ),
+
+    "agent_start": Tool(
+        name="agent_start",
+        sdk_name="AgentStart",
+        execution="direct",
+        description="Start a background sub-agent via OpenCode server. Returns session_id immediately.",
+        enabled=True,
+    ),
+    "agent_status": Tool(
+        name="agent_status",
+        sdk_name="AgentStatus",
+        execution="direct",
+        description="Check the current status and progress of a background sub-agent.",
+        enabled=True,
+    ),
+    "agent_result": Tool(
+        name="agent_result",
+        sdk_name="AgentResult",
+        execution="direct",
+        description="Get the full output from a sub-agent. Returns partial output if still running.",
+        enabled=True,
+    ),
+    "agent_message": Tool(
+        name="agent_message",
+        sdk_name="AgentMessage",
+        execution="direct",
+        description="Continue a conversation with a sub-agent session. Only works on done/error/cancelled agents.",
+        enabled=True,
+    ),
+    "agent_cancel": Tool(
+        name="agent_cancel",
+        sdk_name="AgentCancel",
+        execution="direct",
+        description="Cancel a running sub-agent and stop its server.",
+        enabled=True,
+    ),
+    "agent_list": Tool(
+        name="agent_list",
+        sdk_name="AgentList",
+        execution="direct",
+        description="List all managed sub-agents with their status, progress, and cost.",
+        enabled=True,
+    ),
+    "agent_approve": Tool(
+        name="agent_approve",
+        sdk_name="AgentApprove",
+        execution="direct",
+        description="Approve a pending permission request from a sub-agent.",
+        enabled=True,
+    ),
+    "agent_deny": Tool(
+        name="agent_deny",
+        sdk_name="AgentDeny",
+        execution="direct",
+        description="Deny a pending permission request. Optionally send corrective instructions.",
+        enabled=True,
+    ),
+
 }
 
 

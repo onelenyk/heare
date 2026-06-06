@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("heare.direct_tools")
 
 from src.agent.llm.providers import PROVIDERS
+from src.agent.tools.subagent import run_opencode
 
 # Import tool definitions from central registry
 from src.agent.tools.registry import get_direct_tools, is_mcp_tool  # noqa: E402
@@ -191,6 +192,8 @@ async def execute_direct(
         return await _execute_mute_mic(args, settings)
     elif tool in ("audio_input", "audio_output"):
         return await _execute_audio_device(args, settings)
+    elif tool == "run_agent":
+        return await _execute_run_agent(args, settings)
     else:
         return {
             "success": False,
@@ -3225,3 +3228,238 @@ async def _execute_audio_device(args: str, settings: "Settings | None" = None) -
             "uk": f"Аудіо пристрій встановлено на {name}.",
         },
     }
+
+
+async def _execute_run_agent(args: str, settings: "Settings | None" = None) -> dict:
+    """Execute a task via OpenCode sub-agent."""
+    import json as _json
+
+    try:
+        params = _json.loads(args)
+    except (_json.JSONDecodeError, TypeError):
+        return {
+            "success": False,
+            "output": "",
+            "error": "Invalid JSON arguments for run_agent",
+            "spoken": {
+                "en": "Could not parse sub-agent arguments.",
+                "uk": "Не можу розібрати аргументи.",
+            },
+        }
+
+    prompt = str(params.get("prompt", "")).strip()
+    if not prompt:
+        return {
+            "success": False,
+            "output": "",
+            "error": "prompt is required for run_agent",
+            "spoken": {
+                "en": "I need a task description to delegate.",
+                "uk": "Потрібен опис завдання.",
+            },
+        }
+
+    cwd = params.get("cwd") or None
+    model = params.get("model") or None
+    session_id = params.get("session_id") or None
+
+    if settings is not None:
+        if model is None:
+            model = settings.opencode_default_model
+        timeout = settings.opencode_default_timeout
+        binary = settings.opencode_binary
+        max_chars = settings.opencode_max_output_chars
+    else:
+        timeout = 120.0
+        binary = "opencode"
+        max_chars = 8000
+
+    result = await run_opencode(
+        prompt=prompt,
+        cwd=cwd,
+        model=model,
+        session_id=session_id,
+        timeout=timeout,
+        binary=binary,
+    )
+
+    # Truncate massive output
+    output = result.get("output", "")
+    if isinstance(output, str) and len(output) > max_chars:
+        result["output"] = output[:max_chars] + "\n... (truncated)"
+
+    # Build spoken summary
+    if result.get("success"):
+        session_id_out = result.get("session_id", "")
+        cost = result.get("cost")
+        tools = result.get("tool_calls", 0)
+        parts = []
+        if tools:
+            parts.append(f"{tools} tool calls")
+        if cost is not None:
+            parts.append(f"${cost:.4f}")
+        summary = ", ".join(parts) if parts else "done"
+        result["spoken"] = {
+            "en": f"Sub-agent finished ({summary}).",
+            "uk": f"Суб-агент завершив ({summary}).",
+        }
+    else:
+        result["spoken"] = {
+            "en": "Sub-agent failed.",
+            "uk": "Суб-агент не виконав завдання.",
+        }
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Agent sub-agent handlers (multi-agent background system)
+# ---------------------------------------------------------------------------
+
+async def _execute_agent_start(args: str, settings: "Settings | None" = None) -> dict:
+    import json as _json
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized",
+                "spoken": {"en": "Sub-agent system not available.", "uk": "Система суб-агентів недоступна."}}
+    try:
+        params = _json.loads(args)
+    except Exception:
+        return {"success": False, "error": "Invalid JSON",
+                "spoken": {"en": "Invalid arguments.", "uk": "Неправильні аргументи."}}
+    prompt = str(params.get("prompt", "")).strip()
+    if not prompt:
+        return {"success": False, "error": "prompt required",
+                "spoken": {"en": "I need a task description.", "uk": "Потрібен опис завдання."}}
+    cwd = params.get("cwd") or None
+    try:
+        state = await mgr.start(prompt, cwd=cwd)
+        return {"success": True, "session_id": state.session_id,
+                "status": state.status, "port": state.port,
+                "spoken": {"en": f"Agent started.", "uk": f"Агент запущений."}}
+    except Exception as e:
+        return {"success": False, "error": str(e),
+                "spoken": {"en": f"Failed to start agent.", "uk": f"Не вдалося запустити агента."}}
+
+
+async def _execute_agent_status(args: str, settings: "Settings | None" = None) -> dict:
+    import json as _json
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized"}
+    params = _json.loads(args)
+    sid = str(params.get("session_id", "")).strip()
+    if not sid:
+        return {"success": False, "error": "session_id required"}
+    result = mgr.status(sid)
+    result["success"] = "error" not in result
+    return result
+
+
+async def _execute_agent_result(args: str, settings: "Settings | None" = None) -> dict:
+    import json as _json
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized"}
+    params = _json.loads(args)
+    sid = str(params.get("session_id", "")).strip()
+    if not sid:
+        return {"success": False, "error": "session_id required"}
+    return mgr.result(sid)
+
+
+async def _execute_agent_message(args: str, settings: "Settings | None" = None) -> dict:
+    import json as _json
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized"}
+    params = _json.loads(args)
+    sid = str(params.get("session_id", "")).strip()
+    prompt = str(params.get("prompt", "")).strip()
+    if not sid or not prompt:
+        return {"success": False, "error": "session_id and prompt required"}
+    result = await mgr.message(sid, prompt)
+    if result.get("success"):
+        result["spoken"] = {"en": "Continuing agent session.", "uk": "Продовжую сесію агента."}
+    else:
+        result["spoken"] = {"en": f"Cannot continue: {result.get('error', '')}"}
+    return result
+
+
+async def _execute_agent_cancel(args: str, settings: "Settings | None" = None) -> dict:
+    import json as _json
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized"}
+    params = _json.loads(args)
+    sid = str(params.get("session_id", "")).strip()
+    if not sid:
+        return {"success": False, "error": "session_id required"}
+    result = await mgr.cancel(sid)
+    if result.get("cancelled"):
+        result["spoken"] = {"en": "Agent cancelled.", "uk": "Агента скасовано."}
+    else:
+        result["spoken"] = {"en": f"Cancel failed: {result.get('error', '')}"}
+    return result
+
+
+async def _execute_agent_list(args: str, settings: "Settings | None" = None) -> dict:
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized"}
+    agents = mgr.list_all()
+    running = sum(1 for a in agents if a["status"] in ("running", "starting", "waiting_for_input"))
+    return {"success": True, "agents": agents, "count": len(agents),
+            "running": running, "max_concurrent": mgr._max_concurrent,
+            "spoken": {"en": f"{len(agents)} agents ({running} running).",
+                       "uk": f"{len(agents)} агентів ({running} активних)."}}
+
+
+async def _execute_agent_approve(args: str, settings: "Settings | None" = None) -> dict:
+    import json as _json
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized"}
+    params = _json.loads(args)
+    sid = str(params.get("session_id", "")).strip()
+    if not sid:
+        return {"success": False, "error": "session_id required"}
+    result = await mgr.approve(sid)
+    if result.get("approved"):
+        result["spoken"] = {"en": "Approved.", "uk": "Підтверджено."}
+    else:
+        result["spoken"] = {"en": result.get("error", "Approve failed.")}
+    return result
+
+
+async def _execute_agent_deny(args: str, settings: "Settings | None" = None) -> dict:
+    import json as _json
+    from src.agent.subagent_manager import get_agent_manager
+
+    mgr = get_agent_manager()
+    if mgr is None:
+        return {"success": False, "error": "Agent manager not initialized"}
+    params = _json.loads(args)
+    sid = str(params.get("session_id", "")).strip()
+    reason = str(params.get("reason", "")).strip() or None
+    if not sid:
+        return {"success": False, "error": "session_id required"}
+    result = await mgr.deny(sid, reason=reason)
+    result["spoken"] = {"en": "Denied." + (f" Sent correction." if reason else ""),
+                        "uk": "Відхилено."}
+    return result
+

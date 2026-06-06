@@ -203,6 +203,33 @@ class ContextBuilder:
                 "show_display. Refer to it naturally ('as shown on screen'); "
                 "call show_display again to replace it with updated content."
             )
+        # Inject active sub-agent status
+        try:
+            from src.agent.subagent_manager import get_agent_manager
+            mgr = get_agent_manager()
+            if mgr is not None:
+                active = mgr.list_active()
+                if active:
+                    lines = ["Active sub-agents:"]
+                    for a in active:
+                        sid = a.get("session_id", "")[:12]
+                        prompt = a.get("prompt", "")[:60]
+                        status = a.get("status", "?")
+                        icon = {"running": "⚙", "starting": "⟳", "waiting_for_input": "⚠", "done": "✓", "error": "✗", "cancelled": "✗"}.get(status, "?")
+                        base = f"  - {sid}: {prompt}"
+                        if status == "waiting_for_input":
+                            lines.append(f"{base} — waiting for input {icon} ({a.get('age_seconds', 0)}s ago)")
+                        elif status in ("running", "starting"):
+                            tc = a.get("tool_calls", 0)
+                            c = a.get("cost") or 0
+                            extra = f" ({tc} tools, ${c:.4f})" if tc else ""
+                            lines.append(f"{base} — {status} {icon}{extra}")
+                        else:
+                            c = a.get("cost") or 0
+                            lines.append(f"{base} — {status} {icon} (${c:.4f})")
+                    result["sub_agents_block"] = "\n".join(lines)
+        except Exception:
+            pass  # never break context building
         return result
 
     def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:

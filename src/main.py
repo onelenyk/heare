@@ -238,6 +238,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 llm_service,
                 language_state,
                 mcp_bridge,
+                agent_manager,
             ) = await build_pipeline(
                 settings,
                 store,

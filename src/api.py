@@ -71,6 +71,10 @@ class API:
         self._app.router.add_get("/api/prompts/preview", self._handle_prompt_preview)
         self._app.router.add_get("/api/prompts/{key}", self._handle_prompt_section)
         self._app.router.add_post("/api/prompts/{key}", self._handle_prompt_save)
+        self._app.router.add_get("/api/agents", self._handle_agents)
+        self._app.router.add_post("/api/agents/start", self._handle_agents_start)
+        self._app.router.add_post("/api/agents/cancel", self._handle_agents_cancel)
+        self._app.router.add_get("/api/agents/{session_id}/result", self._handle_agents_result)
         self._runner = None
         self._site = None
 
@@ -1021,6 +1025,64 @@ class API:
                 },
             )
             return web.Response(text=preview, content_type="text/plain; charset=utf-8")
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_agents(self, request):
+        try:
+            from src.agent.subagent_manager import get_agent_manager
+            mgr = get_agent_manager()
+            if mgr is None:
+                return web.json_response({"agents": [], "error": "Agent manager not initialized"}, status=503)
+            agents = mgr.list_all()
+            return web.json_response({"agents": agents, "count": len(agents)})
+        except Exception as e:
+            return web.json_response({"agents": [], "error": str(e)}, status=500)
+
+    async def _handle_agents_start(self, request):
+        try:
+            body = await request.json()
+            prompt = body.get("prompt", "").strip()
+            if not prompt:
+                return web.json_response({"error": "prompt is required"}, status=400)
+            from src.agent.subagent_manager import get_agent_manager
+            mgr = get_agent_manager()
+            if mgr is None:
+                return web.json_response({"error": "Agent manager not initialized"}, status=503)
+            state = await mgr.start(prompt, cwd=body.get("cwd"))
+            return web.json_response({
+                "session_id": state.session_id,
+                "status": state.status,
+                "prompt": state.prompt,
+                "started_at": state.started_at,
+            })
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_agents_cancel(self, request):
+        try:
+            body = await request.json()
+            session_id = body.get("session_id", "").strip()
+            if not session_id:
+                return web.json_response({"error": "session_id is required"}, status=400)
+            from src.agent.subagent_manager import get_agent_manager
+            mgr = get_agent_manager()
+            if mgr is None:
+                return web.json_response({"error": "Agent manager not initialized"}, status=503)
+            result = await mgr.cancel(session_id)
+            return web.json_response(result)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_agents_result(self, request):
+        session_id = request.match_info.get("session_id", "")
+        try:
+            from src.agent.subagent_manager import get_agent_manager
+            mgr = get_agent_manager()
+            if mgr is None:
+                return web.json_response({"error": "Agent manager not initialized"}, status=503)
+            result = mgr.result(session_id)
+            return web.json_response(result)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 

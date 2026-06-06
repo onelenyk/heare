@@ -517,6 +517,91 @@ TOOLS: list[ToolDef] = [
         },
         required=["name"],
     ),
+    ToolDef(
+        name="run_agent",
+        description="Delegate a complex multi-step task to an OpenCode sub-agent. Use for analysis, code changes, research, or any task requiring multiple steps. Returns the answer, cost, and a session_id you can pass to continue the conversation.",
+        handler="subagent_run",
+        schema_fields={
+            "prompt": {"type": "string", "description": "The task description or question for the sub-agent. Be specific — include file paths, context, and what you need."},
+            "cwd": {"type": "string", "description": "Working directory for the sub-agent (default: current workspace)."},
+            "model": {"type": "string", "description": "Model to use (default: opencode's configured model)."},
+            "session_id": {"type": "string", "description": "Continue a previous sub-agent session by its ID. Omit to start a new session."},
+        },
+        required=["prompt"],
+    ),
+    ToolDef(
+        name="agent_start",
+        description="Start a background sub-agent via OpenCode server. Returns session_id immediately. The agent runs asynchronously.",
+        handler="agent_start",
+        schema_fields={
+            "prompt": {"type": "string", "description": "Task description for the sub-agent."},
+            "cwd": {"type": "string", "description": "Working directory (default: current workspace)."},
+        },
+        required=["prompt"],
+    ),
+    ToolDef(
+        name="agent_status",
+        description="Check progress of a background sub-agent. Shows current_step, tool_calls, cost, elapsed time.",
+        handler="agent_status",
+        schema_fields={
+            "session_id": {"type": "string", "description": "Session ID from agent_start."},
+        },
+        required=["session_id"],
+    ),
+    ToolDef(
+        name="agent_result",
+        description="Get the full output from a sub-agent. Returns partial output if still running, complete if done.",
+        handler="agent_result",
+        schema_fields={
+            "session_id": {"type": "string", "description": "Session ID from agent_start."},
+        },
+        required=["session_id"],
+    ),
+    ToolDef(
+        name="agent_message",
+        description="Continue a conversation with an existing sub-agent session. Only on done/error/cancelled agents.",
+        handler="agent_message",
+        schema_fields={
+            "session_id": {"type": "string", "description": "Session ID from agent_start."},
+            "prompt": {"type": "string", "description": "Follow-up task or correction."},
+        },
+        required=["session_id", "prompt"],
+    ),
+    ToolDef(
+        name="agent_cancel",
+        description="Cancel a running sub-agent and stop its server. Preserves partial output.",
+        handler="agent_cancel",
+        schema_fields={
+            "session_id": {"type": "string", "description": "Session ID from agent_start."},
+        },
+        required=["session_id"],
+    ),
+    ToolDef(
+        name="agent_list",
+        description="List all managed sub-agents with their status, progress, and cost.",
+        handler="agent_list",
+        schema_fields={},
+    ),
+    ToolDef(
+        name="agent_approve",
+        description="Approve a pending permission request from a sub-agent. Use when context shows waiting_for_input.",
+        handler="agent_approve",
+        schema_fields={
+            "session_id": {"type": "string", "description": "Session ID from agent_start."},
+        },
+        required=["session_id"],
+    ),
+    ToolDef(
+        name="agent_deny",
+        description="Deny a pending permission request. Sends corrective message if reason provided.",
+        handler="agent_deny",
+        schema_fields={
+            "session_id": {"type": "string", "description": "Session ID from agent_start."},
+            "reason": {"type": "string", "description": "Why denied — becomes corrective message to the agent."},
+        },
+        required=["session_id"],
+    ),
+
 ]
 
 
@@ -566,6 +651,16 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "mute_mic": _json_serializer,
     "audio_input": _name_serializer,
     "audio_output": _name_serializer,
+    "run_agent": _json_serializer,
+    "agent_start": _json_serializer,
+    "agent_status": _json_serializer,
+    "agent_result": _json_serializer,
+    "agent_message": _json_serializer,
+    "agent_cancel": _json_serializer,
+    "agent_list": _empty_serializer,
+    "agent_approve": _json_serializer,
+    "agent_deny": _json_serializer,
+
 }
 
 
@@ -616,6 +711,16 @@ def _handler_for(tool: ToolDef):
         "mute_bot": direct._execute_mute_bot,
         "mute_mic": direct._execute_mute_mic,
         "audio_device": direct._execute_audio_device,
+        "subagent_run": direct._execute_run_agent,
+        "agent_start": direct._execute_agent_start,
+        "agent_status": direct._execute_agent_status,
+        "agent_result": direct._execute_agent_result,
+        "agent_message": direct._execute_agent_message,
+        "agent_cancel": direct._execute_agent_cancel,
+        "agent_list": direct._execute_agent_list,
+        "agent_approve": direct._execute_agent_approve,
+        "agent_deny": direct._execute_agent_deny,
+
     }
 
     func = handler_map.get(tool.handler)
