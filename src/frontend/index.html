@@ -83,17 +83,28 @@
   .response { font-size: 16px; font-weight: 600; color: var(--accent-orange); padding: 4px 0; }
 .info-line { font-family: var(--mono); font-size: 11px; margin-bottom: 2px; color: var(--muted); }
 .info-line strong { color: var(--accent-cyan); font-weight: 400; }
-.agent-row { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.agent-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .agent-row:last-child { border-bottom: none; }
-.agent-row-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.agent-status-tag { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 3px; text-transform: uppercase; }
-.agent-status-tag.running, .agent-status-tag.starting { background: var(--accent-cyan); color: #000; }
-.agent-status-tag.done { background: var(--accent-green); color: #000; }
-.agent-status-tag.error, .agent-status-tag.cancelled { background: var(--accent-red); color: #fff; }
-.agent-status-tag.waiting_for_input { background: var(--accent-yellow); color: #000; }
-.agent-prompt-text { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-meta-text { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-.agent-row-preview { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; padding: 4px 8px; background: var(--bg); border-radius: 4px; max-height: 60px; overflow: hidden; }
+.agent-row-main { display: flex; align-items: flex-start; gap: 8px; }
+.agent-dot { font-size: 14px; line-height: 20px; flex-shrink: 0; width: 20px; text-align: center; }
+.agent-dot.running, .agent-dot.starting { color: var(--accent-cyan); }
+.agent-dot.done { color: var(--accent); }
+.agent-dot.error, .agent-dot.cancelled { color: var(--accent-red); }
+.agent-dot.waiting_for_input { color: var(--accent-yellow); }
+.agent-row-body { flex: 1; min-width: 0; }
+.agent-row-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
+.agent-badge { font-size: 9px; font-weight: 600; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.5px; }
+.agent-badge.running, .agent-badge.starting { background: var(--accent-cyan); color: #000; }
+.agent-badge.done { background: var(--accent); color: #000; }
+.agent-badge.error, .agent-badge.cancelled { background: var(--accent-red); color: #fff; }
+.agent-badge.waiting_for_input { background: var(--accent-yellow); color: #000; }
+.agent-step { font-size: 10px; color: var(--accent-cyan); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.agent-sid { font-size: 9px; color: var(--muted); font-family: var(--mono); margin-left: auto; }
+.agent-prompt-text { font-size: 12px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-metrics { display: flex; gap: 10px; margin-top: 3px; }
+.agent-metric { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+.agent-actions { display: flex; gap: 2px; flex-shrink: 0; padding-top: 2px; }
+.btn-tiny { font-size: 10px; padding: 2px 6px; line-height: 1.2; }
 .agent-launch-row { display: flex; gap: 8px; margin-bottom: 12px; }
 .agent-launch-row input { flex: 1; }
 .agent-detail-modal { max-width: 640px; }
@@ -1586,26 +1597,45 @@ function AgentList({ agents, onCancel, onToast }) {
   }
 
   const statusClass = (s) => s || "";
+  const statusIcon = (s) => ({running:"⚙", starting:"⟳", waiting_for_input:"⏸", done:"✓", error:"✗", cancelled:"✗"}[s] || "•");
+  const statusLabel = (s) => ({running:"running", starting:"booting", waiting_for_input:"waiting", done:"done", error:"failed", cancelled:"stopped"}[s] || s);
 
   return (
     <div>
-      {agents.slice().reverse().map(a => (
+      {agents.slice().reverse().map(a => {
+        const active = a.status === "running" || a.status === "starting" || a.status === "waiting_for_input";
+        const icon = statusIcon(a.status);
+        const label = statusLabel(a.status);
+        const prompt = (a.prompt || "").slice(0, 80);
+        return (
         <div key={a.session_id} class="agent-row">
-          <div class="agent-row-top">
-            <span class={"agent-status-tag " + statusClass(a.status)}>{a.status}</span>
-            <span class="agent-prompt-text" title={a.prompt} style={{flex:1,minWidth:0}}>{a.prompt}</span>
-            <span class="agent-meta-text">{a.tool_calls || 0} tools</span>
-            {a.cost != null && <span class="agent-meta-text">${a.cost.toFixed(4)}</span>}
-            <span class="agent-meta-text">{a.age_seconds}s</span>
-            <span style={{display:"flex",gap:2}}>
-              <button class="btn" style={{fontSize:10}} onClick={() => loadDetail(a.session_id)}>{"📋"}</button>
-              {(a.status === "running" || a.status === "starting" || a.status === "waiting_for_input") && (
-                <button class="btn danger" style={{fontSize:10}} onClick={() => onCancel(a.session_id)}>{"✕"}</button>
+          <div class="agent-row-main">
+            <span class={"agent-dot " + a.status}>{icon}</span>
+            <div class="agent-row-body">
+              <div class="agent-row-head">
+                <span class={"agent-badge " + a.status}>{label}</span>
+                {a.current_step && <span class="agent-step" title={a.current_step}>{a.current_step}</span>}
+                <span class="agent-sid" title={a.session_id}>{a.session_id.slice(0,12)}</span>
+              </div>
+              <div class="agent-prompt-text" title={a.prompt}>{prompt || "(no prompt)"}</div>
+              {(a.tool_calls > 0 || a.cost != null) && (
+                <div class="agent-metrics">
+                  {a.tool_calls > 0 && <span class="agent-metric">{a.tool_calls} tools</span>}
+                  {a.cost != null && a.cost > 0 && <span class="agent-metric">${a.cost.toFixed(4)}</span>}
+                  <span class="agent-metric">turn {a.turn || 1}</span>
+                  <span class="agent-metric">{a.age_seconds}s</span>
+                </div>
               )}
-            </span>
+            </div>
+            <div class="agent-actions">
+              <button class="btn btn-tiny" onClick={() => loadDetail(a.session_id)} title="details">📋</button>
+              {active && (
+                <button class="btn btn-tiny danger" onClick={() => onCancel(a.session_id)} title="cancel">✕</button>
+              )}
+            </div>
           </div>
           {a.partial_output && (
-            <div class="agent-row-preview" title={a.partial_output}>{a.partial_output}</div>
+            <div class="agent-row-preview">{a.partial_output}</div>
           )}
         </div>
       ))}
