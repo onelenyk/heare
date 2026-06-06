@@ -334,9 +334,6 @@ class SubAgentManager:
         try:
             await self._wait_healthy(state)
             await self._create_session_and_send(state)
-            old_key = state.session_id
-            self._agents.pop(old_key, None)
-            self._agents[state.session_id] = state
             await self._listen_sse(state)
         except Exception as e:
             logger.exception("Bootstrap failed for %s: %s", state.session_id[:20], e)
