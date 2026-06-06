@@ -8,14 +8,42 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import shutil
 import socket
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
 import httpx
 
 logger = logging.getLogger("heare.subagent_manager")
+
+
+def _resolve_opencode_binary(explicit: str | None = None) -> str:
+    if explicit:
+        logger.info("opencode binary: using explicit path %s", explicit)
+        return explicit
+    resolved = shutil.which("opencode")
+    if resolved:
+        logger.info("opencode binary: found via PATH at %s", resolved)
+        return resolved
+    candidates = [
+        os.path.expanduser("~/.opencode/bin/opencode"),
+        os.path.expanduser("~/.superset/bin/opencode"),
+        "/Users/lenyk/.opencode/bin/opencode",
+        "/Users/lenyk/.superset/bin/opencode",
+        "/usr/local/bin/opencode",
+        os.path.expanduser("~/.local/bin/opencode"),
+        "/opt/homebrew/bin/opencode",
+    ]
+    for cand in candidates:
+        if Path(cand).is_file():
+            logger.info("opencode binary: found candidate %s", cand)
+            return cand
+    logger.warning("opencode binary: NOT FOUND in PATH or candidates: %s", candidates)
+    return "opencode"
 
 
 @dataclass
@@ -285,9 +313,11 @@ class SubAgentManager:
     # -- Server lifecycle -------------------------------------------------
 
     async def _spawn_server_only(self, state: SubAgentState) -> None:
-        import os as _os
-        cwd = state.cwd or _os.getcwd()
-        cmd = ["opencode", "serve", "--port", str(state.port)]
+        cwd = state.cwd or os.getcwd()
+        opencode_bin = _resolve_opencode_binary(
+            getattr(self._settings, "opencode_binary", None) if self._settings else None
+        )
+        cmd = [opencode_bin, "serve", "--port", str(state.port)]
         logger.info("Spawning agent server: %s (cwd=%s)", cmd, cwd)
         try:
             state.server_process = await asyncio.create_subprocess_exec(
@@ -295,7 +325,10 @@ class SubAgentManager:
                 cwd=cwd, start_new_session=True,
             )
         except FileNotFoundError:
-            raise RuntimeError("OpenCode binary not found.")
+            raise RuntimeError(
+                f"OpenCode binary not found at '{opencode_bin}'. "
+                f"Install opencode or set opencode_binary in config.toml."
+            )
 
     async def _bootstrap_and_listen(self, state: SubAgentState) -> None:
         try:

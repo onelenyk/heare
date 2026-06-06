@@ -374,6 +374,7 @@ class Settings:
     agent_server_start_timeout: float = 10.0
     agent_port_range_start: int = 14100
     agent_permission_timeout_seconds: float = 120.0
+    opencode_binary: str | None = None
 
     # Audio device selection (optional). Set via config.toml or at
     # runtime via ``heare audio-input <name>`` / ``heare audio-output

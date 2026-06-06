@@ -23,9 +23,37 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import shutil
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("heare.subagent")
+
+
+def _resolve_opencode_binary(explicit: str | None = None) -> str:
+    if explicit:
+        logger.info("opencode binary: using explicit path %s", explicit)
+        return explicit
+    resolved = shutil.which("opencode")
+    if resolved:
+        logger.info("opencode binary: found via PATH at %s", resolved)
+        return resolved
+    candidates = [
+        os.path.expanduser("~/.opencode/bin/opencode"),
+        os.path.expanduser("~/.superset/bin/opencode"),
+        "/Users/lenyk/.opencode/bin/opencode",
+        "/Users/lenyk/.superset/bin/opencode",
+        "/usr/local/bin/opencode",
+        os.path.expanduser("~/.local/bin/opencode"),
+        "/opt/homebrew/bin/opencode",
+    ]
+    for cand in candidates:
+        if Path(cand).is_file():
+            logger.info("opencode binary: found candidate %s", cand)
+            return cand
+    logger.warning("opencode binary: NOT FOUND in PATH or candidates: %s", candidates)
+    return "opencode"
 
 
 
@@ -88,7 +116,7 @@ async def run_opencode(
     ------
     Nothing — all failures are captured in the return dict.
     """
-    cmd: list[str] = [binary, "run", "--format", "json", "--dangerously-skip-permissions"]
+    cmd: list[str] = [_resolve_opencode_binary(binary), "run", "--format", "json", "--dangerously-skip-permissions"]
     if model:
         cmd.extend(["--model", model])
     if session_id:
