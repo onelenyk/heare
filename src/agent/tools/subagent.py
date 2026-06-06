@@ -35,10 +35,6 @@ def _resolve_opencode_binary(explicit: str | None = None) -> str:
     if explicit:
         logger.info("opencode binary: using explicit path %s", explicit)
         return explicit
-    resolved = shutil.which("opencode")
-    if resolved:
-        logger.info("opencode binary: found via PATH at %s", resolved)
-        return resolved
     candidates = [
         os.path.expanduser("~/.opencode/bin/opencode"),
         os.path.expanduser("~/.superset/bin/opencode"),
@@ -52,7 +48,11 @@ def _resolve_opencode_binary(explicit: str | None = None) -> str:
         if Path(cand).is_file():
             logger.info("opencode binary: found candidate %s", cand)
             return cand
-    logger.warning("opencode binary: NOT FOUND in PATH or candidates: %s", candidates)
+    resolved = shutil.which("opencode")
+    if resolved:
+        logger.info("opencode binary: found via PATH at %s", resolved)
+        return resolved
+    logger.warning("opencode binary: NOT FOUND in candidates or PATH: %s", candidates)
     return "opencode"
 
 
