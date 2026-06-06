@@ -1842,7 +1842,9 @@ function AgentList({ agents, onCancel, onToast }) {
             </div>
           </div>
           {a.partial_output && (
-            <div class="agent-row-preview">{a.partial_output}</div>
+            <div class="agent-row-preview" onClick={() => loadDetail(a.session_id)} style={{cursor:"pointer"}} title="Click for full output">
+              {a.partial_output}
+            </div>
           )}
         </div>
       )})}

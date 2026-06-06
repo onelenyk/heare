@@ -163,7 +163,7 @@ class SubAgentManager:
             if agent.pending_since:
                 result["waiting_seconds"] = int(time.time() - agent.pending_since)
         if parts_snapshot:
-            result["partial_output"] = "".join(parts_snapshot)[:2000]
+            result["partial_output"] = "".join(parts_snapshot)[:4000]
         if agent.status in ("done", "error", "cancelled"):
             result["finished_at"] = agent.finished_at
             result["output"] = "".join(parts_snapshot)
@@ -297,7 +297,7 @@ class SubAgentManager:
 
     def _agent_to_dict(self, a: SubAgentState) -> dict:
         now = time.time()
-        partial = "".join(a.output_parts)[:80] if a.output_parts else None
+        partial = "".join(a.output_parts)[:500] if a.output_parts else None
         return {
             "session_id": a.session_id,
             "prompt": a.prompt[:100],
