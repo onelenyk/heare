@@ -122,6 +122,15 @@ class SubAgentManager:
             self._client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
         return self._client
 
+    def _find_agent(self, session_id: str) -> SubAgentState | None:
+        agent = self._agents.get(session_id)
+        if agent is not None:
+            return agent
+        for a in self._agents.values():
+            if a.session_id == session_id:
+                return a
+        return None
+
     # -- CRUD API ---------------------------------------------------------
 
     async def start(self, prompt: str, *, cwd: str | None = None) -> SubAgentState:
@@ -143,7 +152,7 @@ class SubAgentManager:
         return state
 
     def status(self, session_id: str) -> dict:
-        agent = self._agents.get(session_id)
+        agent = self._find_agent(session_id)
         if agent is None:
             return {"error": f"Agent not found: {session_id}"}
 
@@ -172,7 +181,7 @@ class SubAgentManager:
         return result
 
     def result(self, session_id: str) -> dict:
-        agent = self._agents.get(session_id)
+        agent = self._find_agent(session_id)
         if agent is None:
             return {"error": f"Agent not found: {session_id}", "success": False}
         output = "".join(agent.output_parts)
@@ -189,7 +198,7 @@ class SubAgentManager:
         }
 
     async def message(self, session_id: str, prompt: str) -> dict:
-        agent = self._agents.get(session_id)
+        agent = self._find_agent(session_id)
         if agent is None:
             return {"error": f"Agent not found: {session_id}", "success": False}
         if agent.status in ("running", "starting", "waiting_for_input"):
@@ -221,7 +230,7 @@ class SubAgentManager:
         return {"session_id": session_id, "status": "running", "turn": agent.turn, "success": True}
 
     async def cancel(self, session_id: str) -> dict:
-        agent = self._agents.get(session_id)
+        agent = self._find_agent(session_id)
         if agent is None:
             return {"error": f"Agent not found: {session_id}", "cancelled": False}
         was_running = agent.status in ("running", "starting", "waiting_for_input")
@@ -242,7 +251,7 @@ class SubAgentManager:
         }
 
     async def approve(self, session_id: str) -> dict:
-        agent = self._agents.get(session_id)
+        agent = self._find_agent(session_id)
         if agent is None or agent.status != "waiting_for_input" or not agent.pending_permission:
             return {"error": "Agent not waiting for input", "approved": False}
         req_id = agent.pending_permission.get("requestID", "")
@@ -257,7 +266,7 @@ class SubAgentManager:
         return {"session_id": session_id, "approved": True, "status": "running"}
 
     async def deny(self, session_id: str, reason: str | None = None) -> dict:
-        agent = self._agents.get(session_id)
+        agent = self._find_agent(session_id)
         if agent is None or agent.status != "waiting_for_input" or not agent.pending_permission:
             return {"error": "Agent not waiting for input", "denied": False}
         req_id = agent.pending_permission.get("requestID", "")
