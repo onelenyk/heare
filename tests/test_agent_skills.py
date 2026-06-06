@@ -12,7 +12,7 @@ import pytest
 
 from src.skills.agent_skills import SkillsLoader, SkillMetadata
 from src.agent.tools.direct import execute_direct
-from src.agent.tools.definitions import get_tool, get_tool_names
+from src.agent.tools.system import get_tool, get_tool_names
 from src.agent.tools.registry import get_enabled_tools
 from src.agent.tools.schemas import _TOOL_SPECS
 

@@ -88,7 +88,7 @@ async def run_opencode(
     ------
     Nothing — all failures are captured in the return dict.
     """
-    cmd: list[str] = [binary, "run", "--format", "json"]
+    cmd: list[str] = [binary, "run", "--format", "json", "--dangerously-skip-permissions"]
     if model:
         cmd.extend(["--model", model])
     if session_id:

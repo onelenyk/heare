@@ -66,7 +66,7 @@ def test_set_mode_exempt_in_every_mode() -> None:
 
 
 def test_set_mode_registered_in_registry_and_schema() -> None:
-    from src.agent.tools.definitions import get_tool_names, get_tool
+    from src.agent.tools.system import get_tool_names, get_tool
     from src.agent.tools.schemas import _TOOL_SPECS
 
     assert "set_mode" in get_tool_names()

@@ -161,7 +161,7 @@ async def test_show_display_unknown_format_falls_back_text(
 
 
 def test_show_display_registered():
-    from src.agent.tools.definitions import get_tool, get_tool_names
+    from src.agent.tools.system import get_tool, get_tool_names
     from src.agent.tools.schemas import _TOOL_SPECS
 
     # show_display was replaced by show_text + show_canvas in the new definitions

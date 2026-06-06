@@ -905,6 +905,25 @@ def register_dynamic_tool_handler(
     llm.register_function(name, handler, cancel_on_interruption=True)
 
 
+def get_tool(name: str) -> "ToolDef | None":
+    for t in TOOLS:
+        if t.name == name:
+            return t
+    return None
+
+
+def get_tool_names() -> list[str]:
+    return [t.name for t in TOOLS]
+
+
+def get_handler_types() -> list[str]:
+    return sorted({t.handler for t in TOOLS})
+
+
+def get_tools_by_handler(handler: str) -> list["ToolDef"]:
+    return [t for t in TOOLS if t.handler == handler]
+
+
 __all__ = [
     "ToolDef",
     "TOOLS",
@@ -914,4 +933,8 @@ __all__ = [
     "unregister_dynamic_tool_schema",
     "get_dynamic_tool_schema",
     "register_dynamic_tool_handler",
+    "get_tool",
+    "get_tool_names",
+    "get_handler_types",
+    "get_tools_by_handler",
 ]

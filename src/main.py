@@ -384,6 +384,12 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             await store.close()
         if settings.pid_file.exists():
             settings.pid_file.unlink()
+        mgr = locals().get("agent_manager")
+        if mgr is not None:
+            try:
+                await mgr.shutdown()
+            except Exception as e:
+                logger.warning("agent_manager shutdown failed (non-fatal): %s", e)
         logger.info("heare stopped")
     return 0
 

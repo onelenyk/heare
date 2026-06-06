@@ -399,7 +399,7 @@ async def test_list_capabilities_empty_skills_and_mcps_still_lists_built_in(sett
 
 
 def test_capability_tools_registered():
-    from src.agent.tools.definitions import get_tool, get_tool_names
+    from src.agent.tools.system import get_tool, get_tool_names
 
     for name in (
         "discover_capability",
@@ -437,7 +437,7 @@ def test_capability_tools_have_schemas():
 
 
 def test_register_mcp_server_registered():
-    from src.agent.tools.definitions import get_tool, get_tool_names
+    from src.agent.tools.system import get_tool, get_tool_names
     from src.agent.tools.schemas import _TOOL_SPECS
 
     assert "register_mcp_server" in get_tool_names()
