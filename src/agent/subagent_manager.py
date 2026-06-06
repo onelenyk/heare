@@ -172,7 +172,7 @@ class SubAgentManager:
             if agent.pending_since:
                 result["waiting_seconds"] = int(time.time() - agent.pending_since)
         if parts_snapshot:
-            result["partial_output"] = "".join(parts_snapshot)[:4000]
+            result["partial_output"] = "".join(parts_snapshot)[:10000]
         if agent.status in ("done", "error", "cancelled"):
             result["finished_at"] = agent.finished_at
             result["output"] = "".join(parts_snapshot)
@@ -189,8 +189,8 @@ class SubAgentManager:
         return {
             "session_id": agent.session_id,
             "status": agent.status,
-            "output": output[:8000],
-            "truncated": truncated and len(output) > 8000,
+            "output": output[:100000],
+            "truncated": truncated and len(output) > 100000,
             "tool_calls": agent.tool_calls,
             "cost": agent.cost,
             "events": agent.events,
