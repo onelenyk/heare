@@ -1753,12 +1753,24 @@ function AgentList({ agents, onCancel, onToast }) {
   const [detailId, setDetailId] = React.useState(null);
   const [detailData, setDetailData] = React.useState(null);
   const [detailOutput, setDetailOutput] = React.useState(null);
+  const [detailResult, setDetailResult] = React.useState(null);
   const [loadingDetail, setLoadingDetail] = React.useState(false);
+
+  // Auto-refresh detail when agent is running
+  React.useEffect(() => {
+    if (!detailId) return;
+    if (!detailResult) return;
+    const active = detailResult.status === "running" || detailResult.status === "starting" || detailResult.status === "waiting_for_input";
+    if (!active) return;
+    const interval = setInterval(() => loadOutput(detailId), 2000);
+    return () => clearInterval(interval);
+  }, [detailId, detailResult]);
 
   async function loadDetail(sid) {
     setDetailId(sid);
     setLoadingDetail(true);
     setDetailOutput(null);
+    setDetailResult(null);
     try {
       const [ar, rr] = await Promise.all([
         fetch(API + "/api/agents"),
@@ -1768,6 +1780,7 @@ function AgentList({ agents, onCancel, onToast }) {
       const rd = await rr.json();
       const agent = (ad.agents || []).find(a => a.session_id === sid);
       setDetailData(agent || null);
+      setDetailResult(rd);
       if (rd && rd.output) {
         setDetailOutput(rd.output);
       }
@@ -1776,18 +1789,14 @@ function AgentList({ agents, onCancel, onToast }) {
   }
 
   async function loadOutput(sid) {
-    setLoadingDetail(true);
     try {
-      const r = await fetch(API + "/api/agents");
+      const r = await fetch(API + "/api/agents/" + sid + "/result");
       const d = await r.json();
-      const agent = (d.agents || []).find(a => a.session_id === sid);
-      if (agent) {
-        setDetailData(agent);
-        // The list_all() doesn't include full output, just metadata
-        // We need a separate endpoint or status call for full output
+      setDetailResult(d);
+      if (d && d.output && d.output !== detailOutput) {
+        setDetailOutput(d.output);
       }
     } catch(e) {}
-    setLoadingDetail(false);
   }
 
   if (!agents || agents.length === 0) {
@@ -1843,26 +1852,38 @@ function AgentList({ agents, onCancel, onToast }) {
         <div class="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setDetailId(null); }}>
           <div class="modal-card agent-detail-modal">
             <div class="modal-header">
-              <span class="modal-title">{"🤖"} agent {detailId.slice(0, 12)}</span>
+              <span class="modal-title">
+                {"🤖"} agent {detailId.slice(0, 12)}
+                {detailResult && (
+                  <span class={"agent-badge " + detailResult.status} style={{marginLeft:8,verticalAlign:"middle"}}>
+                    {detailResult.status}
+                  </span>
+                )}
+              </span>
               <button class="modal-close" onClick={() => setDetailId(null)}>{"×"}</button>
             </div>
             <div class="modal-body">
               {loadingDetail ? <div class="info-line">Loading…</div> : detailData ? (
                 <div>
-                  <div class="info-line"><strong>status:</strong> {detailData.status}</div>
                   <div class="info-line"><strong>prompt:</strong> {detailData.prompt}</div>
-                  <div class="info-line"><strong>tools:</strong> {detailData.tool_calls || 0} {"·"} <strong>cost:</strong> ${(detailData.cost || 0).toFixed(4)}</div>
+                  <div class="info-line"><strong>tools:</strong> {detailResult?.tool_calls || detailData.tool_calls || 0} {"·"} <strong>cost:</strong> ${((detailResult?.cost || detailData.cost) || 0).toFixed(4)}</div>
                   <div class="info-line"><strong>session:</strong> {detailData.session_id}</div>
                   <div class="info-line"><strong>age:</strong> {detailData.age_seconds}s {"·"} <strong>turn:</strong> {detailData.turn || 1}</div>
                   {detailData.current_step && <div class="info-line"><strong>step:</strong> {detailData.current_step}</div>}
                   {detailData.error_message && <div class="info-line" style={{color:"var(--accent-red)"}}><strong>error:</strong> {detailData.error_message}</div>}
                 </div>
               ) : <div class="info-line">Agent not found</div>}
-              {detailOutput && (
-                <div class="agent-output-box">{detailOutput}</div>
+              {detailResult?.status !== "done" && detailOutput && (
+                <div class="info-line" style={{color:"var(--accent-cyan)",marginTop:8}}>{"⟳"} still generating — auto-refreshing…</div>
               )}
-              <div style={{marginTop: 8}}>
+              {detailOutput ? (
+                <div class="agent-output-box">{detailOutput}</div>
+              ) : detailResult?.status === "running" ? (
+                <div class="info-line" style={{marginTop:8}}>Waiting for output…</div>
+              ) : null}
+              <div style={{marginTop:8,display:"flex",gap:8}}>
                 <button class="btn" onClick={() => setDetailId(null)}>close</button>
+                <button class="btn" onClick={() => loadOutput(detailId)}>{"↻"} refresh</button>
               </div>
             </div>
           </div>
