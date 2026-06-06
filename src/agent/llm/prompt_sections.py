@@ -195,12 +195,12 @@ def _render_context_dynamic(context: dict[str, Any] | None) -> str | None:
     if mcp:
         parts.append(mcp)
 
-current_display = context.get("current_display")
-if current_display:
-    parts.append(current_display)
-canvas_info = context.get("canvas_info")
-if canvas_info:
-    parts.append(canvas_info)
+    current_display = context.get("current_display")
+    if current_display:
+        parts.append(current_display)
+    canvas_info = context.get("canvas_info")
+    if canvas_info:
+        parts.append(canvas_info)
 
     return "\n".join(parts) if parts else None
 
