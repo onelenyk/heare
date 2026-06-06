@@ -416,7 +416,7 @@
      ═══════════════════════════════════════════ */
   .display-card {
     background: var(--card); border: 2px solid var(--border);
-    border-radius: var(--r); margin: 0 0 var(--s3); overflow: hidden;
+    border-radius: var(--r); margin: 0 0 var(--s3);
     transition: border-color var(--tran-slow); animation: displayFadeIn 0.25s ease-out;
     box-shadow: var(--shadow-sm);
     max-width: 860px;
@@ -443,7 +443,7 @@
     justify-content: center; flex-shrink: 0; transition: all var(--tran);
   }
   .display-dismiss:hover { color: var(--accent-red); border-color: var(--accent-red); background: rgba(255,123,114,0.08); }
-  .display-content { padding: var(--s3); max-height: 600px; overflow-y: auto; }
+  .display-content { padding: var(--s3); max-height: 540px; overflow: hidden; }
   .display-text, .display-md {
     font-family: inherit; white-space: pre-wrap; word-wrap: break-word;
     color: var(--text); font-size: 13px; line-height: 1.6; margin: 0;
@@ -453,7 +453,7 @@
     background: var(--bg); padding: var(--s3); border-radius: var(--r-xs);
     overflow-x: auto; margin: 0; white-space: pre; line-height: 1.5;
   }
-  .display-html { width: 100%; height: 500px; border: 2px solid var(--border); background: white; border-radius: var(--r-xs); overflow: hidden; }
+  .display-html { width: 820px; height: 500px; border: 2px solid var(--border); background: white; border-radius: var(--r-xs); overflow: hidden; max-width: 100%; }
 
   /* ═══════════════════════════════════════════
      TOAST
