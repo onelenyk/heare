@@ -166,10 +166,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     logger.info("HTTP API server on 127.0.0.1:9778")
 
     _ensure_portal()
-    import webbrowser
-    asyncio.get_running_loop().run_in_executor(
-        None, lambda: webbrowser.open("http://127.0.0.1:9780/")
-    )
 
     available = get_available(settings)
     if not available:
