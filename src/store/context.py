@@ -159,6 +159,13 @@ class ContextBuilder:
         if self._project_dir:
             result["project_dir"] = self._project_dir
         result["workspace_dir"] = str(self.settings.workspace_dir)
+        result["canvas_info"] = (
+            "Canvas widget available (use show_text / show_canvas): "
+            "820px wide × 500px tall HTML iframe (white background). "
+            "The canvas is embedded in a dark-themed dashboard at ~860px max width. "
+            "Use inline CSS for precise layouts — no external stylesheets. "
+            "Fonts available: system-ui, monospace."
+        )
         live_mcp = None
         if self._mcp_bridge is not None:
             try:

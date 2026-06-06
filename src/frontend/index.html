@@ -415,10 +415,11 @@
      DISPLAY WIDGET
      ═══════════════════════════════════════════ */
   .display-card {
-    background: var(--card); border: 1px solid var(--border);
+    background: var(--card); border: 2px solid var(--border);
     border-radius: var(--r); margin: 0 0 var(--s3); overflow: hidden;
     transition: border-color var(--tran-slow); animation: displayFadeIn 0.25s ease-out;
     box-shadow: var(--shadow-sm);
+    max-width: 860px;
   }
   .display-card.flash { border-color: var(--accent-cyan); box-shadow: 0 0 16px rgba(121,192,255,0.15); }
   @keyframes displayFadeIn {
@@ -427,7 +428,7 @@
   }
   .display-header {
     display: flex; align-items: center; gap: var(--s2);
-    padding: var(--s2) var(--s3); border-bottom: 1px solid var(--border);
+    padding: var(--s2) var(--s3); border-bottom: 2px solid var(--border);
     font-size: 11px; color: var(--muted); background: var(--bg);
   }
   .display-icon { font-size: 14px; }
@@ -442,7 +443,7 @@
     justify-content: center; flex-shrink: 0; transition: all var(--tran);
   }
   .display-dismiss:hover { color: var(--accent-red); border-color: var(--accent-red); background: rgba(255,123,114,0.08); }
-  .display-content { padding: var(--s3); max-height: 400px; overflow-y: auto; }
+  .display-content { padding: var(--s3); max-height: 600px; overflow-y: auto; }
   .display-text, .display-md {
     font-family: inherit; white-space: pre-wrap; word-wrap: break-word;
     color: var(--text); font-size: 13px; line-height: 1.6; margin: 0;
@@ -452,7 +453,7 @@
     background: var(--bg); padding: var(--s3); border-radius: var(--r-xs);
     overflow-x: auto; margin: 0; white-space: pre; line-height: 1.5;
   }
-  .display-html { width: 100%; height: 320px; border: none; background: white; border-radius: var(--r-xs); }
+  .display-html { width: 100%; height: 500px; border: 2px solid var(--border); background: white; border-radius: var(--r-xs); }
 
   /* ═══════════════════════════════════════════
      TOAST
