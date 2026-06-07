@@ -1,18 +1,88 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1779208537665,
+  "lastScanned": 1780699494517,
   "projectRoot": "/Users/lenyk/myprojects/heare",
-  "techStack": "Python 3.11+, Pipecat (audio pipeline), Groq Whisper (STT), Edge TTS, OpenRouter/z.ai (LLM), SQLite/aiosqlite, Textual (TUI), Silero VAD, ONNX/YAMNet, ECAPA (speaker recognition)",
-  "build": "uv sync, uv run python -m src.main {start|stop|watch}, uv run pytest tests/ -v, Makefile wrapper",
-  "conventions": "asyncio single-process, pipecat frame pipeline, file-based IPC for flags/modes, deferred pipecat imports for CLI-only commands, composition over inheritance for LLM service, dataclass Settings with TOML override, str Enum for constants",
-  "structure": "src/main.py (CLI) → src/pipeline/build.py (pipeline) → stages/ (frame processors), src/agent/llm/ (LLM), src/agent/tools/ (tool dispatch), src/store/ (SQLite DAO), src/voice/ (STT/TTS/speaker/indication), src/watch/ (TUI dashboard), src/overlay/ (pywebview), src/daemon/ (onboarding/workspace/control)",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      },
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "pytest",
+        "version": null,
+        "category": "testing"
+      }
+    ],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "make build",
+    "testCommand": "make test",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": "snake_case",
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts",
+      "src",
+      "tests"
+    ],
+    "gitBranches": null
+  },
   "customNotes": [],
   "directoryMap": {
+    "build": {
+      "path": "build",
+      "purpose": "Build output",
+      "fileCount": 0,
+      "lastAccessed": 1780699494505,
+      "keyFiles": []
+    },
+    "desktop": {
+      "path": "desktop",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1780699494505,
+      "keyFiles": []
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1780699494505,
+      "keyFiles": []
+    },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1779208537652,
+      "lastAccessed": 1780699494506,
       "keyFiles": [
         "action_execution_flow.md",
         "conversation_logic.md",
@@ -24,15 +94,16 @@
       "path": "extensions",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1779208537653,
+      "lastAccessed": 1780699494506,
       "keyFiles": []
     },
     "migrations": {
       "path": "migrations",
       "purpose": "Database migrations",
-      "fileCount": 2,
-      "lastAccessed": 1779208537653,
+      "fileCount": 3,
+      "lastAccessed": 1780699494506,
       "keyFiles": [
+        "007_drop_speaker_audioevent.sql",
         "01_add_conversations.sql",
         "02_dynamic_tools.sql"
       ]
@@ -40,32 +111,28 @@
     "prompts": {
       "path": "prompts",
       "purpose": null,
-      "fileCount": 3,
-      "lastAccessed": 1779208537653,
+      "fileCount": 11,
+      "lastAccessed": 1780699494506,
       "keyFiles": [
+        "capabilities.txt",
         "decider.txt",
         "identity-bootstrap.txt",
-        "persona.txt"
+        "installed_skills.txt",
+        "narration.txt"
       ]
     },
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 6,
-      "lastAccessed": 1779208537653,
-      "keyFiles": [
-        "bench_claude_ttft.py",
-        "bench_openrouter.py",
-        "bench_persistent_claude.py",
-        "fetch_speaker_onnx.py",
-        "yamnet_mic.py"
-      ]
+      "fileCount": 0,
+      "lastAccessed": 1780699494506,
+      "keyFiles": []
     },
     "skills": {
       "path": "skills",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1779208537654,
+      "lastAccessed": 1780699494506,
       "keyFiles": [
         "voice-mode.md",
         "voice-start.md",
@@ -75,43 +142,37 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 5,
-      "lastAccessed": 1779208537654,
+      "fileCount": 9,
+      "lastAccessed": 1780699494506,
       "keyFiles": [
         "__init__.py",
+        "api.py",
         "config.py",
-        "main.py",
-        "test_recognizer.py",
-        "version.py"
+        "dashboard_data.py",
+        "main.py"
       ]
-    },
-    "testowanie_bota": {
-      "path": "testowanie_bota",
-      "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1779208537654,
-      "keyFiles": []
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 82,
-      "lastAccessed": 1779208537654,
+      "fileCount": 74,
+      "lastAccessed": 1780699494507,
       "keyFiles": [
         "__init__.py",
         "test_agent_skills.py",
+        "test_api.py",
         "test_assistant_response_logger.py",
-        "test_audio_event.py",
         "test_barge_in.py"
       ]
     },
     "tests/fixtures": {
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
-      "fileCount": 3,
-      "lastAccessed": 1779208537655,
+      "fileCount": 4,
+      "lastAccessed": 1780699494508,
       "keyFiles": [
         "cancel_stopwords.txt",
+        "decider_prompt.golden.txt",
         "decider_prompt_flag_off.golden.txt"
       ]
     }
@@ -418,6 +479,5 @@
       "type": "file"
     }
   ],
-  "userDirectives": [],
-  "notes": "Reference at .sisyphus/PROJECT_REFERENCE.md. Critical choke point: src/pipeline/stages/transcription_gate.py. Known defect: cancel words during bot speech silently swallowed. System prompt injector runs synchronously (DB-heavy)."
+  "userDirectives": []
 }
