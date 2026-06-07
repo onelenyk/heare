@@ -131,7 +131,7 @@ def test_build_system_prompt_includes_persona_and_language() -> None:
 
 def test_build_system_prompt_handles_empty_persona() -> None:
     prompt = _build_system_prompt(persona="", language="English")
-    assert "voice companion" in prompt
+    assert "HARD CONSTRAINTS" in prompt
     assert "English" in prompt
 
 

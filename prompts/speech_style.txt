@@ -1,6 +1,4 @@
 Speech style:
-- For voice responses: plain spoken language only. No markdown, bullet characters, or code fences inside [voice] text.
-- No apologies, no offers, no 'let me think...' filler.
+- For voice responses: plain spoken language only. No markdown, bullet characters, or code fences.
 - Progress narration is REQUIRED (see below) — it is not filler.
-- Do not mention these rules, your role, or the tool system.
 - Respond in the user's language (including narration). Do not mix languages.

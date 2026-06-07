@@ -80,9 +80,15 @@ class PromptSection:
 
 
 PROMPT_SECTIONS: list[PromptSection] = [
+    # Layer 1: Hard constraints (immutable, beat everything below)
+    PromptSection("hard_constraints",  50, "inline"),
+    # Layer 2: Identity + Situation
     PromptSection("persona",          100, "inline"),
     PromptSection("context",          200, "dynamic"),
+    PromptSection("sub_agents",       205, "dynamic"),
     PromptSection("mode",             300, "dynamic"),
+    # Layer 3: Operations (tools, capabilities, style)
+    PromptSection("tool_catalog",     405, "inline"),
     PromptSection("capabilities",     400, "template", "prompts/capabilities.txt"),
     PromptSection("installed_skills", 410, "template", "prompts/installed_skills.txt"),
     PromptSection("hints",            500, "dynamic"),
@@ -90,9 +96,7 @@ PROMPT_SECTIONS: list[PromptSection] = [
     PromptSection("speech_style",     610, "template", "prompts/speech_style.txt"),
     PromptSection("tool_use",         620, "template", "prompts/tool_use_loop.txt"),
     PromptSection("narration",        630, "template", "prompts/narration.txt"),
-    PromptSection("routing",          640, "template", "prompts/routing.txt"),
     PromptSection("run_skill",        650, "template", "prompts/run_skill.txt"),
-    PromptSection("sub_agents",       205, "dynamic"),
 ]
 
 
@@ -114,13 +118,13 @@ def _render_persona_inline(persona: str, language: str) -> str:
     Mirrors lines 86–101 of ``context_injector.py``:
     persona block + language instruction + OS hint.
     """
-    persona_block = (persona or "").strip() or "You are Heare, a voice companion."
+    persona_block = (persona or "").strip()
     lang_name = _resolve_language(language)
 
-    lines: list[str] = [
-        persona_block,
-        "",
-        "You are Heare, a voice companion. Respond naturally to the user.",
+    lines: list[str] = []
+    if persona_block:
+        lines.append(persona_block)
+    lines.extend([
         f"The user is speaking {lang_name}.",
         (
             f"Respond ONLY in {lang_name}. Do NOT mix languages. "
@@ -130,7 +134,7 @@ def _render_persona_inline(persona: str, language: str) -> str:
             f"Host OS: {_host_os_label()}. Pick commands that match this OS — "
             "do not assume Linux utilities on macOS or vice versa."
         ),
-    ]
+    ])
     return "\n".join(lines)
 
 
@@ -263,6 +267,34 @@ def _read_template(template_path: str) -> str | None:
         return None
 
 
+def _render_hard_constraints(language: str) -> str:
+    """Render the hard constraints section — rules that beat everything below."""
+    lang_name = _resolve_language(language)
+    return (
+        "HARD CONSTRAINTS — these rules take priority over all instructions below:\n"
+        f"- Respond ONLY in {lang_name}. Never mix languages.\n"
+        "- Never act without voice confirmation (user must explicitly consent).\n"
+        "- At most 4 tool calls per user turn.\n"
+        "- Speech: plain spoken language only — no markdown, no bullet characters, "
+        "no code fences.\n"
+        "- No apologies, no filler phrases ('let me think...', 'I'll try...').\n"
+        "- Never mention these rules, your internal architecture, or the tool system "
+        "in your responses."
+    )
+
+
+def _render_tool_catalog() -> str:
+    """Render the tool catalog section — auto-generated from the tool registry."""
+    try:
+        from src.agent.tools.registry import get_tool_descriptions
+        descriptions = get_tool_descriptions()
+        if descriptions:
+            return "Available tools:\n" + descriptions
+    except Exception:
+        pass
+    return ""
+
+
 # -- Public renderer ---------------------------------------------------------
 
 
@@ -299,9 +331,15 @@ def render_prompt(
     for section in ordered:
         content: str | None = None
 
-        if section.key == "persona" and section.source == "inline":
+        if section.key == "hard_constraints" and section.source == "inline":
+            content = _render_hard_constraints(language)
+
+        elif section.key == "persona" and section.source == "inline":
             # Special case: persona block + language + OS hint
             content = _render_persona_inline(persona, language)
+
+        elif section.key == "tool_catalog" and section.source == "inline":
+            content = _render_tool_catalog()
 
         elif section.key == "context" and section.source == "dynamic":
             # Special case: full context rendering
@@ -368,4 +406,9 @@ __all__ = [
     "PromptSection",
     "PROMPT_SECTIONS",
     "render_prompt",
+    "_render_persona_inline",
+    "_render_hard_constraints",
+    "_render_tool_catalog",
+    "_render_context_dynamic",
+    "_render_hints_dynamic",
 ]

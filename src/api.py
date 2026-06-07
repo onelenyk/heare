@@ -887,8 +887,26 @@ class API:
         try:
             from pathlib import Path
             from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+            from src.agent.llm.prompt_sections import (
+                _render_persona_inline,
+                _render_hard_constraints,
+                _render_tool_catalog,
+            )
+            from src.agent.identity import load_identity, render_persona
 
             project_root = Path(__file__).resolve().parent.parent
+
+            # Load identity for persona rendering
+            identity = load_identity(Path.home() / ".heare" / "identity.json")
+            persona_text = ""
+            if identity:
+                persona_template = (
+                    project_root / "prompts" / "persona.txt"
+                ).read_text()
+                persona_text = render_persona(persona_template, identity)
+
+            lang = self.config.groq_language if self.config.groq_language not in ("auto", "") else "uk"
+
             results = []
             for ps in PROMPT_SECTIONS:
                 char_count = 0
@@ -900,7 +918,20 @@ class API:
                         char_count = len(content)
                         preview = content[:120].replace("\n", " ")
                 elif ps.source == "inline":
-                    preview = "(computed from identity data at render time)"
+                    if ps.key == "persona":
+                        content = _render_persona_inline(persona_text, lang)
+                        char_count = len(content)
+                        preview = content[:120].replace("\n", " ")
+                    elif ps.key == "hard_constraints":
+                        content = _render_hard_constraints(lang)
+                        char_count = len(content)
+                        preview = content[:120].replace("\n", " ")
+                    elif ps.key == "tool_catalog":
+                        content = _render_tool_catalog()
+                        char_count = len(content)
+                        preview = content[:120].replace("\n", " ")
+                    else:
+                        preview = "(computed at render time)"
                 elif ps.source == "dynamic":
                     preview = f"(computed from current {ps.key} state at render time)"
                 results.append({
@@ -919,6 +950,12 @@ class API:
         try:
             from pathlib import Path
             from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+            from src.agent.llm.prompt_sections import (
+                _render_persona_inline,
+                _render_hard_constraints,
+                _render_tool_catalog,
+            )
+            from src.agent.identity import load_identity, render_persona
 
             project_root = Path(__file__).resolve().parent.parent
             key = request.match_info["key"]
@@ -929,6 +966,8 @@ class API:
                     break
             if section is None:
                 return web.json_response({"error": f"unknown key: {key}"}, status=404)
+
+            lang = self.config.groq_language if self.config.groq_language not in ("auto", "") else "uk"
 
             if section.source == "template" and section.template_path:
                 tpath = project_root / section.template_path
@@ -950,15 +989,35 @@ class API:
                     "note": f"template not found: {section.template_path}",
                 })
 
+            if section.source == "inline":
+                if section.key == "persona":
+                    identity = load_identity(Path.home() / ".heare" / "identity.json")
+                    persona_text = ""
+                    if identity:
+                        persona_template = (
+                            project_root / "prompts" / "persona.txt"
+                        ).read_text()
+                        persona_text = render_persona(persona_template, identity)
+                    content = _render_persona_inline(persona_text, lang)
+                elif section.key == "hard_constraints":
+                    content = _render_hard_constraints(lang)
+                elif section.key == "tool_catalog":
+                    content = _render_tool_catalog()
+                else:
+                    content = "(computed at render time)"
+                return web.json_response({
+                    "key": section.key,
+                    "order": section.order,
+                    "source": section.source,
+                    "char_count": len(content),
+                    "content": content,
+                })
+
             return web.json_response({
                 "key": section.key,
                 "source": section.source,
                 "content": None,
-                "note": (
-                    "computed at render time from identity data"
-                    if section.source == "inline"
-                    else "computed at render time from context"
-                ),
+                "note": "computed at render time from context",
             })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
@@ -1008,20 +1067,35 @@ class API:
     async def _handle_prompt_preview(self, request):
         try:
             from src.agent.llm.context_injector import render_native_system_prompt
+            from src.agent.identity import load_identity, render_persona
+            from pathlib import Path
+
+            # Load the real identity from ~/.heare/identity.json
+            persona_text = ""
+            identity = load_identity(Path.home() / ".heare" / "identity.json")
+            if identity:
+                persona_template = (
+                    Path(__file__).resolve().parent.parent
+                    / "prompts" / "persona.txt"
+                ).read_text()
+                persona_text = render_persona(persona_template, identity)
+
+            # Use the language from settings (or default to uk)
+            lang = self.config.groq_language if self.config.groq_language not in ("auto", "") else "uk"
 
             preview = render_native_system_prompt(
-                persona=(
-                    "You are kort ⚡ — a digital creature.\n"
-                    "Vibe: curious, warm, helpful.\n"
-                    "You belong to Nazar. You speak Ukrainian."
-                ),
-                language="uk",
+                persona=persona_text,
+                language=lang,
                 context={
-                    "recent_transcripts": [],
+                    "time": "2026-01-01 12:00:00",
+                    "timezone": "Europe/Kiev",
+                    "mode_block": "MODE GATE: ambient\nVoice output ON. Full engagement.",
+                    "recent_transcripts": "(none)",
                     "conversation_summary": "No previous conversation.",
-                    "active_topics": [],
-                    "entities": [],
-                    "recent_actions": [],
+                    "active_topics": "",
+                    "entities": "",
+                    "recent_turns": "(none)",
+                    "recent_actions": "(none)",
                 },
             )
             return web.Response(text=preview, content_type="text/plain; charset=utf-8")

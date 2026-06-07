@@ -47,7 +47,7 @@ def test_render_falls_back_when_persona_empty() -> None:
     out = render_native_system_prompt(
         persona="", context=None, language="en"
     )
-    assert "voice companion" in out
+    assert "HARD CONSTRAINTS" in out
 
 
 def test_render_no_intent_grammar() -> None:
@@ -88,25 +88,18 @@ def test_render_includes_host_os_line() -> None:
 
 
 def test_render_prefers_bash_for_environment_questions() -> None:
-    """Environment/system questions must route to bash first, not
-    discover_capability — fixes the 'audio devices' regression where the
-    model claimed it had no tools instead of running a shell command."""
+    """Environment/system questions: the tool catalog must list bash
+    as an available tool so the model knows it can run shell commands."""
     out = render_native_system_prompt(persona="", context=None, language="en")
-    # The bash routing rule must appear before the constraint that
-    # restricts discover_capability, so the model reads the positive
-    # routing first.
-    bash_idx = out.find("bash with OS-appropriate command")
-    discover_idx = out.find(
-        "discover_capability is ONLY for finding new things to install"
-    )
-    assert bash_idx != -1, "bash routing rule missing"
-    assert discover_idx != -1, "discover_capability constraint missing"
-    assert bash_idx < discover_idx, (
-        "bash routing must precede discover_capability constraint"
-    )
-    # Audio-device example should be present so the model has a concrete
-    # template for the failing case.
-    assert "audio" in out.lower()
+    # The tool catalog (auto-generated from registry) must include bash.
+    assert "Available tools:" in out, "tool catalog section missing"
+    assert "bash" in out, "bash not found in prompt"
+    # Hard constraints must appear before tool catalog — constraints first.
+    hc_idx = out.find("HARD CONSTRAINTS")
+    tc_idx = out.find("Available tools:")
+    assert hc_idx != -1, "HARD CONSTRAINTS section missing"
+    assert tc_idx != -1, "Available tools section missing"
+    assert hc_idx < tc_idx, "HARD CONSTRAINTS must precede tool catalog"
 
 
 def test_render_skips_empty_context_blocks() -> None:

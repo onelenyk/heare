@@ -341,8 +341,9 @@ def test_system_prompt_omits_skill_section_when_no_skills():
     )
 
     # Should have the base rules
+    assert "HARD CONSTRAINTS" in prompt
     assert "Reply rules:" in prompt
-    assert "Respond naturally to the user" in prompt
+    assert "Test persona" in prompt
 
 
 # ============================================================================

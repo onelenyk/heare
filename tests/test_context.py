@@ -123,43 +123,6 @@ async def test_static_mcp_block_used_when_bridge_empty(
     assert result["mcp_servers"] == "STATIC fallback"
 
 
-async def test_render_real_decider_template(store: TranscriptStore) -> None:
-    """prompts/decider.txt contains literal { and } from the JSON example.
-    render() must substitute named placeholders without choking on braces."""
-    settings = load_settings()
-    ctx = ContextBuilder(store, settings)
-    result = await ctx.build("привіт", heartbeat=False)
-    template = Path(__file__).parent.parent.joinpath("prompts", "decider.txt").read_text()
-    rendered = ctx.render(template, result)
-    assert "{mode}" not in rendered
-    assert "{transcript_or_heartbeat}" not in rendered
-    # JSON-literal braces in the example schemas must survive rendering
-    # without being treated as format placeholders.
-    assert '{"t":"n"}' in rendered
-    assert '"t":"s"' in rendered
-    assert '"r":' in rendered
-    assert "привіт" in rendered
-
-
-def test_decider_prompt_has_length_constraints() -> None:
-    """LAT-B2: prompt must enforce reply word limit and MAX 5 words intent."""
-    template = Path(__file__).parent.parent.joinpath("prompts", "decider.txt").read_text()
-    assert "MAX 15 words" in template, "reply length constraint missing"
-    assert "MAX 5 words" in template, "intent length constraint missing"
-
-
-def test_decider_prompt_mandates_strict_key_order() -> None:
-    """LAT-B2: prompt must declare strict field ordering (t first, r second)."""
-    template = Path(__file__).parent.parent.joinpath("prompts", "decider.txt").read_text()
-    assert "FIELD ORDER IS STRICT" in template
-    # Must mention that 't' is first and 'r' follows it
-    assert '"t"' in template
-    assert '"r"' in template
-    # The ordering section must explicitly name both keys in order
-    strict_section = template[template.index("FIELD ORDER IS STRICT"):]
-    assert strict_section.index('"t"') < strict_section.index('"r"')
-
-
 async def test_build_keeps_transcript_placeholder_literal(
     store: TranscriptStore,
 ) -> None:
@@ -171,44 +134,28 @@ async def test_build_keeps_transcript_placeholder_literal(
     assert result["transcript_or_heartbeat"] == "{transcript_or_heartbeat}"
 
 
-async def test_golden_string_render(store: TranscriptStore) -> None:
-    """Golden-file rendering must be byte-stable across runs.
+async def test_system_prompt_renders_with_fixed_context(store: TranscriptStore) -> None:
+    """System prompt rendering must produce deterministic output with fixed context."""
+    from src.agent.llm.prompt_sections import render_prompt
 
-    First run captures the rendered output (with a fixed ctx) into
-    tests/fixtures/decider_prompt.golden.txt. Subsequent runs
-    re-render and diff against the golden.
-    """
-    settings = load_settings()
-    ctx = ContextBuilder(store, settings)
-    # Fixed deterministic context — do NOT call ctx.build() because it
-    # renders the current time, which breaks byte-stability.
     fixed_ctx = {
         "time": "2026-04-13 12:00:00",
         "timezone": "UTC",
         "mode": "ambient",
-        "heartbeat_flag": "no",
+        "mode_block": "MODE GATE: ambient\nVoice output ON.",
         "recent_transcripts": "(none)",
-        "transcript_or_heartbeat": "тест",
-        "silence_block": "",
-        "proactivity_block": "",
+        "conversation_summary": "No history.",
+        "active_topics": "",
+        "entities": "",
+        "recent_turns": "(none)",
+        "recent_actions": "(none)",
+        "mcp_servers": "",
     }
-    template = (
-        Path(__file__).parent.parent.joinpath("prompts", "decider.txt").read_text()
-    )
-    rendered = ctx.render(template, fixed_ctx)
-
-    golden_path = (
-        Path(__file__).parent / "fixtures" / "decider_prompt.golden.txt"
-    )
-    golden_path.parent.mkdir(parents=True, exist_ok=True)
-    if not golden_path.exists():
-        golden_path.write_text(rendered)
-    else:
-        expected = golden_path.read_text()
-        assert rendered == expected, (
-            "flag-off rendered prompt drifted from golden. "
-            f"Delete {golden_path} to regenerate if the drift is intentional."
-        )
+    rendered = render_prompt(persona="I am kort.", context=fixed_ctx, language="en")
+    assert "HARD CONSTRAINTS" in rendered
+    assert "I am kort." in rendered
+    assert "MODE GATE: ambient" in rendered
+    assert "Available tools:" in rendered
 
 
 def test_render_with_template() -> None:
@@ -281,7 +228,7 @@ async def test_build_for_generator_returns_minimal_keys(store: TranscriptStore) 
         "recent_actions",
         "user_language",
     }
-    optional = {"mcp_servers", "workspace_dir"}
+    optional = {"mcp_servers", "workspace_dir", "canvas_info"}
     assert required <= set(result.keys())
     assert set(result.keys()) - required <= optional
     assert result["persona"] == "Ти Heare."
@@ -613,7 +560,6 @@ def test_render_prompt_section_ordering() -> None:
     markers = [
         ("tool_marker", out.find("Tool-use loop:")),
         ("narration_marker", out.find("Narration during tool use:")),
-        ("routing_marker", out.find("Routing \u2014 pick by symptom:")),
         ("reply_marker", out.find("Reply rules:")),
         ("speech_marker", out.find("Speech style:")),
     ]
@@ -625,8 +571,8 @@ def test_render_prompt_section_ordering() -> None:
 
 
 def test_full_prompt_contains_all_required_sections() -> None:
-    """A full prompt render includes persona, context, reply rules,
-    routing, tool use, and speech style sections."""
+    """A full prompt render includes hard_constraints, persona, context,
+    reply rules, tool use, and speech style sections."""
     from src.agent.llm.prompt_sections import render_prompt
 
     ctx = {
@@ -648,10 +594,10 @@ def test_full_prompt_contains_all_required_sections() -> None:
 
     # All required sections must produce content
     required_checks = [
+        ("hard_constraints", "HARD CONSTRAINTS"),
         ("persona", "I am Heare."),
         ("context", "2026-01-01 12:00:00"),
         ("reply_rules", "Reply rules:"),
-        ("routing", "Routing \u2014 pick by symptom:"),
         ("tool_use", "Tool-use loop:"),
         ("speech_style", "Speech style:"),
         ("narration", "Narration during tool use:"),

@@ -1,8 +1,7 @@
-"""Context dict + safe template substitution for the decider prompt.
+"""Context dict + safe template substitution for prompt rendering.
 
-Uses regex-based placeholder substitution rather than str.format() so the
-JSON example literal in prompts/decider.txt doesn't get parsed as format
-specifiers.
+Uses regex-based placeholder substitution rather than str.format() to avoid
+parse errors on JSON-like content in prompt templates.
 """
 from __future__ import annotations
 
@@ -182,8 +181,46 @@ class ContextBuilder:
                 profile = self._session_state.profile
                 from src.agent.modes import VALID_MODES
 
+                # Build mode-gate language from the profile data.
+                # The mode is an output gate — it constrains the channel,
+                # not the persona. The LLM is still itself; only the output
+                # rules change.
+                _output_rules = {
+                    "ambient": (
+                        "Voice output ON. Full engagement. Follow your "
+                        "natural curiosity and speak freely."
+                    ),
+                    "focus": (
+                        "Voice output ON but MINIMAL. Speak only when "
+                        "directly addressed or asked a clear question. "
+                        "Be terse and fast — answer and stop."
+                    ),
+                    "silent": (
+                        "Voice output OFF — your speech is muted. You can "
+                        "still think and use side-effect-free tools, but "
+                        "emit nothing via voice. Use text/canvas if needed."
+                    ),
+                    "assistant": (
+                        "Voice output ON. Proactive helper — full tool "
+                        "access, may offer follow-ups and do multi-step work."
+                    ),
+                    "meeting": (
+                        "Voice output OFF — your speech is muted. "
+                        "Passive note-taker only. Do not converse or act; "
+                        "side-effect tools are blocked."
+                    ),
+                }
+                output_rule = _output_rules.get(
+                    profile.name,
+                    f"Voice output ON. Standard engagement."
+                )
+
                 result["mode_block"] = (
-                    f"{profile.prompt_addendum}\n"
+                    f"MODE GATE: {profile.name}\n"
+                    f"{output_rule}\n"
+                    "This is a channel constraint, not a personality change. "
+                    "You are still yourself — the gate only limits your "
+                    "output channel, not who you are.\n"
                     f"Available modes (switch with set_mode): "
                     f"{', '.join(VALID_MODES)}.\n"
                     "If the user tells you to be quiet / stop talking "
@@ -192,7 +229,6 @@ class ContextBuilder:
                     "one-line confirmation, and on agreement call "
                     "set_mode('silent')."
                 )
-
 
             except Exception:  # noqa: BLE001 — never break the turn
                 pass
@@ -310,7 +346,7 @@ class ContextBuilder:
         timestamp AND a relative ``(Nm ago)`` / ``(Ns ago)`` / ``(Nh ago)``
         annotation so the generator prompt can apply the
         ``refinement_recency_seconds`` (default 600s = 10 min) recency
-        window described in prompts/generator.txt's REFINEMENT rule. The
+        window for the recency filter. The
         relative form keeps the rule expressible in plain language to the
         LLM without requiring it to reason about wallclock arithmetic.
 

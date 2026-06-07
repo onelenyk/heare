@@ -1600,7 +1600,7 @@ function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect
                 }
                 {selectedPrompt.template_path && <span> · {selectedPrompt.template_path}</span>}
               </div>
-              {selectedPrompt.source === "template" && selectedPrompt.content != null ? (
+              {selectedPrompt && selectedPrompt.source === "template" && selectedPrompt.content != null ? (
                 <div>
                   <textarea
                     class="prompt-editor"
@@ -1612,9 +1612,13 @@ function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect
                     <button class="btn" onClick={() => onEditContent(selectedPrompt.content)}>reset</button>
                   </div>
                 </div>
-              ) : (
-                <div class="info-line">{selectedPrompt.note || "(no editable content)"}</div>
-              )}
+              ) : selectedPrompt && selectedPrompt.content != null ? (
+                <div class="prompt-preview" style={{maxHeight: 300, overflow: "auto"}}>
+                  {selectedPrompt.content}
+                </div>
+              ) : selectedPrompt ? (
+                <div class="info-line">{selectedPrompt.note || "(rendered at runtime — no saved content)"}</div>
+              ) : null}
             </div>
           )}
 
@@ -1684,19 +1688,19 @@ function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect
               </div>
               <div class="map-arrow">↓</div>
 
-              {/* ── Stage 3: Decider ── */}
+              {/* ── Stage 3: Mode Gate ── */}
               <div class="map-stage">
                 <div class="map-stage-header">
-                  <strong>3 · Decider</strong>
-                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>prompts/decider.txt</span>
+                  <strong>3 · Mode Gate</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>modes.py → output gating</span>
                 </div>
                 <div class="map-body">
                   <div class="map-decider">
-                    "Should I respond?"
+                    Channel constraint: limits output, not personality
                     <div class="map-decider-options">
-                      <div class="map-decider-opt nothing">🤫 nothing</div>
-                      <div class="map-decider-opt speak">🗣 speak</div>
-                      <div class="map-decider-opt act">🔧 act</div>
+                      <div class="map-decider-opt nothing">🔇 silent</div>
+                      <div class="map-decider-opt speak">🎯 focus</div>
+                      <div class="map-decider-opt act">🌊 ambient</div>
                     </div>
                   </div>
                 </div>
