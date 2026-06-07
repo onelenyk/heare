@@ -178,11 +178,13 @@
 
   /* ── Status Bar ── */
   .status-bar {
-    display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
-    padding: var(--s3) var(--s4); margin-bottom: var(--s3);
+    padding: var(--s2) var(--s3); margin-bottom: var(--s3);
     background: var(--card); border: 1px solid var(--border);
     border-radius: var(--r); box-shadow: var(--shadow-sm);
   }
+  .status-row { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+  .status-row + .status-row { margin-top: var(--s1); padding-top: var(--s1); border-top: 1px solid var(--border); }
+  .status-group { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
   .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: dotPulse 2s ease-in-out infinite; }
   .dot.off { background: var(--accent-red); }
@@ -190,12 +192,15 @@
     0%, 100% { box-shadow: 0 0 8px var(--accent); }
     50% { box-shadow: 0 0 16px var(--accent), 0 0 24px rgba(126,231,135,0.3); }
   }
-  .identity { font-weight: 800; font-size: 20px; letter-spacing: -0.5px; }
+  .identity { font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
   .meta {
     color: var(--muted); font-size: 11px;
     display: inline-flex; align-items: center; gap: var(--s1);
   }
   .meta strong { color: var(--text); font-weight: 600; }
+  .status-badge { font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; }
+  .status-badge.on { background: var(--accent); color: #000; }
+  .status-badge.off { background: var(--accent-red); color: #fff; }
 
   /* ── Cards ── */
   .card {
@@ -721,7 +726,6 @@
     .viz-row { flex-direction: column; }
     .settings-panel { grid-template-columns: 1fr; }
     .onboard-card { margin: var(--s2); padding: var(--s5); }
-    .status-bar { gap: var(--s1); padding: var(--s2); }
     .identity { font-size: 16px; }
     .modal-card { max-width: 96%; max-height: 80vh; }
   }
@@ -2215,31 +2219,41 @@ function Dashboard() {
     <div class="dash">
       {/* Status Bar */}
       <div class="status-bar">
-        <span class={"dot " + (running ? "on" : "off")}></span>
-        <span class="identity">{state.agent || "heare"} {state.emoji || ""}</span>
-        <span class="meta">{running ? "running" : "stopped"}</span>
-        {state.pid != null && <span class="meta">pid=<strong>{state.pid}</strong></span>}
-        {state.uptime != null && state.uptime !== "" && <span class="meta">{state.uptime}</span>}
-        <span class="meta">chrome:<strong>{state.chrome ? "connected" : "off"}</strong></span>
-        {state.version && <span class="meta">{state.version}</span>}
-        <span class="meta">mode <strong>{state.mode || "?"}</strong></span>
-        <span class="meta">
-          provider{" "}
-          <select class="compact-select" value={state.provider || ""} onChange={e => { post("/provider", {provider: e.target.value}); }}>
-            {(state.providers || []).map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </span>
-        <span class="meta">
-          model{" "}
-          <select class="compact-select" value={state.model || ""} onChange={e => { post("/model", {model: e.target.value}); }}>
-            {(state.models || []).map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </span>
-        <span class="meta">{state.transcripts_count || 0} msgs</span>
-        <span class="meta">interrupt:<strong>{interruptEnabled ? "on" : "off"}</strong></span>
-        {state.usage && (
-          <span class="meta">llm:{state.usage.llm_calls || 0} ${(state.usage.total_cost_usd || 0).toFixed(4)}</span>
-        )}
+        <div class="status-row">
+          <div class="status-group">
+            <span class={"dot " + (running ? "on" : "off")}></span>
+            <span class="identity">{state.agent || "heare"} {state.emoji || ""}</span>
+            <span class={"status-badge " + (running ? "on" : "off")}>{running ? "running" : "stopped"}</span>
+            {state.uptime != null && state.uptime !== "" && <span class="meta">{state.uptime}</span>}
+          </div>
+          <div class="status-group">
+            {state.usage && (
+              <span class="meta">llm {state.usage.llm_calls || 0} calls · ${(state.usage.total_cost_usd || 0).toFixed(4)}</span>
+            )}
+            <span class="meta">{state.transcripts_count || 0} msgs</span>
+          </div>
+        </div>
+        <div class="status-row">
+          <div class="status-group">
+            <span class="meta">mode <strong>{state.mode || "?"}</strong></span>
+            <span class="meta">provider{" "}
+              <select class="compact-select" value={state.provider || ""} onChange={e => { post("/provider", {provider: e.target.value}); }}>
+                {(state.providers || []).map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </span>
+            <span class="meta">model{" "}
+              <select class="compact-select" value={state.model || ""} onChange={e => { post("/model", {model: e.target.value}); }}>
+                {(state.models || []).map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </span>
+          </div>
+          <div class="status-group">
+            {state.pid != null && <span class="meta">pid <strong>{state.pid}</strong></span>}
+            <span class="meta">chrome <strong>{state.chrome ? "connected" : "off"}</strong></span>
+            {state.version && <span class="meta">{state.version}</span>}
+            <span class="meta">interrupt <strong>{interruptEnabled ? "on" : "off"}</strong></span>
+          </div>
+        </div>
       </div>
 
       {pollFailed && <div class="warn-banner">⚠ connection lost — data may be stale</div>}
