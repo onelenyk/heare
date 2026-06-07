@@ -453,7 +453,7 @@
     background: var(--bg); padding: var(--s3); border-radius: var(--r-xs);
     overflow-x: auto; margin: 0; white-space: pre; line-height: 1.5;
   }
-  .display-html { width: 820px; height: 500px; border: 2px solid var(--border); background: white; border-radius: var(--r-xs); overflow: hidden; max-width: 100%; }
+  .display-html { width: 824px; height: 504px; border: 2px solid var(--border); background: white; border-radius: var(--r-xs); overflow: hidden; max-width: 100%; }
 
   /* ═══════════════════════════════════════════
      TOAST
@@ -2351,7 +2351,7 @@ function Dashboard() {
             {display.format === 'code' && <pre className="display-code"><code>{display.content}</code></pre>}
             {(display.format === 'ascii' || display.format === 'table') && <pre className="display-mono">{display.content}</pre>}
             {display.format === 'markdown' && <pre className="display-md">{display.content}</pre>}
-            {display.format === 'html' && <iframe sandbox="" srcDoc={display.content} className="display-html" scrolling="no" />}
+            {display.format === 'html' && <iframe srcDoc={display.content} className="display-html" scrolling="no" />}
           </div>
         </div>
       )}

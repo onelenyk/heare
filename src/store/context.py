@@ -161,10 +161,8 @@ class ContextBuilder:
         result["workspace_dir"] = str(self.settings.workspace_dir)
         result["canvas_info"] = (
             "Canvas widget (use show_text / show_canvas): "
-            "820×500px HTML iframe, white background, embedded in dark dashboard at ~860px. "
-            "IMPORTANT: Use body { margin:0; overflow:hidden } in your HTML to prevent scrollbars. "
-            "The iframe has overflow:hidden — content exceeding 500px will be clipped. "
-            "For precise layouts, design for the full 820×500px viewport. "
+            "820×500px usable area (iframe is 824×504 with 2px border). "
+            "Design for exactly 820×500px. Use body { margin:0; overflow:hidden }. "
             "Fonts: system-ui, monospace. Inline CSS only."
         )
         live_mcp = None
