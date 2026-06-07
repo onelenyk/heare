@@ -1061,15 +1061,14 @@ function AudioDevicePicker({ devices, activeInput, activeOutput, onSelect, onClo
   if (!devices || devices.length === 0) {
     return (
       <div class="card">
-        <div class="card-header">audio devices</div>
+        <div class="card-header">audio devices <button class="modal-close" onClick={onClose} style={{marginLeft:"auto"}}>×</button></div>
         <div class="info-line" style={{marginBottom:6}}>No devices found or sounddevice not installed.</div>
-        <button class="btn" onClick={onClose}>close</button>
       </div>
     );
   }
   return (
     <div class="card">
-      <div class="card-header">audio devices <span style={{fontWeight:400,color:"var(--muted)"}}>— click to select</span></div>
+      <div class="card-header">audio devices <span style={{fontWeight:400,color:"var(--muted)"}}>— click to select</span> <button class="modal-close" onClick={onClose} style={{marginLeft:"auto"}}>×</button></div>
       <div class="scroll" style={{maxHeight:240}}>
         <table class="audio-list">
           <thead><tr><th>idx</th><th>name</th><th>i/o</th></tr></thead>
@@ -2317,7 +2316,7 @@ function Dashboard() {
         <div class="controls-label">panels</div>
         <div class="controls-group" style={{justifyContent:"center"}}>
           <button class="btn" onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
-          <button class="btn" onClick={fetchAudioDevices}>🎧 audio devices</button>
+          <button class={"btn" + (showAudio ? " active" : "")} onClick={() => { if (!showAudio) fetchAudioDevices(); setShowAudio(!showAudio); }}>🎧 audio devices</button>
           <button class="btn" onClick={fetchChromeProfiles}>🌐 chrome</button>
           <button class="btn" onClick={handleOpenTools}>🔧 tools</button>
           <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
