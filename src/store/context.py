@@ -161,8 +161,10 @@ class ContextBuilder:
         result["workspace_dir"] = str(self.settings.workspace_dir)
         result["canvas_info"] = (
             "Canvas widget (use show_text / show_canvas): "
-            "820×500px usable area (iframe is 824×504 with 2px border). "
-            "Design for exactly 820×500px. Use body { margin:0; overflow:hidden }. "
+            "full-width iframe, ~500px tall. Use window.innerWidth/Height "
+            "to dynamically size your content. The iframe has 2px border — "
+            "usable area is slightly smaller than nominal size. "
+            "Use body { margin:0; overflow:hidden }. "
             "Fonts: system-ui, monospace. Inline CSS only."
         )
         live_mcp = None
