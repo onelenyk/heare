@@ -1935,6 +1935,7 @@ function Dashboard() {
   const [historyTab, setHistoryTab] = useState("activity");
   const [agents, setAgents] = useState([]);
   const [showAgents, setShowAgents] = useState(false);
+  const [showUsage, setShowUsage] = useState(false);
 
   useEffect(() => {
     if (logRef.current) {
@@ -2227,9 +2228,6 @@ function Dashboard() {
             {state.uptime != null && state.uptime !== "" && <span class="meta">{state.uptime}</span>}
           </div>
           <div class="status-group">
-            {state.usage && (
-              <span class="meta">llm {state.usage.llm_calls || 0} calls · ${(state.usage.total_cost_usd || 0).toFixed(4)}</span>
-            )}
             <span class="meta">{state.transcripts_count || 0} msgs</span>
           </div>
         </div>
@@ -2254,6 +2252,7 @@ function Dashboard() {
             <span class="meta">interrupt <strong>{interruptEnabled ? "on" : "off"}</strong></span>
           </div>
         </div>
+      </div>
       </div>
 
       {pollFailed && <div class="warn-banner">⚠ connection lost — data may be stale</div>}
@@ -2323,6 +2322,7 @@ function Dashboard() {
           <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
           <button class="btn" onClick={handleOpenPrompts}>📝 prompts</button>
           <button class={"btn" + (showAgents ? " active" : "")} onClick={() => setShowAgents(!showAgents)}>🤖 agents</button>
+          <button class={"btn" + (showUsage ? " active" : "")} onClick={() => setShowUsage(!showUsage)}>📊 usage</button>
         </div>
 
         <div class="controls-sep"></div>
@@ -2399,6 +2399,14 @@ function Dashboard() {
           <div style={{padding:"0 8px 8px"}}>
             <button class="btn primary" onClick={saveSettings} style={{width:"100%",fontSize:12}}>Save & Apply</button>
           </div>
+        </div>
+      )}
+
+      {/* Usage stats */}
+      {showUsage && (
+        <div class="card">
+          <div class="card-header">📊 usage</div>
+          <UsageCard usage={state.usage} />
         </div>
       )}
 
