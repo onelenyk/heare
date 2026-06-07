@@ -235,7 +235,7 @@ class Settings:
     # `<wake-word> <passphrase>` confirms a pending action. Additive —
     # the existing yes/no + speaker-id flow still works. Never logged.
     confirmation_passphrase: str | None = None
-    # Wake word / command keyword. Set via config.toml or onboarding. Default is "гава".
+    # Wake word / command keyword. Set via config.toml. Default is "гава".
     wake_word: str = "гава"
     # Proactivity level for ambient mode: "low" | "medium" | "high"
     # medium = prompt defaults; low = reserved; high = very engaged.

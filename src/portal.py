@@ -25,11 +25,15 @@ PID_FILE = Path.home() / ".heare" / "portal.pid"
 
 _INDEX_HTML: str | None = None
 
+_FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
+_DIST_DIR = _FRONTEND_DIR / "dist"
+
 
 def _resolve_index_html() -> str | None:
+    # Try Vite build output first, fall back to raw source
     for candidate in [
-        Path(__file__).resolve().parent / "frontend" / "index.html",
-        Path(__file__).resolve().parent.parent / "frontend" / "index.html",
+        _DIST_DIR / "index.html",
+        _FRONTEND_DIR / "index.html",
     ]:
         if candidate.exists():
             return candidate.read_text()
@@ -50,6 +54,9 @@ class Portal:
 
     def _setup_routes(self):
         self.app.router.add_get("/", self._handle_index)
+        # Serve Vite build assets (JS, CSS)
+        if _DIST_DIR.exists():
+            self.app.router.add_static("/assets/", _DIST_DIR / "assets", show_index=False)
         self.app.router.add_get("/state", self._proxy_state)
         self.app.router.add_post("/daemon", self._handle_daemon)
         self.app.router.add_get("/api/audio-devices", self._proxy_simple)

@@ -122,6 +122,21 @@ def reset_identity(settings: "Settings") -> Path | None:
     return backup
 
 
+def save_identity(settings: "Settings", identity: Identity) -> None:
+    """Persist identity to disk. Validates before writing."""
+    _validate(identity)
+    settings.identity_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.identity_file.write_text(
+        json.dumps(identity, ensure_ascii=False, indent=2)
+    )
+
+
+async def regenerate_identity(bootstrap, settings: "Settings") -> Identity:
+    """Backup current identity, then generate a new one."""
+    reset_identity(settings)
+    return await ensure_identity(bootstrap, settings)
+
+
 def build_deepseek_bootstrap(
     *,
     api_key: str,

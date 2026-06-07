@@ -126,20 +126,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         else str(Path(__file__).parent.parent.resolve())
     )
 
-    # Onboarding gate — must run AFTER ensure_workspace_mcp so upgrading
-    # users whose ~/.claude.json has MCPs but who haven't run heare since
-    # the upgrade get their workspace seeded before the migration check.
-    from src.daemon.onboarding import is_onboarded, list_pending, migrate_existing_install
-
-    migrate_existing_install(settings)
-    if not is_onboarded(settings):
-        pending = list_pending(settings)
-        print("heare not fully set up. Pending steps:")
-        for step in pending:
-            print(f"  - {step.id}: {step.title}")
-        print("\nRun `heare setup` to continue.")
-        return 1
-
     # File lock on PID file — OS-level guard against multiple instances.
     # Auto-releases on process death (crash, SIGKILL, etc.). Race-free.
     import fcntl
@@ -159,7 +145,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     os.fsync(lock_fd)
 
     # Start API server early (no state yet — avoids SQLite lock contention
-    # with onboarding polling). State is init'd after pipeline build below.
+    # with setup API polling). State is init'd after pipeline build below.
     from src.api import API
     api = API(None, settings)
     await api.start()
@@ -169,7 +155,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
     available = get_available(settings)
     if not available:
-        logger.warning("No API keys configured — serving onboarding")
+        logger.warning("No API keys configured — serving setup page")
         print("\n  ⚙  No API keys found. Setup page opened in your browser.\n")
         print("  Enter your API keys in the browser to continue.\n")
 
@@ -184,7 +170,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     settings.pid_file.write_text(str(os.getpid()))
 
     # Create state object (no .init() — avoids SQLite lock contention with
-    # API onboarding polls. Init'd after pipeline build below.)
+    # setup API polling. Init'd after pipeline build below.)
     from src.state import State
     state = State(settings.db_path)
 
@@ -255,7 +241,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             mcp_bridge = None
 
         # Init state now that pipeline is built — avoids SQLite lock contention
-        # during onboarding polling (API was started with state=None).
+        # during setup polling (API was started with state=None).
         await state.init()
         api.state = state
 
@@ -716,105 +702,6 @@ def _cmd_logs(args: argparse.Namespace) -> int:
     return 0  # unreachable
 
 
-def _cmd_setup(args: argparse.Namespace) -> int:
-    """Run or inspect heare onboarding."""
-    from src.daemon.onboarding import (
-        STEPS,
-        list_pending,
-        migrate_existing_install,
-        record_done,
-        reset,
-        step_status,
-    )
-    from src.daemon.workspace import ensure_workspace_mcp
-
-    settings = load_settings()
-    settings.ensure_dirs()
-    # Seed workspace before migration so upgrading users' existing
-    # ~/.claude.json is reflected in workspace/.mcp.json on first
-    # `heare setup`.
-    ensure_workspace_mcp(settings.workspace_dir)
-    migrate_existing_install(settings)
-
-    if args.reset:
-        if not args.yes:
-            print(
-                "This will wipe ~/.heare/onboarding.json and "
-                "~/.heare/capabilities.json. workspace/.mcp.json is preserved."
-            )
-            try:
-                ans = input("Continue? [y/N] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print("\naborted")
-                return 1
-            if ans not in ("y", "yes"):
-                print("aborted")
-                return 1
-        reset(settings)
-        print("onboarding state wiped — run `heare setup` to re-onboard")
-        return 0
-
-    if args.status:
-        for step, done in step_status(settings):
-            mark = "✓" if done else "✗"
-            print(f"  {mark} {step.id:<24s} {step.title}")
-        if list_pending(settings):
-            print("\nRun `heare setup` to walk pending steps.")
-        else:
-            print("\nAll steps complete. Run `heare start` to launch the daemon.")
-        return 0
-
-    if args.confirm:
-        step = next((s for s in STEPS if s.id == args.confirm), None)
-        if step is None:
-            print(f"unknown step: {args.confirm}")
-            print(f"available: {', '.join(s.id for s in STEPS)}")
-            return 1
-        if step.requires_attestation and not args.yes:
-            print(
-                f"warning: {step.id!r} normally requires interactive attestation. "
-                "Pass --yes to confirm non-interactively, or run `heare setup` "
-                "(without --confirm) to walk it interactively."
-            )
-            return 1
-        try:
-            step.on_confirm(settings)
-        except Exception as exc:  # noqa: BLE001
-            print(f"step {step.id!r} failed: {exc}")
-            return 1
-        record_done(settings, step.id)
-        print(f"✓ {step.id}")
-        return 0
-
-    pending = list_pending(settings)
-    if not pending:
-        print("Already onboarded. Run `heare start` to launch the daemon.")
-        return 0
-
-    print(f"Heare onboarding: {len(pending)} step(s) remaining.\n")
-    for step in pending:
-        print(f"--- {step.title} ---")
-        print(step.instructions)
-        try:
-            ans = input("\n[enter to confirm, q to quit] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\naborted — partial progress saved")
-            return 1
-        if ans == "q":
-            print("aborted — partial progress saved")
-            return 1
-        try:
-            step.on_confirm(settings)
-        except Exception as exc:  # noqa: BLE001
-            print(f"step {step.id!r} failed: {exc}")
-            return 1
-        record_done(settings, step.id)
-        print(f"✓ {step.id}\n")
-
-    print("Onboarding complete. Run `heare start` to launch the daemon.")
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="heare",
@@ -856,16 +743,6 @@ def build_parser() -> argparse.ArgumentParser:
     portal_p.add_argument("--port", type=int, default=9780)
     portal_p.add_argument("--stop", action="store_true")
 
-    setup_p = sub.add_parser("setup", help="Run or inspect heare onboarding")
-    setup_p.add_argument("--status", action="store_true",
-                         help="Show step status without prompting")
-    setup_p.add_argument("--confirm", metavar="ID",
-                         help="Mark one specific step done (advanced)")
-    setup_p.add_argument("--reset", action="store_true",
-                         help="Wipe onboarding state")
-    setup_p.add_argument("--yes", action="store_true",
-                         help="Skip confirmation (--reset) or allow attestation override (--confirm)")
-
     logs_p = sub.add_parser("logs", help="Tail the daemon log")
     logs_p.add_argument("-f", "--follow", action="store_true", help="Stream new entries")
     logs_p.add_argument("-n", "--lines", type=int, default=40, help="How many lines")
@@ -903,8 +780,6 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_rotate_browser_token(args)
     if cmd == "set-passphrase":
         return _cmd_set_wake_word(args)
-    if cmd == "setup":
-        return _cmd_setup(args)
     if cmd == "watch":
         return _cmd_watch(args)
     if cmd == "portal":

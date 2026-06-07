@@ -1,0 +1,484 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { API } from '../App';
+import StatusBar from './StatusBar';
+import ControlsCard from './ControlsCard';
+import UserVoiceBar from './UserVoiceBar';
+import AgentStatusBar from './AgentStatusBar';
+import DisplayCard from './DisplayCard';
+import SettingsPanel from './SettingsPanel';
+import UsageCard from './UsageCard';
+import InjectPanel from './InjectPanel';
+import AgentsPanel from './AgentsPanel';
+import HistoryPanel from './HistoryPanel';
+import AudioDevicePicker from './AudioDevicePicker';
+import ToolsModal from './ToolsModal';
+import BridgeModal from './BridgeModal';
+import PromptManager from './PromptManager';
+import Toast from './Toast';
+
+export default function Dashboard({ onOpenSetup }) {
+  const [state, setState] = useState({});
+  const [activity, setActivity] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [injectText, setInjectText] = useState('');
+  const [showAudio, setShowAudio] = useState(false);
+  const [audioDevices, setAudioDevices] = useState(null);
+  const [showTools, setShowTools] = useState(false);
+  const [toolsData, setToolsData] = useState(null);
+  const [chromeProfiles, setChromeProfiles] = useState(null);
+  const [chromeProfile, setChromeProfile] = useState('');
+  // Bridge state
+  const [showBridge, setShowBridge] = useState(false);
+  const [bridge, setBridge] = useState(null);
+  const [bridgeRevealing, setBridgeRevealing] = useState(false);
+  const [bridgeRestartNotice, setBridgeRestartNotice] = useState(false);
+  // Prompt Manager state
+  const [showPrompts, setShowPrompts] = useState(false);
+  const [prompts, setPrompts] = useState(null);
+  const [selectedPrompt, setSelectedPrompt] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [editContent, setEditContent] = useState('');
+  const bridgeIntervalRef = useRef(null);
+  const [interruptEnabled, setInterruptEnabled] = useState(true);
+  // Display widget state
+  const [display, setDisplay] = useState(null);
+  const [displayVisible, setDisplayVisible] = useState(true);
+  const [displayFlash, setDisplayFlash] = useState(false);
+  const [pollFailed, setPollFailed] = useState(false);
+  const [historyTab, setHistoryTab] = useState('activity');
+  const [agents, setAgents] = useState([]);
+  const [showAgents, setShowAgents] = useState(false);
+  const [showUsage, setShowUsage] = useState(false);
+  const [showCanvas, setShowCanvas] = useState(true);
+  const [showHistory, setShowHistory] = useState(true);
+  const [showInject, setShowInject] = useState(false);
+
+  // ═══ Polling ═══
+  useEffect(() => {
+    poll();
+    const t = setInterval(poll, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  async function poll() {
+    try {
+      const [sr, ar, lr, dr] = await Promise.all([
+        fetch(API + '/state'),
+        fetch(API + '/activity'),
+        fetch(API + '/logs'),
+        fetch(API + '/display'),
+      ]);
+      const [sData, aData, lData, dData] = await Promise.all([sr.json(), ar.json(), lr.json(), dr.json()]);
+      setState(sData);
+      setInterruptEnabled(sData.interrupt_enabled !== false);
+      setActivity(aData);
+      setLogs(lData.lines || []);
+      if (dData && dData.content) {
+        setDisplay(prev => {
+          if (!prev || prev.ts !== dData.ts) {
+            setDisplayFlash(true);
+            setTimeout(() => setDisplayFlash(false), 1200);
+            setDisplayVisible(true);
+          }
+          return dData;
+        });
+      }
+      // Agents poll
+      fetch(API + '/api/agents').then(r => r.json()).then(d => {
+        setAgents(d.agents || []);
+      }).catch(() => {});
+      setPollFailed(false);
+    } catch(e) {
+      setPollFailed(true);
+    }
+  }
+
+  // ═══ HTTP helpers ═══
+  async function post(url, body) {
+    await fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
+
+  async function saveSettings() {
+    const g = document.getElementById('set-groq').value;
+    const d = document.getElementById('set-deepseek').value;
+    if (g || d) {
+      await fetch(API + '/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groq_api_key: g, deepseek_api_key: d }),
+      });
+    }
+    setShowSettings(false);
+  }
+
+  function showToastMsg(msg, type) {
+    setToast({ msg, type: type || 'ok' });
+  }
+
+  // ═══ 4c: Text injection ═══
+  async function handleInject() {
+    if (!injectText.trim()) return;
+    try {
+      const r = await fetch(API + '/inject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: injectText.trim() }),
+      });
+      const d = await r.json();
+      if (d.ok) { showToastMsg('injected!', 'ok'); setInjectText(''); }
+      else showToastMsg('inject failed: ' + (d.error || 'unknown'), 'err');
+    } catch(e) { showToastMsg('inject failed: ' + e.message, 'err'); }
+  }
+
+  // ═══ 4d: Daemon lifecycle ═══
+  async function handleDaemonAction(action) {
+    try {
+      if (action === 'start' || action === 'restart') { showToastMsg('starting...', 'info'); }
+      await fetch(API + '/daemon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      poll();
+    } catch(e) { showToastMsg(action + ' failed: ' + e.message, 'err'); }
+  }
+
+  // ═══ 4e: Audio devices ═══
+  async function fetchAudioDevices() {
+    try {
+      const r = await fetch(API + '/api/audio-devices');
+      const d = await r.json();
+      setAudioDevices(d);
+      setShowAudio(true);
+    } catch(e) { showToastMsg('audio fetch failed: ' + e.message, 'err'); }
+  }
+
+  async function handleDeviceSelect(sel) {
+    try {
+      const r = await fetch(API + '/api/audio-devices/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sel),
+      });
+      const d = await r.json();
+      if (d.ok) { showToastMsg(d.kind + ': ' + d.device, 'ok'); poll(); }
+      else showToastMsg('device select failed: ' + (d.error || ''), 'err');
+    } catch(e) { showToastMsg('device select failed: ' + e.message, 'err'); }
+  }
+
+  // ═══ 4f: Chrome launch + profile picker ═══
+  async function fetchChromeProfiles() {
+    try {
+      const r = await fetch(API + '/api/chrome/profiles');
+      const d = await r.json();
+      const profiles = d.profiles || [];
+      setChromeProfiles(profiles);
+      if (profiles.length > 0) {
+        const lastUsed = profiles.find(p => p.last_used) || profiles[0];
+        setChromeProfile(lastUsed.directory);
+      }
+    } catch(e) { showToastMsg('profiles fetch failed: ' + e.message, 'err'); }
+  }
+
+  async function handleAgentCancel(sid) {
+    try {
+      await fetch(API + '/api/agents/cancel', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: sid})
+      });
+      showToastMsg('agent cancelled', 'ok');
+    } catch(e) { showToastMsg('cancel failed: ' + e.message, 'err'); }
+  }
+
+  async function handleChromeLaunch() {
+    try {
+      const body = chromeProfile ? { profile_directory: chromeProfile } : {};
+      const r = await fetch(API + '/api/chrome/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (d.ok) showToastMsg(d.status, 'ok');
+      else showToastMsg('chrome launch failed: ' + (d.status || ''), 'err');
+    } catch(e) { showToastMsg('chrome launch failed: ' + e.message, 'err'); }
+  }
+
+  // ═══ 4g: Tools ═══
+  async function handleOpenTools() {
+    try {
+      const r = await fetch(API + '/api/tools');
+      const d = await r.json();
+      setToolsData(d);
+    } catch(e) { setToolsData({ error: e.message, built_in: [], skills: [], mcps: [] }); }
+    setShowTools(true);
+  }
+
+  // ═══ Prompt Manager ═══
+  async function handleOpenPrompts() {
+    setShowPrompts(true);
+    const r = await fetch(API + '/api/prompts');
+    setPrompts(await r.json());
+  }
+  async function handlePromptEdit(key) {
+    const r = await fetch(API + '/api/prompts/' + key);
+    const d = await r.json();
+    setSelectedPrompt(d);
+    setEditContent(d.content || '');
+  }
+  async function handlePromptPreview() {
+    const r = await fetch(API + '/api/prompts/preview');
+    setPreview(await r.text());
+  }
+  async function handlePromptSave() {
+    if (!selectedPrompt) return;
+    const r = await fetch(API + '/api/prompts/' + selectedPrompt.key, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content: editContent}),
+    });
+    const d = await r.json();
+    if (d.ok) showToastMsg('saved (' + d.char_count + ' chars)', 'ok');
+    else showToastMsg('save failed: ' + (d.error || 'unknown'), 'err');
+  }
+  async function handlePromptClose() {
+    setShowPrompts(false);
+    setSelectedPrompt(null);
+    setPreview(null);
+  }
+
+  // ═══ Bridge setup ═══
+  async function fetchBridgeStatus() {
+    try {
+      const r = await fetch(API + '/api/bridge/status');
+      const d = await r.json();
+      // Compute token_hint from has_token (masked display)
+      if (d.has_token) {
+        // The full token isn't returned from /status for security;
+        // we'll just store a hint for the masked display.
+        d.token_hint = d.has_token ? '••••••••' : null;
+      }
+      setBridge(d);
+    } catch(e) {
+      setBridge({ enabled: false, connected: false, has_token: false, error: e.message });
+    }
+  }
+
+  async function openBridgeSetup() {
+    setBridgeRevealing(false);
+    setBridgeRestartNotice(false);
+    await fetchBridgeStatus();
+    setShowBridge(true);
+  }
+
+  function closeBridgeSetup() {
+    if (bridgeIntervalRef.current) { clearInterval(bridgeIntervalRef.current); bridgeIntervalRef.current = null; }
+    setShowBridge(false);
+    setBridge(null);
+  }
+
+  useEffect(() => {
+    if (!showBridge) {
+      if (bridgeIntervalRef.current) { clearInterval(bridgeIntervalRef.current); bridgeIntervalRef.current = null; }
+      return;
+    }
+    fetchBridgeStatus();
+    bridgeIntervalRef.current = setInterval(fetchBridgeStatus, 3000);
+    return () => {
+      if (bridgeIntervalRef.current) { clearInterval(bridgeIntervalRef.current); bridgeIntervalRef.current = null; }
+    };
+  }, [showBridge]);
+
+  async function handleBridgeRotate() {
+    if (!confirm('This will invalidate the current token. Continue?')) return;
+    try {
+      const r = await fetch(API + '/api/bridge/rotate-token', { method: 'POST' });
+      const d = await r.json();
+      if (d.ok) {
+        setBridgeRestartNotice(true);
+        showToastMsg('new token generated (restart required): ' + d.token, 'ok');
+        fetchBridgeStatus();
+      } else {
+        showToastMsg('rotate failed: ' + (d.error || ''), 'err');
+      }
+    } catch(e) { showToastMsg('rotate failed: ' + e.message, 'err'); }
+  }
+
+  async function handleBridgeToggle(currentEnabled) {
+    const newEnabled = !currentEnabled;
+    try {
+      const r = await fetch(API + '/api/bridge/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newEnabled }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setBridgeRestartNotice(true);
+        showToastMsg('bridge ' + (newEnabled ? 'enabled' : 'disabled') + ' (restart required)', 'ok');
+        fetchBridgeStatus();
+      } else {
+        showToastMsg('toggle failed: ' + (d.error || ''), 'err');
+      }
+    } catch(e) { showToastMsg('toggle failed: ' + e.message, 'err'); }
+  }
+
+  const running = state.running === true;
+
+  return (
+    <div className="dash">
+      {/* Status Bar */}
+      <StatusBar state={state} running={running} post={post} interruptEnabled={interruptEnabled} />
+
+      {pollFailed && <div className="warn-banner">⚠ connection lost — data may be stale</div>}
+
+      {/* Controls */}
+      <ControlsCard
+        state={state}
+        showCanvas={showCanvas}
+        showHistory={showHistory}
+        showInject={showInject}
+        showSettings={showSettings}
+        showAudio={showAudio}
+        showAgents={showAgents}
+        showUsage={showUsage}
+        showTools={showTools}
+        showBridge={showBridge}
+        showPrompts={showPrompts}
+        interruptEnabled={interruptEnabled}
+        chromeProfiles={chromeProfiles}
+        chromeProfile={chromeProfile}
+        onModeChange={(mode) => post('/mode', { mode })}
+        onMute={(target) => post('/mute', { target })}
+        onCancel={() => post('/cancel', {})}
+        onInterrupt={(enabled) => { setInterruptEnabled(enabled); post('/interrupt', { enabled }) }}
+        onDaemon={(action) => handleDaemonAction(action)}
+        onToggle={(w) => {
+          const setters = { settings: setShowSettings, audio: setShowAudio, agents: setShowAgents, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
+          if (setters[w]) setters[w](prev => !prev);
+        }}
+        onOpenModal={(d) => {
+          if (d === 'chrome') fetchChromeProfiles();
+          if (d === 'tools') handleOpenTools();
+          if (d === 'bridge') openBridgeSetup();
+          if (d === 'prompts') handleOpenPrompts();
+        }}
+        onChromeLaunch={handleChromeLaunch}
+        onChromeProfileChange={setChromeProfile}
+        onChromeClose={() => setChromeProfiles(null)}
+        onOpenSetup={onOpenSetup}
+      />
+
+      {/* Voice & Agent status bars */}
+      <div className="viz-row">
+        <div className="viz-col">
+          <div className="bar-section-label">🎤 you</div>
+          <UserVoiceBar voiceState={state.voice_state} />
+        </div>
+        <div className="viz-col">
+          <div className="bar-section-label">🤖 agent</div>
+          <AgentStatusBar agentState={state.agent_state} />
+        </div>
+      </div>
+
+      {/* Display widget */}
+      {showCanvas && (
+        <DisplayCard
+          display={display}
+          flash={displayFlash}
+          visible={true}
+          onDismiss={() => setShowCanvas(false)}
+        />
+      )}
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <SettingsPanel
+          state={state}
+          onSave={saveSettings}
+        />
+      )}
+
+      {/* Usage stats */}
+      {showUsage && <UsageCard usage={state.usage} onClose={() => setShowUsage(false)} />}
+
+      {/* Text injection */}
+      {showInject && (
+        <InjectPanel
+          value={injectText}
+          onChange={setInjectText}
+          onSend={handleInject}
+        />
+      )}
+
+      {/* Agent management */}
+      {showAgents && (
+        <AgentsPanel
+          agents={agents}
+          onLaunch={poll}
+          onCancel={handleAgentCancel}
+          onToast={showToastMsg}
+        />
+      )}
+
+      {/* History panel */}
+      {showHistory && (
+        <HistoryPanel
+          tab={historyTab}
+          onTabChange={setHistoryTab}
+          activity={activity}
+          logs={logs}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
+      {/* Audio device picker */}
+      {showAudio && (
+        <AudioDevicePicker
+          devices={audioDevices ? audioDevices.devices : null}
+          activeInput={audioDevices ? audioDevices.active_input : null}
+          activeOutput={audioDevices ? audioDevices.active_output : null}
+          onSelect={handleDeviceSelect}
+          onClose={() => setShowAudio(false)}
+        />
+      )}
+
+      {/* Tools modal */}
+      {showTools && <ToolsModal data={toolsData} onClose={() => setShowTools(false)} />}
+
+      {/* Bridge setup modal */}
+      {showBridge && (
+        <BridgeModal
+          data={bridge ? {...bridge, restart_notice: bridgeRestartNotice} : null}
+          onClose={closeBridgeSetup}
+          onRotate={handleBridgeRotate}
+          onToggle={handleBridgeToggle}
+          revealToken={bridgeRevealing}
+          onToggleReveal={() => setBridgeRevealing(!bridgeRevealing)}
+          onToast={showToastMsg}
+        />
+      )}
+
+      {/* Prompt Manager modal */}
+      {showPrompts && (
+        <PromptManager
+          prompts={prompts}
+          selectedPrompt={selectedPrompt}
+          editContent={editContent}
+          preview={preview}
+          onSelect={handlePromptEdit}
+          onPreview={handlePromptPreview}
+          onSave={handlePromptSave}
+          onClose={handlePromptClose}
+          onEditContent={setEditContent}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && <Toast message={toast.msg} type={toast.type} onDismiss={() => setToast(null)} />}
+    </div>
+  );
+}

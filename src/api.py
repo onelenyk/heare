@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 _INDEX_HTML: str | None = None
 
 from aiohttp import web
-from src.agent.identity import load_identity
-from src.agent.llm.providers import PROVIDERS, get_available, get_config
+from src.agent.identity import load_identity, save_identity, regenerate_identity
+from src.agent.llm.providers import PROVIDERS, get_available, get_config, make_identity_bootstrap
 from src.agent.modes import VALID_MODES
 from src.config import HEARE_HOME, write_browser_bridge_token
 from src.dashboard_data import (
@@ -75,6 +75,11 @@ class API:
         self._app.router.add_post("/api/agents/start", self._handle_agents_start)
         self._app.router.add_post("/api/agents/cancel", self._handle_agents_cancel)
         self._app.router.add_get("/api/agents/{session_id}/result", self._handle_agents_result)
+        self._app.router.add_get("/api/setup", self._handle_setup_state)
+        self._app.router.add_post("/api/setup/identity", self._handle_setup_identity)
+        self._app.router.add_post("/api/setup/identity/regenerate", self._handle_setup_identity_regenerate)
+        self._app.router.add_post("/api/setup/config", self._handle_setup_config)
+        self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
         self._runner = None
         self._site = None
 
@@ -892,7 +897,7 @@ class API:
                 _render_hard_constraints,
                 _render_tool_catalog,
             )
-            from src.agent.identity import load_identity, render_persona
+            from src.agent.identity import load_identity, save_identity, regenerate_identity, render_persona
 
             project_root = Path(__file__).resolve().parent.parent
 
@@ -955,7 +960,7 @@ class API:
                 _render_hard_constraints,
                 _render_tool_catalog,
             )
-            from src.agent.identity import load_identity, render_persona
+            from src.agent.identity import load_identity, save_identity, regenerate_identity, render_persona
 
             project_root = Path(__file__).resolve().parent.parent
             key = request.match_info["key"]
@@ -1067,7 +1072,7 @@ class API:
     async def _handle_prompt_preview(self, request):
         try:
             from src.agent.llm.context_injector import render_native_system_prompt
-            from src.agent.identity import load_identity, render_persona
+            from src.agent.identity import load_identity, save_identity, regenerate_identity, render_persona
             from pathlib import Path
 
             # Load the real identity from ~/.heare/identity.json
@@ -1159,6 +1164,146 @@ class API:
             return web.json_response(result)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
+
+    # ── Setup handlers ────────────────────────────────────
+
+    async def _handle_setup_state(self, request):
+        """GET /api/setup — full setup state."""
+        identity = None
+        if self.config and hasattr(self.config, 'identity_file'):
+            identity = load_identity(self.config.identity_file)
+
+        config = {}
+        if self.config:
+            config["language"] = getattr(self.config, 'groq_language', 'en')
+            config["tts_voice"] = getattr(self.config, 'tts_voice', 'en-US-AriaNeural')
+
+        groq_ok = bool(
+            os.environ.get("GROQ_API_KEY", "").startswith("gsk_")
+            or os.environ.get("GROQ_API_KEY", "").startswith("sk-")
+        )
+        available = get_available(self.config) if self.config else []
+        llm_ok = len(available) > 0
+
+        # Read setup complete flag
+        setup_flag = HEARE_HOME / ".setup_complete"
+        setup_complete = setup_flag.exists()
+
+        return web.json_response({
+            "setup_complete": setup_complete,
+            "identity": identity,
+            "config": {
+                "language": config.get("language", "en"),
+                "tts_voice": config.get("tts_voice", "en-US-AriaNeural"),
+                "groq_key_configured": groq_ok,
+                "llm_key_configured": llm_ok,
+                "available_providers": available,
+            },
+        })
+
+    async def _handle_setup_identity(self, request):
+        """POST /api/setup/identity — save identity fields."""
+        if not self.config:
+            return web.json_response({"ok": False, "error": "no config"}, status=500)
+
+        body = await request.json()
+        identity = {
+            "name": body.get("name", ""),
+            "creature": body.get("creature", ""),
+            "vibe": body.get("vibe", ""),
+            "emoji": body.get("emoji", ""),
+            "tagline": body.get("tagline", ""),
+            "generated_at": body.get("generated_at", ""),
+        }
+        try:
+            save_identity(self.config, identity)
+            return web.json_response({"ok": True, "identity": identity})
+        except Exception as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _handle_setup_identity_regenerate(self, request):
+        """POST /api/setup/identity/regenerate — regenerate persona via LLM."""
+        if not self.config:
+            return web.json_response({"ok": False, "error": "no config"}, status=500)
+
+        try:
+            available = get_available(self.config)
+            if not available:
+                return web.json_response(
+                    {"ok": False, "error": "No LLM API keys configured"}, status=400
+                )
+            provider_name = available[0]
+            active_cfg = PROVIDERS.get(provider_name)
+            api_key = getattr(self.config, active_cfg.api_key_attr)
+            identity_factory = make_identity_bootstrap(
+                active_cfg, api_key, active_cfg.default_model, active_cfg.timeout,
+            )
+            identity = await regenerate_identity(identity_factory, self.config)
+            return web.json_response({"ok": True, "identity": identity})
+        except Exception as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _handle_setup_config(self, request):
+        """POST /api/setup/config — save language, voice, API keys."""
+        body = await request.json()
+
+        # Write API keys to .env
+        env_path = Path.home() / ".heare" / ".env"
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+
+        existing = {}
+        if env_path.exists():
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        existing[k.strip()] = v.strip()
+
+        provider_keys = {
+            "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY", "ZAI_API_KEY",
+            "OPENCODE_API_KEY", "GROQ_API_KEY",
+        }
+        for key, value in body.items():
+            upper = key.upper()
+            if upper in provider_keys and value:
+                existing[upper] = value
+                os.environ[upper] = value
+
+        with open(env_path, "w") as f:
+            for k, v in existing.items():
+                f.write(f"{k}={v}\n")
+
+        # Write config.toml (language + voice)
+        config_path = Path.home() / ".heare" / "config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        config_lines = {}
+        if config_path.exists():
+            with open(config_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        config_lines[k.strip()] = v.strip().strip('"')
+
+        if "language" in body:
+            config_lines["groq_language"] = body["language"]
+        if "tts_voice" in body:
+            config_lines["tts_voice"] = body["tts_voice"]
+
+        with open(config_path, "w") as f:
+            for k, v in config_lines.items():
+                f.write(f'{k} = "{v}"\n')
+
+        return web.json_response({"ok": True})
+
+    async def _handle_setup_complete(self, request):
+        """POST /api/setup/complete — mark setup as done."""
+        setup_flag = HEARE_HOME / ".setup_complete"
+        setup_flag.parent.mkdir(parents=True, exist_ok=True)
+        setup_flag.touch()
+        return web.json_response({"ok": True})
 
     def _available_providers(self):
         return get_available(self.config)

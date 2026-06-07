@@ -1,6 +1,6 @@
 """Workspace directory helpers.
 
-Kept separate from main.py so non-CLI modules (onboarding, capabilities)
+Kept separate from main.py so non-CLI modules can import without circular deps.
 can call ``ensure_workspace_mcp`` without pulling the CLI dispatcher.
 """
 from __future__ import annotations
