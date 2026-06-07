@@ -2394,7 +2394,7 @@ function Dashboard() {
       {/* Settings Panel */}
       {showSettings && (
         <div class="card">
-          <div class="card-header">⚙ settings</div>
+          <div class="card-header">⚙ settings <button class="modal-close" onClick={() => setShowSettings(false)} style={{marginLeft:"auto"}}>×</button></div>
           <div class="settings-panel">
              <div><label style={{fontSize:11,color:"var(--muted)"}}>Groq API Key {state.key_groq_api_key && <span style={{color:"var(--accent)"}}>✓</span>}</label><input id="set-groq" type="password" placeholder="gsk_..." /></div>
             <div><label style={{fontSize:11,color:"var(--muted)"}}>DeepSeek API Key {state.key_deepseek_api_key && <span style={{color:"var(--accent)"}}>✓</span>}</label><input id="set-deepseek" type="password" placeholder="sk-..." /></div>
@@ -2408,7 +2408,7 @@ function Dashboard() {
       {/* Usage stats */}
       {showUsage && (
         <div class="card">
-          <div class="card-header">📊 usage</div>
+          <div class="card-header">📊 usage <button class="modal-close" onClick={() => setShowUsage(false)} style={{marginLeft:"auto"}}>×</button></div>
           <UsageCard usage={state.usage} />
         </div>
       )}
@@ -2416,7 +2416,7 @@ function Dashboard() {
       {/* Agent management */}
       {showAgents && (
       <div class="card">
-        <div class="card-header">{"🤖"} agents ({agents.length})</div>
+        <div class="card-header">{"🤖"} agents ({agents.length}) <button class="modal-close" onClick={() => setShowAgents(false)} style={{marginLeft:"auto"}}>×</button></div>
         <AgentLauncher onStart={poll} onToast={showToastMsg} />
         <AgentList agents={agents} onCancel={handleAgentCancel} onToast={showToastMsg} />
       </div>
@@ -2429,6 +2429,7 @@ function Dashboard() {
           <span style={{flex:1}}>history</span>
           <button class={"history-tab-btn" + (historyTab === "activity" ? " active" : "")} onClick={() => setHistoryTab("activity")}>activity ({activity.length})</button>
           <button class={"history-tab-btn" + (historyTab === "logs" ? " active" : "")} onClick={() => setHistoryTab("logs")}>logs ({logs.length})</button>
+          <button class="modal-close" onClick={() => setShowHistory(false)} style={{marginLeft:4}}>×</button>
         </div>
         {historyTab === "activity" ? (
           <div class="scroll">
