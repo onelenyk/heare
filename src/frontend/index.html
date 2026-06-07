@@ -649,8 +649,9 @@
   /* ═══════════════════════════════════════════
      CONTROLS & UTILITIES
      ═══════════════════════════════════════════ */
-  .controls-group { display: flex; flex-wrap: wrap; gap: var(--s1); }
-  .controls-sep { border-bottom: 1px solid var(--border); margin: var(--s2) 0; }
+.controls-group { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.controls-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: var(--s1); }
+.controls-sep { border-bottom: 1px solid var(--border); margin: var(--s2) 0; }
   .response-line {
     font-size: 14px; font-weight: 600; color: var(--accent-orange);
     padding: var(--s2) var(--s3); border-bottom: 1px solid var(--border);
@@ -2251,6 +2252,7 @@ function Dashboard() {
         <div class="card-header">controls</div>
 
         {/* Row 1: Mode */}
+        <div class="controls-label">mode</div>
         <div class="controls-group">
           {["silent","focus","ambient","assistant"].map(m =>
             <button key={m} class={"btn" + (state.mode === m ? " active" : "")} onClick={() => post("/mode", {mode: m})}>{m}</button>
@@ -2261,40 +2263,47 @@ function Dashboard() {
 
         {/* Row 2: Audio + Daemon */}
         <div style={{display:"flex", gap:"var(--s2)", flexWrap:"wrap"}}>
-          <div class="controls-group" style={{flex:1, minWidth:180}}>
-            <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mute mic" : "🎤 mic on"}</button>
-            <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 mute bot" : "🔊 bot on"}</button>
-            <button class="btn" onClick={() => post("/cancel", {})}>⏹ cancel</button>
-            <button class="btn"
-              onClick={async () => {
-                const newValue = !interruptEnabled;
-                const r = await fetch(API + "/interrupt", {
-                  method: "POST",
-                  headers: {"Content-Type": "application/json"},
-                  body: JSON.stringify({enabled: newValue}),
-                });
-                const d = await r.json();
-                if (d.ok) {
-                  setInterruptEnabled(d.enabled);
-                  showToastMsg(d.enabled ? "interrupt on — voice breaks bot" : "interrupt off — bot finishes speaking", "ok");
-                }
-              }}
-            >{interruptEnabled ? "🗣 interrupt: on" : "🤐 interrupt: off"}</button>
+          <div style={{flex:1, minWidth:180}}>
+            <div class="controls-label">audio</div>
+            <div class="controls-group">
+              <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mic muted" : "🎤 mic on"}</button>
+              <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 bot muted" : "🔊 bot on"}</button>
+              <button class="btn" onClick={() => post("/cancel", {})}>⏹ cancel</button>
+              <button class="btn"
+                onClick={async () => {
+                  const newValue = !interruptEnabled;
+                  const r = await fetch(API + "/interrupt", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({enabled: newValue}),
+                  });
+                  const d = await r.json();
+                  if (d.ok) {
+                    setInterruptEnabled(d.enabled);
+                    showToastMsg(d.enabled ? "interrupt on — voice breaks bot" : "interrupt off — bot finishes speaking", "ok");
+                  }
+                }}
+              >{interruptEnabled ? "🗣 interrupt: on" : "🤐 interrupt: off"}</button>
+            </div>
           </div>
-          <div class="controls-group" style={{flex:1, minWidth:140, justifyContent:"flex-end"}}>
-            {!running && !state.starting && <button class="btn primary" onClick={() => handleDaemonAction("start")}>▶ start</button>}
-            {running && <button class="btn danger" onClick={() => handleDaemonAction("stop")}>■ stop</button>}
-            {running && <button class="btn" onClick={() => handleDaemonAction("restart")}>↻ restart</button>}
-            {!running && state.starting && <span class="info-line" style={{color:"var(--accent)"}}>starting…</span>}
+          <div style={{flex:1, minWidth:140}}>
+            <div class="controls-label">daemon</div>
+            <div class="controls-group" style={{justifyContent:"flex-end"}}>
+              {!running && !state.starting && <button class="btn primary" onClick={() => handleDaemonAction("start")}>▶ start</button>}
+              {running && <button class="btn danger" onClick={() => handleDaemonAction("stop")}>■ stop</button>}
+              {running && <button class="btn" onClick={() => handleDaemonAction("restart")}>↻ restart</button>}
+              {!running && state.starting && <span class="info-line" style={{color:"var(--accent)"}}>starting…</span>}
+            </div>
           </div>
         </div>
 
         <div class="controls-sep"></div>
 
         {/* Row 3: Panels */}
+        <div class="controls-label">panels</div>
         <div class="controls-group" style={{justifyContent:"center"}}>
           <button class="btn" onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
-          <button class="btn" onClick={fetchAudioDevices}>🎧 audio</button>
+          <button class="btn" onClick={fetchAudioDevices}>🎧 audio devices</button>
           <button class="btn" onClick={fetchChromeProfiles}>🌐 chrome</button>
           <button class="btn" onClick={handleOpenTools}>🔧 tools</button>
           <button class="btn" onClick={openBridgeSetup}>🌉 bridge</button>
@@ -2305,12 +2314,13 @@ function Dashboard() {
         <div class="controls-sep"></div>
 
         {/* Row 4: Text injection */}
+        <div class="controls-label">text injection <span style={{fontWeight:400,color:"var(--muted)",fontSize:9}}>— simulates voice input</span></div>
         <div class="controls-group">
           <input
             type="text" value={injectText}
             onInput={e => setInjectText(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") handleInject(); }}
-            placeholder="text to inject…"
+            placeholder="type text and press enter…"
             class="mono-input"
             style={{flex:1}}
           />
