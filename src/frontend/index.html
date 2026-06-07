@@ -1937,6 +1937,7 @@ function Dashboard() {
   const [showUsage, setShowUsage] = useState(false);
   const [showCanvas, setShowCanvas] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
+  const [showInject, setShowInject] = useState(false);
 
   useEffect(() => {
     if (logRef.current) {
@@ -2321,6 +2322,7 @@ function Dashboard() {
           <button class={"btn" + (showUsage ? " active" : "")} onClick={() => setShowUsage(!showUsage)}>📊 usage</button>
           <button class={"btn" + (showCanvas ? " active" : "")} onClick={() => setShowCanvas(!showCanvas)}>📺 canvas</button>
           <button class={"btn" + (showHistory ? " active" : "")} onClick={() => setShowHistory(!showHistory)}>📜 history</button>
+          <button class={"btn" + (showInject ? " active" : "")} onClick={() => setShowInject(!showInject)}>💬 inject</button>
         </div>
         <div class="controls-sep"></div>
         <div class="controls-label">dialogs</div>
@@ -2332,20 +2334,6 @@ function Dashboard() {
         </div>
 
         <div class="controls-sep"></div>
-
-        {/* Row 4: Text injection */}
-        <div class="controls-label">text injection <span style={{fontWeight:400,color:"var(--muted)",fontSize:9}}>— simulates voice input</span></div>
-        <div class="controls-group">
-          <input
-            type="text" value={injectText}
-            onInput={e => setInjectText(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") handleInject(); }}
-            placeholder="type text and press enter…"
-            class="mono-input"
-            style={{flex:1}}
-          />
-          <button class="btn" onClick={handleInject}>send</button>
-        </div>
 
         {/* Chrome profile picker */}
         {chromeProfiles !== null && (
@@ -2413,6 +2401,24 @@ function Dashboard() {
         <div class="card">
           <div class="card-header">📊 usage <button class="modal-close" onClick={() => setShowUsage(false)} style={{marginLeft:"auto"}}>×</button></div>
           <UsageCard usage={state.usage} />
+        </div>
+      )}
+
+      {/* Text injection */}
+      {showInject && (
+        <div class="card">
+          <div class="card-header">💬 text injection <span style={{fontWeight:400,color:"var(--muted)",fontSize:9}}>— simulates voice input</span> <button class="modal-close" onClick={() => setShowInject(false)} style={{marginLeft:"auto"}}>×</button></div>
+          <div class="controls-group">
+            <input
+              type="text" value={injectText}
+              onInput={e => setInjectText(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleInject(); }}
+              placeholder="type text and press enter…"
+              class="mono-input"
+              style={{flex:1}}
+            />
+            <button class="btn" onClick={handleInject}>send</button>
+          </div>
         </div>
       )}
 
