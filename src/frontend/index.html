@@ -2312,19 +2312,23 @@ function Dashboard() {
 
         <div class="controls-sep"></div>
 
-        {/* Row 3: Panels */}
-        <div class="controls-label">panels</div>
+        {/* Row 3: Panels — widgets */}
+        <div class="controls-label">widgets</div>
         <div class="controls-group" style={{justifyContent:"center"}}>
           <button class={"btn" + (showSettings ? " active" : "")} onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
           <button class={"btn" + (showAudio ? " active" : "")} onClick={() => { if (!showAudio) fetchAudioDevices(); setShowAudio(!showAudio); }}>🎧 audio devices</button>
-          <button class={"btn" + (chromeProfiles !== null ? " active" : "")} onClick={fetchChromeProfiles}>🌐 chrome</button>
-          <button class={"btn" + (showTools ? " active" : "")} onClick={handleOpenTools}>🔧 tools</button>
-          <button class={"btn" + (showBridge ? " active" : "")} onClick={openBridgeSetup}>🌉 bridge</button>
-          <button class={"btn" + (showPrompts ? " active" : "")} onClick={handleOpenPrompts}>📝 prompts</button>
           <button class={"btn" + (showAgents ? " active" : "")} onClick={() => setShowAgents(!showAgents)}>🤖 agents</button>
           <button class={"btn" + (showUsage ? " active" : "")} onClick={() => setShowUsage(!showUsage)}>📊 usage</button>
           <button class={"btn" + (showCanvas ? " active" : "")} onClick={() => setShowCanvas(!showCanvas)}>📺 canvas</button>
           <button class={"btn" + (showHistory ? " active" : "")} onClick={() => setShowHistory(!showHistory)}>📜 history</button>
+        </div>
+        <div class="controls-sep"></div>
+        <div class="controls-label">dialogs</div>
+        <div class="controls-group" style={{justifyContent:"center"}}>
+          <button class={"btn" + (chromeProfiles !== null ? " active" : "")} onClick={fetchChromeProfiles}>🌐 chrome</button>
+          <button class={"btn" + (showTools ? " active" : "")} onClick={handleOpenTools}>🔧 tools</button>
+          <button class={"btn" + (showBridge ? " active" : "")} onClick={openBridgeSetup}>🌉 bridge</button>
+          <button class={"btn" + (showPrompts ? " active" : "")} onClick={handleOpenPrompts}>📝 prompts</button>
         </div>
 
         <div class="controls-sep"></div>
