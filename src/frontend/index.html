@@ -2249,45 +2249,50 @@ function Dashboard() {
           <div class="response-line">{state.last_response}</div>
         )}
         <div class="card-header">controls</div>
-        {/* Mode buttons */}
+
+        {/* Row 1: Mode */}
         <div class="controls-group">
           {["silent","focus","ambient","assistant"].map(m =>
             <button key={m} class={"btn" + (state.mode === m ? " active" : "")} onClick={() => post("/mode", {mode: m})}>{m}</button>
           )}
         </div>
+
         <div class="controls-sep"></div>
-        {/* Audio controls */}
-        <div class="controls-group">
-          <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mute mic" : "🎤 mic on"}</button>
-          <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 mute bot" : "🔊 bot on"}</button>
-          <button class="btn" onClick={() => post("/cancel", {})}>⏹ cancel</button>
-          <button class="btn"
-            onClick={async () => {
-              const newValue = !interruptEnabled;
-              const r = await fetch(API + "/interrupt", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({enabled: newValue}),
-              });
-              const d = await r.json();
-              if (d.ok) {
-                setInterruptEnabled(d.enabled);
-                showToastMsg(d.enabled ? "interrupt on — voice breaks bot" : "interrupt off — bot finishes speaking", "ok");
-              }
-            }}
-          >{interruptEnabled ? "🗣 interrupt: on" : "🤐 interrupt: off"}</button>
+
+        {/* Row 2: Audio + Daemon */}
+        <div style={{display:"flex", gap:"var(--s2)", flexWrap:"wrap"}}>
+          <div class="controls-group" style={{flex:1, minWidth:180}}>
+            <button class="btn" onClick={() => post("/mute", {target: "mic"})}>{state.mute_mic === "1" || state.mute_mic === true ? "🔇 mute mic" : "🎤 mic on"}</button>
+            <button class="btn" onClick={() => post("/mute", {target: "bot"})}>{state.mute_bot === "1" || state.mute_bot === true ? "🔇 mute bot" : "🔊 bot on"}</button>
+            <button class="btn" onClick={() => post("/cancel", {})}>⏹ cancel</button>
+            <button class="btn"
+              onClick={async () => {
+                const newValue = !interruptEnabled;
+                const r = await fetch(API + "/interrupt", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({enabled: newValue}),
+                });
+                const d = await r.json();
+                if (d.ok) {
+                  setInterruptEnabled(d.enabled);
+                  showToastMsg(d.enabled ? "interrupt on — voice breaks bot" : "interrupt off — bot finishes speaking", "ok");
+                }
+              }}
+            >{interruptEnabled ? "🗣 interrupt: on" : "🤐 interrupt: off"}</button>
+          </div>
+          <div class="controls-group" style={{flex:1, minWidth:140, justifyContent:"flex-end"}}>
+            {!running && !state.starting && <button class="btn primary" onClick={() => handleDaemonAction("start")}>▶ start</button>}
+            {running && <button class="btn danger" onClick={() => handleDaemonAction("stop")}>■ stop</button>}
+            {running && <button class="btn" onClick={() => handleDaemonAction("restart")}>↻ restart</button>}
+            {!running && state.starting && <span class="info-line" style={{color:"var(--accent)"}}>starting…</span>}
+          </div>
         </div>
+
         <div class="controls-sep"></div>
-        {/* Daemon lifecycle */}
-        <div class="controls-group">
-          {!running && !state.starting && <button class="btn" onClick={() => handleDaemonAction("start")}>▶ start</button>}
-          {running && <button class="btn danger" onClick={() => handleDaemonAction("stop")}>■ stop</button>}
-          {running && <button class="btn" onClick={() => handleDaemonAction("restart")}>↻ restart</button>}
-          {!running && state.starting && <span class="info-line" style={{color:"var(--accent)"}}>starting…</span>}
-        </div>
-        <div class="controls-sep"></div>
-        {/* Configuration tools */}
-        <div class="controls-group">
+
+        {/* Row 3: Panels */}
+        <div class="controls-group" style={{justifyContent:"center"}}>
           <button class="btn" onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
           <button class="btn" onClick={fetchAudioDevices}>🎧 audio</button>
           <button class="btn" onClick={fetchChromeProfiles}>🌐 chrome</button>
@@ -2296,8 +2301,10 @@ function Dashboard() {
           <button class="btn" onClick={handleOpenPrompts}>📝 prompts</button>
           <button class={"btn" + (showAgents ? " active" : "")} onClick={() => setShowAgents(!showAgents)}>🤖 agents</button>
         </div>
+
         <div class="controls-sep"></div>
-        {/* Text injection */}
+
+        {/* Row 4: Text injection */}
         <div class="controls-group">
           <input
             type="text" value={injectText}
@@ -2305,9 +2312,11 @@ function Dashboard() {
             onKeyDown={e => { if (e.key === "Enter") handleInject(); }}
             placeholder="text to inject…"
             class="mono-input"
+            style={{flex:1}}
           />
           <button class="btn" onClick={handleInject}>send</button>
         </div>
+
         {/* Chrome profile picker */}
         {chromeProfiles !== null && (
           <div class="controls-group" style={{marginTop:4}}>
