@@ -2314,7 +2314,7 @@ function Dashboard() {
 
         {/* Row 3: Panels — widgets */}
         <div class="controls-label">widgets</div>
-        <div class="controls-group" style={{justifyContent:"center"}}>
+        <div class="controls-group">
           <button class={"btn" + (showSettings ? " active" : "")} onClick={() => setShowSettings(!showSettings)}>⚙ settings</button>
           <button class={"btn" + (showAudio ? " active" : "")} onClick={() => { if (!showAudio) fetchAudioDevices(); setShowAudio(!showAudio); }}>🎧 audio devices</button>
           <button class={"btn" + (showAgents ? " active" : "")} onClick={() => setShowAgents(!showAgents)}>🤖 agents</button>
@@ -2324,7 +2324,7 @@ function Dashboard() {
         </div>
         <div class="controls-sep"></div>
         <div class="controls-label">dialogs</div>
-        <div class="controls-group" style={{justifyContent:"center"}}>
+        <div class="controls-group">
           <button class={"btn" + (chromeProfiles !== null ? " active" : "")} onClick={fetchChromeProfiles}>🌐 chrome</button>
           <button class={"btn" + (showTools ? " active" : "")} onClick={handleOpenTools}>🔧 tools</button>
           <button class={"btn" + (showBridge ? " active" : "")} onClick={openBridgeSetup}>🌉 bridge</button>
