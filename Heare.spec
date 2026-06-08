@@ -3,7 +3,8 @@ import os
 from PyInstaller.utils.hooks import collect_all
 
 datas = [
-    ('src/frontend/index.html', 'src/frontend'),
+    ('src/frontend/dist/index.html', 'src/frontend'),
+    ('src/frontend/dist/assets', 'src/frontend/dist/assets'),
     ('src/frontend/onboarding.html', 'src/frontend'),
     ('prompts', 'prompts'),
     ('skills', 'skills'),
@@ -11,7 +12,7 @@ datas = [
 binaries = [
     ('/opt/homebrew/opt/libomp/lib/libomp.dylib', '.'),
 ]
-hiddenimports = ['src.main', 'src.api', 'pyloudnorm', 'scipy.signal', 'scipy.signal.firwin']
+hiddenimports = ['src.main', 'src.api', 'src.memory', 'pyloudnorm', 'scipy.signal', 'scipy.signal.firwin']
 tmp_ret = collect_all('pipecat')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('aiohttp')
