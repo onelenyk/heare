@@ -26,6 +26,9 @@ build/
 # Stray debug scripts at project root
 /pytest_debug_*.py
 /coverage_report.txt
+htmlcov/
+.coverage
+coverage.xml
 
 # Tauri desktop app (prototype, build artifacts)
 desktop/
