@@ -178,7 +178,6 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     try:
         store = TranscriptStore(settings.db_path)
         await store.init()
-        await store.purge_older_than(settings.transcript_retention_days)
 
         active_cfg = PROVIDERS.get(settings.llm_provider, PROVIDERS["deepseek"])
         api_key = getattr(settings, active_cfg.api_key_attr)
@@ -206,9 +205,16 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                     "action_log hydrate failed (non-fatal) — starting empty"
                 )
 
+        # Initialize memory backend (pluggable — sqlite by default)
+        from src.memory.factory import create_memory_backend
+        memory_backend = create_memory_backend(settings)
+        await memory_backend.initialize()
+        logger.info("Memory backend: %s initialized", settings.memory_backend)
+
         context_builder = ContextBuilder(
             store, settings, conversation_manager,
             project_dir=project_dir,
+            memory_backend=memory_backend,
         )
 
         try:
@@ -372,6 +378,13 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 await mgr.shutdown()
             except Exception as e:
                 logger.warning("agent_manager shutdown failed (non-fatal): %s", e)
+        mb = locals().get("memory_backend")
+        if mb is not None:
+            try:
+                await mb.close()
+                logger.info("Memory backend closed")
+            except Exception:
+                logger.warning("Memory backend close failed (non-fatal)")
         logger.info("heare stopped")
     return 0
 

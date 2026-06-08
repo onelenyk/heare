@@ -5,7 +5,6 @@ import json
 import logging
 import sqlite3
 import time
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -13,24 +12,6 @@ import aiosqlite
 
 
 SCHEMA_VERSION = 8
-
-
-class EventKind(StrEnum):
-    DECIDER_START = "decider.start"
-    DECIDER_DONE = "decider.done"
-    DECIDER_DROPPED_LOW_CONF = "decider.dropped_low_conf"
-    DECIDER_DROPPED_NO_KEYWORD = "decider.dropped_no_keyword"
-    ACTION_ARMED = "action.armed"
-    ACTION_CONFIRMED = "action.confirmed"
-    ACTION_CANCELLED = "action.cancelled"
-    ACTION_REPROMPT = "action.reprompt"
-    ACTION_EXECUTING = "action.executing"
-    ACTION_CALL_START = "action.call_start"
-    ACTION_STDOUT = "action.stdout"
-    ACTION_DONE = "action.done"
-    ACTION_ERROR = "action.error"
-    STATE_LISTENING = "state.listening"
-    SYSTEM_EMIT_DROPS = "system.emit_drops"
 
 logger = logging.getLogger("heare.storage")
 
@@ -59,19 +40,6 @@ CREATE TABLE IF NOT EXISTS displays (
     content TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS decisions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts REAL NOT NULL,
-    transcript_id INTEGER,
-    type TEXT NOT NULL,
-    confidence REAL,
-    reason TEXT,
-    reply TEXT,
-    intent TEXT,
-    action_json TEXT,
-    FOREIGN KEY(transcript_id) REFERENCES transcripts(id)
-);
-
 CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts REAL NOT NULL,
@@ -81,32 +49,10 @@ CREATE TABLE IF NOT EXISTS actions (
     tool TEXT,
     args TEXT,
     result_json TEXT,
-    intent_id INTEGER,
-    FOREIGN KEY(decision_id) REFERENCES decisions(id)
-);
-
-CREATE TABLE IF NOT EXISTS heartbeats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts REAL NOT NULL,
-    decided_to_speak INTEGER NOT NULL,
-    reply TEXT
-);
-
-CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts REAL NOT NULL,
-    kind TEXT NOT NULL,
-    transcript_id INTEGER,
-    decision_id INTEGER,
-    payload_json TEXT,
-    FOREIGN KEY(transcript_id) REFERENCES transcripts(id),
-    FOREIGN KEY(decision_id) REFERENCES decisions(id) ON DELETE SET NULL
+    intent_id INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_transcripts_ts ON transcripts(ts DESC);
-CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts DESC);
-CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
-CREATE INDEX IF NOT EXISTS idx_events_decision ON events(decision_id, ts);
 CREATE INDEX IF NOT EXISTS idx_actions_ts ON actions(ts DESC);
 
 CREATE TABLE IF NOT EXISTS conversations (
@@ -241,8 +187,7 @@ class TranscriptStore:
                         tool TEXT,
                         args TEXT,
                         result_json TEXT,
-                        intent_id INTEGER,
-                        FOREIGN KEY(decision_id) REFERENCES decisions(id)
+                        intent_id INTEGER
                     )
                     """
                 )
@@ -399,13 +344,6 @@ class TranscriptStore:
         assert cursor.lastrowid is not None
         return cursor.lastrowid
 
-    async def insert_display(self, content_type: str, content: str) -> None:
-        await self.db.execute(
-            "INSERT INTO displays (ts, content_type, content) VALUES (?, ?, ?)",
-            (time.time(), content_type, content),
-        )
-        await self.db.commit()
-
     async def latest_display(self) -> dict[str, Any] | None:
         """Most recent display block, or None."""
         cursor = await self.db.execute(
@@ -422,43 +360,6 @@ class TranscriptStore:
             "content_type": row[3],
             "content": row[4],
         }
-
-    async def log_decision(
-        self,
-        transcript_id: int | None,
-        decision: dict[str, Any],
-    ) -> int:
-        cursor = await self.db.execute(
-            """
-            INSERT INTO decisions
-                (ts, transcript_id, type, confidence, reason, reply, intent, action_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                time.time(),
-                transcript_id,
-                decision.get("type", "nothing"),
-                decision.get("confidence"),
-                decision.get("reason"),
-                decision.get("reply"),
-                decision.get("intent"),
-                json.dumps(decision.get("action")) if decision.get("action") else None,
-            ),
-        )
-        await self.db.commit()
-        assert cursor.lastrowid is not None
-        return cursor.lastrowid
-
-    async def log_action(
-        self, decision_id: int, status: str, result_summary: str | None
-    ) -> int:
-        cursor = await self.db.execute(
-            "INSERT INTO actions (ts, decision_id, status, result_summary) VALUES (?, ?, ?, ?)",
-            (time.time(), decision_id, status, result_summary),
-        )
-        await self.db.commit()
-        assert cursor.lastrowid is not None
-        return cursor.lastrowid
 
     async def upsert_action_log_entry(
         self,
@@ -549,38 +450,6 @@ class TranscriptStore:
             for r in rows
         ]
 
-    async def log_heartbeat(self, decided_to_speak: bool, reply: str | None) -> int:
-        cursor = await self.db.execute(
-            "INSERT INTO heartbeats (ts, decided_to_speak, reply) VALUES (?, ?, ?)",
-            (time.time(), 1 if decided_to_speak else 0, reply),
-        )
-        await self.db.commit()
-        assert cursor.lastrowid is not None
-        return cursor.lastrowid
-
-    async def log_event(
-        self,
-        kind: EventKind | str,
-        *,
-        transcript_id: int | None = None,
-        decision_id: int | None = None,
-        payload: dict[str, Any] | None = None,
-    ) -> int:
-        cursor = await self.db.execute(
-            "INSERT INTO events (ts, kind, transcript_id, decision_id, payload_json)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (
-                time.time(),
-                str(kind),
-                transcript_id,
-                decision_id,
-                json.dumps(payload) if payload is not None else None,
-            ),
-        )
-        await self.db.commit()
-        assert cursor.lastrowid is not None
-        return cursor.lastrowid
-
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
         cursor = await self.db.execute(
             "SELECT id, ts, text, mode FROM transcripts"
@@ -597,17 +466,6 @@ class TranscriptStore:
             }
             for r in reversed(rows)
         ]
-
-    async def purge_older_than(self, days: int) -> int:
-        cutoff = time.time() - (days * 86400)
-        tx_cursor = await self.db.execute(
-            "DELETE FROM transcripts WHERE ts < ?", (cutoff,)
-        )
-        ev_cursor = await self.db.execute(
-            "DELETE FROM events WHERE ts < ?", (cutoff,)
-        )
-        await self.db.commit()
-        return (tx_cursor.rowcount or 0) + (ev_cursor.rowcount or 0)
 
     # Conversation memory methods
 
@@ -628,33 +486,6 @@ class TranscriptStore:
             (time.time(), conversation_id),
         )
         await self.db.commit()
-
-    async def create_turn(
-        self,
-        conversation_id: int,
-        aggregated_text: str,
-        utterance_count: int,
-        topic_tags: list[str] | None = None,
-    ) -> int:
-        """Create a new turn in a conversation."""
-        now = time.time()
-        cursor = await self.db.execute(
-            """
-            INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text, utterance_count, topic_tags)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                conversation_id,
-                now,
-                now,
-                aggregated_text,
-                utterance_count,
-                json.dumps(topic_tags) if topic_tags else None,
-            ),
-        )
-        await self.db.commit()
-        assert cursor.lastrowid is not None
-        return cursor.lastrowid
 
     async def get_active_conversation(self) -> dict[str, Any] | None:
         """Get the currently active conversation (end_ts IS NULL)."""
@@ -678,23 +509,6 @@ class TranscriptStore:
             "summary": row[4],
             "entity_map": row[5],
         }
-
-    async def update_conversation_summary(
-        self,
-        conversation_id: int,
-        summary: str,
-        entity_map: dict[str, Any] | None = None,
-    ) -> None:
-        """Update conversation summary and entity map."""
-        await self.db.execute(
-            """
-            UPDATE conversations
-            SET summary = ?, entity_map = ?
-            WHERE id = ?
-            """,
-            (summary, json.dumps(entity_map) if entity_map else None, conversation_id),
-        )
-        await self.db.commit()
 
     async def get_recent_turns(
         self, conversation_id: int, n: int = 3
@@ -723,16 +537,6 @@ class TranscriptStore:
             for r in reversed(rows)
         ]
 
-    async def link_transcript_to_turn(
-        self, transcript_id: int, turn_id: int
-    ) -> None:
-        """Link a transcript to a turn."""
-        await self.db.execute(
-            "UPDATE transcripts SET turn_id = ? WHERE id = ?",
-            (turn_id, transcript_id),
-        )
-        await self.db.commit()
-
     # Dynamic tools methods
 
     async def create_dynamic_tool(
@@ -758,73 +562,6 @@ class TranscriptStore:
         await self.db.commit()
         assert cursor.lastrowid is not None
         return cursor.lastrowid
-
-    async def get_dynamic_tool(self, name: str) -> dict[str, Any] | None:
-        """Get a dynamic tool by name."""
-        cursor = await self.db.execute(
-            """
-            SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
-                   created_ts, modified_ts, last_used_ts, usage_count
-            FROM dynamic_tools
-            WHERE name = ?
-            """,
-            (name,),
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "name": row[1],
-            "sdk_name": row[2],
-            "execution_type": row[3],
-            "description": row[4],
-            "enabled": bool(row[5]),
-            "definition_json": row[6],
-            "created_ts": row[7],
-            "modified_ts": row[8],
-            "last_used_ts": row[9],
-            "usage_count": row[10],
-        }
-
-    async def list_dynamic_tools(self, enabled_only: bool = True) -> list[dict[str, Any]]:
-        """List all dynamic tools."""
-        if enabled_only:
-            cursor = await self.db.execute(
-                """
-                SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
-                       created_ts, modified_ts, last_used_ts, usage_count
-                FROM dynamic_tools
-                WHERE enabled = 1
-                ORDER BY created_ts DESC
-                """
-            )
-        else:
-            cursor = await self.db.execute(
-                """
-                SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
-                       created_ts, modified_ts, last_used_ts, usage_count
-                FROM dynamic_tools
-                ORDER BY created_ts DESC
-                """
-            )
-        rows = await cursor.fetchall()
-        return [
-            {
-                "id": r[0],
-                "name": r[1],
-                "sdk_name": r[2],
-                "execution_type": r[3],
-                "description": r[4],
-                "enabled": bool(r[5]),
-                "definition_json": r[6],
-                "created_ts": r[7],
-                "modified_ts": r[8],
-                "last_used_ts": r[9],
-                "usage_count": r[10],
-            }
-            for r in rows
-        ]
 
     async def update_dynamic_tool(
         self,
@@ -908,150 +645,6 @@ class TranscriptStore:
             for r in rows
         ]
 
-    async def record_tool_usage(self, name: str) -> None:
-        """Record that a tool was used (update last_used_ts and increment usage_count)."""
-        await self.db.execute(
-            """
-            UPDATE dynamic_tools
-            SET last_used_ts = ?, usage_count = usage_count + 1
-            WHERE name = ?
-            """,
-            (time.time(), name),
-        )
-        await self.db.commit()
-
-    # ============================================================================
-    # User Profile Methods
-    # ============================================================================
-
-    async def get_user_profile(self) -> dict:
-        """Get complete user profile from database."""
-        cursor = await self.db.execute(
-            "SELECT key, value_json FROM user_profile"
-        )
-        rows = await cursor.fetchall()
-
-        profile = {}
-        for key, value_json in rows:
-            profile[key] = json.loads(value_json) if value_json else {}
-
-        return profile
-
-    async def set_user_profile(self, key: str, value: dict) -> None:
-        """Set a user profile value."""
-        value_json = json.dumps(value, ensure_ascii=False)
-        await self.db.execute(
-            """
-            INSERT OR REPLACE INTO user_profile (key, value_json)
-            VALUES (?, ?)
-            """,
-            (key, value_json),
-        )
-        await self.db.commit()
-
-    async def update_user_profile(self, updates: dict) -> None:
-        """Update multiple profile values."""
-        for key, value in updates.items():
-            value_json = json.dumps(value, ensure_ascii=False)
-            await self.db.execute(
-                """
-                INSERT OR REPLACE INTO user_profile (key, value_json)
-                VALUES (?, ?)
-                """,
-                (key, value_json),
-            )
-        await self.db.commit()
-
-    async def delete_user_profile_key(self, key: str) -> bool:
-        """Delete a profile key. Returns True if deleted, False if not found."""
-        cursor = await self.db.execute(
-            "DELETE FROM user_profile WHERE key = ?",
-            (key,),
-        )
-        await self.db.commit()
-        return cursor.rowcount > 0
-
-    async def clear_user_profile(self) -> None:
-        """Clear all user profile data."""
-        await self.db.execute("DELETE FROM user_profile")
-        await self.db.commit()
-
-    async def get_user_profile_value(self, key: str, default=None):
-        """Get a specific profile value with optional default."""
-        cursor = await self.db.execute(
-            "SELECT value_json FROM user_profile WHERE key = ?",
-            (key,),
-        )
-        row = await cursor.fetchone()
-
-        if row is None:
-            return default
-
-        value_json = row[0]
-        return json.loads(value_json) if value_json else default
-
-    async def set_allowed_directory(self, path: str, label: str, approved_at: str) -> None:
-        """Add directory to allowed list."""
-        profile = await self.get_user_profile()
-
-        if "allowed_directories" not in profile:
-            profile["allowed_directories"] = []
-
-        # Remove if already exists
-        profile["allowed_directories"] = [
-            item for item in profile["allowed_directories"]
-            if item["path"] != path
-        ]
-
-        # Add new entry
-        profile["allowed_directories"].append({
-            "path": path,
-            "label": label,
-            "approved_at": approved_at,
-        })
-
-        await self.set_user_profile("allowed_directories", profile["allowed_directories"])
-
-    async def remove_allowed_directory(self, path: str) -> bool:
-        """Remove directory from allowed list."""
-        profile = await self.get_user_profile()
-
-        if "allowed_directories" not in profile:
-            return False
-
-        original_count = len(profile["allowed_directories"])
-        profile["allowed_directories"] = [
-            item for item in profile["allowed_directories"]
-            if item["path"] != path
-        ]
-
-        if len(profile["allowed_directories"]) < original_count:
-            await self.set_user_profile("allowed_directories", profile["allowed_directories"])
-            return True
-
-        return False
-
-    async def is_directory_allowed(self, path: str, workspace_path: str) -> bool:
-        """Check if directory is allowed."""
-        profile = await self.get_user_profile()
-
-        # Always allow workspace
-        if path == workspace_path:
-            return True
-
-        # Check allowed directories
-        if "allowed_directories" in profile:
-            for item in profile["allowed_directories"]:
-                if path == item["path"]:
-                    return True
-
-                # Check if this path is a subdirectory of an allowed path
-                allowed_path = item["path"]
-                if path.startswith(allowed_path + "/") or path == allowed_path:
-                    return True
-
-        return False
-
     # ------------------------------------------------------------------
     # USE-001: usage_events — append-only ledger of paid API calls.
 
@@ -1096,71 +689,3 @@ class TranscriptStore:
             ),
         )
         await self.db.commit()
-
-    async def get_usage_summary(self, *, since: float = 0.0) -> dict[str, Any]:
-        """Aggregate usage across the ledger from ``since`` (epoch
-        seconds) to now.
-
-        Returns the shape the dashboard widget consumes:
-
-        ``{"llm": {"calls", "input_tokens", "output_tokens", "cost_usd"},
-           "stt": {"calls", "audio_seconds", "cost_usd"},
-           "tts": {"calls", "char_count", "cost_usd"},
-           "total_cost_usd": float,
-           "since": float}``
-
-        Aggregating in SQL keeps the watch refresh tight: even with a
-        long-running daemon the query stays index-bound on
-        ``idx_usage_events_ts``.
-        """
-        cursor = await self.db.execute(
-            """
-            SELECT kind,
-                   COUNT(*),
-                   COALESCE(SUM(input_tokens), 0),
-                   COALESCE(SUM(output_tokens), 0),
-                   COALESCE(SUM(audio_seconds), 0.0),
-                   COALESCE(SUM(char_count), 0),
-                   COALESCE(SUM(cost_usd), 0.0)
-            FROM usage_events
-            WHERE ts >= ?
-            GROUP BY kind
-            """,
-            (since,),
-        )
-        rows = await cursor.fetchall()
-
-        empty_llm = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
-        empty_stt = {"calls": 0, "audio_seconds": 0.0, "cost_usd": 0.0}
-        empty_tts = {"calls": 0, "char_count": 0, "cost_usd": 0.0}
-        summary: dict[str, Any] = {
-            "llm": dict(empty_llm),
-            "stt": dict(empty_stt),
-            "tts": dict(empty_tts),
-            "total_cost_usd": 0.0,
-            "since": since,
-        }
-
-        for kind, calls, in_tok, out_tok, audio_s, chars, cost in rows:
-            if kind == "llm":
-                summary["llm"] = {
-                    "calls": int(calls),
-                    "input_tokens": int(in_tok),
-                    "output_tokens": int(out_tok),
-                    "cost_usd": float(cost),
-                }
-            elif kind == "stt":
-                summary["stt"] = {
-                    "calls": int(calls),
-                    "audio_seconds": float(audio_s),
-                    "cost_usd": float(cost),
-                }
-            elif kind == "tts":
-                summary["tts"] = {
-                    "calls": int(calls),
-                    "char_count": int(chars),
-                    "cost_usd": float(cost),
-                }
-            summary["total_cost_usd"] += float(cost)
-
-        return summary

@@ -30,7 +30,7 @@ import os
 import re
 import signal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -38,6 +38,14 @@ if TYPE_CHECKING:
     from src.config import Settings
 
 logger = logging.getLogger("heare.direct_tools")
+
+# Memory backend singleton (set by build_pipeline)
+_memory_backend: Any = None
+
+
+def set_memory_backend(backend: Any) -> None:
+    global _memory_backend
+    _memory_backend = backend
 
 from src.agent.llm.providers import PROVIDERS
 from src.agent.tools.subagent import run_opencode
@@ -194,6 +202,14 @@ async def execute_direct(
         return await _execute_audio_device(args, settings)
     elif tool == "run_agent":
         return await _execute_run_agent(args, settings)
+    elif tool == "remember":
+        return await _execute_remember(args, settings)
+    elif tool == "recall":
+        return await _execute_recall(args, settings)
+    elif tool == "forget":
+        return await _execute_forget(args, settings)
+    elif tool == "memory_status":
+        return await _execute_memory_status(args, settings)
     else:
         return {
             "success": False,
@@ -3462,4 +3478,38 @@ async def _execute_agent_deny(args: str, settings: "Settings | None" = None) -> 
     result["spoken"] = {"en": "Denied." + (f" Sent correction." if reason else ""),
                         "uk": "Відхилено."}
     return result
+
+
+# ============================================================================
+# Memory tool handlers
+# ============================================================================
+
+
+async def _execute_remember(args: str, settings: "Settings | None" = None) -> dict:
+    if _memory_backend is None:
+        return {"success": False, "error": "Memory backend not available",
+                "spoken": {"en": "Memory system is not available."}}
+    from src.memory.tools import remember
+    return await remember(_memory_backend, args)
+
+
+async def _execute_recall(args: str, settings: "Settings | None" = None) -> dict:
+    if _memory_backend is None:
+        return {"success": False, "error": "Memory backend not available"}
+    from src.memory.tools import recall
+    return await recall(_memory_backend, args)
+
+
+async def _execute_forget(args: str, settings: "Settings | None" = None) -> dict:
+    if _memory_backend is None:
+        return {"success": False, "error": "Memory backend not available"}
+    from src.memory.tools import forget
+    return await forget(_memory_backend, args)
+
+
+async def _execute_memory_status(args: str, settings: "Settings | None" = None) -> dict:
+    if _memory_backend is None:
+        return {"success": False, "error": "Memory backend not available"}
+    from src.memory.tools import memory_status
+    return await memory_status(_memory_backend, args)
 

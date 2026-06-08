@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.config import Settings
+    from src.memory.base import MemoryBackend
     from src.store.conversation import ConversationManager
     from src.store.storage import TranscriptStore
 
@@ -39,11 +40,13 @@ class ContextBuilder:
         settings: "Settings",
         conversation_manager: "ConversationManager | None" = None,
         project_dir: str | None = None,
+        memory_backend: "MemoryBackend | None" = None,
     ) -> None:
         self.store = store
         self.settings = settings
         self.conversation_manager = conversation_manager
         self._project_dir = project_dir
+        self._memory_backend = memory_backend
         self._mcp_bridge: Any = None
         self._session_state: Any = None
         self._mcp_descriptions: str | None = None
@@ -155,6 +158,16 @@ class ContextBuilder:
             )
         else:
             result["recent_actions"] = "(none)"
+        # Inject relevant memories from the memory backend
+        if self._memory_backend is not None:
+            try:
+                memories = await self._memory_backend.context(
+                    query=transcript, limit=3
+                )
+                if memories:
+                    result["memory_block"] = self._format_memories(memories)
+            except Exception:
+                pass  # never break prompt building
         if self._project_dir:
             result["project_dir"] = self._project_dir
         result["workspace_dir"] = str(self.settings.workspace_dir)
@@ -275,6 +288,14 @@ class ContextBuilder:
         except Exception:
             pass  # never break context building
         return result
+
+    @staticmethod
+    def _format_memories(memories: list) -> str:
+        """Format memory entries for the system prompt."""
+        lines = []
+        for m in memories:
+            lines.append(f"  - [{m.type.value}] {m.content}")
+        return "\n".join(lines) if lines else ""
 
     def _render_silence_block(self, recent: list[dict], now_ts: float) -> str:
         """Return a one-line context note about how long the room has been quiet."""

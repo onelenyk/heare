@@ -471,6 +471,31 @@ TOOLS: dict[str, Tool] = {
         description="Deny a pending permission request. Optionally send corrective instructions.",
         enabled=True,
     ),
+    # Memory tools
+    "remember": Tool(
+        name="remember",
+        sdk_name="Remember",
+        execution="direct",
+        description="Store a fact in persistent memory. Use when the user explicitly asks you to remember something (a preference, a name, a decision, an event).",
+    ),
+    "recall": Tool(
+        name="recall",
+        sdk_name="Recall",
+        execution="direct",
+        description="Search your persistent memory for facts, preferences, or past events. Use when you need to recall something the user told you before.",
+    ),
+    "forget": Tool(
+        name="forget",
+        sdk_name="Forget",
+        execution="direct",
+        description="Remove a memory by its ID. Use when the user asks you to forget something.",
+    ),
+    "memory_status": Tool(
+        name="memory_status",
+        sdk_name="MemoryStatus",
+        execution="direct",
+        description="Show how many memories you have stored, broken down by type.",
+    ),
 
 }
 

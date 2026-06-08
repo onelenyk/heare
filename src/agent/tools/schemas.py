@@ -709,58 +709,34 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
         [],
         _json_args,
     ),
+    "remember": (
+        {
+            "type": {"type": "string", "enum": ["fact", "preference", "decision", "event"], "description": "Type of memory to store."},
+            "content": {"type": "string", "description": "What to remember."},
+        },
+        ["type", "content"],
+        _json_args,
+    ),
+    "recall": (
+        {
+            "query": {"type": "string", "description": "What to search for."},
+        },
+        ["query"],
+        _json_args,
+    ),
+    "forget": (
+        {
+            "memory_id": {"type": "string", "description": "ID of memory to forget."},
+        },
+        ["memory_id"],
+        _json_args,
+    ),
+    "memory_status": (
+        {},
+        [],
+        _json_args,
+    ),
 }
-
-
-def build_tools_schema():
-    """Return a ``ToolsSchema`` covering every enabled tool in the registry.
-
-    Pipecat is imported lazily so admin CLI paths that import this
-    module without portaudio installed still load.
-    """
-    from pipecat.adapters.schemas.function_schema import FunctionSchema
-    from pipecat.adapters.schemas.tools_schema import ToolsSchema
-
-    enabled = get_enabled_tools()
-    schemas: list = []
-    for name, tool in TOOLS.items():
-        if not tool.enabled or name not in enabled:
-            continue
-        spec = _TOOL_SPECS.get(name)
-        if spec is None:
-            logger.warning(
-                "llm_tools: tool %r enabled in registry but no schema "
-                "defined; skipping",
-                name,
-            )
-            continue
-        properties, required, _ = spec
-        schemas.append(
-            FunctionSchema(
-                name=name,
-                description=tool.description,
-                properties=properties,
-                required=required,
-            )
-        )
-
-    # Add dynamic tools schemas
-    from src.agent.tools.registry import _DYNAMIC_TOOLS
-    for name in _DYNAMIC_TOOLS:
-        if name not in enabled:
-            continue
-        dynamic_schema = get_dynamic_tool_schema(name)
-        if dynamic_schema:
-            schemas.append(
-                FunctionSchema(
-                    name=name,
-                    description=get_tool(name).description,
-                    properties=dynamic_schema[0],
-                    required=dynamic_schema[1],
-                )
-            )
-
-    return ToolsSchema(standard_tools=schemas)
 
 
 _intent_id_seq = itertools.count(start=1)
@@ -881,51 +857,6 @@ def _make_handler(
     return handler
 
 
-def register_all_tools(
-    llm: Any,
-    *,
-    settings: "Settings | None" = None,
-    conversation_manager: Any = None,
-    session_state: Any = None,
-) -> list[str]:
-    """Register one ``FunctionCallParams`` handler per enabled tool.
-
-    Returns the list of tool names actually registered, primarily for
-    test / log assertions. When ``conversation_manager`` is supplied,
-    every tool invocation is bracketed with action-log records so the
-    next-turn LLM context's ``recent_actions`` block stays populated
-    (CCS-02 / CCS-04 grounding rules).
-    """
-    enabled = get_enabled_tools()
-    registered: list[str] = []
-    for name, tool in TOOLS.items():
-        if not tool.enabled or name not in enabled:
-            continue
-        spec = _TOOL_SPECS.get(name)
-        if spec is None:
-            logger.warning(
-                "llm_tools: register_all_tools: tool %r has no schema; "
-                "skipping",
-                name,
-            )
-            continue
-        _, _, serializer = spec
-        handler = _make_handler(
-            name, serializer, settings, conversation_manager, session_state
-        )
-        # cancel is an InterruptionFrame-driven concept after PH2-05; the
-        # handler itself never executes for real cancels but we register
-        # it so the LLM has a parsable function name in its tool surface.
-        cancel_on_interruption = name != "cancel"
-        llm.register_function(
-            name,
-            handler,
-            cancel_on_interruption=cancel_on_interruption,
-        )
-        registered.append(name)
-    return registered
-
-
 # ---------------------------------------------------------------------------
 # Dynamic tool schema registration — for runtime tool creation
 # ---------------------------------------------------------------------------
@@ -984,8 +915,6 @@ def register_dynamic_tool_handler(
 
 
 __all__ = [
-    "build_tools_schema",
-    "register_all_tools",
     "register_dynamic_tool_schema",
     "unregister_dynamic_tool_schema",
     "register_dynamic_tool_handler",

@@ -99,10 +99,21 @@ async def test_active_topics_from_last_2_turns(store: TranscriptStore, fake_clau
     """Test that active_topics are extracted from last 2 turns."""
     conv_id = await store.start_conversation("focus")
 
-    # Create 3 turns with different topics
-    await store.create_turn(conv_id, "Turn 1", 1, ["topic1", "topic2"])
-    await store.create_turn(conv_id, "Turn 2", 1, ["topic3", "topic4"])
-    await store.create_turn(conv_id, "Turn 3", 1, ["topic5", "topic6"])
+    # Create 3 turns with different topics via raw SQL
+    import json as _json
+    now = time.time()
+    for text, tags in [
+        ("Turn 1", ["topic1", "topic2"]),
+        ("Turn 2", ["topic3", "topic4"]),
+        ("Turn 3", ["topic5", "topic6"]),
+    ]:
+        await store.db.execute(
+            "INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text,"
+            " utterance_count, topic_tags) VALUES (?, ?, ?, ?, ?, ?)",
+            (conv_id, now, now, text, 1, _json.dumps(tags)),
+        )
+        now += 1
+    await store.db.commit()
 
     manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
@@ -119,9 +130,20 @@ async def test_active_topics_deduplicates(store: TranscriptStore, fake_claude: F
     """Test that active_topics deduplicates across turns."""
     conv_id = await store.start_conversation("ambient")
 
-    # Create turns with overlapping topics
-    await store.create_turn(conv_id, "Turn 1", 1, ["weather", "meeting"])
-    await store.create_turn(conv_id, "Turn 2", 1, ["weather", "coding"])
+    # Create turns with overlapping topics via raw SQL
+    import json as _json
+    now = time.time()
+    await store.db.execute(
+        "INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text,"
+        " utterance_count, topic_tags) VALUES (?, ?, ?, ?, ?, ?)",
+        (conv_id, now, now, "Turn 1", 1, _json.dumps(["weather", "meeting"])),
+    )
+    await store.db.execute(
+        "INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text,"
+        " utterance_count, topic_tags) VALUES (?, ?, ?, ?, ?, ?)",
+        (conv_id, now + 1, now + 1, "Turn 2", 1, _json.dumps(["weather", "coding"])),
+    )
+    await store.db.commit()
 
     manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
@@ -136,13 +158,15 @@ async def test_recent_turns_verbatim(store: TranscriptStore, fake_claude: FakeCl
     conv_id = await store.start_conversation("focus")
 
     # Create 5 turns
+    import json as _json
+    now = time.time()
     for i in range(5):
-        await store.create_turn(
-            conversation_id=conv_id,
-            aggregated_text=f"Turn {i+1}",
-            utterance_count=i + 1,
-            topic_tags=[f"topic{i}"],
+        await store.db.execute(
+            "INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text,"
+            " utterance_count, topic_tags) VALUES (?, ?, ?, ?, ?, ?)",
+            (conv_id, now + i, now + i, f"Turn {i+1}", i + 1, _json.dumps([f"topic{i}"])),
         )
+    await store.db.commit()
 
     manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)
@@ -168,9 +192,20 @@ async def test_recent_transcripts_fallback(store: TranscriptStore, fake_claude: 
     """Test that recent_transcripts provides fallback string."""
     conv_id = await store.start_conversation("ambient")
 
-    # Create turns
-    await store.create_turn(conv_id, "First turn", 1, ["topic1"])
-    await store.create_turn(conv_id, "Second turn", 1, ["topic2"])
+    # Create turns via raw SQL
+    import json as _json
+    now = time.time()
+    await store.db.execute(
+        "INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text,"
+        " utterance_count, topic_tags) VALUES (?, ?, ?, ?, ?, ?)",
+        (conv_id, now, now, "First turn", 1, _json.dumps(["topic1"])),
+    )
+    await store.db.execute(
+        "INSERT INTO turns (conversation_id, start_ts, end_ts, aggregated_text,"
+        " utterance_count, topic_tags) VALUES (?, ?, ?, ?, ?, ?)",
+        (conv_id, now + 1, now + 1, "Second turn", 1, _json.dumps(["topic2"])),
+    )
+    await store.db.commit()
 
     manager = ConversationManager(store)
     ctx = await manager.build_context(conv_id)

@@ -601,6 +601,40 @@ TOOLS: list[ToolDef] = [
         },
         required=["session_id"],
     ),
+    ToolDef(
+        name="remember",
+        description="Store a fact in persistent memory.",
+        handler="remember",
+        schema_fields={
+            "type": {"type": "string", "enum": ["fact", "preference", "decision", "event"], "description": "Type of memory to store."},
+            "content": {"type": "string", "description": "What to remember. A short sentence."},
+        },
+        required=["type", "content"],
+    ),
+    ToolDef(
+        name="recall",
+        description="Search your persistent memory.",
+        handler="recall",
+        schema_fields={
+            "query": {"type": "string", "description": "What to search for in your memories."},
+        },
+        required=["query"],
+    ),
+    ToolDef(
+        name="forget",
+        description="Remove a memory by ID.",
+        handler="forget",
+        schema_fields={
+            "memory_id": {"type": "string", "description": "The ID of the memory to forget (from recall results)."},
+        },
+        required=["memory_id"],
+    ),
+    ToolDef(
+        name="memory_status",
+        description="Show memory statistics.",
+        handler="memory_status",
+        schema_fields={},
+    ),
 
 ]
 
@@ -660,6 +694,10 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "agent_list": _empty_serializer,
     "agent_approve": _json_serializer,
     "agent_deny": _json_serializer,
+    "remember": _json_serializer,
+    "recall": _json_serializer,
+    "forget": _json_serializer,
+    "memory_status": _json_serializer,
 
 }
 
@@ -720,6 +758,10 @@ def _handler_for(tool: ToolDef):
         "agent_list": direct._execute_agent_list,
         "agent_approve": direct._execute_agent_approve,
         "agent_deny": direct._execute_agent_deny,
+        "remember": direct._execute_remember,
+        "recall": direct._execute_recall,
+        "forget": direct._execute_forget,
+        "memory_status": direct._execute_memory_status,
 
     }
 

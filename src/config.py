@@ -248,6 +248,7 @@ class Settings:
     ambient_mode_turn_timeout: float = 3.0
     max_turn_duration: float = 30.0
     conversation_memory_enabled: bool = False
+    memory_backend: str = "sqlite"  # "sqlite" | "engram" | "mem0" | "noop"
     max_conversation_age_hours: float = 24.0
     topic_extraction_enabled: bool = True
     # CCS-01: hydration freshness window. The action log on startup is

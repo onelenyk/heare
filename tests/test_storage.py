@@ -1,7 +1,6 @@
 """Tests for src/storage.py TranscriptStore against a temp SQLite db."""
 from __future__ import annotations
 
-import json
 import tempfile
 import time
 from pathlib import Path
@@ -32,65 +31,12 @@ async def test_log_and_read_transcript(store: TranscriptStore) -> None:
     assert recent[0]["mode"] == "ambient"
 
 
-async def test_log_decision_and_action(store: TranscriptStore) -> None:
-    tid = await store.log_transcript("запусти тести", "focus")
-    decision = {
-        "type": "act",
-        "confidence": 0.9,
-        "reason": "user asked",
-        "intent": "run pytest",
-        "action": {"tool": "Bash", "args": "pytest"},
-    }
-    did = await store.log_decision(tid, decision)
-    assert did > 0
-    aid = await store.log_action(did, "ok", "all tests passed")
-    assert aid > 0
-
-
-async def test_heartbeat_log(store: TranscriptStore) -> None:
-    hid = await store.log_heartbeat(True, "як справи?")
-    assert hid > 0
-    hid2 = await store.log_heartbeat(False, None)
-    assert hid2 > hid
-
-
 async def test_recent_transcripts_ordering(store: TranscriptStore) -> None:
     await store.log_transcript("first", "ambient")
     await store.log_transcript("second", "ambient")
     await store.log_transcript("third", "ambient")
     recent = await store.recent_transcripts(2)
     assert [r["text"] for r in recent] == ["second", "third"]
-
-
-async def test_purge_older_than_removes_old(store: TranscriptStore) -> None:
-    tid = await store.log_transcript("old entry", "ambient")
-    # backdate to 60 days ago via raw SQL
-    old_ts = __import__("time").time() - 60 * 86400
-    await store.db.execute("UPDATE transcripts SET ts = ? WHERE id = ?", (old_ts, tid))
-    await store.db.commit()
-    removed = await store.purge_older_than(30)
-    assert removed >= 1
-    recent = await store.recent_transcripts(10)
-    assert all(r["id"] != tid for r in recent)
-
-
-async def test_purge_older_than_keeps_recent(store: TranscriptStore) -> None:
-    tid = await store.log_transcript("fresh entry", "ambient")
-    removed = await store.purge_older_than(30)
-    assert removed == 0
-    recent = await store.recent_transcripts(10)
-    assert any(r["id"] == tid for r in recent)
-
-
-async def test_log_decision_with_none_fields(store: TranscriptStore) -> None:
-    decision = {
-        "type": "nothing",
-        "confidence": None,
-        "reply": None,
-        "intent": None,
-    }
-    did = await store.log_decision(None, decision)
-    assert did > 0
 
 
 async def test_recent_transcripts_empty_db(store: TranscriptStore) -> None:
@@ -173,10 +119,6 @@ async def test_schema_version_fail_loud_on_newer_db() -> None:
             await s2.init()
         await s2.close()
 
-# ---------------------------------------------------------------------------
-# RT-001: schema v3 events table + EventKind + log_event + WAL + purge
-# ---------------------------------------------------------------------------
-
 
 async def test_schema_version_current_on_fresh_install(store: TranscriptStore) -> None:
     from src.store.storage import SCHEMA_VERSION
@@ -189,135 +131,6 @@ async def test_schema_version_current_on_fresh_install(store: TranscriptStore) -
     assert int(row[0]) == SCHEMA_VERSION
 
 
-async def test_schema_upgrade_v2_to_v3() -> None:
-    import aiosqlite as _aiosqlite
-
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "v2.db"
-        # Build a minimal v2 DB by hand: pre-populate meta and transcripts
-        # without the events table.
-        async with _aiosqlite.connect(db_path) as raw:
-            await raw.executescript(
-                """
-                CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                CREATE TABLE transcripts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts REAL NOT NULL,
-                    text TEXT NOT NULL,
-                    mode TEXT NOT NULL,
-                    speaker_id TEXT,
-                    speaker_confidence REAL
-                );
-                CREATE TABLE decisions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts REAL NOT NULL,
-                    transcript_id INTEGER,
-                    type TEXT NOT NULL,
-                    confidence REAL,
-                    reason TEXT,
-                    reply TEXT,
-                    intent TEXT,
-                    action_json TEXT
-                );
-                CREATE TABLE actions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts REAL NOT NULL,
-                    decision_id INTEGER NOT NULL,
-                    status TEXT NOT NULL,
-                    result_summary TEXT
-                );
-                CREATE TABLE heartbeats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts REAL NOT NULL,
-                    decided_to_speak INTEGER NOT NULL,
-                    reply TEXT
-                );
-                """
-            )
-            await raw.execute(
-                "INSERT INTO meta (key, value) VALUES (?, ?)", ("schema_version", "2")
-            )
-            await raw.execute(
-                "INSERT INTO transcripts (ts, text, mode) VALUES (?, ?, ?)",
-                (time.time(), "pre-upgrade", "ambient"),
-            )
-            await raw.commit()
-
-        # Now open via TranscriptStore — init() must upgrade in place
-        s = TranscriptStore(db_path)
-        await s.init()
-        # meta.schema_version matches the current SCHEMA_VERSION constant
-        from src.store.storage import SCHEMA_VERSION
-
-        cursor = await s.db.execute(
-            "SELECT value FROM meta WHERE key = ?", ("schema_version",)
-        )
-        row = await cursor.fetchone()
-        assert row is not None
-        assert int(row[0]) == SCHEMA_VERSION
-        # events table exists
-        cursor = await s.db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
-        )
-        assert await cursor.fetchone() is not None
-        # Pre-upgrade transcript preserved
-        recent = await s.recent_transcripts(10)
-        assert any(r["text"] == "pre-upgrade" for r in recent)
-        await s.close()
-
-
-async def test_log_event_happy_path(store: TranscriptStore) -> None:
-    tid = await store.log_transcript("hello", "ambient")
-    eid = await store.log_event(
-        "decider.start", transcript_id=tid, payload={"mode": "ambient"}
-    )
-    assert eid > 0
-    cursor = await store.db.execute(
-        "SELECT kind, transcript_id, decision_id, payload_json FROM events WHERE id = ?",
-        (eid,),
-    )
-    row = await cursor.fetchone()
-    assert row is not None
-    kind, got_tid, did, payload_json = row
-    assert kind == "decider.start"
-    assert got_tid == tid
-    assert did is None
-    assert json.loads(payload_json) == {"mode": "ambient"}
-
-
-async def test_log_event_null_fks(store: TranscriptStore) -> None:
-    eid = await store.log_event("state.listening")
-    cursor = await store.db.execute(
-        "SELECT transcript_id, decision_id, payload_json FROM events WHERE id = ?",
-        (eid,),
-    )
-    row = await cursor.fetchone()
-    assert row == (None, None, None)
-
-
-async def test_log_event_accepts_strenum(store: TranscriptStore) -> None:
-    from src.store.storage import EventKind
-
-    eid = await store.log_event(EventKind.DECIDER_START)
-    cursor = await store.db.execute(
-        "SELECT kind FROM events WHERE id = ?", (eid,)
-    )
-    row = await cursor.fetchone()
-    assert row == ("decider.start",)
-
-
-async def test_purge_older_than_includes_events(store: TranscriptStore) -> None:
-    eid = await store.log_event("decider.start", payload={"test": True})
-    old_ts = time.time() - 60 * 86400
-    await store.db.execute("UPDATE events SET ts = ? WHERE id = ?", (old_ts, eid))
-    await store.db.commit()
-    removed = await store.purge_older_than(30)
-    assert removed >= 1
-    cursor = await store.db.execute("SELECT COUNT(*) FROM events WHERE id = ?", (eid,))
-    row = await cursor.fetchone()
-    assert row == (0,)
-
-
 async def test_wal_mode_set_after_init(store: TranscriptStore) -> None:
     cursor = await store.db.execute("PRAGMA journal_mode")
     row = await cursor.fetchone()
@@ -325,54 +138,11 @@ async def test_wal_mode_set_after_init(store: TranscriptStore) -> None:
     assert row[0].lower() == "wal"
 
 
-async def test_events_indexes_exist(store: TranscriptStore) -> None:
-    cursor = await store.db.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' "
-        "AND name IN ('idx_events_ts', 'idx_events_decision')"
-    )
-    rows = await cursor.fetchall()
-    names = {r[0] for r in rows}
-    assert names == {"idx_events_ts", "idx_events_decision"}
-
-
-# ---------------------------------------------------------------------------
-# DP-003: PRAGMA foreign_keys=ON + ON DELETE SET NULL cascade on events
-# ---------------------------------------------------------------------------
-
-
 async def test_foreign_keys_enabled_after_init(store: TranscriptStore) -> None:
     cursor = await store.db.execute("PRAGMA foreign_keys")
     row = await cursor.fetchone()
     assert row is not None
     assert int(row[0]) == 1
-
-
-async def test_event_decision_id_cascade_sets_null(store: TranscriptStore) -> None:
-    tid = await store.log_transcript("hello", "ambient")
-    did = await store.log_decision(
-        tid,
-        {
-            "type": "act",
-            "confidence": 0.9,
-            "reason": "asked",
-            "reply": None,
-            "intent": "run a thing",
-            "action": {"tool": "Bash", "args": "echo hi"},
-        },
-    )
-    eid = await store.log_event(
-        "action.executing", decision_id=did, payload={"intent": "run a thing"}
-    )
-
-    await store.db.execute("DELETE FROM decisions WHERE id = ?", (did,))
-    await store.db.commit()
-
-    cursor = await store.db.execute(
-        "SELECT decision_id FROM events WHERE id = ?", (eid,)
-    )
-    row = await cursor.fetchone()
-    assert row is not None
-    assert row[0] is None
 
 
 async def test_conversation_tables_create(store: TranscriptStore) -> None:
@@ -419,87 +189,6 @@ async def test_start_and_end_conversation(store: TranscriptStore) -> None:
     assert active is None
 
 
-async def test_create_turn(store: TranscriptStore) -> None:
-    """Test creating a turn in a conversation."""
-    # Start a conversation
-    conv_id = await store.start_conversation("focus")
-
-    # Create a turn
-    turn_id = await store.create_turn(
-        conversation_id=conv_id,
-        aggregated_text="Hello world, this is a test",
-        utterance_count=3,
-        topic_tags=["greeting", "test"],
-    )
-    assert turn_id > 0
-
-    # Verify turn was created
-    cursor = await store.db.execute(
-        "SELECT aggregated_text, utterance_count, topic_tags FROM turns WHERE id = ?",
-        (turn_id,),
-    )
-    row = await cursor.fetchone()
-    assert row is not None
-    assert row[0] == "Hello world, this is a test"
-    assert row[1] == 3
-    assert row[2] == '["greeting", "test"]'
-
-
-async def test_update_conversation_summary(store: TranscriptStore) -> None:
-    """Test updating conversation summary."""
-    conv_id = await store.start_conversation("ambient")
-
-    # Update summary
-    await store.update_conversation_summary(
-        conversation_id=conv_id,
-        summary="Discussed weather and plans",
-        entity_map={"location": "Kyiv", "topic": "weather"},
-    )
-
-    # Verify summary was updated
-    active = await store.get_active_conversation()
-    assert active is not None
-    assert active["summary"] == "Discussed weather and plans"
-    assert active["entity_map"] == '{"location": "Kyiv", "topic": "weather"}'
-
-
-async def test_get_recent_turns(store: TranscriptStore) -> None:
-    """Test retrieving recent turns."""
-    conv_id = await store.start_conversation("focus")
-
-    # Create multiple turns
-    await store.create_turn(conv_id, "First turn", 1, ["topic1"])
-    await store.create_turn(conv_id, "Second turn", 2, ["topic2"])
-    await store.create_turn(conv_id, "Third turn", 1, ["topic3"])
-
-    # Get recent turns
-    turns = await store.get_recent_turns(conv_id, n=2)
-    assert len(turns) == 2
-    assert turns[0]["aggregated_text"] == "Second turn"
-    assert turns[1]["aggregated_text"] == "Third turn"
-
-
-async def test_link_transcript_to_turn(store: TranscriptStore) -> None:
-    """Test linking a transcript to a turn."""
-    # Create a transcript
-    tid = await store.log_transcript("test transcript", "focus")
-
-    # Create a turn
-    conv_id = await store.start_conversation("focus")
-    turn_id = await store.create_turn(conv_id, "aggregated", 1)
-
-    # Link them
-    await store.link_transcript_to_turn(tid, turn_id)
-
-    # Verify link
-    cursor = await store.db.execute(
-        "SELECT turn_id FROM transcripts WHERE id = ?", (tid,)
-    )
-    row = await cursor.fetchone()
-    assert row is not None
-    assert row[0] == turn_id
-
-
 # ============================================================================
 # CCS-01: action_log persistence
 # ============================================================================
@@ -534,6 +223,8 @@ async def test_action_log_migration_idempotent() -> None:
 async def test_upsert_action_log_entry_inserts_then_updates(
     store: TranscriptStore,
 ) -> None:
+    import json
+
     rid1 = await store.upsert_action_log_entry(
         intent_id=42,
         tool="web_search",
@@ -564,6 +255,8 @@ async def test_upsert_action_log_entry_inserts_then_updates(
 async def test_load_recent_action_log_orders_newest_first_and_caps_limit(
     store: TranscriptStore,
 ) -> None:
+    import json
+
     base = time.time()
     for i in range(5):
         await store.upsert_action_log_entry(
@@ -584,6 +277,8 @@ async def test_load_recent_action_log_orders_newest_first_and_caps_limit(
 async def test_load_recent_action_log_filters_by_since_ts(
     store: TranscriptStore,
 ) -> None:
+    import json
+
     now = time.time()
     # Older than threshold
     await store.upsert_action_log_entry(
@@ -615,143 +310,3 @@ async def test_load_recent_action_log_filters_by_since_ts(
     rows = await store.load_recent_action_log(since_ts=now - 1800)
     ids = {r["intent_id"] for r in rows}
     assert ids == {201, 202}
-
-
-async def test_load_recent_action_log_excludes_legacy_decision_only_rows(
-    store: TranscriptStore,
-) -> None:
-    # legacy log_action: decision-id only, intent_id IS NULL — must NOT
-    # surface in the action_log projection.
-    tid = await store.log_transcript("legacy", "ambient")
-    did = await store.log_decision(tid, {"type": "act"})
-    await store.log_action(did, "ok", "legacy summary")
-    # action_log entry alongside it
-    await store.upsert_action_log_entry(
-        intent_id=300,
-        tool="web_search",
-        args="modern",
-        status="done",
-        result=json.dumps({"summary": "modern"}),
-    )
-    rows = await store.load_recent_action_log()
-    ids = {r["intent_id"] for r in rows}
-    assert ids == {300}
-
-
-# ----------------------------------------------------------------------
-# USE-001: usage_events ledger — paid API call tracking.
-
-
-async def test_empty_usage_summary_returns_zero(store: TranscriptStore) -> None:
-    summary = await store.get_usage_summary()
-    assert summary["llm"] == {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
-    assert summary["stt"] == {"calls": 0, "audio_seconds": 0.0, "cost_usd": 0.0}
-    assert summary["tts"] == {"calls": 0, "char_count": 0, "cost_usd": 0.0}
-    assert summary["total_cost_usd"] == 0.0
-
-
-async def test_record_and_summarize_llm_usage(store: TranscriptStore) -> None:
-    await store.record_usage_event(
-        kind="llm",
-        provider="deepseek",
-        model="google/gemini-3.1-flash-lite",
-        input_tokens=10_000,
-        output_tokens=5_000,
-        cost_usd=0.00225,
-    )
-    summary = await store.get_usage_summary()
-    assert summary["llm"]["calls"] == 1
-    assert summary["llm"]["input_tokens"] == 10_000
-    assert summary["llm"]["output_tokens"] == 5_000
-    assert abs(summary["llm"]["cost_usd"] - 0.00225) < 1e-9
-    assert abs(summary["total_cost_usd"] - 0.00225) < 1e-9
-
-
-async def test_record_and_summarize_stt_usage(store: TranscriptStore) -> None:
-    await store.record_usage_event(
-        kind="stt",
-        provider="groq",
-        audio_seconds=120.0,
-        cost_usd=0.00133,
-    )
-    summary = await store.get_usage_summary()
-    assert summary["stt"]["calls"] == 1
-    assert abs(summary["stt"]["audio_seconds"] - 120.0) < 1e-9
-    assert abs(summary["stt"]["cost_usd"] - 0.00133) < 1e-9
-    assert summary["llm"]["calls"] == 0
-    assert summary["tts"]["calls"] == 0
-
-
-async def test_record_and_summarize_tts_usage(store: TranscriptStore) -> None:
-    await store.record_usage_event(
-        kind="tts",
-        provider="edge_tts",
-        char_count=2_500,
-        cost_usd=0.0,
-    )
-    summary = await store.get_usage_summary()
-    assert summary["tts"]["calls"] == 1
-    assert summary["tts"]["char_count"] == 2_500
-    assert summary["tts"]["cost_usd"] == 0.0
-
-
-async def test_summary_aggregates_multiple_events(store: TranscriptStore) -> None:
-    """Two LLM calls + one STT → calls summed per kind, total spans all kinds."""
-    await store.record_usage_event(
-        kind="llm", provider="deepseek",
-        model="google/gemini-3.1-flash-lite",
-        input_tokens=10_000, output_tokens=5_000, cost_usd=0.00225,
-    )
-    await store.record_usage_event(
-        kind="llm", provider="deepseek",
-        model="google/gemini-3.1-flash-lite",
-        input_tokens=2_000, output_tokens=1_000, cost_usd=0.00045,
-    )
-    await store.record_usage_event(
-        kind="stt", provider="groq",
-        audio_seconds=60.0, cost_usd=0.000667,
-    )
-    summary = await store.get_usage_summary()
-    assert summary["llm"]["calls"] == 2
-    assert summary["llm"]["input_tokens"] == 12_000
-    assert summary["llm"]["output_tokens"] == 6_000
-    assert abs(summary["llm"]["cost_usd"] - 0.0027) < 1e-9
-    assert summary["stt"]["calls"] == 1
-    expected_total = 0.00225 + 0.00045 + 0.000667
-    assert abs(summary["total_cost_usd"] - expected_total) < 1e-9
-
-
-async def test_summary_since_filters_old_events(store: TranscriptStore) -> None:
-    """``since`` cutoff filters by ts — old events drop out of the window."""
-    now = time.time()
-    await store.record_usage_event(
-        kind="llm", provider="deepseek",
-        model="google/gemini-3.1-flash-lite",
-        input_tokens=1_000, output_tokens=500, cost_usd=0.000225,
-        ts=now - 7200,
-    )
-    await store.record_usage_event(
-        kind="llm", provider="deepseek",
-        model="google/gemini-3.1-flash-lite",
-        input_tokens=2_000, output_tokens=1_000, cost_usd=0.00045,
-        ts=now - 60,
-    )
-    summary = await store.get_usage_summary(since=now - 3600)
-    assert summary["llm"]["calls"] == 1
-    assert summary["llm"]["input_tokens"] == 2_000
-    assert abs(summary["llm"]["cost_usd"] - 0.00045) < 1e-9
-
-
-async def test_record_with_unknown_cost_stores_null(store: TranscriptStore) -> None:
-    """Unknown model → cost_usd is None; row still recorded so call counts
-    remain accurate. SUM(NULL) → COALESCE → 0.0 in the summary."""
-    await store.record_usage_event(
-        kind="llm", provider="deepseek",
-        model="some/unknown-model",
-        input_tokens=1_000, output_tokens=500, cost_usd=None,
-    )
-    summary = await store.get_usage_summary()
-    assert summary["llm"]["calls"] == 1
-    assert summary["llm"]["input_tokens"] == 1_000
-    assert summary["llm"]["cost_usd"] == 0.0
-    assert summary["total_cost_usd"] == 0.0

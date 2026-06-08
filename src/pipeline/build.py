@@ -756,6 +756,12 @@ async def build_pipeline(
         conversation_manager=conversation_manager,
         session_state=session_state,
     )
+    try:
+        from src.agent.tools.direct import set_memory_backend
+
+        set_memory_backend(None)  # memory_backend wired in task 8
+    except Exception:
+        pass
     mcp_registered = mcp_bridge.register(
         llm_service, conversation_manager, session_state=session_state
     )
