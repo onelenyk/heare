@@ -235,6 +235,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 state=state,
                 conversation_manager=conversation_manager,
                 project_dir=project_dir,
+                memory_backend=memory_backend,
             )
         except Exception:
             logger.exception("Pipeline build failed — running in dashboard-only mode")

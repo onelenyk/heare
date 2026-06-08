@@ -168,6 +168,14 @@ class ContextBuilder:
                     result["memory_block"] = self._format_memories(memories)
             except Exception:
                 pass  # never break prompt building
+            # Auto-extract memories from this turn (fire-and-forget)
+            if getattr(self.settings, "memory_auto_extract", True):
+                try:
+                    import asyncio
+                    from src.memory.extractor import extract_and_store
+                    asyncio.create_task(extract_and_store(self._memory_backend, transcript))
+                except Exception:
+                    pass
         if self._project_dir:
             result["project_dir"] = self._project_dir
         result["workspace_dir"] = str(self.settings.workspace_dir)
