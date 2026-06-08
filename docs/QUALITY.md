@@ -160,4 +160,27 @@ cat .sisyphus/quality.json
 - [Moai Agentic Product Standard](https://github.com/Moai-Team-LLC/agentic-product-standard)
 - [ContextOS Agent Harness Audit](https://contextosai.com/blog/eight-property-harness-audit)
 - [Production AI Institute PSF Checklist](https://www.productionai.institute/insights/ai-agent-production-ready-checklist)
-- [Agent Maturity Compass](https://github.com/AgentMaturity/AgentMaturityCompass)
+- [Google Agent Evaluation Framework](https://cloud.google.com/blog/topics/developers-practitioners/a-methodical-approach-to-agent-evaluation)
+- [Anthropic Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+- [CallSphere Voice Agent Quality Metrics 2026](https://callsphere.ai/blog/voice-agent-quality-metrics-wer-latency-grounding)
+
+---
+
+## Appendix: Voice Production Targets
+
+Concrete numbers to measure against. From industry benchmarks and production voice deployments.
+
+| Metric | Target (p50) | Target (p95) | Source |
+|--------|-------------|-------------|--------|
+| Mouth-to-ear latency | 800ms | 1500ms | Twig/Twilio/SignalWire consensus |
+| STT Word Error Rate | — | < 3% | CallSphere |
+| STT Time-to-final-segment | 250ms | 350ms | Pipecat STT benchmark |
+| LLM Time-to-first-token | 400ms | 700ms | Twig latency budget |
+| TTS Time-to-first-audio | 200ms | 350ms | Industry standard |
+| Barge-in success rate | > 97% | — | CallSphere |
+| Interruption recovery | > 93% | — | CallSphere |
+| Connection drops | < 4 per 1000 sessions | — | Production standard |
+| Tool call success rate | > 95% | — | Production standard |
+| Containment rate | 68% baseline / 84% mature | — | Industry benchmark |
+
+**Latency rule of thumb**: <700ms = natural, 700-1200ms = acceptable, >1500ms = broken, >2000ms = unacceptable.
