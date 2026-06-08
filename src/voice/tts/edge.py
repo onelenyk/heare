@@ -17,6 +17,8 @@ import shutil
 import time
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
+from src.voice.tts.normalize import normalize_cyrillic_spacing
+
 if TYPE_CHECKING:
     from src.voice.tts.cache import TTSCache
 
@@ -79,6 +81,7 @@ async def synthesize_to_pcm(text: str, voice: str, sample_rate: int) -> bytes:
     import edge_tts
 
     text = (text or "").strip()
+    text = normalize_cyrillic_spacing(text)
     if not text or not any(c.isalnum() for c in text):
         return b""
 
@@ -203,6 +206,7 @@ def _build_edge_tts_class():
             self, text: str, context_id: str | None = None
         ) -> AsyncGenerator[Frame, None]:
             text = (text or "").strip()
+            text = normalize_cyrillic_spacing(text)
             if not text or not any(c.isalnum() for c in text):
                 # edge-tts rejects punctuation-only text with NoAudioReceived.
                 yield TTSStoppedFrame()
