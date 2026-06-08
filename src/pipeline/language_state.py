@@ -23,6 +23,7 @@ Design notes:
   the LLM service rebuilds the system prompt for the next turn
   without polling.
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,14 +61,10 @@ class LanguageState:
             try:
                 self._listener(lang)
             except Exception:
-                logger.exception(
-                    "language_state: listener raised (non-fatal)"
-                )
+                logger.exception("language_state: listener raised (non-fatal)")
         return True
 
-    def set_change_listener(
-        self, listener: Optional[Callable[[str], None]]
-    ) -> None:
+    def set_change_listener(self, listener: Optional[Callable[[str], None]]) -> None:
         """Register a callback fired when ``set_language`` changes the
         value. Pass ``None`` to clear. Only one listener is supported —
         re-registering replaces the previous binding.

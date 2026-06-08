@@ -8,6 +8,7 @@ tool error text or remote content.
 On non-Darwin platforms the backend disables itself at construction; fire()
 becomes a no-op.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,8 +67,7 @@ class NotificationBackend:
             argv_extras = [body, title, sound_name]
         else:
             display_line = (
-                "display notification (item 1 of argv) "
-                "with title (item 2 of argv)"
+                "display notification (item 1 of argv) with title (item 2 of argv)"
             )
             argv_extras = [body, title]
         cmd = [

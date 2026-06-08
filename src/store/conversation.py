@@ -1,4 +1,5 @@
 """ConversationManager maintains conversation state: topics, entities, summary."""
+
 from __future__ import annotations
 
 import asyncio
@@ -45,13 +46,15 @@ class ConversationManager:
 
     def record_action_pending(self, intent_id: int, tool: str, args: str) -> None:
         ts = time.time()
-        self._action_log.append({
-            "id": intent_id,
-            "tool": tool,
-            "args": args,
-            "status": "pending",
-            "ts": ts,
-        })
+        self._action_log.append(
+            {
+                "id": intent_id,
+                "tool": tool,
+                "args": args,
+                "status": "pending",
+                "ts": ts,
+            }
+        )
         self._schedule_persist(
             intent_id=intent_id,
             tool=tool,
@@ -119,7 +122,9 @@ class ConversationManager:
             ts=ts,
         )
 
-    def record_action_cancelled(self, intent_id: int, tool: str = "", args: str = "") -> None:
+    def record_action_cancelled(
+        self, intent_id: int, tool: str = "", args: str = ""
+    ) -> None:
         """CCS-05a: mark an intent as cancelled in the action log.
 
         Updates the in-memory deque entry (if present) AND fires a
@@ -142,13 +147,15 @@ class ConversationManager:
                     ts=ts,
                 )
                 return
-        self._action_log.append({
-            "id": intent_id,
-            "tool": tool,
-            "args": args,
-            "status": "cancelled",
-            "ts": ts,
-        })
+        self._action_log.append(
+            {
+                "id": intent_id,
+                "tool": tool,
+                "args": args,
+                "status": "cancelled",
+                "ts": ts,
+            }
+        )
         self._schedule_persist(
             intent_id=intent_id,
             tool=tool,
@@ -174,14 +181,16 @@ class ConversationManager:
                     ts=ts,
                 )
                 return
-        self._action_log.append({
-            "id": intent_id,
-            "tool": "",
-            "args": "",
-            "status": "error",
-            "error": error,
-            "ts": ts,
-        })
+        self._action_log.append(
+            {
+                "id": intent_id,
+                "tool": "",
+                "args": "",
+                "status": "error",
+                "error": error,
+                "ts": ts,
+            }
+        )
         self._schedule_persist(
             intent_id=intent_id,
             tool="",
@@ -249,9 +258,7 @@ class ConversationManager:
                 e,
             )
 
-    async def hydrate_action_log(
-        self, *, since_ts: float | None = None
-    ) -> None:
+    async def hydrate_action_log(self, *, since_ts: float | None = None) -> None:
         """Rebuild the in-memory action log from SQLite on startup.
 
         CCS-01: loads up to ``_ACTION_LOG_MAXLEN`` rows from the actions
@@ -364,7 +371,9 @@ class ConversationManager:
                 entities = {}
 
         # Build recent transcripts fallback (for compatibility)
-        recent_transcripts = " | ".join([turn["aggregated_text"] for turn in recent_turns])
+        recent_transcripts = " | ".join(
+            [turn["aggregated_text"] for turn in recent_turns]
+        )
 
         return {
             "conversation_active": True,

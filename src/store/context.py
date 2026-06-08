@@ -3,6 +3,7 @@
 Uses regex-based placeholder substitution rather than str.format() to avoid
 parse errors on JSON-like content in prompt templates.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -21,16 +22,18 @@ from src.voice.language.core import LANG_NAMES
 # Keys from build() that intentionally do NOT flow into the generator prompt.
 # This is asserted in tests/test_context.py to prevent silent drift when
 # build() grows new fields.
-_EXCLUDED_FROM_GENERATOR_CTX: frozenset[str] = frozenset({
-    "mode",
-    "heartbeat_flag",
-    "transcript_or_heartbeat",
-    "silence_block",
-    "proactivity_block",
-    "conversation_active",  # internal yes/no flag, not surfaced to generator
-    # Phase 2.2: the following 4 keys now flow into build_for_generator:
-    # conversation_summary, active_topics, entities, recent_turns
-})
+_EXCLUDED_FROM_GENERATOR_CTX: frozenset[str] = frozenset(
+    {
+        "mode",
+        "heartbeat_flag",
+        "transcript_or_heartbeat",
+        "silence_block",
+        "proactivity_block",
+        "conversation_active",  # internal yes/no flag, not surfaced to generator
+        # Phase 2.2: the following 4 keys now flow into build_for_generator:
+        # conversation_summary, active_topics, entities, recent_turns
+    }
+)
 
 
 class ContextBuilder:
@@ -90,7 +93,9 @@ class ContextBuilder:
         if self.conversation_manager is not None and conversation_id is not None:
             raw = await self.conversation_manager.build_context(conversation_id)
             conversation_ctx = {
-                "conversation_active": "yes" if raw.get("conversation_active") else "no",
+                "conversation_active": "yes"
+                if raw.get("conversation_active")
+                else "no",
                 "conversation_summary": raw.get("conversation_summary", ""),
                 "active_topics": raw.get("active_topics", []),
                 "entities": raw.get("entities", {}),
@@ -146,7 +151,9 @@ class ContextBuilder:
             heartbeat=False,
             conversation_id=conversation_id,
         )
-        result = {k: v for k, v in full.items() if k not in _EXCLUDED_FROM_GENERATOR_CTX}
+        result = {
+            k: v for k, v in full.items() if k not in _EXCLUDED_FROM_GENERATOR_CTX
+        }
         result["persona"] = persona
         result["transcript"] = transcript
         result["user_language"] = LANG_NAMES.get(user_language, "English")
@@ -161,9 +168,7 @@ class ContextBuilder:
         # Inject relevant memories from the memory backend
         if self._memory_backend is not None:
             try:
-                memories = await self._memory_backend.context(
-                    query=transcript, limit=3
-                )
+                memories = await self._memory_backend.context(query=transcript, limit=3)
                 if memories:
                     result["memory_block"] = self._format_memories(memories)
             except Exception:
@@ -173,7 +178,10 @@ class ContextBuilder:
                 try:
                     import asyncio
                     from src.memory.extractor import extract_and_store
-                    asyncio.create_task(extract_and_store(self._memory_backend, transcript))
+
+                    asyncio.create_task(
+                        extract_and_store(self._memory_backend, transcript)
+                    )
                 except Exception:
                     pass
         if self._project_dir:
@@ -232,8 +240,7 @@ class ContextBuilder:
                     ),
                 }
                 output_rule = _output_rules.get(
-                    profile.name,
-                    f"Voice output ON. Standard engagement."
+                    profile.name, "Voice output ON. Standard engagement."
                 )
 
                 result["mode_block"] = (
@@ -271,6 +278,7 @@ class ContextBuilder:
         # Inject active sub-agent status
         try:
             from src.agent.subagent_manager import get_agent_manager
+
             mgr = get_agent_manager()
             if mgr is not None:
                 active = mgr.list_active()
@@ -280,10 +288,19 @@ class ContextBuilder:
                         sid = a.get("session_id", "")[:12]
                         prompt = a.get("prompt", "")[:60]
                         status = a.get("status", "?")
-                        icon = {"running": "⚙", "starting": "⟳", "waiting_for_input": "⚠", "done": "✓", "error": "✗", "cancelled": "✗"}.get(status, "?")
+                        icon = {
+                            "running": "⚙",
+                            "starting": "⟳",
+                            "waiting_for_input": "⚠",
+                            "done": "✓",
+                            "error": "✗",
+                            "cancelled": "✗",
+                        }.get(status, "?")
                         base = f"  - {sid}: {prompt}"
                         if status == "waiting_for_input":
-                            lines.append(f"{base} — waiting for input {icon} ({a.get('age_seconds', 0)}s ago)")
+                            lines.append(
+                                f"{base} — waiting for input {icon} ({a.get('age_seconds', 0)}s ago)"
+                            )
                         elif status in ("running", "starting"):
                             tc = a.get("tool_calls", 0)
                             c = a.get("cost") or 0
@@ -321,7 +338,9 @@ class ContextBuilder:
         """Return a prompt override based on proactivity_level setting."""
         level = self.settings.proactivity_level
         if level == "low":
-            return "PROACTIVITY OVERRIDE: reserved — stay quiet unless clearly helpful.\n"
+            return (
+                "PROACTIVITY OVERRIDE: reserved — stay quiet unless clearly helpful.\n"
+            )
         if level == "high":
             return "PROACTIVITY OVERRIDE: high — be very engaged, initiate topics, ask follow-ups freely.\n"
         return ""  # medium: prompt defaults apply, no override needed
@@ -350,7 +369,9 @@ class ContextBuilder:
         entity_lines = []
         for category, items in entities.items():
             if isinstance(items, list):
-                entity_lines.append(f"{category}: {', '.join(str(item) for item in items)}")
+                entity_lines.append(
+                    f"{category}: {', '.join(str(item) for item in items)}"
+                )
             else:
                 entity_lines.append(f"{category}: {str(items)}")
         return "\n".join(f"  - {line}" for line in entity_lines)
@@ -454,6 +475,7 @@ class ContextBuilder:
         ``"(N more items truncated)"`` suffix. The final string is
         guaranteed to be ``<= char_cap`` chars.
         """
+
         def _render_block(it: dict[str, Any]) -> str:
             n = it.get("n", 0)
             title = (it.get("title") or "").strip()

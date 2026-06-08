@@ -1,4 +1,5 @@
 """Unified capability index — single read-only view across tools, skills, MCPs."""
+
 from __future__ import annotations
 
 import logging
@@ -15,10 +16,31 @@ logger = logging.getLogger("heare.capability_index")
 
 Source = Literal["builtin", "dynamic", "skill", "mcp"]
 
-_STOPWORDS: frozenset[str] = frozenset({
-    "a", "an", "the", "of", "for", "to", "in", "on", "at", "and", "or",
-    "is", "are", "was", "were", "be", "by", "with", "from", "as", "it",
-})
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "for",
+        "to",
+        "in",
+        "on",
+        "at",
+        "and",
+        "or",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "by",
+        "with",
+        "from",
+        "as",
+        "it",
+    }
+)
 
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
@@ -65,29 +87,35 @@ class CapabilityIndex:
         for tool in TOOLS.values():
             if not tool.enabled:
                 continue
-            entries.append(IndexEntry(
-                source="builtin",
-                name=tool.name,
-                description=tool.description,
-            ))
+            entries.append(
+                IndexEntry(
+                    source="builtin",
+                    name=tool.name,
+                    description=tool.description,
+                )
+            )
 
         for tool in _DYNAMIC_TOOLS.values():
             if not tool.enabled:
                 continue
-            entries.append(IndexEntry(
-                source="dynamic",
-                name=tool.name,
-                description=tool.description,
-            ))
+            entries.append(
+                IndexEntry(
+                    source="dynamic",
+                    name=tool.name,
+                    description=tool.description,
+                )
+            )
 
         try:
             loader = get_skills_loader(self._settings)
             for meta in loader.discover():
-                entries.append(IndexEntry(
-                    source="skill",
-                    name=meta.name,
-                    description=meta.description,
-                ))
+                entries.append(
+                    IndexEntry(
+                        source="skill",
+                        name=meta.name,
+                        description=meta.description,
+                    )
+                )
         except Exception as exc:
             logger.debug("skill discovery failed: %s", exc)
 
@@ -99,11 +127,13 @@ class CapabilityIndex:
                     if isinstance(entry, dict) and entry.get("description")
                     else f"MCP server: {name}"
                 )
-                entries.append(IndexEntry(
-                    source="mcp",
-                    name=name,
-                    description=desc,
-                ))
+                entries.append(
+                    IndexEntry(
+                        source="mcp",
+                        name=name,
+                        description=desc,
+                    )
+                )
         except FileNotFoundError as exc:
             logger.debug("no .mcp.json present: %s", exc)
         except Exception as exc:
@@ -139,7 +169,8 @@ class CapabilityIndex:
             if not needle:
                 return []
             hits = [
-                idx for idx, e in enumerate(self._entries)
+                idx
+                for idx, e in enumerate(self._entries)
                 if needle in e.description.lower() or needle in e.name.lower()
             ]
             ranked = sorted(hits, key=lambda i: self._sort_key(i, 1))

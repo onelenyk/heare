@@ -3,6 +3,7 @@
 Remote results are cached for 24h under ``~/.heare/cache/discovery/<intent_hash>.json``
 with HMAC integrity validation keyed off ``~/.heare/identity.json``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -90,7 +91,9 @@ def _entry_from_dict(data: dict) -> IndexEntry:
 
 
 def _canonical_payload(ts: int, entries: list[dict]) -> bytes:
-    return json.dumps({"ts": ts, "entries": entries}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(
+        {"ts": ts, "entries": entries}, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
 
 
 def _read_cache(
@@ -119,7 +122,9 @@ def _read_cache(
             pass
         return None
 
-    expected = hmac.new(key, _canonical_payload(ts, entries_raw), hashlib.sha256).hexdigest()
+    expected = hmac.new(
+        key, _canonical_payload(ts, entries_raw), hashlib.sha256
+    ).hexdigest()
     if not hmac.compare_digest(expected, sig):
         logger.warning("discovery cache HMAC rejected for %s — deleting", path)
         try:
@@ -165,12 +170,20 @@ def _write_cache(
 
 async def _fetch_marketplace(intent: str, settings, timeout: float) -> list[IndexEntry]:
     from src.skills import marketplace
-    return await marketplace.fetch_skill_candidates(intent, settings=settings, timeout=timeout)
+
+    return await marketplace.fetch_skill_candidates(
+        intent, settings=settings, timeout=timeout
+    )
 
 
-async def _fetch_mcp_registry(intent: str, settings, timeout: float) -> list[IndexEntry]:
+async def _fetch_mcp_registry(
+    intent: str, settings, timeout: float
+) -> list[IndexEntry]:
     from src.skills import marketplace
-    return await marketplace.fetch_mcp_candidates(intent, settings=settings, timeout=timeout)
+
+    return await marketplace.fetch_mcp_candidates(
+        intent, settings=settings, timeout=timeout
+    )
 
 
 async def discover_capability_local(
@@ -183,7 +196,9 @@ async def discover_capability_local(
     latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY DISCOVERY] intent=%r results=%d source=local latency_ms=%d",
-        intent, len(out), latency_ms,
+        intent,
+        len(out),
+        latency_ms,
     )
     return out
 
@@ -278,7 +293,10 @@ async def discover_capability_remote(
         return cached
 
     if breaker is not None and breaker.tripped:
-        logger.warning("discovery remote fetch skipped: circuit breaker tripped (intent=%r)", intent)
+        logger.warning(
+            "discovery remote fetch skipped: circuit breaker tripped (intent=%r)",
+            intent,
+        )
         return []
 
     started = time.monotonic()
@@ -290,7 +308,9 @@ async def discover_capability_remote(
                 return_exceptions=True,
             )
     except asyncio.TimeoutError:
-        logger.warning("discovery remote fetch timed out after %.2fs (intent=%r)", timeout, intent)
+        logger.warning(
+            "discovery remote fetch timed out after %.2fs (intent=%r)", timeout, intent
+        )
         if breaker is not None:
             breaker.record_net_fail()
         return []
@@ -313,7 +333,9 @@ async def discover_capability_remote(
     latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY DISCOVERY] intent=%r results=%d source=remote latency_ms=%d",
-        intent, len(entries), latency_ms,
+        intent,
+        len(entries),
+        latency_ms,
     )
 
     try:

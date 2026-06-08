@@ -15,6 +15,7 @@ flips, so speech spoken mid-switch is not silently dropped.
 
 No Pipecat imports — admin CLI paths import this without portaudio.
 """
+
 from __future__ import annotations
 
 import logging
@@ -88,9 +89,7 @@ class SessionState:
             try:
                 self._mode_listener(new_profile)
             except Exception:
-                logger.exception(
-                    "session_state: mode listener raised (non-fatal)"
-                )
+                logger.exception("session_state: mode listener raised (non-fatal)")
         return True
 
     def set_mode_change_listener(
@@ -105,9 +104,7 @@ class SessionState:
 
     # --- turn-buffer flush hook -------------------------------------------
 
-    def register_flush_hook(
-        self, hook: Optional[Callable[[], None]]
-    ) -> None:
+    def register_flush_hook(self, hook: Optional[Callable[[], None]]) -> None:
         """Let the turn aggregator register a force-submit callback so
         ``set_mode`` can flush a half-spoken turn before switching."""
         self._flush_hook = hook
@@ -119,9 +116,7 @@ class SessionState:
         try:
             self._flush_hook()
         except Exception:
-            logger.exception(
-                "session_state: flush hook raised (non-fatal)"
-            )
+            logger.exception("session_state: flush hook raised (non-fatal)")
 
 
 # Module-level handle so the `set_mode` direct tool (which only receives

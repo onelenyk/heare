@@ -10,6 +10,7 @@ Defines available tools with their metadata:
 All other lists (ALLOWED_TOOLS, SIMPLE_TOOLS, agent_sdk_allowed_tools, etc.)
 are derived from this registry.
 """
+
 from __future__ import annotations
 
 import re
@@ -53,7 +54,9 @@ class ToolDefinition:
         elif not self.name.islower():
             errors.append("name must be lowercase")
         elif not re.match(r"^[a-z][a-z0-9_]*$", self.name):
-            errors.append("name must start with a letter and contain only letters, numbers, underscores")
+            errors.append(
+                "name must start with a letter and contain only letters, numbers, underscores"
+            )
 
         if not self.description:
             errors.append("description is required")
@@ -414,7 +417,6 @@ TOOLS: dict[str, Tool] = {
         description="Delegate a complex multi-step task to an OpenCode sub-agent. Use for analysis, code changes, research, or any task that requires multiple tool calls. Returns structured results including the answer, cost, and session ID for follow-up.",
         enabled=True,
     ),
-
     "agent_start": Tool(
         name="agent_start",
         sdk_name="AgentStart",
@@ -496,7 +498,6 @@ TOOLS: dict[str, Tool] = {
         execution="direct",
         description="Show how many memories you have stored, broken down by type.",
     ),
-
 }
 
 
@@ -541,6 +542,7 @@ def is_static_tool(name: str) -> bool:
 # DERIVED LISTS — generated from TOOLS, do not edit manually
 # ============================================================================
 
+
 def get_enabled_tools() -> set[str]:
     """Get all enabled tool names (lowercase), including dynamic tools."""
     static = {t.name for t in TOOLS.values() if t.enabled}
@@ -550,7 +552,9 @@ def get_enabled_tools() -> set[str]:
 
 def get_sdk_tools() -> list[str]:
     """Get CamelCase tool names for claude-agent-sdk allowlist."""
-    return [t.sdk_name for t in TOOLS.values() if t.enabled and t.execution != "workflow"]
+    return [
+        t.sdk_name for t in TOOLS.values() if t.enabled and t.execution != "workflow"
+    ]
 
 
 def get_direct_tools() -> set[str]:

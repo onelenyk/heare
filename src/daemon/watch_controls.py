@@ -7,6 +7,7 @@ PID-file + SIGTERM contract used by ``heare start`` and ``heare stop``.
 All public helpers return a short status string suitable for display in the
 dashboard footer.
 """
+
 from __future__ import annotations
 
 import os

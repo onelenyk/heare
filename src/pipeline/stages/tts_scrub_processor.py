@@ -15,6 +15,7 @@ Pipecat imports are deferred so admin CLI paths import this module
 without portaudio. The deferred-import scaffold is the small closure
 at the bottom; all logic lives in module-level functions above it.
 """
+
 from __future__ import annotations
 
 import logging

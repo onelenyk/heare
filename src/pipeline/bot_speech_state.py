@@ -18,6 +18,7 @@ share — same pattern as ``LanguageState``.
 Design notes mirror ``language_state``: plain-Python, non-async,
 no Pipecat imports, single asyncio loop serialises producer/consumer.
 """
+
 from __future__ import annotations
 
 import logging

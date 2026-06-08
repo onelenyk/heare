@@ -1,4 +1,5 @@
 """Memory backend factory — selects the backend based on configuration."""
+
 from __future__ import annotations
 from typing import TYPE_CHECKING
 

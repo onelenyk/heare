@@ -8,6 +8,7 @@ home so the surviving callers still resolve.
 
 Pure / synchronous / no Pipecat dependency.
 """
+
 from __future__ import annotations
 
 import re

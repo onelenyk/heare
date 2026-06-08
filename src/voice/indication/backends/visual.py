@@ -4,6 +4,7 @@ Each `fire()` appends one JSON object and (cheaply) trims the file to its
 last `keep_last` lines so it never grows unbounded. The watch dashboard
 reads the tail of this file to render the indication panel.
 """
+
 from __future__ import annotations
 
 import json

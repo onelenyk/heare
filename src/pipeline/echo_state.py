@@ -14,6 +14,7 @@ own echo and the audio should be suppressed before it reaches STT.
 Design notes mirror ``BotSpeechState``: plain-Python, non-async, no
 Pipecat imports, single asyncio loop serialises producer/consumer.
 """
+
 from __future__ import annotations
 
 import logging
@@ -85,18 +86,18 @@ class EchoState:
 
         n = len(samples)
         if n >= self._buf_len:
-            self._ring[:] = samples[-self._buf_len:]
+            self._ring[:] = samples[-self._buf_len :]
             self._write_pos = 0
             self._filled = True
             return
 
         end = self._write_pos + n
         if end <= self._buf_len:
-            self._ring[self._write_pos:end] = samples
+            self._ring[self._write_pos : end] = samples
         else:
             first = self._buf_len - self._write_pos
-            self._ring[self._write_pos:] = samples[:first]
-            self._ring[:n - first] = samples[first:]
+            self._ring[self._write_pos :] = samples[:first]
+            self._ring[: n - first] = samples[first:]
             self._filled = True
         self._write_pos = end % self._buf_len
 

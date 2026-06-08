@@ -3,6 +3,7 @@
 Pipecat imports are deferred to `_cmd_start` so `--help` and admin
 subcommands work on machines without portaudio.
 """
+
 from __future__ import annotations
 
 import os
@@ -44,7 +45,9 @@ def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     for existing in list(root.handlers):
-        if isinstance(existing, (logging.handlers.RotatingFileHandler, logging.StreamHandler)):
+        if isinstance(
+            existing, (logging.handlers.RotatingFileHandler, logging.StreamHandler)
+        ):
             root.removeHandler(existing)
     root.addHandler(handler)
     stream = logging.StreamHandler()
@@ -54,9 +57,6 @@ def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
 
 
 def _ensure_portal(timeout: float = 10.0) -> bool:
-    if not getattr(sys, "frozen", False):
-        return True
-
     def _port_open() -> bool:
         try:
             with socket.create_connection(("127.0.0.1", 9780), timeout=0.5):
@@ -68,10 +68,14 @@ def _ensure_portal(timeout: float = 10.0) -> bool:
         return True
 
     try:
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "portal"]
+        else:
+            cmd = [sys.executable, "-m", "src.main", "portal"]
         # Detach so the portal survives the daemon if it dies, and so this
         # .app launcher can exit without killing the portal it started.
         subprocess.Popen(
-            [sys.executable, "portal"],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -91,8 +95,8 @@ def _ensure_portal(timeout: float = 10.0) -> bool:
 
 async def _cmd_start(args: argparse.Namespace) -> int:
     if getattr(sys, "frozen", False):
-        os.environ["PATH"] = (
-            "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")
+        os.environ["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get(
+            "PATH", ""
         )
 
     from dotenv import load_dotenv
@@ -100,7 +104,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     from src.store.context import ContextBuilder
     from src.daemon.heartbeat import WarmupTask
     from src.agent.identity import ensure_identity, render_persona
-    from src.agent.llm.providers import PROVIDERS, get_available, make_identity_bootstrap
+    from src.agent.llm.providers import (
+        PROVIDERS,
+        get_available,
+        make_identity_bootstrap,
+    )
     from src.pipeline.build import build_pipeline
     from src.store.storage import TranscriptStore
 
@@ -119,16 +127,19 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("websockets.server").setLevel(logging.WARNING)
     from src.daemon.workspace import ensure_workspace_mcp
+
     ensure_workspace_mcp(settings.workspace_dir)
 
     project_dir = (
-        sys._MEIPASS if getattr(sys, "frozen", False)
+        sys._MEIPASS
+        if getattr(sys, "frozen", False)
         else str(Path(__file__).parent.parent.resolve())
     )
 
     # File lock on PID file — OS-level guard against multiple instances.
     # Auto-releases on process death (crash, SIGKILL, etc.). Race-free.
     import fcntl
+
     try:
         lock_fd = os.open(settings.pid_file, os.O_RDWR | os.O_CREAT, 0o644)
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -137,6 +148,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             logger.info("Daemon already running (lock held) — opening dashboard")
             _ensure_portal()
             import webbrowser
+
             webbrowser.open("http://127.0.0.1:9780/")
             return 0
         print("❌ Error: Daemon already running. Stop it first: heare stop")
@@ -147,6 +159,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     # Start API server early (no state yet — avoids SQLite lock contention
     # with setup API polling). State is init'd after pipeline build below.
     from src.api import API
+
     api = API(None, settings)
     await api.start()
     logger.info("HTTP API server on 127.0.0.1:9778")
@@ -172,6 +185,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     # Create state object (no .init() — avoids SQLite lock contention with
     # setup API polling. Init'd after pipeline build below.)
     from src.state import State
+
     state = State(settings.db_path)
 
     store: TranscriptStore | None = None
@@ -182,12 +196,13 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         active_cfg = PROVIDERS.get(settings.llm_provider, PROVIDERS["deepseek"])
         api_key = getattr(settings, active_cfg.api_key_attr)
         identity_factory = make_identity_bootstrap(
-            active_cfg, api_key, active_cfg.default_model, active_cfg.timeout,
+            active_cfg,
+            api_key,
+            active_cfg.default_model,
+            active_cfg.timeout,
         )
         identity = await ensure_identity(identity_factory, settings)
-        persona_template = (
-            Path(project_dir) / "prompts" / "persona.txt"
-        ).read_text()
+        persona_template = (Path(project_dir) / "prompts" / "persona.txt").read_text()
         persona = render_persona(persona_template, identity)
         logger.info("I am %s %s", identity["name"], identity["emoji"])
 
@@ -207,12 +222,15 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
         # Initialize memory backend (pluggable — sqlite by default)
         from src.memory.factory import create_memory_backend
+
         memory_backend = create_memory_backend(settings)
         await memory_backend.initialize()
         logger.info("Memory backend: %s initialized", settings.memory_backend)
 
         context_builder = ContextBuilder(
-            store, settings, conversation_manager,
+            store,
+            settings,
+            conversation_manager,
             project_dir=project_dir,
             memory_backend=memory_backend,
         )
@@ -277,7 +295,10 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
             asyncio.create_task(_push_greeting())
 
-            from src.pipeline.stages.text_injector import make_transcription_pusher, run_injector_loop
+            from src.pipeline.stages.text_injector import (
+                make_transcription_pusher,
+                run_injector_loop,
+            )
 
             inject_pusher = make_transcription_pusher(
                 transcription_gate,
@@ -286,9 +307,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 if settings.groq_language not in ("auto", "")
                 else None,
             )
-            asyncio.create_task(
-                run_injector_loop(settings.inject_dir, inject_pusher)
-            )
+            asyncio.create_task(run_injector_loop(settings.inject_dir, inject_pusher))
 
             warmup = WarmupTask(
                 voice=settings.tts_voice,
@@ -304,16 +323,20 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         if settings.browser_bridge_enabled:
             try:
                 from src.agent.browser_bridge import BrowserBridge, set_bridge
+
                 bridge = BrowserBridge(settings)
                 set_bridge(bridge)
                 bridge_task = asyncio.create_task(bridge.start(), name="browser-bridge")
             except Exception:
-                logger.exception("browser_bridge failed to start (continuing without it)")
+                logger.exception(
+                    "browser_bridge failed to start (continuing without it)"
+                )
                 bridge = None
                 bridge_task = None
 
         if pipeline is not None:
             from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
+
             runner = PipelineRunner()
             await run_until_stopped(
                 runner,
@@ -340,6 +363,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 logger.warning("bridge.stop failed (non-fatal): %s", e)
             try:
                 from src.agent.browser_bridge import set_bridge
+
                 set_bridge(None)
             except Exception:  # noqa: BLE001
                 pass
@@ -348,9 +372,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             try:
                 await mcp_bridge.aclose()
             except Exception as e:  # noqa: BLE001
-                logger.warning(
-                    "mcp_bridge.aclose failed (non-fatal): %s", e
-                )
+                logger.warning("mcp_bridge.aclose failed (non-fatal): %s", e)
         api = locals().get("api")
         if api is not None:
             try:
@@ -391,7 +413,12 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
 
 async def run_until_stopped(
-    runner, pipeline, warmup=None, *, settings=None, bridge_task=None,
+    runner,
+    pipeline,
+    warmup=None,
+    *,
+    settings=None,
+    bridge_task=None,
 ) -> None:
     loop = asyncio.get_running_loop()
     pipeline_task = loop.create_task(runner.run(pipeline))
@@ -617,7 +644,12 @@ def _cmd_set_wake_word(args: argparse.Namespace) -> int:
         # Update or add confirmation_passphrase line
         if "confirmation_passphrase" in content:
             import re
-            content = re.sub(r'confirmation_passphrase\s*=\s*".*?"', f'confirmation_passphrase = "{word}"', content)
+
+            content = re.sub(
+                r'confirmation_passphrase\s*=\s*".*?"',
+                f'confirmation_passphrase = "{word}"',
+                content,
+            )
         else:
             content += f'\nconfirmation_passphrase = "{word}"\n'
     else:
@@ -665,9 +697,7 @@ def _cmd_reset_session(args: argparse.Namespace) -> int:
         return 0
     idx = 0
     while True:
-        backup = settings.session_file.with_name(
-            f"session_{idx}.backup.json"
-        )
+        backup = settings.session_file.with_name(f"session_{idx}.backup.json")
         if not backup.exists():
             break
         idx += 1
@@ -735,10 +765,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     prov_p.add_argument("provider_name", choices=all_keys())
 
-    audio_in_p = sub.add_parser("audio-input", help="Set the audio input device (hot-reloaded)")
+    audio_in_p = sub.add_parser(
+        "audio-input", help="Set the audio input device (hot-reloaded)"
+    )
     audio_in_p.add_argument("name", help="Device name substring (e.g. AirPods Pro)")
 
-    audio_out_p = sub.add_parser("audio-output", help="Set the audio output device (hot-reloaded)")
+    audio_out_p = sub.add_parser(
+        "audio-output", help="Set the audio output device (hot-reloaded)"
+    )
     audio_out_p.add_argument("name", help="Device name substring (e.g. AirPods Pro)")
 
     sub.add_parser("reset-session", help="Backup session.json and start fresh")
@@ -748,17 +782,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate a new browser-bridge token (restart daemon to apply)",
     )
 
-    set_word_p = sub.add_parser("set-passphrase", help="Set the confirmation passphrase (restart required)")
-    set_word_p.add_argument("word", help="Secret word to confirm actions (e.g. авторизую)")
+    set_word_p = sub.add_parser(
+        "set-passphrase", help="Set the confirmation passphrase (restart required)"
+    )
+    set_word_p.add_argument(
+        "word", help="Secret word to confirm actions (e.g. авторизую)"
+    )
 
-    watch_p = sub.add_parser("watch", help="(removed) TUI dashboard — use web UI at http://127.0.0.1:9780")
+    _ = sub.add_parser(
+        "watch", help="(removed) TUI dashboard — use web UI at http://127.0.0.1:9780"
+    )
 
     portal_p = sub.add_parser("portal", help="Run watchdog web UI portal")
     portal_p.add_argument("--port", type=int, default=9780)
     portal_p.add_argument("--stop", action="store_true")
 
     logs_p = sub.add_parser("logs", help="Tail the daemon log")
-    logs_p.add_argument("-f", "--follow", action="store_true", help="Stream new entries")
+    logs_p.add_argument(
+        "-f", "--follow", action="store_true", help="Stream new entries"
+    )
     logs_p.add_argument("-n", "--lines", type=int, default=40, help="How many lines")
 
     return parser

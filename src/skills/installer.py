@@ -4,6 +4,7 @@ Security-critical. All installs require a hard consent gate (configured
 passphrase) and an explicit ``user_confirmed=True`` flag from the LLM tool
 call before any filesystem mutation occurs.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,7 +24,11 @@ from pathlib import Path
 import httpx
 
 from src.agent.tools.capability_index import CapabilityIndex, IndexEntry
-from src.skills.marketplace import DEFAULT_HOSTNAME_ALLOWLIST, _validate_url, _verify_checksum
+from src.skills.marketplace import (
+    DEFAULT_HOSTNAME_ALLOWLIST,
+    _validate_url,
+    _verify_checksum,
+)
 from src.skills.mcp_utils import read_mcp_servers, write_mcp_servers
 
 logger = logging.getLogger("heare.installer")
@@ -51,10 +56,16 @@ MSG_CREATED_SKILL_EN = "Created skill {slug}. You can run it now."
 MSG_CREATED_SKILL_UK = "Створив навичку {slug}. Можеш користуватися."
 
 MSG_INSTALLED_MCP_EN = "Installed MCP server {slug}. Restart required to use it."
-MSG_INSTALLED_MCP_UK = "Встановив MCP сервер {slug}. Потрібен перезапуск, щоб використати."
+MSG_INSTALLED_MCP_UK = (
+    "Встановив MCP сервер {slug}. Потрібен перезапуск, щоб використати."
+)
 
-MSG_SLUG_COLLISION_EN = "A skill named {slug} is already installed. Say 'replace' to overwrite."
-MSG_SLUG_COLLISION_UK = "Інструмент {slug} вже встановлено. Скажи 'замінити', щоб перезаписати."
+MSG_SLUG_COLLISION_EN = (
+    "A skill named {slug} is already installed. Say 'replace' to overwrite."
+)
+MSG_SLUG_COLLISION_UK = (
+    "Інструмент {slug} вже встановлено. Скажи 'замінити', щоб перезаписати."
+)
 
 MSG_CHECKSUM_FAILED_EN = "Download failed integrity check. Install aborted."
 MSG_CHECKSUM_FAILED_UK = "Завантаження не пройшло перевірку. Встановлення скасовано."
@@ -131,7 +142,10 @@ async def _download(
     started = time.monotonic()
     logger.info(
         "[INSTALL] → GET %s (timeout=%.1fs, overall=%.1fs, max=%dMB)",
-        url, timeout, overall_timeout, max_bytes // (1024 * 1024),
+        url,
+        timeout,
+        overall_timeout,
+        max_bytes // (1024 * 1024),
     )
 
     async def _do_get() -> bytes:
@@ -147,7 +161,8 @@ async def _download(
                         )
                 logger.info(
                     "[INSTALL] ← status=%d bytes=%d latency_ms=%d",
-                    resp.status_code, len(buf),
+                    resp.status_code,
+                    len(buf),
                     int((time.monotonic() - started) * 1000),
                 )
                 return bytes(buf)
@@ -158,33 +173,43 @@ async def _download(
         latency_ms = int((time.monotonic() - started) * 1000)
         logger.warning(
             "[INSTALL] ← TIMEOUT url=%s overall=%.1fs latency_ms=%d",
-            url, overall_timeout, latency_ms,
+            url,
+            overall_timeout,
+            latency_ms,
         )
         raise InstallFailed("download_timeout") from exc
     except asyncio.CancelledError:
         latency_ms = int((time.monotonic() - started) * 1000)
         logger.warning(
-            "[INSTALL] ← CANCELLED url=%s latency_ms=%d", url, latency_ms,
+            "[INSTALL] ← CANCELLED url=%s latency_ms=%d",
+            url,
+            latency_ms,
         )
         raise
     except httpx.HTTPError as exc:
         latency_ms = int((time.monotonic() - started) * 1000)
         logger.warning(
             "[INSTALL] ← HTTPError url=%s err=%s latency_ms=%d",
-            url, exc, latency_ms,
+            url,
+            exc,
+            latency_ms,
         )
         raise
     except InstallFailed as exc:
         latency_ms = int((time.monotonic() - started) * 1000)
         logger.warning(
             "[INSTALL] ← FAILED url=%s err=%s latency_ms=%d",
-            url, exc, latency_ms,
+            url,
+            exc,
+            latency_ms,
         )
         raise
     except Exception as exc:
         latency_ms = int((time.monotonic() - started) * 1000)
         logger.exception(
-            "[INSTALL] ← UNEXPECTED url=%s latency_ms=%d", url, latency_ms,
+            "[INSTALL] ← UNEXPECTED url=%s latency_ms=%d",
+            url,
+            latency_ms,
         )
         raise InstallFailed("download_unexpected") from exc
 
@@ -218,7 +243,9 @@ def _parse_github_tree_url(url: str) -> tuple[str, str] | None:
     if parts_info is None:
         return None
     owner, repo, branch, subpath = parts_info
-    tarball_url = f"https://codeload.github.com/{owner}/{repo}/tar.gz/refs/heads/{branch}"
+    tarball_url = (
+        f"https://codeload.github.com/{owner}/{repo}/tar.gz/refs/heads/{branch}"
+    )
     return tarball_url, subpath
 
 
@@ -236,7 +263,9 @@ def _parse_github_tree_parts(url: str) -> tuple[str, str, str, str] | None:
     return owner, repo, branch, "/".join(rest).strip("/")
 
 
-def _raw_url_for(owner: str, repo: str, branch: str, subpath: str, filename: str) -> str:
+def _raw_url_for(
+    owner: str, repo: str, branch: str, subpath: str, filename: str
+) -> str:
     sub = (subpath + "/") if subpath else ""
     return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{sub}{filename}"
 
@@ -245,9 +274,14 @@ _MAX_SKILL_MD_BYTES = 1 << 20
 
 _ASSET_REFERENCE_PATTERNS = (
     re.compile(r"\$\{CLAUDE_SKILL_DIR\}", re.IGNORECASE),
-    re.compile(r"!\s*`[^`]*\b(?:scripts|assets|reference|examples|templates)/", re.IGNORECASE),
+    re.compile(
+        r"!\s*`[^`]*\b(?:scripts|assets|reference|examples|templates)/", re.IGNORECASE
+    ),
     re.compile(r"\]\((?:scripts|assets|reference|examples|templates)/", re.IGNORECASE),
-    re.compile(r"\[(?:scripts|assets|reference|examples|templates)/[^\]]*\]\([^)]*\)", re.IGNORECASE),
+    re.compile(
+        r"\[(?:scripts|assets|reference|examples|templates)/[^\]]*\]\([^)]*\)",
+        re.IGNORECASE,
+    ),
 )
 
 
@@ -258,27 +292,45 @@ def _skill_md_references_local_assets(text: str) -> bool:
     return any(p.search(text) for p in _ASSET_REFERENCE_PATTERNS)
 
 
-_FAST_PATH_ALLOWED_SIBLINGS = frozenset({
-    "SKILL.md", "README.md", "README", "LICENSE", "LICENSE.md", ".gitignore",
-})
+_FAST_PATH_ALLOWED_SIBLINGS = frozenset(
+    {
+        "SKILL.md",
+        "README.md",
+        "README",
+        "LICENSE",
+        "LICENSE.md",
+        ".gitignore",
+    }
+)
 
 
 async def _list_github_dir(
-    owner: str, repo: str, branch: str, subpath: str, *, timeout: float = 4.0,
+    owner: str,
+    repo: str,
+    branch: str,
+    subpath: str,
+    *,
+    timeout: float = 4.0,
 ) -> list[dict] | None:
     """Return GitHub Contents API listing for the skill directory, or None on failure."""
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{subpath}?ref={branch}"
+    api_url = (
+        f"https://api.github.com/repos/{owner}/{repo}/contents/{subpath}?ref={branch}"
+    )
     started = time.monotonic()
     logger.info("[INSTALL] → GET %s (dir listing)", api_url)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(api_url, headers={"Accept": "application/vnd.github+json"})
+            resp = await client.get(
+                api_url, headers={"Accept": "application/vnd.github+json"}
+            )
     except httpx.HTTPError as exc:
         logger.warning("[INSTALL] dir listing failed: %s", exc)
         return None
     latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
-        "[INSTALL] ← status=%d latency_ms=%d", resp.status_code, latency_ms,
+        "[INSTALL] ← status=%d latency_ms=%d",
+        resp.status_code,
+        latency_ms,
     )
     if resp.status_code != 200:
         return None
@@ -312,19 +364,22 @@ async def _try_raw_fast_path(
     if listing is None:
         logger.info("[INSTALL] dir listing unavailable — falling back to tarball")
         return None
-    has_skill_md = any(item.get("name") == "SKILL.md" and item.get("type") == "file" for item in listing)
+    has_skill_md = any(
+        item.get("name") == "SKILL.md" and item.get("type") == "file"
+        for item in listing
+    )
     if not has_skill_md:
         logger.info("[INSTALL] no SKILL.md at %s — tarball will fail too", subpath)
         return None
     extras = [
-        item for item in listing
-        if item.get("name") not in _FAST_PATH_ALLOWED_SIBLINGS
+        item for item in listing if item.get("name") not in _FAST_PATH_ALLOWED_SIBLINGS
     ]
     if extras:
         names = ", ".join(item.get("name", "?") for item in extras[:5])
         logger.info(
             "[INSTALL] %d sibling file(s) beyond SKILL.md (%s) — using tarball",
-            len(extras), names,
+            len(extras),
+            names,
         )
         return None
 
@@ -340,7 +395,9 @@ async def _try_raw_fast_path(
     latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "[INSTALL] ← status=%d bytes=%d latency_ms=%d",
-        resp.status_code, len(resp.content), latency_ms,
+        resp.status_code,
+        len(resp.content),
+        latency_ms,
     )
     if resp.status_code != 200:
         return None
@@ -367,7 +424,11 @@ def _extract_tarball(content: bytes, dest: Path, subpath: str = "") -> None:
     sub = subpath.strip("/")
     with tarfile.open(fileobj=BytesIO(content), mode="r:*") as tf:
         members = tf.getmembers()
-        top_levels = {m.name.split("/", 1)[0] for m in members if m.name and not m.name.startswith("/")}
+        top_levels = {
+            m.name.split("/", 1)[0]
+            for m in members
+            if m.name and not m.name.startswith("/")
+        }
         strip_prefix = ""
         if len(top_levels) == 1:
             sole = next(iter(top_levels))
@@ -379,7 +440,7 @@ def _extract_tarball(content: bytes, dest: Path, subpath: str = "") -> None:
             if full_prefix:
                 if not m.name.startswith(full_prefix):
                     continue
-                target_name = m.name[len(full_prefix):]
+                target_name = m.name[len(full_prefix) :]
             else:
                 target_name = m.name
             if not target_name:
@@ -388,7 +449,8 @@ def _extract_tarball(content: bytes, dest: Path, subpath: str = "") -> None:
             if _is_unsafe_link(m):
                 logger.warning(
                     "[INSTALL] skipping unsafe link %s → %s",
-                    m.name, m.linkname,
+                    m.name,
+                    m.linkname,
                 )
                 continue
             any_match = True
@@ -405,7 +467,13 @@ def _extract_tarball(content: bytes, dest: Path, subpath: str = "") -> None:
             raise InstallFailed("subpath_not_found")
 
 
-def _write_sidecar(dest: Path, entry: IndexEntry, *, user_confirmed: bool, sidecar_name: str = ".install.json") -> None:
+def _write_sidecar(
+    dest: Path,
+    entry: IndexEntry,
+    *,
+    user_confirmed: bool,
+    sidecar_name: str = ".install.json",
+) -> None:
     sidecar = {
         "source_url": entry.install_url or "",
         "install_url": entry.install_url or "",
@@ -458,7 +526,10 @@ async def install_skill(
     if not install_url or not _validate_url(install_url, DEFAULT_HOSTNAME_ALLOWLIST):
         raise InstallFailed("bad_install_url")
 
-    if getattr(settings, "installation_signature_required", False) and not entry.checksum:
+    if (
+        getattr(settings, "installation_signature_required", False)
+        and not entry.checksum
+    ):
         raise InstallRefused("signature_required")
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -508,9 +579,7 @@ async def install_skill(
                 # it off the event loop so TTS, transcription, and other
                 # async stages keep flowing while a multi-MB archive is
                 # being unpacked.
-                await asyncio.to_thread(
-                    _extract_tarball, content, tmp_path, subpath
-                )
+                await asyncio.to_thread(_extract_tarball, content, tmp_path, subpath)
             except tarfile.TarError as exc:
                 raise InstallFailed("invalid_archive") from exc
             logger.info(
@@ -545,7 +614,8 @@ async def install_skill(
     latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY INSTALL] slug=%s source=skill success=True latency_ms=%d",
-        slug, latency_ms,
+        slug,
+        latency_ms,
     )
 
     return InstallResult(
@@ -574,13 +644,7 @@ def _author_skill_md(name: str, description: str, body: str) -> str:
     """
     safe_desc = description.replace("\n", " ").strip()
     safe_body = body.strip()
-    return (
-        "---\n"
-        f"name: {name}\n"
-        f"description: {safe_desc}\n"
-        "---\n"
-        f"{safe_body}\n"
-    )
+    return f"---\nname: {name}\ndescription: {safe_desc}\n---\n{safe_body}\n"
 
 
 async def create_skill(
@@ -698,7 +762,8 @@ async def create_skill(
     latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY CREATE] slug=%s source=skill success=True latency_ms=%d",
-        slug, latency_ms,
+        slug,
+        latency_ms,
     )
 
     return InstallResult(
@@ -744,7 +809,10 @@ async def install_mcp_server(
     if install_url and not _validate_url(install_url, DEFAULT_HOSTNAME_ALLOWLIST):
         raise InstallFailed("bad_install_url")
 
-    if getattr(settings, "installation_signature_required", False) and not entry.checksum:
+    if (
+        getattr(settings, "installation_signature_required", False)
+        and not entry.checksum
+    ):
         raise InstallRefused("signature_required")
 
     if entry.launch is None:
@@ -776,7 +844,8 @@ async def install_mcp_server(
     latency_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY INSTALL] slug=%s source=mcp success=True latency_ms=%d",
-        slug, latency_ms,
+        slug,
+        latency_ms,
     )
 
     return InstallResult(

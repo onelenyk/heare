@@ -25,6 +25,7 @@ output flows (speech vs text-only) from different pipeline positions.
 Pipecat imports are deferred so the module can be imported in tests
 without pulling the full stack.
 """
+
 from __future__ import annotations
 
 import logging
@@ -126,9 +127,7 @@ def _build_logger_class():
                 # playing this text out loud, so the gate needs it for
                 # echo suppression until the next response starts.
 
-            elif self._collecting and isinstance(
-                frame, (LLMTextFrame, TextFrame)
-            ):
+            elif self._collecting and isinstance(frame, (LLMTextFrame, TextFrame)):
                 # LLMTextFrame chunks include their own inter-frame spaces
                 # (LLMTextFrame.__post_init__ sets includes_inter_frame_spaces=True),
                 # so a plain join preserves the original phrasing.
@@ -138,9 +137,7 @@ def _build_logger_class():
                     # Publish the running text as it streams so a
                     # barge-in mid-utterance can be matched against it.
                     if self._bot_speech_state is not None:
-                        self._bot_speech_state.set_text(
-                            "".join(self._buffer)
-                        )
+                        self._bot_speech_state.set_text("".join(self._buffer))
 
             elif isinstance(frame, TTSSpeakFrame):
                 # Standalone speak (e.g. startup greeting). Log it directly —
@@ -173,7 +170,13 @@ def _build_logger_class():
                     agent_spoken=agent_spoken,
                 )
                 logger.debug("logged bot response: %s", text[:60])
-                emit("llm", "response_logged", chars=len(text), mode=agent_mode or "unknown", level="info")
+                emit(
+                    "llm",
+                    "response_logged",
+                    chars=len(text),
+                    mode=agent_mode or "unknown",
+                    level="info",
+                )
             except Exception:
                 logger.exception("failed to log bot response")
 

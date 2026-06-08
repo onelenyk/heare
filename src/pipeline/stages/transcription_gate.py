@@ -28,6 +28,7 @@ The gate itself never speaks to the LLM.
 Pipecat imports are deferred so the admin CLI paths (which import
 this module transitively) work on machines without portaudio.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,7 +49,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("heare.transcription_gate")
-
 
 
 # Default stop-word list used when the gate is constructed without a
@@ -138,18 +138,81 @@ def _is_echo(transcript: str, bot_text: str, ratio: float) -> bool:
 _CYRILLIC_VOWELS: frozenset[str] = frozenset("аеєиіїоууюяыэё")
 _LATIN_VOWELS: frozenset[str] = frozenset("aeiouy")
 
-_SHORT_ALLOW: frozenset[str] = frozenset({
-    # Cyrillic short words (conjunctions / confirmations / particles)
-    "да", "ні", "ни", "ну", "не", "на", "за", "по", "до", "що",
-    "та", "чи", "як", "він", "во", "жє", "от", "же", "би",
-    # Cyrillic interjections (2 chars)
-    "мм", "хм", "хе", "ай", "ой", "ох", "ах", "ех", "их", "ух",
-    "аа", "ее", "оо", "уу", "ии", "єє", "іі", "її", "юю", "яя",
-    # Latin short words
-    "ok", "no", "hi", "go", "oh", "ah", "ha", "um", "uh", "yo", "eh",
-    "if", "or", "in", "on", "at", "by", "to", "as", "so", "we", "he",
-    "it", "is", "am", "be", "do", "up", "my",
-})
+_SHORT_ALLOW: frozenset[str] = frozenset(
+    {
+        # Cyrillic short words (conjunctions / confirmations / particles)
+        "да",
+        "ні",
+        "ни",
+        "ну",
+        "не",
+        "на",
+        "за",
+        "по",
+        "до",
+        "що",
+        "та",
+        "чи",
+        "як",
+        "він",
+        "во",
+        "жє",
+        "от",
+        "же",
+        "би",
+        # Cyrillic interjections (2 chars)
+        "мм",
+        "хм",
+        "хе",
+        "ай",
+        "ой",
+        "ох",
+        "ах",
+        "ех",
+        "их",
+        "ух",
+        "аа",
+        "ее",
+        "оо",
+        "уу",
+        "ии",
+        "єє",
+        "іі",
+        "її",
+        "юю",
+        "яя",
+        # Latin short words
+        "ok",
+        "no",
+        "hi",
+        "go",
+        "oh",
+        "ah",
+        "ha",
+        "um",
+        "uh",
+        "yo",
+        "eh",
+        "if",
+        "or",
+        "in",
+        "on",
+        "at",
+        "by",
+        "to",
+        "as",
+        "so",
+        "we",
+        "he",
+        "it",
+        "is",
+        "am",
+        "be",
+        "do",
+        "up",
+        "my",
+    }
+)
 
 
 def is_garbage_transcript(text: str) -> bool:
@@ -223,9 +286,7 @@ def is_garbage_transcript(text: str) -> bool:
 
     # Check 5: No vowels, length > 2 → GARBAGE
     if n > 2:
-        has_vowel = any(
-            c in _CYRILLIC_VOWELS or c in _LATIN_VOWELS for c in cleaned
-        )
+        has_vowel = any(c in _CYRILLIC_VOWELS or c in _LATIN_VOWELS for c in cleaned)
         if not has_vowel:
             return True
 
@@ -296,9 +357,7 @@ def _build_transcription_gate_class():
                 settings.barge_in_min_chars if settings is not None else 4
             )
             self._barge_in_echo_ratio = (
-                settings.barge_in_echo_ratio
-                if settings is not None
-                else 0.6
+                settings.barge_in_echo_ratio if settings is not None else 0.6
             )
 
             self._current_voice: str = (
@@ -306,8 +365,7 @@ def _build_transcription_gate_class():
             )
             _default_lang = (
                 settings.groq_language
-                if settings is not None
-                and settings.groq_language not in ("auto", "")
+                if settings is not None and settings.groq_language not in ("auto", "")
                 else "en"
             )
             self._active_lang: str = _default_lang
@@ -323,20 +381,17 @@ def _build_transcription_gate_class():
             self._bot_cooldown_until = 0.0
             self._indication_speaking = False
             self._bot_cooldown_seconds = (
-                settings.bot_speaking_cooldown_seconds
-                if settings is not None
-                else 2.0
+                settings.bot_speaking_cooldown_seconds if settings is not None else 2.0
             )
 
             self._debounce_seconds: float = (
-                settings.transcript_debounce_seconds
-                if settings is not None
-                else 0.0
+                settings.transcript_debounce_seconds if settings is not None else 0.0
             )
             self._debounce_buffer: list[str] = []
             self._debounce_frame: Any | None = None
             self._debounce_direction: Any | None = None
             import asyncio as _asyncio
+
             self._debounce_task: _asyncio.Task | None = None
 
         @property
@@ -363,9 +418,7 @@ def _build_transcription_gate_class():
                 return
             if isinstance(frame, BotStoppedSpeakingFrame):
                 self._bot_speaking = False
-                self._bot_cooldown_until = (
-                    time.monotonic() + self._bot_cooldown_seconds
-                )
+                self._bot_cooldown_until = time.monotonic() + self._bot_cooldown_seconds
                 await self.push_frame(frame, direction)
                 return
             if isinstance(frame, IndicationCueFrame):
@@ -382,9 +435,7 @@ def _build_transcription_gate_class():
 
             await self.push_frame(frame, direction)
 
-        async def _schedule_transcription(
-            self, frame: Any, direction: Any
-        ) -> None:
+        async def _schedule_transcription(self, frame: Any, direction: Any) -> None:
             """Buffer a TranscriptionFrame; debounce-fire after silence window.
 
             Cancel words bypass the debounce entirely and are handled
@@ -408,22 +459,14 @@ def _build_transcription_gate_class():
             if is_standalone_cancel_imperative(text, stop_words):
                 # Cancel any pending debounce so stale subsequent frames
                 # don't spawn a new LLM turn after we interrupt.
-                if (
-                    self._debounce_task is not None
-                    and not self._debounce_task.done()
-                ):
+                if self._debounce_task is not None and not self._debounce_task.done():
                     self._debounce_task.cancel()
                     self._debounce_task = None
                 self._debounce_buffer = []
-                await self._handle_transcription(
-                    frame, direction, override_text=text
-                )
+                await self._handle_transcription(frame, direction, override_text=text)
                 return
 
-            if (
-                self._debounce_task is not None
-                and not self._debounce_task.done()
-            ):
+            if self._debounce_task is not None and not self._debounce_task.done():
                 self._debounce_task.cancel()
             self._debounce_task = _asyncio.create_task(self._flush_debounced())
 
@@ -444,9 +487,7 @@ def _build_transcription_gate_class():
             if not combined or frame is None:
                 emit("gate", "dropped", reason="debounce", text="", level="debug")
                 return
-            await self._handle_transcription(
-                frame, direction, override_text=combined
-            )
+            await self._handle_transcription(frame, direction, override_text=combined)
 
         async def _handle_transcription(
             self,
@@ -470,9 +511,7 @@ def _build_transcription_gate_class():
                 else _DEFAULT_STOP_WORDS
             )
             if is_standalone_cancel_imperative(transcript, stop_words):
-                logger.info(
-                    "[CANCEL FAST-PATH] transcript=%r", transcript[:80]
-                )
+                logger.info("[CANCEL FAST-PATH] transcript=%r", transcript[:80])
                 emit("gate", "cancel_word", text=transcript[:80], level="important")
                 try:
                     await self.push_frame(
@@ -493,17 +532,21 @@ def _build_transcription_gate_class():
             # conversational turns and barging in would corrupt them.
             if self._indication_speaking:
                 logger.debug(
-                    "transcription_gate: dropping transcript "
-                    "(indication=%s): %r",
+                    "transcription_gate: dropping transcript (indication=%s): %r",
                     self._indication_speaking,
                     transcript[:60],
                 )
-                emit("gate", "dropped", reason="indication", text=transcript[:40], level="debug")
+                emit(
+                    "gate",
+                    "dropped",
+                    reason="indication",
+                    text=transcript[:40],
+                    level="debug",
+                )
                 return
 
             bot_active = (
-                self._bot_speaking
-                or time.monotonic() < self._bot_cooldown_until
+                self._bot_speaking or time.monotonic() < self._bot_cooldown_until
             )
             if bot_active:
                 # Without barge-in, preserve the legacy behaviour:
@@ -514,17 +557,28 @@ def _build_transcription_gate_class():
                         "(bot speaking, barge-in disabled): %r",
                         transcript[:60],
                     )
-                    emit("gate", "dropped", reason="bot_active_no_bargein", text=transcript[:40], level="debug")
+                    emit(
+                        "gate",
+                        "dropped",
+                        reason="bot_active_no_bargein",
+                        text=transcript[:40],
+                        level="debug",
+                    )
                     return
                 # Garbage filter — drop obvious STT noise (repeated syllables,
                 # consonant clusters, word duplication) before heavier checks.
                 if is_garbage_transcript(transcript):
                     logger.debug(
-                        "transcription_gate: dropping transcript "
-                        "(garbage): %r",
+                        "transcription_gate: dropping transcript (garbage): %r",
                         transcript[:60],
                     )
-                    emit("gate", "dropped", reason="garbage", text=transcript[:40], level="debug")
+                    emit(
+                        "gate",
+                        "dropped",
+                        reason="garbage",
+                        text=transcript[:40],
+                        level="debug",
+                    )
                     return
                 # Too short to be a real interruption — almost always a
                 # noise blip or a one-word echo fragment.
@@ -534,22 +588,32 @@ def _build_transcription_gate_class():
                         "(bot speaking, too short for barge-in): %r",
                         transcript,
                     )
-                    emit("gate", "dropped", reason="too_short", text=transcript[:40], level="debug")
+                    emit(
+                        "gate",
+                        "dropped",
+                        reason="too_short",
+                        text=transcript[:40],
+                        level="debug",
+                    )
                     return
                 bot_text = (
                     self._bot_speech_state.text
                     if self._bot_speech_state is not None
                     else ""
                 )
-                if _is_echo(
-                    transcript, bot_text, self._barge_in_echo_ratio
-                ):
+                if _is_echo(transcript, bot_text, self._barge_in_echo_ratio):
                     logger.debug(
                         "transcription_gate: dropping transcript "
                         "(echo of bot speech): %r",
                         transcript[:60],
                     )
-                    emit("gate", "dropped", reason="echo", text=transcript[:40], level="debug")
+                    emit(
+                        "gate",
+                        "dropped",
+                        reason="echo",
+                        text=transcript[:40],
+                        level="debug",
+                    )
                     return
                 # Genuine barge-in: the human said something the bot is
                 # not currently saying. Stop the bot (Pipecat routes the
@@ -576,9 +640,7 @@ def _build_transcription_gate_class():
                 self._bot_cooldown_until = 0.0
 
             # Language detection + 2-turn hysteresis (US-I18N-03/05)
-            raw_lang = detect_language_from_frame(
-                frame, fallback=self._active_lang
-            )
+            raw_lang = detect_language_from_frame(frame, fallback=self._active_lang)
             logger.info(
                 "[DETECTED] language=%s from transcript=%r",
                 raw_lang,
@@ -628,8 +690,7 @@ def _build_transcription_gate_class():
                     )
                 except Exception:
                     logger.exception(
-                        "transcription_gate: failed to log transcript "
-                        "(non-fatal)"
+                        "transcription_gate: failed to log transcript (non-fatal)"
                     )
 
             # Push the (possibly coalesced) transcript downstream so the
@@ -640,7 +701,12 @@ def _build_transcription_gate_class():
                 outbound = self._clone_with_text(frame, transcript)
             else:
                 outbound = frame
-            emit("gate", "transcription_passed", text=transcript[:80], lang=self._active_lang)
+            emit(
+                "gate",
+                "transcription_passed",
+                text=transcript[:80],
+                lang=self._active_lang,
+            )
             await self.push_frame(outbound, direction)
 
         @staticmethod
@@ -658,8 +724,7 @@ def _build_transcription_gate_class():
                     return dc_replace(frame, text=text)
             except Exception:
                 logger.debug(
-                    "transcription_gate: dataclass.replace failed, "
-                    "falling back to copy"
+                    "transcription_gate: dataclass.replace failed, falling back to copy"
                 )
             import copy
 

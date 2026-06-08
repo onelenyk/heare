@@ -194,10 +194,14 @@ class SQLiteBackend(MemoryBackend):
         cursor = await self._db.execute("SELECT COUNT(*) FROM memories")
         total = (await cursor.fetchone())[0]
 
-        cursor = await self._db.execute("SELECT COUNT(*) FROM memories WHERE archived = 1")
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) FROM memories WHERE archived = 1"
+        )
         archived = (await cursor.fetchone())[0]
 
-        cursor = await self._db.execute("SELECT type, COUNT(*) FROM memories GROUP BY type")
+        cursor = await self._db.execute(
+            "SELECT type, COUNT(*) FROM memories GROUP BY type"
+        )
         rows = await cursor.fetchall()
         by_type: dict[str, int] = {row[0]: row[1] for row in rows}
 

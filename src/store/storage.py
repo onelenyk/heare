@@ -1,4 +1,5 @@
 """SQLite transcript + decision store via aiosqlite so the audio pipeline never blocks on disk."""
+
 from __future__ import annotations
 
 import json
@@ -166,9 +167,7 @@ class TranscriptStore:
         # rebuild the table without it. Idempotent: noop if already nullable.
         cursor = await self.db.execute("PRAGMA table_info(actions)")
         cols = await cursor.fetchall()
-        decision_notnull = any(
-            row[1] == "decision_id" and row[3] == 1 for row in cols
-        )
+        decision_notnull = any(row[1] == "decision_id" and row[3] == 1 for row in cols)
         if decision_notnull:
             # SQLite has no DROP NOT NULL; recreate the table preserving
             # data + indices. PRAGMA foreign_keys must be off across the
@@ -224,9 +223,7 @@ class TranscriptStore:
 
     async def _migrate_displays_content_type(self) -> None:
         try:
-            await self.db.execute(
-                "ALTER TABLE displays ADD COLUMN content_type TEXT"
-            )
+            await self.db.execute("ALTER TABLE displays ADD COLUMN content_type TEXT")
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
@@ -336,8 +333,7 @@ class TranscriptStore:
         """
         now = time.time()
         cursor = await self.db.execute(
-            "INSERT INTO displays (ts, title, format, content)"
-            " VALUES (?, ?, ?, ?)",
+            "INSERT INTO displays (ts, title, format, content) VALUES (?, ?, ?, ?)",
             (now, title, fmt, content),
         )
         await self.db.commit()
@@ -452,8 +448,7 @@ class TranscriptStore:
 
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
         cursor = await self.db.execute(
-            "SELECT id, ts, text, mode FROM transcripts"
-            " ORDER BY ts DESC LIMIT ?",
+            "SELECT id, ts, text, mode FROM transcripts ORDER BY ts DESC LIMIT ?",
             (n,),
         )
         rows = await cursor.fetchall()
@@ -557,7 +552,16 @@ class TranscriptStore:
                 (name, sdk_name, execution_type, description, enabled, definition_json, created_ts, modified_ts)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (name, sdk_name, execution_type, description, enabled, definition_json, now, now),
+            (
+                name,
+                sdk_name,
+                execution_type,
+                description,
+                enabled,
+                definition_json,
+                now,
+                now,
+            ),
         )
         await self.db.commit()
         assert cursor.lastrowid is not None

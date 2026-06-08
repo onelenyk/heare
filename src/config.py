@@ -3,6 +3,7 @@
 Mutable runtime state (current mode) lives in ~/.heare/mode so it can be
 hot-reloaded without restarting the daemon.
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,10 +13,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+
 # Import tool registry defaults (lazy import to avoid circular dependency)
 def _get_default_sdk_tools():
     from src.agent.tools.registry import DEFAULT_SDK_ALLOWED_TOOLS
+
     return DEFAULT_SDK_ALLOWED_TOOLS
+
 
 logger = logging.getLogger("heare.config")
 
@@ -49,7 +53,10 @@ def _parse_quiet_hours(raw: list[str]) -> list[tuple[str, str]]:
     global _QUIET_HOUR_RE
     if _QUIET_HOUR_RE is None:
         import re
-        _QUIET_HOUR_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$")
+
+        _QUIET_HOUR_RE = re.compile(
+            r"^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$"
+        )
     out: list[tuple[str, str]] = []
     for entry in raw:
         if not isinstance(entry, str) or _QUIET_HOUR_RE.match(entry) is None:
@@ -69,13 +76,13 @@ class IndicationKindToggle:
 
 _LEVEL_DEFAULTS: dict[str, tuple[bool, bool, bool]] = {
     # (sound, visual, notification)
-    "attention":     (True,  True,  True),
-    "error":         (True,  True,  True),
-    "long_running":  (True,  True,  False),
-    "success":       (True,  True,  False),
-    "info":          (False, True,  False),
-    "input_waiting": (True,  True,  True),
-    "countdown":     (True,  True,  False),
+    "attention": (True, True, True),
+    "error": (True, True, True),
+    "long_running": (True, True, False),
+    "success": (True, True, False),
+    "info": (False, True, False),
+    "input_waiting": (True, True, True),
+    "countdown": (True, True, False),
 }
 
 
@@ -125,9 +132,7 @@ def _load_indication_settings(raw: dict) -> IndicationSettings:
         if isinstance(raw["quiet_hours"], list):
             s.quiet_hours = _parse_quiet_hours(raw["quiet_hours"])
         else:
-            logger.warning(
-                "indication.quiet_hours must be a list — keeping default"
-            )
+            logger.warning("indication.quiet_hours must be a list — keeping default")
     kinds_raw = raw.get("kinds")
     if isinstance(kinds_raw, dict):
         for level, defaults in _LEVEL_DEFAULTS.items():
@@ -205,9 +210,7 @@ class Settings:
     mute_input_file: Path = field(
         default_factory=lambda: HEARE_HOME / "mute_input.flag"
     )
-    cancel_flag_file: Path = field(
-        default_factory=lambda: HEARE_HOME / "cancel.flag"
-    )
+    cancel_flag_file: Path = field(default_factory=lambda: HEARE_HOME / "cancel.flag")
     interrupt_enabled_file: Path = field(
         default_factory=lambda: HEARE_HOME / "interrupt_enabled.off"
     )
@@ -275,7 +278,12 @@ class Settings:
     # without test-only env overrides.
     cancel_stop_words: list[str] = field(
         default_factory=lambda: [
-            "stop", "cancel", "halt", "відміни", "отмени", "стоп",
+            "stop",
+            "cancel",
+            "halt",
+            "відміни",
+            "отмени",
+            "стоп",
         ]
     )
     # LLM provider switching (deepseek | zai | opencode)
@@ -329,6 +337,7 @@ class Settings:
         if self.agent_sdk_allowed_tools is not None:
             return self.agent_sdk_allowed_tools
         return _get_default_sdk_tools()
+
     # Context: how many recent transcripts to include in prompts.
     # Default 15 (~100 tokens, 0.05% of 200K context budget).
     # Increase for longer conversation memory, decrease for faster prompts.
@@ -350,7 +359,9 @@ class Settings:
     indication: IndicationSettings = field(default_factory=IndicationSettings)
 
     # File access settings for extended workspace management
-    file_access_profile_path: Path = field(default_factory=lambda: HEARE_HOME / "profile.json")
+    file_access_profile_path: Path = field(
+        default_factory=lambda: HEARE_HOME / "profile.json"
+    )
     file_access_auto_approve_workspace: bool = True
     file_access_ask_for_new_dirs: bool = True
     file_access_max_archive_size: int = 1024 * 1024 * 1024  # 1GB
@@ -448,6 +459,7 @@ def load_settings() -> Settings:
     # Build command_keyword_pattern from wake_word if the user customized it
     if settings.wake_word != "гава":
         import re
+
         escaped = re.escape(settings.wake_word)
         settings.command_keyword_pattern = rf"\b({escaped})\b"
 
@@ -561,7 +573,7 @@ def write_browser_bridge_token(settings: Settings, token: str) -> None:
 
     if match:
         block = match.group(0)
-        token_re = re.compile(r'(?m)^\s*token\s*=.*$')
+        token_re = re.compile(r"(?m)^\s*token\s*=.*$")
         if token_re.search(block):
             new_block = token_re.sub(f"token = {quoted}", block, count=1)
         else:
@@ -572,13 +584,15 @@ def write_browser_bridge_token(settings: Settings, token: str) -> None:
                 block,
                 count=1,
             )
-        content = existing[: match.start()] + new_block + existing[match.end():]
+        content = existing[: match.start()] + new_block + existing[match.end() :]
     else:
         sep = "" if (existing == "" or existing.endswith("\n")) else "\n"
         content = existing + sep + ("\n" if existing else "") + new_section
 
     fd, tmp_path = tempfile.mkstemp(
-        prefix=".config.toml.", suffix=".tmp", dir=str(config_path.parent),
+        prefix=".config.toml.",
+        suffix=".tmp",
+        dir=str(config_path.parent),
     )
     try:
         with os.fdopen(fd, "w") as fh:

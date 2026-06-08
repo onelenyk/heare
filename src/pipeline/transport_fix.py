@@ -1,5 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
-
 from pipecat.frames.frames import StartFrame
 from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.transports.local.audio import (
@@ -19,12 +17,15 @@ class FixedLocalAudioOutputTransport(LocalAudioOutputTransport):
 
     async def start(self, frame: StartFrame):
         from pipecat.transports.base_output import BaseOutputTransport
+
         await BaseOutputTransport.start(self, frame)
 
         if self._out_stream:
             return
 
-        self._sample_rate = self._params.audio_out_sample_rate or frame.audio_out_sample_rate
+        self._sample_rate = (
+            self._params.audio_out_sample_rate or frame.audio_out_sample_rate
+        )
 
         frames_per_buffer = int(self._sample_rate / 100) * 4
 

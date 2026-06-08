@@ -8,6 +8,7 @@ click on the user's hardware.
 No I/O. No randomness. Same byte string across runs (so tests can hash-compare
 or assert deterministic length).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -17,7 +18,9 @@ PEAK_AMPLITUDE = 0.4
 _INT16_MAX = 32767
 
 
-def _envelope(n_samples: int, attack_ms: float, release_ms: float, sample_rate: int) -> np.ndarray:
+def _envelope(
+    n_samples: int, attack_ms: float, release_ms: float, sample_rate: int
+) -> np.ndarray:
     env = np.ones(n_samples, dtype=np.float32)
     a = max(1, int(attack_ms * sample_rate / 1000.0))
     r = max(1, int(release_ms * sample_rate / 1000.0))
@@ -44,8 +47,12 @@ def _to_pcm16(wave: np.ndarray, peak: float = PEAK_AMPLITUDE) -> bytes:
 def attention_cue(sample_rate: int = DEFAULT_SAMPLE_RATE) -> bytes:
     """880 Hz → 1318 Hz two-tone, 250 ms total."""
     half = 125.0
-    a = _sine(880.0, half, sample_rate) * _envelope(int(round(half * sample_rate / 1000.0)), 8, 8, sample_rate)
-    b = _sine(1318.0, half, sample_rate) * _envelope(int(round(half * sample_rate / 1000.0)), 8, 8, sample_rate)
+    a = _sine(880.0, half, sample_rate) * _envelope(
+        int(round(half * sample_rate / 1000.0)), 8, 8, sample_rate
+    )
+    b = _sine(1318.0, half, sample_rate) * _envelope(
+        int(round(half * sample_rate / 1000.0)), 8, 8, sample_rate
+    )
     return _to_pcm16(np.concatenate([a, b]))
 
 
@@ -54,8 +61,12 @@ def error_cue(sample_rate: int = DEFAULT_SAMPLE_RATE) -> bytes:
     half = 175.0
     n = int(round(half * sample_rate / 1000.0))
     env = _envelope(n, 10, 20, sample_rate)
-    a = (_sine(220.0, half, sample_rate) + 0.15 * _sine(223.0, half, sample_rate)) / 1.15
-    b = (_sine(165.0, half, sample_rate) + 0.15 * _sine(168.0, half, sample_rate)) / 1.15
+    a = (
+        _sine(220.0, half, sample_rate) + 0.15 * _sine(223.0, half, sample_rate)
+    ) / 1.15
+    b = (
+        _sine(165.0, half, sample_rate) + 0.15 * _sine(168.0, half, sample_rate)
+    ) / 1.15
     return _to_pcm16(np.concatenate([a * env, b * env]))
 
 

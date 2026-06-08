@@ -78,9 +78,7 @@ def voice_for_language(lang: str) -> str:
     return LANG_TO_VOICE.get(lang, LANG_TO_VOICE["en"])
 
 
-def is_standalone_cancel_imperative(
-    text: str, stop_words: list[str]
-) -> bool:
+def is_standalone_cancel_imperative(text: str, stop_words: list[str]) -> bool:
     """CCS-05a: detect a STANDALONE cancel imperative.
 
     Trigger criteria (ALL must hold):
@@ -128,7 +126,7 @@ def is_standalone_cancel_imperative(
     residual = cleaned
     for prefix in sorted(_CANCEL_POLITENESS_PREFIXES, key=len, reverse=True):
         if residual == prefix or residual.startswith(prefix + " "):
-            residual = residual[len(prefix):].lstrip()
+            residual = residual[len(prefix) :].lstrip()
             break
     # Strip leading filler tokens (zero or more, single tokens).
     residual_tokens = residual.split()
@@ -192,9 +190,7 @@ _YN_NO_HEAD = re.compile(
     re.IGNORECASE,
 )
 # "так не роби" — YES token immediately followed by "не" inverts to NO.
-_YN_YES_THEN_NE = re.compile(
-    r"^(так|да|ok|yes|давай|ага|окей)\s+не\b", re.IGNORECASE
-)
+_YN_YES_THEN_NE = re.compile(r"^(так|да|ok|yes|давай|ага|окей)\s+не\b", re.IGNORECASE)
 # "не треба", "не зараз" — tail negation after YES head → NO.
 _YN_NEGATION_TAIL = re.compile(
     r"\bне\s+(треба|потрібно|зараз|роби|хочу|робимо)\b", re.IGNORECASE

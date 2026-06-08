@@ -2,6 +2,7 @@
 
 Pipecat imports are deferred so tests work without portaudio.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +28,7 @@ class AggregatedTranscriptFrame:
     about the turn (utterance count, timing). It will be pushed downstream
     to the Decider when a turn is complete.
     """
+
     text: str
     utterance_count: int
     turn_start_ts: float
@@ -53,7 +55,8 @@ class TurnAggregator:
         ambient_timeout: float = 3.0,
         max_turn_duration: float = 30.0,
         max_buffer_size: int = 50,
-        on_turn_complete: Callable[[str, float, float, list[dict]], Awaitable[None]] | None = None,
+        on_turn_complete: Callable[[str, float, float, list[dict]], Awaitable[None]]
+        | None = None,
     ):
         """Initialize the TurnAggregator.
 
@@ -83,7 +86,9 @@ class TurnAggregator:
         self.turn_start_ts: float | None = None
         self._timeout_task: asyncio.Task | None = None
 
-    async def add_utterance(self, text: str, utterance_ts: float) -> tuple[bool, str | None]:
+    async def add_utterance(
+        self, text: str, utterance_ts: float
+    ) -> tuple[bool, str | None]:
         """Add utterance to buffer. Returns (should_submit, aggregated_text).
 
         Decision logic:
@@ -106,26 +111,27 @@ class TurnAggregator:
             self.turn_start_ts = utterance_ts
 
         # Check max turn duration (before adding new utterance)
-        if self.turn_start_ts and (utterance_ts - self.turn_start_ts) > self.max_turn_duration:
-            logger.warning(f"TurnAggregator: max duration ({self.max_turn_duration}s) reached, forcing submit")
+        if (
+            self.turn_start_ts
+            and (utterance_ts - self.turn_start_ts) > self.max_turn_duration
+        ):
+            logger.warning(
+                f"TurnAggregator: max duration ({self.max_turn_duration}s) reached, forcing submit"
+            )
             # Add current utterance to buffer before aggregating
-            self.buffer.append({
-                "text": text,
-                "utterance_ts": utterance_ts
-            })
+            self.buffer.append({"text": text, "utterance_ts": utterance_ts})
             aggregated = self._aggregate_and_clear()
             return True, aggregated
 
         # Add to buffer (preserve utterance timestamp)
-        self.buffer.append({
-            "text": text,
-            "utterance_ts": utterance_ts
-        })
+        self.buffer.append({"text": text, "utterance_ts": utterance_ts})
         self.last_utterance_ts = utterance_ts
 
         # Check max buffer size AFTER adding (if buffer is now full, submit)
         if len(self.buffer) >= self.max_buffer_size:
-            logger.warning(f"TurnAggregator: buffer full ({self.max_buffer_size}), forcing submit")
+            logger.warning(
+                f"TurnAggregator: buffer full ({self.max_buffer_size}), forcing submit"
+            )
             aggregated = self._aggregate_and_clear()
             return True, aggregated
 
@@ -138,9 +144,7 @@ class TurnAggregator:
             timeout = self.session_state.profile.turn_timeout
         else:
             timeout = (
-                self.focus_timeout
-                if self.mode == Mode.FOCUS
-                else self.ambient_timeout
+                self.focus_timeout if self.mode == Mode.FOCUS else self.ambient_timeout
             )
 
         # Start new timeout task
@@ -161,7 +165,9 @@ class TurnAggregator:
             if self.last_utterance_ts:
                 time_since_last = time.time() - self.last_utterance_ts
                 if time_since_last >= timeout_seconds:
-                    logger.info(f"TurnAggregator: {timeout_seconds}s silence detected, submitting turn")
+                    logger.info(
+                        f"TurnAggregator: {timeout_seconds}s silence detected, submitting turn"
+                    )
 
                     # Capture state before clearing
                     aggregated_text = " ".join(item["text"] for item in self.buffer)
@@ -251,7 +257,8 @@ class TurnAggregatorProcessor:
         ambient_timeout: float = 3.0,
         max_turn_duration: float = 30.0,
         max_buffer_size: int = 50,
-        on_turn_complete: Callable[[str, float, float, list[dict]], Awaitable[None]] | None = None,
+        on_turn_complete: Callable[[str, float, float, list[dict]], Awaitable[None]]
+        | None = None,
     ):
         """Initialize the processor.
 
@@ -295,7 +302,8 @@ class TurnAggregatorProcessor:
                 # Turn complete! Create and push aggregated frame
                 aggregated_frame = AggregatedTranscriptFrame(
                     text=aggregated_text,
-                    utterance_count=len(self.aggregator.buffer) + 1,  # +1 because buffer was cleared
+                    utterance_count=len(self.aggregator.buffer)
+                    + 1,  # +1 because buffer was cleared
                     turn_start_ts=0.0,  # Will be set by aggregator
                     turn_end_ts=time.time(),
                 )

@@ -17,6 +17,7 @@ transcription errors that defeat text-based echo detection.
 
 Pipecat imports are deferred so admin CLI paths work without portaudio.
 """
+
 from __future__ import annotations
 
 import logging
@@ -130,7 +131,7 @@ def _build_classes():
                 return 0.0
             mic_c = mic - np.mean(mic)
             bot_c = bot - np.mean(bot)
-            mic_energy = np.sqrt(np.sum(mic_c ** 2))
+            mic_energy = np.sqrt(np.sum(mic_c**2))
             if mic_energy < 1e-6:
                 return 0.0
             corr = np.correlate(bot_c, mic_c, mode="valid")
@@ -138,10 +139,9 @@ def _build_classes():
                 return 0.0
             bot_len = len(mic_c)
             n_windows = len(corr)
-            bot_sq_cumsum = np.cumsum(np.concatenate(([0.0], bot_c ** 2)))
+            bot_sq_cumsum = np.cumsum(np.concatenate(([0.0], bot_c**2)))
             bot_energy = np.sqrt(
-                bot_sq_cumsum[bot_len:bot_len + n_windows]
-                - bot_sq_cumsum[:n_windows]
+                bot_sq_cumsum[bot_len : bot_len + n_windows] - bot_sq_cumsum[:n_windows]
             )
             norm = mic_energy * bot_energy
             norm = np.where(norm < 1e-10, 1.0, norm)
@@ -159,7 +159,9 @@ def _build_classes():
                     if self._dropped <= 3 or self._dropped % 50 == 0:
                         logger.debug(
                             "[ECHO GATE] drop corr=%.3f threshold=%.2f dropped=%d",
-                            peak, self._threshold, self._dropped,
+                            peak,
+                            self._threshold,
+                            self._dropped,
                         )
                     return
                 self._passed += 1

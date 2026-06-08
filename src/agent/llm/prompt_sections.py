@@ -81,23 +81,23 @@ class PromptSection:
 
 PROMPT_SECTIONS: list[PromptSection] = [
     # Layer 1: Hard constraints (immutable, beat everything below)
-    PromptSection("hard_constraints",  50, "inline"),
+    PromptSection("hard_constraints", 50, "inline"),
     # Layer 2: Identity + Situation
-    PromptSection("persona",          100, "inline"),
-    PromptSection("context",          200, "dynamic"),
-    PromptSection("sub_agents",       205, "dynamic"),
-    PromptSection("memory",           210, "dynamic"),
-    PromptSection("mode",             300, "dynamic"),
+    PromptSection("persona", 100, "inline"),
+    PromptSection("context", 200, "dynamic"),
+    PromptSection("sub_agents", 205, "dynamic"),
+    PromptSection("memory", 210, "dynamic"),
+    PromptSection("mode", 300, "dynamic"),
     # Layer 3: Operations (tools, capabilities, style)
-    PromptSection("tool_catalog",     405, "inline"),
-    PromptSection("capabilities",     400, "template", "prompts/capabilities.txt"),
+    PromptSection("tool_catalog", 405, "inline"),
+    PromptSection("capabilities", 400, "template", "prompts/capabilities.txt"),
     PromptSection("installed_skills", 410, "template", "prompts/installed_skills.txt"),
-    PromptSection("hints",            500, "dynamic"),
-    PromptSection("reply_rules",      600, "template", "prompts/reply_rules.txt"),
-    PromptSection("speech_style",     610, "template", "prompts/speech_style.txt"),
-    PromptSection("tool_use",         620, "template", "prompts/tool_use_loop.txt"),
-    PromptSection("narration",        630, "template", "prompts/narration.txt"),
-    PromptSection("run_skill",        650, "template", "prompts/run_skill.txt"),
+    PromptSection("hints", 500, "dynamic"),
+    PromptSection("reply_rules", 600, "template", "prompts/reply_rules.txt"),
+    PromptSection("speech_style", 610, "template", "prompts/speech_style.txt"),
+    PromptSection("tool_use", 620, "template", "prompts/tool_use_loop.txt"),
+    PromptSection("narration", 630, "template", "prompts/narration.txt"),
+    PromptSection("run_skill", 650, "template", "prompts/run_skill.txt"),
 ]
 
 
@@ -125,17 +125,19 @@ def _render_persona_inline(persona: str, language: str) -> str:
     lines: list[str] = []
     if persona_block:
         lines.append(persona_block)
-    lines.extend([
-        f"The user is speaking {lang_name}.",
-        (
-            f"Respond ONLY in {lang_name}. Do NOT mix languages. "
-            "Do NOT respond in English unless the user explicitly asks you to."
-        ),
-        (
-            f"Host OS: {_host_os_label()}. Pick commands that match this OS — "
-            "do not assume Linux utilities on macOS or vice versa."
-        ),
-    ])
+    lines.extend(
+        [
+            f"The user is speaking {lang_name}.",
+            (
+                f"Respond ONLY in {lang_name}. Do NOT mix languages. "
+                "Do NOT respond in English unless the user explicitly asks you to."
+            ),
+            (
+                f"Host OS: {_host_os_label()}. Pick commands that match this OS — "
+                "do not assume Linux utilities on macOS or vice versa."
+            ),
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -288,6 +290,7 @@ def _render_tool_catalog() -> str:
     """Render the tool catalog section — auto-generated from the tool registry."""
     try:
         from src.agent.tools.registry import get_tool_descriptions
+
         descriptions = get_tool_descriptions()
         if descriptions:
             return "Available tools:\n" + descriptions
@@ -379,9 +382,9 @@ def render_prompt(
         elif section.source == "dynamic":
             # Generic dynamic: try <key>_block first, then <key>
             if context:
-                content = context.get(
-                    f"{section.key}_block"
-                ) or context.get(section.key)
+                content = context.get(f"{section.key}_block") or context.get(
+                    section.key
+                )
             if content and not isinstance(content, str):
                 content = str(content)
 

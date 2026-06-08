@@ -1,4 +1,5 @@
 """Auto-generates heare's persona on first run by asking an LLM to invent one."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -89,13 +90,17 @@ async def ensure_identity(bootstrap, settings: "Settings") -> Identity:
         return existing
 
     bootstrap_fn = _coerce_bootstrap_arg(bootstrap)
-    prompt_file = Path(__file__).parent.parent.parent / "prompts" / "identity-bootstrap.txt"
+    prompt_file = (
+        Path(__file__).parent.parent.parent / "prompts" / "identity-bootstrap.txt"
+    )
     prompt = prompt_file.read_text()
     raw = await bootstrap_fn(prompt)
     identity = _validate(raw)
 
     settings.identity_file.parent.mkdir(parents=True, exist_ok=True)
-    settings.identity_file.write_text(json.dumps(identity, ensure_ascii=False, indent=2))
+    settings.identity_file.write_text(
+        json.dumps(identity, ensure_ascii=False, indent=2)
+    )
     return identity
 
 
@@ -185,18 +190,14 @@ def build_deepseek_bootstrap(
         try:
             raw = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:
-            raise RuntimeError(
-                f"identity bootstrap: malformed response: {e}"
-            ) from e
+            raise RuntimeError(f"identity bootstrap: malformed response: {e}") from e
         if not isinstance(raw, str):
             raise RuntimeError("identity bootstrap: non-string content")
         text = raw.strip()
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end == -1 or end <= start:
-            raise RuntimeError(
-                "identity bootstrap: no JSON object in reply"
-            )
+            raise RuntimeError("identity bootstrap: no JSON object in reply")
         return json.loads(text[start : end + 1])
 
     return _bootstrap

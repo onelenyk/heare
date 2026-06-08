@@ -23,6 +23,7 @@ loop never blocks on disk. Failures are logged but don't propagate.
 Pipecat imports are deferred so admin CLI paths import this module
 without portaudio.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -128,19 +129,21 @@ def _build_processor_class():
             model = entry.model
             prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
             completion = int(getattr(usage, "completion_tokens", 0) or 0)
-            cost = llm_cost(
-                model=model, input_tokens=prompt, output_tokens=completion
-            )
+            cost = llm_cost(model=model, input_tokens=prompt, output_tokens=completion)
             provider = ""
             try:
                 provider = self._provider_getter() or ""
             except Exception:
                 logger.debug("provider_getter raised", exc_info=True)
-            asyncio.create_task(self._record_llm(
-                provider=provider, model=model,
-                input_tokens=prompt, output_tokens=completion,
-                cost_usd=cost,
-            ))
+            asyncio.create_task(
+                self._record_llm(
+                    provider=provider,
+                    model=model,
+                    input_tokens=prompt,
+                    output_tokens=completion,
+                    cost_usd=cost,
+                )
+            )
 
         async def _record_llm(
             self,
@@ -164,7 +167,10 @@ def _build_processor_class():
                 logger.exception(
                     "[USAGE] failed to persist llm event "
                     "(provider=%s model=%s in=%d out=%d)",
-                    provider, model, input_tokens, output_tokens,
+                    provider,
+                    model,
+                    input_tokens,
+                    output_tokens,
                 )
 
         # ----- TTS ---------------------------------------------------
@@ -182,12 +188,20 @@ def _build_processor_class():
             # filtered that. For unknown providers it returns None too —
             # we still record the call so volume statistics are
             # accurate even if dollars are unknown.
-            asyncio.create_task(self._record_tts(
-                provider=provider, char_count=char_count, cost_usd=cost,
-            ))
+            asyncio.create_task(
+                self._record_tts(
+                    provider=provider,
+                    char_count=char_count,
+                    cost_usd=cost,
+                )
+            )
 
         async def _record_tts(
-            self, *, provider: str | None, char_count: int, cost_usd: float | None,
+            self,
+            *,
+            provider: str | None,
+            char_count: int,
+            cost_usd: float | None,
         ) -> None:
             try:
                 await self._store.record_usage_event(
@@ -198,9 +212,9 @@ def _build_processor_class():
                 )
             except Exception:
                 logger.exception(
-                    "[USAGE] failed to persist tts event "
-                    "(provider=%s chars=%d)",
-                    provider, char_count,
+                    "[USAGE] failed to persist tts event (provider=%s chars=%d)",
+                    provider,
+                    char_count,
                 )
 
         # ----- STT ---------------------------------------------------
@@ -209,16 +223,21 @@ def _build_processor_class():
             duration = self._last_speech_duration
             self._last_speech_duration = None
             audio_seconds = float(duration) if duration is not None else 0.0
-            cost = stt_cost(
-                provider=self._stt_provider, audio_seconds=audio_seconds
+            cost = stt_cost(provider=self._stt_provider, audio_seconds=audio_seconds)
+            asyncio.create_task(
+                self._record_stt(
+                    provider=self._stt_provider,
+                    audio_seconds=audio_seconds,
+                    cost_usd=cost,
+                )
             )
-            asyncio.create_task(self._record_stt(
-                provider=self._stt_provider,
-                audio_seconds=audio_seconds, cost_usd=cost,
-            ))
 
         async def _record_stt(
-            self, *, provider: str | None, audio_seconds: float, cost_usd: float | None,
+            self,
+            *,
+            provider: str | None,
+            audio_seconds: float,
+            cost_usd: float | None,
         ) -> None:
             try:
                 await self._store.record_usage_event(
@@ -229,9 +248,9 @@ def _build_processor_class():
                 )
             except Exception:
                 logger.exception(
-                    "[USAGE] failed to persist stt event "
-                    "(provider=%s seconds=%.2f)",
-                    provider, audio_seconds,
+                    "[USAGE] failed to persist stt event (provider=%s seconds=%.2f)",
+                    provider,
+                    audio_seconds,
                 )
 
     _processor_cls = UsageRecorder

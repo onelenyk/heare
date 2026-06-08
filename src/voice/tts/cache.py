@@ -4,6 +4,7 @@ Stores raw s16le PCM bytes keyed on the original text. Cached phrases bypass
 edge-tts entirely and play back in microseconds, eliminating ~1-5 seconds of
 TTS latency for repeated lines like 'okay', 'nevermind, cancelled', etc.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,8 +67,12 @@ class TTSCache:
         await asyncio.gather(*(_synth_one(p) for p in missing))
         total = len(missing)
         if failed:
-            logger.info("TTS cache: %d/%d phrases cached (%d failed — Edge TTS unavailable for those)",
-                        success, total, failed)
+            logger.info(
+                "TTS cache: %d/%d phrases cached (%d failed — Edge TTS unavailable for those)",
+                success,
+                total,
+                failed,
+            )
             if failed == total:
                 logger.warning("TTS cache: all %d phrases failed to pre-cache", total)
         else:

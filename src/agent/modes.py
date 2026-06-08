@@ -16,6 +16,7 @@ subsystem. ``sound_policy`` is expressed as level *value strings*
 (IndicationLevel is a str enum, so ``level == "attention"`` holds) and
 the indication wire-in adapts it.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -71,8 +72,7 @@ MODE_PROFILES: dict[str, ModeProfile] = {
         name="ambient",
         outputs=frozenset({"voice", "text", "canvas"}),
         prompt_addendum=(
-            "Mode: ambient. Normal conversational assistant — engaged but "
-            "not pushy."
+            "Mode: ambient. Normal conversational assistant — engaged but not pushy."
         ),
         denied_tool_patterns=(),
         turn_timeout=_AMBIENT_TIMEOUT,
@@ -173,9 +173,7 @@ def is_tool_allowed(profile: ModeProfile, tool_name: str) -> bool:
     return True
 
 
-def mode_gate_refusal(
-    session_state: object | None, tool_name: str
-) -> dict | None:
+def mode_gate_refusal(session_state: object | None, tool_name: str) -> dict | None:
     """Shared execution-time gate for the two tool-handler chokepoints.
 
     Returns a spoken-legible refusal dict (the tool-result shape) and

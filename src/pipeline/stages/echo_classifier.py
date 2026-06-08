@@ -32,6 +32,7 @@ logger = logging.getLogger("heare.echo_classifier")
 # Deferred pipecat imports (keeps admin CLI working without portaudio)
 # ---------------------------------------------------------------------------
 
+
 def _load_pipecat_base():
     from pipecat.frames.frames import (
         BotStartedSpeakingFrame,
@@ -180,9 +181,7 @@ def _build_processor_class():
                 )
                 await self.push_frame(frame, direction)
             except (httpx.HTTPError, httpx.TimeoutException) as e:
-                logger.warning(
-                    "[ECHO CLASSIFIER] LLM call failed: %s", e
-                )
+                logger.warning("[ECHO CLASSIFIER] LLM call failed: %s", e)
                 await self.push_frame(frame, direction)
             finally:
                 self._classifying = False
@@ -199,9 +198,7 @@ def _build_processor_class():
                 "deepseek_base_url",
                 "https://api.deepseek.com/v1",
             )
-            model = getattr(
-                self._settings, "deepseek_model", "deepseek-chat"
-            )
+            model = getattr(self._settings, "deepseek_model", "deepseek-chat")
 
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -213,8 +210,7 @@ def _build_processor_class():
                     {
                         "role": "system",
                         "content": (
-                            "You are an echo detector."
-                            " Reply ECHO or INTERRUPT only."
+                            "You are an echo detector. Reply ECHO or INTERRUPT only."
                         ),
                     },
                     {"role": "user", "content": prompt},
@@ -242,6 +238,7 @@ def _build_processor_class():
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
 
 def create_echo_classifier(
     *,

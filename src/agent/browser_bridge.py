@@ -9,6 +9,7 @@ close code 4001. Origin headers must start with `chrome-extension://`.
 All wire messages include `"v": 1`. All disconnect/timeout/not-connected
 errors returned from `call()` are structured `{success, error, retryable}`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,7 +47,7 @@ PAIR_CODE_DIGITS = 6
 ERR_DISCONNECTED_MID_RPC = {
     "success": False,
     "error": "Browser extension disconnected while processing request. "
-             "Try again in a few seconds.",
+    "Try again in a few seconds.",
     "retryable": True,
 }
 ERR_TIMEOUT = {
@@ -57,7 +58,7 @@ ERR_TIMEOUT = {
 ERR_NOT_CONNECTED = {
     "success": False,
     "error": "Browser not connected. Install the Heare Bridge extension from "
-             "extensions/heare-bridge/ via chrome://extensions.",
+    "extensions/heare-bridge/ via chrome://extensions.",
     "retryable": False,
 }
 
@@ -101,12 +102,16 @@ class BrowserBridge:
         self._lonely_task = asyncio.create_task(self._lonely_watcher())
 
         async def _process_request(
-            connection: ServerConnection, request: Request,
+            connection: ServerConnection,
+            request: Request,
         ) -> Response | None:
-            origin = request.headers.get("Origin", "") or request.headers.get("origin", "")
+            origin = request.headers.get("Origin", "") or request.headers.get(
+                "origin", ""
+            )
             if not origin.startswith("chrome-extension://"):
                 logger.warning(
-                    "browser_bridge handshake rejected: bad origin=%r", origin,
+                    "browser_bridge handshake rejected: bad origin=%r",
+                    origin,
                 )
                 return connection.respond(403, "Forbidden: invalid Origin\n")
             return None
@@ -167,9 +172,7 @@ class BrowserBridge:
             # the WS no longer dies on SW suspension, so a second connection
             # almost always means a second Chrome profile competing for the
             # same daemon — accepting it would create a kick-war.
-            logger.warning(
-                "browser_bridge refusing second client (close 4002)"
-            )
+            logger.warning("browser_bridge refusing second client (close 4002)")
             try:
                 await ws.close(code=CLOSE_ALREADY_CONNECTED, reason="already connected")
             except Exception:
@@ -198,7 +201,9 @@ class BrowserBridge:
             if not secrets.compare_digest(str(msg.get("token", "")), self._token):
                 now = time.time()
                 if now - self._last_auth_fail_log > 300:  # once per 5 minutes
-                    logger.warning("browser_bridge auth failed (close 4001) — suppressing repeats for 5min")
+                    logger.warning(
+                        "browser_bridge auth failed (close 4001) — suppressing repeats for 5min"
+                    )
                     self._last_auth_fail_log = now
                 await ws.close(code=CLOSE_AUTH_FAILED, reason="bad auth")
                 return
@@ -213,16 +218,26 @@ class BrowserBridge:
         self._write_status(True)
         try:
             if mtype == "pair":
-                await ws.send(json.dumps({
-                    "v": WIRE_VERSION,
-                    "type": "pair_result",
-                    "ok": True,
-                    "token": self._token,
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "v": WIRE_VERSION,
+                            "type": "pair_result",
+                            "ok": True,
+                            "token": self._token,
+                        }
+                    )
+                )
             else:
-                await ws.send(json.dumps({
-                    "v": WIRE_VERSION, "type": "auth_result", "ok": True,
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "v": WIRE_VERSION,
+                            "type": "auth_result",
+                            "ok": True,
+                        }
+                    )
+                )
         except ConnectionClosed:
             self._authed = False
             self._ws = None
@@ -266,7 +281,9 @@ class BrowserBridge:
             else:
                 err = msg.get("error", {}) or {}
                 code = err.get("code") if isinstance(err, dict) else None
-                emsg = (err.get("message") if isinstance(err, dict) else None) or "remote error"
+                emsg = (
+                    err.get("message") if isinstance(err, dict) else None
+                ) or "remote error"
                 fut.set_result(_err_remote(f"{code or 'ERROR'}: {emsg}"))
             return
         if mtype == "ping":
@@ -292,8 +309,11 @@ class BrowserBridge:
         return self._authed and self._ws is not None
 
     async def call(
-        self, method: str, params: dict | None = None,
-        *, timeout: float | None = None,
+        self,
+        method: str,
+        params: dict | None = None,
+        *,
+        timeout: float | None = None,
     ) -> dict:
         """Send an RPC and await the response. Returns either
         `{"success": True, "result": ...}` or a structured error dict
@@ -303,7 +323,9 @@ class BrowserBridge:
             return dict(ERR_NOT_CONNECTED)
 
         if timeout is None:
-            timeout = LONG_RPC_TIMEOUT if method in LONG_METHODS else DEFAULT_RPC_TIMEOUT
+            timeout = (
+                LONG_RPC_TIMEOUT if method in LONG_METHODS else DEFAULT_RPC_TIMEOUT
+            )
 
         req_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
@@ -326,7 +348,9 @@ class BrowserBridge:
             elapsed_ms = int((time.monotonic() - started) * 1000)
             logger.info(
                 "browser_bridge rpc method=%s tab=%s elapsed_ms=%d ok=False",
-                method, tab_id, elapsed_ms,
+                method,
+                tab_id,
+                elapsed_ms,
             )
             return dict(ERR_DISCONNECTED_MID_RPC)
 
@@ -337,7 +361,9 @@ class BrowserBridge:
             elapsed_ms = int((time.monotonic() - started) * 1000)
             logger.info(
                 "browser_bridge rpc method=%s tab=%s elapsed_ms=%d ok=False",
-                method, tab_id, elapsed_ms,
+                method,
+                tab_id,
+                elapsed_ms,
             )
             return dict(ERR_TIMEOUT)
 
@@ -345,7 +371,10 @@ class BrowserBridge:
         ok = bool(result.get("success"))
         logger.info(
             "browser_bridge rpc method=%s tab=%s elapsed_ms=%d ok=%s",
-            method, tab_id, elapsed_ms, ok,
+            method,
+            tab_id,
+            elapsed_ms,
+            ok,
         )
         return result
 
@@ -376,13 +405,15 @@ class BrowserBridge:
             pair_remaining = 0.0
             if self._pair_expires_at is not None:
                 pair_remaining = max(0.0, self._pair_expires_at - now)
-            payload = json.dumps({
-                "connected": bool(connected),
-                "ts": now,
-                "port": self._port,
-                "pair_code": self._pair_code,
-                "pair_remaining_s": pair_remaining if self._pair_code else None,
-            })
+            payload = json.dumps(
+                {
+                    "connected": bool(connected),
+                    "ts": now,
+                    "port": self._port,
+                    "pair_code": self._pair_code,
+                    "pair_remaining_s": pair_remaining if self._pair_code else None,
+                }
+            )
             tmp = self._status_path.with_suffix(self._status_path.suffix + ".tmp")
             tmp.write_text(payload)
             os.replace(tmp, self._status_path)
@@ -406,10 +437,16 @@ class BrowserBridge:
         ):
             logger.warning("browser_bridge pair rejected (no/expired code)")
             try:
-                await ws.send(json.dumps({
-                    "v": WIRE_VERSION, "type": "pair_result", "ok": False,
-                    "error": "no active pair code",
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "v": WIRE_VERSION,
+                            "type": "pair_result",
+                            "ok": False,
+                            "error": "no active pair code",
+                        }
+                    )
+                )
             except ConnectionClosed:
                 pass
             await ws.close(code=CLOSE_AUTH_FAILED, reason="bad pair")
@@ -418,15 +455,22 @@ class BrowserBridge:
             self._pair_attempts += 1
             logger.warning(
                 "browser_bridge pair wrong code (attempt %d/%d)",
-                self._pair_attempts, PAIR_MAX_ATTEMPTS,
+                self._pair_attempts,
+                PAIR_MAX_ATTEMPTS,
             )
             if self._pair_attempts >= PAIR_MAX_ATTEMPTS:
                 self._clear_pair_code()
             try:
-                await ws.send(json.dumps({
-                    "v": WIRE_VERSION, "type": "pair_result", "ok": False,
-                    "error": "wrong code",
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "v": WIRE_VERSION,
+                            "type": "pair_result",
+                            "ok": False,
+                            "error": "wrong code",
+                        }
+                    )
+                )
             except ConnectionClosed:
                 pass
             await ws.close(code=CLOSE_AUTH_FAILED, reason="bad pair")
@@ -469,7 +513,8 @@ class BrowserBridge:
         copied = _copy_to_clipboard(digits)
         logger.info(
             "browser_bridge pair code %s (60s TTL, clipboard=%s)",
-            digits, "ok" if copied else "skipped",
+            digits,
+            "ok" if copied else "skipped",
         )
 
     def _clear_pair_code(self) -> None:
@@ -490,13 +535,18 @@ def _copy_to_clipboard(text: str) -> bool:
     """Copy text to system clipboard. Returns True on success."""
     try:
         import platform
+
         system = platform.system()
         if system == "Darwin":
             subprocess.run(["pbcopy"], input=text.encode(), check=True)
             return True
         elif system == "Linux":
-            subprocess.run(["xclip", "-selection", "clipboard"],
-                          input=text.encode(), check=True, capture_output=True)
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=text.encode(),
+                check=True,
+                capture_output=True,
+            )
             return True
         return False
     except (subprocess.SubprocessError, FileNotFoundError, OSError):

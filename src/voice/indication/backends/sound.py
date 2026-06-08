@@ -6,6 +6,7 @@ SoundCueProcessor's queue, which emits the bracketed frame sequence
 (IndicationCueFrame(start=True) → OutputAudioRawFrame → IndicationCueFrame(start=False))
 into the pipecat pipeline.
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,7 +15,11 @@ from typing import TYPE_CHECKING
 from src.voice.indication import assets as indication_assets
 
 if TYPE_CHECKING:
-    from src.voice.indication.core import IndicationKind, IndicationLevel, SoundCueProcessor
+    from src.voice.indication.core import (
+        IndicationKind,
+        IndicationLevel,
+        SoundCueProcessor,
+    )
 
 logger = logging.getLogger("heare.indication.sound")
 

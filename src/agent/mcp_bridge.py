@@ -20,6 +20,7 @@ Design notes:
 * ``env`` is merged onto ``os.environ`` so ``npx``/``node`` resolve on
   PATH the same way they do for a user shell.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -104,12 +105,8 @@ class McpBridge:
         )
 
         async def _open() -> Any:
-            read, write = await self._stack.enter_async_context(
-                stdio_client(params)
-            )
-            session = await self._stack.enter_async_context(
-                ClientSession(read, write)
-            )
+            read, write = await self._stack.enter_async_context(stdio_client(params))
+            session = await self._stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
             return session
 
@@ -121,9 +118,7 @@ class McpBridge:
         for tool in listed.tools:
             fn_name = f"mcp__{slug}__{tool.name}"
             schema = tool.inputSchema or {"type": "object", "properties": {}}
-            self._tools.append(
-                (fn_name, tool.description or fn_name, schema, session)
-            )
+            self._tools.append((fn_name, tool.description or fn_name, schema, session))
             count += 1
         self._connected_servers.append(slug)
         logger.info(
@@ -143,8 +138,7 @@ class McpBridge:
                 await self._connect_one(slug, entry)
             except asyncio.TimeoutError:
                 logger.warning(
-                    "mcp_bridge: server %r timed out after %.0fs; skipping "
-                    "this boot",
+                    "mcp_bridge: server %r timed out after %.0fs; skipping this boot",
                     slug,
                     _CONNECT_TIMEOUT_S,
                 )
@@ -208,9 +202,7 @@ class McpBridge:
             handler = self._make_handler(
                 fn_name, session, conversation_manager, session_state
             )
-            llm.register_function(
-                fn_name, handler, cancel_on_interruption=True
-            )
+            llm.register_function(fn_name, handler, cancel_on_interruption=True)
             registered.append(fn_name)
         return registered
 
@@ -242,9 +234,7 @@ class McpBridge:
                             intent_id, refusal["error"]
                         )
                     except Exception:  # noqa: BLE001
-                        logger.exception(
-                            "mcp_bridge: mode_gate action-log failed"
-                        )
+                        logger.exception("mcp_bridge: mode_gate action-log failed")
                 await params.result_callback(refusal)
                 return
             if conversation_manager is not None:
@@ -266,21 +256,15 @@ class McpBridge:
                             intent_id, tool=fn_name, args=str(args)
                         )
                     except Exception:  # noqa: BLE001
-                        logger.exception(
-                            "mcp_bridge: record_action_cancelled failed"
-                        )
+                        logger.exception("mcp_bridge: record_action_cancelled failed")
                 raise
             except Exception as exc:  # noqa: BLE001 — defensive
                 logger.exception("mcp_bridge: %r raised", fn_name)
                 if conversation_manager is not None:
                     try:
-                        conversation_manager.record_action_error(
-                            intent_id, repr(exc)
-                        )
+                        conversation_manager.record_action_error(intent_id, repr(exc))
                     except Exception:  # noqa: BLE001
-                        logger.exception(
-                            "mcp_bridge: record_action_error failed"
-                        )
+                        logger.exception("mcp_bridge: record_action_error failed")
                 await params.result_callback(
                     {
                         "success": False,

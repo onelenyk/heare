@@ -24,6 +24,7 @@ This module provides:
 Pipecat imports are deferred so admin CLI paths import this module
 without portaudio.
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,7 @@ def _host_os_label() -> str:
     """Return a human-readable host OS label (``macOS``/``Linux``/...)."""
     raw = platform.system() or ""
     return _HOST_OS_LABELS.get(raw, raw or "unknown")
+
 
 if TYPE_CHECKING:
     from src.store.context import ContextBuilder
@@ -183,8 +185,7 @@ def _build_injector_class():
                     )
                 except Exception:
                     logger.exception(
-                        "llm_context_injector: get_or_create_active "
-                        "failed (non-fatal)"
+                        "llm_context_injector: get_or_create_active failed (non-fatal)"
                     )
             try:
                 ctx = await self._context_builder.build_for_generator(
@@ -228,7 +229,13 @@ def _build_injector_class():
                 len(new_prompt.split("\n")),
             )
             _replace_system_message(self._llm_context, new_prompt)
-            emit("prompt", "context_built", tokens=len(new_prompt.split()), lang=language, level="debug")
+            emit(
+                "prompt",
+                "context_built",
+                tokens=len(new_prompt.split()),
+                lang=language,
+                level="debug",
+            )
 
     _injector_cls = SystemPromptInjector
     return _injector_cls

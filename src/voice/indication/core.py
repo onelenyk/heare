@@ -7,6 +7,7 @@ facade handles mode gating, quiet hours, cooldown coalescing, and dispatch.
 
 See .omc/plans/indication.md for the full design.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -113,16 +114,31 @@ KIND_TO_LEVEL: dict[IndicationKind, IndicationLevel] = {
 
 
 _DEFAULTS: dict[IndicationKind, tuple[str, str]] = {
-    IndicationKind.AWAITING_CONFIRMATION: ("heare: confirm?", "Say 'гава так' or 'гава ні' (30s)"),
-    IndicationKind.CONFIRMATION_DEADLINE: ("heare: 5s left", "Confirmation will expire"),
-    IndicationKind.CONFIRMATION_TIMED_OUT: ("heare: timeout", "Confirmation window closed"),
-    IndicationKind.MCP_AUTH_REQUIRED: ("heare: MCP auth needed", "MCP server needs authentication — check terminal"),
+    IndicationKind.AWAITING_CONFIRMATION: (
+        "heare: confirm?",
+        "Say 'гава так' or 'гава ні' (30s)",
+    ),
+    IndicationKind.CONFIRMATION_DEADLINE: (
+        "heare: 5s left",
+        "Confirmation will expire",
+    ),
+    IndicationKind.CONFIRMATION_TIMED_OUT: (
+        "heare: timeout",
+        "Confirmation window closed",
+    ),
+    IndicationKind.MCP_AUTH_REQUIRED: (
+        "heare: MCP auth needed",
+        "MCP server needs authentication — check terminal",
+    ),
     IndicationKind.ACTION_FAILED: ("heare: action failed", ""),
     IndicationKind.ACTION_REJECTED: ("heare: action rejected", ""),
     IndicationKind.ACTION_LONG_RUNNING: ("heare: long action", ""),
     IndicationKind.STT_ERROR: ("heare: STT error", ""),
     IndicationKind.TTS_FAILURE: ("heare: TTS failure", ""),
-    IndicationKind.AUDIO_DEVICE_LOST: ("heare: audio lost", "Mic or speaker disconnected"),
+    IndicationKind.AUDIO_DEVICE_LOST: (
+        "heare: audio lost",
+        "Mic or speaker disconnected",
+    ),
     IndicationKind.INTENT_SUBMITTED: ("heare: queued", ""),
     IndicationKind.INTENT_COMPLETED: ("heare: done", ""),
     IndicationKind.INTENT_CANCELLED: ("heare: cancelled", ""),
@@ -455,7 +471,9 @@ def _build_sound_cue_processor_class() -> type:
         cues are dropped and counted via `cues_dropped`.
         """
 
-        def __init__(self, sample_rate: int = 24000, tail_pad_seconds: float = 0.2) -> None:
+        def __init__(
+            self, sample_rate: int = 24000, tail_pad_seconds: float = 0.2
+        ) -> None:
             super().__init__()
             self._sample_rate = sample_rate
             self._tail_pad = tail_pad_seconds
@@ -546,9 +564,7 @@ def _build_sound_cue_processor_class() -> type:
     return _sound_cue_processor_cls
 
 
-def build_sound_cue_processor(
-    sample_rate: int = 24000, tail_pad_seconds: float = 0.2
-):
+def build_sound_cue_processor(sample_rate: int = 24000, tail_pad_seconds: float = 0.2):
     """Factory for SoundCueProcessor — lazy-imports pipecat.
 
     Returns an instance of the SoundCueProcessor class, suitable for

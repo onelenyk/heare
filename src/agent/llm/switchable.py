@@ -4,6 +4,7 @@ Fully data-driven: all provider metadata lives in :mod:`src.agent.llm.providers`
 Adding a new provider requires zero changes to this file — just add an entry
 to the ``PROVIDERS`` registry.
 """
+
 from __future__ import annotations
 
 import logging
@@ -146,14 +147,15 @@ class SwitchableLLMService(LLMService):
         self._active_provider = available[0]
         if len(available) > 1:
             logger.info(
-                "switchable_llm: multiple providers available (%s); "
-                "defaulting to %s",
+                "switchable_llm: multiple providers available (%s); defaulting to %s",
                 ", ".join(available),
                 self._active_provider,
             )
 
         self._state = state
-        self._config_settings = settings  # our Settings, stored separately from self._settings
+        self._config_settings = (
+            settings  # our Settings, stored separately from self._settings
+        )
         self._key_snapshots: dict[str, str] = {}
         if self._config_settings is not None:
             for attr_name in ("deepseek_api_key", "zai_api_key", "opencode_api_key"):
@@ -284,7 +286,11 @@ class SwitchableLLMService(LLMService):
             ("key_opencode_api_key", "opencode"),
         ]:
             new_key = self._state.get(key)
-            if new_key and len(new_key) >= 30 and new_key != self._key_snapshots.get(attr):
+            if (
+                new_key
+                and len(new_key) >= 30
+                and new_key != self._key_snapshots.get(attr)
+            ):
                 self._key_snapshots[attr] = new_key
                 if attr in self._delegates:
                     self._rebuild_delegate(attr, new_key)
@@ -306,9 +312,7 @@ class SwitchableLLMService(LLMService):
             d = self._delegate_for(raw)
             if d is not None:
                 self._active_provider = raw
-                logger.info(
-                    "switchable_llm: switched to %s provider (configured)", raw
-                )
+                logger.info("switchable_llm: switched to %s provider (configured)", raw)
             else:
                 fallback = self._first_available_provider()
                 self._active_provider = fallback
@@ -376,7 +380,9 @@ class SwitchableLLMService(LLMService):
         await super().process_frame(frame, direction)
 
         # Turn-start: lock delegate, sync provider
-        if isinstance(frame, (OpenAILLMContextFrame, LLMContextFrame, LLMMessagesFrame)):
+        if isinstance(
+            frame, (OpenAILLMContextFrame, LLMContextFrame, LLMMessagesFrame)
+        ):
             if not self._turn_in_flight:
                 self._sync_provider()  # reads provider file
                 self._turn_delegate = self._active_delegate()
@@ -444,9 +450,7 @@ class SwitchableLLMService(LLMService):
 
     # --- Function registration fan-out ---
 
-    def register_function(
-        self, name, handler, *, cancel_on_interruption=True, **kw
-    ):
+    def register_function(self, name, handler, *, cancel_on_interruption=True, **kw):
         for svc in self._all_services():
             svc.register_function(
                 name, handler, cancel_on_interruption=cancel_on_interruption, **kw

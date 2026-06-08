@@ -63,12 +63,20 @@ class SkillsLoader:
                         if not skill_md.exists():
                             continue
                         try:
-                            installed = (marketplace_skill_dir / ".install.json").exists()
-                            metadata = self._parse_skill_metadata(skill_md, installed_via_discovery=installed)
+                            installed = (
+                                marketplace_skill_dir / ".install.json"
+                            ).exists()
+                            metadata = self._parse_skill_metadata(
+                                skill_md, installed_via_discovery=installed
+                            )
                             if metadata:
                                 self._metadata_cache.append(metadata)
                         except Exception as e:
-                            logger.warning("Failed to parse skill at %s: %s", marketplace_skill_dir, e)
+                            logger.warning(
+                                "Failed to parse skill at %s: %s",
+                                marketplace_skill_dir,
+                                e,
+                            )
                     continue
 
                 skill_md = potential_skill_dir / "SKILL.md"
@@ -77,11 +85,15 @@ class SkillsLoader:
 
                 try:
                     installed = (potential_skill_dir / ".install.json").exists()
-                    metadata = self._parse_skill_metadata(skill_md, installed_via_discovery=installed)
+                    metadata = self._parse_skill_metadata(
+                        skill_md, installed_via_discovery=installed
+                    )
                     if metadata:
                         self._metadata_cache.append(metadata)
                 except Exception as e:
-                    logger.warning("Failed to parse skill at %s: %s", potential_skill_dir, e)
+                    logger.warning(
+                        "Failed to parse skill at %s: %s", potential_skill_dir, e
+                    )
 
         self._discovered = True
         return self._metadata_cache
@@ -109,11 +121,18 @@ class SkillsLoader:
     def get_skill_names(self) -> list[str]:
         return [s.name for s in self.discover()]
 
-    def _parse_skill_metadata(self, skill_md: Path, installed_via_discovery: bool = False) -> SkillMetadata | None:
+    def _parse_skill_metadata(
+        self, skill_md: Path, installed_via_discovery: bool = False
+    ) -> SkillMetadata | None:
         try:
             size = skill_md.stat().st_size
             if size > _MAX_SKILL_MD_BYTES:
-                logger.warning("Skipping oversized SKILL.md: %s (%d bytes > %d)", skill_md, size, _MAX_SKILL_MD_BYTES)
+                logger.warning(
+                    "Skipping oversized SKILL.md: %s (%d bytes > %d)",
+                    skill_md,
+                    size,
+                    _MAX_SKILL_MD_BYTES,
+                )
                 return None
             content = skill_md.read_text(encoding="utf-8")
         except OSError as e:
@@ -134,14 +153,21 @@ class SkillsLoader:
         if not (name_match and desc_match):
             return None
 
-        name = name_match.group(1).strip(' "\'')
-        description = desc_match.group(1).strip(' "\'')
+        name = name_match.group(1).strip(" \"'")
+        description = desc_match.group(1).strip(" \"'")
 
         if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", name):
-            logger.warning("Invalid skill name format: %s (expected lowercase-hyphenated)", name)
+            logger.warning(
+                "Invalid skill name format: %s (expected lowercase-hyphenated)", name
+            )
             return None
 
-        return SkillMetadata(name=name, description=description, path=skill_md.parent, installed_via_discovery=installed_via_discovery)
+        return SkillMetadata(
+            name=name,
+            description=description,
+            path=skill_md.parent,
+            installed_via_discovery=installed_via_discovery,
+        )
 
 
 _loader: SkillsLoader | None = None
@@ -162,6 +188,8 @@ def get_skills_loader(settings: object | None = None) -> SkillsLoader:
         _loader = SkillsLoader(paths)
         _loader_paths = desired_paths
         discovered = _loader.discover()
-        logger.info("Loaded %d skills from %d paths", len(discovered), len(_loader.search_paths))
+        logger.info(
+            "Loaded %d skills from %d paths", len(discovered), len(_loader.search_paths)
+        )
 
     return _loader

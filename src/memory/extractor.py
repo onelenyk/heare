@@ -4,6 +4,7 @@ Zero LLM calls — pure regex pattern matching. Extracts facts, preferences,
 decisions, and events from user utterances and agent inferences. Designed
 to run as a fire-and-forget background task after each turn.
 """
+
 from __future__ import annotations
 
 import re
@@ -19,29 +20,106 @@ if TYPE_CHECKING:
 
 _PATTERNS_UK: list[tuple[re.Pattern, MemoryType]] = [
     # Name / identity
-    (re.compile(r"мене звати\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
+    (
+        re.compile(r"мене звати\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
+        MemoryType.FACT,
+    ),
     (re.compile(r"я\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
     # Preferences
-    (re.compile(r"я\s+(?:люблю|обожнюю|полюбляю)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.PREFERENCE),
-    (re.compile(r"мені\s+(?:подобається|до вподоби)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.PREFERENCE),
-    (re.compile(r"мій\s+(?:улюблений|улюблена|улюблене)\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.PREFERENCE),
+    (
+        re.compile(
+            r"я\s+(?:люблю|обожнюю|полюбляю)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.PREFERENCE,
+    ),
+    (
+        re.compile(
+            r"мені\s+(?:подобається|до вподоби)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.PREFERENCE,
+    ),
+    (
+        re.compile(
+            r"мій\s+(?:улюблений|улюблена|улюблене)\s+(\S[\s\S]{0,40}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.PREFERENCE,
+    ),
     # Decisions
-    (re.compile(r"я\s+(?:вирішив|вирішила|вирішили)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.DECISION),
-    (re.compile(r"(?:домовились|вирішено|зроблено)\s*[:—–-]?\s*(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.DECISION),
+    (
+        re.compile(
+            r"я\s+(?:вирішив|вирішила|вирішили)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.DECISION,
+    ),
+    (
+        re.compile(
+            r"(?:домовились|вирішено|зроблено)\s*[:—–-]?\s*(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.DECISION,
+    ),
     # Location
-    (re.compile(r"я\s+(?:живу|мешкаю|знаходжусь)\s+(?:в|у)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
+    (
+        re.compile(
+            r"я\s+(?:живу|мешкаю|знаходжусь)\s+(?:в|у)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.FACT,
+    ),
     # Job / role
-    (re.compile(r"я\s+(?:працюю|є)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
+    (
+        re.compile(r"я\s+(?:працюю|є)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE),
+        MemoryType.FACT,
+    ),
 ]
 
 _PATTERNS_EN: list[tuple[re.Pattern, MemoryType]] = [
-    (re.compile(r"my name is\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
-    (re.compile(r"i(?:'m| am)\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
-    (re.compile(r"i\s+(?:like|love|enjoy|prefer)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.PREFERENCE),
-    (re.compile(r"my (?:favourite|favorite)\s+\w+\s+is\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.PREFERENCE),
-    (re.compile(r"i\s+(?:decided|chose|picked)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.DECISION),
-    (re.compile(r"i\s+(?:live|reside)\s+(?:in|at)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
-    (re.compile(r"i\s+(?:work|am)\s+(?:as|a|an)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
+    (
+        re.compile(r"my name is\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
+        MemoryType.FACT,
+    ),
+    (
+        re.compile(r"i(?:'m| am)\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
+        MemoryType.FACT,
+    ),
+    (
+        re.compile(
+            r"i\s+(?:like|love|enjoy|prefer)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.PREFERENCE,
+    ),
+    (
+        re.compile(
+            r"my (?:favourite|favorite)\s+\w+\s+is\s+(\S[\s\S]{0,40}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.PREFERENCE,
+    ),
+    (
+        re.compile(
+            r"i\s+(?:decided|chose|picked)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$", re.IGNORECASE
+        ),
+        MemoryType.DECISION,
+    ),
+    (
+        re.compile(
+            r"i\s+(?:live|reside)\s+(?:in|at)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.FACT,
+    ),
+    (
+        re.compile(
+            r"i\s+(?:work|am)\s+(?:as|a|an)\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.FACT,
+    ),
 ]
 
 
@@ -67,13 +145,15 @@ def extract_memories(text: str) -> list[MemoryEntry]:
             if dedup_key in seen:
                 continue
             seen.add(dedup_key)
-            results.append(MemoryEntry(
-                id="",
-                type=mem_type,
-                content=value,
-                source="auto_extracted",
-                confidence=0.7,  # lower confidence for auto-extracted
-            ))
+            results.append(
+                MemoryEntry(
+                    id="",
+                    type=mem_type,
+                    content=value,
+                    source="auto_extracted",
+                    confidence=0.7,  # lower confidence for auto-extracted
+                )
+            )
 
     return results
 

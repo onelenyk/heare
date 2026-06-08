@@ -16,6 +16,7 @@ The widget treats "result" as transient — if ``now - since_ts`` exceeds
 its display window, it renders idle. Keeping the auto-decay on the
 reader side avoids the writer needing a timer.
 """
+
 from __future__ import annotations
 
 import json
@@ -82,35 +83,55 @@ class VoiceStateObserver(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, UserStartedSpeakingFrame):
             self._last_partial = None
-            await self._state.set("voice_state", json.dumps({
-                "state": "listening",
-                "since_ts": time.time(),
-                "last_partial": None,
-                "last_final": self._last_final,
-            }))
+            await self._state.set(
+                "voice_state",
+                json.dumps(
+                    {
+                        "state": "listening",
+                        "since_ts": time.time(),
+                        "last_partial": None,
+                        "last_final": self._last_final,
+                    }
+                ),
+            )
         elif isinstance(frame, UserStoppedSpeakingFrame):
-            await self._state.set("voice_state", json.dumps({
-                "state": "stt",
-                "since_ts": time.time(),
-                "last_partial": self._last_partial,
-                "last_final": self._last_final,
-            }))
+            await self._state.set(
+                "voice_state",
+                json.dumps(
+                    {
+                        "state": "stt",
+                        "since_ts": time.time(),
+                        "last_partial": self._last_partial,
+                        "last_final": self._last_final,
+                    }
+                ),
+            )
         elif isinstance(frame, InterimTranscriptionFrame):
             self._last_partial = (frame.text or "").strip() or self._last_partial
-            await self._state.set("voice_state", json.dumps({
-                "state": "stt",
-                "since_ts": time.time(),
-                "last_partial": self._last_partial,
-                "last_final": self._last_final,
-            }))
+            await self._state.set(
+                "voice_state",
+                json.dumps(
+                    {
+                        "state": "stt",
+                        "since_ts": time.time(),
+                        "last_partial": self._last_partial,
+                        "last_final": self._last_final,
+                    }
+                ),
+            )
         elif isinstance(frame, TranscriptionFrame):
             self._last_final = (frame.text or "").strip() or self._last_final
-            await self._state.set("voice_state", json.dumps({
-                "state": "result",
-                "since_ts": time.time(),
-                "last_partial": self._last_partial,
-                "last_final": self._last_final,
-            }))
+            await self._state.set(
+                "voice_state",
+                json.dumps(
+                    {
+                        "state": "result",
+                        "since_ts": time.time(),
+                        "last_partial": self._last_partial,
+                        "last_final": self._last_final,
+                    }
+                ),
+            )
         await self.push_frame(frame, direction)
 
 

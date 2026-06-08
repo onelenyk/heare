@@ -56,7 +56,6 @@ def _resolve_opencode_binary(explicit: str | None = None) -> str:
     return "opencode"
 
 
-
 async def run_opencode(
     prompt: str,
     *,
@@ -116,7 +115,13 @@ async def run_opencode(
     ------
     Nothing — all failures are captured in the return dict.
     """
-    cmd: list[str] = [_resolve_opencode_binary(binary), "run", "--format", "json", "--dangerously-skip-permissions"]
+    cmd: list[str] = [
+        _resolve_opencode_binary(binary),
+        "run",
+        "--format",
+        "json",
+        "--dangerously-skip-permissions",
+    ]
     if model:
         cmd.extend(["--model", model])
     if session_id:
@@ -165,9 +170,7 @@ async def run_opencode(
             try:
                 event: dict[str, Any] = json.loads(line_str)
             except json.JSONDecodeError:
-                logger.debug(
-                    "non-JSON stdout line from opencode: %s", line_str[:200]
-                )
+                logger.debug("non-JSON stdout line from opencode: %s", line_str[:200])
                 continue
 
             events.append(event)
@@ -199,16 +202,12 @@ async def run_opencode(
         try:
             await asyncio.wait_for(proc.wait(), timeout=timeout)
         except (asyncio.TimeoutError, TimeoutError):
-            logger.warning(
-                "opencode timed out after %.1fs — sending SIGTERM", timeout
-            )
+            logger.warning("opencode timed out after %.1fs — sending SIGTERM", timeout)
             _terminate_graceful(proc)
             try:
                 await asyncio.wait_for(proc.wait(), timeout=2.0)
             except (asyncio.TimeoutError, TimeoutError):
-                logger.warning(
-                    "opencode did not exit after SIGTERM — sending SIGKILL"
-                )
+                logger.warning("opencode did not exit after SIGTERM — sending SIGKILL")
                 _kill_forceful(proc)
                 await proc.wait()
 

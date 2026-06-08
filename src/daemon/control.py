@@ -21,6 +21,7 @@ These helpers stay pure / dependency-free so they can be unit-tested
 without spinning up a real pipeline. The LLM-facing dispatchers in
 ``direct_tools.py`` enforce consent, log, and call these.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -84,7 +85,8 @@ def spawn_detached_respawn(*, delay_s: float = 1.0) -> int:
     )
     logger.info(
         "[DAEMON CONTROL] spawned detached respawner pid=%d delay=%.2fs",
-        proc.pid, delay_s,
+        proc.pid,
+        delay_s,
     )
     return proc.pid
 
@@ -108,7 +110,9 @@ async def schedule_self_exit(
     pid = os.getpid()
     logger.info(
         "[DAEMON CONTROL] self-exit scheduled in %.2fs (sig=%d, pid=%d)",
-        delay_s, sig, pid,
+        delay_s,
+        sig,
+        pid,
     )
     await asyncio.sleep(delay_s)
     logger.info("[DAEMON CONTROL] firing self-exit signal now")

@@ -15,6 +15,7 @@ When a ``conversation_manager`` is supplied to
 next-turn LLM context's recent-actions block stays populated and the
 model has the grounding it needs to avoid duplicate searches.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +26,6 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from src.agent.llm.providers import all_keys
 from src.agent.tools.direct import execute_direct
-from src.agent.tools.registry import TOOLS, get_enabled_tools, get_tool
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -711,7 +711,11 @@ _TOOL_SPECS: dict[str, tuple[dict[str, Any], list[str], ArgsSerializer]] = {
     ),
     "remember": (
         {
-            "type": {"type": "string", "enum": ["fact", "preference", "decision", "event"], "description": "Type of memory to store."},
+            "type": {
+                "type": "string",
+                "enum": ["fact", "preference", "decision", "event"],
+                "description": "Type of memory to store.",
+            },
             "content": {"type": "string", "description": "What to remember."},
         },
         ["type", "content"],
@@ -780,8 +784,7 @@ def _make_handler(
                     )
                 except Exception:  # noqa: BLE001
                     logger.exception(
-                        "llm_tools: mode_gate action-log failed "
-                        "(non-fatal)"
+                        "llm_tools: mode_gate action-log failed (non-fatal)"
                     )
             await params.result_callback(refusal)
             return
@@ -791,9 +794,7 @@ def _make_handler(
                     intent_id, tool_name, args_str
                 )
             except Exception:  # noqa: BLE001 — never break the tool call
-                logger.exception(
-                    "llm_tools: record_action_pending failed (non-fatal)"
-                )
+                logger.exception("llm_tools: record_action_pending failed (non-fatal)")
         try:
             result = await execute_direct(tool_name, args_str, settings)
         except asyncio.CancelledError:
@@ -841,16 +842,15 @@ def _make_handler(
                 )
                 items = (
                     result.get("items")
-                    if isinstance(result, dict) and isinstance(result.get("items"), list)
+                    if isinstance(result, dict)
+                    and isinstance(result.get("items"), list)
                     else None
                 )
                 conversation_manager.record_action_result(
                     intent_id, summary, items=items
                 )
             except Exception:  # noqa: BLE001
-                logger.exception(
-                    "llm_tools: record_action_result failed (non-fatal)"
-                )
+                logger.exception("llm_tools: record_action_result failed (non-fatal)")
         await params.result_callback(result)
 
     handler.__name__ = f"_handle_{tool_name}"
@@ -894,7 +894,11 @@ def register_dynamic_tool_handler(
     conversation_manager: Any = None,
 ) -> None:
     """Create and register a handler for a dynamically created tool."""
-    from src.agent.tools.dynamic import execute_bash_tool, execute_fetch_tool, execute_python_tool
+    from src.agent.tools.dynamic import (
+        execute_bash_tool,
+        execute_fetch_tool,
+        execute_python_tool,
+    )
 
     async def handler(params: Any) -> None:
         args = dict(params.arguments or {})

@@ -9,6 +9,7 @@ output lands).
 File-queue + delete is robust: the daemon can crash mid-process and the
 unread messages stay on disk for next start.
 """
+
 from __future__ import annotations
 
 import asyncio

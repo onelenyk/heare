@@ -3,6 +3,7 @@
 Detects the language of transcribed text using Claude and maps it to TTS voices.
 Supports: English (en-US-AriaNeural), Ukrainian (uk-UA-OstapNeural), Russian (ru-RU-DmitryNeural).
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,13 +63,16 @@ Text: {text[:200]}"""
             return _detect_language_heuristic(text)
     except Exception as e:
         logger.warning(
-            "language_detector: Claude detection failed, falling back to heuristic: %s", e
+            "language_detector: Claude detection failed, falling back to heuristic: %s",
+            e,
         )
         return _detect_language_heuristic(text)
 
     # Validate and normalize result
     if detected in SUPPORTED_LANGS:
-        logger.info("language_detector: detected language=%s from text=%r", detected, text[:40])
+        logger.info(
+            "language_detector: detected language=%s from text=%r", detected, text[:40]
+        )
         return detected
 
     logger.warning(
@@ -109,7 +113,9 @@ def _detect_language_heuristic(text: str) -> str:
             return "ru"
 
         # Tie-breaker: word patterns
-        if " не " in text_lower or " то " in text_lower:  # Common Ukrainian/Russian words
+        if (
+            " не " in text_lower or " то " in text_lower
+        ):  # Common Ukrainian/Russian words
             return "uk" if " ж " in text_lower or " а то " in text_lower else "ru"
 
     return "en"

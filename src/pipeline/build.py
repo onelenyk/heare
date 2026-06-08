@@ -24,13 +24,16 @@ without portaudio. ``build_pipeline`` is the production
 entry point; ``_assemble_native_stages`` is the pure stage-list
 builder, exposed for unit testing without portaudio mock state.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from typing import TYPE_CHECKING, Any, Tuple
 
-from src.pipeline.stages.assistant_response_logger import create_assistant_response_logger
+from src.pipeline.stages.assistant_response_logger import (
+    create_assistant_response_logger,
+)
 from src.pipeline.stages.tts_scrub_processor import create_tts_scrub_processor
 from src.pipeline.stages.usage_recorder import create_usage_recorder
 from src.pipeline.stages.cancel_flag_gate import create_cancel_flag_gate
@@ -90,9 +93,7 @@ def reload_audio_device(settings: "Settings") -> bool:
         devices = _sd.query_devices()
         idx = _resolve_device_index(name, devices, kind="output")
         if idx is None:
-            logger.warning(
-                "reload_audio_device: device %r not found", name
-            )
+            logger.warning("reload_audio_device: device %r not found", name)
             return False
     except Exception:
         logger.exception("reload_audio_device: device lookup failed")
@@ -112,9 +113,7 @@ def reload_audio_device(settings: "Settings") -> bool:
                 stream.stop_stream()
                 stream.close()
             except Exception:
-                logger.exception(
-                    "reload_audio_device: stream close failed"
-                )
+                logger.exception("reload_audio_device: stream close failed")
             output._out_stream = None  # type: ignore[attr-defined]
 
         output._params.output_device_index = idx  # type: ignore[attr-defined]
@@ -157,9 +156,7 @@ def reload_audio_input_device(settings: "Settings") -> bool:
         devices = _sd.query_devices()
         idx = _resolve_device_index(name, devices, kind="input")
         if idx is None:
-            logger.warning(
-                "reload_audio_input_device: device %r not found", name
-            )
+            logger.warning("reload_audio_input_device: device %r not found", name)
             return False
     except Exception:
         logger.exception("reload_audio_input_device: device lookup failed")
@@ -177,9 +174,7 @@ def reload_audio_input_device(settings: "Settings") -> bool:
                 stream.stop_stream()
                 stream.close()
             except Exception:
-                logger.exception(
-                    "reload_audio_input_device: stream close failed"
-                )
+                logger.exception("reload_audio_input_device: stream close failed")
             inp._in_stream = None  # type: ignore[attr-defined]
 
         inp._params.input_device_index = idx  # type: ignore[attr-defined]
@@ -199,9 +194,7 @@ def reload_audio_input_device(settings: "Settings") -> bool:
         return False
 
 
-def _resolve_device_index(
-    name: str, devices: list, kind: str
-) -> int | None:
+def _resolve_device_index(name: str, devices: list, kind: str) -> int | None:
     """Find a sounddevice index by substring match on device name.
 
     ``kind`` is ``"input"`` (device must have input channels) or
@@ -275,21 +268,18 @@ def _wire_language_state(
                 )
                 return
         new_system = _build_system_prompt(
-            persona, new_lang,
+            persona,
+            new_lang,
             project_dir=project_dir,
             workspace_dir=workspace_dir,
         )
         for i, msg in enumerate(messages):
             if isinstance(msg, dict) and msg.get("role") == "system":
                 messages[i] = {"role": "system", "content": new_system}
-                logger.info(
-                    "[LLM SYSTEM PROMPT REWRITE] lang=%s", new_lang
-                )
+                logger.info("[LLM SYSTEM PROMPT REWRITE] lang=%s", new_lang)
                 return
         # No system message yet — prepend.
-        messages.insert(
-            0, {"role": "system", "content": new_system}
-        )
+        messages.insert(0, {"role": "system", "content": new_system})
         logger.info(
             "[LLM SYSTEM PROMPT INSERT] lang=%s (no prior system message)",
             new_lang,
@@ -471,9 +461,7 @@ async def build_pipeline(
     # Audio + STT + TTS (mostly identical to legacy build_pipeline)
     # ------------------------------------------------------------------
     vad = SileroVADAnalyzer(
-        params=VADParams(
-            stop_secs=0.3, start_secs=0.2, confidence=0.5, min_volume=0.2
-        )
+        params=VADParams(stop_secs=0.3, start_secs=0.2, confidence=0.5, min_volume=0.2)
     )
     smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
     # Pipecat 0.0.108 moved vad_analyzer/turn_analyzer off the transport and
@@ -486,6 +474,7 @@ async def build_pipeline(
     if settings.audio_input_device or settings.audio_output_device:
         try:
             import sounddevice as _sd
+
             devices = _sd.query_devices()
             if settings.audio_input_device:
                 audio_in_idx = _resolve_device_index(
@@ -508,7 +497,8 @@ async def build_pipeline(
             if audio_in_idx is not None or audio_out_idx is not None:
                 logger.info(
                     "audio devices: input=%s output=%s",
-                    audio_in_idx, audio_out_idx,
+                    audio_in_idx,
+                    audio_out_idx,
                 )
         except Exception:
             logger.exception("audio device resolution failed (using defaults)")
@@ -545,7 +535,11 @@ async def build_pipeline(
     # ------------------------------------------------------------------
     # Indication subsystem (identical to legacy)
     # ------------------------------------------------------------------
-    from src.voice.indication.core import Indication, build_sound_cue_processor, set_indication
+    from src.voice.indication.core import (
+        Indication,
+        build_sound_cue_processor,
+        set_indication,
+    )
 
     sound_cue_processor = None
     backends: list[Any] = []
@@ -557,20 +551,17 @@ async def build_pipeline(
                 sample_rate=settings.tts_sample_rate
             )
             backends.append(
-                SoundBackend(
-                    sound_cue_processor, sample_rate=settings.tts_sample_rate
-                )
+                SoundBackend(sound_cue_processor, sample_rate=settings.tts_sample_rate)
             )
         if settings.indication.visual_enabled:
             from src.voice.indication.backends.visual import VisualBackend
 
-            backends.append(
-                VisualBackend(settings.log_dir / "indication.jsonl")
-            )
+            backends.append(VisualBackend(settings.log_dir / "indication.jsonl"))
         if settings.indication.notification_center_enabled:
             from src.voice.indication.backends.notification import NotificationBackend
 
             backends.append(NotificationBackend())
+
     def _mode_provider():
         # Late-bound: SessionState is constructed after Indication, so
         # resolve it at notify-time. Falls back to the static settings
@@ -580,9 +571,7 @@ async def build_pipeline(
         ss = get_active_session_state()
         return ss.profile if ss is not None else settings.mode
 
-    indication = Indication(
-        settings.indication, backends, mode_provider=_mode_provider
-    )
+    indication = Indication(settings.indication, backends, mode_provider=_mode_provider)
     set_indication(indication)
     logger.info(
         "indication: %d backend(s) ready (enabled=%s)",
@@ -602,9 +591,7 @@ async def build_pipeline(
                 ind_inner = get_indication()
                 if ind_inner is not None:
                     err_msg = getattr(frame, "error", str(frame))
-                    ind_inner.notify(
-                        IndicationKind.STT_ERROR, body=str(err_msg)[:160]
-                    )
+                    ind_inner.notify(IndicationKind.STT_ERROR, body=str(err_msg)[:160])
             await self.push_frame(frame, direction)
 
     stt_error_observer = _SttErrorObserver()
@@ -635,8 +622,7 @@ async def build_pipeline(
                             await result
                     except Exception:
                         logger.exception(
-                            "pipeline_native: tts.cancel_pending raised "
-                            "(non-fatal)"
+                            "pipeline_native: tts.cancel_pending raised (non-fatal)"
                         )
             await self.push_frame(frame, direction)
 
@@ -772,7 +758,9 @@ async def build_pipeline(
             ", ".join(mcp_registered),
         )
     _wire_language_state(
-        language_state, llm_context, persona,
+        language_state,
+        llm_context,
+        persona,
         project_dir=project_dir,
         workspace_dir=str(settings.workspace_dir),
     )
@@ -789,6 +777,7 @@ async def build_pipeline(
 
             # Register in tool_registry runtime cache
             from src.agent.tools.registry import register_dynamic_tool, Tool
+
             register_dynamic_tool(
                 Tool(
                     name=name,
@@ -801,6 +790,7 @@ async def build_pipeline(
 
             # Register schema in llm_tools
             from src.agent.tools.schemas import register_dynamic_tool_schema
+
             register_dynamic_tool_schema(
                 name=name,
                 schema=definition.get("arguments", {}),
@@ -810,6 +800,7 @@ async def build_pipeline(
 
             # Register handler with LLM service
             from src.agent.tools.schemas import register_dynamic_tool_handler
+
             register_dynamic_tool_handler(
                 llm_service,
                 name=name,
@@ -891,9 +882,7 @@ async def build_pipeline(
     # Toggled from the watch dashboard (or any other process) by creating /
     # removing the file. Bot text is still logged because capture happens
     # upstream of TTS.
-    mute_gate = create_mute_gate(
-        state=state, session_state=session_state
-    )
+    mute_gate = create_mute_gate(state=state, session_state=session_state)
 
     # Input (mic) mute gate — drops InputAudioRawFrame when
     # ``settings.mute_input_file`` exists. Sits at the very front of the
@@ -910,9 +899,7 @@ async def build_pipeline(
     # mute-gate flag-file contract: any process (overlay, watch dashboard,
     # hotkey daemon) touches ``settings.cancel_flag_file`` and the next
     # pipeline frame pushes an InterruptionFrame upstream.
-    cancel_flag_gate = create_cancel_flag_gate(
-        state=state
-    )
+    cancel_flag_gate = create_cancel_flag_gate(state=state)
 
     # Acoustic echo gate — cross-correlates mic input against recent bot
     # output audio and drops correlated frames before they reach STT.
@@ -974,7 +961,11 @@ async def build_pipeline(
     logger.info(
         "Pipecat-native pipeline assembled: provider=%s, model=%s, lang=%s, tools=%d",
         llm_service.active_provider,
-        getattr(settings, f"{llm_service.active_provider}_model", PROVIDERS[llm_service.active_provider].default_model),
+        getattr(
+            settings,
+            f"{llm_service.active_provider}_model",
+            PROVIDERS[llm_service.active_provider].default_model,
+        ),
         language_state.language,
         len(tools_schema.standard_tools),
     )

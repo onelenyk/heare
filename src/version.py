@@ -10,6 +10,7 @@ when running from a checkout. The SHA is captured once at import time
 — restarting the daemon picks up the new SHA, but it never re-runs
 ``git`` per call.
 """
+
 from __future__ import annotations
 
 import logging

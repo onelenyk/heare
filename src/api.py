@@ -1,4 +1,5 @@
 """Minimal HTTP API for daemon control — backs the web frontend."""
+
 import asyncio
 import json
 import logging
@@ -16,19 +17,23 @@ logger = logging.getLogger(__name__)
 
 _INDEX_HTML: str | None = None
 
-from aiohttp import web
-from src.agent.identity import load_identity, save_identity, regenerate_identity
-from src.agent.llm.providers import PROVIDERS, get_available, get_config, make_identity_bootstrap
-from src.agent.modes import VALID_MODES
-from src.config import HEARE_HOME, write_browser_bridge_token
-from src.dashboard_data import (
+from aiohttp import web  # noqa: E402
+from src.agent.identity import load_identity, save_identity, regenerate_identity  # noqa: E402
+from src.agent.llm.providers import (
+    PROVIDERS,
+    get_available,
+    get_config,
+    make_identity_bootstrap,
+)  # noqa: E402
+from src.agent.modes import VALID_MODES  # noqa: E402
+from src.config import HEARE_HOME, write_browser_bridge_token  # noqa: E402
+from src.dashboard_data import (  # noqa: E402
     counts,
     daemon_status,
     fetch_usage,
     open_db,
-    read_voice_state,
 )
-from src.version import app_version
+from src.version import app_version  # noqa: E402
 
 
 class API:
@@ -62,10 +67,14 @@ class API:
         self._app.router.add_post("/api/chrome/launch", self._handle_chrome_launch)
         self._app.router.add_get("/api/tools", self._handle_tools)
         self._app.router.add_get("/api/chrome/profiles", self._handle_chrome_profiles)
-        self._app.router.add_post("/api/audio-devices/select", self._handle_audio_device_select)
+        self._app.router.add_post(
+            "/api/audio-devices/select", self._handle_audio_device_select
+        )
         self._app.router.add_get("/api/bridge/status", self._handle_bridge_status)
         self._app.router.add_get("/api/bridge/token", self._handle_bridge_token)
-        self._app.router.add_post("/api/bridge/rotate-token", self._handle_bridge_rotate_token)
+        self._app.router.add_post(
+            "/api/bridge/rotate-token", self._handle_bridge_rotate_token
+        )
         self._app.router.add_post("/api/bridge/toggle", self._handle_bridge_toggle)
         self._app.router.add_get("/api/prompts", self._handle_prompts)
         self._app.router.add_get("/api/prompts/preview", self._handle_prompt_preview)
@@ -74,10 +83,14 @@ class API:
         self._app.router.add_get("/api/agents", self._handle_agents)
         self._app.router.add_post("/api/agents/start", self._handle_agents_start)
         self._app.router.add_post("/api/agents/cancel", self._handle_agents_cancel)
-        self._app.router.add_get("/api/agents/{session_id}/result", self._handle_agents_result)
+        self._app.router.add_get(
+            "/api/agents/{session_id}/result", self._handle_agents_result
+        )
         self._app.router.add_get("/api/setup", self._handle_setup_state)
         self._app.router.add_post("/api/setup/identity", self._handle_setup_identity)
-        self._app.router.add_post("/api/setup/identity/regenerate", self._handle_setup_identity_regenerate)
+        self._app.router.add_post(
+            "/api/setup/identity/regenerate", self._handle_setup_identity_regenerate
+        )
         self._app.router.add_post("/api/setup/config", self._handle_setup_config)
         self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
         self._runner = None
@@ -108,7 +121,10 @@ class API:
         global _INDEX_HTML
         if _INDEX_HTML is None:
             for candidate in [
-                Path(__file__).resolve().parent.parent.parent / "src" / "frontend" / "index.html",
+                Path(__file__).resolve().parent.parent.parent
+                / "src"
+                / "frontend"
+                / "index.html",
                 Path(__file__).resolve().parent / "frontend" / "index.html",
                 Path(__file__).resolve().parent.parent / "frontend" / "index.html",
             ]:
@@ -122,7 +138,12 @@ class API:
     async def _save_form_keys(self, post):
         if self.state is None:
             return
-        for attr in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+        for attr in (
+            "groq_api_key",
+            "deepseek_api_key",
+            "zai_api_key",
+            "opencode_api_key",
+        ):
             val = post.get(attr, "").strip()
             if val and len(val) >= 30:
                 await self.state.set(f"key_{attr}", val)
@@ -139,7 +160,11 @@ class API:
             provider_key = data.get("provider", "")
             if provider_key in PROVIDERS:
                 cfg = get_config(provider_key)
-                data["models"] = list(cfg.model_whitelist) if cfg.model_whitelist else [cfg.default_model]
+                data["models"] = (
+                    list(cfg.model_whitelist)
+                    if cfg.model_whitelist
+                    else [cfg.default_model]
+                )
             else:
                 data["models"] = []
         except Exception:
@@ -253,15 +278,17 @@ class API:
                 "FROM transcripts ORDER BY ts DESC LIMIT 30"
             ).fetchall()
             db.close()
-            return web.json_response([
-                {
-                    "ts": r["ts"],
-                    "who": "bot" if r["who"] == "assistant" else "you",
-                    "type": "said",
-                    "content": r["content"],
-                }
-                for r in rows
-            ])
+            return web.json_response(
+                [
+                    {
+                        "ts": r["ts"],
+                        "who": "bot" if r["who"] == "assistant" else "you",
+                        "type": "said",
+                        "content": r["content"],
+                    }
+                    for r in rows
+                ]
+            )
         except Exception:
             return web.json_response([], status=500)
 
@@ -297,7 +324,9 @@ class API:
 
     async def _handle_interrupt(self, request):
         if self.state is None:
-            return web.json_response({"ok": False, "error": "daemon initializing"}, status=503)
+            return web.json_response(
+                {"ok": False, "error": "daemon initializing"}, status=503
+            )
         try:
             body = await request.json()
         except Exception:
@@ -340,14 +369,20 @@ class API:
     async def _handle_display(self, request):
         """Return latest display of any type (text, html, code, etc.)."""
         if self.state is None:
-            return web.json_response({"content": None, "format": None, "title": None, "ts": None})
+            return web.json_response(
+                {"content": None, "format": None, "title": None, "ts": None}
+            )
         try:
             row = await self.state.get_latest_canvas()
             if row:
                 return web.json_response(row)
-            return web.json_response({"content": None, "format": None, "title": None, "ts": None})
+            return web.json_response(
+                {"content": None, "format": None, "title": None, "ts": None}
+            )
         except Exception:
-            return web.json_response({"content": None, "format": None, "title": None, "ts": None})
+            return web.json_response(
+                {"content": None, "format": None, "title": None, "ts": None}
+            )
 
     async def _handle_events(self, request):
         from src.daemon.events import recent
@@ -365,27 +400,33 @@ class API:
                     os.kill(pid, signal.SIGTERM)
                 return web.json_response({"ok": True, "action": "stopped", "pid": None})
             except (OSError, ValueError, ProcessLookupError):
-                return web.json_response({"ok": True, "action": "already_stopped", "pid": None})
+                return web.json_response(
+                    {"ok": True, "action": "already_stopped", "pid": None}
+                )
         if action == "start":
             try:
                 from src.daemon.watch_controls import daemon_pid, start_daemon
 
                 running_pid = daemon_pid(self.config)
                 if running_pid is not None:
-                    return web.json_response({
-                        "ok": True,
-                        "action": "noop",
-                        "pid": running_pid,
-                        "message": "daemon already running",
-                    })
+                    return web.json_response(
+                        {
+                            "ok": True,
+                            "action": "noop",
+                            "pid": running_pid,
+                            "message": "daemon already running",
+                        }
+                    )
                 msg = await asyncio.to_thread(start_daemon, self.config)
                 pid = daemon_pid(self.config)
-                return web.json_response({
-                    "ok": True,
-                    "action": "started",
-                    "pid": pid,
-                    "message": msg,
-                })
+                return web.json_response(
+                    {
+                        "ok": True,
+                        "action": "started",
+                        "pid": pid,
+                        "message": msg,
+                    }
+                )
             except Exception as e:
                 return web.json_response(
                     {"ok": False, "action": "start", "error": str(e)}, status=500
@@ -396,17 +437,21 @@ class API:
 
                 msg = await asyncio.to_thread(restart_daemon, self.config)
                 pid = daemon_pid(self.config)
-                return web.json_response({
-                    "ok": True,
-                    "action": "restarted",
-                    "pid": pid,
-                    "message": msg,
-                })
+                return web.json_response(
+                    {
+                        "ok": True,
+                        "action": "restarted",
+                        "pid": pid,
+                        "message": msg,
+                    }
+                )
             except Exception as e:
                 return web.json_response(
                     {"ok": False, "action": "restart", "error": str(e)}, status=500
                 )
-        return web.json_response({"ok": False, "error": f"unknown action: {action}"}, status=400)
+        return web.json_response(
+            {"ok": False, "error": f"unknown action: {action}"}, status=400
+        )
 
     async def _handle_inject(self, request):
         body = await request.json()
@@ -421,21 +466,30 @@ class API:
     async def _handle_settings_status(self, request):
         """Return current configuration status."""
         import os
-        groq = bool(os.environ.get("GROQ_API_KEY", "").startswith("gsk_") or os.environ.get("GROQ_API_KEY", "").startswith("sk-"))
+
+        groq = bool(
+            os.environ.get("GROQ_API_KEY", "").startswith("gsk_")
+            or os.environ.get("GROQ_API_KEY", "").startswith("sk-")
+        )
         deepseek = bool(os.environ.get("DEEPSEEK_API_KEY", "").startswith("sk-"))
-        return web.json_response({
-            "configured": groq or deepseek,
-            "groq_key": groq,
-            "deepseek_key": deepseek,
-            "language": self.config.groq_language or "uk",
-            "tts_voice": self.config.tts_voice or "uk-UA-OstapNeural",
-            "mode": self.config.mode.value if hasattr(self.config.mode, 'value') else str(self.config.mode),
-        })
+        return web.json_response(
+            {
+                "configured": groq or deepseek,
+                "groq_key": groq,
+                "deepseek_key": deepseek,
+                "language": self.config.groq_language or "uk",
+                "tts_voice": self.config.tts_voice or "uk-UA-OstapNeural",
+                "mode": self.config.mode.value
+                if hasattr(self.config.mode, "value")
+                else str(self.config.mode),
+            }
+        )
 
     async def _handle_settings(self, request):
         """Save settings to .env, config.toml, and apply keys live."""
         import os
         from dotenv import load_dotenv
+
         body = await request.json()
 
         env_path = str(Path.home() / ".heare" / ".env")
@@ -453,7 +507,9 @@ class API:
         for attr in ("deepseek_api_key", "zai_api_key", "opencode_api_key"):
             val = body.get(attr, "").strip()
             if val and not val.startswith("sk-"):
-                errors.append(f"{attr.replace('_', ' ').title()} key must start with sk-")
+                errors.append(
+                    f"{attr.replace('_', ' ').title()} key must start with sk-"
+                )
         if errors:
             return web.json_response({"ok": False, "errors": errors}, status=400)
 
@@ -472,7 +528,12 @@ class API:
             os.environ.update(updates)
             load_dotenv(env_path, override=True)
 
-        for attr in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+        for attr in (
+            "groq_api_key",
+            "deepseek_api_key",
+            "zai_api_key",
+            "opencode_api_key",
+        ):
             if body.get(attr):
                 setattr(self.config, attr, body[attr])
                 val = body.get(attr, "").strip()
@@ -484,7 +545,12 @@ class API:
     async def _handle_setup(self, request):
         post = await request.post()
         updates = {}
-        for key in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+        for key in (
+            "groq_api_key",
+            "deepseek_api_key",
+            "zai_api_key",
+            "opencode_api_key",
+        ):
             val = post.get(key, "").strip()
             if val:
                 updates[key.upper()] = val
@@ -505,9 +571,15 @@ class API:
                     f.write(f"{k}={v}\n")
             os.environ.update(updates)
             from dotenv import load_dotenv
+
             load_dotenv(env_path, override=True)
 
-        for attr in ("groq_api_key", "deepseek_api_key", "zai_api_key", "opencode_api_key"):
+        for attr in (
+            "groq_api_key",
+            "deepseek_api_key",
+            "zai_api_key",
+            "opencode_api_key",
+        ):
             val = post.get(attr, "").strip()
             if val:
                 setattr(self.config, attr, val)
@@ -516,13 +588,13 @@ class API:
             text=(
                 '<!DOCTYPE html><html><head><meta charset="utf-8">'
                 '<meta http-equiv="refresh" content="2;url=/">'
-                '<title>Heare — Starting</title>'
-                '<style>body{background:#0d1117;color:#c9d1d9;'
-                'font-family:-apple-system,sans-serif;display:flex;'
-                'align-items:center;justify-content:center;'
-                'min-height:100vh;margin:0;font-size:18px}'
-                '</style></head><body>'
-                'Starting Heare…</body></html>'
+                "<title>Heare — Starting</title>"
+                "<style>body{background:#0d1117;color:#c9d1d9;"
+                "font-family:-apple-system,sans-serif;display:flex;"
+                "align-items:center;justify-content:center;"
+                "min-height:100vh;margin:0;font-size:18px}"
+                "</style></head><body>"
+                "Starting Heare…</body></html>"
             ),
             content_type="text/html",
         )
@@ -530,17 +602,24 @@ class API:
     async def _handle_mic_status(self, request):
         try:
             import sounddevice as sd
+
             devices = sd.query_devices()
             inputs = [d for d in devices if d["max_input_channels"] > 0]
             if not inputs:
-                return web.json_response({"ok": True, "mic_available": False, "reason": "no_input_device"})
+                return web.json_response(
+                    {"ok": True, "mic_available": False, "reason": "no_input_device"}
+                )
             try:
                 sd.check_input_settings(device=inputs[0]["name"])
                 return web.json_response({"ok": True, "mic_available": True})
             except sd.PortAudioError:
-                return web.json_response({"ok": True, "mic_available": False, "reason": "permission_denied"})
+                return web.json_response(
+                    {"ok": True, "mic_available": False, "reason": "permission_denied"}
+                )
         except Exception:
-            return web.json_response({"ok": True, "mic_available": False, "reason": "unknown"})
+            return web.json_response(
+                {"ok": True, "mic_available": False, "reason": "unknown"}
+            )
 
     async def _handle_audio_devices(self, request):
         """List audio devices via sounddevice, with active device markers."""
@@ -553,12 +632,16 @@ class API:
 
             try:
                 if self.config.audio_input_device_file.exists():
-                    active_input = self.config.audio_input_device_file.read_text().strip() or None
+                    active_input = (
+                        self.config.audio_input_device_file.read_text().strip() or None
+                    )
             except Exception:
                 pass
             try:
                 if self.config.audio_output_device_file.exists():
-                    active_output = self.config.audio_output_device_file.read_text().strip() or None
+                    active_output = (
+                        self.config.audio_output_device_file.read_text().strip() or None
+                    )
             except Exception:
                 pass
 
@@ -574,35 +657,48 @@ class API:
                     hostapi_name = sd.query_hostapis(dev["hostapi"])["name"]
                 except Exception:
                     hostapi_name = "?"
-                devices.append({
-                    "index": i,
-                    "name": name,
-                    "max_input_channels": int(dev.get("max_input_channels", 0)),
-                    "max_output_channels": int(dev.get("max_output_channels", 0)),
-                    "hostapi": hostapi_name,
-                    "active_in": bool(active_input and active_input.lower() in name.lower()),
-                    "active_out": bool(active_output and active_output.lower() in name.lower()),
-                })
-            return web.json_response({
-                "devices": devices,
-                "active_input": active_input,
-                "active_output": active_output,
-                "error": None,
-            })
+                devices.append(
+                    {
+                        "index": i,
+                        "name": name,
+                        "max_input_channels": int(dev.get("max_input_channels", 0)),
+                        "max_output_channels": int(dev.get("max_output_channels", 0)),
+                        "hostapi": hostapi_name,
+                        "active_in": bool(
+                            active_input and active_input.lower() in name.lower()
+                        ),
+                        "active_out": bool(
+                            active_output and active_output.lower() in name.lower()
+                        ),
+                    }
+                )
+            return web.json_response(
+                {
+                    "devices": devices,
+                    "active_input": active_input,
+                    "active_output": active_output,
+                    "error": None,
+                }
+            )
         except ImportError:
-            return web.json_response({
-                "devices": [],
-                "active_input": None,
-                "active_output": None,
-                "error": "sounddevice not installed",
-            })
+            return web.json_response(
+                {
+                    "devices": [],
+                    "active_input": None,
+                    "active_output": None,
+                    "error": "sounddevice not installed",
+                }
+            )
         except Exception as e:
-            return web.json_response({
-                "devices": [],
-                "active_input": None,
-                "active_output": None,
-                "error": str(e),
-            }, status=500)
+            return web.json_response(
+                {
+                    "devices": [],
+                    "active_input": None,
+                    "active_output": None,
+                    "error": str(e),
+                },
+                status=500,
+            )
 
     async def _handle_chrome_launch(self, request):
         """Launch Chrome with CDP debug port, auto-selecting profile."""
@@ -616,11 +712,13 @@ class API:
             debug_port = 9222
 
             if is_debug_reachable(debug_port):
-                return web.json_response({
-                    "ok": True,
-                    "status": f"chrome already attached on :{debug_port}",
-                    "debug_port": debug_port,
-                })
+                return web.json_response(
+                    {
+                        "ok": True,
+                        "status": f"chrome already attached on :{debug_port}",
+                        "debug_port": debug_port,
+                    }
+                )
 
             body = await request.json()
             profile_directory = body.get("profile_directory")
@@ -633,11 +731,13 @@ class API:
             msg = await asyncio.to_thread(
                 ensure_debug_chrome, debug_port, profile_directory
             )
-            return web.json_response({
-                "ok": True,
-                "status": msg,
-                "debug_port": debug_port,
-            })
+            return web.json_response(
+                {
+                    "ok": True,
+                    "status": msg,
+                    "debug_port": debug_port,
+                }
+            )
         except Exception as e:
             return web.json_response(
                 {"ok": False, "status": str(e), "debug_port": 9222}, status=500
@@ -672,42 +772,52 @@ class API:
                 else:
                     error = f"mcps: {e}"
 
-            return web.json_response({
-                "built_in": built_in,
-                "skills": skills,
-                "mcps": mcps,
-                "error": error,
-            })
+            return web.json_response(
+                {
+                    "built_in": built_in,
+                    "skills": skills,
+                    "mcps": mcps,
+                    "error": error,
+                }
+            )
         except Exception as e:
-            return web.json_response({
-                "built_in": [],
-                "skills": [],
-                "mcps": [],
-                "error": str(e),
-            }, status=500)
+            return web.json_response(
+                {
+                    "built_in": [],
+                    "skills": [],
+                    "mcps": [],
+                    "error": str(e),
+                },
+                status=500,
+            )
 
     async def _handle_chrome_profiles(self, request):
         """List Chrome profiles for the profile picker."""
         try:
-            from src.daemon.browser import ChromeProfile, list_chrome_profiles
+            from src.daemon.browser import list_chrome_profiles
 
             profiles = list_chrome_profiles()
-            return web.json_response({
-                "profiles": [
-                    {
-                        "directory": p.directory,
-                        "display_name": p.name or p.directory,
-                        "last_used": p.last_used,
-                    }
-                    for p in profiles
-                ],
-                "error": None,
-            })
+            return web.json_response(
+                {
+                    "profiles": [
+                        {
+                            "directory": p.directory,
+                            "display_name": p.name or p.directory,
+                            "last_used": p.last_used,
+                        }
+                        for p in profiles
+                    ],
+                    "error": None,
+                }
+            )
         except Exception as e:
-            return web.json_response({
-                "profiles": [],
-                "error": str(e),
-            }, status=500)
+            return web.json_response(
+                {
+                    "profiles": [],
+                    "error": str(e),
+                },
+                status=500,
+            )
 
     async def _handle_audio_device_select(self, request):
         """Select an audio device by writing its name to the hot-reload file."""
@@ -717,24 +827,31 @@ class API:
             kind = body.get("kind", "")
             if not device_name or kind not in ("input", "output"):
                 return web.json_response(
-                    {"ok": False, "error": "device_name and kind (input|output) required"},
+                    {
+                        "ok": False,
+                        "error": "device_name and kind (input|output) required",
+                    },
                     status=400,
                 )
             if kind == "input":
-                self.config.audio_input_device_file.parent.mkdir(parents=True, exist_ok=True)
+                self.config.audio_input_device_file.parent.mkdir(
+                    parents=True, exist_ok=True
+                )
                 self.config.audio_input_device_file.write_text(device_name)
             else:
-                self.config.audio_output_device_file.parent.mkdir(parents=True, exist_ok=True)
+                self.config.audio_output_device_file.parent.mkdir(
+                    parents=True, exist_ok=True
+                )
                 self.config.audio_output_device_file.write_text(device_name)
-            return web.json_response({
-                "ok": True,
-                "kind": kind,
-                "device": device_name,
-            })
-        except Exception as e:
             return web.json_response(
-                {"ok": False, "error": str(e)}, status=500
+                {
+                    "ok": True,
+                    "kind": kind,
+                    "device": device_name,
+                }
             )
+        except Exception as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_bridge_status(self, request):
         """Return full bridge state: enabled, connected, pair code, token, ws url, port."""
@@ -742,7 +859,10 @@ class API:
             status_path = HEARE_HOME / "browser_bridge.status"
             port = self.config.browser_bridge_port
             enabled = self.config.browser_bridge_enabled
-            has_token = bool(self.config.browser_bridge_token and len(self.config.browser_bridge_token) > 8)
+            has_token = bool(
+                self.config.browser_bridge_token
+                and len(self.config.browser_bridge_token) > 8
+            )
             connected = False
             pair_code = None
             pair_remaining_s = 0.0
@@ -764,28 +884,32 @@ class API:
                 tok = self.config.browser_bridge_token
                 token_hint = "••••" + tok[-4:] if len(tok) >= 4 else "••••" + tok
 
-            return web.json_response({
-                "enabled": enabled,
-                "port": port,
-                "connected": connected,
-                "has_token": has_token,
-                "ws_url": f"ws://127.0.0.1:{port}",
-                "pair_code": pair_code,
-                "pair_remaining_s": round(pair_remaining_s, 1),
-                "token_hint": token_hint,
-            })
+            return web.json_response(
+                {
+                    "enabled": enabled,
+                    "port": port,
+                    "connected": connected,
+                    "has_token": has_token,
+                    "ws_url": f"ws://127.0.0.1:{port}",
+                    "pair_code": pair_code,
+                    "pair_remaining_s": round(pair_remaining_s, 1),
+                    "token_hint": token_hint,
+                }
+            )
         except Exception as e:
             logger.exception("bridge/status failed")
-            return web.json_response({
-                "enabled": False,
-                "port": self.config.browser_bridge_port,
-                "connected": False,
-                "has_token": False,
-                "ws_url": f"ws://127.0.0.1:{self.config.browser_bridge_port}",
-                "pair_code": None,
-                "pair_remaining_s": 0.0,
-                "error": str(e),
-            })
+            return web.json_response(
+                {
+                    "enabled": False,
+                    "port": self.config.browser_bridge_port,
+                    "connected": False,
+                    "has_token": False,
+                    "ws_url": f"ws://127.0.0.1:{self.config.browser_bridge_port}",
+                    "pair_code": None,
+                    "pair_remaining_s": 0.0,
+                    "error": str(e),
+                }
+            )
 
     async def _handle_bridge_token(self, request):
         """Return the full bridge token (sensitive — requires explicit request)."""
@@ -810,17 +934,17 @@ class API:
             with os.fdopen(fd, "w") as f:
                 f.write(token + "\n")
 
-            return web.json_response({
-                "ok": True,
-                "token": token,
-                "restart_required": True,
-                "message": "Restart the daemon for the new token to take effect.",
-            })
+            return web.json_response(
+                {
+                    "ok": True,
+                    "token": token,
+                    "restart_required": True,
+                    "message": "Restart the daemon for the new token to take effect.",
+                }
+            )
         except Exception as e:
             logger.exception("bridge/rotate-token failed")
-            return web.json_response(
-                {"ok": False, "error": str(e)}, status=500
-            )
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_bridge_toggle(self, request):
         """Toggle browser_bridge_enabled in config.toml."""
@@ -828,7 +952,9 @@ class API:
             body = await request.json()
             enabled = bool(body.get("enabled", True))
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON body"}, status=400)
+            return web.json_response(
+                {"ok": False, "error": "invalid JSON body"}, status=400
+            )
 
         try:
             config_path = HEARE_HOME / "config.toml"
@@ -842,7 +968,7 @@ class API:
 
             if match:
                 block = match.group(0)
-                enabled_re = re.compile(r'(?m)^\s*enabled\s*=.*$')
+                enabled_re = re.compile(r"(?m)^\s*enabled\s*=.*$")
                 new_line = "enabled = true" if enabled else "enabled = false"
                 if enabled_re.search(block):
                     new_block = enabled_re.sub(new_line, block, count=1)
@@ -853,7 +979,9 @@ class API:
                         block,
                         count=1,
                     )
-                content = existing[: match.start()] + new_block + existing[match.end():]
+                content = (
+                    existing[: match.start()] + new_block + existing[match.end() :]
+                )
             else:
                 new_section = (
                     f"[browser_bridge]\n"
@@ -864,7 +992,9 @@ class API:
                 content = existing + sep + ("\n" if existing else "") + new_section
 
             fd, tmp_path = tempfile.mkstemp(
-                prefix=".config.toml.", suffix=".tmp", dir=str(config_path.parent),
+                prefix=".config.toml.",
+                suffix=".tmp",
+                dir=str(config_path.parent),
             )
             with os.fdopen(fd, "w") as fh:
                 fh.write(content)
@@ -874,17 +1004,17 @@ class API:
             # Also update the in-memory config
             self.config.browser_bridge_enabled = enabled
 
-            return web.json_response({
-                "ok": True,
-                "enabled": enabled,
-                "restart_required": True,
-                "message": "Restart the daemon for the change to take effect.",
-            })
+            return web.json_response(
+                {
+                    "ok": True,
+                    "enabled": enabled,
+                    "restart_required": True,
+                    "message": "Restart the daemon for the change to take effect.",
+                }
+            )
         except Exception as e:
             logger.exception("bridge/toggle failed")
-            return web.json_response(
-                {"ok": False, "error": str(e)}, status=500
-            )
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     # ── Prompt Manager endpoints ─────────────────────────
 
@@ -897,7 +1027,7 @@ class API:
                 _render_hard_constraints,
                 _render_tool_catalog,
             )
-            from src.agent.identity import load_identity, save_identity, regenerate_identity, render_persona
+            from src.agent.identity import load_identity, render_persona
 
             project_root = Path(__file__).resolve().parent.parent
 
@@ -910,7 +1040,11 @@ class API:
                 ).read_text()
                 persona_text = render_persona(persona_template, identity)
 
-            lang = self.config.groq_language if self.config.groq_language not in ("auto", "") else "uk"
+            lang = (
+                self.config.groq_language
+                if self.config.groq_language not in ("auto", "")
+                else "uk"
+            )
 
             results = []
             for ps in PROMPT_SECTIONS:
@@ -939,14 +1073,16 @@ class API:
                         preview = "(computed at render time)"
                 elif ps.source == "dynamic":
                     preview = f"(computed from current {ps.key} state at render time)"
-                results.append({
-                    "key": ps.key,
-                    "order": ps.order,
-                    "source": ps.source,
-                    "template_path": ps.template_path,
-                    "char_count": char_count,
-                    "content_preview": preview,
-                })
+                results.append(
+                    {
+                        "key": ps.key,
+                        "order": ps.order,
+                        "source": ps.source,
+                        "template_path": ps.template_path,
+                        "char_count": char_count,
+                        "content_preview": preview,
+                    }
+                )
             return web.json_response(results)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
@@ -960,7 +1096,7 @@ class API:
                 _render_hard_constraints,
                 _render_tool_catalog,
             )
-            from src.agent.identity import load_identity, save_identity, regenerate_identity, render_persona
+            from src.agent.identity import load_identity, render_persona
 
             project_root = Path(__file__).resolve().parent.parent
             key = request.match_info["key"]
@@ -972,27 +1108,35 @@ class API:
             if section is None:
                 return web.json_response({"error": f"unknown key: {key}"}, status=404)
 
-            lang = self.config.groq_language if self.config.groq_language not in ("auto", "") else "uk"
+            lang = (
+                self.config.groq_language
+                if self.config.groq_language not in ("auto", "")
+                else "uk"
+            )
 
             if section.source == "template" and section.template_path:
                 tpath = project_root / section.template_path
                 if tpath.exists():
                     content = tpath.read_text()
-                    return web.json_response({
+                    return web.json_response(
+                        {
+                            "key": section.key,
+                            "order": section.order,
+                            "source": section.source,
+                            "template_path": section.template_path,
+                            "char_count": len(content),
+                            "content": content,
+                        }
+                    )
+                return web.json_response(
+                    {
                         "key": section.key,
-                        "order": section.order,
                         "source": section.source,
                         "template_path": section.template_path,
-                        "char_count": len(content),
-                        "content": content,
-                    })
-                return web.json_response({
-                    "key": section.key,
-                    "source": section.source,
-                    "template_path": section.template_path,
-                    "content": None,
-                    "note": f"template not found: {section.template_path}",
-                })
+                        "content": None,
+                        "note": f"template not found: {section.template_path}",
+                    }
+                )
 
             if section.source == "inline":
                 if section.key == "persona":
@@ -1010,20 +1154,24 @@ class API:
                     content = _render_tool_catalog()
                 else:
                     content = "(computed at render time)"
-                return web.json_response({
-                    "key": section.key,
-                    "order": section.order,
-                    "source": section.source,
-                    "char_count": len(content),
-                    "content": content,
-                })
+                return web.json_response(
+                    {
+                        "key": section.key,
+                        "order": section.order,
+                        "source": section.source,
+                        "char_count": len(content),
+                        "content": content,
+                    }
+                )
 
-            return web.json_response({
-                "key": section.key,
-                "source": section.source,
-                "content": None,
-                "note": "computed at render time from context",
-            })
+            return web.json_response(
+                {
+                    "key": section.key,
+                    "source": section.source,
+                    "content": None,
+                    "note": "computed at render time from context",
+                }
+            )
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
@@ -1040,14 +1188,18 @@ class API:
                     section = ps
                     break
             if section is None:
-                return web.json_response({"ok": False, "error": f"unknown key: {key}"}, status=404)
+                return web.json_response(
+                    {"ok": False, "error": f"unknown key: {key}"}, status=404
+                )
             if section.source != "template":
                 return web.json_response(
-                    {"ok": False, "error": f"section '{key}' is not template-backed"}, status=400
+                    {"ok": False, "error": f"section '{key}' is not template-backed"},
+                    status=400,
                 )
             if not section.template_path:
                 return web.json_response(
-                    {"ok": False, "error": f"section '{key}' has no template_path"}, status=400
+                    {"ok": False, "error": f"section '{key}' has no template_path"},
+                    status=400,
                 )
 
             # Defense-in-depth: ensure template_path stays within prompts/
@@ -1056,15 +1208,21 @@ class API:
             try:
                 tpath.relative_to(prompts_dir)
             except ValueError:
-                return web.json_response({"ok": False, "error": "invalid template path"}, status=400)
+                return web.json_response(
+                    {"ok": False, "error": "invalid template path"}, status=400
+                )
 
             body = await request.json()
             content = body.get("content", "")
             if not isinstance(content, str):
-                return web.json_response({"ok": False, "error": "content must be a string"}, status=400)
+                return web.json_response(
+                    {"ok": False, "error": "content must be a string"}, status=400
+                )
 
             tpath.write_text(content)
-            return web.json_response({"ok": True, "key": key, "char_count": len(content)})
+            return web.json_response(
+                {"ok": True, "key": key, "char_count": len(content)}
+            )
         except Exception as e:
             logger.exception("prompt save failed for key=%s", key)
             return web.json_response({"ok": False, "error": str(e)}, status=500)
@@ -1072,7 +1230,7 @@ class API:
     async def _handle_prompt_preview(self, request):
         try:
             from src.agent.llm.context_injector import render_native_system_prompt
-            from src.agent.identity import load_identity, save_identity, regenerate_identity, render_persona
+            from src.agent.identity import load_identity, render_persona
             from pathlib import Path
 
             # Load the real identity from ~/.heare/identity.json
@@ -1080,13 +1238,16 @@ class API:
             identity = load_identity(Path.home() / ".heare" / "identity.json")
             if identity:
                 persona_template = (
-                    Path(__file__).resolve().parent.parent
-                    / "prompts" / "persona.txt"
+                    Path(__file__).resolve().parent.parent / "prompts" / "persona.txt"
                 ).read_text()
                 persona_text = render_persona(persona_template, identity)
 
             # Use the language from settings (or default to uk)
-            lang = self.config.groq_language if self.config.groq_language not in ("auto", "") else "uk"
+            lang = (
+                self.config.groq_language
+                if self.config.groq_language not in ("auto", "")
+                else "uk"
+            )
 
             preview = render_native_system_prompt(
                 persona=persona_text,
@@ -1110,9 +1271,12 @@ class API:
     async def _handle_agents(self, request):
         try:
             from src.agent.subagent_manager import get_agent_manager
+
             mgr = get_agent_manager()
             if mgr is None:
-                return web.json_response({"agents": [], "error": "Agent manager not initialized"}, status=503)
+                return web.json_response(
+                    {"agents": [], "error": "Agent manager not initialized"}, status=503
+                )
             agents = mgr.list_all()
             return web.json_response({"agents": agents, "count": len(agents)})
         except Exception as e:
@@ -1125,16 +1289,21 @@ class API:
             if not prompt:
                 return web.json_response({"error": "prompt is required"}, status=400)
             from src.agent.subagent_manager import get_agent_manager
+
             mgr = get_agent_manager()
             if mgr is None:
-                return web.json_response({"error": "Agent manager not initialized"}, status=503)
+                return web.json_response(
+                    {"error": "Agent manager not initialized"}, status=503
+                )
             state = await mgr.start(prompt, cwd=body.get("cwd"))
-            return web.json_response({
-                "session_id": state.session_id,
-                "status": state.status,
-                "prompt": state.prompt,
-                "started_at": state.started_at,
-            })
+            return web.json_response(
+                {
+                    "session_id": state.session_id,
+                    "status": state.status,
+                    "prompt": state.prompt,
+                    "started_at": state.started_at,
+                }
+            )
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
@@ -1143,11 +1312,16 @@ class API:
             body = await request.json()
             session_id = body.get("session_id", "").strip()
             if not session_id:
-                return web.json_response({"error": "session_id is required"}, status=400)
+                return web.json_response(
+                    {"error": "session_id is required"}, status=400
+                )
             from src.agent.subagent_manager import get_agent_manager
+
             mgr = get_agent_manager()
             if mgr is None:
-                return web.json_response({"error": "Agent manager not initialized"}, status=503)
+                return web.json_response(
+                    {"error": "Agent manager not initialized"}, status=503
+                )
             result = await mgr.cancel(session_id)
             return web.json_response(result)
         except Exception as e:
@@ -1157,9 +1331,12 @@ class API:
         session_id = request.match_info.get("session_id", "")
         try:
             from src.agent.subagent_manager import get_agent_manager
+
             mgr = get_agent_manager()
             if mgr is None:
-                return web.json_response({"error": "Agent manager not initialized"}, status=503)
+                return web.json_response(
+                    {"error": "Agent manager not initialized"}, status=503
+                )
             result = mgr.result(session_id)
             return web.json_response(result)
         except Exception as e:
@@ -1170,13 +1347,13 @@ class API:
     async def _handle_setup_state(self, request):
         """GET /api/setup — full setup state."""
         identity = None
-        if self.config and hasattr(self.config, 'identity_file'):
+        if self.config and hasattr(self.config, "identity_file"):
             identity = load_identity(self.config.identity_file)
 
         config = {}
         if self.config:
-            config["language"] = getattr(self.config, 'groq_language', 'en')
-            config["tts_voice"] = getattr(self.config, 'tts_voice', 'en-US-AriaNeural')
+            config["language"] = getattr(self.config, "groq_language", "en")
+            config["tts_voice"] = getattr(self.config, "tts_voice", "en-US-AriaNeural")
 
         groq_ok = bool(
             os.environ.get("GROQ_API_KEY", "").startswith("gsk_")
@@ -1189,17 +1366,19 @@ class API:
         setup_flag = HEARE_HOME / ".setup_complete"
         setup_complete = setup_flag.exists()
 
-        return web.json_response({
-            "setup_complete": setup_complete,
-            "identity": identity,
-            "config": {
-                "language": config.get("language", "en"),
-                "tts_voice": config.get("tts_voice", "en-US-AriaNeural"),
-                "groq_key_configured": groq_ok,
-                "llm_key_configured": llm_ok,
-                "available_providers": available,
-            },
-        })
+        return web.json_response(
+            {
+                "setup_complete": setup_complete,
+                "identity": identity,
+                "config": {
+                    "language": config.get("language", "en"),
+                    "tts_voice": config.get("tts_voice", "en-US-AriaNeural"),
+                    "groq_key_configured": groq_ok,
+                    "llm_key_configured": llm_ok,
+                    "available_providers": available,
+                },
+            }
+        )
 
     async def _handle_setup_identity(self, request):
         """POST /api/setup/identity — save identity fields."""
@@ -1236,7 +1415,10 @@ class API:
             active_cfg = PROVIDERS.get(provider_name)
             api_key = getattr(self.config, active_cfg.api_key_attr)
             identity_factory = make_identity_bootstrap(
-                active_cfg, api_key, active_cfg.default_model, active_cfg.timeout,
+                active_cfg,
+                api_key,
+                active_cfg.default_model,
+                active_cfg.timeout,
             )
             identity = await regenerate_identity(identity_factory, self.config)
             return web.json_response({"ok": True, "identity": identity})
@@ -1261,8 +1443,11 @@ class API:
                         existing[k.strip()] = v.strip()
 
         provider_keys = {
-            "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY", "ZAI_API_KEY",
-            "OPENCODE_API_KEY", "GROQ_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "OPENROUTER_API_KEY",
+            "ZAI_API_KEY",
+            "OPENCODE_API_KEY",
+            "GROQ_API_KEY",
         }
         for key, value in body.items():
             upper = key.upper()

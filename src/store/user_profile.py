@@ -3,6 +3,7 @@
 This module implements a cross-session profile system that stores user preferences
 for file access, view settings, favorite locations, and access history.
 """
+
 import json
 import logging
 from dataclasses import dataclass, field, asdict
@@ -30,7 +31,14 @@ class UserProfile:
 
     # Patterns to ignore in file operations
     ignored_patterns: List[str] = field(
-        default_factory=lambda: [".git", ".svn", "node_modules", "__pycache__", "*.pyc", ".DS_Store"]
+        default_factory=lambda: [
+            ".git",
+            ".svn",
+            "node_modules",
+            "__pycache__",
+            "*.pyc",
+            ".DS_Store",
+        ]
     )
 
     # Display preferences
@@ -86,7 +94,7 @@ class ProfileManager:
         async with self._lock:
             if self.profile_path.exists():
                 try:
-                    with open(self.profile_path, 'r', encoding='utf-8') as f:
+                    with open(self.profile_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
                         self.profile = UserProfile.from_dict(data)
                         logger.info("Loaded user profile from %s", self.profile_path)
@@ -108,13 +116,15 @@ class ProfileManager:
 
             try:
                 self.profile_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self.profile_path, 'w', encoding='utf-8') as f:
+                with open(self.profile_path, "w", encoding="utf-8") as f:
                     json.dump(self.profile.to_dict(), f, indent=2, ensure_ascii=False)
                 logger.info("Saved user profile to %s", self.profile_path)
             except Exception as e:
                 logger.error("Failed to save profile: %s", e)
 
-    async def add_allowed_directory(self, path: Path, label: Optional[str] = None) -> None:
+    async def add_allowed_directory(
+        self, path: Path, label: Optional[str] = None
+    ) -> None:
         """Add a directory to the allowed list."""
         async with self._lock:
             if self.profile is None:
@@ -122,8 +132,12 @@ class ProfileManager:
 
             # Check if already allowed
             existing = next(
-                (item for item in self.profile.allowed_directories if item["path"] == str(path)),
-                None
+                (
+                    item
+                    for item in self.profile.allowed_directories
+                    if item["path"] == str(path)
+                ),
+                None,
             )
 
             if existing:
@@ -133,11 +147,13 @@ class ProfileManager:
                     existing["label"] = label
             else:
                 # Add new entry
-                self.profile.allowed_directories.append({
-                    "path": str(path),
-                    "label": label or path.name,
-                    "approved_at": datetime.now().isoformat(),
-                })
+                self.profile.allowed_directories.append(
+                    {
+                        "path": str(path),
+                        "label": label or path.name,
+                        "approved_at": datetime.now().isoformat(),
+                    }
+                )
 
             await self.save()
 
@@ -149,7 +165,8 @@ class ProfileManager:
 
             original_count = len(self.profile.allowed_directories)
             self.profile.allowed_directories = [
-                item for item in self.profile.allowed_directories
+                item
+                for item in self.profile.allowed_directories
                 if item["path"] != str(path)
             ]
 
@@ -158,7 +175,9 @@ class ProfileManager:
                 return True
             return False
 
-    def is_directory_allowed(self, path: Path, current_session_permissions: Set[Path] = None) -> bool:
+    def is_directory_allowed(
+        self, path: Path, current_session_permissions: Set[Path] = None
+    ) -> bool:
         """Check if a directory is allowed for access."""
         if current_session_permissions and path in current_session_permissions:
             return True
@@ -173,7 +192,7 @@ class ProfileManager:
                 return True
 
         # Always allow workspace directory
-        if hasattr(self, 'workspace_path') and path == self.workspace_path:
+        if hasattr(self, "workspace_path") and path == self.workspace_path:
             return True
 
         return False
@@ -186,7 +205,8 @@ class ProfileManager:
 
             # Remove existing favorite for this path
             self.profile.favorite_locations = [
-                item for item in self.profile.favorite_locations
+                item
+                for item in self.profile.favorite_locations
                 if item["path"] != str(path)
             ]
 
@@ -202,14 +222,15 @@ class ProfileManager:
 
             # Keep only last 50 favorites
             self.profile.favorite_locations.sort(
-                key=lambda x: x["last_accessed"],
-                reverse=True
+                key=lambda x: x["last_accessed"], reverse=True
             )
             self.profile.favorite_locations = self.profile.favorite_locations[:50]
 
             await self.save()
 
-    async def record_access(self, path: Path, operation: str, duration_ms: int = 0) -> None:
+    async def record_access(
+        self, path: Path, operation: str, duration_ms: int = 0
+    ) -> None:
         """Record file/directory access in the log."""
         async with self._lock:
             if self.profile is None:
@@ -226,12 +247,14 @@ class ProfileManager:
                 await self.add_favorite(path)
 
             # Add to access log
-            self.profile.access_log.append({
-                "path": str(path),
-                "operation": operation,
-                "timestamp": datetime.now().isoformat(),
-                "duration_ms": duration_ms,
-            })
+            self.profile.access_log.append(
+                {
+                    "path": str(path),
+                    "operation": operation,
+                    "timestamp": datetime.now().isoformat(),
+                    "duration_ms": duration_ms,
+                }
+            )
 
             # Keep only last 1000 log entries
             self.profile.access_log.sort(key=lambda x: x["timestamp"], reverse=True)
@@ -239,7 +262,9 @@ class ProfileManager:
 
             await self.save()
 
-    async def add_to_search_history(self, query: str, path: Path, results_count: int) -> None:
+    async def add_to_search_history(
+        self, query: str, path: Path, results_count: int
+    ) -> None:
         """Add search to history."""
         async with self._lock:
             if self.profile is None:
@@ -247,17 +272,18 @@ class ProfileManager:
 
             # Remove existing same query
             self.profile.search_history = [
-                item for item in self.profile.search_history
-                if item["query"] != query
+                item for item in self.profile.search_history if item["query"] != query
             ]
 
             # Add new search
-            self.profile.search_history.append({
-                "query": query,
-                "path": str(path),
-                "timestamp": datetime.now().isoformat(),
-                "results": results_count,
-            })
+            self.profile.search_history.append(
+                {
+                    "query": query,
+                    "path": str(path),
+                    "timestamp": datetime.now().isoformat(),
+                    "results": results_count,
+                }
+            )
 
             # Keep only last 50 searches
             self.profile.search_history.sort(key=lambda x: x["timestamp"], reverse=True)
@@ -274,7 +300,7 @@ class ProfileManager:
         sorted_favorites = sorted(
             self.profile.favorite_locations,
             key=lambda x: x["last_accessed"],
-            reverse=True
+            reverse=True,
         )
         return sorted_favorites[:limit]
 
@@ -299,7 +325,9 @@ class ProfileManager:
             self.profile.view_preferences[key] = value
             await self.save()
 
-    async def search_access_log(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    async def search_access_log(
+        self, query: str, limit: int = 20
+    ) -> List[Dict[str, Any]]:
         """Search access log."""
         if self.profile is None:
             return []
@@ -308,8 +336,10 @@ class ProfileManager:
         query_lower = query.lower()
 
         for entry in self.profile.access_log:
-            if (query_lower in entry["path"].lower() or
-                query_lower in entry["operation"].lower()):
+            if (
+                query_lower in entry["path"].lower()
+                or query_lower in entry["operation"].lower()
+            ):
                 results.append(entry)
                 if len(results) >= limit:
                     break
@@ -327,7 +357,7 @@ class ProfileManager:
                 "profile": self.profile.to_dict(),
             }
 
-            with open(export_path, 'w', encoding='utf-8') as f:
+            with open(export_path, "w", encoding="utf-8") as f:
                 json.dump(export_data, f, indent=2, ensure_ascii=False)
 
             logger.info("Exported profile to %s", export_path)
@@ -335,7 +365,7 @@ class ProfileManager:
     async def import_profile(self, import_path: Path) -> None:
         """Import profile from JSON file."""
         async with self._lock:
-            with open(import_path, 'r', encoding='utf-8') as f:
+            with open(import_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             if "profile" in data:
@@ -371,7 +401,9 @@ async def get_user_profile(profile_path: Path) -> UserProfile:
 
 
 # Convenience functions for direct access
-async def add_favorite_location(path: Path, label: Optional[str] = None, profile_path: Path = None) -> None:
+async def add_favorite_location(
+    path: Path, label: Optional[str] = None, profile_path: Path = None
+) -> None:
     """Add a location to favorites."""
     if profile_path is None:
         profile_path = Path.home() / ".heare" / "profile.json"
@@ -380,7 +412,9 @@ async def add_favorite_location(path: Path, label: Optional[str] = None, profile
     await manager.add_favorite(path, label)
 
 
-async def get_favorite_locations(limit: int = 10, profile_path: Path = None) -> List[Dict[str, str]]:
+async def get_favorite_locations(
+    limit: int = 10, profile_path: Path = None
+) -> List[Dict[str, str]]:
     """Get favorite locations."""
     if profile_path is None:
         profile_path = Path.home() / ".heare" / "profile.json"

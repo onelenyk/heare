@@ -8,6 +8,7 @@ chunks.
 Pipecat + edge-tts imports are deferred so the module can be imported in
 tests without pulling the full stack.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,7 +42,7 @@ def _apply_fade_out(pcm: bytes, sample_rate: int, fade_ms: int = 50) -> bytes:
         return pcm
     n = min(fade_samples, total_samples)
     head = pcm[: (total_samples - n) * 2]
-    tail = bytearray(pcm[(total_samples - n) * 2:])
+    tail = bytearray(pcm[(total_samples - n) * 2 :])
     # Linear ramp 1.0 → 0.0 across n samples; write back as little-endian s16.
     for i in range(n):
         idx = i * 2
@@ -64,6 +65,7 @@ def _apply_fade_out(pcm: bytes, sample_rate: int, fade_ms: int = 50) -> bytes:
         tail[idx] = scaled & 0xFF
         tail[idx + 1] = (scaled >> 8) & 0xFF
     return bytes(head) + bytes(tail)
+
 
 _edge_tts_cls = None
 
@@ -190,7 +192,9 @@ def _build_edge_tts_class():
                     if getattr(proc, "returncode", None) is None:
                         proc.kill()
                 except Exception:  # noqa: BLE001
-                    logger.debug("EdgeTTSService cancel: proc.kill failed", exc_info=True)
+                    logger.debug(
+                        "EdgeTTSService cancel: proc.kill failed", exc_info=True
+                    )
             dropped = self._cancel_dropped
             self._cancel_dropped = 0
             return dropped
@@ -225,7 +229,9 @@ def _build_edge_tts_class():
                         if self._cancel_event.is_set():
                             # Apply 50ms fade-out to the chunk we are
                             # about to yield, then drop the rest.
-                            faded = _apply_fade_out(chunk, self._sample_rate, fade_ms=50)
+                            faded = _apply_fade_out(
+                                chunk, self._sample_rate, fade_ms=50
+                            )
                             self._last_chunk = faded
                             yield TTSAudioRawFrame(
                                 audio=faded,
@@ -310,9 +316,7 @@ def _build_edge_tts_class():
                         except (BrokenPipeError, ConnectionResetError):
                             return
                 except edge_tts.exceptions.NoAudioReceived:
-                    logger.warning(
-                        "edge-tts returned no audio for text: %r", text[:80]
-                    )
+                    logger.warning("edge-tts returned no audio for text: %r", text[:80])
                 except Exception as e:
                     feed_error.append(e)
                     logger.exception("edge-tts stream failed: %s", e)

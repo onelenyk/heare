@@ -11,6 +11,7 @@ can render them in the controls bar — never raised — because launching
 a browser is a side-effect the user may want to retry from a different
 state.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,15 +57,18 @@ def _chrome_command(port: int, profile_directory: str | None) -> list[str] | Non
         args.append(f"--profile-directory={profile_directory}")
 
     if sys.platform == "darwin":
-        macos_binary = (
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        )
+        macos_binary = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         if os.path.exists(macos_binary):
             return [macos_binary, *args]
         return None
 
     # Linux — try the most common binary names in order.
-    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
+    for name in (
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+    ):
         path = shutil.which(name)
         if path:
             return [path, *args]

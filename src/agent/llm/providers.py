@@ -163,9 +163,7 @@ def get_active(settings: Any) -> str:
 # daemon should ever import pipecat at module level.
 
 
-def make_openai_service(
-    config: ProviderConfig, api_key: str, **kwargs: Any
-) -> Any:
+def make_openai_service(config: ProviderConfig, api_key: str, **kwargs: Any) -> Any:
     """Build an :class:`OpenAILLMService` from *config*.
 
     All kwargs (model, extra settings, etc.) are forwarded to the
@@ -185,14 +183,15 @@ def make_openai_service(
 
 
 def make_anthropic_service(
-    config: ProviderConfig, api_key: str,
+    config: ProviderConfig,
+    api_key: str,
 ) -> Any:
     """Build an :class:`AnthropicLLMService` from *config*.
 
     The Anthropic client is constructed with the provider's base URL
     so the service talks to the correct API endpoint (z.ai, etc.).
     """
-    from anthropic import AsyncAnthropic                     # deferred
+    from anthropic import AsyncAnthropic  # deferred
     from pipecat.services.anthropic.llm import AnthropicLLMService  # deferred
 
     client = AsyncAnthropic(api_key=api_key, base_url=config.base_url)
@@ -220,8 +219,8 @@ def make_identity_bootstrap(
     The caller gets back a plain async callable — no pipecat
     dependency is required to *create* the bootstrap.
     """
-    import json                                          # deferred
-    import httpx                                         # deferred
+    import json  # deferred
+    import httpx  # deferred
 
     endpoint = config.identity_endpoint or (
         config.base_url.rstrip("/") + "/chat/completions"
@@ -274,8 +273,8 @@ def make_identity_bootstrap(
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end == -1 or end <= start:
-            raise RuntimeError(f"identity bootstrap: no JSON object in reply")
-        return json.loads(text[start:end + 1])
+            raise RuntimeError("identity bootstrap: no JSON object in reply")
+        return json.loads(text[start : end + 1])
 
     return _bootstrap
 

@@ -10,6 +10,7 @@ already filtered before this gate runs.
 
 Pipecat imports are deferred so admin CLI paths work without portaudio.
 """
+
 from __future__ import annotations
 
 import logging

@@ -6,6 +6,7 @@ implementation type used ``eval()`` and was removed for security; new
 python-typed dynamic tools are rejected at registration time, and any
 already-stored python definitions error out at execution.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,9 @@ except ImportError:
 logger = logging.getLogger("heare.dynamic_tools")
 
 
-async def execute_bash_tool(command: str, args: dict[str, Any], settings: Any) -> dict[str, Any]:
+async def execute_bash_tool(
+    command: str, args: dict[str, Any], settings: Any
+) -> dict[str, Any]:
     """Execute a bash tool with argument substitution.
 
     Args are substituted into the command using ``{arg}`` placeholders;
@@ -67,7 +70,9 @@ async def execute_bash_tool(command: str, args: dict[str, Any], settings: Any) -
         return {"success": False, "error": str(e)}
 
 
-async def execute_fetch_tool(url: str, args: dict[str, Any], settings: Any) -> dict[str, Any]:
+async def execute_fetch_tool(
+    url: str, args: dict[str, Any], settings: Any
+) -> dict[str, Any]:
     """Execute a fetch tool with argument substitution.
 
     Args are substituted into the URL using {arg} placeholders.

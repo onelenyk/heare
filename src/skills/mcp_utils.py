@@ -4,6 +4,7 @@ Single source of truth for MCP server discovery — replaces the old catalog
 layer and enable_mcp_servers allowlist expansion. All callers (agent_sdk_cli,
 generator) read the same .mcp.json file via these helpers.
 """
+
 from __future__ import annotations
 
 import json
@@ -85,7 +86,9 @@ def read_mcp_servers(workspace_dir: Path) -> dict[str, dict]:
     try:
         data = json.loads(mcp_file.read_text())
     except json.JSONDecodeError as exc:
-        logger.warning("Failed to parse %s: %s — treating as no MCP servers", mcp_file, exc)
+        logger.warning(
+            "Failed to parse %s: %s — treating as no MCP servers", mcp_file, exc
+        )
         return {}
     except OSError as exc:
         logger.warning("Cannot read %s: %s — treating as no MCP servers", mcp_file, exc)

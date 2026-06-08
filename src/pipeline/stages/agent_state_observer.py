@@ -13,6 +13,7 @@ State machine::
 The consumer (watch dashboard) decides when to transition out of
 "interrupted" — the observer only writes what it sees.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,20 +46,35 @@ class AgentStateObserver(FrameProcessor):
     async def process_frame(self, frame, direction: FrameDirection) -> None:  # type: ignore[override]
         await super().process_frame(frame, direction)
         if isinstance(frame, BotStartedSpeakingFrame):
-            await self._state.set("agent_state", json.dumps({
-                "state": "talking",
-                "since_ts": time.time(),
-            }))
+            await self._state.set(
+                "agent_state",
+                json.dumps(
+                    {
+                        "state": "talking",
+                        "since_ts": time.time(),
+                    }
+                ),
+            )
         elif isinstance(frame, BotStoppedSpeakingFrame):
-            await self._state.set("agent_state", json.dumps({
-                "state": "idle",
-                "since_ts": time.time(),
-            }))
+            await self._state.set(
+                "agent_state",
+                json.dumps(
+                    {
+                        "state": "idle",
+                        "since_ts": time.time(),
+                    }
+                ),
+            )
         elif isinstance(frame, InterruptionFrame):
-            await self._state.set("agent_state", json.dumps({
-                "state": "interrupted",
-                "since_ts": time.time(),
-            }))
+            await self._state.set(
+                "agent_state",
+                json.dumps(
+                    {
+                        "state": "interrupted",
+                        "since_ts": time.time(),
+                    }
+                ),
+            )
         await self.push_frame(frame, direction)
 
 

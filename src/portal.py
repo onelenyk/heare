@@ -1,4 +1,5 @@
 """Heare Portal — standalone watchdog HTTP server (port 9780)."""
+
 from __future__ import annotations
 
 import argparse
@@ -56,7 +57,9 @@ class Portal:
         self.app.router.add_get("/", self._handle_index)
         # Serve Vite build assets (JS, CSS)
         if _DIST_DIR.exists():
-            self.app.router.add_static("/assets/", _DIST_DIR / "assets", show_index=False)
+            self.app.router.add_static(
+                "/assets/", _DIST_DIR / "assets", show_index=False
+            )
         self.app.router.add_get("/state", self._proxy_state)
         self.app.router.add_post("/daemon", self._handle_daemon)
         self.app.router.add_get("/api/audio-devices", self._proxy_simple)

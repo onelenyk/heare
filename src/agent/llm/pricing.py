@@ -9,6 +9,7 @@ are not in the catalog return ``None`` so the dashboard can render
 Pure module — no I/O, no async, no pipecat dependency — so it imports
 cleanly from tests, the storage layer, and the dashboard widget.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -71,7 +72,9 @@ def llm_cost(
     if prices is None:
         return None
     in_price, out_price = prices
-    return (input_tokens / 1_000_000.0) * in_price + (output_tokens / 1_000_000.0) * out_price
+    return (input_tokens / 1_000_000.0) * in_price + (
+        output_tokens / 1_000_000.0
+    ) * out_price
 
 
 def stt_cost(*, provider: str | None, audio_seconds: float) -> Optional[float]:

@@ -23,6 +23,7 @@ The Pipecat import is deferred inside ``_build_cancel_flag_gate_class``
 so the admin CLI paths (which transitively import this module) keep
 working on machines without portaudio.
 """
+
 from __future__ import annotations
 
 import logging
@@ -63,9 +64,7 @@ def _build_cancel_flag_gate_class():
                     await self.push_frame(
                         InterruptionFrame(), FrameDirection.DOWNSTREAM
                     )
-                    logger.info(
-                        "cancel_flag_gate: InterruptionFrame pushed downstream"
-                    )
+                    logger.info("cancel_flag_gate: InterruptionFrame pushed downstream")
                 except Exception:
                     logger.exception(
                         "cancel_flag_gate: downstream push failed (non-fatal)"

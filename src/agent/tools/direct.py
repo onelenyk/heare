@@ -21,6 +21,7 @@ truncating the raw ``output``.
   ``_spoken_action_summary(...)`` truncation of the raw output (legacy
   behaviour preserved for back-compat).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,15 +44,17 @@ logger = logging.getLogger("heare.direct_tools")
 _memory_backend: Any = None
 
 
+from src.agent.llm.providers import PROVIDERS  # noqa: E402
+from src.agent.tools.subagent import run_opencode  # noqa: E402
+
+# Import tool definitions from central registry
+from src.agent.tools.registry import get_direct_tools, is_mcp_tool  # noqa: E402
+
+
 def set_memory_backend(backend: Any) -> None:
     global _memory_backend
     _memory_backend = backend
 
-from src.agent.llm.providers import PROVIDERS
-from src.agent.tools.subagent import run_opencode
-
-# Import tool definitions from central registry
-from src.agent.tools.registry import get_direct_tools, is_mcp_tool  # noqa: E402
 
 SIMPLE_TOOLS = get_direct_tools()
 
@@ -493,7 +496,11 @@ async def _execute_web_fetch(args: str, settings: "Settings | None" = None) -> d
 
     # Validate URL
     if not url.startswith(("http://", "https://")):
-        return {"success": False, "output": "", "error": "URL must start with http:// or https://"}
+        return {
+            "success": False,
+            "output": "",
+            "error": "URL must start with http:// or https://",
+        }
 
     _spoken_error: dict[str, str] = {
         "en": "Fetch failed.",
@@ -662,13 +669,15 @@ async def _search_serper(
                 kg_title = kg.get("title", "")
                 kg_desc = kg.get("description", "")
                 if kg_title and kg_desc:
-                    items.append({
-                        "n": 0,
-                        "title": f"📚 {kg_title}",
-                        "url": "",
-                        "snippet": kg_desc,
-                        "kind": "answer_box",
-                    })
+                    items.append(
+                        {
+                            "n": 0,
+                            "title": f"📚 {kg_title}",
+                            "url": "",
+                            "snippet": kg_desc,
+                            "kind": "answer_box",
+                        }
+                    )
                     text_blocks.append(f"📚 {kg_title}: {kg_desc}")
 
             n = 1
@@ -679,12 +688,14 @@ async def _search_serper(
                 if title and url:
                     if top_url is None:
                         top_url = url
-                    items.append({
-                        "n": n,
-                        "title": title,
-                        "url": url,
-                        "snippet": snippet,
-                    })
+                    items.append(
+                        {
+                            "n": n,
+                            "title": title,
+                            "url": url,
+                            "snippet": snippet,
+                        }
+                    )
                     if snippet:
                         text_blocks.append(f"{n}. {title}\n{snippet}\n{url}")
                     else:
@@ -738,9 +749,7 @@ async def _search_serper(
         }
 
 
-async def _search_duckduckgo(
-    query: str, settings: "Settings | None" = None
-) -> dict:
+async def _search_duckduckgo(query: str, settings: "Settings | None" = None) -> dict:
     """Search using DuckDuckGo HTML scraping (fallback, no API key needed).
 
     Return shape (CCS-02)::
@@ -789,11 +798,9 @@ async def _search_duckduckgo(
                 if top_url is None:
                     top_url = url
                 next_pos = (
-                    link_iter[i + 1].start()
-                    if i + 1 < len(link_iter)
-                    else len(text)
+                    link_iter[i + 1].start() if i + 1 < len(link_iter) else len(text)
                 )
-                chunk = text[m.end():next_pos]
+                chunk = text[m.end() : next_pos]
                 snippet_match = re.search(
                     r'class="result__snippet"[^>]*>(.*?)</a>',
                     chunk,
@@ -803,12 +810,14 @@ async def _search_duckduckgo(
                 if snippet_match:
                     raw = tag_strip.sub("", snippet_match.group(1))
                     snippet = ws_collapse.sub(" ", raw).strip()
-                items.append({
-                    "n": n,
-                    "title": title,
-                    "url": url,
-                    "snippet": snippet,
-                })
+                items.append(
+                    {
+                        "n": n,
+                        "title": title,
+                        "url": url,
+                        "snippet": snippet,
+                    }
+                )
                 if snippet:
                     text_blocks.append(f"{n}. {title}\n{snippet}\n{url}")
                 else:
@@ -857,7 +866,12 @@ async def _execute_create_tool(args: str, settings: "Settings | None" = None) ->
     """
     import json
 
-    from src.agent.tools.registry import ToolDefinition, register_dynamic_tool, Tool, is_static_tool
+    from src.agent.tools.registry import (
+        ToolDefinition,
+        register_dynamic_tool,
+        Tool,
+        is_static_tool,
+    )
     from src.store.storage import TranscriptStore
 
     try:
@@ -923,6 +937,7 @@ async def _execute_create_tool(args: str, settings: "Settings | None" = None) ->
 
     # Dynamically add to llm_tools registry
     from src.agent.tools import schemas as llm_tools
+
     llm_tools.register_dynamic_tool_schema(
         name=definition.name,
         schema=definition.arguments,
@@ -980,7 +995,9 @@ async def _execute_update_tool(args: str, settings: "Settings | None" = None) ->
         updates["description"] = spec["description"]
     if "definition_json" in spec:
         updates["definition_json"] = json.dumps(spec["definition_json"])
-    elif "arguments" in spec or "implementation_type" in spec or "implementation" in spec:
+    elif (
+        "arguments" in spec or "implementation_type" in spec or "implementation" in spec
+    ):
         # Rebuild definition_json from components
         current_def = json.loads(spec.get("current_definition_json", "{}"))
         if "arguments" in spec:
@@ -1066,6 +1083,7 @@ async def _execute_delete_tool(args: str, settings: "Settings | None" = None) ->
 
         # Remove from llm_tools registry
         from src.agent.tools import schemas as llm_tools
+
         llm_tools.unregister_dynamic_tool_schema(name)
 
         return {
@@ -1093,11 +1111,13 @@ async def _execute_list_tools(args: str, settings: "Settings | None" = None) -> 
     all_tools = get_all_tools()
     items = []
     for name, tool in sorted(all_tools.items()):
-        items.append({
-            "name": name,
-            "description": tool.description,
-            "type": "dynamic" if is_dynamic_tool(name) else "built-in",
-        })
+        items.append(
+            {
+                "name": name,
+                "description": tool.description,
+                "type": "dynamic" if is_dynamic_tool(name) else "built-in",
+            }
+        )
 
     return {
         "success": True,
@@ -1116,9 +1136,10 @@ async def _execute_list_tools(args: str, settings: "Settings | None" = None) -> 
 # Navigation & Browsing Tools
 # ============================================================================
 
+
 def _human_readable_size(size_bytes: int) -> str:
     """Convert bytes to human readable format."""
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
         if size_bytes < 1024.0:
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024.0
@@ -1129,7 +1150,10 @@ def _human_readable_size(size_bytes: int) -> str:
 # File Operation Tools
 # ============================================================================
 
-async def _execute_create_archive(args: str, settings: "Settings | None" = None) -> dict:
+
+async def _execute_create_archive(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Create a tar or zip archive from files/directories."""
     import tarfile
     import zipfile
@@ -1151,9 +1175,21 @@ async def _execute_create_archive(args: str, settings: "Settings | None" = None)
         }
 
     archive_path_str = parts[0]
-    sources = parts[1:-2] if len(parts) > 2 and parts[-2] in ("tar.gz", "zip", "tar.bz2") else parts[1:]
-    archive_format = parts[-2] if len(parts) > 2 and parts[-2] in ("tar.gz", "zip", "tar.bz2") else "tar.gz"
-    compression = parts[-1] if len(parts) > 3 and parts[-1] in ("auto", "gzip", "bzip2", "none") else "auto"
+    sources = (
+        parts[1:-2]
+        if len(parts) > 2 and parts[-2] in ("tar.gz", "zip", "tar.bz2")
+        else parts[1:]
+    )
+    archive_format = (
+        parts[-2]
+        if len(parts) > 2 and parts[-2] in ("tar.gz", "zip", "tar.bz2")
+        else "tar.gz"
+    )
+    compression = (
+        parts[-1]
+        if len(parts) > 3 and parts[-1] in ("auto", "gzip", "bzip2", "none")
+        else "auto"
+    )
 
     # Resolve paths
     archive_path = Path(archive_path_str)
@@ -1184,37 +1220,53 @@ async def _execute_create_archive(args: str, settings: "Settings | None" = None)
 
     try:
         # Check archive size limit
-        total_size = sum(f.stat().st_size for p in source_paths for f in p.rglob('*') if f.is_file())
-        if settings and hasattr(settings, 'file_access_max_archive_size') and total_size > settings.file_access_max_archive_size:
+        total_size = sum(
+            f.stat().st_size for p in source_paths for f in p.rglob("*") if f.is_file()
+        )
+        if (
+            settings
+            and hasattr(settings, "file_access_max_archive_size")
+            and total_size > settings.file_access_max_archive_size
+        ):
             return {
                 "success": False,
                 "output": "",
                 "error": f"Archive would exceed size limit of {settings.file_access_max_archive_size} bytes",
                 "spoken": {
-                    "en": f"Archive too large: would exceed {settings.file_access_max_archive_size / (1024*1024):.1f} MB limit",
-                    "uk": f"Архів занадто великий: перевищує ліміт {settings.file_access_max_archive_size / (1024*1024):.1f} MB",
-                    "ru": f"Архив слишком большой: превышает лимит {settings.file_access_max_archive_size / (1024*1024):.1f} MB",
+                    "en": f"Archive too large: would exceed {settings.file_access_max_archive_size / (1024 * 1024):.1f} MB limit",
+                    "uk": f"Архів занадто великий: перевищує ліміт {settings.file_access_max_archive_size / (1024 * 1024):.1f} MB",
+                    "ru": f"Архив слишком большой: превышает лимит {settings.file_access_max_archive_size / (1024 * 1024):.1f} MB",
                 },
             }
 
         if archive_format == "zip":
             # Create ZIP archive
-            with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED if compression == "auto" else
-                               zipfile.ZIP_STORED if compression == "none" else
-                               zipfile.ZIP_BZIP2 if compression == "bzip2" else zipfile.ZIP_DEFLATED) as zipf:
+            with zipfile.ZipFile(
+                archive_path,
+                "w",
+                zipfile.ZIP_DEFLATED
+                if compression == "auto"
+                else zipfile.ZIP_STORED
+                if compression == "none"
+                else zipfile.ZIP_BZIP2
+                if compression == "bzip2"
+                else zipfile.ZIP_DEFLATED,
+            ) as zipf:
                 for src in source_paths:
-                    for file in src.rglob('*'):
+                    for file in src.rglob("*"):
                         if file.is_file():
                             arcname = file.relative_to(src.parent.parent)
                             zipf.write(file, arcname)
         else:
             # Create TAR archive
             if archive_format == "tar.gz":
-                mode = 'w:gz' if compression == "auto" or compression == "gzip" else 'w'
+                mode = "w:gz" if compression == "auto" or compression == "gzip" else "w"
             elif archive_format == "tar.bz2":
-                mode = 'w:bz2' if compression == "auto" or compression == "bzip2" else 'w'
+                mode = (
+                    "w:bz2" if compression == "auto" or compression == "bzip2" else "w"
+                )
             else:
-                mode = 'w'
+                mode = "w"
 
             with tarfile.open(archive_path, mode) as tar:
                 for src in source_paths:
@@ -1252,7 +1304,9 @@ async def _execute_create_archive(args: str, settings: "Settings | None" = None)
         }
 
 
-async def _execute_extract_archive(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_extract_archive(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Extract tar or zip archive to a directory."""
     import tarfile
     import zipfile
@@ -1324,31 +1378,43 @@ async def _execute_extract_archive(args: str, settings: "Settings | None" = None
         if archive_path.suffix == ".zip" or archive_path.name.endswith(".zip"):
             # Extract ZIP
             dest_path.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(archive_path, 'r') as zipf:
+            with zipfile.ZipFile(archive_path, "r") as zipf:
                 for member in zipf.infolist():
                     if not member.is_dir():
                         file_size = member.file_size
                         total_size += file_size
-                        extract_path = dest_path / member.filename if preserve_path else dest_path / Path(member.filename).name
+                        extract_path = (
+                            dest_path / member.filename
+                            if preserve_path
+                            else dest_path / Path(member.filename).name
+                        )
                         zipf.extract(member, extract_path.parent)
                         extracted_files.append(str(extract_path))
                     else:
-                        dir_path = dest_path / member.filename if preserve_path else dest_path
+                        dir_path = (
+                            dest_path / member.filename if preserve_path else dest_path
+                        )
                         if not dir_path.exists():
                             dir_path.mkdir(parents=True, exist_ok=True)
                         extracted_dirs.append(str(dir_path))
         else:
             # Extract TAR
             dest_path.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(archive_path, 'r:*') as tar:
+            with tarfile.open(archive_path, "r:*") as tar:
                 for member in tar.getmembers():
                     if member.isfile():
                         total_size += member.size
-                        extract_path = dest_path / member.name if preserve_path else dest_path / Path(member.name).name
+                        extract_path = (
+                            dest_path / member.name
+                            if preserve_path
+                            else dest_path / Path(member.name).name
+                        )
                         tar.extract(member, extract_path.parent)
                         extracted_files.append(str(extract_path))
                     elif member.isdir():
-                        dir_path = dest_path / member.name if preserve_path else dest_path
+                        dir_path = (
+                            dest_path / member.name if preserve_path else dest_path
+                        )
                         if not dir_path.exists():
                             dir_path.mkdir(parents=True, exist_ok=True)
                         extracted_dirs.append(str(dir_path))
@@ -1386,7 +1452,9 @@ async def _execute_extract_archive(args: str, settings: "Settings | None" = None
         }
 
 
-async def _execute_batch_operation(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_batch_operation(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Perform an operation on multiple files matching a pattern."""
     import os
     import fnmatch
@@ -1497,12 +1565,16 @@ async def _execute_batch_operation(args: str, settings: "Settings | None" = None
             try:
                 stat = file_path.stat()
                 total_size += stat.st_size
-                results.append({
-                    "path": str(file_path),
-                    "name": file_path.name,
-                    "size": stat.st_size,
-                    "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-                })
+                results.append(
+                    {
+                        "path": str(file_path),
+                        "name": file_path.name,
+                        "size": stat.st_size,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        ),
+                    }
+                )
             except Exception as e:
                 errors.append(str(file_path) + ": " + str(e))
     else:
@@ -1511,34 +1583,60 @@ async def _execute_batch_operation(args: str, settings: "Settings | None" = None
             try:
                 if operation == "delete":
                     if dry_run:
-                        results.append({"action": "would_delete", "path": str(file_path)})
+                        results.append(
+                            {"action": "would_delete", "path": str(file_path)}
+                        )
                     else:
                         file_path.unlink()
                         results.append({"action": "deleted", "path": str(file_path)})
                         total_size += file_path.stat().st_size
 
                 elif operation in ["copy_to", "move_to"]:
-                    dest_path = Path(source_path.parent) / operation.replace("_to", "") / file_path.name
+                    dest_path = (
+                        Path(source_path.parent)
+                        / operation.replace("_to", "")
+                        / file_path.name
+                    )
                     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
                     if dry_run:
-                        results.append({
-                            "action": operation.replace("_to", "would_" + operation),
-                            "source": str(file_path),
-                            "destination": str(dest_path),
-                        })
+                        results.append(
+                            {
+                                "action": operation.replace(
+                                    "_to", "would_" + operation
+                                ),
+                                "source": str(file_path),
+                                "destination": str(dest_path),
+                            }
+                        )
                     else:
                         if operation == "copy_to":
                             shutil.copy2(file_path, dest_path)
-                            results.append({"action": "copied", "source": str(file_path), "destination": str(dest_path)})
+                            results.append(
+                                {
+                                    "action": "copied",
+                                    "source": str(file_path),
+                                    "destination": str(dest_path),
+                                }
+                            )
                         else:
                             shutil.move(file_path, dest_path)
-                            results.append({"action": "moved", "source": str(file_path), "destination": str(dest_path)})
-                        total_size += file_path.stat().st_size if file_path.exists() else 0
+                            results.append(
+                                {
+                                    "action": "moved",
+                                    "source": str(file_path),
+                                    "destination": str(dest_path),
+                                }
+                            )
+                        total_size += (
+                            file_path.stat().st_size if file_path.exists() else 0
+                        )
 
                 elif operation == "archive":
                     if dry_run:
-                        results.append({"action": "would_archive", "path": str(file_path)})
+                        results.append(
+                            {"action": "would_archive", "path": str(file_path)}
+                        )
                     else:
                         pass  # Actual archiving would need more complex logic
             except Exception as e:
@@ -1553,7 +1651,7 @@ async def _execute_batch_operation(args: str, settings: "Settings | None" = None
         "total_size": total_size,
         "dry_run": dry_run,
         "results": results[:100],  # Limit results
-        "errors": errors[:10],     # Limit errors
+        "errors": errors[:10],  # Limit errors
     }
 
     return {
@@ -1572,6 +1670,7 @@ async def _execute_batch_operation(args: str, settings: "Settings | None" = None
 # ============================================================================
 # Profile Management Tools
 # ============================================================================
+
 
 async def _execute_add_favorite(args: str, settings: "Settings | None" = None) -> dict:
     """Add a directory to favorites."""
@@ -1613,6 +1712,7 @@ async def _execute_add_favorite(args: str, settings: "Settings | None" = None) -
 
     try:
         from src.store.user_profile import get_profile_manager
+
         profile_manager = await get_profile_manager(
             Path.home() / ".heare" / "profile.json"
         )
@@ -1641,10 +1741,13 @@ async def _execute_add_favorite(args: str, settings: "Settings | None" = None) -
         }
 
 
-async def _execute_list_favorites(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_list_favorites(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """List favorite locations."""
     try:
         from src.store.user_profile import get_profile_manager
+
         profile_manager = await get_profile_manager(
             Path.home() / ".heare" / "profile.json"
         )
@@ -1670,12 +1773,14 @@ async def _execute_list_favorites(args: str, settings: "Settings | None" = None)
 
         items = []
         for fav in favorites:
-            items.append({
-                "path": fav["path"],
-                "label": fav["label"],
-                "access_count": fav.get("access_count", 0),
-                "last_accessed": fav.get("last_accessed", "Never"),
-            })
+            items.append(
+                {
+                    "path": fav["path"],
+                    "label": fav["label"],
+                    "access_count": fav.get("access_count", 0),
+                    "last_accessed": fav.get("last_accessed", "Never"),
+                }
+            )
 
         return {
             "success": True,
@@ -1701,7 +1806,9 @@ async def _execute_list_favorites(args: str, settings: "Settings | None" = None)
         }
 
 
-async def _execute_set_view_preference(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_set_view_preference(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Set a view preference."""
     import json
 
@@ -1722,6 +1829,7 @@ async def _execute_set_view_preference(args: str, settings: "Settings | None" = 
 
     try:
         from src.store.user_profile import get_profile_manager
+
         profile_manager = await get_profile_manager(
             Path.home() / ".heare" / "profile.json"
         )
@@ -1756,6 +1864,7 @@ async def _execute_show_profile(args: str, settings: "Settings | None" = None) -
     """Show current user profile settings."""
     try:
         from src.store.user_profile import get_profile_manager
+
         profile_manager = await get_profile_manager(
             Path.home() / ".heare" / "profile.json"
         )
@@ -1815,6 +1924,7 @@ def _to_camel_case(name: str) -> str:
 # ============================================================================
 # Agent Skills handlers
 # ============================================================================
+
 
 async def _execute_list_skills(args: str, settings: "Settings | None" = None) -> dict:
     """List available Agent Skills."""
@@ -1903,7 +2013,11 @@ async def _execute_run_skill(args: str, settings: "Settings | None" = None) -> d
         # Execute skill: internal dispatch to constituent heare tools
         action_timeout = settings.action_timeout_seconds if settings else 120
         result = await _execute_skill_internal(
-            name_part, instructions, context, settings, action_timeout_seconds=action_timeout
+            name_part,
+            instructions,
+            context,
+            settings,
+            action_timeout_seconds=action_timeout,
         )
         return result
 
@@ -2003,7 +2117,9 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
                     timeout=5,
                 )
                 if resp.status_code != 200:
-                    logger.warning("State API returned %s for provider", resp.status_code)
+                    logger.warning(
+                        "State API returned %s for provider", resp.status_code
+                    )
             except httpx.RequestError as api_err:
                 logger.warning("State API unavailable for provider: %s", api_err)
 
@@ -2046,8 +2162,7 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
                 "output": "",
                 "error": f"Invalid mode: {mode!r}. Valid modes: {valid}",
                 "spoken": {
-                    "en": f"I don't have a {mode} mode. "
-                    f"Try: {valid}.",
+                    "en": f"I don't have a {mode} mode. Try: {valid}.",
                     "uk": f"Немає режиму {mode}. Доступні: {valid}.",
                 },
             }
@@ -2093,9 +2208,7 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
 _DISPLAY_FORMATS = {"text", "code", "ascii", "table", "markdown", "html"}
 
 
-async def _execute_show_display(
-    args: str, settings: "Settings | None" = None
-) -> dict:
+async def _execute_show_display(args: str, settings: "Settings | None" = None) -> dict:
     """Render a rich block on the watch dashboard display panel.
 
     Args is a JSON blob {content, format, title?}. Persists to the
@@ -2181,7 +2294,9 @@ def _get_or_build_capability_index(settings):
         return _capability_index_singleton
     from src.agent.tools.capability_index import build_capability_index
 
-    workspace = settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
+    workspace = (
+        settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
+    )
     _capability_index_singleton = build_capability_index(settings, workspace)
     return _capability_index_singleton
 
@@ -2195,7 +2310,9 @@ def _entry_to_summary(entry) -> dict:
     }
 
 
-async def _execute_discover_capability(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_discover_capability(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Args is JSON: {"intent": "..."}. Returns top-3 candidates from local + remote."""
     import time as _time
 
@@ -2225,18 +2342,24 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
 
     if prefer_remote:
         try:
-            entries = await discovery.discover_capability_remote(intent, settings=settings)
+            entries = await discovery.discover_capability_remote(
+                intent, settings=settings
+            )
             source = "remote"
         except Exception as e:  # noqa: BLE001
             logger.warning("[CAPABILITY DISCOVERY] remote failed: %s", e)
             entries = []
     else:
-        local_entries = await discovery.discover_capability_local(intent, index, top_k=3)
+        local_entries = await discovery.discover_capability_local(
+            intent, index, top_k=3
+        )
         entries = local_entries
         source = "local"
         if not entries:
             try:
-                entries = await discovery.discover_capability_remote(intent, settings=settings)
+                entries = await discovery.discover_capability_remote(
+                    intent, settings=settings
+                )
                 source = "remote"
             except Exception as e:  # noqa: BLE001
                 logger.warning("[CAPABILITY DISCOVERY] remote failed: %s", e)
@@ -2245,7 +2368,10 @@ async def _execute_discover_capability(args: str, settings: "Settings | None" = 
     latency_ms = int((_time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY DISCOVERY] intent=%r results=%d source=%s latency_ms=%d",
-        intent, len(entries), source, latency_ms,
+        intent,
+        len(entries),
+        source,
+        latency_ms,
     )
 
     if not entries:
@@ -2285,7 +2411,9 @@ def _find_entry_by_slug(index, slug: str):
     return None
 
 
-async def _execute_install_skill_tool(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_install_skill_tool(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Args is JSON: {"slug": "...", "user_confirmed": true, "replace": false}."""
     import time as _time
     from src.skills import installer as _installer
@@ -2304,7 +2432,11 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
     user_confirmed = bool(payload.get("user_confirmed", False))
     replace = bool(payload.get("replace", False))
     if not slug:
-        return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
+        return {
+            "success": False,
+            "error": "slug is required",
+            "spoken": {"en": "Missing slug."},
+        }
 
     index = _get_or_build_capability_index(settings)
     entry = _find_entry_by_slug(index, slug) or _LAST_DISCOVERY.get(slug)
@@ -2329,7 +2461,9 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY INSTALL] slug=%s source=skill success=False latency_ms=%d reason=%s",
-            slug, latency_ms, exc,
+            slug,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2341,7 +2475,9 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY INSTALL] slug=%s source=skill success=False latency_ms=%d reason=%s",
-            slug, latency_ms, exc,
+            slug,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2353,7 +2489,9 @@ async def _execute_install_skill_tool(args: str, settings: "Settings | None" = N
     latency_ms = int((_time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY INSTALL] slug=%s source=skill success=%s latency_ms=%d",
-        slug, result.success, latency_ms,
+        slug,
+        result.success,
+        latency_ms,
     )
     return {
         "success": result.success,
@@ -2410,7 +2548,9 @@ async def _execute_create_skill(args: str, settings: "Settings | None" = None) -
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY CREATE] slug=%s source=skill success=False latency_ms=%d reason=%s",
-            name, latency_ms, exc,
+            name,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2423,7 +2563,9 @@ async def _execute_create_skill(args: str, settings: "Settings | None" = None) -
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY CREATE] slug=%s source=skill success=False latency_ms=%d reason=%s",
-            name, latency_ms, exc,
+            name,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2489,7 +2631,9 @@ async def _execute_stop_daemon(args: str, settings: "Settings | None" = None) ->
     }
 
 
-async def _execute_restart_daemon(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_restart_daemon(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Args is JSON: {"user_confirmed": true}.
 
     Two-step:
@@ -2547,13 +2691,13 @@ async def _execute_restart_daemon(args: str, settings: "Settings | None" = None)
             },
         }
 
-    asyncio.create_task(
-        daemon_control.schedule_self_exit(delay_s=self_exit_delay_s)
-    )
+    asyncio.create_task(daemon_control.schedule_self_exit(delay_s=self_exit_delay_s))
     logger.info(
         "[CAPABILITY DAEMON] restart scheduled respawner_pid=%d "
         "respawn_delay=%.2fs self_exit_delay=%.2fs",
-        respawner_pid, respawn_delay_s, self_exit_delay_s,
+        respawner_pid,
+        respawn_delay_s,
+        self_exit_delay_s,
     )
 
     return {
@@ -2566,7 +2710,9 @@ async def _execute_restart_daemon(args: str, settings: "Settings | None" = None)
     }
 
 
-async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_install_mcp_server_tool(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Args is JSON: {"slug": "...", "user_confirmed": true, "replace": false}."""
     import time as _time
     from src.skills import installer as _installer
@@ -2585,7 +2731,11 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
     user_confirmed = bool(payload.get("user_confirmed", False))
     replace = bool(payload.get("replace", False))
     if not slug:
-        return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
+        return {
+            "success": False,
+            "error": "slug is required",
+            "spoken": {"en": "Missing slug."},
+        }
 
     index = _get_or_build_capability_index(settings)
     entry = _find_entry_by_slug(index, slug) or _LAST_DISCOVERY.get(slug)
@@ -2610,7 +2760,9 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY INSTALL] slug=%s source=mcp success=False latency_ms=%d reason=%s",
-            slug, latency_ms, exc,
+            slug,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2622,7 +2774,9 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY INSTALL] slug=%s source=mcp success=False latency_ms=%d reason=%s",
-            slug, latency_ms, exc,
+            slug,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2634,7 +2788,9 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
     latency_ms = int((_time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY INSTALL] slug=%s source=mcp success=%s latency_ms=%d",
-        slug, result.success, latency_ms,
+        slug,
+        result.success,
+        latency_ms,
     )
     return {
         "success": result.success,
@@ -2649,7 +2805,9 @@ async def _execute_install_mcp_server_tool(args: str, settings: "Settings | None
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
-async def _execute_register_mcp_server(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_register_mcp_server(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Args is JSON: {slug, description, command, args, env?, source_url?, user_confirmed, replace?}.
 
     Builds an IndexEntry on the fly from user-supplied launch info and routes
@@ -2678,9 +2836,17 @@ async def _execute_register_mcp_server(args: str, settings: "Settings | None" = 
     replace = bool(payload.get("replace", False))
 
     if not slug or not _SLUG_RE.match(slug):
-        return {"success": False, "error": "slug must match [a-z0-9][a-z0-9-]*", "spoken": {"en": "Bad slug."}}
+        return {
+            "success": False,
+            "error": "slug must match [a-z0-9][a-z0-9-]*",
+            "spoken": {"en": "Bad slug."},
+        }
     if not description:
-        return {"success": False, "error": "description is required", "spoken": {"en": "Missing description."}}
+        return {
+            "success": False,
+            "error": "description is required",
+            "spoken": {"en": "Missing description."},
+        }
 
     raw_launch = {"command": payload.get("command"), "args": payload.get("args")}
     if payload.get("env") is not None:
@@ -2688,9 +2854,17 @@ async def _execute_register_mcp_server(args: str, settings: "Settings | None" = 
     try:
         launch = _market._coerce_launch(raw_launch)
     except ValueError as exc:
-        return {"success": False, "error": str(exc), "spoken": {"en": "Bad launch info."}}
+        return {
+            "success": False,
+            "error": str(exc),
+            "spoken": {"en": "Bad launch info."},
+        }
 
-    install_url = str(source_url).strip() if isinstance(source_url, str) and source_url.strip() else None
+    install_url = (
+        str(source_url).strip()
+        if isinstance(source_url, str) and source_url.strip()
+        else None
+    )
 
     entry = IndexEntry(
         source="mcp",
@@ -2714,7 +2888,9 @@ async def _execute_register_mcp_server(args: str, settings: "Settings | None" = 
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY REGISTER] slug=%s success=False latency_ms=%d reason=%s",
-            slug, latency_ms, exc,
+            slug,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2726,7 +2902,9 @@ async def _execute_register_mcp_server(args: str, settings: "Settings | None" = 
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.info(
             "[CAPABILITY REGISTER] slug=%s success=False latency_ms=%d reason=%s",
-            slug, latency_ms, exc,
+            slug,
+            latency_ms,
+            exc,
         )
         return {
             "success": False,
@@ -2738,7 +2916,9 @@ async def _execute_register_mcp_server(args: str, settings: "Settings | None" = 
     latency_ms = int((_time.monotonic() - started) * 1000)
     logger.info(
         "[CAPABILITY REGISTER] slug=%s success=%s latency_ms=%d",
-        slug, result.success, latency_ms,
+        slug,
+        result.success,
+        latency_ms,
     )
     return {
         "success": result.success,
@@ -2750,7 +2930,9 @@ async def _execute_register_mcp_server(args: str, settings: "Settings | None" = 
     }
 
 
-async def _execute_revoke_capability(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_revoke_capability(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """Args is JSON: {"slug": "..."}.
 
     Removes a marketplace-installed skill or MCP server. Refuses if the
@@ -2770,10 +2952,16 @@ async def _execute_revoke_capability(args: str, settings: "Settings | None" = No
 
     slug = str(payload.get("slug", "")).strip()
     if not slug:
-        return {"success": False, "error": "slug is required", "spoken": {"en": "Missing slug."}}
+        return {
+            "success": False,
+            "error": "slug is required",
+            "spoken": {"en": "Missing slug."},
+        }
 
     skill_dir = Path.home() / ".heare" / "skills" / "_marketplace" / slug
-    workspace = settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
+    workspace = (
+        settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
+    )
     mcp_sidecar = Path(workspace) / ".mcp_install" / f"{slug}.json"
 
     removed_skill = False
@@ -2782,7 +2970,9 @@ async def _execute_revoke_capability(args: str, settings: "Settings | None" = No
 
     if skill_dir.exists():
         if not (skill_dir / ".install.json").exists():
-            logger.info("[CAPABILITY REVOKE] slug=%s success=False reason=no_sidecar", slug)
+            logger.info(
+                "[CAPABILITY REVOKE] slug=%s success=False reason=no_sidecar", slug
+            )
             return {
                 "success": False,
                 "output": "",
@@ -2827,7 +3017,9 @@ async def _execute_revoke_capability(args: str, settings: "Settings | None" = No
         }
 
     if error_msg is not None:
-        logger.info("[CAPABILITY REVOKE] slug=%s success=False reason=%s", slug, error_msg)
+        logger.info(
+            "[CAPABILITY REVOKE] slug=%s success=False reason=%s", slug, error_msg
+        )
         return {
             "success": False,
             "output": "",
@@ -2860,11 +3052,18 @@ async def _execute_revoke_capability(args: str, settings: "Settings | None" = No
 
 
 _CATEGORY_ALIASES = {
-    "built_in": "built_in", "built-in": "built_in", "builtin": "built_in",
-    "tool": "built_in", "tools": "built_in",
-    "skill": "skills", "skills": "skills",
-    "mcp": "mcps", "mcps": "mcps",
-    "mcp_server": "mcps", "mcp_servers": "mcps", "mcp-server": "mcps",
+    "built_in": "built_in",
+    "built-in": "built_in",
+    "builtin": "built_in",
+    "tool": "built_in",
+    "tools": "built_in",
+    "skill": "skills",
+    "skills": "skills",
+    "mcp": "mcps",
+    "mcps": "mcps",
+    "mcp_server": "mcps",
+    "mcp_servers": "mcps",
+    "mcp-server": "mcps",
 }
 
 
@@ -2901,13 +3100,15 @@ def _list_skills(settings: "Settings | None") -> list[dict]:
 
         loader = get_skills_loader(settings)
         for meta in loader.discover():
-            out.append({
-                "name": meta.name,
-                "description": meta.description,
-                "installed_via_discovery": bool(
-                    getattr(meta, "installed_via_discovery", False)
-                ),
-            })
+            out.append(
+                {
+                    "name": meta.name,
+                    "description": meta.description,
+                    "installed_via_discovery": bool(
+                        getattr(meta, "installed_via_discovery", False)
+                    ),
+                }
+            )
     except Exception:  # noqa: BLE001
         logger.warning("list_capabilities: skills discovery failed", exc_info=True)
     out.sort(key=lambda i: i["name"])
@@ -2953,7 +3154,9 @@ def _list_mcp_servers(settings: "Settings | None") -> list[dict]:
     return out
 
 
-async def _execute_list_capabilities(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_list_capabilities(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     """List everything the agent can call, grouped into three buckets:
       * ``built_in`` — code-backed tools from :mod:`tool_registry`
       * ``skills``  — markdown procedures from the skills loader
@@ -2987,9 +3190,18 @@ async def _execute_list_capabilities(args: str, settings: "Settings | None" = No
         "all": len(built_in) + len(skills) + len(mcps),
     }
     items = (
-        [{"name": i["name"], "source": "built_in", "description": i["description"]} for i in built_in]
-        + [{"name": i["name"], "source": "skill", "description": i["description"]} for i in skills]
-        + [{"name": i["name"], "source": "mcp", "description": i["description"]} for i in mcps]
+        [
+            {"name": i["name"], "source": "built_in", "description": i["description"]}
+            for i in built_in
+        ]
+        + [
+            {"name": i["name"], "source": "skill", "description": i["description"]}
+            for i in skills
+        ]
+        + [
+            {"name": i["name"], "source": "mcp", "description": i["description"]}
+            for i in mcps
+        ]
     )
 
     # Human-readable text the LLM can echo if the user wants the long form.
@@ -3003,9 +3215,7 @@ async def _execute_list_capabilities(args: str, settings: "Settings | None" = No
         more = f" +{len(skills) - 8} more" if len(skills) > 8 else ""
         sections.append(f"Skills ({len(skills)}): {names}{more}")
     if mcps:
-        sections.append(
-            f"MCP ({len(mcps)}): " + ", ".join(i["name"] for i in mcps)
-        )
+        sections.append(f"MCP ({len(mcps)}): " + ", ".join(i["name"] for i in mcps))
     output = "\n".join(sections) if sections else "No capabilities."
 
     spoken_en = (
@@ -3040,17 +3250,20 @@ async def _execute_list_capabilities(args: str, settings: "Settings | None" = No
 _BROWSER_NOT_CONNECTED = {
     "success": False,
     "error": "Browser not connected. Install the Heare Bridge extension from "
-             "extensions/heare-bridge/ via chrome://extensions.",
+    "extensions/heare-bridge/ via chrome://extensions.",
     "retryable": False,
 }
 
 
 def _get_bridge_or_none():
     from src.agent.browser_bridge import _get_bridge
+
     return _get_bridge()
 
 
-async def _execute_read_browser_page(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_read_browser_page(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
@@ -3064,14 +3277,18 @@ async def _execute_read_browser_page(args: str, settings: "Settings | None" = No
     return await bridge.call("read_page", params)
 
 
-async def _execute_list_browser_tabs(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_list_browser_tabs(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
     return await bridge.call("list_tabs", {})
 
 
-async def _execute_click_in_browser(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_click_in_browser(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
@@ -3085,7 +3302,9 @@ async def _execute_click_in_browser(args: str, settings: "Settings | None" = Non
     return await bridge.call("click", params)
 
 
-async def _execute_fill_in_browser(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_fill_in_browser(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
@@ -3102,7 +3321,9 @@ async def _execute_fill_in_browser(args: str, settings: "Settings | None" = None
     return await bridge.call("fill", params)
 
 
-async def _execute_navigate_browser(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_navigate_browser(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
@@ -3116,7 +3337,9 @@ async def _execute_navigate_browser(args: str, settings: "Settings | None" = Non
     return await bridge.call("navigate", params)
 
 
-async def _execute_extract_in_browser(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_extract_in_browser(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
@@ -3130,7 +3353,9 @@ async def _execute_extract_in_browser(args: str, settings: "Settings | None" = N
     return await bridge.call("extract", params)
 
 
-async def _execute_open_browser_tab(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_open_browser_tab(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
@@ -3141,7 +3366,9 @@ async def _execute_open_browser_tab(args: str, settings: "Settings | None" = Non
     return await bridge.call("open_tab", {"url": parsed.get("url", "")})
 
 
-async def _execute_activate_browser_tab(args: str, settings: "Settings | None" = None) -> dict:
+async def _execute_activate_browser_tab(
+    args: str, settings: "Settings | None" = None
+) -> dict:
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
@@ -3163,6 +3390,7 @@ async def _execute_activate_browser_tab(args: str, settings: "Settings | None" =
 async def _execute_mute_bot(args: str, settings: "Settings | None" = None) -> dict:
     """Mute/unmute bot via HTTP API."""
     import json
+
     try:
         parsed = json.loads(args) if args.strip() else {}
     except (ValueError, TypeError):
@@ -3193,10 +3421,11 @@ async def _execute_mute_bot(args: str, settings: "Settings | None" = None) -> di
 async def _execute_mute_mic(args: str, settings: "Settings | None" = None) -> dict:
     """Mute/unmute mic via HTTP API."""
     import json
+
     try:
-        parsed = json.loads(args) if args.strip() else {}
+        json.loads(args) if args.strip() else {}
     except (ValueError, TypeError):
-        parsed = {}
+        pass
     target = "mic"
     async with httpx.AsyncClient() as client:
         try:
@@ -3222,6 +3451,7 @@ async def _execute_mute_mic(args: str, settings: "Settings | None" = None) -> di
 async def _execute_audio_device(args: str, settings: "Settings | None" = None) -> dict:
     """Switch audio device."""
     import json
+
     try:
         parsed = json.loads(args) if args.strip() else {}
     except (ValueError, TypeError):
@@ -3306,7 +3536,6 @@ async def _execute_run_agent(args: str, settings: "Settings | None" = None) -> d
 
     # Build spoken summary
     if result.get("success"):
-        session_id_out = result.get("session_id", "")
         cost = result.get("cost")
         tools = result.get("tool_calls", 0)
         parts = []
@@ -3332,32 +3561,58 @@ async def _execute_run_agent(args: str, settings: "Settings | None" = None) -> d
 # Agent sub-agent handlers (multi-agent background system)
 # ---------------------------------------------------------------------------
 
+
 async def _execute_agent_start(args: str, settings: "Settings | None" = None) -> dict:
     import json as _json
     from src.agent.subagent_manager import get_agent_manager
 
     mgr = get_agent_manager()
     if mgr is None:
-        return {"success": False, "error": "Agent manager not initialized",
-                "spoken": {"en": "Sub-agent system not available.", "uk": "Система суб-агентів недоступна."}}
+        return {
+            "success": False,
+            "error": "Agent manager not initialized",
+            "spoken": {
+                "en": "Sub-agent system not available.",
+                "uk": "Система суб-агентів недоступна.",
+            },
+        }
     try:
         params = _json.loads(args)
     except Exception:
-        return {"success": False, "error": "Invalid JSON",
-                "spoken": {"en": "Invalid arguments.", "uk": "Неправильні аргументи."}}
+        return {
+            "success": False,
+            "error": "Invalid JSON",
+            "spoken": {"en": "Invalid arguments.", "uk": "Неправильні аргументи."},
+        }
     prompt = str(params.get("prompt", "")).strip()
     if not prompt:
-        return {"success": False, "error": "prompt required",
-                "spoken": {"en": "I need a task description.", "uk": "Потрібен опис завдання."}}
+        return {
+            "success": False,
+            "error": "prompt required",
+            "spoken": {
+                "en": "I need a task description.",
+                "uk": "Потрібен опис завдання.",
+            },
+        }
     cwd = params.get("cwd") or None
     try:
         state = await mgr.start(prompt, cwd=cwd)
-        return {"success": True, "session_id": state.session_id,
-                "status": state.status, "port": state.port,
-                "spoken": {"en": f"Agent started.", "uk": f"Агент запущений."}}
+        return {
+            "success": True,
+            "session_id": state.session_id,
+            "status": state.status,
+            "port": state.port,
+            "spoken": {"en": "Agent started.", "uk": "Агент запущений."},
+        }
     except Exception as e:
-        return {"success": False, "error": str(e),
-                "spoken": {"en": f"Failed to start agent.", "uk": f"Не вдалося запустити агента."}}
+        return {
+            "success": False,
+            "error": str(e),
+            "spoken": {
+                "en": "Failed to start agent.",
+                "uk": "Не вдалося запустити агента.",
+            },
+        }
 
 
 async def _execute_agent_status(args: str, settings: "Settings | None" = None) -> dict:
@@ -3404,7 +3659,10 @@ async def _execute_agent_message(args: str, settings: "Settings | None" = None) 
         return {"success": False, "error": "session_id and prompt required"}
     result = await mgr.message(sid, prompt)
     if result.get("success"):
-        result["spoken"] = {"en": "Continuing agent session.", "uk": "Продовжую сесію агента."}
+        result["spoken"] = {
+            "en": "Continuing agent session.",
+            "uk": "Продовжую сесію агента.",
+        }
     else:
         result["spoken"] = {"en": f"Cannot continue: {result.get('error', '')}"}
     return result
@@ -3436,11 +3694,20 @@ async def _execute_agent_list(args: str, settings: "Settings | None" = None) -> 
     if mgr is None:
         return {"success": False, "error": "Agent manager not initialized"}
     agents = mgr.list_all()
-    running = sum(1 for a in agents if a["status"] in ("running", "starting", "waiting_for_input"))
-    return {"success": True, "agents": agents, "count": len(agents),
-            "running": running, "max_concurrent": mgr._max_concurrent,
-            "spoken": {"en": f"{len(agents)} agents ({running} running).",
-                       "uk": f"{len(agents)} агентів ({running} активних)."}}
+    running = sum(
+        1 for a in agents if a["status"] in ("running", "starting", "waiting_for_input")
+    )
+    return {
+        "success": True,
+        "agents": agents,
+        "count": len(agents),
+        "running": running,
+        "max_concurrent": mgr._max_concurrent,
+        "spoken": {
+            "en": f"{len(agents)} agents ({running} running).",
+            "uk": f"{len(agents)} агентів ({running} активних).",
+        },
+    }
 
 
 async def _execute_agent_approve(args: str, settings: "Settings | None" = None) -> dict:
@@ -3475,8 +3742,10 @@ async def _execute_agent_deny(args: str, settings: "Settings | None" = None) -> 
     if not sid:
         return {"success": False, "error": "session_id required"}
     result = await mgr.deny(sid, reason=reason)
-    result["spoken"] = {"en": "Denied." + (f" Sent correction." if reason else ""),
-                        "uk": "Відхилено."}
+    result["spoken"] = {
+        "en": "Denied." + (" Sent correction." if reason else ""),
+        "uk": "Відхилено.",
+    }
     return result
 
 
@@ -3487,9 +3756,13 @@ async def _execute_agent_deny(args: str, settings: "Settings | None" = None) -> 
 
 async def _execute_remember(args: str, settings: "Settings | None" = None) -> dict:
     if _memory_backend is None:
-        return {"success": False, "error": "Memory backend not available",
-                "spoken": {"en": "Memory system is not available."}}
+        return {
+            "success": False,
+            "error": "Memory backend not available",
+            "spoken": {"en": "Memory system is not available."},
+        }
     from src.memory.tools import remember
+
     return await remember(_memory_backend, args)
 
 
@@ -3497,6 +3770,7 @@ async def _execute_recall(args: str, settings: "Settings | None" = None) -> dict
     if _memory_backend is None:
         return {"success": False, "error": "Memory backend not available"}
     from src.memory.tools import recall
+
     return await recall(_memory_backend, args)
 
 
@@ -3504,6 +3778,7 @@ async def _execute_forget(args: str, settings: "Settings | None" = None) -> dict
     if _memory_backend is None:
         return {"success": False, "error": "Memory backend not available"}
     from src.memory.tools import forget
+
     return await forget(_memory_backend, args)
 
 
@@ -3511,5 +3786,5 @@ async def _execute_memory_status(args: str, settings: "Settings | None" = None) 
     if _memory_backend is None:
         return {"success": False, "error": "Memory backend not available"}
     from src.memory.tools import memory_status
-    return await memory_status(_memory_backend, args)
 
+    return await memory_status(_memory_backend, args)

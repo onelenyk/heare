@@ -4,6 +4,7 @@ Used by ``src.skills.discovery`` to source remote skill / MCP candidates. All er
 are swallowed to ``[]`` — discovery is best-effort and must never raise into
 the agent loop.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +19,11 @@ from src.agent.tools.capability_index import IndexEntry
 
 logger = logging.getLogger("heare.marketplace")
 
-DEFAULT_HOSTNAME_ALLOWLIST: tuple[str, ...] = ("skillsmp.com", "github.com", "githubusercontent.com")
+DEFAULT_HOSTNAME_ALLOWLIST: tuple[str, ...] = (
+    "skillsmp.com",
+    "github.com",
+    "githubusercontent.com",
+)
 
 _BRANDS: tuple[str, ...] = ("skillsmp", "github", "githubusercontent")
 _SUBSTITUTIONS: dict[str, str] = {"1": "i", "0": "o", "5": "s", "3": "e"}
@@ -109,7 +114,9 @@ def _coerce_launch(raw: object) -> dict | None:
     return out
 
 
-def _coerce_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEntry | None:
+def _coerce_entry(
+    raw: dict, source: str, allowlist: tuple[str, ...]
+) -> IndexEntry | None:
     if not isinstance(raw, dict):
         return None
     name = raw.get("name")
@@ -118,10 +125,16 @@ def _coerce_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEn
         return None
     install_url = raw.get("install_url")
     if install_url is not None:
-        if not isinstance(install_url, str) or not _validate_url(install_url, allowlist):
-            logger.warning("rejecting %s entry %r: bad install_url %r", source, name, install_url)
+        if not isinstance(install_url, str) or not _validate_url(
+            install_url, allowlist
+        ):
+            logger.warning(
+                "rejecting %s entry %r: bad install_url %r", source, name, install_url
+            )
             return None
-    args_schema = raw.get("args_schema") if isinstance(raw.get("args_schema"), dict) else None
+    args_schema = (
+        raw.get("args_schema") if isinstance(raw.get("args_schema"), dict) else None
+    )
     network_required = bool(raw.get("network_required", False))
     pop = raw.get("popularity_score")
     popularity_score = float(pop) if isinstance(pop, (int, float)) else None
@@ -144,7 +157,9 @@ def _coerce_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEn
     )
 
 
-def _parse_results(payload: object, source: str, allowlist: tuple[str, ...]) -> list[IndexEntry]:
+def _parse_results(
+    payload: object, source: str, allowlist: tuple[str, ...]
+) -> list[IndexEntry]:
     if not isinstance(payload, dict):
         logger.warning("%s payload not a dict: %r", source, type(payload).__name__)
         return []
@@ -154,7 +169,11 @@ def _parse_results(payload: object, source: str, allowlist: tuple[str, ...]) -> 
         return []
     out: list[IndexEntry] = []
     for raw in items:
-        entry = _coerce_skillsmp_entry(raw, source, allowlist) if source == "skill" else _coerce_entry(raw, source, allowlist)
+        entry = (
+            _coerce_skillsmp_entry(raw, source, allowlist)
+            if source == "skill"
+            else _coerce_entry(raw, source, allowlist)
+        )
         if entry is not None:
             out.append(entry)
     return out
@@ -172,7 +191,9 @@ def _extract_items(payload: dict) -> list | None:
     return None
 
 
-def _coerce_skillsmp_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -> IndexEntry | None:
+def _coerce_skillsmp_entry(
+    raw: dict, source: str, allowlist: tuple[str, ...]
+) -> IndexEntry | None:
     """Map skillsmp.com /api/v1/skills/search response shape into IndexEntry."""
     if not isinstance(raw, dict):
         return None
@@ -181,7 +202,11 @@ def _coerce_skillsmp_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -
     if not isinstance(name, str) or not isinstance(description, str):
         return None
     github_url = raw.get("githubUrl")
-    install_url = github_url if isinstance(github_url, str) and _validate_url(github_url, allowlist) else None
+    install_url = (
+        github_url
+        if isinstance(github_url, str) and _validate_url(github_url, allowlist)
+        else None
+    )
     if install_url is None and github_url is not None:
         logger.warning("rejecting skill %r: bad githubUrl %r", name, github_url)
         return None
@@ -201,6 +226,7 @@ def _coerce_skillsmp_entry(raw: dict, source: str, allowlist: tuple[str, ...]) -
 
 async def _fetch_json(url: str, timeout: float) -> object | None:
     import time as _time
+
     started = _time.monotonic()
     logger.info("[MARKETPLACE] → GET %s (timeout=%.1fs)", url, timeout)
     try:
@@ -211,7 +237,10 @@ async def _fetch_json(url: str, timeout: float) -> object | None:
         preview = body[:500] + ("…" if len(body) > 500 else "")
         logger.info(
             "[MARKETPLACE] ← status=%d bytes=%d latency_ms=%d body=%s",
-            resp.status_code, len(body), latency_ms, preview,
+            resp.status_code,
+            len(body),
+            latency_ms,
+            preview,
         )
         resp.raise_for_status()
         return resp.json()
@@ -219,7 +248,9 @@ async def _fetch_json(url: str, timeout: float) -> object | None:
         latency_ms = int((_time.monotonic() - started) * 1000)
         logger.warning(
             "[MARKETPLACE] ✗ fetch %s failed after %dms: %s",
-            url, latency_ms, exc,
+            url,
+            latency_ms,
+            exc,
         )
         return None
 
@@ -229,7 +260,9 @@ async def fetch_skill_candidates(
 ) -> list[IndexEntry]:
     base = getattr(settings, "marketplace_url", "") or ""
     if not base:
-        logger.info("[MARKETPLACE] skill search skipped: marketplace_url not configured")
+        logger.info(
+            "[MARKETPLACE] skill search skipped: marketplace_url not configured"
+        )
         return []
     url = f"{base.rstrip('/')}/api/v1/skills/search?q={urllib.parse.quote(query)}"
     if not _validate_url(url, DEFAULT_HOSTNAME_ALLOWLIST):
@@ -239,7 +272,11 @@ async def fetch_skill_candidates(
     if payload is None:
         return []
     results = _parse_results(payload, "skill", DEFAULT_HOSTNAME_ALLOWLIST)
-    logger.info("[MARKETPLACE] skill search query=%r → %d entries after validation", query, len(results))
+    logger.info(
+        "[MARKETPLACE] skill search query=%r → %d entries after validation",
+        query,
+        len(results),
+    )
     return results
 
 
@@ -264,7 +301,12 @@ _BUILTIN_MCP_CATALOG: tuple[IndexEntry, ...] = (
         network_required=True,
         launch={
             "command": "npx",
-            "args": ["-y", "chrome-devtools-mcp@latest", "--isolated", "--headless=true"],
+            "args": [
+                "-y",
+                "chrome-devtools-mcp@latest",
+                "--isolated",
+                "--headless=true",
+            ],
         },
     ),
     IndexEntry(
@@ -281,7 +323,10 @@ _BUILTIN_MCP_CATALOG: tuple[IndexEntry, ...] = (
         description="Persistent key-value memory store for cross-session recall.",
         install_url="https://github.com/modelcontextprotocol/servers",
         network_required=False,
-        launch={"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]},
+        launch={
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-memory"],
+        },
     ),
     IndexEntry(
         source="mcp",
@@ -526,8 +571,7 @@ _BUILTIN_MCP_CATALOG: tuple[IndexEntry, ...] = (
         source="mcp",
         name="linear",
         description=(
-            "Linear — issues, projects, cycles. "
-            "Requires LINEAR_API_KEY env var."
+            "Linear — issues, projects, cycles. Requires LINEAR_API_KEY env var."
         ),
         install_url="https://github.com/jerhadf/linear-mcp-server",
         network_required=True,
@@ -554,78 +598,249 @@ _BUILTIN_MCP_CATALOG: tuple[IndexEntry, ...] = (
 # the entry even when they don't substring-match name/description.
 _BUILTIN_KEYWORDS: dict[str, tuple[str, ...]] = {
     "chrome-devtools": (
-        "browser", "chrome", "devtools", "automate", "automation",
-        "screenshot", "navigate", "click", "scrape", "web page", "headless",
-        "web", "navigate", "click", "form", "javascript", "cdp",
+        "browser",
+        "chrome",
+        "devtools",
+        "automate",
+        "automation",
+        "screenshot",
+        "navigate",
+        "click",
+        "scrape",
+        "web page",
+        "headless",
+        "web",
+        "navigate",
+        "click",
+        "form",
+        "javascript",
+        "cdp",
     ),
-    "fetch": ("fetch", "url", "http", "download", "request", "web content", "scrape", "markdown"),
-    "memory": ("memory", "remember", "recall", "store", "persist", "key-value", "kv", "storage"),
+    "fetch": (
+        "fetch",
+        "url",
+        "http",
+        "download",
+        "request",
+        "web content",
+        "scrape",
+        "markdown",
+    ),
+    "memory": (
+        "memory",
+        "remember",
+        "recall",
+        "store",
+        "persist",
+        "key-value",
+        "kv",
+        "storage",
+    ),
     "time": ("time", "clock", "timezone", "date", "timestamp", "iana", "dst"),
     "sequential-thinking": (
-        "thinking", "reasoning", "chain of thought", "scratchpad", "steps",
-        "plan", "break down", "thought", "reason",
+        "thinking",
+        "reasoning",
+        "chain of thought",
+        "scratchpad",
+        "steps",
+        "plan",
+        "break down",
+        "thought",
+        "reason",
     ),
     "puppeteer": (
-        "browser", "puppeteer", "chromium", "automation", "screenshot",
-        "scrape", "headless", "chrome", "navigate", "click", "form",
+        "browser",
+        "puppeteer",
+        "chromium",
+        "automation",
+        "screenshot",
+        "scrape",
+        "headless",
+        "chrome",
+        "navigate",
+        "click",
+        "form",
     ),
     "playwright": (
-        "browser", "playwright", "automation", "cross-browser", "firefox",
-        "webkit", "screenshot", "scrape", "headless", "navigate", "click",
+        "browser",
+        "playwright",
+        "automation",
+        "cross-browser",
+        "firefox",
+        "webkit",
+        "screenshot",
+        "scrape",
+        "headless",
+        "navigate",
+        "click",
     ),
-    "context7": ("docs", "documentation", "library", "sdk", "examples", "reference", "code"),
+    "context7": (
+        "docs",
+        "documentation",
+        "library",
+        "sdk",
+        "examples",
+        "reference",
+        "code",
+    ),
     "filesystem": (
-        "file", "files", "filesystem", "directory", "folder", "read", "write",
-        "search", "list", "path", "disk", "storage", "access",
+        "file",
+        "files",
+        "filesystem",
+        "directory",
+        "folder",
+        "read",
+        "write",
+        "search",
+        "list",
+        "path",
+        "disk",
+        "storage",
+        "access",
     ),
     "git": (
-        "git", "repository", "repo", "version control", "commit", "diff",
-        "log", "blame", "branch", "status", "code", "history",
+        "git",
+        "repository",
+        "repo",
+        "version control",
+        "commit",
+        "diff",
+        "log",
+        "blame",
+        "branch",
+        "status",
+        "code",
+        "history",
     ),
     "sqlite": (
-        "database", "sqlite", "db", "sql", "query", "schema", "table",
-        "sqlite3", "local database",
+        "database",
+        "sqlite",
+        "db",
+        "sql",
+        "query",
+        "schema",
+        "table",
+        "sqlite3",
+        "local database",
     ),
     "postgres": (
-        "database", "postgres", "postgresql", "db", "sql", "query", "schema",
-        "table", "rdbms", "relational",
+        "database",
+        "postgres",
+        "postgresql",
+        "db",
+        "sql",
+        "query",
+        "schema",
+        "table",
+        "rdbms",
+        "relational",
     ),
     "redis": ("redis", "cache", "key-value", "kv", "store", "database", "nosql"),
     "github": (
-        "github", "git", "issue", "pr", "pull request", "repository", "repo",
-        "commit", "code", "search", "api", "integration",
+        "github",
+        "git",
+        "issue",
+        "pr",
+        "pull request",
+        "repository",
+        "repo",
+        "commit",
+        "code",
+        "search",
+        "api",
+        "integration",
     ),
     "gitlab": (
-        "gitlab", "issue", "merge request", "pipeline", "repository", "repo",
-        "commit", "code", "api", "ci/cd",
+        "gitlab",
+        "issue",
+        "merge request",
+        "pipeline",
+        "repository",
+        "repo",
+        "commit",
+        "code",
+        "api",
+        "ci/cd",
     ),
     "slack": (
-        "slack", "chat", "message", "channel", "thread", "team", "communication",
-        "workspace", "im",
+        "slack",
+        "chat",
+        "message",
+        "channel",
+        "thread",
+        "team",
+        "communication",
+        "workspace",
+        "im",
     ),
     "brave-search": (
-        "search", "web search", "brave", "query", "internet", "lookup",
-        "find", "google alternative",
+        "search",
+        "web search",
+        "brave",
+        "query",
+        "internet",
+        "lookup",
+        "find",
+        "google alternative",
     ),
     "google-maps": (
-        "maps", "google maps", "location", "geocode", "directions", "route",
-        "distance", "places", "address", "navigation", "gps",
+        "maps",
+        "google maps",
+        "location",
+        "geocode",
+        "directions",
+        "route",
+        "distance",
+        "places",
+        "address",
+        "navigation",
+        "gps",
     ),
     "gdrive": (
-        "google drive", "gdrive", "drive", "files", "google", "cloud storage",
-        "documents", "sheets", "storage",
+        "google drive",
+        "gdrive",
+        "drive",
+        "files",
+        "google",
+        "cloud storage",
+        "documents",
+        "sheets",
+        "storage",
     ),
     "sentry": (
-        "sentry", "error", "errors", "monitoring", "logging", "performance",
-        "issues", "bugs", "crash", "tracking",
+        "sentry",
+        "error",
+        "errors",
+        "monitoring",
+        "logging",
+        "performance",
+        "issues",
+        "bugs",
+        "crash",
+        "tracking",
     ),
     "notion": (
-        "notion", "notes", "database", "wiki", "docs", "pages", "knowledge",
-        "documentation", "collaboration",
+        "notion",
+        "notes",
+        "database",
+        "wiki",
+        "docs",
+        "pages",
+        "knowledge",
+        "documentation",
+        "collaboration",
     ),
     "linear": (
-        "linear", "issue", "project", "task", "bug", "cycle", "sprint",
-        "planning", "management", "workflow",
+        "linear",
+        "issue",
+        "project",
+        "task",
+        "bug",
+        "cycle",
+        "sprint",
+        "planning",
+        "management",
+        "workflow",
     ),
     "everart": ("image", "generate", "ai", "art", "everart", "create", "visual"),
 }
@@ -674,7 +889,8 @@ async def fetch_mcp_candidates(
                 network = _parse_results(payload, "mcp", DEFAULT_HOSTNAME_ALLOWLIST)
                 logger.info(
                     "[MARKETPLACE] mcp search query=%r → %d network entries after validation",
-                    query, len(network),
+                    query,
+                    len(network),
                 )
         else:
             logger.warning("[MARKETPLACE] mcp_registry_url rejected: %r", base)

@@ -13,6 +13,7 @@ Each gate is keyed off the existence of a flag file, which makes it
 trivial to toggle from another process — e.g. the watch dashboard
 creates/removes the file when the user presses a hotkey.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -109,9 +110,7 @@ def _build_output_gate_class():
     from pipecat.processors.frame_processor import FrameProcessor
 
     class MuteGateProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
-        def __init__(
-            self, *, state, session_state: Any = None
-        ) -> None:
+        def __init__(self, *, state, session_state: Any = None) -> None:
             super().__init__()
             self._state = state
             # Optional: when the active mode profile has voice_muted set
@@ -154,7 +153,9 @@ def _build_input_gate_class():
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
-            if isinstance(frame, InputAudioRawFrame) and self._state.get_bool("mute_mic"):
+            if isinstance(frame, InputAudioRawFrame) and self._state.get_bool(
+                "mute_mic"
+            ):
                 return
             await self.push_frame(frame, direction)
 

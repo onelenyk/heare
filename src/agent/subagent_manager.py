@@ -3,6 +3,7 @@
 Each agent gets its own ``opencode serve`` process on a random port.
 SSE event streaming provides real-time tool visibility and permission gating.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -89,10 +90,20 @@ class SubAgentManager:
         self._settings = settings
 
         max_c = getattr(settings, "agent_max_concurrent", 5) if settings else 5
-        ttl = getattr(settings, "agent_result_ttl_seconds", 600.0) if settings else 600.0
-        start_timeout = getattr(settings, "agent_server_start_timeout", 10.0) if settings else 10.0
-        port_start = getattr(settings, "agent_port_range_start", 14100) if settings else 14100
-        permission_timeout = getattr(settings, "agent_permission_timeout_seconds", 120.0) if settings else 120.0
+        ttl = (
+            getattr(settings, "agent_result_ttl_seconds", 600.0) if settings else 600.0
+        )
+        start_timeout = (
+            getattr(settings, "agent_server_start_timeout", 10.0) if settings else 10.0
+        )
+        port_start = (
+            getattr(settings, "agent_port_range_start", 14100) if settings else 14100
+        )
+        permission_timeout = (
+            getattr(settings, "agent_permission_timeout_seconds", 120.0)
+            if settings
+            else 120.0
+        )
 
         self._max_concurrent: int = max_c
         self._ttl_seconds: float = ttl
@@ -141,7 +152,13 @@ class SubAgentManager:
 
         port = self._find_free_port()
         temp_id = f"agent-{port}"
-        state = SubAgentState(session_id=temp_id, prompt=prompt, cwd=cwd, port=port, started_at=time.time())
+        state = SubAgentState(
+            session_id=temp_id,
+            prompt=prompt,
+            cwd=cwd,
+            port=port,
+            started_at=time.time(),
+        )
 
         # Phase 1: spawn server process (fast — just exec)
         await self._spawn_server_only(state)
@@ -164,7 +181,9 @@ class SubAgentManager:
             "current_step": agent.current_step,
             "tool_calls": agent.tool_calls,
             "cost_so_far": agent.cost,
-            "elapsed_seconds": int(time.time() - agent.started_at) if agent.started_at else 0,
+            "elapsed_seconds": int(time.time() - agent.started_at)
+            if agent.started_at
+            else 0,
             "turn": agent.turn,
         }
         if agent.status == "waiting_for_input" and agent.pending_permission:
@@ -202,12 +221,17 @@ class SubAgentManager:
         if agent is None:
             return {"error": f"Agent not found: {session_id}", "success": False}
         if agent.status in ("running", "starting", "waiting_for_input"):
-            return {"error": f"Agent is still {agent.status}. Cancel or wait.", "success": False}
+            return {
+                "error": f"Agent is still {agent.status}. Cancel or wait.",
+                "success": False,
+            }
 
         client = await self._get_client()
         url = f"http://127.0.0.1:{agent.port}/session/{agent.session_id}/prompt_async"
         try:
-            resp = await client.post(url, json={"parts": [{"type": "text", "text": prompt}]})
+            resp = await client.post(
+                url, json={"parts": [{"type": "text", "text": prompt}]}
+            )
             resp.raise_for_status()
         except Exception as e:
             return {"error": f"Failed: {e}", "success": False}
@@ -227,7 +251,12 @@ class SubAgentManager:
         if agent._sse_task and not agent._sse_task.done():
             agent._sse_task.cancel()
         agent._sse_task = asyncio.create_task(self._listen_sse(agent))
-        return {"session_id": session_id, "status": "running", "turn": agent.turn, "success": True}
+        return {
+            "session_id": session_id,
+            "status": "running",
+            "turn": agent.turn,
+            "success": True,
+        }
 
     async def cancel(self, session_id: str) -> dict:
         agent = self._find_agent(session_id)
@@ -236,7 +265,9 @@ class SubAgentManager:
         was_running = agent.status in ("running", "starting", "waiting_for_input")
         client = await self._get_client()
         try:
-            await client.post(f"http://127.0.0.1:{agent.port}/session/{agent.session_id}/abort")
+            await client.post(
+                f"http://127.0.0.1:{agent.port}/session/{agent.session_id}/abort"
+            )
         except Exception:
             pass
         await self._stop_server(agent)
@@ -245,19 +276,27 @@ class SubAgentManager:
         if was_running:
             self._release_slot(agent)
         return {
-            "session_id": session_id, "cancelled": True,
+            "session_id": session_id,
+            "cancelled": True,
             "was_running": was_running,
             "partial_output": "".join(agent.output_parts)[:2000],
         }
 
     async def approve(self, session_id: str) -> dict:
         agent = self._find_agent(session_id)
-        if agent is None or agent.status != "waiting_for_input" or not agent.pending_permission:
+        if (
+            agent is None
+            or agent.status != "waiting_for_input"
+            or not agent.pending_permission
+        ):
             return {"error": "Agent not waiting for input", "approved": False}
         req_id = agent.pending_permission.get("requestID", "")
         client = await self._get_client()
         try:
-            await client.post(f"http://127.0.0.1:{agent.port}/permission/{req_id}/reply", json={"reply": "once"})
+            await client.post(
+                f"http://127.0.0.1:{agent.port}/permission/{req_id}/reply",
+                json={"reply": "once"},
+            )
         except Exception as e:
             return {"error": f"Reply failed: {e}", "approved": False}
         agent.status = "running"
@@ -267,12 +306,19 @@ class SubAgentManager:
 
     async def deny(self, session_id: str, reason: str | None = None) -> dict:
         agent = self._find_agent(session_id)
-        if agent is None or agent.status != "waiting_for_input" or not agent.pending_permission:
+        if (
+            agent is None
+            or agent.status != "waiting_for_input"
+            or not agent.pending_permission
+        ):
             return {"error": "Agent not waiting for input", "denied": False}
         req_id = agent.pending_permission.get("requestID", "")
         client = await self._get_client()
         try:
-            await client.post(f"http://127.0.0.1:{agent.port}/permission/{req_id}/reply", json={"reply": "reject"})
+            await client.post(
+                f"http://127.0.0.1:{agent.port}/permission/{req_id}/reply",
+                json={"reply": "reject"},
+            )
         except Exception as e:
             return {"error": f"Reply failed: {e}", "denied": False}
         agent.status = "running"
@@ -288,7 +334,12 @@ class SubAgentManager:
                 corrective = True
             except Exception:
                 pass
-        return {"session_id": session_id, "denied": True, "corrective_sent": corrective, "status": "running"}
+        return {
+            "session_id": session_id,
+            "denied": True,
+            "corrective_sent": corrective,
+            "status": "running",
+        }
 
     def list_all(self) -> list[dict]:
         return [self._agent_to_dict(a) for a in self._agents.values()]
@@ -330,8 +381,11 @@ class SubAgentManager:
         logger.info("Spawning agent server: %s (cwd=%s)", cmd, cwd)
         try:
             state.server_process = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                cwd=cwd, start_new_session=True,
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+                start_new_session=True,
             )
         except FileNotFoundError:
             raise RuntimeError(
@@ -364,7 +418,9 @@ class SubAgentManager:
             except Exception:
                 pass
             await asyncio.sleep(0.5)
-        raise RuntimeError(f"Server on port {state.port} not healthy within {self._start_timeout}s")
+        raise RuntimeError(
+            f"Server on port {state.port} not healthy within {self._start_timeout}s"
+        )
 
     async def _create_session_and_send(self, state: SubAgentState) -> None:
         client = await self._get_client()
@@ -389,7 +445,9 @@ class SubAgentManager:
 
         while retries < max_retries:
             try:
-                async with client.stream("GET", url, headers={"Accept": "text/event-stream"}) as resp:
+                async with client.stream(
+                    "GET", url, headers={"Accept": "text/event-stream"}
+                ) as resp:
                     async for line in resp.aiter_lines():
                         if not line.startswith("data: "):
                             continue
@@ -415,7 +473,11 @@ class SubAgentManager:
                                     state.current_step = ""
                                 elif tool_status == "running":
                                     inp = ts.get("input", {})
-                                    desc = str(inp.get("command", inp.get("description", tool_name)))
+                                    desc = str(
+                                        inp.get(
+                                            "command", inp.get("description", tool_name)
+                                        )
+                                    )
                                     state.current_step = f"{tool_name}: {desc[:100]}"
                                 elif tool_status == "pending":
                                     state.current_step = f"{tool_name}: pending..."
@@ -446,20 +508,35 @@ class SubAgentManager:
                                 "input": props.get("input", {}),
                             }
                             state.pending_since = time.time()
-                            logger.info("Agent %s waiting: %s", state.session_id[:20], props.get("tool"))
+                            logger.info(
+                                "Agent %s waiting: %s",
+                                state.session_id[:20],
+                                props.get("tool"),
+                            )
 
                         elif etype == "waiting_for_input":
                             state.status = "waiting_for_input"
                             state.pending_since = time.time()
-                            logger.info("Agent %s waiting_for_input event", state.session_id[:20])
+                            logger.info(
+                                "Agent %s waiting_for_input event",
+                                state.session_id[:20],
+                            )
 
                         elif etype in ("session.status", "session.idle"):
-                            stype = "idle" if etype == "session.idle" else props.get("status", {}).get("type", "")
+                            stype = (
+                                "idle"
+                                if etype == "session.idle"
+                                else props.get("status", {}).get("type", "")
+                            )
                             if stype == "idle" and state.status == "running":
                                 state.status = "done"
                                 state.finished_at = time.time()
                                 self._release_slot(state)
-                                logger.info("Agent %s finished (%s)", state.session_id[:20], etype)
+                                logger.info(
+                                    "Agent %s finished (%s)",
+                                    state.session_id[:20],
+                                    etype,
+                                )
 
                 # Stream ended naturally
                 if state.status == "running":
@@ -468,14 +545,20 @@ class SubAgentManager:
                     self._release_slot(state)
                 return
 
-            except (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError) as e:
+            except (
+                httpx.ConnectError,
+                httpx.ReadError,
+                httpx.RemoteProtocolError,
+            ) as e:
                 retries += 1
-                logger.warning("SSE connection failed (%d/%d): %s", retries, max_retries, e)
+                logger.warning(
+                    "SSE connection failed (%d/%d): %s", retries, max_retries, e
+                )
                 if retries < max_retries:
                     await asyncio.sleep(1.0 * retries)
             except asyncio.CancelledError:
                 return
-            except Exception as e:
+            except Exception:
                 logger.exception("SSE listener error for %s", state.session_id[:20])
                 retries += 1
                 if retries < max_retries:
@@ -522,7 +605,8 @@ class SubAgentManager:
                     if (now - agent.pending_since) > self._permission_timeout:
                         logger.warning(
                             "Agent %s permission timeout (%.0fs) — auto-denying",
-                            sid[:20], now - agent.pending_since,
+                            sid[:20],
+                            now - agent.pending_since,
                         )
                         try:
                             await self.deny(sid, reason="Permission request timed out")
@@ -550,7 +634,9 @@ class SubAgentManager:
                     return port
             except OSError:
                 continue
-        raise RuntimeError(f"No free ports in {self._port_range_start}-{self._port_range_end}")
+        raise RuntimeError(
+            f"No free ports in {self._port_range_start}-{self._port_range_end}"
+        )
 
     async def shutdown(self) -> None:
         if self._prune_task:

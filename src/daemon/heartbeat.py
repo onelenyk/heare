@@ -4,6 +4,7 @@ Currently only ``WarmupTask`` lives here. The legacy proactive-speech
 ticker (every N minutes) was removed in US-WU-04; see the matching
 refactor commit and ``.omc/progress.txt``.
 """
+
 from __future__ import annotations
 
 import asyncio

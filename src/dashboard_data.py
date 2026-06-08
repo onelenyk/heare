@@ -3,6 +3,7 @@
 Data-access functions for the dashboard (replaces the old watch/ TUI)
 and provides a clean public API for the Textual dashboard widgets.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -163,7 +164,9 @@ class ActivityRow(NamedTuple):
     status: str | None  # Raw status from actions table (NULL for transcripts)
 
 
-def fetch_activity(con: sqlite3.Connection | None, limit: int = 50) -> list[ActivityRow]:
+def fetch_activity(
+    con: sqlite3.Connection | None, limit: int = 50
+) -> list[ActivityRow]:
     """Fetch unified activity feed with transcripts and actions.
 
     Uses UNION ALL query for efficiency. Returns newest first.
@@ -212,7 +215,9 @@ def fetch_activity(con: sqlite3.Connection | None, limit: int = 50) -> list[Acti
             style = "yellow"
             # Use status as TYPE column content
             type_content = status if status else "done"
-            activities.append(ActivityRow(ts, who, type_content, content, style, status))
+            activities.append(
+                ActivityRow(ts, who, type_content, content, style, status)
+            )
 
     return activities
 
@@ -357,6 +362,7 @@ class PairCodeData:
     ``code`` is the 6-digit pair code or ``None`` if not active.
     ``remaining_s`` is the TTL in seconds (0-60).
     """
+
     code: str | None
     remaining_s: float
 
@@ -381,7 +387,9 @@ def read_voice_state(path: Path) -> VoiceStateData:
     try:
         raw = json.loads(path.read_text())
     except (FileNotFoundError, OSError, ValueError):
-        return VoiceStateData(state="idle", since_ts=0.0, last_partial=None, last_final=None)
+        return VoiceStateData(
+            state="idle", since_ts=0.0, last_partial=None, last_final=None
+        )
     return VoiceStateData(
         state=str(raw.get("state", "idle")),
         since_ts=float(raw.get("since_ts", 0.0)),
@@ -449,8 +457,7 @@ def fetch_latest_display(con: "sqlite3.Connection | None") -> DisplayData:
         return empty
     rows = fetch(
         con,
-        "SELECT ts, title, format, content FROM displays"
-        " ORDER BY ts DESC LIMIT 1",
+        "SELECT ts, title, format, content FROM displays ORDER BY ts DESC LIMIT 1",
     )
     if not rows:
         return empty
@@ -492,9 +499,16 @@ def fetch_usage(con: sqlite3.Connection | None) -> UsageData:
     stays cheap even on long-running daemons.
     """
     zero = UsageData(
-        llm_calls=0, llm_input_tokens=0, llm_output_tokens=0, llm_cost_usd=0.0,
-        stt_calls=0, stt_audio_seconds=0.0, stt_cost_usd=0.0,
-        tts_calls=0, tts_char_count=0, tts_cost_usd=0.0,
+        llm_calls=0,
+        llm_input_tokens=0,
+        llm_output_tokens=0,
+        llm_cost_usd=0.0,
+        stt_calls=0,
+        stt_audio_seconds=0.0,
+        stt_cost_usd=0.0,
+        tts_calls=0,
+        tts_char_count=0,
+        tts_cost_usd=0.0,
         total_cost_usd=0.0,
     )
     if con is None:
@@ -595,7 +609,9 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
     # Fetch usage / cost ledger
     usage = fetch_usage(con)
 
-    voice_state = VoiceStateData(state="idle", since_ts=0.0, last_partial=None, last_final=None)  # voice state is now in State, not file
+    voice_state = VoiceStateData(
+        state="idle", since_ts=0.0, last_partial=None, last_final=None
+    )  # voice state is now in State, not file
     agent_response = fetch_agent_response(con)
     display = fetch_latest_display(con)
 
@@ -640,10 +656,16 @@ def format_snapshot_text(snapshot: DashboardSnapshot) -> str:
     mic_label = "muted" if h.mic_muted else "live"
     chrome_label = "connected" if h.chrome_attached else "disconnected"
     pair = snapshot.pair_code
-    pair_info = f"  pair-code: {pair.code} ({pair.remaining_s:.0f}s)" if pair.code else ""
+    pair_info = (
+        f"  pair-code: {pair.code} ({pair.remaining_s:.0f}s)" if pair.code else ""
+    )
 
-    lines.append(f"{h.name} {h.emoji}  {status}   pid={h.pid or '-'}   uptime={h.uptime}")
-    lines.append(f"mode={h.mode}   provider={h.provider}   chrome={chrome_label}{pair_info}")
+    lines.append(
+        f"{h.name} {h.emoji}  {status}   pid={h.pid or '-'}   uptime={h.uptime}"
+    )
+    lines.append(
+        f"mode={h.mode}   provider={h.provider}   chrome={chrome_label}{pair_info}"
+    )
     lines.append(f"transcripts={h.transcripts_count}   actions={h.actions_count}")
     lines.append(f"bot={bot_label}   mic={mic_label}")
     lines.append("")
@@ -651,9 +673,9 @@ def format_snapshot_text(snapshot: DashboardSnapshot) -> str:
     # ── Agent response ─────────────────────────────────────────────────
     ar = snapshot.agent_response
     if ar.text:
-        spoken_label = ("spoken" if ar.spoken is True
-                        else "silent" if ar.spoken is False
-                        else "?")
+        spoken_label = (
+            "spoken" if ar.spoken is True else "silent" if ar.spoken is False else "?"
+        )
         lines.append(f"--- Agent response ({spoken_label}) ---")
         lines.append(ar.text.strip().replace("\n", " "))
         lines.append("")
@@ -674,7 +696,7 @@ def format_snapshot_text(snapshot: DashboardSnapshot) -> str:
     else:
         # Header
         lines.append(f"{'Time':>8s}  {'WHO':<12s}  {'TYPE':<10s}  Content")
-        lines.append(f"{'-'*8}  {'-'*12}  {'-'*10}  {'-'*60}")
+        lines.append(f"{'-' * 8}  {'-' * 12}  {'-' * 10}  {'-' * 60}")
         for row in snapshot.activity_rows:
             ts_str = fmt_time(row.ts)
             content = row.content.replace("\n", " ") if row.content else ""
@@ -696,8 +718,12 @@ def format_snapshot_text(snapshot: DashboardSnapshot) -> str:
     # ── Usage / cost ───────────────────────────────────────────────────
     u = snapshot.usage
     lines.append("--- Usage ---")
-    lines.append(f"LLM: {u.llm_calls} calls, {u.llm_input_tokens} in / {u.llm_output_tokens} out  ${u.llm_cost_usd:.4f}")
-    lines.append(f"STT: {u.stt_calls} calls, {u.stt_audio_seconds:.1f}s audio  ${u.stt_cost_usd:.4f}")
+    lines.append(
+        f"LLM: {u.llm_calls} calls, {u.llm_input_tokens} in / {u.llm_output_tokens} out  ${u.llm_cost_usd:.4f}"
+    )
+    lines.append(
+        f"STT: {u.stt_calls} calls, {u.stt_audio_seconds:.1f}s audio  ${u.stt_cost_usd:.4f}"
+    )
     tts_cost = f"${u.tts_cost_usd:.4f}" if u.tts_cost_usd > 0 else "free"
     lines.append(f"TTS: {u.tts_calls} calls  {tts_cost}")
     lines.append(f"total: ${u.total_cost_usd:.4f}")
