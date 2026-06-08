@@ -21,6 +21,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
     "mypy>=1.11",
     "ruff>=0.6",
 ]
@@ -28,6 +29,31 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "--strict-markers --tb=short"
+filterwarnings = [
+    "ignore::RuntimeWarning",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/test_*", "tests/*", ".venv/*", "setup.py", "setup_directories.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 1
+sort = "cover"
+exclude_also = [
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    'if __name__ == "__main__":',
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+]
 
 [build-system]
 requires = ["hatchling"]

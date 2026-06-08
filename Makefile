@@ -55,11 +55,12 @@ launch:
 	@./hearectl launch
 
 test:
-	@echo "Running tests..."
 	uv run pytest -q
 
-test-verbose:
-	@echo "Running tests (verbose)..."
+test-cov:
+	uv run pytest --cov=src --cov-report=term --cov-report=html --ignore=tests/integration
+
+test-full:
 	uv run pytest -v
 
 clean:

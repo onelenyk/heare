@@ -1,0 +1,27 @@
+[run]
+source = src
+omit =
+    */__pycache__/*
+    */migrations/*
+    */test_*
+    tests/*
+    .venv/*
+    setup.py
+    setup_directories.py
+
+[report]
+exclude_also =
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @(abc\.)?abstractmethod
+
+show_missing = true
+skip_covered = false
+precision = 1
+sort = cover

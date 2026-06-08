@@ -1,5 +1,8 @@
 # heare
 
+[![CI](https://github.com/lenyk/heare/actions/workflows/ci.yml/badge.svg)](https://github.com/lenyk/heare/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-63%25-orange)](https://github.com/lenyk/heare)
+
 **heare** is a proactive ambient voice AI assistant powered by Claude. It listens continuously via your microphone, decides when to speak, and can execute actions via browser automation, bash, and file manipulation — all gated by verbal confirmation.
 
 Not a wake-word assistant. Not a dictation tool. A voice-first Claude agent.
