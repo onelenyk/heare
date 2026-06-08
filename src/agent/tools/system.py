@@ -17,7 +17,12 @@ import itertools
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.config import Settings
+    from src.pipeline.session_state import SessionState
+    from src.store.conversation import ConversationManager
 
 logger = logging.getLogger("heare.tools.system")
 
@@ -1090,8 +1095,8 @@ def _make_handler(
     tool: ToolDef,
     direct_func: Any,
     serializer: ArgsSerializer | None,
-    settings: Any = None,
-    conversation_manager: Any = None,
+    settings: "Settings | None" = None,
+    conversation_manager: "ConversationManager | None" = None,
     session_state: Any = None,
 ) -> Callable[[Any], Any]:
     """Build a Pipecat ``FunctionCallParams`` handler for one tool."""
@@ -1184,8 +1189,8 @@ def _make_handler(
 def register_all_tools(
     llm: Any,
     *,
-    settings: Any = None,
-    conversation_manager: Any = None,
+    settings: "Settings | None" = None,
+    conversation_manager: "ConversationManager | None" = None,
     session_state: Any = None,
 ) -> list[str]:
     """Register one ``FunctionCallParams`` handler per enabled tool.
@@ -1248,8 +1253,8 @@ def register_dynamic_tool_handler(
     name: str,
     impl_type: str,
     impl: str,
-    settings: Any = None,
-    conversation_manager: Any = None,
+    settings: "Settings | None" = None,
+    conversation_manager: "ConversationManager | None" = None,
 ) -> None:
     """Create and register a handler for a dynamically created tool."""
     from src.agent.tools.dynamic import execute_bash_tool, execute_fetch_tool

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.config import Settings
     from src.memory.base import MemoryBackend
+    from src.pipeline.session_state import SessionState
     from src.store.conversation import ConversationManager
     from src.store.storage import TranscriptStore
 
@@ -51,7 +52,7 @@ class ContextBuilder:
         self._project_dir = project_dir
         self._memory_backend = memory_backend
         self._mcp_bridge: Any = None
-        self._session_state: Any = None
+        self._session_state: "SessionState | None" = None
         self._mcp_descriptions: str | None = None
         try:
             from src.skills.mcp_utils import build_mcp_prompt_block, read_mcp_servers
@@ -63,7 +64,7 @@ class ContextBuilder:
         except Exception:  # noqa: BLE001 — MCP discovery is best-effort
             self._mcp_descriptions = None
 
-    def set_session_state(self, session_state: Any) -> None:
+    def set_session_state(self, session_state: "SessionState") -> None:
         """Attach the live SessionState so the system prompt carries the
         active mode's behavior addendum + the available-mode list."""
         self._session_state = session_state

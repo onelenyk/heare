@@ -60,6 +60,8 @@ from src.voice.tts.edge import create_edge_tts_service
 if TYPE_CHECKING:
     from src.store.context import ContextBuilder
     from src.store.storage import TranscriptStore
+    from src.store.conversation import ConversationManager
+    from src.memory.base import MemoryBackend
 
 
 logger = logging.getLogger("heare.pipeline_native")
@@ -401,9 +403,9 @@ async def build_pipeline(
     persona: str = "",
     *,
     state: State | None = None,
-    conversation_manager: Any = None,
+    conversation_manager: "ConversationManager | None" = None,
     project_dir: str | None = None,
-    memory_backend: Any = None,
+    memory_backend: "MemoryBackend | None" = None,
 ) -> Tuple[object, object, object, object, object, object, object, object]:
     """Build the Pipecat-native pipeline.
 

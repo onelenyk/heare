@@ -29,6 +29,8 @@ from src.agent.tools.direct import execute_direct
 
 if TYPE_CHECKING:
     from src.config import Settings
+    from src.pipeline.session_state import SessionState
+    from src.store.conversation import ConversationManager
 
 
 logger = logging.getLogger("heare.llm_tools")
@@ -750,8 +752,8 @@ def _make_handler(
     tool_name: str,
     serializer: ArgsSerializer,
     settings: "Settings | None",
-    conversation_manager: Any = None,
-    session_state: Any = None,
+    conversation_manager: "ConversationManager | None" = None,
+    session_state: "SessionState | None" = None,
 ) -> Callable[[Any], Awaitable[None]]:
     """Build a Pipecat ``FunctionCallParams`` handler for one tool.
 
