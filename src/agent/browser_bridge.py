@@ -2,9 +2,9 @@
 127.0.0.1 that the Heare MV3 Chrome extension dials into.
 
 See `.omc/plans/browser-extension-bridge.md` for the wire protocol and
-threat model. The bridge accepts at most one authenticated connection at
-a time; second clients get close code 4002. Wrong-token clients get
-close code 4001. Origin headers must start with `chrome-extension://`.
+threat model. The bridge supports multiple simultaneous connections
+(one per Chrome profile). Wrong-token clients get close code 4001.
+Origin headers must start with `chrome-extension://`.
 
 All wire messages include `"v": 1`. All disconnect/timeout/not-connected
 errors returned from `call()` are structured `{success, error, retryable}`.
@@ -20,6 +20,7 @@ import secrets
 import subprocess
 import time
 import uuid
+from dataclasses import dataclass, field
 from typing import Any
 
 from websockets.asyncio.server import ServerConnection, serve
@@ -69,17 +70,26 @@ def _err_remote(message: str, retryable: bool = False) -> dict:
     return {"success": False, "error": message, "retryable": retryable}
 
 
+@dataclass
+class ConnState:
+    """Per-connection state for one authenticated Chrome extension."""
+    ws: ServerConnection
+    conn_id: str
+    authed: bool = True
+    connected_at: float = 0.0
+    pending: dict[str, asyncio.Future[dict]] = field(default_factory=dict)
+
+
 class BrowserBridge:
-    """Single-connection WS server that brokers RPC between the daemon and
-    the Heare Chrome extension."""
+    """Multi-connection WS server that brokers RPC between the daemon and
+    the Heare Chrome extension (one connection per Chrome profile)."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._port = settings.browser_bridge_port
         self._token = settings.browser_bridge_token
-        self._pending: dict[str, asyncio.Future[dict]] = {}
-        self._ws: ServerConnection | None = None
-        self._authed: bool = False
+        self._connections: dict[str, ConnState] = {}
+        self._next_conn_id: int = 1
         self._server: Any | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self._status_path = HEARE_HOME / "browser_bridge.status"
@@ -136,12 +146,12 @@ class BrowserBridge:
             pass
 
     async def stop(self) -> None:
-        """Close the server, drop the active client, fail outstanding RPCs.
+        """Close the server, drop all clients, fail outstanding RPCs.
 
         Idempotent: safe to call multiple times. Returns early if both the
-        server and active websocket are already cleared.
+        server and all connections are already cleared.
         """
-        if self._server is None and self._ws is None and self._lonely_task is None:
+        if self._server is None and not self._connections and self._lonely_task is None:
             return
         if self._lonely_task is not None:
             self._lonely_task.cancel()
@@ -157,30 +167,17 @@ class BrowserBridge:
             except Exception:
                 pass
             self._server = None
-        if self._ws is not None:
+        for conn in list(self._connections.values()):
             try:
-                await self._ws.close()
+                await conn.ws.close()
             except Exception:
                 pass
-            self._ws = None
         self._fail_pending(ERR_DISCONNECTED_MID_RPC)
-        self._authed = False
+        self._connections.clear()
         self._write_status(False)
 
     # ── connection ────────────────────────────────────────────────────────
     async def _handle_connection(self, ws: ServerConnection) -> None:
-        if self._ws is not None:
-            # Refuse the second client. With the offscreen-document architecture
-            # the WS no longer dies on SW suspension, so a second connection
-            # almost always means a second Chrome profile competing for the
-            # same daemon — accepting it would create a kick-war.
-            logger.warning("browser_bridge refusing second client (close 4002)")
-            try:
-                await ws.close(code=CLOSE_ALREADY_CONNECTED, reason="already connected")
-            except Exception:
-                pass
-            return
-
         # Auth handshake — first message must be {"type":"auth","token":...}.
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
@@ -213,8 +210,10 @@ class BrowserBridge:
             await ws.close(code=CLOSE_AUTH_FAILED, reason="bad auth")
             return
 
-        self._ws = ws
-        self._authed = True
+        conn_id = f"browser-{self._next_conn_id}"
+        self._next_conn_id += 1
+        conn = ConnState(ws=ws, conn_id=conn_id, authed=True, connected_at=time.time())
+        self._connections[conn_id] = conn
         self._clear_pair_code()
         self._lonely_since = None
         self._write_status(True)
@@ -241,29 +240,35 @@ class BrowserBridge:
                     )
                 )
         except ConnectionClosed:
-            self._authed = False
-            self._ws = None
+            self._connections.pop(conn_id, None)
+            for req_id, fut in list(conn.pending.items()):
+                if not fut.done():
+                    fut.set_result(dict(ERR_DISCONNECTED_MID_RPC))
             self._lonely_since = time.time()
             self._write_status(False)
             return
 
-        logger.info("browser_bridge client authenticated")
+        logger.info("browser_bridge client authenticated (conn=%s)", conn_id)
         emit("browser", "connected", level="info")
 
         try:
             async for raw in ws:
-                self._handle_inbound(raw)
+                self._handle_inbound(raw, conn_id)
         except ConnectionClosed:
             pass
         finally:
-            self._ws = None
-            self._authed = False
+            self._connections.pop(conn_id, None)
+            for req_id, fut in list(conn.pending.items()):
+                if not fut.done():
+                    fut.set_result(dict(ERR_DISCONNECTED_MID_RPC))
             self._lonely_since = time.time()
-            self._fail_pending(ERR_DISCONNECTED_MID_RPC)
             self._write_status(False)
-            logger.info("browser_bridge client disconnected")
+            logger.info("browser_bridge client disconnected (conn=%s)", conn_id)
 
-    def _handle_inbound(self, raw: str | bytes) -> None:
+    def _handle_inbound(self, raw: str | bytes, conn_id: str) -> None:
+        conn = self._connections.get(conn_id)
+        if conn is None:
+            return
         try:
             msg = json.loads(raw)
         except (TypeError, ValueError):
@@ -275,7 +280,7 @@ class BrowserBridge:
         mtype = msg.get("type")
         if mtype == "response":
             req_id = msg.get("id")
-            fut = self._pending.pop(req_id, None) if isinstance(req_id, str) else None
+            fut = conn.pending.pop(req_id, None) if isinstance(req_id, str) else None
             if fut is None or fut.done():
                 return
             if msg.get("ok"):
@@ -289,9 +294,8 @@ class BrowserBridge:
                 fut.set_result(_err_remote(f"{code or 'ERROR'}: {emsg}"))
             return
         if mtype == "ping":
-            ws = self._ws
-            if ws is not None:
-                task = safe_task(self._send_pong(ws), name="browser-send-pong")
+            if conn is not None:
+                task = safe_task(self._send_pong(conn.ws), name="browser-send-pong")
                 self._pong_tasks.add(task)
                 task.add_done_callback(self._pong_tasks.discard)
             return
@@ -308,7 +312,14 @@ class BrowserBridge:
     # ── public API ────────────────────────────────────────────────────────
     @property
     def connected(self) -> bool:
-        return self._authed and self._ws is not None
+        return any(c.authed for c in self._connections.values())
+
+    def _first_authed(self) -> ConnState | None:
+        """Return the first authenticated connection, or None."""
+        for c in self._connections.values():
+            if c.authed:
+                return c
+        return None
 
     async def call(
         self,
@@ -321,7 +332,8 @@ class BrowserBridge:
         `{"success": True, "result": ...}` or a structured error dict
         with `retryable` set.
         """
-        if not self.connected or self._ws is None:
+        conn = self._first_authed()
+        if conn is None:
             return dict(ERR_NOT_CONNECTED)
 
         if timeout is None:
@@ -332,7 +344,7 @@ class BrowserBridge:
         req_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[dict] = loop.create_future()
-        self._pending[req_id] = fut
+        conn.pending[req_id] = fut
 
         envelope = {
             "v": WIRE_VERSION,
@@ -344,9 +356,9 @@ class BrowserBridge:
         tab_id = (params or {}).get("tab_id")
         started = time.monotonic()
         try:
-            await self._ws.send(json.dumps(envelope))
+            await conn.ws.send(json.dumps(envelope))
         except ConnectionClosed:
-            self._pending.pop(req_id, None)
+            conn.pending.pop(req_id, None)
             elapsed_ms = int((time.monotonic() - started) * 1000)
             logger.info(
                 "browser_bridge rpc method=%s tab=%s elapsed_ms=%d ok=False",
@@ -359,7 +371,7 @@ class BrowserBridge:
         try:
             result = await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
-            self._pending.pop(req_id, None)
+            conn.pending.pop(req_id, None)
             elapsed_ms = int((time.monotonic() - started) * 1000)
             logger.info(
                 "browser_bridge rpc method=%s tab=%s elapsed_ms=%d ok=False",
@@ -379,6 +391,68 @@ class BrowserBridge:
             ok,
         )
         return result
+
+    async def list_tabs(self) -> dict:
+        """List tabs from all connected browser profiles.
+
+        Iterates all authenticated connections, calls list_tabs on each,
+        and merges the results. Each tab gets a _conn field identifying
+        which connection it came from.
+        """
+        all_tabs: list[dict] = []
+        for conn_id, conn in list(self._connections.items()):
+            if not conn.authed:
+                continue
+            try:
+                rpc_result = await self._call_on_conn(conn, "list_tabs", {})
+            except Exception:
+                continue
+            if not rpc_result.get("success"):
+                continue
+            tabs = rpc_result.get("result", {}).get("tabs", [])
+            for tab in tabs:
+                if isinstance(tab, dict):
+                    tab["_conn"] = conn_id
+                    all_tabs.append(tab)
+        return {"success": True, "result": {"tabs": all_tabs}}
+
+    async def _call_on_conn(
+        self,
+        conn: ConnState,
+        method: str,
+        params: dict | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict:
+        """Send an RPC on a specific connection. Used internally by list_tabs."""
+        if timeout is None:
+            timeout = (
+                LONG_RPC_TIMEOUT if method in LONG_METHODS else DEFAULT_RPC_TIMEOUT
+            )
+
+        req_id = str(uuid.uuid4())
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[dict] = loop.create_future()
+        conn.pending[req_id] = fut
+
+        envelope = {
+            "v": WIRE_VERSION,
+            "id": req_id,
+            "type": "request",
+            "method": method,
+            "params": params or {},
+        }
+        try:
+            await conn.ws.send(json.dumps(envelope))
+        except ConnectionClosed:
+            conn.pending.pop(req_id, None)
+            return dict(ERR_DISCONNECTED_MID_RPC)
+
+        try:
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.TimeoutError:
+            conn.pending.pop(req_id, None)
+            return dict(ERR_TIMEOUT)
 
     # ── helpers ───────────────────────────────────────────────────────────
     async def _ensure_token(self) -> None:
@@ -486,7 +560,7 @@ class BrowserBridge:
         try:
             while True:
                 await asyncio.sleep(1.0)
-                if self._ws is not None:
+                if self._connections:
                     continue
                 now = time.time()
                 if self._lonely_since is None:
@@ -524,13 +598,22 @@ class BrowserBridge:
         self._pair_expires_at = None
         self._pair_attempts = 0
 
-    def _fail_pending(self, error: dict) -> None:
-        if not self._pending:
+    def _fail_pending(self, error: dict, conn: ConnState | None = None) -> None:
+        if conn is not None:
+            if not conn.pending:
+                return
+            for req_id, fut in list(conn.pending.items()):
+                if not fut.done():
+                    fut.set_result(dict(error))
+            conn.pending.clear()
             return
-        for req_id, fut in list(self._pending.items()):
-            if not fut.done():
-                fut.set_result(dict(error))
-        self._pending.clear()
+        for c in self._connections.values():
+            if not c.pending:
+                continue
+            for req_id, fut in list(c.pending.items()):
+                if not fut.done():
+                    fut.set_result(dict(error))
+            c.pending.clear()
 
 
 def _copy_to_clipboard(text: str) -> bool:

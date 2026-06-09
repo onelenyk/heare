@@ -3285,7 +3285,7 @@ async def _execute_list_browser_tabs(
     bridge = _get_bridge_or_none()
     if bridge is None:
         return dict(_BROWSER_NOT_CONNECTED)
-    return await bridge.call("list_tabs", {})
+    return await bridge.list_tabs()
 
 
 async def _execute_click_in_browser(

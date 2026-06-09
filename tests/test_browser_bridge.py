@@ -21,7 +21,6 @@ from src.config import Settings
 from src.agent.browser_bridge import (
     BrowserBridge,
     CLOSE_AUTH_FAILED,
-    CLOSE_ALREADY_CONNECTED,
     WIRE_VERSION,
     ERR_NOT_CONNECTED,
     ERR_TIMEOUT,
@@ -161,8 +160,8 @@ async def test_auth_failure(tmp_path: Path, tmp_heare: Path) -> None:
             pass
 
 
-async def test_single_connection(tmp_path: Path, tmp_heare: Path) -> None:
-    """Second client while first is connected gets close code 4002."""
+async def test_multiple_connections_accepted(tmp_path: Path, tmp_heare: Path) -> None:
+    """Two clients can connect simultaneously; list_tabs aggregates across both."""
     port = _free_port()
     settings = _settings(tmp_path, token="tok", port=port)
 
@@ -172,16 +171,37 @@ async def test_single_connection(tmp_path: Path, tmp_heare: Path) -> None:
         await asyncio.sleep(0.05)
 
         ws1 = await _auth_client(port, "tok")
+        ws2 = await _auth_client(port, "tok")
 
-        ws2 = await connect(
-            f"ws://127.0.0.1:{port}",
-            additional_headers={"Origin": "chrome-extension://test"},
-        )
-        with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
-            await ws2.recv()
-        assert exc_info.value.rcvd.code == CLOSE_ALREADY_CONNECTED
+        assert bridge.connected is True
+
+        tabs1 = [{"id": 1, "url": "https://a.com", "title": "A", "active": True}]
+        tabs2 = [{"id": 2, "url": "https://b.com", "title": "B", "active": False}]
+
+        async def responder(ws, tabs):
+            raw = await ws.recv()
+            req = json.loads(raw)
+            assert req["method"] == "list_tabs"
+            await ws.send(json.dumps({
+                "v": WIRE_VERSION, "id": req["id"], "type": "response",
+                "ok": True, "result": {"tabs": tabs},
+            }))
+
+        r1 = asyncio.create_task(responder(ws1, tabs1))
+        r2 = asyncio.create_task(responder(ws2, tabs2))
+        result = await bridge.list_tabs()
+        await asyncio.gather(r1, r2)
+
+        assert result["success"] is True
+        all_tabs = result["result"]["tabs"]
+        assert len(all_tabs) == 2
+        conn_ids = {t["_conn"] for t in all_tabs}
+        assert len(conn_ids) == 2  # each profile gets its own conn_id
+        urls = {t["url"] for t in all_tabs}
+        assert urls == {"https://a.com", "https://b.com"}
 
         await ws1.close()
+        await ws2.close()
         await bridge.stop()
         task.cancel()
         try:
