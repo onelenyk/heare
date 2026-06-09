@@ -165,7 +165,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     await api.start()
     logger.info("HTTP API server on 127.0.0.1:9778")
 
-    _ensure_portal()
+    await _ensure_portal()
 
     available = get_available(settings)
     if not available:
