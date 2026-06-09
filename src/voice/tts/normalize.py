@@ -434,8 +434,10 @@ def _segment_words(run_on: str) -> str:
             result.append(best_match[1])
             i += best_match[0]
         else:
-            result.append(run_on[i])
-            i += 1
+            # No dictionary match — output the remaining text as-is so
+            # unknown words stay intact rather than being split letter-by-letter.
+            result.append(run_on[i:])
+            break
 
     return " ".join(result)
 
