@@ -168,7 +168,9 @@ class Portal:
     def _maybe_start_daemon(self):
         if not self._is_running() and not self.daemon_starting:
             self.daemon_starting = True
-            asyncio.create_task(self._bg_start())
+            from src.async_utils import safe_task
+
+            safe_task(self._bg_start(), name="portal-daemon-start")
 
     async def _bg_start(self):
         try:

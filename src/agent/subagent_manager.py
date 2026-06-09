@@ -19,6 +19,8 @@ from typing import Any, Literal
 
 import httpx
 
+from src.async_utils import safe_task
+
 logger = logging.getLogger("heare.subagent_manager")
 
 
@@ -126,7 +128,7 @@ class SubAgentManager:
 
     def start_pruner(self) -> None:
         if self._prune_task is None:
-            self._prune_task = asyncio.create_task(self._prune_loop())
+            self._prune_task = safe_task(self._prune_loop(), name="subagent-pruner")
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -165,7 +167,7 @@ class SubAgentManager:
 
         self._agents[temp_id] = state
         # Phase 2: background bootstrap (health check, session creation, SSE listen)
-        state._sse_task = asyncio.create_task(self._bootstrap_and_listen(state))
+        state._sse_task = safe_task(self._bootstrap_and_listen(state), name="sse-bootstrap")
         return state
 
     def status(self, session_id: str) -> dict:
@@ -250,7 +252,7 @@ class SubAgentManager:
 
         if agent._sse_task and not agent._sse_task.done():
             agent._sse_task.cancel()
-        agent._sse_task = asyncio.create_task(self._listen_sse(agent))
+        agent._sse_task = safe_task(self._listen_sse(agent), name="sse-listen")
         return {
             "session_id": session_id,
             "status": "running",

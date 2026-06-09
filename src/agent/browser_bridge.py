@@ -23,6 +23,8 @@ import uuid
 from typing import Any
 
 from websockets.asyncio.server import ServerConnection, serve
+
+from src.async_utils import safe_task
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
@@ -99,7 +101,7 @@ class BrowserBridge:
         self._write_token_file()
         self._lonely_since = time.time()
         self._write_status(False)
-        self._lonely_task = asyncio.create_task(self._lonely_watcher())
+        self._lonely_task = safe_task(self._lonely_watcher(), name="browser-lonely-watcher")
 
         async def _process_request(
             connection: ServerConnection,
@@ -289,7 +291,7 @@ class BrowserBridge:
         if mtype == "ping":
             ws = self._ws
             if ws is not None:
-                task = asyncio.create_task(self._send_pong(ws))
+                task = safe_task(self._send_pong(ws), name="browser-send-pong")
                 self._pong_tasks.add(task)
                 task.add_done_callback(self._pong_tasks.discard)
             return

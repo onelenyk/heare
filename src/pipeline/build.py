@@ -120,11 +120,10 @@ def reload_audio_device(settings: "Settings") -> bool:
 
         output._params.output_device_index = idx  # type: ignore[attr-defined]
         # start() recreates the stream with the new device index.
-        import asyncio
-
         from pipecat.frames.frames import StartFrame
+        from src.async_utils import safe_task
 
-        asyncio.create_task(output.start(StartFrame()))
+        safe_task(output.start(StartFrame()), name="audio-output-reload")
         logger.info(
             "reload_audio_device: output switched to device %d (%s)",
             idx,
@@ -180,11 +179,10 @@ def reload_audio_input_device(settings: "Settings") -> bool:
             inp._in_stream = None  # type: ignore[attr-defined]
 
         inp._params.input_device_index = idx  # type: ignore[attr-defined]
-        import asyncio
-
         from pipecat.frames.frames import StartFrame
+        from src.async_utils import safe_task
 
-        asyncio.create_task(inp.start(StartFrame()))
+        safe_task(inp.start(StartFrame()), name="audio-input-reload")
         logger.info(
             "reload_audio_input_device: input switched to device %d (%s)",
             idx,
@@ -895,7 +893,7 @@ async def build_pipeline(
     # user disables interrupt (via the dashboard button → /interrupt API),
     # ``interrupt_enabled_file`` is created and this gate drops mic input
     # while the bot is speaking, letting the bot finish its utterance.
-    interrupt_toggle_gate = create_interrupt_toggle_gate(settings=settings)
+    interrupt_toggle_gate = create_interrupt_toggle_gate(state=state)
 
     # Cancel-flag gate — external "interrupt now" trigger. Mirrors the
     # mute-gate flag-file contract: any process (overlay, watch dashboard,

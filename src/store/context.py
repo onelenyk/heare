@@ -174,14 +174,15 @@ class ContextBuilder:
                     result["memory_block"] = self._format_memories(memories)
             except Exception:
                 pass  # never break prompt building
-            # Auto-extract memories from this turn (fire-and-forget)
+            # Auto-extract memories from this turn
             if getattr(self.settings, "memory_auto_extract", True):
                 try:
-                    import asyncio
+                    from src.async_utils import safe_task
                     from src.memory.extractor import extract_and_store
 
-                    asyncio.create_task(
-                        extract_and_store(self._memory_backend, transcript)
+                    safe_task(
+                        extract_and_store(self._memory_backend, transcript),
+                        name="memory-auto-extract",
                     )
                 except Exception:
                     pass

@@ -1,6 +1,7 @@
 """Tests for _ensure_portal() portal startup logic."""
 from __future__ import annotations
 
+import asyncio
 import socket
 import subprocess
 import sys
@@ -15,7 +16,7 @@ def test_ensure_portal_returns_true_when_port_open(monkeypatch) -> None:
 
     monkeypatch.setattr(socket, "create_connection", _mock_create_connection)
 
-    result = _ensure_portal(timeout=0.2)
+    result = asyncio.run(_ensure_portal(timeout=0.2))
     assert result is True
 
 
@@ -40,7 +41,7 @@ def test_ensure_portal_unfrozen_path(monkeypatch) -> None:
 
         from src.main import _ensure_portal
 
-        result = _ensure_portal(timeout=0.1)
+        result = asyncio.run(_ensure_portal(timeout=0.1))
         assert result is False
         assert len(popen_calls) == 1
         assert popen_calls[0] == [sys.executable, "-m", "src.main", "portal"]
@@ -63,5 +64,5 @@ def test_ensure_portal_handles_socket_errors_gracefully(monkeypatch) -> None:
 
     monkeypatch.setattr(subprocess, "Popen", _mock_popen)
 
-    result = _ensure_portal(timeout=0.1)
+    result = asyncio.run(_ensure_portal(timeout=0.1))
     assert result is False

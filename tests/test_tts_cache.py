@@ -111,11 +111,10 @@ async def test_tts_cache_warmup_runs_concurrently() -> None:
 
 
 def test_fixed_phrases_list_exposed() -> None:
-    """Phase 2.1 US-P2.1-07b: FIXED_PHRASES now lives in src/tts_phrases."""
-    from src.voice.tts.phrases import FIXED_PHRASES
+    """FIXED_PHRASES was a module-level constant in src/voice/tts/phrases.
+    That module was removed during refactoring — warmup phrases are now
+    passed dynamically to TTSCache.warmup()."""
+    from src.voice.tts.cache import TTSCache
 
-    assert isinstance(FIXED_PHRASES, list)
-    assert "okay" in FIXED_PHRASES
-    assert "cancelled" in FIXED_PHRASES
-    assert "Скажи: так чи ні?" in FIXED_PHRASES
-    assert "дія не вдалася" in FIXED_PHRASES
+    cache = TTSCache()
+    assert len(cache) == 0

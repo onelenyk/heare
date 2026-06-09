@@ -28,6 +28,8 @@ import asyncio
 import json
 import logging
 import os
+
+from src.async_utils import safe_task
 import re
 import signal
 from pathlib import Path
@@ -2618,7 +2620,7 @@ async def _execute_stop_daemon(args: str, settings: "Settings | None" = None) ->
         }
 
     delay_s = float(payload.get("delay_s", 4.0))
-    asyncio.create_task(daemon_control.schedule_self_exit(delay_s=delay_s))
+    safe_task(daemon_control.schedule_self_exit(delay_s=delay_s), name="daemon-stop-exit")
     logger.info("[CAPABILITY DAEMON] stop scheduled delay=%.2fs", delay_s)
 
     return {
@@ -2691,7 +2693,7 @@ async def _execute_restart_daemon(
             },
         }
 
-    asyncio.create_task(daemon_control.schedule_self_exit(delay_s=self_exit_delay_s))
+    safe_task(daemon_control.schedule_self_exit(delay_s=self_exit_delay_s), name="daemon-restart-exit")
     logger.info(
         "[CAPABILITY DAEMON] restart scheduled respawner_pid=%d "
         "respawn_delay=%.2fs self_exit_delay=%.2fs",

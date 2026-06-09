@@ -64,6 +64,14 @@ class State:
     async def set_bool(self, key: str, value: bool):
         await self.set(key, "1" if value else "0")
 
+    def set_cache_only(self, key: str, value: str) -> None:
+        """Update the in-memory cache without SQLite persistence.
+
+        For ephemeral state (voice_state, agent_state) that is
+        written at frame rate and never queried historically.
+        """
+        self._cache[key] = value
+
     async def set_bulk(self, items: dict[str, str]):
         async with self._lock:
             self._cache.update(items)

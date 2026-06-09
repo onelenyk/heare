@@ -248,13 +248,13 @@ class TestQueryMethods:
         state = SubAgentState(
             session_id="s1", prompt="do", cwd=None, port=14100, status="running",
         )
-        state.output_parts.append("x" * 9000)
+        state.output_parts.append("x" * 100001)
         mgr._agents["s1"] = state
 
         result = mgr.result("s1")
         assert result["success"] is False
         assert result["truncated"] is True
-        assert len(result["output"]) == 8000
+        assert len(result["output"]) == 100000
 
     def test_list_all(self):
         mgr = SubAgentManager()

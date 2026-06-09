@@ -569,57 +569,56 @@ def fetch_dashboard_state(settings: Settings) -> DashboardSnapshot:
 
     # Open DB
     con = open_db(Path.home() / ".heare" / "heare.db")
+    try:
+        # Fetch header data
+        running, pid, uptime = daemon_status(settings)
+        mode = current_mode(settings)
+        provider = current_provider(settings)
+        count_dict = counts(con)
+        chrome_attached = bridge_connected(settings)
+        identity = load_identity(Path.home() / ".heare" / "identity.json")
+        name = identity["name"] if identity else "heare"
+        emoji = identity["emoji"] if identity else "🪶"
 
-    # Fetch header data
-    running, pid, uptime = daemon_status(settings)
-    mode = current_mode(settings)
-    provider = current_provider(settings)
-    count_dict = counts(con)
-    chrome_attached = bridge_connected(settings)
-    identity = load_identity(Path.home() / ".heare" / "identity.json")
-    name = identity["name"] if identity else "heare"
-    emoji = identity["emoji"] if identity else "🪶"
+        # Mute states — surfaced in the header so the operator can observe
+        # bot/mic mute live (toggled via m/M from any process).
+        is_muted_val = False  # mute state is now in State, not flag files
+        is_input_muted_val = False
 
-    # Mute states — surfaced in the header so the operator can observe
-    # bot/mic mute live (toggled via m/M from any process).
-    is_muted_val = False  # mute state is now in State, not flag files
-    is_input_muted_val = False
+        header = HeaderData(
+            name=name,
+            emoji=emoji,
+            running=running,
+            pid=pid,
+            uptime=uptime,
+            mode=mode,
+            provider=provider,
+            transcripts_count=count_dict["transcripts"],
+            actions_count=count_dict["actions"],
+            chrome_attached=chrome_attached,
+            bot_muted=is_muted_val,
+            mic_muted=is_input_muted_val,
+        )
 
-    header = HeaderData(
-        name=name,
-        emoji=emoji,
-        running=running,
-        pid=pid,
-        uptime=uptime,
-        mode=mode,
-        provider=provider,
-        transcripts_count=count_dict["transcripts"],
-        actions_count=count_dict["actions"],
-        chrome_attached=chrome_attached,
-        bot_muted=is_muted_val,
-        mic_muted=is_input_muted_val,
-    )
+        # Fetch activity
+        activity_rows = fetch_activity(con, limit=50)
 
-    # Fetch activity
-    activity_rows = fetch_activity(con, limit=50)
+        # Fetch log tail
+        log_lines = read_log_tail(Path.home() / ".heare" / "logs" / "daemon.log", lines=20)
 
-    # Fetch log tail
-    log_lines = read_log_tail(Path.home() / ".heare" / "logs" / "daemon.log", lines=20)
+        # Fetch usage / cost ledger
+        usage = fetch_usage(con)
 
-    # Fetch usage / cost ledger
-    usage = fetch_usage(con)
+        voice_state = VoiceStateData(
+            state="idle", since_ts=0.0, last_partial=None, last_final=None
+        )  # voice state is now in State, not file
+        agent_response = fetch_agent_response(con)
+        display = fetch_latest_display(con)
 
-    voice_state = VoiceStateData(
-        state="idle", since_ts=0.0, last_partial=None, last_final=None
-    )  # voice state is now in State, not file
-    agent_response = fetch_agent_response(con)
-    display = fetch_latest_display(con)
-
-    pair_code = read_pair_code()
-
-    # Close DB if open
-    if con is not None:
-        con.close()
+        pair_code = read_pair_code()
+    finally:
+        if con is not None:
+            con.close()
 
     return DashboardSnapshot(
         header=header,

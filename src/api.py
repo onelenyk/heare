@@ -7,7 +7,6 @@ import os
 import re
 import secrets
 import signal
-import sqlite3
 import tempfile
 import time
 import uuid
@@ -256,14 +255,15 @@ class API:
             pass
 
         try:
-            db = sqlite3.connect(str(self.config.db_path))
-            row = db.execute(
-                "SELECT text, agent_mode FROM transcripts WHERE mode='assistant' ORDER BY ts DESC LIMIT 1"
-            ).fetchone()
-            db.close()
-            if row:
-                data["last_response"] = row[0]
-                data["last_response_mode"] = row[1]
+            import aiosqlite
+
+            async with aiosqlite.connect(str(self.config.db_path)) as db:
+                row = await db.execute_fetchall(
+                    "SELECT text, agent_mode FROM transcripts WHERE mode='assistant' ORDER BY ts DESC LIMIT 1"
+                )
+                if row:
+                    data["last_response"] = row[0][0]
+                    data["last_response_mode"] = row[0][1]
         except Exception:
             pass
 
@@ -271,13 +271,14 @@ class API:
 
     async def _handle_activity(self, request):
         try:
-            db = sqlite3.connect(str(self.config.db_path))
-            db.row_factory = sqlite3.Row
-            rows = db.execute(
-                "SELECT ts, mode as who, agent_spoken as type, text as content "
-                "FROM transcripts ORDER BY ts DESC LIMIT 30"
-            ).fetchall()
-            db.close()
+            import aiosqlite
+
+            async with aiosqlite.connect(str(self.config.db_path)) as db:
+                db.row_factory = aiosqlite.Row
+                rows = await db.execute_fetchall(
+                    "SELECT ts, mode as who, agent_spoken as type, text as content "
+                    "FROM transcripts ORDER BY ts DESC LIMIT 30"
+                )
             return web.json_response(
                 [
                     {
@@ -337,8 +338,8 @@ class API:
         else:
             self.config.interrupt_enabled_file.parent.mkdir(parents=True, exist_ok=True)
             self.config.interrupt_enabled_file.touch()
-        new_state = not self.config.interrupt_enabled_file.exists()
-        return web.json_response({"ok": True, "enabled": new_state})
+        await self.state.set_bool("interrupt_off", not enabled)
+        return web.json_response({"ok": True, "enabled": enabled})
 
     async def _handle_provider(self, request):
         if self.state is None:
@@ -642,12 +643,6 @@ class API:
                     active_output = (
                         self.config.audio_output_device_file.read_text().strip() or None
                     )
-            except Exception:
-                pass
-
-            try:
-                sd._terminate()
-                sd._initialize()
             except Exception:
                 pass
 

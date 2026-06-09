@@ -1,9 +1,7 @@
-"""Voice-state observer: writes the live STT state to a JSON file.
+"""Voice-state observer: writes the live STT state to State cache.
 
-The watch dashboard polls this file on its refresh tick to render the
-current voice state (idle / listening / stt / result). Pattern mirrors
-``mute_file`` — a tiny disk-backed contract between the daemon and the
-dashboard so neither needs IPC.
+The watch dashboard reads from State's in-memory cache on its refresh
+tick to render the current voice state (idle / listening / stt / result).
 
 State machine driven by Pipecat frames:
 
@@ -15,6 +13,9 @@ State machine driven by Pipecat frames:
 The widget treats "result" as transient — if ``now - since_ts`` exceeds
 its display window, it renders idle. Keeping the auto-decay on the
 reader side avoids the writer needing a timer.
+
+Uses ``set_cache_only`` to avoid per-frame SQLite writes — voice state
+is ephemeral and never queried historically.
 """
 
 from __future__ import annotations
@@ -66,11 +67,12 @@ def write_voice_state(
 
 
 class VoiceStateObserver(FrameProcessor):
-    """Pipeline pass-through that mirrors STT state into the State store.
+    """Pipeline pass-through that mirrors STT state into the State cache.
 
     Forwards every frame unchanged; the only side effect is the
-    ``state.set("voice_state", ...)`` call on the four transition frames listed in
-    the module docstring.
+    ``state.set_cache_only("voice_state", ...)`` call on the four
+    transition frames. Uses cache-only writes to avoid per-frame
+    SQLite contention with the transcript store.
     """
 
     def __init__(self, state) -> None:
@@ -83,7 +85,7 @@ class VoiceStateObserver(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, UserStartedSpeakingFrame):
             self._last_partial = None
-            await self._state.set(
+            self._state.set_cache_only(
                 "voice_state",
                 json.dumps(
                     {
@@ -95,7 +97,7 @@ class VoiceStateObserver(FrameProcessor):
                 ),
             )
         elif isinstance(frame, UserStoppedSpeakingFrame):
-            await self._state.set(
+            self._state.set_cache_only(
                 "voice_state",
                 json.dumps(
                     {
@@ -108,7 +110,7 @@ class VoiceStateObserver(FrameProcessor):
             )
         elif isinstance(frame, InterimTranscriptionFrame):
             self._last_partial = (frame.text or "").strip() or self._last_partial
-            await self._state.set(
+            self._state.set_cache_only(
                 "voice_state",
                 json.dumps(
                     {
@@ -121,7 +123,7 @@ class VoiceStateObserver(FrameProcessor):
             )
         elif isinstance(frame, TranscriptionFrame):
             self._last_final = (frame.text or "").strip() or self._last_final
-            await self._state.set(
+            self._state.set_cache_only(
                 "voice_state",
                 json.dumps(
                     {

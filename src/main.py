@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 from src.config import Mode, load_settings
+from src.async_utils import safe_task
 
 
 logger = logging.getLogger("heare.main")
@@ -56,7 +57,7 @@ def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
     return handler
 
 
-def _ensure_portal(timeout: float = 10.0) -> bool:
+async def _ensure_portal(timeout: float = 10.0) -> bool:
     def _port_open() -> bool:
         try:
             with socket.create_connection(("127.0.0.1", 9780), timeout=0.5):
@@ -89,7 +90,7 @@ def _ensure_portal(timeout: float = 10.0) -> bool:
     while time.time() < deadline:
         if _port_open():
             return True
-        time.sleep(0.3)
+        await asyncio.sleep(0.3)
     return False
 
 
@@ -146,7 +147,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     except (OSError, IOError):
         if getattr(sys, "frozen", False):
             logger.info("Daemon already running (lock held) — opening dashboard")
-            _ensure_portal()
+            await _ensure_portal()
             import webbrowser
 
             webbrowser.open("http://127.0.0.1:9780/")
@@ -293,7 +294,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 except Exception:
                     logger.exception("startup greeting push failed (non-fatal)")
 
-            asyncio.create_task(_push_greeting())
+            safe_task(_push_greeting(), name="startup-greeting")
 
             from src.pipeline.stages.text_injector import (
                 make_transcription_pusher,
@@ -307,7 +308,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 if settings.groq_language not in ("auto", "")
                 else None,
             )
-            asyncio.create_task(run_injector_loop(settings.inject_dir, inject_pusher))
+            safe_task(run_injector_loop(settings.inject_dir, inject_pusher), name="text-injector-loop")
 
             warmup = WarmupTask(
                 voice=settings.tts_voice,
@@ -326,7 +327,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
 
                 bridge = BrowserBridge(settings)
                 set_bridge(bridge)
-                bridge_task = asyncio.create_task(bridge.start(), name="browser-bridge")
+                bridge_task = safe_task(bridge.start(), name="browser-bridge")
             except Exception:
                 logger.exception(
                     "browser_bridge failed to start (continuing without it)"
@@ -469,7 +470,6 @@ async def run_until_stopped(
             while True:
                 try:
                     await asyncio.sleep(3)
-                    from src.config import load_settings
 
                     s = load_settings()
                     # Check output device file
