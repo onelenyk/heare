@@ -16,9 +16,8 @@ import argparse
 import asyncio
 import logging
 import logging.handlers
+import os
 import signal
-import socket
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -28,6 +27,11 @@ from src.async_utils import safe_task
 
 
 logger = logging.getLogger("heare.main")
+
+_INDEX_HTML: str | None = None
+
+
+
 
 DAEMON_LOG_MAX_BYTES = 10 * 1024 * 1024
 DAEMON_LOG_BACKUPS = 3
@@ -57,53 +61,39 @@ def _setup_logging(log_dir: Path) -> logging.handlers.RotatingFileHandler:
     return handler
 
 
-async def _ensure_portal(timeout: float = 10.0) -> bool:
-    def _port_open() -> bool:
-        try:
-            with socket.create_connection(("127.0.0.1", 9780), timeout=0.5):
-                return True
-        except (OSError, socket.timeout):
-            return False
+async def _build_and_run_daemon(
+    settings: "Settings",
+    state: "State",
+    project_dir: str,
+    api: "API",
+    *,
+    handle_signals: bool = True,
+) -> None:
+    """Boot and run the full daemon: store, identity, pipeline, bridge, cleanup.
 
-    if _port_open():
-        return True
+    This is the shared boot sequence used by both the CLI ``start`` command
+    and the macOS menubar.  Callers are responsible for setting up the web
+    server + API + frontend before calling this function.
 
-    try:
-        if getattr(sys, "frozen", False):
-            cmd = [sys.executable, "portal"]
-        else:
-            cmd = [sys.executable, "-m", "src.main", "portal"]
-        # Detach so the portal survives the daemon if it dies, and so this
-        # .app launcher can exit without killing the portal it started.
-        subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to spawn portal subprocess: {e}")
-        return False
-
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if _port_open():
-            return True
-        await asyncio.sleep(0.3)
-    return False
-
-
-async def _cmd_start(args: argparse.Namespace) -> int:
-    if getattr(sys, "frozen", False):
-        os.environ["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get(
-            "PATH", ""
-        )
-
-    from dotenv import load_dotenv
-
-    from src.store.context import ContextBuilder
-    from src.daemon.heartbeat import WarmupTask
+    Parameters
+    ----------
+    settings:
+        Fully-loaded settings (``load_dotenv`` / ``load_settings`` already
+        called by the caller).
+    state:
+        State object.  ``state.init()`` MUST NOT have been called yet (this
+        function calls it after pipeline build to avoid SQLite lock
+        contention).
+    project_dir:
+        Path to the project root (or ``sys._MEIPASS`` when frozen).
+    api:
+        API instance (already running).  ``api.state`` will be set to *state*
+        after pipeline build.
+    handle_signals:
+        If True (CLI daemon), install SIGINT/SIGTERM/SIGHUP handlers.
+        If False (menubar), skip them — the menubar manages its own lifecycle.
+    """
+    from src.store.storage import TranscriptStore
     from src.agent.identity import ensure_identity, render_persona
     from src.agent.llm.providers import (
         PROVIDERS,
@@ -111,85 +101,38 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         make_identity_bootstrap,
     )
     from src.pipeline.build import build_pipeline
-    from src.store.storage import TranscriptStore
-
-    for env_path in (
-        Path.home() / ".heare" / ".env",
-        Path(__file__).parent.parent / ".env",
-    ):
-        if env_path.exists():
-            load_dotenv(env_path)
-            break
-    else:
-        load_dotenv(Path(__file__).parent.parent / ".env")
-    settings = load_settings()
-    settings.ensure_dirs()
-    _setup_logging(settings.log_dir)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("websockets.server").setLevel(logging.WARNING)
+    from src.store.context import ContextBuilder
+    from src.daemon.heartbeat import WarmupTask
     from src.daemon.workspace import ensure_workspace_mcp
+
+    from src.agent.browser_bridge import BrowserBridge, set_bridge
 
     ensure_workspace_mcp(settings.workspace_dir)
 
-    project_dir = (
-        sys._MEIPASS
-        if getattr(sys, "frozen", False)
-        else str(Path(__file__).parent.parent.resolve())
-    )
-
-    # File lock on PID file — OS-level guard against multiple instances.
-    # Auto-releases on process death (crash, SIGKILL, etc.). Race-free.
-    import fcntl
-
-    try:
-        lock_fd = os.open(settings.pid_file, os.O_RDWR | os.O_CREAT, 0o644)
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except (OSError, IOError):
-        if getattr(sys, "frozen", False):
-            logger.info("Daemon already running (lock held) — opening dashboard")
-            await _ensure_portal()
-            import webbrowser
-
-            webbrowser.open("http://127.0.0.1:9780/")
-            return 0
-        print("❌ Error: Daemon already running. Stop it first: heare stop")
-        return 1
-    os.write(lock_fd, str(os.getpid()).encode())
-    os.fsync(lock_fd)
-
-    # Start API server early (no state yet — avoids SQLite lock contention
-    # with setup API polling). State is init'd after pipeline build below.
-    from src.api import API
-
-    api = API(None, settings)
-    await api.start()
-    logger.info("HTTP API server on 127.0.0.1:9778")
-
-    await _ensure_portal()
-
+    # Wait for API keys if not configured yet.
     available = get_available(settings)
     if not available:
-        logger.warning("No API keys configured — serving setup page")
-        print("\n  ⚙  No API keys found. Setup page opened in your browser.\n")
-        print("  Enter your API keys in the browser to continue.\n")
+        logger.warning("No API keys configured — waiting...")
+        from dotenv import load_dotenv as _load_dotenv
 
         while not get_available(settings):
             await asyncio.sleep(1)
-            load_dotenv(Path.home() / ".heare" / ".env", override=True)
+            _load_dotenv(Path.home() / ".heare" / ".env", override=True)
             settings = load_settings()
             settings.ensure_dirs()
-
-        print("✅ API keys configured — starting daemon...\n")
-
-    settings.pid_file.write_text(str(os.getpid()))
-
-    # Create state object (no .init() — avoids SQLite lock contention with
-    # setup API polling. Init'd after pipeline build below.)
-    from src.state import State
-
-    state = State(settings.db_path)
+        logger.info("API keys found — starting daemon")
 
     store: TranscriptStore | None = None
+    bridge = None
+    bridge_task = None
+    warmup = None
+    mcp_bridge = None
+    agent_manager = None
+    indication = None
+    tts_cache = None
+    memory_backend = None
+    pipeline = None
+
     try:
         store = TranscriptStore(settings.db_path)
         await store.init()
@@ -221,7 +164,7 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                     "action_log hydrate failed (non-fatal) — starting empty"
                 )
 
-        # Initialize memory backend (pluggable — sqlite by default)
+        # Memory backend (pluggable — sqlite by default)
         from src.memory.factory import create_memory_backend
 
         memory_backend = create_memory_backend(settings)
@@ -239,11 +182,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         try:
             (
                 pipeline,
-                transcription_gate,
+                _transcription_gate,
                 tts_cache,
                 indication,
                 llm_service,
-                language_state,
+                _language_state,
                 mcp_bridge,
                 agent_manager,
             ) = await build_pipeline(
@@ -259,24 +202,27 @@ async def _cmd_start(args: argparse.Namespace) -> int:
         except Exception:
             logger.exception("Pipeline build failed — running in dashboard-only mode")
             pipeline = None
-            transcription_gate = None
             tts_cache = None
             indication = None
             llm_service = None
-            language_state = None
             mcp_bridge = None
+            agent_manager = None
 
-        # Init state now that pipeline is built — avoids SQLite lock contention
-        # during setup polling (API was started with state=None).
+        # Init state AFTER pipeline build (avoids SQLite lock contention
+        # during setup polling — API was started with state=None).
         await state.init()
         api.state = state
 
         if pipeline is not None:
-            from pipecat.frames.frames import TTSSpeakFrame  # noqa: E402
-
+            # Startup greeting
             async def _push_greeting() -> None:
+                from pipecat.frames.frames import TTSSpeakFrame
+
                 await asyncio.sleep(1.0)
-                from src.voice.indication.core import IndicationKind, get_indication
+                from src.voice.indication.core import (
+                    IndicationKind,
+                    get_indication,
+                )
 
                 _ind = get_indication()
                 if _ind is not None:
@@ -286,45 +232,47 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                     )
                 greeting_name = identity.get("name") or settings.wake_word
                 _greetings = {"en": "online", "uk": "на зв'язку", "ru": "на связи"}
-                _greeting_suffix = _greetings.get(settings.groq_language, "online")
+                _greeting_suffix = _greetings.get(
+                    settings.groq_language, "online"
+                )
                 greeting = f"{greeting_name} {_greeting_suffix}"
                 try:
                     await llm_service.push_frame(TTSSpeakFrame(greeting))
                     logger.info("startup greeting queued: %r", greeting)
                 except Exception:
-                    logger.exception("startup greeting push failed (non-fatal)")
+                    logger.exception(
+                        "startup greeting push failed (non-fatal)"
+                    )
 
             safe_task(_push_greeting(), name="startup-greeting")
 
+            # Text injector
             from src.pipeline.stages.text_injector import (
                 make_transcription_pusher,
                 run_injector_loop,
             )
 
             inject_pusher = make_transcription_pusher(
-                transcription_gate,
+                _transcription_gate,
                 user_id="injected",
                 language=settings.groq_language
                 if settings.groq_language not in ("auto", "")
                 else None,
             )
-            safe_task(run_injector_loop(settings.inject_dir, inject_pusher), name="text-injector-loop")
+            safe_task(
+                run_injector_loop(settings.inject_dir, inject_pusher),
+                name="text-injector-loop",
+            )
 
+            # TTS keep-alive
             warmup = WarmupTask(
                 voice=settings.tts_voice,
                 interval_seconds=settings.warmup_interval_seconds,
             )
-        else:
-            tts_cache = None
-            indication = None
-            warmup = None
 
-        bridge = None
-        bridge_task = None
+        # Browser bridge
         if settings.browser_bridge_enabled:
             try:
-                from src.agent.browser_bridge import BrowserBridge, set_bridge
-
                 bridge = BrowserBridge(settings)
                 set_bridge(bridge)
                 bridge_task = safe_task(bridge.start(), name="browser-bridge")
@@ -335,82 +283,303 @@ async def _cmd_start(args: argparse.Namespace) -> int:
                 bridge = None
                 bridge_task = None
 
+        # ── Run ──────────────────────────────────────────
         if pipeline is not None:
-            from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
+            from pipecat.pipeline.runner import PipelineRunner
 
-            runner = PipelineRunner()
-            await run_until_stopped(
+            runner = PipelineRunner(
+                handle_sigint=False if not handle_signals else True,
+                handle_sigterm=False if not handle_signals else True,
+            )
+            await _run_pipeline_loop(
                 runner,
                 pipeline,
                 warmup,
                 settings=settings,
                 bridge_task=bridge_task,
+                handle_signals=handle_signals,
             )
         else:
-            stop_event = asyncio.Event()
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                try:
-                    loop.add_signal_handler(sig, stop_event.set)
-                except NotImplementedError:
-                    pass
-            await stop_event.wait()
+            if handle_signals:
+                stop_event = asyncio.Event()
+                loop = asyncio.get_running_loop()
+                for sig in (signal.SIGTERM, signal.SIGINT):
+                    try:
+                        loop.add_signal_handler(sig, stop_event.set)
+                    except NotImplementedError:
+                        pass
+                await stop_event.wait()
+            else:
+                # Menubar: just wait until cancelled.
+                await asyncio.Event().wait()
+
+    except asyncio.CancelledError:
+        logger.info("Pipeline cancelled — shutting down")
     finally:
-        bridge = locals().get("bridge")
+        # ── Cleanup (reverse order of creation) ──────────
         if bridge is not None:
             try:
                 await bridge.stop()
-            except Exception as e:  # noqa: BLE001
-                logger.warning("bridge.stop failed (non-fatal): %s", e)
+            except Exception:
+                logger.warning("bridge.stop failed (non-fatal)")
             try:
-                from src.agent.browser_bridge import set_bridge
-
                 set_bridge(None)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
-        mcp_bridge = locals().get("mcp_bridge")
+            if bridge_task is not None:
+                bridge_task.cancel()
         if mcp_bridge is not None:
             try:
                 await mcp_bridge.aclose()
-            except Exception as e:  # noqa: BLE001
-                logger.warning("mcp_bridge.aclose failed (non-fatal): %s", e)
-        api = locals().get("api")
-        if api is not None:
-            try:
-                await api.stop()
-            except Exception as e:  # noqa: BLE001
-                logger.warning("api.stop failed (non-fatal): %s", e)
-        ind = locals().get("indication")
-        if ind is not None:
+            except Exception:
+                logger.warning("mcp_bridge.aclose failed (non-fatal)")
+        if indication is not None:
             try:
                 from src.voice.indication.core import IndicationKind
 
-                ind.notify(IndicationKind.DAEMON_SHUTDOWN)
-            except Exception:  # noqa: BLE001
+                indication.notify(IndicationKind.DAEMON_SHUTDOWN)
+            except Exception:
                 pass
             try:
-                await ind.aclose()
-            except Exception as e:  # noqa: BLE001
-                logger.warning("indication.aclose failed (non-fatal): %s", e)
-        if store is not None:
-            await store.close()
-        if settings.pid_file.exists():
-            settings.pid_file.unlink()
-        mgr = locals().get("agent_manager")
-        if mgr is not None:
+                await indication.aclose()
+            except Exception:
+                logger.warning("indication.aclose failed (non-fatal)")
+        if agent_manager is not None:
             try:
-                await mgr.shutdown()
-            except Exception as e:
-                logger.warning("agent_manager shutdown failed (non-fatal): %s", e)
-        mb = locals().get("memory_backend")
-        if mb is not None:
+                await agent_manager.shutdown()
+            except Exception:
+                logger.warning("agent_manager shutdown failed (non-fatal)")
+        if memory_backend is not None:
             try:
-                await mb.close()
+                await memory_backend.close()
                 logger.info("Memory backend closed")
             except Exception:
                 logger.warning("Memory backend close failed (non-fatal)")
+        if store is not None:
+            await store.close()
         logger.info("heare stopped")
+
+
+async def _run_pipeline_loop(
+    runner,
+    pipeline,
+    warmup=None,
+    *,
+    settings=None,
+    bridge_task=None,
+    handle_signals: bool = True,
+) -> None:
+    """Run the pipeline with signal handling and audio device watching."""
+    loop = asyncio.get_running_loop()
+    pipeline_task = loop.create_task(runner.run(pipeline))
+    warmup_task = loop.create_task(warmup.run()) if warmup is not None else None
+    stop_event = asyncio.Event()
+
+    if handle_signals:
+        def _on_stop(sig_name: str) -> None:
+            logger.info("received %s — shutting down", sig_name)
+            stop_event.set()
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.add_signal_handler(sig, _on_stop, sig.name)
+            except NotImplementedError:
+                pass
+
+        def _handle_sighup() -> None:
+            logger.info("received SIGHUP — reloading indication settings")
+            from src.config import load_settings
+            from src.voice.indication.core import get_indication
+
+            ind = get_indication()
+            if ind is None:
+                return
+            try:
+                loop.create_task(ind.reload(load_settings().indication))
+            except Exception:
+                logger.warning("SIGHUP indication reload failed")
+
+        try:
+            loop.add_signal_handler(signal.SIGHUP, _handle_sighup)
+        except (NotImplementedError, AttributeError):
+            pass
+
+    # Audio device hot-reload: every 3s check if device files changed.
+    audio_dev_task: asyncio.Task | None = None
+    if settings is not None:
+
+        async def _watch_audio_devices() -> None:
+            from src.pipeline.build import (
+                reload_audio_device,
+                reload_audio_input_device,
+            )
+
+            last_mtime_out = 0.0
+            last_mtime_in = 0.0
+            while True:
+                try:
+                    await asyncio.sleep(3)
+                    s = load_settings()
+                    if s.audio_output_device_file.exists():
+                        mtime = s.audio_output_device_file.stat().st_mtime
+                        if mtime > last_mtime_out:
+                            last_mtime_out = mtime
+                            if reload_audio_device(s):
+                                logger.info(
+                                    "audio device: output switched to %r",
+                                    s.audio_output_device,
+                                )
+                    if s.audio_input_device_file.exists():
+                        mtime_in = s.audio_input_device_file.stat().st_mtime
+                        if mtime_in > last_mtime_in:
+                            last_mtime_in = mtime_in
+                            if reload_audio_input_device(s):
+                                logger.info(
+                                    "audio device: input switched to %r",
+                                    s.audio_input_device,
+                                )
+                except asyncio.CancelledError:
+                    break
+                except Exception:
+                    logger.debug("audio device watcher tick failed")
+
+        audio_dev_task = loop.create_task(_watch_audio_devices())
+
+    # Wait for pipeline to finish or stop signal.
+    tasks = [pipeline_task]
+    if warmup_task is not None:
+        tasks.append(warmup_task)
+    if bridge_task is not None:
+        tasks.append(bridge_task)
+    if handle_signals:
+        wait_stop = loop.create_task(stop_event.wait())
+        tasks.append(wait_stop)
+
+    done, _ = await asyncio.wait(
+        tasks, return_when=asyncio.FIRST_COMPLETED
+    )
+
+    # Cancel remaining tasks.
+    for t in tasks:
+        if not t.done():
+            t.cancel()
+    if audio_dev_task is not None:
+        audio_dev_task.cancel()
+
+    # Await cancelled tasks to suppress CancelledError noise.
+    for t in tasks + ([audio_dev_task] if audio_dev_task else []):
+        try:
+            await t
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+async def _cmd_start(args: argparse.Namespace) -> int:
+    """Start the daemon with web server + frontend on :9780."""
+    if getattr(sys, "frozen", False):
+        os.environ["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get(
+            "PATH", ""
+        )
+
+    from dotenv import load_dotenv
+
+    for env_path in (
+        Path.home() / ".heare" / ".env",
+        Path(__file__).parent.parent / ".env",
+    ):
+        if env_path.exists():
+            load_dotenv(env_path)
+            break
+    else:
+        load_dotenv(Path(__file__).parent.parent / ".env")
+    settings = load_settings()
+    settings.ensure_dirs()
+    _setup_logging(settings.log_dir)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("websockets.server").setLevel(logging.WARNING)
+
+    project_dir = (
+        sys._MEIPASS
+        if getattr(sys, "frozen", False)
+        else str(Path(__file__).parent.parent.resolve())
+    )
+
+    # File lock — OS-level guard against multiple instances.
+    import fcntl
+
+    try:
+        lock_fd = os.open(settings.pid_file, os.O_RDWR | os.O_CREAT, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        if getattr(sys, "frozen", False):
+            logger.info("Daemon already running (lock held) — opening dashboard")
+            import webbrowser
+
+            webbrowser.open("http://127.0.0.1:9780/")
+            return 0
+        print("❌ Error: Daemon already running. Stop it first: heare stop")
+        return 1
+    os.write(lock_fd, str(os.getpid()).encode())
+    os.fsync(lock_fd)
+
+    settings.pid_file.write_text(str(os.getpid()))
+
+    # Build web app with API routes + frontend static files.
+    from aiohttp import web
+
+    from src.api import API
+
+    app = web.Application()
+    app.router.add_get("/", _serve_frontend)
+    _FRONTEND_DIST = project_dir / "src" / "frontend" / "dist"
+    if _FRONTEND_DIST.exists():
+        app.router.add_static(
+            "/assets/", str(_FRONTEND_DIST / "assets"), show_index=False
+        )
+
+    state = State(settings.db_path)
+    api = API(state, settings)
+    api.register_routes(app)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 9780, reuse_address=True)
+    await site.start()
+    logger.info("Web server on http://127.0.0.1:9780")
+
+    await _build_and_run_daemon(
+        settings, state, project_dir, api, handle_signals=True
+    )
+
+    # Cleanup web server.
+    await runner.cleanup()
+    if settings.pid_file.exists():
+        settings.pid_file.unlink()
     return 0
+
+
+async def _serve_frontend(request):
+    """Serve index.html for the SPA frontend."""
+    global _INDEX_HTML
+    if _INDEX_HTML is None:
+        _FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
+        for candidate in [
+            _FRONTEND_DIST / "index.html",
+            Path(__file__).parent / "frontend" / "index.html",
+        ]:
+            if candidate.exists():
+                _INDEX_HTML = candidate.read_text()
+                break
+    if _INDEX_HTML:
+        from aiohttp import web
+
+        return web.Response(text=_INDEX_HTML, content_type="text/html")
+    from aiohttp import web
+
+    return web.Response(
+        text="<h1>heare</h1><p>frontend not found — run `npm run build` in src/frontend/</p>",
+        content_type="text/html",
+    )
 
 
 async def run_until_stopped(
@@ -724,12 +893,9 @@ def _cmd_watch(args: argparse.Namespace) -> int:
 
 
 def _cmd_portal(args: argparse.Namespace) -> int:
-    from src.portal import main as portal_main
-
-    argv = ["--port", str(args.port)]
-    if args.stop:
-        argv.append("--stop")
-    return portal_main(argv)
+    print("'portal' command is deprecated. Use 'menubar' instead:")
+    print("  uv run python -m src.main menubar")
+    return 0
 
 
 def _cmd_logs(args: argparse.Namespace) -> int:
@@ -793,9 +959,7 @@ def build_parser() -> argparse.ArgumentParser:
         "watch", help="(removed) TUI dashboard — use web UI at http://127.0.0.1:9780"
     )
 
-    portal_p = sub.add_parser("portal", help="Run watchdog web UI portal")
-    portal_p.add_argument("--port", type=int, default=9780)
-    portal_p.add_argument("--stop", action="store_true")
+    sub.add_parser("menubar", help="Run macOS menu bar controller")
 
     logs_p = sub.add_parser("logs", help="Tail the daemon log")
     logs_p.add_argument(
@@ -810,7 +974,7 @@ def main(argv: list[str] | None = None) -> int:
     # When run as a bundled .app (double-click from Finder), default to
     # `start` so the daemon launches instead of showing argparse errors.
     if argv is None and len(sys.argv) <= 1 and getattr(sys, "frozen", False):
-        argv = ["start"]
+        argv = ["menubar"]
     parser = build_parser()
     args = parser.parse_args(argv)
     cmd = args.cmd
@@ -840,6 +1004,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_watch(args)
     if cmd == "portal":
         return _cmd_portal(args)
+    if cmd == "menubar":
+        from src.menubar import main as menubar_main
+
+        return menubar_main()
     if cmd == "logs":
         return _cmd_logs(args)
     parser.print_help()

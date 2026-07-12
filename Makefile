@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs launch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session
+.PHONY: help install start stop restart status logs launch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -17,6 +17,7 @@ help:
 	@echo "  make status     - Check daemon status"
 	@echo "  make logs       - Tail daemon logs"
 	@echo "  make launch     - Start daemon + open desktop in browser"
+	@echo "  make menubar    - Launch macOS menu bar controller"
 	@echo ""
 	@echo "MCP Servers:"
 	@echo "  make mcp-list           - List all available MCP servers"
@@ -131,3 +132,6 @@ reset-identity:
 
 reset-session:
 	@uv run python -m src.main reset-session
+
+menubar:
+	@uv run python -m src.main menubar

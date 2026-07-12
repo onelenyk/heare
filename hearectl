@@ -179,11 +179,11 @@ cmd_launch() {
     fi
 
     # Open desktop in browser
-    log_info "Opening desktop at http://127.0.0.1:9778/"
+    log_info "Opening desktop at http://127.0.0.1:9780/"
     if command -v open >/dev/null 2>&1; then
-        open "http://127.0.0.1:9778/"
+        open "http://127.0.0.1:9780/"
     elif command -v xdg-open >/dev/null 2>&1; then
-        xdg-open "http://127.0.0.1:9778/"
+        xdg-open "http://127.0.0.1:9780/"
     fi
 }
 
