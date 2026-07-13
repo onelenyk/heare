@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs launch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar
+.PHONY: help install start stop restart status logs launch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar build frontend dmg
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -25,6 +25,10 @@ help:
 	@echo "  make mcp-enable NAME    - Enable an MCP server (e.g., make mcp-enable NAME=github)"
 	@echo "  make mcp-disable NAME   - Disable an MCP server"
 	@echo "  make mcp-edit-catalog   - Open custom catalog in editor"
+	@echo ""
+	@echo "Build & Distribution:"
+	@echo "  make build      - Build Heare.app with PyInstaller (needs frontend built first)"
+	@echo "  make dmg        - Create Heare.dmg from Heare.app"
 	@echo ""
 	@echo "Infrastructure:"
 	@echo "  make install    - Install as systemd service"
@@ -135,3 +139,18 @@ reset-session:
 
 menubar:
 	@uv run python -m src.main menubar
+
+build: frontend
+	@echo "Building Heare.app with PyInstaller..."
+	uv run pyinstaller HeareMenubar.spec
+	@echo "✅ dist/Heare.app built"
+
+frontend:
+	@echo "Building frontend..."
+	cd src/frontend && npm ci && npm run build
+	@echo "✅ Frontend built"
+
+dmg: build
+	@echo "Creating Heare.dmg..."
+	hdiutil create -volname Heare -srcfolder dist/Heare.app -ov -format UDZO Heare.dmg
+	@echo "✅ Heare.dmg created"
