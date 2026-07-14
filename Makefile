@@ -142,7 +142,8 @@ menubar:
 
 build: frontend
 	@echo "Building Heare.app with PyInstaller..."
-	uv run pyinstaller HeareMenubar.spec
+	rm -rf dist/Heare build/HeareMenubar
+	uv run pyinstaller HeareMenubar.spec --noconfirm
 	@echo "✅ dist/Heare.app built"
 
 frontend:
