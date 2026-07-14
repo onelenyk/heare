@@ -109,11 +109,17 @@ def _build_classes():
             *,
             threshold: float = 0.3,
             cooldown_seconds: float = 0.5,
+            peak_decay: float = 0.85,
+            peak_threshold: float = 0.42,
         ) -> None:
             super().__init__()
             self._echo_state = echo_state
             self._threshold = threshold
             self._cooldown_seconds = cooldown_seconds
+            self._peak_decay = peak_decay
+            self._peak_threshold = peak_threshold
+            self._recent_peak = 0.0
+            self._peak_dropped = 0
             self._dropped = 0
             self._passed = 0
 
@@ -152,16 +158,38 @@ def _build_classes():
 
             if isinstance(frame, InputAudioRawFrame) and self._is_active():
                 mic = np.frombuffer(frame.audio, dtype=np.int16).astype(np.float32)
+
+                # Peak energy gate — catches quiet echo before cross-correlation.
+                energy_peak = np.max(np.abs(mic)) / 32768.0
+                self._recent_peak = max(
+                    energy_peak, self._recent_peak * self._peak_decay
+                )
+
+                if (
+                    self._echo_state.bot_speaking
+                    and self._recent_peak < self._peak_threshold
+                ):
+                    self._peak_dropped += 1
+                    return
+
                 bot = self._echo_state.get_buffer()
                 peak = self._peak_correlation(mic, bot)
                 if peak >= self._threshold:
                     self._dropped += 1
                     if self._dropped <= 3 or self._dropped % 50 == 0:
-                        logger.debug(
+                        logger.info(
                             "[ECHO GATE] drop corr=%.3f threshold=%.2f dropped=%d",
                             peak,
                             self._threshold,
                             self._dropped,
+                        )
+                    total = self._dropped + self._passed
+                    if total > 0 and total % 100 == 0:
+                        logger.info(
+                            "[ECHO GATE] passed=%d dropped=%d rate=%.1f%%",
+                            self._passed,
+                            self._dropped,
+                            self._dropped / total * 100,
                         )
                     return
                 self._passed += 1
@@ -184,6 +212,8 @@ def create_echo_gate_stages(
         echo_state,
         threshold=settings.echo_gate_threshold,
         cooldown_seconds=settings.echo_gate_cooldown_seconds,
+        peak_decay=settings.echo_gate_peak_decay,
+        peak_threshold=settings.echo_gate_peak_threshold,
     )
     return collector, gate
 

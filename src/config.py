@@ -172,7 +172,7 @@ class Settings:
     confirmation_timeout_seconds: int = 30
     transcript_retention_days: int = 30
     min_action_confidence: float = 0.8
-    bot_speaking_cooldown_seconds: float = 2.0
+    bot_speaking_cooldown_seconds: float = 1.0
     # Open-mic barge-in: while the bot is speaking, a genuine human
     # interruption should stop it. Without headphones the bot's own
     # audio echoes back through the mic, so we only treat heard speech
@@ -189,9 +189,11 @@ class Settings:
     # errors. Disable if using headphones (no echo) or if it drops
     # legitimate speech.
     echo_gate_enabled: bool = True
-    echo_gate_threshold: float = 0.3
+    echo_gate_threshold: float = 0.15
     echo_gate_buffer_seconds: float = 1.0
-    echo_gate_cooldown_seconds: float = 0.5
+    echo_gate_cooldown_seconds: float = 0.3
+    echo_gate_peak_decay: float = 0.85
+    echo_gate_peak_threshold: float = 0.42
 
     echo_classifier_enabled: bool = True
     warmup_interval_seconds: float = 240.0
@@ -309,7 +311,9 @@ class Settings:
     # user pauses briefly mid-sentence (~0.5-1s). Buffer text and wait this
     # many seconds for a follow-up fragment before processing. 0 disables
     # the debounce — each frame dispatches immediately (legacy behaviour).
-    transcript_debounce_seconds: float = 0.6
+    # 0.3s provides a tighter debounce window for faster response while
+    # still catching most STT fragment splits.
+    transcript_debounce_seconds: float = 0.3
     # Phase 2: which tools the Pipecat-native pipeline may invoke via
     # register_function. Names are the tool identifiers defined in
     # src/tool_registry.py. None = use all enabled tools from the registry.
@@ -389,6 +393,22 @@ class Settings:
     agent_permission_timeout_seconds: float = 120.0
     opencode_binary: str | None = None
 
+    # VAD (Voice Activity Detection) parameters. Tune these to adjust how
+    # sensitive heare is to speech vs silence. Lower confidence = more
+    # sensitive (triggers on quieter sounds). Lower stop_secs = faster
+    # turn-end detection (but may cut off pauses mid-sentence).
+    vad_confidence: float = 0.3
+    vad_start_secs: float = 0.1
+    vad_stop_secs: float = 0.2
+    vad_min_volume: float = 0.1
+
+    # Audio gain / volume controls. Applied as multipliers to raw PCM
+    # samples. 1.0 = unity (no change). 0.0 = silence. >1.0 = amplify.
+    # input_gain affects the mic signal before STT.
+    # output_volume affects the TTS signal before the speaker.
+    input_gain: float = 1.0
+    output_volume: float = 1.0
+
     # Audio device selection (optional). Set via config.toml or at
     # runtime via ``heare audio-input <name>`` / ``heare audio-output
     # <name>``. When None (default) the system default device is used.
@@ -403,6 +423,13 @@ class Settings:
     audio_output_device_file: Path = field(
         default_factory=lambda: HEARE_HOME / "audio_output_device"
     )
+
+    # Sidetone — copies mic input to speaker so the user can monitor
+    # exactly what the agent hears. Gated off during bot speech to
+    # prevent feedback loops.
+    sidetone_enabled: bool = False
+    sidetone_file: Path = field(default_factory=lambda: HEARE_HOME / "sidetone.flag")
+    sidetone_volume: float = 0.5
 
     def __post_init__(self) -> None:
         # CCS-01 invariant: a refinement window longer than the idle
@@ -455,6 +482,61 @@ def load_settings() -> Settings:
         if not interrupt_enabled:
             settings.interrupt_enabled_file.parent.mkdir(parents=True, exist_ok=True)
             settings.interrupt_enabled_file.touch(exist_ok=True)
+
+    # [audio] section — VAD sensitivity, mic gain, speaker volume.
+    audio_sec = toml_data.get("audio", {})
+    if isinstance(audio_sec, dict):
+        for attr, key in (
+            ("vad_confidence", "vad_confidence"),
+            ("vad_start_secs", "vad_start_secs"),
+            ("vad_stop_secs", "vad_stop_secs"),
+            ("vad_min_volume", "vad_min_volume"),
+            ("input_gain", "input_gain"),
+            ("output_volume", "output_volume"),
+            ("sidetone_volume", "sidetone_volume"),
+        ):
+            if key in audio_sec:
+                try:
+                    val = float(audio_sec[key])
+                    setattr(settings, attr, val)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "[audio].%s is not a float — keeping default (%s)",
+                        key,
+                        getattr(settings, attr),
+                    )
+
+    # Env var overrides for audio settings
+    for env_key, attr, min_val, max_val in (
+        ("HEARE_VAD_CONFIDENCE", "vad_confidence", 0.0, 1.0),
+        ("HEARE_VAD_START_SECS", "vad_start_secs", 0.0, 2.0),
+        ("HEARE_VAD_STOP_SECS", "vad_stop_secs", 0.0, 2.0),
+        ("HEARE_VAD_MIN_VOLUME", "vad_min_volume", 0.0, 2.0),
+        ("HEARE_INPUT_GAIN", "input_gain", 0.0, 5.0),
+        ("HEARE_OUTPUT_VOLUME", "output_volume", 0.0, 5.0),
+    ):
+        raw = os.environ.get(env_key)
+        if raw is not None:
+            try:
+                val = float(raw)
+                if min_val <= val <= max_val:
+                    setattr(settings, attr, val)
+                else:
+                    logger.warning(
+                        "%s=%s out of range [%s, %s] — keeping default (%s)",
+                        env_key,
+                        raw,
+                        min_val,
+                        max_val,
+                        getattr(settings, attr),
+                    )
+            except ValueError:
+                logger.warning(
+                    "%s=%s is not a float — keeping default (%s)",
+                    env_key,
+                    raw,
+                    getattr(settings, attr),
+                )
 
     # Build command_keyword_pattern from wake_word if the user customized it
     if settings.wake_word != "гава":

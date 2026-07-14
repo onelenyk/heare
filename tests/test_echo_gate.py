@@ -108,6 +108,8 @@ async def test_echo_gate_passes_uncorrelated_audio():
     settings = Settings()
     settings.echo_gate_threshold = 0.3
     settings.echo_gate_cooldown_seconds = 0.5
+    settings.echo_gate_peak_threshold = 0.42
+    settings.echo_gate_peak_decay = 0.85
     _, gate = create_echo_gate_stages(state, settings)
     pushed = _capture(gate)
 
@@ -116,7 +118,8 @@ async def test_echo_gate_passes_uncorrelated_audio():
     state.add_bot_audio(bot_pcm, source_sample_rate=16000)
     state.set_bot_speaking(True)
 
-    noise = np.random.randn(3200).astype(np.float32) * 1000
+    # Loud enough to pass the peak gate (peak > 0.42)
+    noise = np.random.randn(3200).astype(np.float32) * 20000
     mic_pcm = noise.astype(np.int16).tobytes()
     mic_frame = InputAudioRawFrame(
         audio=mic_pcm,
@@ -214,3 +217,85 @@ async def test_echo_gate_cooldown():
 
     input_frames = [f for f, _ in pushed if isinstance(f, InputAudioRawFrame)]
     assert len(input_frames) == 0
+
+
+# ---------------------------------------------------------------------------
+# Peak energy gate (Step 2 of echo/barge-in fix)
+
+
+async def test_peak_gate_drops_quiet_frames():
+    """Quiet frames (peak < threshold) are dropped during bot_speaking."""
+    state = EchoState(buffer_seconds=1.0, target_sample_rate=16000)
+    settings = Settings()
+    settings.echo_gate_threshold = 0.3
+    settings.echo_gate_cooldown_seconds = 0.5
+    settings.echo_gate_peak_threshold = 0.42
+    settings.echo_gate_peak_decay = 0.85
+    _, gate = create_echo_gate_stages(state, settings)
+    pushed = _capture(gate)
+
+    state.set_bot_speaking(True)
+
+    quiet = np.zeros(3200, dtype=np.int16)
+    mic_frame = InputAudioRawFrame(
+        audio=quiet.tobytes(),
+        sample_rate=16000,
+        num_channels=1,
+    )
+    await gate.process_frame(mic_frame, FrameDirection.DOWNSTREAM)
+
+    input_frames = [f for f, _ in pushed if isinstance(f, InputAudioRawFrame)]
+    assert len(input_frames) == 0
+
+
+async def test_peak_gate_passes_loud_frames():
+    """Loud frames (peak > threshold) pass through during bot_speaking."""
+    state = EchoState(buffer_seconds=1.0, target_sample_rate=16000)
+    settings = Settings()
+    settings.echo_gate_threshold = 0.3
+    settings.echo_gate_cooldown_seconds = 0.5
+    settings.echo_gate_peak_threshold = 0.42
+    settings.echo_gate_peak_decay = 0.85
+    _, gate = create_echo_gate_stages(state, settings)
+    pushed = _capture(gate)
+
+    state.set_bot_speaking(True)
+
+    loud = (np.sin(np.linspace(0, 10 * np.pi, 3200)) * 32000).astype(np.int16)
+    mic_frame = InputAudioRawFrame(
+        audio=loud.tobytes(),
+        sample_rate=16000,
+        num_channels=1,
+    )
+    await gate.process_frame(mic_frame, FrameDirection.DOWNSTREAM)
+
+    input_frames = [f for f, _ in pushed if isinstance(f, InputAudioRawFrame)]
+    assert len(input_frames) == 1
+
+
+async def test_peak_decays_over_time():
+    """recent_peak decays toward 0 when fed quiet frames."""
+    state = EchoState(buffer_seconds=1.0, target_sample_rate=16000)
+    settings = Settings()
+    settings.echo_gate_threshold = 0.3
+    settings.echo_gate_cooldown_seconds = 0.5
+    settings.echo_gate_peak_threshold = 0.42
+    settings.echo_gate_peak_decay = 0.85
+    _, gate = create_echo_gate_stages(state, settings)
+    _capture(gate)
+
+    gate._recent_peak = 0.9
+    state.set_bot_speaking(True)
+
+    quiet = np.zeros(3200, dtype=np.int16)
+    for _ in range(10):
+        frame = InputAudioRawFrame(
+            audio=quiet.tobytes(),
+            sample_rate=16000,
+            num_channels=1,
+        )
+        await gate.process_frame(frame, FrameDirection.DOWNSTREAM)
+
+    # 0.9 * (0.85^10) ≈ 0.177
+    assert gate._recent_peak < 0.3
+    assert gate._recent_peak > 0.0
