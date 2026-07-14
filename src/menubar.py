@@ -125,6 +125,8 @@ class HeareMenuBar(rumps.App):
             traceback.print_exc()
         finally:
             loop.close()
+        _release_lock()
+        os._exit(0)
 
     async def _serve(self):
         import logging.handlers  # noqa: F401 — force PyInstaller bundling
@@ -236,8 +238,7 @@ class HeareMenuBar(rumps.App):
                             except asyncio.CancelledError:
                                 pass
                         await runner.cleanup()
-                        _release_lock()
-                        return  # exit _serve(), asyncio loop stops
+                        return
 
                 except Exception:
                     import logging as _log
