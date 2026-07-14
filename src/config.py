@@ -195,6 +195,13 @@ class Settings:
     echo_gate_peak_decay: float = 0.85
     echo_gate_peak_threshold: float = 0.42
 
+    # WebRTC AEC3 acoustic echo cancellation filter. When enabled, runs the
+    # mic signal through AEC3 (with optional noise suppression) to remove the
+    # bot's own echo before STT. Requires pywebrtc-audio. Soft-fail on import
+    # error — the daemon logs a warning and disables AEC.
+    aec_enabled: bool = True
+    aec_cooldown_seconds: float = 0.5
+
     echo_classifier_enabled: bool = True
     warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")

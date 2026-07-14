@@ -322,6 +322,7 @@ def _assemble_native_stages(
     input_gain: Any = None,
     output_volume: Any = None,
     sidetone: Any = None,
+    aec_filter: Any = None,
 ) -> list:
     """Pure stage-list assembly, factored out for unit testing.
 
@@ -360,6 +361,11 @@ def _assemble_native_stages(
     # own echo from reaching STT.
     if echo_gate is not None:
         stages.append(echo_gate)
+    # aec_filter sits AFTER echo_gate and BEFORE sidetone. WebRTC AEC3
+    # subtracts the bot's echo from the mic signal (adaptive filter)
+    # before it reaches STT. Noise suppression is a bonus side-effect.
+    if aec_filter is not None:
+        stages.append(aec_filter)
     # sidetone sits BETWEEN echo_gate and STT. It copies mic audio
     # (16 kHz) to speaker output (24 kHz) so the user can monitor what
     # the agent hears. Gated off during bot speech to prevent feedback.
@@ -949,19 +955,26 @@ async def build_pipeline(
     # pipeline frame pushes an InterruptionFrame upstream.
     cancel_flag_gate = create_cancel_flag_gate(state=state)
 
-    # Acoustic echo gate — cross-correlates mic input against recent bot
-    # output audio and drops correlated frames before they reach STT.
+    # Shared EchoState ring buffer — used by both echo_gate (cross-correlation)
+    # and AEC3 filter (adaptive acoustic echo cancellation). Created when at
+    # least one of the two subsystems is enabled.
+    echo_state: Any = None
     echo_gate_proc = None
     echo_collector = None
-    if settings.echo_gate_enabled:
+    if settings.echo_gate_enabled or settings.aec_enabled:
+        from src.pipeline.echo_state import EchoState
+
+        echo_state = EchoState(
+            buffer_seconds=settings.echo_gate_buffer_seconds,
+            target_sample_rate=16000,
+        )
+
+    # Acoustic echo gate — cross-correlates mic input against recent bot
+    # output audio and drops correlated frames before they reach STT.
+    if settings.echo_gate_enabled and echo_state is not None:
         try:
-            from src.pipeline.echo_state import EchoState
             from src.pipeline.stages.echo_gate import create_echo_gate_stages
 
-            echo_state = EchoState(
-                buffer_seconds=settings.echo_gate_buffer_seconds,
-                target_sample_rate=16000,
-            )
             echo_collector, echo_gate_proc = create_echo_gate_stages(
                 echo_state, settings
             )
@@ -975,6 +988,27 @@ async def build_pipeline(
             logger.exception("echo_gate: creation failed (non-fatal)")
             echo_gate_proc = None
             echo_collector = None
+
+    # WebRTC AEC3 acoustic echo cancellation — adaptive filter subtraction
+    # that removes bot echo from the mic signal before STT. Requires the
+    # pywebrtc-audio package. Soft-fail if the import fails.
+    aec_filter_proc = None
+    if settings.aec_enabled and echo_state is not None:
+        try:
+            from src.pipeline.stages.webrtc_aec_filter import create_aec_filter
+
+            aec_filter_proc = create_aec_filter(
+                echo_state=echo_state,
+                sample_rate=16000,
+                cooldown_seconds=settings.aec_cooldown_seconds,
+            )
+            logger.info(
+                "AEC3 filter: active (cooldown=%.1fs)",
+                settings.aec_cooldown_seconds,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("AEC3 filter: creation failed (non-fatal)")
+            aec_filter_proc = None
 
     # ------------------------------------------------------------------
     # Sidetone — copies mic input to speaker so the user can monitor
@@ -1017,6 +1051,7 @@ async def build_pipeline(
         cancel_flag_gate=cancel_flag_gate,
         echo_gate=echo_gate_proc,
         echo_collector=echo_collector,
+        aec_filter=aec_filter_proc,
         sidetone=sidetone,
         input_gain=input_gain_proc,
         output_volume=output_volume_proc,

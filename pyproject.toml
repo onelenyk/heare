@@ -15,6 +15,8 @@ dependencies = [
     "aiohttp>=3.13.5",
     "pyaudio>=0.2.14",
     "pyinstaller>=6.20.0",
+    "rumps>=0.4.0",
+    "pywebrtc-audio>=0.1.0",
 ]
 
 [dependency-groups]
