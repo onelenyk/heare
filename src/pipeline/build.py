@@ -38,6 +38,10 @@ from src.pipeline.stages.tts_scrub_processor import create_tts_scrub_processor
 from src.pipeline.stages.usage_recorder import create_usage_recorder
 from src.pipeline.stages.cancel_flag_gate import create_cancel_flag_gate
 from src.pipeline.stages.interrupt_toggle_gate import create_interrupt_toggle_gate
+from src.pipeline.stages.gain_control import (
+    create_input_gain_processor,
+    create_output_volume_processor,
+)
 from src.pipeline.stages.mute_gate import create_input_mute_gate, create_mute_gate
 from src.agent.llm.providers import PROVIDERS, get_available
 from src.config import Settings
@@ -53,6 +57,7 @@ from src.agent.tools.system import build_tools_schema, register_all_tools
 from src.pipeline.stages.transcription_gate import create_transcription_gate
 from src.pipeline.stages.agent_state_observer import create_agent_state_observer
 from src.pipeline.stages.voice_state_observer import create_voice_state_observer
+from src.pipeline.stages.audio_monitor import SidetoneProcessor
 from src.pipeline.stages.echo_classifier import create_echo_classifier
 from src.voice.tts.cache import TTSCache
 from src.voice.tts.edge import create_edge_tts_service
@@ -314,6 +319,9 @@ def _assemble_native_stages(
     cancel_flag_gate: Any = None,
     echo_gate: Any = None,
     echo_collector: Any = None,
+    input_gain: Any = None,
+    output_volume: Any = None,
+    sidetone: Any = None,
 ) -> list:
     """Pure stage-list assembly, factored out for unit testing.
 
@@ -331,6 +339,10 @@ def _assemble_native_stages(
     # before STT (and any speaker buffering) runs.
     if input_mute_gate is not None:
         stages.append(input_mute_gate)
+    # input_gain sits right after input_mute_gate — gain is applied to mic
+    # audio before STT.  Hot-reloadable via state key "input_gain".
+    if input_gain is not None:
+        stages.append(input_gain)
     # interrupt_toggle_gate sits right after input_mute_gate so it can
     # drop mic input while the bot is speaking when the user has disabled
     # barge-in via the interrupt toggle (flag file present).
@@ -348,6 +360,11 @@ def _assemble_native_stages(
     # own echo from reaching STT.
     if echo_gate is not None:
         stages.append(echo_gate)
+    # sidetone sits BETWEEN echo_gate and STT. It copies mic audio
+    # (16 kHz) to speaker output (24 kHz) so the user can monitor what
+    # the agent hears. Gated off during bot speech to prevent feedback.
+    if sidetone is not None:
+        stages.append(sidetone)
     stages.extend([stt, stt_error_observer])
     # voice_state_observer sits BEFORE transcription_gate so it sees every
     # raw TranscriptionFrame (the gate may suppress some for cancel words /
@@ -390,6 +407,11 @@ def _assemble_native_stages(
     # that is actually being played (muted audio is not echoed).
     if echo_collector is not None:
         stages.append(echo_collector)
+    # output_volume sits right before transport.output() so volume is applied
+    # to TTS audio before it reaches the speaker.  Hot-reloadable via state
+    # key "output_volume".
+    if output_volume is not None:
+        stages.append(output_volume)
     stages.extend([transport_output, assistant_aggregator])
     return stages
 
@@ -437,6 +459,9 @@ async def build_pipeline(
     from pipecat.services.groq.stt import GroqSTTService
     from pipecat.transcriptions.language import Language
     from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+    from pipecat.turns.user_start.vad_user_turn_start_strategy import (
+        VADUserTurnStartStrategy,
+    )
     from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
     from src.agent.llm.switchable import SwitchableLLMService
@@ -461,7 +486,12 @@ async def build_pipeline(
     # Audio + STT + TTS (mostly identical to legacy build_pipeline)
     # ------------------------------------------------------------------
     vad = SileroVADAnalyzer(
-        params=VADParams(stop_secs=0.3, start_secs=0.2, confidence=0.5, min_volume=0.2)
+        params=VADParams(
+            stop_secs=getattr(settings, "vad_stop_secs", 0.2),
+            start_secs=getattr(settings, "vad_start_secs", 0.2),
+            confidence=getattr(settings, "vad_confidence", 0.5),
+            min_volume=getattr(settings, "vad_min_volume", 0.2),
+        )
     )
     smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
     # Pipecat 0.0.108 moved vad_analyzer/turn_analyzer off the transport and
@@ -730,6 +760,7 @@ async def build_pipeline(
         user_params=LLMUserAggregatorParams(
             vad_analyzer=vad,
             user_turn_strategies=UserTurnStrategies(
+                start=[VADUserTurnStartStrategy(enable_interruptions=False)],
                 stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_turn)],
             ),
         ),
@@ -847,6 +878,8 @@ async def build_pipeline(
         language_state=language_state,
         conversation_manager=conversation_manager,
         capability_index=capability_index,
+        state=state,
+        settings=settings,
     )
 
     # Capture LLM text upstream of TTS and log per-response to transcripts.
@@ -895,6 +928,21 @@ async def build_pipeline(
     # while the bot is speaking, letting the bot finish its utterance.
     interrupt_toggle_gate = create_interrupt_toggle_gate(state=state)
 
+    # Input gain processor — multiplies mic audio samples before STT.
+    # Reads ``input_gain`` from state (hot-reloadable via mic_gain tool),
+    # falls back to settings.input_gain.  Requires state; skipped when
+    # state is None (e.g. test builds).
+    input_gain_proc = None
+    if state is not None:
+        input_gain_proc = create_input_gain_processor(settings=settings, state=state)
+
+    # Output volume processor — multiplies TTS audio samples before speaker.
+    # Reads ``output_volume`` from state (hot-reloadable via volume tool),
+    # falls back to settings.output_volume.
+    output_volume_proc = None
+    if state is not None:
+        output_volume_proc = create_output_volume_processor(settings=settings, state=state)
+
     # Cancel-flag gate — external "interrupt now" trigger. Mirrors the
     # mute-gate flag-file contract: any process (overlay, watch dashboard,
     # hotkey daemon) touches ``settings.cancel_flag_file`` and the next
@@ -929,6 +977,19 @@ async def build_pipeline(
             echo_collector = None
 
     # ------------------------------------------------------------------
+    # Sidetone — copies mic input to speaker so the user can monitor
+    # exactly what the agent hears.  Sits between echo_gate and STT.
+    # Gate is gated OFF during bot speech by the processor internally.
+    # ------------------------------------------------------------------
+    sidetone = SidetoneProcessor(
+        state=state,
+        settings=settings,
+        sample_rate_in=16000,
+        sample_rate_out=settings.tts_sample_rate,
+        volume=settings.sidetone_volume,
+    )
+
+    # ------------------------------------------------------------------
     # Compose stages and build the task
     # ------------------------------------------------------------------
     stages = _assemble_native_stages(
@@ -956,6 +1017,9 @@ async def build_pipeline(
         cancel_flag_gate=cancel_flag_gate,
         echo_gate=echo_gate_proc,
         echo_collector=echo_collector,
+        sidetone=sidetone,
+        input_gain=input_gain_proc,
+        output_volume=output_volume_proc,
     )
 
     logger.info(

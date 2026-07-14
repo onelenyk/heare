@@ -193,3 +193,37 @@ def test_pipeline_module_imports_and_exports() -> None:
     assert hasattr(pipeline, "_assemble_native_stages")
     assert hasattr(pipeline, "_build_system_prompt")
     assert hasattr(pipeline, "_wire_language_state")
+
+
+def test_vad_start_strategy_disables_interruptions() -> None:
+    """Step 1: VAD start strategy with enable_interruptions=False.
+
+    The VAD should still detect user speech for turn tracking, but
+    must NOT trigger broadcast_interruption().  This prevents the bot
+    from self-interrupting when echo triggers VAD.
+    """
+    from pipecat.turns.user_start.vad_user_turn_start_strategy import (
+        VADUserTurnStartStrategy,
+    )
+
+    strategy = VADUserTurnStartStrategy(enable_interruptions=False)
+    assert strategy._enable_interruptions is False, (
+        "VADUserTurnStartStrategy with enable_interruptions=False "
+        "should have _enable_interruptions set to False"
+    )
+
+
+def test_default_vad_strategy_enables_interruptions() -> None:
+    """Sanity check: default Pipecat behavior has interruptions enabled.
+
+    By default VADUserTurnStartStrategy has enable_interruptions=True,
+    which causes the self-interruption problem we're fixing.
+    """
+    from pipecat.turns.user_start.vad_user_turn_start_strategy import (
+        VADUserTurnStartStrategy,
+    )
+
+    strategy = VADUserTurnStartStrategy()
+    assert strategy._enable_interruptions is True, (
+        "Default VADUserTurnStartStrategy should have interruptions enabled"
+    )
