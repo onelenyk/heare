@@ -88,7 +88,7 @@ export default function Dashboard({ onOpenSetup }) {
     let cancelled = false;
     async function pollLogs() {
       try {
-        const r = await fetch(API + '/logs?limit=200');
+        const r = await fetch(API + '/logs?limit=1000');
         const d = await r.json();
         if (!cancelled) setLogs(d.lines || []);
       } catch (e) { /* transient — the next tick retries */ }

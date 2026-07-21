@@ -210,7 +210,6 @@
   .history-table th:nth-child(2), .history-table td:nth-child(2) { width: 44px; }
   .history-table th:nth-child(3), .history-table td:nth-child(3) { width: auto; }
   .dash-side td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dash-side .scroll-logs td { white-space: pre-wrap; overflow-wrap: anywhere; }
   .row { display: flex; gap: var(--s3); }
   .col { flex: 1; min-width: 0; }
   .btn-row { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s2); }
@@ -388,6 +387,20 @@
     font-weight: 400; text-transform: none; letter-spacing: 0;
     color: var(--muted); opacity: 0.7; margin-left: var(--s1);
   }
+  /* Sort toggles — state and control in one place. */
+  .th-sort, .log-sort-btn {
+    background: none; border: 1px solid transparent; color: var(--muted);
+    cursor: pointer; font-weight: 400; text-transform: none; letter-spacing: 0;
+    font-size: var(--fs-2xs); padding: 1px 5px; border-radius: var(--r-xs);
+    margin-left: var(--s1); white-space: nowrap;
+  }
+  .th-sort:hover, .log-sort-btn:hover {
+    color: var(--text); border-color: var(--border); background: var(--card-2);
+  }
+  .log-sort-btn {
+    margin-left: 0; border-color: var(--border); flex: none;
+    font-family: var(--sans);
+  }
   .cell-date { display: block; font-size: 9px; opacity: 0.65; }
   .history-row { cursor: pointer; }
   .history-row:hover { background: var(--card-2); }
@@ -397,6 +410,99 @@
   }
   .history-more { display: flex; justify-content: center; padding: var(--s2); }
   .history-more-note { font-size: var(--fs-2xs); color: var(--muted); }
+
+  /* ── Log cards ──
+     Parsed into level / logger / time / message instead of raw lines, with a
+     severity stripe so errors are findable without reading. */
+  .log-empty {
+    text-align: center; color: var(--muted); padding: var(--s4); font-size: var(--fs-sm);
+  }
+
+  /* ── Log filters ── */
+  .log-filters {
+    display: flex; flex-direction: column; gap: var(--s2);
+    padding-bottom: var(--s2); margin-bottom: var(--s2);
+    border-bottom: 1px solid var(--border); flex: none;
+  }
+  .log-filter-row { display: flex; gap: var(--s1); }
+  .log-search {
+    flex: 1; min-width: 0; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r-xs);
+    padding: 4px var(--s2); font-size: var(--fs-xs); font-family: var(--mono);
+  }
+  .log-search:focus { outline: none; border-color: var(--accent); }
+  .log-level-select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--r-xs); padding: 4px var(--s2); font-size: var(--fs-xs);
+    flex: none;
+  }
+  .log-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+  .log-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 999px; padding: 2px 7px; cursor: pointer;
+    font-size: var(--fs-2xs); font-weight: 600; opacity: 0.5;
+    transition: all var(--tran);
+  }
+  .log-chip:hover { color: var(--text); border-color: var(--muted); }
+  .log-chip.on {
+    opacity: 1; color: var(--accent); border-color: var(--accent);
+    background: rgba(157,124,255,0.1);
+  }
+  .log-chip-count {
+    font-variant-numeric: tabular-nums; opacity: 0.7; font-weight: 400;
+  }
+  .log-chip-all {
+    background: none; border: 0; color: var(--muted); cursor: pointer;
+    font-size: var(--fs-2xs); text-decoration: underline; padding: 2px 4px;
+  }
+  .log-chip-all:hover { color: var(--text); }
+  .log-card {
+    border-left: 3px solid var(--border);
+    background: var(--bg); border-radius: var(--r-xs);
+    padding: 5px var(--s2); margin-bottom: var(--s1);
+  }
+  .log-card-head {
+    display: flex; align-items: baseline; gap: var(--s2);
+    font-size: var(--fs-2xs);
+  }
+  .log-level {
+    font-weight: 700; letter-spacing: 0.5px; flex: none;
+    font-family: var(--mono);
+  }
+  .log-logger {
+    color: var(--muted); font-family: var(--mono); flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .log-time {
+    color: var(--muted); opacity: 0.7; font-family: var(--mono); flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .log-msg {
+    font-family: var(--mono); font-size: var(--fs-xs); color: var(--text);
+    white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px;
+  }
+  /* Tracebacks can run long — keep the card compact and scroll inside it. */
+  .log-detail {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    white-space: pre; overflow: auto; max-height: 150px;
+    margin-top: var(--s1); padding: var(--s1) var(--s2);
+    background: var(--card-2); border-radius: var(--r-xs);
+  }
+
+  .log-error { border-left-color: var(--danger); }
+  .log-error .log-level { color: var(--danger); }
+  .log-error .log-msg { color: var(--accent-red); }
+  .log-critical { border-left-color: var(--danger); background: rgba(239,122,107,0.07); }
+  .log-critical .log-level { color: var(--danger); }
+  .log-warning { border-left-color: var(--warn); }
+  .log-warning .log-level { color: var(--warn); }
+  .log-info { border-left-color: var(--border); }
+  .log-info .log-level { color: var(--muted); }
+  .log-debug { border-left-color: transparent; opacity: 0.75; }
+  .log-debug .log-level { color: var(--muted); }
+  /* Orphan continuation — the tail landed mid-traceback. */
+  .log-cont { border-left-color: var(--danger); }
 
   /* ── Audio device table ── */
   .audio-list { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; margin-top: var(--s1); }
