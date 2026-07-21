@@ -41,6 +41,54 @@ from src.dashboard_data import (  # noqa: E402
 from src.version import app_version  # noqa: E402
 
 
+def tail_lines(
+    path: Path,
+    count: int,
+    *,
+    window: int = 64 * 1024,
+    max_bytes: int = 1_000_000,
+) -> list[str]:
+    """Return the last ``count`` lines of ``path`` without reading it whole.
+
+    The daemon log rotates at 10 MB, so ``read_text()`` here meant parsing
+    millions of characters to serve a handful of lines on every poll.
+
+    The window grows when the tail turns out to be long-lined — the log
+    carries multi-KB single lines (full system-prompt dumps), so a fixed
+    window can come back with fewer lines than asked for. Reading is capped
+    at ``max_bytes`` so a pathological file can't undo the point of this.
+
+    ``window`` is the initial read size; it is a parameter so the growth path
+    can be exercised without writing a multi-megabyte fixture.
+    """
+    while True:
+        # Reopened each pass so a rotation between attempts can't leave us
+        # reading from a handle pointing at the unlinked old file.
+        with path.open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - window)
+            f.seek(start)
+            data = f.read()
+        text = data.decode("utf-8", errors="replace")
+        if start > 0:
+            # The window almost certainly cut a line in half — drop it.
+            text = text.split("\n", 1)[-1]
+        lines = text.splitlines()
+        if len(lines) >= count or start == 0 or window >= max_bytes:
+            return lines[-count:]
+        window *= 4
+
+
+def _clamp_int(raw: str | None, default: int, low: int, high: int) -> int:
+    """Parse a query-string integer, falling back to ``default`` if unusable."""
+    try:
+        value = int(raw) if raw not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, value))
+
+
 class API:
     def __init__(self, state, config, daemon_control=None):
         self.state = state
@@ -377,18 +425,31 @@ class API:
         return web.json_response({"ok": True, "key": key, "value": str(value)})
 
     async def _handle_activity(self, request):
+        limit = _clamp_int(request.query.get("limit"), 50, 1, 500)
+        # Keyset paging: transcripts.id is an append-only autoincrement, so id
+        # order matches ts order and "older than" is a plain id comparison.
+        before_id = _clamp_int(request.query.get("before_id"), 0, 0, 2**63 - 1)
         try:
             import aiosqlite
 
+            sql = (
+                "SELECT id, ts, mode as who, agent_spoken as type, text as content "
+                "FROM transcripts "
+            )
+            params: list = []
+            if before_id:
+                sql += "WHERE id < ? "
+                params.append(before_id)
+            sql += "ORDER BY ts DESC LIMIT ?"
+            params.append(limit)
+
             async with aiosqlite.connect(str(self.config.db_path)) as db:
                 db.row_factory = aiosqlite.Row
-                rows = await db.execute_fetchall(
-                    "SELECT ts, mode as who, agent_spoken as type, text as content "
-                    "FROM transcripts ORDER BY ts DESC LIMIT 30"
-                )
+                rows = await db.execute_fetchall(sql, tuple(params))
             return web.json_response(
                 [
                     {
+                        "id": r["id"],
                         "ts": r["ts"],
                         "who": "bot" if r["who"] == "assistant" else "you",
                         "type": "said",
@@ -404,8 +465,9 @@ class API:
         log_file = self.config.log_dir / "daemon.log"
         if not log_file.exists():
             return web.json_response({"lines": []})
+        limit = _clamp_int(request.query.get("limit"), 200, 1, 1000)
         try:
-            lines = log_file.read_text().splitlines()[-20:]
+            lines = await asyncio.to_thread(tail_lines, log_file, limit)
             return web.json_response({"lines": lines})
         except Exception:
             return web.json_response({"lines": []})

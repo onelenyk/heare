@@ -383,6 +383,21 @@
   .scroll { max-height: 300px; overflow-y: auto; }
   .scroll-logs { max-height: 240px; }
 
+  /* ── History rows ── */
+  .th-hint {
+    font-weight: 400; text-transform: none; letter-spacing: 0;
+    color: var(--muted); opacity: 0.7; margin-left: var(--s1);
+  }
+  .cell-date { display: block; font-size: 9px; opacity: 0.65; }
+  .history-row { cursor: pointer; }
+  .history-row:hover { background: var(--card-2); }
+  /* Clipped to one line until clicked, then wraps to show the whole message. */
+  .history-row.expanded .cell-content {
+    white-space: normal; overflow: visible; word-break: break-word;
+  }
+  .history-more { display: flex; justify-content: center; padding: var(--s2); }
+  .history-more-note { font-size: var(--fs-2xs); color: var(--muted); }
+
   /* ── Audio device table ── */
   .audio-list { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; margin-top: var(--s1); }
   .audio-list th {

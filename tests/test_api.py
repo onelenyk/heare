@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.api import API
+from src.api import API, tail_lines
 from src.agent.modes import VALID_MODES
 
 
@@ -42,10 +43,13 @@ def api(mock_state, mock_config):
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
-def _mock_request(*, json_data: dict | None = None) -> MagicMock:
+def _mock_request(
+    *, json_data: dict | None = None, query: dict | None = None
+) -> MagicMock:
     req = MagicMock()
     if json_data is not None:
         req.json = AsyncMock(return_value=json_data)
+    req.query = query if query is not None else {}
     return req
 
 
@@ -451,3 +455,188 @@ def test_routes_registered(api) -> None:
 
 def test_mode_values_are_valid() -> None:
     assert all(isinstance(m, str) and m for m in VALID_MODES)
+
+
+# ---------------------------------------------------------------------------
+# tail_lines — the daemon log is read on every dashboard poll, so it must not
+# scale with file size. These pin the seek-from-the-end behaviour.
+# ---------------------------------------------------------------------------
+
+
+def test_tail_lines_file_smaller_than_window(tmp_path) -> None:
+    f = tmp_path / "daemon.log"
+    f.write_text("a\nb\nc\n")
+    assert tail_lines(f, 2) == ["b", "c"]
+
+
+def test_tail_lines_count_exceeds_file(tmp_path) -> None:
+    """Asking for more lines than exist returns everything, not an error."""
+    f = tmp_path / "daemon.log"
+    f.write_text("only\ntwo\n")
+    assert tail_lines(f, 500) == ["only", "two"]
+
+
+def test_tail_lines_exact_count(tmp_path) -> None:
+    f = tmp_path / "daemon.log"
+    f.write_text("\n".join(f"line{i}" for i in range(10)) + "\n")
+    assert tail_lines(f, 10) == [f"line{i}" for i in range(10)]
+
+
+def test_tail_lines_empty_file(tmp_path) -> None:
+    f = tmp_path / "daemon.log"
+    f.write_text("")
+    assert tail_lines(f, 10) == []
+
+
+def test_tail_lines_grows_window_for_long_lines(tmp_path) -> None:
+    """A tail longer than the initial window must trigger a wider re-read.
+
+    The real log carries multi-KB single lines (system-prompt dumps), so a
+    fixed window can come back short. Uses a small window rather than a
+    multi-megabyte fixture.
+    """
+    f = tmp_path / "daemon.log"
+    f.write_text("\n".join("x" * 200 for _ in range(50)) + "\n")
+    got = tail_lines(f, 20, window=64)
+    assert len(got) == 20
+    assert all(line == "x" * 200 for line in got)
+
+
+def test_tail_lines_drops_partial_first_line(tmp_path) -> None:
+    """A window landing mid-line must not emit that truncated fragment."""
+    f = tmp_path / "daemon.log"
+    f.write_text("HEADER-THAT-GETS-CUT\nsecond\nthird\n")
+    got = tail_lines(f, 10, window=16, max_bytes=16)
+    assert "HEADER-THAT-GETS-CUT" not in got
+    assert got == [ln for ln in got if not ln.startswith("HEADER")]
+
+
+def test_tail_lines_respects_max_bytes(tmp_path) -> None:
+    """Growth stops at max_bytes even if that yields fewer lines than asked."""
+    f = tmp_path / "daemon.log"
+    f.write_text("\n".join(f"line{i}" for i in range(1000)) + "\n")
+    got = tail_lines(f, 900, window=64, max_bytes=128)
+    assert len(got) < 900
+    assert got[-1] == "line999"
+
+
+# ---------------------------------------------------------------------------
+# GET /logs
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def log_dir(tmp_path):
+    d = tmp_path / "logs"
+    d.mkdir()
+    (d / "daemon.log").write_text("\n".join(f"log{i}" for i in range(400)) + "\n")
+    return d
+
+
+@pytest.mark.asyncio
+async def test_get_logs_default_limit(api, mock_config, log_dir) -> None:
+    mock_config.log_dir = log_dir
+    resp = await api._handle_logs(_mock_request())
+    lines = json.loads(resp.body)["lines"]
+    assert len(lines) == 200
+    assert lines[-1] == "log399"
+
+
+@pytest.mark.asyncio
+async def test_get_logs_respects_limit(api, mock_config, log_dir) -> None:
+    mock_config.log_dir = log_dir
+    resp = await api._handle_logs(_mock_request(query={"limit": "5"}))
+    assert json.loads(resp.body)["lines"] == [f"log{i}" for i in range(395, 400)]
+
+
+@pytest.mark.asyncio
+async def test_get_logs_clamps_limit(api, mock_config, log_dir) -> None:
+    mock_config.log_dir = log_dir
+    high = await api._handle_logs(_mock_request(query={"limit": "99999"}))
+    assert len(json.loads(high.body)["lines"]) == 400  # capped at 1000, file has 400
+    low = await api._handle_logs(_mock_request(query={"limit": "0"}))
+    assert len(json.loads(low.body)["lines"]) == 1
+    junk = await api._handle_logs(_mock_request(query={"limit": "abc"}))
+    assert len(json.loads(junk.body)["lines"]) == 200  # falls back to default
+
+
+@pytest.mark.asyncio
+async def test_get_logs_missing_file(api, mock_config, tmp_path) -> None:
+    mock_config.log_dir = tmp_path / "nope"
+    resp = await api._handle_logs(_mock_request())
+    assert json.loads(resp.body)["lines"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /activity — real SQLite so the paging SQL itself is covered
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def activity_db(tmp_path):
+    db_path = tmp_path / "heare.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE transcripts ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL, "
+        "mode TEXT NOT NULL, agent_spoken INTEGER)"
+    )
+    for i in range(1, 121):
+        conn.execute(
+            "INSERT INTO transcripts (ts, text, mode, agent_spoken) VALUES (?, ?, ?, ?)",
+            (1000.0 + i, f"msg{i}", "assistant" if i % 2 else "user", 1),
+        )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+@pytest.mark.asyncio
+async def test_activity_default_limit(api, mock_config, activity_db) -> None:
+    mock_config.db_path = activity_db
+    resp = await api._handle_activity(_mock_request())
+    rows = json.loads(resp.body)
+    assert len(rows) == 50
+    assert rows[0]["content"] == "msg120"  # newest first
+
+
+@pytest.mark.asyncio
+async def test_activity_includes_id_for_paging(api, mock_config, activity_db) -> None:
+    mock_config.db_path = activity_db
+    resp = await api._handle_activity(_mock_request(query={"limit": "3"}))
+    rows = json.loads(resp.body)
+    assert [r["id"] for r in rows] == [120, 119, 118]
+
+
+@pytest.mark.asyncio
+async def test_activity_before_id_pages_backwards(api, mock_config, activity_db) -> None:
+    mock_config.db_path = activity_db
+    first = json.loads(
+        (await api._handle_activity(_mock_request(query={"limit": "10"}))).body
+    )
+    older = json.loads(
+        (
+            await api._handle_activity(
+                _mock_request(query={"limit": "10", "before_id": str(first[-1]["id"])})
+            )
+        ).body
+    )
+    assert [r["id"] for r in older] == list(range(110, 100, -1))
+    assert not {r["id"] for r in first} & {r["id"] for r in older}  # no overlap
+
+
+@pytest.mark.asyncio
+async def test_activity_clamps_limit(api, mock_config, activity_db) -> None:
+    mock_config.db_path = activity_db
+    resp = await api._handle_activity(_mock_request(query={"limit": "99999"}))
+    assert len(json.loads(resp.body)) == 120  # capped at 500, table has 120
+
+
+@pytest.mark.asyncio
+async def test_activity_maps_speaker(api, mock_config, activity_db) -> None:
+    mock_config.db_path = activity_db
+    resp = await api._handle_activity(_mock_request(query={"limit": "2"}))
+    rows = json.loads(resp.body)
+    # 'assistant' maps to bot; every other mode collapses to 'you'
+    assert rows[0]["who"] == "you" and rows[0]["content"] == "msg120"
+    assert rows[1]["who"] == "bot" and rows[1]["content"] == "msg119"

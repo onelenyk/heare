@@ -1,7 +1,39 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
-export default function HistoryPanel({ activity, logs, tab, onTabChange, onClose }) {
+// Timestamps only carried HH:MM:SS, so yesterday looked like today. Older
+// rows get a date stacked above the time — keeps the column narrow enough
+// for the sidebar instead of widening it for every row.
+function splitTimestamp(ts) {
+  const d = new Date(ts * 1000);
+  const today = new Date();
+  const sameDay =
+    d.getDate() === today.getDate() &&
+    d.getMonth() === today.getMonth() &&
+    d.getFullYear() === today.getFullYear();
+  return {
+    time: d.toTimeString().slice(0, 8),
+    date: sameDay
+      ? null
+      : `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+  };
+}
+
+export default function HistoryPanel({
+  activity, logs, tab, onTabChange, onClose,
+  onLoadOlder, loadingOlder, noMoreActivity,
+}) {
   const logRef = useRef(null);
+  // Rows are clipped to one line by default; clicking one lets it wrap so the
+  // full message is readable without leaving the panel.
+  const [expanded, setExpanded] = useState(() => new Set());
+
+  function toggleRow(key) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   // Auto-scroll logs to bottom when new lines arrive
   useEffect(() => {
@@ -23,31 +55,62 @@ export default function HistoryPanel({ activity, logs, tab, onTabChange, onClose
           logs ({logs.length})
         </button>
         {onClose && (
-          <button className="modal-close" onClick={onClose} style={{marginLeft: 4}}>{'\u00d7'}</button>
+          <button className="modal-close" onClick={onClose} style={{marginLeft: 4}}>{'×'}</button>
         )}
       </div>
       {tab === "activity" ? (
         <div className="scroll">
           <table className="history-table">
             <thead>
-              <tr><th>time</th><th>who</th><th>content</th></tr>
+              <tr>
+                <th>time</th>
+                <th>who</th>
+                {/* The two tabs run in opposite directions — say so rather
+                    than surprise the reader. */}
+                <th>content <span className="th-hint">newest first</span></th>
+              </tr>
             </thead>
             <tbody>
               {activity.length === 0 ? (
                 <tr>
                   <td colSpan="3" style={{textAlign: "center", color: "var(--muted)", padding: "24px 12px", fontSize: 13}}>
-                    No activity yet {'\u2014'} start speaking
+                    No activity yet {'—'} start speaking
                   </td>
                 </tr>
-              ) : activity.map((row, i) => (
-                <tr key={i}>
-                  <td className="cell-muted" style={{width: 56}}>{new Date(row.ts * 1000).toTimeString().slice(0, 8)}</td>
-                  <td className={row.who === "bot" ? "cell-bot" : "cell-you"} style={{width: 36}}>{row.who}</td>
-                  <td style={{overflow: "hidden", textOverflow: "ellipsis"}}>{(row.content || "").substring(0, 80)}</td>
-                </tr>
-              ))}
+              ) : activity.map((row) => {
+                const key = row.id != null ? row.id : `${row.ts}:${row.content}`;
+                const isOpen = expanded.has(key);
+                const { time, date } = splitTimestamp(row.ts);
+                return (
+                  <tr
+                    key={key}
+                    className={"history-row" + (isOpen ? " expanded" : "")}
+                    onClick={() => toggleRow(key)}
+                  >
+                    <td className="cell-muted">
+                      {date && <span className="cell-date">{date}</span>}
+                      {time}
+                    </td>
+                    <td className={row.who === "bot" ? "cell-bot" : "cell-you"}>{row.who}</td>
+                    <td className="cell-content" title={row.content || ""}>
+                      {row.content || ""}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          {activity.length > 0 && onLoadOlder && (
+            <div className="history-more">
+              {noMoreActivity ? (
+                <span className="history-more-note">no older activity</span>
+              ) : (
+                <button className="btn btn-tiny" onClick={onLoadOlder} disabled={loadingOlder}>
+                  {loadingOlder ? 'loading…' : 'load older'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="scroll scroll-logs" ref={logRef}>

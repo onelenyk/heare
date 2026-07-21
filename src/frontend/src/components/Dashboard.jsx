@@ -18,6 +18,20 @@ import BridgeModal from './BridgeModal';
 import PromptManager from './PromptManager';
 import Toast from './Toast';
 
+const ACTIVITY_PAGE = 50;   // rows fetched on each poll
+const ACTIVITY_OLDER = 100; // rows fetched per "load older" click
+
+// Union by id, newest first. The poll only ever returns the newest page, so a
+// plain replace would discard anything the user paged back to.
+function mergeActivity(prev, incoming) {
+  const byId = new Map();
+  for (const row of [...incoming, ...prev]) {
+    const key = row.id != null ? row.id : `${row.ts}:${row.content}`;
+    if (!byId.has(key)) byId.set(key, row);
+  }
+  return [...byId.values()].sort((a, b) => b.ts - a.ts);
+}
+
 export default function Dashboard({ onOpenSetup }) {
   const [state, setState] = useState({});
   const [activity, setActivity] = useState([]);
@@ -50,6 +64,8 @@ export default function Dashboard({ onOpenSetup }) {
   const [displayFlash, setDisplayFlash] = useState(false);
   const [pollFailed, setPollFailed] = useState(false);
   const [historyTab, setHistoryTab] = useState('activity');
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [noMoreActivity, setNoMoreActivity] = useState(false);
   const [agents, setAgents] = useState([]);
   const [showAgents, setShowAgents] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
@@ -64,19 +80,37 @@ export default function Dashboard({ onOpenSetup }) {
     return () => clearInterval(t);
   }, []);
 
+  // Logs are polled separately, and only while that tab is on screen — the
+  // endpoint tails a file that grows to 10MB, so fetching it once a second
+  // regardless of whether anyone is looking was pure waste.
+  useEffect(() => {
+    if (!showHistory || historyTab !== 'logs') return;
+    let cancelled = false;
+    async function pollLogs() {
+      try {
+        const r = await fetch(API + '/logs?limit=200');
+        const d = await r.json();
+        if (!cancelled) setLogs(d.lines || []);
+      } catch (e) { /* transient — the next tick retries */ }
+    }
+    pollLogs();
+    const t = setInterval(pollLogs, 2000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [showHistory, historyTab]);
+
   async function poll() {
     try {
-      const [sr, ar, lr, dr] = await Promise.all([
+      const [sr, ar, dr] = await Promise.all([
         fetch(API + '/state'),
-        fetch(API + '/activity'),
-        fetch(API + '/logs'),
+        fetch(API + '/activity?limit=' + ACTIVITY_PAGE),
         fetch(API + '/display'),
       ]);
-      const [sData, aData, lData, dData] = await Promise.all([sr.json(), ar.json(), lr.json(), dr.json()]);
+      const [sData, aData, dData] = await Promise.all([sr.json(), ar.json(), dr.json()]);
       setState(sData);
       setInterruptEnabled(sData.interrupt_enabled !== false);
-      setActivity(aData);
-      setLogs(lData.lines || []);
+      // Merge rather than replace so rows pulled in by "load older" survive
+      // the next tick.
+      setActivity(prev => mergeActivity(prev, aData));
       if (dData && dData.content) {
         setDisplay(prev => {
           if (!prev || prev.ts !== dData.ts) {
@@ -94,6 +128,27 @@ export default function Dashboard({ onOpenSetup }) {
       setPollFailed(false);
     } catch(e) {
       setPollFailed(true);
+    }
+  }
+
+  // Page backwards from the oldest row currently held.
+  async function loadOlderActivity() {
+    const oldest = activity[activity.length - 1];
+    if (!oldest || oldest.id == null || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const r = await fetch(
+        API + '/activity?limit=' + ACTIVITY_OLDER + '&before_id=' + oldest.id
+      );
+      const older = await r.json();
+      if (Array.isArray(older)) {
+        if (older.length === 0) setNoMoreActivity(true);
+        setActivity(prev => mergeActivity(prev, older));
+      }
+    } catch (e) {
+      showToastMsg('could not load older activity: ' + e.message, 'err');
+    } finally {
+      setLoadingOlder(false);
     }
   }
 
@@ -456,6 +511,9 @@ export default function Dashboard({ onOpenSetup }) {
               onTabChange={setHistoryTab}
               activity={activity}
               logs={logs}
+              onLoadOlder={loadOlderActivity}
+              loadingOlder={loadingOlder}
+              noMoreActivity={noMoreActivity}
               onClose={() => setShowHistory(false)}
             />
           </aside>
