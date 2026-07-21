@@ -335,8 +335,16 @@ export default function Dashboard({ onOpenSetup }) {
 
   return (
     <div className="dash">
-      {/* Status Bar */}
-      <StatusBar state={state} running={running} post={post} interruptEnabled={interruptEnabled} />
+      {/* Header — identity, vitals, and the always-reachable controls */}
+      <StatusBar
+        state={state}
+        interruptEnabled={interruptEnabled}
+        onModeChange={(mode) => post('/mode', { mode })}
+        onMute={(target) => post('/mute', { target })}
+        onCancel={() => post('/cancel', {})}
+        onInterrupt={(enabled) => { setInterruptEnabled(enabled); post('/interrupt', { enabled }) }}
+        onDaemon={(action) => handleDaemonAction(action)}
+      />
 
       {pollFailed && <div className="warn-banner">⚠ connection lost — data may be stale</div>}
 
@@ -344,7 +352,6 @@ export default function Dashboard({ onOpenSetup }) {
         {/* Left column — every control, always on screen */}
         <aside className="dash-rail">
       <ControlsCard
-        state={state}
         showCanvas={showCanvas}
         showHistory={showHistory}
         showInject={showInject}
@@ -357,14 +364,8 @@ export default function Dashboard({ onOpenSetup }) {
         showTools={showTools}
         showBridge={showBridge}
         showPrompts={showPrompts}
-        interruptEnabled={interruptEnabled}
         chromeProfiles={chromeProfiles}
         chromeProfile={chromeProfile}
-        onModeChange={(mode) => post('/mode', { mode })}
-        onMute={(target) => post('/mute', { target })}
-        onCancel={() => post('/cancel', {})}
-        onInterrupt={(enabled) => { setInterruptEnabled(enabled); post('/interrupt', { enabled }) }}
-        onDaemon={(action) => handleDaemonAction(action)}
         onToggle={(w) => {
           const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, agents: setShowAgents, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
           if (setters[w]) setters[w](prev => !prev);

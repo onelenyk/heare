@@ -169,6 +169,20 @@
   /* Dot marks panels currently open in the centre column. */
   .rail-btn-state { color: var(--accent); font-size: 9px; flex: none; }
   .rail-note { font-size: var(--fs-xs); color: var(--accent); }
+
+  /* ── Header control groups (mode / audio / daemon) ── */
+  /* The .status-row + .status-row rule already supplies the divider. */
+  .header-controls { flex-wrap: wrap; gap: var(--s2) var(--s4); }
+  .hc-group { display: flex; align-items: center; gap: var(--s1); }
+  .hc-label {
+    font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--muted); margin-right: var(--s1);
+  }
+  .hc-right { margin-left: auto; }
+  /* Wrapped rows shouldn't shove daemon into the middle of the line. */
+  @media (max-width: 900px) {
+    .hc-right { margin-left: 0; }
+  }
   .rail-select {
     width: 100%; background: var(--bg); color: var(--text);
     border: 1px solid var(--border); border-radius: var(--r-xs);
