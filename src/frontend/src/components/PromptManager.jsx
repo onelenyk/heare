@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { API } from "../App";
 
-export default function PromptManager({ prompts, selectedPrompt, editContent, preview, onSelect, onPreview, onSave, onClose, onEditContent }) {
+export default function PromptManager({ prompts, selectedPrompt, editContent, preview, usage, onSelect, onPreview, onSave, onClose, onEditContent }) {
   const [activeKey, setActiveKey] = useState(null);
   const [search, setSearch] = useState("");
   const [pmTab, setPmTab] = useState("sections");
@@ -34,6 +34,41 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
             <button className="btn" onClick={onPreview}>preview</button>
             <button className="btn" onClick={onClose}>close</button>
           </div>
+
+          {usage && (
+            <div className="modal-section" style={{
+              background: "var(--card)", border: "1px solid var(--border)",
+              borderRadius: "var(--r)", padding: "var(--s3)", marginBottom: "var(--s3)"
+            }}>
+              <div style={{fontSize:11,fontWeight:600,marginBottom:6}}>📊 token usage</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,fontSize:10}}>
+                <div style={{color:"var(--muted)"}}>Total calls</div>
+                <div style={{textAlign:"right"}}>{usage.llm_calls?.toLocaleString() || "—"}</div>
+                <div style={{color:"var(--muted)"}}>Input tokens / call</div>
+                <div style={{textAlign:"right"}}>
+                  {usage.llm_calls
+                    ? (usage.llm_input_tokens / usage.llm_calls).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+                    : "—"}
+                </div>
+                <div style={{color:"var(--muted)"}}>Output tokens / call</div>
+                <div style={{textAlign:"right"}}>
+                  {usage.llm_calls
+                    ? (usage.llm_output_tokens / usage.llm_calls).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+                    : "—"}
+                </div>
+                <div style={{color:"var(--muted)"}}>~Tokens / call</div>
+                <div style={{textAlign:"right",fontWeight:600,color:"var(--accent)"}}>
+                  {usage.llm_calls
+                    ? Math.round((usage.llm_input_tokens + usage.llm_output_tokens) / usage.llm_calls).toLocaleString()
+                    : "—"}
+                </div>
+                {usage.total_cost_usd > 0 && (<>
+                  <div style={{color:"var(--muted)"}}>Total cost</div>
+                  <div style={{textAlign:"right"}}>${usage.total_cost_usd.toFixed(4)}</div></>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="modal-section">
             <h4>sections (ordered)</h4>
