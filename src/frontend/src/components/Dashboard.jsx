@@ -339,7 +339,9 @@ export default function Dashboard({ onOpenSetup }) {
 
       {pollFailed && <div className="warn-banner">⚠ connection lost — data may be stale</div>}
 
-      {/* Controls */}
+      <div className={"dash-body" + (showHistory ? "" : " no-side")}>
+        {/* Left column — every control, always on screen */}
+        <aside className="dash-rail">
       <ControlsCard
         state={state}
         showCanvas={showCanvas}
@@ -378,9 +380,14 @@ export default function Dashboard({ onOpenSetup }) {
         onChromeClose={() => setChromeProfiles(null)}
         onOpenSetup={onOpenSetup}
       />
+        </aside>
 
-      <div className={"dash-body" + (showHistory ? "" : " no-side")}>
+        {/* Centre column — live meters, canvas, and any panels you opened */}
         <div className="dash-main">
+
+      {state.last_response && (
+        <div className="response-line">{state.last_response}</div>
+      )}
 
       {/* Voice & Agent status bars */}
       <div className="viz-row">
@@ -423,7 +430,15 @@ export default function Dashboard({ onOpenSetup }) {
       )}
 
       {/* Usage stats */}
-      {showUsage && <UsageCard usage={state.usage} onClose={() => setShowUsage(false)} />}
+      {showUsage && (
+        <div className="card">
+          <div className="card-header">
+            {'📊'} usage
+            <button className="modal-close" onClick={() => setShowUsage(false)} style={{marginLeft: 'auto'}}>{'×'}</button>
+          </div>
+          <UsageCard usage={state.usage} />
+        </div>
+      )}
 
       {/* Text injection */}
       {showInject && (

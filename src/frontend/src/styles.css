@@ -118,14 +118,62 @@
     display: flex; flex-direction: column; min-height: 100vh;
   }
 
-  /* Workspace: main column takes the slack, sidebar holds history. */
+  /* Three-column console: controls | work | history. Both side columns pin
+     to the viewport and scroll internally so nothing is ever more than a
+     glance away, however far the centre column runs on. */
   .dash-body {
     display: grid; gap: var(--s3); align-items: start;
-    grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 460px);
+    grid-template-columns: 208px minmax(0, 1fr) clamp(300px, 24vw, 420px);
     flex: 1; min-height: 0;
   }
-  .dash-body.no-side { grid-template-columns: minmax(0, 1fr); }
+  .dash-body.no-side { grid-template-columns: 208px minmax(0, 1fr); }
   .dash-main { min-width: 0; }
+
+  /* ── Left control rail ── */
+  .dash-rail {
+    min-width: 0; position: sticky; top: var(--s4);
+    height: calc(100vh - var(--s4) * 2);
+    overflow-y: auto; overflow-x: hidden;
+  }
+  .rail-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--r); padding: var(--s3);
+    box-shadow: var(--shadow-sm);
+    display: flex; flex-direction: column; gap: var(--s3);
+  }
+  .rail-section { display: flex; flex-direction: column; gap: var(--s2); }
+  .rail-section + .rail-section {
+    border-top: 1px solid var(--border); padding-top: var(--s3);
+  }
+  .rail-label {
+    font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--muted);
+  }
+  .rail-group { display: flex; flex-direction: column; gap: var(--s1); }
+  /* Short labels pair up so the whole rail fits without scrolling. */
+  .rail-group-2col {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1);
+  }
+  .rail-group-2col .rail-btn { padding-left: 6px; padding-right: 6px; }
+  .rail-group-2col .rail-btn-icon { width: auto; }
+  /* Full-width rows rather than wrapped chips — scannable in a narrow column. */
+  .rail-btn {
+    width: 100%; justify-content: flex-start; gap: var(--s2);
+    padding: 6px var(--s2); text-align: left;
+  }
+  .rail-btn.primary { padding: 8px var(--s2); font-size: var(--fs-sm); }
+  .rail-btn-icon { width: 16px; text-align: center; flex: none; }
+  .rail-btn-label {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Dot marks panels currently open in the centre column. */
+  .rail-btn-state { color: var(--accent); font-size: 9px; flex: none; }
+  .rail-note { font-size: var(--fs-xs); color: var(--accent); }
+  .rail-select {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r-xs);
+    padding: 5px var(--s2); font-size: var(--fs-xs);
+  }
   /* Sidebar pins to the viewport and scrolls internally, so the history
      stays put while the main column scrolls past it. */
   .dash-side {
@@ -781,8 +829,25 @@
      ═══════════════════════════════════════════ */
   /* Below this the sidebar is too cramped to be useful — drop it under
      the main column and let it size to content again. */
+  /* Two columns: history drops below, controls stay pinned on the left. */
+  @media (max-width: 1240px) {
+    .dash-body { grid-template-columns: 208px minmax(0, 1fr); }
+    .dash-side {
+      grid-column: 1 / -1; position: static; height: auto;
+    }
+    .dash-side > .card { margin-bottom: var(--s3); }
+    .dash-side .scroll { max-height: 300px; flex: none; }
+  }
+
+  /* Single column: controls unpin and become a normal card on top. */
   @media (max-width: 1000px) {
     .dash-body { grid-template-columns: minmax(0, 1fr); }
+    .dash-rail { position: static; height: auto; overflow: visible; }
+    .rail-card { margin-bottom: var(--s3); }
+    /* Reflow the vertical rail into wrapped rows so it isn't a long stack. */
+    .rail-group { flex-direction: row; flex-wrap: wrap; }
+    .rail-btn { width: auto; }
+    .rail-btn-label { flex: none; }
     .dash-side {
       position: static; height: auto;
     }
