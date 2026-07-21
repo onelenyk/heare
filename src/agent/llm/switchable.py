@@ -102,6 +102,9 @@ class SwitchableLLMService(LLMService):
         # -- Build delegates from the registry --------------------------------
         self._delegates: dict[str, LLMService] = {}
         self._model_snapshots: dict[str, str] = {}
+        # name -> (handler, cancel_on_interruption, kwargs); replayed onto
+        # rebuilt delegates so hot-swapping a key/model keeps tools working
+        self._function_registrations: dict = {}
         for key, cfg in PROVIDERS.items():
             api_key = locals().get(cfg.api_key_attr)
             if not api_key:
@@ -264,13 +267,13 @@ class SwitchableLLMService(LLMService):
             else make_openai_service(cfg, api_key, model=effective_model)
         )
         self._install_frame_relay(svc)
-        old = self._delegates.get(provider_key)
+        for name, (handler, cancel, kw) in self._function_registrations.items():
+            svc.register_function(name, handler, cancel_on_interruption=cancel, **kw)
         self._delegates[provider_key] = svc
         self._model_snapshots[provider_key] = effective_model
-        if self._active_provider == provider_key:
-            self._active_provider = provider_key
-        if old is not None and provider_key in self._started_delegates:
-            self._started_delegates.add(provider_key)
+        # The fresh instance has not been setup()/start()ed — clear the flag so
+        # _ensure_delegate_started runs the lifecycle on next use.
+        self._started_delegates.discard(provider_key)
         logger.info(
             "switchable_llm: rebuilt %s delegate (model=%s)",
             provider_key,
@@ -476,12 +479,14 @@ class SwitchableLLMService(LLMService):
     # --- Function registration fan-out ---
 
     def register_function(self, name, handler, *, cancel_on_interruption=True, **kw):
+        self._function_registrations[name] = (handler, cancel_on_interruption, kw)
         for svc in self._all_services():
             svc.register_function(
                 name, handler, cancel_on_interruption=cancel_on_interruption, **kw
             )
 
     def unregister_function(self, name):
+        self._function_registrations.pop(name, None)
         for svc in self._all_services():
             svc.unregister_function(name)
 

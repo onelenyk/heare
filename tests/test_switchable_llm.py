@@ -233,6 +233,60 @@ def test_register_function_fans_out_to_both_delegates(state: _MockState) -> None
 
 
 # ---------------------------------------------------------------------------
+# U5b — rebuilt delegates keep registered functions (hot-swap tool loss fix)
+# ---------------------------------------------------------------------------
+
+
+def test_rebuild_delegate_replays_registered_functions(state: _MockState) -> None:
+    svc = _make_service(state)
+
+    async def _bash_handler(_params: Any) -> None:
+        return None
+
+    svc.register_function("bash", _bash_handler)
+    old_delegate = svc._deepseek_service
+
+    svc._rebuild_delegate("deepseek", "sk-ds-test", model="mock-ds-v2")
+
+    new_delegate = svc._deepseek_service
+    assert new_delegate is not old_delegate
+    assert "bash" in new_delegate._functions
+
+    # A later unregister must not resurrect on the next rebuild either.
+    svc.unregister_function("bash")
+    svc._rebuild_delegate("deepseek", "sk-ds-test", model="mock-ds-v3")
+    assert "bash" not in svc._deepseek_service._functions
+
+
+def test_rebuild_delegate_clears_started_flag(state: _MockState) -> None:
+    svc = _make_service(state)
+    svc._started_delegates.add("deepseek")
+
+    svc._rebuild_delegate("deepseek", "sk-ds-test", model="mock-ds-v2")
+
+    # Fresh instance was never setup()/start()ed — flag must be cleared so
+    # _ensure_delegate_started runs the lifecycle on next use.
+    assert "deepseek" not in svc._started_delegates
+
+
+def test_model_override_rebuild_keeps_functions(state: _MockState) -> None:
+    """Dashboard model override at turn-start must not drop tool handlers."""
+    svc = _make_service(state)
+
+    async def _bash_handler(_params: Any) -> None:
+        return None
+
+    svc.register_function("bash", _bash_handler)
+    svc._key_snapshots["deepseek"] = "sk-ds-test"
+    state._data["model_deepseek"] = "mock-ds-override"
+
+    svc._sync_provider()
+
+    assert svc._model_snapshots["deepseek"] == "mock-ds-override"
+    assert "bash" in svc._deepseek_service._functions
+
+
+# ---------------------------------------------------------------------------
 # U6 — provider flip mid-turn defers to next turn
 # ---------------------------------------------------------------------------
 
