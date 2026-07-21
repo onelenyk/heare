@@ -640,3 +640,48 @@ async def test_activity_maps_speaker(api, mock_config, activity_db) -> None:
     # 'assistant' maps to bot; every other mode collapses to 'you'
     assert rows[0]["who"] == "you" and rows[0]["content"] == "msg120"
     assert rows[1]["who"] == "bot" and rows[1]["content"] == "msg119"
+
+
+# ---------------------------------------------------------------------------
+# POST /inject
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_inject_writes_atomically(api, mock_config, mock_state, tmp_path) -> None:
+    """The daemon polls this folder every 250ms; a half-written file would be
+    read as a truncated message, so publish must be a rename."""
+    mock_config.inject_dir = tmp_path / "inject"
+    mock_state.get.return_value = "true"
+    resp = await api._handle_inject(_mock_request(json_data={"text": "hello"}))
+    assert json.loads(resp.body)["ok"] is True
+
+    files = list((tmp_path / "inject").iterdir())
+    assert len(files) == 1
+    assert files[0].suffix == ".txt"          # no .tmp left behind
+    assert files[0].read_text() == "hello"
+
+
+@pytest.mark.asyncio
+async def test_inject_reports_delivery_vs_queueing(api, mock_config, mock_state, tmp_path) -> None:
+    """Queued and delivered differ — nothing drains the folder while stopped."""
+    mock_config.inject_dir = tmp_path / "inject"
+
+    mock_state.get.return_value = "true"
+    running = await api._handle_inject(_mock_request(json_data={"text": "a"}))
+    assert json.loads(running.body)["delivered"] is True
+
+    mock_state.get.return_value = "false"
+    stopped = await api._handle_inject(_mock_request(json_data={"text": "b"}))
+    body = json.loads(stopped.body)
+    assert body["ok"] is True and body["delivered"] is False
+    # Still queued for whenever the pipeline comes back.
+    assert len(list((tmp_path / "inject").iterdir())) == 2
+
+
+@pytest.mark.asyncio
+async def test_inject_rejects_empty(api, mock_config, tmp_path) -> None:
+    mock_config.inject_dir = tmp_path / "inject"
+    resp = await api._handle_inject(_mock_request(json_data={"text": "   "}))
+    assert resp.status == 400
+    assert json.loads(resp.body)["ok"] is False

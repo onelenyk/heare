@@ -78,6 +78,35 @@ def voice_for_language(lang: str) -> str:
     return LANG_TO_VOICE.get(lang, LANG_TO_VOICE["en"])
 
 
+def detect_language_from_text(text: str, fallback: str = "en") -> str:
+    """Guess the language of plain text by script.
+
+    :func:`detect_language_from_frame` reads Whisper's own language field and
+    so only works for speech. Typed text (the inject box) has no such result,
+    and picking the wrong voice is not cosmetic: Edge TTS returns
+    ``NoAudioReceived`` — i.e. silence — when asked to read Cyrillic with an
+    English voice.
+
+    Script is all that is needed to separate the supported languages here.
+    Ukrainian and Russian share Cyrillic, so ``fallback`` decides between them
+    (normally the configured ``groq_language``); a fallback that isn't
+    Cyrillic-written falls back to Ukrainian, which is this deployment's
+    default and better than reading Cyrillic in English.
+    """
+    if not text:
+        return fallback
+    has_cyrillic = any("Ѐ" <= ch <= "ӿ" for ch in text)
+    if has_cyrillic:
+        if fallback in ("uk", "ru"):
+            return fallback
+        return "uk"
+    # Latin text with a Cyrillic fallback is most likely English.
+    has_latin = any(("a" <= ch <= "z") or ("A" <= ch <= "Z") for ch in text)
+    if has_latin:
+        return "en"
+    return fallback
+
+
 def is_standalone_cancel_imperative(text: str, stop_words: list[str]) -> bool:
     """CCS-05a: detect a STANDALONE cancel imperative.
 

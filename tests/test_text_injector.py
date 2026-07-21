@@ -100,8 +100,17 @@ async def test_run_injector_loop_keeps_message_when_push_raises(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_make_transcription_pusher_pushes_finalized_frame(tmp_path: Path):
-    from src.pipeline.stages.text_injector import make_transcription_pusher
+async def test_pusher_appends_message_and_requests_completion(tmp_path: Path):
+    """The frame must both carry the text and ask the LLM to run.
+
+    A TranscriptionFrame here would be silently swallowed: the user
+    aggregator buffers transcriptions and only flushes them via an
+    audio-driven turn-stop strategy, so injected text would never reach the
+    LLM (and would contaminate the next spoken turn).
+    """
+    from pipecat.frames.frames import LLMMessagesAppendFrame
+
+    from src.pipeline.stages.text_injector import make_llm_message_pusher
 
     captured: list = []
 
@@ -109,12 +118,69 @@ async def test_make_transcription_pusher_pushes_finalized_frame(tmp_path: Path):
         async def push_frame(self, frame, direction=None):
             captured.append(frame)
 
-    push = make_transcription_pusher(FakeProcessor(), user_id="injected")
+    push = make_llm_message_pusher(FakeProcessor())
     await push("hello daemon")
 
     assert len(captured) == 1
     frame = captured[0]
-    # We don't assert exact class because deferred imports — duck-type.
-    assert frame.text == "hello daemon"
-    assert frame.user_id == "injected"
-    assert frame.finalized is True
+    assert isinstance(frame, LLMMessagesAppendFrame)
+    assert frame.messages == [{"role": "user", "content": "hello daemon"}]
+    # Without run_llm the message lands in the context but nothing generates.
+    assert frame.run_llm is True
+
+
+@pytest.mark.asyncio
+async def test_pusher_role_is_overridable(tmp_path: Path):
+    from src.pipeline.stages.text_injector import make_llm_message_pusher
+
+    captured: list = []
+
+    class FakeProcessor:
+        async def push_frame(self, frame, direction=None):
+            captured.append(frame)
+
+    await make_llm_message_pusher(FakeProcessor(), role="system")("note")
+    assert captured[0].messages == [{"role": "system", "content": "note"}]
+
+
+@pytest.mark.asyncio
+async def test_pusher_sets_voice_for_cyrillic_text(tmp_path: Path):
+    """Cyrillic read by an English voice yields NoAudioReceived — silence.
+
+    Injected text bypasses the transcription gate, so the pusher has to drive
+    the voice swap itself or the reply is generated and never heard.
+    """
+    from src.pipeline.stages.text_injector import make_llm_message_pusher
+
+    langs: list = []
+
+    class FakeProcessor:
+        async def push_frame(self, frame, direction=None):
+            pass
+
+    push = make_llm_message_pusher(
+        FakeProcessor(), voice_setter=langs.append, language_fallback="uk"
+    )
+    await push("Скільки буде два плюс два?")
+    assert langs == ["uk"]
+
+    await push("How much is two plus two?")
+    assert langs == ["uk", "en"]
+
+
+@pytest.mark.asyncio
+async def test_pusher_survives_voice_setter_failure(tmp_path: Path):
+    """A voice we cannot set must not cost us the message."""
+    from src.pipeline.stages.text_injector import make_llm_message_pusher
+
+    captured: list = []
+
+    class FakeProcessor:
+        async def push_frame(self, frame, direction=None):
+            captured.append(frame)
+
+    def boom(_lang):
+        raise RuntimeError("tts unavailable")
+
+    await make_llm_message_pusher(FakeProcessor(), voice_setter=boom)("hi")
+    assert len(captured) == 1

@@ -683,10 +683,18 @@ class API:
         text = body.get("text", "").strip()
         if not text:
             return web.json_response({"ok": False, "error": "empty text"}, status=400)
-        fname = f"inject_{int(time.time())}_{uuid.uuid4().hex[:6]}.txt"
-        self.config.inject_dir.mkdir(parents=True, exist_ok=True)
-        (self.config.inject_dir / fname).write_text(text)
-        return web.json_response({"ok": True})
+
+        from src.pipeline.stages.text_injector import inject_text
+
+        # Writes .tmp then renames — the daemon polls this folder every 250ms
+        # and a plain write can be read half-finished.
+        inject_text(self.config.inject_dir, text)
+
+        # The file is queued either way, but nothing drains it while the
+        # pipeline is down, so say which happened rather than claiming
+        # delivery.
+        running = bool(self.state and self.state.get("running") == "true")
+        return web.json_response({"ok": True, "delivered": running})
 
     async def _handle_settings_status(self, request):
         """Return current configuration status."""

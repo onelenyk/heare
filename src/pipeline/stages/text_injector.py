@@ -1,10 +1,9 @@
-"""Text injection — let an external process feed text into the daemon as
-if it were a finalized STT transcript.
+"""Text injection — let an external process feed text to the agent as if the
+user had said it.
 
 The dashboard writes one file per message into a drop-folder; a daemon-side
-poller reads + deletes each file and pushes a ``TranscriptionFrame`` into
-the pipeline (just upstream of the transcription_gate, the same place STT
-output lands).
+poller reads + deletes each file and appends it to the LLM context, asking
+for a completion in the same frame.
 
 File-queue + delete is robust: the daemon can crash mid-process and the
 unread messages stay on disk for next start.
@@ -73,8 +72,8 @@ async def run_injector_loop(
 ) -> None:
     """Async polling loop. Reads + deletes every queued file, awaits ``push``.
 
-    ``push`` is the async callback the daemon passes — it builds a
-    ``TranscriptionFrame`` and feeds it into the pipeline.
+    ``push`` is the async callback the daemon passes — see
+    :func:`make_llm_message_pusher`.
     """
     queue_dir(folder)
     while True:
@@ -94,44 +93,73 @@ async def run_injector_loop(
         await asyncio.sleep(poll_interval)
 
 
-def make_transcription_pusher(
+def make_llm_message_pusher(
     target: Any,
     *,
-    user_id: str = "injected",
-    language: str | None = None,
+    role: str = "user",
+    voice_setter: Callable[[str], None] | None = None,
+    language_fallback: str | None = None,
 ) -> Callable[[str], Awaitable[None]]:
     """Build a callback suitable for ``run_injector_loop``'s ``push`` arg.
 
-    ``target`` is any pipecat ``FrameProcessor`` whose ``push_frame`` method
-    forwards into the pipeline (typically the ``transcription_gate``).
+    Appends the text to the LLM context and asks for a completion in one
+    frame.
+
+    A plain ``TranscriptionFrame`` does NOT work here, which is subtle enough
+    to be worth recording. ``LLMUserAggregator._handle_transcription`` only
+    appends the text to an internal buffer; that buffer is flushed to the LLM
+    by ``push_aggregation()``, which is reached solely via the configured user
+    turn *stop* strategy. This pipeline uses ``TurnAnalyzerUserTurnStopStrategy``
+    (and ``VADUserTurnStartStrategy``), both driven by microphone audio — so a
+    frame arriving without audio never completes a turn. Worse, the start
+    strategy never calls ``trigger_reset_aggregation``, so the stranded text is
+    not discarded either: it stays buffered and is prepended to whatever the
+    user says next.
+
+    ``LLMMessagesAppendFrame(run_llm=True)`` sidesteps the turn machinery
+    entirely — the aggregator adds the message and pushes the context frame
+    directly.
+
+    ``target`` is any pipecat ``FrameProcessor`` whose ``push_frame`` forwards
+    into the pipeline upstream of the user aggregator.
+
+    Pass ``voice_setter`` (normally the transcription gate's
+    ``_set_tts_voice``) to keep the voice in step with the injected text.
+    Speech gets this from the gate, which injected text does not pass
+    through — and the consequence is not a wrong accent but silence: Edge TTS
+    raises ``NoAudioReceived`` when asked to read Cyrillic with an English
+    voice, so the reply is generated and then never heard. Reusing the gate's
+    setter keeps one owner of the current-voice bookkeeping.
     """
 
     async def _push(text: str) -> None:
-        from pipecat.frames.frames import TranscriptionFrame
-        from pipecat.transcriptions.language import Language
+        from pipecat.frames.frames import LLMMessagesAppendFrame
 
-        lang_obj: Any = None
-        if language:
+        if voice_setter is not None:
             try:
-                lang_obj = Language(language)
-            except (ValueError, KeyError):
-                lang_obj = None
+                from src.voice.language.core import detect_language_from_text
 
-        frame = TranscriptionFrame(
-            text=text,
-            user_id=user_id,
-            timestamp=str(time.time()),
-            language=lang_obj,
-            finalized=True,
+                lang = detect_language_from_text(
+                    text, fallback=language_fallback or "en"
+                )
+                voice_setter(lang)
+            except Exception:
+                # A voice we could not set is not worth losing the message over.
+                logger.exception("inject: TTS voice selection failed (non-fatal)")
+
+        await target.push_frame(
+            LLMMessagesAppendFrame(
+                messages=[{"role": role, "content": text}],
+                run_llm=True,
+            )
         )
-        await target.push_frame(frame)
 
     return _push
 
 
 __all__ = [
     "inject_text",
-    "make_transcription_pusher",
+    "make_llm_message_pusher",
     "queue_dir",
     "run_injector_loop",
 ]

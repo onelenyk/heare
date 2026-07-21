@@ -184,7 +184,15 @@ export default function Dashboard({ onOpenSetup }) {
         body: JSON.stringify({ text: injectText.trim() }),
       });
       const d = await r.json();
-      if (d.ok) { showToastMsg('injected!', 'ok'); setInjectText(''); }
+      if (d.ok) {
+        // Queued and delivered are different things — the file sits on disk
+        // until the pipeline is running to drain it.
+        showToastMsg(
+          d.delivered ? 'injected!' : 'queued — pipeline not running',
+          d.delivered ? 'ok' : 'info'
+        );
+        setInjectText('');
+      }
       else showToastMsg('inject failed: ' + (d.error || 'unknown'), 'err');
     } catch(e) { showToastMsg('inject failed: ' + e.message, 'err'); }
   }

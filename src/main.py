@@ -248,16 +248,21 @@ async def _build_and_run_daemon(
 
             # Text injector
             from src.pipeline.stages.text_injector import (
-                make_transcription_pusher,
+                make_llm_message_pusher,
                 run_injector_loop,
             )
 
-            inject_pusher = make_transcription_pusher(
+            inject_pusher = make_llm_message_pusher(
                 _transcription_gate,
-                user_id="injected",
-                language=settings.groq_language
-                if settings.groq_language not in ("auto", "")
-                else None,
+                # Injected text skips the gate's own processing, so hand it the
+                # gate's voice setter directly — otherwise a Cyrillic reply is
+                # synthesised with the English voice and comes out silent.
+                voice_setter=getattr(_transcription_gate, "_set_tts_voice", None),
+                language_fallback=(
+                    settings.groq_language
+                    if settings.groq_language not in ("auto", "")
+                    else "en"
+                ),
             )
             safe_task(
                 run_injector_loop(settings.inject_dir, inject_pusher),
