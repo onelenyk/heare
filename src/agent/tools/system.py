@@ -21,7 +21,6 @@ from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.config import Settings
-    from src.pipeline.session_state import SessionState
     from src.store.conversation import ConversationManager
 
 logger = logging.getLogger("heare.tools.system")
@@ -738,6 +737,42 @@ TOOLS: list[ToolDef] = [
         required=["muted"],
     ),
     ToolDef(
+        name="vad_sensitivity",
+        description="Adjust VAD (Voice Activity Detection) sensitivity. Higher values (closer to 1.0) make the bot less likely to interrupt, requiring louder or clearer speech to trigger. Lower values (closer to 0.0) make it more sensitive to any sound.",
+        handler="vad_sensitivity",
+        schema_fields={
+            "level": {
+                "type": "number",
+                "description": "Sensitivity level from 0.0 (very sensitive) to 1.0 (least sensitive). Default 0.5.",
+            },
+        },
+        required=["level"],
+    ),
+    ToolDef(
+        name="mic_gain",
+        description="Adjust the microphone input gain. Higher values amplify quiet speech, lower values reduce loud input. Unity gain is 1.0.",
+        handler="mic_gain",
+        schema_fields={
+            "gain": {
+                "type": "number",
+                "description": "Gain multiplier from 0.0 (mute) to 5.0 (5x amplification). Default 1.0.",
+            },
+        },
+        required=["gain"],
+    ),
+    ToolDef(
+        name="volume",
+        description="Adjust the speaker output volume. Changes how loud the bot speaks through the speakers.",
+        handler="volume",
+        schema_fields={
+            "level": {
+                "type": "number",
+                "description": "Volume level from 0.0 (silent) to 5.0 (5x amplification). Default 1.0.",
+            },
+        },
+        required=["level"],
+    ),
+    ToolDef(
         name="audio_input",
         description="Switch the audio input device (microphone). Provide the device name or substring to match.",
         handler="audio_device",
@@ -934,6 +969,20 @@ TOOLS: list[ToolDef] = [
         handler="memory_status",
         schema_fields={},
     ),
+    ToolDef(
+        name="sidetone",
+        description="Увімкнути або вимкнути моніторинг мікрофону — "
+        "ви будете чути себе в динаміках так, як вас чує асистент. "
+        "Корисно для перевірки якості звуку та уникнення відлуння.",
+        handler="sidetone",
+        schema_fields={
+            "enabled": {
+                "type": "boolean",
+                "description": "True щоб увімкнути, False щоб вимкнути.",
+            },
+        },
+        required=["enabled"],
+    ),
 ]
 
 
@@ -996,6 +1045,10 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "recall": _json_serializer,
     "forget": _json_serializer,
     "memory_status": _json_serializer,
+    "vad_sensitivity": _json_serializer,
+    "mic_gain": _json_serializer,
+    "volume": _json_serializer,
+    "sidetone": _json_serializer,
 }
 
 
@@ -1059,6 +1112,10 @@ def _handler_for(tool: ToolDef):
         "recall": direct._execute_recall,
         "forget": direct._execute_forget,
         "memory_status": direct._execute_memory_status,
+        "vad_sensitivity": direct._execute_vad_sensitivity,
+        "mic_gain": direct._execute_mic_gain,
+        "volume": direct._execute_volume,
+        "sidetone": direct._execute_sidetone,
     }
 
     func = handler_map.get(tool.handler)

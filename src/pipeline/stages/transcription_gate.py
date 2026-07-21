@@ -479,11 +479,17 @@ def _build_transcription_gate_class():
             except _asyncio.CancelledError:
                 return
             combined = " ".join(self._debounce_buffer).strip()
+            buffer_size = len(self._debounce_buffer)
             frame = self._debounce_frame
             direction = self._debounce_direction
             self._debounce_buffer = []
             self._debounce_frame = None
             self._debounce_direction = None
+            logger.info(
+                "[LATENCY] debounce: buffer_size=%d combined_len=%d",
+                buffer_size,
+                len(combined),
+            )
             if not combined or frame is None:
                 emit("gate", "dropped", reason="debounce", text="", level="debug")
                 return
@@ -495,6 +501,7 @@ def _build_transcription_gate_class():
             direction: Any,
             override_text: str | None = None,
         ) -> None:
+            t_start = time.monotonic()
             source_text = (
                 override_text if override_text is not None else (frame.text or "")
             )
@@ -552,9 +559,8 @@ def _build_transcription_gate_class():
                 # Without barge-in, preserve the legacy behaviour:
                 # everything heard while the bot speaks is dropped.
                 if not self._barge_in_enabled:
-                    logger.debug(
-                        "transcription_gate: dropping transcript "
-                        "(bot speaking, barge-in disabled): %r",
+                    logger.info(
+                        "[DROP] bot_speaking (barge-in disabled): %r",
                         transcript[:60],
                     )
                     emit(
@@ -568,8 +574,8 @@ def _build_transcription_gate_class():
                 # Garbage filter — drop obvious STT noise (repeated syllables,
                 # consonant clusters, word duplication) before heavier checks.
                 if is_garbage_transcript(transcript):
-                    logger.debug(
-                        "transcription_gate: dropping transcript (garbage): %r",
+                    logger.info(
+                        "[DROP] garbage transcript: %r",
                         transcript[:60],
                     )
                     emit(
@@ -583,10 +589,10 @@ def _build_transcription_gate_class():
                 # Too short to be a real interruption — almost always a
                 # noise blip or a one-word echo fragment.
                 if len(transcript) < self._barge_in_min_chars:
-                    logger.debug(
-                        "transcription_gate: dropping transcript "
-                        "(bot speaking, too short for barge-in): %r",
+                    logger.info(
+                        "[DROP] too_short: %r (%d chars)",
                         transcript,
+                        len(transcript),
                     )
                     emit(
                         "gate",
@@ -602,10 +608,10 @@ def _build_transcription_gate_class():
                     else ""
                 )
                 if _is_echo(transcript, bot_text, self._barge_in_echo_ratio):
-                    logger.debug(
-                        "transcription_gate: dropping transcript "
-                        "(echo of bot speech): %r",
+                    logger.info(
+                        "[DROP] echo detected: %r (bot_text=%r)",
                         transcript[:60],
+                        bot_text[:80],
                     )
                     emit(
                         "gate",
@@ -706,6 +712,11 @@ def _build_transcription_gate_class():
                 "transcription_passed",
                 text=transcript[:80],
                 lang=self._active_lang,
+            )
+            logger.info(
+                "[LATENCY] transcription_gate: total=%.0fms transcript_len=%d",
+                (time.monotonic() - t_start) * 1000,
+                len(transcript),
             )
             await self.push_frame(outbound, direction)
 

@@ -587,13 +587,77 @@ def get_intent_to_sdk_mapping() -> dict[str, str]:
     return {t.name: t.sdk_name for t in TOOLS.values() if t.enabled}
 
 
+# Tool groups for compact prompt rendering.  Each tool name maps to its
+# category so the system prompt can list tools by group instead of one
+# verbose line per tool — saving ~800 tokens per LLM call.
+_TOOL_GROUPS: dict[str, list[str]] = {
+    "Lifecycle": [
+        "stop_daemon", "restart_daemon", "set_mode", "set_provider",
+        "mute_bot", "mute_mic", "cancel",
+        "vad_sensitivity", "mic_gain", "volume", "sidetone",
+    ],
+    "I/O": [
+        "bash", "read", "write",
+        "web_search", "web_fetch",
+        "create_archive", "extract_archive", "batch_operation", "workflow",
+    ],
+    "Browser": [
+        "list_browser_tabs", "read_browser_page",
+        "navigate_browser", "open_browser_tab", "activate_browser_tab",
+        "click_in_browser", "fill_in_browser", "extract_in_browser",
+    ],
+    "Display": ["show_text", "show_canvas"],
+    "Skills": [
+        "list_skills", "run_skill",
+        "discover_capability", "list_capabilities",
+        "install_skill_tool", "create_skill",
+        "install_mcp_server_tool", "register_mcp_server", "revoke_capability",
+    ],
+    "Dynamic tools": ["create_tool", "update_tool", "delete_tool", "list_tools"],
+    "Agents": [
+        "run_agent",
+        "agent_start", "agent_status", "agent_result",
+        "agent_message", "agent_cancel", "agent_list",
+        "agent_approve", "agent_deny",
+    ],
+    "Memory": ["remember", "recall", "forget", "memory_status"],
+    "Audio devices": ["audio_input", "audio_output"],
+    "Files": [
+        "add_favorite", "list_favorites",
+        "set_view_preference", "show_profile",
+    ],
+}
+
+
 def get_tool_descriptions() -> str:
-    """Generate a formatted string of all enabled tools for prompts."""
-    lines = []
-    for tool in sorted(TOOLS.values(), key=lambda t: t.name):
-        if not tool.enabled:
-            continue
-        lines.append(f"- {tool.name}: {tool.description}")
+    """Generate a compact grouped listing of all enabled tools for prompts."""
+    # Merge registry tools with system.py tools (system tools include
+    # lifecycle controls not in the registry).
+    from src.agent.tools.system import TOOLS as _SYSTEM_TOOLS
+
+    enabled: set[str] = set()
+    for t in TOOLS.values():
+        if t.enabled:
+            enabled.add(t.name)
+    for t in _SYSTEM_TOOLS:
+        if t.enabled:
+            enabled.add(t.name)
+
+    lines = ["Tools by category:"]
+    for group, names in _TOOL_GROUPS.items():
+        present = [n for n in names if n in enabled]
+        if present:
+            lines.append(f"  {group}: {', '.join(present)}")
+    # Catch any tools not in any group
+    grouped = {n for names in _TOOL_GROUPS.values() for n in names}
+    orphaned = sorted(enabled - grouped)
+    if orphaned:
+        lines.append(f"  Other: {', '.join(orphaned)}")
+    lines.append("")
+    lines.append(
+        "All tools are registered for function calling — "
+        "schemas are in the API request, not here."
+    )
     return "\n".join(lines)
 
 

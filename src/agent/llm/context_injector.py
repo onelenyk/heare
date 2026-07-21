@@ -49,6 +49,8 @@ def _host_os_label() -> str:
 
 
 if TYPE_CHECKING:
+    from src.config import Settings
+    from src.state import State
     from src.store.context import ContextBuilder
     from src.pipeline.language_state import LanguageState
 
@@ -145,6 +147,8 @@ def _build_injector_class():
             language_state: "LanguageState | None" = None,
             conversation_manager: Any = None,
             capability_index: Any = None,
+            state: "State | None" = None,
+            settings: "Settings | None" = None,
         ) -> None:
             super().__init__()
             self._llm_context = llm_context
@@ -153,6 +157,8 @@ def _build_injector_class():
             self._language_state = language_state
             self._conversation_manager = conversation_manager
             self._capability_index = capability_index
+            self._state = state
+            self._settings = settings
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
@@ -217,6 +223,9 @@ def _build_injector_class():
                         "llm_context_injector: capability_index.query failed "
                         "(non-fatal)"
                     )
+            # Inject lifecycle state so the agent always knows its own status
+            if self._state is not None:
+                _inject_lifecycle_context(ctx, self._state, self._settings)
             new_prompt = render_native_system_prompt(
                 persona=self._persona,
                 context=ctx,
@@ -249,6 +258,8 @@ def create_system_prompt_injector(
     language_state: "LanguageState | None" = None,
     conversation_manager: Any = None,
     capability_index: Any = None,
+    state: "State | None" = None,
+    settings: "Settings | None" = None,
 ):
     """Factory returning a SystemPromptInjector instance."""
     cls = _build_injector_class()
@@ -259,7 +270,56 @@ def create_system_prompt_injector(
         language_state=language_state,
         conversation_manager=conversation_manager,
         capability_index=capability_index,
+        state=state,
+        settings=settings,
     )
+
+
+def _inject_lifecycle_context(
+    ctx: dict[str, Any],
+    state: Any,
+    settings: Any,
+) -> None:
+    """Add agent lifecycle state to the context dict for the system prompt."""
+    parts: list[str] = []
+    parts.append("YOUR CURRENT STATE — these tools control you directly:")
+
+    parts.append(
+        f"- Mode: {state.get('mode', 'ambient')} "
+        f"(change via set_mode)"
+    )
+    muted = state.get_bool("mute_bot")
+    parts.append(
+        f"- Bot voice: {'MUTED' if muted else 'on'} "
+        f"({'unmute' if muted else 'mute'} via mute_bot)"
+    )
+    mic_muted = state.get_bool("mute_mic")
+    parts.append(
+        f"- Microphone: {'MUTED' if mic_muted else 'on'} "
+        f"({'unmute' if mic_muted else 'mute'} via mute_mic)"
+    )
+
+    vad = state.get("vad_sensitivity")
+    if vad:
+        parts.append(f"- VAD sensitivity: {float(vad) * 100:.0f}% (adjust via vad_sensitivity)")
+    ig = state.get("input_gain")
+    if ig:
+        parts.append(f"- Mic gain: {float(ig):.1f}x (adjust via mic_gain)")
+    ov = state.get("output_volume")
+    if ov:
+        parts.append(f"- Speaker volume: {float(ov) * 100:.0f}% (adjust via volume)")
+    st = state.get("sidetone")
+    if st:
+        sidetone_on = st in ("1", "true", True)
+        parts.append(
+            f"- Sidetone: {'ON' if sidetone_on else 'off'} "
+            f"({'disable' if sidetone_on else 'enable'} via sidetone)"
+        )
+
+    parts.append("- Stop yourself: stop_daemon (requires confirmation)")
+    parts.append("- Restart yourself: restart_daemon (requires confirmation)")
+
+    ctx["lifecycle"] = "\n".join(parts)
 
 
 __all__ = [

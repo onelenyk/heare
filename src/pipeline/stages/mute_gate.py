@@ -16,10 +16,14 @@ creates/removes the file when the user presses a hotkey.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from src.daemon.events import emit
+
+
+logger = logging.getLogger("heare.mute_gate")
 
 
 # ---------------------------------------------------------------------------
@@ -150,12 +154,19 @@ def _build_input_gate_class():
         def __init__(self, *, state) -> None:
             super().__init__()
             self._state = state
+            self._mute_dropped = 0
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
             if isinstance(frame, InputAudioRawFrame) and self._state.get_bool(
                 "mute_mic"
             ):
+                self._mute_dropped += 1
+                if self._mute_dropped % 50 == 1:
+                    logger.info(
+                        "[DROP] mic muted — frame dropped (count=%d)",
+                        self._mute_dropped,
+                    )
                 return
             await self.push_frame(frame, direction)
 

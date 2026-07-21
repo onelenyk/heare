@@ -203,8 +203,16 @@ async def execute_direct(
         return await _execute_mute_bot(args, settings)
     elif tool == "mute_mic":
         return await _execute_mute_mic(args, settings)
-    elif tool in ("audio_input", "audio_output"):
-        return await _execute_audio_device(args, settings)
+    elif tool == "audio_input":
+        return await _execute_audio_device(args, settings, target="input")
+    elif tool == "audio_output":
+        return await _execute_audio_device(args, settings, target="output")
+    elif tool == "vad_sensitivity":
+        return await _execute_vad_sensitivity(args, settings)
+    elif tool == "mic_gain":
+        return await _execute_mic_gain(args, settings)
+    elif tool == "volume":
+        return await _execute_volume(args, settings)
     elif tool == "run_agent":
         return await _execute_run_agent(args, settings)
     elif tool == "remember":
@@ -215,6 +223,8 @@ async def execute_direct(
         return await _execute_forget(args, settings)
     elif tool == "memory_status":
         return await _execute_memory_status(args, settings)
+    elif tool == "sidetone":
+        return await _execute_sidetone(args, settings)
     else:
         return {
             "success": False,
@@ -1621,7 +1631,7 @@ async def _execute_batch_operation(
                                     "destination": str(dest_path),
                                 }
                             )
-                        else:
+                        elif operation == "move_to":
                             shutil.move(file_path, dest_path)
                             results.append(
                                 {
@@ -3450,8 +3460,61 @@ async def _execute_mute_mic(args: str, settings: "Settings | None" = None) -> di
     }
 
 
-async def _execute_audio_device(args: str, settings: "Settings | None" = None) -> dict:
-    """Switch audio device."""
+async def _execute_sidetone(args: str, settings: "Settings | None" = None) -> dict:
+    """Enable or disable sidetone (monitor mic input through speakers)."""
+    import json
+
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except (ValueError, TypeError):
+        return {
+            "success": False,
+            "output": "",
+            "error": "invalid arguments",
+            "spoken": {"en": "Invalid sidetone arguments.", "uk": "Неправильні аргументи."},
+        }
+    enabled = bool(parsed.get("enabled", False))
+
+    state_value = "1" if enabled else "0"
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "http://127.0.0.1:9778/state",
+                json={"key": "sidetone", "value": state_value},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                logger.warning("State API returned %s for sidetone", resp.status_code)
+        except httpx.RequestError as api_err:
+            logger.warning("State API unavailable for sidetone: %s", api_err)
+
+    if settings is not None:
+        flag_path = settings.sidetone_file
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        if enabled:
+            flag_path.touch(exist_ok=True)
+        else:
+            try:
+                flag_path.unlink()
+            except FileNotFoundError:
+                pass
+
+    return {
+        "success": True,
+        "output": f"Sidetone {'on' if enabled else 'off'}",
+        "spoken": {
+            "en": f"Sidetone {'enabled' if enabled else 'disabled'}.",
+            "uk": f"Моніторинг мікрофону {'увімкнено' if enabled else 'вимкнено'}.",
+        },
+    }
+
+
+async def _execute_audio_device(
+    args: str,
+    settings: "Settings | None" = None,
+    target: str = "input",
+) -> dict:
+    """Switch audio input or output device."""
     import json
 
     try:
@@ -3466,14 +3529,147 @@ async def _execute_audio_device(args: str, settings: "Settings | None" = None) -
             "error": "Device name is required",
             "spoken": {"en": "Device name is required."},
         }
-    if settings and hasattr(settings, "audio_input_device_file"):
-        settings.audio_input_device_file.write_text(name)
+    if settings is not None:
+        if target == "output" and hasattr(settings, "audio_output_device_file"):
+            settings.audio_output_device_file.write_text(name)
+        elif hasattr(settings, "audio_input_device_file"):
+            settings.audio_input_device_file.write_text(name)
     return {
         "success": True,
-        "output": f"Audio device set to {name}",
+        "output": f"Audio {target} device set to {name}",
         "spoken": {
-            "en": f"Audio device set to {name}.",
-            "uk": f"Аудіо пристрій встановлено на {name}.",
+            "en": f"Audio {target} device set to {name}.",
+            "uk": f"Аудіо пристрій {target} встановлено на {name}.",
+        },
+    }
+
+
+async def _execute_vad_sensitivity(
+    args: str, settings: "Settings | None" = None
+) -> dict:
+    """Adjust VAD sensitivity (confidence threshold)."""
+    import json as _json
+
+    try:
+        params = _json.loads(args) if args.strip() else {}
+    except (_json.JSONDecodeError, TypeError):
+        params = {}
+    level = float(params.get("level", 0.5))
+    if not (0.0 <= level <= 1.0):
+        return {
+            "success": False,
+            "output": "",
+            "error": f"level must be between 0.0 and 1.0, got {level}",
+            "spoken": {
+                "en": "Sensitivity must be between 0.0 and 1.0.",
+                "uk": "Чутливість має бути від 0.0 до 1.0.",
+            },
+        }
+    pct = int(level * 100)
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "http://127.0.0.1:9778/state",
+                json={"key": "vad_sensitivity", "value": str(level)},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "State API returned %s for vad_sensitivity", resp.status_code
+                )
+        except httpx.RequestError as api_err:
+            logger.warning("State API unavailable for vad_sensitivity: %s", api_err)
+    return {
+        "success": True,
+        "output": f"VAD sensitivity set to {pct}%",
+        "spoken": {
+            "en": f"VAD sensitivity set to {pct} percent.",
+            "uk": f"Чутливість VAD встановлена на {pct} відсотків.",
+        },
+    }
+
+
+async def _execute_mic_gain(
+    args: str, settings: "Settings | None" = None
+) -> dict:
+    """Adjust microphone input gain."""
+    import json as _json
+
+    try:
+        params = _json.loads(args) if args.strip() else {}
+    except (_json.JSONDecodeError, TypeError):
+        params = {}
+    gain = float(params.get("gain", 1.0))
+    if not (0.0 <= gain <= 5.0):
+        return {
+            "success": False,
+            "output": "",
+            "error": f"gain must be between 0.0 and 5.0, got {gain}",
+            "spoken": {
+                "en": "Gain must be between 0.0 and 5.0.",
+                "uk": "Підсилення має бути від 0.0 до 5.0.",
+            },
+        }
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "http://127.0.0.1:9778/state",
+                json={"key": "input_gain", "value": str(gain)},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                logger.warning("State API returned %s for mic_gain", resp.status_code)
+        except httpx.RequestError as api_err:
+            logger.warning("State API unavailable for mic_gain: %s", api_err)
+    return {
+        "success": True,
+        "output": f"Mic gain set to {gain:.1f}",
+        "spoken": {
+            "en": f"Microphone gain set to {gain:.1f}.",
+            "uk": f"Підсилення мікрофона встановлено на {gain:.1f}.",
+        },
+    }
+
+
+async def _execute_volume(
+    args: str, settings: "Settings | None" = None
+) -> dict:
+    """Adjust speaker output volume."""
+    import json as _json
+
+    try:
+        params = _json.loads(args) if args.strip() else {}
+    except (_json.JSONDecodeError, TypeError):
+        params = {}
+    level = float(params.get("level", 1.0))
+    if not (0.0 <= level <= 5.0):
+        return {
+            "success": False,
+            "output": "",
+            "error": f"level must be between 0.0 and 5.0, got {level}",
+            "spoken": {
+                "en": "Volume must be between 0.0 and 5.0.",
+                "uk": "Гучність має бути від 0.0 до 5.0.",
+            },
+        }
+    level_pct = int(level * 100)
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "http://127.0.0.1:9778/state",
+                json={"key": "output_volume", "value": str(level)},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                logger.warning("State API returned %s for volume", resp.status_code)
+        except httpx.RequestError as api_err:
+            logger.warning("State API unavailable for volume: %s", api_err)
+    return {
+        "success": True,
+        "output": f"Speaker volume set to {level_pct}%",
+        "spoken": {
+            "en": f"Speaker volume set to {level_pct} percent.",
+            "uk": f"Гучність динаміка встановлена на {level_pct} відсотків.",
         },
     }
 

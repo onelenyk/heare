@@ -88,6 +88,7 @@ PROMPT_SECTIONS: list[PromptSection] = [
     PromptSection("sub_agents", 205, "dynamic"),
     PromptSection("memory", 210, "dynamic"),
     PromptSection("mode", 300, "dynamic"),
+    PromptSection("lifecycle", 310, "dynamic"),
     # Layer 3: Operations (tools, capabilities, style)
     PromptSection("tool_catalog", 405, "inline"),
     PromptSection("capabilities", 400, "template", "prompts/capabilities.txt"),
