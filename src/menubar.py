@@ -182,6 +182,10 @@ class HeareMenuBar(rumps.App):
 
         self._set_status(ready=True)
 
+        # Auto-start the voice pipeline on launch — without this the app
+        # sits "stopped" until someone clicks Start in the menu.
+        self._cmd_queue.put(("start",))
+
         pipeline_task: asyncio.Task | None = None
 
         try:
@@ -285,14 +289,17 @@ class HeareMenuBar(rumps.App):
         finally:
             await state.set("running", "false")
 
+    # Dashboard /daemon endpoint control hooks. api.py awaits the start
+    # callback and calls stop/restart synchronously — signatures must match.
+
     async def _start_pipeline(self):
-        pass  # handled by command queue in _serve()
+        self._cmd_queue.put(("start",))
 
     def _stop_pipeline(self):
-        pass  # handled by command queue in _serve()
+        self._cmd_queue.put(("stop",))
 
-    async def _restart_pipeline(self):
-        pass  # handled by command queue in _serve()
+    def _restart_pipeline(self):
+        self._cmd_queue.put(("restart",))
 
     # ── UI (main thread — rumps callbacks + timer) ──────
 
