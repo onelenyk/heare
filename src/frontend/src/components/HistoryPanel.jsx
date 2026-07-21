@@ -28,7 +28,7 @@ export default function HistoryPanel({ activity, logs, tab, onTabChange, onClose
       </div>
       {tab === "activity" ? (
         <div className="scroll">
-          <table>
+          <table className="history-table">
             <thead>
               <tr><th>time</th><th>who</th><th>content</th></tr>
             </thead>
@@ -50,7 +50,7 @@ export default function HistoryPanel({ activity, logs, tab, onTabChange, onClose
           </table>
         </div>
       ) : (
-        <div className="scroll" style={{maxHeight: 240}} ref={logRef}>
+        <div className="scroll scroll-logs" ref={logRef}>
           <table>
             <tbody>
               {logs.length === 0 ? (

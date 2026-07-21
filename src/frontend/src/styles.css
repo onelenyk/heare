@@ -111,7 +111,44 @@
   /* ═══════════════════════════════════════════
      LAYOUT
      ═══════════════════════════════════════════ */
-  .dash { padding: var(--s4); min-width: 520px; max-width: 960px; margin: 0 auto; }
+  /* Full-viewport shell: header rows stack, then a two-column workspace
+     fills whatever height is left. */
+  .dash {
+    padding: var(--s4); min-width: 520px; width: 100%; margin: 0;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+
+  /* Workspace: main column takes the slack, sidebar holds history. */
+  .dash-body {
+    display: grid; gap: var(--s3); align-items: start;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 460px);
+    flex: 1; min-height: 0;
+  }
+  .dash-body.no-side { grid-template-columns: minmax(0, 1fr); }
+  .dash-main { min-width: 0; }
+  /* Sidebar pins to the viewport and scrolls internally, so the history
+     stays put while the main column scrolls past it. */
+  .dash-side {
+    min-width: 0; position: sticky; top: var(--s4);
+    height: calc(100vh - var(--s4) * 2);
+    display: flex; flex-direction: column;
+  }
+  .dash-side > .card {
+    flex: 1; min-height: 0; margin-bottom: 0;
+    display: flex; flex-direction: column;
+  }
+  /* Let the card body claim the leftover height instead of a fixed cap. */
+  .dash-side .scroll { max-height: none; flex: 1; min-height: 0; }
+  /* Fixed layout keeps long transcript lines inside the narrower column
+     so they ellipsize instead of forcing a horizontal scrollbar. */
+  .dash-side table { table-layout: fixed; }
+  /* Fixed layout ignores per-cell widths after the first row, so pin the
+     narrow columns and let content take the rest. */
+  .history-table th:nth-child(1), .history-table td:nth-child(1) { width: 78px; }
+  .history-table th:nth-child(2), .history-table td:nth-child(2) { width: 44px; }
+  .history-table th:nth-child(3), .history-table td:nth-child(3) { width: auto; }
+  .dash-side td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dash-side .scroll-logs td { white-space: pre-wrap; overflow-wrap: anywhere; }
   .row { display: flex; gap: var(--s3); }
   .col { flex: 1; min-width: 0; }
   .btn-row { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s2); }
@@ -282,6 +319,7 @@
   tbody tr:nth-child(even) td { background: rgba(139,148,158,0.02); }
   tbody tr:hover td { background: rgba(139,148,158,0.08) !important; }
   .scroll { max-height: 300px; overflow-y: auto; }
+  .scroll-logs { max-height: 240px; }
 
   /* ── Audio device table ── */
   .audio-list { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; margin-top: var(--s1); }
@@ -741,6 +779,17 @@
   /* ═══════════════════════════════════════════
      RESPONSIVE
      ═══════════════════════════════════════════ */
+  /* Below this the sidebar is too cramped to be useful — drop it under
+     the main column and let it size to content again. */
+  @media (max-width: 1000px) {
+    .dash-body { grid-template-columns: minmax(0, 1fr); }
+    .dash-side {
+      position: static; height: auto;
+    }
+    .dash-side > .card { margin-bottom: var(--s3); }
+    .dash-side .scroll { max-height: 300px; flex: none; }
+  }
+
   @media (max-width: 600px) {
     .dash { min-width: 0; padding: var(--s2); max-width: 100%; }
     .row { flex-direction: column; }

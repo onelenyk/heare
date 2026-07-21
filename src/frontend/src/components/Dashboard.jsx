@@ -379,6 +379,9 @@ export default function Dashboard({ onOpenSetup }) {
         onOpenSetup={onOpenSetup}
       />
 
+      <div className={"dash-body" + (showHistory ? "" : " no-side")}>
+        <div className="dash-main">
+
       {/* Voice & Agent status bars */}
       <div className="viz-row">
         <div className="viz-col">
@@ -441,17 +444,6 @@ export default function Dashboard({ onOpenSetup }) {
         />
       )}
 
-      {/* History panel */}
-      {showHistory && (
-        <HistoryPanel
-          tab={historyTab}
-          onTabChange={setHistoryTab}
-          activity={activity}
-          logs={logs}
-          onClose={() => setShowHistory(false)}
-        />
-      )}
-
       {/* Audio device picker */}
       {showAudio && (
         <AudioDevicePicker
@@ -471,6 +463,22 @@ export default function Dashboard({ onOpenSetup }) {
           onClose={() => setShowAudioControls(false)}
         />
       )}
+
+        </div>
+
+        {/* Sidebar — history lives here, pinned and independently scrolling */}
+        {showHistory && (
+          <aside className="dash-side">
+            <HistoryPanel
+              tab={historyTab}
+              onTabChange={setHistoryTab}
+              activity={activity}
+              logs={logs}
+              onClose={() => setShowHistory(false)}
+            />
+          </aside>
+        )}
+      </div>
 
       {/* Tools modal */}
       {showTools && <ToolsModal data={toolsData} onClose={() => setShowTools(false)} />}
