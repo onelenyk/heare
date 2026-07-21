@@ -22,10 +22,16 @@ from src.agent.llm.providers import (
     PROVIDERS,
     get_available,
     get_config,
+    list_models,
     make_identity_bootstrap,
 )  # noqa: E402
 from src.agent.modes import VALID_MODES  # noqa: E402
-from src.config import HEARE_HOME, write_browser_bridge_token  # noqa: E402
+from src.config import (  # noqa: E402
+    HEARE_HOME,
+    backup_session_file,
+    set_confirmation_passphrase,
+    write_browser_bridge_token,
+)
 from src.dashboard_data import (  # noqa: E402
     counts,
     daemon_status,
@@ -43,11 +49,14 @@ class API:
         self._app = web.Application()
         logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
         self._app.router.add_get("/state", self._handle_state)
+        self._app.router.add_post("/state", self._handle_state_post)
         self._app.router.add_post("/mode", self._handle_mode)
         self._app.router.add_post("/mute", self._handle_mute)
         self._app.router.add_post("/interrupt", self._handle_interrupt)
         self._app.router.add_post("/provider", self._handle_provider)
         self._app.router.add_post("/model", self._handle_model)
+        self._app.router.add_get("/api/providers", self._handle_providers_list)
+        self._app.router.add_get("/api/models", self._handle_models_live)
         self._app.router.add_post("/cancel", self._handle_cancel)
         self._app.router.add_get("/activity", self._handle_activity)
         self._app.router.add_get("/logs", self._handle_logs)
@@ -60,6 +69,12 @@ class API:
         self._app.router.add_post("/inject", self._handle_inject)
         self._app.router.add_get("/settings/status", self._handle_settings_status)
         self._app.router.add_post("/settings", self._handle_settings)
+        self._app.router.add_post(
+            "/api/settings/passphrase", self._handle_set_passphrase
+        )
+        self._app.router.add_post(
+            "/api/settings/reset-session", self._handle_reset_session
+        )
         self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
@@ -94,6 +109,71 @@ class API:
         self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
         self._runner = None
         self._site = None
+
+    def register_routes(self, app: "web.Application") -> None:
+        """Mount all API routes on an existing aiohttp app.
+
+        Used when the API is embedded in another server (e.g. menubar Hub).
+        The standalone ``start()`` method still creates its own app.
+        """
+        self._app = app
+        self._app.router.add_get("/state", self._handle_state)
+        self._app.router.add_post("/state", self._handle_state_post)
+        self._app.router.add_post("/mode", self._handle_mode)
+        self._app.router.add_post("/mute", self._handle_mute)
+        self._app.router.add_post("/interrupt", self._handle_interrupt)
+        self._app.router.add_post("/provider", self._handle_provider)
+        self._app.router.add_post("/model", self._handle_model)
+        self._app.router.add_get("/api/providers", self._handle_providers_list)
+        self._app.router.add_get("/api/models", self._handle_models_live)
+        self._app.router.add_post("/cancel", self._handle_cancel)
+        self._app.router.add_get("/activity", self._handle_activity)
+        self._app.router.add_get("/logs", self._handle_logs)
+        self._app.router.add_get("/display", self._handle_display)
+        self._app.router.add_get("/events", self._handle_events)
+        self._app.router.add_get("/canvas", self._handle_display)
+        self._app.router.add_post("/daemon", self._handle_daemon)
+        self._app.router.add_post("/inject", self._handle_inject)
+        self._app.router.add_get("/settings/status", self._handle_settings_status)
+        self._app.router.add_post("/settings", self._handle_settings)
+        self._app.router.add_post(
+            "/api/settings/passphrase", self._handle_set_passphrase
+        )
+        self._app.router.add_post(
+            "/api/settings/reset-session", self._handle_reset_session
+        )
+        self._app.router.add_post("/setup", self._handle_setup)
+        self._app.router.add_get("/mic/status", self._handle_mic_status)
+        self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
+        self._app.router.add_post("/api/chrome/launch", self._handle_chrome_launch)
+        self._app.router.add_get("/api/tools", self._handle_tools)
+        self._app.router.add_get("/api/chrome/profiles", self._handle_chrome_profiles)
+        self._app.router.add_post(
+            "/api/audio-devices/select", self._handle_audio_device_select
+        )
+        self._app.router.add_get("/api/bridge/status", self._handle_bridge_status)
+        self._app.router.add_get("/api/bridge/token", self._handle_bridge_token)
+        self._app.router.add_post(
+            "/api/bridge/rotate-token", self._handle_bridge_rotate_token
+        )
+        self._app.router.add_post("/api/bridge/toggle", self._handle_bridge_toggle)
+        self._app.router.add_get("/api/prompts", self._handle_prompts)
+        self._app.router.add_get("/api/prompts/preview", self._handle_prompt_preview)
+        self._app.router.add_get("/api/prompts/{key}", self._handle_prompt_section)
+        self._app.router.add_post("/api/prompts/{key}", self._handle_prompt_save)
+        self._app.router.add_get("/api/agents", self._handle_agents)
+        self._app.router.add_post("/api/agents/start", self._handle_agents_start)
+        self._app.router.add_post("/api/agents/cancel", self._handle_agents_cancel)
+        self._app.router.add_get(
+            "/api/agents/{session_id}/result", self._handle_agents_result
+        )
+        self._app.router.add_get("/api/setup", self._handle_setup_state)
+        self._app.router.add_post("/api/setup/identity", self._handle_setup_identity)
+        self._app.router.add_post(
+            "/api/setup/identity/regenerate", self._handle_setup_identity_regenerate
+        )
+        self._app.router.add_post("/api/setup/config", self._handle_setup_config)
+        self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
 
     async def start(self):
         self._runner = web.AppRunner(self._app)
@@ -187,10 +267,17 @@ class API:
             pass
 
         try:
-            running, pid, uptime = daemon_status(self.config)
-            data["running"] = running
-            data["pid"] = pid
-            data["uptime"] = uptime
+            # In-process mode: pipeline status comes from state key
+            if self._control is not None and self.state:
+                running_str = self.state.get("running", "false")
+                data["running"] = running_str == "true"
+                data["pid"] = os.getpid()
+                data["uptime"] = ""
+            else:
+                running, pid, uptime = daemon_status(self.config)
+                data["running"] = running
+                data["pid"] = pid
+                data["uptime"] = uptime
         except Exception:
             pass
 
@@ -269,6 +356,26 @@ class API:
 
         return web.json_response(data)
 
+    async def _handle_state_post(self, request):
+        if self.state is None:
+            return web.json_response(
+                {"ok": False, "error": "daemon initializing"}, status=503
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response(
+                {"ok": False, "error": "invalid JSON"}, status=400
+            )
+        key = body.get("key")
+        value = body.get("value")
+        if not key or value is None:
+            return web.json_response(
+                {"ok": False, "error": "key and value are required"}, status=400
+            )
+        await self.state.set(str(key), str(value))
+        return web.json_response({"ok": True, "key": key, "value": str(value)})
+
     async def _handle_activity(self, request):
         try:
             import aiosqlite
@@ -346,7 +453,7 @@ class API:
             return web.json_response({"ok": False, "error": "daemon initializing"})
         body = await request.json()
         provider = body.get("provider", "")
-        if provider not in self._available_providers():
+        if provider not in PROVIDERS:
             return web.json_response({"ok": False}, status=400)
         await self.state.set("provider", provider)
         return web.json_response({"ok": True, "provider": provider})
@@ -355,11 +462,48 @@ class API:
         if self.state is None:
             return web.json_response({"ok": False, "error": "daemon initializing"})
         body = await request.json()
+        provider = body.get("provider", "")
         model = body.get("model", "")
-        if not model:
+        if provider not in PROVIDERS or not model:
             return web.json_response({"ok": False}, status=400)
-        await self.state.set("model", model)
-        return web.json_response({"ok": True, "model": model})
+        await self.state.set(f"model_{provider}", model)
+        return web.json_response({"ok": True, "provider": provider, "model": model})
+
+    async def _handle_providers_list(self, request):
+        return web.json_response(
+            [
+                {
+                    "key": cfg.key,
+                    "display_name": cfg.display_name,
+                    "dashboard_color": cfg.dashboard_color,
+                    "default_model": cfg.default_model,
+                    "configured": bool(getattr(self.config, cfg.api_key_attr, None)),
+                }
+                for cfg in PROVIDERS.values()
+            ]
+        )
+
+    async def _handle_models_live(self, request):
+        provider = request.query.get("provider", "")
+        if provider not in PROVIDERS:
+            return web.json_response({"ok": False}, status=400)
+        cfg = get_config(provider)
+        api_key = getattr(self.config, cfg.api_key_attr, None)
+        fallback = list(cfg.model_whitelist) if cfg.model_whitelist else [cfg.default_model]
+        if not api_key:
+            return web.json_response(
+                {"ok": True, "models": fallback, "source": "fallback", "reason": "no_key"}
+            )
+        try:
+            models = await list_models(cfg, api_key)
+            if not models:
+                raise ValueError("empty model list")
+            return web.json_response({"ok": True, "models": models, "source": "live"})
+        except Exception as e:
+            logger.warning("live model fetch failed for %s: %s", provider, e)
+            return web.json_response(
+                {"ok": True, "models": fallback, "source": "fallback", "reason": str(e)}
+            )
 
     async def _handle_cancel(self, request):
         if self.state is None:
@@ -393,6 +537,24 @@ class API:
     async def _handle_daemon(self, request):
         body = await request.json()
         action = body.get("action", "")
+
+        # In-process control: menubar passes callbacks when daemon
+        # runs inside the same process instead of a subprocess.
+        if self._control is not None:
+            try:
+                if action == "start" and self._control[0]:
+                    await self._control[0]()
+                    return web.json_response({"ok": True, "action": "started", "pid": None})
+                if action == "stop" and self._control[1]:
+                    self._control[1]()
+                    return web.json_response({"ok": True, "action": "stopped", "pid": None})
+                if action == "restart" and self._control[2]:
+                    self._control[2]()
+                    return web.json_response({"ok": True, "action": "restarted", "pid": None})
+            except Exception as e:
+                return web.json_response(
+                    {"ok": False, "action": action, "error": str(e)}, status=500
+                )
         if action == "stop":
             try:
                 pid_file = self.config.pid_file
@@ -500,6 +662,10 @@ class API:
             updates["GROQ_API_KEY"] = body["groq_api_key"]
         if body.get("deepseek_api_key"):
             updates["DEEPSEEK_API_KEY"] = body["deepseek_api_key"]
+        if body.get("zai_api_key"):
+            updates["ZAI_API_KEY"] = body["zai_api_key"]
+        if body.get("opencode_api_key"):
+            updates["OPENCODE_API_KEY"] = body["opencode_api_key"]
 
         errors = []
         groq_key = body.get("groq_api_key", "").strip()
@@ -507,10 +673,8 @@ class API:
             errors.append("Groq key must start with gsk_ or sk-")
         for attr in ("deepseek_api_key", "zai_api_key", "opencode_api_key"):
             val = body.get(attr, "").strip()
-            if val and not val.startswith("sk-"):
-                errors.append(
-                    f"{attr.replace('_', ' ').title()} key must start with sk-"
-                )
+            if val and len(val) < 20:
+                errors.append(f"{attr.replace('_', ' ').title()} key looks too short")
         if errors:
             return web.json_response({"ok": False, "errors": errors}, status=400)
 
@@ -542,6 +706,30 @@ class API:
                     await self.state.set(f"key_{attr}", val)
 
         return web.json_response({"ok": True, "applied": True})
+
+    async def _handle_set_passphrase(self, request):
+        """POST /api/settings/passphrase — set the confirmation passphrase."""
+        body = await request.json()
+        word = body.get("passphrase", "").strip()
+        if not word:
+            return web.json_response(
+                {"ok": False, "error": "passphrase cannot be empty"}, status=400
+            )
+        set_confirmation_passphrase(word)
+        return web.json_response({"ok": True, "restart_required": True})
+
+    async def _handle_reset_session(self, request):
+        """POST /api/settings/reset-session — backup session.json and start fresh."""
+        if not self.config:
+            return web.json_response({"ok": False, "error": "no config"}, status=500)
+        backup = backup_session_file(self.config)
+        if backup is None:
+            return web.json_response(
+                {"ok": False, "error": "no session file to reset"}, status=400
+            )
+        return web.json_response(
+            {"ok": True, "backup_path": str(backup), "restart_required": True}
+        )
 
     async def _handle_setup(self, request):
         post = await request.post()
@@ -1439,7 +1627,6 @@ class API:
 
         provider_keys = {
             "DEEPSEEK_API_KEY",
-            "OPENROUTER_API_KEY",
             "ZAI_API_KEY",
             "OPENCODE_API_KEY",
             "GROQ_API_KEY",

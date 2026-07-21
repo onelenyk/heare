@@ -185,6 +185,7 @@ def make_openai_service(config: ProviderConfig, api_key: str, **kwargs: Any) -> 
 def make_anthropic_service(
     config: ProviderConfig,
     api_key: str,
+    model: str | None = None,
 ) -> Any:
     """Build an :class:`AnthropicLLMService` from *config*.
 
@@ -197,9 +198,35 @@ def make_anthropic_service(
     client = AsyncAnthropic(api_key=api_key, base_url=config.base_url)
     return AnthropicLLMService(
         api_key=api_key,
-        settings=AnthropicLLMService.Settings(model=config.default_model),
+        settings=AnthropicLLMService.Settings(model=model or config.default_model),
         client=client,
     )
+
+
+async def list_models(
+    config: ProviderConfig, api_key: str, timeout: float = 10.0
+) -> list[str]:
+    """Fetch the live list of model ids available from *config*'s API.
+
+    Raises on any failure (HTTP error, timeout, unexpected shape) — the
+    caller is responsible for falling back to ``config.model_whitelist``.
+    """
+    import httpx  # deferred
+
+    base = config.base_url.rstrip("/")
+    headers = {"Authorization": f"Bearer {api_key}"}
+    if config.api_style == "anthropic":
+        url = f"{base}/v1/models"
+        headers["anthropic-version"] = "2023-06-01"
+    else:
+        url = f"{base}/models"
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return [item["id"] for item in data["data"]]
 
 
 def make_identity_bootstrap(
@@ -289,4 +316,5 @@ __all__ = [
     "make_openai_service",
     "make_anthropic_service",
     "make_identity_bootstrap",
+    "list_models",
 ]

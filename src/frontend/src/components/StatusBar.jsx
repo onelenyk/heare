@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function StatusBar({ state, onProviderChange, onModelChange }) {
+export default function StatusBar({ state }) {
   const running = state.running === true;
   const interruptEnabled = state.interrupt_enabled !== false;
 
@@ -20,16 +20,7 @@ export default function StatusBar({ state, onProviderChange, onModelChange }) {
       <div className="status-row">
         <div className="status-group">
           <span className="meta">mode <strong>{state.mode || "?"}</strong></span>
-          <span className="meta">provider{" "}
-            <select className="compact-select" value={state.provider || ""} onChange={e => onProviderChange(e.target.value)}>
-              {(state.providers || []).map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </span>
-          <span className="meta">model{" "}
-            <select className="compact-select" value={state.model || ""} onChange={e => onModelChange(e.target.value)}>
-              {(state.models || []).map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </span>
+          <span className="meta">provider <strong>{state.provider || "?"}</strong></span>
         </div>
         <div className="status-group">
           {state.pid != null && <span className="meta">pid <strong>{state.pid}</strong></span>}

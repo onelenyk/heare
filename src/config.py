@@ -698,6 +698,46 @@ def write_browser_bridge_token(settings: Settings, token: str) -> None:
     settings.browser_bridge_token = token
 
 
+def set_confirmation_passphrase(word: str) -> None:
+    """Persist `word` as the top-level `confirmation_passphrase` key in
+    `~/.heare/config.toml`. Restart required for the daemon to pick it up.
+    """
+    import re
+
+    config_path = HEARE_HOME / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    content = config_path.read_text() if config_path.exists() else ""
+    if "confirmation_passphrase" in content:
+        content = re.sub(
+            r'confirmation_passphrase\s*=\s*".*?"',
+            f'confirmation_passphrase = "{word}"',
+            content,
+        )
+    else:
+        sep = "" if (content == "" or content.endswith("\n")) else "\n"
+        content = content + sep + f'confirmation_passphrase = "{word}"\n'
+
+    config_path.write_text(content)
+
+
+def backup_session_file(settings: "Settings") -> Path | None:
+    """Rename `settings.session_file` to a numbered backup, if it exists.
+
+    Returns the backup path, or None if there was no session file to reset.
+    """
+    if not settings.session_file.exists():
+        return None
+    idx = 0
+    while True:
+        backup = settings.session_file.with_name(f"session_{idx}.backup.json")
+        if not backup.exists():
+            break
+        idx += 1
+    settings.session_file.rename(backup)
+    return backup
+
+
 def write_env_var(key: str, value: str) -> None:
     """Write or update an env var in .env file."""
     env_path = HEARE_HOME.parent / ".env"

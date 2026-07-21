@@ -528,10 +528,11 @@ async def _cmd_start(args: argparse.Namespace) -> int:
     from aiohttp import web
 
     from src.api import API
+    from src.state import State
 
     app = web.Application()
     app.router.add_get("/", _serve_frontend)
-    _FRONTEND_DIST = project_dir / "src" / "frontend" / "dist"
+    _FRONTEND_DIST = Path(project_dir) / "src" / "frontend" / "dist"
     if _FRONTEND_DIST.exists():
         app.router.add_static(
             "/assets/", str(_FRONTEND_DIST / "assets"), show_index=False
@@ -796,35 +797,14 @@ def _cmd_audio_output(args: argparse.Namespace) -> int:
 
 
 def _cmd_set_wake_word(args: argparse.Namespace) -> int:
-    from src.config import HEARE_HOME  # noqa: E402
+    from src.config import HEARE_HOME, set_confirmation_passphrase  # noqa: E402
 
     word = args.word.strip()
     if not word:
         print("passphrase cannot be empty")
         return 1
 
-    # Write to config.toml
-    config_path = HEARE_HOME / "config.toml"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Read existing config or create new
-    if config_path.exists():
-        content = config_path.read_text()
-        # Update or add confirmation_passphrase line
-        if "confirmation_passphrase" in content:
-            import re
-
-            content = re.sub(
-                r'confirmation_passphrase\s*=\s*".*?"',
-                f'confirmation_passphrase = "{word}"',
-                content,
-            )
-        else:
-            content += f'\nconfirmation_passphrase = "{word}"\n'
-    else:
-        content = f'confirmation_passphrase = "{word}"\n'
-
-    config_path.write_text(content)
+    set_confirmation_passphrase(word)
 
     # Mark onboarding as complete
     (HEARE_HOME / ".onboarded").touch()
@@ -860,17 +840,13 @@ def _cmd_rotate_browser_token(args: argparse.Namespace) -> int:
 
 
 def _cmd_reset_session(args: argparse.Namespace) -> int:
+    from src.config import backup_session_file  # noqa: E402
+
     settings = load_settings()
-    if not settings.session_file.exists():
+    backup = backup_session_file(settings)
+    if backup is None:
         print("no session file to reset")
         return 0
-    idx = 0
-    while True:
-        backup = settings.session_file.with_name(f"session_{idx}.backup.json")
-        if not backup.exists():
-            break
-        idx += 1
-    settings.session_file.rename(backup)
     print(f"session backed up to {backup}")
     return 0
 

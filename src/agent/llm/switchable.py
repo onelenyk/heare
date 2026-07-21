@@ -101,17 +101,19 @@ class SwitchableLLMService(LLMService):
         """
         # -- Build delegates from the registry --------------------------------
         self._delegates: dict[str, LLMService] = {}
+        self._model_snapshots: dict[str, str] = {}
         for key, cfg in PROVIDERS.items():
             api_key = locals().get(cfg.api_key_attr)
             if not api_key:
                 continue
             model = locals().get(f"{key}_model", cfg.default_model)
             if cfg.api_style == "anthropic":
-                svc = make_anthropic_service(cfg, api_key)
+                svc = make_anthropic_service(cfg, api_key, model=model)
             else:
                 svc = make_openai_service(cfg, api_key, model=model)
             self._install_frame_relay(svc)
             self._delegates[key] = svc
+            self._model_snapshots[key] = model
 
         if not self._delegates:
             raise ValueError("At least one provider API key must be set")
@@ -247,23 +249,33 @@ class SwitchableLLMService(LLMService):
             return self._provider_for_delegate(all_d[0])
         return "deepseek"
 
-    def _rebuild_delegate(self, provider_key: str, api_key: str) -> None:
+    def _rebuild_delegate(
+        self, provider_key: str, api_key: str, model: str | None = None
+    ) -> None:
         cfg = PROVIDERS.get(provider_key)
         if not cfg:
             return
+        effective_model = (
+            model or self._model_snapshots.get(provider_key) or cfg.default_model
+        )
         svc = (
-            make_anthropic_service(cfg, api_key)
+            make_anthropic_service(cfg, api_key, model=effective_model)
             if cfg.api_style == "anthropic"
-            else make_openai_service(cfg, api_key, model=cfg.default_model)
+            else make_openai_service(cfg, api_key, model=effective_model)
         )
         self._install_frame_relay(svc)
         old = self._delegates.get(provider_key)
         self._delegates[provider_key] = svc
+        self._model_snapshots[provider_key] = effective_model
         if self._active_provider == provider_key:
             self._active_provider = provider_key
         if old is not None and provider_key in self._started_delegates:
             self._started_delegates.add(provider_key)
-        logger.info("switchable_llm: rebuilt %s delegate with new key", provider_key)
+        logger.info(
+            "switchable_llm: rebuilt %s delegate (model=%s)",
+            provider_key,
+            effective_model,
+        )
 
     def _active_delegate(self) -> LLMService:
         """Return currently active delegate. Does NOT call _sync_provider."""
@@ -307,6 +319,19 @@ class SwitchableLLMService(LLMService):
                     self._key_snapshots[provider_key] = new_key
                     if provider_key in self._delegates:
                         self._rebuild_delegate(provider_key, new_key)
+
+        # Per-provider model overrides selected via the dashboard
+        for provider_key in self._delegates:
+            new_model = self._state.get(f"model_{provider_key}")
+            if new_model and new_model != self._model_snapshots.get(provider_key):
+                api_key = self._key_snapshots.get(provider_key)
+                if api_key:
+                    self._rebuild_delegate(provider_key, api_key, model=new_model)
+                else:
+                    logger.warning(
+                        "switchable_llm: model override for %s but no known api key; skipping",
+                        provider_key,
+                    )
 
         if raw and raw != self._active_provider:
             d = self._delegate_for(raw)

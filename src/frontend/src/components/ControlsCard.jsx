@@ -3,7 +3,7 @@ import React from 'react';
 export default function ControlsCard({
   state,
   showCanvas, showHistory, showInject,
-  showSettings, showAudio, showAgents, showUsage,
+  showSettings, showBrain, showAudio, showAudioControls, showAgents, showUsage,
   showTools, showBridge, showPrompts,
   onOpenSetup,
   interruptEnabled,
@@ -79,8 +79,14 @@ export default function ControlsCard({
         <button className={"btn" + (showSettings ? " active" : "")} onClick={() => onToggle("settings")}>
           {'\u2699'} settings
         </button>
+        <button className={"btn" + (showBrain ? " active" : "")} onClick={() => onToggle("brain")}>
+          {'\ud83e\udde0'} brain
+        </button>
         <button className={"btn" + (showAudio ? " active" : "")} onClick={() => onToggle("audio")}>
           {'\ud83c\udfa7'} audio devices
+        </button>
+        <button className={"btn" + (showAudioControls ? " active" : "")} onClick={() => onToggle("audiocontrols")}>
+          {'\ud83c\udf9b'} audio
         </button>
         <button className={"btn" + (showAgents ? " active" : "")} onClick={() => onToggle("agents")}>
           {'\ud83e\udd16'} agents

@@ -11,6 +11,8 @@ import InjectPanel from './InjectPanel';
 import AgentsPanel from './AgentsPanel';
 import HistoryPanel from './HistoryPanel';
 import AudioDevicePicker from './AudioDevicePicker';
+import AudioPanel from './AudioPanel';
+import BrainCard from './BrainCard';
 import ToolsModal from './ToolsModal';
 import BridgeModal from './BridgeModal';
 import PromptManager from './PromptManager';
@@ -21,9 +23,11 @@ export default function Dashboard({ onOpenSetup }) {
   const [activity, setActivity] = useState([]);
   const [logs, setLogs] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [showBrain, setShowBrain] = useState(false);
   const [toast, setToast] = useState(null);
   const [injectText, setInjectText] = useState('');
   const [showAudio, setShowAudio] = useState(false);
+  const [showAudioControls, setShowAudioControls] = useState(false);
   const [audioDevices, setAudioDevices] = useState(null);
   const [showTools, setShowTools] = useState(false);
   const [toolsData, setToolsData] = useState(null);
@@ -342,7 +346,9 @@ export default function Dashboard({ onOpenSetup }) {
         showHistory={showHistory}
         showInject={showInject}
         showSettings={showSettings}
+        showBrain={showBrain}
         showAudio={showAudio}
+        showAudioControls={showAudioControls}
         showAgents={showAgents}
         showUsage={showUsage}
         showTools={showTools}
@@ -357,8 +363,9 @@ export default function Dashboard({ onOpenSetup }) {
         onInterrupt={(enabled) => { setInterruptEnabled(enabled); post('/interrupt', { enabled }) }}
         onDaemon={(action) => handleDaemonAction(action)}
         onToggle={(w) => {
-          const setters = { settings: setShowSettings, audio: setShowAudio, agents: setShowAgents, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
+          const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, agents: setShowAgents, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
           if (setters[w]) setters[w](prev => !prev);
+          if (w === 'audio') fetchAudioDevices();
         }}
         onOpenModal={(d) => {
           if (d === 'chrome') fetchChromeProfiles();
@@ -399,6 +406,16 @@ export default function Dashboard({ onOpenSetup }) {
         <SettingsPanel
           state={state}
           onSave={saveSettings}
+          onToast={showToastMsg}
+        />
+      )}
+
+      {/* Brain (LLM provider/token/model) */}
+      {showBrain && (
+        <BrainCard
+          state={state}
+          post={post}
+          onClose={() => setShowBrain(false)}
         />
       )}
 
@@ -446,6 +463,15 @@ export default function Dashboard({ onOpenSetup }) {
         />
       )}
 
+      {/* Audio controls panel */}
+      {showAudioControls && (
+        <AudioPanel
+          state={state}
+          post={post}
+          onClose={() => setShowAudioControls(false)}
+        />
+      )}
+
       {/* Tools modal */}
       {showTools && <ToolsModal data={toolsData} onClose={() => setShowTools(false)} />}
 
@@ -469,6 +495,7 @@ export default function Dashboard({ onOpenSetup }) {
           selectedPrompt={selectedPrompt}
           editContent={editContent}
           preview={preview}
+          usage={state.usage}
           onSelect={handlePromptEdit}
           onPreview={handlePromptPreview}
           onSave={handlePromptSave}

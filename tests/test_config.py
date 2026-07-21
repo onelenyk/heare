@@ -1,7 +1,14 @@
 """Tests for src/config.py Settings, enums, load_settings, ensure_dirs."""
 from __future__ import annotations
 
-from src.config import DeciderState, Mode, Settings, load_settings
+from src.config import (
+    DeciderState,
+    Mode,
+    Settings,
+    backup_session_file,
+    load_settings,
+    set_confirmation_passphrase,
+)
 
 
 def test_default_settings() -> None:
@@ -78,6 +85,56 @@ def test_confirmation_passphrase_custom(monkeypatch, tmp_path) -> None:
     config_file.write_text('confirmation_passphrase = "авторизую"\n')
     s = load_settings()
     assert s.confirmation_passphrase == "авторизую"
+
+
+def test_set_confirmation_passphrase_writes_new_file(monkeypatch, tmp_path) -> None:
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+
+    set_confirmation_passphrase("авторизую")
+    s = load_settings()
+    assert s.confirmation_passphrase == "авторизую"
+
+
+def test_set_confirmation_passphrase_updates_existing(monkeypatch, tmp_path) -> None:
+    import src.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('mode = "focus"\nconfirmation_passphrase = "old"\n')
+    set_confirmation_passphrase("new-word")
+    s = load_settings()
+    assert s.confirmation_passphrase == "new-word"
+    assert s.mode == Mode.FOCUS
+
+
+def test_backup_session_file_no_file(tmp_path) -> None:
+    s = Settings()
+    s.session_file = tmp_path / "session.json"
+    assert backup_session_file(s) is None
+
+
+def test_backup_session_file_renames(tmp_path) -> None:
+    s = Settings()
+    s.session_file = tmp_path / "session.json"
+    s.session_file.write_text('{"id": "abc"}')
+
+    backup = backup_session_file(s)
+
+    assert backup == tmp_path / "session_0.backup.json"
+    assert backup.exists()
+    assert not s.session_file.exists()
+
+
+def test_backup_session_file_increments(tmp_path) -> None:
+    s = Settings()
+    s.session_file = tmp_path / "session.json"
+    (tmp_path / "session_0.backup.json").write_text("{}")
+
+    s.session_file.write_text('{"id": "abc"}')
+    backup = backup_session_file(s)
+
+    assert backup == tmp_path / "session_1.backup.json"
 
 
 def test_proactivity_level_default() -> None:

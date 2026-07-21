@@ -101,7 +101,7 @@ export default function SetupModal({ show, onClose, onComplete }) {
       const body = {};
       if (groqKey) body.GROQ_API_KEY = groqKey;
       if (llmKey) {
-        const keyName = provider === 'deepseek' ? 'DEEPSEEK_API_KEY' : provider === 'openrouter' ? 'OPENROUTER_API_KEY' : provider === 'zai' ? 'ZAI_API_KEY' : 'OPENCODE_API_KEY';
+        const keyName = provider === 'deepseek' ? 'DEEPSEEK_API_KEY' : provider === 'zai' ? 'ZAI_API_KEY' : 'OPENCODE_API_KEY';
         body[keyName] = llmKey;
       }
       const r = await fetch(API + '/api/setup/config', {
@@ -227,7 +227,6 @@ export default function SetupModal({ show, onClose, onComplete }) {
                 <select value={provider} onChange={e => setProvider(e.target.value)}
                   style={{width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', color: 'var(--text)', fontSize: 13, marginBottom: 8}}>
                   <option value="deepseek">DeepSeek</option>
-                  <option value="openrouter">OpenRouter</option>
                   <option value="zai">z.ai</option>
                   <option value="opencode">OpenCode</option>
                 </select>

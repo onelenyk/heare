@@ -253,6 +253,22 @@ async def test_post_provider_empty(api, mock_state) -> None:
     mock_state.set.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_post_provider_known_but_unconfigured(mock_state) -> None:
+    """A provider with no key yet can still be selected — token is added later."""
+    config = MagicMock()
+    config.deepseek_api_key = "sk-test"
+    config.zai_api_key = "sk-test"
+    config.opencode_api_key = None
+    api = API(mock_state, config)
+    request = _mock_request(json_data={"provider": "opencode"})
+    resp = await api._handle_provider(request)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["ok"] is True
+    mock_state.set.assert_awaited_once_with("provider", "opencode")
+
+
 # ---------------------------------------------------------------------------
 # POST /model
 # ---------------------------------------------------------------------------
@@ -260,18 +276,19 @@ async def test_post_provider_empty(api, mock_state) -> None:
 
 @pytest.mark.asyncio
 async def test_post_model_valid(api, mock_state) -> None:
-    request = _mock_request(json_data={"model": "deepseek-chat"})
+    request = _mock_request(json_data={"provider": "deepseek", "model": "deepseek-chat"})
     resp = await api._handle_model(request)
     assert resp.status == 200
     data = json.loads(resp.body)
     assert data["ok"] is True
+    assert data["provider"] == "deepseek"
     assert data["model"] == "deepseek-chat"
-    mock_state.set.assert_awaited_once_with("model", "deepseek-chat")
+    mock_state.set.assert_awaited_once_with("model_deepseek", "deepseek-chat")
 
 
 @pytest.mark.asyncio
 async def test_post_model_empty(api, mock_state) -> None:
-    request = _mock_request(json_data={"model": ""})
+    request = _mock_request(json_data={"provider": "deepseek", "model": ""})
     resp = await api._handle_model(request)
     assert resp.status == 400
     data = json.loads(resp.body)
@@ -285,6 +302,55 @@ async def test_post_model_missing_key(api, mock_state) -> None:
     resp = await api._handle_model(request)
     assert resp.status == 400
     mock_state.set.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_post_model_unknown_provider(api, mock_state) -> None:
+    request = _mock_request(json_data={"provider": "bogus", "model": "x"})
+    resp = await api._handle_model(request)
+    assert resp.status == 400
+    mock_state.set.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/providers, GET /api/models
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_providers_list(api) -> None:
+    request = _mock_request()
+    resp = await api._handle_providers_list(request)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    keys = {p["key"] for p in data}
+    assert keys == {"deepseek", "zai", "opencode"}
+    assert all(p["configured"] is True for p in data)
+
+
+@pytest.mark.asyncio
+async def test_get_models_live_no_key_falls_back(mock_state) -> None:
+    config = MagicMock()
+    config.deepseek_api_key = None
+    config.zai_api_key = None
+    config.opencode_api_key = None
+    api = API(mock_state, config)
+    request = MagicMock()
+    request.query = {"provider": "deepseek"}
+    resp = await api._handle_models_live(request)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["ok"] is True
+    assert data["source"] == "fallback"
+    assert "deepseek-chat" in data["models"]
+
+
+@pytest.mark.asyncio
+async def test_get_models_live_unknown_provider(api) -> None:
+    request = MagicMock()
+    request.query = {"provider": "bogus"}
+    resp = await api._handle_models_live(request)
+    assert resp.status == 400
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +369,65 @@ async def test_post_cancel(api, mock_state) -> None:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/settings/passphrase, POST /api/settings/reset-session
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_set_passphrase_valid(api, monkeypatch) -> None:
+    called = {}
+    monkeypatch.setattr(
+        "src.api.set_confirmation_passphrase", lambda word: called.setdefault("word", word)
+    )
+    request = _mock_request(json_data={"passphrase": "авторизую"})
+    resp = await api._handle_set_passphrase(request)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["ok"] is True
+    assert data["restart_required"] is True
+    assert called["word"] == "авторизую"
+
+
+@pytest.mark.asyncio
+async def test_set_passphrase_empty(api, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.api.set_confirmation_passphrase",
+        lambda word: pytest.fail("should not be called"),
+    )
+    request = _mock_request(json_data={"passphrase": "  "})
+    resp = await api._handle_set_passphrase(request)
+    assert resp.status == 400
+    data = json.loads(resp.body)
+    assert data["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_reset_session_found(api, monkeypatch) -> None:
+    from pathlib import Path
+
+    monkeypatch.setattr(
+        "src.api.backup_session_file", lambda settings: Path("/tmp/session_0.backup.json")
+    )
+    request = _mock_request()
+    resp = await api._handle_reset_session(request)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["ok"] is True
+    assert data["backup_path"] == "/tmp/session_0.backup.json"
+    assert data["restart_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_reset_session_none(api, monkeypatch) -> None:
+    monkeypatch.setattr("src.api.backup_session_file", lambda settings: None)
+    request = _mock_request()
+    resp = await api._handle_reset_session(request)
+    assert resp.status == 400
+    data = json.loads(resp.body)
+    assert data["ok"] is False
+
+
+# ---------------------------------------------------------------------------
 # Integration: multiple routes registered
 # ---------------------------------------------------------------------------
 
@@ -317,6 +442,10 @@ def test_routes_registered(api) -> None:
     assert ("POST", "/mute") in pairs
     assert ("POST", "/provider") in pairs
     assert ("POST", "/model") in pairs
+    assert ("GET", "/api/providers") in pairs
+    assert ("GET", "/api/models") in pairs
+    assert ("POST", "/api/settings/passphrase") in pairs
+    assert ("POST", "/api/settings/reset-session") in pairs
     assert ("POST", "/cancel") in pairs
 
 
