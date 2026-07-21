@@ -10,7 +10,6 @@ export default function ControlsCard({
   onOpenSetup,
   onToggle,
   onOpenModal,
-  chromeProfiles, chromeProfile, onChromeLaunch, onChromeProfileChange, onChromeClose,
 }) {
   const panels = [
     ['canvas', '🖼', 'canvas', showCanvas],
@@ -25,7 +24,6 @@ export default function ControlsCard({
   ];
 
   const dialogs = [
-    ['chrome', '🌐', 'chrome', chromeProfiles !== null],
     ['tools', '🔧', 'tools', showTools],
     ['bridge', '🌉', 'bridge', showBridge],
     ['prompts', '📝', 'prompts', showPrompts],
@@ -70,28 +68,6 @@ export default function ControlsCard({
         </div>
       </div>
 
-      {chromeProfiles !== null && (
-        <div className="rail-section">
-          <div className="rail-label">chrome profile</div>
-          <div className="rail-group">
-            {chromeProfiles.length > 0 && (
-              <select
-                value={chromeProfile}
-                onChange={e => onChromeProfileChange && onChromeProfileChange(e.target.value)}
-                className="rail-select"
-              >
-                {chromeProfiles.map(p => (
-                  <option key={p.directory} value={p.directory}>
-                    {p.display_name}{p.last_used ? ' (last)' : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-            <button className="btn rail-btn" onClick={onChromeLaunch}>launch chrome</button>
-            <button className="btn rail-btn" onClick={onChromeClose}>{'✕ close'}</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

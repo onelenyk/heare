@@ -31,8 +31,6 @@ export default function Dashboard({ onOpenSetup }) {
   const [audioDevices, setAudioDevices] = useState(null);
   const [showTools, setShowTools] = useState(false);
   const [toolsData, setToolsData] = useState(null);
-  const [chromeProfiles, setChromeProfiles] = useState(null);
-  const [chromeProfile, setChromeProfile] = useState('');
   // Bridge state
   const [showBridge, setShowBridge] = useState(false);
   const [bridge, setBridge] = useState(null);
@@ -173,20 +171,6 @@ export default function Dashboard({ onOpenSetup }) {
     } catch(e) { showToastMsg('device select failed: ' + e.message, 'err'); }
   }
 
-  // ═══ 4f: Chrome launch + profile picker ═══
-  async function fetchChromeProfiles() {
-    try {
-      const r = await fetch(API + '/api/chrome/profiles');
-      const d = await r.json();
-      const profiles = d.profiles || [];
-      setChromeProfiles(profiles);
-      if (profiles.length > 0) {
-        const lastUsed = profiles.find(p => p.last_used) || profiles[0];
-        setChromeProfile(lastUsed.directory);
-      }
-    } catch(e) { showToastMsg('profiles fetch failed: ' + e.message, 'err'); }
-  }
-
   async function handleAgentCancel(sid) {
     try {
       await fetch(API + '/api/agents/cancel', {
@@ -196,20 +180,6 @@ export default function Dashboard({ onOpenSetup }) {
       });
       showToastMsg('agent cancelled', 'ok');
     } catch(e) { showToastMsg('cancel failed: ' + e.message, 'err'); }
-  }
-
-  async function handleChromeLaunch() {
-    try {
-      const body = chromeProfile ? { profile_directory: chromeProfile } : {};
-      const r = await fetch(API + '/api/chrome/launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      if (d.ok) showToastMsg(d.status, 'ok');
-      else showToastMsg('chrome launch failed: ' + (d.status || ''), 'err');
-    } catch(e) { showToastMsg('chrome launch failed: ' + e.message, 'err'); }
   }
 
   // ═══ 4g: Tools ═══
@@ -364,8 +334,6 @@ export default function Dashboard({ onOpenSetup }) {
         showTools={showTools}
         showBridge={showBridge}
         showPrompts={showPrompts}
-        chromeProfiles={chromeProfiles}
-        chromeProfile={chromeProfile}
         onToggle={(w) => {
           const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, agents: setShowAgents, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
           if (setters[w]) setters[w](prev => !prev);
@@ -373,14 +341,10 @@ export default function Dashboard({ onOpenSetup }) {
           if (w === 'audio' && !showAudio) fetchAudioDevices();
         }}
         onOpenModal={(d) => {
-          if (d === 'chrome') fetchChromeProfiles();
           if (d === 'tools') handleOpenTools();
           if (d === 'bridge') openBridgeSetup();
           if (d === 'prompts') handleOpenPrompts();
         }}
-        onChromeLaunch={handleChromeLaunch}
-        onChromeProfileChange={setChromeProfile}
-        onChromeClose={() => setChromeProfiles(null)}
         onOpenSetup={onOpenSetup}
       />
         </aside>
