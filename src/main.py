@@ -455,23 +455,42 @@ async def _run_pipeline_loop(
         wait_stop = loop.create_task(stop_event.wait())
         tasks.append(wait_stop)
 
-    done, _ = await asyncio.wait(
-        tasks, return_when=asyncio.FIRST_COMPLETED
-    )
-
-    # Cancel remaining tasks.
-    for t in tasks:
-        if not t.done():
-            t.cancel()
-    if audio_dev_task is not None:
-        audio_dev_task.cancel()
-
-    # Await cancelled tasks to suppress CancelledError noise.
-    for t in tasks + ([audio_dev_task] if audio_dev_task else []):
+    async def _teardown() -> None:
+        """Stop the pipecat runner and drain every helper task."""
         try:
-            await t
-        except (asyncio.CancelledError, Exception):
-            pass
+            await runner.cancel()
+        except Exception:
+            logger.warning("runner.cancel failed (non-fatal)", exc_info=True)
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        if audio_dev_task is not None:
+            audio_dev_task.cancel()
+        for t in tasks + ([audio_dev_task] if audio_dev_task else []):
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        # Teardown MUST complete even when this coroutine is itself
+        # cancelled (menubar "stop"). Previously cancellation skipped the
+        # teardown entirely and the pipecat runner survived: the mic stayed
+        # open and the agent kept listening and talking while the UI said
+        # "stopped", and the next start stacked a second live pipeline on
+        # the orphan. Run it as its own task and absorb repeated
+        # cancellation so it always finishes before we return.
+        teardown = asyncio.ensure_future(_teardown())
+        while not teardown.done():
+            try:
+                await asyncio.shield(teardown)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                logger.warning("pipeline teardown failed", exc_info=True)
+                break
 
 
 async def _cmd_start(args: argparse.Namespace) -> int:
