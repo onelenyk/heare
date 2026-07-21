@@ -47,12 +47,68 @@ async def test_stop_daemon_schedules_self_exit_when_confirmed() -> None:
         args = json.dumps({"user_confirmed": True, "delay_s": 0.01})
         result = await _execute_stop_daemon(args)
 
-    assert result["success"] is True
-    assert "Shutting down" in result["spoken"]["en"]
-    # Give the spawned task a chance to run.
-    await asyncio.sleep(0.05)
+        assert result["success"] is True
+        assert "Shutting down" in result["spoken"]["en"]
+        # Drain the spawned task while still patched — the scheduling
+        # helper resolves schedule_self_exit when it runs, not when the
+        # coroutine is created, so leaving the block first would fire a
+        # real SIGTERM at the test runner.
+        await asyncio.sleep(0.05)
+
     assert mock.await_count == 1
     assert mock.await_args.kwargs["delay_s"] == pytest.approx(0.01)
+
+
+@pytest.mark.asyncio
+async def test_stop_daemon_hosted_stops_pipeline_without_exiting() -> None:
+    """With host hooks registered (menubar), stopping must call the host's
+    stop callback and never signal the process — the menu bar has to
+    survive so the user can start the pipeline again."""
+    from src.daemon import control as daemon_control
+
+    calls: list[str] = []
+    daemon_control.set_host_hooks(
+        stop=lambda: calls.append("stop"),
+        restart=lambda: calls.append("restart"),
+    )
+    try:
+        with patch("src.daemon.control.schedule_self_exit", AsyncMock()) as exit_mock:
+            args = json.dumps({"user_confirmed": True, "delay_s": 0.01})
+            result = await _execute_stop_daemon(args)
+            await asyncio.sleep(0.05)
+
+        assert result["success"] is True
+        assert calls == ["stop"]
+        assert exit_mock.await_count == 0
+        assert "menu bar" in result["spoken"]["en"]
+    finally:
+        daemon_control.clear_host_hooks()
+
+
+@pytest.mark.asyncio
+async def test_restart_daemon_hosted_restarts_in_place() -> None:
+    """Hosted restart uses the host callback — no detached respawner, no
+    self-exit (which would take the menu bar down with it)."""
+    from src.daemon import control as daemon_control
+
+    calls: list[str] = []
+    daemon_control.set_host_hooks(
+        stop=lambda: calls.append("stop"),
+        restart=lambda: calls.append("restart"),
+    )
+    try:
+        with patch("src.daemon.control.spawn_detached_respawn") as spawn_mock, \
+             patch("src.daemon.control.schedule_self_exit", AsyncMock()) as exit_mock:
+            args = json.dumps({"user_confirmed": True, "self_exit_delay_s": 0.01})
+            result = await _execute_restart_daemon(args)
+            await asyncio.sleep(0.05)
+
+        assert result["success"] is True
+        assert calls == ["restart"]
+        assert spawn_mock.call_count == 0
+        assert exit_mock.await_count == 0
+    finally:
+        daemon_control.clear_host_hooks()
 
 
 @pytest.mark.asyncio
@@ -98,12 +154,12 @@ async def test_restart_daemon_spawns_respawner_then_schedules_exit() -> None:
             "respawn_delay_s": 0.02,
         })
         result = await _execute_restart_daemon(args)
+        # Drain the create_task'd schedule_self_exit while still patched.
+        await asyncio.sleep(0.05)
 
     assert result["success"] is True
     assert "12345" in result["output"]
     assert spawn_mock.call_count == 1
-    # Drain the create_task'd schedule_self_exit.
-    await asyncio.sleep(0.05)
     assert exit_mock.await_count == 1
     # Spawn must come first — the test that matters most.
     assert call_order[0] == "spawn"

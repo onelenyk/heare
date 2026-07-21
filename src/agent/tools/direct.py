@@ -2630,15 +2630,28 @@ async def _execute_stop_daemon(args: str, settings: "Settings | None" = None) ->
         }
 
     delay_s = float(payload.get("delay_s", 4.0))
-    safe_task(daemon_control.schedule_self_exit(delay_s=delay_s), name="daemon-stop-exit")
-    logger.info("[CAPABILITY DAEMON] stop scheduled delay=%.2fs", delay_s)
+    safe_task(daemon_control.schedule_stop(delay_s=delay_s), name="daemon-stop-exit")
+    hosted = daemon_control.has_host_hooks()
+    logger.info(
+        "[CAPABILITY DAEMON] stop scheduled delay=%.2fs scope=%s",
+        delay_s,
+        "pipeline" if hosted else "process",
+    )
 
     return {
         "success": True,
         "output": "stop scheduled",
         "spoken": {
-            "en": "Shutting down now. Goodbye.",
-            "uk": "Завершую роботу. До зустрічі.",
+            "en": (
+                "Going quiet. Start me again from the menu bar."
+                if hosted
+                else "Shutting down now. Goodbye."
+            ),
+            "uk": (
+                "Замовкаю. Запусти мене знову з меню-бара."
+                if hosted
+                else "Завершую роботу. До зустрічі."
+            ),
         },
     }
 
@@ -2683,6 +2696,27 @@ async def _execute_restart_daemon(
         }
 
     self_exit_delay_s = float(payload.get("self_exit_delay_s", 4.0))
+
+    # Hosted (menubar): the host restarts the pipeline in place — no detached
+    # respawner, and the menu bar icon survives the cycle.
+    if daemon_control.has_host_hooks():
+        safe_task(
+            daemon_control.schedule_restart(delay_s=self_exit_delay_s),
+            name="daemon-restart-pipeline",
+        )
+        logger.info(
+            "[CAPABILITY DAEMON] restart scheduled in-place delay=%.2fs",
+            self_exit_delay_s,
+        )
+        return {
+            "success": True,
+            "output": "restart scheduled (in-place)",
+            "spoken": {
+                "en": "Restarting now. Be right back.",
+                "uk": "Перезапускаюся. За мить повернуся.",
+            },
+        }
+
     # Respawn delay must be >= self_exit_delay_s so the child waits
     # until after this process is gone before calling cmd_start (which
     # otherwise refuses with "already running").

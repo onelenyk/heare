@@ -182,6 +182,15 @@ class HeareMenuBar(rumps.App):
 
         self._set_status(ready=True)
 
+        # Let the agent's stop_daemon / restart_daemon tools cycle the
+        # pipeline without killing this process, so the menu bar survives
+        # "вимикайся" and can start it again.
+        from src.daemon import control as daemon_control
+
+        daemon_control.set_host_hooks(
+            stop=self._stop_pipeline, restart=self._restart_pipeline
+        )
+
         # Auto-start the voice pipeline on launch — without this the app
         # sits "stopped" until someone clicks Start in the menu.
         self._cmd_queue.put(("start",))

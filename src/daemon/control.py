@@ -120,6 +120,58 @@ async def schedule_self_exit(
 
 
 # ---------------------------------------------------------------------------
+# Host hooks — set by an embedding host (the menubar app) that owns the
+# process and can stop/restart the voice pipeline without killing itself.
+# Unset (CLI `start`), stopping the pipeline means exiting the process.
+
+_stop_hook: Optional[callable] = None
+_restart_hook: Optional[callable] = None
+
+
+def set_host_hooks(*, stop: callable, restart: callable) -> None:
+    """Register pipeline stop/restart callbacks owned by the host process."""
+    global _stop_hook, _restart_hook
+    _stop_hook = stop
+    _restart_hook = restart
+
+
+def clear_host_hooks() -> None:
+    global _stop_hook, _restart_hook
+    _stop_hook = None
+    _restart_hook = None
+
+
+def has_host_hooks() -> bool:
+    return _stop_hook is not None and _restart_hook is not None
+
+
+async def schedule_stop(*, delay_s: float = 4.0) -> str:
+    """Stop the voice pipeline after ``delay_s`` (time for TTS to finish).
+
+    With host hooks registered the pipeline stops but the host process
+    survives, so the menubar icon stays available to start it again.
+    Without them, this is a process exit.
+    """
+    if _stop_hook is not None:
+        await asyncio.sleep(delay_s)
+        logger.info("[DAEMON CONTROL] stopping pipeline via host hook")
+        _stop_hook()
+        return "pipeline"
+    await schedule_self_exit(delay_s=delay_s)
+    return "process"
+
+
+async def schedule_restart(*, delay_s: float = 4.0) -> str:
+    """Restart the voice pipeline in place via the host, if it can."""
+    if _restart_hook is None:
+        return "unsupported"
+    await asyncio.sleep(delay_s)
+    logger.info("[DAEMON CONTROL] restarting pipeline via host hook")
+    _restart_hook()
+    return "pipeline"
+
+
+# ---------------------------------------------------------------------------
 # Bash safeguard — pattern detection used by direct_tools._execute_bash to
 # refuse commands that would shoot the daemon in the foot.
 
