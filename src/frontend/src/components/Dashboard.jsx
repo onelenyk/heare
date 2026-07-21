@@ -155,7 +155,8 @@ export default function Dashboard({ onOpenSetup }) {
       const r = await fetch(API + '/api/audio-devices');
       const d = await r.json();
       setAudioDevices(d);
-      setShowAudio(true);
+      // Deliberately does NOT open the panel — the caller owns visibility.
+      // Forcing it open here made the toggle impossible to switch off.
     } catch(e) { showToastMsg('audio fetch failed: ' + e.message, 'err'); }
   }
 
@@ -367,7 +368,8 @@ export default function Dashboard({ onOpenSetup }) {
         onToggle={(w) => {
           const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, agents: setShowAgents, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
           if (setters[w]) setters[w](prev => !prev);
-          if (w === 'audio') fetchAudioDevices();
+          // Refresh the device list only when opening the panel.
+          if (w === 'audio' && !showAudio) fetchAudioDevices();
         }}
         onOpenModal={(d) => {
           if (d === 'chrome') fetchChromeProfiles();
