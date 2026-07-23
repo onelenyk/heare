@@ -8,6 +8,7 @@ to run as a fire-and-forget background task after each turn.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import TYPE_CHECKING
 
 from src.memory.base import MemoryEntry, MemoryType
@@ -22,6 +23,10 @@ _PATTERNS_UK: list[tuple[re.Pattern, MemoryType]] = [
     # Name / identity
     (
         re.compile(r"мене звати\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
+        MemoryType.FACT,
+    ),
+    (
+        re.compile(r"мене кличуть\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
         MemoryType.FACT,
     ),
     (re.compile(r"я\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
@@ -83,6 +88,10 @@ _PATTERNS_EN: list[tuple[re.Pattern, MemoryType]] = [
         MemoryType.FACT,
     ),
     (
+        re.compile(r"call me\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
+        MemoryType.FACT,
+    ),
+    (
         re.compile(r"i(?:'m| am)\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
         MemoryType.FACT,
     ),
@@ -123,6 +132,21 @@ _PATTERNS_EN: list[tuple[re.Pattern, MemoryType]] = [
 ]
 
 
+def _normalize_content(text: str) -> str:
+    """Strip diacritics, lowercase, collapse whitespace."""
+    nfkd = unicodedata.normalize("NFKD", text)
+    stripped = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return " ".join(stripped.lower().split())
+
+
+def _content_fingerprint(text: str) -> str:
+    """Fingerprint for dedup — removes stopwords and punctuation."""
+    _STOP = frozenset({"the", "a", "an", "is", "in", "at", "on", "of", "to", "and"})
+    clean = _normalize_content(text)
+    tokens = [t.strip(".,!?;:") for t in clean.split() if t not in _STOP and len(t) > 1]
+    return " ".join(tokens)
+
+
 def extract_memories(text: str) -> list[MemoryEntry]:
     """Extract MemoryEntry objects from a single text string.
 
@@ -155,14 +179,49 @@ def extract_memories(text: str) -> list[MemoryEntry]:
                 )
             )
 
+    if len(results) > 1:
+        results = _dedup_by_containment(results)
     return results
+
+
+_TYPE_PRIORITY: dict[MemoryType, int] = {
+    MemoryType.DECISION: 3,
+    MemoryType.PREFERENCE: 2,
+    MemoryType.FACT: 1,
+    MemoryType.EVENT: 1,
+}
+
+
+def _dedup_by_containment(entries: list[MemoryEntry]) -> list[MemoryEntry]:
+    """Remove entries whose content is a substring of another entry.
+
+    When a generic pattern and a specific pattern both match the same
+    text, keeps the more specific type and longer content.
+    """
+    ranked = sorted(
+        entries,
+        key=lambda e: (_TYPE_PRIORITY.get(e.type, 0), len(e.content)),
+        reverse=True,
+    )
+    out: list[MemoryEntry] = []
+    seen: set[str] = set()
+    for entry in ranked:
+        norm = _normalize_content(entry.content)
+        if any(norm in s for s in seen):
+            continue
+        if any(s in norm for s in seen):
+            continue
+        seen.add(norm)
+        out.append(entry)
+    return out
 
 
 async def extract_and_store(backend: "MemoryBackend", text: str) -> int:
     """Extract memories from text and store them via the backend.
 
-    Checks for near-duplicates before storing (simple content match).
-    Returns number of new memories stored.
+    Checks for similar existing entries before storing using both
+    content search and fingerprint comparison.  Returns number of new
+    memories stored.
     """
     extracted = extract_memories(text)
     if not extracted:
@@ -170,13 +229,18 @@ async def extract_and_store(backend: "MemoryBackend", text: str) -> int:
 
     stored = 0
     for entry in extracted:
-        # Check for existing similar memories (simple content match)
-        existing = await backend.search(entry.content, limit=1)
+        existing = await backend.search(entry.content, limit=5)
         if existing:
-            continue  # skip near-duplicate
-
-        await backend.store(entry)
-        stored += 1
+            fp_new = _content_fingerprint(entry.content)
+            for ex in existing:
+                if _content_fingerprint(ex.content) == fp_new:
+                    break
+            else:
+                await backend.store(entry)
+                stored += 1
+        else:
+            await backend.store(entry)
+            stored += 1
 
     return stored
 
