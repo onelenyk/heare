@@ -171,7 +171,13 @@ class ContextBuilder:
             try:
                 memories = await self._memory_backend.context(query=transcript, limit=3)
                 if memories:
-                    result["memory_block"] = self._format_memories(memories)
+                    block = self._format_memories(memories)
+                    max_chars = getattr(
+                        self.settings, "memory_block_max_chars", 500
+                    )
+                    if len(block) > max_chars:
+                        block = block[:max_chars].rsplit("\n", 1)[0]
+                    result["memory_block"] = block
             except Exception:
                 pass  # never break prompt building
             # Auto-extract memories from this turn

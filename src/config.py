@@ -262,6 +262,7 @@ class Settings:
     conversation_memory_enabled: bool = False
     memory_backend: str = "sqlite"  # "sqlite" | "engram" | "mem0" | "noop"
     memory_auto_extract: bool = True
+    memory_block_max_chars: int = 500
     max_conversation_age_hours: float = 24.0
     topic_extraction_enabled: bool = True
     # CCS-01: hydration freshness window. The action log on startup is
