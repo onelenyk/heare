@@ -212,6 +212,7 @@ async def _build_and_run_daemon(
         # during setup polling — API was started with state=None).
         await state.init()
         api.state = state
+        api._memory_backend = memory_backend
 
         if pipeline is not None:
             # Startup greeting

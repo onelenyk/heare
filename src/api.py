@@ -32,6 +32,7 @@ from src.config import (  # noqa: E402
     set_confirmation_passphrase,
     write_browser_bridge_token,
 )
+from src.memory.base import MemoryType  # noqa: E402
 from src.dashboard_data import (  # noqa: E402
     counts,
     daemon_status,
@@ -90,10 +91,11 @@ def _clamp_int(raw: str | None, default: int, low: int, high: int) -> int:
 
 
 class API:
-    def __init__(self, state, config, daemon_control=None):
+    def __init__(self, state, config, daemon_control=None, memory_backend=None):
         self.state = state
         self.config = config
         self._control = daemon_control  # (start_fn, stop_fn, restart_fn)
+        self._memory_backend = memory_backend
         self._app = web.Application()
         logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
         self._app.router.add_get("/state", self._handle_state)
@@ -155,6 +157,11 @@ class API:
         )
         self._app.router.add_post("/api/setup/config", self._handle_setup_config)
         self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
+        self._app.router.add_get("/api/memories", self._handle_memories)
+        self._app.router.add_get("/api/memories/stats", self._handle_memories_stats)
+        self._app.router.add_post(
+            "/api/memories/{id}/forget", self._handle_memories_forget
+        )
         self._runner = None
         self._site = None
 
@@ -1750,6 +1757,54 @@ class API:
         setup_flag = HEARE_HOME / ".setup_complete"
         setup_flag.parent.mkdir(parents=True, exist_ok=True)
         setup_flag.touch()
+        return web.json_response({"ok": True})
+
+    # ── Memory dashboard (requires memory_backend) ────────────────
+
+    async def _handle_memories(self, request):
+        q = request.query.get("q", "")
+        type_filter = request.query.get("type", None)
+        limit = _clamp_int(request.query.get("limit"), 50, 1, 200)
+        mb = self._memory_backend
+        if mb is None:
+            return web.json_response({"memories": []})
+        if q:
+            types = [MemoryType(type_filter)] if type_filter else None
+            entries = await mb.search(q, limit=limit, types=types)
+        else:
+            entries = await mb.context(limit=limit)
+        return web.json_response(
+            {
+                "memories": [
+                    {
+                        "id": e.id,
+                        "type": e.type.value,
+                        "content": e.content,
+                        "source": e.source,
+                        "confidence": e.confidence,
+                        "created_ts": e.created_ts,
+                        "last_accessed": e.last_accessed,
+                    }
+                    for e in entries
+                ]
+            }
+        )
+
+    async def _handle_memories_stats(self, request):
+        mb = self._memory_backend
+        if mb is None:
+            return web.json_response({"total": 0, "by_type": {}, "archived": 0})
+        stats = await mb.stats()
+        return web.json_response(stats)
+
+    async def _handle_memories_forget(self, request):
+        memory_id = request.match_info["id"]
+        mb = self._memory_backend
+        if mb is None:
+            return web.json_response({"ok": False, "error": "no memory backend"}, status=503)
+        ok = await mb.forget(memory_id)
+        if not ok:
+            return web.json_response({"ok": False, "error": "memory not found"}, status=404)
         return web.json_response({"ok": True})
 
     def _available_providers(self):
