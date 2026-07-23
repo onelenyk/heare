@@ -131,7 +131,12 @@ class SQLiteBackend(MemoryBackend):
         limit: int = 5,
         types: list[MemoryType] | None = None,
     ) -> list[MemoryEntry]:
-        """Search memories via FTS5 full-text match, with optional type filter."""
+        """Search memories via FTS5 full-text match, with optional type filter.
+
+        Results are ranked by BM25 relevance (FTS5 ``rank``) boosted by
+        recency and frequency: recently-accessed and frequently-accessed
+        memories sort higher.
+        """
         sanitized = _sanitize_fts_query(query)
         params: list = [sanitized]
 
@@ -150,7 +155,11 @@ class SQLiteBackend(MemoryBackend):
             JOIN memories_fts fts ON m.rowid = fts.rowid
             WHERE memories_fts MATCH ? AND m.archived = 0
             {type_clause}
-            ORDER BY rank
+            ORDER BY rank * (
+                1.0
+                - 0.3 * MAX(0.0, 1.0 - (strftime('%%s','now') - m.last_accessed) / 2592000.0)
+                - 0.1 * CAST(MIN(m.access_count, 5) AS REAL) / 5.0
+            ) ASC
             LIMIT ?
         """
         cursor = await self._db.execute(sql, params)
