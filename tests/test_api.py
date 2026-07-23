@@ -705,3 +705,30 @@ async def test_inject_rejects_empty(api, mock_config, tmp_path) -> None:
     resp = await api._handle_inject(_mock_request(json_data={"text": "   "}))
     assert resp.status == 400
     assert json.loads(resp.body)["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_state_model_reflects_override(mock_state, mock_config) -> None:
+    """The active model shown must be the per-provider override, not the stale
+    top-level 'model' snapshot that goes unset after a hot-swap."""
+    mock_state.snapshot.return_value = {
+        "provider": "deepseek",
+        "model": "deepseek-chat",          # stale startup snapshot
+        "model_deepseek": "deepseek-v4-flash",  # live override via /model
+    }
+    api = API(mock_state, mock_config)
+    resp = await api._handle_state(_mock_request())
+    data = json.loads(resp.body)
+    assert data["model"] == "deepseek-v4-flash"
+
+
+@pytest.mark.asyncio
+async def test_state_model_falls_back_to_default(mock_state, mock_config) -> None:
+    """With no override the active model is the provider default."""
+    mock_state.snapshot.return_value = {"provider": "deepseek", "model": "stale"}
+    api = API(mock_state, mock_config)
+    resp = await api._handle_state(_mock_request())
+    data = json.loads(resp.body)
+    from src.agent.llm.providers import get_config
+
+    assert data["model"] == get_config("deepseek").default_model

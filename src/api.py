@@ -292,6 +292,13 @@ class API:
                     if cfg.model_whitelist
                     else [cfg.default_model]
                 )
+                # Active model = the per-provider override (set via /model,
+                # hot-swapped by SwitchableLLMService) or the provider default.
+                # The top-level "model" snapshot is written once at startup and
+                # goes stale after a hot-swap, so derive the live value here.
+                data["model"] = (
+                    data.get(f"model_{provider_key}") or cfg.default_model
+                )
             else:
                 data["models"] = []
         except Exception:
