@@ -1124,14 +1124,26 @@ def _handler_for(tool: ToolDef):
     return func
 
 
-def build_tools_schema() -> Any:
-    """Build the ``ToolsSchema`` for LLM context."""
+def build_tools_schema(session_state: Any = None) -> Any:
+    """Build the ``ToolsSchema`` for LLM context.
+
+    When *session_state* is provided, tools denied by the live mode
+    profile are excluded from the schema so the LLM never sees schemas
+    it cannot call.  The execution-time gate (``mode_gate_refusal``)
+    remains in place as defense-in-depth.
+    """
     from pipecat.adapters.schemas.function_schema import FunctionSchema
     from pipecat.adapters.schemas.tools_schema import ToolsSchema
+
+    from src.agent.modes import is_tool_allowed as mode_is_tool_allowed
 
     schemas: list[Any] = []
     for t in TOOLS:
         if not t.enabled:
+            continue
+        if session_state is not None and not mode_is_tool_allowed(
+            session_state.profile, t.name
+        ):
             continue
         schemas.append(
             FunctionSchema(

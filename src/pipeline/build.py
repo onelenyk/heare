@@ -454,6 +454,7 @@ async def build_pipeline(
     from pipecat.frames.frames import ErrorFrame
     from pipecat.pipeline.pipeline import Pipeline
     from pipecat.pipeline.task import PipelineParams, PipelineTask
+    from pipecat.adapters.schemas.tools_schema import ToolsSchema
     from pipecat.processors.aggregators.llm_context import LLMContext
     from pipecat.processors.aggregators.llm_response_universal import (
         LLMContextAggregatorPair,
@@ -692,7 +693,9 @@ async def build_pipeline(
         tts_service=tts,
         language_state=language_state,
         bot_speech_state=bot_speech_state,
+        session_state=session_state,
     )
+    session_state.register_flush_hook(transcription_gate.force_flush)
     voice_state_observer = create_voice_state_observer(state)
     agent_state_observer = create_agent_state_observer(state)
 
@@ -720,11 +723,12 @@ async def build_pipeline(
         state=state,
         settings=settings,
     )
-    tools_schema = build_tools_schema()
+    tools_schema = build_tools_schema(session_state=session_state)
     # Connect stdio MCP servers from workspace/.mcp.json and fold their
     # tools into the LLM's surface BEFORE the context is built so the
     # model sees them on turn one. Always returns a bridge (never raises).
     from src.agent.mcp_bridge import connect_mcp_servers
+    from src.agent.modes import is_tool_allowed as mode_is_tool_allowed
 
     mcp_bridge = await connect_mcp_servers(settings)
     # Let the system prompt advertise the *actually connected* tools
@@ -737,14 +741,22 @@ async def build_pipeline(
         context_builder.set_session_state(session_state)
     except AttributeError:
         logger.debug("context_builder has no set_session_state; skipping")
-    mcp_schemas = mcp_bridge.function_schemas()
-    if mcp_schemas:
-        tools_schema.standard_tools.extend(mcp_schemas)
+    _mcp_schemas = mcp_bridge.function_schemas()
+    _all_schemas = list(tools_schema.standard_tools)
+    if _mcp_schemas:
+        filtered_mcp = [
+            s for s in _mcp_schemas
+            if mode_is_tool_allowed(session_state.profile, s.name)
+        ]
+        _all_schemas.extend(filtered_mcp)
         logger.info(
-            "mcp_bridge: %d tool(s) from %d server(s) added to LLM surface",
-            len(mcp_schemas),
+            "mcp_bridge: %d tool(s) from %d server(s) added to LLM surface"
+            " (%d denied by mode profile)",
+            len(filtered_mcp),
             len(mcp_bridge.connected_servers),
+            len(_mcp_schemas) - len(filtered_mcp),
         )
+    tools_schema = ToolsSchema(standard_tools=_all_schemas)
     llm_context = LLMContext(
         messages=[
             {
@@ -759,6 +771,26 @@ async def build_pipeline(
         ],
         tools=tools_schema,
     )
+    def _rebuild_tool_schemas(profile: Any) -> None:
+        new_schema = build_tools_schema(session_state=session_state)
+        filtered_builtins = list(new_schema.standard_tools)
+        if _mcp_schemas:
+            from src.agent.modes import is_tool_allowed as _mode_is_tool_allowed
+            filtered_mcp = [
+                s for s in _mcp_schemas
+                if _mode_is_tool_allowed(profile, s.name)
+            ]
+            filtered_builtins.extend(filtered_mcp)
+        new_schema = ToolsSchema(standard_tools=filtered_builtins)
+        llm_context.tools = new_schema
+        logger.info(
+            "tool_schema: rebuilt for mode %s (%d tools, %d MCP filtered)",
+            profile.name,
+            len(filtered_builtins) - len(filtered_mcp),
+            len(_mcp_schemas) - len(filtered_mcp),
+        )
+
+    session_state.add_mode_change_listener(_rebuild_tool_schemas)
     # vad_analyzer + user_turn_strategies migrated here from transport params
     # (deprecated since pipecat 0.0.108).
     aggregator_pair = LLMContextAggregatorPair(
