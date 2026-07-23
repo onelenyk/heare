@@ -46,6 +46,7 @@ from src.pipeline.language_state import LanguageState
 
 if TYPE_CHECKING:
     from src.config import Settings
+    from src.pipeline.session_state import SessionState
     from src.store.storage import TranscriptStore
 
 
@@ -345,6 +346,7 @@ def _build_transcription_gate_class():
             tts_service: Any = None,
             language_state: LanguageState | None = None,
             bot_speech_state: Any = None,
+            session_state: "SessionState | None" = None,
         ) -> None:
             super().__init__()
             self.store = store
@@ -385,7 +387,8 @@ def _build_transcription_gate_class():
                 settings.bot_speaking_cooldown_seconds if settings is not None else 2.0
             )
 
-            self._debounce_seconds: float = (
+            self._session_state = session_state
+            self._debounce_seconds: float = self._resolve_debounce_seconds(
                 settings.transcript_debounce_seconds if settings is not None else 0.0
             )
             self._debounce_buffer: list[str] = []
@@ -394,6 +397,39 @@ def _build_transcription_gate_class():
             import asyncio as _asyncio
 
             self._debounce_task: _asyncio.Task | None = None
+
+            if self._session_state is not None:
+                self._session_state.set_mode_change_listener(self._on_mode_change)
+
+        def _resolve_debounce_seconds(self, fallback: float) -> float:
+            if self._session_state is not None:
+                return self._session_state.profile.turn_timeout
+            return fallback
+
+        def _on_mode_change(self, _profile: Any) -> None:
+            self._debounce_seconds = self._resolve_debounce_seconds(
+                self.settings.transcript_debounce_seconds if self.settings is not None else 0.0
+            )
+
+        def force_flush(self) -> None:
+            if self._debounce_task is not None and not self._debounce_task.done():
+                self._debounce_task.cancel()
+                self._debounce_task = None
+            combined = " ".join(self._debounce_buffer).strip()
+            frame = self._debounce_frame
+            direction = self._debounce_direction
+            self._debounce_buffer = []
+            self._debounce_frame = None
+            self._debounce_direction = None
+            if not combined or frame is None:
+                return
+            import asyncio as _asyncio
+            try:
+                _asyncio.ensure_future(
+                    self._handle_transcription(frame, direction, override_text=combined)
+                )
+            except RuntimeError:
+                pass
 
         @property
         def active_language(self) -> str:
@@ -835,6 +871,7 @@ def create_transcription_gate(
     tts_service: Any = None,
     language_state: LanguageState | None = None,
     bot_speech_state: Any = None,
+    session_state: "SessionState | None" = None,
 ):
     """Factory returning a TranscriptionGateProcessor instance."""
     cls = _build_transcription_gate_class()
@@ -844,6 +881,7 @@ def create_transcription_gate(
         tts_service=tts_service,
         language_state=language_state,
         bot_speech_state=bot_speech_state,
+        session_state=session_state,
     )
 
 

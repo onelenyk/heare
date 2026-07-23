@@ -44,7 +44,7 @@ class SessionState:
             if mode:
                 initial_mode = mode
         self._profile: ModeProfile = resolve(initial_mode)
-        self._mode_listener: Optional[Callable[[ModeProfile], None]] = None
+        self._mode_listeners: list[Callable[[ModeProfile], None]] = []
         self._flush_hook: Optional[Callable[[], None]] = None
 
     # --- language (composed, read-through) ---------------------------------
@@ -85,9 +85,9 @@ class SessionState:
         old = self._profile.name
         self._profile = new_profile
         logger.info("[SESSION STATE] mode %s -> %s", old, new_profile.name)
-        if self._mode_listener is not None:
+        for listener in self._mode_listeners:
             try:
-                self._mode_listener(new_profile)
+                listener(new_profile)
             except Exception:
                 logger.exception("session_state: mode listener raised (non-fatal)")
         return True
@@ -95,12 +95,15 @@ class SessionState:
     def set_mode_change_listener(
         self, listener: Optional[Callable[[ModeProfile], None]]
     ) -> None:
-        """Register a callback fired when the mode actually changes.
+        """Replace all listeners with a single one.  Prefer
+        :meth:`add_mode_change_listener` for multiple subscribers."""
+        self._mode_listeners = [listener] if listener is not None else []
 
-        Separate from LanguageState's listener — the language path is
-        untouched. Only one listener; re-registering replaces it.
-        """
-        self._mode_listener = listener
+    def add_mode_change_listener(
+        self, listener: Callable[[ModeProfile], None]
+    ) -> None:
+        """Register an additional callback fired on mode changes."""
+        self._mode_listeners.append(listener)
 
     # --- turn-buffer flush hook -------------------------------------------
 
