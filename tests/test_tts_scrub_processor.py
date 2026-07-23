@@ -151,3 +151,107 @@ async def test_response_cycle_resets_between_responses() -> None:
     text_frames = [f for f in frames if isinstance(f, LLMTextFrame)]
     assert text_frames[0].text == ""
     assert text_frames[1].text == "Готово."
+
+
+# ---------------------------------------------------------------------------
+# Output-driven voice selection
+#
+# The voice must follow the assembled REPLY text, not the user's input. When
+# the agent answers Ukrainian to an English question, an input-driven voice
+# would be English on Cyrillic — NoAudioReceived, i.e. silence.
+
+
+def _voice_processor():
+    picked: list[str] = []
+    proc = create_tts_scrub_processor(
+        voice_setter=picked.append,
+        language_fallback=lambda: "uk",
+    )
+    proc.push_frame = AsyncMock()  # type: ignore[method-assign]
+    return proc, picked
+
+
+@pytest.mark.asyncio
+async def test_voice_follows_cyrillic_reply() -> None:
+    proc, picked = _voice_processor()
+
+    await _send(proc, LLMFullResponseStartFrame())
+    await _send(proc, LLMTextFrame(text="Привіт."))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    assert picked == ["uk"]
+
+
+@pytest.mark.asyncio
+async def test_voice_follows_latin_reply() -> None:
+    proc, picked = _voice_processor()
+
+    await _send(proc, LLMFullResponseStartFrame())
+    await _send(proc, LLMTextFrame(text="Blue."))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    assert picked == ["en"]
+
+
+@pytest.mark.asyncio
+async def test_voice_set_from_assembled_chunks() -> None:
+    """Streaming chunks may each be short; the choice is made on the join."""
+    proc, picked = _voice_processor()
+
+    await _send(proc, LLMFullResponseStartFrame())
+    await _send(proc, LLMTextFrame(text="Син"))
+    await _send(proc, LLMTextFrame(text="ього."))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    assert picked == ["uk"]
+
+
+@pytest.mark.asyncio
+async def test_voice_set_before_text_frames_reach_tts() -> None:
+    """The voice must be chosen before any reply frame is pushed downstream,
+    or TTS synthesises the first chunk with the old voice."""
+    order: list[str] = []
+    proc = create_tts_scrub_processor(
+        voice_setter=lambda _lang: order.append("voice"),
+    )
+
+    async def record_push(frame, direction=None):
+        from pipecat.frames.frames import LLMTextFrame as _T
+
+        if isinstance(frame, _T):
+            order.append("frame")
+
+    proc.push_frame = record_push  # type: ignore[assignment]
+
+    await _send(proc, LLMFullResponseStartFrame())
+    await _send(proc, LLMTextFrame(text="Синього."))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    assert order == ["voice", "frame"]
+
+
+@pytest.mark.asyncio
+async def test_voice_fallback_used_when_no_script() -> None:
+    """A reply with no script signal ('4.') falls back to the conversation
+    language rather than defaulting to English and going silent."""
+    proc, picked = _voice_processor()  # fallback lambda returns 'uk'
+
+    await _send(proc, LLMFullResponseStartFrame())
+    await _send(proc, LLMTextFrame(text="4."))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    assert picked == ["uk"]
+
+
+@pytest.mark.asyncio
+async def test_no_voice_setter_is_harmless() -> None:
+    """The default factory (no setter) must still scrub and pass text."""
+    proc = _make_processor()
+
+    await _send(proc, LLMFullResponseStartFrame())
+    await _send(proc, LLMTextFrame(text="Готово."))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    frames = _pushed_frames(proc)
+    text_frames = [f for f in frames if isinstance(f, LLMTextFrame)]
+    assert text_frames[0].text == "Готово."

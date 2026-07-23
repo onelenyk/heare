@@ -900,7 +900,14 @@ async def build_pipeline(
     # occasionally emits raw tool names (``list_tools``, ``list_capabilities``,
     # ``bash: <command>``) as plain text instead of invoking the function — and
     # those words go straight to the user's speakers.
-    tts_scrub = create_tts_scrub_processor()
+    # The gate owns the current-voice bookkeeping; tts_scrub decides the voice
+    # from the assembled reply text (the only reliable signal) and calls the
+    # gate's setter, so there is still one owner. Fallback = the conversation's
+    # language, for replies with no script signal ("4.").
+    tts_scrub = create_tts_scrub_processor(
+        voice_setter=getattr(transcription_gate, "_set_tts_voice", None),
+        language_fallback=lambda: language_state.language,
+    )
 
     # Record token-usage events to ``usage_events`` so the dashboard
     # can show running cost. The recorder watches three Pipecat signals:

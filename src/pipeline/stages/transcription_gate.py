@@ -744,12 +744,14 @@ def _build_transcription_gate_class():
             drifting apart is exactly how injected text ended up unlogged and
             (with an English voice on Cyrillic) inaudible.
 
-            Note what is deliberately NOT shared with ``_handle_transcription``:
-            the mute/echo checks and barge-in (typed text is not sound and
-            cannot be the bot hearing itself), and the language hysteresis.
-            The voice is set for this reply only, leaving ``_active_lang``
-            alone — otherwise one typed Ukrainian message would cost two
-            spoken turns of wrong voice while hysteresis switched back.
+            Note what is deliberately NOT done here. The mute/echo checks and
+            barge-in are skipped (typed text is not sound and cannot be the bot
+            hearing itself). The TTS voice is NOT set from this input text: the
+            voice must follow the *reply*, which may be a different language
+            (the agent is often constrained to answer in one language whatever
+            the user types), and an input-driven voice on a mismatched reply is
+            silence, not an accent. tts_scrub picks the voice from the assembled
+            response instead. ``_active_lang`` is likewise left alone.
             """
             text = (text or "").strip()
             if not text:
@@ -757,7 +759,6 @@ def _build_transcription_gate_class():
             from pipecat.frames.frames import LLMMessagesAppendFrame
 
             lang = detect_language_from_text(text, fallback=self._active_lang)
-            self._set_tts_voice(lang)
 
             # Log BEFORE pushing, matching the spoken path: the system prompt
             # injector downstream rebuilds from recent_transcripts, and this

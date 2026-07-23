@@ -439,24 +439,26 @@ async def test_spoken_transcript_marked_voice(harness) -> None:
     assert await cursor.fetchall() == [("hello", "voice")]
 
 
-async def test_inject_swaps_voice_for_cyrillic(harness) -> None:
-    """Edge TTS raises NoAudioReceived for Cyrillic on an English voice, so
-    getting this wrong is silence, not an accent."""
+async def test_inject_does_not_set_voice_from_input(harness) -> None:
+    """Voice follows the REPLY, not the typed input — the agent may answer in
+    a different language than the user typed. tts_scrub owns the choice from
+    the assembled response; the gate must not pre-empt it from the input."""
     store, settings = harness
     tts = MagicMock()
     gate = create_transcription_gate(store=store, settings=settings, tts_service=tts)
     _capture_pushed(gate)
     gate._current_voice = "en-US-AriaNeural"
 
-    await gate.inject_user_text("Скільки буде два плюс два?")
+    await gate.inject_user_text("hello")  # English input...
 
-    tts.set_voice.assert_called_once_with("uk-UA-OstapNeural")
+    # ...must not force an English voice: the reply could be Ukrainian, and a
+    # voice set here would make it silent.
+    tts.set_voice.assert_not_called()
 
 
 async def test_inject_leaves_active_lang_alone(harness) -> None:
-    """Voice is a per-turn override for typed text. Moving _active_lang would
-    make one typed message cost two spoken turns of wrong voice while the
-    hysteresis switched back."""
+    """Injected text must not move the conversation's active language — that
+    tracks spoken input and drives the system prompt's user_language."""
     store, settings = harness
     tts = MagicMock()
     gate = create_transcription_gate(store=store, settings=settings, tts_service=tts)
