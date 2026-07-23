@@ -433,8 +433,8 @@ class API:
             import aiosqlite
 
             sql = (
-                "SELECT id, ts, mode as who, agent_spoken as type, text as content "
-                "FROM transcripts "
+                "SELECT id, ts, mode as who, agent_spoken as type, "
+                "text as content, source FROM transcripts "
             )
             params: list = []
             if before_id:
@@ -454,6 +454,9 @@ class API:
                         "who": "bot" if r["who"] == "assistant" else "you",
                         "type": "said",
                         "content": r["content"],
+                        # NULL predates the column; every turn logged back
+                        # then did arrive by mic, so it reads as 'voice'.
+                        "source": r["source"] or "voice",
                     }
                     for r in rows
                 ]

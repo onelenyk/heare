@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 from src.daemon.events import emit
 from src.voice.language.core import (
     detect_language_from_frame,
+    detect_language_from_text,
     is_standalone_cancel_imperative,
     voice_for_language,
 )
@@ -688,16 +689,7 @@ def _build_transcription_gate_class():
             self._set_tts_voice(self._active_lang)
 
             # Persist transcript so the watch dashboard sees user activity.
-            if self.store is not None and self.settings is not None:
-                try:
-                    await self.store.log_transcript(
-                        transcript,
-                        self.settings.mode.value,
-                    )
-                except Exception:
-                    logger.exception(
-                        "transcription_gate: failed to log transcript (non-fatal)"
-                    )
+            await self._log_user_transcript(transcript, source="voice")
 
             # Push the (possibly coalesced) transcript downstream so the
             # LLM context aggregator can drive the turn. When override_text
@@ -719,6 +711,71 @@ def _build_transcription_gate_class():
                 len(transcript),
             )
             await self.push_frame(outbound, direction)
+
+        async def _log_user_transcript(self, text: str, *, source: str) -> None:
+            """Persist one user turn. Shared by the spoken and typed paths.
+
+            ``source`` records how the turn arrived ('voice' / 'typed') so the
+            dashboard can tell them apart; everything else about the row is
+            identical, because to every downstream reader they are the same
+            thing — something the user said.
+            """
+            if self.store is None or self.settings is None:
+                return
+            try:
+                await self.store.log_transcript(
+                    text,
+                    self.settings.mode.value,
+                    source=source,
+                )
+            except Exception:
+                logger.exception(
+                    "transcription_gate: failed to log transcript (non-fatal)"
+                )
+
+        async def inject_user_text(self, text: str) -> None:
+            """Feed typed text into the pipeline as if the user had said it.
+
+            The dashboard's inject box lands here via
+            :func:`src.pipeline.stages.text_injector.make_llm_message_pusher`.
+            It lives on the gate rather than in the injector so a typed turn
+            gets the same treatment as a spoken one — persistence, voice
+            selection, a pipeline event — from a single owner. The two paths
+            drifting apart is exactly how injected text ended up unlogged and
+            (with an English voice on Cyrillic) inaudible.
+
+            Note what is deliberately NOT shared with ``_handle_transcription``:
+            the mute/echo checks and barge-in (typed text is not sound and
+            cannot be the bot hearing itself), and the language hysteresis.
+            The voice is set for this reply only, leaving ``_active_lang``
+            alone — otherwise one typed Ukrainian message would cost two
+            spoken turns of wrong voice while hysteresis switched back.
+            """
+            text = (text or "").strip()
+            if not text:
+                return
+            from pipecat.frames.frames import LLMMessagesAppendFrame
+
+            lang = detect_language_from_text(text, fallback=self._active_lang)
+            self._set_tts_voice(lang)
+
+            # Log BEFORE pushing, matching the spoken path: the system prompt
+            # injector downstream rebuilds from recent_transcripts, and this
+            # turn should be in them.
+            await self._log_user_transcript(text, source="typed")
+
+            emit("gate", "text_injected", text=text[:80], lang=lang)
+            # LLMMessagesAppendFrame, not TranscriptionFrame: the user
+            # aggregator only flushes its buffer on a user-turn *stop*, and
+            # every stop strategy here is driven by microphone audio, so a
+            # transcription frame with no audio behind it would sit in the
+            # buffer and contaminate the next spoken turn.
+            await self.push_frame(
+                LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content": text}],
+                    run_llm=True,
+                )
+            )
 
         @staticmethod
         def _clone_with_text(frame: Any, text: str) -> Any:

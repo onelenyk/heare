@@ -144,7 +144,14 @@ export default function HistoryPanel({
                       {date && <span className="cell-date">{date}</span>}
                       {time}
                     </td>
-                    <td className={row.who === "bot" ? "cell-bot" : "cell-you"}>{row.who}</td>
+                    <td className={row.who === "bot" ? "cell-bot" : "cell-you"}>
+                      {row.who}
+                      {/* Typed turns are user turns in every other respect,
+                          so they share the row style and only carry a mark. */}
+                      {row.who !== "bot" && row.source === "typed" && (
+                        <span className="cell-typed" title="typed from the dashboard">⌨</span>
+                      )}
+                    </td>
                     <td className="cell-content" title={row.content || ""}>
                       {row.content || ""}
                     </td>

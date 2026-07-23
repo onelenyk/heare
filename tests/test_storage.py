@@ -5,6 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import aiosqlite
 import pytest
 
 from src.store.storage import TranscriptStore
@@ -310,3 +311,48 @@ async def test_load_recent_action_log_filters_by_since_ts(
     rows = await store.load_recent_action_log(since_ts=now - 1800)
     ids = {r["intent_id"] for r in rows}
     assert ids == {201, 202}
+
+
+@pytest.mark.asyncio
+async def test_log_transcript_records_source(store: TranscriptStore) -> None:
+    await store.log_transcript("spoken", "ambient", source="voice")
+    await store.log_transcript("typed", "ambient", source="typed")
+
+    cursor = await store.db.execute(
+        "SELECT text, source FROM transcripts ORDER BY id"
+    )
+    assert await cursor.fetchall() == [("spoken", "voice"), ("typed", "typed")]
+
+
+@pytest.mark.asyncio
+async def test_log_transcript_source_defaults_to_null(store: TranscriptStore) -> None:
+    """Callers that don't care leave it NULL; readers treat that as 'voice'."""
+    await store.log_transcript("hello", "ambient")
+
+    cursor = await store.db.execute("SELECT source FROM transcripts")
+    assert (await cursor.fetchone())[0] is None
+
+
+@pytest.mark.asyncio
+async def test_source_migration_is_idempotent(tmp_path) -> None:
+    """init() runs the ALTER every start — it must survive the second one, and
+    a database predating the column must gain it rather than be rebuilt."""
+    db_path = tmp_path / "heare.db"
+
+    legacy = await aiosqlite.connect(db_path)
+    await legacy.execute(
+        "CREATE TABLE transcripts (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " ts REAL NOT NULL, text TEXT NOT NULL, mode TEXT NOT NULL)"
+    )
+    await legacy.execute(
+        "INSERT INTO transcripts (ts, text, mode) VALUES (1.0, 'old row', 'ambient')"
+    )
+    await legacy.commit()
+    await legacy.close()
+
+    for _ in range(2):
+        store = TranscriptStore(db_path)
+        await store.init()
+        cursor = await store.db.execute("SELECT text, source FROM transcripts")
+        assert await cursor.fetchall() == [("old row", None)]
+        await store.close()

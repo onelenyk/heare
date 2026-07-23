@@ -1,6 +1,7 @@
 """Tests for llm_context_injector — per-turn system prompt rebuild (PH2-07)."""
 from __future__ import annotations
 
+import types
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -297,3 +298,90 @@ async def test_injector_forwards_non_transcription_frames_unchanged() -> None:
     assert pushed == [other]
     # System prompt is untouched.
     assert llm_ctx.get_messages()[0]["content"] == "INITIAL"
+
+
+# ---------------------------------------------------------------------------
+# Injected (typed) turns — LLMMessagesAppendFrame
+#
+# Typed text has no audio, so it reaches the LLM as an append frame rather
+# than a TranscriptionFrame. It is still a user turn: without a rebuild it
+# runs against whatever prompt the last *spoken* turn built — stale clock,
+# stale recent transcripts, and no capability hints.
+
+
+def _make_append(messages, run_llm=True):
+    from pipecat.frames.frames import LLMMessagesAppendFrame
+
+    return LLMMessagesAppendFrame(messages=messages, run_llm=run_llm)
+
+
+@pytest.mark.asyncio
+async def test_injector_rebuilds_on_user_append_frame() -> None:
+    cb = _FakeContextBuilder(ctx={"time": "12:00:00"})
+    llm_ctx = _FakeContext(messages=[{"role": "system", "content": "STALE"}])
+    injector = create_system_prompt_injector(
+        llm_context=llm_ctx,
+        context_builder=cb,
+        persona="P",
+        language_state=LanguageState(initial="uk"),
+    )
+    pushed: list[Any] = []
+
+    async def capture(frame, direction=None):
+        pushed.append(frame)
+
+    injector.push_frame = capture  # type: ignore[assignment]
+
+    frame = _make_append([{"role": "user", "content": "Скільки буде два плюс два?"}])
+    await injector.process_frame(frame, None)
+
+    assert len(cb.calls) == 1
+    assert cb.calls[0]["transcript"] == "Скільки буде два плюс два?"
+    # The frame still flows on — the rebuild is a side effect, not a filter.
+    assert pushed == [frame]
+
+
+@pytest.mark.asyncio
+async def test_injector_ignores_non_user_append_frame() -> None:
+    """An assistant/system append is bookkeeping, not a turn."""
+    cb = _FakeContextBuilder(ctx={"time": "12:00:00"})
+    llm_ctx = _FakeContext(messages=[{"role": "system", "content": "INITIAL"}])
+    injector = create_system_prompt_injector(
+        llm_context=llm_ctx, context_builder=cb, persona="P"
+    )
+    injector.push_frame = AsyncMock()  # type: ignore[method-assign]
+
+    await injector.process_frame(
+        _make_append([{"role": "assistant", "content": "noted"}]), None
+    )
+
+    assert cb.calls == []
+
+
+@pytest.mark.asyncio
+async def test_first_user_message_reads_multimodal_content() -> None:
+    from src.agent.llm.context_injector import _first_user_message
+
+    frame = _make_append(
+        [
+            {"role": "system", "content": "ignore me"},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "what is"},
+                    {"type": "image", "source": {}},
+                    {"type": "text", "text": "this"},
+                ],
+            },
+        ]
+    )
+
+    assert _first_user_message(frame) == "what is this"
+
+
+@pytest.mark.asyncio
+async def test_first_user_message_empty_when_no_user_role() -> None:
+    from src.agent.llm.context_injector import _first_user_message
+
+    assert _first_user_message(_make_append([])) == ""
+    assert _first_user_message(types.SimpleNamespace()) == ""

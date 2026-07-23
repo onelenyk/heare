@@ -29,7 +29,11 @@ CREATE TABLE IF NOT EXISTS transcripts (
     mode TEXT NOT NULL,
     agent_mode TEXT,
     agent_spoken INTEGER,
-    turn_id INTEGER REFERENCES turns(id)
+    turn_id INTEGER REFERENCES turns(id),
+    -- How a user turn arrived: 'voice' (spoken, via STT) or 'typed'
+    -- (injected from the dashboard). NULL on rows written before this
+    -- column existed and on assistant rows, where it has no meaning.
+    source TEXT
 );
 
 CREATE TABLE IF NOT EXISTS displays (
@@ -143,6 +147,7 @@ class TranscriptStore:
         await self._db.commit()
         await self._migrate_action_log_columns()
         await self._migrate_displays_content_type()
+        await self._migrate_transcripts_source()
         await self._check_schema_version()
 
     async def _migrate_action_log_columns(self) -> None:
@@ -228,6 +233,16 @@ class TranscriptStore:
             if "duplicate column" not in str(e).lower():
                 raise
 
+    async def _migrate_transcripts_source(self) -> None:
+        # Provenance of a user turn — see the column comment in SCHEMA.
+        # Rows predating this column read as NULL, which readers render the
+        # same as 'voice': every turn logged before now did arrive by mic.
+        try:
+            await self.db.execute("ALTER TABLE transcripts ADD COLUMN source TEXT")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
     async def _check_schema_version(self) -> None:
         cursor = await self.db.execute(
             "SELECT value FROM meta WHERE key = ?", ("schema_version",)
@@ -270,6 +285,7 @@ class TranscriptStore:
         mode: str,
         agent_mode: str | None = None,
         agent_spoken: bool | None = None,
+        source: str | None = None,
     ) -> int:
         now = time.time()
         # Deduplication: ignore identical transcript text within 2 seconds.
@@ -285,14 +301,15 @@ class TranscriptStore:
             return row[0]
 
         cursor = await self.db.execute(
-            "INSERT INTO transcripts (ts, text, mode, agent_mode, agent_spoken)"
-            " VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO transcripts (ts, text, mode, agent_mode, agent_spoken, source)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
             (
                 now,
                 text,
                 mode,
                 agent_mode,
                 None if agent_spoken is None else int(agent_spoken),
+                source,
             ),
         )
         await self.db.commit()

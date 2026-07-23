@@ -97,18 +97,24 @@ def make_llm_message_pusher(
     target: Any,
     *,
     role: str = "user",
-    voice_setter: Callable[[str], None] | None = None,
-    language_fallback: str | None = None,
 ) -> Callable[[str], Awaitable[None]]:
     """Build a callback suitable for ``run_injector_loop``'s ``push`` arg.
 
-    Appends the text to the LLM context and asks for a completion in one
-    frame.
+    ``target`` is normally the transcription gate, which exposes
+    ``inject_user_text`` — the shared entry point that persists the turn,
+    picks the TTS voice for it, and emits a pipeline event before pushing it
+    at the LLM. Delegating keeps one owner for "what happens to a user turn";
+    an earlier version of this function reimplemented a subset of that work
+    and the two promptly drifted.
 
-    A plain ``TranscriptionFrame`` does NOT work here, which is subtle enough
-    to be worth recording. ``LLMUserAggregator._handle_transcription`` only
-    appends the text to an internal buffer; that buffer is flushed to the LLM
-    by ``push_aggregation()``, which is reached solely via the configured user
+    A ``target`` without that method (a bare ``FrameProcessor``) falls back to
+    pushing the frame directly, so the injector stays usable in isolation.
+
+    Either way the frame is ``LLMMessagesAppendFrame``, never
+    ``TranscriptionFrame``, which is subtle enough to be worth recording.
+    ``LLMUserAggregator._handle_transcription`` only appends the text to an
+    internal buffer; that buffer is flushed to the LLM by
+    ``push_aggregation()``, which is reached solely via the configured user
     turn *stop* strategy. This pipeline uses ``TurnAnalyzerUserTurnStopStrategy``
     (and ``VADUserTurnStartStrategy``), both driven by microphone audio — so a
     frame arriving without audio never completes a turn. Worse, the start
@@ -119,33 +125,15 @@ def make_llm_message_pusher(
     ``LLMMessagesAppendFrame(run_llm=True)`` sidesteps the turn machinery
     entirely — the aggregator adds the message and pushes the context frame
     directly.
-
-    ``target`` is any pipecat ``FrameProcessor`` whose ``push_frame`` forwards
-    into the pipeline upstream of the user aggregator.
-
-    Pass ``voice_setter`` (normally the transcription gate's
-    ``_set_tts_voice``) to keep the voice in step with the injected text.
-    Speech gets this from the gate, which injected text does not pass
-    through — and the consequence is not a wrong accent but silence: Edge TTS
-    raises ``NoAudioReceived`` when asked to read Cyrillic with an English
-    voice, so the reply is generated and then never heard. Reusing the gate's
-    setter keeps one owner of the current-voice bookkeeping.
     """
 
     async def _push(text: str) -> None:
+        inject = getattr(target, "inject_user_text", None)
+        if role == "user" and callable(inject):
+            await inject(text)
+            return
+
         from pipecat.frames.frames import LLMMessagesAppendFrame
-
-        if voice_setter is not None:
-            try:
-                from src.voice.language.core import detect_language_from_text
-
-                lang = detect_language_from_text(
-                    text, fallback=language_fallback or "en"
-                )
-                voice_setter(lang)
-            except Exception:
-                # A voice we could not set is not worth losing the message over.
-                logger.exception("inject: TTS voice selection failed (non-fatal)")
 
         await target.push_frame(
             LLMMessagesAppendFrame(

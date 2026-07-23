@@ -385,3 +385,112 @@ async def test_non_cancel_does_not_push_interruption_frame(harness) -> None:
     assert interruption_frames == []
 
 
+
+
+# ---------------------------------------------------------------------------
+# inject_user_text — the typed-text path
+#
+# Typed text skips _handle_transcription entirely (it has no audio to drive
+# the turn machinery), so these assert that it still gets the parts of a user
+# turn that are not about sound: persistence, voice, an event.
+
+
+async def test_inject_pushes_append_frame_not_transcription(harness) -> None:
+    """A TranscriptionFrame would be buffered by the user aggregator and only
+    flushed on an audio-driven turn stop — i.e. never, for typed text."""
+    pipecat_frames = pytest.importorskip("pipecat.frames.frames")
+
+    store, settings = harness
+    gate = create_transcription_gate(store=store, settings=settings)
+    pushed = _capture_pushed(gate)
+
+    await gate.inject_user_text("hello daemon")
+
+    assert len(pushed) == 1
+    frame = pushed[0]
+    assert isinstance(frame, pipecat_frames.LLMMessagesAppendFrame)
+    assert frame.messages == [{"role": "user", "content": "hello daemon"}]
+    assert frame.run_llm is True
+
+
+async def test_inject_logs_transcript_marked_typed(harness) -> None:
+    store, settings = harness
+    gate = create_transcription_gate(store=store, settings=settings)
+    _capture_pushed(gate)
+
+    await gate.inject_user_text("привіт з дашборду")
+
+    cursor = await store.db.execute("SELECT text, mode, source FROM transcripts")
+    rows = await cursor.fetchall()
+    assert rows == [("привіт з дашборду", settings.mode.value, "typed")]
+
+
+async def test_spoken_transcript_marked_voice(harness) -> None:
+    """The counterpart: speech is logged with the same shape, other source."""
+    store, settings = harness
+    gate = create_transcription_gate(store=store, settings=settings)
+    _capture_pushed(gate)
+    gate._bot_speaking = False
+    gate._bot_cooldown_until = 0.0
+
+    await gate._handle_transcription(_make_transcription_frame("hello"), None)
+
+    cursor = await store.db.execute("SELECT text, source FROM transcripts")
+    assert await cursor.fetchall() == [("hello", "voice")]
+
+
+async def test_inject_swaps_voice_for_cyrillic(harness) -> None:
+    """Edge TTS raises NoAudioReceived for Cyrillic on an English voice, so
+    getting this wrong is silence, not an accent."""
+    store, settings = harness
+    tts = MagicMock()
+    gate = create_transcription_gate(store=store, settings=settings, tts_service=tts)
+    _capture_pushed(gate)
+    gate._current_voice = "en-US-AriaNeural"
+
+    await gate.inject_user_text("Скільки буде два плюс два?")
+
+    tts.set_voice.assert_called_once_with("uk-UA-OstapNeural")
+
+
+async def test_inject_leaves_active_lang_alone(harness) -> None:
+    """Voice is a per-turn override for typed text. Moving _active_lang would
+    make one typed message cost two spoken turns of wrong voice while the
+    hysteresis switched back."""
+    store, settings = harness
+    tts = MagicMock()
+    gate = create_transcription_gate(store=store, settings=settings, tts_service=tts)
+    _capture_pushed(gate)
+    gate._active_lang = "en"
+
+    await gate.inject_user_text("Скільки буде два плюс два?")
+
+    assert gate._active_lang == "en"
+
+
+async def test_inject_ignores_blank_text(harness) -> None:
+    store, settings = harness
+    gate = create_transcription_gate(store=store, settings=settings)
+    pushed = _capture_pushed(gate)
+
+    await gate.inject_user_text("   ")
+
+    assert pushed == []
+    cursor = await store.db.execute("SELECT COUNT(*) FROM transcripts")
+    assert (await cursor.fetchone())[0] == 0
+
+
+async def test_inject_survives_store_failure(harness) -> None:
+    """A message we cannot log is still a message we must deliver."""
+    store, settings = harness
+    gate = create_transcription_gate(store=store, settings=settings)
+    pushed = _capture_pushed(gate)
+
+    async def boom(*a, **kw):
+        raise RuntimeError("db gone")
+
+    store.log_transcript = boom  # type: ignore[assignment]
+
+    await gate.inject_user_text("still deliver me")
+
+    assert len(pushed) == 1

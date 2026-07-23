@@ -579,12 +579,21 @@ def activity_db(tmp_path):
     conn.execute(
         "CREATE TABLE transcripts ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL, "
-        "mode TEXT NOT NULL, agent_spoken INTEGER)"
+        "mode TEXT NOT NULL, agent_spoken INTEGER, source TEXT)"
     )
     for i in range(1, 121):
         conn.execute(
-            "INSERT INTO transcripts (ts, text, mode, agent_spoken) VALUES (?, ?, ?, ?)",
-            (1000.0 + i, f"msg{i}", "assistant" if i % 2 else "user", 1),
+            "INSERT INTO transcripts (ts, text, mode, agent_spoken, source)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                1000.0 + i,
+                f"msg{i}",
+                "assistant" if i % 2 else "user",
+                1,
+                # Leave most rows NULL so the "pre-migration reads as voice"
+                # path is the one under test; one explicit typed row.
+                "typed" if i == 120 else None,
+            ),
         )
     conn.commit()
     conn.close()
@@ -640,6 +649,17 @@ async def test_activity_maps_speaker(api, mock_config, activity_db) -> None:
     # 'assistant' maps to bot; every other mode collapses to 'you'
     assert rows[0]["who"] == "you" and rows[0]["content"] == "msg120"
     assert rows[1]["who"] == "bot" and rows[1]["content"] == "msg119"
+
+
+@pytest.mark.asyncio
+async def test_activity_reports_source(api, mock_config, activity_db) -> None:
+    """Provenance rides along so the panel can mark typed turns."""
+    mock_config.db_path = activity_db
+    resp = await api._handle_activity(_mock_request(query={"limit": "2"}))
+    rows = json.loads(resp.body)
+    assert rows[0]["source"] == "typed"
+    # NULL predates the column — those turns did arrive by mic.
+    assert rows[1]["source"] == "voice"
 
 
 # ---------------------------------------------------------------------------

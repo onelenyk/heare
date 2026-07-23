@@ -127,6 +127,31 @@ def _replace_system_message(llm_context: Any, new_content: str) -> None:
     messages.insert(0, new_msg)
 
 
+def _first_user_message(frame: Any) -> str:
+    """Text of the first user-role message on an ``LLMMessagesAppendFrame``.
+
+    Returns "" for frames carrying no user message — an assistant or system
+    append is bookkeeping, not a turn, and must not trigger a prompt rebuild.
+    """
+    for msg in getattr(frame, "messages", None) or []:
+        if not isinstance(msg, dict) or msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            return content
+        # Multimodal content is a list of parts; take the text ones.
+        if isinstance(content, list):
+            parts = [
+                p.get("text", "")
+                for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            ]
+            joined = " ".join(p for p in parts if p).strip()
+            if joined:
+                return joined
+    return ""
+
+
 _injector_cls: type | None = None
 
 
@@ -134,7 +159,7 @@ def _build_injector_class():
     global _injector_cls
     if _injector_cls is not None:
         return _injector_cls
-    from pipecat.frames.frames import TranscriptionFrame
+    from pipecat.frames.frames import LLMMessagesAppendFrame, TranscriptionFrame
     from pipecat.processors.frame_processor import FrameProcessor
 
     class SystemPromptInjector(FrameProcessor):  # type: ignore[misc,valid-type]
@@ -167,6 +192,16 @@ def _build_injector_class():
                 await self._refresh_system_prompt(
                     frame.text or "",
                 )
+            elif isinstance(frame, LLMMessagesAppendFrame):
+                # Injected (typed) text arrives as an append frame, since it
+                # has no audio to drive the turn machinery. It is still a user
+                # turn and deserves a current prompt — without this it runs
+                # against whatever the last *spoken* turn built: stale clock,
+                # stale recent transcripts, and no capability hints, because
+                # those are matched against the transcript text.
+                text = _first_user_message(frame)
+                if text:
+                    await self._refresh_system_prompt(text)
 
             await self.push_frame(frame, direction)
 

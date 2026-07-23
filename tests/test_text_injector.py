@@ -144,33 +144,37 @@ async def test_pusher_role_is_overridable(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_pusher_sets_voice_for_cyrillic_text(tmp_path: Path):
-    """Cyrillic read by an English voice yields NoAudioReceived — silence.
+async def test_pusher_delegates_to_gate_when_available(tmp_path: Path):
+    """The gate owns what happens to a user turn — persist, voice, emit.
 
-    Injected text bypasses the transcription gate, so the pusher has to drive
-    the voice swap itself or the reply is generated and never heard.
+    The pusher must hand off rather than reimplement a subset of that work;
+    an earlier version did the latter and the two paths drifted, which is how
+    injected text ended up unlogged and inaudible.
     """
     from src.pipeline.stages.text_injector import make_llm_message_pusher
 
-    langs: list = []
+    seen: list = []
+    pushed: list = []
 
-    class FakeProcessor:
+    class FakeGate:
+        async def inject_user_text(self, text):
+            seen.append(text)
+
         async def push_frame(self, frame, direction=None):
-            pass
+            pushed.append(frame)
 
-    push = make_llm_message_pusher(
-        FakeProcessor(), voice_setter=langs.append, language_fallback="uk"
-    )
-    await push("Скільки буде два плюс два?")
-    assert langs == ["uk"]
+    await make_llm_message_pusher(FakeGate())("два плюс два")
 
-    await push("How much is two plus two?")
-    assert langs == ["uk", "en"]
+    assert seen == ["два плюс два"]
+    # Delegation must be exclusive — a second push here would double the turn.
+    assert pushed == []
 
 
 @pytest.mark.asyncio
-async def test_pusher_survives_voice_setter_failure(tmp_path: Path):
-    """A voice we cannot set must not cost us the message."""
+async def test_pusher_falls_back_without_gate(tmp_path: Path):
+    """A bare FrameProcessor target still works, so the injector stands alone."""
+    from pipecat.frames.frames import LLMMessagesAppendFrame
+
     from src.pipeline.stages.text_injector import make_llm_message_pusher
 
     captured: list = []
@@ -179,8 +183,28 @@ async def test_pusher_survives_voice_setter_failure(tmp_path: Path):
         async def push_frame(self, frame, direction=None):
             captured.append(frame)
 
-    def boom(_lang):
-        raise RuntimeError("tts unavailable")
+    await make_llm_message_pusher(FakeProcessor())("hi")
 
-    await make_llm_message_pusher(FakeProcessor(), voice_setter=boom)("hi")
     assert len(captured) == 1
+    assert isinstance(captured[0], LLMMessagesAppendFrame)
+
+
+@pytest.mark.asyncio
+async def test_pusher_non_user_role_bypasses_gate(tmp_path: Path):
+    """``inject_user_text`` speaks for the user only — a system note is not a turn."""
+    from src.pipeline.stages.text_injector import make_llm_message_pusher
+
+    seen: list = []
+    captured: list = []
+
+    class FakeGate:
+        async def inject_user_text(self, text):
+            seen.append(text)
+
+        async def push_frame(self, frame, direction=None):
+            captured.append(frame)
+
+    await make_llm_message_pusher(FakeGate(), role="system")("note")
+
+    assert seen == []
+    assert captured[0].messages == [{"role": "system", "content": "note"}]
