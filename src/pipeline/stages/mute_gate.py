@@ -17,6 +17,7 @@ creates/removes the file when the user presses a hotkey.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,12 @@ from src.daemon.events import emit
 
 
 logger = logging.getLogger("heare.mute_gate")
+
+# While the mic is muted, audio frames keep arriving ~25×/s and every one is
+# dropped. Logging per-frame (or per-N-frames) buries every other event: a
+# multi-hour mute produced 120k identical lines and blew the log rotation.
+# Log the mute/unmute EDGES instead, with a coarse heartbeat in between.
+_MUTE_HEARTBEAT_SECONDS = 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -154,21 +161,48 @@ def _build_input_gate_class():
         def __init__(self, *, state) -> None:
             super().__init__()
             self._state = state
+            # Edge-triggered mute logging — see _MUTE_HEARTBEAT_SECONDS.
+            self._was_muted = False
             self._mute_dropped = 0
+            self._last_heartbeat = 0.0
 
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
-            if isinstance(frame, InputAudioRawFrame) and self._state.get_bool(
-                "mute_mic"
-            ):
-                self._mute_dropped += 1
-                if self._mute_dropped % 50 == 1:
-                    logger.info(
-                        "[DROP] mic muted — frame dropped (count=%d)",
-                        self._mute_dropped,
-                    )
-                return
+            if isinstance(frame, InputAudioRawFrame):
+                if self._state.get_bool("mute_mic"):
+                    self._on_muted_frame()
+                    return
+                self._on_unmuted_frame()
             await self.push_frame(frame, direction)
+
+        def _on_muted_frame(self) -> None:
+            now = time.monotonic()
+            if not self._was_muted:
+                # Rising edge: mute just started.
+                self._was_muted = True
+                self._mute_dropped = 0
+                self._last_heartbeat = now
+                logger.info("[DROP] mic muted — dropping input audio")
+            self._mute_dropped += 1
+            if now - self._last_heartbeat >= _MUTE_HEARTBEAT_SECONDS:
+                self._last_heartbeat = now
+                # DEBUG so a steady mute stays quiet at INFO but a heartbeat
+                # remains available when you turn the level up.
+                logger.debug(
+                    "[DROP] mic still muted — %d frames dropped so far",
+                    self._mute_dropped,
+                )
+
+        def _on_unmuted_frame(self) -> None:
+            if self._was_muted:
+                # Falling edge: first frame to pass after unmute.
+                logger.info(
+                    "[DROP] mic unmuted — input resumed (dropped %d frames "
+                    "while muted)",
+                    self._mute_dropped,
+                )
+                self._was_muted = False
+                self._mute_dropped = 0
 
     _input_gate_cls = InputMuteGateProcessor
     return _input_gate_cls

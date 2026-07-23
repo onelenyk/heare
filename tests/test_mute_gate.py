@@ -252,3 +252,78 @@ async def test_input_gate_passes_audio_when_not_muted(tmp_path: Path):
     )
     await proc.process_frame(audio, None)
     assert captured == [audio]
+
+
+@pytest.mark.asyncio
+async def test_input_gate_logs_mute_edges_not_every_frame(tmp_path: Path, caplog):
+    """The flood we set out to kill: a muted mic must log the mute/unmute
+    EDGES, not once per N dropped frames."""
+    import logging as _logging
+
+    from pipecat.frames.frames import InputAudioRawFrame
+
+    from src.pipeline.stages.mute_gate import create_input_mute_gate
+
+    state = _MockState(mute_mic="1")
+    proc = create_input_mute_gate(state=state)
+
+    async def fake_push(frame, direction=None):
+        pass
+
+    proc.push_frame = fake_push  # type: ignore[method-assign]
+
+    def _audio():
+        return InputAudioRawFrame(audio=b"\x00\x00", sample_rate=16000, num_channels=1)
+
+    with caplog.at_level(_logging.INFO, logger="heare.mute_gate"):
+        # 200 dropped frames while muted...
+        for _ in range(200):
+            await proc.process_frame(_audio(), None)
+        # ...then unmute and let one frame through.
+        state._data["mute_mic"] = "0"
+        await proc.process_frame(_audio(), None)
+
+    info_lines = [r.getMessage() for r in caplog.records if r.levelno == _logging.INFO]
+    # Exactly two INFO lines for the whole session: one mute, one unmute —
+    # not ~4 (200 / 50) as the old %-50 counter produced.
+    muted = [m for m in info_lines if "mic muted" in m]
+    unmuted = [m for m in info_lines if "mic unmuted" in m]
+    assert len(muted) == 1, info_lines
+    assert len(unmuted) == 1, info_lines
+    # The unmute line reports the total dropped so the count isn't lost.
+    assert "200" in unmuted[0]
+
+
+@pytest.mark.asyncio
+async def test_input_gate_relogs_after_remute(tmp_path: Path, caplog):
+    """A second mute session logs its own edge — the flag resets on unmute."""
+    import logging as _logging
+
+    from pipecat.frames.frames import InputAudioRawFrame
+
+    from src.pipeline.stages.mute_gate import create_input_mute_gate
+
+    state = _MockState(mute_mic="1")
+    proc = create_input_mute_gate(state=state)
+
+    async def fake_push(frame, direction=None):
+        pass
+
+    proc.push_frame = fake_push  # type: ignore[method-assign]
+
+    def _audio():
+        return InputAudioRawFrame(audio=b"\x00\x00", sample_rate=16000, num_channels=1)
+
+    with caplog.at_level(_logging.INFO, logger="heare.mute_gate"):
+        await proc.process_frame(_audio(), None)          # muted
+        state._data["mute_mic"] = "0"
+        await proc.process_frame(_audio(), None)          # unmuted
+        state._data["mute_mic"] = "1"
+        await proc.process_frame(_audio(), None)          # muted again
+
+    muted = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == _logging.INFO and "mic muted" in r.getMessage()
+    ]
+    assert len(muted) == 2
