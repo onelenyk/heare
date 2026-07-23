@@ -16,6 +16,7 @@ import BrainCard from './BrainCard';
 import ToolsModal from './ToolsModal';
 import BridgeModal from './BridgeModal';
 import PromptManager from './PromptManager';
+import MemoriesCard from './MemoriesCard';
 import Toast from './Toast';
 
 const ACTIVITY_PAGE = 50;   // rows fetched on each poll
@@ -68,6 +69,7 @@ export default function Dashboard({ onOpenSetup }) {
   const [noMoreActivity, setNoMoreActivity] = useState(false);
   const [agents, setAgents] = useState([]);
   const [showAgents, setShowAgents] = useState(false);
+  const [showMemories, setShowMemories] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   const [showCanvas, setShowCanvas] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
@@ -393,12 +395,13 @@ export default function Dashboard({ onOpenSetup }) {
         showAudio={showAudio}
         showAudioControls={showAudioControls}
         showAgents={showAgents}
+        showMemories={showMemories}
         showUsage={showUsage}
         showTools={showTools}
         showBridge={showBridge}
         showPrompts={showPrompts}
         onToggle={(w) => {
-          const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, agents: setShowAgents, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
+          const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, agents: setShowAgents, memories: setShowMemories, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
           if (setters[w]) setters[w](prev => !prev);
           // Refresh the device list only when opening the panel.
           if (w === 'audio' && !showAudio) fetchAudioDevices();
@@ -467,6 +470,17 @@ export default function Dashboard({ onOpenSetup }) {
             <button className="modal-close" onClick={() => setShowUsage(false)} style={{marginLeft: 'auto'}}>{'×'}</button>
           </div>
           <UsageCard usage={state.usage} />
+        </div>
+      )}
+
+      {/* Memories */}
+      {showMemories && (
+        <div className="card">
+          <div className="card-header">
+            {'🧩'} memories
+            <button className="modal-close" onClick={() => setShowMemories(false)} style={{marginLeft: 'auto'}}>{'×'}</button>
+          </div>
+          <MemoriesCard onToast={showToastMsg} />
         </div>
       )}
 

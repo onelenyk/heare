@@ -5,7 +5,7 @@ import React from 'react';
 // navigating, so several can be open at once.
 export default function ControlsCard({
   showCanvas, showHistory, showInject,
-  showSettings, showBrain, showAudio, showAudioControls, showAgents, showUsage,
+  showSettings, showBrain, showAudio, showAudioControls, showAgents, showMemories, showUsage,
   showTools, showBridge, showPrompts,
   onOpenSetup,
   onToggle,
@@ -18,6 +18,7 @@ export default function ControlsCard({
     ['audiocontrols', '🎛', 'audio', showAudioControls],
     ['audio', '🎧', 'audio devices', showAudio],
     ['agents', '🤖', 'agents', showAgents],
+    ['memories', '🧩', 'memories', showMemories],
     ['usage', '📊', 'usage', showUsage],
     ['inject', '💬', 'inject', showInject],
     ['settings', '⚙', 'settings', showSettings],
