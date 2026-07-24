@@ -277,7 +277,11 @@ def _render_hard_constraints(language: str) -> str:
     return (
         "HARD CONSTRAINTS — these rules take priority over all instructions below:\n"
         f"- Respond ONLY in {lang_name}. Never mix languages.\n"
-        "- Never act without voice confirmation (user must explicitly consent).\n"
+        "- Act freely on read-only work (reading, searching, observing, "
+        "running commands that only inspect). Get explicit user consent FIRST "
+        "before anything that changes or destroys state — writing or deleting "
+        "files, installing skills or MCP servers, spawning agents, stopping or "
+        "restarting yourself.\n"
         "- At most 4 tool calls per user turn.\n"
         "- Speech: plain spoken language only — no markdown, no bullet characters, "
         "no code fences.\n"

@@ -329,11 +329,16 @@ def test_hard_constraints_include_language_rule() -> None:
 
 
 def test_hard_constraints_include_confirmation_rule() -> None:
-    """Hard constraints must require voice confirmation for actions."""
+    """Hard constraints must require consent for state-changing actions while
+    letting read-only work run freely (matching the per-tool user_confirmed
+    policy — a blanket 'confirm everything' rule the model just ignored)."""
     from src.agent.llm.prompt_sections import render_prompt
 
     out = render_prompt(persona="Test", context=None, language="en")
-    assert "Never act without voice confirmation" in out
+    assert "consent" in out.lower()
+    # Read-only is explicitly permitted; the old blanket rule is gone.
+    assert "read-only" in out.lower()
+    assert "Never act without voice confirmation" not in out
 
 
 def test_hard_constraints_include_tool_cap() -> None:
