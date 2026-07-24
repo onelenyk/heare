@@ -136,11 +136,13 @@ export default function Dashboard({ onOpenSetup }) {
   // Page backwards from the oldest row currently held.
   async function loadOlderActivity() {
     const oldest = activity[activity.length - 1];
-    if (!oldest || oldest.id == null || loadingOlder) return;
+    if (!oldest || oldest.ts == null || loadingOlder) return;
     setLoadingOlder(true);
     try {
+      // Paged by ts, not id: the feed merges transcripts + agent actions,
+      // whose id sequences are independent.
       const r = await fetch(
-        API + '/activity?limit=' + ACTIVITY_OLDER + '&before_id=' + oldest.id
+        API + '/activity?limit=' + ACTIVITY_OLDER + '&before_ts=' + oldest.ts
       );
       const older = await r.json();
       if (Array.isArray(older)) {

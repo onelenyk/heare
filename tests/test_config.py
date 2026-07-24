@@ -162,7 +162,9 @@ def test_turn_aggregation_settings() -> None:
 
 def test_conversation_memory_settings() -> None:
     s = Settings()
-    assert s.conversation_memory_enabled is False  # Default disabled for gradual rollout
+    # On by default — it wires the ConversationManager that logs tool calls to
+    # the actions table; off meant the agent's actions were never persisted.
+    assert s.conversation_memory_enabled is True
     assert s.max_conversation_age_hours == 24.0
     assert s.topic_extraction_enabled is True
 

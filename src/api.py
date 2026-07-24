@@ -440,41 +440,73 @@ class API:
 
     async def _handle_activity(self, request):
         limit = _clamp_int(request.query.get("limit"), 50, 1, 500)
-        # Keyset paging: transcripts.id is an append-only autoincrement, so id
-        # order matches ts order and "older than" is a plain id comparison.
-        before_id = _clamp_int(request.query.get("before_id"), 0, 0, 2**63 - 1)
+        # The feed merges two append-only tables — transcripts ('said' rows)
+        # and actions ('did' rows: the agent's tool calls). Their id sequences
+        # are independent, so paging is keyed on ts, the only cursor comparable
+        # across both. Composite ids ('t<id>' / 'a<id>') keep React keys stable
+        # and unambiguous.
+        raw_before = request.query.get("before_ts")
+        try:
+            before_ts = (
+                float(raw_before) if raw_before not in (None, "") else 0.0
+            )
+        except (TypeError, ValueError):
+            before_ts = 0.0
         try:
             import aiosqlite
 
             sql = (
-                "SELECT id, ts, mode as who, agent_spoken as type, "
-                "text as content, source FROM transcripts "
+                "SELECT rid, ts, who, content, source, kind, tool, status "
+                "FROM ("
+                "  SELECT 't'||id AS rid, ts, mode AS who, text AS content, "
+                "         source, 'said' AS kind, NULL AS tool, NULL AS status "
+                "  FROM transcripts "
+                "  UNION ALL "
+                "  SELECT 'a'||id AS rid, ts, NULL AS who, "
+                "         COALESCE(tool || ': ' || args, tool, 'action') AS content, "
+                "         NULL AS source, 'did' AS kind, tool, status "
+                "  FROM actions"
+                ") "
             )
             params: list = []
-            if before_id:
-                sql += "WHERE id < ? "
-                params.append(before_id)
+            if before_ts:
+                sql += "WHERE ts < ? "
+                params.append(before_ts)
             sql += "ORDER BY ts DESC LIMIT ?"
             params.append(limit)
 
             async with aiosqlite.connect(str(self.config.db_path)) as db:
                 db.row_factory = aiosqlite.Row
                 rows = await db.execute_fetchall(sql, tuple(params))
-            return web.json_response(
-                [
-                    {
-                        "id": r["id"],
-                        "ts": r["ts"],
-                        "who": "bot" if r["who"] == "assistant" else "you",
-                        "type": "said",
-                        "content": r["content"],
-                        # NULL predates the column; every turn logged back
-                        # then did arrive by mic, so it reads as 'voice'.
-                        "source": r["source"] or "voice",
-                    }
-                    for r in rows
-                ]
-            )
+
+            out: list = []
+            for r in rows:
+                if r["kind"] == "did":
+                    out.append(
+                        {
+                            "id": r["rid"],
+                            "ts": r["ts"],
+                            "who": "agent",
+                            "type": "did",
+                            "content": r["content"],
+                            "tool": r["tool"],
+                            "status": r["status"],
+                        }
+                    )
+                else:
+                    out.append(
+                        {
+                            "id": r["rid"],
+                            "ts": r["ts"],
+                            "who": "bot" if r["who"] == "assistant" else "you",
+                            "type": "said",
+                            "content": r["content"],
+                            # NULL predates the column; every turn logged back
+                            # then did arrive by mic, so it reads as 'voice'.
+                            "source": r["source"] or "voice",
+                        }
+                    )
+            return web.json_response(out)
         except Exception:
             return web.json_response([], status=500)
 

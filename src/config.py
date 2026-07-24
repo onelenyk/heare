@@ -259,7 +259,14 @@ class Settings:
     focus_mode_turn_timeout: float = 0.5
     ambient_mode_turn_timeout: float = 3.0
     max_turn_duration: float = 30.0
-    conversation_memory_enabled: bool = False
+    # On by default: this is what wires ConversationManager, which is the
+    # only thing that persists tool calls to the `actions` table. With it off,
+    # the agent's actions were silently never logged (History showed its words
+    # but never its deeds). The feature is lightweight — a fire-and-forget
+    # SQLite action log plus conversation-session tracking, no LLM summaries,
+    # no turn aggregation — so the "gradual rollout" default-off had become a
+    # bug rather than a safeguard.
+    conversation_memory_enabled: bool = True
     memory_backend: str = "sqlite"  # "sqlite" | "engram" | "mem0" | "noop"
     memory_auto_extract: bool = True
     memory_block_max_chars: int = 500

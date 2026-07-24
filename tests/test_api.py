@@ -581,6 +581,13 @@ def activity_db(tmp_path):
         "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL, "
         "mode TEXT NOT NULL, agent_spoken INTEGER, source TEXT)"
     )
+    # The activity feed UNIONs actions ('did' rows) with transcripts, so the
+    # fixture must carry both tables even when a test only inspects transcripts.
+    conn.execute(
+        "CREATE TABLE actions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, status TEXT, "
+        "result_summary TEXT, tool TEXT, args TEXT)"
+    )
     for i in range(1, 121):
         conn.execute(
             "INSERT INTO transcripts (ts, text, mode, agent_spoken, source)"
@@ -600,6 +607,19 @@ def activity_db(tmp_path):
     return db_path
 
 
+@pytest.fixture
+def activity_db_with_action(activity_db):
+    """activity_db plus one 'did' row, timestamped between msg120 and msg119."""
+    conn = sqlite3.connect(activity_db)
+    conn.execute(
+        "INSERT INTO actions (ts, status, tool, args) VALUES (?, ?, ?, ?)",
+        (1120.5, "done", "bash", "df -h /"),
+    )
+    conn.commit()
+    conn.close()
+    return activity_db
+
+
 @pytest.mark.asyncio
 async def test_activity_default_limit(api, mock_config, activity_db) -> None:
     mock_config.db_path = activity_db
@@ -614,11 +634,12 @@ async def test_activity_includes_id_for_paging(api, mock_config, activity_db) ->
     mock_config.db_path = activity_db
     resp = await api._handle_activity(_mock_request(query={"limit": "3"}))
     rows = json.loads(resp.body)
-    assert [r["id"] for r in rows] == [120, 119, 118]
+    # Composite ids namespace the two source tables: 't' for transcripts.
+    assert [r["id"] for r in rows] == ["t120", "t119", "t118"]
 
 
 @pytest.mark.asyncio
-async def test_activity_before_id_pages_backwards(api, mock_config, activity_db) -> None:
+async def test_activity_before_ts_pages_backwards(api, mock_config, activity_db) -> None:
     mock_config.db_path = activity_db
     first = json.loads(
         (await api._handle_activity(_mock_request(query={"limit": "10"}))).body
@@ -626,12 +647,31 @@ async def test_activity_before_id_pages_backwards(api, mock_config, activity_db)
     older = json.loads(
         (
             await api._handle_activity(
-                _mock_request(query={"limit": "10", "before_id": str(first[-1]["id"])})
+                _mock_request(
+                    query={"limit": "10", "before_ts": str(first[-1]["ts"])}
+                )
             )
         ).body
     )
-    assert [r["id"] for r in older] == list(range(110, 100, -1))
+    assert [r["id"] for r in older] == [f"t{i}" for i in range(110, 100, -1)]
     assert not {r["id"] for r in first} & {r["id"] for r in older}  # no overlap
+
+
+@pytest.mark.asyncio
+async def test_activity_includes_agent_actions(
+    api, mock_config, activity_db_with_action
+) -> None:
+    """The agent's tool calls surface as 'did' rows, interleaved by ts."""
+    mock_config.db_path = activity_db_with_action
+    resp = await api._handle_activity(_mock_request(query={"limit": "3"}))
+    rows = json.loads(resp.body)
+    # ts order: msg120 (1120) < action (1120.5) < msg119 (1119)? No — newest
+    # first: msg120=1120, action=1120.5 is newest, msg119=1119.
+    did = [r for r in rows if r["type"] == "did"]
+    assert len(did) == 1
+    assert did[0]["id"] == "a1" and did[0]["who"] == "agent"
+    assert did[0]["tool"] == "bash" and "df -h /" in did[0]["content"]
+    assert did[0]["status"] == "done"
 
 
 @pytest.mark.asyncio

@@ -530,6 +530,14 @@
   /* Provenance mark on a typed turn — quieter than the who label it
      annotates, since how the text arrived matters less than who said it. */
   .cell-typed { margin-left: 4px; opacity: 0.55; font-size: 10px; }
+  /* Agent actions (tool calls) are a distinct kind of event from speech:
+     a muted violet 'who' cell, a faint tint on the row, and a red wash when
+     the tool errored so failures read at a glance. */
+  .cell-action { color: #a78bfa; font-weight: 500; white-space: nowrap; }
+  .row-action { background: rgba(167, 139, 250, 0.06); }
+  .row-action .cell-content { font-family: ui-monospace, monospace; font-size: 12px; }
+  .row-action-err { background: rgba(239, 68, 68, 0.10); }
+  .row-action-err .cell-action { color: #f87171; }
 
   /* ═══════════════════════════════════════════
      MODALS

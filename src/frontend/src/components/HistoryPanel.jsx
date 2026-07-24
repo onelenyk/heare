@@ -134,24 +134,41 @@ export default function HistoryPanel({
                 const key = row.id != null ? row.id : `${row.ts}:${row.content}`;
                 const isOpen = expanded.has(key);
                 const { time, date } = splitTimestamp(row.ts);
+                // 'did' rows are the agent's tool calls — a different kind of
+                // event than speech, so they get their own styling and a
+                // failure tint when the tool errored.
+                const isAction = row.type === "did";
+                const rowCls =
+                  "history-row" +
+                  (isOpen ? " expanded" : "") +
+                  (isAction ? " row-action" : "") +
+                  (isAction && row.status && row.status !== "done"
+                    ? " row-action-err"
+                    : "");
                 return (
                   <tr
                     key={key}
-                    className={"history-row" + (isOpen ? " expanded" : "")}
+                    className={rowCls}
                     onClick={() => toggleRow(key)}
                   >
                     <td className="cell-muted">
                       {date && <span className="cell-date">{date}</span>}
                       {time}
                     </td>
-                    <td className={row.who === "bot" ? "cell-bot" : "cell-you"}>
-                      {row.who}
-                      {/* Typed turns are user turns in every other respect,
-                          so they share the row style and only carry a mark. */}
-                      {row.who !== "bot" && row.source === "typed" && (
-                        <span className="cell-typed" title="typed from the dashboard">⌨</span>
-                      )}
-                    </td>
+                    {isAction ? (
+                      <td className="cell-action" title={row.status || ""}>
+                        ⚙ {row.tool || "action"}
+                      </td>
+                    ) : (
+                      <td className={row.who === "bot" ? "cell-bot" : "cell-you"}>
+                        {row.who}
+                        {/* Typed turns are user turns in every other respect,
+                            so they share the row style and only carry a mark. */}
+                        {row.who !== "bot" && row.source === "typed" && (
+                          <span className="cell-typed" title="typed from the dashboard">⌨</span>
+                        )}
+                      </td>
+                    )}
                     <td className="cell-content" title={row.content || ""}>
                       {row.content || ""}
                     </td>
