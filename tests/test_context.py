@@ -87,16 +87,19 @@ async def test_live_mcp_bridge_block_overrides_static(
 async def test_current_display_injected_when_present(
     store: TranscriptStore,
 ) -> None:
-    """build_for_generator surfaces the latest show_display content so the
-    agent is aware of what is on screen (two-way wiring)."""
+    """build_for_generator notes that a panel is on screen (with its title and
+    format) but NOT its contents — those are pulled on demand via read_display,
+    so raw markup no longer bloats every prompt."""
     settings = load_settings()
     await store.log_display("col1 | col2\n1 | 2", "table", title="metrics")
     ctx = ContextBuilder(store, settings)
     result = await ctx.build_for_generator("hi", persona="p")
     cd = result["current_display"]
     assert "metrics" in cd
-    assert "col1 | col2" in cd
-    assert "format=table" in cd
+    assert "table" in cd
+    assert "read_display" in cd
+    # The contents themselves must NOT be in the prompt.
+    assert "col1 | col2" not in cd
 
 
 async def test_current_display_absent_when_no_display(
@@ -609,23 +612,19 @@ def test_full_prompt_contains_all_required_sections() -> None:
         )
 
 
-def test_visible_text_strips_html_markup() -> None:
-    """The display block must inject what the user SEES, not CSS/markup — a
-    canvas panel was dumping ~600 chars of <style> into every prompt."""
-    from src.store.context import _visible_text
-
+@pytest.mark.asyncio
+async def test_display_block_is_a_flag_not_the_content(store: TranscriptStore) -> None:
+    """Pull, don't push: the panel's raw markup must NOT be in the prompt —
+    only a short flag noting a panel exists, pointing at read_display."""
     paw = (
-        "<!DOCTYPE html><html><head><style>body{margin:0;overflow:hidden}"
-        ".paw{font-size:180px}</style></head><body>"
-        '<div class="paw">🐾</div><div class="text">Doka слухає</div></body></html>'
+        "<!DOCTYPE html><html><head><style>body{margin:0}.paw{font-size:180px}"
+        "</style></head><body><div class='paw'>🐾</div></body></html>"
     )
-    out = _visible_text(paw, "html")
-    assert out == "🐾 Doka слухає"
-    assert "style" not in out and "margin" not in out
-    assert len(out) < 20  # was 190+ chars of markup
-
-
-def test_visible_text_passes_plain_text_through() -> None:
-    from src.store.context import _visible_text
-
-    assert _visible_text("just  some\n text", "text") == "just some text"
+    await store.log_display(paw, "html", title="🐾")
+    builder = ContextBuilder(store, Settings())
+    ctx = await builder.build_for_generator(transcript="hi", persona="p")
+    block = ctx.get("current_display", "")
+    assert "read_display" in block
+    assert "font-size" not in block and "<style>" not in block  # no markup
+    assert '"🐾"' in block  # the title still rides along
+    assert len(block) < 300  # was 600+ chars of raw content

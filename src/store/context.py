@@ -36,22 +36,6 @@ _EXCLUDED_FROM_GENERATOR_CTX: frozenset[str] = frozenset(
     }
 )
 
-_STYLE_SCRIPT_RE = re.compile(r"<(style|script)\b[^>]*>.*?</\1>", re.S | re.I)
-_TAG_RE = re.compile(r"<[^>]+>")
-
-
-def _visible_text(content: str, fmt: str) -> str:
-    """The user-visible text of a display, with markup stripped.
-
-    For html/markdown panels the raw content is mostly CSS/tags that carry no
-    meaning for the LLM; collapse it to the text a human would actually read.
-    """
-    if fmt in ("html", "markdown", "md"):
-        content = _STYLE_SCRIPT_RE.sub(" ", content)
-        content = _TAG_RE.sub(" ", content)
-    return " ".join(content.split())
-
-
 class ContextBuilder:
     def __init__(
         self,
@@ -288,22 +272,17 @@ class ContextBuilder:
         except Exception:  # noqa: BLE001 — never break the turn
             disp = None
         if disp and disp.get("content"):
+            # Pull, don't push: the panel's contents are NOT injected here (a
+            # canvas can be hundreds of chars of raw markup, pure noise every
+            # turn). The prompt only notes a panel exists and its title; the
+            # agent calls read_display when it actually needs the contents.
             fmt = disp.get("format") or "text"
-            # Inject what the user SEES, not the source. A canvas/html panel
-            # can be hundreds of chars of CSS/markup that mean nothing to the
-            # model and dilute the prompt every single turn — so strip markup
-            # to visible text and cap it short.
-            visible = _visible_text(str(disp["content"]), fmt)
-            preview = visible if len(visible) <= 160 else visible[:160] + " …"
             title = (disp.get("title") or "").strip()
-            if title and preview and title.lower() not in preview.lower():
-                descriptor = f"{title} — {preview}"
-            else:
-                descriptor = title or preview or f"a {fmt} panel"
+            label = f' titled "{title}"' if title else ""
             result["current_display"] = (
-                f"On the screen panel right now (format={fmt}): {descriptor}. "
-                "You put it there with show_display; refer to it naturally "
-                "and call show_display again to replace it."
+                f"A {fmt} panel{label} is on the screen right now (you set it "
+                "with show_display). Call read_display to read its contents; "
+                "call show_display to replace it."
             )
         # Inject active sub-agent status
         try:

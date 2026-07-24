@@ -1160,3 +1160,52 @@ async def test_search_duckduckgo_empty_results_has_empty_items() -> None:
     assert result["items"] == []
     assert result["output"] == "No results found"
     assert result["spoken"]["en"] == "No results found."
+
+
+# -------- read_display (pull-on-demand screen contents) --------
+
+@pytest.mark.asyncio
+async def test_read_display_returns_current_panel(tmp_path: Path) -> None:
+    from src.config import Settings
+    from src.store.storage import TranscriptStore
+    from src.agent.tools.direct import _execute_read_display
+
+    s = Settings(workspace_dir=tmp_path, db_path=tmp_path / "heare.db")
+    store = TranscriptStore(s.db_path)
+    await store.init()
+    await store.log_display("<div>Sales chart</div>", "html", title="Q3")
+    await store.close()
+
+    out = await _execute_read_display("", s)
+    assert out["success"] is True
+    # The raw content comes back so the agent can reference/reproduce it.
+    assert "<div>Sales chart</div>" in out["output"]
+    assert "Q3" in out["output"] and "html" in out["output"]
+
+
+@pytest.mark.asyncio
+async def test_read_display_empty_panel(tmp_path: Path) -> None:
+    from src.config import Settings
+    from src.store.storage import TranscriptStore
+    from src.agent.tools.direct import _execute_read_display
+
+    s = Settings(workspace_dir=tmp_path, db_path=tmp_path / "heare.db")
+    store = TranscriptStore(s.db_path)
+    await store.init()
+    await store.close()
+
+    out = await _execute_read_display("", s)
+    assert out["success"] is True
+    assert "empty" in out["output"].lower()
+
+
+def test_read_display_tool_registered() -> None:
+    """The tool must be in the schema and wired to its handler."""
+    from src.agent.tools.system import build_tools_schema, TOOLS, _handler_for
+    from src.agent.tools.direct import _execute_read_display
+
+    schema = build_tools_schema()
+    assert "read_display" in {t.name for t in schema.standard_tools}
+
+    tool = next(t for t in TOOLS if t.name == "read_display")
+    assert _handler_for(tool) is _execute_read_display

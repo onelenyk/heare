@@ -2220,6 +2220,59 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
 _DISPLAY_FORMATS = {"text", "code", "ascii", "table", "markdown", "html"}
 
 
+async def _execute_read_display(args: str, settings: "Settings | None" = None) -> dict:
+    """Read what is currently on the display/canvas panel.
+
+    Pull-on-demand: the screen contents used to be dumped into *every* system
+    prompt (hundreds of chars of raw markup — pure noise). Now the prompt only
+    notes that a panel exists; the agent calls this when it actually needs to
+    see or reference the contents. Returns the raw content so the agent can
+    reason about or reproduce the exact markup.
+    """
+    try:
+        if settings is None:
+            from src.config import load_settings
+
+            settings = load_settings()
+        if not settings.db_path:
+            return {"success": False, "output": "", "error": "no db_path configured"}
+        from src.store.storage import TranscriptStore
+
+        store = TranscriptStore(settings.db_path)
+        try:
+            await store.init()
+            disp = await store.latest_display()
+        finally:
+            await store.close()
+
+        if not disp or not disp.get("content"):
+            return {
+                "success": True,
+                "output": "The screen panel is empty.",
+                "spoken": {
+                    "en": "Nothing is on the screen.",
+                    "uk": "На екрані нічого немає.",
+                },
+            }
+        fmt = disp.get("format") or "text"
+        title = (disp.get("title") or "").strip()
+        header = f"Screen panel (format={fmt}"
+        header += f', title="{title}")' if title else ")"
+        return {
+            "success": True,
+            "output": f"{header}:\n{disp['content']}",
+            "spoken": {"en": "Read the screen.", "uk": "Прочитав екран."},
+        }
+    except Exception as e:
+        logger.exception("_execute_read_display failed")
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Failed to read display: {e}",
+            "spoken": {"en": "Could not read the screen."},
+        }
+
+
 async def _execute_show_display(args: str, settings: "Settings | None" = None) -> dict:
     """Render a rich block on the watch dashboard display panel.
 

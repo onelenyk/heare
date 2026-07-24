@@ -426,6 +426,13 @@ TOOLS: list[ToolDef] = [
         required=["content"],
     ),
     ToolDef(
+        name="read_display",
+        description="Read what is currently on the screen panel. The panel's contents are not in your context — call this when you need to see or reference what the user is looking at.",
+        handler="display_read",
+        schema_fields={},
+        required=[],
+    ),
+    ToolDef(
         name="discover_capability",
         description="Search for an installable skill or MCP server matching the user's intent. Use when the user asks for something you don't have an existing tool for.",
         handler="capability_discover",
@@ -1079,6 +1086,7 @@ def _handler_for(tool: ToolDef):
         "provider_set": direct._execute_set_provider,
         "mode_set": direct._execute_set_mode,
         "display": direct._execute_show_display,
+        "display_read": direct._execute_read_display,
         "capability_discover": direct._execute_discover_capability,
         "capability_install_skill": direct._execute_install_skill_tool,
         "capability_create_skill": direct._execute_create_skill,
