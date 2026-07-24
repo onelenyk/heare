@@ -607,3 +607,25 @@ def test_full_prompt_contains_all_required_sections() -> None:
         assert token in out, (
             f"Section '{name}' not found or token '{token}' missing"
         )
+
+
+def test_visible_text_strips_html_markup() -> None:
+    """The display block must inject what the user SEES, not CSS/markup — a
+    canvas panel was dumping ~600 chars of <style> into every prompt."""
+    from src.store.context import _visible_text
+
+    paw = (
+        "<!DOCTYPE html><html><head><style>body{margin:0;overflow:hidden}"
+        ".paw{font-size:180px}</style></head><body>"
+        '<div class="paw">🐾</div><div class="text">Doka слухає</div></body></html>'
+    )
+    out = _visible_text(paw, "html")
+    assert out == "🐾 Doka слухає"
+    assert "style" not in out and "margin" not in out
+    assert len(out) < 20  # was 190+ chars of markup
+
+
+def test_visible_text_passes_plain_text_through() -> None:
+    from src.store.context import _visible_text
+
+    assert _visible_text("just  some\n text", "text") == "just some text"
