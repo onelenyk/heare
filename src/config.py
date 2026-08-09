@@ -709,24 +709,26 @@ def write_browser_bridge_token(settings: Settings, token: str) -> None:
 def set_confirmation_passphrase(word: str) -> None:
     """Persist `word` as the top-level `confirmation_passphrase` key in
     `~/.heare/config.toml`. Restart required for the daemon to pick it up.
+
+    Appending the line at end-of-file — the old approach — parks it inside
+    whatever ``[table]`` happens to be last, and ``load_settings`` only reads
+    top-level keys, so the passphrase silently did nothing. Any such misplaced
+    copy is removed before the key is rewritten in the preamble.
     """
     import re
 
     config_path = HEARE_HOME / "config.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    content = config_path.read_text() if config_path.exists() else ""
-    if "confirmation_passphrase" in content:
-        content = re.sub(
-            r'confirmation_passphrase\s*=\s*".*?"',
-            f'confirmation_passphrase = "{word}"',
-            content,
+    if config_path.exists():
+        content = config_path.read_text()
+        pruned = re.sub(
+            r"(?m)^[ \t]*confirmation_passphrase[ \t]*=.*$\n?", "", content
         )
-    else:
-        sep = "" if (content == "" or content.endswith("\n")) else "\n"
-        content = content + sep + f'confirmation_passphrase = "{word}"\n'
+        if pruned != content:
+            _atomic_write(config_path, pruned)
 
-    config_path.write_text(content)
+    write_config_toml_values({"confirmation_passphrase": word})
 
 
 def backup_session_file(settings: "Settings") -> Path | None:
@@ -761,3 +763,116 @@ def write_env_var(key: str, value: str) -> None:
     if not found:
         lines.append(f"{key}={value}")
     env_path.write_text("\n".join(lines) + "\n")
+
+
+# ── API key plumbing ──────────────────────────────────────────────────
+#
+# Every UI that can set an API key (dashboard settings card, brain card,
+# setup modal, the plain HTML form) goes through these helpers, so there is
+# exactly one definition of "which keys exist", one place that writes the
+# .env file, and one place that edits config.toml.
+
+
+def api_key_fields() -> dict[str, str]:
+    """Map ``Settings`` attribute name → environment variable name for every
+    API key the UI is allowed to set.
+
+    Derived from the provider registry so adding a provider needs no second
+    edit here. Groq is listed explicitly because it is the STT provider, not
+    an LLM one, and so has no ``ProviderConfig``.
+    """
+    from src.agent.llm.providers import PROVIDERS
+
+    fields = {"groq_api_key": "GROQ_API_KEY"}
+    for cfg in PROVIDERS.values():
+        fields[cfg.api_key_attr] = cfg.api_key_env
+    return fields
+
+
+def _atomic_write(path: Path, content: str, mode: int = 0o600) -> None:
+    """Write `content` to `path` via tmpfile + os.replace, chmod `mode`."""
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(content)
+        os.chmod(tmp_path, mode)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def write_env_updates(updates: dict[str, str], env_path: Path | None = None) -> None:
+    """Merge `updates` (ENV_NAME → value) into ``~/.heare/.env``.
+
+    Updates existing assignments in place and appends the rest, so comments,
+    blank lines, key order and unrelated variables all survive. Written
+    atomically with 0600 — the file holds credentials.
+    """
+    if not updates:
+        return
+    path = env_path or (HEARE_HOME / ".env")
+    remaining = dict(updates)
+    lines: list[str] = []
+
+    if path.exists():
+        for line in path.read_text().splitlines():
+            stripped = line.strip()
+            if "=" in stripped and not stripped.startswith("#"):
+                name = stripped.split("=", 1)[0].strip()
+                if name in remaining:
+                    lines.append(f"{name}={remaining.pop(name)}")
+                    continue
+            lines.append(line)
+
+    lines.extend(f"{name}={value}" for name, value in remaining.items())
+    _atomic_write(path, "\n".join(lines) + "\n")
+
+
+def write_config_toml_values(values: dict[str, str]) -> None:
+    """Set top-level string keys in ``~/.heare/config.toml`` in place.
+
+    Only the preamble (everything before the first ``[table]`` header) is
+    touched; section tables, their contents and all comments are copied
+    through byte-for-byte.
+
+    This exists because the obvious shortcut — read every ``k = v`` line into
+    a flat dict and rewrite the file from it — silently drops the
+    ``[section]`` headers. Doing that to ``[browser_bridge]`` orphans the
+    bridge token, so the daemon cannot load it, mints a fresh one, and every
+    Chrome extension still holding the old token is rejected with close 4001.
+    """
+    import re
+
+    if not values:
+        return
+
+    config_path = HEARE_HOME / "config.toml"
+    content = config_path.read_text() if config_path.exists() else ""
+
+    first_table = re.search(r"(?m)^[ \t]*\[", content)
+    head = content[: first_table.start()] if first_table else content
+    tail = content[first_table.start() :] if first_table else ""
+
+    for key, value in values.items():
+        quoted = '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+        key_re = re.compile(rf"(?m)^[ \t]*{re.escape(key)}[ \t]*=.*$")
+        if key_re.search(head):
+            head = key_re.sub(f"{key} = {quoted}", head, count=1)
+        else:
+            if head and not head.endswith("\n"):
+                head += "\n"
+            head += f"{key} = {quoted}\n"
+
+    if tail and head and not head.endswith("\n"):
+        head += "\n"
+
+    _atomic_write(config_path, head + tail)

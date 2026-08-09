@@ -28,9 +28,12 @@ from src.agent.llm.providers import (
 from src.agent.modes import VALID_MODES  # noqa: E402
 from src.config import (  # noqa: E402
     HEARE_HOME,
+    api_key_fields,
     backup_session_file,
     set_confirmation_passphrase,
     write_browser_bridge_token,
+    write_config_toml_values,
+    write_env_updates,
 )
 from src.memory.base import MemoryType  # noqa: E402
 from src.dashboard_data import (  # noqa: E402
@@ -269,23 +272,83 @@ class API:
                 return web.Response(text="Frontend not found", status=500)
         return web.Response(text=_INDEX_HTML, content_type="text/html")
 
-    async def _save_form_keys(self, post):
-        if self.state is None:
+    # ── API keys ──────────────────────────────────────────────────
+    #
+    # Four surfaces can set a key (settings card, brain card, setup modal,
+    # the plain HTML form). They all funnel through the three helpers below
+    # so validation, persistence and hot-apply behave identically no matter
+    # which one the user reached for.
+
+    @staticmethod
+    def _normalise_key_payload(body) -> dict[str, str]:
+        """Pick the API keys out of `body`, keyed by Settings attribute name.
+
+        Accepts either spelling — ``deepseek_api_key`` (what the dashboard
+        sends) or ``DEEPSEEK_API_KEY`` (what the setup modal sends) — because
+        both are already in use by shipped frontends. Unknown names and blank
+        values are dropped.
+        """
+        fields = api_key_fields()
+        env_to_attr = {env: attr for attr, env in fields.items()}
+        found: dict[str, str] = {}
+        for raw_name, raw_value in (body or {}).items():
+            if not isinstance(raw_value, str):
+                continue
+            value = raw_value.strip()
+            if not value:
+                continue
+            if raw_name in fields:
+                found[raw_name] = value
+            elif raw_name.upper() in env_to_attr:
+                found[env_to_attr[raw_name.upper()]] = value
+        return found
+
+    @staticmethod
+    def _validate_api_keys(keys: dict[str, str]) -> list[str]:
+        """Return human-readable complaints about `keys`; empty means good."""
+        errors = []
+        groq = keys.get("groq_api_key", "")
+        if groq and not (groq.startswith("gsk_") or groq.startswith("sk-")):
+            errors.append("Groq key must start with gsk_ or sk-")
+        for attr, value in keys.items():
+            if attr != "groq_api_key" and len(value) < 20:
+                errors.append(f"{attr.replace('_', ' ').title()} key looks too short")
+        return errors
+
+    async def _apply_api_keys(self, keys: dict[str, str]) -> None:
+        """Persist `keys` and apply them to the running daemon.
+
+        Writes ~/.heare/.env (durable), os.environ + Settings (this process),
+        and the ``key_<attr>`` state entries that SwitchableLLMService watches
+        to rebuild its delegate — that last one is what makes a pasted key
+        take effect without a restart.
+        """
+        if not keys:
             return
-        for attr in (
-            "groq_api_key",
-            "deepseek_api_key",
-            "zai_api_key",
-            "opencode_api_key",
-        ):
-            val = post.get(attr, "").strip()
-            if val and len(val) >= 30:
-                await self.state.set(f"key_{attr}", val)
+        fields = api_key_fields()
+        write_env_updates({fields[attr]: value for attr, value in keys.items()})
+        for attr, value in keys.items():
+            os.environ[fields[attr]] = value
+            setattr(self.config, attr, value)
+            if self.state is not None:
+                await self.state.set(f"key_{attr}", value)
+
+    async def _save_form_keys(self, post):
+        keys = self._normalise_key_payload(dict(post))
+        if keys and not self._validate_api_keys(keys):
+            await self._apply_api_keys(keys)
 
     async def _handle_state(self, request):
         if self.state is None:
             return web.json_response({"running": False})
         data = self.state.snapshot()
+        # The raw key values live in state because that is how a hot-swapped
+        # key reaches the LLM service, but this endpoint is unauthenticated —
+        # never ship the secret itself. Callers only ever need "is it set?".
+        for attr in api_key_fields():
+            name = f"key_{attr}"
+            if name in data:
+                data[name] = bool(data[name])
         data["version"] = app_version(include_sha=False)
         data["providers"] = self._available_providers()
 
@@ -768,63 +831,28 @@ class API:
         )
 
     async def _handle_settings(self, request):
-        """Save settings to .env, config.toml, and apply keys live."""
-        import os
-        from dotenv import load_dotenv
-
+        """POST /settings — save API keys (and optionally language/voice)."""
         body = await request.json()
 
-        env_path = str(Path.home() / ".heare" / ".env")
-
-        updates = {}
-        if body.get("groq_api_key"):
-            updates["GROQ_API_KEY"] = body["groq_api_key"]
-        if body.get("deepseek_api_key"):
-            updates["DEEPSEEK_API_KEY"] = body["deepseek_api_key"]
-        if body.get("zai_api_key"):
-            updates["ZAI_API_KEY"] = body["zai_api_key"]
-        if body.get("opencode_api_key"):
-            updates["OPENCODE_API_KEY"] = body["opencode_api_key"]
-
-        errors = []
-        groq_key = body.get("groq_api_key", "").strip()
-        if groq_key and not (groq_key.startswith("gsk_") or groq_key.startswith("sk-")):
-            errors.append("Groq key must start with gsk_ or sk-")
-        for attr in ("deepseek_api_key", "zai_api_key", "opencode_api_key"):
-            val = body.get(attr, "").strip()
-            if val and len(val) < 20:
-                errors.append(f"{attr.replace('_', ' ').title()} key looks too short")
+        keys = self._normalise_key_payload(body)
+        errors = self._validate_api_keys(keys)
         if errors:
             return web.json_response({"ok": False, "errors": errors}, status=400)
 
-        if updates:
-            existing = {}
-            if os.path.exists(env_path):
-                for line in open(env_path):
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        existing[k.strip()] = v.strip()
-            existing.update(updates)
-            with open(env_path, "w") as f:
-                for k, v in existing.items():
-                    f.write(f"{k}={v}\n")
-            os.environ.update(updates)
-            load_dotenv(env_path, override=True)
-
-        for attr in (
-            "groq_api_key",
-            "deepseek_api_key",
-            "zai_api_key",
-            "opencode_api_key",
-        ):
-            if body.get(attr):
-                setattr(self.config, attr, body[attr])
-                val = body.get(attr, "").strip()
-                if val and len(val) >= 30:
-                    await self.state.set(f"key_{attr}", val)
+        await self._apply_api_keys(keys)
+        self._save_locale_settings(body)
 
         return web.json_response({"ok": True, "applied": True})
+
+    def _save_locale_settings(self, body) -> None:
+        """Persist language / TTS voice from `body` to config.toml, if present."""
+        locale = {}
+        if body.get("language"):
+            locale["groq_language"] = body["language"]
+        if body.get("tts_voice"):
+            locale["tts_voice"] = body["tts_voice"]
+        if locale:
+            write_config_toml_values(locale)
 
     async def _handle_set_passphrase(self, request):
         """POST /api/settings/passphrase — set the confirmation passphrase."""
@@ -1728,61 +1756,22 @@ class API:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_setup_config(self, request):
-        """POST /api/setup/config — save language, voice, API keys."""
+        """POST /api/setup/config — save language, voice, API keys.
+
+        Shares its key handling with ``/settings`` so a key pasted here is
+        validated the same way and takes effect without a restart.
+        """
         body = await request.json()
 
-        # Write API keys to .env
-        env_path = Path.home() / ".heare" / ".env"
-        env_path.parent.mkdir(parents=True, exist_ok=True)
+        keys = self._normalise_key_payload(body)
+        errors = self._validate_api_keys(keys)
+        if errors:
+            return web.json_response({"ok": False, "errors": errors}, status=400)
 
-        existing = {}
-        if env_path.exists():
-            with open(env_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        existing[k.strip()] = v.strip()
+        await self._apply_api_keys(keys)
+        self._save_locale_settings(body)
 
-        provider_keys = {
-            "DEEPSEEK_API_KEY",
-            "ZAI_API_KEY",
-            "OPENCODE_API_KEY",
-            "GROQ_API_KEY",
-        }
-        for key, value in body.items():
-            upper = key.upper()
-            if upper in provider_keys and value:
-                existing[upper] = value
-                os.environ[upper] = value
-
-        with open(env_path, "w") as f:
-            for k, v in existing.items():
-                f.write(f"{k}={v}\n")
-
-        # Write config.toml (language + voice)
-        config_path = Path.home() / ".heare" / "config.toml"
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        config_lines = {}
-        if config_path.exists():
-            with open(config_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        config_lines[k.strip()] = v.strip().strip('"')
-
-        if "language" in body:
-            config_lines["groq_language"] = body["language"]
-        if "tts_voice" in body:
-            config_lines["tts_voice"] = body["tts_voice"]
-
-        with open(config_path, "w") as f:
-            for k, v in config_lines.items():
-                f.write(f'{k} = "{v}"\n')
-
-        return web.json_response({"ok": True})
+        return web.json_response({"ok": True, "applied": True})
 
     async def _handle_setup_complete(self, request):
         """POST /api/setup/complete — mark setup as done."""

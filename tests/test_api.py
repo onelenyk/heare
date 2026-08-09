@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from unittest.mock import AsyncMock, MagicMock
 
@@ -772,3 +773,142 @@ async def test_state_model_falls_back_to_default(mock_state, mock_config) -> Non
     from src.agent.llm.providers import get_config
 
     assert data["model"] == get_config("deepseek").default_model
+
+
+# ---------------------------------------------------------------------------
+# API keys — one path for every UI surface
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_state_never_ships_raw_api_keys(mock_state, mock_config) -> None:
+    """GET /state is unauthenticated — it must expose "is it set?", never the
+    secret. The raw value stays in state because that is how a hot-swapped key
+    reaches the LLM service."""
+    mock_state.snapshot.return_value = {
+        "provider": "deepseek",
+        "key_deepseek_api_key": "sk-REVOKED-KEY-REMOVED-FROM-HISTORY",
+        "key_groq_api_key": "gsk_realsecret",
+    }
+    api = API(mock_state, mock_config)
+    resp = await api._handle_state(_mock_request())
+    body = resp.body.decode()
+
+    assert "sk-REVOKED-KEY-REMOVED-FROM-HISTORY" not in body
+    assert "gsk_realsecret" not in body
+    data = json.loads(body)
+    assert data["key_deepseek_api_key"] is True
+    assert data["key_groq_api_key"] is True
+
+
+@pytest.mark.asyncio
+async def test_state_reports_unset_key_as_false(mock_state, mock_config) -> None:
+    mock_state.snapshot.return_value = {"key_zai_api_key": ""}
+    api = API(mock_state, mock_config)
+    resp = await api._handle_state(_mock_request())
+    assert json.loads(resp.body)["key_zai_api_key"] is False
+
+
+def test_normalise_key_payload_accepts_both_spellings(api) -> None:
+    """The dashboard sends attribute names, the setup modal sends env names."""
+    keys = api._normalise_key_payload(
+        {
+            "deepseek_api_key": "sk-" + "d" * 30,
+            "ZAI_API_KEY": "sk-" + "z" * 30,
+            "language": "uk",
+            "opencode_api_key": "   ",
+            "NOT_A_KEY": "whatever",
+        }
+    )
+    assert keys == {
+        "deepseek_api_key": "sk-" + "d" * 30,
+        "zai_api_key": "sk-" + "z" * 30,
+    }
+
+
+def test_validate_api_keys(api) -> None:
+    assert api._validate_api_keys({"groq_api_key": "gsk_ok"}) == []
+    assert api._validate_api_keys({"groq_api_key": "nope"}) == [
+        "Groq key must start with gsk_ or sk-"
+    ]
+    assert api._validate_api_keys({"deepseek_api_key": "short"}) == [
+        "Deepseek Api Key key looks too short"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_apply_api_keys_persists_env_config_and_state(
+    mock_state, mock_config, tmp_path, monkeypatch
+) -> None:
+    """One paste must land in all three places: the .env file (durable), the
+    Settings object (this process) and state (hot-swap into the LLM)."""
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    api = API(mock_state, mock_config)
+
+    key = "sk-" + "a" * 30
+    await api._apply_api_keys({"deepseek_api_key": key})
+
+    assert f"DEEPSEEK_API_KEY={key}" in (tmp_path / ".env").read_text()
+    assert os.environ["DEEPSEEK_API_KEY"] == key
+    assert mock_config.deepseek_api_key == key
+    mock_state.set.assert_any_await("key_deepseek_api_key", key)
+
+
+@pytest.mark.asyncio
+async def test_setup_config_and_settings_share_the_key_path(
+    mock_state, mock_config, tmp_path, monkeypatch
+) -> None:
+    """Both endpoints must apply a key live — the setup modal used to write
+    only the .env file, so the running daemon kept the old key."""
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    api = API(mock_state, mock_config)
+
+    key = "sk-" + "b" * 30
+    resp = await api._handle_setup_config(
+        _mock_request(json_data={"DEEPSEEK_API_KEY": key})
+    )
+    assert json.loads(resp.body) == {"ok": True, "applied": True}
+    mock_state.set.assert_any_await("key_deepseek_api_key", key)
+
+
+@pytest.mark.asyncio
+async def test_setup_config_rejects_bad_key(
+    mock_state, mock_config, tmp_path, monkeypatch
+) -> None:
+    """It used to accept anything; now it validates like /settings does."""
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    api = API(mock_state, mock_config)
+    resp = await api._handle_setup_config(
+        _mock_request(json_data={"GROQ_API_KEY": "bogus"})
+    )
+    assert resp.status == 400
+    assert not (tmp_path / ".env").exists()
+
+
+@pytest.mark.asyncio
+async def test_setup_config_preserves_config_toml_sections(
+    mock_state, mock_config, tmp_path, monkeypatch
+) -> None:
+    """Regression: saving keys used to flatten config.toml, dropping the
+    [browser_bridge] header and orphaning the bridge token (close 4001)."""
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    (tmp_path / "config.toml").write_text(
+        '[browser_bridge]\ntoken = "secret-token"\nconfirmation_passphrase = "фраза"\n'
+    )
+    api = API(mock_state, mock_config)
+
+    await api._handle_setup_config(
+        _mock_request(json_data={"language": "uk", "tts_voice": "uk-UA-OstapNeural"})
+    )
+
+    text = (tmp_path / "config.toml").read_text()
+    assert "[browser_bridge]" in text
+    assert 'token = "secret-token"' in text
+    assert 'groq_language = "uk"' in text
+
+    import tomllib
+
+    parsed = tomllib.loads(text)
+    assert parsed["browser_bridge"]["token"] == "secret-token"
+    assert parsed["groq_language"] == "uk"

@@ -1,21 +1,24 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { API } from "../App";
 
 export default function Onboarding({ onSaved }) {
   const [groq, setGroq] = useState("");
   const [llm, setLlm] = useState("");
-  const [provider, setProvider] = useState("deepseek_api_key");
+  const [provider, setProvider] = useState("deepseek");
+  const [providers, setProviders] = useState([]);
   const [lang, setLang] = useState("en");
   const [voice, setVoice] = useState("en-US-AriaNeural");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const PROVIDER_NAMES = {
-    deepseek_api_key: "DEEPSEEK_API_KEY",
-    openrouter: "OPENROUTER_API_KEY",
-    zai: "ZAI_API_KEY",
-    opencode: "OPENCODE_API_KEY",
-  };
+  // Provider list comes from the registry so this screen cannot drift out of
+  // step with what the backend actually accepts.
+  useEffect(() => {
+    fetch(API + "/api/providers")
+      .then((r) => r.json())
+      .then(setProviders)
+      .catch(() => setProviders([]));
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -31,7 +34,9 @@ export default function Onboarding({ onSaved }) {
         language: lang,
         tts_voice: voice,
       };
-      body[provider] = llm.trim();
+      // Must be the Settings attribute name the backend knows — sending the
+      // bare provider key here silently dropped every non-DeepSeek key.
+      body[provider + "_api_key"] = llm.trim();
       const r = await fetch(API + "/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,10 +100,12 @@ export default function Onboarding({ onSaved }) {
                 borderRadius: 3,
               }}
             >
-              <option value="deepseek_api_key">DeepSeek</option>
-              <option value="openrouter">OpenRouter</option>
-              <option value="zai">z.ai</option>
-              <option value="opencode">OpenCode</option>
+              {providers.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.display_name}
+                  {p.configured ? " ✓" : ""}
+                </option>
+              ))}
             </select>
           </div>
         </div>

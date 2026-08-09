@@ -402,3 +402,181 @@ def test_settings_refinement_window_equal_idle_ok() -> None:
         conversation_idle_seconds=1800.0,
     )
     assert s.refinement_recency_seconds == 1800.0
+
+
+# ---------------------------------------------------------------------------
+# API key plumbing — api_key_fields / write_env_updates / write_config_toml_values
+# ---------------------------------------------------------------------------
+
+
+def test_api_key_fields_covers_every_provider() -> None:
+    """Derived from the provider registry, so a new provider needs no second
+    edit for the UI to be able to set its key."""
+    from src.agent.llm.providers import PROVIDERS
+    from src.config import api_key_fields
+
+    fields = api_key_fields()
+    assert fields["groq_api_key"] == "GROQ_API_KEY"
+    for cfg in PROVIDERS.values():
+        assert fields[cfg.api_key_attr] == cfg.api_key_env
+
+
+def test_write_env_updates_preserves_comments_and_others(tmp_path, monkeypatch) -> None:
+    from src.config import write_env_updates
+
+    env = tmp_path / ".env"
+    env.write_text(
+        "# my keys\nGROQ_API_KEY=gsk_old\n\nUNRELATED=keep-me\nDEEPSEEK_API_KEY=sk-old\n"
+    )
+    write_env_updates({"DEEPSEEK_API_KEY": "sk-new", "ZAI_API_KEY": "sk-zai"}, env)
+
+    text = env.read_text()
+    assert "# my keys" in text
+    assert "UNRELATED=keep-me" in text
+    assert "GROQ_API_KEY=gsk_old" in text
+    assert "DEEPSEEK_API_KEY=sk-new" in text
+    assert "sk-old" not in text
+    assert "ZAI_API_KEY=sk-zai" in text
+
+
+def test_write_env_updates_is_owner_only(tmp_path) -> None:
+    """The file holds credentials."""
+    import stat
+
+    from src.config import write_env_updates
+
+    env = tmp_path / ".env"
+    write_env_updates({"DEEPSEEK_API_KEY": "sk-x"}, env)
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+
+
+def test_write_config_toml_values_keeps_sections(tmp_path, monkeypatch) -> None:
+    """Regression for the flattening bug: rewriting top-level keys must not
+    swallow [browser_bridge], which orphans the bridge token."""
+    import tomllib
+
+    import src.config as config_mod
+
+    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        "# hand-written\n"
+        'confirmation_passphrase = "фраза"\n'
+        "\n"
+        "[browser_bridge]\n"
+        'token = "tok-123"\n'
+        "port = 9333\n"
+    )
+
+    config_mod.write_config_toml_values(
+        {"groq_language": "uk", "tts_voice": "uk-UA-OstapNeural"}
+    )
+
+    parsed = tomllib.loads(cfg.read_text())
+    assert parsed["browser_bridge"] == {"token": "tok-123", "port": 9333}
+    assert parsed["confirmation_passphrase"] == "фраза"
+    assert parsed["groq_language"] == "uk"
+    assert parsed["tts_voice"] == "uk-UA-OstapNeural"
+    assert "# hand-written" in cfg.read_text()
+
+
+def test_write_config_toml_values_updates_in_place(tmp_path, monkeypatch) -> None:
+    import tomllib
+
+    import src.config as config_mod
+
+    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('groq_language = "en"\n\n[browser_bridge]\ntoken = "t"\n')
+
+    config_mod.write_config_toml_values({"groq_language": "uk"})
+
+    parsed = tomllib.loads(cfg.read_text())
+    assert parsed["groq_language"] == "uk"
+    assert cfg.read_text().count("groq_language") == 1
+    assert parsed["browser_bridge"]["token"] == "t"
+
+
+def test_write_config_toml_values_on_missing_file(tmp_path, monkeypatch) -> None:
+    import tomllib
+
+    import src.config as config_mod
+
+    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
+    config_mod.write_config_toml_values({"groq_language": "uk"})
+    parsed = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert parsed["groq_language"] == "uk"
+
+
+def test_browser_bridge_token_survives_a_key_save_roundtrip(
+    tmp_path, monkeypatch
+) -> None:
+    """End-to-end of the 4001 bug: write a token, save unrelated config, and
+    the loader must still find the token under [browser_bridge]."""
+    import src.config as config_mod
+
+    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
+    settings = Settings()
+    config_mod.write_browser_bridge_token(settings, "tok-abc")
+
+    config_mod.write_config_toml_values({"groq_language": "uk"})
+
+    import tomllib
+
+    raw = tomllib.loads((tmp_path / "config.toml").read_text())
+    reloaded = Settings()
+    config_mod._load_browser_bridge_settings(reloaded, raw.get("browser_bridge", {}))
+    assert reloaded.browser_bridge_token == "tok-abc"
+
+
+def test_set_confirmation_passphrase_lands_top_level(tmp_path, monkeypatch) -> None:
+    """Regression: appending at EOF parked the key inside the last [table],
+    where load_settings never looks — the passphrase silently did nothing."""
+    import tomllib
+
+    import src.config as config_mod
+
+    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[browser_bridge]\ntoken = "tok"\n')
+
+    config_mod.set_confirmation_passphrase("авторизую")
+
+    parsed = tomllib.loads(cfg.read_text())
+    assert parsed["confirmation_passphrase"] == "авторизую"
+    assert "confirmation_passphrase" not in parsed["browser_bridge"]
+    assert parsed["browser_bridge"]["token"] == "tok"
+
+
+def test_set_confirmation_passphrase_rescues_misplaced_key(
+    tmp_path, monkeypatch
+) -> None:
+    """An already-misplaced key (inside a table) is moved, not duplicated."""
+    import tomllib
+
+    import src.config as config_mod
+
+    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[browser_bridge]\ntoken = "tok"\nconfirmation_passphrase = "стара"\n'
+    )
+
+    config_mod.set_confirmation_passphrase("нова")
+
+    text = cfg.read_text()
+    assert text.count("confirmation_passphrase") == 1
+    parsed = tomllib.loads(text)
+    assert parsed["confirmation_passphrase"] == "нова"
+    assert parsed["browser_bridge"] == {"token": "tok"}
+
+
+def test_confirmation_passphrase_survives_load_settings(tmp_path, monkeypatch) -> None:
+    """End-to-end: what the setter writes is what load_settings reads back."""
+    import src.config as config_mod
+
+    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
+    (tmp_path / "config.toml").write_text('[browser_bridge]\ntoken = "tok"\n')
+    config_mod.set_confirmation_passphrase("авторизую")
+
+    assert load_settings().confirmation_passphrase == "авторизую"

@@ -18,12 +18,21 @@ export default function SetupModal({ show, onClose, onComplete }) {
   const [groqKey, setGroqKey] = useState('');
   const [llmKey, setLlmKey] = useState('');
   const [provider, setProvider] = useState('deepseek');
+  const [providers, setProviders] = useState([]);
 
   useEffect(() => {
     if (show) loadState();
   }, [show]);
 
   const loadState = async () => {
+    // Provider list comes from the registry, not a hardcoded list here, so
+    // this stays in step with the brain card and with the backend.
+    try {
+      const pr = await fetch(API + '/api/providers');
+      setProviders(await pr.json());
+    } catch (e) {
+      setProviders([]);
+    }
     try {
       const r = await fetch(API + '/api/setup');
       const d = await r.json();
@@ -99,17 +108,18 @@ export default function SetupModal({ show, onClose, onComplete }) {
     setStatus('Saving keys...');
     try {
       const body = {};
-      if (groqKey) body.GROQ_API_KEY = groqKey;
-      if (llmKey) {
-        const keyName = provider === 'deepseek' ? 'DEEPSEEK_API_KEY' : provider === 'zai' ? 'ZAI_API_KEY' : 'OPENCODE_API_KEY';
-        body[keyName] = llmKey;
-      }
+      if (groqKey) body.groq_api_key = groqKey;
+      if (llmKey) body[provider + '_api_key'] = llmKey;
       const r = await fetch(API + '/api/setup/config', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       });
       const d = await r.json();
-      if (d.ok) setStatus('Keys saved!');
-      else setStatus(d.error || 'Save failed');
+      if (d.ok) {
+        setStatus('Keys saved & applied');
+        setGroqKey('');
+        setLlmKey('');
+        await loadState();
+      } else setStatus((d.errors && d.errors[0]) || d.error || 'Save failed');
     } catch (e) { setStatus('Save failed: ' + e.message); }
     setLoading(false);
   };
@@ -226,13 +236,15 @@ export default function SetupModal({ show, onClose, onComplete }) {
                 <label style={{display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 4}}>Provider</label>
                 <select value={provider} onChange={e => setProvider(e.target.value)}
                   style={{width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', color: 'var(--text)', fontSize: 13, marginBottom: 8}}>
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="zai">z.ai</option>
-                  <option value="opencode">OpenCode</option>
+                  {providers.map(p => (
+                    <option key={p.key} value={p.key}>
+                      {p.display_name}{p.configured ? ' \u2713' : ''}
+                    </option>
+                  ))}
                 </select>
                 <label style={{display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 4}}>LLM API Key</label>
                 <input type="password" value={llmKey} onChange={e => setLlmKey(e.target.value)}
-                  placeholder={config?.llm_key_configured ? '\u2713 configured' : 'sk-...'}
+                  placeholder={providers.find(p => p.key === provider)?.configured ? '\u2713 configured \u2014 paste to replace' : 'sk-...'}
                   style={{width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', color: 'var(--text)', fontSize: 13}} />
               </div>
               <button className="btn primary" onClick={handleSaveKeys} disabled={loading} style={{width: '100%'}}>
