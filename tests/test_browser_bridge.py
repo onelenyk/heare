@@ -591,6 +591,47 @@ async def test_lonely_watcher_debounce(
             pass
 
 
+async def test_pair_code_refresh_does_not_keep_hijacking_the_clipboard(
+    tmp_path: Path, tmp_heare: Path
+) -> None:
+    """An unpaired bridge mints a fresh code every 60 s forever. It may copy
+    the FIRST one to the clipboard as a convenience; copying every refresh
+    would silently overwrite the user's clipboard for as long as heare runs
+    (17 times in a 17-minute session, observed live).
+
+    A reconnect ends the episode, so the next disconnect earns one copy again.
+    """
+    copies: list[str] = []
+
+    with (
+        patch("src.agent.browser_bridge.HEARE_HOME", tmp_heare),
+        patch(
+            "src.agent.browser_bridge._copy_to_clipboard",
+            side_effect=lambda text: (copies.append(text), True)[1],
+        ),
+    ):
+        bridge = BrowserBridge(_settings(tmp_path, token="tok", port=_free_port()))
+
+        for _ in range(5):
+            bridge._generate_pair_code()
+
+        assert len(copies) == 1, (
+            f"clipboard overwritten {len(copies)} times by pair-code refresh; "
+            "only the first code of an episode may be copied"
+        )
+        first_code = copies[0]
+
+        # Codes keep rotating — we suppressed the clipboard write, not the
+        # refresh the pairing UI depends on.
+        assert bridge._pair_code is not None
+        assert bridge._pair_code != first_code
+
+        # A connect/disconnect cycle starts a new episode: one copy again.
+        bridge._pair_clipboard_done = False  # what the connect path does
+        bridge._generate_pair_code()
+        assert len(copies) == 2
+
+
 async def test_activate_tab_rpc_round_trip(
     tmp_path: Path, tmp_heare: Path
 ) -> None:

@@ -101,6 +101,12 @@ class BrowserBridge:
         self._pair_attempts: int = 0
         self._lonely_since: float | None = None
         self._lonely_task: asyncio.Task | None = None
+        # The clipboard belongs to the user, not to us. We hand them the
+        # first code of a pairing episode as a convenience; every 60s
+        # refresh after that must stay silent, or an unpaired bridge
+        # overwrites whatever they copied, forever. Reset on connect so
+        # the next disconnect gets its one copy again.
+        self._pair_clipboard_done: bool = False
         self._last_auth_fail_log: float = 0.0
 
     # ── lifecycle ─────────────────────────────────────────────────────────
@@ -110,6 +116,7 @@ class BrowserBridge:
         await self._ensure_token()
         self._write_token_file()
         self._lonely_since = time.time()
+        self._pair_clipboard_done = False
         self._write_status(False)
         self._lonely_task = safe_task(self._lonely_watcher(), name="browser-lonely-watcher")
 
@@ -216,6 +223,7 @@ class BrowserBridge:
         self._connections[conn_id] = conn
         self._clear_pair_code()
         self._lonely_since = None
+        self._pair_clipboard_done = False
         self._write_status(True)
         try:
             if mtype == "pair":
@@ -586,7 +594,11 @@ class BrowserBridge:
         self._pair_code = digits
         self._pair_expires_at = time.time() + PAIR_CODE_TTL_S
         self._pair_attempts = 0
-        copied = _copy_to_clipboard(digits)
+        if self._pair_clipboard_done:
+            copied = False
+        else:
+            copied = _copy_to_clipboard(digits)
+            self._pair_clipboard_done = True
         logger.info(
             "browser_bridge pair code %s (60s TTL, clipboard=%s)",
             digits,
