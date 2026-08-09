@@ -464,8 +464,17 @@ class TranscriptStore:
         ]
 
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
+        """Return the last `n` transcript rows, oldest first.
+
+        ``agent_spoken`` rides along because both speakers write to this
+        one table: user turns from the transcription gate (NULL), replies
+        from the assistant logger (1). Dropping the column here left the
+        prompt with an unlabelled mix in which the agent could not tell
+        its own past replies from the user's speech.
+        """
         cursor = await self.db.execute(
-            "SELECT id, ts, text, mode FROM transcripts ORDER BY ts DESC LIMIT ?",
+            "SELECT id, ts, text, mode, agent_spoken FROM transcripts "
+            "ORDER BY ts DESC LIMIT ?",
             (n,),
         )
         rows = await cursor.fetchall()
@@ -475,6 +484,7 @@ class TranscriptStore:
                 "ts": r[1],
                 "text": r[2],
                 "mode": r[3],
+                "agent_spoken": bool(r[4]),
             }
             for r in reversed(rows)
         ]

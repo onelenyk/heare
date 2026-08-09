@@ -355,12 +355,20 @@ class ContextBuilder:
         return ""  # medium: prompt defaults apply, no override needed
 
     def _format_recent(self, rows: list[dict[str, Any]]) -> str:
+        """Render recent transcript lines, each attributed to its speaker.
+
+        Both speakers share the transcripts table, so without the prefix
+        the model reads its own previous replies as things the user said
+        — and, since replies outnumber user turns, badly overestimates
+        how much the user actually spoke.
+        """
         if not rows:
             return "(none)"
         lines = []
         for row in rows:
             stamp = dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
-            line = f"  - [{stamp}] {row['text']}"
+            who = "you" if row.get("agent_spoken") else "user"
+            line = f"  - [{stamp}] {who}: {row['text']}"
             lines.append(line)
         return "\n".join(lines)
 

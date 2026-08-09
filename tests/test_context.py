@@ -64,6 +64,23 @@ async def test_recent_transcripts_rendering(store: TranscriptStore) -> None:
     assert "два" in result["recent_transcripts"]
 
 
+async def test_recent_transcripts_label_each_speaker(store: TranscriptStore) -> None:
+    """User speech and the agent's own replies share one table — the
+    rendered block must say which is which, or the model reads its own
+    previous answers back as things the user said."""
+    await store.log_transcript("котра година", "ambient")
+    await store.log_transcript(
+        "Пів на дванадцяту", "assistant", agent_spoken=True
+    )
+    settings = load_settings()
+    ctx = ContextBuilder(store, settings)
+    result = await ctx.build("дякую", heartbeat=False)
+
+    block = result["recent_transcripts"]
+    assert "user: котра година" in block
+    assert "you: Пів на дванадцяту" in block
+
+
 async def test_live_mcp_bridge_block_overrides_static(
     store: TranscriptStore,
 ) -> None:
