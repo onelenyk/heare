@@ -1168,6 +1168,57 @@ def build_tools_schema(session_state: Any = None) -> Any:
 _intent_id_seq = itertools.count(start=1)
 
 
+# ── Tool execution deadlines ──────────────────────────────────────────
+#
+# Pipecat arms a timeout task for EVERY function call and defaults it to
+# 10s (``LLMService.function_call_timeout_secs``). On expiry it delivers
+# ``result=None``; the assistant aggregator writes that to the context as
+# a bare "COMPLETED" and — because the result is falsy — never re-runs the
+# LLM. The turn dies silently: no reply, no error, nothing the model can
+# act on, and the real result is discarded when it finally arrives.
+#
+# Every tool slower than 10s hit this: bash (no timeout of its own at
+# all), web_search (30s search + 30s page fetch), run_agent (120s), any
+# install. It is why slow work sounded like the agent had ignored you.
+#
+# So we own the deadline instead. ``_make_handler`` enforces the value
+# below with ``asyncio.wait_for`` and hands the model a real, actionable
+# error; registration gives pipecat a strictly later deadline so our
+# message always wins the race.
+
+DEFAULT_TOOL_TIMEOUT_SECS = 30.0
+
+# Headroom between our deadline and pipecat's fallback. Only reached if
+# our own wait_for somehow fails to fire.
+_PIPECAT_TIMEOUT_MARGIN_SECS = 15.0
+
+# Tools whose work is legitimately slower than the default. Keyed by tool
+# name, like ``_SERIALIZERS``. Each value sits ABOVE that tool's own
+# internal timeout, so the tool gets to report its specific failure
+# before this blunter one fires.
+_TOOL_TIMEOUTS: dict[str, float] = {
+    "bash": 60.0,
+    "web_fetch": 45.0,  # httpx timeout is 30s
+    "web_search": 90.0,  # 30s search + up to 30s top-page fetch
+    "run_agent": 150.0,  # opencode_default_timeout is 120s
+    "run_skill": 60.0,
+    "install_skill_tool": 120.0,
+    "install_mcp_server_tool": 120.0,
+    "register_mcp_server": 60.0,
+    "discover_capability": 60.0,
+    "create_archive": 60.0,
+    "extract_archive": 60.0,
+    "read_browser_page": 45.0,
+    "extract_in_browser": 45.0,
+    "navigate_browser": 45.0,
+}
+
+
+def tool_timeout_secs(name: str) -> float:
+    """Our execution deadline for tool `name`, in seconds."""
+    return _TOOL_TIMEOUTS.get(name, DEFAULT_TOOL_TIMEOUT_SECS)
+
+
 def _make_handler(
     tool: ToolDef,
     direct_func: Any,
@@ -1208,8 +1259,32 @@ def _make_handler(
             except Exception:
                 logger.exception("system: record_action_pending failed (non-fatal)")
 
+        timeout = tool_timeout_secs(tool.name)
         try:
-            result = await direct_func(args_str, settings=settings)
+            result = await asyncio.wait_for(
+                direct_func(args_str, settings=settings), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            # wait_for cancelled the inner coroutine, so tools that hold
+            # OS resources have already cleaned up — _execute_bash kills
+            # its whole process group on CancelledError before re-raising.
+            logger.warning(
+                "system: handler %r timed out after %.0fs", tool.name, timeout
+            )
+            message = (
+                f"{tool.name} ran for {timeout:.0f}s without finishing and was "
+                "stopped. Nothing was returned. Tell the user it did not "
+                "complete; retry only with a narrower request."
+            )
+            if conversation_manager is not None:
+                try:
+                    conversation_manager.record_action_error(intent_id, message)
+                except Exception:
+                    logger.exception("system: record_action_error failed (non-fatal)")
+            await params.result_callback(
+                {"success": False, "output": "", "error": message}
+            )
+            return
         except asyncio.CancelledError:
             logger.info("system: handler %r cancelled", tool.name)
             if conversation_manager is not None:
@@ -1298,7 +1373,13 @@ def register_all_tools(
 
         cancel_on_interruption = t.name != "cancel"
         llm.register_function(
-            t.name, handler, cancel_on_interruption=cancel_on_interruption
+            t.name,
+            handler,
+            cancel_on_interruption=cancel_on_interruption,
+            # Strictly later than our own deadline above, so the handler
+            # always gets to return a readable error instead of pipecat
+            # delivering a bare None that kills the turn.
+            timeout_secs=tool_timeout_secs(t.name) + _PIPECAT_TIMEOUT_MARGIN_SECS,
         )
         registered.append(t.name)
 

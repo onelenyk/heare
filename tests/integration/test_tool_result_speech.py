@@ -47,6 +47,7 @@ def fake_llm():
             handler,
             *,
             cancel_on_interruption: bool = True,
+            **kw,
         ) -> None:
             self.registered[name] = (handler, cancel_on_interruption)
 

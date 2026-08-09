@@ -209,6 +209,79 @@ async def test_handler_cancellation_propagates(monkeypatch) -> None:
     rcb.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_slow_tool_returns_a_readable_error_not_none(monkeypatch) -> None:
+    """A tool that overruns its deadline must hand the model a real error.
+
+    Pipecat's own timeout delivers ``result=None``, which the aggregator
+    records as a bare "COMPLETED" and — the result being falsy — never
+    re-runs the LLM, so the turn dies with no reply at all. We time the
+    call out first and return something the model can actually say.
+    """
+    import asyncio
+
+    from src.agent.tools import system
+
+    monkeypatch.setitem(system._TOOL_TIMEOUTS, "bash", 0.05)
+
+    inner_cancelled = asyncio.Event()
+
+    async def never_finishes(*args, **kwargs) -> dict:
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            inner_cancelled.set()
+            raise
+        return {"success": True, "output": "unreachable", "error": None}
+
+    monkeypatch.setattr("src.agent.tools.direct._execute_bash", never_finishes)
+
+    llm = _FakeLLM()
+    register_all_tools(llm, settings=None)
+
+    rcb = AsyncMock()
+    params = types.SimpleNamespace(
+        arguments={"command": "sleep 30"},
+        result_callback=rcb,
+    )
+
+    await llm.registered["bash"](params)
+
+    rcb.assert_awaited_once()
+    result = rcb.await_args.args[0]
+    assert result is not None
+    assert result["success"] is False
+    assert "did not" in result["error"] or "without finishing" in result["error"]
+    # The tool coroutine must actually be torn down, so _execute_bash's
+    # CancelledError branch can kill its process group.
+    assert inner_cancelled.is_set()
+
+
+def test_pipecat_timeout_is_registered_strictly_later_than_ours() -> None:
+    """Pipecat's fallback must never fire before our own deadline.
+
+    If it did, we would be back to a bare ``None`` result and a silent
+    dead turn — the exact failure this margin exists to prevent.
+    """
+    from src.agent.tools import system
+
+    class _RecordingLLM(_FakeLLM):
+        def __init__(self) -> None:
+            super().__init__()
+            self.timeouts: dict[str, float] = {}
+
+        def register_function(self, function_name, handler, **kw):  # type: ignore[override]
+            super().register_function(function_name, handler, **kw)
+            self.timeouts[function_name] = kw["timeout_secs"]
+
+    llm = _RecordingLLM()
+    register_all_tools(llm, settings=None)
+
+    assert llm.timeouts, "no tools registered"
+    for name, registered in llm.timeouts.items():
+        assert registered > system.tool_timeout_secs(name), name
+
+
 # ---------------------------------------------------------------------------
 # Action-log wiring (architect HIGH fix): every tool invocation routes
 # through ``record_action_pending`` / ``record_action_result`` /
