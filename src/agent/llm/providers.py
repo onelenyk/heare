@@ -156,6 +156,13 @@ def get_active(settings: Any) -> str:
     return "deepseek"
 
 
+# How long a completion may produce nothing before we treat the
+# connection as stalled and retry it once. Deliberately generous: the
+# retry costs a second completion, so this is a stall detector, not a
+# latency budget.
+LLM_STALL_TIMEOUT_SECS = 20.0
+
+
 # ── Factory functions ────────────────────────────────────────────
 # Pipecat imports are DEFERRED inside each function body to avoid
 # pulling in the portaudio dependency during admin CLI commands
@@ -171,6 +178,21 @@ def make_openai_service(config: ProviderConfig, api_key: str, **kwargs: Any) -> 
     docstring for rationale.
     """
     from pipecat.services.openai.llm import OpenAILLMService  # deferred
+
+    # Pipecat only bounds the request when retry_on_timeout is set: with
+    # the default False it awaits chat.completions.create() with no
+    # timeout at all, so a stalled connection hangs the turn forever.
+    #
+    # The retry is a second live completion, so this deadline must mean
+    # "the connection is stalled", not "the model is thinking" — firing
+    # on ordinary slowness would double-bill every slow turn. Hence the
+    # floor: config.timeout is 5s for DeepSeek, well inside normal
+    # time-to-first-chunk, and taking it literally here would retry
+    # constantly.
+    kwargs.setdefault("retry_on_timeout", True)
+    kwargs.setdefault(
+        "retry_timeout_secs", max(config.timeout, LLM_STALL_TIMEOUT_SECS)
+    )
 
     return OpenAILLMService(
         api_key=api_key,
