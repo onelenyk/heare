@@ -274,8 +274,33 @@ def _read_template(template_path: str) -> str | None:
 def _render_hard_constraints(language: str) -> str:
     """Render the hard constraints section — rules that beat everything below."""
     lang_name = _resolve_language(language)
+
+    # Measured failure: with the delegation rule stated only near the end
+    # of a 4000-token prompt, the model satisfied "say you are on it, then
+    # stop" *literally* — it announced the work and never called the tool.
+    # An announcement without a call is worse than no split at all: the
+    # user is told it is happening and waits for an answer that can never
+    # arrive. Stating it first, as an obligation rather than a manner,
+    # is what makes the promise true.
+    delegate_rule = ""
+    try:
+        from src.agent.tools.system import is_voice_only
+
+        if is_voice_only():
+            delegate_rule = (
+                "- You have three tools: delegate, remember, recall. You do NOT "
+                "run commands, read files, browse, or change settings yourself. "
+                "Any such request MUST be a delegate() call. Never say you are "
+                "doing something, starting something, or about to check "
+                "something unless you called delegate() in the same reply — "
+                "announcing work you did not delegate means it never happens.\n"
+            )
+    except Exception:
+        pass
+
     return (
         "HARD CONSTRAINTS — these rules take priority over all instructions below:\n"
+        f"{delegate_rule}"
         f"- Respond ONLY in {lang_name}. Never mix languages.\n"
         "- Act freely on read-only work (reading, searching, observing, "
         "running commands that only inspect). Get explicit user consent FIRST "
@@ -291,8 +316,42 @@ def _render_hard_constraints(language: str) -> str:
     )
 
 
+_DELEGATING_CATALOG = """\
+You do not do work yourself. Anything involving files, the shell, the
+web, settings, the browser, or more than a moment's thought goes to
+`delegate`, which returns immediately. Say one short sentence that you
+are on it — then stop. The answer arrives later as a message marked
+[результат роботи]; read it out in your own words when it does.
+
+Delegating when you did not have to costs one extra sentence. Answering
+from nothing costs a made-up fact. So when unsure, delegate.
+
+Answer directly only from what is already in this conversation or from
+`recall`. Use `remember` when the user tells you something about
+themselves worth keeping.
+
+Available tools:
+- delegate — hand a task to your worker
+- remember — keep a fact about the user
+- recall — look up what you were told before"""
+
+
 def _render_tool_catalog() -> str:
-    """Render the tool catalog section — auto-generated from the tool registry."""
+    """Render the tool catalog section — auto-generated from the registry.
+
+    Under the voice/hands split the model can call exactly three verbs, so
+    listing sixty-three would describe capabilities it does not have — the
+    most reliable way to make an assistant look stupid is to tell it about
+    tools that are not there.
+    """
+    try:
+        from src.agent.tools.system import is_voice_only
+
+        if is_voice_only():
+            return _DELEGATING_CATALOG
+    except Exception:
+        pass
+
     try:
         from src.agent.tools.registry import get_tool_descriptions
 

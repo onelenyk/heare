@@ -223,6 +223,24 @@ class Settings:
     # perfect echo suppression to the ear.
     audio_probe_enabled: bool = False
 
+    # Voice/hands split. When on, the conversational model sees three
+    # verbs — delegate, remember, recall — and everything else runs in
+    # src/agent/hands.py: same model, same key, no deadline, off the
+    # speaking path. Measured on this machine, a turn that calls a tool
+    # inline takes 3822 ms to first audio against 1351 ms without one,
+    # and whether anything is said before the work begins is otherwise
+    # left to the model's whim. Set false to put all 63 tools back in
+    # front of the conversational model.
+    # OFF by default, deliberately. Measured: with the rule stated only
+    # near the end of a 4000-token prompt, the model announced the work
+    # ("Запускаю, скажу щойно завершиться") and never called delegate —
+    # so nothing ran and no answer could ever arrive. Moving the rule
+    # into the hard constraints fixed the case that was observed, but an
+    # assistant that promises and does not deliver is worse than one that
+    # is merely slow, and one clean run is not evidence. Turn this on to
+    # try it; leave it off until the prompt is cut down.
+    voice_agent_enabled: bool = False
+
     # OFF by default. This awaited a DeepSeek call inside process_frame,
     # guarded by "the bot is speaking" — so it fired only while the user
     # was interrupting, holding their words for up to

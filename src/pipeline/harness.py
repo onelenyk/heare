@@ -102,7 +102,7 @@ def _load_env() -> None:
             os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
-async def _build(turn_ref: dict):
+async def _build(turn_ref: dict, *, split: bool | None = None):
     """Assemble the daemon's pipeline with the devices left shut."""
     from src.agent.identity import load_identity, render_persona
     from src.config import load_settings
@@ -121,6 +121,8 @@ async def _build(turn_ref: dict):
     _load_env()
 
     settings = load_settings()
+    if split is not None:
+        settings.voice_agent_enabled = split
     store = TranscriptStore(settings.db_path)
     await store.init()
 
@@ -170,12 +172,13 @@ async def run_turns(
     timeout: float = 20.0,
     interject: str = "",
     interject_at: float = 5.0,
+    split: bool | None = None,
 ) -> list[Turn]:
     from pipecat.frames.frames import EndFrame, LLMMessagesAppendFrame
     from pipecat.pipeline.runner import PipelineRunner
 
     turn_ref: dict = {}
-    task, memory_backend = await _build(turn_ref)
+    task, memory_backend = await _build(turn_ref, split=split)
 
     runner = PipelineRunner(handle_sigint=False)
     runner_task = asyncio.create_task(runner.run(task))
@@ -256,6 +259,11 @@ def main() -> int:
     p.add_argument("--window", type=float, default=20.0, help="seconds per turn")
     p.add_argument("--interject", default="", help="say this mid-turn")
     p.add_argument("--interject-at", type=float, default=5.0)
+    p.add_argument(
+        "--single",
+        action="store_true",
+        help="control run: one agent holding every tool inline",
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 
@@ -265,6 +273,7 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
     prompts = args.prompts or ["Привіт. Скажи одним реченням, як ти себе почуваєш."]
+    print("mode:", "single agent (control)" if args.single else "voice + hands")
     return _report(
         asyncio.run(
             run_turns(
@@ -272,6 +281,7 @@ def main() -> int:
                 timeout=args.window,
                 interject=args.interject,
                 interject_at=args.interject_at,
+                split=not args.single,
             )
         )
     )

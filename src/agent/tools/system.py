@@ -42,6 +42,39 @@ class ToolDef:
             object.__setattr__(self, "required", list(self.schema_fields.keys()))
 
 
+# The verbs the conversational agent keeps when the voice/hands split is
+# on. Everything else moves behind `delegate`, which returns instantly.
+#
+# The split is temporal, not intellectual: same model, same key. One call
+# must answer within a second and therefore chooses among three schemas;
+# the other has no deadline and sees all sixty-three. Measured on this
+# machine, a turn that calls a tool inline takes 3822 ms to first audio
+# against 1351 ms without one — and whether anything is said before the
+# work begins is otherwise left to the model's whim.
+VOICE_TOOLS = frozenset({"delegate", "remember", "recall"})
+
+_voice_only = False
+
+
+def set_voice_only(enabled: bool) -> None:
+    """Switch the conversational agent between three verbs and all of them."""
+    global _voice_only
+    _voice_only = bool(enabled)
+
+
+def is_voice_only() -> bool:
+    return _voice_only
+
+
+def _visible_tools() -> list["ToolDef"]:
+    """The tools the conversational model may call."""
+    return [
+        t
+        for t in TOOLS
+        if t.enabled and (not _voice_only or t.name in VOICE_TOOLS)
+    ]
+
+
 ArgsSerializer = Callable[[dict[str, Any]], str]
 
 
@@ -151,6 +184,25 @@ TOOLS: list[ToolDef] = [
         description="Search the web (uses Serper.dev if key available, else DuckDuckGo).",
         handler="web_search",
         schema_fields={"query": {"type": "string", "description": "Search query."}},
+    ),
+    ToolDef(
+        name="delegate",
+        description=(
+            "Hand a task to your worker: anything needing files, the shell, "
+            "the web, settings, the browser, or more than a moment's thought. "
+            "Returns at once — say in one short sentence that you are on it, "
+            "then stop. The answer arrives later as its own message."
+        ),
+        handler="delegate",
+        schema_fields={
+            "task": {
+                "type": "string",
+                "description": (
+                    "What to do, in full. The worker cannot see this "
+                    "conversation, so name everything it needs."
+                ),
+            }
+        },
     ),
     ToolDef(
         name="cancel",
@@ -1000,6 +1052,7 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "web_fetch": _url_serializer,
     "web_search": _query_serializer,
     "cancel": _empty_serializer,
+    "delegate": lambda args: str(args.get("task", "")).strip(),
     "create_tool": _json_serializer,
     "update_tool": _json_serializer,
     "delete_tool": _name_serializer,
@@ -1059,6 +1112,13 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
 }
 
 
+async def _delegate_handler(args: str, settings: Any = None) -> dict:
+    """Indirection so ``hands`` is imported only when actually used."""
+    from src.agent.hands import execute_delegate
+
+    return await execute_delegate(args, settings)
+
+
 def _handler_for(tool: ToolDef):
     """Return the handler function for a tool's handler type from :mod:`.direct`."""
     from . import direct
@@ -1070,6 +1130,7 @@ def _handler_for(tool: ToolDef):
         "web_fetch": direct._execute_web_fetch,
         "web_search": direct._execute_web_search,
         "cancel": direct._execute_bash,
+        "delegate": _delegate_handler,
         "tool_create": direct._execute_create_tool,
         "tool_update": direct._execute_update_tool,
         "tool_delete": direct._execute_delete_tool,
@@ -1146,9 +1207,7 @@ def build_tools_schema(session_state: Any = None) -> Any:
     from src.agent.modes import is_tool_allowed as mode_is_tool_allowed
 
     schemas: list[Any] = []
-    for t in TOOLS:
-        if not t.enabled:
-            continue
+    for t in _visible_tools():
         if session_state is not None and not mode_is_tool_allowed(
             session_state.profile, t.name
         ):
@@ -1350,10 +1409,7 @@ def register_all_tools(
     Returns the list of tool names actually registered.
     """
     registered: list[str] = []
-    for t in TOOLS:
-        if not t.enabled:
-            continue
-
+    for t in _visible_tools():
         direct_func = _handler_for(t)
         if direct_func is None:
             logger.warning(
