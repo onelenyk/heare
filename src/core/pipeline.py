@@ -191,9 +191,9 @@ async def build(
         from src.core.audio_probe import make_audio_probe
 
         taps = [
-            make_audio_probe("raw", echo_state),
-            make_audio_probe("post-aec", echo_state),
-            make_audio_probe("post-gate", echo_state),
+            make_audio_probe("raw", far),
+            make_audio_probe("post-aec", far),
+            make_audio_probe("post-gate", far),
         ]
 
     stages = [

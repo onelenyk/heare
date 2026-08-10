@@ -134,12 +134,32 @@ Every frame, dropped whole. A second mute in series with the first. It is
 off by default in `src/core/` — with cancellation actually working it has
 nothing left to do.
 
-## Still broken elsewhere
+## Rolled into the main pipeline
 
-Bugs 1 and 3 remain in `src/pipeline/stages/webrtc_aec_filter.py`, so the
-old daemon's echo cancellation still destroys the signal. Bug 1 is also in
-`experiments/spine/echo_probe.py`, which is one more reason that probe's
-results meant nothing.
+`build_pipeline` now uses this implementation. The changes:
+
+```
+build.py       aec_filter moved BEFORE echo_gate — the gate must judge
+               the residual, not raw microphone audio
+build.py       far_collector appended AFTER transport.output()
+build.py       VADUserTurnStartStrategy(enable_interruptions=True)
+config.py      echo_gate_enabled       True  -> False
+config.py      echo_classifier_enabled True  -> False
+config.py      aec_stream_delay_ms      30   -> 120  (measured)
+```
+
+`src/pipeline/stages/webrtc_aec_filter.py` was deleted rather than fixed:
+once nothing imported it, keeping a module that destroys audio — with a
+green test suite certifying its behaviour — is an invitation to wire it
+back in.
+
+`experiments/spine/echo_probe.py` still has the scale bug, which is one
+more reason that probe's results meant nothing.
+
+Regression cover: `tests/test_core_aec.py` (the scale bug has its own
+test, asserting that unit-scaled audio survives and int16-scaled audio
+does not) and `tests/test_audio_path_order.py` (every position in the
+chain that decides whether interruption is possible).
 
 ## How to diagnose this again
 

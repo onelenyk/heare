@@ -184,25 +184,51 @@ class Settings:
     barge_in_min_chars: int = 4
     barge_in_echo_ratio: float = 0.5
     # Acoustic echo gate: cross-correlates mic input against recent bot
-    # output audio and drops mic frames when correlation exceeds the
-    # threshold. Operates before STT so it is immune to transcription
-    # errors. Disable if using headphones (no echo) or if it drops
-    # legitimate speech.
-    echo_gate_enabled: bool = True
+    # output audio and drops mic frames whole when correlation exceeds the
+    # threshold.
+    #
+    # OFF by default. Measured on built-in speakers, correlation runs
+    # 0.55-0.78 against this 0.15 threshold, so it dropped 100% of frames
+    # for as long as the bot spoke — a microphone mute, not a filter, and
+    # it made barge-in impossible. With AEC3 actually cancelling (see
+    # below) there is nothing left for it to do. Enable only if echo still
+    # reaches STT on unusual hardware.
+    echo_gate_enabled: bool = False
     echo_gate_threshold: float = 0.15
     echo_gate_buffer_seconds: float = 1.0
     echo_gate_cooldown_seconds: float = 0.3
     echo_gate_peak_decay: float = 0.85
     echo_gate_peak_threshold: float = 0.42
 
-    # WebRTC AEC3 acoustic echo cancellation filter. When enabled, runs the
-    # mic signal through AEC3 (with optional noise suppression) to remove the
-    # bot's own echo before STT. Requires pywebrtc-audio. Soft-fail on import
-    # error — the daemon logs a warning and disables AEC.
+    # WebRTC AEC3 acoustic echo cancellation. Runs on every mic frame, in
+    # 10 ms blocks, with a reference tapped after the output transport.
+    # See docs/findings/echo-cancellation.md for the four bugs this
+    # replaces and the measurements.
     aec_enabled: bool = True
     aec_cooldown_seconds: float = 0.5
+    # Speaker-to-microphone delay. Measured ~125 ms on a MacBook Pro with
+    # built-in speakers; the previous 30 ms was a guess and capped
+    # suppression at a noisy 10-20 dB. Run with aec_measure_delay=true to
+    # measure it on other hardware.
+    aec_stream_delay_ms: int = 120
+    aec_noise_suppression: bool = True
+    # Logs measured-vs-configured delay, suppression in dB, and the depth
+    # of the reference queue once a second while the bot speaks. These
+    # three numbers are what turned "echo behaves oddly" into four
+    # located bugs; turn them on before guessing.
+    aec_measure_delay: bool = False
+    # Peak microphone level before and after the canceller, split by
+    # whether the bot was speaking. A stage that outputs -120 dB from a
+    # -28 dB input is not filtering, it is deleting — and that reads as
+    # perfect echo suppression to the ear.
+    audio_probe_enabled: bool = False
 
-    echo_classifier_enabled: bool = True
+    # OFF by default. This awaited a DeepSeek call inside process_frame,
+    # guarded by "the bot is speaking" — so it fired only while the user
+    # was interrupting, holding their words for up to
+    # deepseek_timeout_seconds. The one path that must never wait was the
+    # only one that did. Echo is already removed by AEC3 before STT.
+    echo_classifier_enabled: bool = False
     warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")
     session_file: Path = field(default_factory=lambda: HEARE_HOME / "session.json")

@@ -319,6 +319,10 @@ def _assemble_native_stages(
     cancel_flag_gate: Any = None,
     echo_gate: Any = None,
     echo_collector: Any = None,
+    far_collector: Any = None,
+    audio_probes: list | None = None,
+    post_llm_stages: list | None = None,
+    pre_output_stages: list | None = None,
     input_gain: Any = None,
     output_volume: Any = None,
     sidetone: Any = None,
@@ -336,6 +340,13 @@ def _assemble_native_stages(
     propagating in either direction triggers the 50ms fade-out hook on the TTS service.
     """
     stages: list = [transport_input]
+    # Level taps, when asked for. They cost one numpy reduction per frame
+    # and they are how "echo behaves oddly" became four located bugs: a
+    # stage that emits -120 dB from a -28 dB input is not filtering, it
+    # is deleting, and that is indistinguishable by ear from perfect echo
+    # suppression. See docs/findings/measuring.md.
+    if audio_probes:
+        stages.append(audio_probes[0])
     # input_mute_gate sits as early as possible so muted mic audio is dropped
     # before STT (and any speaker buffering) runs.
     if input_mute_gate is not None:
@@ -356,16 +367,21 @@ def _assemble_native_stages(
     # frames, not for cancel latency.
     if cancel_flag_gate is not None:
         stages.append(cancel_flag_gate)
-    # echo_gate sits AFTER cancel_flag_gate and BEFORE STT. It drops mic
-    # audio that correlates with recent bot output, preventing the bot's
-    # own echo from reaching STT.
-    if echo_gate is not None:
-        stages.append(echo_gate)
-    # aec_filter sits AFTER echo_gate and BEFORE sidetone. WebRTC AEC3
-    # subtracts the bot's echo from the mic signal (adaptive filter)
-    # before it reaches STT. Noise suppression is a bonus side-effect.
+    # aec_filter sits BEFORE echo_gate, not after. The old order ran the
+    # correlation gate on the raw microphone signal, where the user's
+    # voice is mixed with the bot's echo: correlation measured 0.55-0.78
+    # against a 0.15 threshold and 100% of frames were dropped whole
+    # during playback, so nothing said over the bot could reach STT and
+    # barge-in was impossible by construction. On the AEC residual the
+    # echo is already subtracted, so only what survives is judged.
     if aec_filter is not None:
         stages.append(aec_filter)
+    if audio_probes and len(audio_probes) > 1:
+        stages.append(audio_probes[1])
+    # echo_gate is a second line of defence and is off by default now
+    # that cancellation actually works — see docs/findings/echo-cancellation.md.
+    if echo_gate is not None:
+        stages.append(echo_gate)
     # sidetone sits BETWEEN echo_gate and STT. It copies mic audio
     # (16 kHz) to speaker output (24 kHz) so the user can monitor what
     # the agent hears. Gated off during bot speech to prevent feedback.
@@ -388,6 +404,10 @@ def _assemble_native_stages(
     # observe LLMFullResponseStartFrame / LLMTextFrame / LLMFullResponseEndFrame
     # before TTS consumes them — EdgeTTSService never emits TTSTextFrame, so
     # capture must happen on the LLM side.
+    # LLMTextFrame is consumed by TTS, so anything observing the model's
+    # words has to sit before it, and anything observing audio after it.
+    if post_llm_stages:
+        stages.extend(post_llm_stages)
     if assistant_response_logger is not None:
         stages.append(assistant_response_logger)
     # tts_scrub strips tool-name narration before TTS speaks the text.
@@ -418,7 +438,18 @@ def _assemble_native_stages(
     # key "output_volume".
     if output_volume is not None:
         stages.append(output_volume)
-    stages.extend([transport_output, assistant_aggregator])
+    if pre_output_stages:
+        stages.extend(pre_output_stages)
+    stages.append(transport_output)
+    # far_collector sits AFTER transport_output, deliberately. Tapped
+    # upstream of it, the AEC reference arrives as fast as TTS generates
+    # audio: the queue ran 4.6 s deep mid-utterance and emptied in the
+    # gaps between sentences, leaving the canceller with silence exactly
+    # while the speaker was still playing. Downstream, frames arrive at
+    # the rate they are written to the device.
+    if far_collector is not None:
+        stages.append(far_collector)
+    stages.append(assistant_aggregator)
     return stages
 
 
@@ -432,6 +463,9 @@ async def build_pipeline(
     conversation_manager: "ConversationManager | None" = None,
     project_dir: str | None = None,
     memory_backend: "MemoryBackend | None" = None,
+    audio: bool = True,
+    post_llm_stages: list | None = None,
+    pre_output_stages: list | None = None,
 ) -> Tuple[object, object, object, object, object, object, object, object]:
     """Build the Pipecat-native pipeline.
 
@@ -540,14 +574,18 @@ async def build_pipeline(
         except Exception:
             logger.exception("audio device resolution failed (using defaults)")
 
+    # audio=False opens no devices. The whole chain — model, tools, TTS,
+    # timings — can then be driven from injected text and measured
+    # without a microphone or a pair of ears, which is the only way this
+    # pipeline has ever been testable end to end.
     transport = FixedLocalAudioTransport(
         params=LocalAudioTransportParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
+            audio_in_enabled=audio,
+            audio_out_enabled=audio,
             audio_in_sample_rate=16000,
             audio_out_sample_rate=settings.tts_sample_rate,
-            input_device_index=audio_in_idx,
-            output_device_index=audio_out_idx,
+            input_device_index=audio_in_idx if audio else None,
+            output_device_index=audio_out_idx if audio else None,
         )
     )
     _transport_ref["transport"] = transport
@@ -798,7 +836,13 @@ async def build_pipeline(
         user_params=LLMUserAggregatorParams(
             vad_analyzer=vad,
             user_turn_strategies=UserTurnStrategies(
-                start=[VADUserTurnStartStrategy(enable_interruptions=False)],
+                # Interruptions on. They were off because the bot's own
+                # audio leaking back through the mic would preempt its
+                # own TTS — which was true while echo cancellation was
+                # destroying the signal instead of removing the echo.
+                # With AEC3 working (40-50 dB measured) a voice heard
+                # during playback is the user.
+                start=[VADUserTurnStartStrategy(enable_interruptions=True)],
                 stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_turn)],
             ),
         ),
@@ -1028,26 +1072,62 @@ async def build_pipeline(
             echo_gate_proc = None
             echo_collector = None
 
-    # WebRTC AEC3 acoustic echo cancellation — adaptive filter subtraction
-    # that removes bot echo from the mic signal before STT. Requires the
-    # pywebrtc-audio package. Soft-fail if the import fails.
+    # WebRTC AEC3 acoustic echo cancellation. The implementation lives in
+    # src/core/aec.py — the dependency points that way on purpose, since
+    # this tree is the one destined for deletion.
+    #
+    # The stage it replaces never cancelled anything. It passed
+    # int16-scaled values into an API that expects [-1, 1], so every
+    # sample was clipped to ±1 LSB (about −90 dB) and the microphone went
+    # silent for as long as the bot spoke. It also ran only during bot
+    # speech, on variable frame lengths, so AEC3's adaptive filter
+    # restarted every utterance and never converged.
+    # See docs/findings/echo-cancellation.md.
     aec_filter_proc = None
-    if settings.aec_enabled and echo_state is not None:
+    far_end_collector = None
+    if settings.aec_enabled:
         try:
-            from src.pipeline.stages.webrtc_aec_filter import create_aec_filter
+            from src.core.aec import (
+                FarEnd,
+                make_continuous_aec,
+                make_far_end_collector,
+            )
 
-            aec_filter_proc = create_aec_filter(
-                echo_state=echo_state,
-                sample_rate=16000,
-                cooldown_seconds=settings.aec_cooldown_seconds,
+            far_end = FarEnd()
+            far_end_collector = make_far_end_collector(far_end)
+            aec_filter_proc = make_continuous_aec(
+                far_end,
+                stream_delay_ms=settings.aec_stream_delay_ms,
+                noise_suppression=settings.aec_noise_suppression,
+                measure_delay=settings.aec_measure_delay,
             )
             logger.info(
-                "AEC3 filter: active (cooldown=%.1fs)",
-                settings.aec_cooldown_seconds,
+                "AEC3 filter: active (stream_delay=%dms, ns=%s, measure=%s)",
+                settings.aec_stream_delay_ms,
+                settings.aec_noise_suppression,
+                settings.aec_measure_delay,
             )
         except Exception:  # noqa: BLE001
             logger.exception("AEC3 filter: creation failed (non-fatal)")
             aec_filter_proc = None
+            far_end_collector = None
+
+    audio_probes: list | None = None
+    if settings.audio_probe_enabled:
+        try:
+            from src.core.audio_probe import make_audio_probe
+
+            # bot_speaking comes from FarEnd, which sits at the output and
+            # therefore knows. The echo gate used to own that flag, and it
+            # is off by default now.
+            audio_probes = [
+                make_audio_probe("raw", far_end),
+                make_audio_probe("post-aec", far_end),
+            ]
+            logger.info("audio_probe: level taps active (raw, post-aec)")
+        except Exception:  # noqa: BLE001
+            logger.exception("audio_probe: creation failed (non-fatal)")
+            audio_probes = None
 
     # ------------------------------------------------------------------
     # Sidetone — copies mic input to speaker so the user can monitor
@@ -1090,6 +1170,10 @@ async def build_pipeline(
         cancel_flag_gate=cancel_flag_gate,
         echo_gate=echo_gate_proc,
         echo_collector=echo_collector,
+        far_collector=far_end_collector,
+        audio_probes=audio_probes,
+        post_llm_stages=post_llm_stages,
+        pre_output_stages=pre_output_stages,
         aec_filter=aec_filter_proc,
         sidetone=sidetone,
         input_gain=input_gain_proc,

@@ -47,6 +47,11 @@ class FarEnd:
         # those samples desynchronises the reference for the rest of the
         # utterance.
         self._q: deque[float] = deque(maxlen=int(max_seconds * SAMPLE_RATE))
+        # Whether the speaker is currently emitting. Tracked here because
+        # this object already sits at the output; the level probes need it
+        # to separate "the room was quiet" from "the filter deleted the
+        # signal", which sound identical without the split.
+        self.bot_speaking: bool = False
 
     def push(self, pcm_s16le: bytes, source_rate: int) -> None:
         samples = np.frombuffer(pcm_s16le, dtype=np.int16).astype(np.float32)
@@ -79,6 +84,8 @@ class FarEnd:
 def make_far_end_collector(far: FarEnd) -> Any:
     """Sits right before the output transport and taps what will be played."""
     from pipecat.frames.frames import (
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
         InterruptionFrame,
         TTSAudioRawFrame,
     )
@@ -87,6 +94,11 @@ def make_far_end_collector(far: FarEnd) -> Any:
     class FarEndCollector(FrameProcessor):
         async def process_frame(self, frame: Any, direction: Any) -> None:
             await super().process_frame(frame, direction)
+
+            if isinstance(frame, BotStartedSpeakingFrame):
+                far.bot_speaking = True
+            elif isinstance(frame, BotStoppedSpeakingFrame):
+                far.bot_speaking = False
 
             if isinstance(frame, TTSAudioRawFrame):
                 far.push(frame.audio, getattr(frame, "sample_rate", 24000))

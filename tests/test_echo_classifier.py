@@ -42,6 +42,9 @@ async def test_echo_dropped_when_llm_says_echo():
         text = "hello world"
 
     settings = Settings()
+    # Off by default now — this test exercises the classifier's
+    # active path, so it opts in explicitly.
+    settings.echo_classifier_enabled = True
     processor = create_echo_classifier(bot_speech_state=FakeBotSpeech(), settings=settings)
     processor._bot_speaking = True
     processor._classify_echo = AsyncMock(return_value="ECHO")
@@ -68,6 +71,9 @@ async def test_interruption_passed_when_llm_says_interrupt():
         text = "some bot text"
 
     settings = Settings()
+    # Off by default now — this test exercises the classifier's
+    # active path, so it opts in explicitly.
+    settings.echo_classifier_enabled = True
     processor = create_echo_classifier(bot_speech_state=FakeBotSpeech(), settings=settings)
     processor._bot_speaking = True
     processor._classify_echo = AsyncMock(return_value="INTERRUPT")
@@ -242,6 +248,9 @@ async def test_passthrough_on_classify_error():
         text = "hello world"
 
     settings = Settings()
+    # Off by default now — this test exercises the classifier's
+    # active path, so it opts in explicitly.
+    settings.echo_classifier_enabled = True
     processor = create_echo_classifier(bot_speech_state=FakeBotSpeech(), settings=settings)
     processor._bot_speaking = True
     processor._classify_echo = AsyncMock(side_effect=httpx.HTTPError("LLM failed"))
