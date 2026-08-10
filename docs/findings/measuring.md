@@ -10,11 +10,27 @@ something works is the actual problem.
 
 ## 1. The text harness — everything except acoustics
 
+Two of them, the same instrument pointed at either pipeline:
+
 ```
-uv run python -m src.core.harness "скажи котра година"
+uv run python -m src.core.harness "скажи котра година"           # the small core
 uv run python -m src.core.harness --single "..."                 # one-agent control
 uv run python -m src.core.harness --interject "..." --interject-at 5
 uv run python -m src.core.harness --window 30 "..."
+
+uv run python -m src.pipeline.harness "..."                      # the full daemon
+uv run python -m src.pipeline.harness --window 30 --interject "стоп"
+```
+
+`src/pipeline/harness.py` builds the daemon exactly as `src/main.py`
+does — every stage, all 63 tools, modes, persistence — with `audio=False`
+so no device opens. It was the first end-to-end measurement of the
+daemon that has ever been taken:
+
+```
+                 core      full daemon
+first token      808 ms      1488 ms
+first audio     1351 ms      3204 ms
 ```
 
 Builds the real pipeline with the audio devices disabled, injects a user
@@ -80,10 +96,10 @@ microphone heard — no guessing, no sweeping through values by ear.
 
 ## What is still missing
 
-No test walks from a person speaking to the assistant answering. The
-harness covers everything after speech recognition; the acoustic half
-still needs a room and a person. A recorded WAV played through the
-speakers, with assertions on the transcript, would close that gap.
+The acoustic half. Both harnesses cover everything after speech
+recognition; microphone, echo and barge-in still need a room and a
+person. A recorded WAV played through the speakers, with assertions on
+the transcript, would close that gap.
 
 Metrics from the pipeline are collected and never read. `enable_metrics`
 is on; nothing consumes the frames.
