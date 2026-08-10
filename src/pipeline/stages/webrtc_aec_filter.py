@@ -113,7 +113,16 @@ def _build_class():
                 min_len = min(len(mic), len(ref))
                 if min_len >= 160:  # 10 ms minimum for AEC3
                     ap = self._ensure_processor()
-                    cleaned = ap.process(mic[:min_len], ref[:min_len])
+                    # The ring holds a second of output, oldest first, so
+                    # the tail is what the speaker is emitting now. Taking
+                    # the head instead handed AEC3 a reference a full
+                    # second stale: it could not match it to the mic, and
+                    # its nonlinear suppressor clamped the output to
+                    # digital zero for as long as the bot spoke. Measured
+                    # at the microphone: raw -28 dB, post-AEC -120 dB.
+                    # Nothing the user said during playback survived, so
+                    # barge-in was impossible by construction.
+                    cleaned = ap.process(mic[:min_len], ref[-min_len:])
                     cleaned = np.clip(cleaned, -32768, 32767).astype(np.int16)
                     if len(mic) > min_len:
                         tail = mic[min_len:].astype(np.int16)
