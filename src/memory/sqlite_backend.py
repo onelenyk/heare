@@ -155,10 +155,21 @@ class SQLiteBackend(MemoryBackend):
             JOIN memories_fts fts ON m.rowid = fts.rowid
             WHERE memories_fts MATCH ? AND m.archived = 0
             {type_clause}
+            -- FTS5's `rank` is bm25: negative, and more negative is a
+            -- better match, which is why the sort is ASC. A boost must
+            -- therefore make the product MORE negative, i.e. multiply by
+            -- something greater than 1 — the terms below used to subtract,
+            -- so every "boost" pushed the memory further down the list.
+            --
+            -- The other half of this line used to read strftime('%%s',...).
+            -- The SQL is built with an f-string, so `%%s` reached SQLite as
+            -- the literal text `%s`, which coerces to 0: the multiplier
+            -- came out around -206 instead of ~1, inverting the sign of
+            -- the whole expression and returning the WORST matches first.
             ORDER BY rank * (
                 1.0
-                - 0.3 * MAX(0.0, 1.0 - (strftime('%%s','now') - m.last_accessed) / 2592000.0)
-                - 0.1 * CAST(MIN(m.access_count, 5) AS REAL) / 5.0
+                + 0.3 * MAX(0.0, 1.0 - (strftime('%s','now') - m.last_accessed) / 2592000.0)
+                + 0.1 * CAST(MIN(m.access_count, 5) AS REAL) / 5.0
             ) ASC
             LIMIT ?
         """
