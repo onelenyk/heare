@@ -512,7 +512,10 @@ async def build_pipeline(
     )
     from pipecat.services.groq.stt import GroqSTTService
     from pipecat.transcriptions.language import Language
-    from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+    from pipecat.turns.user_stop import (
+        SpeechTimeoutUserTurnStopStrategy,
+        TurnAnalyzerUserTurnStopStrategy,
+    )
     from pipecat.turns.user_start.vad_user_turn_start_strategy import (
         VADUserTurnStartStrategy,
     )
@@ -547,7 +550,23 @@ async def build_pipeline(
             min_volume=getattr(settings, "vad_min_volume", 0.2),
         )
     )
-    smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
+    # Deciding when your turn has ended is the single largest delay in
+    # the loop — larger than the model, larger than speech recognition.
+    turn_mode = getattr(settings, "turn_end", "silence")
+    if turn_mode == "smart":
+        smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
+        turn_stop_strategy = TurnAnalyzerUserTurnStopStrategy(
+            turn_analyzer=smart_turn
+        )
+    else:
+        turn_stop_strategy = SpeechTimeoutUserTurnStopStrategy(
+            user_speech_timeout=getattr(settings, "turn_silence_seconds", 0.7)
+        )
+    logger.info(
+        "turn end: %s (%.2fs)",
+        turn_mode,
+        getattr(settings, "turn_silence_seconds", 0.7),
+    )
     # Pipecat 0.0.108 moved vad_analyzer/turn_analyzer off the transport and
     # onto the LLMUserAggregator (see LLMUserAggregatorParams below).
 
@@ -930,7 +949,7 @@ async def build_pipeline(
                 # With AEC3 working (40-50 dB measured) a voice heard
                 # during playback is the user.
                 start=[VADUserTurnStartStrategy(enable_interruptions=True)],
-                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_turn)],
+                stop=[turn_stop_strategy],
             ),
         ),
     )

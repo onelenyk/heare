@@ -402,8 +402,24 @@ def _build_transcription_gate_class():
                 self._session_state.set_mode_change_listener(self._on_mode_change)
 
         def _resolve_debounce_seconds(self, fallback: float) -> float:
+            """How long to hold a transcript waiting for more of it.
+
+            Two different ideas were wired to the same number. A mode's
+            ``turn_timeout`` is a conversational property — how long the
+            assistant should wait before deciding the exchange is over —
+            and in ambient mode it is 3 seconds. Debounce is a mechanical
+            one: how long STT fragments of a single sentence take to
+            arrive, which is a few hundred milliseconds.
+
+            Using turn_timeout for both meant every utterance sat in a
+            buffer for a full three seconds after it had been transcribed.
+            Measured: transcript at 23:08:33.219, released at 36.229 —
+            3.010 s, every time, on top of the model and the synthesis.
+
+            A mode may still shorten it; it may no longer lengthen it.
+            """
             if self._session_state is not None:
-                return self._session_state.profile.turn_timeout
+                return min(self._session_state.profile.turn_timeout, fallback)
             return fallback
 
         def _on_mode_change(self, _profile: Any) -> None:

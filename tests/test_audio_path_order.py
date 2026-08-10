@@ -130,3 +130,18 @@ def test_the_speech_gate_sits_where_it_can_see_both() -> None:
 
     assert stages.index("STT") < stages.index("ENERGY")
     assert stages.index("ENERGY") < stages.index("GATE")
+
+
+def test_turn_end_defaults_to_silence_not_a_model() -> None:
+    """Deciding when the user's turn ended is the largest single delay in
+    the loop — larger than the model, larger than speech recognition.
+
+    Measured on a real turn: the transcript was ready at 02.676 and the
+    smart-turn analyzer did not declare the turn over until 05.683.
+    Three seconds spent holding words it already had.
+    """
+    settings = Settings()
+    assert settings.turn_end == "silence"
+    assert 0.4 <= settings.turn_silence_seconds <= 1.0, (
+        "shorter cuts people off mid-thought; longer is the delay we removed"
+    )

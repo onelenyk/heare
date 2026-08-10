@@ -230,6 +230,19 @@ class Settings:
     # Observed: eight in ninety seconds. See
     # src/pipeline/stages/speech_energy_gate.py.
     stt_min_rms: float = 180.0
+    # How the end of your turn is decided.
+    #
+    # "smart" runs LocalSmartTurnAnalyzerV3 — a model that judges whether
+    # a sentence sounds finished. Measured on a real turn: the transcript
+    # was ready at 02.676 and the turn was not declared over until
+    # 05.683. Three seconds of holding words it already had.
+    #
+    # "silence" ends the turn after `turn_silence_seconds` of quiet. It
+    # cannot tell a pause for thought from a finished sentence, so speak
+    # in whole thoughts — in exchange the assistant starts answering
+    # while you are still lowering your voice.
+    turn_end: str = "silence"
+    turn_silence_seconds: float = 0.7
     stt_min_speech_seconds: float = 0.30
 
     # Voice/hands split. When on, the conversational model sees three
