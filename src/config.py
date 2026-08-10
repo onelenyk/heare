@@ -242,7 +242,11 @@ class Settings:
     # in whole thoughts — in exchange the assistant starts answering
     # while you are still lowering your voice.
     turn_end: str = "silence"
-    turn_silence_seconds: float = 0.7
+    # 1.0, not 0.7. Measured in the room: "Подивись будь ласка, скільки
+    # вільного місця на диску" split into two turns at the comma, and the
+    # assistant acknowledged twice. A pause for breath is not the end of
+    # a sentence. Still two seconds faster than the analyzer it replaced.
+    turn_silence_seconds: float = 1.0
     stt_min_speech_seconds: float = 0.30
 
     # Voice/hands split. When on, the conversational model sees three

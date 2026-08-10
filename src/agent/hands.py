@@ -44,7 +44,15 @@ RECENT_TURNS = 6
 # is only to distinguish "still working" from "stuck" — which is what a
 # spinner does on a screen.
 PROGRESS_AFTER = 12.0
-RESULT_PREFIX = "[результат роботи]"
+# An instruction, not a label. As a bare tag — "[результат роботи] ..." —
+# a small model read it as more input and answered "зараз гляну" a second
+# time while holding the answer it had asked for. Telling it what to do
+# with the text, in the text, is what makes it read it out.
+RESULT_PREFIX = (
+    "[результат роботи] Робота завершена. Ось що вийшло — перекажи це "
+    "користувачу вголос, одним-двома реченнями, своїми словами. Не кажи, "
+    "що ти щось перевіриш: це вже перевірено. Результат:"
+)
 
 
 def _label(task: str) -> str:
@@ -56,6 +64,10 @@ SYSTEM = """\
 You do the work. You are not speaking to the user — another assistant
 will read your answer aloud, so return plain prose: no markdown, no
 lists, no code fences, no file paths unless they are the answer.
+
+Answer in {language}. The assistant that reads you out speaks it, and a
+reply in the wrong language either gets translated badly or, as observed,
+ignored entirely.
 
 Use the tools to find out rather than guessing. Prefer one decisive step
 over several tentative ones.
@@ -293,6 +305,14 @@ class Hands:
         except Exception:
             logger.exception("[HANDS] record_action_error failed (non-fatal)")
 
+    def _language(self) -> str:
+        """The language the assistant is speaking, so the worker matches it."""
+        state = getattr(self._session_state, "language_state", None)
+        code = getattr(state, "language", None) or "uk"
+        return {"uk": "Ukrainian", "ru": "Russian", "en": "English"}.get(
+            str(code)[:2], "Ukrainian"
+        )
+
     def _conversation(self) -> str:
         """The last few turns, so "that file" and "the one we discussed"
         mean something to the worker."""
@@ -338,7 +358,9 @@ class Hands:
             await self._jobs.finish(job_id, state, result=result, error=error)
 
     async def _loop(self, task: str, job_id: int | None = None) -> str:
-        messages: list[dict] = [{"role": "system", "content": SYSTEM}]
+        messages: list[dict] = [
+            {"role": "system", "content": SYSTEM.format(language=self._language())}
+        ]
         conversation = self._conversation()
         if conversation:
             messages.append({"role": "system", "content": conversation})

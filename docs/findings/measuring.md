@@ -97,10 +97,25 @@ microphone heard — no guessing, no sweeping through values by ear.
 ## 4. A simulated room — the acoustic half, without a room
 
 ```
-uv run python -m src.pipeline.room                  # the default scenario
-uv run python -m src.pipeline.room --echo -6        # a louder room
-uv run python -m src.pipeline.room --delay-ms 250   # other hardware
+uv run python -m src.pipeline.room hello        # latency, nothing else
+uv run python -m src.pipeline.room interrupt    # cut in mid-sentence
+uv run python -m src.pipeline.room delegate     # is the answer read out?
+uv run python -m src.pipeline.room stop         # does "стоп" kill the job?
+uv run python -m src.pipeline.room all
+uv run python -m src.pipeline.room --echo -6 --delay-ms 250   # another room
 ```
+
+Measured this way, on the daemon:
+
+| | |
+|---|---|
+| barge-in | 899 ms, heard itself 0 |
+| cancel word | fast path fires; delegated work is cancelled |
+| delegation | acknowledgement, then the real answer, in Ukrainian |
+
+Each of those is a question a person can only answer once per run, badly:
+interrupting at the same moment twice is beyond anyone, and "did it hear
+itself" is unanswerable by ear when the two voices are the same.
 
 `src/pipeline/room.py` puts a microphone made of arithmetic where the
 device would be:

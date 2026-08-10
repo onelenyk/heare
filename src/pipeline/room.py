@@ -373,8 +373,23 @@ class Room:
                 speech_q.put_nowait(chunk)
 
             # Stop once everything has been said, the assistant has
-            # answered, and the room has been quiet for a while.
-            done = not pending and active is None and not room.bot_speaking
+            # answered, and the room has been quiet for a while — but
+            # never while a delegated job is still running, or the
+            # scenario ends before the very reply it exists to check.
+            try:
+                from src.agent.hands import get_hands
+
+                worker = get_hands()
+                working = bool(worker and worker.busy)
+            except Exception:
+                working = False
+
+            done = (
+                not pending
+                and active is None
+                and not room.bot_speaking
+                and not working
+            )
             if done and result.heard and result.bot_utterances:
                 quiet_since = quiet_since or time.monotonic()
                 if time.monotonic() - quiet_since > 3.0:
@@ -436,12 +451,74 @@ def report(room: Room, result: RoomResult) -> int:
     return 0 if ok else 1
 
 
+# ── scenarios ─────────────────────────────────────────────────────────
+
+
+@dataclass
+class Scenario:
+    """One thing worth knowing, and how to tell whether it held."""
+
+    name: str
+    script: list[Say]
+    window: float
+    expect: str
+
+
+SCENARIOS: dict[str, Scenario] = {
+    "hello": Scenario(
+        name="hello",
+        script=[Say(at=0.0, text="Привіт. Скажи одним реченням, як ти себе почуваєш.")],
+        window=30.0,
+        expect="one reply, nothing heard from itself",
+    ),
+    "interrupt": Scenario(
+        name="interrupt",
+        # Explicitly long: the reply rules cap most answers at a sentence,
+        # which would leave nothing to interrupt.
+        script=[
+            Say(
+                at=0.0,
+                text=(
+                    "Перелічи будь ласка всі вісім планет сонячної системи "
+                    "по черзі, повними реченнями, не поспішаючи."
+                ),
+            ),
+            Say(at=MID_SPEECH, text="Стоп, зачекай."),
+        ],
+        window=70.0,
+        expect="the assistant stops mid-sentence; barge-in is measured",
+    ),
+    "delegate": Scenario(
+        name="delegate",
+        script=[Say(at=0.0, text="Подивись будь ласка, скільки вільного місця на диску.")],
+        window=60.0,
+        expect="two utterances: an acknowledgement, then the actual number",
+    ),
+    "stop": Scenario(
+        name="stop",
+        script=[
+            Say(at=0.0, text="Виконай команду sleep 15 і скажи мені, коли завершиться."),
+            Say(at=8.0, text="Стоп."),
+        ],
+        window=45.0,
+        expect="the job is cancelled and never reports back",
+    ),
+}
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "scenario",
+        nargs="?",
+        default="interrupt",
+        choices=[*SCENARIOS, "all"],
+        help="which question to answer",
+    )
     p.add_argument("--echo", type=float, default=-10.0, help="echo level in dB")
     p.add_argument("--delay-ms", type=int, default=120)
     p.add_argument("--noise", type=float, default=-60.0)
-    p.add_argument("--window", type=float, default=40.0)
+    p.add_argument("--window", type=float, default=0.0, help="override the window")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 
@@ -451,21 +528,20 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
 
-    room = Room(echo_db=args.echo, delay_ms=args.delay_ms, noise_dbfs=args.noise)
-    script = [
-        # Explicitly long, because the reply rules otherwise cap answers
-        # at a single sentence and leave nothing to interrupt.
-        Say(
-            at=0.0,
-            text=(
-                "Перелічи будь ласка всі вісім планет сонячної системи "
-                "по черзі, повними реченнями, не поспішаючи."
-            ),
-        ),
-        Say(at=MID_SPEECH, text="Стоп, зачекай."),
+    chosen = list(SCENARIOS.values()) if args.scenario == "all" else [
+        SCENARIOS[args.scenario]
     ]
-    result = asyncio.run(room.run(script, timeout=args.window))
-    return report(room, result)
+    worst = 0
+    for scenario in chosen:
+        print(f"\n╭─ {scenario.name}: {scenario.expect}")
+        room = Room(
+            echo_db=args.echo, delay_ms=args.delay_ms, noise_dbfs=args.noise
+        )
+        result = asyncio.run(
+            room.run(scenario.script, timeout=args.window or scenario.window)
+        )
+        worst = max(worst, report(room, result))
+    return worst
 
 
 if __name__ == "__main__":

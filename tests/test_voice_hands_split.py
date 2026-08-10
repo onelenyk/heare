@@ -252,6 +252,11 @@ def test_result_is_delivered_as_a_marked_user_turn() -> None:
 
     asyncio.run(drive())
     assert delivered == [f"{RESULT_PREFIX} команда завершилась"]
+    # An instruction, not a label. As a bare tag a small model read it as
+    # more input and said "зараз гляну" a second time while holding the
+    # answer it had just been given.
+    assert "перекажи" in delivered[0]
+    assert "команда завершилась" in delivered[0]
 
 
 def test_a_crashing_job_still_answers() -> None:
@@ -503,3 +508,29 @@ def test_the_progress_beacon_is_a_sound_not_a_sentence() -> None:
     assert "ACTION_LONG_RUNNING" in source
     assert "_deliver" not in source, "a beacon must not speak"
     assert PROGRESS_AFTER >= 5, "too eager a beacon is worse than none"
+
+
+def test_the_worker_answers_in_the_language_being_spoken() -> None:
+    """Observed: the worker replied in English, and the voice agent — told
+    to speak only Ukrainian — ignored the result entirely and repeated its
+    acknowledgement while holding the answer."""
+    from src.agent.hands import SYSTEM, Hands
+
+    class LanguageState:
+        language = "uk"
+
+    class SessionState:
+        language_state = LanguageState()
+
+    assert Hands(Settings(), session_state=SessionState())._language() == "Ukrainian"
+    assert Hands(Settings())._language() == "Ukrainian", "default, not a crash"
+
+    class English:
+        language = "en"
+
+    class EnglishSession:
+        language_state = English()
+
+    hands = Hands(Settings(), session_state=EnglishSession())
+    assert hands._language() == "English"
+    assert "English" in SYSTEM.format(language=hands._language())
