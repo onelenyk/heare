@@ -76,12 +76,26 @@ Observed in live runs: TTS pronounced `` `echo hello` `` with the
 backticks and read 😊 out loud. The system prompt forbids markdown, but a
 prompt enforces nothing. A scrub before TTS is about ten lines.
 
-## Whisper hallucinates on silence
+## Whisper hallucinates on silence — fixed
 
-Near-silent segments come back as `Дякую.` (or `Thank you.` in English) —
-Whisper filling a gap. When echo leaks through, these are transcribed,
-answered, and the assistant talks to itself. The echo fix removed the
-cause; an energy floor before STT would remove the class.
+Whisper is generative: handed silence it does not return nothing, it
+returns the likeliest text. On this hardware that is `Дякую.` Measured in
+a real session: eight of them in ninety seconds, interleaved with
+`І серпу.` and a sentence of invented Ukrainian.
+
+Each became a complete turn — model call, synthesis, utterance — and the
+user's real questions queued up behind them. The assistant appeared slow
+while it was busy answering a room.
+
+VAD let them through because the thresholds were generous against a
+microphone at 2.4× gain: confidence 0.3, minimum volume 0.1, 100 ms to
+open a turn. Those are raised (0.6 / 0.25 / 0.2), and
+`src/pipeline/stages/speech_energy_gate.py` catches what still gets
+through: it sits after STT, where both the audio and the transcript are
+visible, and drops any transcript whose segment was quieter than
+`stt_min_rms` or shorter than `stt_min_speech_seconds` — plus known
+filler phrases from short segments, since the user is still allowed to
+say thank you.
 
 ## AEC in the main pipeline — fixed
 

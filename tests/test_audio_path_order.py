@@ -120,3 +120,13 @@ def test_aec_is_on_and_points_at_the_measured_delay() -> None:
         "measured ~125 ms speaker-to-mic; the old 30 ms was a guess and "
         "capped suppression at a noisy 10-20 dB"
     )
+
+
+def test_the_speech_gate_sits_where_it_can_see_both() -> None:
+    """It needs the audio to know how loud the segment was and the
+    transcript to know what was claimed — so it goes after STT, and
+    before anything acts on the words."""
+    stages = _stages(speech_energy_gate="ENERGY")
+
+    assert stages.index("STT") < stages.index("ENERGY")
+    assert stages.index("ENERGY") < stages.index("GATE")

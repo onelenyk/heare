@@ -223,6 +223,15 @@ class Settings:
     # perfect echo suppression to the ear.
     audio_probe_enabled: bool = False
 
+    # Whisper is generative: handed silence it returns the likeliest text,
+    # which on this setup is "Дякую." Each one becomes a full turn — model
+    # call, synthesis, utterance — and the user's real questions queue up
+    # behind them, so the assistant seems slow while it answers a room.
+    # Observed: eight in ninety seconds. See
+    # src/pipeline/stages/speech_energy_gate.py.
+    stt_min_rms: float = 180.0
+    stt_min_speech_seconds: float = 0.30
+
     # Voice/hands split. When on, the conversational model sees three
     # verbs — delegate, remember, recall — and everything else runs in
     # src/agent/hands.py: same model, same key, no deadline, off the
@@ -447,10 +456,15 @@ class Settings:
     # sensitive heare is to speech vs silence. Lower confidence = more
     # sensitive (triggers on quieter sounds). Lower stop_secs = faster
     # turn-end detection (but may cut off pauses mid-sentence).
-    vad_confidence: float = 0.3
-    vad_start_secs: float = 0.1
+    # Raised from 0.3/0.1/0.1. Against a microphone at 2.4x gain those
+    # let room noise open a turn in 100 ms, and Whisper — which is
+    # generative — dutifully wrote words into the silence. The energy
+    # gate after STT catches what still gets through; this stops most of
+    # it reaching Whisper at all, which also stops paying for it.
+    vad_confidence: float = 0.6
+    vad_start_secs: float = 0.2
     vad_stop_secs: float = 0.2
-    vad_min_volume: float = 0.1
+    vad_min_volume: float = 0.25
 
     # Audio gain / volume controls. Applied as multipliers to raw PCM
     # samples. 1.0 = unity (no change). 0.0 = silence. >1.0 = amplify.

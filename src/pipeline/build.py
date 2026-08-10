@@ -321,6 +321,7 @@ def _assemble_native_stages(
     echo_collector: Any = None,
     far_collector: Any = None,
     audio_probes: list | None = None,
+    speech_energy_gate: Any = None,
     post_stt_stages: list | None = None,
     post_llm_stages: list | None = None,
     pre_output_stages: list | None = None,
@@ -389,6 +390,11 @@ def _assemble_native_stages(
     if sidetone is not None:
         stages.append(sidetone)
     stages.extend([stt, stt_error_observer])
+    # Sits where both the audio and its transcript are visible, so a
+    # segment too quiet to be speech can be dropped whatever the
+    # transcript claims it said.
+    if speech_energy_gate is not None:
+        stages.append(speech_energy_gate)
     # Transcriptions exist only between STT and the aggregator, which
     # consumes them — anything watching what was heard has to sit here.
     if post_stt_stages:
@@ -787,6 +793,32 @@ async def build_pipeline(
         except Exception:
             logger.debug("hands: LLMContext messages unavailable")
             return []
+
+    # Mute survives restarts, and a muted microphone is silent in exactly
+    # the way a broken one is: input_mute_gate drops the audio before STT
+    # and nothing else says a word. A session that ended muted cost a full
+    # day of live testing before anyone thought to look at the flag.
+    if state is not None and state.get_bool("mute_mic"):
+        logger.warning(
+            "MICROPHONE IS MUTED (mute_mic=1, persisted from an earlier "
+            "session). Nothing will be heard until it is cleared."
+        )
+
+    try:
+        from src.pipeline.stages.speech_energy_gate import create_speech_energy_gate
+
+        speech_gate = create_speech_energy_gate(
+            min_rms=settings.stt_min_rms,
+            min_seconds=settings.stt_min_speech_seconds,
+        )
+        logger.info(
+            "speech_energy_gate: active (min_rms=%.0f, min=%.2fs)",
+            settings.stt_min_rms,
+            settings.stt_min_speech_seconds,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("speech_energy_gate: creation failed (non-fatal)")
+        speech_gate = None
 
     job_store = None
     stranded: list = []
@@ -1234,6 +1266,7 @@ async def build_pipeline(
         echo_collector=echo_collector,
         far_collector=far_end_collector,
         audio_probes=audio_probes,
+        speech_energy_gate=speech_gate,
         post_stt_stages=post_stt_stages,
         post_llm_stages=post_llm_stages,
         pre_output_stages=pre_output_stages,
