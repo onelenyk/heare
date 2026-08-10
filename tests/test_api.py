@@ -787,14 +787,14 @@ async def test_state_never_ships_raw_api_keys(mock_state, mock_config) -> None:
     reaches the LLM service."""
     mock_state.snapshot.return_value = {
         "provider": "deepseek",
-        "key_deepseek_api_key": "sk-REVOKED-KEY-REMOVED-FROM-HISTORY",
+        "key_deepseek_api_key": "sk-notarealkey0000000000000000000000",
         "key_groq_api_key": "gsk_realsecret",
     }
     api = API(mock_state, mock_config)
     resp = await api._handle_state(_mock_request())
     body = resp.body.decode()
 
-    assert "sk-REVOKED-KEY-REMOVED-FROM-HISTORY" not in body
+    assert "sk-notarealkey0000000000000000000000" not in body
     assert "gsk_realsecret" not in body
     data = json.loads(body)
     assert data["key_deepseek_api_key"] is True
