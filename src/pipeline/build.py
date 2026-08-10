@@ -788,12 +788,29 @@ async def build_pipeline(
             logger.debug("hands: LLMContext messages unavailable")
             return []
 
+    job_store = None
+    stranded: list = []
+    try:
+        from src.agent.jobs import JobStore
+
+        job_store = JobStore(store.db)
+        await job_store.init()
+        # Anything still marked running was cut off by the process ending;
+        # nothing else can leave a job in that state.
+        stranded = await job_store.sweep_interrupted()
+        for job in stranded:
+            logger.info("jobs: interrupted by restart — %s", job.task[:120])
+    except Exception:  # noqa: BLE001
+        logger.exception("jobs: unavailable (non-fatal)")
+        job_store = None
+
     hands = Hands(
         settings,
         llm_service=llm_service,
         session_state=session_state,
         conversation_manager=conversation_manager,
         recent_turns=_recent_turns,
+        jobs=job_store,
     )
     set_hands(hands)
 

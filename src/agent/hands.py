@@ -33,10 +33,17 @@ from typing import Any, Awaitable, Callable
 
 import httpx
 
+from src.agent import jobs as jobs_mod
+
 logger = logging.getLogger("heare.hands")
 
 MAX_STEPS = 12
 RECENT_TURNS = 6
+# A job quiet for longer than this gets a non-verbal beacon. Not speech:
+# speaking costs a model turn and can cut across the user, and the point
+# is only to distinguish "still working" from "stuck" — which is what a
+# spinner does on a screen.
+PROGRESS_AFTER = 12.0
 RESULT_PREFIX = "[результат роботи]"
 
 
@@ -70,6 +77,7 @@ class Hands:
         session_state: Any = None,
         conversation_manager: Any = None,
         recent_turns: Callable[[], list[dict]] | None = None,
+        jobs: Any = None,
     ) -> None:
         self._settings = settings
         self._llm_service = llm_service
@@ -79,6 +87,11 @@ class Hands:
         # sentence and the voice agent has to restate everything it knows
         # — which it does badly, inventing requirements as it goes.
         self._recent_turns = recent_turns
+        # Persistence, so a job outlives the turn and the process. Without
+        # it the assistant cannot say what it did an hour ago, and a
+        # restart mid-job leaves the user waiting for an answer that can
+        # never arrive.
+        self._jobs = jobs
         self._deliver: Callable[[str], Awaitable[None]] | None = None
         self._running: dict[asyncio.Task, str] = {}
 
@@ -111,14 +124,22 @@ class Hands:
         return len(jobs)
 
     async def _run(self, task: str, label: str) -> None:
+        beacon = asyncio.create_task(self._beacon(label))
+        job_id = await self._job_start(label, task)
         try:
-            result = await self._loop(task)
+            result = await self._loop(task, job_id)
         except asyncio.CancelledError:
             logger.info("[HANDS] %s: cancelled", label)
+            await self._job_finish(job_id, jobs_mod.CANCELLED)
             raise
         except Exception as exc:  # a failed job must still produce a reply
             logger.exception("hands: %s", task)
             result = f"Не вдалося: {exc}"
+            await self._job_finish(job_id, jobs_mod.FAILED, error=repr(exc))
+        else:
+            await self._job_finish(job_id, jobs_mod.DONE, result=result)
+        finally:
+            beacon.cancel()
         logger.info("[HANDS] done: %.200s", result)
         if self._deliver is None:
             logger.warning("[HANDS] no delivery wired — result dropped")
@@ -215,6 +236,33 @@ class Hands:
         self._record_result(intent_id, text)
         return text
 
+    async def _beacon(self, label: str) -> None:
+        """Sound, not speech, while a long job is still running.
+
+        The voice agent sees only the start and the end of a job, so a
+        slow one is indistinguishable from a stuck one. Saying so out loud
+        would cost a model turn and risk talking over the user; a cue is
+        the audible equivalent of a spinner.
+        """
+        try:
+            from src.voice.indication.core import IndicationKind, get_indication
+        except Exception:
+            return
+        try:
+            while True:
+                await asyncio.sleep(PROGRESS_AFTER)
+                indication = get_indication()
+                if indication is None:
+                    return
+                logger.info("[HANDS] still working: %s", label)
+                indication.notify(
+                    IndicationKind.ACTION_LONG_RUNNING,
+                    title="heare",
+                    body=label,
+                )
+        except asyncio.CancelledError:
+            raise
+
     # -- the action log ------------------------------------------------
 
     def _record_pending(self, tool: str, args: str) -> int | None:
@@ -269,7 +317,27 @@ class Hands:
             "referring to something in it:\n" + "\n".join(lines)
         )
 
-    async def _loop(self, task: str) -> str:
+    async def _job_start(self, label: str, task: str) -> int | None:
+        if self._jobs is None:
+            return None
+        return await self._jobs.start(label, task)
+
+    async def _job_step(self, job_id: int | None, text: str) -> None:
+        if self._jobs is not None:
+            await self._jobs.step(job_id, text)
+
+    async def _job_finish(
+        self,
+        job_id: int | None,
+        state: str,
+        *,
+        result: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        if self._jobs is not None:
+            await self._jobs.finish(job_id, state, result=result, error=error)
+
+    async def _loop(self, task: str, job_id: int | None = None) -> str:
         messages: list[dict] = [{"role": "system", "content": SYSTEM}]
         conversation = self._conversation()
         if conversation:
@@ -293,6 +361,7 @@ class Hands:
                     except json.JSONDecodeError:
                         arguments = {}
                     logger.info("[HANDS] step %d: %s(%s)", step + 1, name, arguments)
+                    await self._job_step(job_id, f"{name}({arguments})")
                     output = await self._execute(name, arguments)
                     messages.append(
                         {

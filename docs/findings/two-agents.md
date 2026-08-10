@@ -113,16 +113,32 @@ only when more than one job is in flight — naming a single result is
 noise, but two unlabelled results arriving out of order are
 indistinguishable.
 
+**A long job says so, without speaking.** After 12 seconds of quiet the
+worker raises `ACTION_LONG_RUNNING` — a cue, not a sentence. Speaking
+costs a model turn and can cut across the user; the point is only to
+tell "still working" from "stuck", which is what a spinner does on a
+screen.
+
+**A job is a row, not a task object.** `src/agent/jobs.py` records the
+goal in the user's own words, each step the worker took, and how it
+ended. Two things follow that were impossible before: a restart is
+survivable — jobs still marked `running` at startup were cut off by the
+process ending, so they are swept to `interrupted` and can be reported —
+and the assistant can be asked what it did an hour ago from the record
+rather than from a context window that has rolled over.
+
+Deliberately absent: automatic resumption. Replaying an arbitrary
+sequence of shell commands after a crash is not safe, and pretending
+otherwise is worse than admitting the interruption.
+
 ## Still missing
 
-**Progress.** The voice agent sees the start and the end, nothing
-between. A long job is indistinguishable from a stuck one.
+**Reporting the interruption out loud.** The sweep marks stranded jobs
+and logs them; nothing yet says "I was checking the disk when I
+stopped — shall I carry on?"
 
-**Memory between jobs.** Each starts from a blank sheet, and nothing
-survives a restart. That is the difference between carrying out an
-instruction and running an errand — a goal that outlives the turn, with
-its own state, its own blockers, and the standing to say "I am stuck,
-tell me which way".
+**A goal that can ask.** The worker still cannot stop halfway and put one
+short question to the user. Twelve steps, then it gives up quietly.
 
 ## Routing
 

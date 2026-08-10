@@ -244,7 +244,7 @@ def test_result_is_delivered_as_a_marked_user_turn() -> None:
         hands = Hands(Settings())
         hands.set_delivery(deliver)
 
-        async def fake_loop(task):
+        async def fake_loop(task, job_id=None):
             return "команда завершилась"
 
         hands._loop = fake_loop  # type: ignore[method-assign]
@@ -267,7 +267,7 @@ def test_a_crashing_job_still_answers() -> None:
         hands = Hands(Settings())
         hands.set_delivery(deliver)
 
-        async def boom(task):
+        async def boom(task, job_id=None):
             raise RuntimeError("provider exploded")
 
         hands._loop = boom  # type: ignore[method-assign]
@@ -373,7 +373,7 @@ def test_stop_cancels_work_in_flight() -> None:
         hands = Hands(Settings())
         started = asyncio.Event()
 
-        async def forever(task):
+        async def forever(task, job_id=None):
             started.set()
             await asyncio.sleep(60)
 
@@ -403,7 +403,7 @@ def test_results_are_labelled_only_when_several_jobs_are_in_flight() -> None:
         hands = Hands(Settings())
         hands.set_delivery(deliver)
 
-        async def quick(task):
+        async def quick(task, job_id=None):
             return "готово"
 
         hands._loop = quick  # type: ignore[method-assign]
@@ -419,3 +419,87 @@ def test_a_label_is_a_few_words_of_the_task() -> None:
     assert _label("подивись скільки місця на диску").startswith("подивись")
     assert len(_label("x" * 200)) <= 40
     assert _label("") == "робота"
+
+
+def test_a_job_is_recorded_from_start_to_finish() -> None:
+    """A job that leaves no trace cannot be reported after a restart, and
+    the assistant cannot say what it did an hour ago."""
+    from src.agent import jobs as jobs_mod
+    from src.agent.hands import Hands
+
+    events: list[tuple] = []
+
+    class Store:
+        async def start(self, label, task):
+            events.append(("start", label, task))
+            return 7
+
+        async def step(self, job_id, text):
+            events.append(("step", job_id, text))
+
+        async def finish(self, job_id, state, *, result=None, error=None):
+            events.append(("finish", job_id, state, result or error))
+
+    async def drive():
+        hands = Hands(Settings(), jobs=Store())
+        hands.set_delivery(lambda text: asyncio.sleep(0))
+
+        async def quick(task, job_id=None):
+            await hands._job_step(job_id, "bash(df -h)")
+            return "240 ГБ вільно"
+
+        hands._loop = quick  # type: ignore[method-assign]
+        await hands._run("подивись диск", "подивись диск")
+
+    asyncio.run(drive())
+
+    assert events[0] == ("start", "подивись диск", "подивись диск")
+    assert ("step", 7, "bash(df -h)") in events
+    assert events[-1] == ("finish", 7, jobs_mod.DONE, "240 ГБ вільно")
+
+
+def test_a_cancelled_job_is_recorded_as_cancelled() -> None:
+    from src.agent import jobs as jobs_mod
+    from src.agent.hands import Hands
+
+    states: list[str] = []
+
+    class Store:
+        async def start(self, label, task):
+            return 1
+
+        async def step(self, job_id, text):
+            pass
+
+        async def finish(self, job_id, state, *, result=None, error=None):
+            states.append(state)
+
+    async def drive():
+        hands = Hands(Settings(), jobs=Store())
+        started = asyncio.Event()
+
+        async def forever(task, job_id=None):
+            started.set()
+            await asyncio.sleep(60)
+
+        hands._loop = forever  # type: ignore[method-assign]
+        hands.start("довге завдання")
+        await started.wait()
+        hands.cancel_all()
+        await asyncio.sleep(0.05)
+
+    asyncio.run(drive())
+    assert states == [jobs_mod.CANCELLED]
+
+
+def test_the_progress_beacon_is_a_sound_not_a_sentence() -> None:
+    """Speaking costs a model turn and can cut across the user. The point
+    is only to tell "still working" from "stuck" — what a spinner does."""
+    import inspect
+
+    from src.agent.hands import PROGRESS_AFTER, Hands
+
+    source = inspect.getsource(Hands._beacon)
+    assert "ACTION_LONG_RUNNING" in source
+    assert "_deliver" not in source, "a beacon must not speak"
+    assert PROGRESS_AFTER >= 5, "too eager a beacon is worse than none"
