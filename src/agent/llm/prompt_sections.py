@@ -102,6 +102,26 @@ PROMPT_SECTIONS: list[PromptSection] = [
 ]
 
 
+# Sections that describe machinery the conversational agent cannot reach
+# once the voice/hands split is on. Telling a model about skills it
+# cannot run, agents it cannot spawn and a four-call budget it cannot
+# spend is not harmless padding: it is 4000 characters of instruction
+# about a job that belongs to someone else, and the observed result was
+# the model announcing work it never delegated.
+VOICE_ONLY_SUPPRESSED = frozenset(
+    {
+        "capabilities",
+        "installed_skills",
+        "sub_agents",
+        "lifecycle",
+        "hints",
+        "tool_use",
+        "narration",
+        "run_skill",
+    }
+)
+
+
 # -- Render helpers ----------------------------------------------------------
 
 
@@ -393,6 +413,14 @@ def render_prompt(
     """
     # Sort once by order (numeric, ascending).
     ordered = sorted(PROMPT_SECTIONS, key=lambda s: s.order)
+
+    try:
+        from src.agent.tools.system import is_voice_only
+
+        if is_voice_only():
+            ordered = [s for s in ordered if s.key not in VOICE_ONLY_SUPPRESSED]
+    except Exception:  # pragma: no cover — prompt must render regardless
+        pass
 
     sections: list[str] = []
 

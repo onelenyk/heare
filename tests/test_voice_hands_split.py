@@ -94,6 +94,32 @@ def test_catalog_lists_three_verbs_under_the_split() -> None:
     assert "web_search" not in catalog
 
 
+def test_the_prompt_drops_machinery_the_voice_agent_cannot_reach() -> None:
+    """Skills it cannot run, agents it cannot spawn, a four-call budget it
+    cannot spend: 58% of the prompt, all of it instructions about someone
+    else's job. The observed cost was not tokens but confusion — the
+    model announced work it never delegated.
+    """
+    from src.agent.llm.context_injector import render_native_system_prompt
+
+    persona = "You are an assistant."
+
+    system.set_voice_only(False)
+    full = render_native_system_prompt(persona=persona, context=None, language="uk")
+    system.set_voice_only(True)
+    trimmed = render_native_system_prompt(persona=persona, context=None, language="uk")
+
+    assert len(trimmed) < len(full) * 0.55, (
+        f"expected roughly half the prompt to go; {len(full)} -> {len(trimmed)}"
+    )
+    for gone in ("### Capabilities", "run_skill", "Background agents"):
+        assert gone not in trimmed
+
+    # What survives is what still applies.
+    for kept in ("HARD CONSTRAINTS", "delegate", "Response length"):
+        assert kept in trimmed
+
+
 def test_hard_constraints_make_delegation_an_obligation() -> None:
     """The observed failure was linguistic, not technical.
 
