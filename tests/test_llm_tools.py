@@ -49,19 +49,31 @@ class _FakeLLM:
         self.cancel_flags[function_name] = cancel_on_interruption
 
 
-def test_build_tools_schema_covers_every_enabled_tool() -> None:
-    schema = build_tools_schema()
-    standard = schema.standard_tools
-    names = {tool.name for tool in standard}
-    enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
-    assert names == enabled, (
-        f"schema names {names!r} != enabled tools {enabled!r}"
-    )
+def test_build_tools_schema_is_the_three_verbs() -> None:
+    """The conversational model chooses among three, not sixty-three.
+
+    Everything else runs in the worker (src/agent/hands.py), which builds
+    its own schemas and never goes through this function.
+    """
+    from src.agent.tools.system import VOICE_TOOLS
+
+    names = {tool.name for tool in build_tools_schema().standard_tools}
+    assert names == set(VOICE_TOOLS)
 
 
 def test_function_schema_has_properties_and_required() -> None:
-    schema = build_tools_schema()
-    by_name = {t.name: t for t in schema.standard_tools}
+    from pipecat.adapters.schemas.function_schema import FunctionSchema
+
+    by_name = {
+        t.name: FunctionSchema(
+            name=t.name,
+            description=t.description,
+            properties=t.schema_fields,
+            required=t.required,
+        )
+        for t in SYSTEM_TOOLS
+        if t.enabled
+    }
 
     bash = by_name["bash"]
     assert "command" in bash.properties
@@ -71,10 +83,13 @@ def test_function_schema_has_properties_and_required() -> None:
     assert {"path", "content"} <= set(write.properties.keys())
     assert set(write.required) == {"path", "content"}
 
+    delegate = by_name["delegate"]
+    assert delegate.required == ["task"]
+
 
 def test_register_all_tools_registers_every_enabled_tool() -> None:
     llm = _FakeLLM()
-    names = register_all_tools(llm, settings=None)
+    names = register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
     enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
     assert set(names) == enabled
     assert set(llm.registered.keys()) == enabled
@@ -85,7 +100,7 @@ def test_register_all_tools_cancel_flag_for_cancel_is_false() -> None:
     it so the LLM has a parsable tool surface, but cancel_on_interruption
     must be False so Pipecat doesn't double-cancel a non-running call."""
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None)
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
     assert llm.cancel_flags["cancel"] is False
     # Sanity: regular tools opt INTO interruption-cancel.
     assert llm.cancel_flags["bash"] is True
@@ -105,7 +120,7 @@ async def test_handler_dispatches_to_execute_direct(monkeypatch) -> None:
     monkeypatch.setattr("src.agent.tools.direct._execute_bash", fake_execute_bash)
 
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None)
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
 
     bash_handler = llm.registered["bash"]
     rcb = AsyncMock()
@@ -137,7 +152,7 @@ async def test_handler_serializes_complex_args_for_write(
     monkeypatch.setattr("src.agent.tools.direct._execute_write", fake_execute_write)
 
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None)
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
 
     handler = llm.registered["write"]
     rcb = AsyncMock()
@@ -164,7 +179,7 @@ async def test_handler_swallows_exception_into_failure_result(
     monkeypatch.setattr("src.agent.tools.direct._execute_bash", boom)
 
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None)
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
 
     handler = llm.registered["bash"]
     rcb = AsyncMock()
@@ -194,7 +209,7 @@ async def test_handler_cancellation_propagates(monkeypatch) -> None:
     monkeypatch.setattr("src.agent.tools.direct._execute_bash", cancelled)
 
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None)
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
 
     handler = llm.registered["bash"]
     rcb = AsyncMock()
@@ -237,7 +252,7 @@ async def test_slow_tool_returns_a_readable_error_not_none(monkeypatch) -> None:
     monkeypatch.setattr("src.agent.tools.direct._execute_bash", never_finishes)
 
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None)
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
 
     rcb = AsyncMock()
     params = types.SimpleNamespace(
@@ -275,7 +290,7 @@ def test_pipecat_timeout_is_registered_strictly_later_than_ours() -> None:
             self.timeouts[function_name] = kw["timeout_secs"]
 
     llm = _RecordingLLM()
-    register_all_tools(llm, settings=None)
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)
 
     assert llm.timeouts, "no tools registered"
     for name, registered in llm.timeouts.items():
@@ -322,7 +337,7 @@ async def test_handler_records_pending_then_result(monkeypatch) -> None:
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None, conversation_manager=cmgr)
+    register_all_tools(llm, settings=None, conversation_manager=cmgr, tools=SYSTEM_TOOLS)
 
     handler = llm.registered["bash"]
     rcb = AsyncMock()
@@ -351,7 +366,7 @@ async def test_handler_records_error_when_execute_raises(monkeypatch) -> None:
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None, conversation_manager=cmgr)
+    register_all_tools(llm, settings=None, conversation_manager=cmgr, tools=SYSTEM_TOOLS)
 
     handler = llm.registered["bash"]
     rcb = AsyncMock()
@@ -377,7 +392,7 @@ async def test_handler_records_cancelled_when_execute_cancels(monkeypatch) -> No
 
     cmgr = _FakeConvMgr()
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None, conversation_manager=cmgr)
+    register_all_tools(llm, settings=None, conversation_manager=cmgr, tools=SYSTEM_TOOLS)
 
     handler = llm.registered["bash"]
     rcb = AsyncMock()
@@ -403,7 +418,7 @@ async def test_handler_without_conversation_manager_is_noop(monkeypatch) -> None
     monkeypatch.setattr("src.agent.tools.direct._execute_bash", fake_exec)
 
     llm = _FakeLLM()
-    register_all_tools(llm, settings=None)  # no conversation_manager
+    register_all_tools(llm, settings=None, tools=SYSTEM_TOOLS)  # no conversation_manager
 
     handler = llm.registered["bash"]
     rcb = AsyncMock()
@@ -448,7 +463,7 @@ def _switchable_service(tmp_path):
 def test_register_all_tools_visible_on_both_delegates(_switchable_service) -> None:
     """I1: register_all_tools() fans out so both delegates see every tool."""
     swit = _switchable_service
-    names = register_all_tools(swit, settings=None)
+    names = register_all_tools(swit, settings=None, tools=SYSTEM_TOOLS)
 
     enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
     assert set(names) == enabled
@@ -484,8 +499,10 @@ async def test_set_provider_tool_writes_file_and_takes_effect(
 def test_tools_schema_is_provider_agnostic() -> None:
     """I3: build_tools_schema() yields a single ToolsSchema usable by both
     the OpenAI and Anthropic adapters; tool counts must match the system TOOLS."""
+    from src.agent.tools.system import VOICE_TOOLS
+
     schema = build_tools_schema()
-    enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
+    enabled = set(VOICE_TOOLS)
     assert {t.name for t in schema.standard_tools} == enabled
 
     # The Pipecat adapters translate the schema per-provider. We assert that

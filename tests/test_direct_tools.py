@@ -1204,8 +1204,16 @@ def test_read_display_tool_registered() -> None:
     from src.agent.tools.system import build_tools_schema, TOOLS, _handler_for
     from src.agent.tools.direct import _execute_read_display
 
-    schema = build_tools_schema()
-    assert "read_display" in {t.name for t in schema.standard_tools}
+    # read_display belongs to the worker now: the conversational agent
+    # has three verbs and delegates everything else.
+    from src.agent.hands import Hands
+    from src.config import Settings
+
+    worker = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
+    assert "read_display" in worker
+    assert "read_display" not in {
+        t.name for t in build_tools_schema().standard_tools
+    }
 
     tool = next(t for t in TOOLS if t.name == "read_display")
     assert _handler_for(tool) is _execute_read_display

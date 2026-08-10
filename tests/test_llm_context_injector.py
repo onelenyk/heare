@@ -88,13 +88,13 @@ def test_render_includes_host_os_line() -> None:
     assert "Host OS:" in out
 
 
-def test_render_prefers_bash_for_environment_questions() -> None:
-    """Environment/system questions: the tool catalog must list bash
-    as an available tool so the model knows it can run shell commands."""
+def test_environment_questions_are_delegated_not_run_directly() -> None:
+    """The conversational agent does not run shell commands; it hands them
+    to the worker. The prompt has to say so, and say it first."""
     out = render_native_system_prompt(persona="", context=None, language="en")
-    # The tool catalog (auto-generated from registry) must include bash.
     assert "Available tools:" in out, "tool catalog section missing"
-    assert "bash" in out, "bash not found in prompt"
+    assert "delegate" in out, "delegate not found in prompt"
+    assert "bash" not in out, "the voice agent must not be offered bash"
     # Hard constraints must appear before tool catalog — constraints first.
     hc_idx = out.find("HARD CONSTRAINTS")
     tc_idx = out.find("Available tools:")

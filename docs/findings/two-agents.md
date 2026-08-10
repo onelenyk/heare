@@ -1,7 +1,7 @@
 # Two agents, one model
 
-Implemented in `src/core/agent.py` and the `voice_only` flag in
-`src/core/tools.py`. Measured with `src/core/harness.py`.
+The only mode. `src/agent/hands.py` in the daemon,
+`src/core/agent.py` in the small core; measured with the harnesses.
 
 ## What it is
 
@@ -59,6 +59,25 @@ still sleeping. Pipecat runs function calls concurrently.
 The real cost of tools inline is the silence before the first utterance,
 not a frozen pipeline. The argument for the split survives; the reason
 given for it was wrong.
+
+## What it cost to make it the only mode
+
+Three things that had been true only by accident:
+
+**`delegate` had to disappear when no worker runs.** Advertised, chosen
+and guaranteed to fail is the worst kind of tool.
+
+**The prompt had to stop describing the rest.** 2484 tokens to 1061:
+skills, MCP, marketplace, background agents, a four-call budget and
+narration rules for tools the voice agent cannot call. Telling a model
+about someone else's job is how it ends up announcing work it never
+delegated.
+
+**Modes and the action log had to move with the work.** They lived in the
+pipeline's handler wrapper, which the worker does not go through — so
+without repeating them, every mode would quietly have become "allow
+everything" and the actions table would have gone back to empty. Both are
+now applied in `Hands._execute`.
 
 ## Routing
 

@@ -618,11 +618,8 @@ def test_full_prompt_contains_all_required_sections() -> None:
         ("persona", "I am Heare."),
         ("context", "2026-01-01 12:00:00"),
         ("reply_rules", "Reply rules:"),
-        ("tool_use", "Tool-use loop:"),
-        ("speech_style", "Speech style:"),
-        ("narration", "Narration during tool use:"),
-        ("capabilities", "### Capabilities"),
-    ]
+                ("speech_style", "Speech style:"),
+                    ]
     for name, token in required_checks:
         assert token in out, (
             f"Section '{name}' not found or token '{token}' missing"

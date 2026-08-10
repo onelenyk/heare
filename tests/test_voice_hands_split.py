@@ -17,38 +17,14 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from src.agent.tools import system
 from src.config import Settings
-
-
-@pytest.fixture(autouse=True)
-def _restore_flag():
-    """The switch is module-level; never leak it into another test."""
-    before = system.is_voice_only()
-    yield
-    system.set_voice_only(before)
 
 
 # ── what the conversational model can see ─────────────────────────────
 
 
-def test_off_by_default() -> None:
-    """Measured failure: the model announced work it never delegated, so
-    nothing ran and no answer could arrive. Opt in, do not opt out."""
-    assert Settings().voice_agent_enabled is False
-
-
-def test_all_tools_visible_when_the_split_is_off() -> None:
-    system.set_voice_only(False)
-    visible = {t.name for t in system._visible_tools()}
-    assert len(visible) > 50
-    assert "bash" in visible and "delegate" in visible
-
-
-def test_three_verbs_when_the_split_is_on() -> None:
-    system.set_voice_only(True)
+def test_the_voice_agent_sees_three_verbs() -> None:
     assert {t.name for t in system._visible_tools()} == system.VOICE_TOOLS
 
 
@@ -58,13 +34,12 @@ def test_delegate_exists_and_is_one_of_the_verbs() -> None:
     assert system.VOICE_TOOLS == {"delegate", "remember", "recall"}
 
 
-def test_schema_follows_the_switch() -> None:
-    system.set_voice_only(True)
+def test_the_schema_is_the_three_verbs() -> None:
     schema = system.build_tools_schema()
     assert {s.name for s in schema.standard_tools} == system.VOICE_TOOLS
 
 
-def test_registration_follows_the_switch() -> None:
+def test_only_the_verbs_are_registered() -> None:
     class FakeLLM:
         def __init__(self):
             self.registered: list[str] = []
@@ -72,7 +47,6 @@ def test_registration_follows_the_switch() -> None:
         def register_function(self, name, handler, **kw):
             self.registered.append(name)
 
-    system.set_voice_only(True)
     llm = FakeLLM()
     names = system.register_all_tools(llm, settings=Settings())
 
@@ -83,10 +57,9 @@ def test_registration_follows_the_switch() -> None:
 # ── the prompt must not describe tools that are not there ─────────────
 
 
-def test_catalog_lists_three_verbs_under_the_split() -> None:
+def test_the_catalog_lists_only_the_verbs() -> None:
     from src.agent.llm import prompt_sections
 
-    system.set_voice_only(True)
     catalog = prompt_sections._render_tool_catalog()
 
     assert "delegate" in catalog
@@ -102,15 +75,12 @@ def test_the_prompt_drops_machinery_the_voice_agent_cannot_reach() -> None:
     """
     from src.agent.llm.context_injector import render_native_system_prompt
 
-    persona = "You are an assistant."
+    trimmed = render_native_system_prompt(
+        persona="You are an assistant.", context=None, language="uk"
+    )
 
-    system.set_voice_only(False)
-    full = render_native_system_prompt(persona=persona, context=None, language="uk")
-    system.set_voice_only(True)
-    trimmed = render_native_system_prompt(persona=persona, context=None, language="uk")
-
-    assert len(trimmed) < len(full) * 0.55, (
-        f"expected roughly half the prompt to go; {len(full)} -> {len(trimmed)}"
+    assert len(trimmed) < 4000, (
+        f"the prompt used to be 7453 characters; now {len(trimmed)}"
     )
     for gone in ("### Capabilities", "run_skill", "Background agents"):
         assert gone not in trimmed
@@ -129,15 +99,11 @@ def test_hard_constraints_make_delegation_an_obligation() -> None:
     """
     from src.agent.llm import prompt_sections
 
-    system.set_voice_only(True)
     rules = prompt_sections._render_hard_constraints("uk")
 
     assert "delegate" in rules
     first_line = rules.splitlines()[1]
     assert "delegate" in first_line, "the rule has to come first, not last"
-
-    system.set_voice_only(False)
-    assert "delegate" not in prompt_sections._render_hard_constraints("uk")
 
 
 # ── delegate must not block, and must not lie ─────────────────────────
@@ -238,6 +204,32 @@ def test_hands_never_offers_delegate_to_itself() -> None:
     assert "bash" in names
 
 
+def test_hands_still_honours_the_mode_profile() -> None:
+    """Modes used to gate the conversational model's tools. With the work
+    moved to the worker, skipping the check here would turn every mode
+    into "allow everything" — a security control lost to a refactor."""
+    from src.agent.hands import Hands
+
+    from src.agent.modes import resolve
+
+    class SessionState:
+        profile = resolve("meeting")
+
+    names = {
+        s["function"]["name"]
+        for s in Hands(Settings(), session_state=SessionState())._tool_schemas()
+    }
+    from src.agent.modes import is_tool_allowed
+
+    denied = {
+        t.name
+        for t in system.TOOLS
+        if t.enabled and not is_tool_allowed(SessionState.profile, t.name)
+    }
+    assert denied, "the silent profile is expected to deny something"
+    assert not (denied & names), f"worker offered denied tools: {denied & names}"
+
+
 def test_result_is_delivered_as_a_marked_user_turn() -> None:
     """It re-enters the conversation so the voice agent phrases it — in
     the right language, in its own voice, through the existing TTS."""
@@ -284,3 +276,59 @@ def test_a_crashing_job_still_answers() -> None:
     asyncio.run(drive())
     assert len(delivered) == 1
     assert "provider exploded" in delivered[0]
+
+
+def test_delegated_work_lands_in_the_action_log(monkeypatch) -> None:
+    """The action log lives in the pipeline's handler wrapper, which the
+    worker does not go through. Without this the table goes back to being
+    empty — the state that made the assistant's own work invisible."""
+    from src.agent import hands as hands_mod
+
+    recorded: list[tuple] = []
+
+    class Manager:
+        def record_action_pending(self, intent_id, tool, args):
+            recorded.append(("pending", tool, args))
+
+        def record_action_result(self, intent_id, summary, items=None):
+            recorded.append(("result", summary))
+
+        def record_action_error(self, intent_id, error):
+            recorded.append(("error", error))
+
+    async def ok(tool, args, settings=None):
+        return {"success": True, "output": "привіт"}
+
+    monkeypatch.setattr("src.agent.tools.direct.execute_direct", ok)
+
+    hands = hands_mod.Hands(Settings(), conversation_manager=Manager())
+    asyncio.run(hands._execute("bash", {"command": "echo привіт"}))
+
+    assert recorded == [("pending", "bash", "echo привіт"), ("result", "привіт")]
+
+
+def test_a_failed_tool_is_recorded_as_an_error(monkeypatch) -> None:
+    from src.agent import hands as hands_mod
+
+    recorded: list[tuple] = []
+
+    class Manager:
+        def record_action_pending(self, intent_id, tool, args):
+            recorded.append(("pending", tool))
+
+        def record_action_result(self, intent_id, summary, items=None):
+            recorded.append(("result", summary))
+
+        def record_action_error(self, intent_id, error):
+            recorded.append(("error", error))
+
+    async def boom(tool, args, settings=None):
+        return {"success": False, "error": "no such file"}
+
+    monkeypatch.setattr("src.agent.tools.direct.execute_direct", boom)
+
+    hands = hands_mod.Hands(Settings(), conversation_manager=Manager())
+    out = asyncio.run(hands._execute("read", {"path": "/nope"}))
+
+    assert "no such file" in out
+    assert ("error", "no such file") in recorded

@@ -302,21 +302,14 @@ def _render_hard_constraints(language: str) -> str:
     # user is told it is happening and waits for an answer that can never
     # arrive. Stating it first, as an obligation rather than a manner,
     # is what makes the promise true.
-    delegate_rule = ""
-    try:
-        from src.agent.tools.system import is_voice_only
-
-        if is_voice_only():
-            delegate_rule = (
-                "- You have three tools: delegate, remember, recall. You do NOT "
-                "run commands, read files, browse, or change settings yourself. "
-                "Any such request MUST be a delegate() call. Never say you are "
-                "doing something, starting something, or about to check "
-                "something unless you called delegate() in the same reply — "
-                "announcing work you did not delegate means it never happens.\n"
-            )
-    except Exception:
-        pass
+    delegate_rule = (
+        "- You have three tools: delegate, remember, recall. You do NOT "
+        "run commands, read files, browse, or change settings yourself. "
+        "Any such request MUST be a delegate() call. Never say you are "
+        "doing something, starting something, or about to check "
+        "something unless you called delegate() in the same reply — "
+        "announcing work you did not delegate means it never happens.\n"
+    )
 
     return (
         "HARD CONSTRAINTS — these rules take priority over all instructions below:\n"
@@ -364,23 +357,7 @@ def _render_tool_catalog() -> str:
     most reliable way to make an assistant look stupid is to tell it about
     tools that are not there.
     """
-    try:
-        from src.agent.tools.system import is_voice_only
-
-        if is_voice_only():
-            return _DELEGATING_CATALOG
-    except Exception:
-        pass
-
-    try:
-        from src.agent.tools.registry import get_tool_descriptions
-
-        descriptions = get_tool_descriptions()
-        if descriptions:
-            return "Available tools:\n" + descriptions
-    except Exception:
-        pass
-    return ""
+    return _DELEGATING_CATALOG
 
 
 # -- Public renderer ---------------------------------------------------------
@@ -414,13 +391,7 @@ def render_prompt(
     # Sort once by order (numeric, ascending).
     ordered = sorted(PROMPT_SECTIONS, key=lambda s: s.order)
 
-    try:
-        from src.agent.tools.system import is_voice_only
-
-        if is_voice_only():
-            ordered = [s for s in ordered if s.key not in VOICE_ONLY_SUPPRESSED]
-    except Exception:  # pragma: no cover — prompt must render regardless
-        pass
+    ordered = [s for s in ordered if s.key not in VOICE_ONLY_SUPPRESSED]
 
     sections: list[str] = []
 

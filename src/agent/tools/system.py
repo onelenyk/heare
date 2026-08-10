@@ -53,26 +53,14 @@ class ToolDef:
 # work begins is otherwise left to the model's whim.
 VOICE_TOOLS = frozenset({"delegate", "remember", "recall"})
 
-_voice_only = False
-
-
-def set_voice_only(enabled: bool) -> None:
-    """Switch the conversational agent between three verbs and all of them."""
-    global _voice_only
-    _voice_only = bool(enabled)
-
-
-def is_voice_only() -> bool:
-    return _voice_only
-
 
 def _visible_tools() -> list["ToolDef"]:
-    """The tools the conversational model may call."""
-    return [
-        t
-        for t in TOOLS
-        if t.enabled and (not _voice_only or t.name in VOICE_TOOLS)
-    ]
+    """The tools the conversational model may call: exactly the verbs.
+
+    Everything else belongs to the worker in src/agent/hands.py, which
+    has no deadline and is not in the speaking path.
+    """
+    return [t for t in TOOLS if t.enabled and t.name in VOICE_TOOLS]
 
 
 ArgsSerializer = Callable[[dict[str, Any]], str]
@@ -1403,13 +1391,18 @@ def register_all_tools(
     settings: "Settings | None" = None,
     conversation_manager: "ConversationManager | None" = None,
     session_state: Any = None,
+    tools: "list[ToolDef] | None" = None,
 ) -> list[str]:
-    """Register one ``FunctionCallParams`` handler per enabled tool.
+    """Register one ``FunctionCallParams`` handler per tool.
+
+    Defaults to what the conversational model may call — the three verbs.
+    ``tools`` overrides that, which is how the handler machinery itself
+    can still be exercised for tools the voice agent never sees.
 
     Returns the list of tool names actually registered.
     """
     registered: list[str] = []
-    for t in _visible_tools():
+    for t in tools if tools is not None else _visible_tools():
         direct_func = _handler_for(t)
         if direct_func is None:
             logger.warning(

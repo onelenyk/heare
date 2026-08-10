@@ -123,12 +123,8 @@ def test_render_prompt_full_context() -> None:
         "2026-01-01 12:00:00",
         "MODE GATE: ambient",
         "Available tools:",
-        "### Capabilities",
         "Reply rules:",
         "Speech style:",
-        "Tool-use loop:",
-        "Narration during tool use:",
-        "run_skill specifics:",
     ]
     for token in expected_sections:
         assert token in out, f"Missing section: {token!r}"
@@ -169,35 +165,34 @@ def test_render_prompt_no_voice_companion_fallback() -> None:
 # ============================================================================
 
 
-def test_tool_catalog_includes_bash() -> None:
-    """The auto-generated tool catalog must include the bash tool."""
+def test_tool_catalog_lists_the_verbs_the_model_can_actually_call() -> None:
+    """The conversational agent has three tools. Listing sixty-three would
+    describe capabilities it does not have — the most reliable way to make
+    an assistant look stupid is to tell it about tools that are not there.
+    """
     from src.agent.llm.prompt_sections import render_prompt
 
     out = render_prompt(persona="Test", context=None, language="en")
     assert "Available tools:" in out, "tool catalog section missing"
-    assert "bash" in out, "bash not found in tool catalog"
-    assert "read" in out, "read not found in tool catalog"
-    assert "write" in out, "write not found in tool catalog"
+    for verb in ("delegate", "remember", "recall"):
+        assert verb in out
+    for worker_tool in ("bash", "web_search", "run_skill"):
+        assert worker_tool not in out
 
 
-def test_tool_catalog_includes_all_registered_tools() -> None:
-    """Every tool in the registry must appear in the tool catalog."""
-    from src.agent.llm.prompt_sections import render_prompt
+def test_every_registry_tool_is_reachable_through_the_worker() -> None:
+    """Nothing was lost by shrinking the catalog: the tools moved, they
+    did not disappear."""
+    from src.agent.hands import Hands
     from src.agent.tools.registry import get_enabled_tools
+    from src.config import Settings
 
-    out = render_prompt(persona="Test", context=None, language="en")
-    enabled = get_enabled_tools()
-
-    missing = []
-    for tool_name in sorted(enabled):
-        if tool_name not in out:
-            missing.append(tool_name)
-
-    # Allow a few exceptions (tools that might not render as plain text)
-    # but core tools must be present
+    worker = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
     core_tools = {"bash", "read", "write", "web_search", "web_fetch"}
-    for tool in core_tools:
-        assert tool in out, f"Core tool {tool} missing from catalog"
+    assert core_tools <= worker
+
+    registry = get_enabled_tools()
+    assert registry & worker, "the worker should expose the registry's tools"
 
 
 # ============================================================================

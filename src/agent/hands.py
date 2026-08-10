@@ -61,10 +61,12 @@ class Hands:
         *,
         llm_service: Any = None,
         session_state: Any = None,
+        conversation_manager: Any = None,
     ) -> None:
         self._settings = settings
         self._llm_service = llm_service
         self._session_state = session_state
+        self._conversation_manager = conversation_manager
         self._deliver: Callable[[str], Awaitable[None]] | None = None
         self._running: set[asyncio.Task] = set()
 
@@ -97,8 +99,24 @@ class Hands:
     # -- the loop ------------------------------------------------------
 
     def _tool_schemas(self) -> list[dict]:
-        """Every enabled tool except ``delegate`` — no handing work back."""
+        """Every enabled tool except ``delegate`` — no handing work back.
+
+        The mode profile is applied here. It used to gate the
+        conversational model's tools; with the work moved to the worker,
+        not re-checking it would quietly turn every mode into "allow
+        everything" — a security control lost to a refactor.
+        """
+        from src.agent.modes import is_tool_allowed as mode_is_tool_allowed
         from src.agent.tools.system import TOOLS
+
+        profile = getattr(self._session_state, "profile", None)
+
+        def allowed(name: str) -> bool:
+            if name == "delegate":
+                return False
+            if profile is None:
+                return True
+            return mode_is_tool_allowed(profile, name)
 
         return [
             {
@@ -114,32 +132,85 @@ class Hands:
                 },
             }
             for t in TOOLS
-            if t.enabled and t.name != "delegate"
+            if t.enabled and allowed(t.name)
         ]
 
     async def _execute(self, name: str, arguments: dict) -> str:
-        """Run one tool through the pipeline's own execution path."""
+        """Run one tool through the pipeline's own execution path.
+
+        The mode gate and the action log live in the pipeline's handler
+        wrapper, which the worker does not go through. Repeating them here
+        is deliberate: without the gate every mode would quietly become
+        "allow everything", and without the log the actions table would go
+        back to being empty — the state that made the assistant's own work
+        invisible for months.
+        """
+        from src.agent.modes import mode_gate_refusal
         from src.agent.tools.direct import execute_direct
         from src.agent.tools.system import _SERIALIZERS, tool_timeout_secs
 
         serializer = _SERIALIZERS.get(name)
         args_str = serializer(arguments) if serializer else json.dumps(arguments)
+
+        refusal = mode_gate_refusal(self._session_state, name)
+        if refusal is not None:
+            return f"{name} refused: {refusal.get('error', 'blocked by mode')}"
+
+        intent_id = self._record_pending(name, args_str)
         try:
             result = await asyncio.wait_for(
                 execute_direct(name, args_str, self._settings),
                 timeout=tool_timeout_secs(name),
             )
         except asyncio.TimeoutError:
+            self._record_error(intent_id, "timed out")
             return f"{name} timed out"
         except Exception as exc:  # noqa: BLE001
             logger.exception("[HANDS] %s failed", name)
+            self._record_error(intent_id, repr(exc))
             return f"{name} failed: {exc}"
 
         if isinstance(result, dict):
             if result.get("success"):
-                return str(result.get("output", ""))[:6000] or "done"
-            return f"{name} failed: {result.get('error', 'unknown error')}"
-        return str(result)[:6000]
+                output = str(result.get("output", ""))[:6000] or "done"
+                self._record_result(intent_id, output)
+                return output
+            error = str(result.get("error", "unknown error"))
+            self._record_error(intent_id, error)
+            return f"{name} failed: {error}"
+        text = str(result)[:6000]
+        self._record_result(intent_id, text)
+        return text
+
+    # -- the action log ------------------------------------------------
+
+    def _record_pending(self, tool: str, args: str) -> int | None:
+        if self._conversation_manager is None:
+            return None
+        from src.agent.tools.system import _intent_id_seq
+
+        intent_id = next(_intent_id_seq)
+        try:
+            self._conversation_manager.record_action_pending(intent_id, tool, args)
+        except Exception:
+            logger.exception("[HANDS] record_action_pending failed (non-fatal)")
+        return intent_id
+
+    def _record_result(self, intent_id: int | None, summary: str) -> None:
+        if intent_id is None or self._conversation_manager is None:
+            return
+        try:
+            self._conversation_manager.record_action_result(intent_id, summary)
+        except Exception:
+            logger.exception("[HANDS] record_action_result failed (non-fatal)")
+
+    def _record_error(self, intent_id: int | None, error: str) -> None:
+        if intent_id is None or self._conversation_manager is None:
+            return
+        try:
+            self._conversation_manager.record_action_error(intent_id, error)
+        except Exception:
+            logger.exception("[HANDS] record_action_error failed (non-fatal)")
 
     async def _loop(self, task: str) -> str:
         messages: list[dict] = [

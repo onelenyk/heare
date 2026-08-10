@@ -56,16 +56,20 @@ def fake_llm():
 
 def test_all_enabled_tools_are_registered(fake_llm) -> None:
     """AC1: all enabled tools in system TOOLS become pipecat handlers."""
-    register_all_tools(fake_llm, settings=Settings())
+    register_all_tools(fake_llm, settings=Settings(), tools=SYSTEM_TOOLS)
     enabled = {t.name for t in SYSTEM_TOOLS if t.enabled}
     assert set(fake_llm.registered.keys()) == enabled
 
 
 def test_tools_schema_matches_registered_set(fake_llm) -> None:
-    """AC2: every registered handler has a FunctionSchema in ToolsSchema."""
+    """AC2: every registered handler has a FunctionSchema in ToolsSchema.
+
+    Both sides now default to the conversational agent's three verbs —
+    what the model is told it can call and what it can actually call must
+    not drift apart.
+    """
     register_all_tools(fake_llm, settings=Settings())
-    schema = build_tools_schema()
-    schema_names = {fs.name for fs in schema.standard_tools}
+    schema_names = {fs.name for fs in build_tools_schema().standard_tools}
     assert schema_names == set(fake_llm.registered.keys())
 
 
@@ -82,7 +86,7 @@ async def test_bash_handler_dispatches_to_execute_direct(
 
     monkeypatch.setattr("src.agent.tools.direct._execute_bash", fake_execute_bash)
 
-    register_all_tools(fake_llm, settings=Settings())
+    register_all_tools(fake_llm, settings=Settings(), tools=SYSTEM_TOOLS)
     handler, _cancel_flag = fake_llm.registered["bash"]
 
     delivered = AsyncMock()

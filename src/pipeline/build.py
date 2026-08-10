@@ -772,11 +772,14 @@ async def build_pipeline(
     # conversational model must not be shown sixty-three tools it is not
     # allowed to call, and the prompt's tool catalog reads the same flag.
     from src.agent.hands import Hands, set_hands
-    from src.agent.tools.system import set_voice_only
 
-    set_voice_only(settings.voice_agent_enabled)
-    hands = Hands(settings, llm_service=llm_service, session_state=session_state)
-    set_hands(hands if settings.voice_agent_enabled else None)
+    hands = Hands(
+        settings,
+        llm_service=llm_service,
+        session_state=session_state,
+        conversation_manager=conversation_manager,
+    )
+    set_hands(hands)
 
     tools_schema = build_tools_schema(session_state=session_state)
     # Connect stdio MCP servers from workspace/.mcp.json and fold their
@@ -867,14 +870,13 @@ async def build_pipeline(
     user_aggregator = aggregator_pair.user()
     assistant_aggregator = aggregator_pair.assistant()
 
-    if settings.voice_agent_enabled:
-        # The result of a delegated job re-enters as a user turn, so the
-        # conversational model phrases it in the right language and its
-        # own voice. inject_user_text also persists the turn and emits
-        # the pipeline event, which a raw frame push would skip.
-        from src.pipeline.stages.text_injector import make_llm_message_pusher
+    # The result of a delegated job re-enters as a user turn, so the
+    # conversational model phrases it in the right language and its own
+    # voice. inject_user_text also persists the turn and emits the
+    # pipeline event, which a raw frame push would skip.
+    from src.pipeline.stages.text_injector import make_llm_message_pusher
 
-        hands.set_delivery(make_llm_message_pusher(transcription_gate))
+    hands.set_delivery(make_llm_message_pusher(transcription_gate))
 
     register_all_tools(
         llm_service,
