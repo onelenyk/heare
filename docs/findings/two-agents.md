@@ -79,6 +79,51 @@ without repeating them, every mode would quietly have become "allow
 everything" and the actions table would have gone back to empty. Both are
 now applied in `Hands._execute`.
 
+## How the two touch each other
+
+Never directly. Two contact points: a task string out, a result string
+back.
+
+```
+delegate("подивись файл notes.txt")
+    → returns "ok" in about a millisecond; the voice agent speaks
+    → asyncio task: the worker's own chat loop, its own system prompt,
+      the last 6 turns of the conversation, all 63 tools
+    → inject_user_text("[результат роботи] ...")
+    → the voice agent reads it out, in its own voice
+```
+
+Three properties worth stating, because each was absent at first and
+each absence was visible:
+
+**The worker is given the conversation.** Six recent turns, read from the
+live `LLMContext` when the job starts rather than snapshotted at build
+time. Without it the worker sees one sentence, so the voice agent has to
+restate everything it knows — and it does that badly, inventing
+requirements as it goes.
+
+**A stop word cancels work in flight.** Hooked to cancel-word detection in
+`transcription_gate`, deliberately *not* to `InterruptionFrame`: barge-in
+emits the same frame, and talking over the assistant must not kill the
+job it is doing for you. Before this, "стоп" silenced the voice while the
+worker carried on and announced its result seconds later.
+
+**Concurrent jobs carry a label.** Two or three words of the task, shown
+only when more than one job is in flight — naming a single result is
+noise, but two unlabelled results arriving out of order are
+indistinguishable.
+
+## Still missing
+
+**Progress.** The voice agent sees the start and the end, nothing
+between. A long job is indistinguishable from a stuck one.
+
+**Memory between jobs.** Each starts from a blank sheet, and nothing
+survives a restart. That is the difference between carrying out an
+instruction and running an errand — a goal that outlives the turn, with
+its own state, its own blockers, and the standing to say "I am stuck,
+tell me which way".
+
 ## Routing
 
 Errors are asymmetric. Delegating needlessly costs one extra sentence;

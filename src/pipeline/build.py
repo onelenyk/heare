@@ -773,11 +773,27 @@ async def build_pipeline(
     # allowed to call, and the prompt's tool catalog reads the same flag.
     from src.agent.hands import Hands, set_hands
 
+    # The context does not exist yet — hands reads it through this holder
+    # when a job starts, which is also what keeps it current rather than
+    # a snapshot taken at build time.
+    _context_ref: dict[str, Any] = {}
+
+    def _recent_turns() -> list[dict]:
+        ctx = _context_ref.get("context")
+        if ctx is None:
+            return []
+        try:
+            return [m for m in ctx.get_messages() if m.get("role") != "system"]
+        except Exception:
+            logger.debug("hands: LLMContext messages unavailable")
+            return []
+
     hands = Hands(
         settings,
         llm_service=llm_service,
         session_state=session_state,
         conversation_manager=conversation_manager,
+        recent_turns=_recent_turns,
     )
     set_hands(hands)
 
@@ -829,6 +845,8 @@ async def build_pipeline(
         ],
         tools=tools_schema,
     )
+    _context_ref["context"] = llm_context
+
     def _rebuild_tool_schemas(profile: Any) -> None:
         new_schema = build_tools_schema(session_state=session_state)
         filtered_builtins = list(new_schema.standard_tools)

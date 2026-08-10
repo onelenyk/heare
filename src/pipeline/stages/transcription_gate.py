@@ -557,6 +557,20 @@ def _build_transcription_gate_class():
             if is_standalone_cancel_imperative(transcript, stop_words):
                 logger.info("[CANCEL FAST-PATH] transcript=%r", transcript[:80])
                 emit("gate", "cancel_word", text=transcript[:80], level="important")
+                # A deliberate cancel stops delegated work too. Hooked here
+                # rather than on InterruptionFrame because barge-in emits
+                # the same frame: talking over the assistant should not
+                # kill the job it is doing for you — saying "стоп" should.
+                try:
+                    from src.agent.hands import get_hands
+
+                    worker = get_hands()
+                    if worker is not None:
+                        worker.cancel_all()
+                except Exception:
+                    logger.exception(
+                        "transcription_gate: cancelling delegated work failed"
+                    )
                 try:
                     await self.push_frame(
                         InterruptionFrame(), FrameDirection.DOWNSTREAM

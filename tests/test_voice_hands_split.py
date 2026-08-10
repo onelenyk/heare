@@ -248,7 +248,7 @@ def test_result_is_delivered_as_a_marked_user_turn() -> None:
             return "команда завершилась"
 
         hands._loop = fake_loop  # type: ignore[method-assign]
-        await hands._run("do it")
+        await hands._run("do it", "робота")
 
     asyncio.run(drive())
     assert delivered == [f"{RESULT_PREFIX} команда завершилась"]
@@ -271,7 +271,7 @@ def test_a_crashing_job_still_answers() -> None:
             raise RuntimeError("provider exploded")
 
         hands._loop = boom  # type: ignore[method-assign]
-        await hands._run("do it")
+        await hands._run("do it", "робота")
 
     asyncio.run(drive())
     assert len(delivered) == 1
@@ -332,3 +332,90 @@ def test_a_failed_tool_is_recorded_as_an_error(monkeypatch) -> None:
 
     assert "no such file" in out
     assert ("error", "no such file") in recorded
+
+
+# ── the interaction ───────────────────────────────────────────────────
+
+
+def test_the_worker_is_given_the_conversation() -> None:
+    """Without it the worker sees one sentence, and the voice agent has to
+    restate everything it knows — which it does badly, inventing
+    requirements as it goes."""
+    from src.agent.hands import Hands
+
+    turns = [
+        {"role": "user", "content": "подивись файл notes.txt"},
+        {"role": "assistant", "content": "гляну"},
+    ]
+    hands = Hands(Settings(), recent_turns=lambda: turns)
+    block = hands._conversation()
+
+    assert "notes.txt" in block
+    assert "User:" in block and "Assistant:" in block
+
+
+def test_a_missing_conversation_is_not_fatal() -> None:
+    from src.agent.hands import Hands
+
+    def boom() -> list[dict]:
+        raise RuntimeError("context gone")
+
+    assert Hands(Settings(), recent_turns=boom)._conversation() == ""
+    assert Hands(Settings())._conversation() == ""
+
+
+def test_stop_cancels_work_in_flight() -> None:
+    """Otherwise the assistant falls silent when interrupted and then
+    announces the result of work the user just called off."""
+    from src.agent.hands import Hands
+
+    async def drive():
+        hands = Hands(Settings())
+        started = asyncio.Event()
+
+        async def forever(task):
+            started.set()
+            await asyncio.sleep(60)
+
+        hands._loop = forever  # type: ignore[method-assign]
+        hands.start("щось довге")
+        await started.wait()
+        assert hands.busy == 1
+
+        cancelled = hands.cancel_all()
+        await asyncio.sleep(0)
+        return cancelled
+
+    assert asyncio.run(drive()) == 1
+
+
+def test_results_are_labelled_only_when_several_jobs_are_in_flight() -> None:
+    """Naming a single result is noise; two unlabelled results arriving
+    out of order are indistinguishable."""
+    from src.agent.hands import RESULT_PREFIX, Hands, _label
+
+    delivered: list[str] = []
+
+    async def deliver(text: str) -> None:
+        delivered.append(text)
+
+    async def drive():
+        hands = Hands(Settings())
+        hands.set_delivery(deliver)
+
+        async def quick(task):
+            return "готово"
+
+        hands._loop = quick  # type: ignore[method-assign]
+        await hands._run("подивись диск", _label("подивись диск"))
+
+    asyncio.run(drive())
+    assert delivered == [f"{RESULT_PREFIX} готово"]
+
+
+def test_a_label_is_a_few_words_of_the_task() -> None:
+    from src.agent.hands import _label
+
+    assert _label("подивись скільки місця на диску").startswith("подивись")
+    assert len(_label("x" * 200)) <= 40
+    assert _label("") == "робота"

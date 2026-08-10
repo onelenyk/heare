@@ -36,7 +36,14 @@ import httpx
 logger = logging.getLogger("heare.hands")
 
 MAX_STEPS = 12
+RECENT_TURNS = 6
 RESULT_PREFIX = "[результат роботи]"
+
+
+def _label(task: str) -> str:
+    """Two or three words, for telling concurrent jobs apart."""
+    words = [w for w in task.split() if len(w) > 2][:3]
+    return " ".join(words)[:40] or "робота"
 
 SYSTEM = """\
 You do the work. You are not speaking to the user — another assistant
@@ -62,13 +69,18 @@ class Hands:
         llm_service: Any = None,
         session_state: Any = None,
         conversation_manager: Any = None,
+        recent_turns: Callable[[], list[dict]] | None = None,
     ) -> None:
         self._settings = settings
         self._llm_service = llm_service
         self._session_state = session_state
         self._conversation_manager = conversation_manager
+        # Reads the live conversation. Without it the worker sees one
+        # sentence and the voice agent has to restate everything it knows
+        # — which it does badly, inventing requirements as it goes.
+        self._recent_turns = recent_turns
         self._deliver: Callable[[str], Awaitable[None]] | None = None
-        self._running: set[asyncio.Task] = set()
+        self._running: dict[asyncio.Task, str] = {}
 
     def set_delivery(self, deliver: Callable[[str], Awaitable[None]]) -> None:
         """Wired once the pipeline exists — results land there."""
@@ -80,13 +92,30 @@ class Hands:
 
     def start(self, task: str) -> None:
         """Begin work and return immediately. Never awaits the job."""
-        job = asyncio.create_task(self._run(task))
-        self._running.add(job)
-        job.add_done_callback(self._running.discard)
+        job = asyncio.create_task(self._run(task, _label(task)))
+        self._running[job] = _label(task)
+        job.add_done_callback(self._running.pop)
 
-    async def _run(self, task: str) -> None:
+    def cancel_all(self) -> int:
+        """Stop everything in flight. "Стоп" has to mean stop.
+
+        Without this the assistant falls silent when interrupted and then,
+        seconds later, announces the result of work the user just called
+        off — which reads as not listening.
+        """
+        jobs = [j for j in self._running if not j.done()]
+        for job in jobs:
+            job.cancel()
+        if jobs:
+            logger.info("[HANDS] cancelled %d job(s)", len(jobs))
+        return len(jobs)
+
+    async def _run(self, task: str, label: str) -> None:
         try:
             result = await self._loop(task)
+        except asyncio.CancelledError:
+            logger.info("[HANDS] %s: cancelled", label)
+            raise
         except Exception as exc:  # a failed job must still produce a reply
             logger.exception("hands: %s", task)
             result = f"Не вдалося: {exc}"
@@ -94,7 +123,11 @@ class Hands:
         if self._deliver is None:
             logger.warning("[HANDS] no delivery wired — result dropped")
             return
-        await self._deliver(f"{RESULT_PREFIX} {result}")
+        # The label only appears when more than one job is in flight:
+        # naming a single result is noise, but two unlabelled results
+        # arriving out of order are indistinguishable.
+        tag = f" [{label}]" if len(self._running) > 1 else ""
+        await self._deliver(f"{RESULT_PREFIX}{tag} {result}")
 
     # -- the loop ------------------------------------------------------
 
@@ -212,11 +245,36 @@ class Hands:
         except Exception:
             logger.exception("[HANDS] record_action_error failed (non-fatal)")
 
+    def _conversation(self) -> str:
+        """The last few turns, so "that file" and "the one we discussed"
+        mean something to the worker."""
+        if self._recent_turns is None:
+            return ""
+        try:
+            turns = self._recent_turns()
+        except Exception:
+            logger.exception("[HANDS] recent turns unavailable (non-fatal)")
+            return ""
+        lines = []
+        for turn in turns[-RECENT_TURNS:]:
+            role = turn.get("role")
+            content = turn.get("content")
+            if role in ("user", "assistant") and isinstance(content, str) and content:
+                who = "User" if role == "user" else "Assistant"
+                lines.append(f"{who}: {content.strip()[:400]}")
+        if not lines:
+            return ""
+        return (
+            "Recent conversation, for reference — the user may be "
+            "referring to something in it:\n" + "\n".join(lines)
+        )
+
     async def _loop(self, task: str) -> str:
-        messages: list[dict] = [
-            {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": task},
-        ]
+        messages: list[dict] = [{"role": "system", "content": SYSTEM}]
+        conversation = self._conversation()
+        if conversation:
+            messages.append({"role": "system", "content": conversation})
+        messages.append({"role": "user", "content": task})
         schemas = self._tool_schemas()
 
         async with httpx.AsyncClient(timeout=120) as client:
