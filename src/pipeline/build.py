@@ -321,6 +321,7 @@ def _assemble_native_stages(
     echo_collector: Any = None,
     far_collector: Any = None,
     audio_probes: list | None = None,
+    post_stt_stages: list | None = None,
     post_llm_stages: list | None = None,
     pre_output_stages: list | None = None,
     input_gain: Any = None,
@@ -388,6 +389,10 @@ def _assemble_native_stages(
     if sidetone is not None:
         stages.append(sidetone)
     stages.extend([stt, stt_error_observer])
+    # Transcriptions exist only between STT and the aggregator, which
+    # consumes them — anything watching what was heard has to sit here.
+    if post_stt_stages:
+        stages.extend(post_stt_stages)
     # voice_state_observer sits BEFORE transcription_gate so it sees every
     # raw TranscriptionFrame (the gate may suppress some for cancel words /
     # debounce). UserStartedSpeaking / UserStoppedSpeaking SystemFrames also
@@ -464,6 +469,8 @@ async def build_pipeline(
     project_dir: str | None = None,
     memory_backend: "MemoryBackend | None" = None,
     audio: bool = True,
+    audio_probes: list | None = None,
+    post_stt_stages: list | None = None,
     post_llm_stages: list | None = None,
     pre_output_stages: list | None = None,
 ) -> Tuple[object, object, object, object, object, object, object, object]:
@@ -1131,8 +1138,7 @@ async def build_pipeline(
             aec_filter_proc = None
             far_end_collector = None
 
-    audio_probes: list | None = None
-    if settings.audio_probe_enabled:
+    if audio_probes is None and settings.audio_probe_enabled:
         try:
             from src.core.audio_probe import make_audio_probe
 
@@ -1191,6 +1197,7 @@ async def build_pipeline(
         echo_collector=echo_collector,
         far_collector=far_end_collector,
         audio_probes=audio_probes,
+        post_stt_stages=post_stt_stages,
         post_llm_stages=post_llm_stages,
         pre_output_stages=pre_output_stages,
         aec_filter=aec_filter_proc,

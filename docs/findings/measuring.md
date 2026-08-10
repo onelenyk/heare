@@ -94,12 +94,60 @@ Three numbers, each answering a specific failure:
 The delay is measured by cross-correlating what was sent against what the
 microphone heard — no guessing, no sweeping through values by ear.
 
+## 4. A simulated room — the acoustic half, without a room
+
+```
+uv run python -m src.pipeline.room                  # the default scenario
+uv run python -m src.pipeline.room --echo -6        # a louder room
+uv run python -m src.pipeline.room --delay-ms 250   # other hardware
+```
+
+`src/pipeline/room.py` puts a microphone made of arithmetic where the
+device would be:
+
+    mic = scripted speech
+        + echo_gain × (what the daemon played, delayed)
+        + a noise floor
+
+Speech is synthesized with edge-tts in a different voice from the
+assistant's — identical voices would make "did it hear itself"
+unanswerable. Frames are generated from inside the chain, one 20 ms
+frame every 20 ms, and an utterance can be scheduled `at="mid_speech"`:
+wait until the assistant is speaking, then cut in. Interrupting at a
+repeatable moment is the one thing a person in a room cannot do twice.
+
+```
+── room: echo -10 dB, delay 120 ms, noise -60 dBFS ──
+   21.65 s  ♪ бот         заговорив
+   22.05 s  ▶ сказано     Стоп, зачекай.
+   22.41 s  ♪ бот         замовк
+   22.55 s  ⚡ переривання                                503 ms
+   24.00 s  ◀ почуто      Стоп, зачекай.
+──────────────────────────────────────────────────────
+  почув себе          0
+  перебивання         503 ms
+  кадрів: подано 1403, пройшло STT 1401, VAD спрацював 2×
+PASS
+```
+
+Those three counters matter more than they look. "Nothing was heard" has
+three causes — frames never fed, VAD never fired, STT never returned —
+and they are indistinguishable from the outcome. Both bugs found while
+building this were found by reading them:
+
+- **`mute_mic` survives restarts.** A session that ended muted silently
+  mutes every later run: `input_mute_gate` drops the audio before STT
+  and the only symptom is silence. Almost certainly why the microphone
+  appeared dead for a whole day of live testing.
+- **Audio queued at the task source never enters the chain** when the
+  transport is disabled — the switched-off input transport drops it.
+
 ## What is still missing
 
-The acoustic half. Both harnesses cover everything after speech
-recognition; microphone, echo and barge-in still need a room and a
-person. A recorded WAV played through the speakers, with assertions on
-the transcript, would close that gap.
+Reverberation, speaker distortion, the microphone's own gain control.
+A passing simulation does not promise the hardware works; a failing one
+promises it does not. The last mile still wants ten minutes of talking
+to it.
 
 Metrics from the pipeline are collected and never read. `enable_metrics`
 is on; nothing consumes the frames.

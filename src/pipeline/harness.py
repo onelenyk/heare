@@ -102,8 +102,19 @@ def _load_env() -> None:
             os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
-async def _build(turn_ref: dict, *, split: bool | None = None):
-    """Assemble the daemon's pipeline with the devices left shut."""
+async def _build_daemon(
+    *,
+    split: bool | None = None,
+    audio_probes: list | None = None,
+    post_stt_stages: list | None = None,
+    post_llm_stages: list | None = None,
+    pre_output_stages: list | None = None,
+):
+    """Assemble the daemon's pipeline with the devices left shut.
+
+    Shared with src/pipeline/room.py, which needs the same daemon with
+    different stages watching it.
+    """
     from src.agent.identity import load_identity, render_persona
     from src.config import load_settings
     from src.memory.factory import create_memory_backend
@@ -128,6 +139,13 @@ async def _build(turn_ref: dict, *, split: bool | None = None):
 
     state = State(settings.db_path)
     await state.init()
+    # The daemon persists mute across restarts, so a session that ended
+    # with a muted microphone silently mutes every later test run too:
+    # input_mute_gate drops the audio before STT and the only symptom is
+    # that nothing was ever heard. Simulated microphones are never muted.
+    if state.get_bool("mute_mic"):
+        logger.info("mute_mic was on in the saved state — clearing it for this run")
+        state.set_cache_only("mute_mic", "0")
 
     conversation_manager = ConversationManager(store)
     memory_backend = create_memory_backend(settings)
@@ -160,10 +178,21 @@ async def _build(turn_ref: dict, *, split: bool | None = None):
         conversation_manager=conversation_manager,
         memory_backend=memory_backend,
         audio=False,
+        audio_probes=audio_probes,
+        post_stt_stages=post_stt_stages,
+        post_llm_stages=post_llm_stages,
+        pre_output_stages=pre_output_stages,
+    )
+    return built[0], memory_backend
+
+
+async def _build(turn_ref: dict, *, split: bool | None = None):
+    """The text harness's own wiring: a probe either side of TTS."""
+    return await _build_daemon(
+        split=split,
         post_llm_stages=[_make_probe(turn_ref)],
         pre_output_stages=[_make_probe(turn_ref)],
     )
-    return built[0], memory_backend
 
 
 async def run_turns(
