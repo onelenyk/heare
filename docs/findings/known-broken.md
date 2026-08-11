@@ -70,6 +70,19 @@ planned.
 `src/core/` exposes no HTTP at all yet. Whatever it grows must not repeat
 this.
 
+## One key, three homes, no warning
+
+`DEEPSEEK_API_KEY` can live in `~/.heare/.env`, in `~/.heare/config.toml`,
+and in the state database as `key_deepseek_api_key` — and the state wins,
+because that is how a key is hot-swapped without a restart.
+
+Observed: the key was rotated in `.env`, verified live with curl, and the
+daemon still answered every request with 401. The revoked one was sitting
+in the state database from some earlier swap, and nothing said so.
+
+Nothing reports which source won, or that a value was shadowed. At
+minimum the daemon should log the source of each key it resolves.
+
 ## Markdown and emoji are spoken aloud
 
 Observed in live runs: TTS pronounced `` `echo hello` `` with the

@@ -247,6 +247,23 @@ class Settings:
     # assistant acknowledged twice. A pause for breath is not the end of
     # a sentence. Still two seconds faster than the analyzer it replaced.
     turn_silence_seconds: float = 1.0
+
+    # Being addressed.
+    #
+    # Without this an always-on assistant answers the room. Observed live:
+    # a podcast playing nearby produced a turn every few seconds, each one
+    # starting a model call that the next sentence then interrupted, so it
+    # never finished a reply and never stopped trying.
+    #
+    # The gate is on *acting*, not on hearing: speech is still transcribed
+    # while asleep, which is what makes "listen and remember, answer when
+    # asked" possible at all.
+    #
+    # wake_window_seconds keeps the conversation open afterwards, so a
+    # follow-up needs no name. Set wake_every_turn when it should.
+    wake_required: bool = True
+    wake_window_seconds: float = 45.0
+    wake_every_turn: bool = False
     stt_min_speech_seconds: float = 0.30
 
     # Voice/hands split. When on, the conversational model sees three

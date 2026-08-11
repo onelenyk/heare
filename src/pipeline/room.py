@@ -494,6 +494,26 @@ SCENARIOS: dict[str, Scenario] = {
         window=60.0,
         expect="two utterances: an acknowledgement, then the actual number",
     ),
+    "unaddressed": Scenario(
+        name="unaddressed",
+        # What a podcast in the room sounds like: speech, none of it for
+        # the assistant. It must stay silent.
+        script=[
+            Say(at=0.0, text="Дивіться, оце зараз дуже цікавий момент у цій історії."),
+            Say(at=6.0, text="Бо коли він каже одне, а робить абсолютно інше."),
+        ],
+        window=35.0,
+        expect="it hears everything and answers nothing",
+    ),
+    "addressed": Scenario(
+        name="addressed",
+        script=[
+            Say(at=0.0, text="Просто балачки в кімнаті, ні до кого."),
+            Say(at=6.0, text="Дока, привіт. Скажи одним реченням, як ти себе почуваєш."),
+        ],
+        window=45.0,
+        expect="silent until called by name, then answers",
+    ),
     "stop": Scenario(
         name="stop",
         script=[

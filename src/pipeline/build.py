@@ -55,6 +55,7 @@ from src.agent.llm.context_injector import (
 )
 from src.agent.tools.system import build_tools_schema, register_all_tools
 from src.pipeline.stages.transcription_gate import create_transcription_gate
+from src.pipeline.wake import wake_phrases
 from src.pipeline.stages.agent_state_observer import create_agent_state_observer
 from src.pipeline.stages.voice_state_observer import create_voice_state_observer
 from src.pipeline.stages.audio_monitor import SidetoneProcessor
@@ -519,6 +520,9 @@ async def build_pipeline(
     from pipecat.turns.user_start.vad_user_turn_start_strategy import (
         VADUserTurnStartStrategy,
     )
+    from pipecat.turns.user_start.wake_phrase_user_turn_start_strategy import (
+        WakePhraseUserTurnStartStrategy,
+    )
     from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
     from src.agent.llm.switchable import SwitchableLLMService
@@ -935,6 +939,34 @@ async def build_pipeline(
         )
 
     session_state.add_mode_change_listener(_rebuild_tool_schemas)
+
+    # Being addressed. The wake strategy goes first and blocks the ones
+    # after it until it hears its name in a final transcript; once awake,
+    # VAD behaves exactly as before, interruptions included.
+    #
+    # Speech is still transcribed while asleep — the gate is on acting,
+    # not on hearing, which is what makes "listen and remember, answer
+    # when asked" possible at all.
+    turn_start_strategies: list = []
+    if settings.wake_required:
+        phrases = wake_phrases(settings, persona)
+        turn_start_strategies.append(
+            WakePhraseUserTurnStartStrategy(
+                phrases=phrases,
+                timeout=settings.wake_window_seconds,
+                single_activation=settings.wake_every_turn,
+            )
+        )
+        logger.info(
+            "wake: required — %s (window %.0fs, every turn: %s)",
+            ", ".join(phrases),
+            settings.wake_window_seconds,
+            settings.wake_every_turn,
+        )
+    else:
+        logger.info("wake: not required — every utterance is treated as addressed")
+    turn_start_strategies.append(VADUserTurnStartStrategy(enable_interruptions=True))
+
     # vad_analyzer + user_turn_strategies migrated here from transport params
     # (deprecated since pipecat 0.0.108).
     aggregator_pair = LLMContextAggregatorPair(
@@ -948,7 +980,7 @@ async def build_pipeline(
                 # destroying the signal instead of removing the echo.
                 # With AEC3 working (40-50 dB measured) a voice heard
                 # during playback is the user.
-                start=[VADUserTurnStartStrategy(enable_interruptions=True)],
+                start=turn_start_strategies,
                 stop=[turn_stop_strategy],
             ),
         ),
