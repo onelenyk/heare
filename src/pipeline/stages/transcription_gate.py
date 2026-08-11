@@ -347,10 +347,14 @@ def _build_transcription_gate_class():
             language_state: LanguageState | None = None,
             bot_speech_state: Any = None,
             session_state: "SessionState | None" = None,
+            wake_phrases: "list[str] | None" = None,
         ) -> None:
             super().__init__()
             self.store = store
             self.settings = settings
+            # Needed to tell "Дока." apart from a request: the name comes
+            # from the generated identity, which this stage cannot see.
+            self._wake_phrases = list(wake_phrases or [])
             self._tts_service = tts_service
             self._bot_speech_state = bot_speech_state
             self._barge_in_enabled = (
@@ -546,6 +550,21 @@ def _build_transcription_gate_class():
             if not combined or frame is None:
                 emit("gate", "dropped", reason="debounce", text="", level="debug")
                 return
+
+            # "Дока, перелічи планети" arrives as two segments: the name,
+            # then the request. Flushing the first on its own makes the
+            # assistant answer the summons — "Так?" — before it has heard
+            # what was wanted, and the request then lands as a second
+            # turn. Wait for the rest instead: an address with nothing
+            # after it is not yet a turn.
+            if _is_only_address(combined, self._wake_phrases):
+                logger.info("[GATE] address only (%r) — waiting for the rest", combined)
+                self._debounce_buffer = [combined]
+                self._debounce_frame = frame
+                self._debounce_direction = direction
+                self._debounce_task = _asyncio.create_task(self._flush_debounced())
+                return
+
             await self._handle_transcription(frame, direction, override_text=combined)
 
         async def _handle_transcription(
@@ -894,6 +913,26 @@ def _build_transcription_gate_class():
     return _gate_cls
 
 
+def _is_only_address(text: str, phrases: "list[str] | None") -> bool:
+    """True when the utterance is nothing but the assistant's name.
+
+    Addressing it is not the same as asking it something, and the most
+    natural way to speak — "Дока, зроби Х" — puts a comma-length pause
+    right after the name, which is enough for speech recognition to
+    deliver it as a segment of its own.
+    """
+    import re
+
+    if not phrases:
+        return False
+    stripped = re.sub(r"[^\w\s]", " ", (text or "").lower())
+    words = [w for w in stripped.split() if w]
+    if not words:
+        return False
+    known = {p.lower() for p in phrases}
+    return all(w in known for w in words)
+
+
 def create_transcription_gate(
     *,
     store: "TranscriptStore | None" = None,
@@ -902,6 +941,7 @@ def create_transcription_gate(
     language_state: LanguageState | None = None,
     bot_speech_state: Any = None,
     session_state: "SessionState | None" = None,
+    wake_phrases: "list[str] | None" = None,
 ):
     """Factory returning a TranscriptionGateProcessor instance."""
     cls = _build_transcription_gate_class()
@@ -912,6 +952,7 @@ def create_transcription_gate(
         language_state=language_state,
         bot_speech_state=bot_speech_state,
         session_state=session_state,
+        wake_phrases=wake_phrases,
     )
 
 

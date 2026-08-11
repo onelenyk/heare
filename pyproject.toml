@@ -35,7 +35,13 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--strict-markers --tb=short"
+# E2E scenarios drive the whole daemon against real Groq, DeepSeek and
+# Edge endpoints: minutes, not milliseconds, and they cost money. They
+# are excluded here and run deliberately — `make e2e` or `pytest -m e2e`.
+addopts = "--strict-markers --tb=short -m 'not e2e'"
+markers = [
+    "e2e: drives the assembled daemon end to end through a simulated room",
+]
 filterwarnings = [
     "ignore::RuntimeWarning",
 ]

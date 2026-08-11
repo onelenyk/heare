@@ -72,3 +72,42 @@ def test_a_follow_up_needs_no_name() -> None:
     assert settings.wake_window_seconds >= 20, (
         "a window shorter than a reply plus a thought makes it useless"
     )
+
+
+# ── addressing is not asking ──────────────────────────────────────────
+
+
+def test_an_address_with_nothing_after_it_is_not_a_turn() -> None:
+    """The natural way to speak — "Дока, зроби Х" — puts a comma-length
+    pause after the name, which is enough for speech recognition to
+    deliver it as its own segment.
+
+    Measured in the room: the assistant answered the summons at 6.69 s and
+    only heard the request at 7.89 s, as a separate turn. It replied to
+    being called before knowing what for.
+    """
+    from src.pipeline.stages.transcription_gate import _is_only_address
+
+    phrases = wake_phrases(Settings(), PERSONA)
+
+    for address_only in ("Дока.", "дока", "Гава!", "Дока дока"):
+        assert _is_only_address(address_only, phrases), address_only
+
+    for a_real_request in ("Дока, перелічи планети", "привіт", "скільки часу"):
+        assert not _is_only_address(a_real_request, phrases), a_real_request
+
+
+def test_without_a_phrase_list_nothing_is_held() -> None:
+    """With addressing switched off the gate must not swallow turns."""
+    from src.pipeline.stages.transcription_gate import _is_only_address
+
+    assert _is_only_address("Дока.", []) is False
+    assert _is_only_address("Дока.", None) is False
+
+
+def test_an_empty_utterance_is_not_an_address() -> None:
+    from src.pipeline.stages.transcription_gate import _is_only_address
+
+    phrases = wake_phrases(Settings(), PERSONA)
+    assert _is_only_address("", phrases) is False
+    assert _is_only_address("   ...  ", phrases) is False

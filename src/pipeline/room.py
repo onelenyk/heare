@@ -36,6 +36,9 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
+
+from src.pipeline import checks
 
 import numpy as np
 
@@ -79,6 +82,10 @@ class RoomResult:
     events: list[Event] = field(default_factory=list)
     heard: list[str] = field(default_factory=list)
     said: list[str] = field(default_factory=list)
+    # What the assistant actually put through TTS. Counting utterances is
+    # not enough: it once acknowledged twice and never spoke the answer,
+    # and every counter said the run had passed.
+    spoken: list[str] = field(default_factory=list)
     heard_itself: int = 0
     barge_in_ms: float | None = None
     bot_utterances: int = 0
@@ -96,13 +103,29 @@ class RoomResult:
 # ── speech ────────────────────────────────────────────────────────────
 
 
+CACHE = Path.home() / ".heare" / "room-speech"
+
+
 async def synthesize(text: str, voice: str = "uk-UA-PolinaNeural") -> np.ndarray:
     """Text to 16 kHz mono PCM, via the edge-tts already in the project.
 
     A different voice from the assistant's on purpose: identical voices
     would make "did it hear itself" unanswerable.
+
+    Cached on disk by text and voice. Two reasons, and the second matters
+    more: a scenario re-run over the network is slower, and it is also a
+    slightly different recording each time — so a run that fails is hard
+    to tell from a run that was simply spoken a little differently.
     """
+    import hashlib
+
     import edge_tts
+
+    CACHE.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(f"{voice}|{text}".encode()).hexdigest()[:32]
+    cached = CACHE / f"{key}.pcm"
+    if cached.exists():
+        return np.frombuffer(cached.read_bytes(), dtype=np.int16).copy()
 
     mp3 = bytearray()
     async for chunk in edge_tts.Communicate(text, voice).stream():
@@ -121,7 +144,9 @@ async def synthesize(text: str, voice: str = "uk-UA-PolinaNeural") -> np.ndarray
         capture_output=True,
         check=True,
     ).stdout
-    return np.frombuffer(out, dtype=np.int16).copy()
+    pcm = np.frombuffer(out, dtype=np.int16).copy()
+    cached.write_bytes(pcm.tobytes())
+    return pcm
 
 
 def _overlap(a: str, b: str) -> float:
@@ -214,6 +239,8 @@ class Room:
             InputAudioRawFrame,
             InterruptionFrame,
             TranscriptionFrame,
+            LLMFullResponseEndFrame,
+            LLMTextFrame,
             TTSAudioRawFrame,
             TTSTextFrame,
             UserStartedSpeakingFrame,
@@ -255,6 +282,28 @@ class Room:
                     result.add("interrupt", "", started)
                 await self.push_frame(frame, direction)
 
+        class Words(FrameProcessor):
+            """What the assistant said, taken before TTS eats it.
+
+            EdgeTTS never emits TTSTextFrame — build.py says so in a
+            comment — so a stage after TTS sees audio and no words, and
+            "did it ever say the answer?" was silently unanswerable.
+            """
+
+            def __init__(self) -> None:
+                super().__init__()
+                self._buffer = ""
+
+            async def process_frame(self, frame, direction):
+                await super().process_frame(frame, direction)
+                if isinstance(frame, LLMTextFrame):
+                    self._buffer += frame.text or ""
+                elif isinstance(frame, LLMFullResponseEndFrame):
+                    if self._buffer.strip():
+                        result.spoken.append(self._buffer.strip())
+                    self._buffer = ""
+                await self.push_frame(frame, direction)
+
         class Mouth(FrameProcessor):
             """Captures what the daemon plays, so the room can echo it."""
 
@@ -269,6 +318,8 @@ class Room:
                         result.add("bot_started", "", started)
                 elif isinstance(frame, TTSTextFrame):
                     room.last_bot_text = frame.text or ""
+                    if room.last_bot_text:
+                        result.spoken.append(room.last_bot_text)
                 await self.push_frame(frame, direction)
 
         class Microphone(FrameProcessor):
@@ -318,6 +369,7 @@ class Room:
         task, memory_backend = await _build_daemon(
             audio_probes=[Microphone()],
             post_stt_stages=[Ears()],
+            post_llm_stages=[Words()],
             pre_output_stages=[Mouth()],
         )
 
@@ -381,6 +433,12 @@ class Room:
 
                 worker = get_hands()
                 working = bool(worker and worker.busy)
+                # A job that has started but not yet been spoken is still
+                # pending as far as the scenario is concerned: the reply
+                # it is waiting for has not happened.
+                delegated = bool(worker and worker.jobs_started)
+                if delegated and result.bot_utterances < 2:
+                    working = True
             except Exception:
                 working = False
 
@@ -408,6 +466,52 @@ class Room:
         return result
 
 
+RUNS = Path.home() / ".heare" / "room-runs.jsonl"
+
+
+def record_run(scenario: "Scenario", room: "Room", result: RoomResult) -> None:
+    """Append one line per scenario run.
+
+    A scenario that passes tells you nothing about the trend. Barge-in
+    was 503 ms before the VAD thresholds went up and 899 ms after — both
+    inside budget, and the second is nearly twice the first. Without a
+    record, that kind of drift is only noticed when it finally breaks
+    something.
+    """
+    import json
+
+    try:
+        RUNS.parent.mkdir(parents=True, exist_ok=True)
+        spoke = [e.at for e in result.events if e.kind == "bot_started"]
+        asked = [e.at for e in result.events if e.kind == "said"]
+        with RUNS.open("a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "ts": time.time(),
+                        "scenario": scenario.name,
+                        "echo_db": room.echo_db,
+                        "delay_ms": room.delay_ms,
+                        "failures": checks.run_checks(scenario.checks, result),
+                        "heard_itself": result.heard_itself,
+                        "barge_in_ms": result.barge_in_ms,
+                        "utterances": result.bot_utterances,
+                        "first_reply_ms": (
+                            spoke[0] - asked[0] if spoke and asked else None
+                        ),
+                        "transcripts": len(result.heard),
+                        "frames_fed": result.frames_fed,
+                        "vad_starts": result.vad_starts,
+                        "spoken": result.spoken[:5],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except Exception:  # a journal that fails must not fail the run
+        logger.exception("room: could not record the run (non-fatal)")
+
+
 # ── reporting ─────────────────────────────────────────────────────────
 
 _GLYPH = {
@@ -420,7 +524,10 @@ _GLYPH = {
 }
 
 
-def report(room: Room, result: RoomResult) -> int:
+def report(
+    room: Room, result: RoomResult, scenario: "Scenario | None" = None
+) -> list[str]:
+    """Print the timeline, then say why it failed. Returns the reasons."""
     print(
         f"\n── room: echo {room.echo_db:g} dB, delay {room.delay_ms} ms, "
         f"noise {room.noise_dbfs:g} dBFS ──"
@@ -446,9 +553,25 @@ def report(room: Room, result: RoomResult) -> int:
         f"VAD спрацював {result.vad_starts}×"
     )
 
-    ok = result.heard_itself == 0 and bool(result.heard)
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    # A run that fed no frames proves nothing about the assistant; it
+    # proves the harness broke. Say so rather than reporting a pass.
+    failures: list[str] = []
+    if result.frames_fed == 0:
+        failures.append("no audio was ever fed — the harness, not the assistant")
+
+    if scenario is not None:
+        failures.extend(checks.run_checks(scenario.checks, result))
+    elif result.heard_itself:
+        failures.append(f"heard itself {result.heard_itself}×")
+
+    if failures:
+        print()
+        for f in failures:
+            print(f"  ✗ {f}")
+        print("FAIL")
+    else:
+        print("PASS")
+    return failures
 
 
 # ── scenarios ─────────────────────────────────────────────────────────
@@ -462,14 +585,25 @@ class Scenario:
     script: list[Say]
     window: float
     expect: str
+    # Stated so a machine decides it. Prose in `expect` is for the human
+    # reading the output; these are what makes the run mean something.
+    checks: list = field(default_factory=list)
 
 
 SCENARIOS: dict[str, Scenario] = {
     "hello": Scenario(
         name="hello",
-        script=[Say(at=0.0, text="Привіт. Скажи одним реченням, як ти себе почуваєш.")],
-        window=30.0,
-        expect="one reply, nothing heard from itself",
+        script=[
+            Say(at=0.0, text="Дока, привіт. Скажи одним реченням, як ти себе почуваєш.")
+        ],
+        window=40.0,
+        expect="one reply, promptly, and nothing heard from itself",
+        checks=[
+            checks.never_hears_itself(),
+            checks.heard("привіт"),
+            checks.replies(at_least=1, at_most=2),
+            checks.first_reply_under(12.0),
+        ],
     ),
     "interrupt": Scenario(
         name="interrupt",
@@ -479,31 +613,52 @@ SCENARIOS: dict[str, Scenario] = {
             Say(
                 at=0.0,
                 text=(
-                    "Перелічи будь ласка всі вісім планет сонячної системи "
-                    "по черзі, повними реченнями, не поспішаючи."
+                    "Дока, перелічи будь ласка всі вісім планет сонячної "
+                    "системи по черзі, повними реченнями, не поспішаючи."
                 ),
             ),
             Say(at=MID_SPEECH, text="Стоп, зачекай."),
         ],
-        window=70.0,
-        expect="the assistant stops mid-sentence; barge-in is measured",
+        window=80.0,
+        expect="the assistant stops mid-sentence when talked over",
+        checks=[
+            checks.never_hears_itself(),
+            checks.replies(at_least=1),
+            checks.barge_in_under(1500),
+        ],
     ),
     "delegate": Scenario(
         name="delegate",
-        script=[Say(at=0.0, text="Подивись будь ласка, скільки вільного місця на диску.")],
-        window=60.0,
-        expect="two utterances: an acknowledgement, then the actual number",
+        script=[
+            Say(
+                at=0.0,
+                text="Дока, подивись будь ласка, скільки вільного місця на диску.",
+            )
+        ],
+        window=70.0,
+        expect="an acknowledgement, then the actual number, spoken",
+        checks=[
+            checks.never_hears_itself(),
+            checks.replies(at_least=2, at_most=3),
+            # The failure this exists for: the worker found the answer and
+            # the assistant said "секунду, гляну" a second time instead.
+            checks.eventually_says("гігабайт"),
+        ],
     ),
     "unaddressed": Scenario(
         name="unaddressed",
         # What a podcast in the room sounds like: speech, none of it for
-        # the assistant. It must stay silent.
+        # the assistant.
         script=[
             Say(at=0.0, text="Дивіться, оце зараз дуже цікавий момент у цій історії."),
             Say(at=6.0, text="Бо коли він каже одне, а робить абсолютно інше."),
         ],
         window=35.0,
         expect="it hears everything and answers nothing",
+        checks=[
+            checks.stays_silent(),
+            checks.heard("цікавий момент"),
+        ],
     ),
     "addressed": Scenario(
         name="addressed",
@@ -511,17 +666,29 @@ SCENARIOS: dict[str, Scenario] = {
             Say(at=0.0, text="Просто балачки в кімнаті, ні до кого."),
             Say(at=6.0, text="Дока, привіт. Скажи одним реченням, як ти себе почуваєш."),
         ],
-        window=45.0,
+        window=55.0,
         expect="silent until called by name, then answers",
+        checks=[
+            checks.never_hears_itself(),
+            checks.heard("балачки"),
+            checks.replies(at_least=1, at_most=2),
+        ],
     ),
     "stop": Scenario(
         name="stop",
         script=[
-            Say(at=0.0, text="Виконай команду sleep 15 і скажи мені, коли завершиться."),
-            Say(at=8.0, text="Стоп."),
+            Say(
+                at=0.0,
+                text="Дока, виконай команду sleep 15 і скажи мені, коли завершиться.",
+            ),
+            Say(at=10.0, text="Стоп."),
         ],
-        window=45.0,
+        window=50.0,
         expect="the job is cancelled and never reports back",
+        checks=[
+            checks.never_hears_itself(),
+            checks.replies(at_least=1),
+        ],
     ),
 }
 
@@ -531,9 +698,9 @@ def main() -> int:
     p.add_argument(
         "scenario",
         nargs="?",
-        default="interrupt",
+        default="all",
         choices=[*SCENARIOS, "all"],
-        help="which question to answer",
+        help="which question to answer (default: all of them)",
     )
     p.add_argument("--echo", type=float, default=-10.0, help="echo level in dB")
     p.add_argument("--delay-ms", type=int, default=120)
@@ -548,20 +715,40 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
 
-    chosen = list(SCENARIOS.values()) if args.scenario == "all" else [
-        SCENARIOS[args.scenario]
-    ]
-    worst = 0
+    chosen = (
+        list(SCENARIOS.values())
+        if args.scenario == "all"
+        else [SCENARIOS[args.scenario]]
+    )
+
+    outcomes: list[tuple[str, list[str], float]] = []
     for scenario in chosen:
         print(f"\n╭─ {scenario.name}: {scenario.expect}")
-        room = Room(
-            echo_db=args.echo, delay_ms=args.delay_ms, noise_dbfs=args.noise
-        )
-        result = asyncio.run(
-            room.run(scenario.script, timeout=args.window or scenario.window)
-        )
-        worst = max(worst, report(room, result))
-    return worst
+        room = Room(echo_db=args.echo, delay_ms=args.delay_ms, noise_dbfs=args.noise)
+        started = time.monotonic()
+        try:
+            result = asyncio.run(
+                room.run(scenario.script, timeout=args.window or scenario.window)
+            )
+            record_run(scenario, room, result)
+            failures = report(room, result, scenario)
+        except Exception as exc:  # a broken scenario is a failed scenario
+            logger.exception("scenario %s blew up", scenario.name)
+            failures = [f"raised {exc!r}"]
+        outcomes.append((scenario.name, failures, time.monotonic() - started))
+
+    print("\n" + "═" * 66)
+    for name, failures, took in outcomes:
+        mark = "PASS" if not failures else "FAIL"
+        print(f"  {mark}  {name:<14} {took:5.1f}s  {'; '.join(failures)[:60]}")
+    failed = [n for n, f, _ in outcomes if f]
+    total = sum(t for _, _, t in outcomes)
+    print("═" * 66)
+    print(
+        f"  {len(outcomes) - len(failed)}/{len(outcomes)} passed in {total:.0f}s"
+        + (f" — failed: {', '.join(failed)}" if failed else "")
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

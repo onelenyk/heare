@@ -279,10 +279,15 @@ class ContextBuilder:
             fmt = disp.get("format") or "text"
             title = (disp.get("title") or "").strip()
             label = f' titled "{title}"' if title else ""
+            # Naming tools here is what made a vague request go wrong:
+            # the conversational agent cannot call read_display — that is
+            # the worker's — and an instruction it cannot follow, sitting
+            # in the prompt beside a mention of a panel, turned "how much
+            # disk space is free" into a job to read the panel instead.
+            # State what is on screen; do not issue orders about it.
             result["current_display"] = (
-                f"A {fmt} panel{label} is on the screen right now (you set it "
-                "with show_display). Call read_display to read its contents; "
-                "call show_display to replace it."
+                f"A {fmt} panel{label} is currently on the screen. Mention it "
+                "only if the user asks about it."
             )
         # Inject active sub-agent status
         try:

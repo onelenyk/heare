@@ -242,10 +242,20 @@ class Settings:
     # in whole thoughts — in exchange the assistant starts answering
     # while you are still lowering your voice.
     turn_end: str = "silence"
-    # 1.0, not 0.7. Measured in the room: "Подивись будь ласка, скільки
-    # вільного місця на диску" split into two turns at the comma, and the
-    # assistant acknowledged twice. A pause for breath is not the end of
-    # a sentence. Still two seconds faster than the analyzer it replaced.
+    # 1.4 s of silence ends a turn. Two measurements pushed it up from
+    # 0.7: at 0.7 "Подивись будь ласка, скільки вільного місця на диску"
+    # split at the comma and was acknowledged twice; at 1.0 it split into
+    # three, and the fragment "подивись, будь ласка" — a request with no
+    # object — sent the worker off to read an unrelated panel that
+    # happened to be in the context. A broken sentence does not merely
+    # annoy: it starts the wrong job.
+    #
+    # Still 1.6 s faster than the turn analyzer this replaced, which took
+    # three seconds and was not measurably better at the same thing.
+    #
+    # Caveat for anyone tuning this against src/pipeline/room.py:
+    # edge-tts pauses at commas for longer than a person does, so
+    # fragmentation there is worse than in life.
     turn_silence_seconds: float = 1.0
 
     # Being addressed.
@@ -406,7 +416,20 @@ class Settings:
     # the debounce — each frame dispatches immediately (legacy behaviour).
     # 0.3s provides a tighter debounce window for faster response while
     # still catching most STT fragment splits.
-    transcript_debounce_seconds: float = 0.3
+    # 1.2 s, not 0.3. Speech recognition segments on its own 200 ms
+    # pause, so one spoken sentence arrives as several transcripts —
+    # "Дока." / "Подивись, будь ласка." / "Скільки вільного місця на
+    # диску?" — and this is the window in which they are joined back into
+    # a single turn.
+    #
+    # It was 3.0 (taken from the mode's turn_timeout, which meant
+    # something else) and every reply waited three seconds. Dropping it
+    # to 0.3 removed that, and also removed the joining: fragments
+    # reached the model on their own, and "подивись, будь ласка" — a
+    # request with no object — sent the worker to read an unrelated panel
+    # that happened to be in context. A broken sentence does not merely
+    # annoy; it starts the wrong job.
+    transcript_debounce_seconds: float = 1.2
     # Phase 2: which tools the Pipecat-native pipeline may invoke via
     # register_function. Names are the tool identifiers defined in
     # src/tool_registry.py. None = use all enabled tools from the registry.

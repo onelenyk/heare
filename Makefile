@@ -59,6 +59,11 @@ logs:
 launch:
 	@./hearectl launch
 
+e2e:
+	@echo "E2E: the whole daemon, a simulated room, real endpoints."
+	@echo "Stop the daemon first — the scenarios need the database."
+	uv run python -m src.pipeline.room all
+
 test:
 	uv run pytest -q
 

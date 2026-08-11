@@ -762,6 +762,7 @@ async def build_pipeline(
     set_active_session_state(session_state)
     bot_speech_state = BotSpeechState()
     transcription_gate = create_transcription_gate(
+        wake_phrases=wake_phrases(settings, persona) if settings.wake_required else [],
         store=store,
         settings=settings,
         tts_service=tts,

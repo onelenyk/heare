@@ -114,7 +114,12 @@ async def test_current_display_injected_when_present(
     cd = result["current_display"]
     assert "metrics" in cd
     assert "table" in cd
-    assert "read_display" in cd
+    # The block states what is on screen; it no longer orders a tool.
+    # Naming read_display here — a worker tool the conversational agent
+    # cannot call — turned "how much disk space is free" into a job to
+    # read the panel that happened to be mentioned beside it.
+    assert "read_display" not in cd
+    assert "currently on the screen" in cd
     # The contents themselves must NOT be in the prompt.
     assert "col1 | col2" not in cd
 
@@ -638,7 +643,8 @@ async def test_display_block_is_a_flag_not_the_content(store: TranscriptStore) -
     builder = ContextBuilder(store, Settings())
     ctx = await builder.build_for_generator(transcript="hi", persona="p")
     block = ctx.get("current_display", "")
-    assert "read_display" in block
+    assert "read_display" not in block
+    assert "currently on the screen" in block
     assert "font-size" not in block and "<style>" not in block  # no markup
     assert '"🐾"' in block  # the title still rides along
     assert len(block) < 300  # was 600+ chars of raw content

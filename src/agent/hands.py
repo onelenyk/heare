@@ -106,6 +106,9 @@ class Hands:
         self._jobs = jobs
         self._deliver: Callable[[str], Awaitable[None]] | None = None
         self._running: dict[asyncio.Task, str] = {}
+        # Jobs ever started. A test that stops when nothing is running
+        # would end before the delegated answer it exists to check.
+        self.jobs_started = 0
 
     def set_delivery(self, deliver: Callable[[str], Awaitable[None]]) -> None:
         """Wired once the pipeline exists — results land there."""
@@ -117,6 +120,7 @@ class Hands:
 
     def start(self, task: str) -> None:
         """Begin work and return immediately. Never awaits the job."""
+        self.jobs_started += 1
         job = asyncio.create_task(self._run(task, _label(task)))
         self._running[job] = _label(task)
         job.add_done_callback(self._running.pop)
