@@ -226,6 +226,15 @@ h1{margin:0;font-size:23px;letter-spacing:-.015em;font-weight:650;
 .track i{display:block;height:100%}
 .track i.said{background:var(--voice)}
 .track i.spoke{background:var(--assistant)}
+.stability{display:flex;align-items:center;gap:3px;margin-top:-2px}
+.stability .pip{width:13px;height:6px;border-radius:2px;display:block;flex:0 0 auto}
+.stability .pip.ok{background:var(--pass);opacity:.55}
+.stability .pip.bad{background:var(--fail)}
+.stability .pip:first-child{opacity:1;width:16px}
+.stability .tally{margin-left:7px;font-size:11.5px;color:var(--muted);
+  letter-spacing:.02em}
+.stability.flaky .tally{color:var(--fail);font-weight:650}
+
 .legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);
   align-items:center;flex-wrap:wrap}
 .legend span{display:flex;align-items:center;gap:5px}
@@ -275,6 +284,41 @@ def _track(row: dict) -> str:
     return "".join(parts)
 
 
+def stability(runs: list[Run], name: str, limit: int = 10) -> list[bool]:
+    """Whether each of this scenario's recent attempts held, oldest last.
+
+    A single green run says nothing. delegate passed on a Tuesday and
+    failed twice on the Wednesday for three different reasons, and the
+    only way anyone found out was running it four times in a row. A
+    scenario that flickers is broken — it teaches you to distrust red,
+    which is worse than having no test.
+    """
+    outcomes: list[bool] = []
+    for run in reversed(runs):
+        for row in reversed(run.rows):
+            if row.get("scenario") == name:
+                outcomes.append(not row.get("failures"))
+                if len(outcomes) >= limit:
+                    return outcomes
+    return outcomes
+
+
+def _stability_strip(outcomes: list[bool]) -> str:
+    """One block per attempt, newest on the right, with the tally."""
+    if len(outcomes) < 2:
+        return ""
+    blocks = "".join(
+        f'<i class="pip {"ok" if good else "bad"}"></i>' for good in reversed(outcomes)
+    )
+    good = sum(outcomes)
+    flaky = 0 < good < len(outcomes)
+    label = f"{good}/{len(outcomes)}" + (" мигтить" if flaky else "")
+    return (
+        f'<div class="stability{" flaky" if flaky else ""}">{blocks}'
+        f'<span class="tally mono">{label}</span></div>'
+    )
+
+
 def render(runs: list[Run]) -> str:
     if not runs:
         body = (
@@ -321,6 +365,7 @@ def render(runs: list[Run]) -> str:
             f'<div class="metric"><span class="k">почув себе</span>'
             f'<span class="v mono">{row.get("heard_itself", 0)}</span></div>'
         )
+        strip = _stability_strip(stability(runs, name))
 
         cards.append(
             f'<article class="card {state}"><div class="stripe"></div>'
@@ -328,7 +373,7 @@ def render(runs: list[Run]) -> str:
             f'<div class="name"><b>{html.escape(name)}</b>'
             f'<span class="tag {state}">{"впав" if failures else "ок"}</span></div>'
             f'<p class="asks">{html.escape(WHAT_IT_ASKS.get(name, ""))}</p>'
-            f"{why}{_track(row)}"
+            f"{why}{strip}{_track(row)}"
             f'<div class="metrics">{"".join(metrics)}</div>'
             f"</div></article>"
         )

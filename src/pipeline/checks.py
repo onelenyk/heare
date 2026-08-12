@@ -76,7 +76,16 @@ def _reply_count(r: Result) -> int:
     plainly held both.
     """
     spoken = getattr(r, "spoken", None)
-    return len(spoken) if spoken else r.bot_utterances
+    if not spoken:
+        return r.bot_utterances
+    # "При" is not a reply. Neither is "Привіт, Назаре. На". Both are the
+    # sound of being cut off, and counting them made a scenario fail for
+    # answering three times when it answered twice and was interrupted
+    # once. A reply the assistant finished ends the way a sentence does.
+    finished = sum(
+        1 for text in spoken if text.strip().endswith((".", "!", "?", "…", ":"))
+    )
+    return finished or len(spoken)
 
 
 def replies(at_least: int = 1, at_most: int | None = None) -> Check:

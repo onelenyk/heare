@@ -48,6 +48,21 @@ def test_acknowledging_twice_is_still_caught() -> None:
     assert checks.replies(at_least=1, at_most=2)(run)
 
 
+def test_a_reply_cut_off_at_the_first_word_is_not_a_reply() -> None:
+    """Observed: "При" — the assistant began "Привіт" and was talked
+    over. Counted as a reply it made a scenario fail for answering three
+    times when it answered twice and was interrupted once."""
+    run = FakeRun(
+        spoken=[
+            "При",
+            "Привіт, Назаре, я на звʼязку — що зробимо?",
+            "Почуваюся бадьоро і готовий допомогти.",
+        ]
+    )
+
+    assert checks.replies(at_least=1, at_most=2)(run) == []
+
+
 def test_saying_nothing_fails_a_scenario_that_expects_an_answer() -> None:
     assert checks.replies(at_least=1)(FakeRun())
 

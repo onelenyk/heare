@@ -38,6 +38,16 @@ saw any of it.
 
 Covered now by `tests/test_memory_ranking.py`, whose four assertions all
 fail against the shipped clause.
+## It answers one sentence two or three times
+
+Said in one breath, "Дока, привіт. Скажи одним реченням, як ти себе
+почуваєш" is greeted twice and then answered — three replies, measured
+in every run. Recognition hands the sentence over in four pieces spread
+across five seconds, and nothing downstream can tell that gap from a
+pause. The fix is not available in the gate: see
+docs/findings/two-clocks.md for what was tried, what it cost, and the two
+routes that would actually resolve it.
+
 
 ## Barge-in waited on a five-second network call — fixed
 
