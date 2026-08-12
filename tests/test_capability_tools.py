@@ -21,7 +21,7 @@ class _FakeSettings:
     workspace_dir: Path | None = None
     mcp_dir: Path | None = None
     skills_paths: list[str] = field(default_factory=list)
-    confirmation_passphrase: str | None = None
+    capability_install_enabled: bool = False
     identity_file: Path = field(default_factory=lambda: Path("/nonexistent"))
     marketplace_url: str = ""
     mcp_registry_url: str = ""
@@ -459,7 +459,7 @@ def _consent_settings(workspace: Path) -> _FakeSettings:
     return _FakeSettings(
         workspace_dir=workspace,
         mcp_dir=workspace.parent / "mcp",
-        confirmation_passphrase="open sesame",
+        capability_install_enabled=True,
     )
 
 

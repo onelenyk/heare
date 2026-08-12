@@ -1,8 +1,16 @@
 """Installer for skills + MCP servers sourced from discovery (US-006).
 
-Security-critical. All installs require a hard consent gate (configured
-passphrase) and an explicit ``user_confirmed=True`` flag from the LLM tool
-call before any filesystem mutation occurs.
+Security-critical. Every install requires two things before any
+filesystem mutation: ``capability_install_enabled`` in the settings, and
+an explicit ``user_confirmed=True`` on the tool call.
+
+Be clear about what the second one is worth. ``user_confirmed`` is a flag
+the model fills in itself, asked politely by the schema to set it "ONLY
+after the user said yes via voice" — so the pair means "installs are
+switched on" and "the model says you agreed", not "you agreed". The
+checksum, the hostname allowlist and the archive member checks below are
+real; this gate is the soft part, and the honest repair is to check
+consent against what was actually said. See docs/next.md.
 """
 
 from __future__ import annotations
@@ -46,8 +54,8 @@ _DOWNLOAD_OVERALL_TIMEOUT_S = 30.0
 _DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024
 
 
-MSG_NO_CONSENT_EN = "Speaker ID or passphrase is required to install tools. Please configure one in settings."
-MSG_NO_CONSENT_UK = "Для встановлення інструментів потрібен Speaker ID або кодова фраза. Налаштуй у параметрах."
+MSG_NO_CONSENT_EN = "Installing tools is switched off. Turn it on in settings first."
+MSG_NO_CONSENT_UK = "Встановлення інструментів вимкнено. Спершу увімкни це в налаштуваннях."
 
 MSG_INSTALLED_SKILL_EN = "Installed {slug}. You can use it now."
 MSG_INSTALLED_SKILL_UK = "Встановив {slug}. Можеш користуватися."
@@ -90,10 +98,9 @@ class InstallFailed(Exception):
 
 
 def _consent_available(settings) -> tuple[bool, str]:
-    phrase = getattr(settings, "confirmation_passphrase", None)
-    if isinstance(phrase, str) and phrase.strip():
-        return True, "passphrase"
-    return False, "no_consent_method"
+    if bool(getattr(settings, "capability_install_enabled", False)):
+        return True, "enabled"
+    return False, "installs_disabled"
 
 
 def _check_consent(settings, user_confirmed: bool) -> None:
@@ -505,14 +512,14 @@ async def install_skill(
     try:
         _check_consent(settings, user_confirmed)
     except InstallRefused as exc:
-        if str(exc) == "no_consent_method":
+        if str(exc) == "installs_disabled":
             return InstallResult(
                 success=False,
                 slug=slug,
                 message_en=MSG_NO_CONSENT_EN,
                 message_uk=MSG_NO_CONSENT_UK,
                 requires_restart=False,
-                error_code="no_consent_method",
+                error_code="installs_disabled",
             )
         raise
 
@@ -697,14 +704,14 @@ async def create_skill(
     try:
         _check_consent(settings, user_confirmed)
     except InstallRefused as exc:
-        if str(exc) == "no_consent_method":
+        if str(exc) == "installs_disabled":
             return InstallResult(
                 success=False,
                 slug=slug,
                 message_en=MSG_NO_CONSENT_EN,
                 message_uk=MSG_NO_CONSENT_UK,
                 requires_restart=False,
-                error_code="no_consent_method",
+                error_code="installs_disabled",
             )
         raise
 
@@ -789,14 +796,14 @@ async def install_mcp_server(
     try:
         _check_consent(settings, user_confirmed)
     except InstallRefused as exc:
-        if str(exc) == "no_consent_method":
+        if str(exc) == "installs_disabled":
             return InstallResult(
                 success=False,
                 slug=slug,
                 message_en=MSG_NO_CONSENT_EN,
                 message_uk=MSG_NO_CONSENT_UK,
                 requires_restart=True,
-                error_code="no_consent_method",
+                error_code="installs_disabled",
             )
         raise
 

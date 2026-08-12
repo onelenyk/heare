@@ -6,53 +6,55 @@ import os
 from unittest.mock import Mock
 
 
-def test_set_passphrase_writes_to_config(tmp_path, monkeypatch) -> None:
-    """set-passphrase command writes confirmation_passphrase to config.toml."""
+def test_allow_installs_writes_the_switch(tmp_path, monkeypatch) -> None:
+    """`allow-installs on` writes a real TOML boolean, top level."""
     monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
 
-    from src.main import _cmd_set_wake_word
+    from src.main import _cmd_allow_installs
 
-    args = Mock(word="авторизую")
-    result = _cmd_set_wake_word(args)
+    assert _cmd_allow_installs(Mock(state="on")) == 0
 
-    assert result == 0
+    content = (tmp_path / "config.toml").read_text()
+    assert "capability_install_enabled = true" in content
+    assert (tmp_path / ".onboarded").exists()
+
+
+def test_allow_installs_off_writes_false_not_a_string(tmp_path, monkeypatch) -> None:
+    """A quoted "False" parses back as a truthy string — off would have
+    read as permission granted."""
+    import tomllib
+
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+
+    from src.main import _cmd_allow_installs
+
+    assert _cmd_allow_installs(Mock(state="off")) == 0
+
+    parsed = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert parsed["capability_install_enabled"] is False
+
+
+def test_allow_installs_rejects_anything_else(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+
+    from src.main import _cmd_allow_installs
+
+    assert _cmd_allow_installs(Mock(state="maybe")) == 1
+
+
+def test_allow_installs_updates_an_existing_value(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+
     config_file = tmp_path / "config.toml"
-    assert config_file.exists()
+    config_file.write_text('capability_install_enabled = true\nmode = "ambient"\n')
+
+    from src.main import _cmd_allow_installs
+
+    assert _cmd_allow_installs(Mock(state="off")) == 0
+
     content = config_file.read_text()
-    assert 'confirmation_passphrase = "авторизую"' in content
-
-    onboarding_flag = tmp_path / ".onboarded"
-    assert onboarding_flag.exists()
-
-
-def test_set_passphrase_rejects_empty(tmp_path, monkeypatch) -> None:
-    """set-passphrase command rejects empty passphrase."""
-    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
-
-    from src.main import _cmd_set_wake_word
-
-    args = Mock(word="  ")
-    result = _cmd_set_wake_word(args)
-
-    assert result == 1
-
-
-def test_set_passphrase_updates_existing_config(tmp_path, monkeypatch) -> None:
-    """set-passphrase command updates existing confirmation_passphrase line."""
-    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
-
-    config_file = tmp_path / "config.toml"
-    config_file.write_text('confirmation_passphrase = "old"\nmode = "ambient"\n')
-
-    from src.main import _cmd_set_wake_word
-
-    args = Mock(word="newpass")
-    result = _cmd_set_wake_word(args)
-
-    assert result == 0
-    content = config_file.read_text()
-    assert 'confirmation_passphrase = "newpass"' in content
-    assert '"old"' not in content
+    assert "capability_install_enabled = false" in content
+    assert "true" not in content
     assert 'mode = "ambient"' in content
 
 

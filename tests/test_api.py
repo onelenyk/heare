@@ -374,36 +374,49 @@ async def test_post_cancel(api, mock_state) -> None:
 
 
 # ---------------------------------------------------------------------------
-# POST /api/settings/passphrase, POST /api/settings/reset-session
+# POST /api/settings/allow-installs, POST /api/settings/reset-session
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_set_passphrase_valid(api, monkeypatch) -> None:
+async def test_allow_installs_valid(api, monkeypatch) -> None:
     called = {}
     monkeypatch.setattr(
-        "src.api.set_confirmation_passphrase", lambda word: called.setdefault("word", word)
+        "src.api.set_capability_install_enabled",
+        lambda enabled: called.setdefault("enabled", enabled),
     )
-    request = _mock_request(json_data={"passphrase": "авторизую"})
-    resp = await api._handle_set_passphrase(request)
+    request = _mock_request(json_data={"enabled": True})
+    resp = await api._handle_allow_installs(request)
     assert resp.status == 200
     data = json.loads(resp.body)
     assert data["ok"] is True
+    assert data["enabled"] is True
     assert data["restart_required"] is True
-    assert called["word"] == "авторизую"
+    assert called["enabled"] is True
 
 
 @pytest.mark.asyncio
-async def test_set_passphrase_empty(api, monkeypatch) -> None:
+async def test_allow_installs_off_is_a_valid_choice(api, monkeypatch) -> None:
+    """Turning it off must reach the setter, not be read as a missing value."""
+    called = {}
     monkeypatch.setattr(
-        "src.api.set_confirmation_passphrase",
-        lambda word: pytest.fail("should not be called"),
+        "src.api.set_capability_install_enabled",
+        lambda enabled: called.setdefault("enabled", enabled),
     )
-    request = _mock_request(json_data={"passphrase": "  "})
-    resp = await api._handle_set_passphrase(request)
+    resp = await api._handle_allow_installs(_mock_request(json_data={"enabled": False}))
+    assert resp.status == 200
+    assert called["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_allow_installs_rejects_a_non_boolean(api, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.api.set_capability_install_enabled",
+        lambda enabled: pytest.fail("should not be called"),
+    )
+    resp = await api._handle_allow_installs(_mock_request(json_data={"enabled": "yes"}))
     assert resp.status == 400
-    data = json.loads(resp.body)
-    assert data["ok"] is False
+    assert json.loads(resp.body)["ok"] is False
 
 
 @pytest.mark.asyncio
@@ -449,7 +462,7 @@ def test_routes_registered(api) -> None:
     assert ("POST", "/model") in pairs
     assert ("GET", "/api/providers") in pairs
     assert ("GET", "/api/models") in pairs
-    assert ("POST", "/api/settings/passphrase") in pairs
+    assert ("POST", "/api/settings/allow-installs") in pairs
     assert ("POST", "/api/settings/reset-session") in pairs
     assert ("POST", "/cancel") in pairs
 

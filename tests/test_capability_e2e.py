@@ -20,7 +20,7 @@ from src.agent.tools.capability_index import IndexEntry
 class _FakeSettings:
     workspace_dir: Path | None = None
     skills_paths: list[str] = field(default_factory=list)
-    confirmation_passphrase: str | None = None
+    capability_install_enabled: bool = False
     identity_file: Path = field(default_factory=lambda: Path("/nonexistent"))
     marketplace_url: str = "https://skillsmp.com"
     mcp_registry_url: str = ""
@@ -59,7 +59,7 @@ def settings(tmp_path: Path, fake_home: Path) -> _FakeSettings:
     workspace.mkdir()
     return _FakeSettings(
         workspace_dir=workspace,
-        confirmation_passphrase="test-pass",
+        capability_install_enabled=True,
     )
 
 

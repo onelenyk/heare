@@ -4,9 +4,8 @@ import { API } from '../App';
 export default function SettingsPanel({ state, onSave, onToast }) {
   const groqRef = useRef(null);
   const deepseekRef = useRef(null);
-  const passphraseRef = useRef(null);
 
-  const [passStatus, setPassStatus] = useState('');
+  const [installsStatus, setInstallsStatus] = useState('');
   const [resetArmed, setResetArmed] = useState(false);
   const [resetStatus, setResetStatus] = useState('');
   const armTimer = useRef(null);
@@ -19,26 +18,23 @@ export default function SettingsPanel({ state, onSave, onToast }) {
     onSave(g, d);
   }
 
-  async function handleSavePassphrase() {
-    const word = passphraseRef.current ? passphraseRef.current.value.trim() : '';
-    if (!word) return;
-    setPassStatus('saving…');
+  async function handleAllowInstalls(enabled) {
+    setInstallsStatus('saving…');
     try {
-      const r = await fetch(API + '/api/settings/passphrase', {
+      const r = await fetch(API + '/api/settings/allow-installs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase: word }),
+        body: JSON.stringify({ enabled }),
       });
       const d = await r.json();
       if (d.ok) {
-        setPassStatus('saved — restart daemon to apply');
-        passphraseRef.current.value = '';
-        if (onToast) onToast('passphrase saved', 'ok');
+        setInstallsStatus((enabled ? 'allowed' : 'blocked') + ' — restart daemon to apply');
+        if (onToast) onToast(enabled ? 'installs allowed' : 'installs blocked', 'ok');
       } else {
-        setPassStatus(d.error || 'save failed');
+        setInstallsStatus(d.error || 'save failed');
       }
     } catch (e) {
-      setPassStatus('save failed: ' + e.message);
+      setInstallsStatus('save failed: ' + e.message);
     }
   }
 
@@ -85,12 +81,12 @@ export default function SettingsPanel({ state, onSave, onToast }) {
         </div>
 
         <div className="settings-panel-section">
-          <div className="settings-panel-section-title">confirmation passphrase</div>
-          <label>Say this word instead of "yes" to skip the confirm prompt</label>
-          <input ref={passphraseRef} type="text" placeholder="e.g. авторизую" />
+          <div className="settings-panel-section-title">installing tools</div>
+          <label>Let the agent install skills and MCP servers</label>
           <div style={{display: "flex", gap: 8, marginTop: 8, alignItems: "center"}}>
-            <button className="btn" onClick={handleSavePassphrase}>Save Passphrase</button>
-            {passStatus && <span className="settings-panel-hint">{passStatus}</span>}
+            <button className="btn" onClick={() => handleAllowInstalls(true)}>Allow</button>
+            <button className="btn" onClick={() => handleAllowInstalls(false)}>Block</button>
+            {installsStatus && <span className="settings-panel-hint">{installsStatus}</span>}
           </div>
         </div>
 

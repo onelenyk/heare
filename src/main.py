@@ -812,20 +812,28 @@ def _cmd_audio_output(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_set_wake_word(args: argparse.Namespace) -> int:
-    from src.config import HEARE_HOME, set_confirmation_passphrase  # noqa: E402
+def _cmd_allow_installs(args: argparse.Namespace) -> int:
+    """Turn installing skills and MCP servers on or off.
 
-    word = args.word.strip()
-    if not word:
-        print("passphrase cannot be empty")
+    Was `set-passphrase`, which took a secret word, called a function
+    named after the wake word, and set neither: the value was never
+    compared to anything, only tested for emptiness.
+    """
+    from src.config import HEARE_HOME, set_capability_install_enabled  # noqa: E402
+
+    choice = args.state.strip().lower()
+    if choice not in ("on", "off"):
+        print("usage: allow-installs on|off")
         return 1
 
-    set_confirmation_passphrase(word)
+    enabled = choice == "on"
+    set_capability_install_enabled(enabled)
 
     # Mark onboarding as complete
     (HEARE_HOME / ".onboarded").touch()
 
-    print(f"confirmation passphrase set to '{word}' — restart daemon to apply")
+    state = "allowed" if enabled else "blocked"
+    print(f"installing skills and MCP servers is now {state} — restart daemon to apply")
     return 0
 
 
@@ -940,12 +948,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate a new browser-bridge token (restart daemon to apply)",
     )
 
-    set_word_p = sub.add_parser(
-        "set-passphrase", help="Set the confirmation passphrase (restart required)"
+    installs_p = sub.add_parser(
+        "allow-installs",
+        help="Allow or block installing skills and MCP servers (restart required)",
     )
-    set_word_p.add_argument(
-        "word", help="Secret word to confirm actions (e.g. авторизую)"
-    )
+    installs_p.add_argument("state", choices=("on", "off"), help="on or off")
 
     _ = sub.add_parser(
         "watch", help="(removed) TUI dashboard — use web UI at http://127.0.0.1:9780"
@@ -990,8 +997,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_reset_identity(args)
     if cmd == "rotate-browser-token":
         return _cmd_rotate_browser_token(args)
-    if cmd == "set-passphrase":
-        return _cmd_set_wake_word(args)
+    if cmd == "allow-installs":
+        return _cmd_allow_installs(args)
     if cmd == "watch":
         return _cmd_watch(args)
     if cmd == "portal":

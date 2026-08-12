@@ -30,7 +30,7 @@ from src.config import (  # noqa: E402
     HEARE_HOME,
     api_key_fields,
     backup_session_file,
-    set_confirmation_passphrase,
+    set_capability_install_enabled,
     write_browser_bridge_token,
     write_config_toml_values,
     write_env_updates,
@@ -123,7 +123,7 @@ class API:
         self._app.router.add_get("/settings/status", self._handle_settings_status)
         self._app.router.add_post("/settings", self._handle_settings)
         self._app.router.add_post(
-            "/api/settings/passphrase", self._handle_set_passphrase
+            "/api/settings/allow-installs", self._handle_allow_installs
         )
         self._app.router.add_post(
             "/api/settings/reset-session", self._handle_reset_session
@@ -195,7 +195,7 @@ class API:
         self._app.router.add_get("/settings/status", self._handle_settings_status)
         self._app.router.add_post("/settings", self._handle_settings)
         self._app.router.add_post(
-            "/api/settings/passphrase", self._handle_set_passphrase
+            "/api/settings/allow-installs", self._handle_allow_installs
         )
         self._app.router.add_post(
             "/api/settings/reset-session", self._handle_reset_session
@@ -854,16 +854,23 @@ class API:
         if locale:
             write_config_toml_values(locale)
 
-    async def _handle_set_passphrase(self, request):
-        """POST /api/settings/passphrase — set the confirmation passphrase."""
+    async def _handle_allow_installs(self, request):
+        """POST /api/settings/allow-installs — allow or block installing
+        skills and MCP servers.
+
+        Replaces /api/settings/passphrase, which took a secret word that
+        was only ever tested for emptiness.
+        """
         body = await request.json()
-        word = body.get("passphrase", "").strip()
-        if not word:
+        enabled = body.get("enabled")
+        if not isinstance(enabled, bool):
             return web.json_response(
-                {"ok": False, "error": "passphrase cannot be empty"}, status=400
+                {"ok": False, "error": "enabled must be true or false"}, status=400
             )
-        set_confirmation_passphrase(word)
-        return web.json_response({"ok": True, "restart_required": True})
+        set_capability_install_enabled(enabled)
+        return web.json_response(
+            {"ok": True, "enabled": enabled, "restart_required": True}
+        )
 
     async def _handle_reset_session(self, request):
         """POST /api/settings/reset-session — backup session.json and start fresh."""

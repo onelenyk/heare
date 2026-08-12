@@ -17,7 +17,7 @@ from src.agent.tools.capability_index import IndexEntry
 
 @dataclass
 class _FakeSettings:
-    confirmation_passphrase: str | None = "open sesame"
+    capability_install_enabled: bool = True
     workspace_dir: Path | None = None
     mcp_dir: Path | None = None
     installation_signature_required: bool = False
@@ -52,7 +52,7 @@ def settings(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     return _FakeSettings(
-        confirmation_passphrase="test-consent",
+        capability_install_enabled=True,
         workspace_dir=workspace,
         mcp_dir=tmp_path / "mcp",
     )
@@ -73,19 +73,19 @@ def _patch_download(content: bytes):
 
 
 @pytest.mark.asyncio
-async def test_install_refused_when_no_consent_method(settings, fake_home):
-    settings.confirmation_passphrase = None
+async def test_install_refused_when_installs_disabled(settings, fake_home):
+    settings.capability_install_enabled = False
 
     result = await installer.install_skill(_entry(), settings=settings, user_confirmed=True)
     assert result.success is False
-    assert result.error_code == "no_consent_method"
+    assert result.error_code == "installs_disabled"
     assert result.message_en == installer.MSG_NO_CONSENT_EN
     assert result.message_uk == installer.MSG_NO_CONSENT_UK
 
 
 @pytest.mark.asyncio
 async def test_install_refused_when_user_not_confirmed(settings, fake_home):
-    settings.confirmation_passphrase = "test-pass"
+    settings.capability_install_enabled = True
     with pytest.raises(installer.InstallRefused) as exc:
         await installer.install_skill(_entry(), settings=settings, user_confirmed=False)
     assert str(exc.value) == "user_not_confirmed"
@@ -607,7 +607,7 @@ async def test_create_skill_refuses_without_user_confirmed(settings, fake_home):
 
 @pytest.mark.asyncio
 async def test_create_skill_refuses_without_consent_method(settings, fake_home):
-    settings.confirmation_passphrase = None
+    settings.capability_install_enabled = False
     result = await installer.create_skill(
         name="x",
         description="d",
@@ -616,7 +616,7 @@ async def test_create_skill_refuses_without_consent_method(settings, fake_home):
         user_confirmed=True,
     )
     assert result.success is False
-    assert result.error_code == "no_consent_method"
+    assert result.error_code == "installs_disabled"
 
 
 @pytest.mark.asyncio
