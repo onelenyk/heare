@@ -264,3 +264,68 @@ def test_delay_estimator_stays_quiet_when_nothing_is_playing():
         est.add(_tone(FRAME), np.zeros(FRAME, dtype=np.float32))
     assert est.ready()
     assert est.estimate() is None
+
+
+@pytest.mark.parametrize("echo_db", [-10.0, -20.0])
+def test_a_voice_over_the_echo_survives_the_canceller(echo_db: float):
+    """Double talk: the person speaks while the assistant is speaking.
+    This is the whole of barge-in.
+
+    The near-end here is bursts of broadband noise, not a tone. That is
+    not a detail: given a steady tone the canceller removes it almost
+    entirely — 2000 in, 29 out — because a stationary signal inside an
+    echo-dominated band is exactly what its residual suppressor exists to
+    remove. A first version of this test used a tone, measured 36 dB of
+    attenuation, and would have had me report that the canceller eats
+    interruptions. It does not. Speech is not stationary.
+    """
+    pytest.importorskip("pywebrtc_audio")
+    import asyncio
+
+    from pipecat.frames.frames import InputAudioRawFrame
+
+    from src.core.aec import make_continuous_aec
+
+    far = FarEnd()
+    far.bot_speaking = True
+    aec = make_continuous_aec(far, stream_delay_ms=0, noise_suppression=True)
+
+    pushed: list = []
+
+    async def capture(frame, direction):
+        pushed.append(frame)
+
+    aec.push_frame = capture  # type: ignore[method-assign]
+
+    rng = np.random.default_rng(7)
+    gain = 10 ** (echo_db / 20)
+
+    async def feed() -> float:
+        voice_peak = 0.0
+        for i in range(80):
+            n = FRAME * 2
+            bot = _tone(n, freq=300.0, amp=8000.0, phase=i * n)
+            far.push(bot.astype(np.int16).tobytes(), SAMPLE_RATE)
+            # Speaking in bursts, at a quarter of the assistant's level.
+            speaking = (i // 10) % 2 == 0
+            near = 2000.0 * rng.standard_normal(n) if speaking else np.zeros(n)
+            mic = (near + bot * gain).astype(np.int16)
+            await aec.process_frame(
+                InputAudioRawFrame(
+                    audio=mic.tobytes(), sample_rate=SAMPLE_RATE, num_channels=1
+                ),
+                None,
+            )
+            if i > 30 and speaking:
+                out = np.frombuffer(pushed[-1].audio, dtype=np.int16)
+                voice_peak = max(voice_peak, float(np.abs(out).max()))
+        return voice_peak
+
+    peak = asyncio.run(feed())
+
+    # Voice activity detection needs a level, not a waveform. Below this
+    # an interruption is inaudible to it and the assistant talks over you.
+    assert peak > 500, (
+        f"the interrupting voice came out at {peak:.0f} against an echo at "
+        f"{echo_db} dB — barge-in cannot fire on that"
+    )

@@ -81,16 +81,34 @@ Two things could actually resolve it, neither small:
   the same signal. Whisper-over-HTTP cannot do this; it is a segmented
   service by construction.
 
-## What is true today
+## What was done — the first route
 
-The debounce is 1.2 s: long enough to join the fragments that arrive
-close together, short enough to keep winning the race. Sentences said in
-one breath with a long clause in the middle still get answered twice.
+`turn_end = "sentence"` (src/pipeline/turns.py). It extends the
+`SpeechTimeoutUserTurnStopStrategy` with one change: every transcript
+pushes the deadline back, instead of only the ones that arrive before
+voice activity ends. The turn is over when the person has stopped
+speaking *and* the recogniser has stopped producing. One clock, and it
+is the words.
 
-The scenarios allow up to two replies to one question for exactly this
-reason, and that tolerance is a record of an unfixed problem, not a
-judgement that two replies are fine.
+That alone took the greeting from three replies to two. The rest came
+from `vad_stop_secs`, raised 0.2 → 0.6: at 0.2 the pause after a comma
+counted as the room going quiet, so the sentence was split before the
+strategy ever saw it. With both, the same sentence now arrives as a
+single transcript:
 
-The attempt above is not in the tree. It is written down here so the next
-person to have the same good idea can start from the measurement instead
-of the idea.
+```
+before   2.86 s  "Дока, привіт!"          →  greeted
+         6.74 s  "Скажи одним реченням…"  →  answered separately
+after    8.51 s  "Дока, перелічи будь ласка всі вісім планет…"   one turn
+```
+
+Measured over runs: hello and addressed went from three replies to two,
+and each run got 3–5 seconds shorter. Two remain because they fall either
+side of a full stop — a pause a person makes on purpose, and arguably
+one an assistant should answer.
+
+The cost is 0.4 s added to the end of every turn, paid for by removing
+the debounce's contribution to the same wait.
+
+The second route — streaming recognition — is still open and still the
+only way to get below this.

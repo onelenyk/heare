@@ -38,15 +38,40 @@ saw any of it.
 
 Covered now by `tests/test_memory_ranking.py`, whose four assertions all
 fail against the shipped clause.
-## It answers one sentence two or three times
+## It answers one sentence two or three times — mostly fixed
 
-Said in one breath, "Дока, привіт. Скажи одним реченням, як ти себе
-почуваєш" is greeted twice and then answered — three replies, measured
-in every run. Recognition hands the sentence over in four pieces spread
-across five seconds, and nothing downstream can tell that gap from a
-pause. The fix is not available in the gate: see
-docs/findings/two-clocks.md for what was tried, what it cost, and the two
-routes that would actually resolve it.
+Three replies became two: `turn_end = "sentence"` and `vad_stop_secs`
+0.2 → 0.6. The two that remain fall either side of a full stop. See
+docs/findings/two-clocks.md.
+
+## Interrupting works about half the time, and the canceller is involved
+
+Measured in the simulated room, four runs each, everything else held
+still:
+
+| | barge-in | landed |
+|---|---|---|
+| echo cancellation on | 1040–1300 ms | 2 of 4 |
+| echo cancellation off | 557–1036 ms | 4 of 4 |
+
+In every failed run voice activity detection fired exactly one time
+fewer than in the successful ones. The interrupting voice is not being
+lost downstream — it is not being recognised as a voice at all.
+
+Two explanations were tested and are wrong. Switching off noise
+suppression made it worse (0 of 4). Lowering the detection thresholds
+made it worse (1 of 4). And the canceller does not destroy speech: fed a
+voice speaking over an echo it returns it intact — 2000 in, 5548 out,
+now asserted in tests/test_core_aec.py. (Fed a *tone* it returns 29, and
+a first version of that test used a tone and would have had me report
+the opposite. Speech is not stationary.)
+
+What the numbers do say: in the room the canceller achieves 9–21 dB of
+suppression, not the 40–50 dB measured against a tone, and its delay
+estimator reports 1–177 ms at confidence 0.01–0.08 — which is to say it
+cannot find the echo it is supposed to be removing. Alignment between
+the reference and the echo is the next thing to measure, and it wants a
+session of its own rather than more four-run samples of a coin flip.
 
 
 ## Barge-in waited on a five-second network call — fixed

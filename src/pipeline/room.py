@@ -722,15 +722,12 @@ SCENARIOS: dict[str, Scenario] = {
         checks=[
             checks.never_hears_itself(),
             checks.heard("привіт"),
-            # Three, and that number is a record of a defect rather than
-            # a judgement that three is fine. "Дока, привіт. Скажи одним
-            # реченням, як ти себе почуваєш" is one breath, and the
-            # recogniser hands it over in four pieces spread across five
-            # seconds. It greets the address, greets the greeting, and
-            # then answers the question. See docs/findings/two-clocks.md
-            # — the fix is not available at this layer. Tighten this to
-            # two the day it is.
-            checks.replies(at_least=1, at_most=3),
+            # Two: a greeting and an answer. It was three until the two
+            # turn-end timers were collapsed into one — the recogniser
+            # hands this sentence over in pieces, and every gap used to
+            # start a new turn. The remaining two fall either side of a
+            # full stop, which is a pause a person makes on purpose.
+            checks.replies(at_least=1, at_most=2),
             checks.first_reply_under(12.0),
         ],
     ),
@@ -805,8 +802,7 @@ SCENARIOS: dict[str, Scenario] = {
         checks=[
             checks.never_hears_itself(),
             checks.heard("балачки"),
-            # Three for the same reason as hello. See two-clocks.md.
-            checks.replies(at_least=1, at_most=3),
+            checks.replies(at_least=1, at_most=2),
         ],
     ),
     "stop": Scenario(
@@ -828,6 +824,19 @@ SCENARIOS: dict[str, Scenario] = {
 }
 
 
+def _as_value(raw: str):
+    """Whatever the setting wants: a flag, a number, or a word."""
+    low = raw.lower()
+    if low in ("true", "yes", "on"):
+        return True
+    if low in ("false", "no", "off"):
+        return False
+    try:
+        return float(raw) if "." in raw else int(raw)
+    except ValueError:
+        return raw
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -841,6 +850,27 @@ def main() -> int:
     p.add_argument("--delay-ms", type=int, default=120)
     p.add_argument("--noise", type=float, default=-60.0)
     p.add_argument("--window", type=float, default=0.0, help="override the window")
+    p.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "override any setting for the run, e.g. --set "
+            "aec_noise_suppression=false. The comparison is the "
+            "measurement: everything held still, one thing moved."
+        ),
+    )
+    p.add_argument(
+        "--vad-stop",
+        type=float,
+        default=0.0,
+        help=(
+            "override vad_stop_secs. How long a pause has to be before "
+            "the room counts as quiet — which decides both what holds a "
+            "sentence together and what lets an interruption in."
+        ),
+    )
     p.add_argument(
         "--no-aec",
         action="store_true",
@@ -881,6 +911,11 @@ def main() -> int:
         room = Room(echo_db=args.echo, delay_ms=args.delay_ms, noise_dbfs=args.noise)
         if args.no_aec:
             room.overrides["aec_enabled"] = False
+        if args.vad_stop:
+            room.overrides["vad_stop_secs"] = args.vad_stop
+        for pair in args.set:
+            key, _, raw = pair.partition("=")
+            room.overrides[key.strip()] = _as_value(raw.strip())
         started = time.monotonic()
         window = args.window or scenario.window
         # Unattended, a hung run is worse than a failed one: it reports

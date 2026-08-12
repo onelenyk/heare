@@ -168,16 +168,21 @@ def test_the_speech_gate_sits_where_it_can_see_both() -> None:
     assert stages.index("ENERGY") < stages.index("GATE")
 
 
-def test_turn_end_defaults_to_silence_not_a_model() -> None:
+def test_turn_end_is_decided_by_words_not_by_a_model_or_a_stopwatch() -> None:
     """Deciding when the user's turn ended is the largest single delay in
     the loop — larger than the model, larger than speech recognition.
 
     Measured on a real turn: the transcript was ready at 02.676 and the
     smart-turn analyzer did not declare the turn over until 05.683.
     Three seconds spent holding words it already had.
+
+    Silence alone is no better, only faster: its countdown starts when
+    the room goes quiet and cannot be extended by words that arrive
+    afterwards — which is every word. That is what answered one sentence
+    three times.
     """
     settings = Settings()
-    assert settings.turn_end == "silence"
+    assert settings.turn_end == "sentence"
     assert 0.4 <= settings.turn_silence_seconds <= 1.0, (
         "shorter cuts people off mid-thought; longer is the delay we removed"
     )

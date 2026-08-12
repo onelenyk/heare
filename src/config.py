@@ -241,7 +241,14 @@ class Settings:
     # cannot tell a pause for thought from a finished sentence, so speak
     # in whole thoughts — in exchange the assistant starts answering
     # while you are still lowering your voice.
-    turn_end: str = "silence"
+    # "sentence" is the default and the only one of the three with a
+    # single clock. It ends the turn once the person has stopped speaking
+    # *and* the recogniser has stopped producing words, so a sentence
+    # whose second half is still being transcribed stays one turn. The
+    # other two start their countdown at silence and cannot be extended
+    # by words that arrive afterwards — which is every word, since
+    # recognition takes about a second. See docs/findings/two-clocks.md.
+    turn_end: str = "sentence"
     # 1.4 s of silence ends a turn. Two measurements pushed it up from
     # 0.7: at 0.7 "Подивись будь ласка, скільки вільного місця на диску"
     # split at the comma and was acknowledged twice; at 1.0 it split into
@@ -520,7 +527,13 @@ class Settings:
     # it reaching Whisper at all, which also stops paying for it.
     vad_confidence: float = 0.6
     vad_start_secs: float = 0.2
-    vad_stop_secs: float = 0.2
+    # 0.6, not 0.2: this decides how long a pause has to be before the
+    # room counts as quiet, and with turn_end="sentence" that is also
+    # what holds one sentence together. At 0.2 the pause after a comma
+    # ended the turn, so "Дока, привіт. Скажи одним реченням, як ти себе
+    # почуваєш" was answered as two questions and greeted twice. The cost
+    # is 0.4 s added to the end of every turn.
+    vad_stop_secs: float = 0.6
     vad_min_volume: float = 0.25
 
     # Audio gain / volume controls. Applied as multipliers to raw PCM

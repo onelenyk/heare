@@ -565,21 +565,22 @@ async def build_pipeline(
     )
     # Deciding when your turn has ended is the single largest delay in
     # the loop — larger than the model, larger than speech recognition.
-    turn_mode = getattr(settings, "turn_end", "silence")
+    turn_mode = getattr(settings, "turn_end", "sentence")
+    turn_wait = getattr(settings, "turn_silence_seconds", 0.7)
     if turn_mode == "smart":
         smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
         turn_stop_strategy = TurnAnalyzerUserTurnStopStrategy(
             turn_analyzer=smart_turn
         )
+    elif turn_mode == "sentence":
+        from src.pipeline.turns import sentence_turn_stop_strategy
+
+        turn_stop_strategy = sentence_turn_stop_strategy(user_speech_timeout=turn_wait)
     else:
         turn_stop_strategy = SpeechTimeoutUserTurnStopStrategy(
-            user_speech_timeout=getattr(settings, "turn_silence_seconds", 0.7)
+            user_speech_timeout=turn_wait
         )
-    logger.info(
-        "turn end: %s (%.2fs)",
-        turn_mode,
-        getattr(settings, "turn_silence_seconds", 0.7),
-    )
+    logger.info("turn end: %s (%.2fs)", turn_mode, turn_wait)
     # Pipecat 0.0.108 moved vad_analyzer/turn_analyzer off the transport and
     # onto the LLMUserAggregator (see LLMUserAggregatorParams below).
 
