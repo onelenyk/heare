@@ -36,6 +36,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -578,6 +579,11 @@ class Room:
 RUNS = Path.home() / ".heare" / "room-runs.jsonl"
 
 
+# One invocation of the suite. Without it, an afternoon of back-to-back
+# runs reads as a single run of sixty-seven scenarios.
+BATCH = uuid.uuid4().hex[:12]
+
+
 def record_run(scenario: "Scenario", room: "Room", result: RoomResult) -> None:
     """Append one line per scenario run.
 
@@ -598,6 +604,7 @@ def record_run(scenario: "Scenario", room: "Room", result: RoomResult) -> None:
                 json.dumps(
                     {
                         "ts": time.time(),
+                        "batch": BATCH,
                         "scenario": scenario.name,
                         "echo_db": room.echo_db,
                         "delay_ms": room.delay_ms,

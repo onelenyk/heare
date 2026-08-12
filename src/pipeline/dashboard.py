@@ -45,6 +45,7 @@ WHAT_IT_ASKS = {
 class Run:
     ts: float
     rows: list[dict]
+    batch: str | None = None
 
     @property
     def passed(self) -> int:
@@ -62,8 +63,11 @@ class Run:
 def load(journal: Path) -> list[Run]:
     """Group the journal into runs.
 
-    Lines written within a few minutes of each other are one run — the
-    suite writes them as it goes, and nothing else writes to this file.
+    Each invocation of the suite stamps its rows with a batch, so
+    grouping is exact. Rows written before that existed fall back to the
+    old rule — lines within ten minutes of each other are one run —
+    which held until an afternoon of back-to-back runs merged into a
+    single "run" of sixty-seven scenarios and a header that read 46/67.
     """
     if not journal.exists():
         return []
@@ -81,7 +85,15 @@ def load(journal: Path) -> list[Run]:
     runs: list[Run] = []
     for row in rows:
         ts = float(row.get("ts") or 0.0)
-        if runs and (ts == 0.0 or ts - runs[-1].ts < 600):
+        batch = row.get("batch")
+        if batch is not None:
+            if runs and runs[-1].batch == batch:
+                runs[-1].rows.append(row)
+                runs[-1].ts = max(runs[-1].ts, ts)
+            else:
+                runs.append(Run(ts=ts, rows=[row], batch=batch))
+            continue
+        if runs and runs[-1].batch is None and (ts == 0.0 or ts - runs[-1].ts < 600):
             runs[-1].rows.append(row)
             runs[-1].ts = max(runs[-1].ts, ts)
         else:
