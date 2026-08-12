@@ -10,8 +10,6 @@ from __future__ import annotations
 import types
 from typing import Any
 
-import pytest
-
 from src.agent.mcp_bridge import (
     McpBridge,
     _normalise_call_result,
@@ -231,3 +229,88 @@ def test_the_client_the_bridge_imports_is_actually_installed() -> None:
     """
     from mcp import ClientSession, StdioServerParameters  # noqa: F401
     from mcp.client.stdio import stdio_client  # noqa: F401
+
+
+# --- saying what happened ---------------------------------------------------
+#
+# The daemon log held no line about MCP across the project's whole life,
+# during which nothing ever connected. Silence has to stop being the
+# success signal.
+
+
+async def test_a_missing_client_is_reported_once_not_per_server(
+    monkeypatch, caplog
+) -> None:
+    """It is an install problem, not N broken servers."""
+    import builtins
+
+    from src.agent import mcp_bridge as mod
+
+    monkeypatch.setattr(
+        mod,
+        "read_mcp_servers",
+        lambda _d: {
+            "a": {"command": "x"},
+            "b": {"command": "y"},
+            "c": {"command": "z"},
+        },
+    )
+
+    real_import = builtins.__import__
+
+    def _no_mcp(name, *args, **kwargs):
+        if name == "mcp" or name.startswith("mcp."):
+            raise ImportError("No module named 'mcp'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _no_mcp)
+
+    async def _never(self, slug, entry):
+        raise AssertionError("must not try to spawn without a client")
+
+    monkeypatch.setattr(McpBridge, "_connect_one", _never)
+
+    with caplog.at_level("ERROR"):
+        bridge = await connect_mcp_servers(
+            types.SimpleNamespace(mcp_dir="/tmp/whatever")
+        )
+
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1, "one cause, one line"
+    assert "not installed" in errors[0].getMessage()
+    assert "3" in errors[0].getMessage(), "say how many servers it cost"
+    assert bridge.connected_servers == []
+
+
+async def test_a_failed_server_is_named_in_the_summary(monkeypatch, caplog) -> None:
+    from src.agent import mcp_bridge as mod
+
+    monkeypatch.setattr(
+        mod, "read_mcp_servers", lambda _d: {"engram": {"command": "nope"}}
+    )
+
+    async def _boom(self, slug, entry):
+        raise RuntimeError("cannot spawn")
+
+    monkeypatch.setattr(McpBridge, "_connect_one", _boom)
+
+    with caplog.at_level("WARNING"):
+        await connect_mcp_servers(types.SimpleNamespace(mcp_dir="/tmp/whatever"))
+
+    assert any(
+        "engram" in r.getMessage() and "0 of 1" in r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING"
+    )
+
+
+async def test_connecting_nothing_is_still_said_out_loud(monkeypatch, caplog) -> None:
+    """"No servers configured" and "could not connect" must not look alike."""
+    from src.agent import mcp_bridge as mod
+
+    monkeypatch.setattr(mod, "read_mcp_servers", lambda _d: {})
+
+    with caplog.at_level("INFO"):
+        await connect_mcp_servers(types.SimpleNamespace(mcp_dir="/tmp/whatever"))
+
+    assert any("no servers configured" in r.getMessage() for r in caplog.records)

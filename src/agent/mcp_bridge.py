@@ -129,23 +129,71 @@ class McpBridge:
         )
 
     async def connect(self, settings: "Settings") -> None:
+        """Connect every enabled server, and say plainly what happened.
+
+        This used to report nothing at all on the happy path, so silence
+        meant both "connected fine" and "could not connect to anything".
+        The daemon log holds not one line about MCP across the whole
+        history of the project — during which no server ever connected.
+        """
         servers = read_mcp_servers(settings.mcp_dir)
-        for slug, entry in servers.items():
-            if not isinstance(entry, dict) or entry.get("disabled"):
-                logger.debug("mcp_bridge: %r disabled/invalid; skipping", slug)
-                continue
+        wanted = [
+            slug
+            for slug, entry in servers.items()
+            if isinstance(entry, dict) and not entry.get("disabled")
+        ]
+        for slug in servers:
+            if slug not in wanted:
+                logger.debug("mcp: %r disabled or invalid; skipping", slug)
+
+        if not wanted:
+            logger.info("mcp: no servers configured in %s", settings.mcp_dir)
+            return
+
+        # Checked once, before the loop. A missing client is an install
+        # problem that affects every server, not a server that failed to
+        # spawn — caught per-server it read as "that one is broken", once
+        # per entry, and the real cause never appeared in the summary.
+        try:
+            import mcp  # noqa: F401
+        except ImportError:
+            logger.error(
+                "mcp: the client library is not installed, so none of the %d "
+                "configured server(s) can connect — add mcp>=1.11.0,<2 to the "
+                "dependencies",
+                len(wanted),
+            )
+            return
+
+        failed: list[str] = []
+        for slug in wanted:
             try:
-                await self._connect_one(slug, entry)
+                await self._connect_one(slug, servers[slug])
             except asyncio.TimeoutError:
+                failed.append(slug)
                 logger.warning(
-                    "mcp_bridge: server %r timed out after %.0fs; skipping this boot",
+                    "mcp: %r timed out after %.0fs; skipping this boot",
                     slug,
                     _CONNECT_TIMEOUT_S,
                 )
             except Exception:  # noqa: BLE001 — one bad server must not break boot
-                logger.exception(
-                    "mcp_bridge: server %r failed to connect; skipping", slug
-                )
+                failed.append(slug)
+                logger.exception("mcp: %r failed to connect; skipping", slug)
+
+        if failed:
+            logger.warning(
+                "mcp: %d of %d server(s) connected — failed: %s",
+                len(self._connected_servers),
+                len(wanted),
+                ", ".join(failed),
+            )
+        else:
+            logger.info(
+                "mcp: %d server(s) connected, %d tool(s) — %s",
+                len(self._connected_servers),
+                len(self._tools),
+                ", ".join(self._connected_servers),
+            )
 
     def prompt_block(self) -> str:
         """Live system-prompt block listing what is actually callable.
