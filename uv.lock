@@ -690,7 +690,6 @@ dependencies = [
     { name = "httpx" },
     { name = "pipecat-ai", extra = ["groq"] },
     { name = "pyaudio" },
-    { name = "pyinstaller" },
     { name = "python-dotenv" },
     { name = "pywebrtc-audio" },
     { name = "rumps" },
@@ -701,6 +700,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "pyinstaller" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -716,7 +716,6 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "pipecat-ai", extras = ["groq", "silero"], specifier = ">=0.0.108,<1.0" },
     { name = "pyaudio", specifier = ">=0.2.14" },
-    { name = "pyinstaller", specifier = ">=6.20.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pywebrtc-audio", specifier = ">=0.1.0" },
     { name = "rumps", specifier = ">=0.4.0" },
@@ -727,6 +726,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.11" },
+    { name = "pyinstaller", specifier = ">=6.20.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-cov", specifier = ">=5.0" },

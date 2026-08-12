@@ -46,9 +46,36 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=['runtime-hook-portaudio.py'],
+    # Measured on the 15 July bundle: 394 MB, of which 111 MB was llvmlite
+    # — an LLVM JIT that never runs. It arrives as
+    # llvmlite <- numba <- resampy <- pipecat, but pipecat's default
+    # resampler is SOXR (pipecat/audio/utils.py:53) and soxr is already
+    # bundled; resampy_resampler is a separate module nothing here selects.
+    #
+    # The transformers stack (~28 MB) looked droppable — we run
+    # turn_end="sentence" and never load a local model. It is not.
+    # pipecat's own user_turn_strategies.py imports local_smart_turn_v3
+    # at module level, and that imports transformers at module level, so
+    # anything using UserTurnStrategies pays for it. Excluding it built a
+    # 187 MB bundle that died on launch. Left in deliberately; removing
+    # it needs a patch to pipecat, not a line here.
+    #
+    # onnxruntime (59 MB) stays: Silero VAD imports it. scipy (35 MB)
+    # stays: pyloudnorm plus our own scipy.signal.firwin. nltk (11 MB)
+    # stays, unwillingly — pipecat/utils/string.py imports it at module
+    # level, so there is no excluding it without patching pipecat.
+    #
+    # PyInstaller does not check excludes at build time. Anything removed
+    # here that turns out to be imported lazily fails on the user's desk,
+    # not on ours — so every change to this list gets a launch and a
+    # spoken exchange before it ships.
     excludes=[
         'tkinter', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
         'matplotlib', 'notebook', 'jupyter', 'torch',
+        # 111 MB of JIT for a resampler we do not use
+        'numba', 'llvmlite', 'resampy',
+        # dev tooling that has no business in a shipped app
+        'mypy', 'mypyc', 'basedpyright', 'pytest',
     ],
     noarchive=False,
     optimize=0,

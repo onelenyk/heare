@@ -503,10 +503,6 @@ async def build_pipeline(
     # ------------------------------------------------------------------
     # Pipecat imports (deferred for admin-CLI compatibility)
     # ------------------------------------------------------------------
-    from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
-    from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
-        LocalSmartTurnAnalyzerV3,
-    )
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.vad.vad_analyzer import VADParams
     from pipecat.frames.frames import ErrorFrame
@@ -569,6 +565,16 @@ async def build_pipeline(
     turn_mode = getattr(settings, "turn_end", "sentence")
     turn_wait = getattr(settings, "turn_silence_seconds", 0.7)
     if turn_mode == "smart":
+        # Imported here rather than with the rest: it reaches for
+        # transformers at module level, which drags PIL, tokenizers and
+        # hf_xet along — 28 MB that the shipped bundle excludes. Eager,
+        # this import made every mode pay for a model only "smart" loads,
+        # and the exclusion would have killed the app on launch.
+        from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+        from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
+            LocalSmartTurnAnalyzerV3,
+        )
+
         smart_turn = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.0))
         turn_stop_strategy = TurnAnalyzerUserTurnStopStrategy(
             turn_analyzer=smart_turn
