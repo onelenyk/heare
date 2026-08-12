@@ -62,6 +62,42 @@ def test_far_collector_precedes_the_assistant_aggregator() -> None:
     assert stages[-2] == "FAR"
 
 
+def test_with_no_output_device_the_reference_is_tapped_before_the_transport() -> None:
+    """The rule above assumes a speaker exists behind the transport.
+
+    With devices switched off — every scenario run, every text-harness
+    session — the transport forwards nothing, so a tap behind it collects
+    silence and the canceller runs against an empty reference. It
+    cancelled nothing for the whole life of the scenarios; they passed on
+    the gates upstream instead, and the run where those gates let one
+    sentence through ended with the assistant answering its own voice
+    eight times in a row.
+    """
+    stages = _stages(far_collector="FAR", far_collector_upstream=True)
+
+    assert stages.index("FAR") < stages.index("OUTPUT")
+    assert stages[-1] == "ASSIST_AGG"
+
+
+def test_the_reference_is_tapped_once() -> None:
+    """Two taps would feed the same audio to the canceller twice and
+    leave it aligning against a reference it never played."""
+    for upstream in (True, False):
+        stages = _stages(far_collector="FAR", far_collector_upstream=upstream)
+        assert stages.count("FAR") == 1
+
+
+def test_the_simulated_speaker_plays_what_the_canceller_was_given() -> None:
+    """The room's microphone echoes whatever its speaker played. If that
+    speaker sits upstream of the tap, it plays audio the canceller never
+    saw — echo with no reference behind it, which nothing can remove."""
+    stages = _stages(
+        far_collector="FAR", far_collector_upstream=True, pre_output_stages=["MOUTH"]
+    )
+
+    assert stages.index("FAR") < stages.index("MOUTH") < stages.index("OUTPUT")
+
+
 def test_level_taps_straddle_the_canceller() -> None:
     """A tap either side is what makes a deleting stage visible at all."""
     stages = _stages(aec_filter="AEC", audio_probes=["P_RAW", "P_AEC"])

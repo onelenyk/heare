@@ -119,7 +119,10 @@ def test_interruptions_are_scheduled_against_speech_not_the_clock():
     person in a room cannot do it twice the same way."""
     line = Say(at="mid_speech", text="Стоп")
     assert line.at == "mid_speech"
-    assert line.delay_after_bot_starts < 0.6, (
-        "the reply rules cap most answers at one sentence, so a later cut "
-        "would land after the assistant already stopped"
+    assert line.delay_after_bot_starts >= 1.0, (
+        "the wait is measured from the start of speech that is still "
+        "going. Cut in earlier and the interruption lands on the "
+        "assistant's two-word answer to being addressed — 0.7 s, already "
+        "over — while the real answer goes unbothered and the run "
+        "records that barge-in never fired."
     )

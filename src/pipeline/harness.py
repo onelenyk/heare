@@ -105,6 +105,7 @@ def _load_env() -> None:
 async def _build_daemon(
     *,
     scratch_db: bool = False,
+    overrides: dict | None = None,
     audio_probes: list | None = None,
     post_stt_stages: list | None = None,
     post_llm_stages: list | None = None,
@@ -145,6 +146,12 @@ async def _build_daemon(
         scratch = Path(tempfile.mkdtemp(prefix="heare-room-"))
         settings.db_path = scratch / "room.db"
         logger.info("scenario database: %s", settings.db_path)
+
+    # Scenarios need to be able to switch one thing off and re-measure —
+    # a claim like "the canceller is eating the interruption" is worth
+    # nothing until the same run has been made with it disabled.
+    for key, value in (overrides or {}).items():
+        setattr(settings, key, value)
 
     store = TranscriptStore(settings.db_path)
     await store.init()

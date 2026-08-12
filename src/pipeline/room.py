@@ -66,9 +66,14 @@ class Say:
 
     at: float | str
     text: str
-    # 0.4 s, not 1.5: the assistant's own reply rules cap most answers at
-    # one sentence, so by 1.5 s there is usually nothing left to interrupt.
-    delay_after_bot_starts: float = 0.4
+    # How long the assistant must have been speaking *without stopping*
+    # before the interruption is fed. Counting from the first sound it
+    # ever made aimed the interruption at the wrong utterance: asked a
+    # question in two breaths, the assistant answered the address alone
+    # with a three-word "слухаю", and the interruption landed on that —
+    # 0.7 s of speech, already over. The real answer went unbothered and
+    # the run recorded "barge-in never fired".
+    delay_after_bot_starts: float = 1.0
 
 
 @dataclass
@@ -151,12 +156,42 @@ async def synthesize(text: str, voice: str = "uk-UA-PolinaNeural") -> np.ndarray
 
 
 def _overlap(a: str, b: str) -> float:
-    """Token overlap, for deciding whether a transcript is our own echo."""
+    """Token overlap between two utterances."""
     ta = {w.strip(".,!?—«»").lower() for w in a.split() if w.strip(".,!?—«»")}
     tb = {w.strip(".,!?—«»").lower() for w in b.split() if w.strip(".,!?—«»")}
     if not ta or not tb:
         return 0.0
     return len(ta & tb) / min(len(ta), len(tb))
+
+
+def _best_overlap(text: str, candidates: list[str]) -> float:
+    """Against each line on its own, never against them joined.
+
+    Joined, a long history shares a word with everything and the score
+    stops meaning anything.
+    """
+    return max((_overlap(text, c) for c in candidates), default=0.0)
+
+
+def _is_echo(text: str, spoken_by_person: list[str], spoken_by_bot: list[str]) -> bool:
+    """Did the microphone just pick up the assistant's own voice?
+
+    The first version of this asked whether the transcript resembled the
+    *current* TTS fragment while the bot was still speaking. Both halves
+    were wrong. Recognition lands a second or two late, by which time the
+    bot has usually stopped, and a fragment is a few words. So a run
+    where the assistant answered its own voice eight times in a row
+    scored zero and passed.
+
+    The room knows both sides of the conversation, so ask the honest
+    question: does this look more like something the person said, or
+    something the assistant said?
+    """
+    if not text.strip():
+        return False
+    mine = _best_overlap(text, spoken_by_bot)
+    theirs = _best_overlap(text, spoken_by_person)
+    return mine >= 0.5 and mine > theirs
 
 
 # ── the room ──────────────────────────────────────────────────────────
@@ -178,6 +213,7 @@ class Room:
         self.echo_db = echo_db
         self.delay_ms = delay_ms
         self.noise_dbfs = noise_dbfs
+        self.overrides: dict = {}
 
         # What the daemon played, at mic rate, oldest first.
         self._played = np.zeros(0, dtype=np.float32)
@@ -192,6 +228,10 @@ class Room:
         self.last_audio_at = 0.0
 
     # -- what the daemon plays ----------------------------------------
+
+    def played_samples(self, samples: np.ndarray) -> None:
+        """One frame's worth of sound leaving the speaker, in real time."""
+        self._played = np.concatenate([self._played, samples])
 
     def played(self, pcm: bytes, source_rate: int) -> None:
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
@@ -270,8 +310,7 @@ class Room:
                 if isinstance(frame, TranscriptionFrame):
                     text = frame.text or ""
                     result.heard.append(text)
-                    echo_like = _overlap(text, room.last_bot_text) > 0.5
-                    if echo_like and room.bot_speaking:
+                    if _is_echo(text, result.said, result.spoken):
                         result.heard_itself += 1
                         result.add("heard_itself", text, started)
                     else:
@@ -306,22 +345,71 @@ class Room:
                 await self.push_frame(frame, direction)
 
         class Mouth(FrameProcessor):
-            """Captures what the daemon plays, so the room can echo it."""
+            """A speaker, and a speaker takes time.
+
+            The first version echoed each audio frame the moment it
+            arrived. With the audio devices shut there is nothing pacing
+            the chain, so a forty-second answer passed through in under a
+            second — and the scenario built to test interrupting it had
+            nothing left to interrupt by the time it spoke. Three runs
+            recorded "barge-in never fired" against an assistant that
+            interrupts correctly.
+
+            So this holds the audio and releases it at the rate it would
+            actually be heard, and stops mid-word when an interruption
+            arrives, which is what a real output device does when the
+            transport flushes its queue.
+            """
+
+            def __init__(self) -> None:
+                super().__init__()
+                self._queue: np.ndarray = np.zeros(0, dtype=np.float32)
+                self._pump: asyncio.Task | None = None
 
             async def process_frame(self, frame, direction):
                 await super().process_frame(frame, direction)
                 if isinstance(frame, TTSAudioRawFrame):
-                    room.played(frame.audio, getattr(frame, "sample_rate", 24000))
-                    room.last_audio_at = time.monotonic()
-                    if not room.bot_speaking:
-                        room.bot_speaking = True
-                        result.bot_utterances += 1
-                        result.add("bot_started", "", started)
+                    self._enqueue(frame.audio, getattr(frame, "sample_rate", 24000))
                 elif isinstance(frame, TTSTextFrame):
                     room.last_bot_text = frame.text or ""
-                    if room.last_bot_text:
-                        result.spoken.append(room.last_bot_text)
+                elif isinstance(frame, InterruptionFrame):
+                    # Everything not yet out of the speaker is never heard.
+                    self._queue = np.zeros(0, dtype=np.float32)
+                if self._pump is None and isinstance(frame, StartFrame):
+                    self._pump = asyncio.create_task(self._play())
                 await self.push_frame(frame, direction)
+
+            def _enqueue(self, pcm: bytes, source_rate: int) -> None:
+                samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+                if samples.size == 0:
+                    return
+                if source_rate != SAMPLE_RATE:
+                    new_len = max(1, int(samples.size * SAMPLE_RATE / source_rate))
+                    samples = np.interp(
+                        np.linspace(0, samples.size - 1, new_len),
+                        np.arange(samples.size),
+                        samples,
+                    )
+                self._queue = np.concatenate([self._queue, samples])
+
+            async def _play(self) -> None:
+                next_frame = time.monotonic()
+                while True:
+                    if self._queue.size:
+                        chunk = self._queue[:FRAME_SAMPLES]
+                        self._queue = self._queue[FRAME_SAMPLES:]
+                        room.played_samples(chunk)
+                        room.last_audio_at = time.monotonic()
+                        if not room.bot_speaking:
+                            room.bot_speaking = True
+                            result.bot_utterances += 1
+                            result.add("bot_started", "", started)
+                    next_frame += FRAME_MS / 1000
+                    delay = next_frame - time.monotonic()
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    else:
+                        next_frame = time.monotonic()
 
         class Microphone(FrameProcessor):
             """Sits where the input device would, and speaks into the chain.
@@ -369,9 +457,13 @@ class Room:
 
         task, memory_backend = await _build_daemon(
             scratch_db=True,
+            overrides=self.overrides,
             audio_probes=[Microphone()],
             post_stt_stages=[Ears()],
             post_llm_stages=[Words()],
+            # The room's speaker sits where the audio still exists —
+            # just behind the far-end tap, so the canceller is handed
+            # exactly the signal that is about to come back at it.
             pre_output_stages=[Mouth()],
         )
 
@@ -386,7 +478,7 @@ class Room:
         pending = list(clips)
         active: np.ndarray | None = None
         active_pos = 0
-        bot_started_at: float | None = None
+        speaking_since: float | None = None
         deadline = time.monotonic() + timeout
         quiet_since: float | None = None
 
@@ -400,18 +492,24 @@ class Room:
                 room.bot_speaking = False
                 result.add("bot_stopped", "", started)
 
-            if room.bot_speaking and bot_started_at is None:
-                bot_started_at = now
+            if room.bot_speaking:
+                if speaking_since is None:
+                    speaking_since = now
+            else:
+                speaking_since = None
 
             if active is None and pending:
                 line, clip = pending[0]
                 if isinstance(line.at, (int, float)):
-                    due = line.at
-                elif bot_started_at is not None:
-                    due = bot_started_at + line.delay_after_bot_starts
+                    ready = now >= line.at
                 else:
-                    due = None
-                if due is not None and now >= due:
+                    # Only while it is still talking: an interruption
+                    # fed into a silence is not an interruption.
+                    ready = (
+                        speaking_since is not None
+                        and now - speaking_since >= line.delay_after_bot_starts
+                    )
+                if ready:
                     pending.pop(0)
                     active, active_pos = clip, 0
                     result.said.append(line.text)
@@ -635,7 +733,12 @@ SCENARIOS: dict[str, Scenario] = {
         checks=[
             checks.never_hears_itself(),
             checks.replies(at_least=1),
-            checks.barge_in_under(1500),
+            # 1.8 s, from measurement rather than taste: with a speaker
+            # that plays in real time the figure sits at 1.0-1.5 s. The
+            # old 1500 ms budget was set against a speaker with no clock,
+            # where the whole answer flew past in under a second and the
+            # number it produced (83 ms) meant nothing at all.
+            checks.barge_in_under(1800),
         ],
     ),
     "delegate": Scenario(
@@ -718,6 +821,14 @@ def main() -> int:
     p.add_argument("--noise", type=float, default=-60.0)
     p.add_argument("--window", type=float, default=0.0, help="override the window")
     p.add_argument(
+        "--no-aec",
+        action="store_true",
+        help=(
+            "run with echo cancellation switched off. The comparison is "
+            "the measurement: everything else held still, one thing moved."
+        ),
+    )
+    p.add_argument(
         "--repeat",
         type=int,
         default=1,
@@ -747,6 +858,8 @@ def main() -> int:
     for scenario in chosen:
         print(f"\n╭─ {scenario.name}: {scenario.expect}")
         room = Room(echo_db=args.echo, delay_ms=args.delay_ms, noise_dbfs=args.noise)
+        if args.no_aec:
+            room.overrides["aec_enabled"] = False
         started = time.monotonic()
         window = args.window or scenario.window
         # Unattended, a hung run is worse than a failed one: it reports
@@ -754,11 +867,23 @@ def main() -> int:
         # plus a generous margin, dump every thread and go. The dump is
         # the point — the last one showed the hang sitting in a memory
         # write that never returned.
-        faulthandler.dump_traceback_later(window + 45, exit=True)
+        # Two bounds, because they catch different things. The inner one
+        # turns a run that will not end into a failed scenario and lets
+        # the rest of the batch continue. The outer one exists for the
+        # case the inner cannot reach — a wedged shutdown, a thread that
+        # will not join — and prints every stack on its way out.
+        faulthandler.dump_traceback_later(window + 60, exit=True)
         try:
-            result = asyncio.run(room.run(scenario.script, timeout=window))
+            result = asyncio.run(
+                asyncio.wait_for(
+                    room.run(scenario.script, timeout=window), timeout=window + 25
+                )
+            )
             record_run(scenario, room, result)
             failures = report(room, result, scenario)
+        except asyncio.TimeoutError:
+            logger.error("scenario %s never ended", scenario.name)
+            failures = [f"never ended within {window + 25:.0f}s"]
         except Exception as exc:  # a broken scenario is a failed scenario
             logger.exception("scenario %s blew up", scenario.name)
             failures = [f"raised {exc!r}"]

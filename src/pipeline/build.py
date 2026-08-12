@@ -326,6 +326,7 @@ def _assemble_native_stages(
     post_stt_stages: list | None = None,
     post_llm_stages: list | None = None,
     pre_output_stages: list | None = None,
+    far_collector_upstream: bool = False,
     input_gain: Any = None,
     output_volume: Any = None,
     sidetone: Any = None,
@@ -450,6 +451,14 @@ def _assemble_native_stages(
     # key "output_volume".
     if output_volume is not None:
         stages.append(output_volume)
+    # With no output device the transport is the end of the road: it
+    # forwards nothing, so a tap behind it collects silence. Every
+    # scenario run so far handed the canceller an empty reference, and
+    # it cancelled nothing — the runs passed anyway, because
+    # the gates upstream caught the echo, and the one time they did not
+    # the assistant answered its own voice eight times in a row.
+    if far_collector_upstream and far_collector is not None:
+        stages.append(far_collector)
     if pre_output_stages:
         stages.extend(pre_output_stages)
     stages.append(transport_output)
@@ -459,7 +468,7 @@ def _assemble_native_stages(
     # gaps between sentences, leaving the canceller with silence exactly
     # while the speaker was still playing. Downstream, frames arrive at
     # the rate they are written to the device.
-    if far_collector is not None:
+    if far_collector is not None and not far_collector_upstream:
         stages.append(far_collector)
     stages.append(assistant_aggregator)
     return stages
@@ -1322,6 +1331,7 @@ async def build_pipeline(
         post_stt_stages=post_stt_stages,
         post_llm_stages=post_llm_stages,
         pre_output_stages=pre_output_stages,
+        far_collector_upstream=not audio,
         aec_filter=aec_filter_proc,
         sidetone=sidetone,
         input_gain=input_gain_proc,
