@@ -168,6 +168,32 @@ class Hands:
 
     # -- the loop ------------------------------------------------------
 
+    def _skills_block(self) -> str:
+        """Name the installed skills, or the worker will not go looking.
+
+        ``list_skills`` and ``run_skill`` sit among sixty-odd schemas, and
+        a model holding that many rarely thinks to enumerate one of them
+        on the chance something useful is inside. The conversational
+        agent is deliberately not told any of this — it cannot run a
+        skill — so this is the only place the list can land.
+        """
+        try:
+            from src.skills.agent_skills import get_skills_loader
+
+            skills = get_skills_loader(self._settings).discover()
+        except Exception:
+            logger.warning("hands: could not list skills", exc_info=True)
+            return ""
+
+        if not skills:
+            return ""
+
+        lines = "\n".join(f"- {s.name}: {s.description}" for s in skills)
+        return (
+            "\n\nSkills you can run with run_skill. Each returns "
+            "instructions for you to carry out with your own tools:\n" + lines
+        )
+
     def _tool_schemas(self) -> list[dict]:
         """Every enabled tool except ``delegate`` — no handing work back.
 
@@ -363,7 +389,11 @@ class Hands:
 
     async def _loop(self, task: str, job_id: int | None = None) -> str:
         messages: list[dict] = [
-            {"role": "system", "content": SYSTEM.format(language=self._language())}
+            {
+                "role": "system",
+                "content": SYSTEM.format(language=self._language())
+                + self._skills_block(),
+            }
         ]
         conversation = self._conversation()
         if conversation:

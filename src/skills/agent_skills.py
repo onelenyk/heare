@@ -180,8 +180,18 @@ def get_skills_loader(settings: object | None = None) -> SkillsLoader:
 
     if settings and hasattr(settings, "skills_paths"):
         desired_paths = list(settings.skills_paths)
+    elif _loader is not None:
+        # No settings means the caller has no opinion about paths, not
+        # that it wants the fallback. Rebuilding here threw away a
+        # correctly configured loader: the prompt renderer calls this
+        # without settings on every turn, so the search path flipped back
+        # to the single hardcoded directory each time a system prompt was
+        # built, and flipped forward again on the next list_skills.
+        return _loader
     else:
-        desired_paths = ["~/.heare/skills"]
+        from src.config import HEARE_HOME, bundled_dir
+
+        desired_paths = [str(HEARE_HOME / "skills"), bundled_dir("skills")]
 
     if _loader is None or _loader_paths != desired_paths:
         paths = [Path(p) for p in desired_paths]

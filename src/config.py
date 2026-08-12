@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from enum import Enum
@@ -39,6 +40,17 @@ class DeciderState(str, Enum):
 
 
 HEARE_HOME = Path.home() / ".heare"
+
+
+def bundled_dir(name: str) -> str:
+    """Where a directory shipped alongside the code lives, frozen or not.
+
+    PyInstaller unpacks everything listed in the spec's ``datas`` under
+    ``sys._MEIPASS``; from a checkout the same folders sit at the
+    repository root. main.py resolves ``prompts/`` by the same rule.
+    """
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return str(root / name)
 
 
 _QUIET_HOUR_RE = None  # initialized lazily
@@ -328,7 +340,17 @@ class Settings:
     # reliable way to keep CDP attached.
     chrome_profile_directory: str = "Default"
     inject_dir: Path = field(default_factory=lambda: HEARE_HOME / "inject")
-    skills_paths: list[str] = field(default_factory=lambda: ["~/.heare/skills"])
+    # Both the user's own skills and the ones shipped with the app. Only
+    # the first was listed, and it names a directory nothing ever
+    # created — so the loader searched one absent path, found nothing,
+    # and list_skills answered "none" for the lifetime of the project
+    # while three skills rode along inside the bundle.
+    #
+    # User directory first: a skill installed here shadows a shipped one
+    # of the same name, which is the order a person expects.
+    skills_paths: list[str] = field(
+        default_factory=lambda: [str(HEARE_HOME / "skills"), bundled_dir("skills")]
+    )
     groq_api_key: str | None = None
     # Whisper transcription language. ISO-639-1 code (e.g. "en", "uk", "ru").
     # This is a HINT for Groq's Whisper, not a hard force — Groq will detect the
@@ -576,7 +598,10 @@ class Settings:
         )
 
     def ensure_dirs(self) -> None:
-        for p in (self.workspace_dir, self.log_dir, HEARE_HOME):
+        # The skills directory is created even when empty: the installer
+        # writes into it, and its absence is what the loader silently
+        # skipped past.
+        for p in (self.workspace_dir, self.log_dir, HEARE_HOME, HEARE_HOME / "skills"):
             p.mkdir(parents=True, exist_ok=True)
 
 
