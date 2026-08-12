@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import faulthandler
 import logging
 import shutil
 import subprocess
@@ -367,6 +368,7 @@ class Room:
                         next_frame = time.monotonic()
 
         task, memory_backend = await _build_daemon(
+            scratch_db=True,
             audio_probes=[Microphone()],
             post_stt_stages=[Ears()],
             post_llm_stages=[Words()],
@@ -457,12 +459,21 @@ class Room:
 
             await asyncio.sleep(FRAME_MS / 1000)
 
-        await task.queue_frames([EndFrame()])
+        # Shutdown gets its own bounds. A run that ends cleanly takes a
+        # second; a run whose database is wedged took five minutes and
+        # then took the whole repeat batch with it.
+        try:
+            await asyncio.wait_for(task.queue_frames([EndFrame()]), timeout=5)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("pipeline would not accept the end of the run")
         try:
             await asyncio.wait_for(runner_task, timeout=10)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             runner_task.cancel()
-        await memory_backend.close()
+        try:
+            await asyncio.wait_for(memory_backend.close(), timeout=5)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("memory would not close — a write is still stuck")
         return result
 
 
@@ -706,6 +717,16 @@ def main() -> int:
     p.add_argument("--delay-ms", type=int, default=120)
     p.add_argument("--noise", type=float, default=-60.0)
     p.add_argument("--window", type=float, default=0.0, help="override the window")
+    p.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help=(
+            "run each scenario N times. Flakiness is invisible in a single "
+            "pass, and a test that fails one run in three teaches you to "
+            "distrust red — which is worse than having no test."
+        ),
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 
@@ -722,25 +743,40 @@ def main() -> int:
     )
 
     outcomes: list[tuple[str, list[str], float]] = []
+    chosen = [sc for sc in chosen for _ in range(max(1, args.repeat))]
     for scenario in chosen:
         print(f"\n╭─ {scenario.name}: {scenario.expect}")
         room = Room(echo_db=args.echo, delay_ms=args.delay_ms, noise_dbfs=args.noise)
         started = time.monotonic()
+        window = args.window or scenario.window
+        # Unattended, a hung run is worse than a failed one: it reports
+        # nothing and blocks every scenario behind it. Past the window
+        # plus a generous margin, dump every thread and go. The dump is
+        # the point — the last one showed the hang sitting in a memory
+        # write that never returned.
+        faulthandler.dump_traceback_later(window + 45, exit=True)
         try:
-            result = asyncio.run(
-                room.run(scenario.script, timeout=args.window or scenario.window)
-            )
+            result = asyncio.run(room.run(scenario.script, timeout=window))
             record_run(scenario, room, result)
             failures = report(room, result, scenario)
         except Exception as exc:  # a broken scenario is a failed scenario
             logger.exception("scenario %s blew up", scenario.name)
             failures = [f"raised {exc!r}"]
+        finally:
+            faulthandler.cancel_dump_traceback_later()
         outcomes.append((scenario.name, failures, time.monotonic() - started))
 
     print("\n" + "═" * 66)
     for name, failures, took in outcomes:
         mark = "PASS" if not failures else "FAIL"
         print(f"  {mark}  {name:<14} {took:5.1f}s  {'; '.join(failures)[:60]}")
+    if args.repeat > 1:
+        print("─" * 66)
+        for name in dict.fromkeys(n for n, _, _ in outcomes):
+            runs_ = [f for n, f, _ in outcomes if n == name]
+            good = sum(1 for f in runs_ if not f)
+            flaky = " ← мигтить" if 0 < good < len(runs_) else ""
+            print(f"  {name:<14} {good}/{len(runs_)}{flaky}")
     failed = [n for n, f, _ in outcomes if f]
     total = sum(t for _, _, t in outcomes)
     print("═" * 66)

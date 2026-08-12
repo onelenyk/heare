@@ -15,7 +15,11 @@ that held finished words for three seconds, a prompt that ordered a tool
 the agent could not call. Each of those passed every test in the suite
 while the assistant was unusable.
 
-Stop the daemon before running: the scenarios open the same database.
+Each run gets a throwaway database, so the daemon can stay up and the
+real conversation history stays out of it. That was not cosmetic: while
+scenarios shared the live database they contended for its write lock,
+inherited days of context, and went three different ways on three
+identical runs.
 """
 
 from __future__ import annotations

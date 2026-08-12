@@ -77,14 +77,19 @@ def test_a_follow_up_needs_no_name() -> None:
 # ── addressing is not asking ──────────────────────────────────────────
 
 
-def test_an_address_with_nothing_after_it_is_not_a_turn() -> None:
-    """The natural way to speak — "Дока, зроби Х" — puts a comma-length
-    pause after the name, which is enough for speech recognition to
-    deliver it as its own segment.
+def test_an_address_alone_is_recognisable_as_one() -> None:
+    """Kept, though nothing holds it back any more.
 
-    Measured in the room: the assistant answered the summons at 6.69 s and
-    only heard the request at 7.89 s, as a separate turn. It replied to
-    being called before knowing what for.
+    Holding a bare address in the gate looked right — "Дока, перелічи
+    планети" arrives as two segments and answering the first answers a
+    summons before knowing what for. But the wake detector sits
+    downstream, so a held address never reached it, and whether the
+    assistant woke depended on which timer won: three identical runs
+    went three different ways and one woke nothing.
+
+    Joining fragments is transcript_debounce_seconds' job. This stays
+    because knowing what a bare address looks like is still the right
+    question to be able to ask.
     """
     from src.pipeline.stages.transcription_gate import _is_only_address
 

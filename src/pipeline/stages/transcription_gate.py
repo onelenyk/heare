@@ -557,13 +557,19 @@ def _build_transcription_gate_class():
             # what was wanted, and the request then lands as a second
             # turn. Wait for the rest instead: an address with nothing
             # after it is not yet a turn.
-            if _is_only_address(combined, self._wake_phrases):
-                logger.info("[GATE] address only (%r) — waiting for the rest", combined)
-                self._debounce_buffer = [combined]
-                self._debounce_frame = frame
-                self._debounce_direction = direction
-                self._debounce_task = _asyncio.create_task(self._flush_debounced())
-                return
+            # An address on its own is deliberately NOT held here.
+            #
+            # It was, for an hour. The idea was sound — "Дока, перелічи
+            # планети" arrives as two segments and answering the first is
+            # answering a summons before knowing what for — but the wake
+            # detector lives downstream of this stage, so a held address
+            # never reached it. Whether the assistant woke at all then
+            # depended on which timer won: three identical runs went three
+            # different ways, and one of them woke nothing.
+            #
+            # Joining the fragments is transcript_debounce_seconds' job and
+            # it already does it. A bare "Дока" that does get through is a
+            # summons, and answering a summons is reasonable.
 
             await self._handle_transcription(frame, direction, override_text=combined)
 

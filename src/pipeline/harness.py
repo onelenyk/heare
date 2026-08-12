@@ -104,6 +104,7 @@ def _load_env() -> None:
 
 async def _build_daemon(
     *,
+    scratch_db: bool = False,
     audio_probes: list | None = None,
     post_stt_stages: list | None = None,
     post_llm_stages: list | None = None,
@@ -131,6 +132,20 @@ async def _build_daemon(
     _load_env()
 
     settings = load_settings()
+
+    if scratch_db:
+        # Scenarios get their own database. Three reasons, and the third
+        # is the one that bit: concurrent runs deadlocked on "database is
+        # locked"; test conversations were being written into the real
+        # history; and the accumulated context made runs differ from each
+        # other — a jellyfish panel left on screen days ago sent the
+        # worker off to take a screenshot when asked about disk space.
+        import tempfile
+
+        scratch = Path(tempfile.mkdtemp(prefix="heare-room-"))
+        settings.db_path = scratch / "room.db"
+        logger.info("scenario database: %s", settings.db_path)
+
     store = TranscriptStore(settings.db_path)
     await store.init()
 
