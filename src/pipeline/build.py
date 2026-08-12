@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Tuple
 
 from src.pipeline.stages.assistant_response_logger import (
@@ -961,13 +962,35 @@ async def build_pipeline(
     turn_start_strategies: list = []
     if settings.wake_required:
         phrases = wake_phrases(settings, persona)
-        turn_start_strategies.append(
-            WakePhraseUserTurnStartStrategy(
-                phrases=phrases,
-                timeout=settings.wake_window_seconds,
-                single_activation=settings.wake_every_turn,
-            )
+        gate = WakePhraseUserTurnStartStrategy(
+            phrases=phrases,
+            timeout=settings.wake_window_seconds,
+            single_activation=settings.wake_every_turn,
         )
+
+        # Both events are logged by pipecat at DEBUG, which this daemon
+        # never enables — so three days of logs recorded not one wake, and
+        # every statement about when the assistant was listening had to be
+        # inferred from whether it happened to reply. Subscribing costs
+        # nothing and turns the gate from a guess into a measurement.
+        #
+        # The held time is the number worth having: the window is
+        # refreshed by *any* transcription, the room's included, so it
+        # reports how long the door stood open, not how long you talked.
+        woke_at = 0.0
+
+        @gate.event_handler("on_wake_phrase_detected")
+        async def _awake(_gate: Any, phrase: str) -> None:
+            nonlocal woke_at
+            woke_at = time.monotonic()
+            logger.info("wake: awake — heard %r", phrase)
+
+        @gate.event_handler("on_wake_phrase_timeout")
+        async def _asleep(_gate: Any) -> None:
+            held = time.monotonic() - woke_at if woke_at else 0.0
+            logger.info("wake: asleep — the window stood open %.0fs", held)
+
+        turn_start_strategies.append(gate)
         logger.info(
             "wake: required — %s (window %.0fs, every turn: %s)",
             ", ".join(phrases),
