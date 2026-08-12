@@ -1,6 +1,6 @@
 """Stdio MCP client bridge for the voice pipeline.
 
-Until now ``workspace/.mcp.json`` servers were only *described* to the
+Until now ``.mcp.json`` servers were only *described* to the
 LLM (prompt text + capability index) — there was no client that could
 actually call them, so ``mcp__<slug>__*`` tool names were unbacked.
 
@@ -295,7 +295,7 @@ class McpBridge:
 
 
 async def connect_mcp_servers(settings: "Settings") -> McpBridge:
-    """Build and connect an :class:`McpBridge` from ``workspace/.mcp.json``.
+    """Build and connect an :class:`McpBridge` from ``~/.heare/mcp/.mcp.json``.
 
     Always returns a bridge (possibly empty); never raises so a bad MCP
     config cannot stop the daemon from coming up.

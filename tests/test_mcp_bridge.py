@@ -1,7 +1,9 @@
 """Tests for the stdio MCP client bridge.
 
 These exercise the pure conversion / schema / handler logic with a fake
-in-process session — no real subprocess or MCP server is spawned.
+in-process session — no real subprocess or MCP server is spawned. Which
+is exactly why they all passed while no MCP server could ever connect:
+see ``test_the_client_the_bridge_imports_is_actually_installed``.
 """
 from __future__ import annotations
 
@@ -160,7 +162,7 @@ async def test_connect_never_raises_on_bad_config(monkeypatch) -> None:
 
     monkeypatch.setattr(McpBridge, "_connect_one", _boom)
 
-    settings = types.SimpleNamespace(workspace_dir="/tmp/whatever")
+    settings = types.SimpleNamespace(mcp_dir="/tmp/whatever")
     bridge = await connect_mcp_servers(settings)
     assert bridge.connected_servers == []
     assert bridge.tool_names == []
@@ -182,7 +184,7 @@ async def test_disabled_server_skipped(monkeypatch) -> None:
 
     monkeypatch.setattr(McpBridge, "_connect_one", _connect)
 
-    settings = types.SimpleNamespace(workspace_dir="/tmp/whatever")
+    settings = types.SimpleNamespace(mcp_dir="/tmp/whatever")
     bridge = await connect_mcp_servers(settings)
     assert called is False
     assert bridge.connected_servers == []
@@ -213,3 +215,19 @@ def test_prompt_block_lists_live_tools() -> None:
 
 def test_prompt_block_empty_when_nothing_connected() -> None:
     assert McpBridge().prompt_block() == ""
+
+
+def test_the_client_the_bridge_imports_is_actually_installed() -> None:
+    """The one thing every other test in this file mocks away.
+
+    ``_connect_one`` imports these lazily and ``connect`` catches whatever
+    it raises, so a missing package logged a traceback and left
+    ``connected_servers`` empty — indistinguishable from "no servers
+    configured". The package was never declared as a dependency, so every
+    connection attempt in the project's life failed exactly that way.
+
+    Proven end to end afterwards against a real server: engram registered,
+    connected, 15 tools exposed, mem_search returning real rows.
+    """
+    from mcp import ClientSession, StdioServerParameters  # noqa: F401
+    from mcp.client.stdio import stdio_client  # noqa: F401
