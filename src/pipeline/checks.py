@@ -54,8 +54,9 @@ def stays_silent() -> Check:
     used to produce a turn every few seconds."""
 
     def check(r: Result) -> list[str]:
-        if r.bot_utterances:
-            return [f"replied {r.bot_utterances}× to speech meant for nobody"]
+        n = max(_reply_count(r), r.bot_utterances)
+        if n:
+            return [f"replied {n}× to speech meant for nobody"]
         return []
 
     return check
@@ -64,13 +65,27 @@ def stays_silent() -> Check:
 # ── what must happen ──────────────────────────────────────────────────
 
 
+def _reply_count(r: Result) -> int:
+    """Finished replies, not gaps in the audio.
+
+    Counting gaps was close enough until the speaker started playing in
+    real time. Then a delegated job that finished while the
+    acknowledgement was still being spoken came out as one unbroken
+    fifteen-second stretch of sound — two replies, one silence between
+    them, and the run failed for having "replied 1×" while the recording
+    plainly held both.
+    """
+    spoken = getattr(r, "spoken", None)
+    return len(spoken) if spoken else r.bot_utterances
+
+
 def replies(at_least: int = 1, at_most: int | None = None) -> Check:
-    """Utterance count. Two is right for delegated work — an
+    """How many separate replies. Two is right for delegated work — an
     acknowledgement and an answer — and three means it acknowledged
     twice, which is the bug that shipped this morning."""
 
     def check(r: Result) -> list[str]:
-        n = r.bot_utterances
+        n = _reply_count(r)
         if n < at_least:
             return [f"replied {n}×, expected at least {at_least}"]
         if at_most is not None and n > at_most:
