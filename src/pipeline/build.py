@@ -1121,7 +1121,7 @@ async def build_pipeline(
         from src.agent.tools.capability_index import build_capability_index
         from src.agent.tools.direct import set_capability_index
 
-        capability_index = build_capability_index(settings, settings.workspace_dir)
+        capability_index = build_capability_index(settings, settings.mcp_dir)
         set_capability_index(capability_index)
     except Exception:
         logger.exception("pipeline_native: capability_index build failed (non-fatal)")

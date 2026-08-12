@@ -2359,10 +2359,8 @@ def _get_or_build_capability_index(settings):
         return _capability_index_singleton
     from src.agent.tools.capability_index import build_capability_index
 
-    workspace = (
-        settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
-    )
-    _capability_index_singleton = build_capability_index(settings, workspace)
+    mcp_dir = settings.mcp_dir if settings else Path.home() / ".heare" / "mcp"
+    _capability_index_singleton = build_capability_index(settings, mcp_dir)
     return _capability_index_singleton
 
 
@@ -3058,10 +3056,8 @@ async def _execute_revoke_capability(
         }
 
     skill_dir = Path.home() / ".heare" / "skills" / "_marketplace" / slug
-    workspace = (
-        settings.workspace_dir if settings else Path.home() / ".heare" / "workspace"
-    )
-    mcp_sidecar = Path(workspace) / ".mcp_install" / f"{slug}.json"
+    mcp_dir = settings.mcp_dir if settings else Path.home() / ".heare" / "mcp"
+    mcp_sidecar = Path(mcp_dir) / ".mcp_install" / f"{slug}.json"
 
     removed_skill = False
     removed_mcp = False
@@ -3091,10 +3087,10 @@ async def _execute_revoke_capability(
         try:
             from src.skills.mcp_utils import read_mcp_servers, write_mcp_servers
 
-            servers = read_mcp_servers(Path(workspace))
+            servers = read_mcp_servers(Path(mcp_dir))
             if slug in servers:
                 del servers[slug]
-                write_mcp_servers(Path(workspace), servers)
+                write_mcp_servers(Path(mcp_dir), servers)
             try:
                 mcp_sidecar.unlink()
             except OSError:
@@ -3215,7 +3211,7 @@ def _list_skills(settings: "Settings | None") -> list[dict]:
 
 
 def _list_mcp_servers(settings: "Settings | None") -> list[dict]:
-    """All MCP servers from the workspace ``.mcp.json`` config.
+    """All MCP servers from ``~/.heare/mcp/.mcp.json``.
 
     This is the same file the daemon's MCP client reads on startup, so
     every server here is one the LLM can address via the
@@ -3224,12 +3220,12 @@ def _list_mcp_servers(settings: "Settings | None") -> list[dict]:
     try:
         from src.skills.mcp_utils import read_mcp_servers
 
-        workspace = (
-            settings.workspace_dir
+        mcp_dir = (
+            settings.mcp_dir
             if settings is not None
-            else Path.home() / ".heare" / "workspace"
+            else Path.home() / ".heare" / "mcp"
         )
-        servers = read_mcp_servers(Path(workspace))
+        servers = read_mcp_servers(Path(mcp_dir))
         for slug, entry in servers.items():
             desc = ""
             disabled = False
@@ -3259,7 +3255,7 @@ async def _execute_list_capabilities(
     """List everything the agent can call, grouped into three buckets:
       * ``built_in`` — code-backed tools from :mod:`tool_registry`
       * ``skills``  — markdown procedures from the skills loader
-      * ``mcps``    — external MCP servers from the workspace ``.mcp.json``
+      * ``mcps``    — external MCP servers from ``~/.heare/mcp/.mcp.json``
 
     Args is JSON: ``{"category": "..."}`` or ``{}``. ``category`` filters
     to one bucket and accepts friendly aliases (``tool``/``tools``,

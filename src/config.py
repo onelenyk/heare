@@ -340,6 +340,17 @@ class Settings:
     # reliable way to keep CDP attached.
     chrome_profile_directory: str = "Default"
     inject_dir: Path = field(default_factory=lambda: HEARE_HOME / "inject")
+    # MCP server configuration lives here and nowhere else.
+    #
+    # It used to sit in the workspace — the same directory `bash` runs in
+    # and `write` resolves paths into. An MCP entry is a command line the
+    # daemon executes at every start, so a config the agent can edit is a
+    # command the agent can install permanently, without passing the
+    # consent gate, the hostname allowlist or the checksum the installer
+    # exists to enforce. Anything that can drop a file in the workspace —
+    # a downloaded artefact, a skill, an MCP server's own output —
+    # inherited that.
+    mcp_dir: Path = field(default_factory=lambda: HEARE_HOME / "mcp")
     # Both the user's own skills and the ones shipped with the app. Only
     # the first was listed, and it names a directory nothing ever
     # created — so the loader searched one absent path, found nothing,
@@ -601,7 +612,13 @@ class Settings:
         # The skills directory is created even when empty: the installer
         # writes into it, and its absence is what the loader silently
         # skipped past.
-        for p in (self.workspace_dir, self.log_dir, HEARE_HOME, HEARE_HOME / "skills"):
+        for p in (
+            self.workspace_dir,
+            self.log_dir,
+            HEARE_HOME,
+            HEARE_HOME / "skills",
+            self.mcp_dir,
+        ):
             p.mkdir(parents=True, exist_ok=True)
 
 

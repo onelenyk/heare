@@ -19,6 +19,7 @@ from src.agent.tools.capability_index import IndexEntry
 @dataclass
 class _FakeSettings:
     workspace_dir: Path | None = None
+    mcp_dir: Path | None = None
     skills_paths: list[str] = field(default_factory=list)
     confirmation_passphrase: str | None = None
     identity_file: Path = field(default_factory=lambda: Path("/nonexistent"))
@@ -47,7 +48,9 @@ def _reset_singleton():
 def settings(tmp_path: Path) -> _FakeSettings:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    return _FakeSettings(workspace_dir=workspace)
+    # A sibling, never a child: the point of the move is that nothing
+    # writing into the workspace can reach the MCP config.
+    return _FakeSettings(workspace_dir=workspace, mcp_dir=tmp_path / "mcp")
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +320,7 @@ async def test_list_capabilities_includes_user_authored_skills_with_flag(setting
 
 @pytest.mark.asyncio
 async def test_list_capabilities_lists_mcps_from_workspace_config(settings):
-    """MCPs come from the workspace ``.mcp.json`` — every server visible
+    """MCPs come from ``~/.heare/mcp/.mcp.json`` — every server visible
     to the daemon must appear, including ones marked ``disabled``."""
     fake_loader = MagicMock()
     fake_loader.discover.return_value = []
@@ -455,6 +458,7 @@ def test_register_mcp_server_registered():
 def _consent_settings(workspace: Path) -> _FakeSettings:
     return _FakeSettings(
         workspace_dir=workspace,
+        mcp_dir=workspace.parent / "mcp",
         confirmation_passphrase="open sesame",
     )
 
@@ -477,7 +481,7 @@ async def test_register_mcp_server_writes_launch_block_to_mcp_json(settings, tmp
 
     assert result["success"] is True
     assert result["requires_restart"] is True
-    data = json.loads((s.workspace_dir / ".mcp.json").read_text())
+    data = json.loads((s.mcp_dir / ".mcp.json").read_text())
     server = data["mcpServers"]["notion"]
     assert server["command"] == "npx"
     assert server["args"] == ["-y", "@notionhq/notion-mcp-server"]
@@ -501,7 +505,7 @@ async def test_register_mcp_server_refuses_without_user_confirmed(tmp_path: Path
     result = await direct_tools._execute_register_mcp_server(json.dumps(payload), s)
     assert result["success"] is False
     assert "user_not_confirmed" in result["error"]
-    assert not (s.workspace_dir / ".mcp.json").exists()
+    assert not (s.mcp_dir / ".mcp.json").exists()
 
 
 @pytest.mark.asyncio
@@ -581,8 +585,9 @@ async def test_register_mcp_server_rejects_non_dict_env(tmp_path: Path):
 async def test_register_mcp_server_slug_collision_without_replace(tmp_path: Path):
     s = _consent_settings(tmp_path / "ws")
     s.workspace_dir.mkdir()
+    s.mcp_dir.mkdir(parents=True, exist_ok=True)
     # Pre-seed an existing entry
-    (s.workspace_dir / ".mcp.json").write_text(
+    (s.mcp_dir / ".mcp.json").write_text(
         json.dumps({"mcpServers": {"notion": {"description": "old", "command": "npx", "args": []}}})
     )
     direct_tools.set_capability_index(_make_index([]))

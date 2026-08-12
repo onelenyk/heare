@@ -800,8 +800,8 @@ async def install_mcp_server(
             )
         raise
 
-    workspace_dir = Path(getattr(settings, "workspace_dir"))
-    servers = read_mcp_servers(workspace_dir)
+    mcp_dir = Path(getattr(settings, "mcp_dir"))
+    servers = read_mcp_servers(mcp_dir)
     if slug in servers and not replace:
         raise InstallRefused("slug_collision")
 
@@ -829,9 +829,9 @@ async def install_mcp_server(
     if entry.launch.get("env"):
         server_entry["env"] = dict(entry.launch["env"])
     servers[slug] = server_entry
-    write_mcp_servers(workspace_dir, servers)
+    write_mcp_servers(mcp_dir, servers)
 
-    sidecar_dir = workspace_dir / ".mcp_install"
+    sidecar_dir = mcp_dir / ".mcp_install"
     sidecar_dir.mkdir(parents=True, exist_ok=True)
     _write_sidecar(sidecar_dir / f"{slug}.json", entry, user_confirmed=user_confirmed)
 

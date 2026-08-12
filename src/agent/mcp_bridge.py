@@ -129,7 +129,7 @@ class McpBridge:
         )
 
     async def connect(self, settings: "Settings") -> None:
-        servers = read_mcp_servers(settings.workspace_dir)
+        servers = read_mcp_servers(settings.mcp_dir)
         for slug, entry in servers.items():
             if not isinstance(entry, dict) or entry.get("disabled"):
                 logger.debug("mcp_bridge: %r disabled/invalid; skipping", slug)

@@ -71,9 +71,9 @@ def _tokenize(text: str) -> list[str]:
 
 
 class CapabilityIndex:
-    def __init__(self, settings: object, workspace_dir: Path) -> None:
+    def __init__(self, settings: object, mcp_dir: Path) -> None:
         self._settings = settings
-        self._workspace_dir = Path(workspace_dir).expanduser().resolve()
+        self._mcp_dir = Path(mcp_dir).expanduser().resolve()
         self._entries: list[IndexEntry] = []
         self._inverted: dict[str, set[int]] = {}
 
@@ -120,7 +120,7 @@ class CapabilityIndex:
             logger.debug("skill discovery failed: %s", exc)
 
         try:
-            servers = read_mcp_servers(self._workspace_dir)
+            servers = read_mcp_servers(self._mcp_dir)
             for name, entry in servers.items():
                 desc = (
                     entry["description"]
@@ -185,8 +185,8 @@ class CapabilityIndex:
         return (-score, -pop, -_SOURCE_PRIORITY[e.source], idx)
 
 
-def build_capability_index(settings: object, workspace_dir: Path) -> CapabilityIndex:
-    idx = CapabilityIndex(settings, workspace_dir)
+def build_capability_index(settings: object, mcp_dir: Path) -> CapabilityIndex:
+    idx = CapabilityIndex(settings, mcp_dir)
     idx.build()
     return idx
 

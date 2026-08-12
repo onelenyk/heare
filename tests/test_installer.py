@@ -19,6 +19,7 @@ from src.agent.tools.capability_index import IndexEntry
 class _FakeSettings:
     confirmation_passphrase: str | None = "open sesame"
     workspace_dir: Path | None = None
+    mcp_dir: Path | None = None
     installation_signature_required: bool = False
     skills_paths: list[str] = field(default_factory=list)
 
@@ -53,6 +54,7 @@ def settings(tmp_path: Path):
     return _FakeSettings(
         confirmation_passphrase="test-consent",
         workspace_dir=workspace,
+        mcp_dir=tmp_path / "mcp",
     )
 
 
@@ -221,7 +223,7 @@ async def test_install_mcp_writes_launch_command_args_into_mcp_json(settings, fa
     result = await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
     assert result.success is True
 
-    mcp_json = settings.workspace_dir / ".mcp.json"
+    mcp_json = settings.mcp_dir / ".mcp.json"
     data = json.loads(mcp_json.read_text())
     server = data["mcpServers"]["bar"]
     assert server["command"] == "npx"
@@ -236,7 +238,7 @@ async def test_install_mcp_omits_env_when_not_provided(settings, fake_home):
     result = await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
     assert result.success is True
 
-    data = json.loads((settings.workspace_dir / ".mcp.json").read_text())
+    data = json.loads((settings.mcp_dir / ".mcp.json").read_text())
     assert "env" not in data["mcpServers"]["bar"]
 
 
@@ -252,7 +254,7 @@ async def test_install_mcp_refuses_when_launch_missing(settings, fake_home):
     with pytest.raises(installer.InstallFailed) as exc:
         await installer.install_mcp_server(entry, settings=settings, user_confirmed=True)
     assert str(exc.value) == "launch_required"
-    assert not (settings.workspace_dir / ".mcp.json").exists()
+    assert not (settings.mcp_dir / ".mcp.json").exists()
 
 
 @pytest.mark.asyncio

@@ -103,11 +103,11 @@ async def _build_and_run_daemon(
     from src.pipeline.build import build_pipeline
     from src.store.context import ContextBuilder
     from src.daemon.heartbeat import WarmupTask
-    from src.daemon.workspace import ensure_workspace_mcp
+    from src.daemon.workspace import ensure_mcp_config
 
     from src.agent.browser_bridge import BrowserBridge, set_bridge
 
-    ensure_workspace_mcp(settings.workspace_dir)
+    ensure_mcp_config(settings.mcp_dir, settings.workspace_dir)
 
     # Wait for API keys if not configured yet.
     available = get_available(settings)
