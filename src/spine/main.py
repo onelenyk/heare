@@ -19,23 +19,54 @@ from typing import AsyncIterator
 logger = logging.getLogger("spine")
 
 
-def _build_loop(settings, *, audio, voice: str, hold_s: float):
-    from src.spine.llm import resolve_llm, stream_chat
+def _wake_phrases(settings) -> list[str]:
+    """Phrase variants from src/pipeline/wake.py, loaded by file path.
+
+    The module itself is framework-free, but importing it as
+    src.pipeline.wake runs src/pipeline/__init__.py — which imports
+    pipecat. Loading by path keeps the spine pipecat-free.
+    """
+    import importlib.util
+    from pathlib import Path as _P
+
+    path = _P(__file__).resolve().parent.parent / "pipeline" / "wake.py"
+    spec = importlib.util.spec_from_file_location("_heare_wake", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.wake_phrases(settings, persona="")
+
+
+async def _build_loop(settings, *, audio, voice: str, hold_s: float,
+                      full: bool = True):
+    """Wire the conductor. full=False builds the bare chat skeleton
+    (no wake/tools/persistence) — used by --text and quick checks."""
+    from datetime import datetime
+
+    from src.spine.llm import resolve_llm, stream_chat, stream_chat_events
     from src.spine.loop import SpineLoop
     from src.spine.sentences import sentences
     from src.spine.stt import Transcript, transcribe
     from src.spine.tts import synthesise
     from src.spine.turn import TurnAssembler
     from src.spine.vad import EnergyVAD, loud_ms
+    from src.spine.voicing import pick_voice
 
     cfg = resolve_llm(settings)
 
     # Shorter than a spoken word: don't pay Groq to hallucinate on it.
     min_speech_ms = 240
 
+    usage = None
+    if full:
+        from src.spine.usage import SpineUsage
+
+        usage = SpineUsage(settings.db_path)
+
     async def _stt(pcm: bytes):
         if loud_ms(pcm) < min_speech_ms:
             return Transcript(text="", language=settings.groq_language or "uk")
+        if usage is not None:
+            usage.stt(len(pcm) / 32000.0)
         return await transcribe(
             pcm,
             api_key=settings.groq_api_key or "",
@@ -46,9 +77,12 @@ def _build_loop(settings, *, audio, voice: str, hold_s: float):
         return stream_chat(messages, cfg)
 
     def _tts(text: str) -> AsyncIterator[bytes]:
-        return synthesise(text, voice=voice)
+        # The reply's script picks the voice: Cyrillic on an English
+        # voice is silence. An explicit --voice wins.
+        chosen = voice or pick_voice(text, fallback_lang="uk")
+        return synthesise(text, voice=chosen)
 
-    return SpineLoop(
+    loop = SpineLoop(
         audio=audio,
         vad=EnergyVAD(),
         assembler=TurnAssembler(hold_s=hold_s),
@@ -56,7 +90,98 @@ def _build_loop(settings, *, audio, voice: str, hold_s: float):
         stream_chat=_chat,
         split_sentences=sentences,
         synthesise=_tts,
+        usage=usage,
     )
+
+    if not full:
+        return loop
+
+    from src.memory.sqlite_backend import SQLiteBackend
+    from src.spine.persist import SpinePersistence
+    from src.spine.prompt import build_system_prompt, load_persona
+    from src.spine.tools import VoiceToolbox
+    from src.spine.wake import WakeGate
+
+    if audio is not None:
+        from src.spine.aec import SpineAEC
+
+        aec = SpineAEC()
+        loop.aec = aec
+        logger.info("aec active: %s", aec.active)
+
+    memory = SQLiteBackend(db_path=settings.db_path)
+    await memory.initialize()
+    try:
+        return await _wire_full(loop, settings, cfg, memory)
+    except Exception:
+        # An unclosed aiosqlite worker thread is non-daemon: without
+        # this, a failed build hangs the interpreter at exit with its
+        # stdout still buffered — a silent, eternal --check.
+        await memory.close()
+        raise
+
+
+async def _wire_full(loop, settings, cfg, memory):
+    from datetime import datetime
+
+    from src.spine.llm import stream_chat_events
+    from src.spine.persist import SpinePersistence
+    from src.spine.prompt import build_system_prompt, load_persona
+    from src.spine.tools import VoiceToolbox
+    from src.spine.wake import WakeGate
+
+    async def _deliver(text: str) -> None:
+        await loop.inject(text)
+
+    loop.toolbox = VoiceToolbox(settings, memory, _deliver)
+    loop.stream_events = lambda messages, tools: stream_chat_events(
+        messages, cfg, tools=tools
+    )
+
+    loop.wake = WakeGate(
+        _wake_phrases(settings),
+        window_s=getattr(settings, "wake_window_seconds", 45.0),
+        required=getattr(settings, "wake_required", True),
+    )
+
+    persist = SpinePersistence(settings.db_path)
+    loop.persist = persist
+
+    persona = load_persona(settings)
+
+    async def _make_prompt() -> str:
+        exchanges = await asyncio.to_thread(persist.recent_exchanges, 4)
+        query = loop.history[-1]["content"] if loop.history else ""
+        memory_block = ""
+        try:
+            memory_block = await memory.context(query=query, limit=3)
+        except Exception:
+            logger.debug("memory context failed (non-fatal)")
+        return build_system_prompt(
+            persona=persona,
+            memory_block=memory_block or "",
+            exchanges=exchanges,
+            now=datetime.now(),
+        )
+
+    loop.make_system_prompt = _make_prompt
+    # Without closing these, the aiosqlite worker thread (non-daemon)
+    # keeps the interpreter alive after main returns — the process hangs
+    # with its stdout still buffered.
+    loop._closers = [memory.close, persist.close]
+    if loop.usage is not None:
+        loop._closers.append(loop.usage.close)
+    return loop
+
+
+async def _close_loop(loop) -> None:
+    for closer in getattr(loop, "_closers", []):
+        try:
+            result = closer()
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            logger.debug("closer failed (non-fatal)", exc_info=True)
 
 
 async def _amain(args: argparse.Namespace) -> int:
@@ -73,15 +198,23 @@ async def _amain(args: argparse.Namespace) -> int:
         print("no GROQ_API_KEY — the ear is unavailable", file=sys.stderr)
         return 1
 
-    # Not settings.tts_voice: the deployment default there is an English
-    # voice, and Edge TTS renders Cyrillic on an English voice as silence.
-    voice = args.voice or "uk-UA-PolinaNeural"
+    # Empty means "pick per reply text" (voicing.pick_voice): Edge TTS
+    # renders Cyrillic on an English voice as silence, so the reply's
+    # script decides. An explicit --voice overrides everything.
+    voice = args.voice
 
     if args.check:
-        loop = _build_loop(settings, audio=None, voice=voice, hold_s=args.hold)
+        loop = await _build_loop(
+            settings, audio=None, voice=voice, hold_s=args.hold, full=True
+        )
+        aec_state = "n/a (no audio)" if loop.aec is None else loop.aec.active
         print("ok  settings, llm, stt, tts, vad, turn, loop wired")
-        print(f"ok  voice={voice}  stt_lang={settings.groq_language or 'uk'}")
+        print(f"ok  wake={loop.wake is not None}  tools={loop.toolbox is not None}"
+              f"  persist={loop.persist is not None}  aec={aec_state}")
+        print(f"ok  voice={voice or 'за мовою відповіді'}  "
+              f"stt_lang={settings.groq_language or 'uk'}")
         print("\nready — run without --check to open the microphone")
+        await _close_loop(loop)
         return 0
 
     if args.text:
@@ -91,23 +224,31 @@ async def _amain(args: argparse.Namespace) -> int:
 
             audio = AudioIO()
             await audio.start()
-        loop = _build_loop(settings, audio=audio, voice=voice, hold_s=args.hold)
+        loop = await _build_loop(
+            settings, audio=audio, voice=voice, hold_s=args.hold, full=False
+        )
         reply = await loop.respond(args.text, speak=audio is not None)
         print(reply)
         if audio is not None:
             await audio.stop()
+        await _close_loop(loop)
         return 0
 
     from src.spine.audio_io import AudioIO
 
     audio = AudioIO()
     await audio.start()
-    loop = _build_loop(settings, audio=audio, voice=voice, hold_s=args.hold)
-    print("spine: слухаю (Ctrl+C — вихід)")
+    loop = await _build_loop(
+        settings, audio=audio, voice=voice, hold_s=args.hold, full=True
+    )
+    duplex = "повний дуплекс" if loop._duplex else "напівдуплекс"
+    print(f"spine: слухаю ({duplex}, wake={'on' if loop.wake else 'off'}; "
+          f"Ctrl+C — вихід)")
     try:
         await loop.run()
     finally:
         await audio.stop()
+        await _close_loop(loop)
     return 0
 
 

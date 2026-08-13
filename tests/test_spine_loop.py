@@ -268,3 +268,134 @@ async def test_stt_failure_releases_the_turn_instead_of_wedging() -> None:
     await asyncio.wait_for(_released(), timeout=2.0)
     run.cancel()
     assert not audio.played, "no reply may be spoken for a failed transcription"
+
+
+# -- parity features: wake gate, tools, barge-in -----------------------
+
+
+class FakeWake:
+    def __init__(self, accept: bool) -> None:
+        self.accept = accept
+        self.asked: list[str] = []
+
+    def accepts(self, text: str) -> bool:
+        self.asked.append(text)
+        return self.accept
+
+
+class FakeToolbox:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    @property
+    def schemas(self) -> list[dict]:
+        return [{"type": "function", "function": {"name": "delegate"}}]
+
+    async def execute(self, name: str, arguments: dict) -> str:
+        self.calls.append((name, arguments))
+        return "Прийнято, роблю."
+
+
+async def test_asleep_turn_never_reaches_the_llm() -> None:
+    audio = FakeAudio()
+    assembler = FakeAssembler()
+    assembler.transcript("просто розмова в кімнаті")
+    loop = _make_loop(audio, assembler=assembler)
+    loop.wake = FakeWake(accept=False)
+
+    chat_called = []
+
+    async def spy_chat(messages):
+        chat_called.append(messages)
+        yield "не має статись"
+
+    loop.stream_chat = lambda m: spy_chat(m)
+
+    run = asyncio.create_task(loop.run())
+    await asyncio.sleep(0.1)
+    run.cancel()
+
+    assert loop.wake.asked == ["просто розмова в кімнаті"]
+    assert chat_called == [], "asleep turn must not reach the LLM"
+    assert not audio.played
+
+
+async def test_tool_call_is_executed_and_ack_spoken() -> None:
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    toolbox = FakeToolbox()
+    loop.toolbox = toolbox
+
+    async def events(messages, tools):
+        assert tools == toolbox.schemas
+        yield {"type": "delta", "text": "Зараз "}
+        yield {"type": "delta", "text": "гляну."}
+        yield {"type": "tool_call", "id": "1", "name": "delegate",
+               "arguments": '{"task": "подивитись вкладки"}'}
+
+    loop.stream_events = events
+
+    reply = await loop.respond("подивись вкладки")
+
+    assert toolbox.calls == [("delegate", {"task": "подивитись вкладки"})]
+    assert "Прийнято, роблю." in reply
+    spoken = b"".join(audio.played).decode()
+    assert "Прийнято" in spoken, "the ack must be spoken too"
+
+
+async def test_broken_tool_arguments_do_not_crash_the_turn() -> None:
+    loop = _make_loop(audio=None)
+    toolbox = FakeToolbox()
+    loop.toolbox = toolbox
+
+    async def events(messages, tools):
+        yield {"type": "tool_call", "id": "1", "name": "delegate",
+               "arguments": "{невалідний json"}
+
+    loop.stream_events = events
+    reply = await loop.respond("зроби щось", speak=False)
+    assert toolbox.calls == [("delegate", {})]
+    assert reply  # the ack still lands in the reply
+
+
+class DuplexAEC:
+    active = True
+    def __init__(self) -> None:
+        self.far: list[bytes] = []
+    def process(self, frame: bytes) -> bytes:
+        return frame
+    def push_far(self, pcm: bytes) -> None:
+        self.far.append(pcm)
+
+
+async def test_full_duplex_does_not_mute_and_feeds_far_end() -> None:
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    aec = DuplexAEC()
+    loop.aec = aec
+
+    await loop.respond("скажи щось")
+
+    assert audio.mute_log and not any(audio.mute_log), (
+        "with an active AEC the mic must stay open while speaking"
+    )
+    assert aec.far, "spoken audio must reach the canceller as far-end"
+
+
+async def test_interrupted_reply_stops_feeding_the_speaker() -> None:
+    audio = FakeAudio()
+    loop = _make_loop(audio, reply_deltas=["Перше речення. ", "Друге речення."])
+    loop.aec = DuplexAEC()
+
+    async def two_sentences(deltas):
+        buf = "".join([d async for d in deltas])
+        for s in buf.split(". "):
+            if loop is not None:
+                yield s
+            loop._interrupted = True  # user barges in after sentence one
+
+    loop.split_sentences = two_sentences
+    reply = await loop.respond("розкажи довго")
+
+    assert len(audio.played) == 1, "speech after the interrupt must not play"
+    assert "Друге" in reply, "the full reply still lands in history"
