@@ -203,12 +203,21 @@ class Hands:
         everything" — a security control lost to a refactor.
         """
         from src.agent.modes import is_tool_allowed as mode_is_tool_allowed
+        from src.agent.tools.capability_index import INSTALL_TOOLS
         from src.agent.tools.system import TOOLS
 
         profile = getattr(self._session_state, "profile", None)
+        # Install tools are blocked by the installer anyway when the gate is
+        # off; keeping them in the schema means the model offers what it
+        # will then refuse. Drop them so it never promises an install.
+        install_ok = bool(
+            getattr(self._settings, "capability_install_enabled", False)
+        )
 
         def allowed(name: str) -> bool:
             if name == "delegate":
+                return False
+            if name in INSTALL_TOOLS and not install_ok:
                 return False
             if profile is None:
                 return True

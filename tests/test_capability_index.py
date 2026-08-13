@@ -156,6 +156,110 @@ def test_top_k_ordering_by_popularity_then_source(tmp_path: Path):
     assert names[3] == "alpha"  # builtin
 
 
+def test_ukrainian_intent_finds_builtin_tools(tmp_path: Path):
+    """A spoken Ukrainian intent must match English-named builtin tools.
+
+    Before the fix the tokenizer was [a-z0-9_] — every Cyrillic intent
+    became zero tokens and the index could never match anything said aloud.
+    """
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    settings = _FakeSettings(skills_paths=[])
+    idx = CapabilityIndex(settings, workspace)
+    idx.build()
+
+    res = idx.query("подивись мої вкладки в браузері", top_k=5)
+    assert any(e.name == "list_browser_tabs" for e in res), [e.name for e in res]
+
+    res2 = idx.query("загугли останні новини", top_k=5)
+    assert any(e.name == "web_search" for e in res2), [e.name for e in res2]
+
+    res3 = idx.query("запам'ятай що я люблю каву", top_k=5)
+    assert any(e.name == "remember" for e in res3), [e.name for e in res3]
+
+
+def test_ukrainian_inflection_still_matches(tmp_path: Path):
+    """«вкладку», «вкладок» are the same word as «вкладки» to the index."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    settings = _FakeSettings(skills_paths=[])
+    idx = CapabilityIndex(settings, workspace)
+    idx.build()
+
+    for form in ("вкладку", "вкладок", "вкладки"):
+        res = idx.query(f"відкрий нову {form}", top_k=5)
+        assert any("browser" in e.name for e in res), (form, [e.name for e in res])
+
+
+def test_ukrainian_stopwords_do_not_score(tmp_path: Path):
+    """Pure function words must not produce matches."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    settings = _FakeSettings(skills_paths=[])
+    idx = CapabilityIndex(settings, workspace)
+    idx.build()
+
+    assert idx.query("будь ласка і не за про") == []
+
+
+def test_keywords_field_is_indexed_but_not_required():
+    idx = CapabilityIndex(_FakeSettings(skills_paths=[]), Path("/nonexistent"))
+    idx._entries = [
+        IndexEntry(source="skill", name="tab-helper",
+                   description="Manage browser tabs", keywords="вкладки браузер"),
+        IndexEntry(source="skill", name="other", description="Something else"),
+    ]
+    idx._inverted = {}
+    from src.agent.tools.capability_index import _stem
+    for i, e in enumerate(idx._entries):
+        for tok in _tokenize(f"{e.name} {e.description} {e.keywords}"):
+            idx._inverted.setdefault(_stem(tok), set()).add(i)
+
+    res = idx.query("покажи вкладки", top_k=2)
+    assert [e.name for e in res] == ["tab-helper"]
+
+
+def test_mcp_keywords_read_from_json(tmp_path: Path):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / ".mcp.json").write_text(json.dumps({
+        "mcpServers": {
+            "github": {
+                "command": "npx", "args": ["-y", "github-mcp"],
+                "description": "GitHub MCP server",
+                "keywords": "гітхаб репозиторій пулреквест",
+            },
+        }
+    }))
+    settings = _FakeSettings(skills_paths=[])
+    idx = CapabilityIndex(settings, workspace)
+    idx.build()
+
+    res = idx.query("подивись мій гітхаб", top_k=3)
+    assert any(e.name == "github" for e in res), [e.name for e in res]
+
+
+def test_install_tools_hidden_when_gate_closed(tmp_path: Path):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+
+    idx = CapabilityIndex(_FakeSettings(skills_paths=[]), workspace)
+    idx.build()
+    names = {e.name for e in idx.entries}
+    assert "install_skill_tool" not in names
+    assert "register_mcp_server" not in names
+
+    @dataclass
+    class _OpenSettings(_FakeSettings):
+        capability_install_enabled: bool = True
+
+    idx_open = CapabilityIndex(_OpenSettings(skills_paths=[]), workspace)
+    idx_open.build()
+    open_names = {e.name for e in idx_open.entries}
+    assert "install_skill_tool" in open_names
+    assert "register_mcp_server" in open_names
+
+
 def test_build_performance_under_50ms(tmp_path: Path):
     workspace = tmp_path / "ws"
     workspace.mkdir()
