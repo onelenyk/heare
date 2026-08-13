@@ -71,6 +71,50 @@ async def test_chunked_tool_name_blanked_via_buffer() -> None:
 
 
 @pytest.mark.asyncio
+async def test_streamed_chunks_keep_their_spaces() -> None:
+    """The word gaps must survive a streamed response.
+
+    A chunk is a token, not a sentence — DeepSeek streams
+    ``['С', 'проб', 'ую', ' ще', ' раз']``. Scrubbing each chunk on its
+    own ran ``.strip()`` on every one of them and ate the leading space,
+    so TTS spoke ``Спробующераз``. Observed in production for 26% of all
+    replies before this was fixed.
+    """
+    proc = _make_processor()
+    deltas = ["Спроб", "ую", " ще", " раз", ",", " просто", " чита", "ю", " файл", "."]
+    await _send(proc, LLMFullResponseStartFrame())
+    for d in deltas:
+        await _send(proc, LLMTextFrame(text=d))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    text_frames = [f for f in _pushed_frames(proc) if isinstance(f, LLMTextFrame)]
+    assert len(text_frames) == len(deltas)
+    assert "".join(f.text for f in text_frames) == "Спробую ще раз, просто читаю файл."
+
+
+@pytest.mark.asyncio
+async def test_narration_split_across_chunks_is_stripped() -> None:
+    """Narration the model streams across chunk boundaries is caught.
+
+    ``bash: system_profiler`` arriving as three chunks matches nothing
+    per-chunk; only the joined text does. The surrounding sentence must
+    survive with its spacing intact.
+    """
+    proc = _make_processor()
+    deltas = ["Перевіряю. ", "bash", ": system_pro", "filer SPAudioDataType.", " Готово."]
+    await _send(proc, LLMFullResponseStartFrame())
+    for d in deltas:
+        await _send(proc, LLMTextFrame(text=d))
+    await _send(proc, LLMFullResponseEndFrame())
+
+    text_frames = [f for f in _pushed_frames(proc) if isinstance(f, LLMTextFrame)]
+    assert len(text_frames) == len(deltas)
+    out = "".join(f.text for f in text_frames)
+    assert "system_profiler" not in out
+    assert out == "Перевіряю. Готово."
+
+
+@pytest.mark.asyncio
 async def test_natural_response_passes_through_unchanged() -> None:
     proc = _make_processor()
     payload = "Звичайно, зачитуй — я уважно слухаю."

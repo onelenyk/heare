@@ -69,31 +69,48 @@ def _select_voice_for_text(
 
 
 def _scrub_buffered_response(buffered: list[Any]) -> None:
-    """Mutate every buffered LLM-response frame's ``text`` in place.
+    """Mutate the buffered LLM-response frames' ``text`` in place.
 
-    If the joined text scrubs to empty (the whole response was tool-name
-    narration like ``list_tools`` or a chunked ``["list", "_tools"]``),
-    every frame's text is set to ``""`` so TTS produces silence between
-    the start/end boundary frames. Otherwise each frame's text is
-    individually scrubbed.
+    The scrub runs on the WHOLE response, never on individual chunks.
+    A streamed chunk is a token, not a sentence: the model sends
+    ``[' щ', 'е', ' раз']``, and :func:`scrub_tts_text` ends in
+    ``.strip()``, so scrubbing each chunk on its own ate the space that
+    separates every word — TTS then spoke ``Спробующераз``. Scrubbing the
+    joined text also lets the patterns match narration split across
+    chunks, which a per-chunk pass could never see.
+
+    Three outcomes:
+
+    * the joined text scrubs to empty (the whole response was tool-name
+      narration like ``list_tools`` or a chunked ``["list", "_tools"]``)
+      — every frame is blanked so TTS produces silence between the
+      start/end boundary frames;
+    * the scrub changed nothing — the frames are left exactly as the
+      model sent them, which is the overwhelmingly common case;
+    * something was stripped — the cleaned text rides on the first frame
+      and the rest are blanked. Frame count and order are preserved
+      because downstream stages count on the response cycle's shape, and
+      nothing is lost: all of them are pushed together at response end.
     """
+    if not buffered:
+        return
     joined = "".join(getattr(f, "text", "") or "" for f in buffered)
-    drop_whole = bool(joined.strip()) and scrub_tts_text(joined) == ""
-    if drop_whole:
+    cleaned = scrub_tts_text(joined)
+
+    if cleaned == joined:
+        return
+
+    if joined.strip() and not cleaned:
         logger.info(
             "[TTS SCRUB] dropping response — joined text is tool-name only: %r",
             joined[:80],
         )
+    else:
+        logger.debug("scrubbed LLM text: %r -> %r", joined[:60], cleaned[:60])
 
-    for f in buffered:
-        if drop_whole:
-            f.text = ""
-            continue
-        raw = getattr(f, "text", "") or ""
-        cleaned = scrub_tts_text(raw)
-        if cleaned != raw:
-            logger.debug("scrubbed LLM text: %r -> %r", raw[:60], cleaned[:60])
-        f.text = cleaned
+    buffered[0].text = cleaned
+    for f in buffered[1:]:
+        f.text = ""
 
 
 def _scrub_speak_frame(frame: Any) -> None:
