@@ -33,9 +33,11 @@ class FakeAsyncClient:
         *,
         files=None,
         data=None,
+        headers=None,
         timeout=None,
     ):
         """Capture request and return a fake response."""
+        self.captured_headers = headers
         self.last_request = {
             "url": url,
             "files": files,
@@ -427,3 +429,26 @@ async def test_transcript_dataclass():
     t = Transcript(text="hello", language="en")
     assert t.text == "hello"
     assert t.language == "en"
+
+
+async def test_bearer_auth_header_is_sent() -> None:
+    """Found live: the request carried no Authorization header at all and
+    Groq answered 401 — while every other field was asserted by tests."""
+    captured = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"text": "ok", "language": "ukrainian"}
+
+    class _Client:
+        async def post(self, url, **kwargs):
+            captured.update(kwargs)
+            return _Resp()
+
+    from src.spine.stt import transcribe
+
+    await transcribe(b"\x00\x00" * 160, api_key="sk-test-123", client=_Client())
+    assert captured.get("headers", {}).get("Authorization") == "Bearer sk-test-123"

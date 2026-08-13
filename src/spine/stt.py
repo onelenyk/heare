@@ -94,6 +94,7 @@ async def transcribe(
     }
     if language is not None:
         data["language"] = language
+    headers = {"Authorization": f"Bearer {api_key}"}
 
     # Use provided client or create a temporary one.
     if client is not None:
@@ -101,6 +102,7 @@ async def transcribe(
             "https://api.groq.com/openai/v1/audio/transcriptions",
             files=files,
             data=data,
+            headers=headers,
             timeout=timeout,
         )
         resp.raise_for_status()
@@ -111,6 +113,7 @@ async def transcribe(
                 "https://api.groq.com/openai/v1/audio/transcriptions",
                 files=files,
                 data=data,
+                headers=headers,
                 timeout=timeout,
             )
             resp.raise_for_status()
