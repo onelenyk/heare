@@ -108,6 +108,11 @@ class SpineLoop:
             # teardown (closing audio streams, killing ffmpeg) races the
             # children's cleanup.
             await asyncio.gather(*tasks, return_exceptions=True)
+            if self.toolbox is not None:
+                try:
+                    self.toolbox.cancel_all()
+                except Exception:
+                    logger.debug("toolbox cancel_all failed (non-fatal)")
 
     # -- ear ----------------------------------------------------------
 
@@ -130,6 +135,11 @@ class SpineLoop:
                     # what is queued and tell respond() to stop feeding.
                     self._interrupted = True
                     dropped = self.audio.stop_playback()
+                    # The dropped bytes are already in the AEC reference
+                    # but will never leave the speaker — without this the
+                    # canceller subtracts a phantom echo from exactly the
+                    # utterance the user is interrupting with.
+                    self.aec.clear()
                     logger.info("barge-in: dropped %d queued bytes", dropped)
             elif kind == "end":
                 # Off the hot path — but through a single worker, not
@@ -197,6 +207,11 @@ class SpineLoop:
             except Exception:
                 logger.exception("persist failed (non-fatal)")
 
+        # History first: the prompt builder greps memory by history[-1],
+        # which must be the user's current question, not the assistant's
+        # own previous reply.
+        self.history.append({"role": "user", "content": user_text})
+
         prompt = self.system_prompt
         if self.make_system_prompt is not None:
             try:
@@ -204,7 +219,6 @@ class SpineLoop:
             except Exception:
                 logger.exception("prompt build failed — using default")
 
-        self.history.append({"role": "user", "content": user_text})
         messages = [
             {"role": "system", "content": prompt},
             *self.history[-HISTORY_TURNS:],
@@ -217,11 +231,23 @@ class SpineLoop:
             if self.stream_events is not None and self.toolbox is not None:
                 events = self.stream_events(messages, self.toolbox.schemas)
                 async for ev in events:
+                    if self._interrupted:
+                        break  # stop paying for a reply nobody will hear
                     if ev.get("type") == "delta":
                         parts.append(ev["text"])
                         yield ev["text"]
                     elif ev.get("type") == "tool_call":
                         tool_calls.append(ev)
+                    elif ev.get("type") == "usage" and self.usage is not None:
+                        try:
+                            await asyncio.to_thread(
+                                self.usage.llm,
+                                ev.get("model") or "unknown",
+                                ev.get("input_tokens", 0),
+                                ev.get("output_tokens", 0),
+                            )
+                        except Exception:
+                            logger.debug("usage.llm failed (non-fatal)")
             else:
                 async for delta in self.stream_chat(messages):
                     parts.append(delta)
@@ -239,7 +265,11 @@ class SpineLoop:
 
             # The model answered with actions instead of (or besides)
             # words: run them and speak each short acknowledgement.
+            # A barge-in cancels pending actions too — "стоп" must not
+            # be followed by the very delegation it was stopping.
             for call in tool_calls:
+                if self._interrupted:
+                    break
                 spoken = await self._run_tool(call)
                 if spoken:
                     parts.append((" " if parts else "") + spoken)
@@ -284,7 +314,9 @@ class SpineLoop:
             chars = len(sentence)
         if chars and self.usage is not None:
             try:
-                self.usage.tts(chars)
+                # to_thread: a sync sqlite write on the event loop can
+                # stall every task for seconds under lock contention.
+                await asyncio.to_thread(self.usage.tts, chars)
             except Exception:
                 logger.debug("usage.tts failed (non-fatal)")
 

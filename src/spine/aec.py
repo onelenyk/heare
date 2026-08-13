@@ -97,6 +97,19 @@ class SpineAEC:
         except Exception:
             logger.debug("spine.aec: push_far failed on malformed chunk", exc_info=True)
 
+    def clear(self) -> None:
+        """Drop the queued far-end reference.
+
+        Cancelled audio is never played, so it must not stay in the
+        reference — otherwise AEC3 spends the next seconds subtracting
+        an echo no speaker ever produced (the daemon's collector does
+        the same on InterruptionFrame).
+        """
+        try:
+            self._far.clear()
+        except Exception:
+            pass
+
     def process(self, frame: bytes) -> bytes:
         """One 20 ms mic frame in, echo-cancelled frame of the SAME
         length out. Must never block beyond ~1ms budget; if the canceller

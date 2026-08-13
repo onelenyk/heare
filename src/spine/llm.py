@@ -83,6 +83,11 @@ async def stream_chat_events(
         "messages": messages,
         "stream": True,
         "temperature": temperature,
+        # The final SSE chunk then carries prompt/completion token
+        # counts — without it every LLM call is invisible to the
+        # usage_events accounting (the daemon's worker had exactly
+        # this hole).
+        "stream_options": {"include_usage": True},
     }
     if tools is not None:
         payload["tools"] = tools
@@ -90,6 +95,7 @@ async def stream_chat_events(
     owns_client = client is None
     http_client = client if client is not None else httpx.AsyncClient(timeout=timeout)
     tool_calls: dict[int, dict[str, Any]] = {}
+    usage: dict[str, Any] | None = None
     try:
         async with http_client.stream(
             "POST", url, json=payload, headers=headers
@@ -105,6 +111,15 @@ async def stream_chat_events(
                     chunk = json.loads(data)
                 except json.JSONDecodeError:
                     continue
+                if chunk.get("usage"):
+                    usage = {
+                        "type": "usage",
+                        "model": chunk.get("model") or cfg.model,
+                        "input_tokens": chunk["usage"].get("prompt_tokens", 0),
+                        "output_tokens": chunk["usage"].get(
+                            "completion_tokens", 0
+                        ),
+                    }
                 choices = chunk.get("choices") or []
                 if not choices:
                     continue
@@ -132,6 +147,8 @@ async def stream_chat_events(
                 "name": entry["name"],
                 "arguments": entry["arguments"],
             }
+        if usage is not None:
+            yield usage
     finally:
         if owns_client:
             await http_client.aclose()

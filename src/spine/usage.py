@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -33,11 +34,13 @@ class SpineUsage:
         self._db: Optional[sqlite3.Connection] = None
         self._ensure_db()
 
+    _lock = threading.Lock()
+
     def _ensure_db(self) -> None:
         """Initialize DB connection and schema if needed."""
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._db = sqlite3.connect(str(self.db_path))
+            self._db = sqlite3.connect(str(self.db_path), check_same_thread=False)
             # Enable foreign keys for referential integrity
             self._db.execute("PRAGMA foreign_keys=ON")
             # Initialize schema
@@ -82,7 +85,8 @@ class SpineUsage:
             if db is None:
                 return
 
-            db.execute(
+            with self._lock:
+                db.execute(
                 """
                 INSERT INTO usage_events
                     (ts, kind, provider, model,
@@ -100,8 +104,8 @@ class SpineUsage:
                     None,
                     cost_usd,
                 ),
-            )
-            db.commit()
+                )
+                db.commit()
         except Exception as e:
             logger.exception("Failed to record LLM usage: %s", e)
 
@@ -128,7 +132,8 @@ class SpineUsage:
             if db is None:
                 return
 
-            db.execute(
+            with self._lock:
+                db.execute(
                 """
                 INSERT INTO usage_events
                     (ts, kind, provider, model,
@@ -146,8 +151,8 @@ class SpineUsage:
                     None,
                     cost_usd,
                 ),
-            )
-            db.commit()
+                )
+                db.commit()
         except Exception as e:
             logger.exception("Failed to record STT usage: %s", e)
 
@@ -174,7 +179,8 @@ class SpineUsage:
             if db is None:
                 return
 
-            db.execute(
+            with self._lock:
+                db.execute(
                 """
                 INSERT INTO usage_events
                     (ts, kind, provider, model,
@@ -192,8 +198,8 @@ class SpineUsage:
                     char_count,
                     cost_usd,
                 ),
-            )
-            db.commit()
+                )
+                db.commit()
         except Exception as e:
             logger.exception("Failed to record TTS usage: %s", e)
 

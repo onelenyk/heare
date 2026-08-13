@@ -33,7 +33,18 @@ def _wake_phrases(settings) -> list[str]:
     spec = importlib.util.spec_from_file_location("_heare_wake", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.wake_phrases(settings, persona="")
+    # People call the assistant by its generated name, not only by the
+    # configured wake word; wake_phrases parses the name from a
+    # "You are <Name>" persona line, so hand it one.
+    name = ""
+    try:
+        import json as _json
+
+        ident = _json.loads(_P(settings.identity_file).read_text("utf-8"))
+        name = str(ident.get("name") or "")
+    except Exception:
+        pass
+    return mod.wake_phrases(settings, persona=f"You are {name}" if name else "")
 
 
 async def _build_loop(settings, *, audio, voice: str, hold_s: float,
@@ -66,7 +77,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         if loud_ms(pcm) < min_speech_ms:
             return Transcript(text="", language=settings.groq_language or "uk")
         if usage is not None:
-            usage.stt(len(pcm) / 32000.0)
+            await asyncio.to_thread(usage.stt, len(pcm) / 32000.0)
         return await transcribe(
             pcm,
             api_key=settings.groq_api_key or "",
