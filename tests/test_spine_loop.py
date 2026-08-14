@@ -399,3 +399,132 @@ async def test_interrupted_reply_stops_feeding_the_speaker() -> None:
 
     assert len(audio.played) == 1, "speech after the interrupt must not play"
     assert "Друге" in reply, "the full reply still lands in history"
+
+
+# -- the role platform -------------------------------------------------
+
+
+class FakeRole:
+    def __init__(self, name="мітинг", channel="log", artifact="підсумок",
+                 prompt="поводься як секретар"):
+        self.name = name
+        self.channel = channel
+        self.artifact = artifact
+        self.prompt = prompt
+        self.deny_tools = ("bash",)
+
+
+class FakeRoleManager:
+    def __init__(self):
+        self.active = None
+        self.turns: list = []
+        self.finished_with: list | None = None
+
+    def start(self, role):
+        self.active = role
+        return f"Роль «{role.name}» активна."
+
+    def note_turn(self, turn_id):
+        self.turns.append(turn_id)
+
+    async def finish(self, *, exchanges, complete):
+        self.finished_with = exchanges
+        await complete([{"role": "user", "content": "збери підсумок"}])
+        self.active = None
+
+        class _A:
+            full_md = "# Підсумок\nвсе добре"
+            spoken = "Підсумував. Два рішення."
+
+        return _A()
+
+
+def _wire_roles(loop, role):
+    loop.roles = {role.name: role}
+    loop.role_manager = FakeRoleManager()
+    loop.trigger_match = lambda text, roles: (
+        role if "почни мітинг" in text.lower() else None
+    )
+    loop.end_match = lambda text, r: "закінчили" in text.lower()
+    saved = {}
+    loop.save_artifact = lambda name, md: saved.setdefault("path", f"/tmp/{name}.md")
+    return saved
+
+
+async def test_role_session_records_everything_and_answers_nothing() -> None:
+    audio = FakeAudio()
+    assembler = FakeAssembler()
+    loop = _make_loop(audio, assembler=assembler)
+    role = FakeRole()
+    saved = _wire_roles(loop, role)
+
+    chat_calls = []
+    real_chat = loop.stream_chat
+
+    def spying_chat(m):
+        chat_calls.append(m)
+        return real_chat(m)
+
+    loop.stream_chat = spying_chat
+
+    run = asyncio.create_task(loop.run())
+    assembler.transcript("Дока, почни мітинг")       # start
+    assembler.transcript("обговорюємо бюджет на рік")  # logged, no reply
+    assembler.transcript("рішення: беремо перший варіант")
+    assembler.transcript("ну все, закінчили")          # finish -> artifact
+
+    async def _done() -> None:
+        while saved.get("path") is None:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=3.0)
+    run.cancel()
+
+    mgr = loop.role_manager
+    assert mgr.active is None, "session must be closed"
+    assert [e["user"] for e in mgr.finished_with] == [
+        "обговорюємо бюджет на рік",
+        "рішення: беремо перший варіант",
+    ]
+    # The only LLM traffic is the artifact build inside finish() — the
+    # logged turns themselves never reached the model.
+    assert len(chat_calls) == 1
+    spoken = b"".join(audio.played).decode()
+    assert "активна" in spoken and "Підсумував" in spoken
+    assert audio.mute_output is False, "voice restored after the session"
+
+
+async def test_log_role_turns_bypass_wake_gate() -> None:
+    audio = FakeAudio()
+    assembler = FakeAssembler()
+    loop = _make_loop(audio, assembler=assembler)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.wake = FakeWake(accept=False)  # gate would reject everything
+    loop.role_manager.start(role)       # session already active
+
+    run = asyncio.create_task(loop.run())
+    assembler.transcript("чужа розмова в кімнаті")
+
+    async def _logged() -> None:
+        while not loop._role_log:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_logged(), timeout=2.0)
+    run.cancel()
+
+    assert loop._role_log == [{"user": "чужа розмова в кімнаті", "agent": None}]
+    assert loop.wake.asked == [], "wake gate must not judge in-session turns"
+
+
+async def test_voice_role_conversation_lands_in_session_log() -> None:
+    loop = _make_loop(FakeAudio(), reply_deltas=["Поясни", " мені чому."])
+    role = FakeRole(name="вчитель", channel="voice")
+    _wire_roles(loop, role)
+    loop.role_manager.start(role)
+
+    await loop.respond("бо так швидше")
+
+    assert loop._role_log == [
+        {"user": "бо так швидше", "agent": "Поясни мені чому."}
+    ]

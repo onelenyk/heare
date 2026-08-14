@@ -56,6 +56,7 @@ class AudioIO:
 
         # Mute input during assistant playback (half-duplex gating)
         self.mute_input = False
+        self.mute_output = False
 
         # Output buffer and lock
         self._output_buffer = bytearray()
@@ -187,9 +188,17 @@ class AudioIO:
         Non-blocking. Runs on the caller's thread (assumed to be the main
         event loop thread, not the callback thread).
 
+        When mute_output is True the bytes are dropped here, before the
+        buffer: quiet roles (a meeting secretary) promise the user the
+        assistant cannot sound, and that promise must hold even if some
+        caller forgets to check the policy — a hardware-level guarantee,
+        like mute_input on the other side.
+
         Args:
             pcm: Raw int16 PCM bytes at output_rate (24 kHz default).
         """
+        if self.mute_output:
+            return
         with self._output_lock:
             self._output_buffer.extend(pcm)
 

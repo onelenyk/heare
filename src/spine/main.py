@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from pathlib import Path
 from functools import partial
 from typing import AsyncIterator
 
@@ -138,13 +139,77 @@ async def _wire_full(loop, settings, cfg, memory):
     from src.spine.llm import stream_chat_events
     from src.spine.persist import SpinePersistence
     from src.spine.prompt import build_system_prompt, load_persona
+    from src.spine.role_session import RoleManager
+    from src.spine.roles import RoleLoader, is_end_trigger, match_trigger
     from src.spine.tools import VoiceToolbox
     from src.spine.wake import WakeGate
 
     async def _deliver(text: str) -> None:
         await loop.inject(text)
 
-    loop.toolbox = VoiceToolbox(settings, memory, _deliver)
+    # -- the role platform --------------------------------------------
+    role_paths = [
+        Path(__file__).resolve().parent.parent.parent / "roles",
+        Path.home() / ".heare" / "roles",
+    ]
+    loop.roles = RoleLoader(role_paths).load()
+    loop.role_manager = RoleManager()
+    loop.trigger_match = match_trigger
+    loop.end_match = is_end_trigger
+    logger.info("roles loaded: %s", ", ".join(sorted(loop.roles)) or "none")
+
+    artifacts_dir = Path(settings.workspace_dir) / "artifacts"
+
+    def _save_artifact(role_name: str, md: str) -> str:
+        from datetime import datetime as _dt
+
+        # Models love wrapping a requested markdown document in a code
+        # fence; the file must be the document, not a quote of it.
+        text = md.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1]
+            if text.rstrip().endswith("```"):
+                text = text.rstrip()[:-3].rstrip() + "\n"
+
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        stamp = _dt.now().strftime("%Y-%m-%d-%H%M")
+        path = artifacts_dir / f"{stamp}-{role_name}.md"
+        path.write_text(text, "utf-8")
+        return str(path)
+
+    loop.save_artifact = _save_artifact
+
+    class _RoleSessionState:
+        """Duck-typed session_state for the Hands mode gate: the active
+        role's deny_tools become a live ModeProfile. No role → None
+        profile is not allowed by mode_gate_refusal, so fall back to the
+        permissive default profile."""
+
+        @property
+        def profile(self):
+            from src.agent.modes import MODE_PROFILES, ModeProfile
+
+            active = loop.role_manager.active if loop.role_manager else None
+            if active is None or not getattr(active, "deny_tools", ()):
+                return MODE_PROFILES["ambient"]
+            return ModeProfile(
+                name=f"role:{active.name}",
+                denied_tool_patterns=tuple(active.deny_tools),
+                voice_muted=getattr(active, "channel", "voice") == "log",
+            )
+
+    role_session_state = _RoleSessionState()
+
+    def _hands_factory(s):
+        from src.agent.hands import Hands
+
+        # The live session_state makes the active role's deny_tools an
+        # enforced gate inside the worker, not a prompt suggestion.
+        return Hands(s, session_state=role_session_state)
+
+    loop.toolbox = VoiceToolbox(
+        settings, memory, _deliver, hands_factory=_hands_factory
+    )
     loop.stream_events = lambda messages, tools: stream_chat_events(
         messages, cfg, tools=tools
     )
@@ -168,8 +233,17 @@ async def _wire_full(loop, settings, cfg, memory):
             memory_block = await memory.context(query=query, limit=3)
         except Exception:
             logger.debug("memory context failed (non-fatal)")
+        # An active role layers its behavior right after the persona —
+        # stable for the whole session, so the prefix cache only resets
+        # on role switches, not on every turn.
+        persona_block = persona
+        active = loop.role_manager.active if loop.role_manager else None
+        if active is not None and getattr(active, "prompt", ""):
+            persona_block = (
+                f"{persona}\n\nЗараз ти в ролі «{active.name}».\n{active.prompt}"
+            )
         return build_system_prompt(
-            persona=persona,
+            persona=persona_block,
             memory_block=memory_block or "",
             exchanges=exchanges,
             now=datetime.now(),

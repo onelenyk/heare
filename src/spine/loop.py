@@ -73,6 +73,16 @@ class SpineLoop:
     make_system_prompt: Any = None  # async () -> str
     persist: Any = None        # .log_user_turn/.log_agent_reply (sync)
     usage: Any = None          # .stt(seconds) / .tts(chars) (sync)
+    # The role platform. All injected (this file imports no siblings):
+    # roles is the loaded registry, role_manager owns the active session,
+    # the two matchers recognise start/end phrases, save_artifact persists
+    # the end-of-session document and returns its path.
+    roles: dict = field(default_factory=dict)
+    role_manager: Any = None   # .start/.finish/.cancel/.active/.note_turn
+    trigger_match: Any = None  # (text, roles) -> Role | None
+    end_match: Any = None      # (text, role) -> bool
+    save_artifact: Any = None  # (role_name, md) -> str path
+    _role_log: list = field(default_factory=list)  # session exchanges
     _stt_jobs: asyncio.Queue = field(default_factory=asyncio.Queue)
     # Turns injected from outside the microphone (Hands results, the
     # dashboard). They are already addressed to the assistant, so they
@@ -187,13 +197,110 @@ class SpineLoop:
                 turn = self.assembler.poll()
             if not turn:
                 continue
-            if gated and self.wake is not None and not self.wake.accepts(turn):
+            in_role = (
+                self.role_manager is not None and self.role_manager.active
+            )
+            if gated and not in_role and (
+                self.wake is not None and not self.wake.accepts(turn)
+            ):
+                # An active role session hears everything (a meeting
+                # secretary that ignored the unaddressed room would have
+                # nothing to summarise); outside a session the wake gate
+                # rules as usual.
                 logger.info("asleep — turn not addressed to me: %r", turn[:60])
                 continue
             try:
+                if await self._role_turn(turn):
+                    continue
                 await self.respond(turn)
             except Exception:
                 logger.exception("turn failed: %r", turn[:80])
+
+    async def _role_turn(self, turn: str) -> bool:
+        """Role lifecycle and the log channel. True when the turn is
+        consumed here and must not go to the normal respond() path."""
+        if self.role_manager is None:
+            return False
+        active = self.role_manager.active
+
+        if active is not None and self.end_match is not None and self.end_match(
+            turn, active
+        ):
+            await self._role_finish()
+            return True
+
+        if active is None and self.trigger_match is not None:
+            role = self.trigger_match(turn, self.roles)
+            if role is not None:
+                ack = self.role_manager.start(role)
+                self._role_log.clear()
+                if getattr(role, "channel", "voice") == "log" and self.audio:
+                    self.audio.mute_output = True
+                await self._say_now(ack)
+                return True
+
+        if active is not None and getattr(active, "channel", "voice") == "log":
+            # The secretary channel: everything is recorded, nothing is
+            # answered until the session ends.
+            self._role_log.append({"user": turn, "agent": None})
+            if self.persist is not None:
+                try:
+                    turn_id = await asyncio.to_thread(
+                        self.persist.log_user_turn, turn
+                    )
+                    self.role_manager.note_turn(turn_id)
+                except Exception:
+                    logger.exception("role persist failed (non-fatal)")
+            return True
+
+        return False
+
+    async def _role_finish(self) -> None:
+        active = self.role_manager.active
+        if self.audio is not None:
+            self.audio.mute_output = False
+
+        async def _complete(messages: list[dict]) -> str:
+            parts: list[str] = []
+            async for delta in self.stream_chat(messages):
+                parts.append(delta)
+            return "".join(parts)
+
+        artifact = await self.role_manager.finish(
+            exchanges=list(self._role_log), complete=_complete
+        )
+        self._role_log.clear()
+        if artifact is None:
+            await self._say_now("Роль завершено.")
+            return
+        path = ""
+        if self.save_artifact is not None and artifact.full_md.strip():
+            try:
+                path = self.save_artifact(
+                    getattr(active, "name", "роль"), artifact.full_md
+                )
+            except Exception:
+                logger.exception("artifact save failed")
+        logger.info("role artifact: %s (%d chars)", path, len(artifact.full_md))
+        await self._say_now(artifact.spoken)
+
+    async def _say_now(self, text: str) -> None:
+        """Speak a short service phrase outside the LLM flow."""
+        if not text:
+            return
+        self.history.append({"role": "assistant", "content": text})
+        if self.audio is None:
+            return
+        muted = self.audio.mute_output
+        self.audio.mute_output = False
+        try:
+            await self._speak(text)
+            try:
+                await asyncio.wait_for(self._drain_playback(), timeout=30.0)
+            except asyncio.TimeoutError:
+                self.audio.stop_playback()
+        finally:
+            self.audio.mute_output = muted
 
     async def respond(self, user_text: str, *, speak: bool = True) -> str:
         """One full exchange. Returns the reply text (also spoken)."""
@@ -301,6 +408,11 @@ class SpineLoop:
                     )
                 except Exception:
                     logger.exception("persist failed (non-fatal)")
+        if self.role_manager is not None and self.role_manager.active:
+            # A voice-channel session (teacher, interviewer) keeps its own
+            # transcript for the end-of-session artifact.
+            self.role_manager.note_turn(turn_id)
+            self._role_log.append({"user": user_text, "agent": reply or None})
         return reply
 
     async def _speak(self, sentence: str) -> None:
