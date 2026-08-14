@@ -8,6 +8,7 @@ sync with the memories table automatically.
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from pathlib import Path
@@ -15,6 +16,42 @@ from pathlib import Path
 import aiosqlite
 
 from src.memory.base import MemoryBackend, MemoryEntry, MemoryType
+
+# Function/question words stripped out of a query before it becomes an FTS5
+# MATCH expression. A natural spoken question like
+# "яке кодове слово я тобі казав?" is mostly grammatical scaffolding around
+# one or two content words ("кодове", "слово"); requiring every token to
+# match (FTS5's default within a bareword query) means the whole utterance
+# would have to appear near-verbatim in a stored memory, which it almost
+# never does for a spoken recall query.
+#
+# Deliberately a short, sensible, hand-maintained list rather than a
+# generated one -- extend it as new false-negative queries turn up, the same
+# way the ranking ORDER BY below was walked back to something legible rather
+# than trusted blindly (see the comment on that clause).
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # Ukrainian
+        "я", "ти", "ми", "ви", "він", "вона", "воно", "вони",
+        "мені", "тобі", "мене", "нас", "вас", "його", "її", "їх",
+        "що", "як", "яке", "який", "яка", "які", "чи", "не", "і", "й", "та", "а",
+        "в", "у", "на", "з", "із", "зі", "до", "про", "це", "той", "ця", "ці",
+        "же", "ж", "б", "би",
+        "казав", "казала", "казали", "говорив", "говорила", "сказав", "сказала",
+        "було", "буде", "є",
+        # Russian
+        "ты", "мы", "вы", "он", "она", "оно", "они",
+        "мне", "тебе", "меня", "его", "её", "их",
+        "какой", "какая", "какое", "какие", "ли", "со",
+        "это", "тот", "то", "те",
+        "бы", "говорил", "говорила", "сказал", "сказала", "было", "будет", "есть",
+        # English
+        "the", "a", "an", "i", "you", "me", "my", "what", "which", "is", "was",
+        "do", "did", "to", "of", "in", "on", "and", "or",
+    }
+)
+
+_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 
 class SQLiteBackend(MemoryBackend):
@@ -133,11 +170,29 @@ class SQLiteBackend(MemoryBackend):
     ) -> list[MemoryEntry]:
         """Search memories via FTS5 full-text match, with optional type filter.
 
+        The query is tokenized and stripped of stopwords (function/question
+        words in Ukrainian, Russian, and English -- see ``_STOPWORDS``), and
+        the remaining tokens are OR-ed together rather than required to all
+        match. A natural spoken query like "яке кодове слово я тобі казав?"
+        would otherwise need every one of those words -- including "яке",
+        "я", "тобі", "казав" -- present in the stored memory, which they
+        almost never are. bm25 still ranks documents matching more of the
+        surviving tokens above those matching fewer, so precise short
+        queries are unaffected.
+
+        If every token is a stopword (or the query is empty after
+        filtering), there is nothing left to search on, so this falls back
+        to the most recently created memories rather than raising or
+        returning nothing.
+
         Results are ranked by BM25 relevance (FTS5 ``rank``) boosted by
         recency and frequency: recently-accessed and frequently-accessed
         memories sort higher.
         """
         sanitized = _sanitize_fts_query(query)
+        if sanitized is None:
+            return await self._get_recent(limit)
+
         params: list = [sanitized]
 
         type_clause = ""
@@ -241,12 +296,26 @@ class SQLiteBackend(MemoryBackend):
         return [_row_to_entry(row) for row in rows]
 
 
-def _sanitize_fts_query(raw: str) -> str:
-    """Wrap each token in double quotes to prevent FTS5 syntax errors."""
-    tokens = raw.split()
-    if not tokens:
-        return '""'
-    return " ".join(f'"{t}"' for t in tokens)
+def _sanitize_fts_query(raw: str) -> str | None:
+    """Turn a natural-language query into an FTS5 MATCH expression.
+
+    Tokens are extracted with a word-boundary regex (so stray punctuation
+    like the trailing "?" in "казав?" doesn't stop it matching the
+    stopword "казав"), stopwords are dropped, and each remaining token is
+    quoted (to stay a safe bareword for FTS5, whatever characters it
+    contains) and OR-ed together -- not AND-ed, which is FTS5's default for
+    a bareword list and is what previously required every word in a query
+    to appear in a memory for it to match at all.
+
+    Returns ``None`` when nothing meaningful is left to search on (an empty
+    query, or a query made entirely of stopwords), signalling the caller to
+    fall back to another strategy instead of running a MATCH with no terms.
+    """
+    tokens = _TOKEN_RE.findall(raw)
+    kept = [t for t in tokens if t.lower() not in _STOPWORDS]
+    if not kept:
+        return None
+    return " OR ".join(f'"{t}"' for t in kept)
 
 
 def _row_to_entry(row: tuple) -> MemoryEntry:

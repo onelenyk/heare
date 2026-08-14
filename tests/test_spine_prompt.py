@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -159,6 +160,60 @@ class TestBuildSystemPrompt:
         assert "Користувач: Привіт" in prompt
         assert "Ти: Привіт!" in prompt
         assert "Зараз: 2026-08-12 14:30:45" in prompt
+
+    def test_static_prefix_is_stable_across_dynamic_changes(self) -> None:
+        """The static block (voice rules + persona) is a stable prefix.
+
+        For DeepSeek's prefix cache to hit, the leading bytes of the prompt
+        must be identical across turns whenever persona is unchanged, no
+        matter what memory/exchanges/now vary to. The static-only prompt
+        (no dynamic args) gives the exact static text explicitly.
+        """
+        persona = "Я веселий помічник, мій стиль — теплий."
+        static_only = build_system_prompt(persona=persona)
+
+        prompt_a = build_system_prompt(
+            persona=persona,
+            memory_block="Користувач любить музику.",
+            exchanges=[{"user": "Привіт", "agent": "Привіт!"}],
+            now=datetime(2026, 8, 12, 10, 0, 0),
+        )
+        prompt_b = build_system_prompt(
+            persona=persona,
+            memory_block="Зовсім інша інформація про щось інше.",
+            exchanges=[{"user": "Як справи?", "agent": "Добре, дякую."}],
+            now=datetime(2026, 8, 13, 23, 59, 59),
+        )
+
+        # Both full prompts must start with exactly the static text.
+        assert prompt_a.startswith(static_only)
+        assert prompt_b.startswith(static_only)
+
+        # The common string prefix of the two must be at least as long as
+        # the static block — i.e. dynamic changes cannot bleed backward
+        # into the cached prefix.
+        common_prefix_len = len(os.path.commonprefix([prompt_a, prompt_b]))
+        assert common_prefix_len >= len(static_only)
+
+    def test_time_line_is_last(self) -> None:
+        """With all sections present, the date/time line is the final line.
+
+        Time changes on every single turn, so it must sit deepest in the
+        prompt to keep as much of the prefix cacheable as possible.
+        """
+        dt = datetime(2026, 8, 12, 14, 30, 45)
+        exchanges = [
+            {"user": "Привіт", "agent": "Привіт!"},
+            {"user": "А як ти?", "agent": "Я гарно."},
+        ]
+        prompt = build_system_prompt(
+            persona="Я веселий",
+            memory_block="Люблю музику",
+            exchanges=exchanges,
+            now=dt,
+        )
+        lines = [line for line in prompt.split("\n") if line.strip()]
+        assert lines[-1] == "Зараз: 2026-08-12 14:30:45"
 
 
 class TestLoadPersona:

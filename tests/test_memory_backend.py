@@ -169,3 +169,88 @@ async def test_context_with_query_delegates_to_search(backend: SQLiteBackend) ->
 async def test_forget_nonexistent(backend: SQLiteBackend) -> None:
     removed = await backend.forget("nonexistent-id")
     assert removed is False
+
+
+# --- Natural-language recall (live defect: search() AND-ed every token,
+# so filler words in a spoken question -- "яке", "я", "тобі", "казав" --
+# made the whole query fail to match anything). ---------------------------
+
+
+async def test_natural_language_query_finds_precise_content(
+    backend: SQLiteBackend,
+) -> None:
+    """The exact live repro: a spoken question full of filler words must
+    still find a memory that only contains the content words."""
+    await backend.store(
+        MemoryEntry(
+            id="",
+            type=MemoryType.FACT,
+            content="Кодове слово користувача — жираф",
+            created_ts=time.time(),
+        )
+    )
+
+    results = await backend.search("яке кодове слово я тобі казав?")
+
+    assert len(results) == 1
+    assert results[0].content == "Кодове слово користувача — жираф"
+
+
+async def test_precise_short_query_still_ranks_the_match_first(
+    backend: SQLiteBackend,
+) -> None:
+    """A short, precise query must not regress: both of its tokens survive
+    stopword filtering, so it should still behave like an AND-ish match
+    and outrank unrelated decoys."""
+    await backend.store(
+        MemoryEntry(
+            id="",
+            type=MemoryType.FACT,
+            content="Кодове слово користувача — жираф",
+            created_ts=time.time(),
+        )
+    )
+    await backend.store(
+        MemoryEntry(id="", type=MemoryType.FACT, content="Улюблений колір — синій", created_ts=time.time())
+    )
+    await backend.store(
+        MemoryEntry(id="", type=MemoryType.FACT, content="слово дня — дощ", created_ts=time.time())
+    )
+
+    results = await backend.search("кодове слово")
+
+    assert results[0].content == "Кодове слово користувача — жираф"
+
+
+async def test_all_stopword_query_falls_back_without_raising(
+    backend: SQLiteBackend,
+) -> None:
+    """A query made entirely of function words has nothing left to search
+    on after filtering. It must not raise, and must return the documented
+    fallback: the most recently created memories."""
+    await backend.store(
+        MemoryEntry(id="", type=MemoryType.FACT, content="a fact stored earlier", created_ts=time.time())
+    )
+
+    results = await backend.search("а що це є?")
+
+    assert results == await backend._get_recent(5)
+
+
+async def test_natural_language_query_matches_on_content_word(
+    backend: SQLiteBackend,
+) -> None:
+    """Mixed function/content-word English query: only the content word
+    ("editor") is expected to drive the match. Cross-language matching is
+    not expected or tested here."""
+    await backend.store(
+        MemoryEntry(id="", type=MemoryType.FACT, content="Favorite editor is vim", created_ts=time.time())
+    )
+    await backend.store(
+        MemoryEntry(id="", type=MemoryType.FACT, content="unrelated memory", created_ts=time.time())
+    )
+
+    results = await backend.search("what editor do I use")
+
+    assert len(results) == 1
+    assert results[0].content == "Favorite editor is vim"

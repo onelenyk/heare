@@ -2,6 +2,18 @@
 
 Composes Ukrainian voice-first prompts with optional persona, memory, and
 recent exchanges — the spine's three key ingredients, without daemon machinery.
+
+DeepSeek's API caches prompt prefixes: repeated leading tokens across requests
+are billed at roughly a tenth of the price and process faster. The system
+prompt is messages[0] — the very start of that prefix — so the internal
+section order matters. This builder puts the static block (voice rules, then
+persona — unchanged across turns for a given persona) first, and the dynamic
+block (memory, recent exchanges, then the date/time line last of all, since it
+changes on every single turn) after it. A single changed byte anywhere in the
+prefix invalidates the cache for everything that follows it, so ordering
+static-before-dynamic, and putting the fastest-changing field deepest, is what
+lets the cache actually hit turn over turn instead of paying full price every
+time.
 """
 
 from __future__ import annotations
@@ -21,11 +33,22 @@ def build_system_prompt(
 ) -> str:
     """Compose the spine's system prompt.
 
-    Always contains the voice rules (short Ukrainian spoken prose, no markup —
-    keep the spirit of loop.py's DEFAULT_SYSTEM_PROMPT). Adds sections ONLY
-    when non-empty: persona paragraph; 'Що ти пам'ятаєш:' + memory_block;
-    'Останні розмови:' + exchanges rendered as 'Користувач: .../Ти: ...'
-    lines (cap each line at 200 chars); current date/time line when now given.
+    Structured as a STATIC block followed by a DYNAMIC block, in that order,
+    so DeepSeek's prefix cache hits on the unchanging lead every turn:
+
+    STATIC (identical across turns given the same persona):
+      - voice rules (short Ukrainian spoken prose, no markup — keep the
+        spirit of loop.py's DEFAULT_SYSTEM_PROMPT)
+      - persona paragraph
+
+    DYNAMIC (changes turn to turn; ordered slowest-changing to fastest):
+      - 'Що ти пам'ятаєш:' + memory_block
+      - 'Останні розмови:' + exchanges rendered as 'Користувач: .../Ти: ...'
+        lines (cap each line at 200 chars)
+      - current date/time line, LAST of all, since it changes most often
+
+    Sections are added ONLY when non-empty. Same information, same headers,
+    same truncation rules as before — only the order changed.
 
     Deterministic: same inputs -> same string.
     """
@@ -35,11 +58,13 @@ def build_system_prompt(
         "розмітки, списків і коду. Одна-три фрази, як у живій розмові."
     )
 
+    # STATIC block — stable across turns for a given persona.
     parts: list[str] = [voice_rules]
 
     if persona:
         parts.append(persona)
 
+    # DYNAMIC block — ordered slowest-changing to fastest-changing.
     if memory_block:
         parts.append(f"Що ти пам'ятаєш:\n{memory_block}")
 
