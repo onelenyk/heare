@@ -528,3 +528,36 @@ async def test_voice_role_conversation_lands_in_session_log() -> None:
     assert loop._role_log == [
         {"user": "бо так швидше", "agent": "Поясни мені чому."}
     ]
+
+
+async def test_hints_channel_generates_a_silent_hint() -> None:
+    """The interview prompter: a heard question becomes a dashboard hint
+    via hint_sink, nothing is spoken, the turn is logged for the recap."""
+    audio = FakeAudio()
+    loop = _make_loop(audio, reply_deltas=["- пункт один\n- пункт два"])
+    role = FakeRole(name="суфлер", channel="hints",
+                    prompt="готуй план відповіді")
+    _wire_roles(loop, role)
+    loop.role_manager.start(role)
+
+    hints: list[str] = []
+
+    async def sink(text: str) -> None:
+        hints.append(text)
+
+    loop.hint_sink = sink
+
+    consumed = await loop._role_turn("Розкажіть про ваш досвід з Kafka")
+    assert consumed is True
+
+    async def _hinted() -> None:
+        while not hints:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_hinted(), timeout=2.0)
+
+    assert hints == ["- пункт один\n- пункт два"]
+    assert not audio.played, "hints must never sound"
+    assert loop._role_log == [
+        {"user": "Розкажіть про ваш досвід з Kafka", "agent": None}
+    ]

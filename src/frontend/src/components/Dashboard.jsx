@@ -17,6 +17,7 @@ import ToolsModal from './ToolsModal';
 import BridgeModal from './BridgeModal';
 import PromptManager from './PromptManager';
 import MemoriesCard from './MemoriesCard';
+import RolesCard from './RolesCard';
 import Toast from './Toast';
 
 const ACTIVITY_PAGE = 50;   // rows fetched on each poll
@@ -485,6 +486,9 @@ export default function Dashboard({ onOpenSetup }) {
           <MemoriesCard onToast={showToastMsg} />
         </div>
       )}
+
+      {/* Roles */}
+      <RolesCard state={state} post={post} onToast={showToastMsg} />
 
       {/* Text injection */}
       {showInject && (

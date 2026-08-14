@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -897,6 +898,107 @@ async def test_setup_config_rejects_bad_key(
     )
     assert resp.status == 400
     assert not (tmp_path / ".env").exists()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/artifacts, GET /api/artifacts/{name}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_artifacts_list_missing_dir(api, mock_config, tmp_path) -> None:
+    mock_config.workspace_dir = tmp_path / "nope"
+    resp = await api._handle_artifacts_list(_mock_request())
+    assert resp.status == 200
+    assert json.loads(resp.body) == {"ok": True, "artifacts": []}
+
+
+@pytest.mark.asyncio
+async def test_artifacts_list_empty_dir(api, mock_config, tmp_path) -> None:
+    mock_config.workspace_dir = tmp_path
+    (tmp_path / "artifacts").mkdir()
+    resp = await api._handle_artifacts_list(_mock_request())
+    assert json.loads(resp.body) == {"ok": True, "artifacts": []}
+
+
+@pytest.mark.asyncio
+async def test_artifacts_list_newest_first_and_fields(
+    api, mock_config, tmp_path
+) -> None:
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    mock_config.workspace_dir = tmp_path
+
+    old = artifacts_dir / "2026-08-10-0900-old.md"
+    old.write_text("old content")
+    new = artifacts_dir / "2026-08-15-0010-мітинг.md"
+    new.write_text("new content, longer")
+    # Also drop a non-.md file and a subdirectory — neither should surface.
+    (artifacts_dir / "notes.txt").write_text("ignore me")
+    (artifacts_dir / "subdir").mkdir()
+
+    now = time.time()
+    os.utime(old, (now - 100, now - 100))
+    os.utime(new, (now, now))
+
+    resp = await api._handle_artifacts_list(_mock_request())
+    data = json.loads(resp.body)
+    assert data["ok"] is True
+    names = [a["name"] for a in data["artifacts"]]
+    assert names == ["2026-08-15-0010-мітинг.md", "2026-08-10-0900-old.md"]
+    first = data["artifacts"][0]
+    assert first["size"] == len("new content, longer".encode("utf-8"))
+    assert isinstance(first["mtime"], float)
+
+
+@pytest.mark.asyncio
+async def test_artifacts_get_roundtrip_utf8(api, mock_config, tmp_path) -> None:
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    mock_config.workspace_dir = tmp_path
+    body_text = "# Протокол мітингу\n\nОбговорили плани."
+    (artifacts_dir / "2026-08-15-0010-мітинг.md").write_text(
+        body_text, encoding="utf-8"
+    )
+
+    request = _mock_request()
+    request.match_info = {"name": "2026-08-15-0010-мітинг.md"}
+    resp = await api._handle_artifacts_get(request)
+    assert resp.status == 200
+    assert resp.content_type == "text/plain"
+    assert resp.charset == "utf-8"
+    assert resp.text == body_text
+
+
+@pytest.mark.asyncio
+async def test_artifacts_get_missing_name_404(api, mock_config, tmp_path) -> None:
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    mock_config.workspace_dir = tmp_path
+
+    request = _mock_request()
+    request.match_info = {"name": "does-not-exist.md"}
+    resp = await api._handle_artifacts_get(request)
+    assert resp.status == 404
+
+
+@pytest.mark.parametrize(
+    "raw_name",
+    ["..%2f", "../secret", "foo/bar", "..\\secret", ".."],
+)
+@pytest.mark.asyncio
+async def test_artifacts_get_rejects_traversal(
+    api, mock_config, tmp_path, raw_name
+) -> None:
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    mock_config.workspace_dir = tmp_path
+
+    request = _mock_request()
+    request.match_info = {"name": raw_name}
+    resp = await api._handle_artifacts_get(request)
+    assert resp.status == 400
+    assert json.loads(resp.body)["ok"] is False
 
 
 @pytest.mark.asyncio

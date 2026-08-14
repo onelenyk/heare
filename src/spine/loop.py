@@ -82,6 +82,7 @@ class SpineLoop:
     trigger_match: Any = None  # (text, roles) -> Role | None
     end_match: Any = None      # (text, role) -> bool
     save_artifact: Any = None  # (role_name, md) -> str path
+    hint_sink: Any = None      # async (text) -> None; hints-channel delivery
     _role_log: list = field(default_factory=list)  # session exchanges
     _stt_jobs: asyncio.Queue = field(default_factory=asyncio.Queue)
     # Turns injected from outside the microphone (Hands results, the
@@ -239,9 +240,12 @@ class SpineLoop:
                 await self._say_now(ack)
                 return True
 
-        if active is not None and getattr(active, "channel", "voice") == "log":
-            # The secretary channel: everything is recorded, nothing is
-            # answered until the session ends.
+        channel = getattr(active, "channel", "voice") if active else "voice"
+        if active is not None and channel in ("log", "hints"):
+            # The quiet channels: everything is recorded, nothing is
+            # spoken until the session ends. "hints" additionally turns
+            # each heard turn into a silent prompt for the dashboard —
+            # the interview prompter.
             self._role_log.append({"user": turn, "agent": None})
             if self.persist is not None:
                 try:
@@ -251,9 +255,43 @@ class SpineLoop:
                     self.role_manager.note_turn(turn_id)
                 except Exception:
                     logger.exception("role persist failed (non-fatal)")
+            if channel == "hints" and self.hint_sink is not None:
+                # Off the consuming path: a hint is useless if waiting
+                # for it delays hearing the next question.
+                asyncio.create_task(self._make_hint(active, turn))
             return True
 
         return False
+
+    async def _make_hint(self, role: Any, turn: str) -> None:
+        try:
+            recent = [e["user"] for e in self._role_log[-6:-1]]
+            context = "\n".join(f"- {t}" for t in recent)
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        f"{getattr(role, 'prompt', '')}\n\n"
+                        "Відповідай ТІЛЬКИ підказкою: 3-5 коротких пунктів "
+                        "плану відповіді, без вступу і пояснень."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        (f"Перед цим звучало:\n{context}\n\n" if context else "")
+                        + f"Щойно прозвучало: {turn}"
+                    ),
+                },
+            ]
+            parts: list[str] = []
+            async for delta in self.stream_chat(messages):
+                parts.append(delta)
+            hint = "".join(parts).strip()
+            if hint:
+                await self.hint_sink(hint)
+        except Exception:
+            logger.exception("hint generation failed (non-fatal)")
 
     async def _role_finish(self) -> None:
         active = self.role_manager.active

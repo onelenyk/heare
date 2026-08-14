@@ -165,6 +165,10 @@ class API:
         self._app.router.add_post(
             "/api/memories/{id}/forget", self._handle_memories_forget
         )
+        self._app.router.add_get("/api/artifacts", self._handle_artifacts_list)
+        self._app.router.add_get(
+            "/api/artifacts/{name}", self._handle_artifacts_get
+        )
         self._runner = None
         self._site = None
 
@@ -232,6 +236,10 @@ class API:
         )
         self._app.router.add_post("/api/setup/config", self._handle_setup_config)
         self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
+        self._app.router.add_get("/api/artifacts", self._handle_artifacts_list)
+        self._app.router.add_get(
+            "/api/artifacts/{name}", self._handle_artifacts_get
+        )
 
     async def start(self):
         self._runner = web.AppRunner(self._app)
@@ -1834,6 +1842,61 @@ class API:
         if not ok:
             return web.json_response({"ok": False, "error": "memory not found"}, status=404)
         return web.json_response({"ok": True})
+
+    # ── Artifacts (role sessions: meeting secretary, etc.) ────────
+
+    async def _handle_artifacts_list(self, request):
+        """GET /api/artifacts — list *.md artifact files, newest first."""
+        artifacts_dir = Path(self.config.workspace_dir) / "artifacts"
+        if not artifacts_dir.exists():
+            return web.json_response({"ok": True, "artifacts": []})
+        try:
+            entries = []
+            for p in artifacts_dir.iterdir():
+                if not p.is_file() or p.suffix != ".md":
+                    continue
+                st = p.stat()
+                entries.append(
+                    {"name": p.name, "size": st.st_size, "mtime": st.st_mtime}
+                )
+            entries.sort(key=lambda e: e["mtime"], reverse=True)
+            return web.json_response({"ok": True, "artifacts": entries})
+        except OSError as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _handle_artifacts_get(self, request):
+        """GET /api/artifacts/{name} — return one artifact's raw content.
+
+        Unauthenticated localhost endpoint (known repo-wide issue) — the
+        name is validated defensively so it can't be used to read files
+        outside the artifacts dir, but this does not add auth.
+        """
+        name = request.match_info.get("name", "")
+        if not name or "/" in name or "\\" in name or ".." in name:
+            return web.json_response(
+                {"ok": False, "error": "invalid name"}, status=400
+            )
+        artifacts_dir = Path(self.config.workspace_dir) / "artifacts"
+        try:
+            artifacts_dir_resolved = artifacts_dir.resolve()
+            target = (artifacts_dir / name).resolve()
+        except OSError:
+            return web.json_response(
+                {"ok": False, "error": "invalid name"}, status=400
+            )
+        if not target.is_relative_to(artifacts_dir_resolved):
+            return web.json_response(
+                {"ok": False, "error": "invalid name"}, status=400
+            )
+        if not target.is_file():
+            return web.json_response(
+                {"ok": False, "error": "not found"}, status=404
+            )
+        try:
+            content = target.read_text(encoding="utf-8")
+        except OSError as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        return web.Response(text=content, content_type="text/plain", charset="utf-8")
 
     def _available_providers(self):
         return get_available(self.config)

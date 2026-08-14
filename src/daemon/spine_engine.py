@@ -10,12 +10,15 @@ Rollback is the same line saying "pipecat" again.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger("heare.spine_engine")
 
 INJECT_POLL_SECS = 0.25
+ROLE_POLL_SECS = 0.5
 
 
 async def run_spine_daemon(
@@ -66,6 +69,52 @@ async def run_spine_daemon(
 
     loop.transcribe = _stt_with_state
 
+    # -- role platform bridge: State keys the dashboard reads ----------
+
+    available = [
+        {
+            "name": r.name,
+            "channel": getattr(r, "channel", "voice"),
+            "trigger": (r.triggers[0] if getattr(r, "triggers", ()) else r.name),
+        }
+        for r in getattr(loop, "roles", {}).values()
+    ]
+    state.set_cache_only(
+        "roles_available", json.dumps(available, ensure_ascii=False)
+    )
+
+    async def _hint_sink(text: str) -> None:
+        state.set_cache_only(
+            "role_hint",
+            json.dumps({"ts": time.time(), "text": text}, ensure_ascii=False),
+        )
+
+    loop.hint_sink = _hint_sink
+
+    async def _poll_role() -> None:
+        last = None
+        while True:
+            await asyncio.sleep(ROLE_POLL_SECS)
+            try:
+                active = (
+                    loop.role_manager.active if loop.role_manager else None
+                )
+                name = getattr(active, "name", "") if active else ""
+                if name != last:
+                    last = name
+                    state.set_cache_only("role_active", name)
+                    state.set_cache_only(
+                        "role_channel",
+                        getattr(active, "channel", "") if active else "",
+                    )
+                    state.set_cache_only(
+                        "role_since", str(time.time()) if active else ""
+                    )
+                    if not active:
+                        state.set_cache_only("role_hint", "")
+            except Exception:
+                logger.exception("role state poll failed (non-fatal)")
+
     # -- inject drop-folder poller (what the API's /inject writes) -----
 
     async def _poll_inject() -> None:
@@ -102,6 +151,7 @@ async def run_spine_daemon(
     logger.info("spine engine up (%s, wake=%s)", duplex, loop.wake is not None)
 
     poller = asyncio.create_task(_poll_inject(), name="spine-inject-poll")
+    role_poller = asyncio.create_task(_poll_role(), name="spine-role-poll")
     runner = asyncio.create_task(loop.run(), name="spine-run")
     try:
         waiter = asyncio.create_task(stop.wait())
@@ -112,9 +162,11 @@ async def run_spine_daemon(
             if t is runner and (exc := t.exception()) is not None:
                 raise exc
     finally:
-        for t in (poller, runner):
+        for t in (poller, role_poller, runner):
             t.cancel()
-        await asyncio.gather(poller, runner, return_exceptions=True)
+        await asyncio.gather(
+            poller, role_poller, runner, return_exceptions=True
+        )
         await audio.stop()
         await _close_loop(loop)
         try:
