@@ -160,3 +160,10 @@ dmg: build
 	@echo "Creating Heare.dmg..."
 	hdiutil create -volname Heare -srcfolder dist/Heare.app -ov -format UDZO Heare.dmg
 	@echo "✅ Heare.dmg created"
+
+# Acceptance battery for the spine engine — compresses "a week of living
+# with it" into ~15 minutes + a soak. Requires API keys in ~/.heare/.env.
+spine-acceptance:
+	uv run pytest tests/ -q -k spine
+	uv run pytest tests/test_spine_golden.py tests/test_spine_acoustic.py -m spine_live -q
+	uv run python scripts/spine_soak.py --turns 100

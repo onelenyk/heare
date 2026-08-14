@@ -440,6 +440,9 @@ class Settings:
             "стоп",
         ]
     )
+    # Voice engine: "pipecat" (the original pipeline) or "spine" (the
+    # framework-free rewrite in src/spine). One line back is the rollback.
+    engine: str = "pipecat"
     # LLM provider switching (deepseek | zai | opencode)
     llm_provider: str = "deepseek"
     provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")

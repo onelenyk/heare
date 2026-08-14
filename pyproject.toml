@@ -47,9 +47,10 @@ testpaths = ["tests"]
 # E2E scenarios drive the whole daemon against real Groq, DeepSeek and
 # Edge endpoints: minutes, not milliseconds, and they cost money. They
 # are excluded here and run deliberately — `make e2e` or `pytest -m e2e`.
-addopts = "--strict-markers --tb=short -m 'not e2e'"
+addopts = "--strict-markers --tb=short -m 'not e2e and not spine_live'"
 markers = [
     "e2e: drives the assembled daemon end to end through a simulated room",
+    "spine_live: acceptance tests hitting real Groq/DeepSeek/EdgeTTS",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning",

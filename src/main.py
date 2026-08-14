@@ -107,6 +107,17 @@ async def _build_and_run_daemon(
 
     from src.agent.browser_bridge import BrowserBridge, set_bridge
 
+    if getattr(settings, "engine", "pipecat") == "spine":
+        # The framework-free engine. Same State, same DB, same inject
+        # folder — the API and dashboard cannot tell the difference.
+        from src.daemon.spine_engine import run_spine_daemon
+
+        logger.info("engine = spine — running the framework-free voice path")
+        await run_spine_daemon(
+            settings, state, api, handle_signals=handle_signals
+        )
+        return
+
     ensure_mcp_config(settings.mcp_dir, settings.workspace_dir)
 
     # Wait for API keys if not configured yet.
