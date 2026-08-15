@@ -19,6 +19,10 @@ from typing import AsyncIterator
 
 logger = logging.getLogger("spine")
 
+# How long after the assistant speaks a bare «дякую» still counts as a
+# person answering rather than Whisper filling silence.
+COURTESY_WINDOW_SECS = 25.0
+
 
 def _wake_phrases(settings) -> list[str]:
     """Phrase variants from src/pipeline/wake.py, loaded by file path.
@@ -54,6 +58,9 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     (no wake/tools/persistence) — used by --text and quick checks."""
     from datetime import datetime
 
+    import time
+
+    from src.spine.hallucinations import is_junk
     from src.spine.llm import resolve_llm, stream_chat, stream_chat_events
     from src.spine.loop import SpineLoop
     from src.spine.sentences import sentences
@@ -75,15 +82,22 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         usage = SpineUsage(settings.db_path)
 
     async def _stt(pcm: bytes):
+        lang = settings.groq_language or "uk"
         if loud_ms(pcm) < min_speech_ms:
-            return Transcript(text="", language=settings.groq_language or "uk")
+            return Transcript(text="", language=lang)
         if usage is not None:
             await asyncio.to_thread(usage.stt, len(pcm) / 32000.0)
-        return await transcribe(
-            pcm,
-            api_key=settings.groq_api_key or "",
-            language=(settings.groq_language or "uk"),
+        result = await transcribe(
+            pcm, api_key=settings.groq_api_key or "", language=lang
         )
+        # Loudness alone cannot tell a cough from a word; the text can.
+        spoke_recently = (
+            time.time() - getattr(loop, "last_spoke_ts", 0.0)
+        ) < COURTESY_WINDOW_SECS
+        if is_junk(result.text, agent_spoke_recently=spoke_recently):
+            logger.info("dropped hallucination: %r", result.text[:60])
+            return Transcript(text="", language=result.language)
+        return result
 
     def _chat(messages: list[dict]) -> AsyncIterator[str]:
         return stream_chat(messages, cfg)

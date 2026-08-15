@@ -93,6 +93,9 @@ class SpineLoop:
     # slow transcription can tell whether the user has started talking
     # again since — see TurnAssembler.transcript(speech_resumed=...).
     _starts_seen: int = 0
+    # When the assistant last put audio on the speaker. The junk filter
+    # asks: is there anyone to say «дякую» to right now?
+    last_spoke_ts: float = 0.0
     # Set when the user starts talking over the assistant (full duplex
     # only); respond() checks it between chunks and stops feeding the
     # speaker, while still collecting the full reply text for history.
@@ -456,6 +459,9 @@ class SpineLoop:
         return reply
 
     async def _speak(self, sentence: str) -> None:
+        import time as _time
+
+        self.last_spoke_ts = _time.time()
         chars = 0
         async for chunk in self.synthesise(sentence):
             if self._interrupted:
