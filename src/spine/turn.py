@@ -13,8 +13,49 @@ No pipecat, no SDK — just stdlib.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Callable
+
+# Words a thought hangs on: conjunctions, prepositions and the fillers
+# people say while the next clause arrives. A fragment ending here is
+# not an utterance, it is the first half of one.
+_CONTINUATION_WORDS: frozenset[str] = frozenset(
+    {
+        # Only words a Ukrainian sentence cannot end on. Pronouns and
+        # adverbs are deliberately absent: «Зроби це.» and «Прийду
+        # потім.» are whole sentences.
+        "і", "й", "та", "але", "бо", "що", "щоб", "якщо", "тому",
+        "тобто", "або", "чи", "ну", "типу", "значить", "наприклад",
+        "для", "від", "до", "з", "із", "зі", "на", "в", "у", "під",
+        "над", "при", "без", "про", "по", "за", "як", "коли", "хоча",
+        "and", "but", "because", "that", "if", "when", "for", "with",
+    }
+)
+
+_TERMINAL = ".!?…"
+_WORD_RE = re.compile(r"[\w'’-]+", re.UNICODE)
+
+
+def sounds_unfinished(text: str) -> bool:
+    """True when the words themselves say the thought is still coming.
+
+    Whisper punctuates: a fragment that ends without a terminal mark, or
+    trails off in an ellipsis, or leans on a conjunction, is a pause for
+    breath — not a finished turn.
+    """
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if stripped.endswith("…") or stripped.endswith("..."):
+        return True
+    words = _WORD_RE.findall(stripped.lower())
+    if words and words[-1] in _CONTINUATION_WORDS:
+        # Even punctuated: «...і.» is Whisper marking a pause, not an end.
+        return True
+    # Whisper punctuates finished speech; a fragment without a closing
+    # mark is one that was cut off by a breath.
+    return stripped[-1] not in _TERMINAL
 
 
 class TurnAssembler:
@@ -30,10 +71,21 @@ class TurnAssembler:
 
     def __init__(
         self,
-        hold_s: float = 1.0,
+        hold_s: float = 1.3,
         clock: Callable[[], float] = time.monotonic,
+        continuation_hold_s: float | None = None,
     ) -> None:
         self._hold_s = hold_s
+        # A pause in the middle of a thought sounds different from a pause
+        # at the end of one, and the words say which it is: a fragment
+        # left hanging on «і», «тому що», «типу» — or with no closing
+        # punctuation at all — is a person still thinking, and gets the
+        # longer wait. Otherwise "коли я говорю і ще не завершив думку"
+        # is answered mid-sentence.
+        self._continuation_hold_s = (
+            continuation_hold_s if continuation_hold_s is not None
+            else hold_s * 2.0
+        )
         self._clock = clock
         self._fragments: list[str] = []
         self._deadline: float | None = None
@@ -79,7 +131,12 @@ class TurnAssembler:
             # must not open or extend a turn.
             return
         self._fragments.append(stripped)
-        self._deadline = self._clock() + self._hold_s
+        hold = (
+            self._continuation_hold_s
+            if sounds_unfinished(stripped)
+            else self._hold_s
+        )
+        self._deadline = self._clock() + hold
 
     def poll(self) -> str | None:
         """Return the joined turn text once it has closed, else None.

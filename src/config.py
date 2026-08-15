@@ -443,6 +443,14 @@ class Settings:
     # Voice engine: "pipecat" (the original pipeline) or "spine" (the
     # framework-free rewrite in src/spine). One line back is the rollback.
     engine: str = "pipecat"
+    # How long the spine waits after your words stop before answering.
+    # The second value applies when the words themselves say you are not
+    # finished (a trailing «і», «тобто», no closing punctuation).
+    spine_turn_hold_seconds: float = 1.3
+    spine_turn_continuation_hold_seconds: float = 2.6
+    # Silence that ends an utterance for the VAD. Short enough to stay
+    # responsive, long enough that a breath is not a full stop.
+    spine_vad_stop_ms: int = 800
     # LLM provider switching (deepseek | zai | opencode)
     llm_provider: str = "deepseek"
     provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")

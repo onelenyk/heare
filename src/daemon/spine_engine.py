@@ -42,7 +42,11 @@ async def run_spine_daemon(
     audio = AudioIO()
     await audio.start()
     loop = await _build_loop(
-        settings, audio=audio, voice="", hold_s=1.0, full=True
+        settings,
+        audio=audio,
+        voice="",
+        hold_s=float(getattr(settings, "spine_turn_hold_seconds", 1.3)),
+        full=True,
     )
 
     # -- State / voice_state bridge -----------------------------------

@@ -110,8 +110,15 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
 
     loop = SpineLoop(
         audio=audio,
-        vad=EnergyVAD(),
-        assembler=TurnAssembler(hold_s=hold_s),
+        vad=EnergyVAD(
+            stop_ms=int(getattr(settings, "spine_vad_stop_ms", 800))
+        ),
+        assembler=TurnAssembler(
+            hold_s=hold_s,
+            continuation_hold_s=getattr(
+                settings, "spine_turn_continuation_hold_seconds", hold_s * 2
+            ),
+        ),
         transcribe=_stt,
         stream_chat=_chat,
         split_sentences=sentences,
@@ -300,11 +307,14 @@ async def _amain(args: argparse.Namespace) -> int:
     # Empty means "pick per reply text" (voicing.pick_voice): Edge TTS
     # renders Cyrillic on an English voice as silence, so the reply's
     # script decides. An explicit --voice overrides everything.
+    hold = args.hold or float(
+        getattr(settings, "spine_turn_hold_seconds", 1.3)
+    )
     voice = args.voice
 
     if args.check:
         loop = await _build_loop(
-            settings, audio=None, voice=voice, hold_s=args.hold, full=True
+            settings, audio=None, voice=voice, hold_s=hold, full=True
         )
         aec_state = "n/a (no audio)" if loop.aec is None else loop.aec.active
         print("ok  settings, llm, stt, tts, vad, turn, loop wired")
@@ -324,7 +334,7 @@ async def _amain(args: argparse.Namespace) -> int:
             audio = AudioIO()
             await audio.start()
         loop = await _build_loop(
-            settings, audio=audio, voice=voice, hold_s=args.hold, full=False
+            settings, audio=audio, voice=voice, hold_s=hold, full=False
         )
         reply = await loop.respond(args.text, speak=audio is not None)
         print(reply)
@@ -338,7 +348,7 @@ async def _amain(args: argparse.Namespace) -> int:
     audio = AudioIO()
     await audio.start()
     loop = await _build_loop(
-        settings, audio=audio, voice=voice, hold_s=args.hold, full=True
+        settings, audio=audio, voice=voice, hold_s=hold, full=True
     )
     duplex = "повний дуплекс" if loop._duplex else "напівдуплекс"
     print(f"spine: слухаю ({duplex}, wake={'on' if loop.wake else 'off'}; "
@@ -357,7 +367,12 @@ def main() -> int:
     parser.add_argument("--text", type=str, default="", help="one text turn instead of the microphone")
     parser.add_argument("--no-speak", action="store_true", help="with --text: print only, no TTS")
     parser.add_argument("--voice", type=str, default="", help="Edge TTS voice override")
-    parser.add_argument("--hold", type=float, default=1.0, help="seconds of quiet that end a turn")
+    parser.add_argument(
+        "--hold",
+        type=float,
+        default=0.0,
+        help="seconds of quiet that end a turn (0 = value from config)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
