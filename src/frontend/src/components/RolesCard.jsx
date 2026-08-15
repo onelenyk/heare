@@ -53,6 +53,7 @@ function hintLines(text) {
 
 export default function RolesCard({ state, post, onToast }) {
   const roleActive = state.role_active || '';
+  const roleFinishing = state.role_finishing === '1' || state.role_finishing === 1;
   const roleChannel = state.role_channel || '';
   const roleSince = state.role_since || '';
   const roleTurns = state.role_turns || '0';
@@ -267,8 +268,9 @@ export default function RolesCard({ state, post, onToast }) {
           className="btn danger roles-end-btn"
           aria-label={'Закінчити роль ' + roleActive}
           onClick={handleEndRole}
+          disabled={roleFinishing}
         >
-          {'■ Закінчити'}
+          {roleFinishing ? '⏳ збираю підсумок…' : '■ Закінчити'}
         </button>
       </div>
 

@@ -109,13 +109,15 @@ async def run_spine_daemon(
                 log = getattr(loop, "_role_log", [])
                 turns = len(log) if active else 0
                 last_heard = (log[-1]["user"][:100] if active and log else "")
-                snapshot = (name, turns, last_heard)
+                finishing = "1" if getattr(loop, "role_finishing", False) else ""
+                snapshot = (name, turns, last_heard, finishing)
                 if snapshot != last:
                     changed_role = last is None or snapshot[0] != last[0]
                     last = snapshot
                     state.set_cache_only("role_active", name)
                     state.set_cache_only("role_turns", str(turns))
                     state.set_cache_only("role_last_heard", last_heard)
+                    state.set_cache_only("role_finishing", finishing)
                     if changed_role:
                         state.set_cache_only(
                             "role_channel",

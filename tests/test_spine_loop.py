@@ -563,3 +563,54 @@ async def test_hints_channel_generates_a_silent_hint() -> None:
     assert loop._role_log == [
         {"user": "Розкажіть про ваш досвід з Kafka", "agent": None}
     ]
+
+
+async def test_repeated_end_presses_do_not_become_chat() -> None:
+    """The summary takes seconds of LLM time; the button looks dead and
+    the user presses again. Those extra «закінчили» used to reach the
+    model and be answered as conversation."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.role_manager.start(role)
+
+    gate = asyncio.Event()
+    real_finish = loop.role_manager.finish
+
+    async def slow_finish(*, exchanges, complete):
+        await gate.wait()
+        return await real_finish(exchanges=exchanges, complete=complete)
+
+    loop.role_manager.finish = slow_finish
+
+    assert await loop._role_turn("закінчили") is True      # first press
+    await asyncio.sleep(0.01)
+    assert loop.role_finishing is True
+
+    # Everything said while the summary is being written is held.
+    assert await loop._role_turn("закінчили") is True      # second press
+    assert await loop._role_turn("а що там з диском?") is True
+
+    gate.set()
+
+    async def _done() -> None:
+        while loop.role_finishing:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=2.0)
+
+    # And a stray press just after the session closed is still not chat.
+    assert await loop._role_turn("закінчили") is True
+    user_turns = [m for m in loop.history if m["role"] == "user"]
+    assert user_turns == [], "no user turn reached the model"
+    # The spoken summary itself is part of the conversation, and stays.
+    assert any(m["role"] == "assistant" for m in loop.history)
+
+
+async def test_end_phrase_is_conversation_again_after_the_grace_window() -> None:
+    loop = _make_loop(FakeAudio())
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop._role_ended_ts = 1.0  # long ago
+    assert await loop._role_turn("закінчили") is False

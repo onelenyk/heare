@@ -30,6 +30,10 @@ DEFAULT_SYSTEM_PROMPT = (
 # system prompt out of the model's attention.
 HISTORY_TURNS = 12
 
+# How long after a session closes an end phrase is still just the user
+# pressing the button again.
+END_PHRASE_GRACE_SECS = 90.0
+
 
 class AudioLike(Protocol):
     input_frames: asyncio.Queue
@@ -84,6 +88,11 @@ class SpineLoop:
     save_artifact: Any = None  # (role_name, md) -> str path
     hint_sink: Any = None      # async (text) -> None; hints-channel delivery
     _role_log: list = field(default_factory=list)  # session exchanges
+    # Building an artifact is a whole LLM call over a whole session —
+    # seconds, sometimes tens of them. The flag makes that wait visible
+    # and keeps the conversation from answering in the meantime.
+    role_finishing: bool = False
+    _role_ended_ts: float = 0.0
     _stt_jobs: asyncio.Queue = field(default_factory=asyncio.Queue)
     # Turns injected from outside the microphone (Hands results, the
     # dashboard). They are already addressed to the assistant, so they
@@ -227,10 +236,23 @@ class SpineLoop:
             return False
         active = self.role_manager.active
 
+        if self.role_finishing:
+            # The summary is still being written; anything said now would
+            # be answered by a conversation that is already over.
+            logger.info("role finishing — turn held: %r", turn[:60])
+            return True
+
         if active is not None and self.end_match is not None and self.end_match(
             turn, active
         ):
-            await self._role_finish()
+            # Off the turn loop: an 18-second summary must not look like
+            # a dead button, and repeated «закінчили» must not queue up.
+            self.role_finishing = True
+            asyncio.create_task(self._role_finish())
+            return True
+
+        if active is None and self._recently_ended(turn):
+            logger.info("stray end phrase ignored: %r", turn[:60])
             return True
 
         if active is None and self.trigger_match is not None:
@@ -291,12 +313,24 @@ class SpineLoop:
             async for delta in self.stream_chat(messages):
                 parts.append(delta)
             hint = "".join(parts).strip()
+            logger.info("hint for %r: %d chars", turn[:40], len(hint))
             if hint:
                 # The heard question travels with the plan: on screen the
                 # user must see what it is a plan *for*.
                 await self.hint_sink(hint, turn)
         except Exception:
             logger.exception("hint generation failed (non-fatal)")
+
+    def _recently_ended(self, turn: str) -> bool:
+        """An end phrase repeated just after a session closed is a person
+        pressing the button again, not a new thing to discuss."""
+        import time as _time
+
+        if _time.time() - self._role_ended_ts > END_PHRASE_GRACE_SECS:
+            return False
+        if self.end_match is None:
+            return False
+        return any(self.end_match(turn, r) for r in self.roles.values())
 
     async def _role_finish(self) -> None:
         active = self.role_manager.active
@@ -309,10 +343,20 @@ class SpineLoop:
                 parts.append(delta)
             return "".join(parts)
 
-        artifact = await self.role_manager.finish(
-            exchanges=list(self._role_log), complete=_complete
-        )
-        self._role_log.clear()
+        import time as _time
+
+        try:
+            artifact = await self.role_manager.finish(
+                exchanges=list(self._role_log), complete=_complete
+            )
+        except Exception:
+            logger.exception("role finish failed")
+            artifact = None
+        finally:
+            self._role_log.clear()
+            self.role_finishing = False
+            self._role_ended_ts = _time.time()
+
         if artifact is None:
             await self._say_now("Роль завершено.")
             return
@@ -325,6 +369,7 @@ class SpineLoop:
             except Exception:
                 logger.exception("artifact save failed")
         logger.info("role artifact: %s (%d chars)", path, len(artifact.full_md))
+        logger.info("say (summary): %r", artifact.spoken[:80])
         await self._say_now(artifact.spoken)
 
     async def _say_now(self, text: str) -> None:
