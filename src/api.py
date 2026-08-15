@@ -479,7 +479,9 @@ class API:
 
             async with aiosqlite.connect(str(self.config.db_path)) as db:
                 row = await db.execute_fetchall(
-                    "SELECT text, agent_mode FROM transcripts WHERE mode='assistant' ORDER BY ts DESC LIMIT 1"
+                    "SELECT text, agent_mode FROM transcripts "
+                    "WHERE agent_spoken = 1 OR mode = 'assistant' "
+                    "ORDER BY ts DESC LIMIT 1"
                 )
                 if row:
                     data["last_response"] = row[0][0]
@@ -527,9 +529,17 @@ class API:
             import aiosqlite
 
             sql = (
+                # who comes from agent_spoken, not from mode: the mode
+                # column is polymorphic (the pipecat engine wrote
+                # 'assistant' on agent rows, the spine writes 'spine' on
+                # both), so reading authorship from it labelled every
+                # spine row as the user.
                 "SELECT rid, ts, who, content, source, kind, tool, status "
                 "FROM ("
-                "  SELECT 't'||id AS rid, ts, mode AS who, text AS content, "
+                "  SELECT 't'||id AS rid, ts, "
+                "         CASE WHEN agent_spoken = 1 OR mode = 'assistant' "
+                "              THEN 'bot' ELSE 'you' END AS who, "
+                "         text AS content, "
                 "         source, 'said' AS kind, NULL AS tool, NULL AS status "
                 "  FROM transcripts "
                 "  UNION ALL "
@@ -569,7 +579,7 @@ class API:
                         {
                             "id": r["rid"],
                             "ts": r["ts"],
-                            "who": "bot" if r["who"] == "assistant" else "you",
+                            "who": r["who"] or "you",
                             "type": "said",
                             "content": r["content"],
                             # NULL predates the column; every turn logged back

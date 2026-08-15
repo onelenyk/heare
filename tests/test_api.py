@@ -611,7 +611,9 @@ def activity_db(tmp_path):
                 1000.0 + i,
                 f"msg{i}",
                 "assistant" if i % 2 else "user",
-                1,
+                # Mirrors the real table: agent rows carry the flag, user
+                # rows never did (NULL in every legacy row on disk).
+                1 if i % 2 else None,
                 # Leave most rows NULL so the "pre-migration reads as voice"
                 # path is the one under test; one explicit typed row.
                 "typed" if i == 120 else None,
@@ -1027,3 +1029,51 @@ async def test_setup_config_preserves_config_toml_sections(
     parsed = tomllib.loads(text)
     assert parsed["browser_bridge"]["token"] == "secret-token"
     assert parsed["groq_language"] == "uk"
+
+
+@pytest.fixture
+def authorship_db(tmp_path):
+    """Rows from both engines: pipecat marked agent rows mode='assistant',
+    the spine writes mode='spine' on both sides and distinguishes with
+    agent_spoken."""
+    db_path = tmp_path / "authorship.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE transcripts ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL, "
+        "mode TEXT NOT NULL, agent_spoken INTEGER, source TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE actions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, status TEXT, "
+        "result_summary TEXT, tool TEXT, args TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO transcripts (ts, text, mode, agent_spoken) VALUES (?, ?, ?, ?)",
+        [
+            (100.0, "я спитав", "spine", 0),
+            (101.0, "я відповів", "spine", 1),
+            (102.0, "старий юзер", "ambient", 0),
+            (103.0, "стара відповідь", "assistant", 1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+@pytest.mark.asyncio
+async def test_activity_authorship_comes_from_agent_spoken(
+    api, mock_config, authorship_db
+) -> None:
+    """Reading authorship from the polymorphic mode column labelled every
+    spine reply as the user — the history showed the bot talking to
+    itself as 'you'."""
+    mock_config.db_path = authorship_db
+    resp = await api._handle_activity(_mock_request())
+    by_text = {r["content"]: r["who"] for r in json.loads(resp.body)}
+
+    assert by_text["я спитав"] == "you"
+    assert by_text["я відповів"] == "bot"
+    assert by_text["старий юзер"] == "you"
+    assert by_text["стара відповідь"] == "bot"
