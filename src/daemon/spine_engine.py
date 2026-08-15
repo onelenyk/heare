@@ -19,6 +19,9 @@ logger = logging.getLogger("heare.spine_engine")
 
 INJECT_POLL_SECS = 0.25
 ROLE_POLL_SECS = 0.5
+# Fast enough that a mute button feels instant, cheap enough to ignore:
+# it reads an in-memory dict.
+CONTROL_POLL_SECS = 0.2
 
 
 async def run_spine_daemon(
@@ -126,6 +129,34 @@ async def run_spine_daemon(
             except Exception:
                 logger.exception("role state poll failed (non-fatal)")
 
+    # -- control poller: the dashboard's switches must reach the audio --
+
+    async def _poll_controls() -> None:
+        """POST /mute and POST /cancel only write State; nothing in the
+        spine read it, so the dashboard's mic button was decoration."""
+        last: tuple | None = None
+        while True:
+            await asyncio.sleep(CONTROL_POLL_SECS)
+            try:
+                mic = state.get_bool("mute_mic")
+                bot = state.get_bool("mute_bot")
+                if (mic, bot) != last:
+                    last = (mic, bot)
+                    audio.mute_input_user = mic
+                    audio.mute_output_user = bot
+                    if bot:
+                        audio.stop_playback()
+                    logger.info("controls: mic_muted=%s bot_muted=%s", mic, bot)
+                if state.get("cancel") == "1":
+                    await state.set("cancel", "0")
+                    dropped = audio.stop_playback()
+                    loop._interrupted = True
+                    if loop.toolbox is not None:
+                        loop.toolbox.cancel_all()
+                    logger.info("controls: cancel — dropped %d bytes", dropped)
+            except Exception:
+                logger.exception("control poll failed (non-fatal)")
+
     # -- inject drop-folder poller (what the API's /inject writes) -----
 
     async def _poll_inject() -> None:
@@ -163,6 +194,7 @@ async def run_spine_daemon(
 
     poller = asyncio.create_task(_poll_inject(), name="spine-inject-poll")
     role_poller = asyncio.create_task(_poll_role(), name="spine-role-poll")
+    ctl_poller = asyncio.create_task(_poll_controls(), name="spine-ctl-poll")
     runner = asyncio.create_task(loop.run(), name="spine-run")
     try:
         waiter = asyncio.create_task(stop.wait())
@@ -173,10 +205,10 @@ async def run_spine_daemon(
             if t is runner and (exc := t.exception()) is not None:
                 raise exc
     finally:
-        for t in (poller, role_poller, runner):
+        for t in (poller, role_poller, ctl_poller, runner):
             t.cancel()
         await asyncio.gather(
-            poller, role_poller, runner, return_exceptions=True
+            poller, role_poller, ctl_poller, runner, return_exceptions=True
         )
         await audio.stop()
         await _close_loop(loop)

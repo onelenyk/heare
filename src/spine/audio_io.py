@@ -57,6 +57,12 @@ class AudioIO:
         # Mute input during assistant playback (half-duplex gating)
         self.mute_input = False
         self.mute_output = False
+        # The user's own switches (dashboard/menubar), kept apart from the
+        # two above: the conductor toggles mute_input every half-duplex
+        # reply and a quiet role owns mute_output, so sharing one flag
+        # would silently undo whatever the user chose.
+        self.mute_input_user = False
+        self.mute_output_user = False
 
         # Output buffer and lock
         self._output_buffer = bytearray()
@@ -127,7 +133,7 @@ class AudioIO:
             time_info: Timing information (unused).
             status: Status flags (unused).
         """
-        if self.mute_input:
+        if self.mute_input or self.mute_input_user:
             return
 
         frame_bytes = bytes(indata)
@@ -197,7 +203,7 @@ class AudioIO:
         Args:
             pcm: Raw int16 PCM bytes at output_rate (24 kHz default).
         """
-        if self.mute_output:
+        if self.mute_output or self.mute_output_user:
             return
         with self._output_lock:
             self._output_buffer.extend(pcm)

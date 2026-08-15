@@ -368,3 +368,43 @@ class TestAudioIOThreadSafety:
         dropped = audio_io.stop_playback()
         assert dropped == 100
         assert len(audio_io._output_buffer) == 0
+
+
+# -- the user's own switches (dashboard buttons) -----------------------
+
+
+def test_user_mute_survives_the_conductor_toggling_mute_input() -> None:
+    """The half-duplex path flips mute_input on every reply; if it shared
+    a flag with the dashboard button, the mic would come back on by
+    itself right after the assistant finished speaking."""
+    io = AudioIO()
+    io.mute_input_user = True   # the user pressed "mic muted"
+
+    io.mute_input = True        # assistant starts speaking (half duplex)
+    io.mute_input = False       # assistant finished
+
+    frames: list[bytes] = []
+
+    class _ImmediateLoop:
+        def call_soon_threadsafe(self, fn, *args):
+            fn(*args)
+
+    io._loop = _ImmediateLoop()  # type: ignore[assignment]
+    io.input_frames.put_nowait = frames.append  # type: ignore[method-assign]
+    io._on_input(b"\x01\x02" * 320, 320, None, None)
+    assert frames == [], "a user-muted mic must stay muted"
+
+    io.mute_input_user = False
+    io._on_input(b"\x01\x02" * 320, 320, None, None)
+    assert len(frames) == 1, "unmuting restores the mic"
+
+
+def test_user_output_mute_drops_playback() -> None:
+    io = AudioIO()
+    io.mute_output_user = True
+    io.play(b"\x01\x02" * 100)
+    assert io.playing is False
+
+    io.mute_output_user = False
+    io.play(b"\x01\x02" * 100)
+    assert io.playing is True
