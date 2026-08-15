@@ -276,6 +276,96 @@
      DASHBOARD
      ═══════════════════════════════════════════ */
 
+  /* ── Roles strip ──
+     Full-width strip under the header — the prime position, previously held
+     by the dead MODE row. Four states: idle chips, active recording status,
+     active hints (status + a large readable panel), and a "just finished"
+     result card. Kept to one component so switching states never reflows
+     surrounding cards, just this block's own height. */
+  .roles-strip {
+    padding: var(--s3) var(--s4); margin-bottom: var(--s3);
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--r); box-shadow: var(--shadow-sm);
+    animation: rolesFadeIn 0.2s ease-out;
+  }
+  @keyframes rolesFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .roles-strip-top {
+    display: flex; align-items: center; gap: var(--s3);
+    min-height: 28px; flex-wrap: wrap;
+  }
+  .roles-label {
+    font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--muted); flex: none;
+  }
+  .roles-idle-buttons { display: flex; gap: var(--s2); flex-wrap: wrap; }
+  .roles-idle-hint {
+    font-size: var(--fs-xs); color: var(--muted); opacity: 0.7;
+    margin-top: var(--s2);
+  }
+
+  /* Active status line — recording dot, badge, elapsed/turns, end button */
+  .roles-rec-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex: none;
+    background: var(--danger); box-shadow: 0 0 8px var(--danger);
+    animation: rolesRecPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes rolesRecPulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.35; }
+  }
+  .roles-rec-label {
+    font-size: var(--fs-xs); font-weight: 800; color: var(--danger);
+    letter-spacing: 0.5px;
+  }
+  .roles-active-badge { font-size: 11px; padding: 3px 9px; }
+  .roles-end-btn {
+    margin-left: auto; padding: 8px 18px; font-size: var(--fs-md);
+    font-weight: 800; background: var(--danger); color: #fff; border: none;
+  }
+  .roles-end-btn:hover { background: #ff8a7d; transform: translateY(-1px); }
+  .roles-last-heard {
+    font-size: var(--fs-xs); color: var(--muted); margin-top: var(--s2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Hints panel — the visual centre of the page during a live interview,
+     so its type scale is well above the rest of the UI. */
+  .roles-hint-panel {
+    margin-top: var(--s3); padding: var(--s5);
+    background: var(--card-2); border: 1px solid var(--accent);
+    border-radius: var(--r-lg); animation: displayFadeIn 0.25s ease-out;
+  }
+  .roles-hint-question {
+    font-size: 22px; font-weight: 700; color: var(--text);
+    margin-bottom: var(--s4); line-height: 1.4;
+  }
+  .roles-hint-list { display: flex; flex-direction: column; gap: var(--s3); }
+  .roles-hint-item {
+    display: flex; gap: var(--s2); font-size: 20px; line-height: 1.5;
+    color: var(--text);
+  }
+  .roles-hint-marker { color: var(--accent); flex: none; }
+  .roles-hint-empty { font-size: 18px; color: var(--muted); font-style: italic; }
+  .roles-hint-footer {
+    margin-top: var(--s4); text-align: right;
+    font-size: var(--fs-xs); color: var(--muted);
+  }
+
+  /* Just-finished result card */
+  .roles-finished { justify-content: flex-start; }
+  .roles-finished-msg { font-size: var(--fs-md); font-weight: 700; color: var(--success); }
+  .roles-finished-actions { margin-left: auto; display: flex; gap: var(--s2); }
+  .roles-artifact-view {
+    white-space: pre-wrap; word-break: break-word;
+    background: var(--card-2); border: 1px solid var(--border);
+    border-radius: var(--r-xs); padding: var(--s3); margin-top: var(--s2);
+    max-height: 320px; overflow: auto; font-family: var(--mono); font-size: 12px;
+  }
+  .roles-history { margin-top: var(--s3); }
+  .roles-history-list { margin-top: var(--s2); }
+
   /* ── Status Bar ── */
   .status-bar {
     padding: var(--s3); margin-bottom: var(--s3);

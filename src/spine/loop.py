@@ -289,7 +289,9 @@ class SpineLoop:
                 parts.append(delta)
             hint = "".join(parts).strip()
             if hint:
-                await self.hint_sink(hint)
+                # The heard question travels with the plan: on screen the
+                # user must see what it is a plan *for*.
+                await self.hint_sink(hint, turn)
         except Exception:
             logger.exception("hint generation failed (non-fatal)")
 

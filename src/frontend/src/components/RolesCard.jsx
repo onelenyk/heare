@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { API } from '../App';
 
 const CHANNEL_ICON = { voice: '🎙', log: '📝', hints: '💡' };
+const FINISHED_DISPLAY_MS = 30000;
 
 function safeParse(json, fallback) {
   if (!json) return fallback;
@@ -13,11 +14,24 @@ function safeParse(json, fallback) {
   }
 }
 
-function fmtElapsed(sinceStr) {
+function elapsedSeconds(sinceStr) {
   const since = Number(sinceStr);
-  if (!since || Number.isNaN(since)) return '';
-  const mins = Math.max(0, Math.floor((Date.now() / 1000 - since) / 60));
-  return mins + ' min';
+  if (!since || Number.isNaN(since)) return 0;
+  return Math.max(0, Math.floor(Date.now() / 1000 - since));
+}
+function elapsedMinutes(sinceStr) {
+  return Math.floor(elapsedSeconds(sinceStr) / 60);
+}
+
+function agoSeconds(ts) {
+  const t = Number(ts);
+  if (!t || Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor(Date.now() / 1000 - t));
+}
+
+function truncate(str, n) {
+  if (!str) return '';
+  return str.length > n ? str.slice(0, n).trimEnd() + '…' : str;
 }
 
 function fmtDate(mtime) {
@@ -27,18 +41,34 @@ function fmtDate(mtime) {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Splits a hint blob into clean bullet lines: drop leading "-", "•", "▸"
+// markers and blank lines, since the source text mixes conventions.
+function hintLines(text) {
+  if (!text) return [];
+  return text
+    .split('\n')
+    .map((l) => l.replace(/^\s*[-•▸]\s*/, '').trim())
+    .filter(Boolean);
+}
+
 export default function RolesCard({ state, post, onToast }) {
   const roleActive = state.role_active || '';
   const roleChannel = state.role_channel || '';
   const roleSince = state.role_since || '';
+  const roleTurns = state.role_turns || '0';
+  const roleLastHeard = state.role_last_heard || '';
   const rolesAvailable = safeParse(state.roles_available, []);
   const roleHint = safeParse(state.role_hint, null);
 
+  const [finished, setFinished] = useState(null); // { name, minutes }
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [artifacts, setArtifacts] = useState([]);
   const [openArtifact, setOpenArtifact] = useState(null); // name of expanded artifact
   const [artifactContent, setArtifactContent] = useState('');
   const [artifactLoading, setArtifactLoading] = useState(false);
-  const prevRoleActive = useRef(roleActive);
+
+  const prevRoleRef = useRef({ name: roleActive, since: roleSince });
+  const finishedTimerRef = useRef(null);
 
   const fetchArtifacts = async () => {
     try {
@@ -51,15 +81,33 @@ export default function RolesCard({ state, post, onToast }) {
     }
   };
 
-  // Fetch once on mount, and again whenever a role ends (active -> "").
   useEffect(() => {
     fetchArtifacts();
+    return () => {
+      if (finishedTimerRef.current) clearTimeout(finishedTimerRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Detect an active -> idle transition and surface the "just finished"
+  // result card for a short window.
   useEffect(() => {
-    if (prevRoleActive.current && !roleActive) fetchArtifacts();
-    prevRoleActive.current = roleActive;
+    const wasActive = prevRoleRef.current.name;
+    if (wasActive && !roleActive) {
+      const minutes = elapsedMinutes(prevRoleRef.current.since);
+      setFinished({ name: wasActive, minutes });
+      setHistoryOpen(false);
+      setOpenArtifact(null);
+      fetchArtifacts();
+      if (finishedTimerRef.current) clearTimeout(finishedTimerRef.current);
+      finishedTimerRef.current = setTimeout(() => setFinished(null), FINISHED_DISPLAY_MS);
+    }
+    if (roleActive) {
+      if (finishedTimerRef.current) { clearTimeout(finishedTimerRef.current); finishedTimerRef.current = null; }
+      setFinished(null);
+    }
+    prevRoleRef.current = { name: roleActive, since: roleSince };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleActive]);
 
   async function handleStartRole(trigger) {
@@ -99,95 +147,163 @@ export default function RolesCard({ state, post, onToast }) {
     }
   }
 
-  return (
-    <div className="card">
-      <div className="card-header">{'🎞'} Ролі</div>
-
-      {!roleActive && (
-        <div className="btn-row">
-          {rolesAvailable.length === 0 && (
-            <div className="info-line">no roles available</div>
-          )}
-          {rolesAvailable.map((r, i) => (
-            <button
-              key={r.name || i}
-              className="btn"
-              title={r.trigger}
-              onClick={() => handleStartRole(r.trigger)}
-            >
-              {r.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {roleActive && (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s2)', marginBottom: 'var(--s3)' }}>
-            <span className="status-badge on">
-              {CHANNEL_ICON[roleChannel] || ''} {roleActive}
-            </span>
-            <span className="meta">{fmtElapsed(roleSince)}</span>
-            <button
-              className="btn danger"
-              style={{ marginLeft: 'auto' }}
-              onClick={handleEndRole}
-            >
-              {'Закінчити'}
-            </button>
-          </div>
-
-          {roleChannel === 'hints' && roleHint && roleHint.text && (
-            <div
-              className="card"
-              style={{
-                background: 'var(--card-2)',
-                borderColor: 'var(--accent)',
-                fontSize: 'var(--fs-lg)',
-                lineHeight: 1.5,
-                padding: 'var(--s4)',
-              }}
-            >
-              {roleHint.text}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Artifacts */}
-      <div style={{ marginTop: 'var(--s3)' }}>
-        <div className="bar-section-label">artifacts</div>
-        {artifacts.length === 0 && <div className="info-line">no artifacts yet</div>}
-        {artifacts.map((a) => (
-          <div key={a.name}>
-            <div
-              className="memory-row"
-              style={{ cursor: 'pointer' }}
-              onClick={() => handleArtifactClick(a.name)}
-            >
-              <span className="memory-content">{a.name}</span>
-              <span className="memory-ts">{fmtDate(a.mtime)}</span>
-            </div>
-            {openArtifact === a.name && (
-              <pre
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  background: 'var(--card-2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-xs)',
-                  padding: 'var(--s3)',
-                  marginBottom: 'var(--s2)',
-                  maxHeight: 320,
-                  overflow: 'auto',
-                }}
+  // ── State 4: just finished ──
+  if (finished) {
+    const newest = artifacts[0];
+    const rest = artifacts.slice(1);
+    return (
+      <div className="roles-strip">
+        <div className="roles-strip-top roles-finished">
+          <span className="roles-finished-msg">
+            {'✅'} {finished.name} завершено {'·'} {finished.minutes} хв
+          </span>
+          <div className="roles-finished-actions">
+            {newest ? (
+              <button
+                className="btn primary"
+                aria-label={'Відкрити протокол ' + newest.name}
+                onClick={() => handleArtifactClick(newest.name)}
               >
-                {artifactLoading ? '…' : artifactContent}
-              </pre>
+                {'📄'} Відкрити протокол
+              </button>
+            ) : (
+              <span className="info-line">протокол ще не готовий</span>
             )}
           </div>
-        ))}
+        </div>
+
+        {newest && openArtifact === newest.name && (
+          <pre className="roles-artifact-view">
+            {artifactLoading ? '…' : artifactContent}
+          </pre>
+        )}
+
+        <div className="roles-history">
+          <button
+            className="btn-ghost"
+            aria-expanded={historyOpen}
+            onClick={() => setHistoryOpen((o) => !o)}
+          >
+            {historyOpen ? '▾' : '▸'} Історія артефактів ({rest.length})
+          </button>
+          {historyOpen && (
+            <div className="roles-history-list">
+              {rest.length === 0 && <div className="info-line">немає інших артефактів</div>}
+              {rest.map((a) => (
+                <div key={a.name}>
+                  <div
+                    className="memory-row"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleArtifactClick(a.name)}
+                  >
+                    <span className="memory-content">{a.name}</span>
+                    <span className="memory-ts">{fmtDate(a.mtime)}</span>
+                  </div>
+                  {openArtifact === a.name && (
+                    <pre className="roles-artifact-view">
+                      {artifactLoading ? '…' : artifactContent}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+    );
+  }
+
+  // ── State 1: idle ──
+  if (!roleActive) {
+    return (
+      <div className="roles-strip">
+        <div className="roles-strip-top roles-idle">
+          <span className="roles-label">РОЛІ</span>
+          <div className="roles-idle-buttons">
+            {rolesAvailable.length === 0 && (
+              <span className="info-line">немає доступних ролей</span>
+            )}
+            {rolesAvailable.map((r, i) => (
+              <button
+                key={r.name || i}
+                className="btn roles-role-btn"
+                title={r.trigger}
+                aria-label={'Почати роль ' + r.name}
+                onClick={() => handleStartRole(r.trigger)}
+              >
+                {CHANNEL_ICON[r.channel] || ''} {r.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="roles-idle-hint">
+          {'натисни або скажи: «повчи мене…», «почни мітинг»'}
+        </div>
+      </div>
+    );
+  }
+
+  // ── State 2 / 3: active role ──
+  const hintText = roleHint && roleHint.text ? roleHint.text : '';
+  const isHints = roleChannel === 'hints';
+  const lines = isHints ? hintLines(hintText) : [];
+  const hintAgo = isHints && roleHint ? agoSeconds(roleHint.ts) : null;
+
+  return (
+    <div className="roles-strip">
+      <div className="roles-strip-top roles-active">
+        {roleChannel === 'log' && (
+          <>
+            <span className="roles-rec-dot" aria-hidden="true"></span>
+            <span className="roles-rec-label">ЗАПИС</span>
+          </>
+        )}
+        <span className="status-badge on roles-active-badge">
+          {CHANNEL_ICON[roleChannel] || ''} {roleActive}
+        </span>
+        <span className="meta">{elapsedMinutes(roleSince)} хв</span>
+        <span className="meta">{'·'} {roleTurns} реплік</span>
+        <button
+          className="btn danger roles-end-btn"
+          aria-label={'Закінчити роль ' + roleActive}
+          onClick={handleEndRole}
+        >
+          {'■ Закінчити'}
+        </button>
+      </div>
+
+      {!!roleLastHeard && (
+        <div className="roles-last-heard">
+          останнє почуте: «{truncate(roleLastHeard, 90)}»
+        </div>
+      )}
+
+      {isHints && (
+        <div className="roles-hint-panel">
+          {lines.length === 0 ? (
+            <div className="roles-hint-empty">
+              {'слухаю… підказка з’явиться після першого питання'}
+            </div>
+          ) : (
+            <>
+              {roleHint.question && (
+                <div className="roles-hint-question">«{roleHint.question}»</div>
+              )}
+              <div className="roles-hint-list">
+                {lines.map((l, i) => (
+                  <div className="roles-hint-item" key={i}>
+                    <span className="roles-hint-marker" aria-hidden="true">▸</span>
+                    <span>{l}</span>
+                  </div>
+                ))}
+              </div>
+              {hintAgo != null && (
+                <div className="roles-hint-footer">оновлено {hintAgo} с тому</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

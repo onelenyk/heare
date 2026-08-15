@@ -542,8 +542,8 @@ async def test_hints_channel_generates_a_silent_hint() -> None:
 
     hints: list[str] = []
 
-    async def sink(text: str) -> None:
-        hints.append(text)
+    async def sink(text: str, question: str = "") -> None:
+        hints.append((text, question))
 
     loop.hint_sink = sink
 
@@ -556,7 +556,9 @@ async def test_hints_channel_generates_a_silent_hint() -> None:
 
     await asyncio.wait_for(_hinted(), timeout=2.0)
 
-    assert hints == ["- пункт один\n- пункт два"]
+    assert hints == [
+        ("- пункт один\n- пункт два", "Розкажіть про ваш досвід з Kafka")
+    ]
     assert not audio.played, "hints must never sound"
     assert loop._role_log == [
         {"user": "Розкажіть про ваш досвід з Kafka", "agent": None}

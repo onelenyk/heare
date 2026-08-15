@@ -1,13 +1,11 @@
 import React from 'react';
 
-const MODES = ['silent', 'focus', 'ambient', 'assistant'];
-
 // Header: identity and vitals on top, then the controls reached for
-// constantly — mode, audio, daemon — so they stay put no matter how far
+// constantly — audio, daemon — so they stay put no matter how far
 // the work column scrolls.
 export default function StatusBar({
   state, interruptEnabled,
-  onModeChange, onMute, onCancel, onInterrupt, onDaemon,
+  onMute, onCancel, onInterrupt, onDaemon,
 }) {
   const running = state.running === true;
   const micMuted = state.mute_mic === '1' || state.mute_mic === true;
@@ -36,17 +34,6 @@ export default function StatusBar({
       </div>
 
       <div className="status-row header-controls">
-        <div className="hc-group">
-          <span className="hc-label">mode</span>
-          {MODES.map(m => (
-            <button
-              key={m}
-              className={'btn' + (state.mode === m ? ' active' : '')}
-              onClick={() => onModeChange(m)}
-            >{m}</button>
-          ))}
-        </div>
-
         <div className="hc-group">
           <span className="hc-label">audio</span>
           <button className="btn" onClick={() => onMute('mic')}>

@@ -377,7 +377,6 @@ export default function Dashboard({ onOpenSetup }) {
       <StatusBar
         state={state}
         interruptEnabled={interruptEnabled}
-        onModeChange={(mode) => post('/mode', { mode })}
         onMute={(target) => post('/mute', { target })}
         onCancel={() => post('/cancel', {})}
         onInterrupt={(enabled) => { setInterruptEnabled(enabled); post('/interrupt', { enabled }) }}
@@ -385,6 +384,9 @@ export default function Dashboard({ onOpenSetup }) {
       />
 
       {pollFailed && <div className="warn-banner">⚠ connection lost — data may be stale</div>}
+
+      {/* Roles — the prime, always-visible strip; previously the dead MODE row lived here */}
+      <RolesCard state={state} post={post} onToast={showToastMsg} />
 
       <div className={"dash-body" + (showHistory ? "" : " no-side")}>
         {/* Left column — every control, always on screen */}
@@ -486,9 +488,6 @@ export default function Dashboard({ onOpenSetup }) {
           <MemoriesCard onToast={showToastMsg} />
         </div>
       )}
-
-      {/* Roles */}
-      <RolesCard state={state} post={post} onToast={showToastMsg} />
 
       {/* Text injection */}
       {showInject && (

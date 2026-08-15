@@ -83,16 +83,19 @@ async def run_spine_daemon(
         "roles_available", json.dumps(available, ensure_ascii=False)
     )
 
-    async def _hint_sink(text: str) -> None:
+    async def _hint_sink(text: str, question: str = "") -> None:
         state.set_cache_only(
             "role_hint",
-            json.dumps({"ts": time.time(), "text": text}, ensure_ascii=False),
+            json.dumps(
+                {"ts": time.time(), "text": text, "question": question},
+                ensure_ascii=False,
+            ),
         )
 
     loop.hint_sink = _hint_sink
 
     async def _poll_role() -> None:
-        last = None
+        last: tuple | None = None
         while True:
             await asyncio.sleep(ROLE_POLL_SECS)
             try:
@@ -100,18 +103,26 @@ async def run_spine_daemon(
                     loop.role_manager.active if loop.role_manager else None
                 )
                 name = getattr(active, "name", "") if active else ""
-                if name != last:
-                    last = name
+                log = getattr(loop, "_role_log", [])
+                turns = len(log) if active else 0
+                last_heard = (log[-1]["user"][:100] if active and log else "")
+                snapshot = (name, turns, last_heard)
+                if snapshot != last:
+                    changed_role = last is None or snapshot[0] != last[0]
+                    last = snapshot
                     state.set_cache_only("role_active", name)
-                    state.set_cache_only(
-                        "role_channel",
-                        getattr(active, "channel", "") if active else "",
-                    )
-                    state.set_cache_only(
-                        "role_since", str(time.time()) if active else ""
-                    )
-                    if not active:
-                        state.set_cache_only("role_hint", "")
+                    state.set_cache_only("role_turns", str(turns))
+                    state.set_cache_only("role_last_heard", last_heard)
+                    if changed_role:
+                        state.set_cache_only(
+                            "role_channel",
+                            getattr(active, "channel", "") if active else "",
+                        )
+                        state.set_cache_only(
+                            "role_since", str(time.time()) if active else ""
+                        )
+                        if not active:
+                            state.set_cache_only("role_hint", "")
             except Exception:
                 logger.exception("role state poll failed (non-fatal)")
 
