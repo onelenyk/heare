@@ -427,6 +427,13 @@ class Settings:
     # Voice engine: "pipecat" (the original pipeline) or "spine" (the
     # framework-free rewrite in src/spine). One line back is the rollback.
     engine: str = "pipecat"
+    # Which optional subsystems get wired. Everything here can be off
+    # without the assistant stopping being an assistant — see
+    # src/spine/features.py for the list and what each costs. A bad
+    # evening is debugged by removing suspects, so `false` here means
+    # "not built", not "built and asked to behave".
+    #   spine_features = { roles = false, mcp = false }
+    spine_features: dict = field(default_factory=dict)
     # How long the spine waits after your words stop before answering.
     # The second value applies when the words themselves say you are not
     # finished (a trailing «і», «тобто», no closing punctuation).

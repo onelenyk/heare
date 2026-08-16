@@ -52,7 +52,7 @@ def _wake_phrases(settings) -> list[str]:
 
 
 async def _build_loop(settings, *, audio, voice: str, hold_s: float,
-                      full: bool = True):
+                      full: bool = True, without: str = ""):
     """Wire the conductor. full=False builds the bare chat skeleton
     (no wake/tools/persistence) — used by --text and quick checks."""
     from datetime import datetime
@@ -69,13 +69,20 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     from src.spine.vad import EnergyVAD, loud_ms
     from src.spine.voicing import pick_voice
 
+    from src.spine.features import describe, losses, resolve as resolve_features
+
+    features = resolve_features(settings, without)
+    logger.info("features: %s", describe(features))
+    for line in losses(features):
+        logger.warning("switched off — %s", line)
+
     cfg = resolve_llm(settings)
 
     # Shorter than a spoken word: don't pay Groq to hallucinate on it.
     min_speech_ms = 240
 
     usage = None
-    if full:
+    if full and features["usage"]:
         from src.spine.usage import SpineUsage
 
         usage = SpineUsage(settings.db_path)
@@ -134,26 +141,29 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     from src.spine.tools import VoiceToolbox
     from src.spine.wake import WakeGate
 
-    if audio is not None:
+    if audio is not None and features["aec"]:
         from src.spine.aec import SpineAEC
 
         aec = SpineAEC()
         loop.aec = aec
         logger.info("aec active: %s", aec.active)
 
-    memory = SQLiteBackend(db_path=settings.db_path)
-    await memory.initialize()
+    memory = None
+    if features["memory"]:
+        memory = SQLiteBackend(db_path=settings.db_path)
+        await memory.initialize()
     try:
-        return await _wire_full(loop, settings, cfg, memory)
+        return await _wire_full(loop, settings, cfg, memory, features)
     except Exception:
         # An unclosed aiosqlite worker thread is non-daemon: without
         # this, a failed build hangs the interpreter at exit with its
         # stdout still buffered — a silent, eternal --check.
-        await memory.close()
+        if memory is not None:
+            await memory.close()
         raise
 
 
-async def _wire_full(loop, settings, cfg, memory):
+async def _wire_full(loop, settings, cfg, memory, features):
     from datetime import datetime
 
     from src.spine.llm import stream_chat_events
@@ -176,7 +186,8 @@ async def _wire_full(loop, settings, cfg, memory):
 
     # The conductor asks the flow whether a turn belongs to a session; with
     # no flow adopted it never asks, and every role is inert.
-    loop.adopt_role_flow(RoleFlow())
+    if features["roles"]:
+        loop.adopt_role_flow(RoleFlow())
     loop.roles = RoleLoader(role_paths).load()
     loop.role_manager = RoleManager()
     loop.trigger_match = match_trigger
@@ -218,21 +229,24 @@ async def _wire_full(loop, settings, cfg, memory):
         mcp_provider=lambda: getattr(loop, "mcp", None),
     )
 
-    loop.toolbox = VoiceToolbox(
-        settings, memory, _deliver, hands_factory=_hands_factory
-    )
-    loop.stream_events = lambda messages, tools: stream_chat_events(
-        messages, cfg, tools=tools
-    )
+    if features["tools"]:
+        loop.toolbox = VoiceToolbox(
+            settings, memory, _deliver, hands_factory=_hands_factory
+        )
+        loop.stream_events = lambda messages, tools: stream_chat_events(
+            messages, cfg, tools=tools
+        )
 
-    loop.wake = WakeGate(
-        _wake_phrases(settings),
-        window_s=getattr(settings, "wake_window_seconds", 45.0),
-        required=getattr(settings, "wake_required", True),
-    )
+    if features["wake"]:
+        loop.wake = WakeGate(
+            _wake_phrases(settings),
+            window_s=getattr(settings, "wake_window_seconds", 45.0),
+            required=getattr(settings, "wake_required", True),
+        )
 
     persist = SpinePersistence(settings.db_path)
-    loop.persist = persist
+    if features["persist"]:
+        loop.persist = persist
     # Mirror role sessions to the DB on the CLI path too, so a session
     # cut short by a restart is recoverable there as well.
     if loop.role_manager is not None:
@@ -249,7 +263,11 @@ async def _wire_full(loop, settings, cfg, memory):
             # straight to the prompt put a Python repr of the dataclass
             # into the system message — id, confidence, timestamps and
             # all — instead of the fact itself.
-            entries = await memory.context(query=query, limit=3)
+            entries = (
+                await memory.context(query=query, limit=3)
+                if memory is not None
+                else []
+            )
             memory_block = "\n".join(
                 f"- {getattr(e, 'content', e)}" for e in entries or []
             )
@@ -297,7 +315,9 @@ async def _wire_full(loop, settings, cfg, memory):
     # with its stdout still buffered.
     # The dashboard's memories card reads this backend through the API.
     loop.memory = memory
-    loop._closers = [memory.close, persist.close]
+    loop._closers = [persist.close]
+    if memory is not None:
+        loop._closers.append(memory.close)
     if loop.usage is not None:
         loop._closers.append(loop.usage.close)
     return loop
@@ -337,7 +357,7 @@ async def _amain(args: argparse.Namespace) -> int:
 
     if args.check:
         loop = await _build_loop(
-            settings, audio=None, voice=voice, hold_s=hold, full=True
+            settings, audio=None, voice=voice, hold_s=hold, full=True, without=args.without
         )
         aec_state = "n/a (no audio)" if loop.aec is None else loop.aec.active
         print("ok  settings, llm, stt, tts, vad, turn, loop wired")
@@ -357,7 +377,7 @@ async def _amain(args: argparse.Namespace) -> int:
             audio = AudioIO()
             await audio.start()
         loop = await _build_loop(
-            settings, audio=audio, voice=voice, hold_s=hold, full=False
+            settings, audio=audio, voice=voice, hold_s=hold, full=False, without=args.without
         )
         reply = await loop.respond(args.text, speak=audio is not None)
         print(reply)
@@ -371,7 +391,7 @@ async def _amain(args: argparse.Namespace) -> int:
     audio = AudioIO()
     await audio.start()
     loop = await _build_loop(
-        settings, audio=audio, voice=voice, hold_s=hold, full=True
+        settings, audio=audio, voice=voice, hold_s=hold, full=True, without=args.without
     )
     duplex = "повний дуплекс" if loop._duplex else "напівдуплекс"
     print(f"spine: слухаю ({duplex}, wake={'on' if loop.wake else 'off'}; "
@@ -395,6 +415,13 @@ def main() -> int:
         type=float,
         default=0.0,
         help="seconds of quiet that end a turn (0 = value from config)",
+    )
+    parser.add_argument(
+        "--without",
+        type=str,
+        default="",
+        help="switch subsystems off: roles,mcp,wake,tools,memory,persist,"
+             "usage,telemetry,aec (also HEARE_WITHOUT=..., HEARE_SAFE_MODE=1)",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
