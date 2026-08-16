@@ -1,0 +1,274 @@
+"""The role platform — sessions, quiet channels, artifacts.
+
+These moved out of the conductor's tests when the policy moved out of
+the conductor: RoleFlow owns the triggers, the log and hints channels,
+the finishing state and the artifact. The conductor only asks it whether
+a turn belongs to a session.
+"""
+from __future__ import annotations
+
+import asyncio
+
+from src.spine.role_flow import RoleFlow
+
+from tests.test_spine_loop import FakeAudio, FakeAssembler, FakeWake, _make_loop
+
+# -- the role platform -------------------------------------------------
+
+
+class FakeRole:
+    def __init__(self, name="мітинг", channel="log", artifact="підсумок",
+                 prompt="поводься як секретар"):
+        self.name = name
+        self.channel = channel
+        self.artifact = artifact
+        self.prompt = prompt
+        self.deny_tools = ("bash",)
+
+
+class FakeRoleManager:
+    def __init__(self):
+        self.active = None
+        self.turns: list = []
+        self.finished_with: list | None = None
+
+    def start(self, role):
+        self.active = role
+        return f"Роль «{role.name}» активна."
+
+    def note_turn(self, turn_id):
+        self.turns.append(turn_id)
+
+    async def finish(self, *, exchanges, complete):
+        self.finished_with = exchanges
+        await complete([{"role": "user", "content": "збери підсумок"}])
+        self.active = None
+
+        class _A:
+            full_md = "# Підсумок\nвсе добре"
+            spoken = "Підсумував. Два рішення."
+
+        return _A()
+
+
+def _wire_roles(loop, role):
+    """Build the flow the way the composition root does, then let the
+    conductor lend it its mouth and hands."""
+    saved = {}
+    flow = RoleFlow(
+        role_manager=FakeRoleManager(),
+        roles={role.name: role},
+        trigger_match=lambda text, roles: (
+            role if "почни мітинг" in text.lower() else None
+        ),
+        end_match=lambda text, r: "закінчили" in text.lower(),
+        save_artifact=lambda name, md: saved.setdefault("path", f"/tmp/{name}.md"),
+    )
+    loop.adopt_role_flow(flow)
+    return saved
+
+
+async def test_role_session_records_everything_and_answers_nothing() -> None:
+    audio = FakeAudio()
+    assembler = FakeAssembler()
+    loop = _make_loop(audio, assembler=assembler)
+    role = FakeRole()
+    saved = _wire_roles(loop, role)
+
+    chat_calls = []
+    real_chat = loop.stream_chat
+
+    def spying_chat(m):
+        chat_calls.append(m)
+        return real_chat(m)
+
+    loop.stream_chat = spying_chat
+
+    run = asyncio.create_task(loop.run())
+    assembler.transcript("Дока, почни мітинг")       # start
+    assembler.transcript("обговорюємо бюджет на рік")  # logged, no reply
+    assembler.transcript("рішення: беремо перший варіант")
+    assembler.transcript("ну все, закінчили")          # finish -> artifact
+
+    async def _done() -> None:
+        while saved.get("path") is None:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=3.0)
+    run.cancel()
+
+    mgr = loop.role_flow.role_manager
+    assert mgr.active is None, "session must be closed"
+    assert [e["user"] for e in mgr.finished_with] == [
+        "обговорюємо бюджет на рік",
+        "рішення: беремо перший варіант",
+    ]
+    # The only LLM traffic is the artifact build inside finish() — the
+    # logged turns themselves never reached the model.
+    assert len(chat_calls) == 1
+    spoken = b"".join(audio.played).decode()
+    assert "активна" in spoken and "Підсумував" in spoken
+    assert audio.mute_output is False, "voice restored after the session"
+
+
+async def test_log_role_turns_bypass_wake_gate() -> None:
+    audio = FakeAudio()
+    assembler = FakeAssembler()
+    loop = _make_loop(audio, assembler=assembler)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.wake = FakeWake(accept=False)  # gate would reject everything
+    loop.role_flow.role_manager.start(role)       # session already active
+
+    run = asyncio.create_task(loop.run())
+    assembler.transcript("чужа розмова в кімнаті")
+
+    async def _logged() -> None:
+        while not loop.role_flow.log:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_logged(), timeout=2.0)
+    run.cancel()
+
+    assert loop.role_flow.log == [{"user": "чужа розмова в кімнаті", "agent": None}]
+    assert loop.wake.asked == [], "wake gate must not judge in-session turns"
+
+
+async def test_voice_role_conversation_lands_in_session_log() -> None:
+    loop = _make_loop(FakeAudio(), reply_deltas=["Поясни", " мені чому."])
+    role = FakeRole(name="вчитель", channel="voice")
+    _wire_roles(loop, role)
+    loop.role_flow.role_manager.start(role)
+
+    await loop.respond("бо так швидше")
+
+    assert loop.role_flow.log == [
+        {"user": "бо так швидше", "agent": "Поясни мені чому."}
+    ]
+
+
+async def test_hints_channel_generates_a_silent_hint() -> None:
+    """The interview prompter: a heard question becomes a dashboard hint
+    via hint_sink, nothing is spoken, the turn is logged for the recap."""
+    audio = FakeAudio()
+    loop = _make_loop(audio, reply_deltas=["- пункт один\n- пункт два"])
+    role = FakeRole(name="суфлер", channel="hints",
+                    prompt="готуй план відповіді")
+    _wire_roles(loop, role)
+    loop.role_flow.role_manager.start(role)
+
+    hints: list[str] = []
+
+    async def sink(text: str, question: str = "") -> None:
+        hints.append((text, question))
+
+    loop.role_flow.hint_sink = sink
+
+    consumed = await loop.role_flow.handle("Розкажіть про ваш досвід з Kafka")
+    assert consumed is True
+
+    async def _hinted() -> None:
+        while not hints:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_hinted(), timeout=2.0)
+
+    assert hints == [
+        ("- пункт один\n- пункт два", "Розкажіть про ваш досвід з Kafka")
+    ]
+    assert not audio.played, "hints must never sound"
+    assert loop.role_flow.log == [
+        {"user": "Розкажіть про ваш досвід з Kafka", "agent": None}
+    ]
+
+
+async def test_repeated_end_presses_do_not_become_chat() -> None:
+    """The summary takes seconds of LLM time; the button looks dead and
+    the user presses again. Those extra «закінчили» used to reach the
+    model and be answered as conversation."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.role_flow.role_manager.start(role)
+
+    gate = asyncio.Event()
+    real_finish = loop.role_flow.role_manager.finish
+
+    async def slow_finish(*, exchanges, complete):
+        await gate.wait()
+        return await real_finish(exchanges=exchanges, complete=complete)
+
+    loop.role_flow.role_manager.finish = slow_finish
+
+    assert await loop.role_flow.handle("закінчили") is True      # first press
+    await asyncio.sleep(0.01)
+    assert loop.role_flow.finishing is True
+
+    # Everything said while the summary is being written is held.
+    assert await loop.role_flow.handle("закінчили") is True      # second press
+    assert await loop.role_flow.handle("а що там з диском?") is True
+
+    gate.set()
+
+    async def _done() -> None:
+        while loop.role_flow.finishing:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=2.0)
+
+    # And a stray press just after the session closed is still not chat.
+    assert await loop.role_flow.handle("закінчили") is True
+    user_turns = [m for m in loop.history if m["role"] == "user"]
+    assert user_turns == [], "no user turn reached the model"
+    # The spoken summary itself is part of the conversation, and stays.
+    assert any(m["role"] == "assistant" for m in loop.history)
+
+
+async def test_end_phrase_is_conversation_again_after_the_grace_window() -> None:
+    loop = _make_loop(FakeAudio())
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.role_flow.ended_ts = 1.0  # long ago
+    assert await loop.role_flow.handle("закінчили") is False
+
+
+async def test_finishing_is_announced_out_loud() -> None:
+    """Seven to thirty seconds of silence while the artifact is built
+    reads as a dead assistant unless it says what it is doing."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.role_flow.role_manager.start(role)
+    await loop.role_flow.handle("щось було сказано на сесії")
+    audio.played.clear()
+
+    await loop.role_flow.handle("закінчили")
+
+    async def _done() -> None:
+        while loop.role_flow.finishing:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=2.0)
+    spoken = b"".join(audio.played).decode()
+    assert "збираю підсумок" in spoken.lower(), spoken
+    assert "Підсумував" in spoken, "the summary itself still follows"
+
+
+async def test_empty_session_does_not_announce_a_summary_it_will_not_build() -> None:
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.role_flow.role_manager.start(role)
+    audio.played.clear()
+
+    await loop.role_flow.handle("закінчили")   # nothing was said in the session
+
+    async def _done() -> None:
+        while loop.role_flow.finishing:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=2.0)
+    assert "збираю" not in b"".join(audio.played).decode().lower()

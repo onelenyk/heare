@@ -30,11 +30,16 @@ DEFAULT_SYSTEM_PROMPT = (
 # system prompt out of the model's attention.
 HISTORY_TURNS = 12
 
-# How long after a session closes an end phrase is still just the user
-# pressing the button again.
-END_PHRASE_GRACE_SECS = 90.0
-
-_FINISHING_LINE = "Хвилинку, збираю підсумок."
+# The role platform used to be nine flat fields here. It is one object
+# now, but the daemon and the CLI still set and read the old names, so
+# they stay as views onto the flow: old name -> field on the flow.
+_ROLE_ATTRS = {
+    "roles": "roles", "role_manager": "role_manager",
+    "trigger_match": "trigger_match", "end_match": "end_match",
+    "save_artifact": "save_artifact", "hint_sink": "hint_sink",
+    "role_finishing": "finishing", "_role_log": "log",
+    "_role_ended_ts": "ended_ts",
+}
 
 
 class AudioLike(Protocol):
@@ -60,6 +65,9 @@ class SpineLoop:
     memory, recent exchanges) instead of the static default. persist /
     usage — SQLite logging of turns and paid calls; both must never
     break the conversation, so their errors are swallowed and logged.
+    role_flow — the role platform: the conductor asks it whether a turn
+    belongs to a session and hands it every voice exchange; the policy
+    itself (triggers, quiet channels, artifacts) lives in that object.
     """
 
     audio: AudioLike | None
@@ -79,22 +87,12 @@ class SpineLoop:
     make_system_prompt: Any = None  # async () -> str
     persist: Any = None        # .log_user_turn/.log_agent_reply (sync)
     usage: Any = None          # .stt(seconds) / .tts(chars) (sync)
-    # The role platform. All injected (this file imports no siblings):
-    # roles is the loaded registry, role_manager owns the active session,
-    # the two matchers recognise start/end phrases, save_artifact persists
-    # the end-of-session document and returns its path.
-    roles: dict = field(default_factory=dict)
-    role_manager: Any = None   # .start/.finish/.cancel/.active/.note_turn
-    trigger_match: Any = None  # (text, roles) -> Role | None
-    end_match: Any = None      # (text, role) -> bool
-    save_artifact: Any = None  # (role_name, md) -> str path
-    hint_sink: Any = None      # async (text) -> None; hints-channel delivery
-    _role_log: list = field(default_factory=list)  # session exchanges
-    # Building an artifact is a whole LLM call over a whole session —
-    # seconds, sometimes tens of them. The flag makes that wait visible
-    # and keeps the conversation from answering in the meantime.
-    role_finishing: bool = False
-    _role_ended_ts: float = 0.0
+    # The role platform, as one injected policy object (None = no roles).
+    # It decides whether a turn is a session trigger, a logged line or
+    # ordinary conversation; the conductor only asks. Its fields are
+    # reachable under their old names through this loop — see _ROLE_ATTRS
+    # — so wiring written against the old flat fields keeps working.
+    role_flow: Any = None      # .in_session / await .handle(turn) -> bool
     _stt_jobs: asyncio.Queue = field(default_factory=asyncio.Queue)
     # Turns injected from outside the microphone (Hands results, the
     # dashboard). They are already addressed to the assistant, so they
@@ -119,6 +117,40 @@ class SpineLoop:
     def _duplex(self) -> bool:
         """Full duplex only when a live canceller protects the mic."""
         return self.aec is not None and getattr(self.aec, "active", False)
+
+    # -- the role platform: adopted, then delegated to ------------------
+
+    def adopt_role_flow(self, flow: Any) -> Any:
+        """Lend a role flow the conductor's mouth, then own it: the loop
+        imports no sibling, so the policy object is built outside and
+        handed in here with the callbacks only the loop can give. Role
+        collaborators set on the loop before this lands move over."""
+        flow.say = self._say_now
+        flow.persist_turn = self._persist_user_turn
+        flow.stream_chat = lambda messages: self.stream_chat(messages)
+        flow.get_muted = self._output_muted
+        flow.set_muted = self._set_output_mute
+        for name, mapped in _ROLE_ATTRS.items():
+            if name in self.__dict__:
+                setattr(flow, mapped, self.__dict__.pop(name))
+        self.role_flow = flow
+        return flow
+
+    def __getattr__(self, name: str) -> Any:
+        # Reached only for names no field holds — the old role fields.
+        mapped = _ROLE_ATTRS.get(name)
+        flow = self.__dict__.get("role_flow")
+        if mapped is None or flow is None:
+            raise AttributeError(name)
+        return getattr(flow, mapped)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        flow = self.__dict__.get("role_flow")
+        mapped = _ROLE_ATTRS.get(name) if flow is not None else None
+        if mapped is None:
+            object.__setattr__(self, name, value)  # a field of the loop
+        else:
+            setattr(flow, mapped, value)
 
     async def run(self) -> None:
         """Listen and answer until cancelled."""
@@ -215,210 +247,60 @@ class SpineLoop:
                 turn = self.assembler.poll()
             if not turn:
                 continue
-            in_role = (
-                self.role_manager is not None and self.role_manager.active
-            )
+            in_role = self.role_flow is not None and self.role_flow.in_session
             if gated and not in_role and (
                 self.wake is not None and not self.wake.accepts(turn)
             ):
-                # An active role session hears everything (a meeting
-                # secretary that ignored the unaddressed room would have
-                # nothing to summarise); outside a session the wake gate
-                # rules as usual.
+                # In a session the whole room is the point — see
+                # RoleFlow.in_session; outside one the wake gate rules.
                 logger.info("asleep — turn not addressed to me: %r", turn[:60])
                 continue
             try:
-                if await self._role_turn(turn):
-                    continue
+                flow = self.role_flow
+                if flow is not None and await flow.handle(turn):
+                    continue  # a role session consumed the turn
                 await self.respond(turn)
             except Exception:
                 logger.exception("turn failed: %r", turn[:80])
 
-    async def _role_turn(self, turn: str) -> bool:
-        """Role lifecycle and the log channel. True when the turn is
-        consumed here and must not go to the normal respond() path."""
-        if self.role_manager is None:
-            return False
-        active = self.role_manager.active
+    async def _persist_user_turn(self, text: str) -> int | None:
+        """Log a heard turn; None when no persistence is wired. Errors
+        are the caller's to swallow — never a reason to stop talking."""
+        if self.persist is None:
+            return None
+        return await asyncio.to_thread(self.persist.log_user_turn, text)
 
-        if self.role_finishing:
-            # The summary is still being written; anything said now would
-            # be answered by a conversation that is already over.
-            logger.info("role finishing — turn held: %r", turn[:60])
-            return True
+    def _output_muted(self) -> bool:
+        return bool(getattr(self.audio, "mute_output", False))
 
-        if active is not None and self.end_match is not None and self.end_match(
-            turn, active
-        ):
-            # Off the turn loop: an 18-second summary must not look like
-            # a dead button, and repeated «закінчили» must not queue up.
-            self.role_finishing = True
-            asyncio.create_task(self._role_finish())
-            return True
-
-        if active is None and self._recently_ended(turn):
-            logger.info("stray end phrase ignored: %r", turn[:60])
-            return True
-
-        if active is None and self.trigger_match is not None:
-            role = self.trigger_match(turn, self.roles)
-            if role is not None:
-                ack = self.role_manager.start(role)
-                self._role_log.clear()
-                if getattr(role, "channel", "voice") == "log" and self.audio:
-                    self.audio.mute_output = True
-                await self._say_now(ack)
-                return True
-
-        channel = getattr(active, "channel", "voice") if active else "voice"
-        if active is not None and channel in ("log", "hints"):
-            # The quiet channels: everything is recorded, nothing is
-            # spoken until the session ends. "hints" additionally turns
-            # each heard turn into a silent prompt for the dashboard —
-            # the interview prompter.
-            self._role_log.append({"user": turn, "agent": None})
-            if self.persist is not None:
-                try:
-                    turn_id = await asyncio.to_thread(
-                        self.persist.log_user_turn, turn
-                    )
-                    self.role_manager.note_turn(turn_id)
-                except Exception:
-                    logger.exception("role persist failed (non-fatal)")
-            if channel == "hints" and self.hint_sink is not None:
-                # Off the consuming path: a hint is useless if waiting
-                # for it delays hearing the next question.
-                asyncio.create_task(self._make_hint(active, turn))
-            return True
-
-        return False
-
-    async def _make_hint(self, role: Any, turn: str) -> None:
-        try:
-            recent = [e["user"] for e in self._role_log[-6:-1]]
-            context = "\n".join(f"- {t}" for t in recent)
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        f"{getattr(role, 'prompt', '')}\n\n"
-                        "Відповідай ТІЛЬКИ підказкою: 3-5 коротких пунктів "
-                        "плану відповіді, без вступу і пояснень."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        (f"Перед цим звучало:\n{context}\n\n" if context else "")
-                        + f"Щойно прозвучало: {turn}"
-                    ),
-                },
-            ]
-            parts: list[str] = []
-            async for delta in self.stream_chat(messages):
-                parts.append(delta)
-            hint = "".join(parts).strip()
-            logger.info("hint for %r: %d chars", turn[:40], len(hint))
-            if hint:
-                # The heard question travels with the plan: on screen the
-                # user must see what it is a plan *for*.
-                await self.hint_sink(hint, turn)
-        except Exception:
-            logger.exception("hint generation failed (non-fatal)")
-
-    def _recently_ended(self, turn: str) -> bool:
-        """An end phrase repeated just after a session closed is a person
-        pressing the button again, not a new thing to discuss."""
-        import time as _time
-
-        if _time.time() - self._role_ended_ts > END_PHRASE_GRACE_SECS:
-            return False
-        if self.end_match is None:
-            return False
-        return any(self.end_match(turn, r) for r in self.roles.values())
-
-    async def _role_finish(self) -> None:
-        active = self.role_manager.active
+    def _set_output_mute(self, muted: bool) -> None:
+        """The speaker's mute — a quiet role records without speaking."""
         if self.audio is not None:
-            self.audio.mute_output = False
-
-        # Building an artifact takes one whole LLM call over a whole
-        # session — measured 7 to 30 seconds. Said out loud, that is a
-        # pause; unsaid, it is the assistant having died.
-        if self._role_log:
-            await self._say_now(_FINISHING_LINE)
-
-        async def _complete(messages: list[dict]) -> str:
-            parts: list[str] = []
-            async for delta in self.stream_chat(messages):
-                parts.append(delta)
-            return "".join(parts)
-
-        import time as _time
-
-        try:
-            artifact = await self.role_manager.finish(
-                exchanges=list(self._role_log), complete=_complete
-            )
-        except Exception:
-            logger.exception("role finish failed")
-            artifact = None
-        finally:
-            self._role_log.clear()
-            self.role_finishing = False
-            self._role_ended_ts = _time.time()
-
-        if artifact is None:
-            await self._say_now("Роль завершено.")
-            return
-        path = ""
-        if self.save_artifact is not None and artifact.full_md.strip():
-            try:
-                path = self.save_artifact(
-                    getattr(active, "name", "роль"), artifact.full_md
-                )
-                # The session row is closed before the file exists, so the
-                # path is stamped here or the record never points at what
-                # the session produced.
-                note = getattr(self.role_manager, "note_artifact", None)
-                if callable(note):
-                    note(path)
-            except Exception:
-                logger.exception("artifact save failed")
-        logger.info("role artifact: %s (%d chars)", path, len(artifact.full_md))
-        logger.info("say (summary): %r", artifact.spoken[:80])
-        await self._say_now(artifact.spoken)
+            self.audio.mute_output = muted
 
     async def _say_now(self, text: str) -> None:
-        """Speak a short service phrase outside the LLM flow."""
+        """Speak a short service phrase outside the LLM flow. It is still
+        part of the conversation, so it lands in history too."""
         if not text:
             return
         logger.info("say (service): %r", text[:70])
         self.history.append({"role": "assistant", "content": text})
         if self.audio is None:
             return
-        muted = self.audio.mute_output
-        self.audio.mute_output = False
         try:
             await self._speak(text)
-            try:
-                await asyncio.wait_for(self._drain_playback(), timeout=30.0)
-            except asyncio.TimeoutError:
-                self.audio.stop_playback()
-        finally:
-            self.audio.mute_output = muted
+            await asyncio.wait_for(self._drain_playback(), timeout=30.0)
+        except asyncio.TimeoutError:
+            self.audio.stop_playback()
 
     async def respond(self, user_text: str, *, speak: bool = True) -> str:
         """One full exchange. Returns the reply text (also spoken)."""
         self._interrupted = False
         turn_id: int | None = None
-        if self.persist is not None:
-            try:
-                turn_id = await asyncio.to_thread(
-                    self.persist.log_user_turn, user_text
-                )
-            except Exception:
-                logger.exception("persist failed (non-fatal)")
+        try:
+            turn_id = await self._persist_user_turn(user_text)
+        except Exception:
+            logger.exception("persist failed (non-fatal)")
 
         # History first: the prompt builder greps memory by history[-1],
         # which must be the user's current question, not the assistant's
@@ -514,11 +396,8 @@ class SpineLoop:
                     )
                 except Exception:
                     logger.exception("persist failed (non-fatal)")
-        if self.role_manager is not None and self.role_manager.active:
-            # A voice-channel session (teacher, interviewer) keeps its own
-            # transcript for the end-of-session artifact.
-            self.role_manager.note_turn(turn_id)
-            self._role_log.append({"user": user_text, "agent": reply or None})
+        if self.role_flow is not None:
+            self.role_flow.note_exchange(user_text, reply, turn_id)
         return reply
 
     async def _speak(self, sentence: str) -> None:

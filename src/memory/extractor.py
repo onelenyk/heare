@@ -249,7 +249,7 @@ def _worth_keeping(content: str) -> bool:
     if not is_name and len(words) < 3:
         return False
     try:
-        from src.spine.hallucinations import is_junk
+        from src.text.hallucinations import is_junk
 
         return not is_junk(text, agent_spoke_recently=True)
     except Exception:  # the filter is optional, the length rule is not
