@@ -29,7 +29,20 @@ _PATTERNS_UK: list[tuple[re.Pattern, MemoryType]] = [
         re.compile(r"мене кличуть\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE),
         MemoryType.FACT,
     ),
-    (re.compile(r"я\s+(\S[\s\S]{0,40}?)[.!?]?\s*$", re.IGNORECASE), MemoryType.FACT),
+    # NOT a bare `я (.*)`: that pattern turned every sentence containing
+    # «я» — which in spoken Ukrainian is most of them, hallucinations
+    # included — into a stored fact about the user. It produced 154 of
+    # the 155 memories on this deployment, nearly all junk («че», «бать»,
+    # fragments of songs off the TV), three of which were injected into
+    # every prompt. Identity statements only.
+    (
+        re.compile(
+            r"я\s+(?:працюю|живу|навчаюсь|навчаюся|розробляю|пишу|роблю)"
+            r"\s+(\S[\s\S]{0,60}?)[.!?]?\s*$",
+            re.IGNORECASE,
+        ),
+        MemoryType.FACT,
+    ),
     # Preferences
     (
         re.compile(
@@ -216,6 +229,33 @@ def _dedup_by_containment(entries: list[MemoryEntry]) -> list[MemoryEntry]:
     return out
 
 
+def _worth_keeping(content: str) -> bool:
+    """A last gate before a fragment becomes a fact about the user.
+
+    Speech recognition invents phrases in silence and a regex cannot
+    tell «я не можу зробити бобів» from a preference. Anything the
+    hallucination filter recognises, and anything too short to be a
+    statement, is not remembered.
+    """
+    text = (content or "").strip()
+    words = text.split()
+    # A name is the most valuable thing to remember and the shortest
+    # thing said: «мене звати Назар» must survive a length rule written
+    # for sentences. Only the specific name patterns can produce a bare
+    # capitalised token now that the catch-all «я (.*)» is gone.
+    is_name = 1 <= len(words) <= 2 and all(
+        w[:1].isupper() and w.replace("-", "").isalpha() for w in words
+    )
+    if not is_name and len(words) < 3:
+        return False
+    try:
+        from src.spine.hallucinations import is_junk
+
+        return not is_junk(text, agent_spoke_recently=True)
+    except Exception:  # the filter is optional, the length rule is not
+        return True
+
+
 async def extract_and_store(backend: "MemoryBackend", text: str) -> int:
     """Extract memories from text and store them via the backend.
 
@@ -223,7 +263,7 @@ async def extract_and_store(backend: "MemoryBackend", text: str) -> int:
     content search and fingerprint comparison.  Returns number of new
     memories stored.
     """
-    extracted = extract_memories(text)
+    extracted = [e for e in extract_memories(text) if _worth_keeping(e.content)]
     if not extracted:
         return 0
 
