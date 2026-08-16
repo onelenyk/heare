@@ -726,6 +726,11 @@ async def run_spine_daemon(
 
         cfg_path = mcp_config_path(settings)
         watcher = _McpConfigWatcher(cfg_path)
+        # ``mcp_reload`` is persisted, so a request made just before the
+        # last run died would be honoured now — a pointless reconnect of
+        # servers this boot has only just started. Clear it first.
+        if state.get("mcp_reload") == "1":
+            await state.set("mcp_reload", "0")
         while True:
             await asyncio.sleep(MCP_POLL_SECS)
             try:

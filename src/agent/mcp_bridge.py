@@ -45,6 +45,10 @@ logger = logging.getLogger("heare.mcp_bridge")
 # or it is simply skipped this boot and picked up on the next restart.
 _CONNECT_TIMEOUT_S: float = 60.0
 
+# Closing is a pipe close and a wait; a server that ignores both must not
+# hold up a reload (or the daemon's shutdown) behind it.
+_CLOSE_TIMEOUT_S: float = 10.0
+
 _mcp_intent_seq = itertools.count(start=1)
 
 # ``ToolDef.handler`` is a dispatch key for built-ins living in
@@ -174,6 +178,10 @@ class McpBridge:
         # (function_name, description, input_schema, session)
         self._tools: list[tuple[str, str, dict, Any]] = []
         self._connected_servers: list[str] = []
+        # The task that entered the sessions, and the flag that lets it
+        # leave them. See ``connect``.
+        self._owner: asyncio.Task | None = None
+        self._release = asyncio.Event()
 
     @property
     def connected_servers(self) -> list[str]:
@@ -223,6 +231,53 @@ class McpBridge:
         )
 
     async def connect(self, settings: "Settings") -> None:
+        """Connect every enabled server in a task that this bridge owns.
+
+        The sessions live inside anyio cancel scopes, and anyio's rule is
+        that a scope leaves in the same task it was entered in, innermost
+        first. Entering them in whatever task happened to call ``connect``
+        breaks that rule twice over as soon as bridges come and go:
+        closing bridge A from the shutdown task after another task opened
+        it raises "Attempted to exit cancel scope in a different task",
+        and closing A from the same task that has since opened B unwinds
+        the scopes out of order, which surfaces later as a spurious
+        ``CancelledError`` at some unrelated await. Both were reproduced
+        against real servers; both leak the ``npx`` processes.
+
+        So the scopes are entered by a dedicated task which then parks on
+        ``_release`` and does its own unwinding when ``aclose`` sets it.
+        Callers can connect and close from anywhere, in any order.
+        """
+        ready = asyncio.Event()
+        failure: list[BaseException] = []
+
+        async def _own() -> None:
+            try:
+                await self._connect_all(settings)
+            except BaseException as exc:  # noqa: BLE001 — handed to the caller
+                failure.append(exc)
+            finally:
+                ready.set()
+            try:
+                await self._release.wait()
+            finally:
+                try:
+                    await self._stack.aclose()
+                except Exception:  # noqa: BLE001 — shutdown best-effort
+                    logger.exception("mcp_bridge: session teardown failed")
+
+        self._owner = asyncio.create_task(_own(), name="mcp-bridge-sessions")
+        try:
+            await ready.wait()
+        except BaseException:
+            # The caller gave up (usually daemon shutdown mid-connect).
+            # Nothing else will ever release the owner, so end it here.
+            self._owner.cancel()
+            raise
+        if failure:
+            raise failure[0]
+
+    async def _connect_all(self, settings: "Settings") -> None:
         """Connect every enabled server, and say plainly what happened.
 
         This used to report nothing at all on the happy path, so silence
@@ -534,8 +589,29 @@ class McpBridge:
                 self.unregister_worker_tools()
             except Exception:  # noqa: BLE001 — shutdown best-effort
                 logger.exception("mcp_bridge: unregister failed (non-fatal)")
+        self._release.set()
+        owner = self._owner
+        if owner is None:
+            # Never connected (or built by hand in a test): there is no
+            # owner task, so this task may close the empty stack itself.
+            try:
+                await self._stack.aclose()
+            except Exception:  # noqa: BLE001 — shutdown best-effort
+                logger.exception("mcp_bridge: aclose failed (non-fatal)")
+            return
         try:
-            await self._stack.aclose()
+            await asyncio.wait_for(asyncio.shield(owner), timeout=_CLOSE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            # A server that will not die on a closed pipe. Cancelling the
+            # owner unwinds its scopes from inside, which is the only
+            # place they can be unwound from.
+            owner.cancel()
+            logger.warning(
+                "mcp_bridge: servers did not stop within %.0fs; cancelled",
+                _CLOSE_TIMEOUT_S,
+            )
+        except asyncio.CancelledError:
+            raise
         except Exception:  # noqa: BLE001 — shutdown best-effort
             logger.exception("mcp_bridge: aclose failed (non-fatal)")
 
