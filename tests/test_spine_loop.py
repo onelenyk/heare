@@ -7,7 +7,7 @@ the module violated the contract, not the loop.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import AsyncIterator
 
 from src.spine.loop import SpineLoop

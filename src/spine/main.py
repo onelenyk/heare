@@ -161,7 +161,7 @@ async def _wire_full(loop, settings, cfg, memory):
     from src.spine.prompt import build_system_prompt, load_persona
     from src.spine.role_session import RoleManager
     from src.spine.roles import RoleLoader, is_end_trigger, match_trigger
-    from src.spine.tools import VoiceToolbox
+    from src.spine.tools import VoiceToolbox, make_hands_factory
     from src.spine.wake import WakeGate
 
     async def _deliver(text: str) -> None:
@@ -172,6 +172,11 @@ async def _wire_full(loop, settings, cfg, memory):
         Path(__file__).resolve().parent.parent.parent / "roles",
         Path.home() / ".heare" / "roles",
     ]
+    from src.spine.role_flow import RoleFlow
+
+    # The conductor asks the flow whether a turn belongs to a session; with
+    # no flow adopted it never asks, and every role is inert.
+    loop.adopt_role_flow(RoleFlow())
     loop.roles = RoleLoader(role_paths).load()
     loop.role_manager = RoleManager()
     loop.trigger_match = match_trigger
@@ -204,12 +209,14 @@ async def _wire_full(loop, settings, cfg, memory):
 
     role_session_state = _RoleSessionState()
 
-    def _hands_factory(s):
-        from src.agent.hands import Hands
-
-        # The live session_state makes the active role's deny_tools an
-        # enforced gate inside the worker, not a prompt suggestion.
-        return Hands(s, session_state=role_session_state)
+    # The live session_state makes the active role's deny_tools an
+    # enforced gate inside the worker, not a prompt suggestion. The MCP
+    # bridge is looked up at call time (``loop.mcp``) because the servers
+    # connect after the loop is wired — see src/daemon/spine_engine.py.
+    _hands_factory = make_hands_factory(
+        session_state=role_session_state,
+        mcp_provider=lambda: getattr(loop, "mcp", None),
+    )
 
     loop.toolbox = VoiceToolbox(
         settings, memory, _deliver, hands_factory=_hands_factory
@@ -251,6 +258,24 @@ async def _wire_full(loop, settings, cfg, memory):
         # An active role layers its behavior right after the persona —
         # stable for the whole session, so the prefix cache only resets
         # on role switches, not on every turn.
+        # What the worker can reach through MCP. The voice agent has three
+        # verbs and cannot call any of it — so the block is framed as a
+        # reason to delegate, not as a menu. Static for the life of the
+        # process (servers connect once at boot), so it sits in the
+        # cacheable part of the prompt, right after the persona.
+        mcp_block = ""
+        bridge = getattr(loop, "mcp", None)
+        if bridge is not None:
+            try:
+                block = bridge.prompt_block()
+            except Exception:
+                logger.debug("mcp prompt block failed (non-fatal)")
+                block = ""
+            if block:
+                mcp_block = (
+                    "Твій виконавець (delegate) вміє ще й це — коли треба, "
+                    "просто доручай йому:\n" + block
+                )
         persona_block = persona
         active = loop.role_manager.active if loop.role_manager else None
         if active is not None and getattr(active, "prompt", ""):
@@ -259,6 +284,7 @@ async def _wire_full(loop, settings, cfg, memory):
             )
         return build_system_prompt(
             persona=persona_block,
+            mcp_block=mcp_block,
             memory_block=memory_block or "",
             exchanges=exchanges,
             now=datetime.now(),

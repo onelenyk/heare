@@ -45,6 +45,48 @@ _CONNECT_TIMEOUT_S: float = 60.0
 
 _mcp_intent_seq = itertools.count(start=1)
 
+# ``ToolDef.handler`` is a dispatch key for built-ins living in
+# ``tools/direct.py``. MCP tools have no entry there and must not: they
+# are dispatched by name through a live session (see ``McpBridge.call``).
+# The marker exists so anything reading the registry can tell them apart.
+_MCP_HANDLER = "mcp"
+
+_mcp_tool_def_cls: Any = None
+
+
+def _mcp_tool_def(
+    *,
+    name: str,
+    description: str,
+    handler: str,
+    schema_fields: dict,
+    required: list[str],
+) -> Any:
+    """A ``ToolDef`` that keeps optional MCP arguments optional.
+
+    ``ToolDef.__post_init__`` treats an empty ``required`` as "everything
+    is required", which is right for the hand-written built-ins and wrong
+    for a server-supplied JSON Schema — a tool with five optional
+    arguments would be advertised as needing all five. The subclass drops
+    that rule and takes the server's list verbatim.
+    """
+    global _mcp_tool_def_cls
+    if _mcp_tool_def_cls is None:
+        from src.agent.tools.system import ToolDef
+
+        class _McpToolDef(ToolDef):  # type: ignore[misc, valid-type]
+            def __post_init__(self) -> None:
+                return None
+
+        _mcp_tool_def_cls = _McpToolDef
+    return _mcp_tool_def_cls(
+        name=name,
+        description=description,
+        handler=handler,
+        schema_fields=schema_fields,
+        required=required,
+    )
+
 
 def _normalise_call_result(result: Any) -> dict[str, Any]:
     """Convert an MCP ``CallToolResult`` into heare's tool-result dict.
@@ -220,6 +262,100 @@ class McpBridge:
             lines.append(f"  - {slug} ({len(fns)} tools): {', '.join(fns)}")
         return "\n".join(lines)
 
+    # -- the worker's path ---------------------------------------------
+    #
+    # Everything above this line speaks Pipecat: ``FunctionSchema`` and
+    # ``llm.register_function``. The spine has neither. Its worker
+    # (``src/agent/hands.py``) builds its schema list from the plain
+    # ``ToolDef`` registry in ``src/agent/tools/system.py`` and calls
+    # tools by name, so an MCP tool reaches it only by being *in that
+    # list*. The two methods below are that path, and nothing else in
+    # the tree provided it.
+
+    def register_worker_tools(self) -> list[str]:
+        """Publish every connected MCP tool into the shared ToolDef list.
+
+        ``src.agent.tools.system.TOOLS`` is a module-level list, so one
+        append makes the tool visible to every ``Hands`` instance in the
+        process — including ones built before the bridge connected. The
+        worker's own mode gate then filters the names, which is why a
+        role denying ``mcp__*`` keeps working with no extra wiring.
+
+        Idempotent: a second call replaces what the first one added.
+        """
+        from src.agent.tools.system import TOOLS
+
+        self.unregister_worker_tools()
+        added: list[str] = []
+        for fn_name, description, schema, _session in self._tools:
+            props: dict = {}
+            required: list[str] = []
+            if isinstance(schema, dict):
+                props = schema.get("properties") or {}
+                required = list(schema.get("required") or [])
+            TOOLS.append(
+                _mcp_tool_def(
+                    name=fn_name,
+                    description=description,
+                    handler=_MCP_HANDLER,
+                    schema_fields=props,
+                    required=required,
+                )
+            )
+            added.append(fn_name)
+        if added:
+            logger.info(
+                "mcp: %d tool(s) registered for the worker: %s",
+                len(added),
+                ", ".join(added),
+            )
+        return added
+
+    @staticmethod
+    def unregister_worker_tools() -> None:
+        """Take the MCP tools back out of the shared registry.
+
+        Without this a torn-down bridge leaves schemas the worker would
+        offer and then fail to call — and a test that connects a fake
+        bridge would leak its tools into every test after it.
+        """
+        from src.agent.tools.system import TOOLS
+
+        TOOLS[:] = [t for t in TOOLS if not t.name.startswith("mcp__")]
+
+    async def call(self, fn_name: str, arguments: dict | None = None) -> dict[str, Any]:
+        """Call one MCP tool by its ``mcp__<slug>__<tool>`` name.
+
+        Framework-free counterpart of ``_make_handler``: returns the
+        ``{"success", "output", ...}`` dict directly instead of pushing it
+        through a Pipecat result callback. Never raises except on
+        cancellation.
+        """
+        session = None
+        for name, _desc, _schema, sess in self._tools:
+            if name == fn_name:
+                session = sess
+                break
+        if session is None:
+            return {
+                "success": False,
+                "output": "",
+                "error": f"{fn_name}: no connected MCP server offers this tool",
+            }
+        tool_name = fn_name.split("__", 2)[2]
+        try:
+            raw = await session.call_tool(tool_name, dict(arguments or {}))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a tool failure is data
+            logger.exception("mcp_bridge: %r raised", fn_name)
+            return {
+                "success": False,
+                "output": "",
+                "error": f"{fn_name} error: {exc!s}",
+            }
+        return _normalise_call_result(raw)
+
     def function_schemas(self) -> list[Any]:
         """Pipecat ``FunctionSchema`` objects for every connected MCP tool."""
         from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -336,6 +472,11 @@ class McpBridge:
         return handler
 
     async def aclose(self) -> None:
+        # First stop advertising what is about to stop working.
+        try:
+            self.unregister_worker_tools()
+        except Exception:  # noqa: BLE001 — shutdown best-effort
+            logger.exception("mcp_bridge: unregister failed (non-fatal)")
         try:
             await self._stack.aclose()
         except Exception:  # noqa: BLE001 — shutdown best-effort

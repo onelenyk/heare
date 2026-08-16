@@ -13,6 +13,8 @@ SHAPES below are copied in spirit, not by reference.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from typing import Any, Awaitable, Callable
 
@@ -29,6 +31,104 @@ HandsFactory = Callable[[Any], Any]
 
 def _default_hands_factory(settings: Any) -> Any:
     return Hands(settings)
+
+
+# An MCP call crosses a pipe to another process; a server that never
+# answers must not hold a job open forever. Sits above the built-in
+# default (30s) because "npx some-server" doing real work is normal.
+MCP_CALL_TIMEOUT_S = 60.0
+
+
+class McpHands(Hands):
+    """The worker, plus the ability to call MCP tools.
+
+    ``Hands`` dispatches every tool through ``execute_direct``, which
+    knows the built-ins and nothing else — an ``mcp__*`` name reaches it
+    as "Unknown direct tool". The tools themselves arrive on their own:
+    the bridge appends them to the module-level ToolDef list that
+    ``Hands._tool_schemas`` reads, so the worker already *sees* them.
+    This subclass is only the other half — being able to *run* them —
+    and it lives here rather than in ``hands.py`` so the daemon's other
+    engine is untouched.
+
+    ``mcp_provider`` is a callable rather than a bridge because the
+    worker is built while the loop is being wired and the servers are
+    connected after that; the lookup has to happen at call time.
+    """
+
+    def __init__(
+        self,
+        settings: Any,
+        *,
+        mcp_provider: Callable[[], Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(settings, **kwargs)
+        self._mcp_provider = mcp_provider
+
+    async def _execute(self, name: str, arguments: dict) -> str:
+        if not name.startswith("mcp__"):
+            return await super()._execute(name, arguments)
+
+        from src.agent.modes import mode_gate_refusal
+
+        # Same gate as the built-in path, on the full mcp__slug__tool
+        # name — the schema filter already dropped it, but a model can
+        # still name a tool it was never shown.
+        refusal = mode_gate_refusal(self._session_state, name)
+        if refusal is not None:
+            return f"{name} refused: {refusal.get('error', 'blocked by mode')}"
+
+        bridge = None
+        if self._mcp_provider is not None:
+            try:
+                bridge = self._mcp_provider()
+            except Exception:  # noqa: BLE001
+                logger.exception("[SPINE TOOLS] mcp provider failed")
+        if bridge is None:
+            return f"{name} failed: no MCP servers are connected"
+
+        intent_id = self._record_pending(name, json.dumps(arguments, ensure_ascii=False))
+        try:
+            result = await asyncio.wait_for(
+                bridge.call(name, arguments), timeout=MCP_CALL_TIMEOUT_S
+            )
+        except asyncio.TimeoutError:
+            self._record_error(intent_id, "timed out")
+            return f"{name} timed out"
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("[SPINE TOOLS] %s failed", name)
+            self._record_error(intent_id, repr(exc))
+            return f"{name} failed: {exc}"
+
+        if isinstance(result, dict) and result.get("success"):
+            output = str(result.get("output", ""))[:6000] or "done"
+            self._record_result(intent_id, output)
+            return output
+        error = (
+            str(result.get("error", "unknown error"))
+            if isinstance(result, dict)
+            else str(result)
+        )
+        self._record_error(intent_id, error)
+        return f"{name} failed: {error}"
+
+
+def make_hands_factory(
+    *,
+    session_state: Any = None,
+    mcp_provider: Callable[[], Any] | None = None,
+) -> HandsFactory:
+    """The worker the spine builds: mode-gated, MCP-capable."""
+
+    def _factory(settings: Any) -> Any:
+        return McpHands(
+            settings, session_state=session_state, mcp_provider=mcp_provider
+        )
+
+    return _factory
 
 
 SCHEMAS: list[dict] = [

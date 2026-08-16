@@ -27,6 +27,7 @@ from typing import Any
 def build_system_prompt(
     *,
     persona: str = "",
+    mcp_block: str = "",
     memory_block: str = "",
     exchanges: list[dict] | None = None,
     now: datetime | None = None,
@@ -40,6 +41,7 @@ def build_system_prompt(
       - voice rules (short Ukrainian spoken prose, no markup — keep the
         spirit of loop.py's DEFAULT_SYSTEM_PROMPT)
       - persona paragraph
+      - mcp_block: what the worker can reach through MCP, if anything
 
     DYNAMIC (changes turn to turn; ordered slowest-changing to fastest):
       - 'Що ти пам'ятаєш:' + memory_block
@@ -63,6 +65,13 @@ def build_system_prompt(
 
     if persona:
         parts.append(persona)
+
+    # Still STATIC: the connected MCP servers are fixed for the life of
+    # the process, so this text is identical turn over turn and the
+    # prefix cache survives it. Passed in as a string — this module
+    # knows nothing about bridges, sessions or subprocesses.
+    if mcp_block:
+        parts.append(mcp_block)
 
     # DYNAMIC block — ordered slowest-changing to fastest-changing.
     if memory_block:

@@ -272,3 +272,95 @@ async def test_empty_session_does_not_announce_a_summary_it_will_not_build() -> 
 
     await asyncio.wait_for(_done(), timeout=2.0)
     assert "збираю" not in b"".join(audio.played).decode().lower()
+
+
+# -- the seam between the conductor and the policy ---------------------
+
+
+async def test_a_loop_without_a_role_flow_still_converses() -> None:
+    """No roles wired is the plain-assistant case: every turn is chat,
+    including the words that would have ended a session."""
+    audio = FakeAudio()
+    assembler = FakeAssembler()
+    loop = _make_loop(audio, assembler=assembler)
+    assert loop.role_flow is None
+
+    run = asyncio.create_task(loop.run())
+    assembler.transcript("ну все, закінчили")
+
+    async def _answered() -> None:
+        while not audio.played:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_answered(), timeout=2.0)
+    run.cancel()
+    assert loop.history[0] == {"role": "user", "content": "ну все, закінчили"}
+
+
+async def test_the_old_flat_names_still_reach_the_flow() -> None:
+    """main.py and spine_engine.py set and read these names on the loop —
+    before the flow is adopted (the CLI) and after it (the daemon adds
+    hint_sink later). The policy moved out from under them; they must
+    not notice."""
+    loop = _make_loop(FakeAudio())
+    role = FakeRole()
+
+    loop.roles = {role.name: role}
+    loop.role_manager = FakeRoleManager()
+    flow = RoleFlow()
+    loop.adopt_role_flow(flow)
+    loop.hint_sink = "sink"
+    loop.trigger_match = "match"
+    loop.end_match = "end"
+    loop.save_artifact = "save"
+
+    assert flow.roles == {role.name: role}
+    assert flow.role_manager is loop.role_manager
+    assert (flow.trigger_match, flow.end_match, flow.hint_sink) == (
+        "match", "end", "sink"
+    )
+    assert flow.save_artifact == "save"
+
+    # …and the two the dashboard poller reads every second.
+    flow.log.append({"user": "щось", "agent": None})
+    flow.finishing = True
+    assert loop._role_log == [{"user": "щось", "agent": None}]
+    assert loop.role_finishing is True
+    assert loop._role_ended_ts == flow.ended_ts
+
+
+async def test_the_built_engine_actually_has_a_role_flow(tmp_path, monkeypatch) -> None:
+    """A refactor once left every role inert in production: the policy
+    object existed, the wiring set its fields, and nobody adopted it —
+    so the conductor never asked. Only a check on the assembled engine
+    catches that; the unit tests all passed."""
+    from types import SimpleNamespace
+
+    import src.spine.main as spine_main
+
+    settings = SimpleNamespace(
+        db_path=tmp_path / "h.db",
+        workspace_dir=tmp_path / "ws",
+        groq_api_key="x",
+        groq_language="uk",
+        deepseek_api_key="sk-test",
+        deepseek_base_url="",
+        deepseek_model="",
+        identity_file=tmp_path / "identity.json",
+        wake_word="гава",
+        wake_window_seconds=45.0,
+        wake_required=True,
+        spine_vad_stop_ms=800,
+        spine_turn_continuation_hold_seconds=2.6,
+    )
+
+    loop = await spine_main._build_loop(
+        settings, audio=None, voice="", hold_s=1.3, full=True
+    )
+    try:
+        assert loop.role_flow is not None, "the engine was built without a role flow"
+        assert loop.roles, "roles must be loaded from the repo's roles/ folder"
+        # And the conductor can reach a session through it.
+        assert loop.role_flow.in_session is False
+    finally:
+        await spine_main._close_loop(loop)

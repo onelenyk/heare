@@ -166,6 +166,33 @@ async def run_spine_daemon(
     # spine already opened — it was only ever set on the pipecat path.
     api._memory_backend = getattr(loop, "memory", None)
 
+    # -- MCP: the servers in .mcp.json, made callable by the worker -----
+    #
+    # connect_mcp_servers never raises and skips whatever will not start,
+    # so a broken entry costs those tools and nothing else. The bridge is
+    # hung on the loop because the worker looks it up at call time and
+    # _make_prompt reads it once per turn.
+    loop.mcp = None
+    try:
+        from src.agent.mcp_bridge import connect_mcp_servers
+
+        bridge = await connect_mcp_servers(settings)
+        loop.mcp = bridge
+        names = bridge.register_worker_tools()
+        closers = getattr(loop, "_closers", None)
+        if closers is not None:
+            closers.append(bridge.aclose)
+        logger.info(
+            "mcp: %d server(s) connected (%s), %d tool(s) for the worker",
+            len(bridge.connected_servers),
+            ", ".join(bridge.connected_servers) or "none",
+            len(names),
+        )
+    except Exception:
+        # Only a bug in the wiring above can land here — connect itself
+        # is already fail-soft — and even then the assistant must come up.
+        logger.exception("mcp: bridge unavailable (non-fatal)")
+
     # -- telemetry: one JSONL line per turn -----------------------------
     # Cheap, stdlib-only, never raises into the conversation. See
     # docs/findings/measuring.md — "it feels slow" used to only be
