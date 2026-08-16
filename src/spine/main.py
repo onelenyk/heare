@@ -178,26 +178,10 @@ async def _wire_full(loop, settings, cfg, memory):
     loop.end_match = is_end_trigger
     logger.info("roles loaded: %s", ", ".join(sorted(loop.roles)) or "none")
 
+    from src.spine.artifacts import save_artifact
+
     artifacts_dir = Path(settings.workspace_dir) / "artifacts"
-
-    def _save_artifact(role_name: str, md: str) -> str:
-        from datetime import datetime as _dt
-
-        # Models love wrapping a requested markdown document in a code
-        # fence; the file must be the document, not a quote of it.
-        text = md.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[-1]
-            if text.rstrip().endswith("```"):
-                text = text.rstrip()[:-3].rstrip() + "\n"
-
-        artifacts_dir.mkdir(parents=True, exist_ok=True)
-        stamp = _dt.now().strftime("%Y-%m-%d-%H%M")
-        path = artifacts_dir / f"{stamp}-{role_name}.md"
-        path.write_text(text, "utf-8")
-        return str(path)
-
-    loop.save_artifact = _save_artifact
+    loop.save_artifact = partial(save_artifact, artifacts_dir)
 
     class _RoleSessionState:
         """Duck-typed session_state for the Hands mode gate: the active
