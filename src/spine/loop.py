@@ -34,6 +34,8 @@ HISTORY_TURNS = 12
 # pressing the button again.
 END_PHRASE_GRACE_SECS = 90.0
 
+_FINISHING_LINE = "Хвилинку, збираю підсумок."
+
 
 class AudioLike(Protocol):
     input_frames: asyncio.Queue
@@ -337,6 +339,12 @@ class SpineLoop:
         if self.audio is not None:
             self.audio.mute_output = False
 
+        # Building an artifact takes one whole LLM call over a whole
+        # session — measured 7 to 30 seconds. Said out loud, that is a
+        # pause; unsaid, it is the assistant having died.
+        if self._role_log:
+            await self._say_now(_FINISHING_LINE)
+
         async def _complete(messages: list[dict]) -> str:
             parts: list[str] = []
             async for delta in self.stream_chat(messages):
@@ -376,6 +384,7 @@ class SpineLoop:
         """Speak a short service phrase outside the LLM flow."""
         if not text:
             return
+        logger.info("say (service): %r", text[:70])
         self.history.append({"role": "assistant", "content": text})
         if self.audio is None:
             return

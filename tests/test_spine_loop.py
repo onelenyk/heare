@@ -614,3 +614,44 @@ async def test_end_phrase_is_conversation_again_after_the_grace_window() -> None
     _wire_roles(loop, role)
     loop._role_ended_ts = 1.0  # long ago
     assert await loop._role_turn("закінчили") is False
+
+
+async def test_finishing_is_announced_out_loud() -> None:
+    """Seven to thirty seconds of silence while the artifact is built
+    reads as a dead assistant unless it says what it is doing."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.role_manager.start(role)
+    await loop._role_turn("щось було сказано на сесії")
+    audio.played.clear()
+
+    await loop._role_turn("закінчили")
+
+    async def _done() -> None:
+        while loop.role_finishing:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=2.0)
+    spoken = b"".join(audio.played).decode()
+    assert "збираю підсумок" in spoken.lower(), spoken
+    assert "Підсумував" in spoken, "the summary itself still follows"
+
+
+async def test_empty_session_does_not_announce_a_summary_it_will_not_build() -> None:
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    loop.role_manager.start(role)
+    audio.played.clear()
+
+    await loop._role_turn("закінчили")   # nothing was said in the session
+
+    async def _done() -> None:
+        while loop.role_finishing:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_done(), timeout=2.0)
+    assert "збираю" not in b"".join(audio.played).decode().lower()
