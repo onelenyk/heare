@@ -28,12 +28,36 @@ code to make those columns real.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
 from pathlib import Path
 
 from src.store.storage import SCHEMA, SCHEMA_VERSION
+
+# The one table the spine owns alone. It is NOT in storage.py's SCHEMA and
+# does NOT bump SCHEMA_VERSION: storage.py's `_check_schema_version` refuses
+# to open a DB whose recorded version is *newer* than the code opening it,
+# so raising the shared version to 9 here would make the same ~/.heare/heare.db
+# unopenable by the pipecat store (still compiled against 8) — a rollback to
+# `engine = "pipecat"` would then fail to boot. A plain additive
+# CREATE TABLE IF NOT EXISTS is invisible to every reader that does not ask
+# for it, needs no migration, and leaves the shared version alone.
+ROLE_SESSIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS role_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role_name TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT '',
+    started_ts REAL NOT NULL,
+    ended_ts REAL,                       -- NULL = still live
+    artifact_path TEXT,
+    turn_ids TEXT NOT NULL DEFAULT '[]', -- JSON array of turns.id
+    status TEXT NOT NULL DEFAULT 'live'  -- 'live' | 'done' | 'interrupted'
+);
+CREATE INDEX IF NOT EXISTS idx_role_sessions_live
+    ON role_sessions(ended_ts);
+"""
 
 
 class SpinePersistence:
@@ -55,6 +79,9 @@ class SpinePersistence:
         # docstring) — idempotent, so this is safe whether the DB is
         # brand new or already at schema v8.
         self._conn.executescript(SCHEMA)
+        # Additive, spine-only (see ROLE_SESSIONS_SCHEMA): executed the same
+        # way — one idempotent script, right after the shared one.
+        self._conn.executescript(ROLE_SESSIONS_SCHEMA)
         self._conn.commit()
         self._ensure_schema_version_row()
 
@@ -167,6 +194,159 @@ class SpinePersistence:
                 exchanges.append({"user": user_text, "agent": agent_text})
             return exchanges
 
+    # -- role sessions -------------------------------------------------
+    #
+    # A role session is a meeting: it starts on a voice trigger and ends
+    # on «закінчили», possibly an hour later. Held only in RoleManager's
+    # memory it does not survive a daemon restart — the turns stay in the
+    # DB as orphans and no artifact is ever built. These five methods are
+    # the on-disk mirror of that session, so a restart can at least see
+    # that a meeting was cut off instead of losing it in silence.
+
+    def open_role_session(self, role_name: str, channel: str = "") -> int:
+        """Record a session as live (ended_ts NULL). Returns its id."""
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO role_sessions "
+                "(role_name, channel, started_ts, ended_ts, artifact_path, "
+                " turn_ids, status) VALUES (?, ?, ?, NULL, NULL, '[]', 'live')",
+                (role_name, channel or "", time.time()),
+            )
+            session_id = cur.lastrowid
+            assert session_id is not None
+            self._conn.commit()
+            return session_id
+
+    def note_role_turn(self, session_id: int, turn_id: int | None) -> None:
+        """Append a persisted turn id to the session's JSON array.
+
+        Read-modify-write rather than a child table: the array is the whole
+        membership list, it is written once per turn (never per audio
+        frame), and it is what makes a row self-contained for recovery.
+        Duplicates are dropped so a retried write cannot double-count.
+        """
+        if turn_id is None:
+            return
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT turn_ids FROM role_sessions WHERE id = ?", (session_id,)
+            )
+            row = cur.fetchone()
+            if row is None:
+                return
+            turn_ids = _decode_turn_ids(row[0])
+            if turn_id in turn_ids:
+                return
+            turn_ids.append(int(turn_id))
+            self._conn.execute(
+                "UPDATE role_sessions SET turn_ids = ? WHERE id = ?",
+                (json.dumps(turn_ids), session_id),
+            )
+            self._conn.commit()
+
+    def close_role_session(
+        self,
+        session_id: int,
+        artifact_path: str | None = None,
+        status: str = "done",
+    ) -> None:
+        """Stamp ended_ts (so the session stops being live), the artifact
+        path if one was written, and the final status."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE role_sessions SET ended_ts = ?, artifact_path = ?, "
+                "status = ? WHERE id = ?",
+                (time.time(), artifact_path or None, status, session_id),
+            )
+            self._conn.commit()
+
+    def set_role_session_artifact(self, session_id: int, artifact_path: str) -> None:
+        """Attach the artifact file to an already-closed session.
+
+        The path is only known after the caller has written the file, which
+        happens after finish() has closed the row."""
+        if not artifact_path:
+            return
+        with self._lock:
+            self._conn.execute(
+                "UPDATE role_sessions SET artifact_path = ? WHERE id = ?",
+                (artifact_path, session_id),
+            )
+            self._conn.commit()
+
+    def live_role_session(self) -> dict | None:
+        """The session left open by a previous run, or None.
+
+        Newest first: only one session can be live at a time, but a crash
+        during close() could in principle leave two, and the most recent
+        is the meeting the user was actually in.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT id, role_name, channel, started_ts, ended_ts, "
+                "artifact_path, turn_ids, status FROM role_sessions "
+                "WHERE ended_ts IS NULL ORDER BY id DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {
+                "id": int(row[0]),
+                "role_name": row[1],
+                "channel": row[2],
+                "started_ts": row[3],
+                "ended_ts": row[4],
+                "artifact_path": row[5],
+                "turn_ids": _decode_turn_ids(row[6]),
+                "status": row[7],
+            }
+
+    def role_session_turns(self, session_id: int) -> list[dict]:
+        """The session's exchanges, oldest first — the material an
+        artifact is built from. Same {"user", "agent"} shape as
+        recent_exchanges, plus the turn id, and in the order the session
+        recorded them (not the order the DB happens to return)."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT turn_ids FROM role_sessions WHERE id = ?", (session_id,)
+            )
+            row = cur.fetchone()
+            if row is None:
+                return []
+            turn_ids = _decode_turn_ids(row[0])
+
+            exchanges: list[dict] = []
+            for turn_id in turn_ids:
+                cur = self._conn.execute(
+                    "SELECT text, agent_spoken FROM transcripts "
+                    "WHERE turn_id = ? ORDER BY ts ASC",
+                    (turn_id,),
+                )
+                user_text: str | None = None
+                agent_text: str | None = None
+                for text, agent_spoken in cur.fetchall():
+                    if agent_spoken:
+                        agent_text = text
+                    else:
+                        user_text = text
+                exchanges.append(
+                    {"turn_id": turn_id, "user": user_text, "agent": agent_text}
+                )
+            return exchanges
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+
+def _decode_turn_ids(raw: str | None) -> list[int]:
+    """Never let one malformed row cost a whole meeting."""
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(value, list):
+        return []
+    return [int(v) for v in value if isinstance(v, (int, float))]

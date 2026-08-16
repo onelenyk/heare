@@ -170,6 +170,210 @@ async def test_works_against_db_pre_created_by_storage_py(db_path: Path) -> None
         persist.close()
 
 
+# -- role sessions --------------------------------------------------------
+
+
+def test_role_session_round_trip_open_note_close(
+    persist: SpinePersistence, db_path: Path
+) -> None:
+    t1 = persist.log_user_turn("Почнімо нараду")
+    persist.log_agent_reply("Добре", t1)
+    t2 = persist.log_user_turn("Рішення номер один")
+
+    session_id = persist.open_role_session("мітинг", "log")
+    assert session_id > 0
+
+    live = persist.live_role_session()
+    assert live is not None
+    assert live["id"] == session_id
+    assert live["role_name"] == "мітинг"
+    assert live["channel"] == "log"
+    assert live["status"] == "live"
+    assert live["ended_ts"] is None
+    assert live["turn_ids"] == []
+
+    persist.note_role_turn(session_id, t1)
+    persist.note_role_turn(session_id, None)  # ignored
+    persist.note_role_turn(session_id, t2)
+    persist.note_role_turn(session_id, t2)  # a retry must not double-count
+
+    still_live = persist.live_role_session()
+    assert still_live is not None
+    assert still_live["turn_ids"] == [t1, t2]
+
+    persist.close_role_session(session_id, "/tmp/artifact.md")
+
+    # closed: no longer live
+    assert persist.live_role_session() is None
+
+    conn = sqlite3.connect(db_path)
+    try:
+        row = _row(
+            conn,
+            "SELECT ended_ts, artifact_path, status, turn_ids "
+            "FROM role_sessions WHERE id = ?",
+            (session_id,),
+        )
+        assert row["ended_ts"] is not None
+        assert row["artifact_path"] == "/tmp/artifact.md"
+        assert row["status"] == "done"
+        assert row["turn_ids"] == f"[{t1}, {t2}]"
+    finally:
+        conn.close()
+
+
+def test_role_session_turns_returns_exchanges_in_session_order(
+    persist: SpinePersistence,
+) -> None:
+    t1 = persist.log_user_turn("перше питання")
+    persist.log_agent_reply("перша відповідь", t1)
+    t2 = persist.log_user_turn("друге питання")  # no reply yet
+    outside = persist.log_user_turn("не з наради")
+    persist.log_agent_reply("теж не з наради", outside)
+
+    session_id = persist.open_role_session("мітинг", "log")
+    persist.note_role_turn(session_id, t1)
+    persist.note_role_turn(session_id, t2)
+
+    turns = persist.role_session_turns(session_id)
+    assert turns == [
+        {"turn_id": t1, "user": "перше питання", "agent": "перша відповідь"},
+        {"turn_id": t2, "user": "друге питання", "agent": None},
+    ]
+
+    # unknown session id is empty, not an error
+    assert persist.role_session_turns(9999) == []
+
+
+def test_live_role_session_survives_reopen_and_is_recovered_once(
+    db_path: Path,
+) -> None:
+    # A daemon that was killed mid-meeting: session opened, turns noted,
+    # never closed.
+    first = SpinePersistence(db_path)
+    try:
+        turn_id = first.log_user_turn("нарада триває")
+        session_id = first.open_role_session("мітинг", "log")
+        first.note_role_turn(session_id, turn_id)
+    finally:
+        first.close()
+
+    # Restart: a brand-new process, same file.
+    second = SpinePersistence(db_path)
+    try:
+        row = second.live_role_session()
+        assert row is not None
+        assert row["id"] == session_id
+        assert row["role_name"] == "мітинг"
+        assert row["turn_ids"] == [turn_id]
+        assert row["status"] == "live"
+
+        second.close_role_session(row["id"], None, "interrupted")
+
+        # Reported exactly once: the next boot finds nothing.
+        assert second.live_role_session() is None
+        recovered = second.role_session_turns(session_id)
+        assert recovered == [
+            {"turn_id": turn_id, "user": "нарада триває", "agent": None}
+        ]
+    finally:
+        second.close()
+
+
+async def test_startup_recovery_marks_interrupted_and_tells_the_dashboard(
+    db_path: Path,
+) -> None:
+    import json
+
+    from src.daemon.spine_engine import _recover_role_session
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.cache: dict[str, str] = {}
+
+        def set_cache_only(self, key: str, value: str) -> None:
+            self.cache[key] = value
+
+    p = SpinePersistence(db_path)
+    state = FakeState()
+    try:
+        # nothing live -> nothing said
+        assert await _recover_role_session(p, state) is None
+        assert state.cache == {}
+
+        t1 = p.log_user_turn("перше")
+        t2 = p.log_user_turn("друге")
+        session_id = p.open_role_session("мітинг", "log")
+        p.note_role_turn(session_id, t1)
+        p.note_role_turn(session_id, t2)
+
+        row = await _recover_role_session(p, state)
+        assert row is not None
+        assert row["id"] == session_id
+
+        payload = json.loads(state.cache["role_interrupted"])
+        assert payload["role"] == "мітинг"
+        assert payload["turns"] == 2
+        assert payload["ts"] > 0
+
+        # marked interrupted, and never reported a second time
+        conn = sqlite3.connect(db_path)
+        try:
+            stored = _row(
+                conn,
+                "SELECT status, ended_ts FROM role_sessions WHERE id = ?",
+                (session_id,),
+            )
+            assert stored["status"] == "interrupted"
+            assert stored["ended_ts"] is not None
+        finally:
+            conn.close()
+
+        state.cache.clear()
+        assert await _recover_role_session(p, state) is None
+        assert state.cache == {}
+
+        # the turns are still there for a later artifact
+        assert [t["user"] for t in p.role_session_turns(session_id)] == [
+            "перше",
+            "друге",
+        ]
+    finally:
+        p.close()
+
+
+def test_role_sessions_table_does_not_bump_shared_schema_version(
+    persist: SpinePersistence, db_path: Path
+) -> None:
+    from src.store.storage import SCHEMA_VERSION
+
+    conn = sqlite3.connect(db_path)
+    try:
+        row = _row(conn, "SELECT value FROM meta WHERE key = 'schema_version'")
+        assert int(row["value"]) == SCHEMA_VERSION
+    finally:
+        conn.close()
+
+
+async def test_role_sessions_added_to_a_storage_py_created_db(db_path: Path) -> None:
+    # The daemon's own store creates the file first; the spine's extra
+    # table must be additive and leave that DB openable by storage.py.
+    store = TranscriptStore(db_path)
+    await store.init()
+    await store.close()
+
+    p = SpinePersistence(db_path)
+    try:
+        session_id = p.open_role_session("мітинг", "voice")
+        p.close_role_session(session_id, None, "done")
+    finally:
+        p.close()
+
+    store = TranscriptStore(db_path)
+    await store.init()
+    await store.close()
+
+
 def test_unicode_ukrainian_round_trips(persist: SpinePersistence) -> None:
     user_text = "Привіт, як справи?"
     agent_text = "Все добре, дякую!"

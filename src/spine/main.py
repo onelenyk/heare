@@ -243,6 +243,10 @@ async def _wire_full(loop, settings, cfg, memory):
 
     persist = SpinePersistence(settings.db_path)
     loop.persist = persist
+    # Mirror role sessions to the DB on the CLI path too, so a session
+    # cut short by a restart is recoverable there as well.
+    if loop.role_manager is not None:
+        loop.role_manager.persist = persist
 
     persona = load_persona(settings)
 
@@ -251,7 +255,14 @@ async def _wire_full(loop, settings, cfg, memory):
         query = loop.history[-1]["content"] if loop.history else ""
         memory_block = ""
         try:
-            memory_block = await memory.context(query=query, limit=3)
+            # context() returns MemoryEntry objects; handing the list
+            # straight to the prompt put a Python repr of the dataclass
+            # into the system message — id, confidence, timestamps and
+            # all — instead of the fact itself.
+            entries = await memory.context(query=query, limit=3)
+            memory_block = "\n".join(
+                f"- {getattr(e, 'content', e)}" for e in entries or []
+            )
         except Exception:
             logger.debug("memory context failed (non-fatal)")
         # An active role layers its behavior right after the persona —

@@ -202,6 +202,130 @@ def test_cancel_with_nothing_active_returns_none() -> None:
     assert mgr.cancel() is None
 
 
+# -- persistence (optional collaborator) ---------------------------------
+
+
+class FakePersist:
+    """Records the calls RoleManager makes, in order."""
+
+    def __init__(self, session_id: int = 7) -> None:
+        self.session_id = session_id
+        self.calls: list[tuple] = []
+
+    def open_role_session(self, role_name: str, channel: str) -> int:
+        self.calls.append(("open", role_name, channel))
+        return self.session_id
+
+    def note_role_turn(self, session_id: int, turn_id: int) -> None:
+        self.calls.append(("note", session_id, turn_id))
+
+    def close_role_session(
+        self, session_id: int, artifact_path, status: str = "done"
+    ) -> None:
+        self.calls.append(("close", session_id, artifact_path, status))
+
+    def set_role_session_artifact(self, session_id: int, artifact_path: str) -> None:
+        self.calls.append(("artifact", session_id, artifact_path))
+
+
+def test_persist_defaults_to_none_and_changes_nothing() -> None:
+    mgr = RoleManager(clock=FakeClock())
+    assert mgr.persist is None
+    assert mgr.session_id is None
+
+    mgr.start(make_role())
+    mgr.note_turn(1)
+    assert mgr.session_id is None
+    assert mgr.cancel() is not None
+
+
+async def test_persist_receives_start_notes_finish_in_order() -> None:
+    fake = FakePersist(session_id=42)
+    mgr = RoleManager(clock=FakeClock(), persist=fake)
+    role = make_role(name="мітинг", channel="log")
+
+    mgr.start(role)
+    assert mgr.session_id == 42
+    mgr.note_turn(11)
+    mgr.note_turn(None)  # still ignored, still not persisted
+    mgr.note_turn(12)
+
+    completer = FakeCompleter(response="MD\n===SPOKEN===\nОзвучка.")
+    await mgr.finish(exchanges=[{"user": "a", "agent": "b"}], complete=completer)
+
+    assert fake.calls == [
+        ("open", "мітинг", "log"),
+        ("note", 42, 11),
+        ("note", 42, 12),
+        ("close", 42, "", "done"),
+    ]
+    assert mgr.session_id is None
+
+    # The artifact path is only known after finish(); it attaches to the
+    # session that just closed.
+    mgr.note_artifact("/tmp/2026-мітинг.md")
+    assert fake.calls[-1] == ("artifact", 42, "/tmp/2026-мітинг.md")
+
+
+def test_persist_cancel_closes_session_as_interrupted() -> None:
+    fake = FakePersist(session_id=5)
+    mgr = RoleManager(clock=FakeClock(), persist=fake)
+    mgr.start(make_role())
+    mgr.note_turn(1)
+    mgr.cancel()
+
+    assert fake.calls[-1] == ("close", 5, "", "interrupted")
+
+
+async def test_persist_empty_artifact_instruction_still_closes_session() -> None:
+    fake = FakePersist(session_id=3)
+    mgr = RoleManager(clock=FakeClock(), persist=fake)
+    mgr.start(make_role(artifact=""))
+
+    result = await mgr.finish(
+        exchanges=[{"user": "hi", "agent": "hey"}],
+        complete=FakeCompleter(response="unused"),
+    )
+
+    assert result is None
+    assert fake.calls[-1] == ("close", 3, "", "done")
+
+
+async def test_persist_llm_failure_still_closes_session() -> None:
+    fake = FakePersist(session_id=9)
+    mgr = RoleManager(clock=FakeClock(), persist=fake)
+    mgr.start(make_role())
+
+    result = await mgr.finish(
+        exchanges=[{"user": "Привіт", "agent": "Привіт!"}],
+        complete=FakeCompleter(error=RuntimeError("boom")),
+    )
+
+    assert result is not None
+    assert fake.calls[-1] == ("close", 9, "", "done")
+    assert mgr.active is None
+
+
+def test_a_broken_persist_never_breaks_the_session() -> None:
+    class Broken:
+        def open_role_session(self, *a, **k):
+            raise RuntimeError("db is gone")
+
+        def note_role_turn(self, *a, **k):
+            raise RuntimeError("db is gone")
+
+        def close_role_session(self, *a, **k):
+            raise RuntimeError("db is gone")
+
+    mgr = RoleManager(clock=FakeClock(), persist=Broken())
+    ack = mgr.start(make_role(name="мітинг", channel="log"))
+    assert "мітинг" in ack
+    mgr.note_turn(1)
+    assert mgr.session_turns == [1]
+    assert mgr.cancel() is not None
+    assert mgr.active is None
+
+
 # bonus: minutes() is clock-based
 def test_minutes_is_clock_based() -> None:
     clock = FakeClock(start=100.0)

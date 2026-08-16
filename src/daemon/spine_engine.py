@@ -76,6 +76,59 @@ def _resolve_device(settings: Any, kind: str) -> int | None:
     return None
 
 
+async def _recover_role_session(persist: Any, state: Any) -> dict | None:
+    """A meeting that a restart cut off must be reported, not resumed.
+
+    A role session lives in RoleManager's memory; the daemon dying mid-
+    meeting used to end it in silence — its turns stayed in the DB as
+    orphans and no artifact was ever built. Now the row survives, so at
+    boot we can find it. We deliberately do NOT resume it: the room has
+    moved on, the microphone was off for however long the restart took,
+    and a session silently continuing an hour later would record the
+    wrong meeting. Instead the row is closed as 'interrupted' (so it is
+    found exactly once) and the fact is put where the user can see it —
+    State key `role_interrupted`, which the dashboard reads. Building the
+    artifact from those turns is a later, deliberate step.
+
+    Returns the recovered row, or None when there was nothing to recover.
+    """
+    if persist is None:
+        return None
+    try:
+        row = await asyncio.to_thread(persist.live_role_session)
+    except Exception:
+        logger.exception("role session recovery: read failed (non-fatal)")
+        return None
+    if not row:
+        return None
+
+    turns = len(row.get("turn_ids") or [])
+    role_name = row.get("role_name") or ""
+    try:
+        await asyncio.to_thread(
+            persist.close_role_session, int(row["id"]), None, "interrupted"
+        )
+    except Exception:
+        logger.exception("role session recovery: close failed (non-fatal)")
+    logger.warning(
+        "role session interrupted by restart: role=%r turns=%d (session %s)",
+        role_name,
+        turns,
+        row.get("id"),
+    )
+    try:
+        state.set_cache_only(
+            "role_interrupted",
+            json.dumps(
+                {"role": role_name, "turns": turns, "ts": time.time()},
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:
+        logger.debug("role_interrupted state write failed (non-fatal)")
+    return row
+
+
 async def run_spine_daemon(
     settings: Any,
     state: Any,
@@ -87,6 +140,7 @@ async def run_spine_daemon(
     from src.pipeline.stages.voice_state_observer import write_voice_state
     from src.spine.audio_io import AudioIO
     from src.spine.main import _build_loop, _close_loop
+    from src.spine.telemetry import Telemetry
 
     await state.init()
     api.state = state
@@ -111,6 +165,17 @@ async def run_spine_daemon(
     # The memories card asks the API, and the API needs the backend the
     # spine already opened — it was only ever set on the pipecat path.
     api._memory_backend = getattr(loop, "memory", None)
+
+    # -- telemetry: one JSONL line per turn -----------------------------
+    # Cheap, stdlib-only, never raises into the conversation. See
+    # docs/findings/measuring.md — "it feels slow" used to only be
+    # answerable by ear; this is the instrument for that question.
+
+    telemetry = Telemetry(settings.log_dir / "turns.jsonl")
+
+    def _active_role_name() -> str:
+        active = loop.role_manager.active if loop.role_manager else None
+        return getattr(active, "name", "") if active else ""
 
     # -- State / voice_state bridge -----------------------------------
 
@@ -143,11 +208,21 @@ async def run_spine_daemon(
 
     async def _stt_with_state(pcm: bytes):
         _vs("stt")
+        t0 = time.monotonic()
         try:
             result = await real_stt(pcm)
         except Exception:
             _vs("listening")
             raise
+        stt_ms = int((time.monotonic() - t0) * 1000)
+        text = (getattr(result, "text", None) or "").strip()
+        dropped = not text
+        telemetry.stt(stt_ms, dropped=dropped)
+        if dropped:
+            # An empty transcript never becomes a turn — nothing will
+            # call respond() to close this line out, so write it now or
+            # it is lost. No think/speak timings: there is no turn.
+            telemetry.finish(chars=0, interrupted=False, role=_active_role_name())
         _vs("result", final=getattr(result, "text", None))
         # Back to listening: without this the ear stayed on "result"
         # until the next utterance, so the bar never rested.
@@ -156,10 +231,51 @@ async def run_spine_daemon(
 
     loop.transcribe = _stt_with_state
 
+    # First LLM delta of the turn — whichever streaming path is wired.
+    # Both also run for hint generation / role-summary calls that are
+    # not part of the normal turn; first_delta() is a harmless no-op
+    # then because no turn_closed() opened a window to land in.
+
+    if loop.stream_chat is not None:
+        real_stream_chat = loop.stream_chat
+
+        def _stream_chat_with_telemetry(messages):
+            async def _gen():
+                first = True
+                async for delta in real_stream_chat(messages):
+                    if first:
+                        telemetry.first_delta()
+                        first = False
+                    yield delta
+
+            return _gen()
+
+        loop.stream_chat = _stream_chat_with_telemetry
+
+    if loop.stream_events is not None:
+        real_stream_events = loop.stream_events
+
+        def _stream_events_with_telemetry(messages, tools):
+            async def _gen():
+                first = True
+                async for ev in real_stream_events(messages, tools):
+                    if first and ev.get("type") == "delta":
+                        telemetry.first_delta()
+                        first = False
+                    yield ev
+
+            return _gen()
+
+        loop.stream_events = _stream_events_with_telemetry
+
     real_speak = loop._speak
 
     async def _speak_with_state(sentence: str):
         _agent("talking")
+        # First call per turn wins (first_audio() no-ops after that) —
+        # the earliest hook available to this wrapper for "audio started
+        # playing" without touching loop.py's synthesise loop directly.
+        telemetry.first_audio()
         try:
             return await real_speak(sentence)
         finally:
@@ -167,7 +283,35 @@ async def run_spine_daemon(
 
     loop._speak = _speak_with_state
 
+    real_respond = loop.respond
+
+    async def _respond_with_telemetry(user_text: str, *, speak: bool = True) -> str:
+        telemetry.turn_closed()
+        reply = ""
+        try:
+            reply = await real_respond(user_text, speak=speak)
+            return reply
+        finally:
+            telemetry.finish(
+                chars=len(reply),
+                interrupted=loop._interrupted,
+                role=_active_role_name(),
+            )
+
+    loop.respond = _respond_with_telemetry
+
     # -- role platform bridge: State keys the dashboard reads ----------
+
+    # Before anything can open a new session, deal with the one the last
+    # run left open (if any) — see _recover_role_session.
+    state.set_cache_only("role_interrupted", "")
+    await _recover_role_session(getattr(loop, "persist", None), state)
+
+    # The DB mirror of the live session. main.py builds the RoleManager
+    # before the SpinePersistence handle exists, so the collaborator is
+    # attached here; without it the manager behaves exactly as before.
+    if getattr(loop, "role_manager", None) is not None:
+        loop.role_manager.persist = getattr(loop, "persist", None)
 
     available = [
         {

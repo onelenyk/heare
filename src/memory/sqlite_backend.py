@@ -315,7 +315,17 @@ def _sanitize_fts_query(raw: str) -> str | None:
     kept = [t for t in tokens if t.lower() not in _STOPWORDS]
     if not kept:
         return None
-    return " OR ".join(f'"{t}"' for t in kept)
+
+    # Ukrainian declines: a memory holding «собака» is invisible to a
+    # question about «собаку», and the tokenizer matches whole tokens
+    # only. Each word is therefore searched both exactly and as a
+    # prefix of its stem, so the case endings stop mattering.
+    terms: list[str] = []
+    for token in kept:
+        terms.append(f'"{token}"')
+        if len(token) >= 5:
+            terms.append(f'"{token[:-1]}"*')
+    return " OR ".join(terms)
 
 
 def _row_to_entry(row: tuple) -> MemoryEntry:

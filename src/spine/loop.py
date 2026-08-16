@@ -377,6 +377,12 @@ class SpineLoop:
                 path = self.save_artifact(
                     getattr(active, "name", "роль"), artifact.full_md
                 )
+                # The session row is closed before the file exists, so the
+                # path is stamped here or the record never points at what
+                # the session produced.
+                note = getattr(self.role_manager, "note_artifact", None)
+                if callable(note):
+                    note(path)
             except Exception:
                 logger.exception("artifact save failed")
         logger.info("role artifact: %s (%d chars)", path, len(artifact.full_md))

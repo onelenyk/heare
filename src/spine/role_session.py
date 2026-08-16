@@ -15,9 +15,12 @@ expressed as a Protocol so any object with these attributes works.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Protocol
+
+logger = logging.getLogger("heare.spine.role_session")
 
 
 class RoleLike(Protocol):
@@ -43,11 +46,25 @@ class Artifact:
 class RoleManager:
     """Owns the one active role session (at most one at a time)."""
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        clock: Callable[[], float] = time.monotonic,
+        persist: Any | None = None,
+    ) -> None:
         self._clock = clock
         self._active: Any | None = None
         self._session_turns: list[int] = []
         self._started_at: float | None = None
+        # Optional collaborator: SpinePersistence, or anything with the
+        # same four methods. None means exactly the behaviour this class
+        # had before persistence existed — the session lives in memory
+        # only. Public so the conductor can wire it after construction
+        # (main.py builds the RoleManager before the DB handle exists).
+        self.persist = persist
+        self._session_id: int | None = None
+        # Survives _reset so the caller can attach the artifact path it
+        # only learns after finish() has already closed the row.
+        self._last_session_id: int | None = None
 
     @property
     def active(self) -> Any | None:
@@ -56,6 +73,16 @@ class RoleManager:
     @property
     def session_turns(self) -> list[int]:
         return self._session_turns
+
+    @property
+    def session_id(self) -> int | None:
+        """The DB id of the live session (None without persistence)."""
+        return self._session_id
+
+    @property
+    def last_session_id(self) -> int | None:
+        """The DB id of the most recently closed session."""
+        return self._last_session_id
 
     def minutes(self) -> int:
         """Elapsed minutes of the current session (0 when none active)."""
@@ -76,6 +103,17 @@ class RoleManager:
         self._active = role
         self._session_turns = []
         self._started_at = self._clock()
+        self._session_id = None
+        if self.persist is not None:
+            try:
+                self._session_id = self.persist.open_role_session(
+                    role.name, getattr(role, "channel", "") or ""
+                )
+                self._last_session_id = self._session_id
+            except Exception:
+                # A DB that will not take the row must not stop a meeting
+                # from being held; the in-memory session still works.
+                logger.exception("role session not persisted (non-fatal)")
         if role.channel == "log":
             return f'Роль «{role.name}» активна. Записую все.'
         return f'Роль «{role.name}» активна.'
@@ -84,6 +122,11 @@ class RoleManager:
         if turn_id is None:
             return
         self._session_turns.append(turn_id)
+        if self.persist is not None and self._session_id is not None:
+            try:
+                self.persist.note_role_turn(self._session_id, turn_id)
+            except Exception:
+                logger.exception("role turn not persisted (non-fatal)")
 
     async def finish(
         self,
@@ -101,6 +144,7 @@ class RoleManager:
             return None
 
         if not role.artifact:
+            self._close_persisted("done")
             self._reset()
             return None
 
@@ -120,9 +164,13 @@ class RoleManager:
             ]
             response = await complete(messages)
         except Exception:
+            # The session ended the way the user asked; only the summary
+            # failed, and the transcript is the artifact — 'done'.
+            self._close_persisted("done")
             self._reset()
             return Artifact(full_md=transcript, spoken=_FAILURE_SPOKEN)
 
+        self._close_persisted("done")
         self._reset()
         return _parse_response(response)
 
@@ -131,11 +179,39 @@ class RoleManager:
         role = self._active
         if role is None:
             return None
+        # Ended, but not by «закінчили» and with nothing built: from the
+        # DB's point of view this session was cut off, same as a restart.
+        self._close_persisted("interrupted")
         self._reset()
         return f'Роль «{role.name}» скасована.'
 
+    def note_artifact(self, artifact_path: str) -> None:
+        """Attach the saved artifact file to the session just closed.
+
+        The path exists only after the caller has written the file, which
+        is necessarily after finish() returned.
+        """
+        session_id = self._last_session_id
+        if self.persist is None or session_id is None or not artifact_path:
+            return
+        try:
+            self.persist.set_role_session_artifact(session_id, artifact_path)
+        except Exception:
+            logger.exception("artifact path not persisted (non-fatal)")
+
+    def _close_persisted(self, status: str, artifact_path: str = "") -> None:
+        session_id = self._session_id
+        self._session_id = None
+        if self.persist is None or session_id is None:
+            return
+        try:
+            self.persist.close_role_session(session_id, artifact_path, status)
+        except Exception:
+            logger.exception("role session not closed in DB (non-fatal)")
+
     def _reset(self) -> None:
         self._active = None
+        self._session_id = None
         self._session_turns = []
         self._started_at = None
 
