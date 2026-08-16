@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("heare.spine_engine")
@@ -22,6 +23,11 @@ ROLE_POLL_SECS = 0.5
 # Fast enough that a mute button feels instant, cheap enough to ignore:
 # it reads an in-memory dict.
 CONTROL_POLL_SECS = 0.2
+# .mcp.json is edited by hand or by the installer, not at frame rate; one
+# stat a second is invisible and still feels immediate.
+MCP_POLL_SECS = 1.0
+# How long the file must hold still before it counts as a finished edit.
+MCP_SETTLE_SECS = 0.5
 # The dashboard sliders send 0.0–5.0; anything outside is a typo or a
 # stale key, and a gain of 40 would be a wall of clipping.
 GAIN_MIN = 0.0
@@ -74,6 +80,232 @@ def _resolve_device(settings: Any, kind: str) -> int | None:
     except Exception:
         logger.exception("audio %s device lookup failed (using default)", kind)
     return None
+
+
+def _mcp_fingerprint(path: Path) -> tuple[int, int] | None:
+    """(mtime_ns, size) of the MCP config, or None when it is not there."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+class _McpConfigWatcher:
+    """Fires once per *settled* change to ``.mcp.json``.
+
+    mtime+size rather than a content hash: it is one stat, and a config
+    is not written at frame rate. The settle window is not politeness —
+    an editor that truncates and then writes leaves the file empty for a
+    moment, and a reload started there would read half a config. A
+    fingerprint therefore has to hold still for ``settle_s`` before it
+    counts, which also collapses two edits a second apart into one
+    reload instead of two reconnects.
+    """
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        settle_s: float = MCP_SETTLE_SECS,
+        clock: Any = time.monotonic,
+    ) -> None:
+        self._path = Path(path)
+        self._settle_s = settle_s
+        self._clock = clock
+        # Seeded with what boot already loaded, so a daemon that starts
+        # up does not immediately reload the config it just read.
+        self._seen = _mcp_fingerprint(self._path)
+        self._pending: tuple[int, int] | None = None
+        self._pending_at = 0.0
+
+    def poll(self) -> bool:
+        fp = _mcp_fingerprint(self._path)
+        if fp == self._seen:
+            self._pending = None
+            return False
+        now = self._clock()
+        if fp != self._pending:
+            self._pending = fp
+            self._pending_at = now
+            return False
+        if now - self._pending_at < self._settle_s:
+            return False
+        self._seen = fp
+        self._pending = None
+        return True
+
+    def accept(self) -> None:
+        """Treat the file as already handled (after a forced reload)."""
+        self._seen = _mcp_fingerprint(self._path)
+        self._pending = None
+
+
+def _mcp_status(bridge: Any, *, ok: bool, error: str = "") -> dict:
+    servers = list(getattr(bridge, "connected_servers", None) or [])
+    tools = list(getattr(bridge, "tool_names", None) or [])
+    return {
+        "servers": servers,
+        "tools": len(tools),
+        "ok": ok,
+        "error": error,
+        "ts": time.time(),
+    }
+
+
+def _publish_mcp_status(state: Any, bridge: Any, *, ok: bool, error: str = "") -> dict:
+    """Put what is connected where the dashboard can read it.
+
+    Cache-only on purpose: it describes live subprocesses, and a value
+    surviving into the next boot would describe servers that are not
+    running.
+    """
+    status = _mcp_status(bridge, ok=ok, error=error)
+    if state is not None:
+        try:
+            state.set_cache_only("mcp_status", json.dumps(status, ensure_ascii=False))
+        except Exception:
+            logger.debug("mcp_status write failed (non-fatal)")
+    return status
+
+
+async def _aclose_bridge(bridge: Any, *, unregister: bool) -> None:
+    if bridge is None:
+        return
+    try:
+        await bridge.aclose(unregister=unregister)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("mcp reload: closing a bridge failed (non-fatal)")
+
+
+def _swap_closer(loop: Any, old: Any, new: Any) -> None:
+    """Teardown must close the bridge that is alive, not the dead one.
+
+    ``_closers`` holds a bound ``bridge.aclose``; left alone it would
+    keep a reference to a bridge whose servers are already gone while
+    the running ones were never closed at all — orphaned `npx`
+    processes outliving the daemon.
+    """
+    closers = getattr(loop, "_closers", None)
+    if closers is None:
+        return
+    if old is not None:
+        for i, closer in enumerate(closers):
+            if getattr(closer, "__self__", None) is old:
+                del closers[i]
+                break
+    closers.append(new.aclose)
+
+
+def _rebuild_capability_index(settings: Any) -> None:
+    """Refresh the index *if* this process already built one.
+
+    The spine never builds it at boot (only the pipecat path does, in
+    src/pipeline/build.py); on this engine it appears lazily, the first
+    time a capability tool runs. Building one here would be inventing
+    work — and an index built later reads the new .mcp.json by itself.
+    So: rebuild what exists, touch nothing otherwise.
+    """
+    try:
+        from src.agent.tools import direct as direct_tools
+
+        index = getattr(direct_tools, "_capability_index_singleton", None)
+        if index is None:
+            logger.debug("mcp reload: no capability index in this process yet")
+            return
+        index.rebuild()
+        logger.info("mcp reload: capability index rebuilt")
+    except Exception:
+        logger.exception("mcp reload: capability index rebuild failed (non-fatal)")
+
+
+async def reload_mcp(
+    settings: Any,
+    loop: Any,
+    state: Any = None,
+    *,
+    connect: Any = None,
+) -> dict:
+    """Re-read ``.mcp.json`` and swap in a freshly connected bridge.
+
+    The contract is that a bad config costs nothing: the new bridge is
+    connected *first*, and only a set that is actually better than the
+    one already running replaces it. Whatever happens, this returns the
+    published status dict and never raises (except on cancellation).
+
+    ``connect`` is the test seam — an async ``(settings) -> bridge``.
+    """
+    from src.agent.mcp_bridge import (
+        connect_mcp_servers,
+        enabled_servers,
+        load_mcp_config,
+        mcp_config_path,
+    )
+
+    connect = connect or connect_mcp_servers
+    old = getattr(loop, "mcp", None)
+    old_names = list(getattr(old, "tool_names", None) or [])
+
+    path = mcp_config_path(settings)
+    servers = load_mcp_config(path)
+    if servers is None:
+        logger.warning(
+            "mcp reload: %s is missing or not valid JSON — keeping %d tool(s) "
+            "from %s",
+            path,
+            len(old_names),
+            ", ".join(getattr(old, "connected_servers", None) or []) or "nothing",
+        )
+        return _publish_mcp_status(state, old, ok=False, error="config unreadable")
+
+    wanted = enabled_servers(servers)
+
+    try:
+        new = await connect(settings)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            "mcp reload: connecting failed (%s) — keeping %d tool(s)",
+            exc,
+            len(old_names),
+        )
+        return _publish_mcp_status(state, old, ok=False, error=f"connect failed: {exc}")
+
+    new_names = list(getattr(new, "tool_names", None) or [])
+    if wanted and not new_names and old_names:
+        # The config asks for servers and not one of them came up. The
+        # old bridge is still live and still registered; ending here is
+        # the whole point of connecting before swapping.
+        logger.warning(
+            "mcp reload: none of the %d configured server(s) started — keeping "
+            "the previous %d tool(s)",
+            len(wanted),
+            len(old_names),
+        )
+        await _aclose_bridge(new, unregister=False)
+        return _publish_mcp_status(state, old, ok=False, error="no server connected")
+
+    # The swap. Nothing is awaited between taking the old names out of
+    # the shared registry and putting the new ones in (both happen
+    # inside register_worker_tools), so no job can see an empty toolset.
+    new.register_worker_tools()
+    loop.mcp = new
+    _swap_closer(loop, old, new)
+    await _aclose_bridge(old, unregister=False)
+
+    _rebuild_capability_index(settings)
+    logger.info(
+        "mcp reload: %d server(s) connected (%s), %d tool(s) for the worker "
+        "(was %d)",
+        len(getattr(new, "connected_servers", None) or []),
+        ", ".join(getattr(new, "connected_servers", None) or []) or "none",
+        len(new_names),
+        len(old_names),
+    )
+    return _publish_mcp_status(state, new, ok=True)
 
 
 async def _recover_role_session(persist: Any, state: Any) -> dict | None:
@@ -194,13 +426,18 @@ async def run_spine_daemon(
             ", ".join(bridge.connected_servers) or "none",
             len(names),
         )
+        _publish_mcp_status(state, bridge, ok=True)
 
+    mcp_task: asyncio.Task | None = None
     try:
         mcp_task = asyncio.create_task(_connect_mcp(), name="spine-mcp-connect")
 
         def _mcp_done(task: asyncio.Task) -> None:
             if not task.cancelled() and task.exception() is not None:
                 logger.warning("mcp: connect failed — %s", task.exception())
+                _publish_mcp_status(
+                    state, None, ok=False, error=str(task.exception())
+                )
 
         mcp_task.add_done_callback(_mcp_done)
     except Exception:
@@ -465,6 +702,57 @@ async def run_spine_daemon(
             except Exception:
                 logger.exception("control poll failed (non-fatal)")
 
+    # -- MCP config watcher: new servers without a restart -------------
+
+    async def _poll_mcp() -> None:
+        """Reload MCP servers when their config changes.
+
+        Its own poller rather than a branch in ``_poll_controls``: a
+        reload awaits a subprocess spawn per server — up to a minute each
+        on the bridge's own timeout — and the control poller is what
+        carries the cancel button, the mute switch and the sliders.
+        Sharing one coroutine would freeze all of those for the length of
+        an `npx` cold start. Once a second is plenty for a file a person
+        edits, and it is one stat.
+
+        Two ways in, both free: the file changing (which is also how the
+        installer and `revoke_capability` announce themselves — they
+        write .mcp.json), and State key ``mcp_reload`` = "1", which the
+        existing generic ``POST /state`` endpoint can set from the
+        dashboard, a curl, or the agent's own bash tool. Same shape as
+        the ``cancel`` key above.
+        """
+        from src.agent.mcp_bridge import mcp_config_path
+
+        cfg_path = mcp_config_path(settings)
+        watcher = _McpConfigWatcher(cfg_path)
+        while True:
+            await asyncio.sleep(MCP_POLL_SECS)
+            try:
+                # The boot connect owns loop.mcp until it finishes; a
+                # reload racing it would register two bridges over each
+                # other. Nothing is polled meanwhile, so a change made
+                # during a cold `npx` is picked up right after it lands.
+                if mcp_task is not None and not mcp_task.done():
+                    continue
+                forced = state.get("mcp_reload") == "1"
+                if forced:
+                    await state.set("mcp_reload", "0")
+                changed = watcher.poll()
+                if not (forced or changed):
+                    continue
+                logger.info(
+                    "mcp reload: %s",
+                    "requested" if forced else f"{cfg_path.name} changed",
+                )
+                await reload_mcp(settings, loop, state)
+                if forced:
+                    # A forced reload has already read the file; without
+                    # this the same edit would fire a second reload.
+                    watcher.accept()
+            except Exception:
+                logger.exception("mcp poll failed (non-fatal)")
+
     # -- inject drop-folder poller (what the API's /inject writes) -----
 
     async def _poll_inject() -> None:
@@ -503,6 +791,7 @@ async def run_spine_daemon(
     poller = asyncio.create_task(_poll_inject(), name="spine-inject-poll")
     role_poller = asyncio.create_task(_poll_role(), name="spine-role-poll")
     ctl_poller = asyncio.create_task(_poll_controls(), name="spine-ctl-poll")
+    mcp_poller = asyncio.create_task(_poll_mcp(), name="spine-mcp-poll")
     runner = asyncio.create_task(loop.run(), name="spine-run")
     try:
         waiter = asyncio.create_task(stop.wait())
@@ -515,8 +804,8 @@ async def run_spine_daemon(
     finally:
         # mcp_task may still be waiting on a cold `npx`; cancelling it
         # is why it is a named task and not a fire-and-forget coroutine.
-        background = [t for t in (poller, role_poller, ctl_poller, runner,
-                                  locals().get("mcp_task")) if t is not None]
+        background = [t for t in (poller, role_poller, ctl_poller, mcp_poller,
+                                  runner, mcp_task) if t is not None]
         for t in background:
             t.cancel()
         await asyncio.gather(*background, return_exceptions=True)

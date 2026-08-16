@@ -136,6 +136,64 @@ _UK_KEYWORDS: dict[str, str] = {
     "extract_archive": "розпакуй архів витягни zip",
 }
 
+# Individual MCP tools carry English names/descriptions from their server
+# (e.g. `list_directory`, "Get a detailed listing of..."). A Ukrainian
+# query shares no tokens with that text. There is no per-tool Ukrainian
+# translation available (unlike the curated `_UK_KEYWORDS` map above, which
+# was hand-written for ~35 known builtins) — MCP tool names are arbitrary
+# and server-supplied. As a heuristic, split the tool name on `_` and look
+# each segment up as an English verb/noun; segments that hit contribute
+# their Ukrainian synonyms to the entry's `keywords`.
+#
+# This is intentionally shallow: it only covers common CRUD-ish verbs and
+# file/directory nouns, matched by exact segment, so `list_directory` finds
+# «список»/«тека» but a tool like `grep_codebase` finds nothing. The real
+# fix is a semantic (embedding) index that doesn't depend on lexical
+# overlap at all — see the module docstring / AGENTS.md for that TODO.
+# Until then this map plus the server's own `keywords` field in .mcp.json
+# (already supported, see `read_mcp_servers`) is what discovery has.
+_MCP_VERB_KEYWORDS: dict[str, str] = {
+    "read": "читати прочитай зчитай",
+    "write": "писати запиши записати",
+    "list": "список покажи перелік",
+    "search": "пошук знайди шукати",
+    "find": "знайди пошук",
+    "create": "створи створити",
+    "delete": "видали видалити",
+    "remove": "видали видалити",
+    "move": "перемісти перемістити",
+    "rename": "перейменуй перейменувати",
+    "get": "отримай отримати",
+    "fetch": "завантаж отримай",
+    "update": "онови оновити",
+    "edit": "редагуй зміни",
+    "directory": "тека папка директорія",
+    "directories": "теки папки директорії",
+    "dir": "тека папка директорія",
+    "folder": "тека папка",
+    "file": "файл",
+    "files": "файли",
+}
+
+# At most this many individual tool entries from one MCP server surface in
+# a single query's ranked results. Servers can expose dozens of tools
+# (e.g. a filesystem server with read/write/list/move/...); without a cap
+# a broad query would be dominated by near-duplicate entries from whichever
+# server happens to score highest, crowding out other servers/skills/tools
+# entirely. The per-server summary entry is exempt from this cap (it has no
+# dedupe_group) so it can still surface alongside its own tools.
+_MCP_TOOLS_PER_SERVER_CAP = 2
+
+
+def _mcp_tool_keywords(tool_name: str, server_keywords: str) -> str:
+    """Ukrainian keywords for one MCP tool: server keywords + verb-map hits."""
+    segments = [s for s in tool_name.lower().split("_") if s]
+    hits = [_MCP_VERB_KEYWORDS[s] for s in segments if s in _MCP_VERB_KEYWORDS]
+    return " ".join([server_keywords, *hits]).strip()
+
+
+_MCP_TOOL_NAME_RE = re.compile(r"^mcp__(?P<slug>.+?)__(?P<tool>.+)$")
+
 
 @dataclass(frozen=True)
 class IndexEntry:
@@ -151,6 +209,10 @@ class IndexEntry:
     schema_version: int = 1
     checksum: str | None = None
     launch: dict | None = None
+    # Entries that should be capped together in query() results (see
+    # _MCP_TOOLS_PER_SERVER_CAP). None means "no cap" — used by everything
+    # except individual per-tool MCP entries.
+    dedupe_group: str | None = None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -213,6 +275,7 @@ class CapabilityIndex:
         except Exception as exc:
             logger.debug("skill discovery failed: %s", exc)
 
+        servers: dict = {}
         try:
             servers = read_mcp_servers(self._mcp_dir)
             for name, entry in servers.items():
@@ -238,6 +301,45 @@ class CapabilityIndex:
             logger.debug("no .mcp.json present: %s", exc)
         except Exception as exc:
             logger.debug("mcp read failed: %s", exc)
+
+        # Individual MCP tools. `.mcp.json` only describes servers; the
+        # actual per-tool schemas (name, description) only exist once a
+        # server is connected, at which point mcp_bridge.py appends one
+        # ToolDef per tool — named "mcp__<slug>__<tool>" — into the live
+        # worker registry (src.agent.tools.system.TOOLS, a *different*
+        # list from src.agent.tools.registry.TOOLS above). Read from there,
+        # lazily and defensively: the import happens only here (not at
+        # module load) so there is no import cycle with system.py/
+        # mcp_bridge.py, and a missing/broken import or an empty list (no
+        # MCP server connected yet, or none configured at all) just means
+        # zero per-tool entries — the index still builds fine.
+        try:
+            from src.agent.tools.system import TOOLS as _LIVE_WORKER_TOOLS
+
+            for tool in _LIVE_WORKER_TOOLS:
+                if not getattr(tool, "enabled", True):
+                    continue
+                m = _MCP_TOOL_NAME_RE.match(getattr(tool, "name", ""))
+                if not m:
+                    continue
+                slug, tool_name = m.group("slug"), m.group("tool")
+                server_entry = servers.get(slug)
+                server_kw = (
+                    str(server_entry.get("keywords") or "")
+                    if isinstance(server_entry, dict)
+                    else ""
+                )
+                entries.append(
+                    IndexEntry(
+                        source="mcp",
+                        name=tool.name,
+                        description=tool.description or tool.name,
+                        keywords=_mcp_tool_keywords(tool_name, server_kw),
+                        dedupe_group=f"mcp:{slug}",
+                    )
+                )
+        except Exception as exc:
+            logger.debug("live mcp tool discovery failed: %s", exc)
 
         inverted: dict[str, set[int]] = {}
         for idx, e in enumerate(entries):
@@ -286,15 +388,40 @@ class CapabilityIndex:
                 or (e.keywords and needle in e.keywords.lower())
             ]
             ranked = sorted(hits, key=lambda i: self._sort_key(i, 1))
-            return [self._entries[i] for i in ranked[:top_k]]
+            return self._take_capped(ranked, top_k)
 
         ranked = sorted(scores.keys(), key=lambda i: self._sort_key(i, scores[i]))
-        return [self._entries[i] for i in ranked[:top_k]]
+        return self._take_capped(ranked, top_k)
 
     def _sort_key(self, idx: int, score: int) -> tuple:
         e = self._entries[idx]
         pop = e.popularity_score if e.popularity_score is not None else float("-inf")
         return (-score, -pop, -_SOURCE_PRIORITY[e.source], idx)
+
+    def _take_capped(self, ranked_ids: list[int], top_k: int) -> list[IndexEntry]:
+        """Fill up to top_k from a ranked id list, capping same-group entries.
+
+        Entries with a `dedupe_group` (currently: individual MCP tools,
+        grouped per server) are limited to _MCP_TOOLS_PER_SERVER_CAP each so
+        one chatty server can't crowd out every other result. Entries
+        without a dedupe_group (builtins, skills, dynamic tools, and the
+        per-server MCP summary entry) are never capped. Skipped entries are
+        just passed over — later, lower-ranked entries from other groups
+        still get a chance to fill the remaining slots.
+        """
+        results: list[IndexEntry] = []
+        group_counts: dict[str, int] = {}
+        for idx in ranked_ids:
+            e = self._entries[idx]
+            if e.dedupe_group is not None:
+                count = group_counts.get(e.dedupe_group, 0)
+                if count >= _MCP_TOOLS_PER_SERVER_CAP:
+                    continue
+                group_counts[e.dedupe_group] = count + 1
+            results.append(e)
+            if len(results) >= top_k:
+                break
+        return results
 
 
 def build_capability_index(settings: object, mcp_dir: Path) -> CapabilityIndex:

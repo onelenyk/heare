@@ -25,9 +25,11 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
 import logging
 import os
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from src.skills.mcp_utils import read_mcp_servers
@@ -52,6 +54,56 @@ _mcp_intent_seq = itertools.count(start=1)
 _MCP_HANDLER = "mcp"
 
 _mcp_tool_def_cls: Any = None
+
+# The one file that decides which servers exist. ``settings.mcp_dir`` is
+# what this bridge, the capability index and the installer all read; the
+# older copy under ``workspace_dir`` is migrated away by
+# ``ensure_mcp_config`` at boot and is read by nothing at run time.
+MCP_CONFIG_FILE = ".mcp.json"
+
+_DEFAULT_MCP_DIR = Path.home() / ".heare" / "mcp"
+
+
+def mcp_config_path(settings: Any) -> Path:
+    """Absolute path of the ``.mcp.json`` this process actually obeys."""
+    mcp_dir = getattr(settings, "mcp_dir", None) or _DEFAULT_MCP_DIR
+    return Path(mcp_dir).expanduser() / MCP_CONFIG_FILE
+
+
+def load_mcp_config(path: Path) -> dict[str, dict] | None:
+    """Read ``.mcp.json`` strictly: ``None`` means "do not act on this".
+
+    ``read_mcp_servers`` answers "no servers" to a missing file, invalid
+    JSON and an empty config alike — right for a cold boot, wrong for a
+    live reload, where the same answer would tear down every working
+    server because someone saved a file with a trailing comma. Here the
+    three cases stay apart: ``None`` for missing/unreadable/malformed
+    (caller keeps what it has), ``{}`` only when the file genuinely says
+    there are no servers.
+    """
+    try:
+        raw = Path(path).read_text("utf-8")
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    servers = data.get("mcpServers")
+    if not isinstance(servers, dict):
+        return None
+    return servers
+
+
+def enabled_servers(servers: dict[str, dict]) -> list[str]:
+    """Slugs the bridge would try to connect — the same filter ``connect`` uses."""
+    return [
+        slug
+        for slug, entry in servers.items()
+        if isinstance(entry, dict) and not entry.get("disabled")
+    ]
 
 
 def _mcp_tool_def(
@@ -179,11 +231,7 @@ class McpBridge:
         history of the project — during which no server ever connected.
         """
         servers = read_mcp_servers(settings.mcp_dir)
-        wanted = [
-            slug
-            for slug, entry in servers.items()
-            if isinstance(entry, dict) and not entry.get("disabled")
-        ]
+        wanted = enabled_servers(servers)
         for slug in servers:
             if slug not in wanted:
                 logger.debug("mcp: %r disabled or invalid; skipping", slug)
@@ -471,12 +519,21 @@ class McpBridge:
         handler.__name__ = f"_handle_{fn_name}"
         return handler
 
-    async def aclose(self) -> None:
+    async def aclose(self, *, unregister: bool = True) -> None:
+        """Stop every server this bridge owns.
+
+        ``unregister=False`` is for a hot reload: the replacement bridge
+        has already put its own tools in the shared registry, and
+        ``unregister_worker_tools`` removes *every* ``mcp__*`` entry
+        there — including the new ones, whose names usually repeat the
+        old ones. Closing the dead bridge must not empty the live set.
+        """
         # First stop advertising what is about to stop working.
-        try:
-            self.unregister_worker_tools()
-        except Exception:  # noqa: BLE001 — shutdown best-effort
-            logger.exception("mcp_bridge: unregister failed (non-fatal)")
+        if unregister:
+            try:
+                self.unregister_worker_tools()
+            except Exception:  # noqa: BLE001 — shutdown best-effort
+                logger.exception("mcp_bridge: unregister failed (non-fatal)")
         try:
             await self._stack.aclose()
         except Exception:  # noqa: BLE001 — shutdown best-effort
@@ -497,4 +554,10 @@ async def connect_mcp_servers(settings: "Settings") -> McpBridge:
     return bridge
 
 
-__all__ = ["McpBridge", "connect_mcp_servers"]
+__all__ = [
+    "McpBridge",
+    "connect_mcp_servers",
+    "enabled_servers",
+    "load_mcp_config",
+    "mcp_config_path",
+]

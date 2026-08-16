@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from src.agent.tools.capability_index import CapabilityIndex, IndexEntry, _tokenize
+from src.agent.tools.capability_index import (
+    CapabilityIndex,
+    IndexEntry,
+    _MCP_TOOLS_PER_SERVER_CAP,
+    _tokenize,
+)
 
 
 @dataclass
@@ -25,6 +30,32 @@ def _make_skill(parent: Path, name: str, description: str) -> Path:
     return skill_dir
 
 
+def _register_mcp_tools(specs: list[tuple[str, str]]) -> None:
+    """Append fake live MCP ToolDefs, mirroring what mcp_bridge.py does.
+
+    ``specs`` is a list of (fn_name, description) pairs where fn_name
+    already follows the ``mcp__<slug>__<tool>`` shape.
+    """
+    from src.agent.tools.system import TOOLS as _SYSTEM_TOOLS, ToolDef
+
+    for fn_name, description in specs:
+        _SYSTEM_TOOLS.append(
+            ToolDef(
+                name=fn_name,
+                description=description,
+                handler="mcp",
+                schema_fields={},
+                required=[],
+            )
+        )
+
+
+def _clear_mcp_tools() -> None:
+    from src.agent.tools.system import TOOLS as _SYSTEM_TOOLS
+
+    _SYSTEM_TOOLS[:] = [t for t in _SYSTEM_TOOLS if not t.name.startswith("mcp__")]
+
+
 @pytest.fixture(autouse=True)
 def _reset_skills_singleton():
     import src.skills.agent_skills as agent_skills
@@ -33,6 +64,17 @@ def _reset_skills_singleton():
     yield
     agent_skills._loader = None
     agent_skills._loader_paths = None
+
+
+@pytest.fixture(autouse=True)
+def _reset_mcp_live_tools():
+    """Safety net: src.agent.tools.system.TOOLS is a shared module-level
+    list. A test that appends mcp__ entries and then fails before its
+    finally/cleanup would leak them into every later test in the process.
+    """
+    _clear_mcp_tools()
+    yield
+    _clear_mcp_tools()
 
 
 @pytest.fixture
@@ -239,6 +281,108 @@ def test_mcp_keywords_read_from_json(tmp_path: Path):
     assert any(e.name == "github" for e in res), [e.name for e in res]
 
 
+def test_mcp_individual_tools_discovered_in_ukrainian(tmp_path: Path):
+    """Individual MCP tools (not just the server) must be findable in
+    Ukrainian even though their name/description are English, sourced from
+    the live worker registry (src.agent.tools.system.TOOLS)."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / ".mcp.json").write_text(json.dumps({
+        "mcpServers": {
+            "files": {"command": "npx", "args": ["-y", "fs-mcp"],
+                       "description": "Filesystem MCP server"},
+        }
+    }))
+    _register_mcp_tools([
+        ("mcp__files__list_directory",
+         "Get a detailed listing of all files and directories in a path"),
+        ("mcp__files__write_file",
+         "Create a new file or overwrite an existing file with content"),
+    ])
+    try:
+        settings = _FakeSettings(skills_paths=[])
+        idx = CapabilityIndex(settings, workspace)
+        idx.build()
+
+        res = idx.query("покажи файли в теці", top_k=5)
+        assert any(e.name == "mcp__files__list_directory" for e in res), [e.name for e in res]
+
+        res2 = idx.query("запиши у файл", top_k=5)
+        assert any(e.name == "mcp__files__write_file" for e in res2), [e.name for e in res2]
+    finally:
+        _clear_mcp_tools()
+
+
+def test_mcp_per_server_entry_still_matches_alongside_tools(tmp_path: Path):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / ".mcp.json").write_text(json.dumps({
+        "mcpServers": {
+            "files": {"command": "npx", "args": ["-y", "fs-mcp"],
+                       "description": "Filesystem MCP server",
+                       "keywords": "файли тека"},
+        }
+    }))
+    _register_mcp_tools([
+        ("mcp__files__list_directory", "Get a detailed listing of files"),
+    ])
+    try:
+        settings = _FakeSettings(skills_paths=[])
+        idx = CapabilityIndex(settings, workspace)
+        idx.build()
+
+        res = idx.query("покажи файли в теці", top_k=5)
+        names = [e.name for e in res]
+        assert "files" in names, names  # coarse per-server entry
+        assert "mcp__files__list_directory" in names, names  # precise tool entry
+    finally:
+        _clear_mcp_tools()
+
+
+def test_mcp_tools_capped_per_server(tmp_path: Path):
+    """One query must not be dominated by every tool of a single chatty
+    server; at most _MCP_TOOLS_PER_SERVER_CAP individual tool entries from
+    the same server may appear in one result set."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / ".mcp.json").write_text(json.dumps({
+        "mcpServers": {
+            "files": {"command": "npx", "args": ["-y", "fs-mcp"],
+                       "description": "Filesystem MCP server"},
+        }
+    }))
+    _register_mcp_tools([
+        ("mcp__files__list_directory", "List files in a directory"),
+        ("mcp__files__read_file", "Read a file"),
+        ("mcp__files__write_file", "Write a file"),
+        ("mcp__files__delete_file", "Delete a file"),
+        ("mcp__files__move_file", "Move a file"),
+        ("mcp__files__create_directory", "Create a directory"),
+    ])
+    try:
+        settings = _FakeSettings(skills_paths=[])
+        idx = CapabilityIndex(settings, workspace)
+        idx.build()
+
+        res = idx.query("файл", top_k=10)
+        file_tool_names = [e.name for e in res if e.name.startswith("mcp__files__")]
+        assert len(file_tool_names) <= _MCP_TOOLS_PER_SERVER_CAP, file_tool_names
+    finally:
+        _clear_mcp_tools()
+
+
+def test_index_builds_with_zero_mcp_tools_connected(tmp_path: Path):
+    """No live MCP connection (nothing in src.agent.tools.system.TOOLS
+    named mcp__*) must not break the build — the per-tool source is
+    optional and additive."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    settings = _FakeSettings(skills_paths=[])
+    idx = CapabilityIndex(settings, workspace)
+    idx.build()  # must not raise
+    assert not any(e.dedupe_group for e in idx.entries)
+
+
 def test_install_tools_hidden_when_gate_closed(tmp_path: Path):
     workspace = tmp_path / "ws"
     workspace.mkdir()
@@ -272,6 +416,15 @@ def test_build_performance_under_50ms(tmp_path: Path):
     mcp_servers = {f"server-{i}": {"description": f"MCP server {i}"} for i in range(10)}
     (workspace / ".mcp.json").write_text(json.dumps({"mcpServers": mcp_servers}))
 
+    # 50 individual MCP tools (5 per server, 10 servers) — the live worker
+    # registry is what the index now also reads for MCP.
+    mcp_tool_specs = [
+        (f"mcp__server-{s}__tool_{t}", f"Synthetic MCP tool {t} of server {s}")
+        for s in range(10)
+        for t in range(5)
+    ]
+    _register_mcp_tools(mcp_tool_specs)
+
     from src.agent.tools.registry import register_dynamic_tool, unregister_dynamic_tool, Tool
     dyn_names = []
     for i in range(50):
@@ -294,10 +447,12 @@ def test_build_performance_under_50ms(tmp_path: Path):
 
         assert elapsed_ms < 50.0, f"build took {elapsed_ms:.2f}ms (target <50ms)"
         assert sum(1 for e in idx.entries if e.source == "skill") == 100
-        assert sum(1 for e in idx.entries if e.source == "mcp") == 10
+        # 10 per-server summary entries + 50 individual tool entries
+        assert sum(1 for e in idx.entries if e.source == "mcp") == 60
     finally:
         for nm in dyn_names:
             unregister_dynamic_tool(nm)
+        _clear_mcp_tools()
 
 
 def test_query_p99_under_10ms(tmp_path: Path):
@@ -312,16 +467,26 @@ def test_query_p99_under_10ms(tmp_path: Path):
     mcp_servers = {f"server-{i}": {"description": f"MCP server {i}"} for i in range(10)}
     (workspace / ".mcp.json").write_text(json.dumps({"mcpServers": mcp_servers}))
 
-    settings = _FakeSettings(skills_paths=[str(skills_root)])
-    idx = CapabilityIndex(settings, workspace)
-    idx.build()
+    mcp_tool_specs = [
+        (f"mcp__server-{s}__tool_{t}", f"Synthetic MCP tool {t} of server {s}")
+        for s in range(10)
+        for t in range(5)
+    ]
+    _register_mcp_tools(mcp_tool_specs)
 
-    timings_ms: list[float] = []
-    for _ in range(100):
-        start = time.perf_counter()
-        idx.query("weather", top_k=3)
-        timings_ms.append((time.perf_counter() - start) * 1000.0)
+    try:
+        settings = _FakeSettings(skills_paths=[str(skills_root)])
+        idx = CapabilityIndex(settings, workspace)
+        idx.build()
 
-    timings_ms.sort()
-    p99 = timings_ms[int(0.99 * len(timings_ms)) - 1]
-    assert p99 < 10.0, f"p99 query was {p99:.2f}ms (target <10ms)"
+        timings_ms: list[float] = []
+        for _ in range(100):
+            start = time.perf_counter()
+            idx.query("weather", top_k=3)
+            timings_ms.append((time.perf_counter() - start) * 1000.0)
+
+        timings_ms.sort()
+        p99 = timings_ms[int(0.99 * len(timings_ms)) - 1]
+        assert p99 < 10.0, f"p99 query was {p99:.2f}ms (target <10ms)"
+    finally:
+        _clear_mcp_tools()
