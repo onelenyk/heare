@@ -173,7 +173,13 @@ async def run_spine_daemon(
     # hung on the loop because the worker looks it up at call time and
     # _make_prompt reads it once per turn.
     loop.mcp = None
-    try:
+
+    async def _connect_mcp() -> None:
+        """Off the boot path: `npx -y` on a cold cache can take a minute
+        per server, and the assistant must be listening long before it
+        knows about anyone's files. The tools appear when they appear —
+        the worker rebuilds its schema list before every job, so nothing
+        needs to be ready at startup."""
         from src.agent.mcp_bridge import connect_mcp_servers
 
         bridge = await connect_mcp_servers(settings)
@@ -188,6 +194,15 @@ async def run_spine_daemon(
             ", ".join(bridge.connected_servers) or "none",
             len(names),
         )
+
+    try:
+        mcp_task = asyncio.create_task(_connect_mcp(), name="spine-mcp-connect")
+
+        def _mcp_done(task: asyncio.Task) -> None:
+            if not task.cancelled() and task.exception() is not None:
+                logger.warning("mcp: connect failed — %s", task.exception())
+
+        mcp_task.add_done_callback(_mcp_done)
     except Exception:
         # Only a bug in the wiring above can land here — connect itself
         # is already fail-soft — and even then the assistant must come up.
@@ -498,11 +513,13 @@ async def run_spine_daemon(
             if t is runner and (exc := t.exception()) is not None:
                 raise exc
     finally:
-        for t in (poller, role_poller, ctl_poller, runner):
+        # mcp_task may still be waiting on a cold `npx`; cancelling it
+        # is why it is a named task and not a fire-and-forget coroutine.
+        background = [t for t in (poller, role_poller, ctl_poller, runner,
+                                  locals().get("mcp_task")) if t is not None]
+        for t in background:
             t.cancel()
-        await asyncio.gather(
-            poller, role_poller, ctl_poller, runner, return_exceptions=True
-        )
+        await asyncio.gather(*background, return_exceptions=True)
         await audio.stop()
         await _close_loop(loop)
         try:
