@@ -1,24 +1,23 @@
 """Echo cancellation for the pipecat-free spine.
 
-The daemon already has a working canceller — ``src/core/aec.py`` — fixed
-after an int16/float overflow bug turned it into a mute (40-50 dB of real
-suppression once fixed; see ``docs/findings/echo-cancellation.md``). Its
-adaptive-filter logic (``AudioProcessor`` from ``pywebrtc-audio``, WebRTC's
-AEC3) and its far-end reference buffer (``FarEnd``) do not import pipecat
-at module scope — only the two factory functions that wrap them into
-pipecat frame processors do, and this module never calls those. So the
-buffer is reused directly by import; the AEC3 call sequence (int16 <->
-[-1, 1] scaling, 10 ms native block size, reference drained in lockstep
-with the near end) is adapted here for the spine's synchronous
-``process()`` contract instead of pipecat's async frame stream.
+The old engine's canceller was fixed after an int16/float overflow bug
+turned it into a mute (40-50 dB of real suppression once fixed; see
+``docs/findings/echo-cancellation.md``). The adaptive-filter logic
+(``AudioProcessor`` from ``pywebrtc-audio``, WebRTC's AEC3) and the
+far-end reference buffer (``FarEnd``, now ``src/spine/far_end.py``) never
+needed pipecat — only the factory functions that wrap them into frame
+processors did, and this module never calls those. So the buffer is used
+directly; the AEC3 call sequence (int16 <-> [-1, 1] scaling, 10 ms native
+block size, reference drained in lockstep with the near end) is adapted
+here for the spine's synchronous ``process()`` contract instead of
+pipecat's async frame stream.
 
 Shapes: mic frames are 16 kHz mono int16, 20 ms (640 bytes) — two AEC3
 native 10 ms blocks per frame. Speaker audio is 24 kHz mono int16 in
 whatever chunk size ``play()`` was given. ``FarEnd.push`` already resamples
-whatever it is handed onto the 16 kHz mic timeline (linear interpolation,
-same as ``src/pipeline/build.py``'s far-end collector feeds it), and
-``FarEnd.take`` drains it one reference block at a time, zero-padding once
-playback has drained — exactly the alignment ``process()`` needs.
+whatever it is handed onto the 16 kHz mic timeline (linear interpolation),
+and ``FarEnd.take`` drains it one reference block at a time, zero-padding
+once playback has drained — exactly the alignment ``process()`` needs.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ import logging
 
 import numpy as np
 
-from src.core.aec import FarEnd
+from src.spine.far_end import FarEnd
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +34,10 @@ logger = logging.getLogger(__name__)
 # caller chunks mic audio into.
 _BLOCK_MS = 10
 
-# Best-effort estimate of speaker-to-microphone delay. src/core/aec.py's
-# DelayEstimator exists to measure this precisely from a live cross-
-# correlation; the spine does not (yet) wire that in, so a stream-delay
-# guess is used the same way the daemon's default configuration does.
+# Best-effort estimate of speaker-to-microphone delay. A cross-correlation
+# delay estimator can measure this precisely from live audio; the spine
+# does not (yet) wire one in, so a stream-delay guess is used the same way
+# the daemon's default configuration does.
 _STREAM_DELAY_MS = 30
 
 
@@ -51,8 +50,8 @@ class SpineAEC:
         self._far_rate = far_rate
         self._block = max(1, rate * _BLOCK_MS // 1000)
 
-        # FarEnd resamples onto a hardcoded 16 kHz timeline (it backs the
-        # daemon's own mic rate). Reused as-is since the spine's default
+        # FarEnd resamples onto a hardcoded 16 kHz timeline (the mic rate
+        # it was written for). Used as-is since the spine's default
         # matches; a spine running at a different `rate` would need its
         # own buffer.
         self._far = FarEnd()

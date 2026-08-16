@@ -12,8 +12,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Callable
 
-from src.pipeline.wake import wake_phrases
 from src.spine.wake import WakeGate
+from src.spine.wake_phrases import _name_from_persona, wake_phrases
 
 
 class Clock:
@@ -38,14 +38,82 @@ def as_clock(clock: Clock) -> Callable[[], float]:
 
 
 def doka_phrases() -> list[str]:
-    """The real phrase list build.py resolves for the default wake word.
+    """The real phrase list the spine resolves for the default wake word.
 
     Reused rather than re-hardcoded: "докер" et al. come from
-    src/pipeline/wake.py's own variant table (wake_phrases -> _variants),
-    the same framework-free function the daemon calls.
+    src/spine/wake_phrases.py's own variant table (wake_phrases ->
+    _variants), the same framework-free function main.py calls.
     """
     settings = SimpleNamespace(wake_word="doka")
     return wake_phrases(settings, persona="")
+
+
+# -- 0. the phrase table itself ---------------------------------------------
+#
+# Copied from tests/test_wake.py, which covers the same logic where it used
+# to live (src/pipeline/wake.py). Duplicated on purpose: the spine's copy
+# has to stay covered once the old tree goes.
+
+PERSONA = "You are Doka 🎧 — A capable ambient AI that lives in your headphones."
+
+
+def test_the_name_comes_from_the_generated_identity() -> None:
+    """It is generated at first run, so nobody can hard-code it."""
+    assert _name_from_persona(PERSONA) == "Doka"
+    assert _name_from_persona("You are Kort, an assistant.") == "Kort"
+    assert _name_from_persona("") == ""
+
+
+def test_phrases_cover_what_speech_recognition_actually_produces() -> None:
+    """Matching is exact-word over the transcript, so the list has to hold
+    what Whisper writes, not how the name is spelled. In one session it
+    produced "докер", "дока" and "Дока" for the same word."""
+    phrases = wake_phrases(SimpleNamespace(wake_word="гава"), PERSONA)
+
+    for heard in ("doka", "дока", "докер"):
+        assert heard in phrases
+
+
+def test_both_the_name_and_the_wake_word_are_listened_for() -> None:
+    """People call it by name; the wake word is a separate setting that
+    may never have been changed from its default."""
+    phrases = wake_phrases(SimpleNamespace(wake_word="гава"), PERSONA)
+
+    assert "doka" in phrases
+    assert "гава" in phrases
+
+
+def test_the_list_is_never_empty() -> None:
+    """An empty phrase list would gate on nothing and block every turn —
+    the assistant would go permanently deaf."""
+    assert wake_phrases(SimpleNamespace(wake_word=""), "") == ["гава"]
+
+
+def test_no_duplicates() -> None:
+    phrases = wake_phrases(SimpleNamespace(wake_word="doka"), PERSONA)
+    assert len(phrases) == len(set(phrases))
+
+
+def test_the_spine_resolves_phrases_without_importing_pipecat() -> None:
+    """The reason this table was copied: src/spine/main.py used to load it
+    by file path, because importing src.pipeline.wake runs that package's
+    __init__ and pulls pipecat into the spine."""
+    import subprocess
+    import sys as _sys
+    from pathlib import Path
+
+    code = (
+        "import sys, src.spine.wake_phrases as w;"
+        "print(any('pipecat' in m for m in sys.modules))"
+    )
+    out = subprocess.run(
+        [_sys.executable, "-c", code],
+        cwd=str(Path(__file__).resolve().parent.parent),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.strip() == "False"
 
 
 # -- 1. asleep by default when required -------------------------------------

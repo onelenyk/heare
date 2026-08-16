@@ -608,7 +608,22 @@ class TestPruneLoop:
         )
         mgr._agents["s1"] = state
 
-        with patch.object(asyncio, "sleep", new_callable=AsyncMock) as mock_sleep:
+        # The prune loop's auto-deny calls mgr.deny(), which POSTs the
+        # reject to the sub-agent's own server (see
+        # TestPermissionGating.test_deny_with_reason_sends_correction for
+        # the same mock). Without it, deny() tries to reach a real server
+        # on port 14100, the request fails, and deny() swallows that
+        # failure — leaving status stuck at "waiting_for_input" for a
+        # reason that has nothing to do with the timeout logic under test.
+        with (
+            patch.object(mgr, "_get_client") as mock_client,
+            patch.object(asyncio, "sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            mock_http = AsyncMock()
+            mock_http.post.return_value = AsyncMock()
+            mock_http.post.return_value.raise_for_status = MagicMock()
+            mock_client.return_value = mock_http
+
             mock_sleep.side_effect = [None, asyncio.CancelledError()]
             task = asyncio.create_task(mgr._prune_loop())
             try:

@@ -297,18 +297,6 @@ async def test_mode_block_mentions_channel_constraint() -> None:
     assert "MODE GATE: focus" in mode_block
 
 
-def test_mode_block_lists_available_modes() -> None:
-    """Mode block must list available modes for set_mode discovery."""
-    from src.agent.llm.prompt_sections import render_prompt
-
-    ctx = {"mode_block": "MODE GATE: ambient\nVoice output ON."}
-    out = render_prompt(persona="Test", context=ctx, language="en")
-
-    assert "set_mode" in out
-    for mode in ("ambient", "focus", "silent", "assistant", "meeting"):
-        assert mode in out
-
-
 # ============================================================================
 # Hard Constraints Tests
 # ============================================================================

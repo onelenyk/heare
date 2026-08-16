@@ -96,9 +96,25 @@ def test_cmd_mode_writes_file(capsys) -> None:
             db_path=Path(tmp) / "heare.db",
             log_dir=Path(tmp) / "logs",
         )
-        with patch("src.main.load_settings", return_value=settings):
+
+        async def _run():
+            # _cmd_mode's State.init() assumes the `displays` table
+            # already exists (it only ALTERs it, never CREATEs it) —
+            # in the running daemon that table is owned and created by
+            # TranscriptStore. Do the same real init here so this test
+            # exercises the actual startup order instead of masking the
+            # missing table.
+            from src.store.storage import TranscriptStore
+
+            store = TranscriptStore(settings.db_path)
+            await store.init()
+            await store.close()
+
             args = type("ns", (), {"mode_name": "silent"})()
-            result = asyncio.run(_cmd_mode(args))
+            return await _cmd_mode(args)
+
+        with patch("src.main.load_settings", return_value=settings):
+            result = asyncio.run(_run())
     assert result == 0
     out = capsys.readouterr().out
     assert "silent" in out.lower()

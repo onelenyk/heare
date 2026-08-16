@@ -312,11 +312,23 @@ src/
 ├── store/
 │   ├── storage.py              # SQLite DAO (transcripts, tools, usage)
 │   └── context.py              # Context builder (recent transcripts, etc.)
+├── spine/                      # THE VOICE ENGINE (no framework)
+│   ├── audio_io.py             # sounddevice in/out, gain, mute
+│   ├── aec.py / far_end.py     # WebRTC AEC3, full duplex
+│   ├── vad.py / turn.py        # energy VAD, one clock per turn
+│   ├── stt.py / llm.py / tts.py# Groq, DeepSeek streaming, EdgeTTS
+│   ├── loop.py                 # the conductor (imports no sibling)
+│   ├── roles.py / role_session.py  # the role platform
+│   ├── hallucinations.py       # what Whisper says to an empty room
+│   └── telemetry.py            # one JSON line per turn
+├── pipeline/                   # legacy pipecat engine (rollback only)
 └── daemon/
+    ├── spine_engine.py         # runs the spine inside the daemon shell
     ├── onboarding.py           # Setup flow
-    ├── workspace.py            # MCP seeding
-    └── heartbeat.py            # Periodic TTS keep-alive
+    └── workspace.py            # MCP seeding
 ```
+
+Architecture: [docs/architecture.md](docs/architecture.md).
 
 ## Troubleshooting
 

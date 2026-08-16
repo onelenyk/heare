@@ -25,19 +25,18 @@ COURTESY_WINDOW_SECS = 25.0
 
 
 def _wake_phrases(settings) -> list[str]:
-    """Phrase variants from src/pipeline/wake.py, loaded by file path.
+    """Phrase variants from src/spine/wake_phrases.py.
 
-    The module itself is framework-free, but importing it as
-    src.pipeline.wake runs src/pipeline/__init__.py — which imports
-    pipecat. Loading by path keeps the spine pipecat-free.
+    This used to be loaded by file path out of the old engine's tree: the
+    module there is framework-free, but importing it as a package member
+    runs that package's __init__ — which imports pipecat. The table now
+    lives in the spine's own tree, so a plain import keeps the spine
+    pipecat-free.
     """
-    import importlib.util
     from pathlib import Path as _P
 
-    path = _P(__file__).resolve().parent.parent / "pipeline" / "wake.py"
-    spec = importlib.util.spec_from_file_location("_heare_wake", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    from src.spine.wake_phrases import wake_phrases
+
     # People call the assistant by its generated name, not only by the
     # configured wake word; wake_phrases parses the name from a
     # "You are <Name>" persona line, so hand it one.
@@ -49,7 +48,7 @@ def _wake_phrases(settings) -> list[str]:
         name = str(ident.get("name") or "")
     except Exception:
         pass
-    return mod.wake_phrases(settings, persona=f"You are {name}" if name else "")
+    return wake_phrases(settings, persona=f"You are {name}" if name else "")
 
 
 async def _build_loop(settings, *, audio, voice: str, hold_s: float,

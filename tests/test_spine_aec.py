@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from src.spine.aec import SpineAEC
+from src.spine.far_end import FRAME, SAMPLE_RATE, FarEnd
 
 HAVE_WEBRTC = importlib.util.find_spec("pywebrtc_audio") is not None
 
@@ -186,3 +187,82 @@ def test_malformed_far_chunks_do_not_crash_when_inactive(monkeypatch):
     frame = _sine(MIC_RATE, FRAME_MS / 1000, 300.0, 3000.0).tobytes()
     out = aec.process(frame)
     assert out == frame
+
+
+# --- 6. the far-end reference buffer ------------------------------------
+#
+# Copied from tests/test_core_aec.py, which covers the same class where it
+# used to live (src/core/aec.py). Duplicated on purpose: the spine's copy
+# in src/spine/far_end.py has to stay covered once the old tree goes. Each
+# of these corresponds to a bug that shipped and survived for months,
+# because the only instrument was a pair of ears and every one of these
+# failures sounds exactly like "echo cancellation is working". See
+# docs/findings/echo-cancellation.md.
+
+
+def test_take_returns_zeros_when_nothing_is_playing():
+    """AEC3 needs a reference on every block, silence included."""
+    far = FarEnd()
+    out = far.take(FRAME)
+    assert out.shape == (FRAME,)
+    assert not out.any()
+
+
+def test_take_drains_in_order():
+    far = FarEnd()
+    far.push(np.arange(FRAME * 2, dtype=np.int16).tobytes(), SAMPLE_RATE)
+
+    first = far.take(FRAME)
+    second = far.take(FRAME)
+
+    assert first[0] == 0 and first[-1] == FRAME - 1
+    assert second[0] == FRAME and second[-1] == FRAME * 2 - 1
+    assert far.pending == 0
+
+
+def test_partial_take_pads_with_silence_rather_than_shifting():
+    """A short queue must not slide the reference forward in time."""
+    far = FarEnd()
+    far.push(np.full(50, 1000, dtype=np.int16).tobytes(), SAMPLE_RATE)
+
+    out = far.take(FRAME)
+
+    assert out.shape == (FRAME,)
+    assert (out[:50] == 1000).all()
+    assert not out[50:].any()
+
+
+def test_push_resamples_to_the_microphone_rate():
+    """TTS is 24 kHz, the mic is 16 kHz; the reference lives at mic rate."""
+    far = FarEnd()
+    far.push(np.zeros(2400, dtype=np.int16).tobytes(), 24_000)
+    assert far.pending == pytest.approx(1600, abs=2)
+
+
+def test_a_long_utterance_is_not_silently_truncated():
+    """The queue used to cap at 5 s and drop from the left — dropping
+    exactly the samples about to be played, which desynchronised the
+    reference for the rest of the utterance."""
+    far = FarEnd()
+    thirty_seconds = np.zeros(30 * SAMPLE_RATE, dtype=np.int16)
+    far.push(thirty_seconds.tobytes(), SAMPLE_RATE)
+    assert far.pending == 30 * SAMPLE_RATE
+
+
+def test_clear_drops_cancelled_audio():
+    """Interrupted speech is never played, so it must leave the reference."""
+    far = FarEnd()
+    far.push(np.zeros(FRAME, dtype=np.int16).tobytes(), SAMPLE_RATE)
+    far.clear()
+    assert far.pending == 0
+
+
+def test_spine_aec_clear_empties_the_reference():
+    """SpineAEC.clear() is the spine's InterruptionFrame: audio that was
+    cancelled must not stay in the reference, or AEC3 spends the next
+    seconds subtracting an echo no speaker ever produced."""
+    aec = SpineAEC()
+    aec.push_far(_sine(FAR_RATE, 0.2, 300.0, 3000.0).tobytes())
+    assert aec._far.pending > 0
+    aec.clear()
+    assert aec._far.pending == 0

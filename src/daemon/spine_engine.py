@@ -137,10 +137,10 @@ async def run_spine_daemon(
     handle_signals: bool = True,
 ) -> None:
     """Boot and run the spine engine with the daemon's shell around it."""
-    from src.pipeline.stages.voice_state_observer import write_voice_state
     from src.spine.audio_io import AudioIO
     from src.spine.main import _build_loop, _close_loop
     from src.spine.telemetry import Telemetry
+    from src.spine.voice_state import write_voice_state
 
     await state.init()
     api.state = state
