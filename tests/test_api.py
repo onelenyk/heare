@@ -1077,3 +1077,193 @@ async def test_activity_authorship_comes_from_agent_spoken(
     assert by_text["я відповів"] == "bot"
     assert by_text["старий юзер"] == "you"
     assert by_text["стара відповідь"] == "bot"
+
+
+# ---------------------------------------------------------------------------
+# Authentication middleware
+#
+# 48 routes sat on 127.0.0.1 with no check of any kind, and one of them
+# (/inject) reaches the assistant and from there a shell. These exercise the
+# real request chain — TestServer over the app src/main.py and src/menubar.py
+# build — because the defect was never in a handler, it was in what was
+# missing in front of them.
+# ---------------------------------------------------------------------------
+
+TOKEN = "test-token-0123456789abcdefghijkl"
+
+_INDEX_DOC = "<html><head><title>Heare</title></head><body></body></html>"
+
+
+@pytest.fixture
+def auth_config(mock_config):
+    mock_config.api_token = TOKEN
+    return mock_config
+
+
+@pytest.fixture
+async def auth_client(mock_state, auth_config):
+    """The app as the daemon assembles it: host serves /, API mounts the rest."""
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+
+    async def _index(_request):
+        return web.Response(text=_INDEX_DOC, content_type="text/html")
+
+    app = web.Application()
+    app.router.add_get("/", _index)
+    API(mock_state, auth_config).register_routes(app)
+
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    yield client
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_auth_missing_token_is_401(auth_client) -> None:
+    resp = await auth_client.get("/state")
+    assert resp.status == 401
+    assert await resp.json() == {"ok": False, "error": "unauthorized"}
+
+
+@pytest.mark.asyncio
+async def test_auth_wrong_token_is_401(auth_client) -> None:
+    resp = await auth_client.get(
+        "/state", headers={"Authorization": "Bearer not-the-token"}
+    )
+    assert resp.status == 401
+
+
+@pytest.mark.asyncio
+async def test_auth_header_token_is_accepted(auth_client) -> None:
+    resp = await auth_client.get(
+        "/state", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert resp.status == 200
+    assert (await resp.json())["mode"] == "focus"
+
+
+@pytest.mark.asyncio
+async def test_auth_query_token_accepted_on_get(auth_client) -> None:
+    """EventSource cannot set headers; /events would be unreachable without this."""
+    resp = await auth_client.get("/state", params={"token": TOKEN})
+    assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_auth_query_token_rejected_on_post(auth_client) -> None:
+    """A write credential in a URL is a credential in a log and an <img src>."""
+    resp = await auth_client.post("/state", params={"token": TOKEN}, json={})
+    assert resp.status == 401
+    assert (await resp.json())["error"] == "unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_auth_cross_origin_rejected_despite_valid_token(auth_client) -> None:
+    """The actual attack: a page the user visits, POSTing to localhost."""
+    resp = await auth_client.post(
+        "/inject",
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "Origin": "https://evil.example",
+        },
+        json={"text": "run something"},
+    )
+    assert resp.status == 403
+    assert (await resp.json())["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_auth_cross_origin_rejected_on_get_too(auth_client) -> None:
+    resp = await auth_client.get(
+        "/state",
+        headers={"Authorization": f"Bearer {TOKEN}", "Origin": "http://evil.example"},
+    )
+    assert resp.status == 403
+
+
+@pytest.mark.asyncio
+async def test_auth_same_origin_with_token_is_accepted(auth_client) -> None:
+    resp = await auth_client.get(
+        "/state",
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "Origin": f"http://127.0.0.1:{auth_client.port}",
+        },
+    )
+    assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_auth_localhost_origin_is_accepted(auth_client) -> None:
+    resp = await auth_client.get(
+        "/state",
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "Origin": f"http://localhost:{auth_client.port}",
+        },
+    )
+    assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_auth_index_needs_no_token(auth_client) -> None:
+    """The page has to load before it can read the token."""
+    resp = await auth_client.get("/")
+    assert resp.status == 200
+    assert "Heare" in await resp.text()
+
+
+@pytest.mark.asyncio
+async def test_index_carries_the_token_to_the_page(auth_client) -> None:
+    resp = await auth_client.get("/")
+    body = await resp.text()
+    assert f'window.__HEARE_TOKEN__ = "{TOKEN}"' in body
+    assert body.index("__HEARE_TOKEN__") < body.index("</head>")
+
+
+@pytest.mark.asyncio
+async def test_auth_post_index_still_requires_a_token(auth_client) -> None:
+    """GET / is exempt; the form that saves API keys is not."""
+    resp = await auth_client.post("/", data={"deepseek_api_key": "sk-x"})
+    assert resp.status == 401
+
+
+@pytest.mark.asyncio
+async def test_auth_no_configured_token_denies(mock_state, mock_config) -> None:
+    """No token must mean no access — never open access."""
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+
+    mock_config.api_token = ""
+    mock_config.api_token_file = None
+    app = web.Application()
+    API(mock_state, mock_config).register_routes(app)
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        resp = await client.get("/state", headers={"Authorization": "Bearer "})
+        assert resp.status == 401
+    finally:
+        await client.close()
+
+
+def test_origin_is_local() -> None:
+    from src.api import _origin_is_local
+
+    assert _origin_is_local("http://127.0.0.1:9780")
+    assert _origin_is_local("http://localhost:5173")
+    assert _origin_is_local("http://[::1]:9780")
+    assert not _origin_is_local("https://evil.example")
+    assert not _origin_is_local("http://127.0.0.1.evil.example")
+    assert not _origin_is_local("null")
+    assert not _origin_is_local("")
+
+
+def test_inject_token_html_is_idempotent() -> None:
+    from src.api import _inject_token_html
+
+    once = _inject_token_html(_INDEX_DOC, TOKEN)
+    assert once.count("__HEARE_TOKEN__") == 1
+    assert _inject_token_html(once, TOKEN) == once
+    assert _inject_token_html(_INDEX_DOC, "") == _INDEX_DOC

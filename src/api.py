@@ -1,4 +1,31 @@
-"""Minimal HTTP API for daemon control — backs the web frontend."""
+"""Minimal HTTP API for daemon control — backs the web frontend.
+
+Authentication
+--------------
+Every route here requires a token. It is generated on first run into
+``~/.heare/api_token`` (mode 0600) and read into ``settings.api_token`` by
+``load_settings()``. Send it one of two ways::
+
+    curl -H "Authorization: Bearer $(cat ~/.heare/api_token)" \\
+         http://127.0.0.1:9780/state
+
+    # GET only — so EventSource, which cannot set headers, still works
+    curl "http://127.0.0.1:9780/state?token=$(cat ~/.heare/api_token)"
+
+Any script, shortcut or menu-bar helper that talks to this API must send
+it; without it the answer is 401 and nothing happens.
+
+Two things are exempt, because the page has to load before it can read
+the token: ``GET /`` (the SPA shell, which is served the token inline as
+``window.__HEARE_TOKEN__``) and the static assets under ``/assets/`` and
+``/static/``. ``GET /api/health`` is exempt too, if it ever exists.
+
+The token alone is not enough. A page on another origin can be made to
+carry credentials, so a request arriving with an ``Origin`` header whose
+host is not 127.0.0.1/localhost is refused with 403 even when the token
+is correct — that cross-origin POST, reaching ``/inject`` and from there
+the assistant and its shell tool, is the attack this exists to close.
+"""
 
 import asyncio
 import json
@@ -11,10 +38,56 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
 _INDEX_HTML: str | None = None
+
+# Requests that must pass without a token, because they are what puts the
+# token in the browser's hands in the first place. GET only — POST / is a
+# form that saves API keys, and is no more exempt than any other write.
+_EXEMPT_PATHS = frozenset({"/", "/api/health", "/favicon.ico"})
+_EXEMPT_PREFIXES = ("/assets/", "/static/")
+
+_LOCAL_ORIGIN_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _origin_is_local(origin: str) -> bool:
+    """True if `origin` names this machine's loopback interface.
+
+    Anything unparseable — including the literal ``null`` a sandboxed
+    frame sends — is not local.
+    """
+    try:
+        host = urlsplit(origin).hostname
+    except ValueError:
+        return False
+    return host in _LOCAL_ORIGIN_HOSTS
+
+
+def _bearer_token(request) -> str:
+    """The token out of ``Authorization: Bearer <token>``, or ""."""
+    scheme, _, value = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() == "bearer":
+        return value.strip()
+    return ""
+
+
+def _inject_token_html(html: str, token: str) -> str:
+    """Return `html` with ``window.__HEARE_TOKEN__`` defined before </head>.
+
+    This is how the dashboard bootstraps: it is served from this daemon,
+    so the token can ride along in the document instead of asking the
+    user to paste one. Idempotent, and a no-op without a token.
+    """
+    if not token or "__HEARE_TOKEN__" in html:
+        return html
+    tag = f'<script>window.__HEARE_TOKEN__ = "{token}";</script>'
+    cut = html.lower().find("</head>")
+    if cut == -1:
+        return tag + html
+    return html[:cut] + tag + html[cut:]
 
 from aiohttp import web  # noqa: E402
 from src.agent.identity import load_identity, save_identity, regenerate_identity  # noqa: E402
@@ -99,7 +172,8 @@ class API:
         self.config = config
         self._control = daemon_control  # (start_fn, stop_fn, restart_fn)
         self._memory_backend = memory_backend
-        self._app = web.Application()
+        self._token = self._resolve_token()
+        self._app = web.Application(middlewares=[self._auth_middleware])
         logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
         self._app.router.add_get("/state", self._handle_state)
         self._app.router.add_post("/state", self._handle_state_post)
@@ -179,6 +253,12 @@ class API:
         The standalone ``start()`` method still creates its own app.
         """
         self._app = app
+        # The host app owns the request chain, so authentication has to be
+        # installed here as well — this is the app that actually listens on
+        # 9780. Appending is only legal before the app starts, which is
+        # where both callers (src/main.py, src/menubar.py) invoke this.
+        if self._auth_middleware not in app.middlewares:
+            app.middlewares.append(self._auth_middleware)
         self._app.router.add_get("/state", self._handle_state)
         self._app.router.add_post("/state", self._handle_state_post)
         self._app.router.add_post("/mode", self._handle_mode)
@@ -250,6 +330,98 @@ class API:
             "/api/memories/{id}/forget", self._handle_memories_forget
         )
 
+    # ── Authentication ─────────────────────────────────────
+    #
+    # One middleware, not 48 decorated handlers: a route added later is
+    # protected by having been added, which is the only arrangement that
+    # stays true after the next feature lands.
+
+    def _resolve_token(self) -> str:
+        """The expected token, or "" when there is none to compare against.
+
+        Reads ``config.api_token`` — populated by ``load_settings()``. When
+        the config object is a real ``Settings`` that has not been through
+        that path, generate/read the file here. Anything else (a test
+        double, a stub) yields "" and every guarded route answers 401:
+        no token means no access, never open access.
+        """
+        token = getattr(self.config, "api_token", "")
+        if isinstance(token, str) and token:
+            return token
+        try:
+            from src.config import Settings, ensure_api_token
+
+            if isinstance(self.config, Settings):
+                return ensure_api_token(self.config)
+        except Exception:
+            logger.exception("could not resolve the API token")
+        return ""
+
+    def _expected_token(self) -> str:
+        if not self._token:
+            self._token = self._resolve_token()
+        return self._token
+
+    @staticmethod
+    def _is_exempt(request) -> bool:
+        if request.method != "GET":
+            return False
+        path = request.path
+        return path in _EXEMPT_PATHS or path.startswith(_EXEMPT_PREFIXES)
+
+    @web.middleware
+    async def _auth_middleware(self, request, handler):
+        # Origin first, and on every path: a valid token carried by a page
+        # on another origin is exactly the request being refused here.
+        origin = request.headers.get("Origin")
+        if origin and not _origin_is_local(origin):
+            logger.warning(
+                "refused %s %s from origin %s", request.method, request.path, origin
+            )
+            return web.json_response(
+                {"ok": False, "error": "forbidden_origin"}, status=403
+            )
+
+        if self._is_exempt(request):
+            response = await handler(request)
+            return self._with_token_injected(response)
+
+        supplied = _bearer_token(request)
+        if not supplied and request.method == "GET":
+            # Query token for GET only. EventSource cannot set headers, so
+            # /events has no other way in; a POST always can, and letting a
+            # URL carry a write credential is how tokens end up in logs and
+            # <img src> tags.
+            supplied = request.query.get("token", "")
+
+        expected = self._expected_token()
+        if not expected or not secrets.compare_digest(supplied, expected):
+            return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
+        return await handler(request)
+
+    def _with_token_injected(self, response):
+        """Serve the token inside the SPA shell so the page can use it.
+
+        Applied in the middleware rather than in one handler because three
+        different servers serve this document — src/api.py standalone,
+        src/main.py and src/menubar.py — and only the middleware is common
+        to all of them.
+        """
+        if not isinstance(response, web.Response):
+            return response
+        if response.content_type != "text/html":
+            return response
+        try:
+            body = response.text
+        except (UnicodeDecodeError, AttributeError):
+            return response
+        if not body:
+            return response
+        injected = _inject_token_html(body, self._expected_token())
+        if injected != body:
+            response.text = injected
+        return response
+
     async def start(self):
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
@@ -287,7 +459,12 @@ class API:
                     break
             if _INDEX_HTML is None:
                 return web.Response(text="Frontend not found", status=500)
-        return web.Response(text=_INDEX_HTML, content_type="text/html")
+        # Injected per response, not into the cache: the token can be
+        # rotated under a running daemon.
+        return web.Response(
+            text=_inject_token_html(_INDEX_HTML, self._expected_token()),
+            content_type="text/html",
+        )
 
     # ── API keys ──────────────────────────────────────────────────
     #

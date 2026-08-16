@@ -30,6 +30,15 @@ if getattr(sys, "frozen", False):
 _INDEX_HTML: str | None = None
 
 
+def _api_headers(token: str) -> dict:
+    """Authorization header for the local API, which now requires one.
+
+    Every route but the dashboard shell answers 401 without it — see the
+    module docstring of src/api.py.
+    """
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def _resolve_index_html() -> str | None:
     for candidate in [_DIST_DIR / "index.html", _FRONTEND_DIR / "index.html"]:
         if candidate.exists():
@@ -78,6 +87,8 @@ class HeareMenuBar(rumps.App):
         self._cmd_queue: queue.Queue = queue.Queue()
         self._status_lock = threading.Lock()
         self._status: dict = {"running": False, "mode": "?", "error": None}
+        # Filled in by _serve() from settings once the config is loaded.
+        self._api_token: str = ""
         self._build_menu()
         threading.Thread(target=self._asyncio_main, daemon=False).start()
 
@@ -148,6 +159,9 @@ class HeareMenuBar(rumps.App):
 
         settings = load_settings()
         settings.ensure_dirs()
+        # load_settings() generates ~/.heare/api_token on first run; the
+        # status poll below is a client of our own API and needs it.
+        self._api_token = settings.api_token or ""
 
         app = web.Application()
         app.router.add_get("/", _handle_index)
@@ -325,7 +339,9 @@ class HeareMenuBar(rumps.App):
             return
 
         try:
-            resp = httpx.get(f"{URL}/state", timeout=3)
+            resp = httpx.get(
+                f"{URL}/state", timeout=3, headers=_api_headers(self._api_token)
+            )
             data = resp.json()
             mode = data.get("mode", "?")
         except Exception:

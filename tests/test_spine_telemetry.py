@@ -42,8 +42,9 @@ def test_in_order_calls_produce_one_correct_line(
     path = tmp_path / "turns.jsonl"
     _fake_wall_clock(monkeypatch, 1700000000.0)
     # turn_closed -> t0=100.0, first_delta -> 100.05 (think=50ms),
-    # first_audio -> 100.12 (speak=70ms, total=120ms).
-    _fake_clock(monkeypatch, [100.0, 100.05, 100.12])
+    # first_audio -> 100.12 (speak=70ms, total=120ms). The 4th value is
+    # finish()'s own "now" read, unused here since first_audio() fired.
+    _fake_clock(monkeypatch, [100.0, 100.05, 100.12, 999.0])
 
     t = Telemetry(path)
     t.stt(42, dropped=False)
@@ -87,8 +88,8 @@ def test_finish_resets_for_the_next_turn(
     _fake_wall_clock(monkeypatch, 1.0)
     _fake_clock(
         monkeypatch,
-        # turn 1: t0, delta, audio, finish's now (unused, t_audio set)
-        [100.0, 100.01, 100.02]
+        # turn 1: t0, delta, audio, finish's own "now" (unused, t_audio set)
+        [100.0, 100.01, 100.02, 100.5]
         # turn 2: t0 only (no delta/audio this time) + finish's now
         + [200.0, 200.03],
     )
@@ -152,8 +153,10 @@ def test_first_delta_only_the_first_call_counts(
 ) -> None:
     path = tmp_path / "turns.jsonl"
     _fake_wall_clock(monkeypatch, 1.0)
-    # t0, first first_delta (used), second first_delta (ignored), finish's now
-    _fake_clock(monkeypatch, [100.0, 100.05, 999.0, 100.05])
+    # t0, first first_delta (used) — the second first_delta() early-returns
+    # before touching the clock at all, so it consumes no value; finish()
+    # still reads its own "now" last.
+    _fake_clock(monkeypatch, [100.0, 100.05, 999.0])
 
     t = Telemetry(path)
     t.turn_closed()

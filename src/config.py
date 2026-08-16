@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -556,6 +557,15 @@ class Settings:
     browser_bridge_port: int = 9333
     browser_bridge_token: str = ""
 
+    # Local HTTP API token — every route of src/api.py except the SPA
+    # shell requires it. Unlike the bridge token this one does NOT live in
+    # config.toml: config.toml is rewritten by the dashboard's own save
+    # paths, and a credential that a request can cause to be rewritten is
+    # a credential a request can drop. It lives in its own 0600 file,
+    # generated on first run by ``ensure_api_token``.
+    api_token: str = ""
+    api_token_file: Path = field(default_factory=lambda: HEARE_HOME / "api_token")
+
     # OpenCode sub-agent settings
     opencode_binary: str = "opencode"
     opencode_default_model: str | None = None  # None = use opencode's own config
@@ -810,7 +820,81 @@ def load_settings() -> Settings:
             "manually — the server will not launch otherwise."
         )
 
+    ensure_api_token(settings)
+
     return settings
+
+
+# 24 random bytes is exactly 32 characters of url-safe base64 — short
+# enough to paste into a curl line, far past guessing from a web page.
+API_TOKEN_BYTES = 24
+
+
+def ensure_api_token(settings: Settings) -> str:
+    """Return the local HTTP API token, generating it on first run.
+
+    The token lives alone in ``settings.api_token_file`` (``~/.heare/api_token``)
+    at mode 0600, following the same read-a-small-file pattern as
+    ``mode_file`` / ``provider_file``. It is created with ``O_CREAT | O_EXCL``
+    so two processes starting at once cannot each write a different token
+    and leave one of them holding a stale one.
+
+    Also sets ``settings.api_token``. Returns "" if the file can neither be
+    read nor written — callers must treat that as "no token", not as
+    "no authentication".
+    """
+    path = settings.api_token_file
+    try:
+        existing = path.read_text().strip()
+        if existing:
+            # A token written before the mode was enforced, or by a umask
+            # that widened it — narrow it now rather than at next rotate.
+            try:
+                path.chmod(0o600)
+            except OSError:
+                pass
+            settings.api_token = existing
+            return existing
+    except FileNotFoundError:
+        pass
+    except OSError:
+        logger.warning("could not read %s — API token unavailable", path)
+        return settings.api_token
+
+    token = secrets.token_urlsafe(API_TOKEN_BYTES)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, (token + "\n").encode())
+        finally:
+            os.close(fd)
+    except FileExistsError:
+        # Either another process won the race, or the file was there but
+        # empty. A winner's value wins; an empty file gets filled.
+        try:
+            found = path.read_text().strip()
+        except OSError:
+            found = ""
+        if found:
+            token = found
+        else:
+            try:
+                fd = os.open(path, os.O_WRONLY | os.O_TRUNC, 0o600)
+                try:
+                    os.write(fd, (token + "\n").encode())
+                finally:
+                    os.close(fd)
+                path.chmod(0o600)
+            except OSError:
+                logger.warning("could not write %s — API token unavailable", path)
+                return settings.api_token
+    except OSError:
+        logger.warning("could not write %s — API token unavailable", path)
+        return settings.api_token
+
+    settings.api_token = token
+    return token
 
 
 def write_browser_bridge_token(settings: Settings, token: str) -> None:
