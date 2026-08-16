@@ -83,6 +83,11 @@ class RoleFlow:
     # and keeps the conversation from answering in the meantime.
     finishing: bool = False
     ended_ts: float = 0.0
+    # Strong references to the work spawned off the turn loop. A bare
+    # create_task() is garbage-collectable mid-flight, and its exception
+    # is never retrieved — the session would end in silence with nothing
+    # in the log to say why.
+    _tasks: set = field(default_factory=set, repr=False)
 
     # -- what the conductor asks ---------------------------------------
 
@@ -113,7 +118,7 @@ class RoleFlow:
             # Off the turn loop: an 18-second summary must not look like
             # a dead button, and repeated «закінчили» must not queue up.
             self.finishing = True
-            asyncio.create_task(self.finish())
+            self._spawn(self.finish(), "role finish")
             return True
 
         if active is None and self._recently_ended(turn):
@@ -141,7 +146,7 @@ class RoleFlow:
             if channel == "hints" and self.hint_sink is not None:
                 # Off the consuming path: a hint is useless if waiting
                 # for it delays hearing the next question.
-                asyncio.create_task(self._make_hint(active, turn))
+                self._spawn(self._make_hint(active, turn), "role hint")
             return True
 
         return False
@@ -159,14 +164,20 @@ class RoleFlow:
     # -- the end of a session ------------------------------------------
 
     async def finish(self) -> None:
-        active = self.role_manager.active
-        self._mute(False)
+        """Close the session: announce, build the artifact, speak it.
 
-        # Building an artifact takes one whole LLM call over a whole
-        # session — measured 7 to 30 seconds. Said out loud, that is a
-        # pause; unsaid, it is the assistant having died.
-        if self.log:
-            await self._say(FINISHING_LINE)
+        ``finishing`` holds every turn while it is set — that is its job —
+        so nothing here may leave it set. Every step below can fail on
+        something outside this process (ffmpeg gone, the output device
+        dead, the model refusing), and a spoken line that raised used to
+        escape this coroutine with the flag still True: from then on the
+        assistant heard, transcribed, paid for the transcription and
+        answered nothing until a restart. So the whole body runs under one
+        ``finally`` that clears the flag, closes the session and lifts the
+        mute, and each spoken line is allowed to fail on its own.
+        """
+        active = None
+        artifact = None
 
         async def _complete(messages: list[dict]) -> str:
             parts: list[str] = []
@@ -175,6 +186,13 @@ class RoleFlow:
             return "".join(parts)
 
         try:
+            active = self.role_manager.active
+            self._mute(False)
+            # Building an artifact takes one whole LLM call over a whole
+            # session — measured 7 to 30 seconds. Said out loud, that is a
+            # pause; unsaid, it is the assistant having died.
+            if self.log:
+                await self._try_say(FINISHING_LINE)
             artifact = await self.role_manager.finish(
                 exchanges=list(self.log), complete=_complete
             )
@@ -185,9 +203,15 @@ class RoleFlow:
             self.log.clear()
             self.finishing = False
             self.ended_ts = time.time()
+            # A session that ended on a dead speaker must not leave the
+            # quiet channel's mute latched on behind it.
+            self._mute(False)
+            self._close_session()
 
+        # Past this point the conversation is already free: whatever the
+        # speaker does now costs words, not the assistant's ears.
         if artifact is None:
-            await self._say("Роль завершено.")
+            await self._try_say("Роль завершено.")
             return
         path = ""
         if self.save_artifact is not None and artifact.full_md.strip():
@@ -205,7 +229,45 @@ class RoleFlow:
                 logger.exception("artifact save failed")
         logger.info("role artifact: %s (%d chars)", path, len(artifact.full_md))
         logger.info("say (summary): %r", artifact.spoken[:80])
-        await self._say(artifact.spoken)
+        await self._try_say(artifact.spoken)
+
+    def _close_session(self) -> None:
+        """A session must not survive its own ending.
+
+        ``role_manager.finish()`` normally deactivates the role itself;
+        when it raised before it got that far, ``cancel()`` is what closes
+        the row and drops the session — otherwise ``in_session`` stays
+        True, every later turn walks past the wake gate into a session
+        nobody is recording, and the artifact never comes.
+        """
+        if self.role_manager is None:
+            return
+        try:
+            if not self.role_manager.active:
+                return
+            cancel = getattr(self.role_manager, "cancel", None)
+            if callable(cancel):
+                cancel()
+                logger.warning("role session force-closed after a failed finish")
+        except Exception:
+            logger.exception("role session could not be closed")
+
+    def _spawn(self, coro: Any, what: str) -> Any:
+        """Run something off the turn loop, keeping a reference to it and
+        reporting what it did. Bare create_task() loses both."""
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+
+        def _done(t: Any) -> None:
+            self._tasks.discard(t)
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc is not None:
+                logger.error("%s task failed: %r", what, exc, exc_info=exc)
+
+        task.add_done_callback(_done)
+        return task
 
     def _recently_ended(self, turn: str) -> bool:
         """An end phrase repeated just after a session closed is a person
@@ -261,6 +323,15 @@ class RoleFlow:
             await self.say(text)
         finally:
             self._mute(muted)
+
+    async def _try_say(self, text: str) -> None:
+        """A phrase whose failure must cost only the phrase. Losing the
+        mouth is a bad minute; losing the session's end is a dead
+        assistant, so the words are the part that gets dropped."""
+        try:
+            await self._say(text)
+        except Exception:
+            logger.exception("service phrase not spoken (non-fatal): %r", text[:40])
 
     async def _persist(self, turn: str) -> None:
         if self.persist_turn is None:

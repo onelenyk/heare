@@ -566,3 +566,182 @@ def test_user_output_mute_drops_playback() -> None:
     io.mute_output_user = False
     io.play(b"\x01\x02" * 100)
     assert io.playing is True
+
+
+# -- muting the mic must announce the hole it leaves -------------------
+
+
+class TestInputGap:
+    """A muted microphone is not a quiet microphone: frames stop arriving
+    entirely, and the segmenter downstream freezes mid-utterance unless
+    somebody says so."""
+
+    def test_no_gap_on_a_fresh_object(self) -> None:
+        io = AudioIO()
+        assert io.take_input_gap() is False
+
+    def test_mute_input_records_a_gap(self) -> None:
+        io = AudioIO()
+        io.mute_input = True
+        assert io.take_input_gap() is True
+
+    def test_user_mute_records_a_gap(self) -> None:
+        io = AudioIO()
+        io.mute_input_user = True
+        assert io.take_input_gap() is True
+
+    def test_gap_is_consumed_exactly_once(self) -> None:
+        io = AudioIO()
+        io.mute_input = True
+        assert io.take_input_gap() is True
+        assert io.take_input_gap() is False
+
+    def test_gap_survives_the_whole_mute(self) -> None:
+        """The consumer only sees frames again after unmute; the flag has
+        to still be there then, however long the mute lasted."""
+        io = AudioIO()
+        io.mute_input_user = True
+        io.mute_input_user = False
+        assert io.take_input_gap() is True
+
+    def test_unmuting_alone_records_nothing(self) -> None:
+        io = AudioIO()
+        io.mute_input = False
+        assert io.take_input_gap() is False
+
+    def test_repeated_mute_is_not_an_edge(self) -> None:
+        io = AudioIO()
+        io.mute_input = True
+        io.take_input_gap()
+        io.mute_input = True
+        assert io.take_input_gap() is False
+
+    def test_note_input_gap_is_callable_directly(self) -> None:
+        io = AudioIO()
+        io.note_input_gap()
+        assert io.take_input_gap() is True
+
+    def test_mute_flags_stay_independent(self) -> None:
+        """The half-duplex toggle must not clear the user's own switch."""
+        io = AudioIO()
+        io.mute_input_user = True
+        io.mute_input = True
+        io.mute_input = False
+        assert io.mute_input_user is True
+        assert io.mute_input is False
+
+
+# -- the far-end reference must match what the speaker emitted ---------
+
+
+class _RecordingSink:
+    """Stands in for SpineAEC: push_far(pcm) + clear()."""
+
+    def __init__(self) -> None:
+        self.pushed: list[bytes] = []
+        self.clears = 0
+
+    def push_far(self, pcm: bytes) -> None:
+        self.pushed.append(pcm)
+
+    def clear(self) -> None:
+        self.clears += 1
+
+
+class TestFarEndSink:
+    def test_default_is_no_sink(self) -> None:
+        io = AudioIO()
+        assert io.far_sink is None
+        io.play(b"\x01\x02" * 100)   # must not explode without a sink
+        assert io.stop_playback() == 200
+
+    def test_playback_reaches_buffer_and_sink_exactly_once(self) -> None:
+        sink = _RecordingSink()
+        io = AudioIO(far_sink=sink)
+        pcm = b"\x01\x02" * 100
+        io.play(pcm)
+        assert bytes(io._output_buffer) == pcm
+        assert sink.pushed == [pcm]
+
+    def test_muted_playback_reaches_neither(self) -> None:
+        """The bot is muted: no speaker output, so the canceller must not
+        be told there was any — it would subtract that phantom echo from
+        the user's own voice."""
+        sink = _RecordingSink()
+        io = AudioIO(far_sink=sink)
+        io.mute_output_user = True
+        io.play(b"\x01\x02" * 100)
+        assert sink.pushed == []
+        assert io.playing is False
+
+    def test_policy_mute_also_blocks_the_sink(self) -> None:
+        sink = _RecordingSink()
+        io = AudioIO(far_sink=sink)
+        io.mute_output = True
+        io.play(b"\x01\x02" * 100)
+        assert sink.pushed == []
+
+    def test_unmuting_resumes_the_reference(self) -> None:
+        sink = _RecordingSink()
+        io = AudioIO(far_sink=sink)
+        io.mute_output_user = True
+        io.play(b"\xaa\xbb" * 10)
+        io.mute_output_user = False
+        io.play(b"\xcc\xdd" * 10)
+        assert sink.pushed == [b"\xcc\xdd" * 10]
+
+    def test_stop_playback_clears_the_reference(self) -> None:
+        sink = _RecordingSink()
+        io = AudioIO(far_sink=sink)
+        io.play(b"\x01\x02" * 100)
+        assert io.stop_playback() == 200
+        assert sink.clears == 1
+
+    def test_stop_playback_on_empty_buffer_keeps_the_reference(self) -> None:
+        """Nothing was dropped, so nothing became phantom: audio already
+        handed to the device is still echoing and still needs its
+        reference."""
+        sink = _RecordingSink()
+        io = AudioIO(far_sink=sink)
+        assert io.stop_playback() == 0
+        assert sink.clears == 0
+
+    def test_bare_callable_sink_is_accepted(self) -> None:
+        pushed: list[bytes] = []
+        cleared: list[int] = []
+        io = AudioIO(far_sink=pushed.append, far_clear=lambda: cleared.append(1))
+        io.play(b"\x07\x08" * 5)
+        io.stop_playback()
+        assert pushed == [b"\x07\x08" * 5]
+        assert cleared == [1]
+
+    def test_a_broken_sink_never_breaks_playback(self) -> None:
+        class _Angry:
+            def push_far(self, pcm: bytes) -> None:
+                raise RuntimeError("no")
+
+            def clear(self) -> None:
+                raise RuntimeError("still no")
+
+        io = AudioIO(far_sink=_Angry())
+        io.play(b"\x01\x02" * 50)
+        assert io.playing is True
+        assert io.stop_playback() == 100
+
+    def test_sink_can_be_attached_after_construction(self) -> None:
+        sink = _RecordingSink()
+        io = AudioIO()
+        io.far_sink = sink
+        io.play(b"\x01\x02" * 3)
+        assert sink.pushed == [b"\x01\x02" * 3]
+
+    def test_volume_does_not_change_the_reference_bytes(self) -> None:
+        """Documented: the reference is pre-volume. A scalar gain is what
+        an adaptive filter converges on; scaling twice would only cost
+        per-sample work on the reply path."""
+        sink = _RecordingSink()
+        io = AudioIO(far_sink=sink)
+        io.output_volume = 0.5
+        pcm = _pcm([1000, -1000])
+        io.play(pcm)
+        assert sink.pushed == [pcm]

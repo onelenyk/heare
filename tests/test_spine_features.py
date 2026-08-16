@@ -76,6 +76,80 @@ def test_losses_are_in_the_user_s_language() -> None:
     assert losses(resolve(SimpleNamespace())) == []
 
 
+def _feature_lookups_in_source() -> dict[str, list[str]]:
+    """Every feature name the code under src/ actually asks about.
+
+    The scan is deliberately literal — it looks for the three shapes a
+    lookup can have, with the name spelled out:
+
+        features["mcp"]      features.get("mcp")      _feature(loop, "mcp")
+
+    A name that appears nowhere in that form is a switch nothing reads:
+    the table would still print it, the dashboard would still show it,
+    and turning it off would change nothing. Anything cleverer (an
+    import graph, a runtime trace) would have to boot the engine; this
+    is a grep, and a grep is what a lying switch survives today.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent / "src"
+    pattern = re.compile(
+        r"""features\s*\[\s*["']([a-z_]+)["']\s*\]"""
+        r"""|features\s*\.\s*get\(\s*["']([a-z_]+)["']"""
+        r"""|_feature\([^)]*?["']([a-z_]+)["']\s*\)"""
+    )
+    found: dict[str, list[str]] = {}
+    for path in root.rglob("*.py"):
+        if "node_modules" in path.parts:
+            continue
+        try:
+            text = path.read_text("utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for match in pattern.finditer(text):
+            name = next(g for g in match.groups() if g)
+            found.setdefault(name, []).append(str(path))
+    return found
+
+
+def test_every_declared_feature_is_actually_consulted() -> None:
+    """A switch that nothing reads is worse than no switch at all.
+
+    `mcp` and `telemetry` were in this table for months while the daemon
+    started the MCP servers and the telemetry writer unconditionally: the
+    log said off, the dashboard said off, and `npx` still spawned. This
+    test is the tripwire — add a name to FEATURES and forget to wire it,
+    and the suite says so immediately.
+    """
+    consulted = _feature_lookups_in_source()
+    unwired = sorted(f.name for f in FEATURES if f.name not in consulted)
+    assert not unwired, (
+        "declared in FEATURES but consulted nowhere in src/: "
+        + ", ".join(unwired)
+        + " — switching it off would change nothing, so the log and the "
+        "dashboard would be lying. Gate the subsystem on "
+        'features["<name>"] where it is built, or drop the name.'
+    )
+
+
+def test_the_consistency_scan_can_see_the_names_it_claims_to_see() -> None:
+    """The tripwire above is a regex; a regex that matches nothing would
+    pass silently forever. Pin what it found, and where."""
+    consulted = _feature_lookups_in_source()
+    # The composition root switches these seven.
+    for name in ("usage", "aec", "memory", "roles", "tools", "wake", "persist"):
+        assert any(
+            p.endswith("src/spine/main.py") for p in consulted[name]
+        ), f"{name} is no longer switched in the composition root"
+    # These two are built by the daemon's runner, so that is where their
+    # switch has to bite.
+    for name in ("mcp", "telemetry"):
+        assert any(
+            p.endswith("src/daemon/spine_engine.py") for p in consulted[name]
+        ), f"{name} is no longer switched in the spine engine"
+
+
 @pytest.mark.parametrize("name", ["aec", "wake", "tools", "roles", "mcp"])
 async def test_the_engine_builds_without_each_one(name, tmp_path) -> None:
     """Not a smoke test: the composition root must skip the wiring, and

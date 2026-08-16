@@ -7,17 +7,16 @@ the failure-injection point here, same as in test_spine_loop.py. Fakes
 from that file rather than duplicated; test_spine_loop.py itself is not
 modified.
 
-Two scenarios could not be tested exactly as specified, and are softened
-with a documented reason at the point of the softening:
+respond() now owns the failure contract (see loop.py): an infrastructure
+failure never leaves it as an exception, the turn always ends with the
+spoken FAILURE_LINE, and no user turn is left unanswered in history. Only
+asyncio.CancelledError still propagates. The two failure classes are kept
+apart: a dead model ("mind") drops its half-sentence, a dead mouth keeps
+the words it could not voice.
 
-* TTS raises on first sentence (#5) — loop.py has no per-sentence
-  try/except around synthesise(): any exception there propagates all the
-  way out of respond() (same path already covered by
-  test_respond_unmutes_even_when_tts_fails in test_spine_loop.py), before
-  the "reply" text is ever assembled or appended to history. So instead
-  of asserting the reply text survives, this file asserts the honest
-  alternative: no *half-written* reply corrupts history, and the next
-  turn recovers cleanly.
+One scenario is softened, with a documented reason at the point of the
+softening:
+
 * Slow playback wedge (#10) — loop.py's drain-timeout is a literal
   60.0s, too slow to run in a fast test file. loop.py is not modified;
   instead asyncio.wait_for is monkeypatched with a wrapper that shrinks
@@ -34,7 +33,7 @@ from typing import AsyncIterator
 
 import pytest
 
-from src.spine.loop import SpineLoop
+from src.spine.loop import FAILURE_LINE, SpineLoop
 from src.spine.sentences import sentences as split_sentences
 from src.spine.turn import TurnAssembler
 from tests.test_spine_loop import (
@@ -219,8 +218,16 @@ async def test_stt_hangs_injected_turn_still_answered_and_assembler_self_heals()
 # -- 3. LLM stream dies mid-reply -----------------------------------------
 
 
-async def test_llm_stream_dies_mid_reply_leaves_no_half_written_turn() -> None:
-    loop = _base_loop(audio=None)
+async def test_llm_stream_dies_mid_reply_is_answered_with_a_spoken_failure_line() -> (
+    None
+):
+    """A dead stream ends the turn out loud. respond() swallows the
+    exception (a dead model is not the caller's error to handle), speaks
+    the fixed failure line, and records that line as the assistant's turn
+    — the user's message must never be left dangling for the next prompt
+    to carry. The half-sentence the stream managed to emit is dropped."""
+    audio = FakeAudio()
+    loop = _base_loop(audio=audio)
 
     async def dying_stream(messages: list[dict]) -> AsyncIterator[str]:
         yield "Зачекай"
@@ -229,14 +236,15 @@ async def test_llm_stream_dies_mid_reply_leaves_no_half_written_turn() -> None:
 
     loop.stream_chat = lambda m: dying_stream(m)
 
-    # respond() itself has no try/except around the stream — only
-    # _converse() catches and logs (see loop.py _converse). Calling
-    # respond() directly, as this test does, must therefore propagate.
-    with pytest.raises(ConnectionError):
-        await loop.respond("розкажи щось довге", speak=False)
+    reply = await loop.respond("розкажи щось довге")
 
-    assert loop.history == [{"role": "user", "content": "розкажи щось довге"}], (
-        "no half-appended assistant message may survive a dead stream"
+    assert reply == "", "a stream that died produced no usable answer"
+    assert loop.history == [
+        {"role": "user", "content": "розкажи щось довге"},
+        {"role": "assistant", "content": FAILURE_LINE},
+    ], "the user turn must be answered — by the failure line if by nothing else"
+    assert FAILURE_LINE in b"".join(audio.played).decode(), (
+        "a failed turn must make a sound, not look like 'it did not hear me'"
     )
 
     async def healthy_stream(messages: list[dict]) -> AsyncIterator[str]:
@@ -281,10 +289,15 @@ async def test_llm_whitespace_only_reply_leaves_no_history_entry() -> None:
     assert audio.played, "the follow-up turn must actually speak"
 
 
-# -- 5. TTS raises on first sentence (softened, see module docstring) ----
+# -- 5. TTS raises on first sentence -------------------------------------
 
 
-async def test_tts_raises_no_corrupted_reply_survives_and_next_turn_speaks() -> None:
+async def test_tts_raises_keeps_the_words_it_could_not_voice_in_history() -> None:
+    """A dead mouth is not a dead mind: the model's words existed, so they
+    stay in history and are returned to the caller. respond() does not
+    raise; it tries the failure line as well (which the same dead mouth
+    cannot voice either — it is still recorded, since the loop cannot know
+    what reached the room), and the next turn speaks normally."""
     audio = FakeAudio()
     loop = _base_loop(audio=audio)
 
@@ -294,13 +307,16 @@ async def test_tts_raises_no_corrupted_reply_survives_and_next_turn_speaks() -> 
 
     loop.synthesise = broken_synth
 
-    with pytest.raises(RuntimeError):
-        await loop.respond("скажи щось голосом")
+    reply = await loop.respond("скажи щось голосом")
 
+    assert reply == "Гаразд.", "the words were produced — only the voice failed"
     assert audio.mute_input is False, "finally must still unmute on tts failure"
-    assert loop.history == [{"role": "user", "content": "скажи щось голосом"}], (
-        "a reply that never finished speaking must not land in history"
-    )
+    assert loop.history == [
+        {"role": "user", "content": "скажи щось голосом"},
+        {"role": "assistant", "content": "Гаразд."},
+        {"role": "assistant", "content": FAILURE_LINE},
+    ]
+    assert audio.played == [], "a dead synthesiser reaches the speaker with nothing"
 
     async def working_synth(text: str) -> AsyncIterator[bytes]:
         yield b"PCM:" + text.encode()
@@ -469,3 +485,84 @@ async def test_slow_playback_wedge_is_bounded(monkeypatch) -> None:
     # loop keeps working: another turn completes too, bounded the same way.
     reply2 = await asyncio.wait_for(loop.respond("і це теж"), timeout=2.0)
     assert reply2
+
+
+# -- 11. a failed turn still reaches the role transcript -----------------
+
+
+class RecordingFlow:
+    """Only the piece of RoleFlow respond() touches (see loop.py's
+    note_exchange call); the real policy object is tested elsewhere."""
+
+    in_session = True
+
+    def __init__(self) -> None:
+        self.exchanges: list[tuple[str, str, int | None]] = []
+
+    def note_exchange(
+        self, user_text: str, reply: str, turn_id: int | None = None
+    ) -> None:
+        self.exchanges.append((user_text, reply, turn_id))
+
+
+async def test_failed_turn_still_reaches_the_role_transcript() -> None:
+    """Inside a role session the turns row is written the moment the user
+    speaks, so a turn that dies afterwards must still be noted or the
+    artifact silently omits a turn the database has. What is noted is what
+    actually happened: the failure line for a dead model, the produced
+    words for a dead mouth."""
+    audio = FakeAudio()
+    loop = _base_loop(audio=audio)
+    flow = RecordingFlow()
+    loop.role_flow = flow
+
+    async def dying_stream(messages: list[dict]) -> AsyncIterator[str]:
+        raise ConnectionError("model down")
+        yield ""  # pragma: no cover - makes this an async generator
+
+    loop.stream_chat = lambda m: dying_stream(m)
+    await loop.respond("розкажи про Крути")
+
+    assert flow.exchanges == [("розкажи про Крути", FAILURE_LINE, None)]
+
+    async def broken_synth(text: str) -> AsyncIterator[bytes]:
+        raise RuntimeError("tts down")
+        yield b""  # pragma: no cover - makes this an async generator
+
+    loop.stream_chat = _base_loop().stream_chat  # back to "Гаразд."
+    loop.synthesise = broken_synth
+    await loop.respond("а далі?")
+
+    assert flow.exchanges[-1] == ("а далі?", "Гаразд.", None), (
+        "words that were produced belong in the transcript, voiced or not"
+    )
+
+
+# -- 12. cancellation is not an infrastructure failure -------------------
+
+
+async def test_cancelled_turn_propagates_and_is_not_answered_with_an_apology() -> None:
+    """Shutdown must reach the task that asked for it: respond() swallows
+    infrastructure failures but never asyncio.CancelledError, and a
+    cancelled turn leaves no spoken apology behind."""
+    audio = FakeAudio()
+    loop = _base_loop(audio=audio)
+
+    entered = asyncio.Event()
+
+    async def hanging_stream(messages: list[dict]) -> AsyncIterator[str]:
+        entered.set()
+        await asyncio.Event().wait()  # never resolves
+        yield ""  # pragma: no cover - never reached
+
+    loop.stream_chat = lambda m: hanging_stream(m)
+
+    turn = asyncio.create_task(loop.respond("це триватиме вічно"))
+    await asyncio.wait_for(entered.wait(), timeout=2.0)
+    turn.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await turn
+
+    assert loop.history == [{"role": "user", "content": "це триватиме вічно"}]
+    assert audio.played == [], "a cancelled turn must not apologise out loud"

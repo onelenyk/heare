@@ -368,18 +368,21 @@ class DuplexAEC:
         self.far.append(pcm)
 
 
-async def test_full_duplex_does_not_mute_and_feeds_far_end() -> None:
+async def test_full_duplex_keeps_the_mic_open_while_speaking() -> None:
+    """The far end is no longer pushed from here: the speaker owns it,
+    so the reference matches what the room actually heard even when the
+    bot is muted (see AudioIO.play). The conductor's job is only to stop
+    muting the microphone."""
     audio = FakeAudio()
     loop = _make_loop(audio)
-    aec = DuplexAEC()
-    loop.aec = aec
+    loop.aec = DuplexAEC()
 
     await loop.respond("скажи щось")
 
     assert audio.mute_log and not any(audio.mute_log), (
         "with an active AEC the mic must stay open while speaking"
     )
-    assert aec.far, "spoken audio must reach the canceller as far-end"
+    assert audio.played, "the reply still reaches the speaker"
 
 
 async def test_interrupted_reply_stops_feeding_the_speaker() -> None:
@@ -439,3 +442,60 @@ async def test_interrupt_switch_off_lets_the_reply_finish() -> None:
 
     await asyncio.wait_for(_cut(), timeout=2.0)
     run2.cancel()
+
+
+async def test_a_stale_interrupt_does_not_silence_the_next_service_phrase() -> None:
+    """Cancel pressed while nothing was speaking used to latch the flag:
+    only respond() ever cleared it, so the next service phrase — a role
+    ack, an end-of-session summary — was written into history as if said
+    and never reached the speaker. The room heard a mute assistant."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+
+    loop._interrupted = True  # the dashboard's Cancel, with no reply running
+
+    await loop._say_now("Роль «мітинг» активна.")
+
+    assert audio.played, "a freshly requested service phrase must be heard"
+    assert loop.history[-1] == {
+        "role": "assistant", "content": "Роль «мітинг» активна."
+    }
+    assert loop._interrupted is False
+
+
+async def test_barge_in_during_a_service_phrase_still_stops_it() -> None:
+    """The flag is per-utterance now — it must still cut the utterance it
+    belongs to, mid-phrase."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+
+    async def chunked(text: str) -> AsyncIterator[bytes]:
+        yield b"PCM:1"
+        loop._interrupted = True  # the user talks over the phrase
+        yield b"PCM:2"
+
+    loop.synthesise = chunked
+    await loop._say_now("довга службова фраза")
+
+    assert audio.played == [b"PCM:1"], "audio after the interrupt must not play"
+
+
+async def test_barge_in_mid_reply_still_stops_the_speaker() -> None:
+    """Regression guard for the behaviour the per-utterance reset must not
+    cost: an interrupt inside a reply stops feeding the speaker at the
+    very next chunk, while the full text still lands in history."""
+    audio = FakeAudio()
+    loop = _make_loop(audio, reply_deltas=["Довга відповідь."])
+    loop.aec = DuplexAEC()
+
+    async def chunked(text: str) -> AsyncIterator[bytes]:
+        yield b"PCM:a"
+        loop._interrupted = True
+        yield b"PCM:b"
+
+    loop.synthesise = chunked
+    reply = await loop.respond("розкажи довго")
+
+    assert audio.played == [b"PCM:a"]
+    assert reply == "Довга відповідь."
+    assert loop.history[-1]["content"] == "Довга відповідь."

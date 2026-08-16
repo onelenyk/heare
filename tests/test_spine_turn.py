@@ -218,3 +218,102 @@ def test_finished_sentence_still_answers_promptly() -> None:
     a.transcript("Котра година?")
     t[0] = 1.05
     assert a.poll() == "Котра година?", "a complete question must not wait"
+
+
+# -- a turn interrupted by a machine suspend is dropped, not answered ----
+#
+# The hold is measured on the monotonic clock, which does not advance
+# while the machine is suspended. Fragments held when the lid closed are
+# therefore still one hold away from closing when it opens hours later —
+# and would close into a turn and get answered. Both clocks are
+# injectable so a suspend can be simulated without suspending.
+
+
+def make_clocks(start: float = 0.0, wall_start: float = 1_700_000_000.0):
+    """Return (clock, wall, advance) where advance moves both together."""
+    mono = [start]
+    wall = [wall_start]
+
+    def clock() -> float:
+        return mono[0]
+
+    def wall_clock() -> float:
+        return wall[0]
+
+    def advance(delta: float, *, wall_only: float = 0.0) -> None:
+        mono[0] += delta
+        wall[0] += delta + wall_only
+
+    return clock, wall_clock, advance
+
+
+def test_fragments_held_across_a_suspend_are_dropped() -> None:
+    """Half a sentence from before the lid closed must not be answered an
+    hour later, into a room the user may not even be in."""
+    clock, wall, advance = make_clocks()
+    ta = TurnAssembler(hold_s=HOLD, clock=clock, wall=wall)
+
+    ta.transcript("я хотів попросити тебе")
+    assert ta.open is True
+
+    # lid closed: an hour of wall time, no monotonic time
+    advance(0.2, wall_only=3600.0)
+
+    assert ta.poll() is None, "a turn from before the suspend must not close"
+    assert ta.open is False, "and it must not still be held"
+
+    # the assembler is fully usable again right after
+    ta.transcript("новий початок.")
+    advance(HOLD)
+    assert ta.poll() == "новий початок."
+
+
+def test_a_fragment_after_a_suspend_does_not_join_the_old_turn() -> None:
+    """Even if the first call after resume is a transcript rather than a
+    poll, the new sentence must stand alone."""
+    clock, wall, advance = make_clocks()
+    ta = TurnAssembler(hold_s=HOLD, clock=clock, wall=wall)
+
+    ta.transcript("до сну я казав")
+
+    advance(0.2, wall_only=7200.0)  # two hours suspended
+
+    ta.transcript("а це вже зовсім інша розмова.")
+    advance(HOLD)
+    assert ta.poll() == "а це вже зовсім інша розмова."
+
+
+def test_a_normal_gap_is_not_a_suspend() -> None:
+    """Ten seconds where both clocks advance together is an ordinary gap:
+    the turn closes normally with its fragments intact."""
+    clock, wall, advance = make_clocks()
+    ta = TurnAssembler(hold_s=HOLD, clock=clock, wall=wall)
+
+    ta.transcript("перший фрагмент.")
+    advance(10.0)  # both clocks, together
+    assert ta.poll() == "перший фрагмент."
+
+
+def test_small_clock_jitter_does_not_drop_a_turn() -> None:
+    """A divergence under the threshold is scheduler noise or a small NTP
+    slew, not a suspend — dropping a turn for it would eat real speech."""
+    clock, wall, advance = make_clocks()
+    ta = TurnAssembler(hold_s=HOLD, clock=clock, wall=wall, suspend_threshold_s=5.0)
+
+    ta.transcript("фрагмент, що має вижити.")
+    advance(HOLD, wall_only=4.0)  # 4s of divergence, under the threshold
+    assert ta.poll() == "фрагмент, що має вижити."
+
+
+def test_speech_started_after_a_suspend_drops_the_old_turn() -> None:
+    clock, wall, advance = make_clocks()
+    ta = TurnAssembler(hold_s=HOLD, clock=clock, wall=wall)
+
+    ta.transcript("обірвана думка")
+    advance(0.1, wall_only=3600.0)
+
+    ta.speech_started()
+    assert ta.open is True  # speaking now, but nothing held from before
+    ta.transcript("свіже речення.")
+    advance(HOLD)
+    assert ta.poll() == "свіже речення."

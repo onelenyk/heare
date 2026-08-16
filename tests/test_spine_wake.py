@@ -252,3 +252,132 @@ def test_sleep_forces_asleep_mid_window() -> None:
     clock.set(11.0)
     assert gate.accepts("докер, я тут") is True
     assert gate.awake is True
+
+
+# -- 8. a machine suspend closes the window ---------------------------------
+#
+# time.monotonic() does not advance while the machine is suspended, so a
+# window measured with it alone survives a night of sleep: "45 seconds
+# since the last accepted turn" is true only because the clock slept too.
+# The gate reads a wall clock beside it; wall time running ahead of
+# monotonic time is time the machine was not running. Both clocks are
+# injectable, so these tests simulate a suspend without suspending.
+
+
+def test_a_suspend_puts_the_gate_back_to_sleep() -> None:
+    """The lid was closed mid-conversation and opened an hour later.
+
+    On the monotonic clock only two seconds passed, so the 45s window is
+    wide open and the first sentence anyone says in the room would go to
+    the LLM with no wake word. The wall clock says an hour. The gate has
+    to be asleep.
+    """
+    mono = Clock(100.0)
+    wall = Clock(1_700_000_000.0)
+    gate = WakeGate(
+        phrases=doka_phrases(),
+        window_s=45.0,
+        clock=as_clock(mono),
+        wall=as_clock(wall),
+    )
+
+    assert gate.accepts("дока привіт") is True
+    assert gate.awake is True
+
+    # lid closed; one hour of wall time, two seconds of monotonic time
+    mono.set(102.0)
+    wall.set(1_700_000_000.0 + 3600.0)
+
+    assert gate.accepts("а це я вже комусь іншому в кімнаті") is False
+    assert gate.awake is False
+
+    # and it is not wedged: the wake phrase still works afterwards
+    mono.set(103.0)
+    wall.set(1_700_000_000.0 + 3601.0)
+    assert gate.accepts("докер, я повернувся") is True
+    assert gate.awake is True
+
+
+def test_a_normal_gap_is_not_a_suspend() -> None:
+    """Ten seconds where both clocks advance together is just a pause in
+    the conversation — the window must stay open."""
+    mono = Clock(0.0)
+    wall = Clock(1_700_000_000.0)
+    gate = WakeGate(
+        phrases=doka_phrases(),
+        window_s=45.0,
+        clock=as_clock(mono),
+        wall=as_clock(wall),
+    )
+
+    assert gate.accepts("дока привіт") is True
+
+    mono.set(10.0)
+    wall.set(1_700_000_000.0 + 10.0)
+
+    assert gate.accepts("а тепер по суті") is True
+    assert gate.awake is True
+
+
+def test_small_clock_jitter_is_not_a_suspend() -> None:
+    """Clocks do not tick in lockstep — a scheduler hiccup or a small NTP
+    slew must not cost the user a wake word. Only a divergence past the
+    threshold counts."""
+    mono = Clock(0.0)
+    wall = Clock(1_700_000_000.0)
+    gate = WakeGate(
+        phrases=doka_phrases(),
+        window_s=45.0,
+        clock=as_clock(mono),
+        wall=as_clock(wall),
+        suspend_threshold_s=5.0,
+    )
+
+    assert gate.accepts("дока привіт") is True
+
+    mono.set(5.0)
+    wall.set(1_700_000_000.0 + 9.0)  # 4s of divergence, under the threshold
+
+    assert gate.accepts("продовжуємо") is True
+    assert gate.awake is True
+
+
+def test_check_suspend_reports_and_sleeps_without_a_turn() -> None:
+    """The engine can poll it, so `awake` is honest before anyone speaks."""
+    mono = Clock(0.0)
+    wall = Clock(1_700_000_000.0)
+    gate = WakeGate(
+        phrases=doka_phrases(),
+        window_s=45.0,
+        clock=as_clock(mono),
+        wall=as_clock(wall),
+    )
+
+    assert gate.accepts("дока привіт") is True
+    assert gate.check_suspend() is False  # nothing happened yet
+    assert gate.awake is True
+
+    mono.set(1.0)
+    wall.set(1_700_000_000.0 + 7200.0)
+    assert gate.check_suspend() is True
+    assert gate.awake is False
+
+
+def test_required_false_is_unaffected_by_a_suspend() -> None:
+    """With the wake word not required there is no promise to keep: the
+    gate must not report itself asleep after a suspend."""
+    mono = Clock(0.0)
+    wall = Clock(1_700_000_000.0)
+    gate = WakeGate(
+        phrases=["докер"],
+        window_s=45.0,
+        required=False,
+        clock=as_clock(mono),
+        wall=as_clock(wall),
+    )
+
+    mono.set(1.0)
+    wall.set(1_700_000_000.0 + 3600.0)
+
+    assert gate.accepts("будь-що після сну") is True
+    assert gate.awake is True

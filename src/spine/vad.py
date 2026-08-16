@@ -2,7 +2,12 @@ from dataclasses import dataclass
 from enum import Enum
 import struct
 import math
+import time
 from collections import deque
+
+# Bound at import so a test can swap the clock without patching the
+# stdlib module for everyone else.
+_monotonic = time.monotonic
 
 
 class EventKind(Enum):
@@ -23,6 +28,18 @@ class EnergyVAD:
     (dBFS); ends after `stop_ms` of consecutive frames below it. A ring of
     `preroll_ms` pre-speech frames is prepended so the first word is not
     clipped. `max_utterance_s` forces an END during continuous speech.
+
+    Every threshold above is counted in FED frames, so a VAD that stops
+    being fed simply freezes: `in_speech` stays True and `pending_frames`
+    holds the tail of the sentence for as long as the silence lasts.
+    Muting the microphone does exactly that (the audio layer drops frames
+    before they reach here), and on unmute the next quiet stretch emits an
+    END whose utterance is *pre-mute audio glued to post-unmute audio* —
+    the words someone muted to avoid get transcribed and answered. So the
+    stream's wall clock is checked too: a hole longer than `gap_ms`
+    between two fed frames discards whatever was in flight
+    (`drop_in_flight`). It is one `time.monotonic()` per frame, and it is
+    correct even when nobody remembers to announce the mute.
     """
 
     def __init__(
@@ -34,10 +51,19 @@ class EnergyVAD:
         stop_ms: int = 600,
         preroll_ms: int = 300,
         max_utterance_s: float = 30.0,
+        gap_ms: int = 1000,
     ) -> None:
         self.rate = rate
         self.frame_ms = frame_ms
         self.threshold_db = threshold_db
+
+        # Wall-clock hole that means "frames stopped arriving": deliberately
+        # well above frame_ms and above the 600 ms stop window, because
+        # frames can also arrive in a burst after the event loop stalls,
+        # and dropping a live sentence over scheduling jitter would be a
+        # worse bug than the one this guards. 0 disables the check.
+        self.gap_ms = gap_ms
+        self._last_feed_ts: float | None = None
 
         # Convert time thresholds to frame counts.
         # Frame count = (time_ms * rate / 1000) / (frame_ms * rate / 1000) = time_ms / frame_ms
@@ -89,7 +115,21 @@ class EnergyVAD:
         Returns START exactly once at onset (after start_ms of loud frames).
         Returns END exactly once with utterance bytes (preroll + speech).
         Otherwise returns None.
+
+        A frame arriving more than `gap_ms` after the previous one means
+        the microphone stream had a hole (mute, device switch, a stalled
+        producer). Whatever was in flight belongs to the other side of
+        that hole and is discarded before this frame is looked at — no
+        END is emitted for it, because the audio nobody could hear is
+        exactly the audio nobody asked to have transcribed.
         """
+        if self.gap_ms:
+            now = _monotonic()
+            last = self._last_feed_ts
+            self._last_feed_ts = now
+            if last is not None and (now - last) * 1000.0 >= self.gap_ms:
+                self.drop_in_flight()
+
         energy_db = self._rms_db(frame)
         is_loud = energy_db > self.threshold_db
 
@@ -155,8 +195,24 @@ class EnergyVAD:
 
         return None
 
-    def reset(self) -> None:
-        """Reset VAD state."""
+    def drop_in_flight(self) -> int:
+        """Throw away the utterance being collected; return bytes dropped.
+
+        Safe to call at any point, mid-utterance included: it touches only
+        the per-utterance state (pending frames, saved preroll, the preroll
+        ring, the hysteresis counters), never the thresholds, so the next
+        frame is judged exactly as a fresh VAD would judge it. No event is
+        returned — the audio is discarded, not ended.
+
+        The preroll ring is emptied along with the rest on purpose: those
+        frames are pre-gap audio too, and keeping them would prepend the
+        muted words to the next utterance, which is the whole bug.
+
+        The caller is left holding a START with no matching END if the drop
+        lands mid-speech; that is the honest report — the utterance never
+        finished — and callers that count starts must treat this as one.
+        """
+        dropped = sum(len(f) for f in self.pending_frames) + len(self.saved_preroll)
         self.above_threshold_count = 0
         self.below_threshold_count = 0
         self.in_speech = False
@@ -164,6 +220,14 @@ class EnergyVAD:
         self.preroll_buffer.clear()
         self.pending_frames.clear()
         self.saved_preroll = b""
+        return dropped
+
+    def reset(self) -> None:
+        """Reset VAD state."""
+        # Same clearing, kept as one implementation: reset() is the
+        # no-questions-asked version of drop_in_flight().
+        self.drop_in_flight()
+        self._last_feed_ts = None
 
 
 def loud_ms(

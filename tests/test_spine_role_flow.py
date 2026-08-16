@@ -31,6 +31,7 @@ class FakeRoleManager:
         self.active = None
         self.turns: list = []
         self.finished_with: list | None = None
+        self.cancelled = False
 
     def start(self, role):
         self.active = role
@@ -49,6 +50,14 @@ class FakeRoleManager:
             spoken = "Підсумував. Два рішення."
 
         return _A()
+
+    def cancel(self):
+        """RoleManager.cancel — how a session is dropped when it could not
+        be ended properly. The flow falls back to it so a failed finish
+        cannot leave a session running with nobody recording it."""
+        role, self.active = self.active, None
+        self.cancelled = True
+        return f'Роль «{role.name}» скасована.' if role else None
 
 
 def _wire_roles(loop, role):
@@ -272,6 +281,116 @@ async def test_empty_session_does_not_announce_a_summary_it_will_not_build() -> 
 
     await asyncio.wait_for(_done(), timeout=2.0)
     assert "збираю" not in b"".join(audio.played).decode().lower()
+
+
+# -- the end of a session must never latch -----------------------------
+
+
+async def _finished(flow, timeout: float = 2.0) -> None:
+    async def _wait() -> None:
+        while flow.finishing:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_wait(), timeout=timeout)
+
+
+async def test_a_dead_speaker_does_not_leave_the_assistant_deaf() -> None:
+    """The worst latch in the spine: `finishing` holds every turn, and the
+    two spoken lines of finish() sat outside the try that cleared it. One
+    ffmpeg that is not installed and the assistant listened, transcribed,
+    paid Groq and answered nothing until a restart."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    flow = loop.role_flow
+
+    await flow.handle("Дока, почни мітинг")     # log channel: speaker muted
+    await flow.handle("обговорюємо бюджет")     # something to summarise
+
+    async def dead_mouth(text: str):
+        raise RuntimeError("ffmpeg not found")
+        yield b""  # pragma: no cover
+
+    loop.synthesise = dead_mouth
+
+    await flow.handle("ну все, закінчили")
+    await _finished(flow)
+
+    assert flow.finishing is False, "the latch must be cleared on every path"
+    assert flow.role_manager.active is None, "the session must be closed"
+    assert audio.mute_output is False, "the speaker must be un-muted again"
+
+    # And the very next turn is ordinary conversation again, not swallowed.
+    loop.synthesise = _make_loop(audio).synthesise  # the mouth is back
+    assert await flow.handle("а що там з диском?") is False
+    assert await loop.respond("а що там з диском?") == "Вітаю!"
+
+
+async def test_a_refusing_model_does_not_leave_the_assistant_deaf() -> None:
+    """Same latch through the other door: the artifact build is one whole
+    LLM call, and a provider that raises must still end the session."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    flow = loop.role_flow
+
+    await flow.handle("Дока, почни мітинг")
+    await flow.handle("обговорюємо бюджет")
+
+    async def refusing_chat(messages):
+        raise RuntimeError("insufficient balance")
+        yield ""  # pragma: no cover
+
+    loop.stream_chat = refusing_chat
+
+    await flow.handle("ну все, закінчили")
+    await _finished(flow)
+
+    assert flow.finishing is False
+    assert flow.role_manager.active is None
+    assert flow.role_manager.cancelled is True, (
+        "a finish that never deactivated must fall back to cancel()"
+    )
+    assert audio.mute_output is False
+    spoken = b"".join(audio.played).decode()
+    assert "Роль завершено" in spoken, "the failure is still said out loud"
+    assert await flow.handle("а що там з диском?") is False
+
+
+async def test_a_failing_finish_task_is_logged_not_swallowed(caplog) -> None:
+    """finish() runs off the turn loop. A bare create_task() is garbage
+    collectable mid-flight and never has its exception retrieved — the
+    session would die in silence with nothing in the journal."""
+    import logging
+
+    caplog.set_level(logging.ERROR, logger="spine.role_flow")
+    loop = _make_loop(FakeAudio())
+    role = FakeRole()
+    _wire_roles(loop, role)
+    flow = loop.role_flow
+    flow.role_manager.start(role)
+
+    async def exploding_finish() -> None:
+        raise RuntimeError("щось геть зламалось")
+
+    flow.finish = exploding_finish
+
+    assert await flow.handle("закінчили") is True
+
+    def _ours() -> list:
+        return [r for r in caplog.records if r.name == "spine.role_flow"]
+
+    async def _logged() -> None:
+        while not _ours():
+            await asyncio.sleep(0.01)
+
+    # The flow itself must report it — not asyncio's "Task exception was
+    # never retrieved", which only fires whenever the task is collected.
+    await asyncio.wait_for(_logged(), timeout=2.0)
+    text = "\n".join(r.getMessage() for r in _ours())
+    assert "role finish" in text and "щось геть зламалось" in text
 
 
 # -- the seam between the conductor and the policy ---------------------

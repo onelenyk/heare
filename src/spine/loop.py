@@ -25,6 +25,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "розмітки, списків і коду. Одна-три фрази, як у живій розмові."
 )
 
+# Said out loud when a turn dies on infrastructure (the model, the mouth,
+# anything below them). The whole history of this project is failures that
+# look like silence, and silence is indistinguishable from "it did not hear
+# me" — so a broken turn must still end with a sound.
+FAILURE_LINE = "Щось пішло не так — не змогла відповісти."
+
 # The generator keeps only a short tail of the dialogue: the skeleton has
 # no summarisation yet, and an unbounded history would slowly push the
 # system prompt out of the model's attention.
@@ -40,6 +46,12 @@ _ROLE_ATTRS = {
     "role_finishing": "finishing", "_role_log": "log",
     "_role_ended_ts": "ended_ts",
 }
+
+
+class _MouthFailed(Exception):
+    """Marker: the speaking path failed (TTS, ffmpeg, the sound device),
+    not the model. The distinction matters for history — the words were
+    produced, only the voice for them was not."""
 
 
 class AudioLike(Protocol):
@@ -109,8 +121,11 @@ class SpineLoop:
     # its sentence even when talked over — some rooms want that.
     barge_in_enabled: bool = True
     # Set when the user starts talking over the assistant (full duplex
-    # only); respond() checks it between chunks and stops feeding the
-    # speaker, while still collecting the full reply text for history.
+    # only) or when the dashboard's Cancel is pressed; respond() checks it
+    # between chunks and stops feeding the speaker, while still collecting
+    # the full reply text for history. It describes the utterance being
+    # spoken, so every freshly requested one — respond(), _say_now() —
+    # clears it first; otherwise it is a latch that mutes the assistant.
     _interrupted: bool = False
 
     @property
@@ -181,6 +196,12 @@ class SpineLoop:
             return
         while True:
             frame = await self.audio.input_frames.get()
+            # The mic was muted and came back: whatever the VAD was
+            # holding belongs to the other side of that hole.
+            if getattr(self.audio, "take_input_gap", lambda: False)():
+                dropped = self.vad.drop_in_flight()
+                if dropped:
+                    logger.info("mic gap — dropped %d bytes in flight", dropped)
             if self.aec is not None:
                 frame = self.aec.process(frame)
             event = self.vad.feed(frame)
@@ -194,12 +215,11 @@ class SpineLoop:
                     # Barge-in: the user talks over the assistant. Drop
                     # what is queued and tell respond() to stop feeding.
                     self._interrupted = True
+                    # stop_playback also clears the far-end reference:
+                    # bytes that never leave the speaker must not be
+                    # subtracted as echo from the very utterance that
+                    # interrupted them.
                     dropped = self.audio.stop_playback()
-                    # The dropped bytes are already in the AEC reference
-                    # but will never leave the speaker — without this the
-                    # canceller subtracts a phantom echo from exactly the
-                    # utterance the user is interrupting with.
-                    self.aec.clear()
                     logger.info("barge-in: dropped %d queued bytes", dropped)
             elif kind == "end":
                 # Off the hot path — but through a single worker, not
@@ -283,6 +303,14 @@ class SpineLoop:
         part of the conversation, so it lands in history too."""
         if not text:
             return
+        # The interrupt belongs to the utterance being spoken, not to the
+        # loop. A service phrase is requested fresh, in the present tense,
+        # so an interrupt left over from before it existed — the dashboard
+        # Cancel pressed while nothing was playing, a barge-in whose own
+        # speech the junk filter then dropped — must not silence it. It
+        # used to: the ack landed in history as if said, and the room
+        # heard nothing. Only respond() cleared this flag.
+        self._interrupted = False
         logger.info("say (service): %r", text[:70])
         self.history.append({"role": "assistant", "content": text})
         if self.audio is None:
@@ -352,53 +380,126 @@ class SpineLoop:
         half_duplex = speaking and not self._duplex
         if half_duplex:
             self.audio.mute_input = True
+
+        # None = the turn completed; "mind" = the model (or the prompt
+        # path below it) died; "mouth" = the words existed but could not
+        # be voiced. An infrastructure failure never leaves respond() as
+        # an exception: the user gets a sentence, not silence.
+        failure: str | None = None
         try:
-            async for sentence in self.split_sentences(_deltas()):
-                logger.info("say: %r", sentence)
-                if speaking and not self._interrupted:
-                    await self._speak(sentence)
-
-            # The model answered with actions instead of (or besides)
-            # words: run them and speak each short acknowledgement.
-            # A barge-in cancels pending actions too — "стоп" must not
-            # be followed by the very delegation it was stopping.
-            for call in tool_calls:
-                if self._interrupted:
-                    break
-                spoken = await self._run_tool(call)
-                if spoken:
-                    parts.append((" " if parts else "") + spoken)
+            try:
+                async for sentence in self.split_sentences(_deltas()):
+                    logger.info("say: %r", sentence)
                     if speaking and not self._interrupted:
-                        await self._speak(spoken)
+                        await self._speak_guarded(sentence)
 
-            if speaking:
-                # play() only queues; wait for the buffer to drain (in
-                # half duplex the mic stays muted until then). Bounded: a
-                # stalled output device must not wedge the loop forever.
-                try:
-                    await asyncio.wait_for(self._drain_playback(), timeout=60.0)
-                except asyncio.TimeoutError:
-                    dropped = self.audio.stop_playback()
-                    logger.warning(
-                        "playback wedged — dropped %d queued bytes", dropped
-                    )
-        finally:
-            if half_duplex:
-                self.audio.mute_input = False
+                # The model answered with actions instead of (or besides)
+                # words: run them and speak each short acknowledgement.
+                # A barge-in cancels pending actions too — "стоп" must not
+                # be followed by the very delegation it was stopping.
+                for call in tool_calls:
+                    if self._interrupted:
+                        break
+                    spoken = await self._run_tool(call)
+                    if spoken:
+                        parts.append((" " if parts else "") + spoken)
+                        if speaking and not self._interrupted:
+                            await self._speak_guarded(spoken)
 
-        reply = "".join(parts).strip()
-        if reply:
-            self.history.append({"role": "assistant", "content": reply})
-            if self.persist is not None and turn_id is not None:
+                if speaking:
+                    # play() only queues; wait for the buffer to drain (in
+                    # half duplex the mic stays muted until then). Bounded: a
+                    # stalled output device must not wedge the loop forever.
+                    try:
+                        await asyncio.wait_for(self._drain_playback(), timeout=60.0)
+                    except asyncio.TimeoutError:
+                        dropped = self.audio.stop_playback()
+                        logger.warning(
+                            "playback wedged — dropped %d queued bytes", dropped
+                        )
+            finally:
+                if half_duplex:
+                    self.audio.mute_input = False
+        except asyncio.CancelledError:
+            # Shutdown, not a fault: it must reach the task that cancelled
+            # us, and it must not be answered with an apology out loud.
+            raise
+        except _MouthFailed:
+            logger.exception("mouth failed: reply produced but not voiced")
+            failure = "mouth"
+        except Exception:
+            logger.exception("mind failed: no reply for %r", user_text[:80])
+            failure = "mind"
+
+        # A mouth failure keeps whatever the model said — those words
+        # existed, and the next prompt must see the answer the user was
+        # (partly) given. A mind failure throws its fragment away: half a
+        # sentence cut by a reset stream is not an answer, and carrying it
+        # forward would make every later prompt quote a truncated one.
+        reply = "" if failure == "mind" else "".join(parts).strip()
+
+        # What the assistant's turn IS, for history, the DB and a role
+        # transcript alike. A failed turn is recorded rather than erased:
+        # the user heard something (the failure line), the DB already has
+        # the user's row, and leaving that row unanswered is the same lie
+        # in the database that silence is in the room.
+        recorded = reply or (FAILURE_LINE if failure is not None else "")
+        try:
+            if reply:
+                self.history.append({"role": "assistant", "content": reply})
+            if failure is not None:
+                # Goes through the service-phrase path, which also lands
+                # the line in history — so no user turn is ever left
+                # unanswered there.
+                await self._say_failure_line(speak)
+            if recorded and self.persist is not None and turn_id is not None:
                 try:
                     await asyncio.to_thread(
-                        self.persist.log_agent_reply, reply, turn_id
+                        self.persist.log_agent_reply, recorded, turn_id
                     )
                 except Exception:
                     logger.exception("persist failed (non-fatal)")
-        if self.role_flow is not None:
-            self.role_flow.note_exchange(user_text, reply, turn_id)
+        finally:
+            # In a role session the turns row exists the moment the user
+            # spoke; if the exchange never reaches the flow, the artifact
+            # silently omits a turn the database has. It runs on every
+            # exit, failure included.
+            if self.role_flow is not None:
+                try:
+                    self.role_flow.note_exchange(user_text, recorded, turn_id)
+                except Exception:
+                    logger.exception("note_exchange failed (non-fatal)")
         return reply
+
+    async def _speak_guarded(self, sentence: str) -> None:
+        """_speak, with its failures labelled as the mouth's."""
+        try:
+            await self._speak(sentence)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise _MouthFailed(sentence[:60]) from exc
+
+    async def _say_failure_line(self, speak: bool = True) -> None:
+        """Say the one fixed line that ends a broken turn. Never raises:
+        it is called from the failure path, and a mouth that just died is
+        exactly the mouth being asked to say this."""
+        if not speak:
+            # Text-only caller (the CLI's one-shot mode): the turn still
+            # needs its assistant row, but nothing may hit the speaker.
+            self.history.append({"role": "assistant", "content": FAILURE_LINE})
+            return
+        try:
+            await self._say_now(FAILURE_LINE)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("failure line could not be spoken")
+        # _say_now records it as it speaks; if it died before doing so,
+        # the turn would be left unanswered — which is the bug this
+        # whole path exists to prevent.
+        if not self.history or self.history[-1].get("content") != FAILURE_LINE:
+            self.history.append({"role": "assistant", "content": FAILURE_LINE})
 
     async def _speak(self, sentence: str) -> None:
         import time as _time
@@ -408,8 +509,6 @@ class SpineLoop:
         async for chunk in self.synthesise(sentence):
             if self._interrupted:
                 break
-            if self.aec is not None:
-                self.aec.push_far(chunk)
             self.audio.play(chunk)
             chars = len(sentence)
         if chars and self.usage is not None:

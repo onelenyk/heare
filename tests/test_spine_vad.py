@@ -297,6 +297,160 @@ def test_failed_onset_is_abandoned_not_accumulated() -> None:
     assert len(events[-1].utterance) <= max_reasonable
 
 
+# -- muting the mic must not post-date the words it hid ----------------
+
+
+class _FakeClock:
+    """A hand-cranked time.monotonic for the gap check."""
+
+    def __init__(self) -> None:
+        self.t = 1000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+    def advance_ms(self, ms: float) -> None:
+        self.t += ms / 1000.0
+
+
+def _clocked_vad(monkeypatch, **kw) -> tuple[EnergyVAD, _FakeClock]:
+    import src.spine.vad as vad_mod
+
+    clock = _FakeClock()
+    monkeypatch.setattr(vad_mod, "_monotonic", clock)
+    return EnergyVAD(**kw), clock
+
+
+def _feed_live(vad, clock, frame: bytes, n: int) -> list:
+    """n frames arriving in real time (one frame_ms apart)."""
+    out = []
+    for _ in range(n):
+        clock.advance_ms(vad.frame_ms)
+        e = vad.feed(frame)
+        if e:
+            out.append(e)
+    return out
+
+
+LOUD_BEFORE = _speech_frame(12000)
+LOUD_AFTER = _speech_frame(6000)
+
+
+def test_mute_midsentence_does_not_glue_pre_mute_audio_to_the_next_utterance(
+    monkeypatch,
+) -> None:
+    """The bug: the mic is muted mid-sentence, so frames stop arriving and
+    the VAD freezes with the tail of that sentence pending. On unmute the
+    first quiet stretch emits it — the words someone muted to avoid go to
+    STT and get answered."""
+    vad, clock = _clocked_vad(monkeypatch)
+    silence = b"\x00" * 640
+
+    _feed_live(vad, clock, silence, 20)
+    events = _feed_live(vad, clock, LOUD_BEFORE, 10)   # mid-sentence...
+    assert [e.kind for e in events] == [EventKind.START]
+    assert vad.in_speech is True
+
+    clock.advance_ms(45 * 60 * 1000)                   # ...muted for 45 min
+
+    events = _feed_live(vad, clock, LOUD_AFTER, 10)    # unmute, new words
+    events += _feed_live(vad, clock, silence, 31)
+    kinds = [e.kind for e in events]
+    assert kinds == [EventKind.START, EventKind.END]
+
+    utterance = events[-1].utterance
+    assert LOUD_BEFORE not in utterance, "pre-mute audio must never be sent"
+    assert LOUD_AFTER in utterance, "post-unmute audio is the utterance"
+
+
+def test_a_long_mute_does_not_leave_the_vad_stuck_in_speech(monkeypatch) -> None:
+    vad, clock = _clocked_vad(monkeypatch)
+    _feed_live(vad, clock, LOUD_BEFORE, 10)
+    assert vad.in_speech is True
+
+    clock.advance_ms(30_000)
+    vad.feed(b"\x00" * 640)
+
+    assert vad.in_speech is False
+    assert vad.pending_frames == []
+    assert vad.saved_preroll == b""
+
+
+def test_the_preroll_ring_is_dropped_across_a_gap_too(monkeypatch) -> None:
+    """Pre-mute silence-buffer frames are pre-mute audio as well; kept,
+    they would be prepended to whatever is said after the unmute."""
+    vad, clock = _clocked_vad(monkeypatch)
+    quiet_but_real = _speech_frame(40)  # below threshold, non-zero bytes
+
+    _feed_live(vad, clock, quiet_but_real, 15)
+    assert len(vad.preroll_buffer) > 0
+
+    clock.advance_ms(5_000)
+    events = _feed_live(vad, clock, LOUD_AFTER, 10)
+    events += _feed_live(vad, clock, b"\x00" * 640, 31)
+
+    assert [e.kind for e in events] == [EventKind.START, EventKind.END]
+    assert quiet_but_real not in events[-1].utterance
+
+
+def test_normal_jittery_stream_is_not_mistaken_for_a_gap(monkeypatch) -> None:
+    """Frames arriving late — a stalled event loop draining its queue —
+    must not cost the user a live sentence."""
+    vad, clock = _clocked_vad(monkeypatch)
+    silence = b"\x00" * 640
+
+    _feed_live(vad, clock, silence, 20)
+    events = _feed_live(vad, clock, LOUD_BEFORE, 5)
+    clock.advance_ms(300)                       # a 300 ms hiccup
+    events += _feed_live(vad, clock, LOUD_BEFORE, 5)
+    events += _feed_live(vad, clock, silence, 31)
+
+    assert [e.kind for e in events] == [EventKind.START, EventKind.END]
+    assert LOUD_BEFORE in events[-1].utterance, "the sentence survives jitter"
+
+
+def test_gap_check_can_be_switched_off(monkeypatch) -> None:
+    vad, clock = _clocked_vad(monkeypatch, gap_ms=0)
+    _feed_live(vad, clock, LOUD_BEFORE, 10)
+    clock.advance_ms(60_000)
+    vad.feed(b"\x00" * 640)
+    assert vad.in_speech is True, "gap_ms=0 keeps the old behaviour"
+
+
+def test_drop_in_flight_reports_what_it_discarded() -> None:
+    vad = EnergyVAD()
+    for _ in range(10):
+        vad.feed(LOUD_BEFORE)
+    assert vad.in_speech is True
+
+    dropped = vad.drop_in_flight()
+    assert dropped == 10 * 640
+    assert vad.pending_frames == []
+    assert vad.saved_preroll == b""
+    assert len(vad.preroll_buffer) == 0
+    assert vad.in_speech is False
+    assert vad.drop_in_flight() == 0
+
+
+def test_drop_in_flight_leaves_the_thresholds_alone() -> None:
+    """Called mid-utterance it must not turn the VAD into a different
+    VAD: the next frame is judged exactly as a fresh one would be."""
+    vad = EnergyVAD(threshold_db=-30.0, start_ms=120, stop_ms=600)
+    for _ in range(10):
+        vad.feed(LOUD_BEFORE)
+    vad.drop_in_flight()
+
+    assert vad.threshold_db == -30.0
+    assert (vad.start_frames, vad.stop_frames) == (6, 30)
+
+    events = []
+    for _ in range(6):
+        e = vad.feed(LOUD_AFTER)
+        if e:
+            events.append(e)
+    assert [e.kind for e in events] == [EventKind.START]
+
+
 def test_loud_ms_measures_only_loud_audio() -> None:
     from src.spine.vad import loud_ms
 

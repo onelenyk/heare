@@ -226,12 +226,18 @@ class HeareMenuBar(rumps.App):
                         pipeline_task = asyncio.create_task(
                             self._run_pipeline(settings, state, api)
                         )
-                        pipeline_task.add_done_callback(
-                            lambda t: self._set_status(
-                                error=str(t.exception()) if t.exception() else None,
-                                running=False,
-                            )
-                        )
+                        # A cancelled task raises CancelledError from
+                        # .exception() — asking without checking turned
+                        # every ordinary Stop into a crash inside the
+                        # callback, which killed the menubar's loop.
+                        def _finished(t: "asyncio.Task") -> None:
+                            error = None
+                            if not t.cancelled():
+                                exc = t.exception()
+                                error = str(exc) if exc else None
+                            self._set_status(error=error, running=False)
+
+                        pipeline_task.add_done_callback(_finished)
                         self._set_status(running=True, error=None)
 
                     elif cmd[0] == "stop":

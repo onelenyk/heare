@@ -151,6 +151,10 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
 
         aec = SpineAEC()
         loop.aec = aec
+        # The speaker owns the far-end reference: pushing it here, after
+        # the mute check inside play(), is the only way the canceller
+        # hears exactly what the room heard. See audio_io.play().
+        audio.far_sink = aec
         logger.info("aec active: %s", aec.active)
 
     memory = None
@@ -176,7 +180,9 @@ async def _wire_full(loop, settings, cfg, memory, features):
     from src.spine.prompt import build_system_prompt, load_persona
     from src.spine.role_session import RoleManager
     from src.spine.roles import RoleLoader, is_end_trigger, match_trigger
-    from src.spine.tools import VoiceToolbox, make_hands_factory
+    from src.spine.tools import (
+        SpineRecords, VoiceToolbox, make_hands_factory, open_spine_records,
+    )
     from src.spine.wake import WakeGate
 
     async def _deliver(text: str) -> None:
@@ -229,9 +235,30 @@ async def _wire_full(loop, settings, cfg, memory, features):
     # enforced gate inside the worker, not a prompt suggestion. The MCP
     # bridge is looked up at call time (``loop.mcp``) because the servers
     # connect after the loop is wired — see src/daemon/spine_engine.py.
+    # Delegated work that outlives the turn — and the process. Without
+    # these the jobs and actions tables stayed empty on this engine: a
+    # restart mid-job left the user waiting for an answer that could
+    # never arrive, and the dashboard could show what was said but never
+    # what was done.
+    records = (
+        await open_spine_records(settings.db_path)
+        if features["persist"]
+        else SpineRecords()
+    )
+    loop.records = records
+    if records.stranded:
+        logger.info("jobs: %d interrupted by a restart", len(records.stranded))
+
+    def _long_running(label: str):
+        cb = getattr(loop, "on_long_running", None)
+        return cb(label) if cb is not None else None
+
     _hands_factory = make_hands_factory(
         session_state=role_session_state,
         mcp_provider=lambda: getattr(loop, "mcp", None),
+        jobs=records.jobs,
+        conversation_manager=records.actions,
+        on_long_running=_long_running,
     )
 
     if features["tools"]:
@@ -320,7 +347,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
     # with its stdout still buffered.
     # The dashboard's memories card reads this backend through the API.
     loop.memory = memory
-    loop._closers = [persist.close]
+    loop._closers = [persist.close, records.close]
     if memory is not None:
         loop._closers.append(memory.close)
     if loop.usage is not None:

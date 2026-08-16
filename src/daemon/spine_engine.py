@@ -45,6 +45,134 @@ def _clean_gain(raw: str, fallback: float = 1.0) -> float:
     return max(GAIN_MIN, min(GAIN_MAX, value))
 
 
+# -- feature switches ------------------------------------------------
+#
+# src/spine/features.py promises that `off` means *not wired at all*.
+# Seven subsystems are switched in the composition root (src/spine/main.py);
+# the other two — the MCP bridge and telemetry — are built by this runner,
+# so this is the only place their switch can bite.
+
+# What to ask the live loop about, per feature name. An entry here makes
+# the published answer OBSERVED: the object is there, or it is not.
+# A feature with no entry can only be DECLARED — the resolved flag, which
+# is what was asked for, not proof that it was built.
+_LIVE_ATTR: dict[str, str] = {
+    "aec": "aec",
+    "wake": "wake",
+    "tools": "toolbox",
+    "roles": "role_flow",
+    "mcp": "mcp",
+    "memory": "memory",
+    "persist": "persist",
+    "usage": "usage",
+}
+
+
+def _feature(loop: Any, name: str) -> bool:
+    """Is `name` switched on for this run?
+
+    Reads the table the composition root resolved and hung on the loop
+    (env > --without > config.toml > defaults). A loop without one — an
+    older build, a test fake — falls back to the declared default, so a
+    missing table can never silently disable a subsystem.
+    """
+    from src.spine.features import FEATURES
+
+    table = getattr(loop, "features", None) or {}
+    default = next((f.default for f in FEATURES if f.name == name), True)
+    return bool(table.get(name, default))
+
+
+class _NoTelemetry:
+    """`--without telemetry`: the same shape, none of the effects.
+
+    A null object rather than an `if telemetry is not None` at every call
+    site. It opens no file and writes no line, so turns.jsonl stops
+    existing instead of being written by a subsystem reported as off.
+    """
+
+    # How wired_features() tells a real instrument from this one.
+    wired = False
+
+    def stt(self, ms: int, *, dropped: bool) -> None:
+        return None
+
+    def turn_closed(self) -> None:
+        return None
+
+    def first_delta(self) -> None:
+        return None
+
+    def first_audio(self) -> None:
+        return None
+
+    def finish(self, *, chars: int, interrupted: bool, role: str) -> None:
+        return None
+
+
+def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
+    """What is actually wired, for the dashboard — not what was asked for.
+
+    The feature table exists to bisect a bad evening, so it has to report
+    the loop that is running, not the config that described it: a
+    subsystem that failed to build must read `off`, or the instrument is
+    worse than useless.
+
+    Each entry carries ``observed``:
+
+      observed=True   the answer comes from the live object — the eight
+                      names in ``_LIVE_ATTR`` (``loop.mcp is not None``,
+                      ``loop.aec is not None``, …) plus ``telemetry``,
+                      which is the object this runner built.
+      observed=False  no object exists to ask, so the resolved flag is
+                      repeated as-is. Nothing is in this class today; the
+                      branch is here so a future feature without a live
+                      object is labelled honestly instead of silently
+                      passing itself off as a fact.
+
+    One caveat, and it is deliberate: ``mcp`` connects off the boot path
+    (a cold `npx` can take a minute), so it honestly reads `off` until the
+    bridge lands — run_spine_daemon publishes again when it does.
+    """
+    from src.spine.features import FEATURES
+
+    declared = getattr(loop, "features", None) or {}
+    entries: list[dict] = []
+    for f in FEATURES:
+        if f.name == "telemetry":
+            # A real Telemetry has no `wired` attribute; _NoTelemetry
+            # sets it False, and None means nothing was built at all.
+            on = bool(getattr(telemetry, "wired", telemetry is not None))
+            observed = True
+        elif f.name in _LIVE_ATTR:
+            on = getattr(loop, _LIVE_ATTR[f.name], None) is not None
+            observed = True
+        else:
+            on = bool(declared.get(f.name, f.default))
+            observed = False
+        entries.append(
+            {"name": f.name, "on": bool(on), "cost": f.cost, "observed": observed}
+        )
+    return entries
+
+
+def _publish_features(state: Any, loop: Any, telemetry: Any = None) -> None:
+    """Put the wired truth where the dashboard's FeaturesCard reads it.
+
+    Cache-only: it describes this process. Called again whenever a
+    subsystem appears or fails to appear after boot (the MCP bridge).
+    """
+    if state is None:
+        return
+    try:
+        state.set_cache_only(
+            "spine_features",
+            json.dumps(wired_features(loop, telemetry), ensure_ascii=False),
+        )
+    except Exception:
+        logger.debug("spine_features state write failed (non-fatal)")
+
+
 def _resolve_device(settings: Any, kind: str) -> int | None:
     """Resolve the device the API's picker wrote to a sounddevice index.
 
@@ -398,32 +526,31 @@ async def run_spine_daemon(
     # spine already opened — it was only ever set on the pipecat path.
     api._memory_backend = getattr(loop, "memory", None)
 
-    # -- what is actually wired, for the dashboard ----------------------
+    # -- telemetry: one JSONL line per turn -----------------------------
+    # Cheap, stdlib-only, never raises into the conversation. See
+    # docs/findings/measuring.md — "it feels slow" used to only be
+    # answerable by ear; this is the instrument for that question.
     #
-    # Not the config: env overrides and --without win over it, so only the
-    # engine knows the truth. The dashboard shows this as running state
-    # and writes the config for the next start — a subsystem is chosen at
-    # build time and cannot be conjured into a live loop.
-    try:
-        from src.spine.features import FEATURES
+    # Switched off it is not built at all: a null object stands in at the
+    # call sites, so no file is opened and turns.jsonl stops appearing.
+    # Built before the MCP block only so the state publisher below has it.
 
-        live = getattr(loop, "features", {}) or {}
-        state.set_cache_only(
-            "spine_features",
-            json.dumps(
-                [
-                    {
-                        "name": f.name,
-                        "on": bool(live.get(f.name, f.default)),
-                        "cost": f.cost,
-                    }
-                    for f in FEATURES
-                ],
-                ensure_ascii=False,
-            ),
-        )
-    except Exception:
-        logger.debug("spine_features state write failed (non-fatal)")
+    telemetry_on = _feature(loop, "telemetry")
+    telemetry: Any = (
+        Telemetry(settings.log_dir / "turns.jsonl")
+        if telemetry_on
+        else _NoTelemetry()
+    )
+    if not telemetry_on:
+        logger.info("telemetry: OFF — no turns.jsonl this run")
+
+    # Long delegated work has no voice of its own on this engine: the
+    # indication facade lives on the old one. A State key is enough for
+    # the dashboard to show that something is still running.
+    loop.on_long_running = lambda label: state.set_cache_only(
+        "hands_progress",
+        json.dumps({"ts": time.time(), "label": label}, ensure_ascii=False),
+    )
 
     # -- MCP: the servers in .mcp.json, made callable by the worker -----
     #
@@ -432,6 +559,7 @@ async def run_spine_daemon(
     # hung on the loop because the worker looks it up at call time and
     # _make_prompt reads it once per turn.
     loop.mcp = None
+    mcp_on = _feature(loop, "mcp")
 
     async def _connect_mcp() -> None:
         """Off the boot path: `npx -y` on a cold cache can take a minute
@@ -456,28 +584,40 @@ async def run_spine_daemon(
         _publish_mcp_status(state, bridge, ok=True)
 
     mcp_task: asyncio.Task | None = None
-    try:
-        mcp_task = asyncio.create_task(_connect_mcp(), name="spine-mcp-connect")
+    if not mcp_on:
+        # `off` means no subprocess is spawned, no tool is registered for
+        # the worker, and no config watcher can bring either back — see
+        # _poll_mcp below. The status key is written anyway so the
+        # dashboard says "off" instead of showing the last boot's servers.
+        logger.info("mcp: OFF — no servers, no external tools for the worker")
+        _publish_mcp_status(state, None, ok=False, error="off")
+    else:
+        try:
+            mcp_task = asyncio.create_task(_connect_mcp(), name="spine-mcp-connect")
 
-        def _mcp_done(task: asyncio.Task) -> None:
-            if not task.cancelled() and task.exception() is not None:
-                logger.warning("mcp: connect failed — %s", task.exception())
-                _publish_mcp_status(
-                    state, None, ok=False, error=str(task.exception())
-                )
+            def _mcp_done(task: asyncio.Task) -> None:
+                if not task.cancelled() and task.exception() is not None:
+                    logger.warning("mcp: connect failed — %s", task.exception())
+                    _publish_mcp_status(
+                        state, None, ok=False, error=str(task.exception())
+                    )
+                # Whether it landed or not, the feature card must now show
+                # what happened rather than what was asked for.
+                _publish_features(state, loop, telemetry)
 
-        mcp_task.add_done_callback(_mcp_done)
-    except Exception:
-        # Only a bug in the wiring above can land here — connect itself
-        # is already fail-soft — and even then the assistant must come up.
-        logger.exception("mcp: bridge unavailable (non-fatal)")
+            mcp_task.add_done_callback(_mcp_done)
+        except Exception:
+            # Only a bug in the wiring above can land here — connect
+            # itself is already fail-soft — and even then the assistant
+            # must come up.
+            logger.exception("mcp: bridge unavailable (non-fatal)")
 
-    # -- telemetry: one JSONL line per turn -----------------------------
-    # Cheap, stdlib-only, never raises into the conversation. See
-    # docs/findings/measuring.md — "it feels slow" used to only be
-    # answerable by ear; this is the instrument for that question.
-
-    telemetry = Telemetry(settings.log_dir / "turns.jsonl")
+    # -- what is actually wired, for the dashboard ----------------------
+    #
+    # Derived from the live loop, not from the config: env overrides and
+    # --without win over it, and a subsystem can fail to build. See
+    # wired_features() for which entries are observed and which declared.
+    _publish_features(state, loop, telemetry)
 
     def _active_role_name() -> str:
         active = loop.role_manager.active if loop.role_manager else None
@@ -541,8 +681,12 @@ async def run_spine_daemon(
     # Both also run for hint generation / role-summary calls that are
     # not part of the normal turn; first_delta() is a harmless no-op
     # then because no turn_closed() opened a window to land in.
+    #
+    # These two wrappers exist only to time the stream, so with telemetry
+    # off they are not installed at all — the model's deltas travel the
+    # path they travelled before telemetry existed.
 
-    if loop.stream_chat is not None:
+    if telemetry_on and loop.stream_chat is not None:
         real_stream_chat = loop.stream_chat
 
         def _stream_chat_with_telemetry(messages):
@@ -558,7 +702,7 @@ async def run_spine_daemon(
 
         loop.stream_chat = _stream_chat_with_telemetry
 
-    if loop.stream_events is not None:
+    if telemetry_on and loop.stream_events is not None:
         real_stream_events = loop.stream_events
 
         def _stream_events_with_telemetry(messages, tools):
@@ -589,22 +733,27 @@ async def run_spine_daemon(
 
     loop._speak = _speak_with_state
 
-    real_respond = loop.respond
+    # Purely an instrument, like the two stream wrappers: off means the
+    # turn is not wrapped at all.
+    if telemetry_on:
+        real_respond = loop.respond
 
-    async def _respond_with_telemetry(user_text: str, *, speak: bool = True) -> str:
-        telemetry.turn_closed()
-        reply = ""
-        try:
-            reply = await real_respond(user_text, speak=speak)
-            return reply
-        finally:
-            telemetry.finish(
-                chars=len(reply),
-                interrupted=loop._interrupted,
-                role=_active_role_name(),
-            )
+        async def _respond_with_telemetry(
+            user_text: str, *, speak: bool = True
+        ) -> str:
+            telemetry.turn_closed()
+            reply = ""
+            try:
+                reply = await real_respond(user_text, speak=speak)
+                return reply
+            finally:
+                telemetry.finish(
+                    chars=len(reply),
+                    interrupted=loop._interrupted,
+                    role=_active_role_name(),
+                )
 
-    loop.respond = _respond_with_telemetry
+        loop.respond = _respond_with_telemetry
 
     # -- role platform bridge: State keys the dashboard reads ----------
 
@@ -748,6 +897,11 @@ async def run_spine_daemon(
         existing generic ``POST /state`` endpoint can set from the
         dashboard, a curl, or the agent's own bash tool. Same shape as
         the ``cancel`` key above.
+
+        With ``mcp`` switched off this poller is never started: a config
+        edit (or a stray ``mcp_reload``) reconnecting the servers would
+        undo the switch a minute after boot, which is exactly the kind of
+        lie the feature table exists to prevent.
         """
         from src.agent.mcp_bridge import mcp_config_path
 
@@ -823,7 +977,9 @@ async def run_spine_daemon(
     poller = asyncio.create_task(_poll_inject(), name="spine-inject-poll")
     role_poller = asyncio.create_task(_poll_role(), name="spine-role-poll")
     ctl_poller = asyncio.create_task(_poll_controls(), name="spine-ctl-poll")
-    mcp_poller = asyncio.create_task(_poll_mcp(), name="spine-mcp-poll")
+    mcp_poller = (
+        asyncio.create_task(_poll_mcp(), name="spine-mcp-poll") if mcp_on else None
+    )
     runner = asyncio.create_task(loop.run(), name="spine-run")
     try:
         waiter = asyncio.create_task(stop.wait())
@@ -831,8 +987,12 @@ async def run_spine_daemon(
             {runner, waiter}, return_when=asyncio.FIRST_COMPLETED
         )
         for t in done:
-            if t is runner and (exc := t.exception()) is not None:
-                raise exc
+            # .exception() re-raises CancelledError on a cancelled task,
+            # so a normal shutdown must not ask.
+            if t is runner and not t.cancelled():
+                exc = t.exception()
+                if exc is not None:
+                    raise exc
     finally:
         # mcp_task may still be waiting on a cold `npx`; cancelling it
         # is why it is a named task and not a fire-and-forget coroutine.

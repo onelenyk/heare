@@ -12,6 +12,13 @@ it behaves, and the one that fixes it is the one to look at. That is
 worth more than any amount of guessing, and it is why `off` here must
 mean *not wired at all*, not "wired but told to be quiet".
 
+Two places keep that promise: the composition root (src/spine/main.py)
+switches aec, wake, tools, roles, memory, persist and usage; the daemon's
+runner (src/daemon/spine_engine.py) switches mcp and telemetry, because
+those two are built there. A name in the table that neither one consults
+is a switch that lies — tests/test_spine_features.py scans src/ for the
+lookup and fails the suite if a name is declared here and read nowhere.
+
 Sources, in order of precedence:
   HEARE_WITHOUT=roles,mcp   env, wins over everything (a bad boot)
   HEARE_SAFE_MODE=1         env, everything optional off at once
