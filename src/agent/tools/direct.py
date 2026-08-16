@@ -42,6 +42,26 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("heare.direct_tools")
 
+
+# The daemon's HTTP API. These calls went to :9778 for a long time —
+# a port nothing has ever bound (main.py and menubar.py both serve on
+# :9780) — so every tool below failed with connection-refused and said
+# so only in a warning. The token was added later still; without it the
+# same calls would now 401.
+API_BASE = "http://127.0.0.1:9780"
+
+
+def _api_headers() -> dict[str, str]:
+    """Bearer header for the local API, empty when no token exists yet."""
+    try:
+        from src.config import HEARE_HOME
+
+        token = (HEARE_HOME / "api_token").read_text("utf-8").strip()
+    except Exception:
+        return {}
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 # Memory backend singleton (set by build_pipeline)
 _memory_backend: Any = None
 
@@ -2124,8 +2144,9 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.post(
-                    "http://127.0.0.1:9778/provider",
+                    f"{API_BASE}/provider",
                     json={"provider": provider},
+                    headers=_api_headers(),
                     timeout=5,
                 )
                 if resp.status_code != 200:
@@ -2183,8 +2204,9 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.post(
-                    "http://127.0.0.1:9778/mode",
+                    f"{API_BASE}/mode",
                     json={"mode": mode},
+                    headers=_api_headers(),
                     timeout=5,
                 )
                 if resp.status_code != 200:
@@ -3495,8 +3517,9 @@ async def _execute_mute_bot(args: str, settings: "Settings | None" = None) -> di
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
-                "http://127.0.0.1:9778/mute",
+                f"{API_BASE}/mute",
                 json={"target": target},
+                headers=_api_headers(),
                 timeout=5,
             )
             if resp.status_code != 200:
@@ -3525,8 +3548,9 @@ async def _execute_mute_mic(args: str, settings: "Settings | None" = None) -> di
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
-                "http://127.0.0.1:9778/mute",
+                f"{API_BASE}/mute",
                 json={"target": target},
+                headers=_api_headers(),
                 timeout=5,
             )
             if resp.status_code != 200:
@@ -3562,8 +3586,9 @@ async def _execute_sidetone(args: str, settings: "Settings | None" = None) -> di
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
-                "http://127.0.0.1:9778/state",
+                f"{API_BASE}/state",
                 json={"key": "sidetone", "value": state_value},
+                headers=_api_headers(),
                 timeout=5,
             )
             if resp.status_code != 200:
@@ -3652,8 +3677,9 @@ async def _execute_vad_sensitivity(
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
-                "http://127.0.0.1:9778/state",
+                f"{API_BASE}/state",
                 json={"key": "vad_sensitivity", "value": str(level)},
+                headers=_api_headers(),
                 timeout=5,
             )
             if resp.status_code != 200:
@@ -3696,8 +3722,9 @@ async def _execute_mic_gain(
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
-                "http://127.0.0.1:9778/state",
+                f"{API_BASE}/state",
                 json={"key": "input_gain", "value": str(gain)},
+                headers=_api_headers(),
                 timeout=5,
             )
             if resp.status_code != 200:
@@ -3739,8 +3766,9 @@ async def _execute_volume(
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
-                "http://127.0.0.1:9778/state",
+                f"{API_BASE}/state",
                 json={"key": "output_volume", "value": str(level)},
+                headers=_api_headers(),
                 timeout=5,
             )
             if resp.status_code != 200:
