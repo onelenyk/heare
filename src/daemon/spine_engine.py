@@ -22,6 +22,58 @@ ROLE_POLL_SECS = 0.5
 # Fast enough that a mute button feels instant, cheap enough to ignore:
 # it reads an in-memory dict.
 CONTROL_POLL_SECS = 0.2
+# The dashboard sliders send 0.0–5.0; anything outside is a typo or a
+# stale key, and a gain of 40 would be a wall of clipping.
+GAIN_MIN = 0.0
+GAIN_MAX = 5.0
+
+
+def _clean_gain(raw: str, fallback: float = 1.0) -> float:
+    """Parse a State gain/volume string; never raise, never go wild."""
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return fallback
+    if value != value:  # NaN
+        return fallback
+    return max(GAIN_MIN, min(GAIN_MAX, value))
+
+
+def _resolve_device(settings: Any, kind: str) -> int | None:
+    """Resolve the device the API's picker wrote to a sounddevice index.
+
+    The picker writes a device *name* into ``~/.heare/audio_input_device``
+    / ``audio_output_device``; config.load reads those into
+    ``settings.audio_{input,output}_device``. Returns None when nothing is
+    chosen, the name no longer matches a device, or sounddevice cannot be
+    queried — None means "system default", which is what the spine did
+    before this existed.
+    """
+    name = getattr(settings, f"audio_{kind}_device", None)
+    if not name:
+        path = getattr(settings, f"audio_{kind}_device_file", None)
+        try:
+            if path is not None and path.exists():
+                name = path.read_text("utf-8").strip()
+        except Exception:
+            name = None
+    if not name:
+        return None
+
+    try:
+        import sounddevice
+
+        devices = sounddevice.query_devices()
+        channels = "max_input_channels" if kind == "input" else "max_output_channels"
+        wanted = name.lower()
+        for index, dev in enumerate(devices):
+            if wanted in dev["name"].lower() and int(dev.get(channels, 0)) > 0:
+                logger.info("audio %s device: %r -> index %d", kind, name, index)
+                return index
+        logger.warning("audio %s device %r not found; using default", kind, name)
+    except Exception:
+        logger.exception("audio %s device lookup failed (using default)", kind)
+    return None
 
 
 async def run_spine_daemon(
@@ -39,7 +91,14 @@ async def run_spine_daemon(
     await state.init()
     api.state = state
 
-    audio = AudioIO()
+    # The device pickers write a name to a file; resolve it once, here,
+    # because a stream's device cannot be changed after it is open.
+    audio = AudioIO(
+        input_device=_resolve_device(settings, "input"),
+        output_device=_resolve_device(settings, "output"),
+    )
+    audio.input_gain = _clean_gain(state.get("input_gain"))
+    audio.output_volume = _clean_gain(state.get("output_volume"))
     await audio.start()
     loop = await _build_loop(
         settings,
@@ -48,6 +107,10 @@ async def run_spine_daemon(
         hold_s=float(getattr(settings, "spine_turn_hold_seconds", 1.3)),
         full=True,
     )
+
+    # The memories card asks the API, and the API needs the backend the
+    # spine already opened — it was only ever set on the pipecat path.
+    api._memory_backend = getattr(loop, "memory", None)
 
     # -- State / voice_state bridge -----------------------------------
 
@@ -62,6 +125,20 @@ async def run_spine_daemon(
         except Exception:
             logger.debug("voice_state write failed (non-fatal)")
 
+    def _agent(phase: str) -> None:
+        """idle | talking | interrupted — what the dashboard's AGENT bar
+        reads. Nothing wrote this key on the spine, so the bar showed a
+        permanently idle assistant even mid-sentence."""
+        try:
+            state.set_cache_only(
+                "agent_state",
+                json.dumps({"state": phase, "since_ts": time.time()}),
+            )
+        except Exception:
+            logger.debug("agent_state write failed (non-fatal)")
+
+    _agent("idle")
+
     real_stt = loop.transcribe
 
     async def _stt_with_state(pcm: bytes):
@@ -72,9 +149,23 @@ async def run_spine_daemon(
             _vs("listening")
             raise
         _vs("result", final=getattr(result, "text", None))
+        # Back to listening: without this the ear stayed on "result"
+        # until the next utterance, so the bar never rested.
+        _vs("listening")
         return result
 
     loop.transcribe = _stt_with_state
+
+    real_speak = loop._speak
+
+    async def _speak_with_state(sentence: str):
+        _agent("talking")
+        try:
+            return await real_speak(sentence)
+        finally:
+            _agent("interrupted" if loop._interrupted else "idle")
+
+    loop._speak = _speak_with_state
 
     # -- role platform bridge: State keys the dashboard reads ----------
 
@@ -139,20 +230,45 @@ async def run_spine_daemon(
 
     async def _poll_controls() -> None:
         """POST /mute and POST /cancel only write State; nothing in the
-        spine read it, so the dashboard's mic button was decoration."""
+        spine read it, so the dashboard's mic button was decoration.
+
+        The two sliders (State `input_gain`, `output_volume`) were dead
+        the same way: their only reader was a pipecat stage."""
         last: tuple | None = None
+        # Seeded with what start-up already applied, so a fresh daemon
+        # does not log a change that did not happen.
+        last_levels: tuple[float, float] = (audio.input_gain, audio.output_volume)
         while True:
             await asyncio.sleep(CONTROL_POLL_SECS)
             try:
                 mic = state.get_bool("mute_mic")
                 bot = state.get_bool("mute_bot")
-                if (mic, bot) != last:
-                    last = (mic, bot)
+                no_interrupt = state.get_bool("interrupt_off")
+                if (mic, bot, no_interrupt) != last:
+                    last = (mic, bot, no_interrupt)
                     audio.mute_input_user = mic
                     audio.mute_output_user = bot
+                    loop.barge_in_enabled = not no_interrupt
                     if bot:
                         audio.stop_playback()
-                    logger.info("controls: mic_muted=%s bot_muted=%s", mic, bot)
+                    logger.info(
+                        "controls: mic_muted=%s bot_muted=%s barge_in=%s",
+                        mic,
+                        bot,
+                        not no_interrupt,
+                    )
+                levels = (
+                    _clean_gain(state.get("input_gain")),
+                    _clean_gain(state.get("output_volume")),
+                )
+                if levels != last_levels:
+                    last_levels = levels
+                    audio.input_gain, audio.output_volume = levels
+                    logger.info(
+                        "controls: input_gain=%.2f output_volume=%.2f",
+                        levels[0],
+                        levels[1],
+                    )
                 if state.get("cancel") == "1":
                     await state.set("cancel", "0")
                     dropped = audio.stop_playback()

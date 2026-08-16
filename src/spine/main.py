@@ -274,6 +274,8 @@ async def _wire_full(loop, settings, cfg, memory):
     # Without closing these, the aiosqlite worker thread (non-daemon)
     # keeps the interpreter alive after main returns — the process hangs
     # with its stdout still buffered.
+    # The dashboard's memories card reads this backend through the API.
+    loop.memory = memory
     loop._closers = [memory.close, persist.close]
     if loop.usage is not None:
         loop._closers.append(loop.usage.close)

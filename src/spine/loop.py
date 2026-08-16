@@ -107,6 +107,9 @@ class SpineLoop:
     # When the assistant last put audio on the speaker. The junk filter
     # asks: is there anyone to say «дякую» to right now?
     last_spoke_ts: float = 0.0
+    # The dashboard's interrupt switch. Off means the assistant finishes
+    # its sentence even when talked over — some rooms want that.
+    barge_in_enabled: bool = True
     # Set when the user starts talking over the assistant (full duplex
     # only); respond() checks it between chunks and stops feeding the
     # speaker, while still collecting the full reply text for history.
@@ -155,7 +158,7 @@ class SpineLoop:
             if kind == "start":
                 self._starts_seen += 1
                 self.assembler.speech_started()
-                if self.audio.playing and self._duplex:
+                if self.audio.playing and self._duplex and self.barge_in_enabled:
                     # Barge-in: the user talks over the assistant. Drop
                     # what is queued and tell respond() to stop feeding.
                     self._interrupted = True

@@ -240,6 +240,15 @@ class API:
         self._app.router.add_get(
             "/api/artifacts/{name}", self._handle_artifacts_get
         )
+        # Present in the constructor's table but missing here, so the
+        # memories card 404'd under the menubar, which mounts this one.
+        self._app.router.add_get("/api/memories", self._handle_memories)
+        self._app.router.add_get(
+            "/api/memories/stats", self._handle_memories_stats
+        )
+        self._app.router.add_post(
+            "/api/memories/{id}/forget", self._handle_memories_forget
+        )
 
     async def start(self):
         self._runner = web.AppRunner(self._app)

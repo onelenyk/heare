@@ -399,6 +399,164 @@ def test_user_mute_survives_the_conductor_toggling_mute_input() -> None:
     assert len(frames) == 1, "unmuting restores the mic"
 
 
+def _pcm(samples: list[int]) -> bytes:
+    """Little-endian int16 bytes from a list of sample values."""
+    import struct
+
+    return struct.pack(f"<{len(samples)}h", *samples)
+
+
+def _unpcm(data: bytes) -> list[int]:
+    import struct
+
+    return list(struct.unpack(f"<{len(data) // 2}h", data))
+
+
+class _ImmediateLoop:
+    def call_soon_threadsafe(self, fn, *args):
+        fn(*args)
+
+
+def _capture_input(io: AudioIO, data: bytes) -> list[bytes]:
+    frames: list[bytes] = []
+    io._loop = _ImmediateLoop()  # type: ignore[assignment]
+    io.input_frames.put_nowait = frames.append  # type: ignore[method-assign]
+    io._on_input(data, len(data) // 2, None, None)
+    return frames
+
+
+class TestInputGain:
+    """The mic slider: State `input_gain` had no reader on the spine."""
+
+    def test_gain_one_is_byte_identical_passthrough(self) -> None:
+        io = AudioIO()
+        assert io.input_gain == 1.0
+        data = _pcm([0, 1, -1, 1234, -4321, 32767, -32768])
+        frames = _capture_input(io, data)
+        assert frames == [data]
+
+    def test_gain_two_doubles_samples(self) -> None:
+        io = AudioIO()
+        io.input_gain = 2.0
+        frames = _capture_input(io, _pcm([0, 100, -100, 3000, -3000]))
+        assert _unpcm(frames[0]) == [0, 200, -200, 6000, -6000]
+
+    def test_gain_clamps_instead_of_wrapping(self) -> None:
+        """An int16 overflow once destroyed the AEC; loud must stay loud,
+        never flip to a large negative sample."""
+        io = AudioIO()
+        io.input_gain = 4.0
+        frames = _capture_input(io, _pcm([32767, 32000, -32000, -32768]))
+        out = _unpcm(frames[0])
+        assert out == [32767, 32767, -32768, -32768]
+        assert all(s >= 0 for s in out[:2]), "positive samples must not wrap"
+
+    def test_gain_zero_silences_the_mic(self) -> None:
+        io = AudioIO()
+        io.input_gain = 0.0
+        frames = _capture_input(io, _pcm([5000, -5000, 32767]))
+        assert _unpcm(frames[0]) == [0, 0, 0]
+
+
+class TestOutputVolume:
+    """The speaker slider: State `output_volume`, same dead wire."""
+
+    def _render(self, io: AudioIO, pcm: bytes) -> bytes:
+        io._output_buffer.extend(pcm)
+        backing = bytearray(len(pcm))
+        io._on_output(memoryview(backing), len(pcm) // 2, None, None)
+        return bytes(backing)
+
+    def test_volume_one_is_byte_identical_passthrough(self) -> None:
+        io = AudioIO()
+        assert io.output_volume == 1.0
+        pcm = _pcm([0, 1, -1, 9999, -9999, 32767, -32768])
+        assert self._render(io, pcm) == pcm
+
+    def test_volume_half_halves_samples(self) -> None:
+        io = AudioIO()
+        io.output_volume = 0.5
+        out = self._render(io, _pcm([0, 100, -100, 30000, -30000]))
+        assert _unpcm(out) == [0, 50, -50, 15000, -15000]
+
+    def test_volume_zero_silences(self) -> None:
+        io = AudioIO()
+        io.output_volume = 0.0
+        out = self._render(io, _pcm([32767, -32768, 1234]))
+        assert _unpcm(out) == [0, 0, 0]
+
+    def test_volume_clamps_instead_of_wrapping(self) -> None:
+        io = AudioIO()
+        io.output_volume = 4.0
+        out = _unpcm(self._render(io, _pcm([32767, 20000, -20000, -32768])))
+        assert out == [32767, 32767, -32768, -32768]
+
+    def test_volume_applies_to_partial_buffer_and_pads_silence(self) -> None:
+        io = AudioIO()
+        io.output_volume = 2.0
+        io._output_buffer.extend(_pcm([100, -100]))
+        backing = bytearray(8)  # room for four samples, two available
+        io._on_output(memoryview(backing), 4, None, None)
+        assert _unpcm(bytes(backing)) == [200, -200, 0, 0]
+        assert len(io._output_buffer) == 0
+
+    def test_volume_still_drains_the_buffer_when_silent(self) -> None:
+        """Volume 0 must consume playback, not stall it forever."""
+        io = AudioIO()
+        io.output_volume = 0.0
+        io.play(_pcm([1000] * 8))
+        backing = bytearray(8)
+        io._on_output(memoryview(backing), 4, None, None)
+        assert _unpcm(bytes(backing)) == [0, 0, 0, 0]
+        assert len(io._output_buffer) == 8  # four of eight samples consumed
+
+
+class TestDeviceSelection:
+    """The device pickers wrote a file nothing on the spine opened."""
+
+    def test_devices_default_to_none(self) -> None:
+        io = AudioIO()
+        assert io.input_device is None
+        assert io.output_device is None
+
+    def test_devices_are_stored(self) -> None:
+        io = AudioIO(input_device=3, output_device="Speakers")
+        assert io.input_device == 3
+        assert io.output_device == "Speakers"
+
+    @pytest.mark.asyncio
+    async def test_devices_are_passed_to_sounddevice(self) -> None:
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        mock_sd = MagicMock()
+        mock_sd.RawInputStream.return_value = MagicMock()
+        mock_sd.RawOutputStream.return_value = MagicMock()
+
+        io = AudioIO(input_device=2, output_device=7)
+        with patch.dict(sys.modules, {"sounddevice": mock_sd}):
+            await io.start()
+
+        assert mock_sd.RawInputStream.call_args.kwargs["device"] == 2
+        assert mock_sd.RawOutputStream.call_args.kwargs["device"] == 7
+
+    @pytest.mark.asyncio
+    async def test_none_devices_are_passed_through_as_none(self) -> None:
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        mock_sd = MagicMock()
+        mock_sd.RawInputStream.return_value = MagicMock()
+        mock_sd.RawOutputStream.return_value = MagicMock()
+
+        io = AudioIO()
+        with patch.dict(sys.modules, {"sounddevice": mock_sd}):
+            await io.start()
+
+        assert mock_sd.RawInputStream.call_args.kwargs["device"] is None
+        assert mock_sd.RawOutputStream.call_args.kwargs["device"] is None
+
+
 def test_user_output_mute_drops_playback() -> None:
     io = AudioIO()
     io.mute_output_user = True

@@ -655,3 +655,41 @@ async def test_empty_session_does_not_announce_a_summary_it_will_not_build() -> 
 
     await asyncio.wait_for(_done(), timeout=2.0)
     assert "збираю" not in b"".join(audio.played).decode().lower()
+
+
+async def test_interrupt_switch_off_lets_the_reply_finish() -> None:
+    """The dashboard's interrupt toggle was decoration on the spine —
+    barge-in was gated only on the AEC being active."""
+    audio = FakeAudio()
+    vad = ScriptedVAD({1: FakeEvent(FakeKind("start"))})
+    loop = _make_loop(audio, vad=vad)
+    loop.aec = DuplexAEC()
+    loop.barge_in_enabled = False
+
+    class _Playing(FakeAudio):
+        @property
+        def playing(self) -> bool:
+            return True
+
+    loop.audio = _Playing()
+    loop.audio.input_frames.put_nowait(b"\x00" * 640)
+
+    run = asyncio.create_task(loop.run())
+    await asyncio.sleep(0.1)
+    run.cancel()
+
+    assert loop._interrupted is False, "with the switch off nothing is cut"
+
+    # And with it on, the same speech interrupts.
+    loop2 = _make_loop(audio, vad=ScriptedVAD({1: FakeEvent(FakeKind("start"))}))
+    loop2.aec = DuplexAEC()
+    loop2.audio = _Playing()
+    loop2.audio.input_frames.put_nowait(b"\x00" * 640)
+    run2 = asyncio.create_task(loop2.run())
+
+    async def _cut() -> None:
+        while not loop2._interrupted:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_cut(), timeout=2.0)
+    run2.cancel()
