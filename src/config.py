@@ -424,9 +424,17 @@ class Settings:
             "стоп",
         ]
     )
-    # Voice engine: "pipecat" (the original pipeline) or "spine" (the
-    # framework-free rewrite in src/spine). One line back is the rollback.
-    engine: str = "pipecat"
+    # Voice engine: "spine" (the framework-free path in src/spine) or
+    # "pipecat" (the original pipeline). One line back is the rollback,
+    # and that is the whole point of keeping the flag.
+    #
+    # The default moved to spine once it was the engine actually being
+    # lived with: it answers in ~1.2 s against pipecat's ~4.3 s, it is
+    # the only one that waits for a missing key instead of crashing, and
+    # every fix from the audits landed there. Leaving the default on the
+    # old engine meant a fresh install got none of that while the
+    # dashboard and the docs described the new one.
+    engine: str = "spine"
     # Which optional subsystems get wired. Everything here can be off
     # without the assistant stopping being an assistant — see
     # src/spine/features.py for the list and what each costs. A bad

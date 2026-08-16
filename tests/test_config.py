@@ -613,3 +613,36 @@ def test_a_boolean_is_written_as_a_boolean(tmp_path, monkeypatch) -> None:
 
     assert tomllib.loads(cfg.read_text())["capability_install_enabled"] is False
     assert load_settings().capability_install_enabled is False
+
+
+def test_a_fresh_install_gets_the_engine_that_is_maintained() -> None:
+    """The default was "pipecat" for the whole of the spine's life.
+
+    That meant a new machine ran the engine nobody was living with: the
+    slower first sound, the crash on a missing key, and none of the
+    fixes from the audits — while the dashboard, the docs and the
+    release notes all described the other one. The flag stays, because
+    one line back is still the rollback; only the side it defaults to
+    changed.
+    """
+    assert load_settings().engine == "spine"
+
+
+def test_choosing_an_engine_does_not_import_the_other_one() -> None:
+    """`import src.pipeline.build` costs ~819 ms and ~700 modules, and
+    the spine path never calls a line of it. Those imports sat above the
+    engine branch, so every spine boot paid for the framework it was
+    written to replace. This pins the order rather than the timing: a
+    timing assertion would be flaky, and the order is the actual bug.
+    """
+    import inspect
+
+    import src.main as main_mod
+
+    source = inspect.getsource(main_mod._build_and_run_daemon)
+    spine_at = source.index("from src.daemon.spine_engine import")
+    pipecat_at = source.index("from src.pipeline.build import")
+    assert spine_at < pipecat_at, (
+        "the pipecat imports moved back above the engine branch — the "
+        "spine path is paying to load the framework again"
+    )

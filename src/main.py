@@ -93,6 +93,21 @@ async def _build_and_run_daemon(
         If True (CLI daemon), install SIGINT/SIGTERM/SIGHUP handlers.
         If False (menubar), skip them — the menubar manages its own lifecycle.
     """
+    # The engine choice comes first, and nothing above it may import the
+    # other engine's world. `import src.pipeline.build` alone pulls in the
+    # whole framework — 819 ms and ~700 modules measured here — which the
+    # spine path then never touches. Below this branch is pipecat's half.
+    if getattr(settings, "engine", "spine") == "spine":
+        # The framework-free engine. Same State, same DB, same inject
+        # folder — the API and dashboard cannot tell the difference.
+        from src.daemon.spine_engine import run_spine_daemon
+
+        logger.info("engine = spine — running the framework-free voice path")
+        await run_spine_daemon(
+            settings, state, api, handle_signals=handle_signals
+        )
+        return
+
     from src.store.storage import TranscriptStore
     from src.agent.identity import ensure_identity, render_persona
     from src.agent.llm.providers import (
@@ -106,17 +121,6 @@ async def _build_and_run_daemon(
     from src.daemon.workspace import ensure_mcp_config
 
     from src.agent.browser_bridge import BrowserBridge, set_bridge
-
-    if getattr(settings, "engine", "pipecat") == "spine":
-        # The framework-free engine. Same State, same DB, same inject
-        # folder — the API and dashboard cannot tell the difference.
-        from src.daemon.spine_engine import run_spine_daemon
-
-        logger.info("engine = spine — running the framework-free voice path")
-        await run_spine_daemon(
-            settings, state, api, handle_signals=handle_signals
-        )
-        return
 
     ensure_mcp_config(settings.mcp_dir, settings.workspace_dir)
 
