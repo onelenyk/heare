@@ -363,6 +363,87 @@ def test_check_suspend_reports_and_sleeps_without_a_turn() -> None:
     assert gate.awake is False
 
 
+# -- 9. spoke() — the delegate-result defect, fixed --------------------
+#
+# "Дока, перевір пошту" wakes the gate. The worker runs 40-70s with
+# nobody speaking. The result is injected and spoken with no accepted
+# mic turn in between, so `_last_accept` is stale by the time the user
+# answers without the wake word. `spoke()` is how the gate learns the
+# assistant addressed the user, so that reply is not treated as noise.
+
+
+def test_a_spoken_result_extends_the_window_for_the_next_phrase_less_reply() -> None:
+    """Without calling `gate.spoke()` here, this test fails exactly the
+    way the audit found the defect: `accepts()` at t=60 sees the last
+    accepted turn was 60s ago, more than the 45s window, and rejects
+    the user's reply — even though the assistant just spoke to them."""
+    clock = Clock()
+    gate = WakeGate(phrases=doka_phrases(), window_s=45.0, clock=as_clock(clock))
+
+    assert gate.accepts("дока, перевір пошту") is True  # wakes at t=0
+
+    clock.set(60.0)  # the worker took its time; nobody spoke in between
+    gate.spoke()  # the delegated result is spoken to the user
+
+    assert gate.accepts("дякую, зрозуміло") is True
+    assert gate.awake is True
+
+
+def test_a_suspend_right_after_speaking_still_closes_the_gate() -> None:
+    """The lid can close right after the assistant's own voice, same as
+    after the user's. `spoke()` samples both clocks itself (the same
+    suspend check `accepts()` uses), so a suspend in the gap between
+    one spoken line and the next is not missed just because no accepted
+    turn happened in between to notice it."""
+    mono = Clock(0.0)
+    wall = Clock(1_700_000_000.0)
+    gate = WakeGate(
+        phrases=doka_phrases(),
+        window_s=45.0,
+        clock=as_clock(mono),
+        wall=as_clock(wall),
+    )
+
+    assert gate.accepts("дока, перевір пошту") is True  # wakes at t=0
+
+    mono.set(1.0)
+    wall.set(1_700_000_000.0 + 1.0)
+    gate.spoke()  # "Прийнято, роблю" — clocks still in lockstep
+    assert gate.awake is True
+
+    # lid closes while the worker runs: two seconds of monotonic time
+    # pass for an hour of wall time
+    mono.set(3.0)
+    wall.set(1_700_000_000.0 + 3601.0)
+    gate.spoke()  # the delegated result is spoken as the lid reopens
+    assert gate.awake is False
+
+    mono.set(4.0)
+    wall.set(1_700_000_000.0 + 3602.0)
+    assert gate.accepts("а це я вже комусь іншому в кімнаті") is False
+    assert gate.awake is False
+
+
+def test_spoke_does_not_wake_a_sleeping_gate() -> None:
+    """Pins the chosen rule: the assistant's own voice may EXTEND an
+    already-open window but must never WAKE a sleeping one. If it could,
+    any spoken output — a proactive line, a notification, a stray retry
+    — would grant the assistant standing to treat the room's next
+    sentence as addressed to it, no wake word required. That is exactly
+    the promise this gate exists to keep."""
+    clock = Clock()
+    gate = WakeGate(phrases=doka_phrases(), window_s=45.0, clock=as_clock(clock))
+
+    assert gate.awake is False  # nobody has said the wake word yet
+
+    gate.spoke()  # e.g. a proactive line racing ahead of any wake turn
+    assert gate.awake is False
+
+    clock.set(1.0)
+    assert gate.accepts("продовжуємо без жодної фрази") is False
+    assert gate.awake is False
+
+
 def test_required_false_is_unaffected_by_a_suspend() -> None:
     """With the wake word not required there is no promise to keep: the
     gate must not report itself asleep after a suspend."""

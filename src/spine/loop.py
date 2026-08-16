@@ -277,7 +277,7 @@ class SpineLoop:
                 continue
             try:
                 flow = self.role_flow
-                if flow is not None and await flow.handle(turn):
+                if flow is not None and await flow.handle(turn, injected=not gated):
                     continue  # a role session consumed the turn
                 await self.respond(turn)
             except Exception:
@@ -505,6 +505,14 @@ class SpineLoop:
         import time as _time
 
         self.last_spoke_ts = _time.time()
+        # The assistant just addressed the user; their reply is part of
+        # this exchange and must not need the wake word again. Extends an
+        # open window only — it cannot talk itself awake (wake.spoke).
+        if self.wake is not None:
+            try:
+                self.wake.spoke()
+            except Exception:
+                logger.debug("wake.spoke failed (non-fatal)")
         chars = 0
         async for chunk in self.synthesise(sentence):
             if self._interrupted:

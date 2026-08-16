@@ -13,8 +13,9 @@ export default function SetupModal({ show, onClose, onComplete }) {
   const [vibe, setVibe] = useState('');
   const [tagline, setTagline] = useState('');
   const [creature, setCreature] = useState('');
-  const [language, setLanguage] = useState('en');
-  const [voice, setVoice] = useState('en-US-AriaNeural');
+  // 'uk' by default: this assistant is spoken to in Ukrainian, and an
+  // 'en' default meant a fresh install transcribed Ukrainian as English.
+  const [language, setLanguage] = useState('uk');
   const [groqKey, setGroqKey] = useState('');
   const [llmKey, setLlmKey] = useState('');
   const [provider, setProvider] = useState('deepseek');
@@ -46,8 +47,7 @@ export default function SetupModal({ show, onClose, onComplete }) {
       }
       if (d.config) {
         setConfig(d.config);
-        setLanguage(d.config.language || 'en');
-        setVoice(d.config.tts_voice || 'en-US-AriaNeural');
+        setLanguage(d.config.language || 'uk');
       }
     } catch (e) {
       setStatus('Failed to load setup state');
@@ -94,7 +94,7 @@ export default function SetupModal({ show, onClose, onComplete }) {
     try {
       const r = await fetch(API + '/api/setup/config', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language, tts_voice: voice })
+        body: JSON.stringify({ language })
       });
       const d = await r.json();
       if (d.ok) setStatus('Config saved!');
@@ -131,13 +131,6 @@ export default function SetupModal({ show, onClose, onComplete }) {
   };
 
   if (!show) return null;
-
-  const voices = [
-    { id: 'en-US-AriaNeural', label: 'English (Aria)' },
-    { id: 'uk-UA-OstapNeural', label: 'Ukrainian (Ostap)' },
-    { id: 'uk-UA-PolinaNeural', label: 'Ukrainian (Polina)' },
-    { id: 'ru-RU-SvetlanaNeural', label: 'Russian (Svetlana)' },
-  ];
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -210,12 +203,13 @@ export default function SetupModal({ show, onClose, onComplete }) {
                   <option value="ru">Russian</option>
                 </select>
               </div>
-              <div style={{marginBottom: 12}}>
-                <label style={{display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 4}}>TTS Voice</label>
-                <select value={voice} onChange={e => setVoice(e.target.value)}
-                  style={{width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', color: 'var(--text)', fontSize: 13}}>
-                  {voices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-                </select>
+              {/* The TTS voice picker used to live here. It is gone, not
+                  hidden: the voice engine picks a voice per reply from the
+                  script the reply is written in (src/spine/voicing.py), so
+                  a chosen voice was never read and a Ukrainian sentence on
+                  an English voice is silence. */}
+              <div style={{marginBottom: 12, fontSize: 11, color: 'var(--muted)', lineHeight: 1.5}}>
+                Voice follows the language of each reply {'\u2014'} nothing to choose.
               </div>
               <button className="btn primary" onClick={handleSaveConfig} disabled={loading} style={{width: '100%'}}>
                 {loading ? 'Saving...' : '\ud83d\udcbe Save Config'}

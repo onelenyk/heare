@@ -92,7 +92,7 @@ path.
 place: it is a reasonable idea in the wrong position, and deleting it
 would lose that.
 
-## The local API has no authentication at all
+## The local API has no authentication at all — fixed 2026-08-17
 
 `src/api.py` — 48 handlers, zero checks for `Origin`, `Host` or
 `Authorization`. One of them runs `bash`.
@@ -104,6 +104,15 @@ planned.
 
 `src/core/` exposes no HTTP at all yet. Whatever it grows must not repeat
 this.
+
+**Fixed.** `src/api.py` now runs one `_auth_middleware` (`api.py:411`)
+ahead of every route, not 48 per-handler checks: a request whose `Origin`
+header is set and is not 127.0.0.1/localhost is refused with 403 before
+anything else runs, and every non-exempt route additionally requires the
+bearer token from `~/.heare/api_token` (`Authorization: Bearer …`, or
+`?token=` for `GET` only, since `EventSource` cannot set headers). Only
+`GET /`, static assets, and `GET /api/health` are exempt, and the SPA
+shell gets the token injected inline rather than needing it exempted too.
 
 ## One key, three homes, no warning
 

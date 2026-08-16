@@ -13,6 +13,18 @@ accepts reach the LLM. The fix is where the refresh comes from: never
 from a turn this gate itself rejected, only from one it accepted as
 addressed to the assistant.
 
+Delegation reopens the same question from the other direction. "Дока,
+перевір пошту" wakes the gate; the worker runs for 40-70 seconds with
+nobody speaking; the result is injected and spoken with no accepted
+mic turn anywhere in that gap. The user answers at once, by name of
+nothing — no wake word, because the assistant just addressed them and
+a reply to that is exactly what an open line is for. Without a way for
+the gate to learn the assistant spoke, `_last_accept` is minutes stale
+by then and that reply is rejected as noise. `spoke()` is the fix: it
+refreshes the window the same way an accepted turn does, but see its
+docstring for why it only ever EXTENDS an open window and never WAKES
+a sleeping one.
+
 Two clocks, on purpose
 ----------------------
 The 45-second window is measured with `time.monotonic()`, because "how
@@ -83,7 +95,11 @@ class WakeGate:
 
     The window is refreshed ONLY by accepted turns — speech that was
     addressed to the assistant — never by arbitrary transcription. That
-    is the fix for the noise-holds-the-gate-open defect.
+    is the fix for the noise-holds-the-gate-open defect. It is also
+    refreshed by `spoke()`, called when the assistant addresses the
+    user (a reply, or a delegated result arriving with no mic turn in
+    between) — see that method's docstring for why it extends but
+    never wakes.
 
     Both clocks are injectable so a test can simulate a machine suspend
     without suspending anything: `clock` (monotonic, measures the
@@ -178,6 +194,50 @@ class WakeGate:
 
         self._awake = False
         return False
+
+    def spoke(self) -> None:
+        """Tell the gate the assistant just addressed the user out loud.
+
+        Refreshes the window exactly like an accepted turn — EXCEPT
+        that it never wakes a sleeping gate on its own; it only extends
+        one that is already open.
+
+        Why not wake: if the assistant's own voice could open the gate,
+        the assistant could talk itself awake — any spoken output
+        (a proactive line, a notification, a stray retry) would grant
+        itself standing to then treat the next thing anyone says as
+        addressed to it, no wake word required. That is the exact
+        privacy promise this module exists to keep: only speech
+        addressed BY the user, wake phrase or already-open window,
+        should let the room's next sentence through.
+
+        Why extend at all, then: a delegated result is not the
+        assistant talking to itself — it is the assistant answering a
+        request the user already made, addressed to the assistant, that
+        happened to take 40-70 seconds. The window was opened by a real
+        address; the reply landing outside the original 45s is a
+        product delay, not a new solicitation. A phrase-less "дякую" or
+        a follow-up right after hearing that reply is the same
+        conversation the wake word already authorised, and it must not
+        cost a second wake word just because the worker was slow.
+
+        So: `spoke()` while `awake` is True pushes `_last_accept`
+        forward, same as `accepts()` returning True. `spoke()` while
+        `awake` is False is a no-op on the window — a proactive or
+        stray utterance with nobody having said the wake word first
+        stays exactly as closed as it was.
+
+        Suspend is checked first, with the same two clocks `accepts()`
+        uses, and it wins over the extension: a lid closed right after
+        the assistant spoke — or during the delegated work, before the
+        result was ever spoken — must still put the gate back to sleep.
+        A machine that slept does not get to skip the wake word just
+        because the last thing before it slept was the assistant's own
+        voice.
+        """
+        self.check_suspend()
+        if self._required and self._awake:
+            self._last_accept = self._clock()
 
     @property
     def awake(self) -> bool:

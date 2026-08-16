@@ -571,6 +571,71 @@ class API:
         if keys and not self._validate_api_keys(keys):
             await self._apply_api_keys(keys)
 
+    def _bridge_connected(self) -> bool:
+        """True only when a Chrome extension is actually attached.
+
+        This used to read ``browser_bridge_enabled and token file exists``
+        — two things that are true on a machine where the bridge has never
+        run, so the header said "chrome connected" forever. Neither is
+        evidence: the switch is an intention and the token file survives
+        any process that wrote it.
+
+        The bridge registers itself in-process (``set_bridge`` in
+        src/main.py) and knows whether a client authenticated
+        (``BrowserBridge.connected``). That object is the only local
+        evidence there is, so no object means not connected — which is the
+        honest answer on the spine engine, where the bridge is never
+        started at all. A daemon in *another* process would also read
+        false here; the status file it writes cannot tell "connected" from
+        "was connected when it died", so it is deliberately not consulted.
+        """
+        try:
+            from src.agent.browser_bridge import _get_bridge
+
+            bridge = _get_bridge()
+            if bridge is None:
+                return False
+            return bool(bridge.connected)
+        except Exception:
+            return False
+
+    def _mcp_status_payload(self) -> dict | None:
+        """The engine's ``mcp_status`` State key, parsed, or None.
+
+        None means "this engine never said" (the pipecat path does not
+        write the key) — which the UI must show as unknown rather than as
+        an outage. The engine writes ``ok`` plus an ``error`` of "off" when
+        the feature switch is off, so a reader can tell a switched-off MCP
+        from a failed one.
+        """
+        if self.state is None:
+            return None
+        try:
+            raw = self.state.get("mcp_status", "")
+            if not isinstance(raw, str) or not raw:
+                return None
+            status = json.loads(raw)
+        except Exception:
+            return None
+        if not isinstance(status, dict):
+            return None
+        servers = status.get("servers")
+        try:
+            tools = int(status.get("tools") or 0)
+        except (TypeError, ValueError):
+            tools = 0
+        try:
+            ts = float(status.get("ts") or 0.0)
+        except (TypeError, ValueError):
+            ts = 0.0
+        return {
+            "servers": [str(s) for s in servers] if isinstance(servers, list) else [],
+            "tools": tools,
+            "ok": bool(status.get("ok")),
+            "error": str(status.get("error") or ""),
+            "ts": ts,
+        }
+
     async def _handle_state(self, request):
         if self.state is None:
             return web.json_response({"running": False})
@@ -607,12 +672,14 @@ class API:
         except Exception:
             data["models"] = []
 
-        # Chrome bridge status
+        # Chrome bridge status — see _bridge_connected for why this is not
+        # derived from the config any more. `chrome_enabled` is the switch,
+        # `chrome` is the fact; the header tells the two apart.
+        data["chrome"] = self._bridge_connected()
         try:
-            token_file = HEARE_HOME / "browser_bridge.token"
-            data["chrome"] = self.config.browser_bridge_enabled and token_file.exists()
+            data["chrome_enabled"] = bool(self.config.browser_bridge_enabled)
         except Exception:
-            data["chrome"] = False
+            data["chrome_enabled"] = False
 
         data["interrupt_enabled"] = not self.config.interrupt_enabled_file.exists()
 
@@ -1423,6 +1490,10 @@ class API:
                     "skills": skills,
                     "mcps": mcps,
                     "error": error,
+                    # What .mcp.json *asks for* is the list above; this is
+                    # what actually connected. They disagree exactly when
+                    # something is wrong, which is when anyone looks.
+                    "mcp_status": self._mcp_status_payload(),
                 }
             )
         except Exception as e:
@@ -1432,6 +1503,7 @@ class API:
                     "skills": [],
                     "mcps": [],
                     "error": str(e),
+                    "mcp_status": self._mcp_status_payload(),
                 },
                 status=500,
             )

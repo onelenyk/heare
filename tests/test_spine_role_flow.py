@@ -283,6 +283,176 @@ async def test_empty_session_does_not_announce_a_summary_it_will_not_build() -> 
     assert "збираю" not in b"".join(audio.played).decode().lower()
 
 
+# -- what was said while the artifact was being built ------------------
+
+
+def _gate_finish(flow):
+    """Freeze the artifact build so the finishing window can be walked
+    through a turn at a time. Returns the event that releases it."""
+    gate = asyncio.Event()
+    real_finish = flow.role_manager.finish
+
+    async def slow_finish(*, exchanges, complete):
+        await gate.wait()
+        return await real_finish(exchanges=exchanges, complete=complete)
+
+    flow.role_manager.finish = slow_finish
+    return gate
+
+
+async def test_turns_said_during_the_wait_are_answered_after_it_in_order() -> None:
+    """Building an artifact is 7 to 30 seconds of LLM time. Everything
+    said in that window used to be heard, transcribed, paid for and
+    dropped — the conversation simply had a hole in it."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    role = FakeRole()
+    _wire_roles(loop, role)
+    flow = loop.role_flow
+    flow.role_manager.start(role)
+    gate = _gate_finish(flow)
+
+    run = asyncio.create_task(loop.run())
+    assert await flow.handle("закінчили") is True
+    await asyncio.sleep(0.02)
+    assert flow.finishing is True
+
+    assert await flow.handle("а що там з диском?") is True
+    assert await flow.handle("і купи молока") is True
+    assert flow.pending == ["а що там з диском?", "і купи молока"]
+
+    gate.set()
+
+    async def _answered() -> None:
+        while len([m for m in loop.history if m["role"] == "user"]) < 2:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_answered(), timeout=3.0)
+    run.cancel()
+
+    assert [m["content"] for m in loop.history if m["role"] == "user"] == [
+        "а що там з диском?",
+        "і купи молока",
+    ], "held turns come back, oldest first"
+    assert flow.pending == [], "and are not asked twice"
+
+
+async def test_held_turns_come_back_even_when_the_artifact_failed() -> None:
+    """The replay must not hang off the happy path: a refusing model ends
+    the session with no artifact, and the words said during the wait are
+    still owed an answer."""
+    loop = _make_loop(FakeAudio())
+    role = FakeRole()
+    _wire_roles(loop, role)
+    flow = loop.role_flow
+    flow.role_manager.start(role)
+    gate = _gate_finish(flow)
+
+    replayed: list[str] = []
+
+    async def spy(text: str) -> None:
+        replayed.append(text)
+
+    loop.inject = spy   # the conductor's front door, watched
+
+    async def refusing_chat(messages):
+        raise RuntimeError("insufficient balance")
+        yield ""  # pragma: no cover
+
+    loop.stream_chat = refusing_chat
+
+    await flow.handle("щось було сказано")
+    assert await flow.handle("закінчили") is True
+    await asyncio.sleep(0.02)
+    assert await flow.handle("а що там з диском?") is True   # heard mid-build
+    gate.set()
+
+    async def _replayed() -> None:
+        while not replayed:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_replayed(), timeout=3.0)
+    assert replayed == ["а що там з диском?"]
+    assert flow.pending == []
+
+
+async def test_an_injected_result_is_never_held(caplog) -> None:
+    """Injected turns are how a delegated job's answer comes back. The
+    job has already finished; there is no second copy. Holding one is
+    losing it."""
+    loop = _make_loop(FakeAudio())
+    role = FakeRole()
+    _wire_roles(loop, role)
+    flow = loop.role_flow
+    flow.role_manager.start(role)
+    flow.finishing = True
+    result = "[результат роботи] диск на 82%"
+
+    assert await flow.handle(result, injected=True) is False, (
+        "an injected turn goes straight to the conversation"
+    )
+    assert flow.pending == []
+
+    # Without the flag — a conductor that was never taught to pass it —
+    # behaviour is exactly what it is today: held, not dropped.
+    assert await flow.handle(result) is True
+    assert flow.pending == [result]
+
+
+async def test_the_hold_is_bounded_and_says_what_it_dropped(caplog) -> None:
+    """`finishing` has latched before. If it ever does again, the held
+    turns must not grow until the process dies — and what is thrown away
+    must be named, because those are words a person actually said."""
+    import logging
+
+    from src.spine.role_flow import PENDING_LIMIT
+
+    caplog.set_level(logging.WARNING, logger="spine.role_flow")
+    flow = RoleFlow(role_manager=FakeRoleManager())
+    flow.finishing = True   # stuck, and nothing is going to clear it
+
+    for i in range(PENDING_LIMIT + 3):
+        assert await flow.handle(f"репліка {i}") is True
+
+    assert len(flow.pending) == PENDING_LIMIT
+    assert flow.pending[0] == "репліка 3", "the oldest go first"
+    assert flow.pending[-1] == f"репліка {PENDING_LIMIT + 2}"
+    text = "\n".join(
+        r.getMessage() for r in caplog.records if r.name == "spine.role_flow"
+    )
+    assert "репліка 0" in text and "репліка 2" in text, text
+
+
+async def test_nothing_is_held_when_no_artifact_is_being_built() -> None:
+    loop = _make_loop(FakeAudio())
+    role = FakeRole()
+    _wire_roles(loop, role)
+    flow = loop.role_flow
+
+    assert await flow.handle("звичайне питання") is False
+    flow.role_manager.start(role)
+    assert await flow.handle("сказане на сесії") is True   # logged, not held
+
+    assert flow.pending == []
+    assert flow.log == [{"user": "сказане на сесії", "agent": None}]
+
+
+async def test_a_flow_with_no_conductor_keeps_its_held_turns_for_draining() -> None:
+    """A flow built by hand — no loop behind its callbacks — has nowhere
+    to hand turns back to. It keeps them rather than dropping them, and
+    whoever owns it can take them with drain_pending()."""
+    flow = RoleFlow(role_manager=FakeRoleManager())
+    flow.finishing = True
+    await flow.handle("перше")
+    await flow.handle("друге")
+    flow.finishing = False
+
+    await flow._replay_pending()
+    assert flow.pending == ["перше", "друге"], "kept, not dropped"
+    assert flow.drain_pending() == ["перше", "друге"]
+    assert flow.pending == []
+
+
 # -- the end of a session must never latch -----------------------------
 
 

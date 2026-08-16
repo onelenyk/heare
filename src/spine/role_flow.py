@@ -35,6 +35,12 @@ State the outside world watches (mirrored by the conductor under its old
 names, which the daemon and CLI already read): ``log`` — the session's
 exchanges, ``finishing`` — an artifact is being written right now,
 ``ended_ts`` — when the last session closed.
+
+Turns heard while the artifact is being built are **held, not dropped**
+(``pending``) and handed back to the conductor when the wait is over —
+see ``_replay_pending``. Turns that did not come from the microphone —
+``handle(turn, injected=True)`` — are never held: they are a delegated
+job's answer coming back, and this engine has no second copy of it.
 """
 from __future__ import annotations
 
@@ -51,6 +57,15 @@ logger = logging.getLogger("spine.role_flow")
 END_PHRASE_GRACE_SECS = 90.0
 
 FINISHING_LINE = "Хвилинку, збираю підсумок."
+
+# How many held turns a single artifact build may accumulate. An artifact
+# takes 7-30 seconds and a turn is a second or two of speech, so a real
+# wait holds a handful; anything past this means `finishing` has latched
+# again (it has before) and the list would grow until the process died.
+# The oldest go first: what someone said 40 seconds into a stuck flag is
+# staler than what they are saying now, and the newest is likeliest to be
+# the person asking why nothing answers.
+PENDING_LIMIT = 16
 
 HINT_INSTRUCTION = (
     "Відповідай ТІЛЬКИ підказкою: 3-5 коротких пунктів "
@@ -83,6 +98,11 @@ class RoleFlow:
     # and keeps the conversation from answering in the meantime.
     finishing: bool = False
     ended_ts: float = 0.0
+    # What was said while `finishing` was set. Held here in the order it
+    # was heard and replayed once the wait is over — the alternative,
+    # which is what this used to do, is to transcribe it, pay for it and
+    # throw it away. Capped at PENDING_LIMIT.
+    pending: list = field(default_factory=list)
     # Strong references to the work spawned off the turn loop. A bare
     # create_task() is garbage-collectable mid-flight, and its exception
     # is never retrieved — the session would end in silence with nothing
@@ -99,17 +119,31 @@ class RoleFlow:
         conductor lets these turns past the wake gate."""
         return self.role_manager is not None and bool(self.role_manager.active)
 
-    async def handle(self, turn: str) -> bool:
+    async def handle(self, turn: str, *, injected: bool = False) -> bool:
         """Role lifecycle and the log channel. True when the turn is
-        consumed here and must not go to the normal respond() path."""
+        consumed here and must not go to the normal respond() path.
+
+        ``injected`` marks a turn that did not come from the microphone —
+        a delegated job's result on its way back, the dashboard's own
+        words. It defaults to False, so a conductor that never passes it
+        gets exactly today's behaviour.
+        """
         if self.role_manager is None:
             return False
         active = self.role_manager.active
 
         if self.finishing:
+            if injected:
+                # The one thing that must never wait for an artifact: it
+                # is the answer someone is already waiting for, the job
+                # that produced it has finished and nothing will send it
+                # again. Straight past the session into the mouth.
+                logger.info("role finishing — injected turn passed through")
+                return False
             # The summary is still being written; anything said now would
-            # be answered by a conversation that is already over.
-            logger.info("role finishing — turn held: %r", turn[:60])
+            # be answered by a conversation that is already over — so it
+            # is held and asked again on the other side of the wait.
+            self._hold(turn)
             return True
 
         if active is not None and self.end_match is not None and self.end_match(
@@ -161,6 +195,78 @@ class RoleFlow:
         self.role_manager.note_turn(turn_id)
         self.log.append({"user": user_text, "agent": reply or None})
 
+    # -- what was said while the artifact was being built ---------------
+
+    def _hold(self, turn: str) -> None:
+        """Keep a swallowed turn instead of dropping it on the floor."""
+        if not turn:
+            return
+        self.pending.append(turn)
+        while len(self.pending) > PENDING_LIMIT:
+            lost = self.pending.pop(0)
+            # Not a debug line: this is words the user said, paid to
+            # transcribe, and will never get an answer to. If it ever
+            # appears, `finishing` is stuck again.
+            logger.warning(
+                "role hold full (%d) — oldest held turn dropped: %r",
+                PENDING_LIMIT, lost[:60],
+            )
+        logger.info(
+            "role finishing — turn held (%d pending): %r",
+            len(self.pending), turn[:60],
+        )
+
+    def drain_pending(self) -> list:
+        """Take the held turns away, oldest first. The conductor may call
+        this itself instead of waiting for the flow to hand them back —
+        see ``_replay_pending`` for why it usually does not have to."""
+        held, self.pending = list(self.pending), []
+        return held
+
+    def _replay_sink(self) -> Any:
+        """The conductor's front door for turns that did not come from the
+        microphone, found without importing it and without it changing.
+
+        Every callback the conductor lends this flow is one of its own
+        bound methods (``adopt_role_flow``), so the object on the other
+        end of the seam is reachable through ``__self__`` — and if it
+        takes injections, that is where held turns belong: they re-enter
+        at the top of the turn path, past the wake gate (they were already
+        judged when they were first heard) and past ``handle`` again, so a
+        stray «закінчили» is recognised as a repeated button press by the
+        grace window rather than answered as conversation.
+
+        A flow wired with plain functions — every test that builds one by
+        hand — has no such owner; its held turns simply stay in
+        ``pending`` for ``drain_pending()``.
+        """
+        for cb in (self.say, self.persist_turn, self.get_muted, self.set_muted):
+            inject = getattr(getattr(cb, "__self__", None), "inject", None)
+            if callable(inject):
+                return inject
+        return None
+
+    async def _replay_pending(self) -> None:
+        """Ask the conversation the held turns, in the order they were
+        said. Never raises: the session is already over by now."""
+        if not self.pending:
+            return
+        held = self.drain_pending()
+        inject = self._replay_sink()
+        if inject is None:
+            self.pending = held  # nobody to hand them to; keep them
+            logger.warning(
+                "role: %d held turn(s) and no replay sink — left pending",
+                len(held),
+            )
+            return
+        logger.info("role: replaying %d turn(s) held during finish", len(held))
+        for turn in held:
+            try:
+                await inject(turn)
+            except Exception:
+                logger.exception("held turn could not be replayed: %r", turn[:60])
+
     # -- the end of a session ------------------------------------------
 
     async def finish(self) -> None:
@@ -209,27 +315,33 @@ class RoleFlow:
             self._close_session()
 
         # Past this point the conversation is already free: whatever the
-        # speaker does now costs words, not the assistant's ears.
-        if artifact is None:
-            await self._try_say("Роль завершено.")
-            return
-        path = ""
-        if self.save_artifact is not None and artifact.full_md.strip():
-            try:
-                path = self.save_artifact(
-                    getattr(active, "name", "роль"), artifact.full_md
-                )
-                # The session row is closed before the file exists, so the
-                # path is stamped here or the record never points at what
-                # the session produced.
-                note = getattr(self.role_manager, "note_artifact", None)
-                if callable(note):
-                    note(path)
-            except Exception:
-                logger.exception("artifact save failed")
-        logger.info("role artifact: %s (%d chars)", path, len(artifact.full_md))
-        logger.info("say (summary): %r", artifact.spoken[:80])
-        await self._try_say(artifact.spoken)
+        # speaker does now costs words, not the assistant's ears. What was
+        # said *during* the wait is replayed last, on every path out — it
+        # goes after the summary because the summary is the answer to the
+        # button that was pressed first.
+        try:
+            if artifact is None:
+                await self._try_say("Роль завершено.")
+                return
+            path = ""
+            if self.save_artifact is not None and artifact.full_md.strip():
+                try:
+                    path = self.save_artifact(
+                        getattr(active, "name", "роль"), artifact.full_md
+                    )
+                    # The session row is closed before the file exists, so
+                    # the path is stamped here or the record never points
+                    # at what the session produced.
+                    note = getattr(self.role_manager, "note_artifact", None)
+                    if callable(note):
+                        note(path)
+                except Exception:
+                    logger.exception("artifact save failed")
+            logger.info("role artifact: %s (%d chars)", path, len(artifact.full_md))
+            logger.info("say (summary): %r", artifact.spoken[:80])
+            await self._try_say(artifact.spoken)
+        finally:
+            await self._replay_pending()
 
     def _close_session(self) -> None:
         """A session must not survive its own ending.

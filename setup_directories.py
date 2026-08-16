@@ -120,41 +120,65 @@ Ideas for what to ask the agent to do:
 
 
 def update_config_toml(HEARE_HOME):
-    """Update config.toml with directory settings."""
+    """Merge default settings into config.toml — never overwrite it.
+
+    ``load_settings()`` (src/config.py) treats config.toml as the user's
+    file: existing keys (including ``engine = "spine"``, which selects the
+    live voice engine over the retired pipecat one) and all comments must
+    survive untouched. Only keys this script cares about, and that are
+    still read somewhere in ``src/`` on the live engine, are added — and
+    only if they are not already present. Table sections (``[browser_bridge]``
+    etc.) are never touched, matching ``write_config_toml_values`` in
+    src/config.py.
+    """
+    import re
 
     config_path = HEARE_HOME / "config.toml"
+    content = config_path.read_text() if config_path.exists() else ""
 
-    # Add file access settings if not present
-    config_content = f"""# heare runtime config — picked up by load_settings()
-use_agent_sdk = true
-speaker_id_enabled = true
-speaker_id_threshold_match = 0.45
-speaker_id_min_duration_ms = 400
-confirmation_passphrase = "авторизую"
-proactivity_level = "high"
+    # `file_access_max_archive_size` is the one key from this script's old
+    # payload that anything still reads (src/agent/tools/direct.py, the
+    # archive tools reachable from the live engine's delegate worker). The
+    # rest of the old payload (use_agent_sdk, speaker_id_*,
+    # confirmation_passphrase, proactivity_level, turn_aggregation_enabled,
+    # conversation_memory_enabled, topic_extraction_enabled, generator_mode,
+    # tts_voice, file_access_auto_approve_workspace,
+    # file_access_ask_for_new_dirs, file_access_operation_timeout) is dead:
+    # either read by nothing in src/, or read only on the retired pipecat
+    # path that the live engine never runs. Dropped rather than merged.
+    defaults = {
+        "file_access_max_archive_size": 1073741824,
+    }
 
-# Conversation memory — s2s-integration branch
-turn_aggregation_enabled = true
-conversation_memory_enabled = true
-topic_extraction_enabled = true
+    first_table = re.search(r"(?m)^[ \t]*\[", content)
+    head = content[: first_table.start()] if first_table else content
+    tail = content[first_table.start() :] if first_table else ""
 
-# s2s-realtime Phase 1 — generator pipeline via OpenRouter
-generator_mode = true
+    added = []
+    for key, value in defaults.items():
+        key_re = re.compile(rf"(?m)^[ \t]*{re.escape(key)}[ \t]*=")
+        if key_re.search(head):
+            continue  # already set by the user — leave it alone
+        if head and not head.endswith("\n"):
+            head += "\n"
+        literal = json.dumps(value) if isinstance(value, str) else value
+        head += f"{key} = {literal}\n"
+        added.append(key)
 
-# TTS voice - use Ukrainian voice
-tts_voice = "uk-UA-PolinaNeural"
+    if not config_path.exists():
+        head = "# heare runtime config — picked up by load_settings()\n" + head
 
-# File access settings
-file_access_auto_approve_workspace = true
-file_access_ask_for_new_dirs = true
-file_access_max_archive_size = 1073741824
-file_access_operation_timeout = 300
-"""
+    if tail and added and not head.endswith("\n\n"):
+        head += "\n"
 
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
-        f.write(config_content)
+        f.write(head + tail)
 
-    print(f"✅ Config updated: {config_path}")
+    if added:
+        print(f"✅ Config updated: {config_path} (added {', '.join(added)})")
+    else:
+        print(f"✅ Config already complete, left untouched: {config_path}")
 
 
 def main():

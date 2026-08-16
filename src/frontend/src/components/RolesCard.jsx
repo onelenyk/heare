@@ -61,7 +61,16 @@ export default function RolesCard({ state, post, onToast }) {
   const rolesAvailable = safeParse(state.roles_available, []);
   const roleHint = safeParse(state.role_hint, null);
 
+  // A meeting the daemon's restart cut off. The engine closes the session
+  // row as 'interrupted' and writes this key at boot; until now nothing
+  // read it, so the meeting vanished in silence and the strip showed
+  // "idle" as if the last hour had not happened.
+  const interrupted = safeParse(state.role_interrupted, null);
+
   const [finished, setFinished] = useState(null); // { name, minutes }
+  // Dismissal is keyed on the event's ts so a *later* interruption comes
+  // back even though this one was dismissed.
+  const [dismissedTs, setDismissedTs] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [artifacts, setArtifacts] = useState([]);
   const [openArtifact, setOpenArtifact] = useState(null); // name of expanded artifact
@@ -128,6 +137,19 @@ export default function RolesCard({ state, post, onToast }) {
     }
   }
 
+  async function handleDismissInterrupted() {
+    // Hide first: the key is cleared server-side, but the next poll is up
+    // to a second away and the click must feel like it did something.
+    setDismissedTs(Number(interrupted && interrupted.ts) || 0);
+    try {
+      // No dedicated endpoint — the generic state write already exists and
+      // clearing the key is all "dismiss" means.
+      await post('/state', { key: 'role_interrupted', value: '' });
+    } catch (e) {
+      if (onToast) onToast('не вдалося прибрати банер: ' + e.message, 'err');
+    }
+  }
+
   async function handleArtifactClick(name) {
     if (openArtifact === name) {
       setOpenArtifact(null);
@@ -148,12 +170,38 @@ export default function RolesCard({ state, post, onToast }) {
     }
   }
 
+  // Shown above whatever the strip is doing now (idle, live role, or the
+  // just-finished card) — a restart-killed meeting is news in every one of
+  // those states, and the strip's own state says nothing about it.
+  const showInterrupted =
+    !!interrupted && (Number(interrupted.ts) || 0) !== dismissedTs;
+  const interruptedBanner = showInterrupted ? (
+    <div className="roles-interrupted" role="status">
+      <span aria-hidden="true">{'⚠'}</span>
+      <span className="roles-interrupted-msg">
+        {interrupted.role ? '«' + interrupted.role + '» · ' : ''}
+        {'мітинг перервано перезапуском'}
+        {' · '}{Number(interrupted.turns) || 0} реплік
+        {' · '}протокол не зібрано
+      </span>
+      <button
+        className="btn-ghost roles-interrupted-dismiss"
+        aria-label="Прибрати повідомлення про перерваний мітинг"
+        title="Репліки збережені в базі; протокол з них поки не збирається"
+        onClick={handleDismissInterrupted}
+      >
+        {'✕'}
+      </button>
+    </div>
+  ) : null;
+
   // ── State 4: just finished ──
   if (finished) {
     const newest = artifacts[0];
     const rest = artifacts.slice(1);
     return (
       <div className="roles-strip">
+        {interruptedBanner}
         <div className="roles-strip-top roles-finished">
           <span className="roles-finished-msg">
             {'✅'} {finished.name} завершено {'·'} {finished.minutes} хв
@@ -218,6 +266,7 @@ export default function RolesCard({ state, post, onToast }) {
   if (!roleActive) {
     return (
       <div className="roles-strip">
+        {interruptedBanner}
         <div className="roles-strip-top roles-idle">
           <span className="roles-label">РОЛІ</span>
           <div className="roles-idle-buttons">
@@ -252,6 +301,7 @@ export default function RolesCard({ state, post, onToast }) {
 
   return (
     <div className="roles-strip">
+      {interruptedBanner}
       <div className="roles-strip-top roles-active">
         {roleChannel === 'log' && (
           <>

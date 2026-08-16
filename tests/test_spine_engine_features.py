@@ -20,7 +20,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.daemon.spine_engine import _NoTelemetry, run_spine_daemon, wired_features
+from src.daemon.spine_engine import (
+    _NoTelemetry,
+    greeting_text,
+    missing_keys,
+    run_spine_daemon,
+    wired_features,
+)
+
+# Every _FakeAudio built during a test, newest last — a boot that failed
+# has no other way to hand back the streams it opened.
+_AUDIOS: list["_FakeAudio"] = []
 
 
 class _FakeAudio:
@@ -32,12 +42,15 @@ class _FakeAudio:
         self.mute_input_user = False
         self.mute_output_user = False
         self.started = False
+        self.stops = 0
+        _AUDIOS.append(self)
 
     async def start(self) -> None:
         self.started = True
 
     async def stop(self) -> None:
         self.started = False
+        self.stops += 1
 
     def stop_playback(self) -> int:
         return 0
@@ -48,6 +61,10 @@ class _FakeState:
 
     def __init__(self) -> None:
         self.cache: dict[str, str] = {}
+        # Every write in order: a boot that waits and then succeeds
+        # overwrites its own status, so the last value cannot answer
+        # "did it ever say it was waiting?".
+        self.history: list[tuple[str, str]] = []
 
     async def init(self) -> None:
         return None
@@ -60,9 +77,15 @@ class _FakeState:
 
     async def set(self, key: str, value: str) -> None:
         self.cache[key] = value
+        self.history.append((key, value))
 
     def set_cache_only(self, key: str, value: str) -> None:
         self.cache[key] = value
+        self.history.append((key, value))
+
+    def written(self, key: str) -> list[dict]:
+        """Every JSON value ever written to `key`, in order."""
+        return [json.loads(v) for k, v in self.history if k == key]
 
     def snapshot(self) -> dict:
         return dict(self.cache)
@@ -100,6 +123,7 @@ class _FakeLoop:
         self.barge_in_enabled = True
         self._empty_stt = empty_stt
         self.turns: list[str] = []
+        self.said: list[str] = []
 
     async def transcribe(self, pcm: bytes):
         return SimpleNamespace(
@@ -113,6 +137,12 @@ class _FakeLoop:
     async def _speak(self, sentence: str) -> None:
         return None
 
+    async def _say_now(self, text: str) -> None:
+        # The real one speaks through self._speak, which the runner has
+        # wrapped — going through it keeps the wrapper on the path.
+        self.said.append(text)
+        await self._speak(text)
+
     async def inject(self, text: str) -> None:
         return None
 
@@ -125,8 +155,8 @@ class _FakeLoop:
         await self.respond("привіт")
 
 
-def _settings(tmp_path) -> SimpleNamespace:
-    return SimpleNamespace(
+def _settings(tmp_path, **overrides) -> SimpleNamespace:
+    settings = SimpleNamespace(
         log_dir=tmp_path / "logs",
         voice_state_file=tmp_path / "voice_state.json",
         inject_dir=tmp_path / "inject",
@@ -134,10 +164,26 @@ def _settings(tmp_path) -> SimpleNamespace:
         db_path=tmp_path / "h.db",
         mcp_dir=tmp_path / "mcp",
         spine_turn_hold_seconds=1.3,
+        # Boot now refuses to start without these, so the fixture is a
+        # configured machine unless a test says otherwise.
+        deepseek_api_key="sk-test",
+        groq_api_key="gsk-test",
+        wake_word="гава",
     )
+    for key, value in overrides.items():
+        setattr(settings, key, value)
+    return settings
 
 
-async def _boot(monkeypatch, tmp_path, features: dict[str, bool], **loop_kwargs):
+async def _boot(
+    monkeypatch,
+    tmp_path,
+    features: dict[str, bool],
+    *,
+    settings_overrides: dict | None = None,
+    build_error: Exception | None = None,
+    **loop_kwargs,
+):
     """Run the daemon once, with fakes, and hand back what it wired."""
     import src.spine.audio_io as audio_io
     import src.spine.main as spine_main
@@ -147,6 +193,8 @@ async def _boot(monkeypatch, tmp_path, features: dict[str, bool], **loop_kwargs)
     connects: list[str] = []
 
     async def _fake_build_loop(settings, **kwargs):
+        if build_error is not None:
+            raise build_error
         return loop
 
     async def _fake_connect(settings):
@@ -165,7 +213,7 @@ async def _boot(monkeypatch, tmp_path, features: dict[str, bool], **loop_kwargs)
 
     state = _FakeState()
     api = SimpleNamespace(state=None, _memory_backend=None)
-    settings = _settings(tmp_path)
+    settings = _settings(tmp_path, **(settings_overrides or {}))
     await asyncio.wait_for(
         run_spine_daemon(settings, state, api, handle_signals=False), timeout=10
     )
@@ -286,3 +334,177 @@ def test_the_env_switches_reach_the_daemon(env, monkeypatch) -> None:
     monkeypatch.setenv(env, "mcp,telemetry" if env == "HEARE_WITHOUT" else "1")
     state = resolve(SimpleNamespace())
     assert state["mcp"] is False and state["telemetry"] is False
+
+
+# ── cold start: a machine with no keys, no permission, no voice ──────
+#
+# `heare start` on a fresh machine used to end in a traceback out of
+# resolve_llm, and the dashboard's ▶ did the same every time it was
+# pressed. Worse, the microphone and speaker streams were opened before
+# the build and never closed, so the process died holding the mic.
+
+
+async def test_missing_key_waits_instead_of_raising(monkeypatch, tmp_path) -> None:
+    """No DeepSeek key: the daemon waits, says why, and starts when it
+    appears — it does not raise."""
+    import src.daemon.spine_engine as engine
+
+    monkeypatch.setattr(engine, "BOOT_POLL_SECS", 0.01)
+
+    reloads: list[int] = []
+
+    def _fake_reload(settings):
+        reloads.append(1)
+        if len(reloads) >= 2:  # the key shows up on the second poll
+            settings.deepseek_api_key = "sk-added-later"
+        return settings
+
+    monkeypatch.setattr(engine, "_reload_settings", _fake_reload)
+
+    loop, state, _, _ = await _boot(
+        monkeypatch,
+        tmp_path,
+        {"mcp": False, "telemetry": False},
+        settings_overrides={"deepseek_api_key": ""},
+    )
+
+    statuses = state.written("boot_status")
+    waiting = [s for s in statuses if s["phase"] == "waiting_for_keys"]
+    assert waiting, "a boot blocked on a key published nothing"
+    assert waiting[0]["ok"] is False
+    assert waiting[0]["missing"] == ["deepseek_api_key"]
+    assert waiting[0]["hint"], "the user is told the key is missing, not how"
+    assert waiting[0]["costs"], "what the missing key costs is not published"
+    # And it did come up once the key was there (and then shut down
+    # normally, which is why `running` is false again by now).
+    assert ("running", "true") in state.history
+    assert statuses[-1]["phase"] == "listening" and statuses[-1]["ok"] is True
+
+
+async def test_missing_key_opens_no_audio_while_waiting(
+    monkeypatch, tmp_path
+) -> None:
+    """Waiting must not hold the microphone: nothing is opened until the
+    key is there."""
+    import src.daemon.spine_engine as engine
+
+    monkeypatch.setattr(engine, "BOOT_POLL_SECS", 0.01)
+    _AUDIOS.clear()
+    opened_while_waiting: list[int] = []
+
+    def _fake_reload(settings):
+        opened_while_waiting.append(len(_AUDIOS))
+        settings.groq_api_key = "gsk-added-later"
+        return settings
+
+    monkeypatch.setattr(engine, "_reload_settings", _fake_reload)
+
+    await _boot(
+        monkeypatch,
+        tmp_path,
+        {"mcp": False, "telemetry": False},
+        settings_overrides={"groq_api_key": ""},
+    )
+    assert opened_while_waiting == [0], "audio was opened before the key arrived"
+
+
+async def test_failed_build_releases_the_audio_it_opened(
+    monkeypatch, tmp_path
+) -> None:
+    """The streams are opened before the build; a build that raises used
+    to leave them open in a dying process."""
+    _AUDIOS.clear()
+    boom = RuntimeError("no ffmpeg on PATH")
+    with pytest.raises(RuntimeError):
+        await _boot(
+            monkeypatch,
+            tmp_path,
+            {"mcp": False, "telemetry": False},
+            build_error=boom,
+        )
+    assert _AUDIOS, "no audio was built at all"
+    audio = _AUDIOS[-1]
+    assert audio.started is False, "the microphone stayed open after a failed boot"
+    assert audio.stops == 1
+
+
+async def test_failed_build_publishes_the_failure(monkeypatch, tmp_path) -> None:
+    """A crash the user cannot fix by adding a key still gets a line the
+    dashboard can render."""
+    state = _FakeState()
+    with pytest.raises(RuntimeError):
+        await _boot_with_state(
+            monkeypatch,
+            tmp_path,
+            state,
+            build_error=RuntimeError("portaudio is not installed"),
+        )
+    failed = [s for s in state.written("boot_status") if s["phase"] == "failed"]
+    assert failed and failed[-1]["ok"] is False
+    assert "portaudio" in failed[-1]["error"]
+
+
+async def _boot_with_state(monkeypatch, tmp_path, state, **kwargs):
+    """_boot, but with a state object the caller keeps after the raise."""
+    import src.spine.audio_io as audio_io
+    import src.spine.main as spine_main
+
+    build_error = kwargs.pop("build_error", None)
+    loop = _FakeLoop({"mcp": False, "telemetry": False})
+
+    async def _fake_build_loop(settings, **kw):
+        if build_error is not None:
+            raise build_error
+        return loop
+
+    monkeypatch.setattr(audio_io, "AudioIO", _FakeAudio)
+    monkeypatch.setattr(spine_main, "_build_loop", _fake_build_loop)
+    api = SimpleNamespace(state=None, _memory_backend=None)
+    await asyncio.wait_for(
+        run_spine_daemon(_settings(tmp_path), state, api, handle_signals=False),
+        timeout=10,
+    )
+
+
+async def test_greeting_is_spoken_once(monkeypatch, tmp_path) -> None:
+    """The only 'I am alive' signal used to be a green dot on a page
+    nobody had open."""
+    import src.daemon.spine_engine as engine
+
+    monkeypatch.delenv("HEARE_NO_GREETING", raising=False)
+    monkeypatch.setattr(engine, "GREETING_DELAY_SECS", 0.0)
+
+    loop, state, _, _ = await _boot(
+        monkeypatch, tmp_path, {"mcp": False, "telemetry": False}
+    )
+    assert len(loop.said) == 1, f"greeting spoken {len(loop.said)} times"
+    assert "зв'язку" in loop.said[0]
+    assert loop.said[0].startswith("Гава")
+    assert state.written("boot_status")[-1]["greeting"] == loop.said[0]
+
+
+async def test_greeting_can_be_switched_off(monkeypatch, tmp_path) -> None:
+    import src.daemon.spine_engine as engine
+
+    monkeypatch.setenv("HEARE_NO_GREETING", "1")
+    monkeypatch.setattr(engine, "GREETING_DELAY_SECS", 0.0)
+
+    loop, state, _, _ = await _boot(
+        monkeypatch, tmp_path, {"mcp": False, "telemetry": False}
+    )
+    assert loop.said == []
+    assert state.written("boot_status")[-1]["greeting"] == "off"
+
+
+def test_missing_keys_reads_both_of_them() -> None:
+    assert missing_keys(SimpleNamespace()) == ["deepseek_api_key", "groq_api_key"]
+    assert missing_keys(
+        SimpleNamespace(deepseek_api_key="x", groq_api_key="   ")
+    ) == ["groq_api_key"]
+    assert missing_keys(SimpleNamespace(deepseek_api_key="x", groq_api_key="y")) == []
+
+
+def test_greeting_is_short_and_ukrainian() -> None:
+    text = greeting_text(SimpleNamespace(wake_word="гава"))
+    assert text == "Гава на зв'язку."
+    assert len(greeting_text(SimpleNamespace()).split()) <= 4

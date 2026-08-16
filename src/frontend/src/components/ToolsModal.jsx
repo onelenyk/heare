@@ -29,6 +29,35 @@ function inferBuiltInCategory(name) {
   return {key:"other", label:"other", icon:"📦"};
 }
 
+// ═══ Helper: the MCP servers that actually connected ═══
+//
+// The "mcps" list below is what .mcp.json asks for. `mcp_status` (from the
+// engine's State key, passed through /api/tools) is what came up — the two
+// disagree exactly when something is wrong, and until now the modal only
+// ever showed the wish list.
+function mcpStatusLine(status) {
+  if (!status) {
+    // The pipecat engine never writes the key. Silence is not an outage.
+    return { text: "connection status unknown — this engine does not report it", cls: "off" };
+  }
+  const servers = Array.isArray(status.servers) ? status.servers : [];
+  const tools = Number(status.tools) || 0;
+  const error = status.error || "";
+  if (!status.ok && error === "off") {
+    return { text: "MCP is off — no servers started, no external tools for the agent", cls: "off" };
+  }
+  if (!status.ok) {
+    return { text: "MCP failed: " + (error || "did not connect"), cls: "err" };
+  }
+  if (servers.length === 0) {
+    return { text: "connected, but no server is configured in .mcp.json", cls: "off" };
+  }
+  return {
+    text: "connected: " + servers.join(", ") + " — " + tools + " tool" + (tools === 1 ? "" : "s"),
+    cls: "ok",
+  };
+}
+
 export default function ToolsModal({ data, onClose }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedSections, setCollapsedSections] = useState(new Set());
@@ -211,6 +240,15 @@ export default function ToolsModal({ data, onClose }) {
           {data && data.error && (
             <div className="info-line" style={{color:"var(--accent-yellow)",marginBottom:6}}>{data.error}</div>
           )}
+          {(function() {
+            const line = mcpStatusLine(data.mcp_status);
+            return (
+              <div className={"mcp-status-line mcp-" + line.cls}>
+                <span className="mcp-status-dot" aria-hidden="true"></span>
+                <span>{line.text}</span>
+              </div>
+            );
+          })()}
           <input
             type="text"
             className="modal-search"

@@ -32,6 +32,203 @@ MCP_SETTLE_SECS = 0.5
 # stale key, and a gain of 40 would be a wall of clipping.
 GAIN_MIN = 0.0
 GAIN_MAX = 5.0
+# How often a boot that is waiting for a key re-reads the settings. Same
+# cadence as the legacy engine's wait loop in src/main.py.
+BOOT_POLL_SECS = 1.0
+# A moment after the loop starts running, so the greeting does not race
+# the first audio callbacks.
+GREETING_DELAY_SECS = 0.6
+
+
+# -- keys the engine cannot work without -----------------------------
+#
+# The spine has exactly two: DeepSeek answers, Groq hears. Missing the
+# first, _build_loop raises out of resolve_llm and the daemon used to die
+# with a traceback; missing the second, it came up looking healthy and
+# dropped every utterance in silence. Neither is a crash and neither is a
+# secret — both are a fact for the dashboard and a thing to wait for.
+REQUIRED_KEYS: tuple[tuple[str, str, str], ...] = (
+    (
+        "deepseek_api_key",
+        "DEEPSEEK_API_KEY",
+        "нема кому відповідати — модель недоступна",
+    ),
+    (
+        "groq_api_key",
+        "GROQ_API_KEY",
+        "нічого не чує — розпізнавання мовлення недоступне",
+    ),
+)
+KEY_HINT = (
+    "Add it in the dashboard (Setup → Keys) or in ~/.heare/.env — "
+    "the daemon picks it up within a second, no restart needed."
+)
+
+
+def missing_keys(settings: Any) -> list[str]:
+    """Which required keys are not set on this settings object."""
+    return [
+        attr
+        for attr, _env, _cost in REQUIRED_KEYS
+        if not str(getattr(settings, attr, None) or "").strip()
+    ]
+
+
+def _env_names(attrs: list[str]) -> str:
+    by_attr = {attr: env for attr, env, _cost in REQUIRED_KEYS}
+    return ", ".join(by_attr.get(a, a) for a in attrs)
+
+
+def _key_costs(attrs: list[str]) -> list[str]:
+    by_attr = {attr: cost for attr, _env, cost in REQUIRED_KEYS}
+    return [f"{a}: {by_attr[a]}" for a in attrs if a in by_attr]
+
+
+def publish_boot_status(
+    state: Any,
+    *,
+    ok: bool,
+    phase: str,
+    missing: list[str] | None = None,
+    error: str = "",
+    waited_s: float = 0.0,
+    greeting: str = "",
+) -> dict:
+    """Say out loud where the boot got to — State key ``boot_status``.
+
+    Cache-only, like mcp_status: it describes *this* process, and a value
+    surviving into the next boot would describe a daemon that is gone.
+    The dashboard renders it; without it a boot waiting for a key is
+    indistinguishable from a boot that hung.
+    """
+    missing = list(missing or [])
+    status = {
+        "ok": bool(ok),
+        "phase": phase,
+        "missing": missing,
+        "costs": _key_costs(missing),
+        "error": error,
+        "waited_s": round(float(waited_s), 1),
+        "greeting": greeting,
+        "hint": KEY_HINT if missing else "",
+        "ts": time.time(),
+    }
+    if state is not None:
+        try:
+            state.set_cache_only(
+                "boot_status", json.dumps(status, ensure_ascii=False)
+            )
+        except Exception:
+            logger.debug("boot_status write failed (non-fatal)")
+    return status
+
+
+def _reload_settings(settings: Any) -> Any:
+    """Re-read ``~/.heare/.env`` and config.toml, the way src/main.py's
+    legacy wait loop does.
+
+    A daemon started before the key existed holds a Settings that says it
+    still does not; the dashboard's Save Keys writes the .env, not this
+    process's memory. Without a reload the wait could never end. A failed
+    reload is not fatal — keep the settings we have and try again.
+    """
+    try:
+        from dotenv import load_dotenv
+        from src.config import load_settings
+
+        load_dotenv(Path.home() / ".heare" / ".env", override=True)
+        fresh = load_settings()
+        fresh.ensure_dirs()
+        return fresh
+    except Exception:
+        logger.exception("boot: settings reload failed (keeping the old ones)")
+        return settings
+
+
+async def _stopped(stop: Any, secs: float) -> bool:
+    """Sleep, unless the daemon is asked to stop first."""
+    if stop is None:
+        await asyncio.sleep(secs)
+        return False
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=secs)
+        return True
+    except asyncio.TimeoutError:
+        return False
+
+
+async def _wait_for_keys(settings: Any, state: Any, stop: Any) -> tuple[Any, bool]:
+    """Block until every required key is set. Never raises, never exits.
+
+    Returns ``(settings, True)`` once the keys are there — the settings
+    are the *reloaded* ones, so the rest of boot reads the same file the
+    user just edited. ``(settings, False)`` means the daemon was asked to
+    stop while waiting.
+    """
+    missing = missing_keys(settings)
+    if not missing:
+        return settings, True
+
+    logger.error(
+        "boot: %s not set — the assistant cannot start. %s (%s)",
+        _env_names(missing),
+        KEY_HINT,
+        "; ".join(_key_costs(missing)),
+    )
+    waited = 0.0
+    while True:
+        publish_boot_status(
+            state,
+            ok=False,
+            phase="waiting_for_keys",
+            missing=missing,
+            waited_s=waited,
+        )
+        if await _stopped(stop, BOOT_POLL_SECS):
+            publish_boot_status(
+                state, ok=False, phase="stopped", missing=missing, waited_s=waited
+            )
+            return settings, False
+        waited += BOOT_POLL_SECS
+        settings = _reload_settings(settings)
+        missing = missing_keys(settings)
+        if not missing:
+            logger.info("boot: keys found after %.0fs — starting", waited)
+            publish_boot_status(state, ok=True, phase="starting", waited_s=waited)
+            return settings, True
+
+
+async def _release_audio(audio: Any) -> None:
+    """Close the streams a failed boot opened. A dying process holding
+    the microphone is the difference between a crash and a broken mic."""
+    if audio is None:
+        return
+    try:
+        await audio.stop()
+    except Exception:
+        logger.exception("boot: releasing the audio streams failed (non-fatal)")
+
+
+def _greeting_enabled(settings: Any) -> bool:
+    """On by default; off via config (``spine_startup_greeting = false``,
+    once config.py grows the field) or ``HEARE_NO_GREETING=1`` today."""
+    import os
+
+    if os.environ.get("HEARE_NO_GREETING", "").strip() not in ("", "0", "false"):
+        return False
+    return bool(getattr(settings, "spine_startup_greeting", True))
+
+
+def greeting_text(settings: Any) -> str:
+    """Three words, in the language the assistant is spoken to in.
+
+    Short on purpose: it exists to prove the speaker works and the daemon
+    is up, and anything longer is something to talk over every restart.
+    """
+    name = str(getattr(settings, "wake_word", "") or "").strip()
+    if name:
+        return f"{name[:1].upper()}{name[1:]} на зв'язку."
+    return "На зв'язку."
 
 
 def _clean_gain(raw: str, fallback: float = 1.0) -> float:
@@ -505,22 +702,88 @@ async def run_spine_daemon(
     await state.init()
     api.state = state
 
-    # The device pickers write a name to a file; resolve it once, here,
-    # because a stream's device cannot be changed after it is open.
-    audio = AudioIO(
-        input_device=_resolve_device(settings, "input"),
-        output_device=_resolve_device(settings, "output"),
-    )
-    audio.input_gain = _clean_gain(state.get("input_gain"))
-    audio.output_volume = _clean_gain(state.get("output_volume"))
-    await audio.start()
-    loop = await _build_loop(
-        settings,
-        audio=audio,
-        voice="",
-        hold_s=float(getattr(settings, "spine_turn_hold_seconds", 1.3)),
-        full=True,
-    )
+    # Installed before the boot, not after it: a daemon waiting for an
+    # API key must still answer Ctrl-C and SIGTERM, and the wait below is
+    # the one place that can last forever.
+    stop = asyncio.Event()
+    if handle_signals:
+        import signal
+
+        loop_ = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop_.add_signal_handler(sig, stop.set)
+            except (NotImplementedError, RuntimeError):
+                pass
+
+    # -- boot: wait for what is missing, and never leak what was opened -
+    #
+    # Two failures used to end the process here. A missing key raised out
+    # of resolve_llm, so `heare start` died with a traceback and the
+    # dashboard's ▶ did the same, every time — now it waits and says so.
+    # And audio.start() ran outside any try, so a build that raised left
+    # the microphone and speaker streams open in a dying process.
+    publish_boot_status(state, ok=True, phase="starting")
+    audio: Any = None
+    loop: Any = None
+    while True:
+        settings, ready = await _wait_for_keys(settings, state, stop)
+        if not ready:
+            logger.info("spine engine: asked to stop while waiting for keys")
+            try:
+                await state.set("running", "false")
+            except Exception:
+                pass
+            return
+
+        # The device pickers write a name to a file; resolve it once,
+        # here, because a stream's device cannot be changed after it is
+        # open — and after the wait, so a device chosen while the key was
+        # missing is the one that gets opened.
+        audio = AudioIO(
+            input_device=_resolve_device(settings, "input"),
+            output_device=_resolve_device(settings, "output"),
+        )
+        audio.input_gain = _clean_gain(state.get("input_gain"))
+        audio.output_volume = _clean_gain(state.get("output_volume"))
+        try:
+            await audio.start()
+            loop = await _build_loop(
+                settings,
+                audio=audio,
+                voice="",
+                hold_s=float(getattr(settings, "spine_turn_hold_seconds", 1.3)),
+                full=True,
+            )
+        except Exception as exc:
+            await _release_audio(audio)
+            audio = None
+            still_missing = missing_keys(settings)
+            if still_missing:
+                # A key removed (or written half-way) between the check
+                # and the build. Same answer as before: wait for it.
+                logger.error(
+                    "boot: build failed and %s is not set — waiting (%s)",
+                    _env_names(still_missing),
+                    exc,
+                )
+                publish_boot_status(
+                    state,
+                    ok=False,
+                    phase="waiting_for_keys",
+                    missing=still_missing,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                continue
+            publish_boot_status(
+                state,
+                ok=False,
+                phase="failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            logger.exception("spine engine: boot failed — audio streams released")
+            raise
+        break
 
     # The memories card asks the API, and the API needs the backend the
     # spine already opened — it was only ever set on the pipecat path.
@@ -957,17 +1220,8 @@ async def run_spine_daemon(
                 logger.exception("inject poll failed (non-fatal)")
 
     # -- lifecycle -----------------------------------------------------
-
-    stop = asyncio.Event()
-    if handle_signals:
-        import signal
-
-        loop_ = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop_.add_signal_handler(sig, stop.set)
-            except (NotImplementedError, RuntimeError):
-                pass
+    # (the stop event and its signal handlers are installed before the
+    # boot, above — a boot that waits must still be interruptible)
 
     await state.set("running", "true")
     _vs("listening")
@@ -981,6 +1235,41 @@ async def run_spine_daemon(
         asyncio.create_task(_poll_mcp(), name="spine-mcp-poll") if mcp_on else None
     )
     runner = asyncio.create_task(loop.run(), name="spine-run")
+
+    # -- "I am alive", out loud ----------------------------------------
+    #
+    # The legacy engine spoke on start-up; the spine's only sign of life
+    # was a green dot on a page nobody had open. It goes through the
+    # loop's own service-phrase path (_say_now → _speak, which this
+    # runner has already wrapped), so it is muted, interrupted and
+    # recorded exactly like any other short phrase — no second TTS path.
+    # Its own task: _say_now waits for the playback to drain, and boot
+    # must not.
+    greet_task: asyncio.Task | None = None
+    say_now = getattr(loop, "_say_now", None)
+    greeting = greeting_text(settings)
+    if not _greeting_enabled(settings):
+        logger.info("startup greeting: off")
+        publish_boot_status(state, ok=True, phase="listening", greeting="off")
+    elif not callable(say_now):
+        # Nothing to say it with — say so rather than guess.
+        logger.warning("startup greeting: loop has no _say_now — not spoken")
+        publish_boot_status(
+            state, ok=True, phase="listening", greeting="unreachable"
+        )
+    else:
+        async def _greet() -> None:
+            await asyncio.sleep(GREETING_DELAY_SECS)
+            try:
+                await say_now(greeting)
+                logger.info("startup greeting spoken: %r", greeting)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("startup greeting failed (non-fatal)")
+
+        greet_task = asyncio.create_task(_greet(), name="spine-greeting")
+        publish_boot_status(state, ok=True, phase="listening", greeting=greeting)
     try:
         waiter = asyncio.create_task(stop.wait())
         done, _ = await asyncio.wait(
@@ -997,7 +1286,7 @@ async def run_spine_daemon(
         # mcp_task may still be waiting on a cold `npx`; cancelling it
         # is why it is a named task and not a fire-and-forget coroutine.
         background = [t for t in (poller, role_poller, ctl_poller, mcp_poller,
-                                  runner, mcp_task) if t is not None]
+                                  runner, mcp_task, greet_task) if t is not None]
         for t in background:
             t.cancel()
         await asyncio.gather(*background, return_exceptions=True)

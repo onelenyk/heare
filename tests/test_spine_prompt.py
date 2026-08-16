@@ -7,8 +7,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-
 from src.spine.prompt import build_system_prompt, load_persona
 
 
@@ -271,14 +269,15 @@ class TestLoadPersona:
         persona = load_persona(settings)
         assert persona == ""
 
-    def test_load_persona_missing_required_fields_returns_empty(
-        self, tmp_path: Path
-    ) -> None:
-        """load_persona returns '' when name or creature is missing."""
-        # Missing creature
+    def test_load_persona_missing_name_returns_empty(self, tmp_path: Path) -> None:
+        """load_persona returns '' when the name is missing.
+
+        The name is the one field that is pure identity; without it there is
+        nothing to introduce.
+        """
         identity_data = {
-            "name": "Гав",
-            "creature": "",
+            "name": "",
+            "creature": "собака",
             "vibe": "веселий",
             "emoji": "🐕",
             "tagline": "вереск і радість",
@@ -294,6 +293,25 @@ class TestLoadPersona:
         settings = MockSettings(identity_file)
         persona = load_persona(settings)
         assert persona == ""
+
+    def test_load_persona_name_only_still_renders(self, tmp_path: Path) -> None:
+        """An identity file with nothing but a name still renders sanely."""
+        identity_file = tmp_path / "identity.json"
+        identity_file.write_text(json.dumps({"name": "Гав"}, ensure_ascii=False))
+
+        class MockSettings:
+            def __init__(self, path: Path) -> None:
+                self.identity_file = path
+
+        persona = load_persona(MockSettings(identity_file))
+
+        assert "Я на ім'я Гав" in persona
+        # The division of labour is fixed text, not read from the file.
+        assert "робітник" in persona
+        assert "озиваюсь" in persona
+        assert persona.endswith(".")
+        # No dangling "мій стиль —" with nothing after it.
+        assert "стиль" not in persona
 
     def test_load_persona_no_identity_file_attr(self, tmp_path: Path) -> None:
         """load_persona falls back to ~/.heare/identity.json when attr missing."""
@@ -326,6 +344,24 @@ class TestLoadPersona:
         # Should have loaded from the fallback path
         assert "Я на ім'я Гав" in persona
 
+    def test_load_persona_no_vibe_no_style_clause(self, tmp_path: Path) -> None:
+        """An English vibe with no known traits leaves no English behind."""
+        identity_file = tmp_path / "identity.json"
+        identity_file.write_text(
+            json.dumps(
+                {"name": "Гав", "vibe": "quixotic, antediluvian"},
+                ensure_ascii=False,
+            )
+        )
+
+        class MockSettings:
+            def __init__(self, path: Path) -> None:
+                self.identity_file = path
+
+        persona = load_persona(MockSettings(identity_file))
+        assert "quixotic" not in persona
+        assert "antediluvian" not in persona
+
     def test_load_persona_minimal_fields(self, tmp_path: Path) -> None:
         """load_persona works with minimal required fields."""
         identity_data = {
@@ -346,3 +382,162 @@ class TestLoadPersona:
         assert "Я на ім'я Гав" in persona
         assert "собака" in persona
         assert persona.endswith(".")
+
+
+# The identity actually sitting in ~/.heare/identity.json on the dev machine
+# (2026-06-07 generation). Inlined so the test does not depend on the box it
+# runs on. Its `creature` is an English capability advertisement: everything
+# after the name is false for the live engine, which has three verbs
+# (delegate / remember / recall), cannot execute code or browse, and never
+# speaks unprompted.
+BOILERPLATE_IDENTITY = {
+    "name": "Doka",
+    "creature": (
+        "A capable ambient AI that lives in your headphones, quietly "
+        "listening, and acts as your all-purpose terminal, browser, and "
+        "tool system — executing code, searching the web, and automating "
+        "tasks on its own initiative."
+    ),
+    "vibe": "curious, pragmatic, efficient",
+    "emoji": "🎧",
+    "tagline": "Слухаю, розумію, роблю.",
+    "generated_at": "2026-06-07T21:42:04.522677+00:00",
+}
+
+# Words whose presence in the prompt would tell the voice model it is a
+# terminal / a browser / a self-starter.
+FALSE_CLAIM_WORDS = (
+    "terminal",
+    "термінал",
+    "browser",
+    "браузер",
+    "executing code",
+    "виконує код",
+    "searching the web",
+    "automating",
+    "on its own initiative",
+    "ініціатив",
+    "tool system",
+)
+
+
+def _write_identity(tmp_path: Path, data: dict) -> object:
+    identity_file = tmp_path / "identity.json"
+    identity_file.write_text(json.dumps(data, ensure_ascii=False))
+
+    class MockSettings:
+        def __init__(self, path: Path) -> None:
+            self.identity_file = path
+
+    return MockSettings(identity_file)
+
+
+def _cyrillic_share(text: str) -> float:
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return 0.0
+    return sum(1 for ch in letters if "Ѐ" <= ch <= "ӿ") / len(letters)
+
+
+class TestPersonaIsAVoiceNotATerminal:
+    """The persona says who the assistant is, never what it can do."""
+
+    def test_capability_boilerplate_makes_no_false_claims(
+        self, tmp_path: Path
+    ) -> None:
+        """The real boilerplate identity yields no terminal/browser/initiative."""
+        persona = load_persona(_write_identity(tmp_path, BOILERPLATE_IDENTITY))
+
+        assert persona  # it still renders a persona
+        lowered = persona.lower()
+        for word in FALSE_CLAIM_WORDS:
+            assert word not in lowered, f"persona still claims: {word}"
+
+    def test_false_claims_absent_from_the_whole_prompt(self, tmp_path: Path) -> None:
+        """Nothing downstream of load_persona reintroduces the claims."""
+        persona = load_persona(_write_identity(tmp_path, BOILERPLATE_IDENTITY))
+        prompt = build_system_prompt(
+            persona=persona,
+            memory_block="Користувач любить музику.",
+            exchanges=[{"user": "Привіт", "agent": "Привіт!"}],
+            now=datetime(2026, 8, 12, 14, 30, 45),
+        )
+        lowered = prompt.lower()
+        for word in FALSE_CLAIM_WORDS:
+            assert word not in lowered, f"prompt still claims: {word}"
+
+    def test_boilerplate_creature_sentence_is_dropped_whole(
+        self, tmp_path: Path
+    ) -> None:
+        """A capability blurb is dropped entirely, not trimmed."""
+        persona = load_persona(_write_identity(tmp_path, BOILERPLATE_IDENTITY))
+        assert "ambient" not in persona.lower()
+        assert "headphones" not in persona.lower()
+        # The name survives — it is the one field that is pure identity.
+        assert "Doka" in persona
+
+    def test_rendered_persona_is_ukrainian(self, tmp_path: Path) -> None:
+        """The persona is Ukrainian prose, matching the voice rules above it."""
+        persona = load_persona(_write_identity(tmp_path, BOILERPLATE_IDENTITY))
+        # 'Doka' is a name and stays Latin; everything else is Cyrillic.
+        assert _cyrillic_share(persona) > 0.9
+
+    def test_persona_states_the_true_division_of_labour(
+        self, tmp_path: Path
+    ) -> None:
+        """It speaks, hands work to its worker, and answers when addressed."""
+        persona = load_persona(_write_identity(tmp_path, BOILERPLATE_IDENTITY))
+        assert "голос" in persona
+        assert "робітник" in persona
+        assert "озиваюсь" in persona
+        assert "не починаю" in persona
+
+    def test_character_creature_survives(self, tmp_path: Path) -> None:
+        """A short Ukrainian character phrase is kept as written."""
+        identity = dict(BOILERPLATE_IDENTITY)
+        identity["creature"] = "спокійний голос у навушниках"
+        persona = load_persona(_write_identity(tmp_path, identity))
+        assert "спокійний голос у навушниках" in persona
+
+    def test_english_vibe_is_rendered_in_ukrainian(self, tmp_path: Path) -> None:
+        """The English trait list does not survive into Ukrainian prose."""
+        persona = load_persona(_write_identity(tmp_path, BOILERPLATE_IDENTITY))
+        assert "curious" not in persona
+        assert "pragmatic" not in persona
+        assert "efficient" not in persona
+        assert "допитливий" in persona
+
+    def test_persona_is_deterministic(self, tmp_path: Path) -> None:
+        """Same file -> same bytes, or the prefix cache never hits."""
+        settings = _write_identity(tmp_path, BOILERPLATE_IDENTITY)
+        assert load_persona(settings) == load_persona(settings)
+
+    def test_real_persona_stays_in_the_static_prefix(self, tmp_path: Path) -> None:
+        """The rendered persona is part of the stable, cacheable head."""
+        persona = load_persona(_write_identity(tmp_path, BOILERPLATE_IDENTITY))
+        static_only = build_system_prompt(persona=persona)
+
+        prompt_a = build_system_prompt(
+            persona=persona,
+            memory_block="Користувач любить музику.",
+            exchanges=[{"user": "Привіт", "agent": "Привіт!"}],
+            now=datetime(2026, 8, 12, 10, 0, 0),
+        )
+        prompt_b = build_system_prompt(
+            persona=persona,
+            memory_block="Зовсім інша інформація про щось інше.",
+            exchanges=[{"user": "Як справи?", "agent": "Добре."}],
+            now=datetime(2026, 8, 13, 23, 59, 59),
+        )
+
+        assert prompt_a.startswith(static_only)
+        assert prompt_b.startswith(static_only)
+        assert len(os.path.commonprefix([prompt_a, prompt_b])) >= len(static_only)
+
+    def test_missing_file_still_yields_empty(self, tmp_path: Path) -> None:
+        """A missing identity file yields '' — no invented persona."""
+
+        class MockSettings:
+            identity_file = tmp_path / "nope.json"
+
+        assert load_persona(MockSettings()) == ""

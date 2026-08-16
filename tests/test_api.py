@@ -1461,3 +1461,195 @@ async def test_features_requires_auth(features_client, features_home) -> None:
     )
     assert resp.status == 401
     assert (features_home / "config.toml").read_text() == _CONFIG_FIXTURE
+
+
+# ---------------------------------------------------------------------------
+# Three status facts the dashboard could not see
+#
+# The engine wrote `role_interrupted` and `mcp_status` into State and nothing
+# ever read them, while the header asserted "chrome connected" from a config
+# switch and a leftover file. These cover the API half of all three.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def state_keys(mock_state):
+    """A State whose `get` answers from a real dict, like the live one."""
+    keys: dict[str, str] = {}
+    mock_state.get.side_effect = lambda key, default="": keys.get(key, default)
+    mock_state.snapshot.side_effect = lambda: dict(keys)
+    return keys
+
+
+@pytest.fixture
+def no_bridge():
+    """No browser bridge registered in this process — the spine engine's
+    situation, and the default the module already starts in."""
+    from src.agent import browser_bridge
+
+    previous = browser_bridge._get_bridge()
+    browser_bridge.set_bridge(None)
+    yield browser_bridge
+    browser_bridge.set_bridge(previous)
+
+
+class _FakeBridge:
+    """Only the one thing the API asks a bridge about."""
+
+    def __init__(self, connected: bool) -> None:
+        self.connected = connected
+
+
+# ── chrome: the fact, not the switch ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_chrome_is_false_when_no_bridge_was_ever_started(
+    api, mock_config, no_bridge, tmp_path, monkeypatch
+) -> None:
+    """The old derivation said connected here — enabled in config plus a
+    token file on disk — on an engine that never starts the bridge. Both
+    are set up exactly as on that machine; neither is evidence."""
+    monkeypatch.setattr("src.api.HEARE_HOME", tmp_path)
+    (tmp_path / "browser_bridge.token").write_text("a-token\n")
+    mock_config.browser_bridge_enabled = True
+    resp = await api._handle_state(_mock_request())
+    data = json.loads(resp.body)
+    assert data["chrome"] is False
+    assert data["chrome_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_chrome_is_false_while_no_extension_is_attached(
+    api, mock_config, no_bridge
+) -> None:
+    mock_config.browser_bridge_enabled = True
+    no_bridge.set_bridge(_FakeBridge(connected=False))
+    data = json.loads((await api._handle_state(_mock_request())).body)
+    assert data["chrome"] is False
+    assert data["chrome_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_chrome_is_true_only_with_an_authenticated_client(
+    api, mock_config, no_bridge
+) -> None:
+    mock_config.browser_bridge_enabled = True
+    no_bridge.set_bridge(_FakeBridge(connected=True))
+    data = json.loads((await api._handle_state(_mock_request())).body)
+    assert data["chrome"] is True
+
+
+@pytest.mark.asyncio
+async def test_chrome_enabled_reports_the_switch_being_off(
+    api, mock_config, no_bridge
+) -> None:
+    """Two different things, and the header now shows which: a bridge that
+    is switched off, and one that is on with nothing attached."""
+    mock_config.browser_bridge_enabled = False
+    data = json.loads((await api._handle_state(_mock_request())).body)
+    assert data["chrome"] is False
+    assert data["chrome_enabled"] is False
+
+
+# ── mcp_status: connected, off, or failed ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tools_reports_connected_mcp_servers(api, state_keys) -> None:
+    state_keys["mcp_status"] = json.dumps(
+        {"servers": ["filesystem", "github"], "tools": 12, "ok": True, "error": ""}
+    )
+    resp = await api._handle_tools(_mock_request())
+    status = json.loads(resp.body)["mcp_status"]
+    assert status["servers"] == ["filesystem", "github"]
+    assert status["tools"] == 12
+    assert status["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_tools_distinguishes_switched_off_from_failed(api, state_keys) -> None:
+    """`off` is the feature switch; anything else in `error` is an outage.
+    Reading them the same way is how "no tools" looked like "no problem"."""
+    state_keys["mcp_status"] = json.dumps(
+        {"servers": [], "tools": 0, "ok": False, "error": "off"}
+    )
+    off = json.loads((await api._handle_tools(_mock_request())).body)["mcp_status"]
+    assert off["ok"] is False and off["error"] == "off"
+
+    state_keys["mcp_status"] = json.dumps(
+        {"servers": [], "tools": 0, "ok": False, "error": "connect failed: boom"}
+    )
+    bad = json.loads((await api._handle_tools(_mock_request())).body)["mcp_status"]
+    assert bad["ok"] is False and bad["error"] == "connect failed: boom"
+
+
+@pytest.mark.asyncio
+async def test_tools_says_unknown_when_the_engine_never_reported(
+    api, state_keys
+) -> None:
+    """The pipecat engine writes no such key. Null, not a fabricated 'off'."""
+    resp = await api._handle_tools(_mock_request())
+    assert json.loads(resp.body)["mcp_status"] is None
+
+
+@pytest.mark.asyncio
+async def test_tools_survives_a_junk_mcp_status(api, state_keys) -> None:
+    state_keys["mcp_status"] = "not json at all"
+    resp = await api._handle_tools(_mock_request())
+    assert resp.status == 200
+    assert json.loads(resp.body)["mcp_status"] is None
+
+
+@pytest.mark.asyncio
+async def test_tools_requires_auth(features_client) -> None:
+    assert (await features_client.get("/api/tools")).status == 401
+
+
+# ── role_interrupted: visible, and dismissable ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_state_carries_role_interrupted_to_the_dashboard(
+    api, state_keys
+) -> None:
+    """The whole defect: the engine writes this and /state must pass it on."""
+    payload = json.dumps({"role": "мітинг", "turns": 47, "ts": 1754000000.0})
+    state_keys["role_interrupted"] = payload
+    data = json.loads((await api._handle_state(_mock_request())).body)
+    assert json.loads(data["role_interrupted"])["turns"] == 47
+
+
+@pytest.mark.asyncio
+async def test_dismissing_role_interrupted_clears_the_key(api, mock_state) -> None:
+    """Dismissal reuses the generic state write rather than adding a route:
+    an empty value is exactly what the banner reads as "nothing to show"."""
+    request = _mock_request(json_data={"key": "role_interrupted", "value": ""})
+    resp = await api._handle_state_post(request)
+    assert resp.status == 200
+    assert json.loads(resp.body)["ok"] is True
+    mock_state.set.assert_awaited_once_with("role_interrupted", "")
+
+
+@pytest.mark.asyncio
+async def test_dismiss_over_http_requires_auth(features_client) -> None:
+    resp = await features_client.post(
+        "/state", json={"key": "role_interrupted", "value": ""}
+    )
+    assert resp.status == 401
+
+
+@pytest.mark.asyncio
+async def test_dismiss_over_http_with_token(mock_state, auth_config) -> None:
+    client = _features_client(mock_state, auth_config)
+    await client.start_server()
+    try:
+        resp = await client.post(
+            "/state",
+            headers=_auth(),
+            json={"key": "role_interrupted", "value": ""},
+        )
+        assert resp.status == 200
+        mock_state.set.assert_awaited_once_with("role_interrupted", "")
+    finally:
+        await client.close()

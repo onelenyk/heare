@@ -19,6 +19,7 @@ time.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -101,12 +102,149 @@ def build_system_prompt(
     return "\n\n".join(parts)
 
 
-def load_persona(settings: object) -> str:
-    """Best-effort read of the generated persona text from its file on disk.
+# --- turning identity.json into a VOICE persona -------------------------
+#
+# identity.json is written by an LLM, and older generations wrote the
+# `creature` field as an English capability advertisement ("an ambient AI
+# that acts as your all-purpose terminal, browser and tool system —
+# executing code ... on its own initiative"). Injected verbatim, that text
+# tells the voice model it IS a terminal, so it narrates work it never did
+# and promises initiative it structurally cannot take: the spine has three
+# verbs (delegate / remember / recall) and never speaks unprompted.
+#
+# So a `creature` string is only trusted as CHARACTER. It is dropped when
+# it looks like a capability blurb instead — see _is_character().
+_CAPABILITY_STEMS = (
+    # English
+    "terminal", "browser", "shell", "bash", "code", "coding", "execut",
+    "run", "automat", "search", "web", "internet", "api", "file", "files",
+    "script", "tool", "tools", "toolkit", "multi-tool", "initiativ",
+    "autonom", "proactiv", "agent", "assistant", "ai", "llm", "model",
+    "system", "capab", "task", "tasks", "comput", "app", "apps", "device",
+    # Ukrainian / Russian
+    "термінал", "браузер", "консол", "команд", "код", "викону", "запуска",
+    "автоматиз", "пошук", "шука", "інтернет", "файл", "скрипт",
+    "інструмент", "ініціатив", "автоном", "проактив", "асистент",
+    "помічник", "систем", "застосун", "пристр", "мереж", "завдан",
+)
 
-    Resolves path from settings.identity_file if available, otherwise tries
-    ~/.heare/identity.json. Reads the identity JSON and formats it as a
-    persona string. Missing file or any error -> '' (never raises).
+_CAPABILITY_RE = re.compile(
+    r"\b(?:" + "|".join(_CAPABILITY_STEMS) + r")",
+    re.IGNORECASE | re.UNICODE,
+)
+
+# English trait words the generator used to emit for `vibe`. Tone words are
+# harmless claims (unlike capability claims) but they must not leave an
+# English clause inside a Ukrainian spoken prompt, so known ones are
+# translated and unknown Latin ones are dropped.
+_TRAIT_UK = {
+    "curious": "допитливий",
+    "pragmatic": "прагматичний",
+    "practical": "практичний",
+    "efficient": "діловитий",
+    "direct": "прямий",
+    "concise": "стислий",
+    "brief": "стислий",
+    "warm": "теплий",
+    "friendly": "дружній",
+    "professional": "професійний",
+    "engaged": "уважний",
+    "attentive": "уважний",
+    "precise": "точний",
+    "calm": "спокійний",
+    "playful": "грайливий",
+    "patient": "терплячий",
+    "witty": "дотепний",
+    "dry": "стриманий",
+    "focused": "зосереджений",
+    "thoughtful": "вдумливий",
+    "helpful": "готовий допомогти",
+    "opinionated": "з власною думкою",
+}
+
+_MAX_CREATURE_CHARS = 60
+
+
+def _cyrillic_share(text: str) -> float:
+    """Share of the letters in *text* that are Cyrillic (0.0 for no letters)."""
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return 0.0
+    cyrillic = sum(1 for ch in letters if "Ѐ" <= ch <= "ӿ")
+    return cyrillic / len(letters)
+
+
+def _is_character(creature: str) -> bool:
+    """True when *creature* reads as WHO the assistant is, not WHAT it can do.
+
+    Three cheap gates, all of which a hand-written character phrase passes
+    and the machine-written capability blurb fails:
+
+      1. short — a character is a noun phrase ("спокійний голос у
+         навушниках"), a capability list is a sentence;
+      2. Ukrainian — the prompt around it is Ukrainian spoken prose;
+      3. no capability/initiative vocabulary anywhere in it.
+    """
+    if not creature or len(creature) > _MAX_CREATURE_CHARS:
+        return False
+    if _cyrillic_share(creature) < 0.6:
+        return False
+    return _CAPABILITY_RE.search(creature) is None
+
+
+def _render_vibe(vibe: str) -> str:
+    """Render `vibe` as a Ukrainian trait list; drop what cannot be rendered."""
+    traits: list[str] = []
+    for raw in re.split(r"[,;/]|\bта\b|\bі\b|\band\b", vibe):
+        token = raw.strip().strip(".").strip()
+        if not token:
+            continue
+        if _cyrillic_share(token) >= 0.6:
+            rendered = token
+        else:
+            rendered = _TRAIT_UK.get(token.lower(), "")
+        if rendered and rendered not in traits:
+            traits.append(rendered)
+    return ", ".join(traits)
+
+
+def load_persona(settings: object) -> str:
+    """Read identity.json and render it as a Ukrainian VOICE persona.
+
+    Resolves the path from ``settings.identity_file`` when present, else
+    ``~/.heare/identity.json``. Missing file, bad JSON, or any other error
+    -> ``''`` (never raises).
+
+    THE RULE. The persona says who the assistant is and how the work is
+    split — never what it can do. The tool catalogue and the MCP block
+    already state capabilities; a second, prose account of them in the
+    static head is what made the model narrate a terminal it does not have.
+    So of the identity fields:
+
+      * ``name``  — always used; it is the one field that is pure identity.
+                    Without it there is no persona at all, and '' is
+                    returned.
+      * ``emoji`` — always used, decorative only.
+      * ``creature`` — used ONLY if it passes ``_is_character()`` (short,
+                    Ukrainian, free of capability/initiative vocabulary).
+                    A capability blurb is dropped entirely rather than
+                    trimmed: half of "your all-purpose terminal, browser
+                    and tool system" is still a false claim.
+      * ``vibe``  — tone, rendered through ``_render_vibe()`` so an English
+                    trait list does not survive into Ukrainian prose.
+      * ``tagline`` — deliberately unused. It is a self-introduction meant
+                    for the UI and typically promises doing ("Слухаю,
+                    розумію, роблю"), which is the same claim in miniature.
+
+    Everything else in the persona is fixed text, true of the engine as
+    built: it speaks, it hands work to its worker, and it answers when
+    addressed rather than starting conversations. Those two sentences do
+    not come from identity.json, so a regenerated identity cannot make
+    them false.
+
+    The result is part of the STATIC head of the system prompt (see the
+    module docstring), so it must stay byte-identical across turns for a
+    given identity file — this function is pure given the file contents.
     """
     try:
         # Resolve identity file path
@@ -126,29 +264,34 @@ def load_persona(settings: object) -> str:
         text = identity_path.read_text()
         data: dict[str, Any] = json.loads(text)
 
-        # Extract identity fields
-        name = data.get("name", "").strip()
-        creature = data.get("creature", "").strip()
-        vibe = data.get("vibe", "").strip()
-        emoji = data.get("emoji", "").strip()
+        name = (data.get("name") or "").strip()
+        creature = (data.get("creature") or "").strip()
+        vibe = (data.get("vibe") or "").strip()
+        emoji = (data.get("emoji") or "").strip()
 
-        # Format as persona text (return empty if missing required fields)
-        if not (name and creature):
+        # A persona without a name is not an identity.
+        if not name:
             return ""
 
-        # Build persona string: "Я на ім'я [name], я [creature], [vibe] [emoji]"
-        parts: list[str] = []
-        parts.append(f"Я на ім'я {name}, я {creature}")
+        head = f"Я на ім'я {name}"
+        if emoji:
+            head += f" {emoji}"
+        if _is_character(creature):
+            head += f", я {creature}"
+        head += "."
 
-        if vibe:
-            vibe_part = f"мій стиль — {vibe}"
-            if emoji:
-                vibe_part += f" {emoji}"
-            parts.append(vibe_part)
-        elif emoji:
-            parts.append(emoji)
+        sentences = [
+            head,
+            "Я голос: розмовляю з тобою, а роботу віддаю своєму робітнику "
+            "й переказую, що вийшло.",
+            "Сам розмову не починаю — озиваюсь, коли до мене звертаються.",
+        ]
 
-        return ", ".join(parts) + "."
+        traits = _render_vibe(vibe)
+        if traits:
+            sentences.append(f"Мій стиль — {traits}.")
+
+        return " ".join(sentences)
 
     except Exception:
         # Silently catch all errors: missing file, JSON parse error, etc.
