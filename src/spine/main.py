@@ -273,8 +273,9 @@ async def _wire_full(loop, settings, cfg, memory):
                 block = ""
             if block:
                 mcp_block = (
-                    "Твій виконавець (delegate) вміє ще й це — коли треба, "
-                    "просто доручай йому:\n" + block
+                    "Це вміє твій виконавець, не ти: сам ці інструменти не "
+                    "викликай, а коли треба — доручай через delegate. Кажи "
+                    "«зроблю», а не «не налаштовано».\n" + block
                 )
         persona_block = persona
         active = loop.role_manager.active if loop.role_manager else None
