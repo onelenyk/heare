@@ -398,6 +398,33 @@ async def run_spine_daemon(
     # spine already opened — it was only ever set on the pipecat path.
     api._memory_backend = getattr(loop, "memory", None)
 
+    # -- what is actually wired, for the dashboard ----------------------
+    #
+    # Not the config: env overrides and --without win over it, so only the
+    # engine knows the truth. The dashboard shows this as running state
+    # and writes the config for the next start — a subsystem is chosen at
+    # build time and cannot be conjured into a live loop.
+    try:
+        from src.spine.features import FEATURES
+
+        live = getattr(loop, "features", {}) or {}
+        state.set_cache_only(
+            "spine_features",
+            json.dumps(
+                [
+                    {
+                        "name": f.name,
+                        "on": bool(live.get(f.name, f.default)),
+                        "cost": f.cost,
+                    }
+                    for f in FEATURES
+                ],
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:
+        logger.debug("spine_features state write failed (non-fatal)")
+
     # -- MCP: the servers in .mcp.json, made callable by the worker -----
     #
     # connect_mcp_servers never raises and skips whatever will not start,

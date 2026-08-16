@@ -337,3 +337,54 @@ def test_minutes_is_clock_based() -> None:
     clock.advance(150.0)  # 2.5 minutes
 
     assert mgr.minutes() == 2
+
+
+async def test_an_empty_meeting_is_not_summarised() -> None:
+    """A model asked to summarise nothing writes a meeting that never
+    happened. This is not hypothetical: a fifteen-second session with
+    zero turns produced a protocol naming a Tech Lead, an $800
+    freelancer and a release date. A record that invents its content is
+    worse than no record, because a week later it is believed."""
+    called: list = []
+
+    async def complete(messages):
+        called.append(messages)
+        return "# Підсумок\nвигадка\n===SPOKEN===\nвигадав"
+
+    mgr = RoleManager()
+    role = make_role(name="мітинг", artifact="збери протокол")
+    mgr.start(role)
+
+    artifact = await mgr.finish(exchanges=[], complete=complete)
+
+    assert called == [], "the model must not be asked to summarise silence"
+    assert artifact is not None
+    assert artifact.full_md == "", "nothing may be written to disk"
+    assert "не записалось" in artifact.spoken.lower()
+    assert mgr.active is None, "the session still closes"
+
+
+async def test_whitespace_only_exchanges_count_as_empty() -> None:
+    async def complete(messages):
+        raise AssertionError("must not be called")
+
+    mgr = RoleManager()
+    mgr.start(make_role(name="мітинг", artifact="збери протокол"))
+    artifact = await mgr.finish(
+        exchanges=[{"user": "   ", "agent": None}], complete=complete
+    )
+    assert artifact.full_md == ""
+
+
+async def test_one_real_exchange_is_still_summarised() -> None:
+    """The guard must not swallow short but real meetings."""
+    async def complete(messages):
+        return "# Протокол\nрішення\n===SPOKEN===\nПідсумував."
+
+    mgr = RoleManager()
+    mgr.start(make_role(name="мітинг", artifact="збери протокол"))
+    artifact = await mgr.finish(
+        exchanges=[{"user": "домовились релізити в понеділок", "agent": None}],
+        complete=complete,
+    )
+    assert "Протокол" in artifact.full_md

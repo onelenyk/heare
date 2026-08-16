@@ -1267,3 +1267,197 @@ def test_inject_token_html_is_idempotent() -> None:
     assert once.count("__HEARE_TOKEN__") == 1
     assert _inject_token_html(once, TOKEN) == once
     assert _inject_token_html(_INDEX_DOC, "") == _INDEX_DOC
+
+
+# ---------------------------------------------------------------------------
+# GET/POST /api/features — the spine's subsystem switches
+#
+# Two truths that must stay apart: what the engine wired at its last start
+# (the `spine_features` State key) and what config.toml asks for next time.
+# The write path is the interesting one — it edits a file the user also
+# hand-edits, so "wrote only that key" is the property under test.
+# ---------------------------------------------------------------------------
+
+_CONFIG_FIXTURE = """\
+# a comment the user wrote and must keep
+engine = "spine"
+
+[browser_bridge]
+token = "secret-token"
+"""
+
+
+def _with_features(literal: str) -> str:
+    """The fixture file with a `spine_features` line in its preamble — the
+    only place a top-level key can live, above the first [table] header."""
+    return _CONFIG_FIXTURE.replace(
+        "\n[browser_bridge]", f"spine_features = {literal}\n\n[browser_bridge]"
+    )
+
+
+@pytest.fixture
+def features_home(tmp_path, monkeypatch):
+    """A real config.toml with a comment, another key and a section table."""
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    (tmp_path / "config.toml").write_text(_CONFIG_FIXTURE)
+    return tmp_path
+
+
+def _features_client(state, config):
+    """A TestClient over the assembled app, as the daemon builds it."""
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+
+    app = web.Application()
+    API(state, config).register_routes(app)
+    return TestClient(TestServer(app))
+
+
+@pytest.fixture
+async def features_client(mock_state, auth_config):
+    client = _features_client(mock_state, auth_config)
+    await client.start_server()
+    yield client
+    await client.close()
+
+
+def _auth():
+    return {"Authorization": f"Bearer {TOKEN}"}
+
+
+@pytest.mark.asyncio
+async def test_features_unknown_name_is_400(features_client, features_home) -> None:
+    resp = await features_client.post(
+        "/api/features", headers=_auth(), json={"name": "nosuch", "enabled": False}
+    )
+    assert resp.status == 400
+    body = await resp.json()
+    assert body["ok"] is False
+    assert "roles" in body["known"]
+    # And nothing was written on the way out.
+    assert (features_home / "config.toml").read_text() == _CONFIG_FIXTURE
+
+
+@pytest.mark.asyncio
+async def test_features_non_boolean_is_400(features_client, features_home) -> None:
+    resp = await features_client.post(
+        "/api/features", headers=_auth(), json={"name": "roles", "enabled": "no"}
+    )
+    assert resp.status == 400
+    assert (features_home / "config.toml").read_text() == _CONFIG_FIXTURE
+
+
+@pytest.mark.asyncio
+async def test_features_toggle_writes_only_that_key(
+    features_client, features_home
+) -> None:
+    """The comment, the other key and the [browser_bridge] table all survive —
+    flattening config.toml is how the bridge token got orphaned once already."""
+    import tomllib
+
+    resp = await features_client.post(
+        "/api/features", headers=_auth(), json={"name": "roles", "enabled": False}
+    )
+    assert resp.status == 200
+    body = await resp.json()
+    assert body["ok"] is True
+    assert body["config"] == {"roles": False}
+    assert body["restart_required"] is True
+
+    text = (features_home / "config.toml").read_text()
+    assert "# a comment the user wrote and must keep" in text
+    assert 'engine = "spine"' in text
+    assert "[browser_bridge]" in text
+
+    parsed = tomllib.loads(text)
+    # An inline table, not a string: features.resolve ignores anything else.
+    assert parsed["spine_features"] == {"roles": False}
+    assert parsed["engine"] == "spine"
+    assert parsed["browser_bridge"]["token"] == "secret-token"
+
+
+@pytest.mark.asyncio
+async def test_features_second_toggle_merges(features_client, features_home) -> None:
+    import tomllib
+
+    await features_client.post(
+        "/api/features", headers=_auth(), json={"name": "roles", "enabled": False}
+    )
+    resp = await features_client.post(
+        "/api/features", headers=_auth(), json={"name": "mcp", "enabled": False}
+    )
+    assert (await resp.json())["config"] == {"roles": False, "mcp": False}
+
+    text = (features_home / "config.toml").read_text()
+    parsed = tomllib.loads(text)
+    assert parsed["spine_features"] == {"roles": False, "mcp": False}
+    # One key, one line — the merge must not leave a second spine_features.
+    assert text.count("spine_features") == 1
+    assert parsed["browser_bridge"]["token"] == "secret-token"
+
+
+@pytest.mark.asyncio
+async def test_features_get_returns_live_and_config(
+    mock_state, auth_config, features_home
+) -> None:
+    mock_state.snapshot.return_value = {
+        "spine_features": json.dumps(
+            [
+                {"name": "roles", "on": True, "cost": "мітинг недоступний"},
+                {"name": "mcp", "on": False, "cost": "MCP не підключається"},
+            ],
+            ensure_ascii=False,
+        )
+    }
+    (features_home / "config.toml").write_text(
+        _with_features("{ roles = false }")
+    )
+    client = _features_client(mock_state, auth_config)
+    await client.start_server()
+    try:
+        resp = await client.get("/api/features", headers=_auth())
+        assert resp.status == 200
+        body = await resp.json()
+        # Both halves, so the widget never has to guess one from the other:
+        # roles runs but is configured off — that row needs a restart.
+        assert body["live"][0] == {
+            "name": "roles",
+            "on": True,
+            "cost": "мітинг недоступний",
+        }
+        assert body["config"] == {"roles": False}
+        assert body["defaults"]["roles"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_features_get_without_engine_report(features_client, features_home):
+    """The pipecat engine (or an old daemon) writes no such key: say so with
+    null rather than passing the config off as what is running."""
+    resp = await features_client.get("/api/features", headers=_auth())
+    body = await resp.json()
+    assert body["live"] is None
+    assert body["config"] == {}
+
+
+@pytest.mark.asyncio
+async def test_features_ignores_junk_in_config(features_client, features_home) -> None:
+    """A hand-edited file may hold names and types resolve() would ignore;
+    the dashboard must not show a value the engine will never honour."""
+    (features_home / "config.toml").write_text(
+        _with_features('{ roles = false, nosuch = true, mcp = "off" }')
+    )
+    resp = await features_client.get("/api/features", headers=_auth())
+    assert (await resp.json())["config"] == {"roles": False}
+
+
+@pytest.mark.asyncio
+async def test_features_requires_auth(features_client, features_home) -> None:
+    resp = await features_client.get("/api/features")
+    assert resp.status == 401
+    resp = await features_client.post(
+        "/api/features", json={"name": "roles", "enabled": False}
+    )
+    assert resp.status == 401
+    assert (features_home / "config.toml").read_text() == _CONFIG_FIXTURE

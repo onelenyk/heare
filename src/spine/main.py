@@ -72,6 +72,10 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     from src.spine.features import describe, losses, resolve as resolve_features
 
     features = resolve_features(settings, without)
+    # The engine's own answer to "what is actually running right now",
+    # which is not the same as what the config asks for: env overrides
+    # and --without win, and a subsystem can fail to build.
+    loop_features = dict(features)
     logger.info("features: %s", describe(features))
     for line in losses(features):
         logger.warning("switched off — %s", line)
@@ -131,6 +135,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         synthesise=_tts,
         usage=usage,
     )
+    loop.features = loop_features
 
     if not full:
         return loop

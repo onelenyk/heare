@@ -37,6 +37,9 @@ _FAILURE_SPOKEN = "Не вдалося зібрати підсумок, але �
 _SPOKEN_MARKER = "===SPOKEN==="
 
 
+NOTHING_HEARD_LINE = "Нічого не записалось — підсумок не збираю."
+
+
 @dataclass
 class Artifact:
     full_md: str  # the complete artifact, markdown — saved to a file by the caller
@@ -150,6 +153,18 @@ class RoleManager:
 
         transcript = _render_transcript(exchanges)
 
+        # A model asked to summarise an empty meeting writes one. A real
+        # session on this machine — fifteen seconds, zero turns — produced
+        # a protocol naming a Tech Lead, an $800 freelancer and a release
+        # date, none of which existed. A record that invents its content
+        # is worse than no record, because it is believed later. Nothing
+        # heard, nothing summarised.
+        if not transcript.strip():
+            logger.info("role %r: nothing was said — no artifact", role.name)
+            self._close_persisted("empty")
+            self._reset()
+            return Artifact(full_md="", spoken=NOTHING_HEARD_LINE)
+
         try:
             system = (
                 f"{role.artifact}\n\n"
@@ -219,11 +234,13 @@ class RoleManager:
 def _render_transcript(exchanges: list[dict]) -> str:
     lines: list[str] = []
     for exchange in exchanges:
-        user = exchange.get("user")
+        # A blank line is not something anyone said, and a transcript of
+        # blanks is what makes a model invent a meeting.
+        user = (exchange.get("user") or "").strip()
         if user:
             lines.append(f"Користувач: {user}")
-        agent = exchange.get("agent")
-        if agent is not None:
+        agent = (exchange.get("agent") or "").strip()
+        if agent:
             lines.append(f"Асистент: {agent}")
     return "\n".join(lines)
 

@@ -935,6 +935,40 @@
   .bridge-no-code { text-align: center; font-size: 11px; color: var(--muted); padding: var(--s4) 0; }
 
   /* ═══════════════════════════════════════════
+     SUBSYSTEMS (features)
+     Two truths per row: the badge is what is running, the toggle is what
+     is configured for the next start. When they disagree the row is
+     tinted and says so — the card must not let the difference pass as
+     agreement.
+     ═══════════════════════════════════════════ */
+  .feature-note { margin-bottom: var(--s2); }
+  .feature-restart { font-size: var(--fs-2xs); }
+  .feature-list { display: flex; flex-direction: column; }
+  .feature-row {
+    display: flex; align-items: flex-start; gap: var(--s3);
+    padding: var(--s2) var(--s2); border-bottom: 1px solid rgba(48,44,55,0.5);
+    border-radius: var(--r-xs); transition: background var(--tran);
+  }
+  .feature-row:last-child { border-bottom: none; }
+  .feature-row.pending { background: rgba(227,179,65,0.06); }
+  .feature-toggle {
+    position: relative; width: 40px; height: 22px; flex-shrink: 0;
+    margin-top: 2px; padding: 0; border: none; background: none; cursor: pointer;
+  }
+  .feature-toggle:disabled { opacity: 0.5; cursor: default; }
+  .feature-body { min-width: 0; }
+  .feature-title { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+  .feature-name {
+    font-family: var(--mono); font-size: var(--fs-sm); color: var(--text); font-weight: 600;
+  }
+  .feature-pending {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 2px 7px; border-radius: var(--r-xs);
+    background: rgba(227,179,65,0.12); color: var(--accent-yellow);
+  }
+  .feature-cost { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+
+  /* ═══════════════════════════════════════════
      PROMPT MANAGER
      ═══════════════════════════════════════════ */
   .prompt-section-row {

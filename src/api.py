@@ -109,6 +109,7 @@ from src.config import (  # noqa: E402
     write_env_updates,
 )
 from src.memory.base import MemoryType  # noqa: E402
+from src.spine.features import FEATURES  # noqa: E402
 from src.dashboard_data import (  # noqa: E402
     counts,
     daemon_status,
@@ -157,6 +158,44 @@ def tail_lines(
         window *= 4
 
 
+class _TomlInline(int):
+    """A value ``write_config_toml_values`` writes out verbatim.
+
+    That writer is the one place that edits config.toml without dropping
+    ``[section]`` headers or comments, and it is worth reusing — but its
+    ``_toml_literal`` only knows bools, numbers and strings. A dict falls
+    through to the string branch and lands in the file as
+    ``spine_features = "{'roles': False}"``: valid TOML, a *string*, and
+    silently ignored by ``features.resolve``, which requires a dict. So
+    the toggle would appear to save and change nothing.
+
+    Numbers are the one kind the writer emits through ``repr()``, so an
+    int subclass whose ``repr`` is the inline table gets a real table into
+    the file while the careful part of the writer — preamble only, tables
+    and comments copied byte-for-byte, atomic replace — is reused rather
+    than re-implemented here. (The tidier fix is a dict branch in
+    ``_toml_literal``; this module cannot make it.)
+    """
+
+    def __new__(cls, literal: str):
+        obj = super().__new__(cls, 0)
+        obj._literal = literal
+        return obj
+
+    def __repr__(self) -> str:
+        return self._literal
+
+
+def _render_feature_table(table: dict[str, bool]) -> str:
+    """A TOML inline table for ``spine_features``, in declaration order."""
+    parts = [
+        f"{f.name} = {'true' if table[f.name] else 'false'}"
+        for f in FEATURES
+        if f.name in table
+    ]
+    return "{ " + ", ".join(parts) + " }" if parts else "{}"
+
+
 def _clamp_int(raw: str | None, default: int, low: int, high: int) -> int:
     """Parse a query-string integer, falling back to ``default`` if unusable."""
     try:
@@ -202,6 +241,8 @@ class API:
         self._app.router.add_post(
             "/api/settings/reset-session", self._handle_reset_session
         )
+        self._app.router.add_get("/api/features", self._handle_features)
+        self._app.router.add_post("/api/features", self._handle_features_set)
         self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
@@ -282,6 +323,8 @@ class API:
         self._app.router.add_post(
             "/api/settings/reset-session", self._handle_reset_session
         )
+        self._app.router.add_get("/api/features", self._handle_features)
+        self._app.router.add_post("/api/features", self._handle_features_set)
         self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
@@ -1083,6 +1126,114 @@ class API:
             )
         return web.json_response(
             {"ok": True, "backup_path": str(backup), "restart_required": True}
+        )
+
+    # ── Subsystem switches ─────────────────────────────────
+    #
+    # Two truths that must never be merged: what the engine actually wired
+    # at its last start (the State key, written by the composition root)
+    # and what config.toml asks for next time. A subsystem is chosen at
+    # build time, so writing here cannot switch a running one off — the
+    # only honest UI says both numbers and offers the restart.
+
+    @staticmethod
+    def _feature_names() -> list[str]:
+        return [f.name for f in FEATURES]
+
+    @staticmethod
+    def _feature_config() -> dict[str, bool]:
+        """The ``spine_features`` table as config.toml has it.
+
+        Filtered to known names and real booleans: the file is hand-edited,
+        and ``features.resolve`` ignores anything else, so the dashboard
+        must not show a value the engine would never honour.
+        """
+        import tomllib
+
+        from src.config import HEARE_HOME as home
+
+        path = home / "config.toml"
+        try:
+            with path.open("rb") as fh:
+                data = tomllib.load(fh)
+        except (OSError, tomllib.TOMLDecodeError):
+            return {}
+        table = data.get("spine_features")
+        if not isinstance(table, dict):
+            return {}
+        known = set(API._feature_names())
+        return {
+            name: value
+            for name, value in table.items()
+            if name in known and isinstance(value, bool)
+        }
+
+    def _live_features(self) -> list | None:
+        """What the running engine reports it wired, or None when it does
+        not report at all (the pipecat engine, or a daemon older than the
+        State key). None and [] are different answers and stay different."""
+        if self.state is None:
+            return None
+        raw = self.state.snapshot().get("spine_features")
+        if not isinstance(raw, str) or not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, list) else None
+
+    async def _handle_features(self, request):
+        """GET /api/features — the running truth and the configured one."""
+        return web.json_response(
+            {
+                "ok": True,
+                "live": self._live_features(),
+                "config": self._feature_config(),
+                # The defaults, so the widget can show what an absent key
+                # means without keeping its own copy of the list.
+                "defaults": {f.name: f.default for f in FEATURES},
+            }
+        )
+
+    async def _handle_features_set(self, request):
+        """POST /api/features — set one subsystem for the next start.
+
+        ``{"name": "roles", "enabled": false}``. Nothing else in
+        config.toml is touched, and nothing about the running engine
+        changes: the answer carries ``restart_required``.
+        """
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response(
+                {"ok": False, "error": "invalid JSON"}, status=400
+            )
+        name = body.get("name")
+        enabled = body.get("enabled")
+        known = self._feature_names()
+        if not isinstance(name, str) or name not in known:
+            return web.json_response(
+                {"ok": False, "error": f"unknown subsystem: {name}", "known": known},
+                status=400,
+            )
+        if not isinstance(enabled, bool):
+            return web.json_response(
+                {"ok": False, "error": "enabled must be true or false"}, status=400
+            )
+
+        table = self._feature_config()
+        table[name] = enabled
+        try:
+            write_config_toml_values(
+                {"spine_features": _TomlInline(_render_feature_table(table))}
+            )
+        except OSError as e:
+            logger.exception("could not write spine_features")
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+        return web.json_response(
+            {"ok": True, "config": table, "restart_required": True}
         )
 
     async def _handle_setup(self, request):

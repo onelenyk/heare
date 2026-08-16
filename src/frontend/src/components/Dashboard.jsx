@@ -17,6 +17,7 @@ import ToolsModal from './ToolsModal';
 import BridgeModal from './BridgeModal';
 import PromptManager from './PromptManager';
 import MemoriesCard from './MemoriesCard';
+import FeaturesCard from './FeaturesCard';
 import RolesCard from './RolesCard';
 import Toast from './Toast';
 
@@ -527,6 +528,11 @@ export default function Dashboard({ onOpenSetup }) {
           onClose={() => setShowAudioControls(false)}
         />
       )}
+
+      {/* Subsystem switches — running truth vs. configured, and the
+          restart that reconciles them. Quiet by itself when the running
+          engine reports nothing. */}
+      <FeaturesCard state={state} post={post} onToast={showToastMsg} />
 
         </div>
 
