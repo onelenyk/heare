@@ -16,14 +16,8 @@ def test_default_settings() -> None:
     assert s.mode == Mode.AMBIENT
     assert s.tts_voice == "en-US-AriaNeural"
     assert s.tts_sample_rate == 24000
-    assert s.confirmation_timeout_seconds == 30
-    assert s.transcript_retention_days == 30
     assert s.groq_api_key is None
     assert s.groq_language == "uk"  # Ukrainian hint for Groq, allows English detection
-
-
-def test_min_action_confidence_default() -> None:
-    assert Settings().min_action_confidence == 0.8
 
 
 def test_load_settings_groq_from_env(monkeypatch, tmp_path) -> None:
@@ -191,8 +185,6 @@ def test_proactivity_level_custom(monkeypatch, tmp_path) -> None:
 def test_turn_aggregation_settings() -> None:
     s = Settings()
     assert s.turn_aggregation_enabled is False  # Default disabled for gradual rollout
-    assert s.focus_mode_turn_timeout == 0.5
-    assert s.ambient_mode_turn_timeout == 3.0
     assert s.max_turn_duration == 30.0
 
 
@@ -201,7 +193,6 @@ def test_conversation_memory_settings() -> None:
     # On by default — it wires the ConversationManager that logs tool calls to
     # the actions table; off meant the agent's actions were never persisted.
     assert s.conversation_memory_enabled is True
-    assert s.max_conversation_age_hours == 24.0
     assert s.topic_extraction_enabled is True
 
 
@@ -216,7 +207,6 @@ def test_phase2_worker_settings_defaults() -> None:
     """Phase 2.1 US-P2.1-07a: action worker config defaults."""
     s = Settings()
     assert s.action_timeout_seconds == 120.0
-    assert s.intent_queue_max_pending == 32
 
 
 def test_load_settings_deepseek_from_env(monkeypatch, tmp_path) -> None:

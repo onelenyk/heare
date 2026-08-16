@@ -334,9 +334,6 @@ def _inject_lifecycle_context(
         f"({'unmute' if mic_muted else 'mute'} via mute_mic)"
     )
 
-    vad = state.get("vad_sensitivity")
-    if vad:
-        parts.append(f"- VAD sensitivity: {float(vad) * 100:.0f}% (adjust via vad_sensitivity)")
     ig = state.get("input_gain")
     if ig:
         parts.append(f"- Mic gain: {float(ig):.1f}x (adjust via mic_gain)")

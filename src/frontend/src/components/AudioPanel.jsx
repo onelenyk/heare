@@ -1,18 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 export default function AudioPanel({ state, post, onClose }) {
-  const [vad, setVad] = useState(0.5);
   const [gain, setGain] = useState(1.0);
   const [volume, setVolume] = useState(1.0);
   const [sidetone, setSidetone] = useState(false);
   const [debounce, setDebounce] = useState(null);
 
   useEffect(() => {
-    if (state.vad_sensitivity != null) setVad(parseFloat(state.vad_sensitivity));
     if (state.input_gain != null) setGain(parseFloat(state.input_gain));
     if (state.output_volume != null) setVolume(parseFloat(state.output_volume));
     if (state.sidetone != null) setSidetone(state.sidetone === '1' || state.sidetone === true);
-  }, [state.vad_sensitivity, state.input_gain, state.output_volume, state.sidetone]);
+  }, [state.input_gain, state.output_volume, state.sidetone]);
 
   const send = useCallback((key, value) => {
     clearTimeout(debounce);
@@ -63,29 +61,6 @@ export default function AudioPanel({ state, post, onClose }) {
       </div>
 
       <div style={{ padding: 'var(--s2) var(--s3)' }}>
-
-        <div style={rowStyle}>
-          <div style={labelStyle}>
-            <span>VAD sensitivity</span>
-            <span style={valueStyle}>{(vad * 100).toFixed(0)}%</span>
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>
-            How easily speech is detected. Lower catches whispers, higher needs a clear voice.
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={vad}
-            onChange={e => { setVad(Number(e.target.value)); send('vad_sensitivity', e.target.value); }}
-            style={sliderStyle}
-          />
-          <div style={{ fontSize: 10, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between' }}>
-            <span>sensitive</span>
-            <span>strict</span>
-          </div>
-        </div>
 
         <div style={rowStyle}>
           <div style={labelStyle}>

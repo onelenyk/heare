@@ -186,6 +186,10 @@ class RoleLoader:
                 continue
 
             for md_file in sorted(search_path.glob("*.md")):
+                # A roles folder explains itself to humans; that page is
+                # not a role and must not warn on every boot.
+                if md_file.name.lower() in ("readme.md", "index.md"):
+                    continue
                 role = self._parse_role_file(md_file)
                 if role is None:
                     continue

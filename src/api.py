@@ -205,9 +205,7 @@ class API:
         self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
-        self._app.router.add_post("/api/chrome/launch", self._handle_chrome_launch)
         self._app.router.add_get("/api/tools", self._handle_tools)
-        self._app.router.add_get("/api/chrome/profiles", self._handle_chrome_profiles)
         self._app.router.add_post(
             "/api/audio-devices/select", self._handle_audio_device_select
         )
@@ -287,9 +285,7 @@ class API:
         self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
-        self._app.router.add_post("/api/chrome/launch", self._handle_chrome_launch)
         self._app.router.add_get("/api/tools", self._handle_tools)
-        self._app.router.add_get("/api/chrome/profiles", self._handle_chrome_profiles)
         self._app.router.add_post(
             "/api/audio-devices/select", self._handle_audio_device_select
         )
@@ -1241,49 +1237,6 @@ class API:
                 status=500,
             )
 
-    async def _handle_chrome_launch(self, request):
-        """Launch Chrome with CDP debug port, auto-selecting profile."""
-        try:
-            from src.daemon.browser import (
-                ensure_debug_chrome,
-                is_debug_reachable,
-                list_chrome_profiles,
-            )
-
-            debug_port = 9222
-
-            if is_debug_reachable(debug_port):
-                return web.json_response(
-                    {
-                        "ok": True,
-                        "status": f"chrome already attached on :{debug_port}",
-                        "debug_port": debug_port,
-                    }
-                )
-
-            body = await request.json()
-            profile_directory = body.get("profile_directory")
-
-            if profile_directory is None:
-                profiles = list_chrome_profiles()
-                if profiles:
-                    profile_directory = profiles[0].directory
-
-            msg = await asyncio.to_thread(
-                ensure_debug_chrome, debug_port, profile_directory
-            )
-            return web.json_response(
-                {
-                    "ok": True,
-                    "status": msg,
-                    "debug_port": debug_port,
-                }
-            )
-        except Exception as e:
-            return web.json_response(
-                {"ok": False, "status": str(e), "debug_port": 9222}, status=500
-            )
-
     async def _handle_tools(self, request):
         """List all available tools: built-in, skills, and MCP servers."""
         try:
@@ -1327,34 +1280,6 @@ class API:
                     "built_in": [],
                     "skills": [],
                     "mcps": [],
-                    "error": str(e),
-                },
-                status=500,
-            )
-
-    async def _handle_chrome_profiles(self, request):
-        """List Chrome profiles for the profile picker."""
-        try:
-            from src.daemon.browser import list_chrome_profiles
-
-            profiles = list_chrome_profiles()
-            return web.json_response(
-                {
-                    "profiles": [
-                        {
-                            "directory": p.directory,
-                            "display_name": p.name or p.directory,
-                            "last_used": p.last_used,
-                        }
-                        for p in profiles
-                    ],
-                    "error": None,
-                }
-            )
-        except Exception as e:
-            return web.json_response(
-                {
-                    "profiles": [],
                     "error": str(e),
                 },
                 status=500,

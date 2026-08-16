@@ -236,3 +236,15 @@ IS_END_TRIGGER_CASES = [
 def test_is_end_trigger(text, expected):
     role = Role(name="interview")  # default end_triggers
     assert is_end_trigger(text, role) is expected
+
+
+def test_readme_is_not_mistaken_for_a_role(tmp_path) -> None:
+    """A roles folder explains itself to humans; that page warned on
+    every daemon boot as a malformed role."""
+    (tmp_path / "README.md").write_text("# Ролі\nЯк додати свою роль…\n", "utf-8")
+    (tmp_path / "meeting.md").write_text(
+        "---\nname: мітинг\nchannel: log\ntriggers: [почни мітинг]\n---\nсекретар\n",
+        "utf-8",
+    )
+    roles = RoleLoader([tmp_path]).load()
+    assert sorted(roles) == ["мітинг"]

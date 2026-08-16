@@ -182,9 +182,6 @@ class Settings:
     mode: Mode = Mode.AMBIENT
     tts_voice: str = "en-US-AriaNeural"
     tts_sample_rate: int = 24000
-    confirmation_timeout_seconds: int = 30
-    transcript_retention_days: int = 30
-    min_action_confidence: float = 0.8
     bot_speaking_cooldown_seconds: float = 1.0
     # Open-mic barge-in: while the bot is speaking, a genuine human
     # interruption should stop it. Without headphones the bot's own
@@ -218,7 +215,6 @@ class Settings:
     # See docs/findings/echo-cancellation.md for the four bugs this
     # replaces and the measurements.
     aec_enabled: bool = True
-    aec_cooldown_seconds: float = 0.5
     # Speaker-to-microphone delay. Measured ~125 ms on a MacBook Pro with
     # built-in speakers; the previous 30 ms was a guess and capped
     # suppression at a noisy 10-20 dB. Run with aec_measure_delay=true to
@@ -319,10 +315,6 @@ class Settings:
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
     mode_file: Path = field(default_factory=lambda: HEARE_HOME / "mode")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
-    capabilities_file: Path = field(
-        default_factory=lambda: HEARE_HOME / "capabilities.json"
-    )
-    capabilities_max_age_hours: float = 24.0
     mute_file: Path = field(default_factory=lambda: HEARE_HOME / "mute.flag")
     mute_input_file: Path = field(
         default_factory=lambda: HEARE_HOME / "mute_input.flag"
@@ -334,12 +326,6 @@ class Settings:
     voice_state_file: Path = field(
         default_factory=lambda: HEARE_HOME / "voice_state.json"
     )
-    # Chrome profile directory name (e.g. "Default", "Profile 1") — used by
-    # the dashboard "launch debug Chrome" hotkey to skip the profile picker.
-    # The picker drops --remote-debugging-port when it forks the chosen
-    # profile's Chrome process, so picking it explicitly is the only
-    # reliable way to keep CDP attached.
-    chrome_profile_directory: str = "Default"
     inject_dir: Path = field(default_factory=lambda: HEARE_HOME / "inject")
     # MCP server configuration lives here and nowhere else.
     #
@@ -394,8 +380,6 @@ class Settings:
     # Turn aggregation and conversation memory settings
     # Per plan US-010: default to False for gradual rollout
     turn_aggregation_enabled: bool = False
-    focus_mode_turn_timeout: float = 0.5
-    ambient_mode_turn_timeout: float = 3.0
     max_turn_duration: float = 30.0
     # On by default: this is what wires ConversationManager, which is the
     # only thing that persists tool calls to the `actions` table. With it off,
@@ -408,7 +392,6 @@ class Settings:
     memory_backend: str = "sqlite"  # "sqlite" | "engram" | "mem0" | "noop"
     memory_auto_extract: bool = True
     memory_block_max_chars: int = 500
-    max_conversation_age_hours: float = 24.0
     topic_extraction_enabled: bool = True
     # CCS-01: hydration freshness window. The action log on startup is
     # filtered to rows newer than now - conversation_idle_seconds so a
@@ -469,7 +452,6 @@ class Settings:
     deepseek_timeout_seconds: float = 5.0
     # Phase 2.1 — action worker.
     action_timeout_seconds: float = 120.0
-    intent_queue_max_pending: int = 32
     # Phase BP-02: coalesce rapid-fire TranscriptionFrames into one turn.
     # Groq STT occasionally splits one utterance into two frames when the
     # user pauses briefly mid-sentence (~0.5-1s). Buffer text and wait this
@@ -523,10 +505,6 @@ class Settings:
     # Default 15 (~100 tokens, 0.05% of 200K context budget).
     # Increase for longer conversation memory, decrease for faster prompts.
     context_recent_transcripts_count: int = 15
-    # Multi-intent mode: how many intents Claude can emit per response.
-    # Allows chaining multiple actions (e.g., browser automation workflows).
-    # Set to 1 for legacy single-intent behavior, 0 for unlimited.
-    max_intents_per_response: int = 10
     # DEPRECATED — remove in next release.
     # All servers in workspace/.mcp.json are now automatically enabled.
     # This field is retained only so load_settings() can detect its presence
@@ -540,9 +518,6 @@ class Settings:
     indication: IndicationSettings = field(default_factory=IndicationSettings)
 
     # File access settings for extended workspace management
-    file_access_profile_path: Path = field(
-        default_factory=lambda: HEARE_HOME / "profile.json"
-    )
     file_access_auto_approve_workspace: bool = True
     file_access_ask_for_new_dirs: bool = True
     file_access_max_archive_size: int = 1024 * 1024 * 1024  # 1GB
@@ -624,7 +599,6 @@ class Settings:
     # Sidetone — copies mic input to speaker so the user can monitor
     # exactly what the agent hears. Gated off during bot speech to
     # prevent feedback loops.
-    sidetone_enabled: bool = False
     sidetone_file: Path = field(default_factory=lambda: HEARE_HOME / "sidetone.flag")
     sidetone_volume: float = 0.5
 

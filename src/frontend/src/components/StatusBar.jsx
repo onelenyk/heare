@@ -50,7 +50,7 @@ export default function StatusBar({
 
         <div className="hc-group hc-right">
           <span className="hc-label">daemon</span>
-          {!running && !state.starting && (
+          {!running && (
             <button className="btn primary" onClick={() => onDaemon('start')}>{'▶ start'}</button>
           )}
           {running && (
@@ -58,9 +58,6 @@ export default function StatusBar({
           )}
           {running && (
             <button className="btn" onClick={() => onDaemon('restart')}>{'↻ restart'}</button>
-          )}
-          {!running && state.starting && (
-            <span className="meta" style={{ color: 'var(--accent)' }}>starting…</span>
           )}
         </div>
       </div>
