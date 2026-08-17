@@ -145,6 +145,10 @@ reset-session:
 menubar:
 	@uv run python -m src.main menubar
 
+hooks:
+	@cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+	@echo "✅ pre-commit hook installed (refuses files over 5 MB)"
+
 build: frontend
 	@echo "Building Heare.app with PyInstaller..."
 	rm -rf dist/Heare build/HeareMenubar

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Refuse to commit a large file.
+#
+# Written after a single 6.35 GB blob — desktop/src-tauri/target/.../
+# query-cache.bin, a Rust compiler cache committed alongside the whole
+# target/ directory — was found sitting in the history. It had been
+# gitignored and deleted from the tree long ago, but git keeps what it
+# was once given: `git clone` still paid six gigabytes for a temporary
+# file, and no working-tree rule can undo that after the fact.
+#
+# .gitignore is the first line and it is a good one. This is the second:
+# it catches what an explicit `git add -f`, a new build directory or an
+# unfamiliar tool slips past the patterns.
+#
+#   make hooks          install
+#   ALLOW_BIG=1 git commit …   deliberate exception
+
+LIMIT_MB=5
+LIMIT=$((LIMIT_MB * 1024 * 1024))
+
+[ -n "$ALLOW_BIG" ] && exit 0
+
+too_big=""
+for path in $(git diff --cached --name-only --diff-filter=AM); do
+    [ -f "$path" ] || continue
+    size=$(wc -c < "$path" | tr -d ' ')
+    [ "$size" -gt "$LIMIT" ] && too_big="$too_big$(printf '\n  %6s MB  %s' $((size / 1048576)) "$path")"
+done
+
+[ -z "$too_big" ] && exit 0
+
+cat >&2 <<EOF
+Refusing to commit files over ${LIMIT_MB} MB:$too_big
+
+History is permanent: deleting the file later shrinks the checkout and
+nothing else. Every clone from here on carries it.
+
+If it belongs in the repository anyway:  ALLOW_BIG=1 git commit ...
+EOF
+exit 1
