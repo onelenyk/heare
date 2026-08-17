@@ -628,61 +628,44 @@ class TestAgentToolDefinitions:
             assert td.enabled is True, f"{at} should be enabled"
 
 
-class TestHandlerDispatch:
-    """Verify _handler_for() maps agent tools to correct direct handlers."""
+class TestAgentToolsReachTheirWork:
+    """The worker dispatches by name, so the names have to be real.
 
-    def test_handler_for_agent_start(self):
-        td = tools_system.get_tool("agent_start")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_start
+    This used to assert `_handler_for` returned a particular function.
+    That indirection was the pipeline's — it built one pipecat handler per
+    tool at startup. The worker calls `execute_direct(name, ...)`, so what
+    matters now is that every agent tool is in the registry and that
+    `execute_direct` recognises it: a name in the registry with no branch
+    behind it is a tool the model can choose and nothing can perform.
+    """
 
-    def test_handler_for_agent_status(self):
-        td = tools_system.get_tool("agent_status")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_status
+    AGENT_TOOLS = (
+        "agent_start",
+        "agent_status",
+        "agent_result",
+        "agent_message",
+        "agent_cancel",
+        "agent_list",
+        "agent_approve",
+        "agent_deny",
+    )
 
-    def test_handler_for_agent_result(self):
-        td = tools_system.get_tool("agent_result")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_result
+    def test_every_agent_tool_is_registered(self):
+        for name in self.AGENT_TOOLS:
+            assert tools_system.get_tool(name) is not None, name
 
-    def test_handler_for_agent_message(self):
-        td = tools_system.get_tool("agent_message")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_message
+    def test_every_agent_tool_has_an_implementation(self):
+        import inspect
 
-    def test_handler_for_agent_cancel(self):
-        td = tools_system.get_tool("agent_cancel")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_cancel
+        source = inspect.getsource(direct_tools.execute_direct)
+        for name in self.AGENT_TOOLS:
+            assert f'"{name}"' in source, f"{name} has no branch in execute_direct"
 
-    def test_handler_for_agent_list(self):
-        td = tools_system.get_tool("agent_list")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_list
+    def test_an_unknown_tool_is_refused_not_ignored(self):
+        import asyncio
 
-    def test_handler_for_agent_approve(self):
-        td = tools_system.get_tool("agent_approve")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_approve
-
-    def test_handler_for_agent_deny(self):
-        td = tools_system.get_tool("agent_deny")
-        handler = tools_system._handler_for(td)
-        assert handler is direct_tools._execute_agent_deny
-
-    def test_unknown_handler_returns_none(self):
-        """A handler type not in the map should return None and log a warning."""
-        from src.agent.tools.system import ToolDef
-
-        td = ToolDef(
-            name="ghost_tool",
-            description="does not exist",
-            handler="nonexistent_handler_xyz",
-            schema_fields={},
-        )
-        result = tools_system._handler_for(td)
-        assert result is None
+        result = asyncio.run(direct_tools.execute_direct("no_such_tool", ""))
+        assert result["success"] is False
 
 
 # ===================================================================

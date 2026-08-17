@@ -418,8 +418,9 @@ def test_capability_tools_registered():
 
 
 def test_capability_tools_have_schemas():
-    from src.agent.tools.schemas import _TOOL_SPECS
+    from src.agent.tools.system import get_tool
 
+    
     for name in (
         "discover_capability",
         "install_skill_tool",
@@ -427,11 +428,10 @@ def test_capability_tools_have_schemas():
         "revoke_capability",
         "list_capabilities",
     ):
-        assert name in _TOOL_SPECS, f"{name} missing from _TOOL_SPECS"
-        properties, required, serializer = _TOOL_SPECS[name]
-        assert isinstance(properties, dict)
-        assert isinstance(required, list)
-        assert callable(serializer)
+        spec = get_tool(name)
+        assert spec is not None, f"{name} missing from the tool registry"
+        assert isinstance(spec.schema_fields, dict)
+        assert isinstance(spec.required, list)
 
 
 # ---------------------------------------------------------------------------
@@ -441,15 +441,14 @@ def test_capability_tools_have_schemas():
 
 def test_register_mcp_server_registered():
     from src.agent.tools.system import get_tool, get_tool_names
-    from src.agent.tools.schemas import _TOOL_SPECS
-
+    
     assert "register_mcp_server" in get_tool_names()
     tool = get_tool("register_mcp_server")
     assert tool is not None
     assert tool.name == "register_mcp_server"
 
-    assert "register_mcp_server" in _TOOL_SPECS
-    properties, required, _ = _TOOL_SPECS["register_mcp_server"]
+    assert get_tool("register_mcp_server") is not None
+    properties, required = tool.schema_fields, tool.required
     assert {"slug", "description", "command", "args", "user_confirmed"} <= set(required)
     assert "env" in properties
     assert "source_url" in properties

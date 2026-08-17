@@ -162,15 +162,15 @@ async def test_show_display_unknown_format_falls_back_text(
 
 def test_show_display_registered():
     from src.agent.tools.system import get_tool, get_tool_names
-    from src.agent.tools.schemas import _TOOL_SPECS
-
+    
     # show_display was replaced by show_text + show_canvas in the new definitions
     assert "show_text" in get_tool_names()
     tool = get_tool("show_text")
     assert tool is not None
     assert tool.name == "show_text"
     assert tool.handler == "display"
-    props, required, _ = _TOOL_SPECS["show_text"]
+    _spec = get_tool("show_text")
+    props, required = _spec.schema_fields, _spec.required
     assert "content" in props
     assert "title" in props
 

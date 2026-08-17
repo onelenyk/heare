@@ -14,7 +14,15 @@ from src.skills.agent_skills import SkillsLoader, SkillMetadata
 from src.agent.tools.direct import execute_direct
 from src.agent.tools.system import get_tool, get_tool_names
 from src.agent.tools.registry import get_enabled_tools
-from src.agent.tools.schemas import _TOOL_SPECS
+from src.agent.tools.system import _SERIALIZERS, TOOLS
+
+# The schema table these tests read was a parallel structure beside the
+# registry; the registry now carries the schema itself, and the
+# serializer sits in its own map.
+_TOOL_SPECS = {
+    t.name: (t.schema_fields, t.required, _SERIALIZERS.get(t.name))
+    for t in TOOLS
+}
 
 
 # ============================================================================

@@ -25,7 +25,26 @@ from src.config import Settings
 
 
 def test_the_voice_agent_sees_three_verbs() -> None:
-    assert {t.name for t in system._visible_tools()} == system.VOICE_TOOLS
+    """The schemas the voice model is handed, from the toolbox that hands
+    them over. This used to read the pipeline's registration helpers; they
+    went with the engine, and the spine builds its own — so asserting
+    against the old ones would have proved something about deleted code.
+    """
+    from src.spine.tools import SCHEMAS
+
+    names = {s["function"]["name"] for s in SCHEMAS}
+    assert names == system.VOICE_TOOLS
+
+
+def test_the_worker_is_offered_everything_except_delegate() -> None:
+    """It must not be able to hand its own job back to itself."""
+    from src.agent.hands import Hands
+    from src.config import Settings
+
+    names = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
+    assert "delegate" not in names
+    assert "bash" in names
+    assert len(names) > 40
 
 
 def test_delegate_exists_and_is_one_of_the_verbs() -> None:
@@ -34,24 +53,8 @@ def test_delegate_exists_and_is_one_of_the_verbs() -> None:
     assert system.VOICE_TOOLS == {"delegate", "remember", "recall"}
 
 
-def test_the_schema_is_the_three_verbs() -> None:
-    schema = system.build_tools_schema()
-    assert {s.name for s in schema.standard_tools} == system.VOICE_TOOLS
 
 
-def test_only_the_verbs_are_registered() -> None:
-    class FakeLLM:
-        def __init__(self):
-            self.registered: list[str] = []
-
-        def register_function(self, name, handler, **kw):
-            self.registered.append(name)
-
-    llm = FakeLLM()
-    names = system.register_all_tools(llm, settings=Settings())
-
-    assert set(names) == system.VOICE_TOOLS
-    assert set(llm.registered) == system.VOICE_TOOLS
 
 
 # ── the prompt must not describe tools that are not there ─────────────

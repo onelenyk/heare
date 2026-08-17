@@ -2,8 +2,6 @@
 
 Centralises tool metadata in a single ``TOOLS`` list and derives:
 
-* :func:`build_tools_schema` — ``ToolsSchema`` for the LLM surface
-* :func:`register_all_tools` — Pipecat ``register_function`` wiring
 
 Handler dispatch maps each tool's *handler type* to an async execution
 function in :mod:`.direct`. Lazy imports avoid circular dependencies
@@ -12,7 +10,6 @@ with the pipeline layer.
 
 from __future__ import annotations
 
-import asyncio
 import itertools
 import json
 import logging
@@ -54,13 +51,6 @@ class ToolDef:
 VOICE_TOOLS = frozenset({"delegate", "remember", "recall"})
 
 
-def _visible_tools() -> list["ToolDef"]:
-    """The tools the conversational model may call: exactly the verbs.
-
-    Everything else belongs to the worker in src/agent/hands.py, which
-    has no deadline and is not in the speaking path.
-    """
-    return [t for t in TOOLS if t.enabled and t.name in VOICE_TOOLS]
 
 
 ArgsSerializer = Callable[[dict[str, Any]], str]
@@ -747,6 +737,12 @@ TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
+        # OFF: there is nothing behind it. handler="batch_op" points at
+        # _execute_batch_operation, which copies and deletes files by
+        # pattern — the label was copied, the sequencing was never
+        # written. Offered to the model, it is a tool that can be chosen
+        # and cannot run; the worker already sequences its own steps.
+        enabled=False,
         name="workflow",
         description="Execute a multi-step action sequence. Provide a list of tools to call in order. Each step waits for the previous one to complete.",
         handler="batch_op",
@@ -1100,116 +1096,10 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
 }
 
 
-async def _delegate_handler(args: str, settings: Any = None) -> dict:
-    """Indirection so ``hands`` is imported only when actually used."""
-    from src.agent.hands import execute_delegate
-
-    return await execute_delegate(args, settings)
 
 
-def _handler_for(tool: ToolDef):
-    """Return the handler function for a tool's handler type from :mod:`.direct`."""
-    from . import direct
-
-    handler_map = {
-        "bash": direct._execute_bash,
-        "file_read": direct._execute_read,
-        "file_write": direct._execute_write,
-        "web_fetch": direct._execute_web_fetch,
-        "web_search": direct._execute_web_search,
-        "cancel": direct._execute_bash,
-        "delegate": _delegate_handler,
-        "tool_create": direct._execute_create_tool,
-        "tool_update": direct._execute_update_tool,
-        "tool_delete": direct._execute_delete_tool,
-        "tool_list": direct._execute_list_tools,
-        "archive_create": direct._execute_create_archive,
-        "archive_extract": direct._execute_extract_archive,
-        "batch_op": direct._execute_batch_operation,
-        "profile_favorite_add": direct._execute_add_favorite,
-        "profile_favorite_list": direct._execute_list_favorites,
-        "profile_view_pref": direct._execute_set_view_preference,
-        "profile_show": direct._execute_show_profile,
-        "skill_list": direct._execute_list_skills,
-        "skill_run": direct._execute_run_skill,
-        "provider_set": direct._execute_set_provider,
-        "mode_set": direct._execute_set_mode,
-        "display": direct._execute_show_display,
-        "display_read": direct._execute_read_display,
-        "capability_discover": direct._execute_discover_capability,
-        "capability_install_skill": direct._execute_install_skill_tool,
-        "capability_create_skill": direct._execute_create_skill,
-        "capability_install_mcp": direct._execute_install_mcp_server_tool,
-        "capability_register_mcp": direct._execute_register_mcp_server,
-        "capability_revoke": direct._execute_revoke_capability,
-        "capability_list": direct._execute_list_capabilities,
-        "daemon_stop": direct._execute_stop_daemon,
-        "daemon_restart": direct._execute_restart_daemon,
-        "browser_read": direct._execute_read_browser_page,
-        "browser_list_tabs": direct._execute_list_browser_tabs,
-        "browser_click": direct._execute_click_in_browser,
-        "browser_fill": direct._execute_fill_in_browser,
-        "browser_navigate": direct._execute_navigate_browser,
-        "browser_extract": direct._execute_extract_in_browser,
-        "browser_open_tab": direct._execute_open_browser_tab,
-        "browser_activate_tab": direct._execute_activate_browser_tab,
-        "mute_bot": direct._execute_mute_bot,
-        "mute_mic": direct._execute_mute_mic,
-        "audio_device": direct._execute_audio_device,
-        "subagent_run": direct._execute_run_agent,
-        "agent_start": direct._execute_agent_start,
-        "agent_status": direct._execute_agent_status,
-        "agent_result": direct._execute_agent_result,
-        "agent_message": direct._execute_agent_message,
-        "agent_cancel": direct._execute_agent_cancel,
-        "agent_list": direct._execute_agent_list,
-        "agent_approve": direct._execute_agent_approve,
-        "agent_deny": direct._execute_agent_deny,
-        "remember": direct._execute_remember,
-        "recall": direct._execute_recall,
-        "forget": direct._execute_forget,
-        "memory_status": direct._execute_memory_status,
-        "vad_sensitivity": direct._execute_vad_sensitivity,
-        "mic_gain": direct._execute_mic_gain,
-        "volume": direct._execute_volume,
-        "sidetone": direct._execute_sidetone,
-    }
-
-    func = handler_map.get(tool.handler)
-    if func is None:
-        logger.warning("No handler for type %r, tool %s", tool.handler, tool.name)
-    return func
 
 
-def build_tools_schema(session_state: Any = None) -> Any:
-    """Build the ``ToolsSchema`` for LLM context.
-
-    When *session_state* is provided, tools denied by the live mode
-    profile are excluded from the schema so the LLM never sees schemas
-    it cannot call.  The execution-time gate (``mode_gate_refusal``)
-    remains in place as defense-in-depth.
-    """
-    from pipecat.adapters.schemas.function_schema import FunctionSchema
-    from pipecat.adapters.schemas.tools_schema import ToolsSchema
-
-    from src.agent.modes import is_tool_allowed as mode_is_tool_allowed
-
-    schemas: list[Any] = []
-    for t in _visible_tools():
-        if session_state is not None and not mode_is_tool_allowed(
-            session_state.profile, t.name
-        ):
-            continue
-        schemas.append(
-            FunctionSchema(
-                name=t.name,
-                description=t.description,
-                properties=t.schema_fields,
-                required=t.required,
-            )
-        )
-
-    return ToolsSchema(standard_tools=schemas)
 
 
 _intent_id_seq = itertools.count(start=1)
@@ -1266,173 +1156,8 @@ def tool_timeout_secs(name: str) -> float:
     return _TOOL_TIMEOUTS.get(name, DEFAULT_TOOL_TIMEOUT_SECS)
 
 
-def _make_handler(
-    tool: ToolDef,
-    direct_func: Any,
-    serializer: ArgsSerializer | None,
-    settings: "Settings | None" = None,
-    conversation_manager: "ConversationManager | None" = None,
-    session_state: Any = None,
-) -> Callable[[Any], Any]:
-    """Build a Pipecat ``FunctionCallParams`` handler for one tool."""
-    ser = serializer or _json_serializer
-
-    async def handler(params: Any) -> None:
-        args_str = ser(dict(params.arguments or {}))
-        intent_id = next(_intent_id_seq)
-
-        from src.agent.modes import mode_gate_refusal
-
-        refusal = mode_gate_refusal(session_state, tool.name)
-        if refusal is not None:
-            if conversation_manager is not None:
-                try:
-                    conversation_manager.record_action_pending(
-                        intent_id, tool.name, args_str
-                    )
-                    conversation_manager.record_action_error(
-                        intent_id, refusal["error"]
-                    )
-                except Exception:
-                    logger.exception("system: mode_gate action-log failed (non-fatal)")
-            await params.result_callback(refusal)
-            return
-
-        if conversation_manager is not None:
-            try:
-                conversation_manager.record_action_pending(
-                    intent_id, tool.name, args_str
-                )
-            except Exception:
-                logger.exception("system: record_action_pending failed (non-fatal)")
-
-        timeout = tool_timeout_secs(tool.name)
-        try:
-            result = await asyncio.wait_for(
-                direct_func(args_str, settings=settings), timeout=timeout
-            )
-        except asyncio.TimeoutError:
-            # wait_for cancelled the inner coroutine, so tools that hold
-            # OS resources have already cleaned up — _execute_bash kills
-            # its whole process group on CancelledError before re-raising.
-            logger.warning(
-                "system: handler %r timed out after %.0fs", tool.name, timeout
-            )
-            message = (
-                f"{tool.name} ran for {timeout:.0f}s without finishing and was "
-                "stopped. Nothing was returned. Tell the user it did not "
-                "complete; retry only with a narrower request."
-            )
-            if conversation_manager is not None:
-                try:
-                    conversation_manager.record_action_error(intent_id, message)
-                except Exception:
-                    logger.exception("system: record_action_error failed (non-fatal)")
-            await params.result_callback(
-                {"success": False, "output": "", "error": message}
-            )
-            return
-        except asyncio.CancelledError:
-            logger.info("system: handler %r cancelled", tool.name)
-            if conversation_manager is not None:
-                try:
-                    conversation_manager.record_action_cancelled(
-                        intent_id, tool=tool.name, args=args_str
-                    )
-                except Exception:
-                    logger.exception(
-                        "system: record_action_cancelled failed (non-fatal)"
-                    )
-            raise
-        except Exception as exc:
-            logger.exception("system: handler %r raised", tool.name)
-            if conversation_manager is not None:
-                try:
-                    conversation_manager.record_action_error(intent_id, repr(exc))
-                except Exception:
-                    logger.exception("system: record_action_error failed (non-fatal)")
-            await params.result_callback(
-                {
-                    "success": False,
-                    "output": "",
-                    "error": f"{tool.name} handler error: {exc!s}",
-                }
-            )
-            return
-
-        if conversation_manager is not None:
-            try:
-                summary = (
-                    str(result.get("summary") or result.get("output") or "")
-                    if isinstance(result, dict)
-                    else str(result)
-                )
-                items = (
-                    result.get("items")
-                    if isinstance(result, dict)
-                    and isinstance(result.get("items"), list)
-                    else None
-                )
-                conversation_manager.record_action_result(
-                    intent_id, summary, items=items
-                )
-            except Exception:
-                logger.exception("system: record_action_result failed (non-fatal)")
-
-        await params.result_callback(result)
-
-    handler.__name__ = f"_handle_{tool.name}"
-    return handler
 
 
-def register_all_tools(
-    llm: Any,
-    *,
-    settings: "Settings | None" = None,
-    conversation_manager: "ConversationManager | None" = None,
-    session_state: Any = None,
-    tools: "list[ToolDef] | None" = None,
-) -> list[str]:
-    """Register one ``FunctionCallParams`` handler per tool.
-
-    Defaults to what the conversational model may call — the three verbs.
-    ``tools`` overrides that, which is how the handler machinery itself
-    can still be exercised for tools the voice agent never sees.
-
-    Returns the list of tool names actually registered.
-    """
-    registered: list[str] = []
-    for t in tools if tools is not None else _visible_tools():
-        direct_func = _handler_for(t)
-        if direct_func is None:
-            logger.warning(
-                "system: tool %r has no handler; skipping registration", t.name
-            )
-            continue
-
-        serializer = _SERIALIZERS.get(t.name)
-        handler = _make_handler(
-            t,
-            direct_func,
-            serializer,
-            settings=settings,
-            conversation_manager=conversation_manager,
-            session_state=session_state,
-        )
-
-        cancel_on_interruption = t.name != "cancel"
-        llm.register_function(
-            t.name,
-            handler,
-            cancel_on_interruption=cancel_on_interruption,
-            # Strictly later than our own deadline above, so the handler
-            # always gets to return a readable error instead of pipecat
-            # delivering a bare None that kills the turn.
-            timeout_secs=tool_timeout_secs(t.name) + _PIPECAT_TIMEOUT_MARGIN_SECS,
-        )
-        registered.append(t.name)
-
-    return registered
 
 
 _DYNAMIC_TOOL_SCHEMAS: dict[str, tuple[dict[str, Any], str, str]] = {}
@@ -1503,8 +1228,6 @@ def get_tools_by_handler(handler: str) -> list["ToolDef"]:
 __all__ = [
     "ToolDef",
     "TOOLS",
-    "build_tools_schema",
-    "register_all_tools",
     "register_dynamic_tool_schema",
     "unregister_dynamic_tool_schema",
     "get_dynamic_tool_schema",

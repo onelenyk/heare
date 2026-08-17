@@ -151,6 +151,29 @@ async def execute_direct(
         return await _execute_web_fetch(args, settings)
     elif tool == "web_search":
         return await _execute_web_search(args, settings)
+    # The sub-agent tools and read_display had implementations here all
+    # along, reached through the pipeline's per-tool handler map. The
+    # worker dispatches by name instead, so without these branches the
+    # model could pick a tool it had been offered and be told the tool
+    # does not exist.
+    elif tool == "read_display":
+        return await _execute_read_display(args, settings)
+    elif tool == "agent_start":
+        return await _execute_agent_start(args, settings)
+    elif tool == "agent_status":
+        return await _execute_agent_status(args, settings)
+    elif tool == "agent_result":
+        return await _execute_agent_result(args, settings)
+    elif tool == "agent_message":
+        return await _execute_agent_message(args, settings)
+    elif tool == "agent_cancel":
+        return await _execute_agent_cancel(args, settings)
+    elif tool == "agent_list":
+        return await _execute_agent_list(args, settings)
+    elif tool == "agent_approve":
+        return await _execute_agent_approve(args, settings)
+    elif tool == "agent_deny":
+        return await _execute_agent_deny(args, settings)
     elif tool == "create_tool":
         return await _execute_create_tool(args, settings)
     elif tool == "update_tool":
