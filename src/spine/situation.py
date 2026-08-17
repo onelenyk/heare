@@ -36,12 +36,43 @@ NIGHT_UNTIL = 7
 UNKNOWN_SILENCE_S = 1e9
 
 
+# Where it is. Read once at import: the machine does not move, and a
+# hostname lookup on every tick would be a syscall for a constant.
+def _where() -> str:
+    """One phrase for the place, in the language the assistant speaks.
+
+    Not decoration. Told only the hour, a model reasons about time as a
+    number; told it is night on a laptop in Kyiv, it reasons about a
+    person who is probably tired and probably alone. The prompt already
+    carried a timestamp — the part that was missing is everything that
+    makes a timestamp mean something.
+    """
+    import platform
+
+    host = " ".join(platform.node().split(".")[0].replace("-", " ").split())
+    tz = time.tzname[time.daylight and time.localtime().tm_isdst > 0]
+    system = {"Darwin": "макбук", "Linux": "linux", "Windows": "windows"}.get(
+        platform.system(), platform.system() or "невідомо"
+    )
+    return f"{system}, {host} ({tz})" if host else f"{system} ({tz})"
+
+
+PLACE = _where()
+
+_WEEKDAYS = (
+    "понеділок", "вівторок", "середа", "четвер",
+    "пʼятниця", "субота", "неділя",
+)
+
+
 @dataclass(frozen=True)
 class Situation:
     """Everything the engine is allowed to know about now."""
 
     now: float
     hour: int
+    minute: int
+    weekday: int  # 0 = Monday, as time.localtime gives it
 
     # Between us
     silence_s: float  # since anything was said, by either
@@ -75,17 +106,24 @@ class Situation:
     def describe(self) -> str:
         """One line, for the prompt and for the log.
 
-        This is the block that makes "what does it think is going on"
-        answerable at all — before it, the only way to find out was to
-        guess from behaviour.
+        Written the way a person would say it — weekday, clock, part of
+        day — rather than as a timestamp. "2026-08-18 01:08:00" is a fact
+        a model has to decode before it can use; "вівторок, 01:08, ніч"
+        is one it can act on.
         """
-        parts = [f"{_clock(self.hour)}"]
-        if self.silence_s > 60:
+        parts = [
+            f"{_WEEKDAYS[self.weekday % 7]}, "
+            f"{self.hour:02d}:{self.minute:02d}, {_clock(self.hour)}"
+        ]
+        # An unknown gap is not a long one. Printing the sentinel would
+        # tell the model the room has been quiet for thirty years.
+        if 60 < self.silence_s < UNKNOWN_SILENCE_S:
             parts.append(f"тиша {_span(self.silence_s)}")
         if self.jobs_running:
             parts.append(f"в роботі: {self.jobs_running}")
         if self.mode and self.mode != "ambient":
             parts.append(f"режим {self.mode}")
+        parts.append(PLACE)
         return ", ".join(parts)
 
 
@@ -141,7 +179,7 @@ async def observe(
     beside a live conversation.
     """
     now = now if now is not None else time.time()
-    hour = time.localtime(now).tm_hour
+    stamp = time.localtime(now)
 
     bot_state, bot_state_s = "unknown", 0.0
     mode = ""
@@ -178,7 +216,9 @@ async def observe(
 
     return Situation(
         now=now,
-        hour=hour,
+        hour=stamp.tm_hour,
+        minute=stamp.tm_min,
+        weekday=stamp.tm_wday,
         silence_s=silence_s,
         user_silence_s=user_silence_s,
         bot_state=bot_state,

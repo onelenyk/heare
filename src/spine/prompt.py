@@ -105,7 +105,12 @@ def build_system_prompt(
     if situation_block:
         parts.append(situation_block)
 
-    if now is not None:
+    # The raw stamp only when nothing better is on offer. Two lines both
+    # opening "Зараз:" — one in words, one as 2026-08-18 01:08:00 — read
+    # as two different claims about the present, and the machine-shaped
+    # one is the weaker: it carries no weekday and nothing about whether
+    # that hour is late.
+    if now is not None and not situation_block:
         date_str = now.strftime("%Y-%m-%d %H:%M:%S")
         parts.append(f"Зараз: {date_str}")
 

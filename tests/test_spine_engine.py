@@ -35,6 +35,8 @@ def sit(**kw) -> Situation:
     base = dict(
         now=NOW,
         hour=14,
+        minute=0,
+        weekday=1,
         silence_s=600.0,
         user_silence_s=60.0,
         bot_state="idle",
