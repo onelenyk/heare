@@ -75,71 +75,48 @@ def test_normalise_passes_structured_through() -> None:
 # --- function_schemas -------------------------------------------------------
 
 
-def test_function_schemas_naming_and_shape() -> None:
-    bridge = McpBridge()
-    bridge._tools.append(
-        (
-            "mcp__macos-use__click_and_traverse",
-            "Click at coords",
-            {
-                "type": "object",
-                "properties": {"x": {"type": "number"}},
-                "required": ["x"],
-            },
-            _FakeSession(),
-        )
-    )
-    schemas = bridge.function_schemas()
-    assert len(schemas) == 1
-    assert schemas[0].name == "mcp__macos-use__click_and_traverse"
-    assert "x" in schemas[0].properties
-    assert schemas[0].required == ["x"]
+async def test_call_uses_the_bare_tool_name() -> None:
+    """The prefix is ours, for namespacing; the server never sees it.
 
-
-# --- register + handler -----------------------------------------------------
-
-
-async def test_handler_calls_session_with_bare_tool_name() -> None:
+    This used to go through `bridge.register`, which built one pipecat
+    handler per tool. The worker calls `bridge.call(name, args)` instead,
+    so that is where the prefix has to be stripped — and where a mistake
+    would now show up as a server rejecting every call.
+    """
     session = _FakeSession(_result([_content("done")]))
     bridge = McpBridge()
     bridge._tools.append(
         ("mcp__macos-use__type_and_traverse", "Type text", {}, session)
     )
 
-    captured: dict[str, Any] = {}
+    result = await bridge.call("mcp__macos-use__type_and_traverse", {"text": "hi"})
 
-    class _LLM:
-        def register_function(self, name, handler, **kw):
-            captured[name] = handler
-
-    names = bridge.register(_LLM())
-    assert names == ["mcp__macos-use__type_and_traverse"]
-
-    params = _CapturingParams({"text": "hi"})
-    await captured["mcp__macos-use__type_and_traverse"](params)
-
-    # Server sees the bare tool name, not the mcp__ prefix.
     assert session.calls == [("type_and_traverse", {"text": "hi"})]
-    assert params.result == {"success": True, "output": "done"}
+    assert result == {"success": True, "output": "done"}
 
 
-async def test_handler_error_path_returns_failure() -> None:
+async def test_a_failing_server_is_reported_not_raised() -> None:
+    """One broken server must cost its own tools and nothing else."""
     session = _FakeSession(raises=RuntimeError("kaboom"))
     bridge = McpBridge()
-    bridge._tools.append(("mcp__x__do", "do", {}, session))
+    bridge._tools.append(("mcp__x__do", "Do", {}, session))
 
-    holder: dict[str, Any] = {}
+    result = await bridge.call("mcp__x__do", {})
 
-    class _LLM:
-        def register_function(self, name, handler, **kw):
-            holder["h"] = handler
+    assert result["success"] is False
+    assert "kaboom" in result["error"]
 
-    bridge.register(_LLM())
-    params = _CapturingParams({})
-    await holder["h"](params)
 
-    assert params.result["success"] is False
-    assert "kaboom" in params.result["error"]
+async def test_an_unknown_tool_is_refused() -> None:
+    result = await McpBridge().call("mcp__nope__missing", {})
+    assert result["success"] is False
+
+
+# --- register + handler -----------------------------------------------------
+
+
+
+
 
 
 # --- resilience / lifecycle -------------------------------------------------

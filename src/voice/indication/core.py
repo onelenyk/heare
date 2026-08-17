@@ -14,28 +14,15 @@ import asyncio
 import datetime as _dt
 import logging
 import time
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Awaitable, Callable, Protocol
 
-from pipecat.frames.frames import SystemFrame  # type: ignore
 
 from src.config import IndicationSettings, Mode
 
 logger = logging.getLogger("heare.indication")
 
 
-@dataclass
-class IndicationCueFrame(SystemFrame):
-    """Brackets a non-speech cue's playback window.
-
-    MUST inherit from `pipecat.frames.frames.SystemFrame` so pipecat broadcasts
-    both upstream and downstream — required for upstream gating in
-    decider/generator/speaker_tagger to fire correctly. Future maintainers:
-    do not downgrade to a regular Frame.
-    """
-
-    start: bool = True
 
 
 class IndicationKind(str, Enum):
@@ -447,132 +434,8 @@ class Indication:
 _sound_cue_processor_cls: type | None = None
 
 
-def _build_sound_cue_processor_class() -> type:
-    global _sound_cue_processor_cls
-    if _sound_cue_processor_cls is not None:
-        return _sound_cue_processor_cls
-
-    from pipecat.frames.frames import (  # type: ignore
-        BotStartedSpeakingFrame,
-        BotStoppedSpeakingFrame,
-        OutputAudioRawFrame,
-    )
-    from pipecat.processors.frame_processor import (  # type: ignore
-        FrameDirection,
-        FrameProcessor,
-    )
-
-    class SoundCueProcessor(FrameProcessor):  # type: ignore[misc,valid-type]
-        """Per cue, pushes IndicationCueFrame(start=True), OutputAudioRawFrame,
-        then IndicationCueFrame(start=False) at len(pcm)/(sr*2)+0.2s later.
-
-        Defers cue emission while bot is speaking; drops cue after 2s wait.
-        Buffers up to one pending cue (asyncio.Queue(maxsize=1)); subsequent
-        cues are dropped and counted via `cues_dropped`.
-        """
-
-        def __init__(
-            self, sample_rate: int = 24000, tail_pad_seconds: float = 0.2
-        ) -> None:
-            super().__init__()
-            self._sample_rate = sample_rate
-            self._tail_pad = tail_pad_seconds
-            self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1)
-            self._drain_task: asyncio.Task | None = None
-            self._stopped = False
-            self._bot_speaking = False
-            self.cues_dropped = 0
-
-        @property
-        def sample_rate(self) -> int:
-            return self._sample_rate
-
-        def enqueue_cue(self, pcm: bytes) -> None:
-            if self._stopped:
-                return
-            if self._drain_task is None:
-                try:
-                    loop = asyncio.get_running_loop()
-                    self._drain_task = loop.create_task(self._drain())
-                except RuntimeError:
-                    logger.debug("sound cue: no running loop; dropping")
-                    return
-            try:
-                self._queue.put_nowait(pcm)
-            except asyncio.QueueFull:
-                self.cues_dropped += 1
-                logger.debug(
-                    "sound cue dropped (queue full); cues_dropped=%d",
-                    self.cues_dropped,
-                )
-
-        async def _drain(self) -> None:
-            while not self._stopped:
-                try:
-                    pcm = await self._queue.get()
-                except asyncio.CancelledError:
-                    return
-                if self._stopped:
-                    return
-                # Defer while bot speaks; drop after 2s wait.
-                deadline = time.monotonic() + 2.0
-                while self._bot_speaking and time.monotonic() < deadline:
-                    await asyncio.sleep(0.05)
-                if self._bot_speaking:
-                    self.cues_dropped += 1
-                    continue
-                try:
-                    await self.push_frame(
-                        IndicationCueFrame(start=True), FrameDirection.DOWNSTREAM
-                    )
-                    await self.push_frame(
-                        OutputAudioRawFrame(
-                            audio=pcm,
-                            sample_rate=self._sample_rate,
-                            num_channels=1,
-                        ),
-                        FrameDirection.DOWNSTREAM,
-                    )
-                    tail_s = len(pcm) / (self._sample_rate * 2) + self._tail_pad
-                    await asyncio.sleep(tail_s)
-                    await self.push_frame(
-                        IndicationCueFrame(start=False), FrameDirection.DOWNSTREAM
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.warning("sound cue drain push raised", exc_info=True)
-
-        async def process_frame(self, frame, direction) -> None:  # type: ignore[override]
-            await super().process_frame(frame, direction)
-            if isinstance(frame, BotStartedSpeakingFrame):
-                self._bot_speaking = True
-            elif isinstance(frame, BotStoppedSpeakingFrame):
-                self._bot_speaking = False
-            await self.push_frame(frame, direction)
-
-        async def aclose(self) -> None:
-            self._stopped = True
-            if self._drain_task is not None and not self._drain_task.done():
-                self._drain_task.cancel()
-                try:
-                    await asyncio.wait_for(self._drain_task, timeout=1.0)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
-                    pass
-
-    _sound_cue_processor_cls = SoundCueProcessor
-    return _sound_cue_processor_cls
 
 
-def build_sound_cue_processor(sample_rate: int = 24000, tail_pad_seconds: float = 0.2):
-    """Factory for SoundCueProcessor — lazy-imports pipecat.
-
-    Returns an instance of the SoundCueProcessor class, suitable for
-    insertion in the pipecat pipeline AFTER the tts processor and BEFORE
-    transport.output().
-    """
-    cls = _build_sound_cue_processor_class()
-    return cls(sample_rate=sample_rate, tail_pad_seconds=tail_pad_seconds)
 
 
 # Process-wide singleton — set by pipeline.py at startup so producers in
@@ -599,14 +462,12 @@ def get_indication() -> "Indication | None":
 
 __all__ = [
     "Backend",
-    "IndicationCueFrame",
     "IndicationKind",
     "IndicationLevel",
     "Indication",
     "KIND_TO_LEVEL",
     "_DEFAULTS",
     "_is_within_quiet_hours",
-    "build_sound_cue_processor",
     "set_indication",
     "get_indication",
 ]

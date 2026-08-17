@@ -170,59 +170,8 @@ LLM_STALL_TIMEOUT_SECS = 20.0
 # daemon should ever import pipecat at module level.
 
 
-def make_openai_service(config: ProviderConfig, api_key: str, **kwargs: Any) -> Any:
-    """Build an :class:`OpenAILLMService` from *config*.
-
-    All kwargs (model, extra settings, etc.) are forwarded to the
-    Pipecat constructor.  The import is deferred — see module
-    docstring for rationale.
-    """
-    from pipecat.services.openai.llm import OpenAILLMService  # deferred
-
-    # Pipecat only bounds the request when retry_on_timeout is set: with
-    # the default False it awaits chat.completions.create() with no
-    # timeout at all, so a stalled connection hangs the turn forever.
-    #
-    # The retry is a second live completion, so this deadline must mean
-    # "the connection is stalled", not "the model is thinking" — firing
-    # on ordinary slowness would double-bill every slow turn. Hence the
-    # floor: config.timeout is 5s for DeepSeek, well inside normal
-    # time-to-first-chunk, and taking it literally here would retry
-    # constantly.
-    kwargs.setdefault("retry_on_timeout", True)
-    kwargs.setdefault(
-        "retry_timeout_secs", max(config.timeout, LLM_STALL_TIMEOUT_SECS)
-    )
-
-    return OpenAILLMService(
-        api_key=api_key,
-        base_url=config.base_url,
-        settings=OpenAILLMService.Settings(
-            model=kwargs.pop("model", config.default_model)
-        ),
-        **kwargs,
-    )
 
 
-def make_anthropic_service(
-    config: ProviderConfig,
-    api_key: str,
-    model: str | None = None,
-) -> Any:
-    """Build an :class:`AnthropicLLMService` from *config*.
-
-    The Anthropic client is constructed with the provider's base URL
-    so the service talks to the correct API endpoint (z.ai, etc.).
-    """
-    from anthropic import AsyncAnthropic  # deferred
-    from pipecat.services.anthropic.llm import AnthropicLLMService  # deferred
-
-    client = AsyncAnthropic(api_key=api_key, base_url=config.base_url)
-    return AnthropicLLMService(
-        api_key=api_key,
-        settings=AnthropicLLMService.Settings(model=model or config.default_model),
-        client=client,
-    )
 
 
 async def list_models(
@@ -335,8 +284,6 @@ __all__ = [
     "get_config",
     "get_available",
     "get_active",
-    "make_openai_service",
-    "make_anthropic_service",
     "make_identity_bootstrap",
     "list_models",
 ]

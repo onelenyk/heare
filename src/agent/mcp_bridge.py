@@ -30,7 +30,7 @@ import logging
 import os
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from src.skills.mcp_utils import read_mcp_servers
 
@@ -459,120 +459,8 @@ class McpBridge:
             }
         return _normalise_call_result(raw)
 
-    def function_schemas(self) -> list[Any]:
-        """Pipecat ``FunctionSchema`` objects for every connected MCP tool."""
-        from pipecat.adapters.schemas.function_schema import FunctionSchema
 
-        schemas: list[Any] = []
-        for fn_name, description, schema, _session in self._tools:
-            props = schema.get("properties", {}) if isinstance(schema, dict) else {}
-            required = schema.get("required", []) if isinstance(schema, dict) else []
-            schemas.append(
-                FunctionSchema(
-                    name=fn_name,
-                    description=description,
-                    properties=props,
-                    required=required,
-                )
-            )
-        return schemas
 
-    def register(
-        self,
-        llm: Any,
-        conversation_manager: Any = None,
-        session_state: Any = None,
-    ) -> list[str]:
-        """Register one ``register_function`` handler per MCP tool."""
-        registered: list[str] = []
-        for fn_name, _description, _schema, session in self._tools:
-            handler = self._make_handler(
-                fn_name, session, conversation_manager, session_state
-            )
-            llm.register_function(fn_name, handler, cancel_on_interruption=True)
-            registered.append(fn_name)
-        return registered
-
-    @staticmethod
-    def _make_handler(
-        fn_name: str,
-        session: Any,
-        conversation_manager: Any,
-        session_state: Any = None,
-    ) -> Callable[[Any], Any]:
-        # mcp__<slug>__<tool> → bare tool name the server expects.
-        tool_name = fn_name.split("__", 2)[2]
-
-        async def handler(params: Any) -> None:
-            args = dict(params.arguments or {})
-            intent_id = next(_mcp_intent_seq)
-            # Gate on the full mcp__slug__tool name so mode globs like
-            # "mcp__*" / "macos-use*" match as intended.
-            from src.agent.modes import mode_gate_refusal
-
-            refusal = mode_gate_refusal(session_state, fn_name)
-            if refusal is not None:
-                if conversation_manager is not None:
-                    try:
-                        conversation_manager.record_action_pending(
-                            intent_id, fn_name, str(args)
-                        )
-                        conversation_manager.record_action_error(
-                            intent_id, refusal["error"]
-                        )
-                    except Exception:  # noqa: BLE001
-                        logger.exception("mcp_bridge: mode_gate action-log failed")
-                await params.result_callback(refusal)
-                return
-            if conversation_manager is not None:
-                try:
-                    conversation_manager.record_action_pending(
-                        intent_id, fn_name, str(args)
-                    )
-                except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "mcp_bridge: record_action_pending failed (non-fatal)"
-                    )
-            try:
-                raw = await session.call_tool(tool_name, args)
-                result = _normalise_call_result(raw)
-            except asyncio.CancelledError:
-                if conversation_manager is not None:
-                    try:
-                        conversation_manager.record_action_cancelled(
-                            intent_id, tool=fn_name, args=str(args)
-                        )
-                    except Exception:  # noqa: BLE001
-                        logger.exception("mcp_bridge: record_action_cancelled failed")
-                raise
-            except Exception as exc:  # noqa: BLE001 — defensive
-                logger.exception("mcp_bridge: %r raised", fn_name)
-                if conversation_manager is not None:
-                    try:
-                        conversation_manager.record_action_error(intent_id, repr(exc))
-                    except Exception:  # noqa: BLE001
-                        logger.exception("mcp_bridge: record_action_error failed")
-                await params.result_callback(
-                    {
-                        "success": False,
-                        "output": "",
-                        "error": f"{fn_name} error: {exc!s}",
-                    }
-                )
-                return
-            if conversation_manager is not None:
-                try:
-                    conversation_manager.record_action_result(
-                        intent_id, result.get("output", "")
-                    )
-                except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "mcp_bridge: record_action_result failed (non-fatal)"
-                    )
-            await params.result_callback(result)
-
-        handler.__name__ = f"_handle_{fn_name}"
-        return handler
 
     async def aclose(self, *, unregister: bool = True) -> None:
         """Stop every server this bridge owns.
