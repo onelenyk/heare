@@ -273,10 +273,12 @@ async def test_published_state_is_what_was_wired(monkeypatch, tmp_path) -> None:
         monkeypatch, tmp_path, {"mcp": False, "telemetry": False}
     )
     published = {e["name"]: e for e in json.loads(state.cache["spine_features"])}
-    assert set(published) == {
-        "aec", "wake", "tools", "roles", "mcp", "memory", "persist",
-        "usage", "telemetry",
-    }
+    # Read from the registry rather than restated here: a new subsystem
+    # must appear on the card automatically, and a list copied into the
+    # test would have said the card was complete while it was not.
+    from src.spine.features import FEATURES
+
+    assert set(published) == {f.name for f in FEATURES}
     # persist was never built on this fake loop — the config said nothing
     # about it, so the old code would have reported the default (on).
     assert published["persist"]["on"] is False

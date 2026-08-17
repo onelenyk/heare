@@ -262,6 +262,7 @@ _LIVE_ATTR: dict[str, str] = {
     "memory": "memory",
     "persist": "persist",
     "usage": "usage",
+    "engine": "engine",
 }
 
 

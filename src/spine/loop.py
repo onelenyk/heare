@@ -98,6 +98,10 @@ class SpineLoop:
     stream_events: Any = None  # (messages, tools) -> AsyncIterator[dict]
     make_system_prompt: Any = None  # async () -> str
     persist: Any = None        # .log_user_turn/.log_agent_reply (sync)
+    engine: Any = None         # .run(), .observe_reply(text) — holds what
+                               # outlives a turn and decides when to speak
+                               # first. Injected like the rest: the loop
+                               # conducts, it does not want anything.
     usage: Any = None          # .stt(seconds) / .tts(chars) (sync)
     # The role platform, as one injected policy object (None = no roles).
     # It decides whether a turn is a session trigger, a logged line or
@@ -174,6 +178,8 @@ class SpineLoop:
             asyncio.create_task(self._stt_worker(), name="spine-stt"),
             asyncio.create_task(self._converse(), name="spine-converse"),
         ]
+        if self.engine is not None:
+            tasks.append(asyncio.create_task(self.engine.run(), name="spine-engine"))
         try:
             await asyncio.gather(*tasks)
         finally:
@@ -324,6 +330,15 @@ class SpineLoop:
     async def respond(self, user_text: str, *, speak: bool = True) -> str:
         """One full exchange. Returns the reply text (also spoken)."""
         self._interrupted = False
+        if self.engine is not None:
+            # Whatever they just said is also the verdict on whatever it
+            # last brought up unbidden. Reading it here is the whole
+            # safeguard on speaking freely: being brushed off has to cost
+            # something, or "freely" becomes "constantly" within a day.
+            try:
+                await self.engine.observe_reply(user_text)
+            except Exception:
+                logger.exception("engine: reading the reply failed (non-fatal)")
         turn_id: int | None = None
         try:
             turn_id = await self._persist_user_turn(user_text)

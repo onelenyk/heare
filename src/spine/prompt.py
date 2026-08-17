@@ -31,6 +31,7 @@ def build_system_prompt(
     mcp_block: str = "",
     memory_block: str = "",
     exchanges: list[dict] | None = None,
+    situation_block: str = "",
     now: datetime | None = None,
 ) -> str:
     """Compose the spine's system prompt.
@@ -48,6 +49,7 @@ def build_system_prompt(
       - 'Що ти пам'ятаєш:' + memory_block
       - 'Останні розмови:' + exchanges rendered as 'Користувач: .../Ти: ...'
         lines (cap each line at 200 chars)
+      - situation + what is outstanding between you (from the engine)
       - current date/time line, LAST of all, since it changes most often
 
     Sections are added ONLY when non-empty. Same information, same headers,
@@ -94,6 +96,14 @@ def build_system_prompt(
 
         if rendered_lines:
             parts.append("Останні розмови:\n" + "\n".join(rendered_lines))
+
+    # The situation, then the clock — both last, both changing fastest.
+    # This block is the half of the engine that never gets spoken: even
+    # an intent it decides not to raise is here, so when the user opens
+    # the conversation the assistant answers knowing what hangs between
+    # them rather than from a blank page.
+    if situation_block:
+        parts.append(situation_block)
 
     if now is not None:
         date_str = now.strftime("%Y-%m-%d %H:%M:%S")

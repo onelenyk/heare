@@ -284,6 +284,33 @@ async def _wire_full(loop, settings, cfg, memory, features):
     if loop.role_manager is not None:
         loop.role_manager.persist = persist
 
+    # The engine: the only thing here that outlives a turn. Everything
+    # else in this file wires a conversation; this holds what is left
+    # over when one ends — what it means to raise, and whether now is
+    # the moment. Injected like the rest, so the conductor stays a
+    # conductor.
+    loop.engine = None
+    if features["engine"] and records.db is not None:
+        try:
+            from src.spine.engine import Engine
+            from src.spine.intents import IntentStore
+
+            intent_store = IntentStore(records.db)
+            await intent_store.init()
+            await intent_store.sweep_stale()
+
+            loop.engine = Engine(
+                store=intent_store,
+                say=loop.inject,
+                state=getattr(loop, "state", None),
+                persist=persist,
+                jobs=records.jobs,
+            )
+            logger.info("engine: holding intents between turns")
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: unavailable (non-fatal)")
+
+
     persona = load_persona(settings)
 
     async def _make_prompt() -> str:
@@ -333,11 +360,19 @@ async def _wire_full(loop, settings, cfg, memory, features):
             persona_block = (
                 f"{persona}\n\nЗараз ти в ролі «{active.name}».\n{active.prompt}"
             )
+        situation_block = ""
+        if loop.engine is not None:
+            try:
+                situation_block = await loop.engine.prompt_block()
+            except Exception:
+                logger.debug("engine prompt block failed (non-fatal)")
+
         return build_system_prompt(
             persona=persona_block,
             mcp_block=mcp_block,
             memory_block=memory_block or "",
             exchanges=exchanges,
+            situation_block=situation_block,
             now=datetime.now(),
         )
 

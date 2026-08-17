@@ -181,6 +181,20 @@ class JobStore:
             logger.exception("jobs: sweep failed (non-fatal)")
             return []
 
+    async def running_count(self) -> int:
+        """How many errands are still out. Part of the situation: an
+        assistant with work in flight owes an answer, and should weigh
+        speaking about anything else accordingly."""
+        try:
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM jobs WHERE state = ?", (RUNNING,)
+            )
+            row = await cursor.fetchone()
+            return int(row[0]) if row else 0
+        except Exception:
+            logger.exception("jobs: running_count failed (non-fatal)")
+            return 0
+
     async def recent(self, limit: int = 5) -> list[Job]:
         try:
             cursor = await self._db.execute(

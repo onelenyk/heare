@@ -167,6 +167,23 @@ class SpinePersistence:
             )
             self._conn.commit()
 
+    def last_turn_times(self) -> dict[str, float | None]:
+        """When anything was last said, and when the user last said it.
+
+        How long the two of you have been quiet was known to nothing:
+        the transcripts carry a timestamp per row, and no one had ever
+        needed to ask them the question. It is one query, and it is the
+        difference between a reply and a remark.
+        """
+        with self._lock:
+            cur = self._conn.execute("SELECT MAX(ts) FROM transcripts")
+            any_ts = (cur.fetchone() or [None])[0]
+            cur = self._conn.execute(
+                "SELECT MAX(ts) FROM transcripts WHERE agent_spoken = 0"
+            )
+            user_ts = (cur.fetchone() or [None])[0]
+        return {"any": any_ts, "user": user_ts}
+
     def recent_exchanges(self, n: int = 6) -> list[dict]:
         """Last n closed turns as [{"user": ..., "agent": ...}] oldest
         first, read via turn_id joins — for the prompt context."""

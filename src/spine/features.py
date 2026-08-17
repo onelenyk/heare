@@ -55,6 +55,8 @@ FEATURES: tuple[Feature, ...] = (
     Feature("persist", True, "розмови не записуються в базу"),
     Feature("usage", True, "витрати не рахуються"),
     Feature("telemetry", True, "немає turns.jsonl — нічим міряти якість"),
+    Feature("engine", True, "нічого не тримає між ходами: не озветься сам, "
+                            "не пам'ятає, що винен відповідь"),
 )
 
 _BY_NAME = {f.name: f for f in FEATURES}
