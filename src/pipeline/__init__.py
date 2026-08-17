@@ -1,20 +1,11 @@
-"""Pipecat pipeline composition.
+"""Conversation state shared by the engine and the tool layer.
 
-Re-exports the public surface of :mod:`src.pipeline.build` so callers can
-write ``from src.pipeline import build_pipeline`` without reaching into
-the submodule.
+What is left here after the pipecat engine was removed: the two objects
+that were never about any engine. ``SessionState`` carries the active
+mode and its tool policy; ``LanguageState`` carries the language the
+current turn is being conducted in. The agent tools, the store and the
+spine all read them.
+
+The package keeps its name for now because thirty import sites do; the
+files it used to hold — the graph, the stages, the transports — are gone.
 """
-
-from .build import (
-    _assemble_native_stages,
-    _build_system_prompt,
-    _wire_language_state,
-    build_pipeline,
-)
-
-__all__ = [
-    "build_pipeline",
-    "_assemble_native_stages",
-    "_build_system_prompt",
-    "_wire_language_state",
-]

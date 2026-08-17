@@ -615,34 +615,23 @@ def test_a_boolean_is_written_as_a_boolean(tmp_path, monkeypatch) -> None:
     assert load_settings().capability_install_enabled is False
 
 
-def test_a_fresh_install_gets_the_engine_that_is_maintained() -> None:
-    """The default was "pipecat" for the whole of the spine's life.
+def test_the_daemon_boots_without_the_old_engine() -> None:
+    """There is one engine now, so there is nothing left to choose.
 
-    That meant a new machine ran the engine nobody was living with: the
-    slower first sound, the crash on a missing key, and none of the
-    fixes from the audits — while the dashboard, the docs and the
-    release notes all described the other one. The flag stays, because
-    one line back is still the rollback; only the side it defaults to
-    changed.
-    """
-    assert load_settings().engine == "spine"
-
-
-def test_choosing_an_engine_does_not_import_the_other_one() -> None:
-    """`import src.pipeline.build` costs ~819 ms and ~700 modules, and
-    the spine path never calls a line of it. Those imports sat above the
-    engine branch, so every spine boot paid for the framework it was
-    written to replace. This pins the order rather than the timing: a
-    timing assertion would be flaky, and the order is the actual bug.
+    The flag existed to allow a rollback to pipecat. With that path
+    deleted the flag could only have lied, and the import it guarded —
+    ~819 ms and some 700 modules — is gone with it. This pins the
+    absence: a stray `import src.pipeline.build` would fail here rather
+    than quietly return to loading a framework nothing calls.
     """
     import inspect
 
     import src.main as main_mod
 
     source = inspect.getsource(main_mod._build_and_run_daemon)
-    spine_at = source.index("from src.daemon.spine_engine import")
-    pipecat_at = source.index("from src.pipeline.build import")
-    assert spine_at < pipecat_at, (
-        "the pipecat imports moved back above the engine branch — the "
-        "spine path is paying to load the framework again"
-    )
+    assert "spine_engine" in source
+    assert "pipecat" not in source
+    assert "src.pipeline.build" not in source
+    assert not hasattr(load_settings(), "engine")
+
+

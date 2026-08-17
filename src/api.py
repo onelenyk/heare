@@ -1106,7 +1106,7 @@ class API:
         if not text:
             return web.json_response({"ok": False, "error": "empty text"}, status=400)
 
-        from src.pipeline.stages.text_injector import inject_text
+        from src.inject import inject_text
 
         # Writes .tmp then renames — the daemon polls this folder every 250ms
         # and a plain write can be read half-finished.

@@ -15,37 +15,8 @@ from src.voice.indication.core import Indication
 # --- turn_aggregator reads profile.turn_timeout ----------------------------
 
 
-def test_turn_aggregator_uses_profile_timeout_when_session_state_set() -> None:
-    from src.config import Mode
-    from src.pipeline.stages.turn_aggregator import TurnAggregator
-
-    agg = TurnAggregator(mode=Mode.AMBIENT, focus_timeout=0.5, ambient_timeout=3.0)
-    ss = SessionState(LanguageState(), initial_mode="focus")
-    agg.session_state = ss
-
-    # Reproduce the timeout selection from _start_timeout.
-    timeout = (
-        agg.session_state.profile.turn_timeout
-        if agg.session_state is not None
-        else (agg.focus_timeout if agg.mode == Mode.FOCUS else agg.ambient_timeout)
-    )
-    assert timeout == 0.5  # focus profile
-
-    ss.set_mode("ambient")
-    timeout = agg.session_state.profile.turn_timeout
-    assert timeout == 3.0
 
 
-def test_turn_aggregator_legacy_path_unchanged_without_session_state() -> None:
-    from src.config import Mode
-    from src.pipeline.stages.turn_aggregator import TurnAggregator
-
-    agg = TurnAggregator(mode=Mode.FOCUS, focus_timeout=0.5, ambient_timeout=3.0)
-    assert agg.session_state is None
-    timeout = (
-        agg.focus_timeout if agg.mode == Mode.FOCUS else agg.ambient_timeout
-    )
-    assert timeout == 0.5
 
 
 # --- indication sound policy via profile -----------------------------------

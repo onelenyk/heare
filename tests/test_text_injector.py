@@ -1,15 +1,21 @@
-"""Tests for src/text_injector.py — file-queue IPC for injecting text into
-a running daemon as if it came from STT."""
+"""The inject queue.
+
+The pusher and the polling loop that used to live beside these were
+part of the pipecat path and went with it; the queue itself is what the
+dashboard, the HTTP API and the daemon all still write to.
+
+File-queue IPC: an external process writes a message, the daemon
+reads and deletes it. A crash mid-message loses nothing, because the
+unread files are still on disk at the next start."""
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
 
 
 def test_inject_text_writes_atomic_file(tmp_path: Path):
-    from src.pipeline.stages.text_injector import inject_text
+    from src.inject import inject_text
 
     folder = tmp_path / "inject"
     path = inject_text(folder, "  hello world  ")
@@ -22,14 +28,14 @@ def test_inject_text_writes_atomic_file(tmp_path: Path):
 
 
 def test_inject_text_rejects_empty(tmp_path: Path):
-    from src.pipeline.stages.text_injector import inject_text
+    from src.inject import inject_text
 
     with pytest.raises(ValueError):
         inject_text(tmp_path, "   ")
 
 
 def test_drain_once_orders_chronologically(tmp_path: Path):
-    from src.pipeline.stages.text_injector import _drain_once, inject_text
+    from src.inject import drain as _drain_once, inject_text
 
     p1 = inject_text(tmp_path, "first")
     p2 = inject_text(tmp_path, "second")
@@ -40,7 +46,7 @@ def test_drain_once_orders_chronologically(tmp_path: Path):
 
 
 def test_drain_once_skips_non_txt(tmp_path: Path):
-    from src.pipeline.stages.text_injector import _drain_once, inject_text
+    from src.inject import drain as _drain_once, inject_text
 
     inject_text(tmp_path, "real")
     (tmp_path / "stray.tmp").write_text("ignore me")
@@ -48,163 +54,3 @@ def test_drain_once_skips_non_txt(tmp_path: Path):
 
     items = _drain_once(tmp_path)
     assert [t for _, t in items] == ["real"]
-
-
-@pytest.mark.asyncio
-async def test_run_injector_loop_drains_and_deletes(tmp_path: Path):
-    from src.pipeline.stages.text_injector import inject_text, run_injector_loop
-
-    inject_text(tmp_path, "alpha")
-    inject_text(tmp_path, "beta")
-
-    pushed: list[str] = []
-    stop = asyncio.Event()
-
-    async def push(text: str) -> None:
-        pushed.append(text)
-        if len(pushed) >= 2:
-            stop.set()
-
-    await asyncio.wait_for(
-        run_injector_loop(tmp_path, push, poll_interval=0.01, stop_event=stop),
-        timeout=2.0,
-    )
-    assert pushed == ["alpha", "beta"]
-    # Files cleaned up.
-    assert list(tmp_path.glob("*.txt")) == []
-
-
-@pytest.mark.asyncio
-async def test_run_injector_loop_keeps_message_when_push_raises(tmp_path: Path):
-    """If push() raises we still delete (best-effort) so a poison message
-    can't deadlock the queue. Verify deletion happens after push error."""
-    from src.pipeline.stages.text_injector import inject_text, run_injector_loop
-
-    inject_text(tmp_path, "boom")
-
-    seen: list[str] = []
-    stop = asyncio.Event()
-
-    async def push(text: str) -> None:
-        seen.append(text)
-        stop.set()
-        raise RuntimeError("simulated downstream failure")
-
-    await asyncio.wait_for(
-        run_injector_loop(tmp_path, push, poll_interval=0.01, stop_event=stop),
-        timeout=2.0,
-    )
-    assert seen == ["boom"]
-    # File removed despite the push error.
-    assert list(tmp_path.glob("*.txt")) == []
-
-
-@pytest.mark.asyncio
-async def test_pusher_appends_message_and_requests_completion(tmp_path: Path):
-    """The frame must both carry the text and ask the LLM to run.
-
-    A TranscriptionFrame here would be silently swallowed: the user
-    aggregator buffers transcriptions and only flushes them via an
-    audio-driven turn-stop strategy, so injected text would never reach the
-    LLM (and would contaminate the next spoken turn).
-    """
-    from pipecat.frames.frames import LLMMessagesAppendFrame
-
-    from src.pipeline.stages.text_injector import make_llm_message_pusher
-
-    captured: list = []
-
-    class FakeProcessor:
-        async def push_frame(self, frame, direction=None):
-            captured.append(frame)
-
-    push = make_llm_message_pusher(FakeProcessor())
-    await push("hello daemon")
-
-    assert len(captured) == 1
-    frame = captured[0]
-    assert isinstance(frame, LLMMessagesAppendFrame)
-    assert frame.messages == [{"role": "user", "content": "hello daemon"}]
-    # Without run_llm the message lands in the context but nothing generates.
-    assert frame.run_llm is True
-
-
-@pytest.mark.asyncio
-async def test_pusher_role_is_overridable(tmp_path: Path):
-    from src.pipeline.stages.text_injector import make_llm_message_pusher
-
-    captured: list = []
-
-    class FakeProcessor:
-        async def push_frame(self, frame, direction=None):
-            captured.append(frame)
-
-    await make_llm_message_pusher(FakeProcessor(), role="system")("note")
-    assert captured[0].messages == [{"role": "system", "content": "note"}]
-
-
-@pytest.mark.asyncio
-async def test_pusher_delegates_to_gate_when_available(tmp_path: Path):
-    """The gate owns what happens to a user turn — persist, voice, emit.
-
-    The pusher must hand off rather than reimplement a subset of that work;
-    an earlier version did the latter and the two paths drifted, which is how
-    injected text ended up unlogged and inaudible.
-    """
-    from src.pipeline.stages.text_injector import make_llm_message_pusher
-
-    seen: list = []
-    pushed: list = []
-
-    class FakeGate:
-        async def inject_user_text(self, text):
-            seen.append(text)
-
-        async def push_frame(self, frame, direction=None):
-            pushed.append(frame)
-
-    await make_llm_message_pusher(FakeGate())("два плюс два")
-
-    assert seen == ["два плюс два"]
-    # Delegation must be exclusive — a second push here would double the turn.
-    assert pushed == []
-
-
-@pytest.mark.asyncio
-async def test_pusher_falls_back_without_gate(tmp_path: Path):
-    """A bare FrameProcessor target still works, so the injector stands alone."""
-    from pipecat.frames.frames import LLMMessagesAppendFrame
-
-    from src.pipeline.stages.text_injector import make_llm_message_pusher
-
-    captured: list = []
-
-    class FakeProcessor:
-        async def push_frame(self, frame, direction=None):
-            captured.append(frame)
-
-    await make_llm_message_pusher(FakeProcessor())("hi")
-
-    assert len(captured) == 1
-    assert isinstance(captured[0], LLMMessagesAppendFrame)
-
-
-@pytest.mark.asyncio
-async def test_pusher_non_user_role_bypasses_gate(tmp_path: Path):
-    """``inject_user_text`` speaks for the user only — a system note is not a turn."""
-    from src.pipeline.stages.text_injector import make_llm_message_pusher
-
-    seen: list = []
-    captured: list = []
-
-    class FakeGate:
-        async def inject_user_text(self, text):
-            seen.append(text)
-
-        async def push_frame(self, frame, direction=None):
-            captured.append(frame)
-
-    await make_llm_message_pusher(FakeGate(), role="system")("note")
-
-    assert seen == []
-    assert captured[0].messages == [{"role": "system", "content": "note"}]
