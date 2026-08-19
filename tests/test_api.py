@@ -881,7 +881,7 @@ async def test_setup_config_and_settings_share_the_key_path(
     api = API(mock_state, mock_config)
 
     key = "sk-" + "b" * 30
-    resp = await api._handle_setup_config(
+    resp = await api._handle_settings(
         _mock_request(json_data={"DEEPSEEK_API_KEY": key})
     )
     assert json.loads(resp.body) == {"ok": True, "applied": True}
@@ -889,15 +889,15 @@ async def test_setup_config_and_settings_share_the_key_path(
 
 
 @pytest.mark.asyncio
-async def test_the_setup_modal_saves_through_the_one_writer(
+async def test_saving_a_key_never_flattens_the_file(
     mock_state, mock_config, tmp_path, monkeypatch
 ) -> None:
-    """It used to keep its own copy of the save procedure — read every k=v
-    into a flat dict, rewrite the file, chmod nothing. Comments did not
-    survive it, an interrupted write left no keys at all, and because it
-    created the file itself it created it 0644. That is how a real machine
-    ended up with world-readable credentials while the other save path was
-    carefully writing 0600.
+    """There used to be a second way to save, at POST /setup, with its own
+    copy of the procedure: read every k=v into a flat dict, rewrite the
+    file, chmod nothing. Comments did not survive it, an interrupted write
+    left no keys at all, and because it created the file itself it created
+    it 0644 — which is how a real machine ended up with world-readable
+    credentials while this path was carefully writing 0600.
     """
     import stat
 
@@ -906,10 +906,8 @@ async def test_the_setup_modal_saves_through_the_one_writer(
     env.write_text("# my keys\nUNRELATED=keep-me\nGROQ_API_KEY=gsk_old\n")
     api = API(mock_state, mock_config)
 
-    req = MagicMock()
     key = "sk-" + "c" * 30
-    req.post = AsyncMock(return_value={"deepseek_api_key": key})
-    await api._handle_setup(req)
+    await api._handle_settings(_mock_request(json_data={"deepseek_api_key": key}))
 
     text = env.read_text()
     assert "# my keys" in text
@@ -917,7 +915,6 @@ async def test_the_setup_modal_saves_through_the_one_writer(
     assert "GROQ_API_KEY=gsk_old" in text
     assert f"DEEPSEEK_API_KEY={key}" in text
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
-    # and it reaches the running daemon, not just the file
     mock_state.set.assert_any_await("key_deepseek_api_key", key)
 
 
@@ -928,7 +925,7 @@ async def test_setup_config_rejects_bad_key(
     """It used to accept anything; now it validates like /settings does."""
     monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
     api = API(mock_state, mock_config)
-    resp = await api._handle_setup_config(
+    resp = await api._handle_settings(
         _mock_request(json_data={"GROQ_API_KEY": "bogus"})
     )
     assert resp.status == 400
@@ -1048,7 +1045,7 @@ async def test_setup_config_preserves_config_toml_sections(
     )
     api = API(mock_state, mock_config)
 
-    await api._handle_setup_config(
+    await api._handle_settings(
         _mock_request(json_data={"language": "uk", "tts_voice": "uk-UA-OstapNeural"})
     )
 

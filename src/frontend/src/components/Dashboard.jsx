@@ -12,7 +12,7 @@ import AgentsPanel from './AgentsPanel';
 import HistoryPanel from './HistoryPanel';
 import AudioDevicePicker from './AudioDevicePicker';
 import AudioPanel from './AudioPanel';
-import BrainCard from './BrainCard';
+import KeysCard from './KeysCard';
 import ToolsModal from './ToolsModal';
 import BridgeModal from './BridgeModal';
 import PromptManager from './PromptManager';
@@ -161,19 +161,6 @@ export default function Dashboard({ onOpenSetup }) {
   // ═══ HTTP helpers ═══
   async function post(url, body) {
     await fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  }
-
-  async function saveSettings() {
-    const g = document.getElementById('set-groq').value;
-    const d = document.getElementById('set-deepseek').value;
-    if (g || d) {
-      await fetch(API + '/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groq_api_key: g, deepseek_api_key: d }),
-      });
-    }
-    setShowSettings(false);
   }
 
   function showToastMsg(msg, type) {
@@ -454,14 +441,13 @@ export default function Dashboard({ onOpenSetup }) {
       {showSettings && (
         <SettingsPanel
           state={state}
-          onSave={saveSettings}
           onToast={showToastMsg}
         />
       )}
 
-      {/* Brain (LLM provider/token/model) */}
+      {/* Keys: hearing, speaking, and which model answers */}
       {showBrain && (
-        <BrainCard
+        <KeysCard
           state={state}
           post={post}
           onClose={() => setShowBrain(false)}

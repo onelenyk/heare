@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
+import KeysCard from './KeysCard';
 
 export default function SetupModal({ show, onClose, onComplete }) {
   const [tab, setTab] = useState('persona');
   const [identity, setIdentity] = useState(null);
-  const [config, setConfig] = useState({});
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -16,24 +16,12 @@ export default function SetupModal({ show, onClose, onComplete }) {
   // 'uk' by default: this assistant is spoken to in Ukrainian, and an
   // 'en' default meant a fresh install transcribed Ukrainian as English.
   const [language, setLanguage] = useState('uk');
-  const [groqKey, setGroqKey] = useState('');
-  const [llmKey, setLlmKey] = useState('');
-  const [provider, setProvider] = useState('deepseek');
-  const [providers, setProviders] = useState([]);
 
   useEffect(() => {
     if (show) loadState();
   }, [show]);
 
   const loadState = async () => {
-    // Provider list comes from the registry, not a hardcoded list here, so
-    // this stays in step with the brain card and with the backend.
-    try {
-      const pr = await fetch(API + '/api/providers');
-      setProviders(await pr.json());
-    } catch (e) {
-      setProviders([]);
-    }
     try {
       const r = await fetch(API + '/api/setup');
       const d = await r.json();
@@ -45,10 +33,7 @@ export default function SetupModal({ show, onClose, onComplete }) {
         setTagline(d.identity.tagline || '');
         setCreature(d.identity.creature || '');
       }
-      if (d.config) {
-        setConfig(d.config);
-        setLanguage(d.config.language || 'uk');
-      }
+      if (d.config) setLanguage(d.config.language || 'uk');
     } catch (e) {
       setStatus('Failed to load setup state');
     }
@@ -99,27 +84,6 @@ export default function SetupModal({ show, onClose, onComplete }) {
       const d = await r.json();
       if (d.ok) setStatus('Config saved!');
       else setStatus(d.error || 'Save failed');
-    } catch (e) { setStatus('Save failed: ' + e.message); }
-    setLoading(false);
-  };
-
-  const handleSaveKeys = async () => {
-    setLoading(true);
-    setStatus('Saving keys...');
-    try {
-      const body = {};
-      if (groqKey) body.groq_api_key = groqKey;
-      if (llmKey) body[provider + '_api_key'] = llmKey;
-      const r = await fetch(API + '/api/setup/config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      });
-      const d = await r.json();
-      if (d.ok) {
-        setStatus('Keys saved & applied');
-        setGroqKey('');
-        setLlmKey('');
-        await loadState();
-      } else setStatus((d.errors && d.errors[0]) || d.error || 'Save failed');
     } catch (e) { setStatus('Save failed: ' + e.message); }
     setLoading(false);
   };
@@ -218,35 +182,7 @@ export default function SetupModal({ show, onClose, onComplete }) {
             </div>
           )}
 
-          {tab === 'keys' && (
-            <div>
-              <div style={{marginBottom: 12}}>
-                <label style={{display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 4}}>Groq API Key (STT)</label>
-                <input type="password" value={groqKey} onChange={e => setGroqKey(e.target.value)}
-                  placeholder={config?.groq_key_configured ? '\u2713 configured' : 'gsk_...'}
-                  style={{width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', color: 'var(--text)', fontSize: 13}} />
-              </div>
-              <div style={{marginBottom: 12}}>
-                <label style={{display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 4}}>Provider</label>
-                <select value={provider} onChange={e => setProvider(e.target.value)}
-                  style={{width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', color: 'var(--text)', fontSize: 13, marginBottom: 8}}>
-                  {providers.map(p => (
-                    <option key={p.key} value={p.key}>
-                      {p.display_name}{p.configured ? ' \u2713' : ''}
-                    </option>
-                  ))}
-                </select>
-                <label style={{display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 4}}>LLM API Key</label>
-                <input type="password" value={llmKey} onChange={e => setLlmKey(e.target.value)}
-                  placeholder={providers.find(p => p.key === provider)?.configured ? '\u2713 configured \u2014 paste to replace' : 'sk-...'}
-                  style={{width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', color: 'var(--text)', fontSize: 13}} />
-              </div>
-              <button className="btn primary" onClick={handleSaveKeys} disabled={loading} style={{width: '100%'}}>
-                {loading ? 'Saving...' : '\ud83d\udcbe Save Keys'}
-              </button>
-              {status && <div style={{fontSize: 11, color: status.includes('fail') || status.includes('error') ? 'var(--accent-red)' : 'var(--accent)', marginTop: 8}}>{status}</div>}
-            </div>
-          )}
+          {tab === 'keys' && <KeysCard bare />}
 
         </div>
         <div style={{display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)'}}>

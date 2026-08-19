@@ -243,7 +243,6 @@ class API:
         )
         self._app.router.add_get("/api/features", self._handle_features)
         self._app.router.add_post("/api/features", self._handle_features_set)
-        self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
         self._app.router.add_get("/api/tools", self._handle_tools)
@@ -271,7 +270,7 @@ class API:
         self._app.router.add_post(
             "/api/setup/identity/regenerate", self._handle_setup_identity_regenerate
         )
-        self._app.router.add_post("/api/setup/config", self._handle_setup_config)
+        self._app.router.add_post("/api/setup/config", self._handle_settings)
         self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
         self._app.router.add_get("/api/memories", self._handle_memories)
         self._app.router.add_get("/api/memories/stats", self._handle_memories_stats)
@@ -325,7 +324,6 @@ class API:
         )
         self._app.router.add_get("/api/features", self._handle_features)
         self._app.router.add_post("/api/features", self._handle_features_set)
-        self._app.router.add_post("/setup", self._handle_setup)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
         self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
         self._app.router.add_get("/api/tools", self._handle_tools)
@@ -353,7 +351,7 @@ class API:
         self._app.router.add_post(
             "/api/setup/identity/regenerate", self._handle_setup_identity_regenerate
         )
-        self._app.router.add_post("/api/setup/config", self._handle_setup_config)
+        self._app.router.add_post("/api/setup/config", self._handle_settings)
         self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
         self._app.router.add_get("/api/artifacts", self._handle_artifacts_list)
         self._app.router.add_get(
@@ -1157,7 +1155,15 @@ class API:
         )
 
     async def _handle_settings(self, request):
-        """POST /settings — save API keys (and optionally language/voice)."""
+        """POST /settings — the one endpoint that takes an API key.
+
+        Also served at ``/api/setup/config``, which the first-run modal
+        calls. That used to be a second handler with an identical body, and
+        beside it lived a third — a plain HTML form at ``POST /setup`` that
+        no shipped frontend had called in a long time and that wrote the
+        .env by hand, badly. Three doors into one drawer is how the drawer
+        ends up with different locks.
+        """
         body = await request.json()
 
         keys = self._normalise_key_payload(body)
@@ -1317,40 +1323,6 @@ class API:
 
         return web.json_response(
             {"ok": True, "config": table, "restart_required": True}
-        )
-
-    async def _handle_setup(self, request):
-        """The setup modal, saving through the same door as everything else.
-
-        It used to keep its own copy of the whole procedure: read every
-        ``k=v`` into a flat dict, rewrite the file from it, chmod nothing.
-        Three consequences, all of which had been paid for. Comments and
-        blank lines in ``.env`` did not survive a save. A crash between the
-        truncate and the last write left the file holding no keys at all.
-        And because it created the file itself, it created it 0644 — which
-        is how the credentials on this machine came to be readable by every
-        process on it, while the other save path was carefully writing 0600.
-
-        Two ways to save one thing will always drift; the fix is one way.
-        """
-        post = await request.post()
-        keys = self._normalise_key_payload(dict(post))
-        if keys:
-            await self._apply_api_keys(keys)
-
-        return web.Response(
-            text=(
-                '<!DOCTYPE html><html><head><meta charset="utf-8">'
-                '<meta http-equiv="refresh" content="2;url=/">'
-                "<title>Heare — Starting</title>"
-                "<style>body{background:#0d1117;color:#c9d1d9;"
-                "font-family:-apple-system,sans-serif;display:flex;"
-                "align-items:center;justify-content:center;"
-                "min-height:100vh;margin:0;font-size:18px}"
-                "</style></head><body>"
-                "Starting Heare…</body></html>"
-            ),
-            content_type="text/html",
         )
 
     async def _handle_mic_status(self, request):
@@ -2106,24 +2078,6 @@ class API:
             return web.json_response({"ok": True, "identity": identity})
         except Exception as e:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-    async def _handle_setup_config(self, request):
-        """POST /api/setup/config — save language, voice, API keys.
-
-        Shares its key handling with ``/settings`` so a key pasted here is
-        validated the same way and takes effect without a restart.
-        """
-        body = await request.json()
-
-        keys = self._normalise_key_payload(body)
-        errors = self._validate_api_keys(keys)
-        if errors:
-            return web.json_response({"ok": False, "errors": errors}, status=400)
-
-        await self._apply_api_keys(keys)
-        self._save_locale_settings(body)
-
-        return web.json_response({"ok": True, "applied": True})
 
     async def _handle_setup_complete(self, request):
         """POST /api/setup/complete — mark setup as done."""

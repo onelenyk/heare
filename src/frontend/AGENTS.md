@@ -23,8 +23,8 @@ frontend/
         ├── MemoriesCard.jsx    # Memory browser
         ├── AudioPanel.jsx      # Audio device/settings
         ├── InjectPanel.jsx     # Text injection
-        ├── SettingsPanel.jsx   # Config editor
-        ├── BrainCard.jsx       # LLM provider/model
+        ├── SettingsPanel.jsx   # Config editor (no keys — see KeysCard)
+        ├── KeysCard.jsx        # The one place a key is typed
         ├── UsageCard.jsx       # Cost display
         ├── DisplayCard.jsx     # Canvas output viewer
         ├── AgentsPanel.jsx     # Sub-agent management
