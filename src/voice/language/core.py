@@ -74,9 +74,6 @@ def detect_language_from_frame(frame, fallback: str = "en") -> str:
         return fallback
 
 
-def voice_for_language(lang: str) -> str:
-    return LANG_TO_VOICE.get(lang, LANG_TO_VOICE["en"])
-
 
 def detect_language_from_text(text: str, fallback: str = "en") -> str:
     """Guess the language of plain text by script.
@@ -188,19 +185,6 @@ def is_standalone_cancel_imperative(text: str, stop_words: list[str]) -> bool:
         if tok in _CANCEL_CONTEXT_TOKENS:
             return False
     return True
-
-
-def detect_script_language(text: str) -> str:
-    cyrillic = sum(1 for c in text if "Ѐ" <= c <= "ӿ")
-    latin = sum(1 for c in text if ("A" <= c <= "Z") or ("a" <= c <= "z"))
-    total = cyrillic + latin
-    if total == 0:
-        return "unknown"
-    if cyrillic / total > 0.5:
-        return "cyrillic"
-    if latin / total > 0.5:
-        return "latin"
-    return "unknown"
 
 
 # ---------------------------------------------------------------------------

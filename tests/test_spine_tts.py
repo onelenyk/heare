@@ -17,7 +17,7 @@ import pytest
 
 pytest.importorskip("edge_tts")
 
-from src.spine.tts import apply_fade_out, synthesise  # noqa: E402
+from src.spine.tts import synthesise  # noqa: E402
 
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
@@ -105,29 +105,3 @@ async def test_synthesise_cancel_mid_stream_leaves_no_process_running() -> None:
         assert proc.returncode is not None, "ffmpeg process leaked after cancel"
 
 
-def test_apply_fade_out_ramps_amplitude_to_zero() -> None:
-    sample_rate = 24000
-    fade_ms = 50
-    fade_samples = int(fade_ms * sample_rate / 1000)
-    n_total = fade_samples * 2  # 100ms so head + tail are both visible
-    pcm = bytearray()
-    for _ in range(n_total):
-        pcm += (10000).to_bytes(2, "little", signed=True)
-
-    faded = apply_fade_out(bytes(pcm), sample_rate, fade_ms=fade_ms)
-
-    last_chunk = faded[-fade_samples * 2:]
-    samples = []
-    for i in range(0, len(last_chunk), 2):
-        s = int.from_bytes(last_chunk[i:i + 2], "little", signed=True)
-        samples.append(s)
-    assert abs(samples[0]) >= 9000, f"start of fade should still be loud, got {samples[0]}"
-    assert abs(samples[-1]) <= 100, f"end of fade should be near 0, got {samples[-1]}"
-    for prev, cur in zip(samples, samples[1:]):
-        assert abs(cur) <= abs(prev) + 1, (
-            f"fade should be non-increasing in magnitude (prev={prev} cur={cur})"
-        )
-
-
-def test_apply_fade_out_empty_pcm_returns_empty() -> None:
-    assert apply_fade_out(b"", 24000) == b""

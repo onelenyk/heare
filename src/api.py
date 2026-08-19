@@ -35,8 +35,6 @@ import re
 import secrets
 import signal
 import tempfile
-import time
-import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -229,8 +227,6 @@ class API:
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_post("/", self._handle_index)
         self._app.router.add_get("/display", self._handle_display)
-        self._app.router.add_get("/events", self._handle_events)
-        self._app.router.add_get("/canvas", self._handle_display)
         self._app.router.add_post("/daemon", self._handle_daemon)
         self._app.router.add_post("/inject", self._handle_inject)
         self._app.router.add_get("/settings/status", self._handle_settings_status)
@@ -273,7 +269,6 @@ class API:
         self._app.router.add_post("/api/setup/config", self._handle_settings)
         self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
         self._app.router.add_get("/api/memories", self._handle_memories)
-        self._app.router.add_get("/api/memories/stats", self._handle_memories_stats)
         self._app.router.add_post(
             "/api/memories/{id}/forget", self._handle_memories_forget
         )
@@ -310,8 +305,6 @@ class API:
         self._app.router.add_get("/activity", self._handle_activity)
         self._app.router.add_get("/logs", self._handle_logs)
         self._app.router.add_get("/display", self._handle_display)
-        self._app.router.add_get("/events", self._handle_events)
-        self._app.router.add_get("/canvas", self._handle_display)
         self._app.router.add_post("/daemon", self._handle_daemon)
         self._app.router.add_post("/inject", self._handle_inject)
         self._app.router.add_get("/settings/status", self._handle_settings_status)
@@ -360,9 +353,6 @@ class API:
         # Present in the constructor's table but missing here, so the
         # memories card 404'd under the menubar, which mounts this one.
         self._app.router.add_get("/api/memories", self._handle_memories)
-        self._app.router.add_get(
-            "/api/memories/stats", self._handle_memories_stats
-        )
         self._app.router.add_post(
             "/api/memories/{id}/forget", self._handle_memories_forget
         )
@@ -1026,11 +1016,6 @@ class API:
             return web.json_response(
                 {"content": None, "format": None, "title": None, "ts": None}
             )
-
-    async def _handle_events(self, request):
-        from src.daemon.events import recent
-
-        return web.json_response(recent(limit=50))
 
     async def _handle_daemon(self, request):
         body = await request.json()
@@ -2116,13 +2101,6 @@ class API:
                 ]
             }
         )
-
-    async def _handle_memories_stats(self, request):
-        mb = self._memory_backend
-        if mb is None:
-            return web.json_response({"total": 0, "by_type": {}, "archived": 0})
-        stats = await mb.stats()
-        return web.json_response(stats)
 
     async def _handle_memories_forget(self, request):
         memory_id = request.match_info["id"]

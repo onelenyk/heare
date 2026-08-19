@@ -99,11 +99,6 @@ class Intent:
     def age_seconds(self) -> float:
         return max(0.0, time.time() - self.created_ts)
 
-    @property
-    def is_mine(self) -> bool:
-        """Nobody asked for this one."""
-        return self.origin == SELF
-
     def ripe(self, now: float | None = None) -> bool:
         """Some things are worth saying, but not yet."""
         if self.due_ts is None:

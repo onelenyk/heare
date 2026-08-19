@@ -217,13 +217,18 @@ class CircuitBreaker:
     def __init__(self, threshold: int = 3) -> None:
         self.threshold = threshold
         self._net_fails = 0
-        self._sig_fails = 0
-        self._safety_blocks = 0
         self._tripped = False
 
     def _update_tripped(self) -> None:
-        """Trip if combined net_fails + sig_fails reaches threshold."""
-        if (self._net_fails + self._sig_fails) >= self.threshold:
+        """Trip once enough calls in a row have failed.
+
+        It used to add a `sig_fails` counter here, for signature
+        verification that was never implemented — the counter could only
+        ever be zero, and a companion `safety_blocks` counter was recorded
+        by nobody and read by nobody. They are gone; whoever writes the
+        verification writes its counter with it.
+        """
+        if self._net_fails >= self.threshold:
             self._tripped = True
 
     def record_net_fail(self) -> None:
@@ -232,16 +237,6 @@ class CircuitBreaker:
             return
         self._net_fails += 1
         self._update_tripped()
-
-    def record_sig_fail(self) -> None:
-        """Record a signature verification failure. Counts toward the trip threshold."""
-        if self._tripped:
-            return
-        self._sig_fails += 1
-        self._update_tripped()
-
-    def record_safety_block(self) -> None:
-        self._safety_blocks += 1
 
     def record_success(self) -> None:
         self._net_fails = 0
@@ -254,18 +249,8 @@ class CircuitBreaker:
     def net_fails(self) -> int:
         return self._net_fails
 
-    @property
-    def sig_fails(self) -> int:
-        return self._sig_fails
-
-    @property
-    def safety_blocks(self) -> int:
-        return self._safety_blocks
-
     def reset(self) -> None:
         self._net_fails = 0
-        self._sig_fails = 0
-        self._safety_blocks = 0
         self._tripped = False
 
 

@@ -9,7 +9,6 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, TypedDict
 
-import httpx
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -140,64 +139,3 @@ async def regenerate_identity(bootstrap, settings: "Settings") -> Identity:
     """Backup current identity, then generate a new one."""
     reset_identity(settings)
     return await ensure_identity(bootstrap, settings)
-
-
-def build_deepseek_bootstrap(
-    *,
-    api_key: str,
-    model: str,
-    timeout: float = 30.0,
-    transport: httpx.AsyncBaseTransport | None = None,
-) -> BootstrapFn:
-    """Return an async ``bootstrap(prompt) -> dict`` backed by DeepSeek.
-
-    Asks the model for a single JSON object via /chat/completions and
-    extracts the first ``{...}`` block from ``choices[0].message.content``.
-    """
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    async def _bootstrap(prompt: str) -> dict:
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are inventing a small voice-assistant persona. "
-                        "Reply with ONLY one compact JSON object — no prose, "
-                        "no code fence."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "max_tokens": 400,
-            "temperature": 0.9,
-        }
-        kwargs: dict = {"timeout": timeout}
-        if transport is not None:
-            kwargs["transport"] = transport
-        async with httpx.AsyncClient(**kwargs) as client:
-            resp = await client.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                json=payload,
-                headers=headers,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        try:
-            raw = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as e:
-            raise RuntimeError(f"identity bootstrap: malformed response: {e}") from e
-        if not isinstance(raw, str):
-            raise RuntimeError("identity bootstrap: non-string content")
-        text = raw.strip()
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise RuntimeError("identity bootstrap: no JSON object in reply")
-        return json.loads(text[start : end + 1])
-
-    return _bootstrap

@@ -528,7 +528,7 @@ def _rebuild_capability_index(settings: Any) -> None:
     """Refresh the index *if* this process already built one.
 
     The spine never builds it at boot (only the pipecat path does, in
-    src/pipeline/build.py); on this engine it appears lazily, the first
+    the old engine's composition root); on this engine it appears lazily, the first
     time a capability tool runs. Building one here would be inventing
     work — and an index built later reads the new .mcp.json by itself.
     So: rebuild what exists, touch nothing otherwise.

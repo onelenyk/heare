@@ -346,17 +346,6 @@ class SubAgentManager:
     def list_all(self) -> list[dict]:
         return [self._agent_to_dict(a) for a in self._agents.values()]
 
-    def list_active(self) -> list[dict]:
-        now = time.time()
-        result = []
-        for a in self._agents.values():
-            if a.status in ("starting", "running", "waiting_for_input"):
-                result.append(self._agent_to_dict(a))
-            elif a.status in ("done", "error", "cancelled") and a.finished_at:
-                if (now - a.finished_at) < self._ttl_seconds:
-                    result.append(self._agent_to_dict(a))
-        return result
-
     def _agent_to_dict(self, a: SubAgentState) -> dict:
         now = time.time()
         partial = "".join(a.output_parts)[:500] if a.output_parts else None

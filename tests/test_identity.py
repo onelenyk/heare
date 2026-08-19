@@ -10,7 +10,6 @@ import pytest
 from src.agent.identity import (
     Identity,
     _validate,
-    build_deepseek_bootstrap,
     ensure_identity,
     load_identity,
     render_persona,
@@ -133,7 +132,7 @@ def test_reset_identity_creates_backup(tmp_path) -> None:
     assert "backup" in backup.name
 
 
-# ---------- callable bootstrap path + deepseek helper ----------
+# ---------- callable bootstrap path ----------
 
 
 async def test_ensure_identity_accepts_callable(tmp_path) -> None:
@@ -156,62 +155,3 @@ async def test_ensure_identity_rejects_non_callable(tmp_path) -> None:
 
     with pytest.raises(TypeError):
         await ensure_identity(object(), settings)
-
-
-async def test_deepseek_bootstrap_extracts_json() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        body = {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": (
-                            "Sure! "
-                            + json.dumps(VALID_PAYLOAD)
-                            + " — that's my pick."
-                        ),
-                    }
-                }
-            ]
-        }
-        return httpx.Response(200, content=json.dumps(body).encode())
-
-    bootstrap = build_deepseek_bootstrap(
-        api_key="k",
-        model="m",
-        transport=httpx.MockTransport(handler),
-    )
-    payload = await bootstrap("invent a persona")
-    assert payload["name"] == "Гава"
-    assert payload["creature"] == "owl"
-
-
-async def test_deepseek_bootstrap_http_error_raises() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="server oops")
-
-    bootstrap = build_deepseek_bootstrap(
-        api_key="k",
-        model="m",
-        transport=httpx.MockTransport(handler),
-    )
-    with pytest.raises(httpx.HTTPStatusError):
-        await bootstrap("invent a persona")
-
-
-async def test_deepseek_bootstrap_no_json_in_reply_raises() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        body = {
-            "choices": [
-                {"message": {"role": "assistant", "content": "no braces here"}}
-            ]
-        }
-        return httpx.Response(200, content=json.dumps(body).encode())
-
-    bootstrap = build_deepseek_bootstrap(
-        api_key="k",
-        model="m",
-        transport=httpx.MockTransport(handler),
-    )
-    with pytest.raises(RuntimeError, match="no JSON object"):
-        await bootstrap("invent a persona")

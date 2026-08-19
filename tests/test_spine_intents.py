@@ -35,14 +35,13 @@ async def test_an_intent_survives_being_written(store) -> None:
 
     assert [i.text for i in pending] == ["перевірка диска скінчилась"]
     assert pending[0].origin == I.USER
-    assert pending[0].is_mine is False
 
 
 async def test_its_own_noticings_are_marked_as_such(store) -> None:
     """`origin` is what makes "what does it want" answerable at all."""
     await store.add("unanswered", "чим скінчилась зустріч", origin=I.SELF)
 
-    assert (await store.pending())[0].is_mine is True
+    assert (await store.pending())[0].origin == I.SELF
 
 
 async def test_noticing_the_same_thing_twice_adds_it_once(store) -> None:

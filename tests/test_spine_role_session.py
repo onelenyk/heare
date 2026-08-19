@@ -7,8 +7,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
-
 from src.spine.role_session import Artifact, RoleManager
 
 
@@ -87,7 +85,7 @@ def test_note_turn_collects_and_ignores_none() -> None:
     mgr.note_turn(None)
     mgr.note_turn(2)
 
-    assert mgr.session_turns == [1, 2]
+    assert mgr._session_turns == [1, 2]
 
 
 # 4) finish with artifact: assert Artifact fields, active becomes None,
@@ -182,7 +180,7 @@ def test_cancel_drops_active_session_without_artifact() -> None:
     assert ack is not None
     assert "мітинг" in ack
     assert mgr.active is None
-    assert mgr.session_turns == []
+    assert mgr._session_turns == []
 
 
 # 9) finish with no active -> None
@@ -321,7 +319,7 @@ def test_a_broken_persist_never_breaks_the_session() -> None:
     ack = mgr.start(make_role(name="мітинг", channel="log"))
     assert "мітинг" in ack
     mgr.note_turn(1)
-    assert mgr.session_turns == [1]
+    assert mgr._session_turns == [1]
     assert mgr.cancel() is not None
     assert mgr.active is None
 

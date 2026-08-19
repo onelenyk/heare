@@ -34,11 +34,6 @@ class Mode(str, Enum):
     MEETING = "meeting"
 
 
-class DeciderState(str, Enum):
-    LISTENING = "listening"
-    AWAITING_CONFIRMATION = "awaiting_confirmation"
-    EXECUTING = "executing"
-
 
 HEARE_HOME = Path.home() / ".heare"
 ENV_PATH = HEARE_HOME / ".env"
@@ -133,7 +128,7 @@ class Settings:
     # call, synthesis, utterance — and the user's real questions queue up
     # behind them, so the assistant seems slow while it answers a room.
     # Observed: eight in ninety seconds. See
-    # src/pipeline/stages/speech_energy_gate.py.
+    # the old engine's speech energy gate.
     stt_min_rms: float = 180.0
     # How the end of your turn is decided.
     #
@@ -165,7 +160,7 @@ class Settings:
     # Still 1.6 s faster than the turn analyzer this replaced, which took
     # three seconds and was not measurably better at the same thing.
     #
-    # Caveat for anyone tuning this against src/pipeline/room.py:
+    # Caveat for anyone tuning this against the old engine's room loop:
     # edge-tts pauses at commas for longer than a person does, so
     # fragmentation there is worse than in life.
     turn_silence_seconds: float = 1.0

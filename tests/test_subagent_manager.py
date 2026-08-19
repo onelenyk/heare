@@ -265,22 +265,6 @@ class TestQueryMethods:
             session_id="b", prompt="pb", cwd=None, port=14101, status="done",
         )
         assert len(mgr.list_all()) == 2
-
-    def test_list_active_filters_by_status(self):
-        mgr = SubAgentManager(_FakeSettings(agent_result_ttl_seconds=0.0))
-        mgr._agents["a"] = SubAgentState(
-            session_id="a", prompt="pa", cwd=None, port=14100, status="running",
-        )
-        mgr._agents["b"] = SubAgentState(
-            session_id="b", prompt="pb", cwd=None, port=14101, status="done",
-            finished_at=time.time() - 9999,
-        )
-
-        active = mgr.list_active()
-        assert len(active) == 1
-        assert active[0]["session_id"] == "a"
-
-
 class TestCancel:
     @pytest.mark.asyncio
     async def test_cancel_not_found(self):

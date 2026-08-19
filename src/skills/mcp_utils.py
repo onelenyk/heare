@@ -85,20 +85,3 @@ def write_mcp_servers(workspace_dir: Path, servers: dict[str, dict]) -> None:
         except OSError:
             pass
         raise
-
-
-def build_mcp_prompt_block(servers: dict[str, dict]) -> str:
-    """Return a Ukrainian-language description block of available MCP servers.
-
-    Each entry uses the optional 'description' field from the .mcp.json entry,
-    falling back to the server key name. Returns empty string when no servers.
-    """
-    if not servers:
-        return ""
-
-    lines = [f"Доступні MCP сервери ({len(servers)}):"]
-    for name, entry in servers.items():
-        desc = entry.get("description", name) if isinstance(entry, dict) else name
-        lines.append(f"  - {name}: {desc} (інструменти: mcp__{name}__*)")
-
-    return "\n".join(lines)

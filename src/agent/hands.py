@@ -114,10 +114,6 @@ class Hands:
         """Wired once the pipeline exists — results land there."""
         self._deliver = deliver
 
-    @property
-    def busy(self) -> int:
-        return len(self._running)
-
     def start(self, task: str) -> None:
         """Begin work and return immediately. Never awaits the job."""
         self.jobs_started += 1
@@ -472,40 +468,3 @@ class Hands:
         model = getattr(self._settings, f"{key}_model", "") or cfg.default_model
         api_key = getattr(self._settings, cfg.api_key_attr, "") or ""
         return base_url, api_key, model
-
-
-_hands: Hands | None = None
-
-
-def set_hands(hands: Hands | None) -> None:
-    """Module-level handle, so the ``delegate`` tool can reach the worker."""
-    global _hands
-    _hands = hands
-
-
-def get_hands() -> Hands | None:
-    return _hands
-
-
-async def execute_delegate(args: str, settings: Any = None) -> dict:
-    """The ``delegate`` tool. Starts the work and returns at once."""
-    task = (args or "").strip()
-    if not task:
-        return {"success": False, "output": "", "error": "no task given"}
-    if _hands is None:
-        return {
-            "success": False,
-            "output": "",
-            "error": "worker unavailable",
-            "spoken": {
-                "en": "My worker is not running.",
-                "uk": "Виконавець не запущений.",
-            },
-        }
-
-    _hands.start(task)
-    logger.info("[HANDS] started: %.200s", task)
-    return {
-        "success": True,
-        "output": "started; tell the user you are on it, in one short sentence",
-    }

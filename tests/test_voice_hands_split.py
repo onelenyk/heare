@@ -4,7 +4,7 @@ Same model, same key. The split is temporal: one call must answer within
 a second and sees three verbs; the other has no deadline and sees all of
 them.
 
-Measured on this machine through ``src/pipeline/harness.py``:
+Measured on this machine through the old engine's harness:
 
     echo (fast tool)   single 3784 ms to first audio, split 5157 ms
     sleep 12 (slow)    split speaks at 2927 ms and answers at 18120 ms
@@ -113,51 +113,82 @@ def test_hard_constraints_make_delegation_an_obligation() -> None:
 
 
 def test_delegate_returns_before_the_work_finishes() -> None:
-    """The entire point: the speaking path never waits."""
-    from src.agent.hands import execute_delegate, set_hands
+    """The entire point: the speaking path never waits — _delegate returns
+    at once with an acknowledgement, never awaiting the job it just started.
+    """
+    from src.spine.tools import VoiceToolbox
 
     started: list[str] = []
-    release = asyncio.Event()
 
     class SlowHands:
         def start(self, task: str) -> None:
             started.append(task)
 
-            async def job():
-                await release.wait()
+        def cancel_all(self) -> int:
+            return 0
 
-            asyncio.get_event_loop().create_task(job())
+        def set_delivery(self, fn):
+            pass
 
-    async def drive():
-        set_hands(SlowHands())
-        try:
-            result = await asyncio.wait_for(
-                execute_delegate("count to a million"), timeout=0.5
-            )
-        finally:
-            release.set()
-            set_hands(None)
-        return result
+    class FakeMemory:
+        async def store(self, entry):
+            pass
 
-    result = asyncio.run(drive())
-    assert result["success"] is True
+        async def search(self, query, limit=3):
+            return []
+
+    async def deliver(text: str) -> None:
+        pass
+
+    def hands_factory(settings):
+        return SlowHands()
+
+    toolbox = VoiceToolbox(
+        Settings(), FakeMemory(), deliver, hands_factory=hands_factory
+    )
+    result = toolbox._delegate({"task": "count to a million"})
+
+    # The delegate returns instantly with an acknowledgement, never awaiting.
+    assert result == "Прийнято, роблю."
     assert started == ["count to a million"]
 
 
-def test_delegate_says_so_when_there_is_no_worker() -> None:
-    from src.agent.hands import execute_delegate, set_hands
-
-    set_hands(None)
-    result = asyncio.run(execute_delegate("do something"))
-    assert result["success"] is False
-    assert "worker" in result["error"]
-
-
 def test_delegate_rejects_an_empty_task() -> None:
-    from src.agent.hands import execute_delegate
+    """The voice agent must be told what to do; an empty task gets a request
+    for clarification instead of silent failure or a meaningless response.
+    """
+    from src.spine.tools import VoiceToolbox
 
-    result = asyncio.run(execute_delegate("   "))
-    assert result["success"] is False
+    class FakeHands:
+        def start(self, task: str) -> None:
+            pass
+
+        def cancel_all(self) -> int:
+            return 0
+
+        def set_delivery(self, fn):
+            pass
+
+    class FakeMemory:
+        async def store(self, entry):
+            pass
+
+        async def search(self, query, limit=3):
+            return []
+
+    async def deliver(text: str) -> None:
+        pass
+
+    def hands_factory(settings):
+        return FakeHands()
+
+    toolbox = VoiceToolbox(
+        Settings(), FakeMemory(), deliver, hands_factory=hands_factory
+    )
+    result = toolbox._delegate({"task": "   "})
+
+    # Empty task gets a request for clarification.
+    assert result == "Скажи, що саме зробити."
 
 
 # ── hands ─────────────────────────────────────────────────────────────
@@ -404,7 +435,7 @@ def test_stop_cancels_work_in_flight() -> None:
         hands._loop = forever  # type: ignore[method-assign]
         hands.start("щось довге")
         await started.wait()
-        assert hands.busy == 1
+        assert len(hands._running) == 1
 
         cancelled = hands.cancel_all()
         await asyncio.sleep(0)

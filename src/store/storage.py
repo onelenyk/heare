@@ -279,65 +279,6 @@ class TranscriptStore:
             await self._db.close()
             self._db = None
 
-    async def log_transcript(
-        self,
-        text: str,
-        mode: str,
-        agent_mode: str | None = None,
-        agent_spoken: bool | None = None,
-        source: str | None = None,
-    ) -> int:
-        now = time.time()
-        # Deduplication: ignore identical transcript text within 2 seconds.
-        # Prevents duplicates when Groq STT sends multiple TranscriptionFrame
-        # objects for the same utterance.
-        cursor = await self.db.execute(
-            "SELECT id FROM transcripts WHERE text = ? AND ts > ? ORDER BY ts DESC LIMIT 1",
-            (text, now - 2.0),
-        )
-        row = await cursor.fetchone()
-        if row is not None:
-            logger.debug("dedup: ignoring duplicate transcript %r", text[:40])
-            return row[0]
-
-        cursor = await self.db.execute(
-            "INSERT INTO transcripts (ts, text, mode, agent_mode, agent_spoken, source)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                now,
-                text,
-                mode,
-                agent_mode,
-                None if agent_spoken is None else int(agent_spoken),
-                source,
-            ),
-        )
-        await self.db.commit()
-        assert cursor.lastrowid is not None
-        return cursor.lastrowid
-
-    async def latest_bot_response(self) -> dict[str, Any] | None:
-        """Most recent agent text response (mode='assistant'), or None.
-
-        This is the read side of the text-response channel: the assistant
-        response logger persists every LLM answer here regardless of
-        whether TTS spoke it, so any consumer (watch dashboard, future
-        Telegram/web) can show what the agent said/would say without
-        coupling to the speech path.
-        """
-        cursor = await self.db.execute(
-            "SELECT ts, text, agent_mode, agent_spoken FROM transcripts"
-            " WHERE mode = 'assistant' ORDER BY ts DESC LIMIT 1",
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "ts": row[0],
-            "text": row[1],
-            "agent_mode": row[2],
-            "agent_spoken": None if row[3] is None else bool(row[3]),
-        }
 
     async def log_display(
         self, content: str, fmt: str, title: str | None = None
@@ -417,51 +358,6 @@ class TranscriptStore:
         assert row is not None
         return int(row[0])
 
-    async def load_recent_action_log(
-        self,
-        *,
-        limit: int = 16,
-        since_ts: float | None = None,
-    ) -> list[dict[str, Any]]:
-        """Return up to ``limit`` newest action_log rows (intent_id IS NOT NULL),
-        filtered to ts >= since_ts when provided. Order newest-first.
-
-        Legacy rows (decision_id-only, intent_id IS NULL) are excluded.
-        """
-        if since_ts is None:
-            cursor = await self.db.execute(
-                """
-                SELECT intent_id, ts, tool, args, status, result_json
-                FROM actions
-                WHERE intent_id IS NOT NULL
-                ORDER BY ts DESC
-                LIMIT ?
-                """,
-                (limit,),
-            )
-        else:
-            cursor = await self.db.execute(
-                """
-                SELECT intent_id, ts, tool, args, status, result_json
-                FROM actions
-                WHERE intent_id IS NOT NULL AND ts >= ?
-                ORDER BY ts DESC
-                LIMIT ?
-                """,
-                (since_ts, limit),
-            )
-        rows = await cursor.fetchall()
-        return [
-            {
-                "intent_id": r[0],
-                "ts": r[1],
-                "tool": r[2],
-                "args": r[3],
-                "status": r[4],
-                "result_json": r[5],
-            }
-            for r in rows
-        ]
 
     async def recent_transcripts(self, n: int = 5) -> list[dict[str, Any]]:
         """Return the last `n` transcript rows, oldest first.
@@ -501,13 +397,6 @@ class TranscriptStore:
         assert cursor.lastrowid is not None
         return cursor.lastrowid
 
-    async def end_conversation(self, conversation_id: int) -> None:
-        """End a conversation session."""
-        await self.db.execute(
-            "UPDATE conversations SET end_ts = ? WHERE id = ? AND end_ts IS NULL",
-            (time.time(), conversation_id),
-        )
-        await self.db.commit()
 
     async def get_active_conversation(self) -> dict[str, Any] | None:
         """Get the currently active conversation (end_ts IS NULL)."""

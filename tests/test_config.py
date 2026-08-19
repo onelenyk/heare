@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 
 from src.config import (
-    DeciderState,
     Mode,
     Settings,
     backup_session_file,
@@ -45,12 +44,6 @@ def test_mode_enum_values() -> None:
     assert Mode.SILENT.value == "silent"
     assert Mode.FOCUS.value == "focus"
     assert Mode.AMBIENT.value == "ambient"
-
-
-def test_decider_state_enum_values() -> None:
-    assert DeciderState.LISTENING.value == "listening"
-    assert DeciderState.AWAITING_CONFIRMATION.value == "awaiting_confirmation"
-    assert DeciderState.EXECUTING.value == "executing"
 
 
 def test_wake_word_default() -> None:
@@ -571,7 +564,7 @@ def test_the_daemon_boots_without_the_old_engine() -> None:
     The flag existed to allow a rollback to pipecat. With that path
     deleted the flag could only have lied, and the import it guarded —
     ~819 ms and some 700 modules — is gone with it. This pins the
-    absence: a stray `import src.pipeline.build` would fail here rather
+    absence: a stray import of the old package would fail here rather
     than quietly return to loading a framework nothing calls.
     """
     import inspect
@@ -581,7 +574,7 @@ def test_the_daemon_boots_without_the_old_engine() -> None:
     source = inspect.getsource(main_mod._build_and_run_daemon)
     assert "spine_engine" in source
     assert "pipecat" not in source
-    assert "src.pipeline.build" not in source
+    assert "src.pipeline" not in source  # the package is deleted entirely
     assert not hasattr(load_settings(), "engine")
 
 

@@ -6,28 +6,30 @@ import pytest
 from src.config import Settings, load_settings
 from src.voice.language.core import (
     detect_language_from_frame,
-    detect_script_language,
     is_standalone_cancel_imperative,
-    voice_for_language,
 )
 
 
-# (a) voice_for_language returns correct voice for en/uk/ru
-def test_voice_for_language_en():
-    assert voice_for_language("en") == "en-US-AriaNeural"
+# (a) which voice speaks which language — asserted against the path the
+# assistant actually uses. There were three copies of this lookup; two are
+# deleted, and these tests moved onto the one that runs.
+def test_the_voice_follows_the_language():
+    from src.spine.voicing import pick_voice
+
+    assert pick_voice("Привіт, як справи") == "uk-UA-OstapNeural"
+    assert pick_voice("Hello, how are you") == "en-US-AriaNeural"
 
 
-def test_voice_for_language_uk():
-    assert voice_for_language("uk") == "uk-UA-OstapNeural"
+# (b) an unknown language falls back rather than going silent: Cyrillic on
+# an English voice produces no sound at all
+def test_an_unrecognised_language_still_gets_a_voice():
+    from src.spine.voicing import pick_voice
 
-
-def test_voice_for_language_ru():
-    assert voice_for_language("ru") == "ru-RU-DmitryNeural"
-
-
-# (b) voice_for_language returns English voice for unknown lang "fr"
-def test_voice_for_language_unknown():
-    assert voice_for_language("fr") == "en-US-AriaNeural"
+    assert pick_voice("", fallback_lang="uk") == "uk-UA-OstapNeural"
+    assert pick_voice("", fallback_lang="en") == "en-US-AriaNeural"
+    # the default leans Ukrainian on purpose: this assistant is spoken to
+    # in Ukrainian, and Cyrillic on an English voice is silence
+    assert pick_voice("") == "uk-UA-OstapNeural"
 
 
 # (c) detect_language_from_frame extracts "uk" from mock frame with result.language = "ukrainian"
@@ -58,19 +60,6 @@ def test_detect_language_from_frame_unsupported():
 def test_detect_language_from_frame_none_language():
     frame = SimpleNamespace(result=SimpleNamespace(language=None))
     assert detect_language_from_frame(frame, fallback="en") == "en"
-
-
-# (n) detect_script_language tests
-def test_detect_script_language_cyrillic():
-    assert detect_script_language("Привіт світ") == "cyrillic"
-
-
-def test_detect_script_language_latin():
-    assert detect_script_language("Hello world") == "latin"
-
-
-def test_detect_script_language_empty():
-    assert detect_script_language("") == "unknown"
 
 
 # ============================================================================

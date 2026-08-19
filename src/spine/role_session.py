@@ -74,10 +74,6 @@ class RoleManager:
         return self._active
 
     @property
-    def session_turns(self) -> list[int]:
-        return self._session_turns
-
-    @property
     def session_id(self) -> int | None:
         """The DB id of the live session (None without persistence)."""
         return self._session_id
