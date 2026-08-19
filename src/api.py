@@ -933,6 +933,18 @@ class API:
         return web.json_response({"ok": True, "enabled": enabled})
 
     async def _handle_provider(self, request):
+        """POST /provider — choose which model answers.
+
+        The state entry alone was not enough: the engine resolves its
+        provider from ``Settings``, and Settings is loaded from config.toml.
+        Writing only to state is how this switch came to change nothing at
+        all — every reply still came from DeepSeek, because that was a
+        constant in src/spine/llm.py and nothing ever consulted the choice.
+
+        So all three: state (what the dashboard reads back), the live
+        Settings (what the next turn resolves against), and config.toml
+        (what survives a restart).
+        """
         if self.state is None:
             return web.json_response({"ok": False, "error": "daemon initializing"})
         body = await request.json()
@@ -940,6 +952,8 @@ class API:
         if provider not in PROVIDERS:
             return web.json_response({"ok": False}, status=400)
         await self.state.set("provider", provider)
+        self.config.llm_provider = provider
+        write_config_toml_values({"llm_provider": provider})
         return web.json_response({"ok": True, "provider": provider})
 
     async def _handle_model(self, request):
@@ -951,6 +965,8 @@ class API:
         if provider not in PROVIDERS or not model:
             return web.json_response({"ok": False}, status=400)
         await self.state.set(f"model_{provider}", model)
+        setattr(self.config, f"{provider}_model", model)
+        write_config_toml_values({f"{provider}_model": model})
         return web.json_response({"ok": True, "provider": provider, "model": model})
 
     async def _handle_providers_list(self, request):

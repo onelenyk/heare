@@ -51,6 +51,30 @@ def _wake_phrases(settings) -> list[str]:
     return wake_phrases(settings, persona=f"You are {name}" if name else "")
 
 
+def _live_cfg(settings, fallback):
+    """A callable that re-resolves the provider on every use.
+
+    Resolved once at startup, switching provider or model in the dashboard
+    would take effect on the next restart — which, for something meant to
+    be running all day, means never. Resolution is a dict lookup and a few
+    getattrs against a Settings object the API mutates in place: cheaper
+    than the DNS lookup that follows it.
+
+    It can only fail by every key having gone missing, and in that case the
+    config we already hold is still the better answer than an exception on
+    the conversational path.
+    """
+    from src.spine.llm import resolve_llm
+
+    def _cfg():
+        try:
+            return resolve_llm(settings)
+        except RuntimeError:
+            return fallback
+
+    return _cfg
+
+
 async def _build_loop(settings, *, audio, voice: str, hold_s: float,
                       full: bool = True, without: str = ""):
     """Wire the conductor. full=False builds the bare chat skeleton
@@ -81,6 +105,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         logger.warning("switched off — %s", line)
 
     cfg = resolve_llm(settings)
+    _cfg = _live_cfg(settings, cfg)
 
     # Shorter than a spoken word: don't pay Groq to hallucinate on it.
     min_speech_ms = 240
@@ -110,7 +135,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         return result
 
     def _chat(messages: list[dict]) -> AsyncIterator[str]:
-        return stream_chat(messages, cfg)
+        return stream_chat(messages, _cfg())
 
     def _tts(text: str) -> AsyncIterator[bytes]:
         # The reply's script picks the voice: Cyrillic on an English
@@ -173,6 +198,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
 
 
 async def _wire_full(loop, settings, cfg, memory, features):
+    _cfg = _live_cfg(settings, cfg)
     from datetime import datetime
 
     from src.spine.llm import stream_chat_events
@@ -266,7 +292,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
             settings, memory, _deliver, hands_factory=_hands_factory
         )
         loop.stream_events = lambda messages, tools: stream_chat_events(
-            messages, cfg, tools=tools
+            messages, _cfg(), tools=tools
         )
 
     if features["wake"]:
