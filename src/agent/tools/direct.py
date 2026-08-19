@@ -2200,15 +2200,20 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
 async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> dict:
     """Switch the agent behavior mode at runtime.
 
-    Flushes any half-spoken turn (so the switch does not eat the user's
-    current sentence), persists via the State API so a daemon restart
-    keeps the chosen mode, and flips the live SessionState so timing /
-    sound / prompt / tool-gating all follow the new profile on the next
-    turn. Always callable (exempt from gating).
+    Persists via the State API, which is what the running engine reads
+    (`state.get("mode")`, see src/spine/situation.py). Always callable —
+    exempt from gating, since a mode must never be able to lock you out of
+    changing it.
+
+    It used to also flush a half-spoken turn and flip a live SessionState,
+    "so timing / sound / prompt / tool-gating all follow the new profile".
+    None of that had run for some time: the object was installed by the
+    old engine's composition root, so `get_active_session_state()` always
+    returned None and both calls were skipped. The State API write is the
+    half that works, and it is the half that is left.
     """
     try:
         from src.agent.modes import VALID_MODES
-        from src.pipeline.session_state import get_active_session_state
 
         mode = args.strip().lower()
         if mode not in VALID_MODES:
@@ -2236,13 +2241,6 @@ async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> di
                     logger.warning("State API returned %s for mode", resp.status_code)
             except httpx.RequestError as api_err:
                 logger.warning("State API unavailable for mode: %s", api_err)
-
-        # Flush BEFORE flipping so a mid-sentence utterance is finalised
-        # under the old mode rather than silently dropped.
-        ss = get_active_session_state()
-        if ss is not None:
-            ss.flush_pending()
-            ss.set_mode(mode)
 
         return {
             "success": True,

@@ -16,7 +16,7 @@ what the name is spelled like. Groq's Whisper heard "Doka" as "докер",
 robust to that.
 
 Lives in the spine's own tree: the phrase table is framework-free, but
-importing it from src/pipeline/ dragged in that package's __init__, and
+importing it from the old engine's package dragged in its __init__, and
 with it pipecat. The spine loaded this file by path to dodge that; now
 it just imports it.
 """

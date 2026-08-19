@@ -1,7 +1,7 @@
 """The voice-state file the dashboard and menubar read.
 
 src/spine/voice_state.py is the writer half of what used to be a pipecat
-frame processor in src/pipeline/stages/. The spine calls it directly, so
+frame processor in the old engine's stages. The spine calls it directly, so
 it must keep the one property the readers depend on: a reader polling the
 file never sees a half-written document.
 """

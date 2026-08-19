@@ -7,7 +7,7 @@ robust in the way that matters here: the daemon can die mid-message and
 nothing is lost, because the unread files are still on disk at the next
 start.
 
-This used to live in ``src/pipeline/stages/text_injector.py``, alongside
+This used to live in the old engine's ``text_injector`` stage, alongside
 a pipecat frame pusher. The queue has nothing to do with any engine —
 the dashboard, the HTTP API and the daemon all write to it — so it
 outlived the pipeline it was filed under.

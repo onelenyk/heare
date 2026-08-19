@@ -51,8 +51,8 @@ def doka_phrases() -> list[str]:
 # -- 0. the phrase table itself ---------------------------------------------
 #
 # Copied from tests/test_wake.py, which covers the same logic where it used
-# to live (src/pipeline/wake.py). Duplicated on purpose: the spine's copy
-# has to stay covered once the old tree goes.
+# to live, in the old engine's wake stage. Duplicated on purpose: the
+# spine's copy has to stay covered now that the old tree is gone.
 
 PERSONA = "You are Doka 🎧 — A capable ambient AI that lives in your headphones."
 
@@ -96,8 +96,8 @@ def test_no_duplicates() -> None:
 
 def test_the_spine_resolves_phrases_without_importing_pipecat() -> None:
     """The reason this table was copied: src/spine/main.py used to load it
-    by file path, because importing src.pipeline.wake runs that package's
-    __init__ and pulls pipecat into the spine."""
+    by file path, because importing the old wake module ran its package's
+    __init__ and pulled pipecat into the spine."""
     import subprocess
     import sys as _sys
     from pathlib import Path
