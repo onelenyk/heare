@@ -142,21 +142,11 @@ class HeareMenuBar(rumps.App):
     async def _serve(self):
         import logging.handlers  # noqa: F401 — force PyInstaller bundling
 
-        from dotenv import load_dotenv
-        from src.config import load_settings
+        from src.config import load_env, load_settings
         from src.state import State
         from src.api import API
 
-        for env_path in (
-            Path.home() / ".heare" / ".env",
-            Path(__file__).resolve().parent.parent / ".env",
-        ):
-            if env_path.exists():
-                load_dotenv(env_path)
-                break
-        else:
-            load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-
+        load_env()
         settings = load_settings()
         settings.ensure_dirs()
         # load_settings() generates ~/.heare/api_token on first run; the

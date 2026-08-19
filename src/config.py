@@ -41,6 +41,7 @@ class DeciderState(str, Enum):
 
 
 HEARE_HOME = Path.home() / ".heare"
+ENV_PATH = HEARE_HOME / ".env"
 
 
 def bundled_dir(name: str) -> str:
@@ -984,23 +985,6 @@ def backup_session_file(settings: "Settings") -> Path | None:
     return backup
 
 
-def write_env_var(key: str, value: str) -> None:
-    """Write or update an env var in .env file."""
-    env_path = HEARE_HOME.parent / ".env"
-    lines = []
-    found = False
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            if line.strip().startswith(f"{key}="):
-                lines.append(f"{key}={value}")
-                found = True
-            else:
-                lines.append(line)
-    if not found:
-        lines.append(f"{key}={value}")
-    env_path.write_text("\n".join(lines) + "\n")
-
-
 # ── API key plumbing ──────────────────────────────────────────────────
 #
 # Every UI that can set an API key (dashboard settings card, brain card,
@@ -1071,6 +1055,43 @@ def write_env_updates(updates: dict[str, str], env_path: Path | None = None) -> 
 
     lines.extend(f"{name}={value}" for name, value in remaining.items())
     _atomic_write(path, "\n".join(lines) + "\n")
+
+
+def load_env(*, override: bool = False) -> Path | None:
+    """Read the credentials file — the one place that knows where it is.
+
+    Six call sites used to spell this out by hand, in four different ways
+    and under two different override policies; one still pointed at a
+    repo-local `.env` that no longer exists. What none of them could do,
+    spread out like that, was notice that the file had become readable by
+    anyone on the machine.
+
+    So this repairs the mode as it reads. A `.env` written by an editor,
+    restored from a backup, or produced by the old hand-rolled save path
+    lands as 0644, and nothing on the read side ever looked. These two keys
+    are the whole account; the check costs one stat.
+
+    ``override=True`` lets the file win over an already-set variable, which
+    is what a reload after "Save keys" needs. The default lets the shell
+    win, so ``GROQ_API_KEY=... uv run ...`` still works in development.
+    """
+    from dotenv import load_dotenv
+
+    if not ENV_PATH.exists():
+        return None
+    try:
+        mode = ENV_PATH.stat().st_mode & 0o777
+        if mode & 0o077:
+            os.chmod(ENV_PATH, 0o600)
+            logger.warning(
+                "%s was %o — readable beyond its owner; tightened to 600",
+                ENV_PATH,
+                mode,
+            )
+    except OSError:
+        logger.exception("could not check the permissions of %s", ENV_PATH)
+    load_dotenv(ENV_PATH, override=override)
+    return ENV_PATH
 
 
 def _toml_literal(value: object) -> str:

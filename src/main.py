@@ -81,7 +81,7 @@ async def _build_and_run_daemon(
     Parameters
     ----------
     settings:
-        Fully-loaded settings (``load_dotenv`` / ``load_settings`` already
+        Fully-loaded settings (``load_env`` / ``load_settings`` already
         called by the caller).
     state:
         State object.  ``state.init()`` MUST NOT have been called yet (this
@@ -110,17 +110,9 @@ async def _cmd_start(args: argparse.Namespace) -> int:
             "PATH", ""
         )
 
-    from dotenv import load_dotenv
+    from src.config import load_env
 
-    for env_path in (
-        Path.home() / ".heare" / ".env",
-        Path(__file__).parent.parent / ".env",
-    ):
-        if env_path.exists():
-            load_dotenv(env_path)
-            break
-    else:
-        load_dotenv(Path(__file__).parent.parent / ".env")
+    load_env()
     settings = load_settings()
     settings.ensure_dirs()
     _setup_logging(settings.log_dir)

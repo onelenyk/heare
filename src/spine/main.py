@@ -401,14 +401,10 @@ async def _close_loop(loop) -> None:
 
 
 async def _amain(args: argparse.Namespace) -> int:
-    from pathlib import Path
-
-    from dotenv import load_dotenv
-
-    from src.config import load_settings
+    from src.config import load_env, load_settings
 
     # Keys live in ~/.heare/.env; load_settings() only reads os.environ.
-    load_dotenv(Path.home() / ".heare" / ".env", override=False)
+    load_env()
     settings = load_settings()
     if not settings.groq_api_key and not args.text and not args.check:
         print("no GROQ_API_KEY — the ear is unavailable", file=sys.stderr)

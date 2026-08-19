@@ -28,14 +28,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
+from src.config import load_env
 
 # tests/test_spine_golden.py -> parents[1] is the repo root.
 REPO = Path(__file__).resolve().parent.parent
 
 # main.py's own _amain() does exactly this before load_settings(): keys
 # live in ~/.heare/.env, and load_settings() only ever reads os.environ.
-load_dotenv(Path.home() / ".heare" / ".env", override=False)
+load_env()
 
 _REQUIRED_KEYS = ("GROQ_API_KEY", "DEEPSEEK_API_KEY")
 _MISSING_KEYS = [k for k in _REQUIRED_KEYS if not os.environ.get(k)]
@@ -226,8 +226,8 @@ from pathlib import Path
 
 sys.path.insert(0, {repo!r})
 
-from dotenv import load_dotenv
-load_dotenv(Path.home() / ".heare" / ".env", override=False)
+from src.config import load_env
+load_env()
 
 from src.config import load_settings
 from src.spine.main import _build_loop, _close_loop

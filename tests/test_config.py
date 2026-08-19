@@ -1,6 +1,8 @@
 """Tests for src/config.py Settings, enums, load_settings, ensure_dirs."""
 from __future__ import annotations
 
+import os
+
 from src.config import (
     DeciderState,
     Mode,
@@ -474,6 +476,57 @@ def test_write_env_updates_is_owner_only(tmp_path) -> None:
     env = tmp_path / ".env"
     write_env_updates({"DEEPSEEK_API_KEY": "sk-x"}, env)
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
+
+
+def test_load_env_tightens_a_file_anyone_could_read(tmp_path, monkeypatch) -> None:
+    """The write side has always been careful; the read side never looked.
+
+    A .env written by an editor, restored from a backup, or produced by the
+    old hand-rolled save path lands as 0644 — and stays that way forever,
+    because nothing on startup ever checked. That is how the credentials on
+    a real machine came to be readable by every process on it.
+    """
+    import stat
+
+    import src.config as config
+
+    env = tmp_path / ".env"
+    env.write_text("DEEPSEEK_API_KEY=sk-x\n")
+    env.chmod(0o644)
+    monkeypatch.setattr(config, "ENV_PATH", env)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    config.load_env()
+
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+    assert os.environ.get("DEEPSEEK_API_KEY") == "sk-x"
+
+
+def test_load_env_survives_having_nothing_to_read(tmp_path, monkeypatch) -> None:
+    """First run, before any key has been saved. Loading must not be the
+    thing that stops the daemon from starting."""
+    import src.config as config
+
+    monkeypatch.setattr(config, "ENV_PATH", tmp_path / "absent.env")
+    assert config.load_env() is None
+
+
+def test_the_shell_still_wins_by_default(tmp_path, monkeypatch) -> None:
+    """`GROQ_API_KEY=... uv run ...` is how a key gets tried without being
+    saved. override=True is for the reload after "Save keys", and only for
+    that."""
+    import src.config as config
+
+    env = tmp_path / ".env"
+    env.write_text("GROQ_API_KEY=gsk_from_file\n")
+    monkeypatch.setattr(config, "ENV_PATH", env)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_from_shell")
+
+    config.load_env()
+    assert os.environ["GROQ_API_KEY"] == "gsk_from_shell"
+
+    config.load_env(override=True)
+    assert os.environ["GROQ_API_KEY"] == "gsk_from_file"
 
 
 def test_write_config_toml_values_keeps_sections(tmp_path, monkeypatch) -> None:

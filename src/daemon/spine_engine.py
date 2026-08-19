@@ -133,10 +133,9 @@ def _reload_settings(settings: Any) -> Any:
     reload is not fatal — keep the settings we have and try again.
     """
     try:
-        from dotenv import load_dotenv
-        from src.config import load_settings
+        from src.config import load_env, load_settings
 
-        load_dotenv(Path.home() / ".heare" / ".env", override=True)
+        load_env(override=True)
         fresh = load_settings()
         fresh.ensure_dirs()
         return fresh

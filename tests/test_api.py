@@ -889,6 +889,39 @@ async def test_setup_config_and_settings_share_the_key_path(
 
 
 @pytest.mark.asyncio
+async def test_the_setup_modal_saves_through_the_one_writer(
+    mock_state, mock_config, tmp_path, monkeypatch
+) -> None:
+    """It used to keep its own copy of the save procedure — read every k=v
+    into a flat dict, rewrite the file, chmod nothing. Comments did not
+    survive it, an interrupted write left no keys at all, and because it
+    created the file itself it created it 0644. That is how a real machine
+    ended up with world-readable credentials while the other save path was
+    carefully writing 0600.
+    """
+    import stat
+
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    env = tmp_path / ".env"
+    env.write_text("# my keys\nUNRELATED=keep-me\nGROQ_API_KEY=gsk_old\n")
+    api = API(mock_state, mock_config)
+
+    req = MagicMock()
+    key = "sk-" + "c" * 30
+    req.post = AsyncMock(return_value={"deepseek_api_key": key})
+    await api._handle_setup(req)
+
+    text = env.read_text()
+    assert "# my keys" in text
+    assert "UNRELATED=keep-me" in text
+    assert "GROQ_API_KEY=gsk_old" in text
+    assert f"DEEPSEEK_API_KEY={key}" in text
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+    # and it reaches the running daemon, not just the file
+    mock_state.set.assert_any_await("key_deepseek_api_key", key)
+
+
+@pytest.mark.asyncio
 async def test_setup_config_rejects_bad_key(
     mock_state, mock_config, tmp_path, monkeypatch
 ) -> None:

@@ -1304,46 +1304,23 @@ class API:
         )
 
     async def _handle_setup(self, request):
+        """The setup modal, saving through the same door as everything else.
+
+        It used to keep its own copy of the whole procedure: read every
+        ``k=v`` into a flat dict, rewrite the file from it, chmod nothing.
+        Three consequences, all of which had been paid for. Comments and
+        blank lines in ``.env`` did not survive a save. A crash between the
+        truncate and the last write left the file holding no keys at all.
+        And because it created the file itself, it created it 0644 — which
+        is how the credentials on this machine came to be readable by every
+        process on it, while the other save path was carefully writing 0600.
+
+        Two ways to save one thing will always drift; the fix is one way.
+        """
         post = await request.post()
-        updates = {}
-        for key in (
-            "groq_api_key",
-            "deepseek_api_key",
-            "zai_api_key",
-            "opencode_api_key",
-        ):
-            val = post.get(key, "").strip()
-            if val:
-                updates[key.upper()] = val
-
-        if updates:
-            env_path = str(Path.home() / ".heare" / ".env")
-            existing = {}
-            if os.path.exists(env_path):
-                with open(env_path) as f:
-                    for line in f:
-                        line = line.strip()
-                        if "=" in line and not line.startswith("#"):
-                            k, v = line.split("=", 1)
-                            existing[k.strip()] = v.strip()
-            existing.update(updates)
-            with open(env_path, "w") as f:
-                for k, v in existing.items():
-                    f.write(f"{k}={v}\n")
-            os.environ.update(updates)
-            from dotenv import load_dotenv
-
-            load_dotenv(env_path, override=True)
-
-        for attr in (
-            "groq_api_key",
-            "deepseek_api_key",
-            "zai_api_key",
-            "opencode_api_key",
-        ):
-            val = post.get(attr, "").strip()
-            if val:
-                setattr(self.config, attr, val)
+        keys = self._normalise_key_payload(dict(post))
+        if keys:
+            await self._apply_api_keys(keys)
 
         return web.Response(
             text=(

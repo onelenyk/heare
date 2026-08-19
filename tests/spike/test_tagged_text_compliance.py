@@ -14,8 +14,8 @@ import sys
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+from src.config import load_env
+load_env()
 
 API_KEY  = os.environ["DEEPSEEK_API_KEY"]
 MODEL    = os.environ.get("HEARE_LLM_MODEL", "deepseek-chat")
