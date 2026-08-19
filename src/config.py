@@ -55,111 +55,6 @@ def bundled_dir(name: str) -> str:
     return str(root / name)
 
 
-_QUIET_HOUR_RE = None  # initialized lazily
-
-
-def _parse_quiet_hours(raw: list[str]) -> list[tuple[str, str]]:
-    """Validate ['HH:MM-HH:MM', ...] entries; drop invalid ones with a warning.
-
-    Returns parsed (start, end) tuples preserving original string form for
-    later interpretation by the indication facade.
-    """
-    global _QUIET_HOUR_RE
-    if _QUIET_HOUR_RE is None:
-        import re
-
-        _QUIET_HOUR_RE = re.compile(
-            r"^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$"
-        )
-    out: list[tuple[str, str]] = []
-    for entry in raw:
-        if not isinstance(entry, str) or _QUIET_HOUR_RE.match(entry) is None:
-            logger.warning("indication.quiet_hours: dropping invalid entry %r", entry)
-            continue
-        start, end = entry.split("-", 1)
-        out.append((start, end))
-    return out
-
-
-@dataclass
-class IndicationKindToggle:
-    sound: bool = True
-    visual: bool = True
-    notification: bool = True
-
-
-_LEVEL_DEFAULTS: dict[str, tuple[bool, bool, bool]] = {
-    # (sound, visual, notification)
-    "attention": (True, True, True),
-    "error": (True, True, True),
-    "long_running": (True, True, False),
-    "success": (True, True, False),
-    "info": (False, True, False),
-    "input_waiting": (True, True, True),
-    "countdown": (True, True, False),
-}
-
-
-def _default_kind_toggles() -> dict[str, IndicationKindToggle]:
-    return {
-        level: IndicationKindToggle(sound=s, visual=v, notification=n)
-        for level, (s, v, n) in _LEVEL_DEFAULTS.items()
-    }
-
-
-@dataclass
-class IndicationSettings:
-    enabled: bool = True
-    sound_enabled: bool = True
-    visual_enabled: bool = True
-    notification_center_enabled: bool = True
-    cooldown_seconds: float = 1.5
-    quiet_hours: list[tuple[str, str]] = field(
-        default_factory=lambda: [("22:00", "07:00")]
-    )
-    kinds: dict[str, IndicationKindToggle] = field(
-        default_factory=_default_kind_toggles
-    )
-
-
-def _load_indication_settings(raw: dict) -> IndicationSettings:
-    s = IndicationSettings()
-    if not isinstance(raw, dict):
-        return s
-    for key in (
-        "enabled",
-        "sound_enabled",
-        "visual_enabled",
-        "notification_center_enabled",
-    ):
-        if key in raw and isinstance(raw[key], bool):
-            setattr(s, key, raw[key])
-    if "cooldown_seconds" in raw:
-        try:
-            s.cooldown_seconds = max(0.0, float(raw["cooldown_seconds"]))
-        except (TypeError, ValueError):
-            logger.warning(
-                "indication.cooldown_seconds: invalid value %r — keeping default",
-                raw["cooldown_seconds"],
-            )
-    if "quiet_hours" in raw:
-        if isinstance(raw["quiet_hours"], list):
-            s.quiet_hours = _parse_quiet_hours(raw["quiet_hours"])
-        else:
-            logger.warning("indication.quiet_hours must be a list — keeping default")
-    kinds_raw = raw.get("kinds")
-    if isinstance(kinds_raw, dict):
-        for level, defaults in _LEVEL_DEFAULTS.items():
-            sub = kinds_raw.get(level)
-            if not isinstance(sub, dict):
-                continue
-            tog = s.kinds[level]
-            for attr in ("sound", "visual", "notification"):
-                if attr in sub and isinstance(sub[attr], bool):
-                    setattr(tog, attr, sub[attr])
-    return s
-
-
 def _load_browser_bridge_settings(settings: "Settings", raw: dict) -> None:
     """Apply [browser_bridge] table values onto Settings, ignoring unknown keys."""
     if not isinstance(raw, dict):
@@ -382,8 +277,9 @@ class Settings:
     # Per plan US-010: default to False for gradual rollout
     turn_aggregation_enabled: bool = False
     max_turn_duration: float = 30.0
-    # On by default: this is what wires ConversationManager, which is the
-    # only thing that persists tool calls to the `actions` table. With it off,
+    # On by default: this is what wires the action log, the only thing that
+    # persists tool calls to the `actions` table (on the spine that is
+    # SpineActionLog; the old engine's ConversationManager is deleted). Off,
     # the agent's actions were silently never logged (History showed its words
     # but never its deeds). The feature is lightweight — a fire-and-forget
     # SQLite action log plus conversation-session tracking, no LLM summaries,
@@ -516,12 +412,6 @@ class Settings:
     # in TOML data and emit a deprecation warning. It is NOT used for any
     # runtime logic (no expansion, no allowlist gating).
     enable_mcp_servers: list[str] = field(default_factory=list)
-    # Indication subsystem (sound + visual + macOS notification center).
-    # Loaded from the [indication] table in ~/.heare/config.toml — see
-    # _load_indication_settings(). Missing section is fully valid; defaults
-    # match plan §3 (.omc/plans/indication.md).
-    indication: IndicationSettings = field(default_factory=IndicationSettings)
-
     # File access settings for extended workspace management
     file_access_auto_approve_workspace: bool = True
     file_access_ask_for_new_dirs: bool = True
@@ -644,7 +534,10 @@ def load_settings() -> Settings:
 
     for key, value in toml_data.items():
         if key in ("indication", "browser_bridge"):
-            # Nested tables — handled below.
+            # Nested tables. [browser_bridge] is handled below; [indication]
+            # configured a notification subsystem that has been deleted, and
+            # is skipped so an old config.toml still loads rather than
+            # setting a stray attribute.
             continue
         if hasattr(settings, key):
             current = getattr(settings, key)
@@ -654,7 +547,6 @@ def load_settings() -> Settings:
                 value = Mode(value)
             setattr(settings, key, value)
 
-    settings.indication = _load_indication_settings(toml_data.get("indication", {}))
     _load_browser_bridge_settings(settings, toml_data.get("browser_bridge", {}))
 
     # [interrupt] section — persistent default for barge-in behaviour.

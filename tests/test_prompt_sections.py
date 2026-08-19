@@ -267,36 +267,6 @@ def test_mode_block_uses_gate_language() -> None:
     assert "Voice output" in out
 
 
-@pytest.mark.asyncio
-async def test_mode_block_mentions_channel_constraint() -> None:
-    """ContextBuilder-generated mode block must clarify that mode is
-    a channel constraint, not a personality change."""
-    from src.store.context import ContextBuilder
-    from src.config import Settings
-    from src.pipeline.session_state import SessionState
-    from src.pipeline.language_state import LanguageState
-    from unittest.mock import AsyncMock, MagicMock
-
-    settings = Settings()
-    store = MagicMock()
-    store.recent_transcripts = AsyncMock(return_value=[])
-    store.latest_display = AsyncMock(return_value=None)
-
-    cb = ContextBuilder(store, settings)
-    ls = LanguageState(initial="en")
-    ss = SessionState(ls, initial_mode="focus")
-    cb.set_session_state(ss)
-
-    result = await cb.build_for_generator(
-        transcript="test", persona="Test persona"
-    )
-
-    mode_block = result.get("mode_block", "")
-    assert "channel constraint" in mode_block.lower()
-    assert "personality change" in mode_block.lower()
-    assert "MODE GATE: focus" in mode_block
-
-
 # ============================================================================
 # Hard Constraints Tests
 # ============================================================================
@@ -350,50 +320,8 @@ def test_hard_constraints_include_no_filler_rule() -> None:
 
 
 # ============================================================================
-# Integration: ContextBuilder mode_block generation
+# Mode block rendering
 # ============================================================================
-
-
-@pytest.mark.asyncio
-async def test_mode_block_generation_for_all_modes() -> None:
-    """ContextBuilder must generate mode_block with gate language for every mode."""
-    from src.agent.modes import MODE_PROFILES
-    from src.store.context import ContextBuilder
-    from src.config import Settings
-
-    settings = Settings()
-
-    for mode_name, profile in MODE_PROFILES.items():
-        from unittest.mock import AsyncMock, MagicMock
-
-        store = MagicMock()
-        store.recent_transcripts = AsyncMock(return_value=[])
-        store.latest_display = AsyncMock(return_value=None)
-
-        cb = ContextBuilder(store, settings)
-
-        # Set up session state with this mode
-        from src.pipeline.session_state import SessionState
-        from src.pipeline.language_state import LanguageState
-
-        ls = LanguageState(initial="en")
-        ss = SessionState(ls, initial_mode=mode_name)
-        cb.set_session_state(ss)
-
-        result = await cb.build_for_generator(
-            transcript="test", persona="Test persona"
-        )
-
-        mode_block = result.get("mode_block", "")
-        assert f"MODE GATE: {mode_name}" in mode_block, (
-            f"mode_block missing gate marker for {mode_name}"
-        )
-        assert "channel constraint" in mode_block.lower(), (
-            f"mode_block missing channel constraint language for {mode_name}"
-        )
-        assert "personality change" in mode_block.lower(), (
-            f"mode_block missing personality change language for {mode_name}"
-        )
 
 
 # ============================================================================

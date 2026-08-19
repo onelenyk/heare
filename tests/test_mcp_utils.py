@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from src.skills.mcp_utils import (
-    build_mcp_allowed_patterns,
     build_mcp_prompt_block,
     read_mcp_servers,
     write_mcp_servers,
@@ -44,15 +43,6 @@ def test_read_mcp_servers_populated(tmp_path: Path) -> None:
     )
     result = read_mcp_servers(workspace)
     assert set(result.keys()) == {"github", "filesystem"}
-
-
-def test_build_allowed_patterns(tmp_path: Path) -> None:
-    """build_mcp_allowed_patterns produces mcp__<name>__* list."""
-    servers = {"github": {}, "notion": {}}
-    patterns = build_mcp_allowed_patterns(servers)
-    assert "mcp__github__*" in patterns
-    assert "mcp__notion__*" in patterns
-    assert len(patterns) == 2
 
 
 def test_build_prompt_block_with_description(tmp_path: Path) -> None:

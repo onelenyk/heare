@@ -5,7 +5,7 @@ session. To keep the LLM grounded in fresh conversation state, the
 system message at ``messages[0]`` must be regenerated for each user
 turn — pulling current persona text, recent transcripts, conversation
 summary, topics, entities, and the action log from
-``ContextBuilder.build_for_generator``.
+the dashboard's prompt preview.
 
 This module provides:
 
@@ -16,7 +16,7 @@ This module provides:
   ``register_function`` in PH2-03.
 * :func:`create_system_prompt_injector` — a Pipecat ``FrameProcessor``
   that intercepts ``TranscriptionFrame``, builds the fresh context
-  (awaiting ``ContextBuilder.build_for_generator``), mutates the
+  (awaiting the caller's context dict), mutates the
   shared ``LLMContext`` system message in-place, then forwards the
   frame so the user_aggregator can append the user turn and trigger
   the LLM run.
@@ -70,7 +70,7 @@ def render_native_system_prompt(
         empty, a minimal default is substituted so the model still has
         a role.
     context : dict | None
-        Output of ``ContextBuilder.build_for_generator`` (recent
+        The assembled context dict (recent
         transcripts, conversation summary, topics, entities, recent
         actions, etc.). When ``None``, the prompt ships without
         conversation-memory blocks — used at construction time before

@@ -516,16 +516,21 @@ def test_a_cancelled_job_is_recorded_as_cancelled() -> None:
     assert states == [jobs_mod.CANCELLED]
 
 
-def test_the_progress_beacon_is_a_sound_not_a_sentence() -> None:
-    """Speaking costs a model turn and can cut across the user. The point
-    is only to tell "still working" from "stuck" — what a spinner does."""
+def test_the_progress_beacon_does_not_speak_for_itself() -> None:
+    """Speaking costs a model turn and can cut across the user, so the
+    beacon never decides to talk.
+
+    It used to fire a sound cue at a notification facade that was never
+    assembled — and a cue could not have told 2pm from 2am anyway. The
+    judgement belongs to the engine, which the `on_long_running` seam
+    reaches; this base implementation is a log line and nothing more."""
     import inspect
 
     from src.agent.hands import PROGRESS_AFTER, Hands
 
     source = inspect.getsource(Hands._beacon)
-    assert "ACTION_LONG_RUNNING" in source
     assert "_deliver" not in source, "a beacon must not speak"
+    assert "get_indication" not in source, "the facade it called no longer exists"
     assert PROGRESS_AFTER >= 5, "too eager a beacon is worse than none"
 
 

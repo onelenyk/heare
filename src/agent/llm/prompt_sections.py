@@ -377,7 +377,7 @@ def render_prompt(
     persona : str
         Rendered persona block (from ``src.agent.identity.render_persona``).
     context : dict | None
-        Output of ``ContextBuilder.build_for_generator``.
+        The assembled context dict.
     language : str
         Language tag (``'en'``, ``'uk'``, ``'ru'``) or full English name.
     capability_hints : list[dict] | None

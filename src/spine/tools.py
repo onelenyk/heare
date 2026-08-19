@@ -163,23 +163,22 @@ class McpHands(Hands):
 class SpineActionLog:
     """The daemon's ``actions`` rows, written from the spine.
 
-    ``Hands`` records every tool call through a collaborator shaped like
-    ``ConversationManager`` — ``record_action_pending / _result / _error``
-    — and no-ops when it has none. The spine had none, so the actions
-    table stayed empty and the dashboard's activity feed could show what
-    was SAID but never what was DONE.
+    ``Hands`` records every tool call through a collaborator with three
+    sync methods — ``record_action_pending / _result / _error`` — and
+    no-ops when it has none. The spine had none, so the actions table
+    stayed empty and the dashboard's activity feed could show what was
+    SAID but never what was DONE.
 
-    A whole ``ConversationManager`` is the wrong size for that: it exists
-    to maintain topics, entities, a summary and a rehydrated in-memory
-    deque for the *pipeline's* prompt, all on a ``TranscriptStore`` the
-    spine does not build. What ``Hands`` actually needs from it is three
-    sync methods and one table. This is those three methods, writing the
-    same rows (same columns, same statuses, same ``result_json`` shape as
-    ``TranscriptStore.upsert_action_log_entry``) so one feed reads both
-    engines.
+    The old engine's ``ConversationManager`` filled that slot and was the
+    wrong size for it: it also maintained topics, entities, a summary and
+    a rehydrated in-memory deque, all on a ``TranscriptStore`` the spine
+    does not build. It has since been deleted; this is the part that was
+    actually needed, writing the same rows (same columns, same statuses,
+    same ``result_json`` shape as
+    ``TranscriptStore.upsert_action_log_entry``).
 
-    Writes are fire-and-forget tasks, as in ``ConversationManager``: the
-    caller is inside a tool call and must not wait on disk. They are
+    Writes are fire-and-forget tasks: the caller is inside a tool call and
+    must not wait on disk. They are
     serialised by a lock, because a pending row and its result are two
     tasks and interleaving them would leave two rows for one intent.
     """
@@ -193,7 +192,7 @@ class SpineActionLog:
         # row that cannot name its tool is not worth showing.
         self._trail: OrderedDict[int, tuple[str, str]] = OrderedDict()
 
-    # -- the ConversationManager shape ---------------------------------
+    # -- the three methods Hands calls ----------------------------------
 
     def record_action_pending(self, intent_id: int, tool: str, args: str) -> None:
         self._trail[intent_id] = (tool, args)

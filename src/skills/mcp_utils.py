@@ -16,63 +16,6 @@ from pathlib import Path
 logger = logging.getLogger("heare.mcp_utils")
 
 
-# Per-server, session-scoped debounce sets for indication notifications.
-# Cleared implicitly on daemon restart (in-process state only).
-_AUTH_NOTIFIED: set[str] = set()
-_DISCONNECT_NOTIFIED: set[str] = set()
-
-
-def notify_mcp_auth_required(server_name: str) -> bool:
-    """Fire MCP_AUTH_REQUIRED for `server_name` once per daemon lifetime.
-
-    Returns True if a fresh notification was emitted, False if debounced.
-    """
-    if server_name in _AUTH_NOTIFIED:
-        return False
-    _AUTH_NOTIFIED.add(server_name)
-    try:
-        from src.voice.indication.core import IndicationKind, get_indication
-
-        ind = get_indication()
-        if ind is not None:
-            ind.notify(
-                IndicationKind.MCP_AUTH_REQUIRED,
-                body=f"MCP server '{server_name}' needs authentication — check terminal",
-            )
-    except Exception:
-        logger.warning("indication notify for MCP auth failed", exc_info=True)
-    return True
-
-
-def notify_mcp_disconnected(server_name: str) -> bool:
-    """Fire MCP_DISCONNECTED for `server_name` once per 30s per server.
-
-    Implementation deliberately keeps the simpler "once per session" debounce
-    inline; a 30s window can be added if the call site grows hot.
-    """
-    if server_name in _DISCONNECT_NOTIFIED:
-        return False
-    _DISCONNECT_NOTIFIED.add(server_name)
-    try:
-        from src.voice.indication.core import IndicationKind, get_indication
-
-        ind = get_indication()
-        if ind is not None:
-            ind.notify(
-                IndicationKind.MCP_DISCONNECTED,
-                body=f"MCP server '{server_name}' disconnected",
-            )
-    except Exception:
-        logger.warning("indication notify for MCP disconnect failed", exc_info=True)
-    return True
-
-
-def reset_mcp_indication_debounce() -> None:
-    """Clear per-server debounce sets — call between sessions in tests."""
-    _AUTH_NOTIFIED.clear()
-    _DISCONNECT_NOTIFIED.clear()
-
-
 def read_mcp_servers(workspace_dir: Path) -> dict[str, dict]:
     """Read workspace_dir/.mcp.json and return the mcpServers dict.
 
@@ -142,11 +85,6 @@ def write_mcp_servers(workspace_dir: Path, servers: dict[str, dict]) -> None:
         except OSError:
             pass
         raise
-
-
-def build_mcp_allowed_patterns(servers: dict[str, dict]) -> list[str]:
-    """Return mcp__<name>__* wildcard patterns for each server in the dict."""
-    return [f"mcp__{name}__*" for name in servers]
 
 
 def build_mcp_prompt_block(servers: dict[str, dict]) -> str:

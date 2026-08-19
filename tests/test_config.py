@@ -192,7 +192,7 @@ def test_turn_aggregation_settings() -> None:
 
 def test_conversation_memory_settings() -> None:
     s = Settings()
-    # On by default — it wires the ConversationManager that logs tool calls to
+    # On by default — it wires the action log that records tool calls to
     # the actions table; off meant the agent's actions were never persisted.
     assert s.conversation_memory_enabled is True
     assert s.topic_extraction_enabled is True
@@ -243,122 +243,19 @@ def test_ensure_dirs_creates_directories(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_indication_defaults_when_section_absent(monkeypatch, tmp_path) -> None:
-    """Missing [indication] section yields fully-defaulted IndicationSettings."""
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-
-    s = cfg_mod.load_settings()
-    assert s.indication.enabled is True
-    assert s.indication.sound_enabled is True
-    assert s.indication.visual_enabled is True
-    assert s.indication.notification_center_enabled is True
-    assert s.indication.cooldown_seconds == 1.5
-    assert s.indication.quiet_hours == [("22:00", "07:00")]
-    # Per-kind defaults match plan §3
-    assert s.indication.kinds["attention"].sound is True
-    assert s.indication.kinds["info"].sound is False
-    assert s.indication.kinds["info"].visual is True
-    assert s.indication.kinds["info"].notification is False
-    assert s.indication.kinds["input_waiting"].notification is True
-
-
-def test_indication_partial_override(monkeypatch, tmp_path) -> None:
-    """Partial section overrides specified fields, keeps defaults for the rest."""
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-
-    config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        "[indication]\n"
-        "enabled = false\n"
-        "cooldown_seconds = 3.0\n"
-        "\n"
-        "[indication.kinds.info]\n"
-        "sound = true\n"
+def test_an_old_config_with_a_deleted_section_still_loads(monkeypatch, tmp_path) -> None:
+    """`[indication]` configured a notification subsystem that is gone.
+    A config.toml written before the deletion must not become unloadable —
+    the section is skipped, not rejected."""
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    (tmp_path / "config.toml").write_text(
+        '[indication]\nenabled = true\ncooldown_seconds = 2.0\n'
     )
-    s = cfg_mod.load_settings()
-    assert s.indication.enabled is False
-    assert s.indication.cooldown_seconds == 3.0
-    # Untouched fields keep defaults
-    assert s.indication.sound_enabled is True
-    assert s.indication.kinds["attention"].sound is True
-    # Overridden per-kind
-    assert s.indication.kinds["info"].sound is True
-    # Other per-kind keep defaults
-    assert s.indication.kinds["info"].visual is True
 
+    settings = load_settings()
 
-def test_indication_invalid_quiet_hours_dropped(monkeypatch, tmp_path, caplog) -> None:
-    """Invalid quiet_hours strings log a warning and are dropped."""
-    import logging
-
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-
-    config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        "[indication]\n"
-        'quiet_hours = ["25:00-07:00", "22:00-07:00", "garbage"]\n'
-    )
-    records: list[logging.LogRecord] = []
-
-    class _H(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            records.append(record)
-
-    handler = _H(level=logging.WARNING)
-    cfg_logger = logging.getLogger("heare.config")
-    cfg_logger.addHandler(handler)
-    cfg_logger.setLevel(logging.WARNING)
-    try:
-        s = cfg_mod.load_settings()
-    finally:
-        cfg_logger.removeHandler(handler)
-
-    # Only the valid entry survives
-    assert s.indication.quiet_hours == [("22:00", "07:00")]
-    msgs = [r.getMessage() for r in records]
-    assert any("25:00-07:00" in m for m in msgs)
-    assert any("garbage" in m for m in msgs)
-
-
-def test_indication_invalid_quiet_hours_type_keeps_default(monkeypatch, tmp_path) -> None:
-    """quiet_hours that isn't a list logs and keeps defaults."""
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-
-    config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        "[indication]\n"
-        'quiet_hours = "22:00-07:00"\n'  # string, not list
-    )
-    s = cfg_mod.load_settings()
-    assert s.indication.quiet_hours == [("22:00", "07:00")]
-
-
-def test_indication_invalid_cooldown_keeps_default(monkeypatch, tmp_path) -> None:
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
-
-    config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        "[indication]\n"
-        'cooldown_seconds = "abc"\n'
-    )
-    s = cfg_mod.load_settings()
-    assert s.indication.cooldown_seconds == 1.5
-
+    assert settings.mode == Mode.AMBIENT
+    assert not hasattr(settings, "indication")
 
 def test_deprecated_enable_mcp_servers_warning(monkeypatch, tmp_path) -> None:
     """Startup with enable_mcp_servers in config.toml logs a deprecation WARNING."""

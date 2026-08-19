@@ -637,8 +637,8 @@ async def test_a_broken_progress_seam_does_not_stop_the_job(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_without_a_seam_the_beacon_is_the_daemons_own(monkeypatch):
-    """No callback = today's behaviour: Hands._beacon, which finds no
-    indication facade on the spine and stays silent."""
+    """No callback = today's behaviour: Hands._beacon, which logs that it
+    is still working and says nothing out loud."""
     monkeypatch.setattr("src.spine.tools.BEACON_INTERVAL_S", 0.01)
     worker = _worker(hold=0.05, answer="тихо")
     worker.set_delivery(_deliver)

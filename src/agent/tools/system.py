@@ -18,7 +18,6 @@ from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.config import Settings
-    from src.store.conversation import ConversationManager
 
 logger = logging.getLogger("heare.tools.system")
 
@@ -1186,7 +1185,7 @@ def register_dynamic_tool_handler(
     impl_type: str,
     impl: str,
     settings: "Settings | None" = None,
-    conversation_manager: "ConversationManager | None" = None,
+    conversation_manager: Any = None,
 ) -> None:
     """Create and register a handler for a dynamically created tool."""
     from src.agent.tools.dynamic import execute_bash_tool, execute_fetch_tool

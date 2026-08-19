@@ -288,29 +288,24 @@ class Hands:
         return text
 
     async def _beacon(self, label: str) -> None:
-        """Sound, not speech, while a long job is still running.
+        """Say, at intervals, that a long job is still running.
 
-        The voice agent sees only the start and the end of a job, so a
-        slow one is indistinguishable from a stuck one. Saying so out loud
-        would cost a model turn and risk talking over the user; a cue is
-        the audible equivalent of a spinner.
+        The voice agent sees only the start and the end of a job, so a slow
+        one is indistinguishable from a stuck one.
+
+        This used to fire a sound cue through the indication facade. The
+        facade was never assembled on this engine — and a cue could not
+        have told the difference between 2pm and 2am anyway. The subclass
+        that matters, ``McpHands._beacon``, takes the ``on_long_running``
+        seam instead, and that now reaches the engine, which does know.
+
+        With no seam wired this is what it always effectively was: a log
+        line.
         """
-        try:
-            from src.voice.indication.core import IndicationKind, get_indication
-        except Exception:
-            return
         try:
             while True:
                 await asyncio.sleep(PROGRESS_AFTER)
-                indication = get_indication()
-                if indication is None:
-                    return
                 logger.info("[HANDS] still working: %s", label)
-                indication.notify(
-                    IndicationKind.ACTION_LONG_RUNNING,
-                    title="heare",
-                    body=label,
-                )
         except asyncio.CancelledError:
             raise
 
