@@ -807,13 +807,37 @@ async def run_spine_daemon(
     if not telemetry_on:
         logger.info("telemetry: OFF — no turns.jsonl this run")
 
-    # Long delegated work has no voice of its own on this engine: the
-    # indication facade lives on the old one. A State key is enough for
-    # the dashboard to show that something is still running.
-    loop.on_long_running = lambda label: state.set_cache_only(
-        "hands_progress",
-        json.dumps({"ts": time.time(), "label": label}, ensure_ascii=False),
-    )
+    # Long delegated work, told twice: once to the dashboard, which only
+    # needs to show a spinner, and once to the engine, which has to decide
+    # whether it is worth interrupting you over.
+    #
+    # This used to be the State key alone, with a comment explaining that
+    # the notification facade lived on the engine we had replaced. It did,
+    # and it had been dead there for a while: 835 lines of backends, quiet
+    # hours and cooldowns that no composition root ever assembled. Every
+    # question it answered is already answered better one layer up —
+    # `judge` knows whether you are mid-sentence and whether it is 2am.
+    def _long_running(label: str) -> None:
+        state.set_cache_only(
+            "hands_progress",
+            json.dumps({"ts": time.time(), "label": label}, ensure_ascii=False),
+        )
+        engine = getattr(loop, "engine", None)
+        if engine is None:
+            return
+        # Low urgency on purpose: "still working" is worth mentioning if
+        # you happen to be here, and worth nothing at all at night.
+        asyncio.create_task(
+            engine.notice(
+                "working",
+                f"ще працюю: {label}",
+                urgency=0.3,
+                dedupe_key=f"working:{label}",
+            ),
+            name="spine-notice-working",
+        )
+
+    loop.on_long_running = _long_running
 
     # -- MCP: the servers in .mcp.json, made callable by the worker -----
     #
@@ -831,6 +855,7 @@ async def run_spine_daemon(
         the worker rebuilds its schema list before every job, so nothing
         needs to be ready at startup."""
         from src.agent.mcp_bridge import connect_mcp_servers
+        from src.spine.intents import USER as INTENT_USER
 
         bridge = await connect_mcp_servers(settings)
         loop.mcp = bridge
@@ -845,6 +870,20 @@ async def run_spine_daemon(
             len(names),
         )
         _publish_mcp_status(state, bridge, ok=True)
+
+        # A server that did not start costs you tools you may be about to
+        # ask for. Worth saying out loud, once, when there is someone to
+        # say it to — which is the engine's judgement, not ours.
+        engine = getattr(loop, "engine", None)
+        if engine is not None and bridge.failed_servers:
+            names = ", ".join(bridge.failed_servers)
+            await engine.notice(
+                "mcp_failed",
+                f"не піднялись інструменти: {names}",
+                origin=INTENT_USER,
+                urgency=0.7,
+                dedupe_key=f"mcp_failed:{names}",
+            )
 
     mcp_task: asyncio.Task | None = None
     if not mcp_on:

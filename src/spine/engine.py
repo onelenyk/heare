@@ -231,6 +231,49 @@ class Engine:
             now=now,
         )
 
+    # -- told from outside ---------------------------------------------
+
+    async def notice(
+        self,
+        kind: str,
+        text: str,
+        *,
+        origin: str = I.SELF,
+        urgency: float = 0.5,
+        dedupe_key: str | None = None,
+    ) -> None:
+        """Somewhere else in the system noticed something worth saying.
+
+        This is what replaced the notification subsystem. That one had
+        backends, quiet hours, per-kind cooldowns and a mode gate — 835
+        lines deciding when a banner may appear — and none of it ever ran,
+        because the single call that built it was deleted along with the
+        engine it belonged to.
+
+        All of those questions already have an answer here, and a better
+        one: `judge` knows whether you are mid-sentence, whether it is
+        night, whether it has been forward too often lately, and whether
+        being brushed off last time should buy you quiet now. An event
+        that becomes an intent inherits all of it. One that becomes a
+        banner inherits none.
+
+        And an intent that is never spoken is still not lost: it hangs in
+        the prompt, so when you do start talking, it already knows what is
+        outstanding between you.
+
+        Never raises. A caller reporting trouble must not be given more.
+        """
+        try:
+            await self._store.add(
+                kind,
+                text,
+                origin=origin,
+                urgency=urgency,
+                dedupe_key=dedupe_key,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: could not hold %r (non-fatal)", kind)
+
     # -- notice --------------------------------------------------------
 
     async def _notice(self) -> None:

@@ -178,6 +178,10 @@ class McpBridge:
         # (function_name, description, input_schema, session)
         self._tools: list[tuple[str, str, dict, Any]] = []
         self._connected_servers: list[str] = []
+        # Which ones did not start. Kept because a server that fails is
+        # something the assistant should be able to mention — it is the
+        # difference between "I have no file tools" and silence.
+        self._failed_servers: list[str] = []
         # The task that entered the sessions, and the flag that lets it
         # leave them. See ``connect``.
         self._owner: asyncio.Task | None = None
@@ -186,6 +190,10 @@ class McpBridge:
     @property
     def connected_servers(self) -> list[str]:
         return list(self._connected_servers)
+
+    @property
+    def failed_servers(self) -> list[str]:
+        return list(self._failed_servers)
 
     @property
     def tool_names(self) -> list[str]:
@@ -310,7 +318,8 @@ class McpBridge:
             )
             return
 
-        failed: list[str] = []
+        failed = self._failed_servers
+        failed.clear()
         for slug in wanted:
             try:
                 await self._connect_one(slug, servers[slug])
