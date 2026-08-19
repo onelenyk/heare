@@ -260,13 +260,27 @@ async def _cmd_mode(args: argparse.Namespace) -> int:
 
 
 async def _cmd_provider(args: argparse.Namespace) -> int:
+    """Choose which model answers — the same three writes POST /provider makes.
+
+    This used to set the state entry only, and print that it would take
+    effect on the next utterance. It never did: the engine resolves its
+    provider from Settings, which is loaded from config.toml, and nothing
+    read the state entry at all.
+    """
+    from src.agent.llm.providers import PROVIDERS
+    from src.config import write_config_toml_values
     from src.state import State
 
-    settings = load_settings()
     provider = args.provider_name
+    if provider not in PROVIDERS:
+        print(f"unknown provider {provider!r} — one of {', '.join(PROVIDERS)}")
+        return 1
+
+    settings = load_settings()
     state = State(settings.db_path)
     await state.init()
     await state.set("provider", provider)
+    write_config_toml_values({"llm_provider": provider})
     print(f"LLM provider set to {provider} (effective on next user utterance)")
     return 0
 

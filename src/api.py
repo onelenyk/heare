@@ -505,10 +505,10 @@ class API:
 
     # ── API keys ──────────────────────────────────────────────────
     #
-    # Four surfaces can set a key (settings card, brain card, setup modal,
-    # the plain HTML form). They all funnel through the three helpers below
-    # so validation, persistence and hot-apply behave identically no matter
-    # which one the user reached for.
+    # One surface sets a key now: KeysCard, rendered both in the dashboard
+    # and in the first-run modal. It funnels through the three helpers
+    # below, so validation, persistence and hot-apply cannot drift apart
+    # the way they did when there were four.
 
     @staticmethod
     def _normalise_key_payload(body) -> dict[str, str]:
