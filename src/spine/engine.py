@@ -50,6 +50,11 @@ logger = logging.getLogger("spine.engine")
 
 TICK_S = 5.0
 
+# How often to read the surroundings. Slower than the tick — the room
+# does not change every five seconds, and the judge still runs at full
+# rate so a ripe intent is not left waiting.
+WATCH_EVERY_S = 20.0
+
 # How long it waits between unbidden remarks at full trust. Multiplied by
 # trust, which climbs when it is brushed off.
 BASE_QUIET_S = 15 * 60.0
@@ -180,7 +185,9 @@ class Engine:
         persist: Any = None,
         jobs: Any = None,
         ask: Any = None,
+        watch: Any = None,
         tick_s: float = TICK_S,
+        watch_every_s: float = WATCH_EVERY_S,
     ) -> None:
         self._store = store
         self._say = say  # async (text) -> None — normally loop.inject
@@ -188,7 +195,12 @@ class Engine:
         self._persist = persist
         self._jobs = jobs
         self._ask = ask  # async (intent, situation) -> str | None
+        # An EnvironmentWatch, or nothing. Absent, the engine behaves
+        # exactly as before: it only ever reports on itself.
+        self._watch = watch
         self._tick_s = tick_s
+        self._watch_every_s = watch_every_s
+        self._watched_ts = 0.0
         self.engine_state = EngineState()
         self._awaiting: I.Intent | None = None
         self._seen_jobs: set[int] = set()
@@ -213,6 +225,7 @@ class Engine:
 
     async def tick(self, now: float | None = None) -> Verdict:
         await self._notice()
+        await self._look_around(now)
         situation = await self.observe(now=now)
         pending = await self._store.pending()
         verdict = judge(situation, pending, self.engine_state)
@@ -230,6 +243,37 @@ class Engine:
             unprompted_times=self.engine_state.unprompted_times,
             now=now,
         )
+
+    async def _look_around(self, now: float | None = None) -> None:
+        """Sample the surroundings and keep whatever they made worth saying.
+
+        Slower than the tick: the judge has to run every few seconds so a
+        ripe intent lands promptly, but the room does not change that
+        fast, and there is no reason to spend even a cheap sensor twelve
+        times a minute.
+
+        Everything here is absorbed. A watcher whose sensor fails should
+        go blind, not take the conversation down with it.
+        """
+        if self._watch is None:
+            return
+        now = now if now is not None else time.time()
+        if now - self._watched_ts < self._watch_every_s:
+            return
+        self._watched_ts = now
+        try:
+            from src.spine.environment import observe as observe_environment
+
+            for change in self._watch.feed(await observe_environment(now=now)):
+                await self.notice(
+                    change.kind,
+                    change.text,
+                    origin=I.SELF,
+                    urgency=change.urgency,
+                    dedupe_key=change.dedupe_key,
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: looking around failed (non-fatal)")
 
     # -- told from outside ---------------------------------------------
 

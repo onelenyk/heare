@@ -14,10 +14,14 @@ import pytest
 from src.spine.features import FEATURES, describe, losses, resolve
 
 
-def test_everything_is_on_by_default() -> None:
+def test_the_defaults_are_the_ones_declared() -> None:
+    """Not "everything on" — `watcher` is deliberately off, because a
+    thing that watches should be switched on by a person rather than
+    inherited from a default. What must hold is that resolving with no
+    configuration changes nothing."""
     state = resolve(SimpleNamespace())
-    assert all(state.values())
-    assert set(state) == {f.name for f in FEATURES}
+    assert state == {f.name: f.default for f in FEATURES}
+    assert state["watcher"] is False
 
 
 def test_config_table_switches_one_off() -> None:
@@ -58,7 +62,9 @@ def test_safe_mode_switches_everything_optional_off() -> None:
 
 def test_unknown_name_is_reported_not_obeyed(caplog) -> None:
     state = resolve(SimpleNamespace(), without="teleport")
-    assert all(state.values()), "a typo must not silently disable something"
+    assert state == {f.name: f.default for f in FEATURES}, (
+        "a typo must not silently disable something"
+    )
     assert "no such feature" in caplog.text
 
 
@@ -73,7 +79,11 @@ def test_losses_are_in_the_user_s_language() -> None:
     what stopped working, not just which flag flipped."""
     text = " ".join(losses(resolve(SimpleNamespace(), without="roles,memory")))
     assert "мітинг" in text and "пам" in text
-    assert losses(resolve(SimpleNamespace())) == []
+    # Only `watcher`, which is off until asked for — its line still has to
+    # say what is missing, because "off by default" is not "not a loss".
+    assert [line.split(":")[0] for line in losses(resolve(SimpleNamespace()))] == [
+        "watcher"
+    ]
 
 
 def _feature_lookups_in_source() -> dict[str, list[str]]:

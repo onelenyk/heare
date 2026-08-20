@@ -327,6 +327,10 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
                       object is labelled honestly instead of silently
                       passing itself off as a fact.
 
+    ``watcher`` is answered from inside the engine rather than from the
+    loop, because that is where the watch lives — and with no engine there
+    is nothing watching, whatever the config asked for.
+
     One caveat, and it is deliberate: ``mcp`` connects off the boot path
     (a cold `npx` can take a minute), so it honestly reads `off` until the
     bridge lands — run_spine_daemon publishes again when it does.
@@ -336,7 +340,14 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
     declared = getattr(loop, "features", None) or {}
     entries: list[dict] = []
     for f in FEATURES:
-        if f.name == "telemetry":
+        if f.name == "watcher":
+            # It has no object of its own: the watch is a collaborator
+            # inside the engine, and with no engine there is nothing
+            # watching whatever the config asked for.
+            engine = getattr(loop, "engine", None)
+            on = getattr(engine, "_watch", None) is not None
+            observed = True
+        elif f.name == "telemetry":
             # A real Telemetry has no `wired` attribute; _NoTelemetry
             # sets it False, and None means nothing was built at all.
             on = bool(getattr(telemetry, "wired", telemetry is not None))

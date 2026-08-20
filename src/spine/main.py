@@ -197,6 +197,53 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         raise
 
 
+def _worth_saying(cfg_of):
+    """The model's veto, and its voice.
+
+    ``judge`` decides whether the engine *may* speak — not mid-turn, not
+    at night, not to an empty room, not too soon. It cannot decide whether
+    a particular remark is worth making, and until now nothing did: every
+    intent that cleared the gate was read out verbatim, exactly as stored.
+
+    That was tolerable while the only intents were "the disk check
+    finished". It is not tolerable for a watcher, whose intents are
+    guesses about what you are doing — "you have been in Chrome for three
+    hours" is either the most useful thing said all day or an irritation,
+    and the difference is not in the sentence.
+
+    So one question, once, after the conditions have already passed. The
+    model may answer with a better sentence, or with nothing at all, and
+    nothing at all is a valid and expected answer. A failure here falls
+    back to raising the intent as written — the same behaviour as before
+    this existed.
+    """
+
+    async def ask(intent, situation) -> str | None:
+        from src.spine.llm import stream_chat
+
+        prompt = (
+            "Ти асистент, який зараз мовчить поруч із людиною.\n"
+            f"Обставини: {situation.describe()}.\n"
+            f"Ти помітив: {intent.text}\n\n"
+            "Чи варто зараз про це озватись? Більшість такого не варта "
+            "жодного слова — мовчати нормально й правильно.\n"
+            "Якщо не варто — відповідай рівно: НІ\n"
+            "Якщо варто — скажи це одним коротким реченням, як сказав би "
+            "живий співрозмовник, без преамбул."
+        )
+        parts: list[str] = []
+        async for chunk in stream_chat(
+            [{"role": "user", "content": prompt}], cfg_of(), temperature=0.4
+        ):
+            parts.append(chunk)
+        answer = "".join(parts).strip()
+        if not answer or answer.upper().startswith("НІ"):
+            return None
+        return answer
+
+    return ask
+
+
 async def _wire_full(loop, settings, cfg, memory, features):
     _cfg = _live_cfg(settings, cfg)
     from datetime import datetime
@@ -325,14 +372,25 @@ async def _wire_full(loop, settings, cfg, memory, features):
             await intent_store.init()
             await intent_store.sweep_stale()
 
+            watch = None
+            if features["watcher"]:
+                from src.spine.environment import EnvironmentWatch
+
+                watch = EnvironmentWatch()
+
             loop.engine = Engine(
                 store=intent_store,
                 say=loop.inject,
                 state=getattr(loop, "state", None),
                 persist=persist,
                 jobs=records.jobs,
+                ask=_worth_saying(_cfg),
+                watch=watch,
             )
-            logger.info("engine: holding intents between turns")
+            logger.info(
+                "engine: holding intents between turns%s",
+                " and watching the room" if watch is not None else "",
+            )
         except Exception:  # noqa: BLE001
             logger.exception("engine: unavailable (non-fatal)")
 

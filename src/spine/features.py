@@ -57,6 +57,11 @@ FEATURES: tuple[Feature, ...] = (
     Feature("telemetry", True, "немає turns.jsonl — нічим міряти якість"),
     Feature("engine", True, "нічого не тримає між ходами: не озветься сам, "
                             "не пам'ятає, що винен відповідь"),
+    # Off by default. Everything it reads is free and nothing is written
+    # down, but a thing that watches should be switched on deliberately,
+    # not inherited from a default.
+    Feature("watcher", False, "не бачить, чим ти зайнятий — двигун знає "
+                              "лише про себе"),
 )
 
 _BY_NAME = {f.name: f for f in FEATURES}
