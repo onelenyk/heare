@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS intents (
     due_ts REAL,
     voiced_ts REAL,
     outcome TEXT,
-    dedupe_key TEXT
+    dedupe_key TEXT,
+    expires_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_intents_state ON intents(state);
 CREATE INDEX IF NOT EXISTS idx_intents_created ON intents(created_ts DESC);
@@ -94,6 +95,11 @@ class Intent:
     voiced_ts: float | None = None
     outcome: str | None = None
     dedupe_key: str | None = None
+    # When it stops being worth saying. ``due_ts`` is the other end of the
+    # same idea — not before, and not after. Most intents have neither:
+    # "the disk check finished" is as true tomorrow. What you were doing
+    # an hour ago is not.
+    expires_ts: float | None = None
 
     @property
     def age_seconds(self) -> float:
@@ -134,6 +140,19 @@ class IntentStore:
 
     async def init(self) -> None:
         await self._db.executescript(SCHEMA)
+        # Added after the table shipped. One ALTER, guarded by what is
+        # actually there — a fresh install gets it from SCHEMA, an
+        # existing database gets it here, and neither path needs to know
+        # which one it is on.
+        try:
+            cursor = await self._db.execute("PRAGMA table_info(intents)")
+            columns = {row[1] for row in await cursor.fetchall()}
+            if "expires_ts" not in columns:
+                await self._db.execute(
+                    "ALTER TABLE intents ADD COLUMN expires_ts REAL"
+                )
+        except Exception:
+            logger.exception("intents: expires_ts migration failed (non-fatal)")
         await self._db.commit()
 
     async def add(
@@ -144,6 +163,7 @@ class IntentStore:
         origin: str = SELF,
         urgency: float = 0.5,
         due_ts: float | None = None,
+        expires_ts: float | None = None,
         dedupe_key: str | None = None,
     ) -> int | None:
         """Form an intent. Cheap on purpose — voicing is the expensive part.
@@ -157,7 +177,8 @@ class IntentStore:
             cursor = await self._db.execute(
                 "INSERT OR IGNORE INTO intents "
                 "(kind, text, origin, urgency, state, created_ts, updated_ts, "
-                " due_ts, dedupe_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " due_ts, dedupe_key, expires_ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     kind,
                     text[:500],
@@ -168,6 +189,7 @@ class IntentStore:
                     now,
                     due_ts,
                     dedupe_key,
+                    expires_ts,
                 ),
             )
             await self._db.commit()
@@ -176,13 +198,22 @@ class IntentStore:
             logger.exception("intents: add failed (non-fatal)")
             return None
 
-    async def pending(self, limit: int = 10) -> list[Intent]:
-        """Outstanding, most urgent first, then oldest."""
+    async def pending(self, limit: int = 10, now: float | None = None) -> list[Intent]:
+        """Outstanding, most urgent first, then oldest.
+
+        Expired rows are not returned. They are still deleted nowhere —
+        `sweep_expired` settles them — but a moment's lag must never put
+        yesterday's remark at the head of the queue, and ties here break
+        oldest-first, so the stalest thing in the table was exactly what
+        got said next.
+        """
+        now = now if now is not None else time.time()
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM intents WHERE state = ? "
+                "AND (expires_ts IS NULL OR expires_ts > ?) "
                 "ORDER BY urgency DESC, created_ts ASC LIMIT ?",
-                (PENDING, limit),
+                (PENDING, now, limit),
             )
             return [_row_to_intent(r) for r in await cursor.fetchall()]
         except Exception:
@@ -264,6 +295,30 @@ class IntentStore:
             logger.exception("intents: sweep failed (non-fatal)")
             return 0
 
+    async def sweep_expired(self, now: float | None = None) -> int:
+        """Pending, and the moment it was about has passed.
+
+        The other sweep is about being ignored; this one is about being
+        too late. Without it a remark that could not be made — the room
+        was empty, it was night — waits in the table forever and is still
+        first in line days later, because ties break oldest-first.
+        """
+        now = now if now is not None else time.time()
+        try:
+            cursor = await self._db.execute(
+                "UPDATE intents SET state = ?, outcome = ?, updated_ts = ? "
+                "WHERE state = ? AND expires_ts IS NOT NULL AND expires_ts <= ?",
+                (DROPPED, "запізно", now, PENDING, now),
+            )
+            await self._db.commit()
+            n = cursor.rowcount or 0
+            if n:
+                logger.info("intents: %d passed before they could be said", n)
+            return n
+        except Exception:
+            logger.exception("intents: expiry sweep failed (non-fatal)")
+            return 0
+
     async def recent(self, limit: int = 5) -> list[Intent]:
         try:
             cursor = await self._db.execute(
@@ -289,4 +344,5 @@ def _row_to_intent(row: Any) -> Intent:
         voiced_ts=row[9],
         outcome=row[10],
         dedupe_key=row[11],
+        expires_ts=row[12] if len(row) > 12 else None,
     )

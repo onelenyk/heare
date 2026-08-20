@@ -765,6 +765,7 @@ async def run_spine_daemon(
                 voice="",
                 hold_s=float(getattr(settings, "spine_turn_hold_seconds", 1.3)),
                 full=True,
+                state=state,
             )
         except Exception as exc:
             await _release_audio(audio)

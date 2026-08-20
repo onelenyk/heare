@@ -128,3 +128,22 @@ async def test_it_reads_aloud_as_a_sentence(store) -> None:
     await store.add("job_done", "перевірка диска скінчилась")
 
     assert (await store.pending())[0].describe().startswith("щойно:")
+
+
+async def test_a_remark_about_now_stops_being_pending(store) -> None:
+    """The other sweep is about being ignored; this one is about being
+    too late. Without it, something that could not be said — empty room,
+    night — waits in the table indefinitely and is still first in line
+    days later, because ties break oldest-first.
+    """
+    await store.add("switched", "ти був у Chrome 40 хв", expires_ts=1_000.0)
+    await store.add("job_done", "диск перевірено")  # no expiry: still true tomorrow
+
+    fresh = await store.pending(now=999.0)
+    assert {i.kind for i in fresh} == {"switched", "job_done"}
+
+    later = await store.pending(now=1_001.0)
+    assert {i.kind for i in later} == {"job_done"}
+
+    assert await store.sweep_expired(now=1_001.0) == 1
+    assert await store.sweep_expired(now=1_001.0) == 0  # settled once, not each pass

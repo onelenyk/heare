@@ -103,6 +103,14 @@ class SpineLoop:
                                # first. Injected like the rest: the loop
                                # conducts, it does not want anything.
     usage: Any = None          # .stt(seconds) / .tts(chars) (sync)
+    # The shared State store — .get(key). The daemon has always owned one
+    # (it stamps agent_state on every utterance and holds the chosen
+    # mode), and the engine has always asked the loop for it. Nobody put
+    # it here, so `getattr(loop, "state", None)` answered None from the
+    # day the spine was written: `Situation.bot_state` stayed "unknown",
+    # which made `busy_talking` false forever and left judge's first
+    # guard — do not speak mid-turn — unable to fire.
+    state: Any = None          # .get(key) -> value | None
     # The role platform, as one injected policy object (None = no roles).
     # It decides whether a turn is a session trigger, a logged line or
     # ordinary conversation; the conductor only asks. Its fields are

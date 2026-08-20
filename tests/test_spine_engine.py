@@ -72,7 +72,7 @@ def test_nothing_pending_is_not_an_occasion() -> None:
     assert judge(sit(), [], EngineState()).speak is False
 
 
-@pytest.mark.parametrize("state", ["listening", "thinking", "speaking"])
+@pytest.mark.parametrize("state", ["talking", "listening", "thinking", "speaking"])
 def test_never_mid_turn(state: str) -> None:
     """Said in the middle of an exchange it is an interruption, whatever
     it is about."""

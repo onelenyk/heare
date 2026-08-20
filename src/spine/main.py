@@ -76,9 +76,14 @@ def _live_cfg(settings, fallback):
 
 
 async def _build_loop(settings, *, audio, voice: str, hold_s: float,
-                      full: bool = True, without: str = ""):
+                      full: bool = True, without: str = "", state=None):
     """Wire the conductor. full=False builds the bare chat skeleton
-    (no wake/tools/persistence) — used by --text and quick checks."""
+    (no wake/tools/persistence) — used by --text and quick checks.
+
+    ``state`` is the daemon's State store. Passing it is what lets the
+    engine see what the assistant is doing right now; without it every
+    judgement about the present was made from half the facts.
+    """
     from datetime import datetime
 
     import time
@@ -161,6 +166,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         usage=usage,
     )
     loop.features = loop_features
+    loop.state = state
 
     if not full:
         return loop
@@ -195,6 +201,24 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         if memory is not None:
             await memory.close()
         raise
+
+
+async def _at_the_keyboard() -> float:
+    """Seconds since a key or the mouse was last touched.
+
+    Deliberately outside the watcher's switch. Everything in
+    ``environment.py`` is about *what* you are doing and is off until
+    asked for; this answers only whether anyone is at the desk, which is
+    what keeps the engine from talking to an empty room — and, more
+    often, from staying silent through the hour someone works without
+    saying a word.
+
+    It reads no content, needs no permission and writes nothing down.
+    One 16 ms subprocess, on a five-second tick.
+    """
+    from src.spine.environment import _idle_seconds
+
+    return await asyncio.to_thread(_idle_seconds)
 
 
 def _worth_saying(cfg_of):
@@ -371,6 +395,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
             intent_store = IntentStore(records.db)
             await intent_store.init()
             await intent_store.sweep_stale()
+            await intent_store.sweep_expired()
 
             watch = None
             if features["watcher"]:
@@ -385,6 +410,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
                 persist=persist,
                 jobs=records.jobs,
                 ask=_worth_saying(_cfg),
+                idle=_at_the_keyboard,
                 watch=watch,
             )
             logger.info(

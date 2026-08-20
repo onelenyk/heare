@@ -203,3 +203,55 @@ def test_it_reads_the_real_machine_without_asking_permission() -> None:
     assert got.app, "no front application — pyobjc missing or unusable"
     assert got.apps, "no applications with windows"
     assert got.clipboard_seq >= 0
+
+
+# ── what a remark about the present may not do ────────────────────────
+
+
+def test_a_long_stretch_does_not_count_the_lunch_break() -> None:
+    """An application left open through lunch has not been held for
+    three hours. Said as "без перерви" it is not a rounding error — it
+    is the assistant claiming to have watched something it did not."""
+    before = env(now=NOW - 5, idle_s=2 * 3600.0)
+    found = changes(
+        before, env(idle_s=2 * 3600.0 + 5), app_since=NOW - DEEP_S - 60
+    )
+    assert kinds(found) == []
+
+
+def test_coming_back_starts_the_clock_again() -> None:
+    """What is measured is time spent at the thing. Being away is not
+    that, so the stretch restarts on return — the same as a switch."""
+    watch = EnvironmentWatch()
+    watch.feed(env(now=NOW - DEEP_S, idle_s=AWAY_S + 600))
+    watch.feed(env(now=NOW, idle_s=2.0))  # back at the keyboard
+    assert watch.app_since == NOW
+
+    # ...and an hour and a half from *now* is what earns the remark
+    assert watch.feed(env(now=NOW + 60, idle_s=2.0)) == []
+    later = watch.feed(env(now=NOW + DEEP_S + 60, idle_s=2.0))
+    assert kinds(later) == ["deep"]
+
+
+def test_one_blind_sample_does_not_erase_an_hour() -> None:
+    """`_front_and_apps` answers "" when the window server will not talk.
+    Taken as a reading it looks like a switch: the clock restarts and the
+    long-stretch remark is spent, so a single hiccup costs ninety minutes
+    of accumulated context."""
+    watch = EnvironmentWatch()
+    watch.feed(env(now=NOW - DEEP_S - 60))
+
+    assert watch.feed(env(now=NOW - 30, app="")) == []
+    assert watch.app_since == NOW - DEEP_S - 60, "the clock kept running"
+
+    assert kinds(watch.feed(env(now=NOW))) == ["deep"]
+
+
+def test_a_remark_about_now_carries_its_own_shelf_life() -> None:
+    """Held and said an hour late it is not a stale remark, it is a
+    false one — so it expires rather than waits."""
+    from src.spine.environment import FRESH_S
+
+    before = env(now=NOW - 5, app="Android Studio")
+    found = changes(before, env(app="Chrome"), app_since=NOW - SETTLED_S - 300)
+    assert found[0].ttl_s == FRESH_S

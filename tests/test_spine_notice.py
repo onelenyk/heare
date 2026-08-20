@@ -32,10 +32,13 @@ class _Store:
         self.added: list[tuple] = []
         self.exploding = False
 
-    async def add(self, kind, text, *, origin=I.SELF, urgency=0.5, dedupe_key=None):
+    async def add(
+        self, kind, text, *, origin=I.SELF, urgency=0.5, dedupe_key=None,
+        expires_ts=None,
+    ):
         if self.exploding:
             raise RuntimeError("disk full")
-        self.added.append((kind, text, origin, urgency, dedupe_key))
+        self.added.append((kind, text, origin, urgency, dedupe_key, expires_ts))
         return len(self.added)
 
     async def pending(self, limit: int = 10):
@@ -55,7 +58,7 @@ async def test_an_event_becomes_something_it_might_say() -> None:
     await _engine(store).notice("mcp_failed", "не піднялись інструменти: files")
 
     assert store.added == [
-        ("mcp_failed", "не піднялись інструменти: files", I.SELF, 0.5, None)
+        ("mcp_failed", "не піднялись інструменти: files", I.SELF, 0.5, None, None)
     ]
 
 
@@ -66,7 +69,7 @@ async def test_who_asked_for_it_travels_with_it() -> None:
 
     await _engine(store).notice("mcp_failed", "впало", origin=I.USER, urgency=0.7)
 
-    _, _, origin, urgency, _ = store.added[0]
+    _, _, origin, urgency, _, _ = store.added[0]
     assert origin == I.USER
     assert urgency == 0.7
 
@@ -94,3 +97,64 @@ async def test_reporting_trouble_cannot_cause_more_trouble() -> None:
     await _engine(store).notice("mcp_failed", "впало")  # must not raise
 
     assert store.added == []
+
+
+class _Job:
+    """Only what `_notice` reads: an id, a state, an age and a sentence."""
+
+    def __init__(self, job_id: int, age_s: float, text: str) -> None:
+        self.id = job_id
+        self.state = "done"
+        self.age_seconds = age_s
+        self._text = text
+
+    def describe(self) -> str:
+        return self._text
+
+
+class _Jobs:
+    def __init__(self, jobs: list[_Job]) -> None:
+        self.jobs = jobs
+
+    async def recent(self, limit: int = 5) -> list[_Job]:
+        return self.jobs[:limit]
+
+
+async def test_a_start_does_not_announce_last_week() -> None:
+    """Observed on the engine's first live boot: it read the five most
+    recent finished jobs — one from three days back, four from the week
+    before — and formed an intent for each. The text it was holding began
+    "7 дн тому", so it knew, and meant to say it anyway.
+
+    Work that finished while the engine did not exist is not news it has
+    been keeping for you.
+    """
+    store = _Store()
+    engine = _engine(store)
+    engine._jobs = _Jobs(
+        [
+            _Job(1, 7 * 86400.0, "7 дн тому: стара робота"),
+            _Job(2, 30.0, "щойно: свіжа робота"),
+        ]
+    )
+
+    await engine._notice()
+
+    said = [text for _, text, *_ in store.added]
+    assert "щойно: свіжа робота" in said, "work finished just before a restart is news"
+    assert "7 дн тому: стара робота" not in said
+
+
+async def test_once_awake_it_reports_what_it_watched_run() -> None:
+    """The age check belongs to the first pass only. A job the engine saw
+    start may legitimately take hours, and it is still worth a word when
+    it lands."""
+    store = _Store()
+    engine = _engine(store)
+    engine._jobs = _Jobs([])
+    await engine._notice()  # first pass: nothing to prime
+
+    engine._jobs = _Jobs([_Job(9, 3 * 3600.0, "3 год тому: довга робота")])
+    await engine._notice()
+
+    assert "3 год тому: довга робота" in [text for _, text, *_ in store.added]

@@ -59,6 +59,12 @@ WATCH_EVERY_S = 20.0
 # trust, which climbs when it is brushed off.
 BASE_QUIET_S = 15 * 60.0
 
+# On the first pass after a start, how recently a finished job must have
+# finished to still be worth mentioning. Wide enough that work completed
+# just before a restart is not lost, narrow enough that yesterday stays
+# where it belongs.
+STALE_JOB_S = 10 * 60.0
+
 # Trust bounds. At 1.0 it speaks after the base wait; at 8.0 it is
 # effectively holding its tongue for two hours at a time.
 TRUST_MIN = 1.0
@@ -185,6 +191,7 @@ class Engine:
         persist: Any = None,
         jobs: Any = None,
         ask: Any = None,
+        idle: Any = None,
         watch: Any = None,
         tick_s: float = TICK_S,
         watch_every_s: float = WATCH_EVERY_S,
@@ -195,6 +202,11 @@ class Engine:
         self._persist = persist
         self._jobs = jobs
         self._ask = ask  # async (intent, situation) -> str | None
+        # async () -> seconds since the keyboard was last touched. Not
+        # part of the watcher: "is anyone there" is what stops it
+        # speaking to an empty room, and it has to work with the watcher
+        # switched off.
+        self._idle = idle
         # An EnvironmentWatch, or nothing. Absent, the engine behaves
         # exactly as before: it only ever reports on itself.
         self._watch = watch
@@ -204,6 +216,7 @@ class Engine:
         self.engine_state = EngineState()
         self._awaiting: I.Intent | None = None
         self._seen_jobs: set[int] = set()
+        self._noticed_once = False
         self.last_verdict: Verdict | None = None
 
     # -- the tick ------------------------------------------------------
@@ -241,6 +254,7 @@ class Engine:
             jobs=self._jobs,
             unprompted_last_ts=self.engine_state.unprompted_last_ts,
             unprompted_times=self.engine_state.unprompted_times,
+            idle=self._idle,
             now=now,
         )
 
@@ -271,6 +285,11 @@ class Engine:
                     origin=I.SELF,
                     urgency=change.urgency,
                     dedupe_key=change.dedupe_key,
+                    # What you are doing is said in the present tense or
+                    # not at all. Waiting is right for "the disk check
+                    # finished"; here it would eventually say something
+                    # that stopped being true while it waited.
+                    expires_ts=now + change.ttl_s,
                 )
         except Exception:  # noqa: BLE001
             logger.exception("engine: looking around failed (non-fatal)")
@@ -285,6 +304,7 @@ class Engine:
         origin: str = I.SELF,
         urgency: float = 0.5,
         dedupe_key: str | None = None,
+        expires_ts: float | None = None,
     ) -> None:
         """Somewhere else in the system noticed something worth saying.
 
@@ -314,6 +334,7 @@ class Engine:
                 origin=origin,
                 urgency=urgency,
                 dedupe_key=dedupe_key,
+                expires_ts=expires_ts,
             )
         except Exception:  # noqa: BLE001
             logger.exception("engine: could not hold %r (non-fatal)", kind)
@@ -330,10 +351,19 @@ class Engine:
         if self._jobs is None:
             return
         try:
+            first_pass, self._noticed_once = not self._noticed_once, True
             for job in await self._jobs.recent(limit=5):
                 if job.id in self._seen_jobs or job.state not in ("done", "failed"):
                     continue
                 self._seen_jobs.add(job.id)
+                # Everything finished before this engine woke up already
+                # happened without it. On the first live boot this read
+                # five jobs from the previous week and formed five
+                # intents to announce them — the text said "7 дн тому"
+                # and it meant to say it anyway. Only what finished
+                # around the restart is still news.
+                if first_pass and job.age_seconds > STALE_JOB_S:
+                    continue
                 await self._store.add(
                     "job_done",
                     job.describe(),

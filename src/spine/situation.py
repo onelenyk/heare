@@ -35,6 +35,31 @@ NIGHT_UNTIL = 7
 # "nobody is known to be here" rather than "they just spoke".
 UNKNOWN_SILENCE_S = 1e9
 
+# What an unknown keyboard reads as. Same shape as the silence sentinel
+# and for the same reason: no reading must never be mistaken for someone
+# sitting there.
+UNKNOWN_IDLE_S = 1e9
+
+# How recently the keyboard has to have been touched to count as being
+# at the desk. Generous on purpose — reading a screen is not absence,
+# and the cost of being wrong here is only that it may speak to someone
+# who stepped out for coffee.
+AT_KEYBOARD_S = 5 * 60.0
+
+# The phases ``agent_state`` can hold, split by whether a remark landing
+# now would be an interruption. Two vocabularies live here: the daemon
+# writes idle / talking / interrupted, the old engine wrote listening /
+# thinking / speaking, and for months this file only knew the second —
+# so the guard against speaking mid-turn could not fire.
+#
+# Every phase any writer produces must appear in one of these two sets.
+# That is not a style rule: a phase the reader has never heard of falls
+# through to "not busy", which is the answer that talks over you.
+# tests/test_spine_situation.py reads the daemon's literals and fails if
+# one is missing from both.
+BUSY_STATES = frozenset({"talking", "listening", "thinking", "speaking"})
+QUIET_STATES = frozenset({"idle", "interrupted", "unknown"})
+
 
 # Where it is. Read once at import: the machine does not move, and a
 # hostname lookup on every tick would be a syscall for a constant.
@@ -88,20 +113,50 @@ class Situation:
     unprompted_last_s: float  # since it last spoke unbidden
     unprompted_1h: int  # how often it has, this hour
 
+    # Whether anyone is at the desk at all — a different question from
+    # the one above, since most of a working day is spent not talking.
+    # Last, and defaulted, so every existing caller keeps working and
+    # gets the honest answer: not known.
+    idle_s: float = UNKNOWN_IDLE_S  # since the last key or mouse event
+
     @property
     def is_night(self) -> bool:
         return self.hour >= NIGHT_FROM or self.hour < NIGHT_UNTIL
 
     @property
     def user_is_here(self) -> bool:
-        """Talked within the last few minutes."""
-        return self.user_silence_s < 300
+        """Is there anyone to hear it.
+
+        Two ways of knowing, and the second was missing. Speech alone
+        answers "did they talk to me lately", which is not the question:
+        work an hour in silence and the engine concluded the room was
+        empty, held everything it had and said nothing. That is exactly
+        the hour a proactive assistant exists for.
+
+        The keyboard closes it. `HIDIdleTime` costs one 16 ms subprocess,
+        needs no permission and records nothing — it says only whether a
+        key or the mouse was touched, never which. Unknown stays unknown:
+        with no reading at all `idle_s` is the sentinel, and presence
+        falls back to speech alone.
+        """
+        return self.user_silence_s < 300 or self.idle_s < AT_KEYBOARD_S
 
     @property
     def busy_talking(self) -> bool:
         """Mid-turn: anything said now would be an interruption, not a
-        remark."""
-        return self.bot_state in ("listening", "thinking", "speaking")
+        remark.
+
+        The names here are two vocabularies, deliberately. The daemon
+        stamps ``agent_state`` as idle / talking / interrupted
+        (spine_engine.py ``_agent``); the old engine wrote listening /
+        thinking / speaking, and this property was written against that
+        one. So it looked for three words nothing had produced in months
+        and answered False through the middle of every sentence. Both
+        sets are listed rather than one translated into the other: the
+        cost of an extra string is nothing, and the cost of this guard
+        silently not firing is that it talks over you.
+        """
+        return self.bot_state in BUSY_STATES
 
     def describe(self) -> str:
         """One line, for the prompt and for the log.
@@ -170,6 +225,7 @@ async def observe(
     jobs: Any = None,
     unprompted_last_ts: float = 0.0,
     unprompted_times: list[float] | None = None,
+    idle: Any = None,
     now: float | None = None,
 ) -> Situation:
     """Gather the present from what is already being recorded.
@@ -177,6 +233,11 @@ async def observe(
     Every source is optional and every failure is absorbed: a situation
     with a hole in it is still worth having, and this runs on a timer
     beside a live conversation.
+
+    ``idle`` is the one sensor here — an async callable returning seconds
+    since the keyboard was last touched. Injected rather than imported so
+    this module keeps no opinion about where the number comes from, and
+    so a test can hand it a constant.
     """
     now = now if now is not None else time.time()
     stamp = time.localtime(now)
@@ -205,6 +266,15 @@ async def observe(
         except Exception:  # noqa: BLE001
             pass
 
+    # Absorbed like the rest: a sensor that cannot answer leaves the
+    # sentinel, and presence goes back to being judged by speech alone.
+    idle_s = UNKNOWN_IDLE_S
+    if idle is not None:
+        try:
+            idle_s = max(0.0, float(await idle()))
+        except Exception:  # noqa: BLE001
+            pass
+
     running = 0
     if jobs is not None:
         try:
@@ -227,4 +297,5 @@ async def observe(
         jobs_running=running,
         unprompted_last_s=max(0.0, now - unprompted_last_ts) if unprompted_last_ts else 1e9,
         unprompted_1h=len(recent),
+        idle_s=idle_s,
     )

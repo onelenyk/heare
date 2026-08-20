@@ -68,6 +68,10 @@ AWAY_S = 15 * 60.0
 # Back at the keyboard.
 PRESENT_S = 60.0
 
+# How long a remark about the surroundings stays true enough to make.
+# Said fifteen minutes late it is not a stale remark, it is a false one.
+FRESH_S = 15 * 60.0
+
 
 @dataclass(frozen=True)
 class Environment:
@@ -94,6 +98,11 @@ class Change:
     text: str
     urgency: float
     dedupe_key: str
+    # How long this stays worth saying. What you were doing is a remark
+    # about the present tense; heard an hour late it is not a smaller
+    # version of itself, it is wrong. The engine turns this into an
+    # intent that expires rather than one that waits.
+    ttl_s: float = FRESH_S
 
 
 # ── sensors ───────────────────────────────────────────────────────────
@@ -238,7 +247,20 @@ def changes(
         )
 
     # Still in one thing, well past the point where that is worth naming.
-    if not deep_said and cur.app and cur.app == prev.app:
+    # Only while someone is actually there, and only if they were there
+    # for the whole of it — both readings. An application left open
+    # through lunch has not been held for three hours, and the moment of
+    # coming back is exactly when the naive version fired: the clock had
+    # been running the entire absence. "Без перерви" said about two hours
+    # away is not a small inaccuracy; it is the assistant claiming to
+    # have watched something it did not.
+    if (
+        not deep_said
+        and cur.app
+        and cur.app == prev.app
+        and prev.idle_s < AWAY_S
+        and cur.idle_s < AWAY_S
+    ):
         held = max(0.0, cur.now - app_since)
         if held >= DEEP_S:
             out.append(
@@ -288,6 +310,14 @@ class EnvironmentWatch:
         self._deep_said = False
 
     def feed(self, sample: Environment) -> list[Change]:
+        # A reading with no front application is a sensor that failed,
+        # not a person who left. Taking it as a reading would count as a
+        # switch, restart the clock on the application and spend the
+        # long-stretch remark — one hiccup erasing an hour and a half of
+        # accumulated context.
+        if not sample.app:
+            return []
+
         previous = self.previous
         if previous is None:
             self.previous = sample
@@ -300,7 +330,11 @@ class EnvironmentWatch:
             app_since=self.app_since,
             deep_said=self._deep_said,
         )
-        if sample.app != previous.app:
+        came_back = previous.idle_s >= AWAY_S and sample.idle_s < PRESENT_S
+        if sample.app != previous.app or came_back:
+            # Coming back restarts the clock for the same reason a switch
+            # does: what is being measured is time spent at the thing,
+            # and being away is not that.
             self.app_since = sample.now
             self._deep_said = False
         if any(c.kind == "deep" for c in found):
