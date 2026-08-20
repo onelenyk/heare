@@ -167,3 +167,113 @@ gate off and interruptions on. See
 `experiments/spine/echo_probe.py` still has the same scale bug, plus a
 blocking consumer loop that reads stale audio as a barge-in. Its recorded
 results should be treated as meaningless.
+
+---
+
+# Found in the first live run, 2026-08-20
+
+Line numbers as of 2026-08-20. The full account, with the log excerpts
+that produced each, is in [first-live-run.md](first-live-run.md).
+
+## The engine could not tell it was mid-sentence — fixed
+
+`src/spine/loop.py`, `src/spine/situation.py`. Two independent breaks in
+one path, and either alone was enough.
+
+`Engine(state=getattr(loop, "state", None))` — `SpineLoop` had no such
+field and nothing ever assigned one, so the engine's view of the present
+was built from `state=None`. And even with the object in hand, the words
+did not match: the daemon stamps `agent_state` as `idle | talking |
+interrupted`, while `busy_talking` looked for `listening | thinking |
+speaking` — the deleted engine's vocabulary.
+
+So `judge`'s first condition, the one that stops it speaking into the
+middle of your sentence, returned False every time it was asked.
+
+The test that guarded this parametrised exactly the three words nothing
+writes. Now `BUSY_STATES` / `QUIET_STATES` hold both vocabularies and
+`tests/test_spine_situation.py` reads the `_agent("...")` literals back
+out of the daemon, failing if a phase appears that the engine cannot
+classify.
+
+## A start announced last week's work — fixed
+
+`src/spine/engine.py`, `_notice`. `_seen_jobs` starts empty, so on the
+first tick every already-finished job counted as news: five intents, four
+of them a week old, the text of each beginning "7 дн тому". The first
+pass now primes without raising anything older than `STALE_JOB_S`.
+
+What stopped it being heard was the model's veto (`ask`, wired the same
+morning), which refused all five in a row — the whole chain
+`notice → judge → ask → drop` running end to end for the first time.
+
+## Speech that is not addressed to it is written down nowhere
+
+`src/spine/loop.py:279-283`. The wake gate does `continue`;
+`_persist_user_turn` is only reached inside `respond()`. An hour of
+listening left zero rows in `transcripts`.
+
+`src/spine/wake_phrases.py:8` states the opposite — "the gate is on
+*acting*, not on hearing. Speech is still transcribed while asleep" — and
+`docs/next.md` builds its first feature on that promise. Not a code fix:
+it is a decision about what a microphone in a room may keep.
+
+## Presence was measured only by speech — fixed
+
+`src/spine/situation.py`, `user_is_here` = `user_silence_s < 300`. Work
+silently for an hour — the hour a proactive assistant exists for — and
+the engine concluded the room was empty, held whatever it had and said
+nothing.
+
+`Situation` now carries `idle_s`, fed by `HIDIdleTime` through an
+injected callable, and presence is either: talked lately, or at the
+keyboard. Deliberately outside the watcher's switch — "is anyone there"
+is not surveillance, and it has to work with the watching off. No
+reading stays `UNKNOWN_IDLE_S`, so a machine without the sensor falls
+back to speech rather than to assuming a person.
+
+## Modes reach the agent nowhere
+
+`src/agent/modes.py` is 206 lines of behaviour profiles with seven levers.
+Live consumers in the running engine: none.
+
+`set_mode` validates, writes through the State API and answers
+"Перейшов у режим focus"; the value lands in the database and no reader
+exists — the same missing `loop.state` as above leaves `Situation.mode`
+an empty string. Separately, three levers lost their executors:
+`src/core/pipeline.py` (17 Aug) took `voice_muted`,
+`src/pipeline/session_state.py` (19 Aug) took the live switch, and
+`src/voice/indication/*` (19 Aug) took `sound_policy`. `turn_timeout` and
+`prompt_addendum` never reached the spine at all.
+
+The module survived every dead-code sweep because it is imported by
+`api.py`, `spine/tools.py` and `agent/hands.py` — for roles, not for
+modes.
+
+## Pending intents never expired — fixed
+
+`src/spine/intents.py`, `sweep_stale` only touched rows already
+`VOICED`. An intent that could not be spoken — the room was empty, it
+was night — waited indefinitely and was still first in line days later,
+because `judge` picks by urgency and ties break oldest-first.
+`prompt_block` showed the same rows as "Висить між вами" the whole time.
+
+There is an `expires_ts` now, the mirror of `due_ts`: not before, and
+not after. `pending` skips what has passed and `sweep_expired` settles
+it. Most intents still have neither — "the disk check finished" is as
+true tomorrow — but a remark about what you are doing is said in the
+present tense or not at all.
+
+## Small, verified
+
+* `hearectl:62` starts the daemon as `"$PYTHON" -m src.main start &` —
+  no `nohup`, no `setsid`, so it dies with the terminal while
+  `make help` advertises "Start daemon in background". Unchanged since
+  31 May; the real entry point is the menu bar, where the daemon runs
+  in-process (and `hearectl status` therefore reports "not running"
+  while it is working).
+* `Makefile:64` — `make e2e` calls `python -m src.pipeline.room`,
+  deleted 17 August.
+* The startup greeting says «Гава на зв'язку»; the persona introduces
+  itself as «Дока». The homophone table in `wake_phrases.py:37` is
+  transcribed from live sessions for `doka` and guessed for `гава`.

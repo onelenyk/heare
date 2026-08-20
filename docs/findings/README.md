@@ -10,6 +10,7 @@ this machine, not from reading it.
 | [two-agents.md](two-agents.md) | Voice and hands: one model, split by deadline. The A/B, and the assumption it killed. |
 | [measuring.md](measuring.md) | The three instruments, and how to read them. |
 | [known-broken.md](known-broken.md) | Verified defects still unfixed, with line numbers. |
+| [first-live-run.md](first-live-run.md) | The engine's first four minutes against a real conversation. Six findings, none of them visible from the code; three days of work had passed review and never held a turn. |
 | [size.md](size.md) | Why simple features cost 30 000 lines, and the measured cut. |
 
 ## The one sentence
