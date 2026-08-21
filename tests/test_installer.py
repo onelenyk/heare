@@ -798,3 +798,77 @@ async def test_install_skill_extracts_off_event_loop(settings, fake_home):
         )
     assert result.success is True
     assert "extract_off_loop" in seen
+
+
+def test_the_bundle_ships_every_directory_the_code_reads() -> None:
+    """A packaging list is a place where a feature disappears quietly.
+
+    `roles/` was added on 16 August and never added here, so the built
+    app had no мітинг, вчитель, інтерв'ю or суфлер — and did not fail:
+    the loader found an empty directory and every trigger phrase simply
+    never matched. `onboarding.html` went the other way, deleted on the
+    19th and left in the list, which broke `make build` outright.
+
+    Both are the same defect. This reads the spec's own data list and
+    checks each path against the tree.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    spec = (root / "HeareMenubar.spec").read_text()
+    block = spec.split("datas = [", 1)[1].split("]", 1)[0]
+    sources = re.findall(r"""\(\s*['"]([^'"]+)['"]\s*,""", block)
+
+    assert sources, "no data entries found — did the spec change shape?"
+    missing = [s for s in sources if not (root / s).exists()]
+    assert not missing, f"the spec ships paths that do not exist: {missing}"
+
+    # And the other direction, for the directories the code resolves by
+    # name relative to the bundle root.
+    for needed in ("prompts", "skills", "roles"):
+        assert any(s == needed for s in sources), (
+            f"{needed}/ is read at runtime but not packaged"
+        )
+
+
+def test_the_bundle_collects_nothing_that_is_no_longer_installed() -> None:
+    """`pipecat` sat first in the collect list for two days after it was
+    uninstalled. It did not fail the build — collect_all warns and
+    returns empty lists — it just quietly stopped bringing anything.
+
+    That is how the app went deaf: PortAudio had been arriving through
+    pipecat's dependency tree, and nothing said so. A name here that
+    cannot be imported is collecting nothing, whatever it looks like.
+    """
+    import importlib.util
+    import re
+    from pathlib import Path
+
+    spec_text = (
+        Path(__file__).resolve().parent.parent / "HeareMenubar.spec"
+    ).read_text()
+    block = re.search(r"for mod in \(([^)]*)\)", spec_text, re.S)
+    assert block, "the collect loop changed shape"
+    modules = re.findall(r"""['"]([A-Za-z_][\w]*)['"]""", block.group(1))
+
+    assert modules, "no modules found in the collect loop"
+    missing = [m for m in modules if importlib.util.find_spec(m) is None]
+    assert not missing, f"the spec collects modules that are not installed: {missing}"
+
+
+def test_the_audio_library_is_packaged_by_name() -> None:
+    """The dylib sounddevice dlopens at runtime. It is not a linked
+    dependency of anything, so PyInstaller cannot discover it: if it is
+    not named, it is not there, and the app boots deaf rather than
+    failing."""
+    import re
+    from pathlib import Path
+
+    spec_text = (
+        Path(__file__).resolve().parent.parent / "HeareMenubar.spec"
+    ).read_text()
+    assert "_sounddevice_data" in spec_text, (
+        "PortAudio is collected through _sounddevice_data — without it the "
+        "built app raises 'PortAudio library not found' at boot"
+    )

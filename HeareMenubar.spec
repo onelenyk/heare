@@ -7,9 +7,15 @@ from PyInstaller.utils.hooks import collect_all
 datas = [
     ('src/frontend/dist/index.html', 'src/frontend'),
     ('src/frontend/dist/assets', 'src/frontend/dist/assets'),
-    ('src/frontend/onboarding.html', 'src/frontend'),
     ('prompts', 'prompts'),
     ('skills', 'skills'),
+    # Roles are read from `<root>/roles` — inside a bundle that resolves
+    # to sys._MEIPASS, so without this line the shipped app has no
+    # мітинг, вчитель, інтерв'ю or суфлер at all. It does not fail: the
+    # loader finds an empty directory, the log says "spine roles loaded:"
+    # with nothing after it, and every trigger phrase is simply never
+    # matched. Added 16 August, packaged never.
+    ('roles', 'roles'),
 ]
 
 binaries = [
@@ -31,7 +37,21 @@ hiddenimports = [
     'pyobjc-framework-cocoa',
 ]
 
-for mod in ('pipecat', 'aiohttp', 'websockets', 'httpx', 'edge_tts', 'sounddevice', 'httpx'):
+# `_sounddevice_data` is the one that matters and the one that was
+# missing. `sounddevice` is a single module, not a package, so
+# collect_all finds no libraries under it — the PortAudio dylib lives in
+# a separate top-level data directory beside it. Until pipecat was
+# dropped on 17 August something in its tree pulled libportaudio in
+# transitively, and the runtime hook found it in Frameworks and linked
+# it into place. With that gone, the built app raised
+# "PortAudio library not found" at boot and released its audio streams:
+# a bundle that starts, serves its dashboard, answers /state with 200 —
+# and is deaf.
+#
+# Collected by name here so it does not depend on anyone else's
+# dependency tree again.
+for mod in ('aiohttp', 'websockets', 'httpx', 'edge_tts',
+            'sounddevice', '_sounddevice_data'):
     tmp = collect_all(mod)
     datas += tmp[0]
     binaries += tmp[1]
@@ -81,14 +101,35 @@ a = Analysis(
     optimize=0,
 )
 
-# Deduplicate PortAudio
+# Deduplicate PortAudio — keep the first copy, not none of them.
+#
+# This used to drop every entry matching the sounddevice path, because a
+# second copy always arrived through pipecat's tree as
+# Frameworks/libportaudio.2.dylib and the runtime hook symlinked it into
+# place. Dropping pipecat took that copy away, and this line then removed
+# the only one left: the app built clean, launched, served its dashboard
+# and raised "PortAudio library not found" at boot — deaf, with nothing
+# in the build output to say so.
+#
+# Written as "keep the first" rather than "keep this specific path" so
+# that neither copy disappearing can produce that again.
+seen_portaudio = False
 final_binaries = []
 for item in a.binaries:
     dest = item[0]
     if 'portaudio-binaries/libportaudio.dylib' in dest:
-        continue
+        if seen_portaudio:
+            continue
+        seen_portaudio = True
     final_binaries.append(item)
 a.binaries = final_binaries
+
+if not seen_portaudio:
+    raise SystemExit(
+        "HeareMenubar.spec: no PortAudio library collected. The built app "
+        "would start, serve the dashboard and be unable to hear or speak. "
+        "Check that _sounddevice_data is in the collect list above."
+    )
 
 pyz = PYZ(a.pure)
 
