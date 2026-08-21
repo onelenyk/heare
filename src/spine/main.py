@@ -309,20 +309,25 @@ async def _wire_full(loop, settings, cfg, memory, features):
     loop.save_artifact = partial(save_artifact, artifacts_dir)
 
     class _RoleSessionState:
-        """Duck-typed session_state for the Hands mode gate: the active
-        role's deny_tools become a live ModeProfile. No role → None
-        profile is not allowed by mode_gate_refusal, so fall back to the
-        permissive default profile."""
+        """What is forbidden right now, asked of the one object that
+        knows: the active role.
+
+        This used to build a `ModeProfile` and fall back to the `ambient`
+        mode when no role was in session — which meant the gate consulted
+        a mode registry to answer a question no mode had influenced since
+        the spine was written. The modes are gone; the answer is the
+        role, or nothing is in force.
+        """
 
         @property
-        def profile(self):
-            from src.agent.modes import MODE_PROFILES, ModeProfile
+        def policy(self):
+            from src.agent.tool_gate import OPEN, ToolPolicy
 
             active = loop.role_manager.active if loop.role_manager else None
             if active is None or not getattr(active, "deny_tools", ()):
-                return MODE_PROFILES["ambient"]
-            return ModeProfile(
-                name=f"role:{active.name}",
+                return OPEN
+            return ToolPolicy(
+                name=f"роль «{active.name}»",
                 denied_tool_patterns=tuple(active.deny_tools),
                 voice_muted=getattr(active, "channel", "voice") == "log",
             )

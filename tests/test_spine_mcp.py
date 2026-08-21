@@ -75,13 +75,11 @@ def _settings() -> Any:
 
 
 def _profile(*denied: str) -> Any:
-    from src.agent.modes import MODE_PROFILES, ModeProfile
+    from src.agent.tool_gate import OPEN, ToolPolicy
 
     if not denied:
-        return MODE_PROFILES["ambient"]
-    return ModeProfile(
-        name="role:test", denied_tool_patterns=tuple(denied), voice_muted=False
-    )
+        return OPEN
+    return ToolPolicy(name="роль «тест»", denied_tool_patterns=tuple(denied))
 
 
 def _names(schemas: list[dict]) -> list[str]:
@@ -211,7 +209,7 @@ def _meeting_deny_tools() -> tuple[str, ...]:
 def test_meeting_role_hides_mcp_tools_from_the_worker() -> None:
     _bridge_with("mcp__files__read_file").register_worker_tools()
 
-    session_state = types.SimpleNamespace(profile=_profile(*_meeting_deny_tools()))
+    session_state = types.SimpleNamespace(policy=_profile(*_meeting_deny_tools()))
     worker = Hands(_settings(), session_state=session_state)
     names = _names(worker._tool_schemas())
 
@@ -226,7 +224,7 @@ async def test_meeting_role_refuses_an_mcp_call_it_never_advertised() -> None:
     bridge = _bridge_with("mcp__files__read_file", session=session)
     bridge.register_worker_tools()
 
-    session_state = types.SimpleNamespace(profile=_profile(*_meeting_deny_tools()))
+    session_state = types.SimpleNamespace(policy=_profile(*_meeting_deny_tools()))
     worker = McpHands(
         _settings(), session_state=session_state, mcp_provider=lambda: bridge
     )
@@ -283,7 +281,7 @@ async def test_built_in_tools_still_go_the_normal_way(monkeypatch) -> None:
 
 def test_the_factory_builds_a_gated_mcp_capable_worker() -> None:
     bridge = _bridge_with("mcp__files__read_file")
-    state = types.SimpleNamespace(profile=_profile())
+    state = types.SimpleNamespace(policy=_profile())
     worker = make_hands_factory(
         session_state=state, mcp_provider=lambda: bridge
     )(_settings())

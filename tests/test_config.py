@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 
 from src.config import (
-    Mode,
     Settings,
     backup_session_file,
     load_settings,
@@ -14,7 +13,6 @@ from src.config import (
 
 def test_default_settings() -> None:
     s = Settings()
-    assert s.mode == Mode.AMBIENT
     assert s.tts_voice == "en-US-AriaNeural"
     assert s.tts_sample_rate == 24000
     assert s.groq_api_key is None
@@ -37,13 +35,6 @@ def test_load_settings_mode_from_env(monkeypatch, tmp_path) -> None:
     import src.config as cfg_mod
     monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
     s = load_settings()
-    assert s.mode == Mode.SILENT
-
-
-def test_mode_enum_values() -> None:
-    assert Mode.SILENT.value == "silent"
-    assert Mode.FOCUS.value == "focus"
-    assert Mode.AMBIENT.value == "ambient"
 
 
 def test_wake_word_default() -> None:
@@ -96,7 +87,6 @@ def test_setting_the_switch_keeps_the_rest_of_the_file(monkeypatch, tmp_path) ->
     s = load_settings()
 
     assert s.capability_install_enabled is False
-    assert s.mode == Mode.FOCUS
 
 
 def test_the_switch_lands_above_the_first_table(monkeypatch, tmp_path) -> None:
@@ -162,19 +152,6 @@ def test_backup_session_file_increments(tmp_path) -> None:
     assert backup == tmp_path / "session_1.backup.json"
 
 
-def test_proactivity_level_default() -> None:
-    s = Settings()
-    assert s.proactivity_level == "medium"
-
-
-def test_proactivity_level_custom(monkeypatch, tmp_path) -> None:
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-
-    config_file = tmp_path / "config.toml"
-    config_file.write_text('proactivity_level = "high"\n')
-    s = load_settings()
-    assert s.proactivity_level == "high"
 
 
 def test_turn_aggregation_settings() -> None:
@@ -247,7 +224,6 @@ def test_an_old_config_with_a_deleted_section_still_loads(monkeypatch, tmp_path)
 
     settings = load_settings()
 
-    assert settings.mode == Mode.AMBIENT
     assert not hasattr(settings, "indication")
 
 def test_deprecated_enable_mcp_servers_warning(monkeypatch, tmp_path) -> None:

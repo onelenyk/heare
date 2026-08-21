@@ -254,29 +254,30 @@ def test_hands_hides_install_tools_while_the_gate_is_closed() -> None:
     assert INSTALL_TOOLS & open_names == INSTALL_TOOLS
 
 
-def test_hands_still_honours_the_mode_profile() -> None:
-    """Modes used to gate the conversational model's tools. With the work
-    moved to the worker, skipping the check here would turn every mode
-    into "allow everything" — a security control lost to a refactor."""
+def test_hands_still_honours_what_the_role_forbids() -> None:
+    """The gate used to belong to modes; it belongs to roles now, and the
+    thing being guarded never changed. With the work moved to the worker,
+    skipping the check here would turn every deny_tools line into a
+    prompt suggestion — a control lost to a refactor."""
     from src.agent.hands import Hands
-
-    from src.agent.modes import resolve
+    from src.agent.tool_gate import ToolPolicy, is_tool_allowed
 
     class SessionState:
-        profile = resolve("meeting")
+        policy = ToolPolicy(
+            name="роль «мітинг»",
+            denied_tool_patterns=("bash", "write", "stop_daemon", "mcp__*"),
+        )
 
     names = {
         s["function"]["name"]
         for s in Hands(Settings(), session_state=SessionState())._tool_schemas()
     }
-    from src.agent.modes import is_tool_allowed
-
     denied = {
         t.name
         for t in system.TOOLS
-        if t.enabled and not is_tool_allowed(SessionState.profile, t.name)
+        if t.enabled and not is_tool_allowed(SessionState.policy, t.name)
     }
-    assert denied, "the silent profile is expected to deny something"
+    assert denied, "the meeting role is expected to deny something"
     assert not (denied & names), f"worker offered denied tools: {denied & names}"
 
 

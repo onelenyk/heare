@@ -104,9 +104,8 @@ class Situation:
     user_silence_s: float  # since the user last said something
 
     # What it is doing
-    bot_state: str  # idle / listening / thinking / speaking
+    bot_state: str  # idle / talking / interrupted
     bot_state_s: float
-    mode: str
     jobs_running: int
 
     # Its own recent forwardness
@@ -176,8 +175,6 @@ class Situation:
             parts.append(f"тиша {_span(self.silence_s)}")
         if self.jobs_running:
             parts.append(f"в роботі: {self.jobs_running}")
-        if self.mode and self.mode != "ambient":
-            parts.append(f"режим {self.mode}")
         parts.append(PLACE)
         return ", ".join(parts)
 
@@ -243,11 +240,9 @@ async def observe(
     stamp = time.localtime(now)
 
     bot_state, bot_state_s = "unknown", 0.0
-    mode = ""
     if state is not None:
         try:
             bot_state, bot_state_s = _since(state.get("agent_state"), now)
-            mode = state.get("mode", "") or ""
         except Exception:  # noqa: BLE001
             pass
 
@@ -293,7 +288,6 @@ async def observe(
         user_silence_s=user_silence_s,
         bot_state=bot_state,
         bot_state_s=bot_state_s,
-        mode=mode,
         jobs_running=running,
         unprompted_last_s=max(0.0, now - unprompted_last_ts) if unprompted_last_ts else 1e9,
         unprompted_1h=len(recent),

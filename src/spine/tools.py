@@ -114,14 +114,14 @@ class McpHands(Hands):
         if not name.startswith("mcp__"):
             return await super()._execute(name, arguments)
 
-        from src.agent.modes import mode_gate_refusal
+        from src.agent.tool_gate import gate_refusal
 
         # Same gate as the built-in path, on the full mcp__slug__tool
         # name — the schema filter already dropped it, but a model can
         # still name a tool it was never shown.
-        refusal = mode_gate_refusal(self._session_state, name)
+        refusal = gate_refusal(self._session_state, name)
         if refusal is not None:
-            return f"{name} refused: {refusal.get('error', 'blocked by mode')}"
+            return f"{name} refused: {refusal.get('error', 'not allowed here')}"
 
         bridge = None
         if self._mcp_provider is not None:

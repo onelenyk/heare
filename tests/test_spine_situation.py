@@ -165,7 +165,7 @@ def test_the_engine_understands_the_word_the_daemon_actually_writes() -> None:
         return Situation(
             now=0.0, hour=12, minute=0, weekday=1,
             silence_s=10.0, user_silence_s=10.0,
-            bot_state=phase, bot_state_s=1.0, mode="", jobs_running=0,
+            bot_state=phase, bot_state_s=1.0, jobs_running=0,
             unprompted_last_s=1e9, unprompted_1h=0,
         )
 
@@ -210,7 +210,7 @@ def _sit(**kw):
     base = dict(
         now=0.0, hour=12, minute=0, weekday=1,
         silence_s=10.0, user_silence_s=10.0,
-        bot_state="idle", bot_state_s=1.0, mode="", jobs_running=0,
+        bot_state="idle", bot_state_s=1.0, jobs_running=0,
         unprompted_last_s=1e9, unprompted_1h=0,
     )
     base.update(kw)

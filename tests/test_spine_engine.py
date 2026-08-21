@@ -41,7 +41,6 @@ def sit(**kw) -> Situation:
         user_silence_s=60.0,
         bot_state="idle",
         bot_state_s=60.0,
-        mode="ambient",
         jobs_running=0,
         unprompted_last_s=1e9,
         unprompted_1h=0,

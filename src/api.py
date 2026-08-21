@@ -96,7 +96,6 @@ from src.agent.llm.providers import (
     list_models,
     make_identity_bootstrap,
 )  # noqa: E402
-from src.agent.modes import VALID_MODES  # noqa: E402
 from src.config import (  # noqa: E402
     HEARE_HOME,
     api_key_fields,
@@ -214,7 +213,6 @@ class API:
         logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
         self._app.router.add_get("/state", self._handle_state)
         self._app.router.add_post("/state", self._handle_state_post)
-        self._app.router.add_post("/mode", self._handle_mode)
         self._app.router.add_post("/mute", self._handle_mute)
         self._app.router.add_post("/interrupt", self._handle_interrupt)
         self._app.router.add_post("/provider", self._handle_provider)
@@ -294,7 +292,6 @@ class API:
             app.middlewares.append(self._auth_middleware)
         self._app.router.add_get("/state", self._handle_state)
         self._app.router.add_post("/state", self._handle_state_post)
-        self._app.router.add_post("/mode", self._handle_mode)
         self._app.router.add_post("/mute", self._handle_mute)
         self._app.router.add_post("/interrupt", self._handle_interrupt)
         self._app.router.add_post("/provider", self._handle_provider)
@@ -882,16 +879,6 @@ class API:
         except Exception:
             return web.json_response({"lines": []})
 
-    async def _handle_mode(self, request):
-        if self.state is None:
-            return web.json_response({"ok": False, "error": "daemon initializing"})
-        body = await request.json()
-        mode = body.get("mode", "focus")
-        if mode not in VALID_MODES:
-            return web.json_response({"ok": False}, status=400)
-        await self.state.set("mode", mode)
-        return web.json_response({"ok": True, "mode": mode})
-
     async def _handle_mute(self, request):
         if self.state is None:
             return web.json_response({"ok": False, "error": "daemon initializing"})
@@ -1133,9 +1120,6 @@ class API:
                 "deepseek_key": deepseek,
                 "language": self.config.groq_language or "uk",
                 "tts_voice": self.config.tts_voice or "uk-UA-OstapNeural",
-                "mode": self.config.mode.value
-                if hasattr(self.config.mode, "value")
-                else str(self.config.mode),
             }
         )
 

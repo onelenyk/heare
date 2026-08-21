@@ -20,7 +20,7 @@ agent/
 │   ├── dynamic.py           # User-created tool execution
 │   ├── capability_index.py  # Unified index (tools + skills + MCP)
 │   └── subagent.py          # run_opencode() subprocess spawn
-├── modes.py                 # ModeProfile dataclass + profiles
+├── tool_gate.py             # what the active role forbids the worker
 ├── browser_bridge.py        # WebSocket server for Chrome extension
 ├── mcp_bridge.py            # stdio MCP server spawn + tool registration
 ├── identity.py              # Auto-generated persona (name, emoji, vibe)
@@ -33,7 +33,7 @@ agent/
 |------|----------|
 | Add a tool | `registry.py:TOOLS` → `direct.py` handler → `schemas.py` arg schema → `system.py:build_tools_schema()` |
 | Add a provider | `llm/providers.py:PROVIDERS` dict — one entry per provider |
-| Add a mode | `modes.py:MODE_PROFILES` dict |
+| Forbid a tool during a role | `deny_tools:` in that role's `roles/*.md` |
 | Change system prompt | `llm/context_injector.py` + `prompt_sections.py` |
 | Add MCP server | `mcp_bridge.py:connect_mcp_servers()` — no code change needed |
 

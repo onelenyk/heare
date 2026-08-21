@@ -242,13 +242,6 @@ TOOLS: dict[str, Tool] = {
         description="Switch the active LLM provider (deepseek, zai, or opencode). Change takes effect on the next user utterance.",
         enabled=True,
     ),
-    "set_mode": Tool(
-        name="set_mode",
-        sdk_name="SetMode",
-        execution="direct",
-        description="Switch the agent's behavior mode: ambient (default conversational), focus (terse/fast), silent (speak only when addressed), assistant (proactive, full tools), meeting (passive note-taker, no side-effect tools). Takes effect immediately.",
-        enabled=True,
-    ),
     "show_text": Tool(
         name="show_text",
         sdk_name="ShowText",
@@ -592,7 +585,7 @@ def get_intent_to_sdk_mapping() -> dict[str, str]:
 # verbose line per tool — saving ~800 tokens per LLM call.
 _TOOL_GROUPS: dict[str, list[str]] = {
     "Lifecycle": [
-        "stop_daemon", "restart_daemon", "set_mode", "set_provider",
+        "stop_daemon", "restart_daemon", "set_provider",
         "mute_bot", "mute_mic", "cancel",
         "vad_sensitivity", "mic_gain", "volume", "sidetone",
     ],

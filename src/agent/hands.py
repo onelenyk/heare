@@ -193,16 +193,16 @@ class Hands:
     def _tool_schemas(self) -> list[dict]:
         """Every enabled tool except ``delegate`` — no handing work back.
 
-        The mode profile is applied here. It used to gate the
+        The active role's policy is applied here. It used to gate the
         conversational model's tools; with the work moved to the worker,
-        not re-checking it would quietly turn every mode into "allow
-        everything" — a security control lost to a refactor.
+        not re-checking it would quietly turn every restriction into
+        "allow everything" — a control lost to a refactor.
         """
-        from src.agent.modes import is_tool_allowed as mode_is_tool_allowed
+        from src.agent.tool_gate import is_tool_allowed
         from src.agent.tools.capability_index import INSTALL_TOOLS
         from src.agent.tools.system import TOOLS
 
-        profile = getattr(self._session_state, "profile", None)
+        policy = getattr(self._session_state, "policy", None)
         # Install tools are blocked by the installer anyway when the gate is
         # off; keeping them in the schema means the model offers what it
         # will then refuse. Drop them so it never promises an install.
@@ -215,9 +215,7 @@ class Hands:
                 return False
             if name in INSTALL_TOOLS and not install_ok:
                 return False
-            if profile is None:
-                return True
-            return mode_is_tool_allowed(profile, name)
+            return is_tool_allowed(policy, name)
 
         return [
             {
@@ -239,23 +237,23 @@ class Hands:
     async def _execute(self, name: str, arguments: dict) -> str:
         """Run one tool through the pipeline's own execution path.
 
-        The mode gate and the action log live in the pipeline's handler
+        The tool gate and the action log live in the pipeline's handler
         wrapper, which the worker does not go through. Repeating them here
-        is deliberate: without the gate every mode would quietly become
-        "allow everything", and without the log the actions table would go
-        back to being empty — the state that made the assistant's own work
-        invisible for months.
+        is deliberate: without the gate a role's deny_tools would quietly
+        become a prompt suggestion, and without the log the actions table
+        would go back to being empty — the state that made the assistant's
+        own work invisible for months.
         """
-        from src.agent.modes import mode_gate_refusal
+        from src.agent.tool_gate import gate_refusal
         from src.agent.tools.direct import execute_direct
         from src.agent.tools.system import _SERIALIZERS, tool_timeout_secs
 
         serializer = _SERIALIZERS.get(name)
         args_str = serializer(arguments) if serializer else json.dumps(arguments)
 
-        refusal = mode_gate_refusal(self._session_state, name)
+        refusal = gate_refusal(self._session_state, name)
         if refusal is not None:
-            return f"{name} refused: {refusal.get('error', 'blocked by mode')}"
+            return f"{name} refused: {refusal.get('error', 'not allowed here')}"
 
         intent_id = self._record_pending(name, args_str)
         try:

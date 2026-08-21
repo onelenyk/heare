@@ -202,8 +202,6 @@ async def execute_direct(
         return await _execute_run_skill(args, settings)
     elif tool == "set_provider":
         return await _execute_set_provider(args, settings)
-    elif tool == "set_mode":
-        return await _execute_set_mode(args, settings)
     elif tool == "show_text":
         return await _execute_show_display(args, settings)
     elif tool == "show_canvas":
@@ -2194,69 +2192,6 @@ async def _execute_set_provider(args: str, settings: "Settings | None" = None) -
             "output": "",
             "error": f"Failed to set provider: {str(e)}",
             "spoken": {"en": "Failed to switch provider."},
-        }
-
-
-async def _execute_set_mode(args: str, settings: "Settings | None" = None) -> dict:
-    """Switch the agent behavior mode at runtime.
-
-    Persists via the State API, which is what the running engine reads
-    (`state.get("mode")`, see src/spine/situation.py). Always callable —
-    exempt from gating, since a mode must never be able to lock you out of
-    changing it.
-
-    It used to also flush a half-spoken turn and flip a live SessionState,
-    "so timing / sound / prompt / tool-gating all follow the new profile".
-    None of that had run for some time: the object was installed by the
-    old engine's composition root, so `get_active_session_state()` always
-    returned None and both calls were skipped. The State API write is the
-    half that works, and it is the half that is left.
-    """
-    try:
-        from src.agent.modes import VALID_MODES
-
-        mode = args.strip().lower()
-        if mode not in VALID_MODES:
-            valid = ", ".join(VALID_MODES)
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Invalid mode: {mode!r}. Valid modes: {valid}",
-                "spoken": {
-                    "en": f"I don't have a {mode} mode. Try: {valid}.",
-                    "uk": f"Немає режиму {mode}. Доступні: {valid}.",
-                },
-            }
-
-        # Persist via State API
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(
-                    f"{API_BASE}/mode",
-                    json={"mode": mode},
-                    headers=_api_headers(),
-                    timeout=5,
-                )
-                if resp.status_code != 200:
-                    logger.warning("State API returned %s for mode", resp.status_code)
-            except httpx.RequestError as api_err:
-                logger.warning("State API unavailable for mode: %s", api_err)
-
-        return {
-            "success": True,
-            "output": f"Mode set to {mode}",
-            "spoken": {
-                "en": f"Switched to {mode} mode.",
-                "uk": f"Перейшов у режим {mode}.",
-            },
-        }
-    except Exception as e:
-        logger.exception("_execute_set_mode failed")
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Failed to set mode: {str(e)}",
-            "spoken": {"en": "Failed to switch mode."},
         }
 
 

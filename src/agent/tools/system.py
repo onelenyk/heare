@@ -109,10 +109,6 @@ def _provider_serializer(args: dict[str, Any]) -> str:
     return str(args.get("provider", "")).strip()
 
 
-def _mode_serializer(args: dict[str, Any]) -> str:
-    return str(args.get("mode", "")).strip()
-
-
 TOOLS: list[ToolDef] = [
     ToolDef(
         name="bash",
@@ -422,18 +418,6 @@ TOOLS: list[ToolDef] = [
             "provider": {
                 "type": "string",
                 "description": "LLM provider to switch to (deepseek, zai, or opencode).",
-            },
-        },
-    ),
-    ToolDef(
-        name="set_mode",
-        description="Switch the agent's behavior mode: ambient (default conversational), focus (terse/fast), silent (speak only when addressed), assistant (proactive, full tools), meeting (passive note-taker). Takes effect immediately.",
-        handler="mode_set",
-        schema_fields={
-            "mode": {
-                "type": "string",
-                "enum": ["ambient", "focus", "silent", "assistant", "meeting"],
-                "description": "Behavior mode to switch to.",
             },
         },
     ),
@@ -1056,7 +1040,6 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "list_skills": _empty_serializer,
     "run_skill": _json_serializer,
     "set_provider": _provider_serializer,
-    "set_mode": _mode_serializer,
     "show_text": _show_text_serializer,
     "show_canvas": _show_canvas_serializer,
     "discover_capability": _json_serializer,

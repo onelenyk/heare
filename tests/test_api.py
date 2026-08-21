@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.api import API, tail_lines
-from src.agent.modes import VALID_MODES
 
 
 # ---------------------------------------------------------------------------
@@ -145,43 +144,6 @@ async def test_get_state_providers_reflect_config(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_post_mode_valid(api, mock_state) -> None:
-    request = _mock_request(json_data={"mode": "silent"})
-    resp = await api._handle_mode(request)
-    assert resp.status == 200
-    data = json.loads(resp.body)
-    assert data["ok"] is True
-    assert data["mode"] == "silent"
-    mock_state.set.assert_awaited_once_with("mode", "silent")
-
-
-@pytest.mark.asyncio
-async def test_post_mode_defaults_to_focus(api, mock_state) -> None:
-    request = _mock_request(json_data={})
-    resp = await api._handle_mode(request)
-    assert resp.status == 200
-    data = json.loads(resp.body)
-    assert data["mode"] == "focus"
-    mock_state.set.assert_awaited_once_with("mode", "focus")
-
-
-@pytest.mark.asyncio
-async def test_post_mode_invalid(api, mock_state) -> None:
-    request = _mock_request(json_data={"mode": "bogus"})
-    resp = await api._handle_mode(request)
-    assert resp.status == 400
-    data = json.loads(resp.body)
-    assert data["ok"] is False
-    mock_state.set.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_post_mode_rejects_empty_string(api, mock_state) -> None:
-    request = _mock_request(json_data={"mode": ""})
-    resp = await api._handle_mode(request)
-    assert resp.status == 400
-    mock_state.set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +419,6 @@ def test_routes_registered(api) -> None:
         for route in r:
             pairs.append((route.method, r.canonical))
     assert ("GET", "/state") in pairs
-    assert ("POST", "/mode") in pairs
     assert ("POST", "/mute") in pairs
     assert ("POST", "/provider") in pairs
     assert ("POST", "/model") in pairs
@@ -468,8 +429,17 @@ def test_routes_registered(api) -> None:
     assert ("POST", "/cancel") in pairs
 
 
-def test_mode_values_are_valid() -> None:
-    assert all(isinstance(m, str) and m for m in VALID_MODES)
+def test_the_mode_endpoint_is_gone(api) -> None:
+    """Modes were a global adjective nothing read: the endpoint took a
+    value, wrote it to State, and changed nothing anywhere — see
+    docs/findings/known-broken.md. Roles replaced them, and a role is
+    entered by saying so, not by POSTing."""
+    pairs = [
+        (route.method, r.canonical)
+        for r in api._app.router.resources()
+        for route in r
+    ]
+    assert ("POST", "/mode") not in pairs
 
 
 # ---------------------------------------------------------------------------

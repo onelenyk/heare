@@ -21,7 +21,7 @@ from pathlib import Path
 
 from typing import TYPE_CHECKING
 
-from src.config import Mode, load_settings
+from src.config import load_settings
 
 if TYPE_CHECKING:  # names used only in annotations
     from src.api import API
@@ -241,21 +241,11 @@ def _cmd_status(args: argparse.Namespace) -> int:
         except ProcessLookupError:
             settings.pid_file.unlink(missing_ok=True)
     print(f"heare running: {running}")
-    print(f"mode:         {settings.mode.value}")
     print(f"db:           {settings.db_path}")
     print(f"session:      {settings.session_file}")
     return 0
 
 
-async def _cmd_mode(args: argparse.Namespace) -> int:
-    from src.state import State
-
-    settings = load_settings()
-    mode = Mode(args.mode_name)
-    state = State(settings.db_path)
-    await state.init()
-    await state.set("mode", mode.value)
-    print(f"mode set to {mode.value}")
     return 0
 
 
@@ -412,8 +402,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("stop", help="Stop the running daemon via pid file")
     sub.add_parser("status", help="Show daemon status")
 
-    mode_p = sub.add_parser("mode", help="Set the current mode (hot-reloaded)")
-    mode_p.add_argument("mode_name", choices=[m.value for m in Mode])
 
     prov_p = sub.add_parser("provider", help="Set the LLM provider (hot-reloaded)")
     from src.agent.llm.providers import all_keys
@@ -472,8 +460,6 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_stop(args)
     if cmd == "status":
         return _cmd_status(args)
-    if cmd == "mode":
-        return asyncio.run(_cmd_mode(args))
     if cmd == "provider":
         return asyncio.run(_cmd_provider(args))
     if cmd == "audio-input":

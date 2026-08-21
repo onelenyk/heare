@@ -1,6 +1,6 @@
 """Settings and shared enums.
 
-Mutable runtime state (current mode) lives in ~/.heare/mode so it can be
+Mutable runtime state lives in small files under ~/.heare so it can be
 hot-reloaded without restarting the daemon.
 """
 
@@ -24,14 +24,6 @@ def _get_default_sdk_tools():
 
 
 logger = logging.getLogger("heare.config")
-
-
-class Mode(str, Enum):
-    SILENT = "silent"
-    FOCUS = "focus"
-    AMBIENT = "ambient"
-    ASSISTANT = "assistant"
-    MEETING = "meeting"
 
 
 
@@ -70,7 +62,6 @@ def _load_browser_bridge_settings(settings: "Settings", raw: dict) -> None:
 
 @dataclass
 class Settings:
-    mode: Mode = Mode.AMBIENT
     tts_voice: str = "en-US-AriaNeural"
     tts_sample_rate: int = 24000
     bot_speaking_cooldown_seconds: float = 1.0
@@ -204,7 +195,6 @@ class Settings:
     identity_file: Path = field(default_factory=lambda: HEARE_HOME / "identity.json")
     db_path: Path = field(default_factory=lambda: HEARE_HOME / "heare.db")
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
-    mode_file: Path = field(default_factory=lambda: HEARE_HOME / "mode")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
     mute_file: Path = field(default_factory=lambda: HEARE_HOME / "mute.flag")
     mute_input_file: Path = field(
@@ -265,9 +255,7 @@ class Settings:
     capability_install_enabled: bool = False
     # Wake word / command keyword. Set via config.toml. Default is "гава".
     wake_word: str = "гава"
-    # Proactivity level for ambient mode: "low" | "medium" | "high"
     # medium = prompt defaults; low = reserved; high = very engaged.
-    proactivity_level: str = "medium"
     # Turn aggregation and conversation memory settings
     # Per plan US-010: default to False for gradual rollout
     turn_aggregation_enabled: bool = False
@@ -538,8 +526,6 @@ def load_settings() -> Settings:
             current = getattr(settings, key)
             if isinstance(current, Path):
                 value = Path(value).expanduser()
-            elif isinstance(current, Mode):
-                value = Mode(value)
             setattr(settings, key, value)
 
     _load_browser_bridge_settings(settings, toml_data.get("browser_bridge", {}))
@@ -655,14 +641,6 @@ def load_settings() -> Settings:
                 barge_in_ratio_env,
             )
 
-    mode_override = os.environ.get("HEARE_MODE")
-    if mode_override:
-        settings.mode = Mode(mode_override)
-    elif settings.mode_file.exists():
-        raw = settings.mode_file.read_text().strip()
-        if raw:
-            settings.mode = Mode(raw)
-
     if settings.provider_file.exists():
         raw = settings.provider_file.read_text().strip().lower()
         if raw in PROVIDERS:
@@ -701,7 +679,7 @@ def ensure_api_token(settings: Settings) -> str:
 
     The token lives alone in ``settings.api_token_file`` (``~/.heare/api_token``)
     at mode 0600, following the same read-a-small-file pattern as
-    ``mode_file`` / ``provider_file``. It is created with ``O_CREAT | O_EXCL``
+    ``provider_file``. It is created with ``O_CREAT | O_EXCL``
     so two processes starting at once cannot each write a different token
     and leave one of them holding a stale one.
 
