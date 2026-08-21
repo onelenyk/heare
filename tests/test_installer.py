@@ -821,7 +821,14 @@ def test_the_bundle_ships_every_directory_the_code_reads() -> None:
     sources = re.findall(r"""\(\s*['"]([^'"]+)['"]\s*,""", block)
 
     assert sources, "no data entries found — did the spec change shape?"
-    missing = [s for s in sources if not (root / s).exists()]
+
+    # `src/frontend/dist/` is built by `make frontend`, not committed —
+    # it is in .gitignore. Asserting it exists passes on the machine that
+    # just built and fails in a fresh clone, which is a test that lies in
+    # exactly the direction that matters. The build itself catches a
+    # missing dist: PyInstaller errors on a data path it cannot find.
+    tracked = [s for s in sources if not s.startswith("src/frontend/dist")]
+    missing = [s for s in tracked if not (root / s).exists()]
     assert not missing, f"the spec ships paths that do not exist: {missing}"
 
     # And the other direction, for the directories the code resolves by
