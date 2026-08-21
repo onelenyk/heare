@@ -53,7 +53,14 @@ class ToolDef:
 # minute later, after a worker has been spun up, is an apology rather
 # than an action — and the thing it erases is the one thing someone
 # might be waiting to see gone.
-VOICE_TOOLS = frozenset({"delegate", "remember", "recall", "forget"})
+# `search_conversations` is the fifth, and it is here rather than behind
+# `delegate` because it is a question about this conversation's own past
+# — «що я казав про таймаут». Answered a minute later by a worker it is
+# no longer part of the exchange that asked, and the cost of keeping it
+# in the fast path is one indexed query, not a model call.
+VOICE_TOOLS = frozenset(
+    {"delegate", "remember", "recall", "forget", "search_conversations"}
+)
 
 
 

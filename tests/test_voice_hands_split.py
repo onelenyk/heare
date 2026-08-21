@@ -24,7 +24,7 @@ from src.config import Settings
 # ── what the conversational model can see ─────────────────────────────
 
 
-def test_the_voice_agent_sees_its_four_verbs() -> None:
+def test_the_voice_agent_sees_its_five_verbs() -> None:
     """The schemas the voice model is handed, from the toolbox that hands
     them over. This used to read the pipeline's registration helpers; they
     went with the engine, and the spine builds its own — so asserting
@@ -50,7 +50,13 @@ def test_the_worker_is_offered_everything_except_delegate() -> None:
 def test_delegate_exists_and_is_one_of_the_verbs() -> None:
     names = {t.name for t in system.TOOLS if t.enabled}
     assert "delegate" in names
-    assert system.VOICE_TOOLS == {"delegate", "remember", "recall", "forget"}
+    assert system.VOICE_TOOLS == {
+        "delegate",
+        "remember",
+        "recall",
+        "forget",
+        "search_conversations",
+    }
 
 
 

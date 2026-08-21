@@ -1,10 +1,10 @@
-"""VoiceToolbox — the voice agent's three verbs: delegate, remember, recall.
+"""VoiceToolbox — the voice agent's five verbs.
 
 Mirrors the daemon's voice/hands split (see ``src/agent/hands.py`` and the
 ``VOICE_TOOLS`` set in ``src/agent/tools/system.py``): the voice model,
-under a latency budget, only ever chooses among three schemas. Everything
-heavier — files, the shell, the web — goes to ``Hands``, which has no
-deadline and is not in the speaking path.
+under a latency budget, only ever chooses among a handful of schemas.
+Everything heavier — files, the shell, the web — goes to ``Hands``,
+which has no deadline and is not in the speaking path.
 
 This module deliberately does not import ``src.agent.tools.system`` (it
 drags in Pipecat and the rest of the sixty-tool surface). The schema
@@ -20,11 +20,13 @@ import logging
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from src.agent.hands import PROGRESS_AFTER, Hands
 from src.memory.base import MemoryEntry, MemoryType
+from src.spine import search
 
 logger = logging.getLogger("heare.spine.tools")
 
@@ -453,6 +455,49 @@ SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "search_conversations",
+            "description": (
+                "Search what was actually SAID in your past conversations "
+                "with this person — use it whenever they ask what they "
+                "told you, what you agreed, or when something came up. "
+                "Different from `recall`, which only finds facts you were "
+                "asked to store; this reads the transcripts themselves."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "The words to look for — the subject, not the "
+                            "whole question."
+                        ),
+                    },
+                    "when": {
+                        "type": "string",
+                        "description": (
+                            "Their own words about when, if they said any: "
+                            "«вчора», «минулого тижня», «у вівторок», «три "
+                            "дні тому». Leave out if they did not."
+                        ),
+                    },
+                    "room": {
+                        "type": "boolean",
+                        "description": (
+                            "Include speech overheard in the room rather "
+                            "than said to you. Only when they explicitly "
+                            "ask about what was said around you — never "
+                            "as a second try."
+                        ),
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "recall",
             "description": "Search your persistent memory.",
             "parameters": {
@@ -471,7 +516,7 @@ SCHEMAS: list[dict] = [
 
 
 class VoiceToolbox:
-    """The voice agent's four verbs. Anything heavier goes to Hands."""
+    """The voice agent's five verbs. Anything heavier goes to Hands."""
 
     def __init__(
         self,
@@ -483,8 +528,9 @@ class VoiceToolbox:
         persist: Any = None,
     ) -> None:
         """memory: an initialized SQLiteBackend (or compatible).
-        persist: the transcript store, for `forget` — None means there is
-        nothing written down to erase, which is the honest answer when
+        persist: the transcript store, for `forget` and
+        `search_conversations` — None means there is nothing written
+        down to erase or to search, which is the honest answer when
         persistence is switched off.
         deliver: async fn; Hands results are delivered through it
         (wired here via ``hands.set_delivery(deliver)``).
@@ -505,7 +551,7 @@ class VoiceToolbox:
 
     @property
     def schemas(self) -> list[dict]:
-        """OpenAI function-calling schemas for delegate / remember / recall."""
+        """OpenAI function-calling schemas for the verbs above."""
         return SCHEMAS
 
     async def execute(self, name: str, arguments: dict) -> str:
@@ -520,6 +566,8 @@ class VoiceToolbox:
                 return await self._recall(arguments)
             if name == "forget":
                 return await self._forget(arguments)
+            if name == "search_conversations":
+                return await self._search_conversations(arguments)
             return "Такої дії я не знаю."
         except Exception:
             logger.exception("[SPINE TOOLS] %s failed: %.200s", name, arguments)
@@ -561,6 +609,36 @@ class VoiceToolbox:
         if not gone:
             return "Там і не було чого забувати."
         return f"Забула. {gone} рядків за останні {minutes} хвилин."
+
+    async def _search_conversations(self, arguments: dict) -> str:
+        """«Що я казав про...» — search the transcripts, answer out loud.
+
+        The sentence is finished here rather than handed back to the
+        model: `SpineLoop._run_tool` speaks a verb's return value
+        verbatim. So this is the one verb whose *return value* has to
+        obey the voice rules — one short sentence, no lists, and it must
+        name when.
+
+        Off the event loop, because the query is synchronous SQLite over
+        four thousand rows and the loop it would block is the one
+        carrying audio.
+        """
+        if self._persist is None:
+            return "Я не веду записів наших розмов."
+        query = str(arguments.get("query", "")).strip()
+        if not query:
+            return "Що саме згадати?"
+        now = datetime.now()
+        fragments = await asyncio.to_thread(
+            search.find,
+            self._persist,
+            query,
+            now=now,
+            when=str(arguments.get("when", "") or ""),
+            room=bool(arguments.get("room", False)),
+        )
+        logger.info("search: %r -> %d fragments", query, len(fragments))
+        return search.spoken(fragments, now=now)
 
     async def _remember(self, arguments: dict) -> str:
         content = str(arguments.get("content", "")).strip()
