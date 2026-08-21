@@ -68,6 +68,11 @@ FEATURES: tuple[Feature, ...] = (
     # choose this.
     Feature("hear_all", False, "чує кімнату, але не пам'ятає нічого, що "
                                "сказано не до нього"),
+    # Off by default, and this one has a history: озиватись першим уже
+    # пробували — за таймером — і воно виявилось нестерпним. Тому воно
+    # за перемикачем від першого дня, а не після першого тижня.
+    Feature("repeats", False, "не помічає, що ти вкотре кажеш «треба» про "
+                              "те саме"),
 )
 
 _BY_NAME = {f.name: f for f in FEATURES}
