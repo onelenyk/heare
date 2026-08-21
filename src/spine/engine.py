@@ -59,6 +59,16 @@ WATCH_EVERY_S = 20.0
 # trust, which climbs when it is brushed off.
 BASE_QUIET_S = 15 * 60.0
 
+# How long a conversation has to stay quiet before it counts as over.
+# A voice assistant has no hang-up, so silence is the only boundary
+# there is — and it has to be long enough that going to look something
+# up, or thinking, does not end anything.
+CONVERSATION_IDLE_S = 30 * 60.0
+
+# How often to ask whether it has. One indexed query, but there is no
+# reason to run it twelve times a minute.
+CLOSE_EVERY_S = 60.0
+
 # On the first pass after a start, how recently a finished job must have
 # finished to still be worth mentioning. Wide enough that work completed
 # just before a restart is not lost, narrow enough that yesterday stays
@@ -192,6 +202,7 @@ class Engine:
         jobs: Any = None,
         ask: Any = None,
         idle: Any = None,
+        summarise: Any = None,
         watch: Any = None,
         tick_s: float = TICK_S,
         watch_every_s: float = WATCH_EVERY_S,
@@ -210,6 +221,11 @@ class Engine:
         # An EnvironmentWatch, or nothing. Absent, the engine behaves
         # exactly as before: it only ever reports on itself.
         self._watch = watch
+        # async (said) -> str | None. Absent, conversations still close;
+        # they just close without a summary, which is the honest state
+        # for a machine with no model wired.
+        self._summarise = summarise
+        self._closed_ts = 0.0
         self._tick_s = tick_s
         self._watch_every_s = watch_every_s
         self._watched_ts = 0.0
@@ -239,6 +255,7 @@ class Engine:
     async def tick(self, now: float | None = None) -> Verdict:
         await self._notice()
         await self._look_around(now)
+        await self._close_conversation(now)
         situation = await self.observe(now=now)
         pending = await self._store.pending()
         verdict = judge(situation, pending, self.engine_state)
@@ -293,6 +310,50 @@ class Engine:
                 )
         except Exception:  # noqa: BLE001
             logger.exception("engine: looking around failed (non-fatal)")
+
+    async def _close_conversation(self, now: float | None = None) -> None:
+        """Notice that a conversation is over, and write down what it was.
+
+        Nothing had ended a conversation since 13 August — the code that
+        did went with the engine deleted that day — so one row had been
+        open for nine days, holding every turn since, and `summary` was
+        a column with nowhere to be written. Both halves live here
+        because both are about what outlives a turn, which is what this
+        object is for.
+
+        The model call happens only when something actually closed, so
+        the usual cost of this method is one indexed query a minute.
+        Everything is absorbed: a summary that cannot be written is a
+        summary missing, not a conversation that could not end.
+        """
+        if self._persist is None:
+            return
+        now = now if now is not None else time.time()
+        if now - self._closed_ts < CLOSE_EVERY_S:
+            return
+        self._closed_ts = now
+        try:
+            closed = await asyncio.to_thread(
+                self._persist.close_idle_conversation,
+                now=now,
+                after_s=CONVERSATION_IDLE_S,
+            )
+            if closed is None:
+                return
+            conversation_id, said = closed
+            if self._summarise is None:
+                return
+            summary = await self._summarise(said)
+            if not summary:
+                return
+            await asyncio.to_thread(
+                self._persist.save_summary, conversation_id, summary
+            )
+            logger.info(
+                "engine: conversation %d — %.90s", conversation_id, summary
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: closing the conversation failed (non-fatal)")
 
     # -- told from outside ---------------------------------------------
 

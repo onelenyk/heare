@@ -29,12 +29,15 @@ code to make those columns real.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
 from pathlib import Path
 
 from src.store.storage import SCHEMA, SCHEMA_VERSION
+
+logger = logging.getLogger("spine.persist")
 
 # The one table the spine owns alone. It is NOT in storage.py's SCHEMA and
 # does NOT bump SCHEMA_VERSION: storage.py's `_check_schema_version` refuses
@@ -183,6 +186,89 @@ class SpinePersistence:
             )
             user_ts = (cur.fetchone() or [None])[0]
         return {"any": any_ts, "user": user_ts}
+
+    # -- where one conversation ends and the next begins ---------------
+    #
+    # Nothing had closed a conversation since 13 August: the code that
+    # did lived in the engine deleted that day, and
+    # `_active_conversation_id` only ever get-or-creates. So one row has
+    # been open for nine days and holds every turn since — which makes
+    # "what did we talk about" a question with exactly one answer, and
+    # `summary` a field with nowhere to be written.
+    #
+    # A voice assistant has no hang-up, so the boundary can only be
+    # silence. Long enough that a pause to think, or to go and look at
+    # something, does not end anything.
+
+    def close_idle_conversation(
+        self, *, now: float, after_s: float
+    ) -> tuple[int, list[tuple[int, str]]] | None:
+        """End the open conversation if it has gone quiet, and hand back
+        what was said in it.
+
+        `end_ts` is the last thing said, not the moment this noticed.
+        Stamping "now" would put the end of the conversation at whatever
+        time a tick happened to run and make every gap look like part of
+        it.
+
+        Returns None when there is nothing open, when it is still warm,
+        or when it holds nothing worth summarising.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT id, start_ts FROM conversations WHERE end_ts IS NULL "
+                "ORDER BY start_ts DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            conversation_id, start_ts = int(row[0]), float(row[1])
+
+            cur = self._conn.execute(
+                "SELECT MAX(t.ts) FROM transcripts t JOIN turns tu "
+                "ON t.turn_id = tu.id WHERE tu.conversation_id = ?",
+                (conversation_id,),
+            )
+            last_ts = (cur.fetchone() or [None])[0]
+            # An empty conversation is not stale, it is unused. Closing
+            # it would leave a row with no turns and open another exactly
+            # like it on the next word.
+            if last_ts is None:
+                return None
+            if now - float(last_ts) < after_s:
+                return None
+
+            cur = self._conn.execute(
+                "SELECT t.agent_spoken, t.text FROM transcripts t JOIN turns tu "
+                "ON t.turn_id = tu.id WHERE tu.conversation_id = ? "
+                "ORDER BY t.ts ASC",
+                (conversation_id,),
+            )
+            said = [(int(a), str(text)) for a, text in cur.fetchall() if text]
+
+            self._conn.execute(
+                "UPDATE conversations SET end_ts = ? WHERE id = ?",
+                (float(last_ts), conversation_id),
+            )
+            self._conn.commit()
+            logger.info(
+                "persist: conversation %d closed — %d lines over %d min",
+                conversation_id,
+                len(said),
+                int(max(0.0, float(last_ts) - start_ts) / 60),
+            )
+            return conversation_id, said
+
+    def save_summary(self, conversation_id: int, summary: str) -> None:
+        """Two sentences about what it was. Written once, never over a
+        summary that is already there."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE conversations SET summary = ? "
+                "WHERE id = ? AND (summary IS NULL OR summary = '')",
+                (summary.strip(), conversation_id),
+            )
+            self._conn.commit()
 
     def recent_exchanges(self, n: int = 6) -> list[dict]:
         """Last n closed turns as [{"user": ..., "agent": ...}] oldest

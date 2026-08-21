@@ -397,6 +397,9 @@ async def _wire_full(loop, settings, cfg, memory, features):
             await intent_store.sweep_stale()
             await intent_store.sweep_expired()
 
+            from src.spine.llm import stream_chat
+            from src.spine.summary import summariser
+
             watch = None
             if features["watcher"]:
                 from src.spine.environment import EnvironmentWatch
@@ -411,6 +414,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
                 jobs=records.jobs,
                 ask=_worth_saying(_cfg),
                 idle=_at_the_keyboard,
+                summarise=summariser(_cfg, stream_chat),
                 watch=watch,
             )
             logger.info(
