@@ -128,6 +128,55 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_events_kind ON usage_events(kind);
 """
 
+# Full-text search over what was said. Same shape as `memories_fts`
+# (src/memory/sqlite_backend.py): an external-content FTS5 table plus the
+# three triggers that keep it in step with the real rows.
+#
+# It lives beside the `transcripts` definition rather than in the spine,
+# and out of `SCHEMA` rather than in it, for two different reasons.
+#
+# Beside it, because an index is part of what a table is, and because a
+# trigger is stored in the database rather than in the code that created
+# it: once these exist, every connection to the file indexes what it
+# writes, whether or not it has ever heard of them. Only
+# `SpinePersistence` writes transcripts today — the async store here has
+# read them and nothing more since the old engine went on 17 August —
+# but the next writer inherits a correct index by doing nothing, which
+# is the only way this stays true.
+#
+# Out of `SCHEMA`, because `SCHEMA` is executed by everything that opens
+# the file. `CREATE VIRTUAL TABLE ... USING fts5` fails outright on a
+# SQLite built without FTS5, and that must cost the assistant its search,
+# not its ability to open its own database. The caller runs this in its
+# own try/except (see `SpinePersistence._ensure_transcripts_fts`).
+#
+# SCHEMA_VERSION stays at 8 on purpose, for the same reason
+# `ROLE_SESSIONS_SCHEMA` leaves it alone: storage.py refuses to open a DB
+# recorded as newer than the code opening it, so bumping it here would
+# make ~/.heare/heare.db unopenable by anything not yet rebuilt.
+TRANSCRIPTS_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
+    text,
+    content='transcripts',
+    content_rowid='id'
+);
+
+CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
+    INSERT INTO transcripts_fts(rowid, text) VALUES (new.id, new.text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
+    INSERT INTO transcripts_fts(transcripts_fts, rowid, text)
+    VALUES ('delete', old.id, old.text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
+    INSERT INTO transcripts_fts(transcripts_fts, rowid, text)
+    VALUES ('delete', old.id, old.text);
+    INSERT INTO transcripts_fts(rowid, text) VALUES (new.id, new.text);
+END;
+"""
+
 
 class TranscriptStore:
     def __init__(self, db_path: Path) -> None:

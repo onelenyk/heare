@@ -34,8 +34,9 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
-from src.store.storage import SCHEMA, SCHEMA_VERSION
+from src.store.storage import SCHEMA, SCHEMA_VERSION, TRANSCRIPTS_FTS_SCHEMA
 
 logger = logging.getLogger("spine.persist")
 
@@ -45,6 +46,22 @@ logger = logging.getLogger("spine.persist")
 # the other is the room.
 ADDRESSED = "voice"  # said to the assistant, and answered — kept
 OVERHEARD = "overheard"  # said near it, never a turn — expires
+
+# How a `delegate` result re-enters the conversation: as a user turn
+# carrying `src.agent.hands.RESULT_PREFIX`. Those rows have
+# `agent_spoken = 0` and are therefore indistinguishable from something
+# the person said — searchable, and read back as «ти казав» followed by
+# an instruction addressed to the model. Filtered out of search by their
+# first word rather than imported from `hands`, which drags the sixty-
+# tool surface into a module that deliberately imports almost nothing.
+WORKER_RESULT_MARK = "[результат роботи]"
+
+# How much a mention in the last month outranks an older one of equal
+# textual quality. bm25 alone answers «що я казав про таймаут» with
+# whichever line happened to be shortest; asked out loud, the question
+# almost always means the most recent time.
+RECENCY_WINDOW_S = 30 * 24 * 3600.0
+RECENCY_WEIGHT = 0.5
 
 # The one table the spine owns alone. It is NOT in storage.py's SCHEMA and
 # does NOT bump SCHEMA_VERSION: storage.py's `_check_schema_version` refuses
@@ -94,6 +111,7 @@ class SpinePersistence:
         self._conn.executescript(ROLE_SESSIONS_SCHEMA)
         self._conn.commit()
         self._ensure_schema_version_row()
+        self.fts_ready = self._ensure_transcripts_fts()
 
     def _ensure_schema_version_row(self) -> None:
         """Mirror storage.py's `_check_schema_version` for a fresh DB only.
@@ -112,6 +130,125 @@ class SpinePersistence:
                 ("schema_version", str(SCHEMA_VERSION)),
             )
             self._conn.commit()
+
+    def _ensure_transcripts_fts(self) -> bool:
+        """Create the full-text index over transcripts, and fill it once.
+
+        The triggers (see `TRANSCRIPTS_FTS_SCHEMA`) live in the database
+        file, so once this has run every writer keeps the index current —
+        including the daemon's async store, which never calls this. What
+        no trigger can do is account for rows written *before* the index
+        existed, and on this machine that is all 4 412 of them. Hence the
+        one-time `rebuild`, marked done in `meta` rather than guessed at
+        from a row count: an index that is legitimately empty must not
+        rebuild itself on every start.
+
+        Returns whether search is possible at all. A SQLite built without
+        FTS5 costs the assistant this one verb and nothing else — the
+        alternative, letting the failure out of `__init__`, costs it the
+        ability to remember anything.
+        """
+        try:
+            self._conn.executescript(TRANSCRIPTS_FTS_SCHEMA)
+            cur = self._conn.execute(
+                "SELECT value FROM meta WHERE key = ?", ("transcripts_fts",)
+            )
+            if cur.fetchone() is None:
+                self._conn.execute(
+                    "INSERT INTO transcripts_fts(transcripts_fts) VALUES ('rebuild')"
+                )
+                self._conn.execute(
+                    "INSERT INTO meta (key, value) VALUES (?, ?)",
+                    ("transcripts_fts", "built"),
+                )
+                cur = self._conn.execute("SELECT count(*) FROM transcripts")
+                logger.info(
+                    "persist: indexed %d transcripts for search",
+                    int((cur.fetchone() or [0])[0]),
+                )
+            self._conn.commit()
+            return True
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: no full-text index — search is off")
+            return False
+
+    def search_transcripts(
+        self,
+        match: str | None,
+        *,
+        since: float | None = None,
+        until: float | None = None,
+        include_room: bool = False,
+        limit: int = 8,
+        now: float | None = None,
+    ) -> list[tuple[float, str, int]]:
+        """Rows matching an FTS5 expression, best first. Never raises.
+
+        `match=None` asks for the most recent rows in the range instead
+        of a text match — «що я казав учора» is nothing but stopwords
+        once «вчора» is taken out of it, and the honest answer to that
+        is the day itself, not silence.
+
+        The policy that decides `match`, the range and the wording lives
+        in `src/spine/search.py`; this is the query and nothing else.
+        """
+        params: list[Any] = []
+        where = []
+
+        if match is not None:
+            if not self.fts_ready:
+                return []
+            where.append("transcripts_fts MATCH ?")
+            params.append(match)
+
+        if not include_room:
+            # NOT `source = 'voice'`: the column was added late and reads
+            # NULL on every row written before it existed, which is most
+            # of the database. Overheard speech is the thing being
+            # excluded, so name that.
+            where.append("(t.source IS NULL OR t.source != ?)")
+            params.append(OVERHEARD)
+
+        where.append("t.text NOT LIKE ?")
+        params.append(f"{WORKER_RESULT_MARK}%")
+
+        if since is not None:
+            where.append("t.ts >= ?")
+            params.append(since)
+        if until is not None:
+            where.append("t.ts < ?")
+            params.append(until)
+
+        if match is None:
+            sql = (
+                "SELECT t.ts, t.text, COALESCE(t.agent_spoken, 0) FROM transcripts t "
+                f"WHERE {' AND '.join(where)} ORDER BY t.ts DESC LIMIT ?"
+            )
+        else:
+            # bm25 is negative and more negative is better, so the sort is
+            # ASC and a boost has to MULTIPLY by more than one. Written as
+            # a subtraction — or with the `now` side left to
+            # strftime('%%s') inside an f-string — it inverts and returns
+            # the worst matches first, which is what memory search did for
+            # months (see the comment on that ORDER BY). `now` is a bound
+            # parameter here for exactly that reason.
+            params.append(float(now or time.time()))
+            sql = (
+                "SELECT t.ts, t.text, COALESCE(t.agent_spoken, 0) "
+                "FROM transcripts t JOIN transcripts_fts f ON t.id = f.rowid "
+                f"WHERE {' AND '.join(where)} "
+                f"ORDER BY rank * (1.0 + {RECENCY_WEIGHT} * "
+                f"MAX(0.0, 1.0 - (? - t.ts) / {RECENCY_WINDOW_S})) ASC LIMIT ?"
+            )
+        params.append(int(limit))
+
+        try:
+            with self._lock:
+                cur = self._conn.execute(sql, params)
+                return [(float(ts), str(text), int(spoken)) for ts, text, spoken in cur]
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: search failed (non-fatal)")
+            return []
 
     def _active_conversation_id(self) -> int:
         """Get-or-create the open (end_ts IS NULL) conversation.
