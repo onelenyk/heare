@@ -271,3 +271,37 @@ async def test_it_does_not_ask_the_database_on_every_tick(tmp_path) -> None:
 
 async def _silent(_text: str) -> None:
     return None
+
+
+# ── the note, and nothing around it ───────────────────────────────────
+
+
+def test_an_announcement_of_the_answer_is_not_the_answer() -> None:
+    """Observed on a long conversation: the model prefaced the summary
+    with a heading despite being told not to and shown an example. One
+    of the two sentences spent on what the reader already knows."""
+    from src.spine.summary import tidy
+
+    assert tidy(
+        "Ось нотатка за записом розмови:\n\n**Підготовка до співбесіди** "
+        "на Android. Розібрали індекси."
+    ) == "Підготовка до співбесіди на Android. Розібрали індекси."
+
+
+def test_a_summary_that_is_only_one_line_keeps_it() -> None:
+    """The colon rule must not eat the answer itself."""
+    from src.spine.summary import tidy
+
+    assert tidy("Таймаути: підняли до тридцяти.") == "Таймаути: підняли до тридцяти."
+
+
+def test_markup_does_not_belong_in_something_nothing_renders() -> None:
+    from src.spine.summary import tidy
+
+    assert tidy("## Реліз\n**Перенесли** на середу.") == "Реліз Перенесли на середу."
+
+
+def test_nothing_stays_nothing() -> None:
+    from src.spine.summary import tidy
+
+    assert tidy("   \n\n  ") == ""

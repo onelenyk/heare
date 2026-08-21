@@ -85,6 +85,36 @@ def transcript(said: list[tuple[int, str]]) -> str:
     )
 
 
+def tidy(text: str) -> str:
+    """Take the model's answer down to the note it was asked for.
+
+    The prompt says no preamble and carries an example of each, which
+    took care of the common case. It does not hold every time: on a long
+    conversation the answer came back as "Ось нотатка за записом
+    розмови:" followed by the actual summary in bold. Both halves of
+    that are wrong for what this field is — an index other things read
+    and search. A heading wastes the first of two sentences, and `**`
+    is markup in a record nothing renders.
+
+    So it is a rule rather than a firmer request. Everything here that
+    can be enforced in code is enforced in code; the model is asked one
+    question, and how well it followed the formatting is not something
+    to find out about from search results a month later.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    # A first line that ends in a colon and is followed by more is an
+    # announcement of the answer, not the answer.
+    if len(lines) > 1 and lines[0].endswith(":"):
+        lines = lines[1:]
+    joined = " ".join(lines)
+    for markup in ("**", "__", "###", "##", "#"):
+        joined = joined.replace(markup, "")
+    return " ".join(joined.split()).strip()
+
+
 def worth_summarising(said: list[tuple[int, str]]) -> bool:
     """Whether there is anything here to compress."""
     return len([1 for _, text in said if text and text.strip()]) >= ENOUGH_LINES
@@ -109,8 +139,7 @@ def summariser(cfg_of: Any, stream: Any) -> Any:
             [{"role": "user", "content": prompt}], cfg_of(), temperature=0.3
         ):
             parts.append(chunk)
-        text = "".join(parts).strip()
-        return text or None
+        return tidy("".join(parts)) or None
 
     return summarise
 
@@ -118,6 +147,7 @@ def summariser(cfg_of: Any, stream: Any) -> Any:
 __all__ = [
     "ENOUGH_LINES",
     "PROMPT",
+    "tidy",
     "summariser",
     "transcript",
     "worth_summarising",
