@@ -417,6 +417,30 @@ async def _wire_full(loop, settings, cfg, memory, features):
 
                 watch = EnvironmentWatch()
 
+            # The second source of things worth saying, and the one that
+            # reads what is already written down rather than watching
+            # anything. Off by default: this is the one thing the project
+            # has already deleted once for being unbearable.
+            repeats = None
+            if features["repeats"]:
+                from src.spine.repeats import (
+                    ObservationStore, Repeats, detector,
+                )
+
+                observations = ObservationStore(records.db)
+                await observations.init()
+
+                async def _summaries(since_ts: float):
+                    return await asyncio.to_thread(
+                        persist.recent_summaries, since_ts
+                    )
+
+                repeats = Repeats(
+                    store=observations,
+                    summaries=_summaries,
+                    detect=detector(_cfg, stream_chat),
+                )
+
             loop.engine = Engine(
                 store=intent_store,
                 say=loop.inject,
@@ -427,10 +451,12 @@ async def _wire_full(loop, settings, cfg, memory, features):
                 idle=_at_the_keyboard,
                 summarise=summariser(_cfg, stream_chat),
                 watch=watch,
+                repeats=repeats,
             )
             logger.info(
-                "engine: holding intents between turns%s",
+                "engine: holding intents between turns%s%s",
                 " and watching the room" if watch is not None else "",
+                " and noticing what repeats" if repeats is not None else "",
             )
         except Exception:  # noqa: BLE001
             logger.exception("engine: unavailable (non-fatal)")

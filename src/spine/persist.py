@@ -488,6 +488,32 @@ class SpinePersistence:
             )
             self._conn.commit()
 
+    def recent_summaries(
+        self, since_ts: float, limit: int = 40
+    ) -> list[tuple[int, float, str]]:
+        """Closed conversations that got a summary, oldest first.
+
+        The whole point of writing summaries was that reading a week of
+        talk turn by turn is too expensive to do on a hunch, and reading
+        a dozen summaries is not. This is the reader that spends it.
+
+        Conversations with an empty summary are left out rather than
+        passed on blank: `summariser` deliberately writes nothing when
+        there was nothing to compress, and a blank line among the
+        numbered ones is a row the model can still cite as evidence.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT id, end_ts, summary FROM conversations "
+                "WHERE end_ts IS NOT NULL AND end_ts >= ? "
+                "AND summary IS NOT NULL AND TRIM(summary) != '' "
+                "ORDER BY end_ts ASC LIMIT ?",
+                (float(since_ts), int(limit)),
+            )
+            return [
+                (int(row[0]), float(row[1]), str(row[2])) for row in cur.fetchall()
+            ]
+
     def recent_exchanges(self, n: int = 6) -> list[dict]:
         """Last n closed turns as [{"user": ..., "agent": ...}] oldest
         first, read via turn_id joins — for the prompt context."""

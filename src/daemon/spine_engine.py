@@ -327,9 +327,10 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
                       object is labelled honestly instead of silently
                       passing itself off as a fact.
 
-    ``watcher`` is answered from inside the engine rather than from the
-    loop, because that is where the watch lives — and with no engine there
-    is nothing watching, whatever the config asked for. ``hear_all`` is a
+    ``watcher`` and ``repeats`` are answered from inside the engine
+    rather than from the loop, because that is where both collaborators
+    live — and with no engine there is nothing watching and nothing
+    noticing, whatever the config asked for. ``hear_all`` is a
     flag on the conductor, and the flag is what decides, so reading it
     back is the live truth rather than a restatement of the config.
 
@@ -348,6 +349,13 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
             # watching whatever the config asked for.
             engine = getattr(loop, "engine", None)
             on = getattr(engine, "_watch", None) is not None
+            observed = True
+        elif f.name == "repeats":
+            # Same shape as the watcher, and for the same reason: it is a
+            # collaborator inside the engine, so with no engine nothing
+            # is noticing anything however the config was written.
+            engine = getattr(loop, "engine", None)
+            on = getattr(engine, "_repeats", None) is not None
             observed = True
         elif f.name == "hear_all":
             # A plain flag on the conductor rather than an object, so

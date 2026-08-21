@@ -79,6 +79,18 @@ OVERHEARD_KEEP_S = 7 * 24 * 3600.0
 # Once an hour is often enough to take out the rubbish.
 FORGET_EVERY_S = 3600.0
 
+# How pressing a repeated intention is. Low, and that is the point: it
+# is the least urgent thing the engine can hold, so it never outranks
+# "the thing you asked for finished", and at night it is filtered out
+# entirely — `judge` keeps only what was asked for and is urgent.
+#
+# It is given no expiry, unlike a remark about what you are doing now.
+# What you keep meaning to do does not stop being true while it waits,
+# and while it waits it sits in the prompt, which is half of what it is
+# for: the next time you open a conversation, the assistant already
+# knows what is outstanding between you.
+REPEAT_URGENCY = 0.3
+
 # On the first pass after a start, how recently a finished job must have
 # finished to still be worth mentioning. Wide enough that work completed
 # just before a restart is not lost, narrow enough that yesterday stays
@@ -214,6 +226,7 @@ class Engine:
         idle: Any = None,
         summarise: Any = None,
         watch: Any = None,
+        repeats: Any = None,
         tick_s: float = TICK_S,
         watch_every_s: float = WATCH_EVERY_S,
     ) -> None:
@@ -235,6 +248,12 @@ class Engine:
         # they just close without a summary, which is the honest state
         # for a machine with no model wired.
         self._summarise = summarise
+        # A `Repeats`, or nothing. It answers one question — is the
+        # person saying they mean to do the same thing over and over —
+        # and it is asked only when a conversation ends, never on a
+        # timer. The last thing that spoke unbidden here ran on a timer
+        # and had to be deleted.
+        self._repeats = repeats
         self._closed_ts = 0.0
         self._forgot_ts = 0.0
         self._tick_s = tick_s
@@ -353,19 +372,57 @@ class Engine:
             if closed is None:
                 return
             conversation_id, said = closed
-            if self._summarise is None:
-                return
-            summary = await self._summarise(said)
-            if not summary:
-                return
-            await asyncio.to_thread(
-                self._persist.save_summary, conversation_id, summary
-            )
-            logger.info(
-                "engine: conversation %d — %.90s", conversation_id, summary
-            )
+            if self._summarise is not None:
+                summary = await self._summarise(said)
+                if summary:
+                    await asyncio.to_thread(
+                        self._persist.save_summary, conversation_id, summary
+                    )
+                    logger.info(
+                        "engine: conversation %d — %.90s", conversation_id, summary
+                    )
         except Exception:  # noqa: BLE001
             logger.exception("engine: closing the conversation failed (non-fatal)")
+            return
+
+        await self._notice_repeats(now)
+
+    async def _notice_repeats(self, now: float) -> None:
+        """The only trigger this feature gets: a conversation ending.
+
+        Not a timer. The last thing in this project that spoke unbidden
+        ran on one — every N minutes, decide whether to say something —
+        and `heartbeats`, the table it wrote to, is empty from birth
+        because it was switched off before it ever filled. A conversation
+        ending is the one moment there is new material *and* nobody is
+        in the middle of talking.
+
+        It runs after the summary rather than before it, so the
+        conversation that just ended is part of what gets read. And it
+        runs outside the try above: a fault here must not be able to
+        stop a conversation being closed.
+        """
+        if self._repeats is None:
+            return
+        try:
+            found = await self._repeats.look(now=now)
+            if found is None:
+                return
+            dedupe_key, text = found
+            # From here it is an ordinary intent, and inherits the whole
+            # gate: not into silence, not at night, not mid-sentence, not
+            # twice, quieter after being brushed off, and the model still
+            # gets to refuse it.
+            await self.notice(
+                "repeat",
+                text,
+                origin=I.SELF,
+                urgency=REPEAT_URGENCY,
+                dedupe_key=dedupe_key,
+            )
+            logger.info("engine: it keeps coming up — %.80s", text)
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: looking for repeats failed (non-fatal)")
 
     async def _forget_overheard(self, now: float | None = None) -> None:
         """Let go of what was said near it a week ago.
@@ -497,6 +554,11 @@ class Engine:
 
         await self._say(text)
         await self._store.mark_voiced(intent.id)
+        # Tell the source it was actually said. Most of what reaches this
+        # point is still refused above, and a source that cannot tell
+        # "never raised" from "raised and ignored" has no way to know,
+        # after a week, whether it is earning its place.
+        await self._told_repeats(intent, said=True)
         self._awaiting = intent
         now = time.time()
         self.engine_state.unprompted_last_ts = now
@@ -505,6 +567,25 @@ class Engine:
             t for t in self.engine_state.unprompted_times if now - t < 3600
         ]
         logger.info("engine: said unbidden — %.80s", text)
+
+    async def _told_repeats(
+        self, intent: I.Intent, *, said: bool = False, dismissed: bool = False
+    ) -> None:
+        """Report an intent's fate back to the source that raised it.
+
+        Every intent is offered, not only the ones that came from here —
+        the engine does not know which source made which key, and does
+        not need to: a key that is not `repeats`' own is ignored by it.
+        """
+        if self._repeats is None:
+            return
+        try:
+            if said:
+                await self._repeats.mark_said(intent.dedupe_key)
+            if dismissed:
+                await self._repeats.dismiss(intent.dedupe_key)
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: could not record how it landed (non-fatal)")
 
     # -- consequence ---------------------------------------------------
 
@@ -521,6 +602,12 @@ class Engine:
             return
 
         await self._store.settle(awaiting.id, outcome)
+        if outcome == I.REJECTED:
+            # Trust already makes it quieter about everything. This is the
+            # narrower half: told to leave this particular subject, it is
+            # left for good, not until the next pass finds the same words
+            # in next week's summaries.
+            await self._told_repeats(awaiting, dismissed=True)
         before = self.engine_state.trust
         if outcome == I.ACCEPTED:
             self.engine_state.trust = max(TRUST_MIN, before * TRUST_DOWN)
