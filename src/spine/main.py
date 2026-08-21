@@ -167,6 +167,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     )
     loop.features = loop_features
     loop.state = state
+    loop.hear_all = bool(features["hear_all"])
 
     if not full:
         return loop
@@ -358,9 +359,18 @@ async def _wire_full(loop, settings, cfg, memory, features):
         on_long_running=_long_running,
     )
 
+    # Built before the toolbox, which now needs it: `forget` erases what
+    # was overheard, and a tool that cannot reach the transcripts can
+    # only apologise.
+    persist = SpinePersistence(settings.db_path)
+    if features["persist"]:
+        loop.persist = persist
+
     if features["tools"]:
         loop.toolbox = VoiceToolbox(
-            settings, memory, _deliver, hands_factory=_hands_factory
+            settings, memory, _deliver,
+            hands_factory=_hands_factory,
+            persist=persist if features["persist"] else None,
         )
         loop.stream_events = lambda messages, tools: stream_chat_events(
             messages, _cfg(), tools=tools
@@ -372,10 +382,6 @@ async def _wire_full(loop, settings, cfg, memory, features):
             window_s=getattr(settings, "wake_window_seconds", 45.0),
             required=getattr(settings, "wake_required", True),
         )
-
-    persist = SpinePersistence(settings.db_path)
-    if features["persist"]:
-        loop.persist = persist
     # Mirror role sessions to the DB on the CLI path too, so a session
     # cut short by a restart is recoverable there as well.
     if loop.role_manager is not None:

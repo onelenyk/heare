@@ -106,12 +106,15 @@ def _make_toolbox(
 # -- schemas -------------------------------------------------------------
 
 
-def test_schemas_are_exactly_three_named_tools():
+def test_schemas_are_exactly_the_four_named_tools():
+    """`forget` joined them when the assistant started keeping what it
+    overhears: a person has to be able to say "forget that" out loud and
+    have it be true, without opening a database."""
     toolbox, _ = _make_toolbox()
     schemas = toolbox.schemas
-    assert len(schemas) == 3
+    assert len(schemas) == 4
     names = {s["function"]["name"] for s in schemas}
-    assert names == {"delegate", "remember", "recall"}
+    assert names == {"delegate", "remember", "recall", "forget"}
 
 
 def test_schemas_are_valid_json_schema_shape():

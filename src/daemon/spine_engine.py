@@ -329,7 +329,9 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
 
     ``watcher`` is answered from inside the engine rather than from the
     loop, because that is where the watch lives — and with no engine there
-    is nothing watching, whatever the config asked for.
+    is nothing watching, whatever the config asked for. ``hear_all`` is a
+    flag on the conductor, and the flag is what decides, so reading it
+    back is the live truth rather than a restatement of the config.
 
     One caveat, and it is deliberate: ``mcp`` connects off the boot path
     (a cold `npx` can take a minute), so it honestly reads `off` until the
@@ -346,6 +348,12 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
             # watching whatever the config asked for.
             engine = getattr(loop, "engine", None)
             on = getattr(engine, "_watch", None) is not None
+            observed = True
+        elif f.name == "hear_all":
+            # A plain flag on the conductor rather than an object, so
+            # this is the live truth: it is what `_keep_overheard` reads
+            # before writing anything down.
+            on = bool(getattr(loop, "hear_all", False))
             observed = True
         elif f.name == "telemetry":
             # A real Telemetry has no `wired` attribute; _NoTelemetry

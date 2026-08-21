@@ -427,6 +427,32 @@ SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "forget",
+            "description": (
+                "Erase what was said in the room recently but not to you "
+                "— use it when the person asks you to forget the last "
+                "hour, or says that what was just said should not be "
+                "kept. Your own conversations with them are never "
+                "touched."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "description": (
+                            "How far back to erase, in minutes. Default "
+                            "60 if they did not say."
+                        ),
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "recall",
             "description": "Search your persistent memory.",
             "parameters": {
@@ -445,7 +471,7 @@ SCHEMAS: list[dict] = [
 
 
 class VoiceToolbox:
-    """The voice agent's three verbs. Anything heavier goes to Hands."""
+    """The voice agent's four verbs. Anything heavier goes to Hands."""
 
     def __init__(
         self,
@@ -454,8 +480,12 @@ class VoiceToolbox:
         deliver: Callable[[str], Awaitable[None]],
         *,
         hands_factory: HandsFactory | None = None,
+        persist: Any = None,
     ) -> None:
         """memory: an initialized SQLiteBackend (or compatible).
+        persist: the transcript store, for `forget` — None means there is
+        nothing written down to erase, which is the honest answer when
+        persistence is switched off.
         deliver: async fn; Hands results are delivered through it
         (wired here via ``hands.set_delivery(deliver)``).
 
@@ -468,6 +498,7 @@ class VoiceToolbox:
         self._settings = settings
         self._memory = memory
         self._deliver = deliver
+        self._persist = persist
         factory = hands_factory or _default_hands_factory
         self._hands = factory(settings)
         self._hands.set_delivery(deliver)
@@ -487,6 +518,8 @@ class VoiceToolbox:
                 return await self._remember(arguments)
             if name == "recall":
                 return await self._recall(arguments)
+            if name == "forget":
+                return await self._forget(arguments)
             return "Такої дії я не знаю."
         except Exception:
             logger.exception("[SPINE TOOLS] %s failed: %.200s", name, arguments)
@@ -500,6 +533,34 @@ class VoiceToolbox:
         # the conversation later through the wired ``deliver`` callback.
         self._hands.start(task)
         return "Прийнято, роблю."
+
+    async def _forget(self, arguments: dict) -> str:
+        """Erase overheard lines from the last N minutes.
+
+        The counterweight to hearing the room at all. A person has to be
+        able to say "forget that" out loud and have it be true — without
+        opening a database, and without it being a setting they must
+        remember to have turned on beforehand.
+
+        Deliberately narrow: only what was overheard, never a
+        conversation. Erasing what someone said *to* the assistant is a
+        different act with a different blast radius, and it should not
+        hide behind the same word.
+        """
+        if self._persist is None:
+            return "Мені нема чого забувати — я нічого не записую."
+        try:
+            minutes = int(arguments.get("minutes") or 60)
+        except (TypeError, ValueError):
+            minutes = 60
+        minutes = max(1, min(minutes, 24 * 60))
+        cutoff = time.time() - minutes * 60
+        gone = await asyncio.to_thread(
+            self._persist.forget_overheard_since, after_ts=cutoff
+        )
+        if not gone:
+            return "Там і не було чого забувати."
+        return f"Забула. {gone} рядків за останні {minutes} хвилин."
 
     async def _remember(self, arguments: dict) -> str:
         content = str(arguments.get("content", "")).strip()

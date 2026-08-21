@@ -79,10 +79,12 @@ def test_losses_are_in_the_user_s_language() -> None:
     what stopped working, not just which flag flipped."""
     text = " ".join(losses(resolve(SimpleNamespace(), without="roles,memory")))
     assert "мітинг" in text and "пам" in text
-    # Only `watcher`, which is off until asked for — its line still has to
-    # say what is missing, because "off by default" is not "not a loss".
+    # `watcher` and `hear_all`, the two that are off until asked for.
+    # Their lines still have to say what is missing, because "off by
+    # default" is not "not a loss".
     assert [line.split(":")[0] for line in losses(resolve(SimpleNamespace()))] == [
-        "watcher"
+        "watcher",
+        "hear_all",
     ]
 
 

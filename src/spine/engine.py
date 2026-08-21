@@ -69,6 +69,16 @@ CONVERSATION_IDLE_S = 30 * 60.0
 # reason to run it twelve times a minute.
 CLOSE_EVERY_S = 60.0
 
+# How long a line said near it, but not to it, is kept. This number is
+# the difference between working memory and a recording someone forgot
+# they were making: long enough to search back over the week you are in,
+# short enough that nothing surfaces from a room you have forgotten.
+# Addressed speech is never touched by this.
+OVERHEARD_KEEP_S = 7 * 24 * 3600.0
+
+# Once an hour is often enough to take out the rubbish.
+FORGET_EVERY_S = 3600.0
+
 # On the first pass after a start, how recently a finished job must have
 # finished to still be worth mentioning. Wide enough that work completed
 # just before a restart is not lost, narrow enough that yesterday stays
@@ -226,6 +236,7 @@ class Engine:
         # for a machine with no model wired.
         self._summarise = summarise
         self._closed_ts = 0.0
+        self._forgot_ts = 0.0
         self._tick_s = tick_s
         self._watch_every_s = watch_every_s
         self._watched_ts = 0.0
@@ -256,6 +267,7 @@ class Engine:
         await self._notice()
         await self._look_around(now)
         await self._close_conversation(now)
+        await self._forget_overheard(now)
         situation = await self.observe(now=now)
         pending = await self._store.pending()
         verdict = judge(situation, pending, self.engine_state)
@@ -354,6 +366,33 @@ class Engine:
             )
         except Exception:  # noqa: BLE001
             logger.exception("engine: closing the conversation failed (non-fatal)")
+
+    async def _forget_overheard(self, now: float | None = None) -> None:
+        """Let go of what was said near it a week ago.
+
+        Retention is the whole difference between keeping the room in
+        working memory and making a recording nobody remembers starting.
+        It runs here rather than at boot because this thing is meant to
+        be running for weeks at a time, and a sweep that only happens at
+        startup happens roughly never.
+
+        Only overheard lines. Deleting an addressed one would be deleting
+        a conversation the person had.
+        """
+        if self._persist is None:
+            return
+        now = now if now is not None else time.time()
+        if now - self._forgot_ts < FORGET_EVERY_S:
+            return
+        self._forgot_ts = now
+        try:
+            gone = await asyncio.to_thread(
+                self._persist.forget_overheard, before_ts=now - OVERHEARD_KEEP_S
+            )
+            if gone:
+                logger.info("engine: forgot %d overheard lines", gone)
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: forgetting failed (non-fatal)")
 
     # -- told from outside ---------------------------------------------
 

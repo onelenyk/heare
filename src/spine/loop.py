@@ -111,6 +111,11 @@ class SpineLoop:
     # which made `busy_talking` false forever and left judge's first
     # guard — do not speak mid-turn — unable to fire.
     state: Any = None          # .get(key) -> value | None
+    # Whether speech the wake gate turned away is written down. Off by
+    # default: everything it hears is already transcribed either way, so
+    # this decides only what is *kept* — but a room holds other people,
+    # and that is a decision for a person, not a default.
+    hear_all: bool = False
     # The role platform, as one injected policy object (None = no roles).
     # It decides whether a turn is a session trigger, a logged line or
     # ordinary conversation; the conductor only asks. Its fields are
@@ -287,6 +292,17 @@ class SpineLoop:
             ):
                 # In a session the whole room is the point — see
                 # RoleFlow.in_session; outside one the wake gate rules.
+                #
+                # The gate is on acting, not on hearing — which this file
+                # has claimed in prose since it was written, while doing
+                # the opposite: `continue` came before any persistence,
+                # so a line not addressed to it existed nowhere but this
+                # log. An hour of being spoken near left zero rows.
+                #
+                # It is written down now, when asked for and marked as
+                # what it is. Never a turn: nothing answered it, and it
+                # must not become part of an exchange.
+                await self._keep_overheard(turn)
                 logger.info("asleep — turn not addressed to me: %r", turn[:60])
                 continue
             try:
@@ -296,6 +312,21 @@ class SpineLoop:
                 await self.respond(turn)
             except Exception:
                 logger.exception("turn failed: %r", turn[:80])
+
+    async def _keep_overheard(self, text: str) -> None:
+        """Keep a line said near it, if that was asked for.
+
+        Off unless `hear_all` is on: the microphone is in a room, and
+        the people in it did not choose this. Errors are swallowed —
+        a line that cannot be written is a line lost, never a reason to
+        stop listening.
+        """
+        if not self.hear_all or self.persist is None:
+            return
+        try:
+            await asyncio.to_thread(self.persist.log_overheard, text)
+        except Exception:  # noqa: BLE001
+            logger.exception("could not keep an overheard line (non-fatal)")
 
     async def _persist_user_turn(self, text: str) -> int | None:
         """Log a heard turn; None when no persistence is wired. Errors

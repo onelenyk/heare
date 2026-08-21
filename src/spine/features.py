@@ -62,6 +62,12 @@ FEATURES: tuple[Feature, ...] = (
     # not inherited from a default.
     Feature("watcher", False, "не бачить, чим ти зайнятий — двигун знає "
                               "лише про себе"),
+    # Also off by default, and for a different reason: what it hears is
+    # already transcribed either way, so this changes only what is kept —
+    # but the microphone is in a room, and the other people in it did not
+    # choose this.
+    Feature("hear_all", False, "чує кімнату, але не пам'ятає нічого, що "
+                               "сказано не до нього"),
 )
 
 _BY_NAME = {f.name: f for f in FEATURES}

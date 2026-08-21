@@ -39,6 +39,13 @@ from src.store.storage import SCHEMA, SCHEMA_VERSION
 
 logger = logging.getLogger("spine.persist")
 
+# What `transcripts.source` says about a line. The column already held
+# "voice" and "typed" from the old engine; these are the spine's two, and
+# the distinction is the whole retention policy: one is a conversation,
+# the other is the room.
+ADDRESSED = "voice"  # said to the assistant, and answered — kept
+OVERHEARD = "overheard"  # said near it, never a turn — expires
+
 # The one table the spine owns alone. It is NOT in storage.py's SCHEMA and
 # does NOT bump SCHEMA_VERSION: storage.py's `_check_schema_version` refuses
 # to open a DB whose recorded version is *newer* than the code opening it,
@@ -148,9 +155,10 @@ class SpinePersistence:
             turn_id = cur.lastrowid
             assert turn_id is not None
             self._conn.execute(
-                "INSERT INTO transcripts (ts, text, mode, agent_spoken, turn_id) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (now, text, "spine", 0, turn_id),
+                "INSERT INTO transcripts "
+                "(ts, text, mode, agent_spoken, turn_id, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (now, text, "spine", 0, turn_id, ADDRESSED),
             )
             self._conn.commit()
             return turn_id
@@ -161,9 +169,10 @@ class SpinePersistence:
         with self._lock:
             now = time.time()
             self._conn.execute(
-                "INSERT INTO transcripts (ts, text, mode, agent_spoken, turn_id) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (now, text, "spine", 1, turn_id),
+                "INSERT INTO transcripts "
+                "(ts, text, mode, agent_spoken, turn_id, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (now, text, "spine", 1, turn_id, ADDRESSED),
             )
             self._conn.execute(
                 "UPDATE turns SET end_ts = ? WHERE id = ?", (now, turn_id)
@@ -186,6 +195,78 @@ class SpinePersistence:
             )
             user_ts = (cur.fetchone() or [None])[0]
         return {"any": any_ts, "user": user_ts}
+
+    # -- what was said near it, but not to it --------------------------
+    #
+    # The microphone already hears the room and Whisper already
+    # transcribes all of it — the wake gate decides whether to *act*, not
+    # whether to listen. Until now an unaddressed line was thrown away
+    # after being heard and paid for, which is why "he heard everything"
+    # was never true of the database.
+    #
+    # Kept apart rather than mixed in, because the two are not the same
+    # kind of record. Addressed speech is a conversation and stays.
+    # Overheard speech is working memory: it is marked, it is never a
+    # turn, and it expires.
+
+    def log_overheard(self, text: str) -> None:
+        """Write down something said near it. Never raises.
+
+        No `turns` row: a turn is one exchange, and nothing answered
+        this. It lands in `transcripts` alone, marked, so every reader
+        that does not ask for it does not see it.
+        """
+        text = (text or "").strip()
+        if not text:
+            return
+        try:
+            with self._lock:
+                self._conn.execute(
+                    "INSERT INTO transcripts "
+                    "(ts, text, mode, agent_spoken, source) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (time.time(), text, "spine", 0, OVERHEARD),
+                )
+                self._conn.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: could not keep an overheard line")
+
+    def forget_overheard(self, *, before_ts: float) -> int:
+        """Drop overheard lines older than a moment. Returns how many.
+
+        This is the difference between working memory and a recording
+        you forgot you were making. Addressed speech is never touched:
+        that was a conversation, and deleting it would be deleting your
+        own words.
+        """
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "DELETE FROM transcripts WHERE source = ? AND ts < ?",
+                    (OVERHEARD, before_ts),
+                )
+                self._conn.commit()
+                return cur.rowcount or 0
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: forgetting failed (non-fatal)")
+            return 0
+
+    def forget_overheard_since(self, *, after_ts: float) -> int:
+        """Drop overheard lines *newer* than a moment — "forget the last
+        hour". The other direction, and the one a person asks for out
+        loud, usually about something that has just been said in the
+        room by someone who did not know."""
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "DELETE FROM transcripts WHERE source = ? AND ts >= ?",
+                    (OVERHEARD, after_ts),
+                )
+                self._conn.commit()
+                return cur.rowcount or 0
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: forgetting failed (non-fatal)")
+            return 0
 
     # -- where one conversation ends and the next begins ---------------
     #

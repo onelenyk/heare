@@ -47,7 +47,13 @@ class ToolDef:
 # machine, a turn that calls a tool inline takes 3822 ms to first audio
 # against 1351 ms without one — and whether anything is said before the
 # work begins is otherwise left to the model's whim.
-VOICE_TOOLS = frozenset({"delegate", "remember", "recall"})
+# `forget` is the fourth, and it belongs here rather than behind
+# `delegate` for the same reason the other three do: it has to land while
+# the person is still in the room. "Forget the last hour" answered a
+# minute later, after a worker has been spun up, is an apology rather
+# than an action — and the thing it erases is the one thing someone
+# might be waiting to see gone.
+VOICE_TOOLS = frozenset({"delegate", "remember", "recall", "forget"})
 
 
 
