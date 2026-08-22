@@ -441,6 +441,19 @@ async def _wire_full(loop, settings, cfg, memory, features):
                     detect=detector(_cfg, stream_chat),
                 )
 
+            async def _still_hearing():
+                """Ask the ear how it is doing.
+
+                Defined here rather than in the engine because the audio front
+                end belongs to the conductor, and the engine is not allowed to
+                reach for a device — everything it knows arrives as a
+                collaborator. This is that collaborator, and it is two attribute
+                reads.
+                """
+                from src.spine.hearing import read
+
+                return read(loop.audio)
+
             loop.engine = Engine(
                 store=intent_store,
                 say=loop.inject,
@@ -449,6 +462,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
                 jobs=records.jobs,
                 ask=_worth_saying(_cfg),
                 idle=_at_the_keyboard,
+                hearing=_still_hearing,
                 summarise=summariser(_cfg, stream_chat),
                 watch=watch,
                 repeats=repeats,

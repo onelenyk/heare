@@ -79,6 +79,17 @@ OVERHEARD_KEEP_S = 7 * 24 * 3600.0
 # Once an hour is often enough to take out the rubbish.
 FORGET_EVERY_S = 3600.0
 
+# How often to ask whether it can still hear. Cheap — two attribute
+# reads — and the answer decides whether the person talking right now is
+# talking to nothing, so it runs at the full tick.
+HEAR_EVERY_S = 5.0
+
+# Being unable to hear is not the assistant's own idea, it is a fault in
+# the thing the person is trying to use. Raised as theirs, and urgent
+# enough to survive the night filter: at 02:00 someone speaking to a
+# deaf assistant still deserves to be told.
+DEAF_URGENCY = 0.9
+
 # How pressing a repeated intention is. Low, and that is the point: it
 # is the least urgent thing the engine can hold, so it never outranks
 # "the thing you asked for finished", and at night it is filtered out
@@ -225,6 +236,7 @@ class Engine:
         ask: Any = None,
         idle: Any = None,
         summarise: Any = None,
+        hearing: Any = None,
         watch: Any = None,
         repeats: Any = None,
         tick_s: float = TICK_S,
@@ -256,6 +268,12 @@ class Engine:
         self._repeats = repeats
         self._closed_ts = 0.0
         self._forgot_ts = 0.0
+        # async () -> Hearing, and the watch that remembers whether this
+        # outage was already mentioned. Absent, the engine behaves as
+        # before: a broken microphone stays a line in a log.
+        self._hearing = hearing
+        self._ears = None
+        self._heard_ts = 0.0
         self._tick_s = tick_s
         self._watch_every_s = watch_every_s
         self._watched_ts = 0.0
@@ -285,6 +303,7 @@ class Engine:
     async def tick(self, now: float | None = None) -> Verdict:
         await self._notice()
         await self._look_around(now)
+        await self._listen_to_itself(now)
         await self._close_conversation(now)
         await self._forget_overheard(now)
         situation = await self.observe(now=now)
@@ -423,6 +442,41 @@ class Engine:
             logger.info("engine: it keeps coming up — %.80s", text)
         except Exception:  # noqa: BLE001
             logger.exception("engine: looking for repeats failed (non-fatal)")
+
+    async def _listen_to_itself(self, now: float | None = None) -> None:
+        """Notice that it has gone deaf, and say so.
+
+        Every instance of this failure so far has been visible from the
+        inside and invisible from the outside: the daemon runs, the
+        dashboard answers, the log fills with retries, and the person
+        goes on talking to something that stopped hearing them. Nothing
+        connected the two.
+
+        This is that connection, and it is deliberately the same road
+        everything else takes — an intent, judged like any other. So it
+        cannot interrupt a sentence, cannot repeat itself, and costs the
+        engine the same trust if it turns out to be unwelcome.
+        """
+        if self._hearing is None:
+            return
+        now = now if now is not None else time.time()
+        if now - self._heard_ts < HEAR_EVERY_S:
+            return
+        self._heard_ts = now
+        try:
+            from src.spine.hearing import EarWatch
+
+            if self._ears is None:
+                self._ears = EarWatch()
+            found = self._ears.feed(await self._hearing(), now=now)
+            if found is None:
+                return
+            text, key = found
+            await self.notice(
+                "deaf", text, origin=I.USER, urgency=DEAF_URGENCY, dedupe_key=key
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("engine: listening to itself failed (non-fatal)")
 
     async def _forget_overheard(self, now: float | None = None) -> None:
         """Let go of what was said near it a week ago.

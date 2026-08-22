@@ -7,6 +7,7 @@ import array
 import asyncio
 import logging
 import threading
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,10 @@ class AudioIO:
         # sounddevice streams (opened in start())
         self._input_stream: Optional[object] = None
         self._output_stream: Optional[object] = None
+        # When the input device last called us. Monotonic: this measures
+        # a gap, and a clock that can step backwards would report a
+        # working microphone as dead, or the reverse.
+        self._last_frame_ts: float = 0.0
 
         # Event loop where we'll enqueue input frames
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -168,6 +173,28 @@ class AudioIO:
         if value and not self._mute_input_user:
             self.note_input_gap()
         self._mute_input_user = value
+
+    @property
+    def input_open(self) -> bool:
+        """Whether there is an input stream at all.
+
+        False after a boot that failed to open one — which the daemon
+        survives, serving its dashboard and answering /state, deaf.
+        """
+        return self._input_stream is not None
+
+    def silent_for(self, now: float | None = None) -> float:
+        """Seconds since the device last handed us anything.
+
+        Not since the last *sound*: a quiet room still produces frames.
+        This goes up only when the device stops calling, which is what
+        happens when it is taken away, when the machine wakes from sleep
+        and the stream is not reacquired, or when it was never opened.
+        """
+        if not self._last_frame_ts:
+            return 0.0
+        now = now if now is not None else time.monotonic()
+        return max(0.0, now - self._last_frame_ts)
 
     def note_input_gap(self) -> None:
         """Announce that the frame stream is about to have a hole.
@@ -248,6 +275,11 @@ class AudioIO:
 
         self._input_stream.start()
         self._output_stream.start()
+        # A stream that opens and never calls back is exactly the failure
+        # worth catching, so the clock starts here rather than on the
+        # first frame — otherwise the gap would be measured from zero and
+        # read as decades of silence before anything had a chance.
+        self._last_frame_ts = time.monotonic()
 
     async def stop(self) -> None:
         """Stop and close sounddevice streams."""
@@ -283,6 +315,14 @@ class AudioIO:
             time_info: Timing information (unused).
             status: Status flags (unused).
         """
+        # Stamped before the mute check, deliberately. The question this
+        # answers is "is the device still delivering", and muting
+        # discards frames while the callback keeps firing — so a stamp
+        # taken after the check would read a deliberate mute as a broken
+        # microphone, which is the one confusion that makes the whole
+        # signal useless.
+        self._last_frame_ts = time.monotonic()
+
         if self.mute_input or self.mute_input_user:
             return
 
