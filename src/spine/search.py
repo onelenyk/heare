@@ -105,6 +105,13 @@ class Fragment:
     agent_spoken: bool
 
 
+# How recently something must have been said to still be part of the
+# conversation rather than something to recall. The turn asking the
+# question is written down before the model is asked, so without this
+# every search answers itself.
+NOT_YET_A_MEMORY_S = 90.0
+
+
 def find(
     persist: Any,
     query: str,
@@ -127,6 +134,13 @@ def find(
     """
     span = parse_when(when or query, now=now)
     terms = _sanitize_fts_query(strip_when(query, span))
+    # The question is already on disk by the time this runs — the turn is
+    # persisted before the model is even asked, so FTS finds it and
+    # ranks it first, being the freshest and shortest match there is.
+    # Observed live, twice, word for word: «що я казав про бекапи?» came
+    # back answered with «Сьогодні ти казав: Дока, що я казав про
+    # бекапи?». What you are saying now is not yet a memory.
+    fresh = now.timestamp() - NOT_YET_A_MEMORY_S
     if terms is None:
         # Nothing but stopwords survived — «що я казав учора» is entirely
         # scaffolding once the time expression is removed. With a range
@@ -139,7 +153,7 @@ def find(
     rows = persist.search_transcripts(
         terms,
         since=span.start if span else None,
-        until=span.end if span else None,
+        until=min(span.end, fresh) if span else fresh,
         include_room=room,
         limit=limit + _OVERFETCH,
         now=now.timestamp(),

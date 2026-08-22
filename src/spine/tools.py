@@ -499,7 +499,14 @@ SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "recall",
-            "description": "Search your persistent memory.",
+            "description": (
+                "Look up a fact you were explicitly asked to remember. "
+                "This searches only stored notes, never the conversation "
+                "itself — for what was actually said, use "
+                "`search_conversations`. Never call both for one "
+                "question: they answer different things and the person "
+                "hears both answers."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -658,12 +665,15 @@ class VoiceToolbox:
         if not query:
             return "Що пошукати?"
         results = await self._memory.search(query, limit=3)
-        if not results:
-            return "Нічого не знайшов."
         facts = [str(getattr(r, "content", r)).strip() for r in results[:3]]
         facts = [f for f in facts if f]
         if not facts:
-            return "Нічого не знайшов."
+            # Scoped on purpose. Observed live: the model called this
+            # alongside `search_conversations`, and every acknowledgement
+            # a verb returns is spoken verbatim one after another — so a
+            # bare "Нічого не знайшов" landed right after a real finding
+            # and flatly contradicted it.
+            return "У записнику про це нічого."
         return " ".join(facts)
 
     def cancel_all(self) -> int:

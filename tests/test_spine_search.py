@@ -17,6 +17,7 @@ almost nothing in the file it was written for.
 from __future__ import annotations
 
 import sqlite3
+import time
 from datetime import datetime
 
 import pytest
@@ -26,6 +27,9 @@ from src.spine.persist import ADDRESSED, OVERHEARD, SpinePersistence
 
 NOW = datetime(2026, 8, 21, 14, 30)
 NOW_TS = NOW.timestamp()
+# Far enough back that a fixture row counts as something said
+# rather than something being said — see `_row`.
+SETTLED = 600.0
 DAY = 86400.0
 
 
@@ -47,11 +51,19 @@ def write(
     source: str | None = ADDRESSED,
 ) -> None:
     """One transcript row, placed in time. Straight SQL rather than
-    `log_user_turn`, so a case can put a line last Tuesday."""
+    `log_user_turn`, so a case can put a line last Tuesday.
+
+    `ago_days=0` means "earlier in this conversation", not "this very
+    second": `find` deliberately will not return the last minute and a
+    half, because the turn asking the question is on disk before the
+    model is asked and would otherwise be its own top match. Cases about
+    matching, the room and forgetting all want a line that is already a
+    memory, so that is what the default gives them.
+    """
     persist._conn.execute(
         "INSERT INTO transcripts (ts, text, mode, agent_spoken, source) "
         "VALUES (?, ?, 'spine', ?, ?)",
-        (NOW_TS - ago_days * DAY, text, agent, source),
+        (NOW_TS - ago_days * DAY - SETTLED, text, agent, source),
     )
     persist._conn.commit()
 
@@ -65,12 +77,18 @@ def texts(fragments: list[search.Fragment]) -> list[str]:
 
 def test_a_line_becomes_findable_the_moment_it_is_written(persist) -> None:
     """The triggers, in one assertion. Without them the index is a table
-    that exists and never fills."""
+    that exists and never fills.
+
+    Asked of the store rather than of `find`, deliberately: this is about
+    the index filling, and `find` refuses to answer with the last minute
+    and a half of talk — so routing this through the policy would test
+    the two things at once and mean neither.
+    """
     turn = persist.log_user_turn("таймаут піднімаємо до тридцяти, це тимчасово")
     persist.log_agent_reply("Запам'ятав: тридцять секунд, тимчасово.", turn)
 
-    found = search.find(persist, "таймаут", now=NOW)
-    assert "тридцяти" in found[0].text
+    rows = persist.search_transcripts("таймаут", now=time.time())
+    assert any("тридцяти" in text for _ts, text, _agent in rows)
 
 
 def test_rows_written_before_the_index_existed_are_still_found(tmp_path) -> None:
@@ -394,6 +412,11 @@ async def test_the_verb_answers_out_loud(tmp_path) -> None:
     toolbox = VoiceToolbox(
         Settings(), None, deliver, hands_factory=lambda s: FakeHands(), persist=p
     )
+    # Settle the rows into the past: the verb will not answer with what
+    # is still being said, and these were written a moment ago.
+    p._conn.execute("UPDATE transcripts SET ts = ts - 600")
+    p._conn.commit()
+
     said = await toolbox.execute("search_conversations", {"query": "таймаут"})
     p.close()
 
@@ -477,3 +500,56 @@ def test_a_stale_conversation_is_still_searchable(persist) -> None:
     found = search.find(persist, "воротаря", now=NOW)
     assert texts(found) == ["вирішили не чіпати воротаря"]
     assert "22 червня" in search.spoken(found, now=NOW)
+
+
+# ── what you are saying now is not yet a memory ───────────────────────
+
+
+def test_a_question_is_not_its_own_answer() -> None:
+    """Observed live, twice, word for word. Asked «що я казав про
+    бекапи?» it answered «Сьогодні ти казав: Дока, що я казав про
+    бекапи?» — because the turn is written to the database before the
+    model is even asked, so FTS finds the question itself: the freshest
+    and shortest match there is, and therefore the top-ranked one.
+    """
+    from datetime import datetime
+
+    from src.spine.search import NOT_YET_A_MEMORY_S, find
+
+    now = datetime(2026, 8, 22, 22, 49, 21)
+
+    class _Persist:
+        seen: dict = {}
+
+        def search_transcripts(self, terms, *, since, until, include_room,
+                               limit, now):
+            _Persist.seen = {"until": until, "now": now}
+            return []
+
+    find(_Persist(), "що я казав про бекапи", now=now)
+
+    cut = _Persist.seen["until"]
+    assert cut is not None, "without an upper bound the search answers itself"
+    assert now.timestamp() - cut >= NOT_YET_A_MEMORY_S
+
+
+def test_a_date_range_is_still_narrowed_by_it() -> None:
+    """«що я казав сьогодні» must not reach back into the current turn
+    either — the range ends today, and today includes a second ago."""
+    from datetime import datetime
+
+    from src.spine.search import NOT_YET_A_MEMORY_S, find
+
+    now = datetime(2026, 8, 22, 22, 49, 21)
+
+    class _Persist:
+        seen: dict = {}
+
+        def search_transcripts(self, terms, *, since, until, include_room,
+                               limit, now):
+            _Persist.seen = {"until": until}
+            return []
+
+    find(_Persist(), "що я казав сьогодні про бекапи", now=now)
+
+    assert now.timestamp() - _Persist.seen["until"] >= NOT_YET_A_MEMORY_S

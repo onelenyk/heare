@@ -240,10 +240,18 @@ async def test_recall_formats_top_results_as_prose():
 
 @pytest.mark.asyncio
 async def test_recall_zero_results():
+    """Scoped to the notebook, not to the world.
+
+    Observed live: the model called `recall` alongside
+    `search_conversations`, and every acknowledgement a verb returns is
+    spoken verbatim, one after another. A bare "Нічого не знайшов"
+    landed straight after a real finding from the transcripts and
+    contradicted it in the same breath.
+    """
     memory = FakeMemory(search_results=[])
     toolbox, _ = _make_toolbox(memory=memory)
     reply = await toolbox.execute("recall", {"query": "щось невідоме"})
-    assert reply == "Нічого не знайшов."
+    assert reply == "У записнику про це нічого."
 
 
 @pytest.mark.asyncio
