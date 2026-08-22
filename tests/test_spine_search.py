@@ -553,3 +553,55 @@ def test_a_date_range_is_still_narrowed_by_it() -> None:
     find(_Persist(), "що я казав сьогодні про бекапи", now=now)
 
     assert now.timestamp() - _Persist.seen["until"] >= NOT_YET_A_MEMORY_S
+
+
+def test_a_past_question_is_not_a_memory_either() -> None:
+    """The freshness bound catches the question being asked right now.
+    It does not catch the same question asked half an hour ago — which
+    is past the bound and a perfect lexical match, precisely because it
+    is the same question.
+
+    Observed live: «що я казав про бекапи?» asked a second time answered
+    «Сьогодні ти казав: Дока, що я казав про бекапи?»
+    """
+    from src.spine.search import _is_a_question_about_memory as asking
+
+    assert asking("Дока, що я казав про бекапи?") is True
+    assert asking("Дока, що я казав про rsync?") is True
+
+
+def test_something_actually_said_survives_the_same_test() -> None:
+    """The rule has to keep short statements: the cost of being wrong
+    here is a memory that can never be recalled again."""
+    from src.spine.search import _is_a_question_about_memory as asking
+
+    assert asking("Так, по бекапах: беремо rsync на другий диск, щоночі.") is False
+    assert asking("таймаут піднімаємо до тридцяти секунд, це тимчасово") is False
+    assert asking("а може взяти rsync замість борг?") is False, (
+        "a question can still be a thing you said, if it says something"
+    )
+    assert asking("Дока, нагадай про мітинг") is False
+
+
+def test_the_assistants_own_lines_are_never_tested_for_it(persist) -> None:
+    """Its replies quote back and restate — which is what makes them the
+    clean version of a transcript Whisper mangled, the property this
+    verb was built on. Judged as questions, they would be thrown away
+    exactly when they are most useful.
+
+    The rule is a heuristic and this is its honest edge: it catches the
+    phrasing people actually use to ask («що я казав про X» leaves the
+    name and the subject), and misses «що там по X?», where "там" and
+    "по" survive the sanitizer and read as content. Raising the
+    threshold until that case passes would start discarding real short
+    statements, and a memory that can never be recalled is a worse
+    failure than a question quoted back once.
+    """
+    write(persist, "Дока, що я казав про бекапи?", ago_days=1)
+    write(persist, "Ти казав: бекапи через rsync на другий диск.", ago_days=1,
+          agent=1)
+
+    found = texts(search.find(persist, "бекапи", now=NOW))
+
+    assert any("rsync" in t for t in found), "the reply must survive"
+    assert not any(t.startswith("Дока, що я казав") for t in found)

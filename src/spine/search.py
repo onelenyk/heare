@@ -58,6 +58,7 @@ input to step 4 (repeated intentions), where nothing is quoted.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -88,6 +89,16 @@ FRAGMENT_CHARS = 180
 # «12 серпня ти казав: Докер.», beating the sentence that came four
 # seconds later and actually said something.
 MIN_CHARS = 12
+
+# A line that is itself a question about what was said is not an answer
+# to one. Observed live: asked «що я казав про бекапи?» a second time, it
+# quoted the *first* asking back — thirty minutes old, so past the
+# freshness bound, and a perfect lexical match precisely because it was
+# the same question. Recognised the same way the query is: strip the
+# recall scaffolding and count what is left. «Дока, що я казав про
+# бекапи?» keeps two words — the assistant's name and the subject being
+# asked about. A line that said something keeps a sentence.
+QUESTION_KEEPS_WORDS = 2
 
 # Over-fetch before de-duplicating and dropping the too-short: a user
 # line and the reply restating it are both good matches and often
@@ -165,11 +176,36 @@ def find(
         key = " ".join((text or "").lower().split())
         if len(key) < MIN_CHARS or key in seen:
             continue
+        if not agent_spoken and _is_a_question_about_memory(text):
+            continue
         seen.add(key)
         found.append(Fragment(float(ts), text.strip(), bool(agent_spoken)))
         if len(found) >= limit:
             break
     return found
+
+
+def _is_a_question_about_memory(text: str) -> bool:
+    """Whether this line was someone asking rather than someone saying.
+
+    The same stripping the query goes through, applied to the candidate:
+    take out the time words and the stopwords and see what is left. «Дока,
+    що я казав про бекапи?» leaves "бекапи" — one word, which is the
+    subject of the question, not a thing anybody said about it. A line
+    that actually said something keeps a sentence.
+
+    Only user lines are tested. The assistant's replies quote back and
+    restate, which is exactly what makes them the clean version of a
+    mangled transcript — the property this verb was built on.
+    """
+    remains = _sanitize_fts_query(strip_when(text, None))
+    if remains is None:
+        return True
+    # The sanitizer emits an FTS expression — quoted terms plus prefix
+    # stems of each. Only the whole words count; the stems are the same
+    # words again with their endings cut off.
+    words = re.findall(r'"([^"]+)"(?!\*)', remains)
+    return len(words) <= QUESTION_KEEPS_WORDS
 
 
 def shorten(text: str, limit: int = FRAGMENT_CHARS) -> str:
