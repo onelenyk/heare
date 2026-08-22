@@ -305,3 +305,39 @@ def test_nothing_stays_nothing() -> None:
     from src.spine.summary import tidy
 
     assert tidy("   \n\n  ") == ""
+
+
+def test_the_preamble_inside_one_sentence_goes_too() -> None:
+    """What actually came back for the nine-day conversation on disk.
+    The line rule catches an answer with a heading over it; this is the
+    same waste inside a single sentence, and it cost six words out of
+    two sentences."""
+    from src.spine.summary import tidy
+
+    assert tidy(
+        "Під час розмови обговорювали робочі питання: бек-апи через rsync, "
+        "дедлайни релізу."
+    ) == "Бек-апи через rsync, дедлайни релізу."
+
+
+def test_a_summary_that_opens_on_its_subject_is_left_alone() -> None:
+    """The rule keys on the meta words, not on the colon. Otherwise the
+    best possible opening — the topic, then what was decided — would be
+    the one thing it destroyed."""
+    from src.spine.summary import tidy
+
+    assert tidy("Таймаути: підняли до тридцяти секунд.") == (
+        "Таймаути: підняли до тридцяти секунд."
+    )
+
+
+def test_a_long_first_clause_is_not_a_preamble() -> None:
+    """A preamble is short by nature. A colon seventy characters in is
+    part of the summary."""
+    from src.spine.summary import tidy
+
+    long = (
+        "Розмова почалася з бекапів, перейшла на релізи і закінчилася "
+        "співбесідою: усе за одну годину."
+    )
+    assert tidy(long) == long

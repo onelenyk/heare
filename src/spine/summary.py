@@ -110,9 +110,46 @@ def tidy(text: str) -> str:
     if len(lines) > 1 and lines[0].endswith(":"):
         lines = lines[1:]
     joined = " ".join(lines)
+    joined = _drop_opening_clause(joined)
     for markup in ("**", "__", "###", "##", "#"):
         joined = joined.replace(markup, "")
     return " ".join(joined.split()).strip()
+
+
+# Words that only ever appear when the model is describing the act of
+# summarising rather than doing it. Kept short and literal: this is a
+# list, with a list's honesty about what it does not cover.
+_META = ("розмов", "нотатк", "запис", "підсум", "обговорювал", "діалог")
+
+# How far in a colon can be and still be a preamble rather than a real
+# clause. "Під час розмови обговорювали робочі питання:" is 44
+# characters; a summary that genuinely opens with a topic and a colon —
+# "Таймаути: підняли до тридцяти" — is far shorter.
+_OPENING_CHARS = 70
+
+
+def _drop_opening_clause(text: str) -> str:
+    """Cut a leading "here is what this conversation was" clause.
+
+    The line rule above catches the answer with a heading over it. It
+    does not catch the same thing inside one sentence, which is what
+    came back for the nine-day conversation actually on disk:
+
+        "Під час розмови обговорювали робочі питання: бек-апи через
+         rsync, дедлайни релізу…"
+
+    Six words spent on what the reader of a conversation summary already
+    knows, out of two sentences. Recognised by the meta words rather
+    than by the colon alone, so a summary that opens on its subject —
+    "Таймаути: підняли до тридцяти" — is left alone.
+    """
+    head, sep, tail = text.partition(":")
+    if not sep or len(head) > _OPENING_CHARS or not tail.strip():
+        return text
+    if not any(word in head.lower() for word in _META):
+        return text
+    tail = tail.strip()
+    return tail[0].upper() + tail[1:] if tail else text
 
 
 def worth_summarising(said: list[tuple[int, str]]) -> bool:
