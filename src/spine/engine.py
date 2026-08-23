@@ -279,6 +279,10 @@ class Engine:
         self._watched_ts = 0.0
         self.engine_state = EngineState()
         self._awaiting: I.Intent | None = None
+        # The last thing it said unbidden, verbatim. It comes back
+        # through the injection queue as a turn, and without this the
+        # engine reads it as the person agreeing with it.
+        self._said_text: str | None = None
         self._seen_jobs: set[int] = set()
         self._noticed_once = False
         self.last_verdict: Verdict | None = None
@@ -606,6 +610,7 @@ class Engine:
             except Exception:  # noqa: BLE001
                 logger.exception("engine: ask failed — raising as written")
 
+        self._said_text = text
         await self._say(text)
         await self._store.mark_voiced(intent.id)
         # Tell the source it was actually said. Most of what reaches this
@@ -649,7 +654,25 @@ class Engine:
         This is the whole safeguard. Without it "speak freely" is a
         licence; with it, being brushed off costs the engine its
         patience, and the licence pays for itself.
+
+        Except that it never saw a reaction. The engine speaks through
+        `loop.inject`, and an injected line is processed as a turn — so
+        the first thing to arrive here after an unbidden remark was the
+        remark itself. Its own words matched its own intent perfectly,
+        which scored as "answered on the subject", settled the intent and
+        cleared what it was waiting on. By the time the person said «не
+        зараз, помовч» there was nothing left to score, and trust never
+        moved once in either direction.
+
+        So the engine recognises its own voice coming back and lets it
+        pass without reading anything into it.
         """
+        if self._said_text is not None and (
+            user_text or ""
+        ).strip() == self._said_text.strip():
+            self._said_text = None
+            return
+
         awaiting, self._awaiting = self._awaiting, None
         outcome = reaction_to(user_text, awaiting)
         if outcome is None or awaiting is None:

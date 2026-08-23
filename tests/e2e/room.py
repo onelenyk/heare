@@ -76,6 +76,7 @@ class Room:
     _asked: list[list[dict]] = field(default_factory=list)
     _task: Any = None
     _real: tuple = ()
+    state: Any = None
 
     # -- what the model will answer -----------------------------------
 
@@ -135,6 +136,25 @@ class Room:
                 return self.said()
         return ""
 
+    async def drained(self) -> None:
+        """Wait until nothing is in flight.
+
+        The engine speaks by injecting, so its own remark is a queued
+        turn like any other. A test that ticks and then immediately says
+        something is racing two turns through one queue, and will read
+        the reply to the wrong one.
+        """
+        deadline = asyncio.get_running_loop().time() + TURN_TIMEOUT_S
+        settled = self._last_agent_row()
+        still = 0
+        while asyncio.get_running_loop().time() < deadline and still < 8:
+            await asyncio.sleep(0.03)
+            latest = self._last_agent_row()
+            if latest == settled and self.loop._injected.empty():
+                still += 1
+            else:
+                settled, still = latest, 0
+
     async def tick(self, now: float) -> Any:
         """One engine pass at a stated moment.
 
@@ -142,6 +162,37 @@ class Room:
         is instead of sleeping until then.
         """
         return await self.loop.engine.tick(now=now)
+
+    _idle_s: float = 2.0
+
+    async def _idle(self) -> float:
+        return self._idle_s
+
+    def away_for(self, seconds: float) -> None:
+        """How long since anyone touched the keyboard.
+
+        Presence is either "talked lately" or "at the desk"; a test about
+        an empty room has to be able to say both are false.
+        """
+        self._idle_s = seconds
+
+    def is_talking(self, talking: bool = True) -> None:
+        """Stamp what the assistant is doing, the way the daemon does.
+
+        `agent_state` is written by the daemon's speaking wrapper, which
+        this layer does not run — so the test writes it. What is being
+        checked is the wire underneath: for months the reader looked for
+        words no writer produced, and the guard against speaking into the
+        middle of a sentence therefore never fired once.
+        """
+        import json
+        import time
+
+        self.state.set_cache_only(
+            "agent_state",
+            json.dumps({"state": "talking" if talking else "idle",
+                        "since_ts": time.time()}),
+        )
 
     def remembers(self, text: str, *, days_ago: float = 1.0, agent: int = 0) -> None:
         """Something said before this test began.
@@ -255,10 +306,32 @@ async def open_room(
     llm.stream_chat = _plain
     llm.stream_chat_events = _events
 
+    # The real State, because the engine's view of the present is built
+    # from it and the whole point of this layer is that a collaborator
+    # nobody connects is the failure it exists to catch. In production
+    # the daemon owns this object and stamps `agent_state` on every
+    # utterance; here the test stamps it, through `room.is_talking()`.
+    # The schema first: `State.init()` reads tables that
+    # `SpinePersistence`'s constructor creates, and in the daemon the
+    # store is always open before the state is asked anything.
+    from src.spine.persist import SpinePersistence
+    from src.state import State
+
+    SpinePersistence(settings.db_path).close()
+    state = State(settings.db_path)
+    await state.init()
+    room.state = state
+
     loop = await _build_loop(
-        settings, audio=None, voice="", hold_s=0.0, full=True, without=without
+        settings, audio=None, voice="", hold_s=0.0, full=True, state=state,
+        without=without
     )
     room.loop = loop
+    # The keyboard is outside, like the model: read from the real machine
+    # a test would pass or fail depending on whether anyone happened to
+    # move the mouse. Default is "just now" — someone is at the desk.
+    if loop.engine is not None:
+        loop.engine._idle = room._idle
     room._task = asyncio.ensure_future(loop._converse())
     return room
 
