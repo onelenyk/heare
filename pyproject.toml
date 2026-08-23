@@ -43,9 +43,14 @@ testpaths = ["tests"]
 # E2E scenarios drive the whole daemon against real Groq, DeepSeek and
 # Edge endpoints: minutes, not milliseconds, and they cost money. They
 # are excluded here and run deliberately — `make e2e` or `pytest -m e2e`.
-addopts = "--strict-markers --tb=short -m 'not e2e and not spine_live'"
+# `e2e` runs by default. It needs no network and no keys — the model is
+# scripted at the module seam — and it costs twelve seconds. Excluded, it
+# would rot: this directory sat empty for weeks with a marker pointing at
+# it, which is the same shape as every other switch nobody read.
+# `spine_live` stays out: that one costs money.
+addopts = "--strict-markers --tb=short -m 'not spine_live'"
 markers = [
-    "e2e: drives the assembled daemon end to end through a simulated room",
+    "e2e: the assembled app — real loop, real engine, real database, scripted model",
     "spine_live: acceptance tests hitting real Groq/DeepSeek/EdgeTTS",
 ]
 filterwarnings = [
