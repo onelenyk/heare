@@ -16,9 +16,17 @@ part handing something to the next part.
 So: the real loop, the real toolbox, the real engine, the real database,
 and exactly three things replaced at the edge —
 
-* **the ear**, because a test types instead of speaking;
-* **the mouth**, because there is no audio device (with `audio=None`
-  nothing is ever synthesised, so this costs no code at all);
+* **the ear** — the recogniser only. Not the microphone path around it:
+  the loudness gate that decides whether Groq is paid at all, and the
+  filter that decides whether what came back was ever speech, are both
+  real here, because both have turned an evening bad and neither was on
+  a test path until 23 August;
+* **the mouth** — the synthesiser only. There was no mouth at all for
+  the first thirty-eight scenarios, on the reasoning that `audio=None`
+  costs no code. It cost three things that live only in the speaking
+  branch: the stamp the junk filter reads, the extension of the wake
+  window, and the choice of voice — and a wrong voice is silence, which
+  is this project's worst failure shape;
 * **the model**, which is scripted, because a test that cannot say what
   the model answers is not testing anything downstream of it.
 
@@ -44,7 +52,7 @@ import asyncio
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator, Iterable
+from typing import Any, AsyncIterator
 
 # How long to wait for a turn to finish before calling it wedged. Real
 # turns here are milliseconds — the model is a list — so anything near
@@ -77,6 +85,14 @@ class Room:
     _task: Any = None
     _real: tuple = ()
     state: Any = None
+    # The door: what the recogniser will return next, what it was
+    # actually asked about, and what came out the other side.
+    _next_heard: str = ""
+    _real_stt: Any = None
+    _real_tts: Any = None
+    recognised: list = field(default_factory=list)
+    through: list = field(default_factory=list)
+    voiced: list = field(default_factory=list)
 
     # -- what the model will answer -----------------------------------
 
@@ -139,6 +155,33 @@ class Room:
         self.loop.assembler.speech_started()
         self.loop.assembler.transcript(text)
         return await self._settle(before)
+
+    async def spoken(self, text: str, *, ms: float = 600.0,
+                     quiet: bool = False) -> str:
+        """Said into the microphone — including the part before the loop.
+
+        `hears()` hands text straight to the assembler, which is the
+        right entrance for everything downstream but skips a stretch of
+        real code: the loudness gate that decides whether to pay for
+        recognition at all, and the filter that decides whether what came
+        back was ever speech. Both live in the composition root, both
+        have turned an evening bad, and neither was on any test path.
+
+        Returns what survived that stretch — empty when it was turned
+        away, in which case nothing downstream ever saw it.
+        """
+        self._next_heard = text
+        pcm = _audio(ms, quiet=quiet)
+        self.loop.assembler.speech_started()
+        await self.loop._transcribe(pcm, self.loop._starts_seen)
+        return self.through[-1] if self.through else ""
+
+    def cost_events(self) -> list[tuple]:
+        """What was billed. Silence that reaches Groq is money."""
+        with sqlite3.connect(self.db) as db:
+            return db.execute(
+                "SELECT kind, audio_seconds FROM usage_events ORDER BY id"
+            ).fetchall()
 
     async def said_to_it(self, text: str) -> None:
         """Addressed to it, with no spoken reply expected.
@@ -353,6 +396,37 @@ async def open_room(
     llm.stream_chat = _plain
     llm.stream_chat_events = _events
 
+    # The recogniser, patched the same way and for the same reason: the
+    # composition root takes its own reference at wiring time. What is
+    # under test here is not Whisper but everything the root does around
+    # it — skip the call when the audio is too quiet to be a word, and
+    # throw away what came back when it is a known hallucination.
+    import src.spine.stt as stt
+
+    room._real_stt = stt.transcribe
+
+    async def _recognise(pcm, **_kw):
+        room.recognised.append(len(pcm))
+        return stt.Transcript(text=room._next_heard, language="uk")
+
+    stt.transcribe = _recognise
+
+    # The mouth, for the same reason again — and this one is also the
+    # only way to see which voice was chosen, which is a decision made
+    # per reply and never yet observed by a test.
+    import src.spine.tts as tts
+
+    room._real_tts = tts.synthesise
+
+    def _voice(text: str, *, voice: str = "", **_kw):
+        async def stream():
+            room.voiced.append((text, voice))
+            yield b"\x00\x00" * 240
+
+        return stream()
+
+    tts.synthesise = _voice
+
     # The real State, because the engine's view of the present is built
     # from it and the whole point of this layer is that a collaborator
     # nobody connects is the failure it exists to catch. In production
@@ -370,10 +444,21 @@ async def open_room(
     room.state = state
 
     loop = await _build_loop(
-        settings, audio=None, voice="", hold_s=0.0, full=True, state=state,
+        settings, audio=Mouth(), voice="", hold_s=0.0, full=True, state=state,
         without=without
     )
     room.loop = loop
+    # Watch what the door lets through, without changing it. The gate
+    # and the filter live inside a closure in the composition root; this
+    # is the only place their verdict is visible from outside.
+    _door = loop.transcribe
+
+    async def _watched(pcm):
+        result = await _door(pcm)
+        room.through.append((getattr(result, "text", None) or "").strip())
+        return result
+
+    loop.transcribe = _watched
     # The keyboard is outside, like the model: read from the real machine
     # a test would pass or fail depending on whether anyone happened to
     # move the mouse. Default is "just now" — someone is at the desk.
@@ -381,6 +466,57 @@ async def open_room(
         loop.engine._idle = room._idle
     room._task = asyncio.ensure_future(loop._converse())
     return room
+
+
+class Mouth:
+    """A speaker that keeps what it was given instead of playing it.
+
+    This harness ran without one for its first thirty-eight scenarios,
+    on the reasoning that `audio=None` costs no code. It does cost code:
+    a whole branch of the loop is skipped, and three things that live
+    only in that branch — the stamp that tells the junk filter the
+    assistant just spoke, the extension of the wake window, and the
+    choice of voice for the reply — were therefore never on any path.
+    The last one has a standing suspicion against it: Edge TTS renders
+    Cyrillic on an English voice as silence.
+
+    Only the surface the loop actually touches is here. Nothing plays,
+    so `playing` is always False and a drain returns at once.
+    """
+
+    def __init__(self) -> None:
+        self.input_frames: asyncio.Queue = asyncio.Queue(maxsize=200)
+        self.mute_input = False
+        self.mute_output = False
+        self.playing = False
+        self.far_sink = None
+        self.played: list[bytes] = []
+
+    def take_input_gap(self) -> bool:
+        return False
+
+    def play(self, pcm: bytes) -> None:
+        self.played.append(pcm)
+
+    def stop_playback(self) -> int:
+        return 0
+
+
+def _audio(ms: float, *, quiet: bool = False) -> bytes:
+    """16 kHz mono int16, either plainly loud or plainly silent.
+
+    Nothing here models a voice — the recogniser is scripted. What it
+    has to be honest about is energy, because the gate in front of the
+    recogniser is measured in milliseconds above a threshold, and a test
+    that fakes that number tests nothing.
+    """
+    import struct
+
+    frames = int(16000 * ms / 1000.0)
+    if quiet:
+        return b"\x00\x00" * frames
+    # A square wave at half scale: about -6 dBFS, loud by any measure.
+    return struct.pack("<%dh" % frames, *([16000, -16000] * (frames // 2)))
 
 
 async def _speak(room: Room, messages: list[dict]) -> AsyncIterator[dict]:
@@ -412,6 +548,14 @@ async def close_room(room: Room) -> None:
         import src.spine.llm as llm
 
         llm.stream_chat, llm.stream_chat_events = room._real
+    if room._real_stt is not None:
+        import src.spine.stt as stt
+
+        stt.transcribe = room._real_stt
+    if room._real_tts is not None:
+        import src.spine.tts as tts
+
+        tts.synthesise = room._real_tts
     if room._task is not None:
         room._task.cancel()
         try:
@@ -426,4 +570,4 @@ async def close_room(room: Room) -> None:
         pass
 
 
-__all__ = ["Room", "Says", "close_room", "open_room"]
+__all__ = ["Mouth", "Room", "Says", "close_room", "open_room"]

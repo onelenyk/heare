@@ -135,8 +135,8 @@
   <section>
     <h2>Скільки</h2>
     <div class="counts">
-      <div class="count"><b>1736</b><span>усього тестів</span></div>
-      <div class="count"><b>38</b><span>e2e-сценаріїв</span></div>
+      <div class="count"><b>1751</b><span>усього тестів</span></div>
+      <div class="count"><b>53</b><span>e2e-сценаріїв</span></div>
     </div>
     <p class="hint">
       Порахувала не ця сторінка, а pytest, під час збірки. Усе нижче
@@ -249,6 +249,21 @@
         </ul>
       </div>
       <div class="file">
+        <h3>test_at_the_door.py <span class="n">9</span></h3>
+        <p>Before the loop: what is paid for, and what is thrown away.</p>
+        <ul>
+          <li><b>a sentence gets through and becomes a turn</b> — The baseline. If this fails, nothing else in the file means</li>
+          <li><b>dead air is never sent to be recognised</b> — A VAD utterance is mostly preroll and trailing silence. Sending</li>
+          <li><b>a word shorter than a word is not sent either</b> — The gate is measured in milliseconds of genuinely loud audio, not</li>
+          <li><b>speech that is paid for is counted</b> — The other side of the same gate: when the call is made, it lands</li>
+          <li><b>a hallucination on dead air never becomes a turn</b> — Loud enough to be recognised, and still not something a person</li>
+          <li><b>a caption marker is not speech</b></li>
+          <li><b>a phrase whisper glued together is not a sentence</b> — Forty-five rows in the real database look like this. No person</li>
+          <li><b>thanks into silence is whisper filling a gap</b></li>
+          <li><b>thanks right after an answer is a person being polite</b> — The wire this file exists for.</li>
+        </ul>
+      </div>
+      <div class="file">
         <h3>test_going_deaf.py <span class="n">7</span></h3>
         <p>It notices that it stopped hearing, and says so.</p>
         <ul>
@@ -310,6 +325,18 @@
           <li><b>the room never becomes a turn</b> — Nothing answered it. Given a turn id it would join an exchange it</li>
           <li><b>the search does not answer with the room</b> — A reader that does not ask for the room does not see it.</li>
           <li><b>forget erases the room and leaves the conversation</b> — A person has to be able to say "forget that" out loud and have it</li>
+        </ul>
+      </div>
+      <div class="file">
+        <h3>test_the_voice.py <span class="n">6</span></h3>
+        <p>The way out: which voice reads the answer, and what that costs.</p>
+        <ul>
+          <li><b>a ukrainian answer is read by a ukrainian voice</b></li>
+          <li><b>an english answer is read by an english voice</b></li>
+          <li><b>english words inside a ukrainian sentence do not silence it</b> — The everyday case, and the one that would be silence. Half the</li>
+          <li><b>each sentence is voiced for itself</b> — An English aside inside a Ukrainian answer gets the English voice,</li>
+          <li><b>an answer with no letters falls back to ukrainian</b> — `pick_voice` has to decide something for «30.» — and English is</li>
+          <li><b>what is spoken is what was written down</b> — The mouth and the database must agree. A tool acknowledgement is</li>
         </ul>
       </div>
     </div>
