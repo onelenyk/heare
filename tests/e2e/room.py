@@ -98,6 +98,36 @@ class Room:
 
     # -- driving it ---------------------------------------------------
 
+    async def overhears(self, text: str) -> None:
+        """Said in the room, with no reply expected.
+
+        The gate is supposed to turn this away, so waiting the full turn
+        timeout for an answer that must not come would spend ten seconds
+        proving the test's own premise.
+
+        Note that this consumes no queued answer: nothing reaches the
+        model. Queueing one before calling this shifts the whole script
+        by one, and the next real turn gets the wrong line.
+        """
+        before = len(self.rows())
+        # Speech starts, then it is transcribed. The microphone path
+        # always does both — the VAD opens the turn and the recogniser
+        # fills it — and the assembler holds a fragment that arrived
+        # without an opening, defending against a recogniser that died
+        # mid-utterance.
+        self.loop.assembler.speech_started()
+        self.loop.assembler.transcript(text)
+        # Returns the moment something is written down, and gives up
+        # quickly when nothing is — because "nothing was written down" is
+        # what most of these cases are asserting, and waiting the full
+        # turn timeout for it would spend ten seconds proving the test's
+        # own premise.
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.05)
+            if len(self.rows()) != before:
+                return
+
     async def hears(self, text: str) -> str:
         """Something said in the room, through the wake gate.
 
@@ -106,6 +136,7 @@ class Room:
         tests are about.
         """
         before = self._last_agent_row()
+        self.loop.assembler.speech_started()
         self.loop.assembler.transcript(text)
         return await self._settle(before)
 
@@ -277,6 +308,12 @@ async def open_room(
     settings.groq_api_key = settings.groq_api_key or "test"
     settings.deepseek_api_key = settings.deepseek_api_key or "test"
     settings.llm_provider = "deepseek"
+    # The turn clock, wound right down. In the room these hold a turn
+    # open in case the person is still speaking; here every fragment is
+    # a whole sentence delivered at once, and the wait is the difference
+    # between a suite that runs in seconds and one nobody runs.
+    settings.spine_turn_hold_seconds = 0.0
+    settings.spine_turn_continuation_hold_seconds = 0.0
     if features:
         settings.spine_features = dict(features)
 
