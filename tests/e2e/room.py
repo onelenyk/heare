@@ -140,6 +140,16 @@ class Room:
         self.loop.assembler.transcript(text)
         return await self._settle(before)
 
+    async def said_to_it(self, text: str) -> None:
+        """Addressed to it, with no spoken reply expected.
+
+        A role trigger and its end phrase are answered with a service
+        phrase, which is spoken outside the model flow and leaves no row.
+        Waiting for one costs the full turn timeout and proves nothing.
+        """
+        await self.loop.inject(text)
+        await self.drained()
+
     async def told(self, text: str) -> str:
         """Something addressed to it, bypassing the gate.
 
