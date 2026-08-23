@@ -879,3 +879,28 @@ def test_the_audio_library_is_packaged_by_name() -> None:
         "PortAudio is collected through _sounddevice_data — without it the "
         "built app raises 'PortAudio library not found' at boot"
     )
+
+
+def test_the_bench_page_can_still_be_built() -> None:
+    """`docs/stend.html` is generated from the feature table, the timing
+    constants and the e2e scenarios. That is the point — a page written
+    by hand disagrees with the system inside a week — but it also means
+    the generator breaks silently the moment one of those is renamed,
+    and the page then sits in the repository describing a system that
+    has moved on. Which is the exact failure it exists to prevent.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    done = subprocess.run(
+        [sys.executable, str(root / "scripts" / "stend.py")],
+        cwd=root, capture_output=True, text=True, timeout=300,
+    )
+
+    assert done.returncode == 0, done.stderr[-800:]
+    page = (root / "docs" / "stend.html").read_text(encoding="utf-8")
+    assert "<title>Стенд heare</title>" in page
+    for switch in ("watcher", "hear_all", "repeats", "engine"):
+        assert switch in page, f"{switch} is declared and the page does not know"

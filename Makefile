@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs launch test clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar build frontend dmg
+.PHONY: help install start stop restart status logs launch test stend clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar build frontend dmg
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -7,6 +7,8 @@ help:
 	@echo "  make quickstart  - Run initial setup"
 	@echo "  make dev        - Start development server"
 	@echo "  make test        - Run tests"
+	@echo "  make e2e         - Run the assembled-app scenarios only"
+	@echo "  make stend       - Rebuild docs/stend.html from the code"
 	@echo "  make test-recognizer - Interactive speaker recognition tester"
 	@echo "  make clean       - Clean build artifacts"
 	@echo ""
@@ -59,10 +61,13 @@ logs:
 launch:
 	@./hearectl launch
 
+# The assembled app: real conductor, engine, database and tools, with the
+# ear, the mouth and the model replaced at the edge. No network, no keys.
+# It also runs as part of `make test` — a layer kept out of the default
+# run is a layer that rots, which is how tests/e2e came to be an empty
+# directory with a marker pointing at it.
 e2e:
-	@echo "E2E: the whole daemon, a simulated room, real endpoints."
-	@echo "Stop the daemon first — the scenarios need the database."
-	uv run python -m src.pipeline.room all
+	uv run pytest tests/e2e -q
 
 test:
 	uv run pytest -q
@@ -164,6 +169,13 @@ dmg: build
 	@echo "Creating Heare.dmg..."
 	hdiutil create -volname Heare -srcfolder dist/Heare.app -ov -format UDZO Heare.dmg
 	@echo "✅ Heare.dmg created"
+
+# The testing bench — a page read off the code, never written by hand.
+# A page in a repository that lists what the system does disagrees with
+# the system within a week; this one is regenerated, so it cannot.
+stend:
+	uv run python scripts/stend.py
+	@echo "   open docs/stend.html"
 
 # Acceptance battery for the spine engine — compresses "a week of living
 # with it" into ~15 minutes + a soak. Requires API keys in ~/.heare/.env.
