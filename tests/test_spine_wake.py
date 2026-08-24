@@ -1,6 +1,6 @@
 """Tests for WakeGate — the fix for the noise-holds-the-gate-open defect.
 
-tests/test_wake_window.py characterises that defect in pipecat's own
+This file characterises that defect in pipecat's own
 WakePhraseUserTurnStartStrategy and is written to fail once the gate is
 replaced. These tests characterise the replacement: text-level, no
 asyncio, no sleeps — time comes from a fake clock backed by a mutable
@@ -161,7 +161,7 @@ def test_within_window_accepts_phrase_less_turns() -> None:
 
 
 def test_rejected_turns_do_not_refresh_the_window() -> None:
-    """The defect stated in tests/test_wake_window.py, undone.
+    """The defect this module exists for, undone.
 
     pipecat's strategy refreshed its timeout on every transcription,
     noise included, so a film playing nearby held the gate open for
@@ -536,3 +536,117 @@ def test_a_freshly_generated_name_is_not_left_with_one_spelling() -> None:
     from src.spine.wake_phrases import _variants
 
     assert len(_variants("Ліра")) > 1
+
+
+# -- the window grows with the conversation ----------------------------
+#
+# Observed 24 August: an exchange ran four turns with no wake word, the
+# person looked at the screen for fifty-three seconds, spoke, and had to
+# say the name again mid-conversation.
+
+
+def _talking(**kw):
+    """A gate and the hand on its clock."""
+    now = [0.0]
+    gate = WakeGate(["дока"], window_s=45.0, max_window_s=180.0,
+                    clock=lambda: now[0], **kw)
+    return gate, now
+
+
+def test_one_command_still_lapses_on_the_short_leash() -> None:
+    """A single instruction is the case where a wake might have been an
+    accident, so nothing is given away for it."""
+    gate, now = _talking()
+    assert gate.accepts("Дока, вимкни музику") is True
+
+    now[0] += 46
+
+    assert gate.accepts("а тепер голосніше") is False
+
+
+def test_a_conversation_earns_a_longer_line() -> None:
+    """Three turns in, fifty-three seconds of thinking is still the same
+    conversation — which is the exact gap that cost a wake word."""
+    gate, now = _talking()
+    gate.accepts("Дока, привіт")
+    now[0] += 10
+    gate.accepts("а котра година")
+    now[0] += 10
+    gate.accepts("а завтра")
+
+    now[0] += 53
+
+    assert gate.accepts("зрозумів, дякую") is True
+
+
+def test_the_line_does_not_grow_without_end() -> None:
+    """The room keeps whatever is said in it for however long this holds,
+    so the growth is capped rather than compounding."""
+    gate, now = _talking()
+    gate.accepts("Дока, привіт")
+    for _ in range(10):
+        now[0] += 5
+        gate.accepts("ще")
+
+    assert gate.window_s == 180.0
+
+    now[0] += 181
+    assert gate.accepts("а тепер?") is False
+
+
+def test_a_finished_conversation_does_not_credit_the_next_one() -> None:
+    """The streak is a property of one exchange. Otherwise a long
+    afternoon would leave the room permanently on the long leash."""
+    gate, now = _talking()
+    gate.accepts("Дока, привіт")
+    now[0] += 10
+    gate.accepts("а котра година")
+    assert gate.window_s == 90.0
+
+    now[0] += 200  # the conversation ends by lapsing
+    assert gate.accepts("щось у кімнаті") is False
+
+    assert gate.window_s == 45.0, "the next wake starts on the short leash"
+
+
+def test_being_told_to_sleep_shortens_the_line_again() -> None:
+    gate, now = _talking()
+    gate.accepts("Дока, привіт")
+    now[0] += 5
+    gate.accepts("ще")
+
+    gate.sleep()
+
+    assert gate.window_s == 45.0
+
+
+def test_the_assistant_cannot_lengthen_its_own_leash() -> None:
+    """`spoke()` refreshes the window and must not grow it, for the same
+    reason it never wakes a sleeping gate: an assistant that can buy
+    itself a longer line by talking has undone the promise."""
+    gate, now = _talking()
+    gate.accepts("Дока, привіт")
+    before = gate.window_s
+
+    for _ in range(5):
+        gate.spoke()
+
+    assert gate.window_s == before
+
+
+def test_a_suspend_takes_the_long_line_away() -> None:
+    """A machine that slept does not resume a conversation."""
+    now, wall = [0.0], [0.0]
+    gate = WakeGate(["дока"], window_s=45.0, max_window_s=180.0,
+                    clock=lambda: now[0], wall=lambda: wall[0])
+    gate.accepts("Дока, привіт")
+    now[0] += 5
+    wall[0] += 5
+    gate.accepts("ще")
+    assert gate.window_s == 90.0
+
+    now[0] += 1
+    wall[0] += 3600  # the lid was closed for an hour
+
+    assert gate.accepts("а що там") is False
+    assert gate.window_s == 45.0

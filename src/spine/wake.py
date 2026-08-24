@@ -2,10 +2,11 @@
 
 pipecat's WakePhraseUserTurnStartStrategy has a documented defect: it
 refreshes its window on ANY transcription — the room's noise as much as
-speech addressed to the assistant. See tests/test_wake_window.py for the
-characterisation tests that name it, including the recorded consequence:
-a "Дока, привіт!" and a film playing held the gate open for four and a
-half minutes.
+speech addressed to the assistant. The characterisation of that defect,
+with its recorded consequence — a "Дока, привіт!" and a film playing held
+the gate open for four and a half minutes — is in tests/test_spine_wake.py
+(`test_rejected_turns_do_not_refresh_the_window`); it used to live in
+tests/test_wake_window.py, which went with the pipecat engine.
 
 This module replaces that gate at the text level. The daemon transcribes
 everything regardless — hearing is not gated — but only turns this gate
@@ -50,6 +51,30 @@ The rule is deliberately one-sided (wall ahead of monotonic, never the
 reverse) and its failure mode is deliberately safe: a forward NTP step
 of more than the threshold puts the gate to sleep, which costs the user
 one wake word and never costs them the promise.
+
+A window that grows with the conversation
+-----------------------------------------
+Forty-five seconds is the right leash for a single command and the
+wrong one for talking. Observed 24 August: an exchange ran four turns
+with no wake word — the window worked exactly as designed — and then
+the person looked at the screen for fifty-three seconds, spoke, and had
+to say the name again. The gap between "still talking to it" and "not
+talking to it any more" is not fixed at forty-five seconds; it is
+longer the deeper the conversation is.
+
+So the window is `window_s` multiplied by the number of consecutive
+accepted turns, capped at `max_window_s`. One command still lapses in
+forty-five seconds. A five-turn conversation holds for three minutes.
+
+The reasoning is about risk, not comfort: the chance that a wake was
+accidental is highest at the first turn and falls with every exchange
+after it. A room does not produce four consecutive turns addressed to
+the assistant by accident, and if the first one was a mistake the
+second one is not coming.
+
+Only accepted turns count. `spoke()` refreshes the window but never
+lengthens it, for the same reason it never wakes a sleeping gate: the
+assistant must not be able to buy itself a longer leash by talking.
 """
 
 from __future__ import annotations
@@ -113,13 +138,24 @@ class WakeGate:
         phrases: list[str],
         window_s: float = 45.0,
         required: bool = True,
+        max_window_s: float | None = None,
         clock: Callable[[], float] = time.monotonic,
         wall: Callable[[], float] = time.time,
         suspend_threshold_s: float = 5.0,
     ) -> None:
         self._phrases = [p for p in phrases if p.strip()]
         self._window_s = window_s
+        # Four turns' worth by default. Past that the conversation is
+        # not getting any more obviously a conversation, and the room
+        # keeps whatever is said in it for however long this holds.
+        self._max_window_s = (
+            max_window_s if max_window_s is not None else window_s * 4
+        )
         self._required = required
+        # Consecutive accepted turns. The window is this many times
+        # `window_s`, so a single command lapses quickly and a real
+        # exchange does not. Reset by sleep(), and therefore by suspend.
+        self._streak = 0
         self._clock = clock
         self._wall = wall
         self._suspend_threshold_s = suspend_threshold_s
@@ -184,15 +220,16 @@ class WakeGate:
         within_window = (
             self._awake
             and self._last_accept is not None
-            and (now - self._last_accept) <= self._window_s
+            and (now - self._last_accept) <= self.window_s
         )
 
         if woke_now or within_window:
             self._awake = True
             self._last_accept = now
+            self._streak += 1
             return True
 
-        self._awake = False
+        self.sleep()
         return False
 
     def spoke(self) -> None:
@@ -240,13 +277,26 @@ class WakeGate:
             self._last_accept = self._clock()
 
     @property
+    def window_s(self) -> float:
+        """How long the line stays open, given how long it has been open.
+
+        `window_s` per consecutive accepted turn, capped. Zero turns is
+        the base window rather than zero seconds: the gate is asked this
+        before the waking turn is counted.
+        """
+        return min(self._window_s * max(self._streak, 1), self._max_window_s)
+
+    @property
     def awake(self) -> bool:
         return self._awake
 
     def sleep(self) -> None:
-        """Force asleep (e.g. after "спи")."""
+        """Force asleep (e.g. after "спи"). The next conversation starts
+        on the short leash again — a streak is a property of one
+        exchange, not a credit the room accumulates."""
         self._awake = False
         self._last_accept = None
+        self._streak = 0
 
 
 __all__ = ["WakeGate"]

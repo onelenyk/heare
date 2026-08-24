@@ -171,6 +171,14 @@ class Settings:
     # follow-up needs no name. Set wake_every_turn when it should.
     wake_required: bool = True
     wake_window_seconds: float = 45.0
+    # The window grows with the conversation: `wake_window_seconds` per
+    # consecutive accepted turn, up to this. One command lapses in 45
+    # seconds; a five-turn exchange holds for three minutes, because the
+    # chance a wake was accidental is highest at the first turn and falls
+    # with every turn after it. Observed 24 August: four turns without a
+    # wake word, then fifty-three seconds of looking at the screen, and
+    # the name was needed again mid-conversation.
+    wake_window_max_seconds: float = 180.0
     wake_every_turn: bool = False
     stt_min_speech_seconds: float = 0.30
 

@@ -428,6 +428,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
         loop.wake = WakeGate(
             _wake_phrases(settings),
             window_s=getattr(settings, "wake_window_seconds", 45.0),
+            max_window_s=getattr(settings, "wake_window_max_seconds", 180.0),
             required=getattr(settings, "wake_required", True),
         )
     # Mirror role sessions to the DB on the CLI path too, so a session

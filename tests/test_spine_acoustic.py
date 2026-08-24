@@ -6,7 +6,7 @@ recordings rather than in a unit test:
   (a) a film playing in the room kept the old wake window open for four
       and a half minutes — because pipecat's wake strategy refreshed its
       timeout on ANY transcription, the room's noise as much as speech
-      addressed to the assistant (see src/spine/wake.py, tests/test_wake_window.py).
+      addressed to the assistant (see src/spine/wake.py, tests/test_spine_wake.py).
   (b) Whisper hallucinating a caption on silence/noise
       («Дякую за перегляд!») — the reason src/spine/vad.py's `loud_ms`
       pre-STT gate exists: main.py refuses to transcribe an utterance
