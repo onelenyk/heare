@@ -38,8 +38,16 @@ def test_load_settings_mode_from_env(monkeypatch, tmp_path) -> None:
 
 
 def test_wake_word_default() -> None:
+    """Empty, because the name is not this setting's job.
+
+    It defaulted to "гава" while the generated identity said "Doka", and
+    the startup greeting — the only reader of this setting alone —
+    announced a name the assistant did not believe it had. The name now
+    lives in identity.json and is resolved by `spine.wake_phrases.
+    own_name`; this is one more thing to answer to, set deliberately.
+    """
     s = Settings()
-    assert s.wake_word == "гава"
+    assert s.wake_word == ""
 
 
 def test_wake_word_custom(monkeypatch, tmp_path) -> None:

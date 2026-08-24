@@ -169,6 +169,10 @@ def _settings(tmp_path, **overrides) -> SimpleNamespace:
         deepseek_api_key="sk-test",
         groq_api_key="gsk-test",
         wake_word="гава",
+        # Pointing at nothing on purpose: the name is resolved from
+        # identity.json, and without this field the resolver would have
+        # to be trusted not to read the developer's own ~/.heare.
+        identity_file=tmp_path / "identity.json",
     )
     for key, value in overrides.items():
         setattr(settings, key, value)
@@ -506,7 +510,21 @@ def test_missing_keys_reads_both_of_them() -> None:
     assert missing_keys(SimpleNamespace(deepseek_api_key="x", groq_api_key="y")) == []
 
 
-def test_greeting_is_short_and_ukrainian() -> None:
-    text = greeting_text(SimpleNamespace(wake_word="гава"))
-    assert text == "Гава на зв'язку."
+def test_greeting_is_short_and_ukrainian(tmp_path) -> None:
+    absent = SimpleNamespace(wake_word="гава", identity_file=tmp_path / "none.json")
+    assert greeting_text(absent) == "Гава на зв'язку."
     assert len(greeting_text(SimpleNamespace()).split()) <= 4
+
+
+def test_the_greeting_says_the_name_the_model_believes_it_has(tmp_path) -> None:
+    """These were two different strings for months. identity.json said
+    «Doka», `wake_word` still held its default «гава», and the assistant
+    introduced itself as one and answered to the other."""
+    import json
+
+    identity = tmp_path / "identity.json"
+    identity.write_text(json.dumps({"name": "Дока"}), encoding="utf-8")
+
+    said = greeting_text(SimpleNamespace(wake_word="гава", identity_file=identity))
+
+    assert said == "Дока на зв'язку."

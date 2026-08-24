@@ -462,3 +462,77 @@ def test_required_false_is_unaffected_by_a_suspend() -> None:
 
     assert gate.accepts("будь-що після сну") is True
     assert gate.awake is True
+
+
+# -- one owner for the name -------------------------------------------
+#
+# Reviewed 24 August, after a person said «Привіт!» three times into a
+# room that was listening for a different word. The name reached three
+# consumers by three routes and nothing compared them.
+
+
+def test_the_name_comes_from_the_identity_not_the_wake_word(tmp_path) -> None:
+    import json
+
+    from src.spine.wake_phrases import own_name
+
+    identity = tmp_path / "identity.json"
+    identity.write_text(json.dumps({"name": "Дока"}), encoding="utf-8")
+
+    resolved = own_name(SimpleNamespace(wake_word="гава", identity_file=identity))
+
+    assert resolved == "Дока"
+
+
+def test_the_wake_word_is_what_is_left_when_there_is_no_identity(tmp_path) -> None:
+    from src.spine.wake_phrases import own_name
+
+    absent = SimpleNamespace(wake_word="гава", identity_file=tmp_path / "no.json")
+
+    assert own_name(absent) == "гава"
+
+
+def test_the_resolver_never_reads_the_developers_own_assistant() -> None:
+    """Settings with no identity_file have no identity. A fallback to
+    `~/.heare` would make this suite depend on whoever is running it."""
+    from src.spine.wake_phrases import own_name
+
+    assert own_name(SimpleNamespace()) == ""
+
+
+def test_the_vocative_is_how_a_person_actually_calls_it() -> None:
+    """You call «Доко», not «Дока». The gate matches whole words, so
+    without this the most natural way to address it is the one way it
+    does not answer to."""
+    from src.spine.wake_phrases import _variants
+
+    assert "доко" in _variants("Дока")
+    assert "гаво" in _variants("Гава")
+
+
+def test_a_word_that_is_also_a_word_is_not_a_wake_phrase() -> None:
+    """The genitive «доки» is an ordinary Ukrainian conjunction, and a
+    wake phrase that is also a word is a podcast in the background
+    starting a conversation every few seconds — the observed failure
+    this whole module exists to stop."""
+    from src.spine.wake_phrases import _variants
+
+    assert "доки" not in _variants("Дока")
+
+
+def test_a_latin_name_is_also_heard_the_way_it_is_spoken() -> None:
+    """identity.json held «Doka» for months while everyone in the room
+    said «Дока», and Whisper wrote what the room said."""
+    from src.spine.wake_phrases import _variants
+
+    assert "дока" in _variants("Doka")
+
+
+def test_a_freshly_generated_name_is_not_left_with_one_spelling() -> None:
+    """`reset-identity` is in the CLI. A new name used to resolve to
+    exactly one phrase, in a form nobody says out loud, and the
+    assistant would go deaf with «asleep — not addressed to me» in the
+    log looking like correct behaviour."""
+    from src.spine.wake_phrases import _variants
+
+    assert len(_variants("Ліра")) > 1

@@ -541,3 +541,26 @@ class TestPersonaIsAVoiceNotATerminal:
             identity_file = tmp_path / "nope.json"
 
         assert load_persona(MockSettings()) == ""
+
+
+def test_the_persona_does_not_promise_silence_it_will_not_keep(tmp_path) -> None:
+    """«Сам розмову не починаю» was written as a constant because no
+    identity could falsify it. A feature switch did: `repeats` and
+    `watcher` went on and the assistant spent an afternoon introducing
+    itself as something that never speaks first while the engine was
+    arranging to do exactly that."""
+    import json
+    from types import SimpleNamespace
+
+    from src.spine.prompt import load_persona
+
+    identity = tmp_path / "identity.json"
+    identity.write_text(json.dumps({"name": "Дока"}), encoding="utf-8")
+    settings = SimpleNamespace(identity_file=identity)
+
+    quiet = load_persona(settings, speaks_first=False)
+    talks = load_persona(settings, speaks_first=True)
+
+    assert "Сам розмову не починаю" in quiet
+    assert "Сам розмову не починаю" not in talks
+    assert "зрідка кажу щось сам" in talks

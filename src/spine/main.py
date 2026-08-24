@@ -33,22 +33,13 @@ def _wake_phrases(settings) -> list[str]:
     lives in the spine's own tree, so a plain import keeps the spine
     pipecat-free.
     """
-    from pathlib import Path as _P
+    from src.spine.wake_phrases import own_name, wake_phrases
 
-    from src.spine.wake_phrases import wake_phrases
-
-    # People call the assistant by its generated name, not only by the
-    # configured wake word; wake_phrases parses the name from a
-    # "You are <Name>" persona line, so hand it one.
-    name = ""
-    try:
-        import json as _json
-
-        ident = _json.loads(_P(settings.identity_file).read_text("utf-8"))
-        name = str(ident.get("name") or "")
-    except Exception:
-        pass
-    return wake_phrases(settings, persona=f"You are {name}" if name else "")
+    # The name, handed over as a name. This used to read identity.json
+    # here, wrap the result in «You are {name}» and pass that along to be
+    # parsed back out by a regex — two modules agreeing on a format
+    # neither of them ever writes.
+    return wake_phrases(settings, name=own_name(settings))
 
 
 def _live_cfg(settings, fallback):
@@ -528,7 +519,11 @@ async def _wire_full(loop, settings, cfg, memory, features):
             logger.exception("engine: unavailable (non-fatal)")
 
 
-    persona = load_persona(settings)
+    # Whether it speaks first is a fact about the wiring, not about the
+    # identity — and the persona has to say the true one. `loop.engine`
+    # is what actually holds intents between turns; if it did not build,
+    # nothing here speaks unbidden whatever the switches say.
+    persona = load_persona(settings, speaks_first=loop.engine is not None)
 
     async def _make_prompt() -> str:
         exchanges = await asyncio.to_thread(persist.recent_exchanges, 4)

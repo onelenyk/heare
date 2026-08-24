@@ -224,7 +224,13 @@ def greeting_text(settings: Any) -> str:
     Short on purpose: it exists to prove the speaker works and the daemon
     is up, and anything longer is something to talk over every restart.
     """
-    name = str(getattr(settings, "wake_word", "") or "").strip()
+    from src.spine.wake_phrases import own_name
+
+    # Its own name, not the wake word. Those were two different strings
+    # for months: identity.json said «Doka», `wake_word` still held its
+    # default «гава», and this line — the only reader of the wake word
+    # alone — announced a name the assistant did not believe it had.
+    name = own_name(settings)
     if name:
         return f"{name[:1].upper()}{name[1:]} на зв'язку."
     return "На зв'язку."

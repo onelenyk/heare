@@ -253,8 +253,16 @@ class Settings:
     # user approved this install". Making the second one true needs the
     # consent checked against what was really said; see docs/next.md.
     capability_install_enabled: bool = False
-    # Wake word / command keyword. Set via config.toml. Default is "гава".
-    wake_word: str = "гава"
+    # One MORE thing to answer to, on top of its own name. Not a second
+    # name: the name lives in identity.json and `spine.wake_phrases.
+    # own_name` is the only thing that resolves it.
+    #
+    # This defaulted to "гава" while the generated identity said "Doka",
+    # and the startup greeting — the one reader of this setting alone —
+    # announced a name the assistant did not believe it had. Empty now,
+    # so a fresh install has exactly one source for who it is. Set it in
+    # config.toml only to add a nickname deliberately.
+    wake_word: str = ""
     # medium = prompt defaults; low = reserved; high = very engaged.
     # Turn aggregation and conversation memory settings
     # Per plan US-010: default to False for gradual rollout

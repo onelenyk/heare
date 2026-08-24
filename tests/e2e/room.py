@@ -367,8 +367,13 @@ async def open_room(
     # between a suite that runs in seconds and one nobody runs.
     settings.spine_turn_hold_seconds = 0.0
     settings.spine_turn_continuation_hold_seconds = 0.0
-    if features:
-        settings.spine_features = dict(features)
+    # Always set, never inherited. `load_settings()` reads the developer's
+    # own ~/.heare/config.toml, so without this line a switch turned on
+    # there — `hear_all`, on the afternoon this was written — silently
+    # changes what the suite is testing, and two scenarios about the room
+    # leaving nothing behind go red on a machine that is merely
+    # configured differently.
+    settings.spine_features = dict(features or {})
 
     # Patched on the module, before anything is wired — because the model
     # is reached by four different roads and only two of them go through

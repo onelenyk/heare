@@ -223,7 +223,7 @@ def _render_vibe(vibe: str) -> str:
     return ", ".join(traits)
 
 
-def load_persona(settings: object) -> str:
+def load_persona(settings: object, *, speaks_first: bool = False) -> str:
     """Read identity.json and render it as a Ukrainian VOICE persona.
 
     Resolves the path from ``settings.identity_file`` when present, else
@@ -253,9 +253,16 @@ def load_persona(settings: object) -> str:
 
     Everything else in the persona is fixed text, true of the engine as
     built: it speaks, it hands work to its worker, and it answers when
-    addressed rather than starting conversations. Those two sentences do
-    not come from identity.json, so a regenerated identity cannot make
-    them false.
+    addressed. Those sentences do not come from identity.json, so a
+    regenerated identity cannot make them false.
+
+    A feature switch could, and on 24 August one did. «Сам розмову не
+    починаю» was written as a constant because no identity could falsify
+    it — and then `repeats` and `watcher` were switched on, and the
+    assistant spent an afternoon introducing itself as something that
+    never speaks first while the engine was arranging to do exactly that.
+    So `speaks_first` is an argument: the composition root knows which
+    features are wired and is the only thing that does.
 
     The result is part of the STATIC head of the system prompt (see the
     module docstring), so it must stay byte-identical across turns for a
@@ -299,7 +306,11 @@ def load_persona(settings: object) -> str:
             head,
             "Я голос: розмовляю з тобою, а роботу віддаю своєму робітнику "
             "й переказую, що вийшло.",
-            "Сам розмову не починаю — озиваюсь, коли до мене звертаються.",
+            "Здебільшого озиваюсь, коли до мене звертаються; зрідка кажу "
+            "щось сам, якщо є про що."
+            if speaks_first
+            else "Сам розмову не починаю — озиваюсь, коли до мене "
+                 "звертаються.",
         ]
 
         traits = _render_vibe(vibe)
