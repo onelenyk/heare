@@ -869,7 +869,6 @@ def test_the_audio_library_is_packaged_by_name() -> None:
     dependency of anything, so PyInstaller cannot discover it: if it is
     not named, it is not there, and the app boots deaf rather than
     failing."""
-    import re
     from pathlib import Path
 
     spec_text = (
@@ -905,3 +904,33 @@ def test_the_bench_page_can_still_be_built(tmp_path) -> None:
     assert "<title>Стенд heare</title>" in page
     for switch in ("watcher", "hear_all", "repeats", "engine"):
         assert switch in page, f"{switch} is declared and the page does not know"
+
+
+def test_the_day_report_runs_against_a_database(tmp_path) -> None:
+    """`scripts/day.py` is the instrument for the week the switches are
+    on, and it is the one script whose job is to be pointed at live
+    data — so what it must never do is fail at the end of the day, and
+    what it must never do more is write. The connection is `mode=ro`;
+    this checks the whole thing runs and reports nothing as nothing.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from src.spine.persist import SpinePersistence
+
+    root = Path(__file__).resolve().parent.parent
+    home = tmp_path / ".heare"
+    home.mkdir()
+    SpinePersistence(home / "heare.db").close()
+
+    done = subprocess.run(
+        [sys.executable, str(root / "scripts" / "day.py"), "2"],
+        cwd=root, capture_output=True, text=True, timeout=120,
+        env={**os.environ, "HEARE_HOME": str(home)},
+    )
+
+    assert done.returncode == 0, done.stderr[-800:]
+    for heading in ("РОЗМОВА", "НЕЗАПИТАНЕ", "ЦІНА", "ШВИДКІСТЬ"):
+        assert heading in done.stdout, done.stdout

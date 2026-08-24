@@ -173,6 +173,9 @@ dmg: build
 # The testing bench — a page read off the code, never written by hand.
 # A page in a repository that lists what the system does disagrees with
 # the system within a week; this one is regenerated, so it cannot.
+day:  ## Що сталося сьогодні: розмови, незапитане, ціна, швидкість
+	uv run python scripts/day.py $(or $(DAYS),1)
+
 stend:
 	uv run python scripts/stend.py
 	@echo "   open docs/stend.html"
