@@ -261,6 +261,44 @@ def believable(candidate: Candidate, summaries: list[Summary]) -> bool:
     return len({s.day for s in cited}) >= MIN_DAYS
 
 
+# How to say "the third time in three days" out loud. Only the counts
+# that can actually occur are spelled — the threshold is three mentions
+# over two days, and past a handful the number stops being the point.
+_TIMES = {3: "втретє", 4: "вчетверте", 5: "вп'яте", 6: "вшосте"}
+_DAYS = {2: "два дні", 3: "три дні", 4: "чотири дні", 5: "п'ять днів"}
+
+
+def phrase(candidate: Candidate, summaries: list[Summary]) -> str:
+    """The remark, with the reason it is one.
+
+    `candidate.text` is the person's own words for the intention, and on
+    its own it is not worth saying: read out verbatim it is your own
+    sentence handed back to you. What makes it worth a word is the
+    arithmetic around it — three times, two days — and until 24 August
+    that arithmetic went into a log line and nowhere else.
+
+    Live that day: the pass found «треба переписати збірку», three
+    mentions across three days, correctly ignoring a colleague's
+    intention in a fourth. The engine raised it, and the model's veto —
+    which is shown the intent text and the surroundings, and nothing
+    else — was asked whether «треба переписати збірку» was worth saying.
+    It said no, and it was right to: nothing in front of it said this
+    had ever happened before. The whole restraint of the feature is the
+    counting, and the counting did not reach the one place where the
+    decision is made.
+
+    Quoted rather than reported, because the intention is in the first
+    person — «хочу перейти на інший тариф» cannot be put after «ти
+    кажеш, що» without changing who wants it.
+    """
+    known = {s.id: s for s in summaries}
+    cited = [known[i] for i in set(candidate.evidence_ids) if i in known]
+    times = _TIMES.get(len(cited), f"{len(cited)} разів")
+    days = len({s.day for s in cited})
+    return f"{times.capitalize()} за {_DAYS.get(days, f'{days} днів')} " \
+           f"чую від тебе: {candidate.text.strip()}"
+
+
 def sift(candidates: list[Candidate], summaries: list[Summary]) -> list[Candidate]:
     return [c for c in candidates if believable(c, summaries)]
 
@@ -482,7 +520,7 @@ class Repeats:
                 candidate.text,
             )
             # One a day means one, not one that clears every filter.
-            return key(observation_id), candidate.text
+            return key(observation_id), phrase(candidate, summaries)
         return None
 
     async def mark_said(self, dedupe_key: str | None) -> None:
@@ -523,6 +561,7 @@ __all__ = [
     "believable",
     "detector",
     "is_mine",
+    "phrase",
     "key",
     "parse",
     "render",

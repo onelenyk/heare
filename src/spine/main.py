@@ -241,20 +241,68 @@ def _worth_saying(cfg_of):
     nothing at all is a valid and expected answer. A failure here falls
     back to raising the intent as written — the same behaviour as before
     this existed.
+
+    Asked in the abstract, it never says yes
+    ----------------------------------------
+    Measured on 24 August, against the live model: the first version of
+    this asked «чи варто зараз про це озватись», with a sentence in front
+    of it saying most such things are worth nothing. It answered НІ to
+    every one of twenty-four probes across three quite different
+    phrasings — including a full disk, a five-minute production outage,
+    and a reminder the person had explicitly asked for. The only thing
+    that got a yes was a house fire.
+
+    That is not restraint, it is a constant function, and it sat at the
+    end of every unbidden path this assistant has: intents, judge, trust,
+    dedupe, the watcher, the repeats pass. All of it ended here and was
+    refused, and the log line for it — «judged not worth saying» — reads
+    exactly like the feature working. It was written down on 20 August as
+    evidence that it did.
+
+    A model asked a bare question of taste answers with its prior, and
+    its prior about assistants that speak unprompted is that they are a
+    nuisance. What moves it is not argument — removing the discouraging
+    sentence changed nothing, and so did forcing a ТАК/НІ answer — but
+    worked examples. With the six below it says the five worth saying and
+    refuses seven of the eight that are not, on the same probe set.
     """
 
     async def ask(intent, situation) -> str | None:
         from src.spine.llm import stream_chat
 
         prompt = (
-            "Ти асистент, який зараз мовчить поруч із людиною.\n"
-            f"Обставини: {situation.describe()}.\n"
-            f"Ти помітив: {intent.text}\n\n"
-            "Чи варто зараз про це озватись? Більшість такого не варта "
-            "жодного слова — мовчати нормально й правильно.\n"
-            "Якщо не варто — відповідай рівно: НІ\n"
-            "Якщо варто — скажи це одним коротким реченням, як сказав би "
-            "живий співрозмовник, без преамбул."
+            "Ти голосовий асистент, який живе поруч із людиною і мовчить, "
+            "поки нема про що. Умови вже перевірені: зараз говорити "
+            "можна — людина тут, не ніч, ти нікого не перебиваєш.\n"
+            "Лишилось одне: чи це те, за що вона подякує, що ти сказав.\n"
+            "Якщо так — одне коротке речення, яким ти це скажеш, без "
+            "преамбул і без пояснень, чому ти вирішив сказати.\n"
+            "Якщо ні — рівно: НІ\n\n"
+            "Ось як це виглядає.\n\n"
+            "помітив: диск заповнений на 98 відсотків\n"
+            "→ Диск майже повний — скоро нічого не запишеться.\n\n"
+            "помітив: надворі сонячно\n"
+            "→ НІ\n\n"
+            "помітив: завдання «зібрати звіт» завершилось, файл у теці "
+            "report\n"
+            "→ Звіт зібрався, лежить у теці report.\n\n"
+            "помітив: ти відкрив той самий файл двічі\n"
+            "→ НІ\n\n"
+            "помітив: ти просив нагадати про потяг о шостій, зараз 17:40\n"
+            "→ За двадцять хвилин потяг.\n\n"
+            "помітив: у тебе тридцять вкладок\n"
+            "→ НІ\n\n"
+            # The repeats pass hands over a sentence that already carries
+            # its own evidence, and without an example of that shape the
+            # model answers with an essay on whether to say it rather
+            # than with the thing to say — the same preamble the
+            # summariser had to be broken of.
+            "помітив: Втретє за два дні чую від тебе: треба оновити "
+            "сертифікат\n"
+            "→ Втретє за два дні чую про сертифікат — може, зараз?\n\n"
+            f"Обставини: {situation.describe()}\n"
+            f"помітив: {intent.text}\n"
+            "→"
         )
         parts: list[str] = []
         async for chunk in stream_chat(

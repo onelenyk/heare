@@ -329,11 +329,53 @@ async def _repeats(tmp_path, answer: str, summaries=None, asked=None):
 
 @pytest.mark.asyncio
 async def test_a_repeat_becomes_one_sentence_and_a_key(tmp_path) -> None:
+    """The sentence carries its own evidence.
+
+    Handed over as «треба переписати збірку» alone it is your own words
+    read back at you, and the model's veto — the last gate before it is
+    said — was refusing it for exactly that reason: nothing in front of
+    it said this had ever happened before. Live on 24 August.
+    """
     repeats = await _repeats(tmp_path, "треба переписати збірку | 1, 2, 3")
 
     found = await repeats.look(now=_at("2026-08-20", 20))
 
-    assert found == (key(1), "треба переписати збірку")
+    assert found == (key(1), "Втретє за три дні чую від тебе: "
+                             "треба переписати збірку")
+
+
+def test_the_counting_is_in_the_sentence_or_it_is_nowhere() -> None:
+    """Three mentions over two days is the whole restraint of this
+    feature. Until 24 August it went into a log line and nowhere else."""
+    from src.spine.repeats import Candidate, Summary, phrase
+
+    summaries = [
+        Summary(1, _at("2026-08-18", 10), "про збірку"),
+        Summary(2, _at("2026-08-18", 16), "знову про збірку"),
+        Summary(3, _at("2026-08-19", 11), "втретє про збірку"),
+    ]
+    said = phrase(Candidate("треба переписати збірку", (1, 2, 3)), summaries)
+
+    assert said == "Втретє за два дні чую від тебе: треба переписати збірку"
+
+
+def test_the_intention_is_quoted_not_reported() -> None:
+    """«хочу перейти на інший тариф» cannot go after «ти кажеш, що»
+    without changing who wants it. The pass writes in the first person
+    because that is how the person said it."""
+    from src.spine.repeats import Candidate, Summary, phrase
+
+    summaries = [
+        Summary(1, _at("2026-08-18", 10), "a"),
+        Summary(2, _at("2026-08-19", 10), "b"),
+        Summary(3, _at("2026-08-20", 10), "c"),
+        Summary(4, _at("2026-08-21", 10), "d"),
+    ]
+    said = phrase(Candidate("хочу перейти на інший тариф", (1, 2, 3, 4)),
+                  summaries)
+
+    assert said.endswith(": хочу перейти на інший тариф")
+    assert said.startswith("Вчетверте за чотири дні")
 
 
 @pytest.mark.asyncio
