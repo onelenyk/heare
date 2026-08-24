@@ -250,6 +250,33 @@ class SpinePersistence:
             logger.exception("persist: search failed (non-fatal)")
             return []
 
+    def reply_to(self, ts: float, within_s: float) -> tuple[float, str] | None:
+        """What the assistant said back, if it answered soon enough.
+
+        A matched user line is whatever Whisper made of the room. The
+        reply to it is clean text about the same thing, written by the
+        side that spells «Docker Compose» correctly — and because it
+        spells it correctly, a search in the person's own words can
+        never find it. Cyrillic «компоуз» and Latin «Compose» share no
+        token, and FTS5 matches tokens.
+
+        So the clean copy is not reached by searching for it. It is
+        reached by asking what came next.
+        """
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "SELECT ts, text FROM transcripts "
+                    "WHERE agent_spoken = 1 AND ts > ? AND ts <= ? "
+                    "AND text NOT LIKE ? ORDER BY ts LIMIT 1",
+                    (ts, ts + within_s, f"{WORKER_RESULT_MARK}%"),
+                )
+                row = cur.fetchone()
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: reply_to failed (non-fatal)")
+            return None
+        return (float(row[0]), str(row[1])) if row else None
+
     def _active_conversation_id(self) -> int:
         """Get-or-create the open (end_ts IS NULL) conversation.
 

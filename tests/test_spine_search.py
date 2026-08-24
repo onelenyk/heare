@@ -605,3 +605,120 @@ def test_the_assistants_own_lines_are_never_tested_for_it(persist) -> None:
 
     assert any("rsync" in t for t in found), "the reply must survive"
     assert not any(t.startswith("Дока, що я казав") for t in found)
+
+
+# -- the assistant's own name, and the clean copy of what you said ------
+#
+# Both found by live test 3 on 24 August, asking «що там було з докір
+# компоузом» against a copy of the real database. The first attempt
+# answered «13 серпня ти казав: Докер. Дякую.»
+
+
+def test_its_own_name_is_not_a_search_term() -> None:
+    """You have to say the name to be heard, so it is at the head of a
+    large share of every line in the corpus — and the terms go into FTS
+    joined by OR, where one worthless term that matches hundreds of
+    short rows beats the one that matters."""
+    from src.spine.search import strip_names
+
+    names = ["дока", "докер", "доко", "доку"]
+
+    assert strip_names("докер компоуз", names) == "компоуз"
+    assert strip_names("Дока, що я казав про таймаут", names) == ", що я казав про таймаут"
+
+
+def test_a_word_that_merely_starts_like_the_name_survives() -> None:
+    """Exact words only, the way the wake gate matches: «доку» is a
+    listed variant of the name and «документ» is not the assistant."""
+    from src.spine.search import strip_names
+
+    kept = strip_names("документ про докер", ["докер", "доку"])
+
+    assert "документ" in kept
+    assert "докер" not in kept
+
+
+def test_nothing_is_stripped_when_no_name_is_known() -> None:
+    from src.spine.search import strip_names
+
+    assert strip_names("докер компоуз", []) == "докер компоуз"
+
+
+def _persist_with_reply(rows, reply):
+    class _Persist:
+        def search_transcripts(self, terms, *, since, until, include_room,
+                               limit, now):
+            return rows
+
+        def reply_to(self, ts, within_s):
+            return reply
+
+    return _Persist()
+
+
+def test_what_you_said_is_answered_with_what_it_said_back() -> None:
+    """Dirty in, clean out.
+
+    A user line is whatever Whisper made of the room, and when the
+    mangling is a transliteration — «компоуз» for «Compose» — the clean
+    copy shares no token with the question and can never be *found*. It
+    is reached by asking what came next instead.
+    """
+    from datetime import datetime
+
+    from src.spine.search import find
+
+    now = datetime(2026, 8, 24, 14, 0)
+    dirty = (now.timestamp() - 5 * 86400, "а шо там з докір компоузом, він падає", 0)
+    clean = "Docker Compose падає бо порт 5432 зайнятий постґресом із brew."
+
+    found = find(_persist_with_reply([dirty], (dirty[0] + 60, clean)),
+                 "докір компоуз", now=now)
+
+    assert found[0].text == clean
+    assert found[0].agent_spoken is True, (
+        "swapping the text without the attribution reads the assistant's "
+        "own sentence back as «ти казав»"
+    )
+
+
+def test_an_acknowledgement_does_not_replace_what_you_said() -> None:
+    """«Зрозумів — шістнадцять гігабайт» is not what anyone asked to be
+    reminded of. Length is the test, and it is a heuristic: the line
+    that carries the content is the longer of the two."""
+    from datetime import datetime
+
+    from src.spine.search import find
+
+    now = datetime(2026, 8, 24, 14, 0)
+    said = (now.timestamp() - 6 * 86400,
+            "Вирішив: беремо мінісервер на шістнадцять гігабайт, у комірчину", 0)
+
+    found = find(_persist_with_reply([said], (said[0] + 1, "Зрозумів.")),
+                 "мінісервер", now=now)
+
+    assert found[0].text == said[1]
+    assert found[0].agent_spoken is False
+
+
+def test_the_name_is_stripped_on_the_way_to_the_index() -> None:
+    """`strip_names` being correct is not the same as it being called.
+    Every defect this layer has produced was a wire, not a rule."""
+    from datetime import datetime
+
+    from src.spine.search import find
+
+    class _Persist:
+        asked: list = []
+
+        def search_transcripts(self, terms, *, since, until, include_room,
+                               limit, now):
+            _Persist.asked.append(terms)
+            return []
+
+    find(_Persist(), "докер компоуз", now=datetime(2026, 8, 24, 14, 0),
+         names=["дока", "докер"])
+
+    assert _Persist.asked, "the index was never consulted"
+    assert "докер" not in (_Persist.asked[0] or "")
+    assert "компоу" in (_Persist.asked[0] or "")

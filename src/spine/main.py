@@ -376,6 +376,10 @@ async def _wire_full(loop, settings, cfg, memory, features):
             settings, memory, _deliver,
             hands_factory=_hands_factory,
             persist=persist if features["persist"] else None,
+            # Not behind features["wake"]: switching the gate off does
+            # not take the name out of four thousand rows that already
+            # start with it.
+            names=_wake_phrases(settings),
         )
         loop.stream_events = lambda messages, tools: stream_chat_events(
             messages, _cfg(), tools=tools

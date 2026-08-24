@@ -477,5 +477,14 @@ TEMPLATE = """<!doctype html>
 
 
 if __name__ == "__main__":
-    OUT.write_text(build(), encoding="utf-8")
-    print(f"✅ {OUT.relative_to(ROOT)}")
+    # An argument, so the tripwire in tests/test_installer.py can build
+    # the page without writing into the working tree: a test that dirties
+    # a tracked file leaves `git status` unclean after every run, and the
+    # habit that follows is ignoring what `git status` says.
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else OUT
+    out.write_text(build(), encoding="utf-8")
+    try:
+        shown = out.relative_to(ROOT)
+    except ValueError:
+        shown = out
+    print(f"✅ {shown}")

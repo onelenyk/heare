@@ -22,6 +22,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any, Awaitable, Callable
 
 from src.agent.hands import PROGRESS_AFTER, Hands
@@ -533,6 +534,7 @@ class VoiceToolbox:
         *,
         hands_factory: HandsFactory | None = None,
         persist: Any = None,
+        names: Sequence[str] = (),
     ) -> None:
         """memory: an initialized SQLiteBackend (or compatible).
         persist: the transcript store, for `forget` and
@@ -552,6 +554,11 @@ class VoiceToolbox:
         self._memory = memory
         self._deliver = deliver
         self._persist = persist
+        # The assistant's own name, in every spelling Whisper produces.
+        # A search query keeps it far more often than not — the person
+        # said it out loud to be heard — and in the corpus it is the one
+        # word that matches almost everything.
+        self._names = tuple(names)
         factory = hands_factory or _default_hands_factory
         self._hands = factory(settings)
         self._hands.set_delivery(deliver)
@@ -643,6 +650,7 @@ class VoiceToolbox:
             now=now,
             when=str(arguments.get("when", "") or ""),
             room=bool(arguments.get("room", False)),
+            names=self._names,
         )
         logger.info("search: %r -> %d fragments", query, len(fragments))
         return search.spoken(fragments, now=now)

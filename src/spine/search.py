@@ -61,6 +61,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from collections.abc import Sequence
 from typing import Any
 
 # The stopword list and the OR-with-prefix-stems trick belong to memory
@@ -107,6 +108,33 @@ QUESTION_KEEPS_WORDS = 2
 _OVERFETCH = 8
 
 
+def strip_names(text: str, names: Sequence[str]) -> str:
+    """Drop the assistant's own name from a query.
+
+    Its name is the one word guaranteed to be in the corpus: you have to
+    say it to be heard, so it sits at the head of a large share of every
+    line the person ever spoke. That is the definition of a stopword,
+    and nobody declared it one — so «докер компоуз» searched the real
+    database and came back with «Привіт, привіт докер!» from July, while
+    the sentence about Docker Compose four days old never placed. The
+    terms go into FTS joined by OR; one worthless term that matches
+    hundreds of short rows beats the one that matters, because bm25
+    rewards short documents.
+
+    `names` is the wake table — the spellings Whisper actually produces
+    («докер», «доко», «доку»), already enumerated in `wake_phrases.py`
+    because the gate has the same problem from the other side.
+
+    Exact words only, for the same reason the gate matches that way:
+    «доку» is a listed variant and «документ» is not the assistant.
+    """
+    wanted = {n.strip().lower() for n in names if n and n.strip()}
+    if not wanted:
+        return text
+    kept = [w for w in re.split(r"(\W+)", text) if w.strip().lower() not in wanted]
+    return "".join(kept).strip()
+
+
 @dataclass(frozen=True)
 class Fragment:
     """One thing that was said, and when."""
@@ -122,6 +150,49 @@ class Fragment:
 # every search answers itself.
 NOT_YET_A_MEMORY_S = 90.0
 
+# How long after a line the assistant's answer to it still counts as the
+# same exchange. Generous: a reply that needed a tool takes tens of
+# seconds, and nothing else the assistant says in between is addressed
+# to a different question.
+CLEAN_REPLY_WITHIN_S = 120.0
+
+
+def _clean_copy(persist: Any, ts: float, text: str) -> tuple[str, bool]:
+    """The assistant's answer to this line, when it is the better copy.
+
+    Returns the line and who said it — swapping the text without the
+    attribution would have the assistant's own sentence read back as
+    «ти казав», which is a lie told in the person's own ear.
+
+    The module docstring says the reply is «frequently the only
+    searchable copy of what the person said». Live on 24 August that
+    turned out to be exactly backwards for the case it matters most in.
+    Asked «що там було з докір компоузом», the search found the person's
+    line and could not find the assistant's — because the assistant had
+    written «Docker Compose», and Cyrillic «компоуз» and Latin «Compose»
+    share no token. The clean copy is clean *by being in another script*,
+    which is precisely what puts it out of reach of the question.
+
+    So it is not searched for. It is fetched by asking what came next.
+
+    Whether it is the better answer is decided by length, and that is a
+    heuristic: a short reply is an acknowledgement («Зрозумів —
+    шістнадцять гігабайт»), and nobody asks to be reminded of an
+    acknowledgement, while the line that explains what was wrong with
+    the build is always the longer of the two. Both live cases agree,
+    which is two, not many.
+    """
+    fetch = getattr(persist, "reply_to", None)
+    if fetch is None:
+        return text, False
+    answer = fetch(ts, CLEAN_REPLY_WITHIN_S)
+    if answer is None:
+        return text, False
+    reply = (answer[1] or "").strip()
+    if len(reply) < MIN_CHARS or len(reply) <= len(text):
+        return text, False
+    return reply, True
+
 
 def find(
     persist: Any,
@@ -131,6 +202,7 @@ def find(
     when: str = "",
     room: bool = False,
     limit: int = MAX_FRAGMENTS,
+    names: Sequence[str] = (),
 ) -> list[Fragment]:
     """Fragments matching `query`, newest-relevant first.
 
@@ -144,7 +216,7 @@ def find(
     word in it far more often than it fills in a second argument.
     """
     span = parse_when(when or query, now=now)
-    terms = _sanitize_fts_query(strip_when(query, span))
+    terms = _sanitize_fts_query(strip_names(strip_when(query, span), names))
     # The question is already on disk by the time this runs — the turn is
     # persisted before the model is even asked, so FTS finds it and
     # ranks it first, being the freshest and shortest match there is.
@@ -179,7 +251,10 @@ def find(
         if not agent_spoken and _is_a_question_about_memory(text):
             continue
         seen.add(key)
-        found.append(Fragment(float(ts), text.strip(), bool(agent_spoken)))
+        said, spoken_by_it = text.strip(), bool(agent_spoken)
+        if not spoken_by_it:
+            said, spoken_by_it = _clean_copy(persist, float(ts), said)
+        found.append(Fragment(float(ts), said, spoken_by_it))
         if len(found) >= limit:
             break
     return found
@@ -253,4 +328,12 @@ def spoken(fragments: list[Fragment], *, now: datetime) -> str:
     return answer
 
 
-__all__ = ["FRAGMENT_CHARS", "MAX_FRAGMENTS", "Fragment", "find", "shorten", "spoken"]
+__all__ = [
+    "FRAGMENT_CHARS",
+    "MAX_FRAGMENTS",
+    "Fragment",
+    "find",
+    "shorten",
+    "spoken",
+    "strip_names",
+]
