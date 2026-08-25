@@ -562,3 +562,15 @@ def test_the_daemon_boots_without_the_old_engine() -> None:
     assert not hasattr(load_settings(), "engine")
 
 
+
+
+def test_the_engine_setting_is_not_a_setting() -> None:
+    """`engine = "spine"` sits in the live config.toml and in two docs
+    that called it a rollback switch. It is neither: `src/pipeline/` and
+    `src/core/` went on 17 August, nothing branches on the value, and
+    Settings has no such field — so the line does nothing at all.
+
+    This test exists so the claim cannot come back without the engine
+    it would switch to.
+    """
+    assert not hasattr(Settings(), "engine")

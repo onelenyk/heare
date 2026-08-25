@@ -1,9 +1,10 @@
 # heare
 
-macOS voice assistant. The live engine is `src/spine/` (`engine = "spine"`
-in `~/.heare/config.toml`) — a framework-free voice loop, ~44k lines /
-142 `.py` files across `src/`. `src/pipeline/` + `src/core/` are the
-retired pipecat engine, kept only as `engine = "pipecat"` rollback.
+macOS voice assistant. The engine is `src/spine/` — a framework-free
+voice loop. There is no other one: `src/pipeline/` and `src/core/` were
+the pipecat engine, deleted on 17 August, and the `engine = "pipecat"`
+rollback they were kept for stopped existing with them. Nothing reads
+that setting; `Settings` has no such field.
 
 Read [docs/architecture.md](docs/architecture.md) first — it is the
 source of truth for how the process is laid out. Then

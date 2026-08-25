@@ -13,10 +13,6 @@ for conversation and tool-calling, Groq Whisper for speech-to-text, Edge
 TTS for speech. See [docs/architecture.md](docs/architecture.md) for the
 full picture — this file only covers getting it running.
 
-`src/pipeline/` + `src/core/` are an earlier, pipecat-based engine kept
-in the repo as a rollback (`engine = "pipecat"`); it is not what runs by
-default in production and this README does not document it.
-
 ## Requirements
 
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/)
