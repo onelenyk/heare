@@ -44,10 +44,15 @@ Three replies became two: `turn_end = "sentence"` and `vad_stop_secs`
 0.2 → 0.6. The two that remain fall either side of a full stop. See
 docs/findings/two-clocks.md.
 
-## Interrupting works about half the time, and the canceller is involved
+## Interrupting worked about half the time — in an engine that is gone
 
-Measured in the simulated room, four runs each, everything else held
-still:
+**Measured in the pipecat pipeline, and superseded 4 September 2026.**
+Kept because the reasoning below was sound and the conclusion it reached
+— that the fault was in the canceller, not downstream — is still the
+right shape of question to ask. What it is not is a fact about the
+assistant that runs today.
+
+Four runs each in the simulated room, everything else held still:
 
 | | barge-in | landed |
 |---|---|---|
@@ -55,8 +60,8 @@ still:
 | echo cancellation off | 557–1036 ms | 4 of 4 |
 
 In every failed run voice activity detection fired exactly one time
-fewer than in the successful ones. The interrupting voice is not being
-lost downstream — it is not being recognised as a voice at all.
+fewer than in the successful ones. The interrupting voice was not being
+lost downstream — it was not being recognised as a voice at all.
 
 Two explanations were tested and are wrong. Switching off noise
 suppression made it worse (0 of 4). Lowering the detection thresholds
@@ -66,12 +71,59 @@ now asserted in tests/test_core_aec.py. (Fed a *tone* it returns 29, and
 a first version of that test used a tone and would have had me report
 the opposite. Speech is not stationary.)
 
-What the numbers do say: in the room the canceller achieves 9–21 dB of
+What the numbers did say: in that room the canceller achieved 9–21 dB of
 suppression, not the 40–50 dB measured against a tone, and its delay
-estimator reports 1–177 ms at confidence 0.01–0.08 — which is to say it
-cannot find the echo it is supposed to be removing. Alignment between
-the reference and the echo is the next thing to measure, and it wants a
-session of its own rather than more four-run samples of a coin flip.
+estimator reported 1–177 ms at confidence 0.01–0.08 — which is to say it
+could not find the echo it was supposed to be removing.
+
+### What is true of the spine
+
+`src/pipeline/stages/echo_classifier.py`, whose inline network call the
+next section is about, was deleted on 17 August with the rest of that
+engine. The spine has its own barge-in (`src/spine/loop.py`) and its own
+canceller (`src/spine/aec.py`), and until 4 September neither had ever
+been measured — the number above was being carried forward as if it
+described them.
+
+Two things stood in the way of measuring, and they are worth naming
+because between them they made the failure invisible from both sides:
+
+* the five unit tests of interruption all set `_interrupted` by hand, so
+  the half of the code that *decides* to interrupt was tested nowhere;
+* the mouth in the e2e harness reported `playing = False` forever, and
+  the conductor asks that question first — so the branch could not be
+  reached there either. Everything else in that harness was already
+  real, canceller included, active, wired as the far-end sink.
+
+`tests/e2e/test_cutting_in.py` measures it now. Against a room that
+returns the assistant's own audio to the microphone — delayed onto the
+mic timeline, at full speaker level, fed continuously rather than only
+at the moment of the interruption, because AEC3 adapts and a canceller
+handed its first near-end frame a second into the reply has never seen
+the signal it is meant to subtract:
+
+| | |
+|---|---|
+| a person interrupts | lands, every run |
+| nobody speaks, only the echo returns | never fires |
+
+Both directions, because either alone passes for the wrong reason: a
+canceller that removes everything keeps the room quiet, one that removes
+nothing lets the person through. Stubbing `SpineAEC.process` to return
+its frame unchanged makes the first go red; making it return silence —
+the shape of the bug this project already had once — makes seven of the
+nine scenarios red. The canceller is doing the work.
+
+**What this does not settle.** The echo in that room is a linear,
+fixed-delay copy at exactly the 30 ms `SpineAEC` assumes. A real room
+adds a reverberant tail, a nonlinear speaker and a drifting delay, and
+the old finding's sharpest number was that the delay estimator could not
+find the echo at all (confidence 0.01–0.08). So this says the wiring and
+the logic are sound and narrows the remaining risk to one place —
+alignment between the reference and the real echo — rather than
+declaring the room solved. That still wants a session of its own, and
+now it can have one without also having to ask whether any of it is
+connected.
 
 
 ## Barge-in waited on a five-second network call — fixed
