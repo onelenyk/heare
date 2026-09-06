@@ -44,7 +44,7 @@ Created comprehensive infrastructure for running Heare as a system service.
    - Daily rotation
    - 7-day retention
    - Compression enabled
-   - Install with: `cp heare.logrotate ~/.config/logrotate.d/heare`
+   - Install with: `cp deploy/heare.logrotate ~/.config/logrotate.d/heare`
 
 ### 7. **INFRASTRUCTURE.md** - Complete Documentation
    - Installation instructions
@@ -59,7 +59,7 @@ Created comprehensive infrastructure for running Heare as a system service.
 
 ```bash
 # Initial setup (one-time)
-./quickstart.sh
+./deploy/quickstart.sh
 
 # Start daemon
 ./hearectl start
@@ -144,7 +144,7 @@ Tested commands:
 **Quick Start:**
 ```bash
 # Initial setup (one-time)
-./quickstart.sh
+./deploy/quickstart.sh
 
 # Start daemon
 ./hearectl start

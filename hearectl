@@ -190,7 +190,7 @@ cmd_launch() {
 cmd_install() {
     log_info "Installing Heare as a system service..."
 
-    local service_file="$PROJECT_DIR/heare.service"
+    local service_file="$PROJECT_DIR/deploy/heare.service"
     local user_service_dir="$HOME/.config/systemd/user"
 
     if [ ! -f "$service_file" ]; then

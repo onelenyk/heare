@@ -37,7 +37,7 @@ help:
 	@echo "  make uninstall  - Remove systemd service"
 
 quickstart:
-	@./quickstart.sh
+	@./deploy/quickstart.sh
 
 dev:
 	@echo "Starting development server..."
@@ -86,7 +86,7 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
 	@echo "Clean complete"
 
-install: heare.service
+install: deploy/heare.service
 	@echo "Installing systemd service..."
 	@./hearectl install
 

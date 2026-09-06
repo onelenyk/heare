@@ -7,7 +7,7 @@ omit =
     tests/*
     .venv/*
     setup.py
-    setup_directories.py
+    scripts/setup_directories.py
 
 [report]
 exclude_also =
