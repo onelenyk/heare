@@ -1,6 +1,5 @@
 import struct
 from dataclasses import dataclass
-from typing import Sequence
 
 from src.spine.vad import EnergyVAD, EventKind, SpeechEvent
 

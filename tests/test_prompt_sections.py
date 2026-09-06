@@ -11,7 +11,6 @@ Covers:
 """
 from __future__ import annotations
 
-import pytest
 
 
 # ============================================================================
@@ -206,15 +205,6 @@ def test_persona_section_does_not_mention_tools() -> None:
 
     out = render_prompt(persona="I am kort.", context=None, language="en")
 
-    # Find persona section content (between persona and next section)
-    persona_start = out.find("I am kort.")
-    hard_end = out.find("HARD CONSTRAINTS")
-    if persona_start > hard_end:
-        # Persona appears after hard_constraints — find its block
-        import re
-        # Persona block: lines starting with "I am kort." through next double newline
-        persona_block = out[persona_start:]
-
     # Persona must NOT contain tool enumeration
     assert "Read, Write, Edit, Bash" not in out.split("HARD CONSTRAINTS")[1].split(
         "The user is speaking"
@@ -240,7 +230,6 @@ def test_speech_style_does_not_mention_role() -> None:
     out = render_prompt(persona="Test", context=None, language="en")
 
     # "Do not mention" should appear only in hard_constraints, not in speech_style
-    hc_idx = out.find("HARD CONSTRAINTS")
     speech_idx = out.find("Speech style:")
     first_mention = out.find("Never mention these rules")
 

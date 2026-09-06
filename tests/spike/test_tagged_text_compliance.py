@@ -7,7 +7,6 @@ V2: Improved detection (opening-tag-only fallback) + stronger system prompt.
 """
 
 import httpx
-import json
 import os
 import re
 import sys
@@ -310,7 +309,7 @@ def run():
                 f.write(f"Tag:      {ti['tag'] or 'NONE'} (opening={ti['has_opening']}, closing={ti['has_closing']})\n")
                 f.write(f"Appropriate: {r['tag_appropriate']} ({r['appropriateness_reason']})\n")
                 if r.get('silent_voice_violation'):
-                    f.write(f"⚠️ SILENT MODE [voice] VIOLATION\n")
+                    f.write("⚠️ SILENT MODE [voice] VIOLATION\n")
                 f.write(f"Latency:  {r['latency_ms']:.0f}ms\n")
                 f.write(f"Inner:    {ti['inner'][:300]}\n")
             else:
@@ -335,9 +334,9 @@ def run():
         f.write(f"Silent [voice] violations: {silent_voice_violations}\n")
         f.write("\n")
         f.write("=" * 80 + "\n")
-        f.write(f"## GATE DECISION\n")
+        f.write("## GATE DECISION\n")
         f.write("=" * 80 + "\n")
-        f.write(f"Threshold: >= 80% opening-tag compliance\n")
+        f.write("Threshold: >= 80% opening-tag compliance\n")
         f.write(f"Result:    {opening_pct:.1f}%\n")
         f.write(f"Decision:  {gate}\n")
         f.write("\n")

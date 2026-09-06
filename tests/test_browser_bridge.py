@@ -22,9 +22,6 @@ from src.agent.browser_bridge import (
     BrowserBridge,
     CLOSE_AUTH_FAILED,
     WIRE_VERSION,
-    ERR_NOT_CONNECTED,
-    ERR_TIMEOUT,
-    ERR_DISCONNECTED_MID_RPC,
 )
 
 
@@ -496,7 +493,7 @@ async def test_protocol_version(tmp_path: Path, tmp_heare: Path) -> None:
             }))
 
         resp_task = asyncio.create_task(respond())
-        result = await bridge.call("list_tabs", {})
+        await bridge.call("list_tabs", {})
         await resp_task
 
         # The outbound request envelope is verified inside mock_responder via req["v"]

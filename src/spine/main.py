@@ -75,12 +75,11 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     engine see what the assistant is doing right now; without it every
     judgement about the present was made from half the facts.
     """
-    from datetime import datetime
 
     import time
 
     from src.spine.hallucinations import is_junk
-    from src.spine.llm import resolve_llm, stream_chat, stream_chat_events
+    from src.spine.llm import resolve_llm, stream_chat
     from src.spine.loop import SpineLoop
     from src.spine.sentences import sentences
     from src.spine.stt import Transcript, transcribe
@@ -164,10 +163,6 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         return loop
 
     from src.memory.sqlite_backend import SQLiteBackend
-    from src.spine.persist import SpinePersistence
-    from src.spine.prompt import build_system_prompt, load_persona
-    from src.spine.tools import VoiceToolbox
-    from src.spine.wake import WakeGate
 
     if audio is not None and features["aec"]:
         from src.spine.aec import SpineAEC
