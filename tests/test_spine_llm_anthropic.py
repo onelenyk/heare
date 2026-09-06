@@ -241,7 +241,12 @@ async def test_the_token_count_still_reaches_the_ledger() -> None:
         {
             "type": "usage",
             "model": "claude-3-5-sonnet",
+            # Both branches now name who charged and whether they said
+            # what it cost. The Anthropic wire carries no cost field, so
+            # this stays None — "nobody priced it", never a silent 0.0.
+            "provider": CFG.provider,
             "input_tokens": 120,
             "output_tokens": 40,
+            "cost_usd": None,
         }
     ]

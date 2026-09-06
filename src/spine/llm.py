@@ -70,6 +70,30 @@ def resolve_llm(settings: object, provider: str | None = None) -> LLMConfig:
     )
 
 
+def _reported_cost(usage: dict[str, Any]) -> float | None:
+    """The dollars the provider says it charged, or None if it did not say.
+
+    OpenRouter puts a ``cost`` (in USD) on the usage payload when the
+    request asked for it. Nobody else does, and a provider that stays
+    silent must not be read as having charged nothing — that conflation
+    is the whole bug this exists to end.
+
+    A cost of exactly 0.0 is a real answer (a free model), so the check
+    is for presence and not for truthiness.
+    """
+    raw = usage.get("cost")
+    if raw is None:
+        return None
+    try:
+        cost = float(raw)
+    except (TypeError, ValueError):
+        logger.debug("usage.cost was not a number: %.60r", raw)
+        return None
+    # A negative bill is a provider bug, not a refund. Refuse it rather
+    # than let it subtract from the day's total.
+    return cost if cost >= 0.0 else None
+
+
 async def stream_chat_events(
     messages: list[dict],
     cfg: LLMConfig,
@@ -145,6 +169,14 @@ async def _openai_events(
         # this hole).
         "stream_options": {"include_usage": True},
     }
+    # OpenRouter will state what the completion actually cost, but only
+    # if asked. Worth asking: every other provider leaves the ledger
+    # multiplying token counts by a table copied off a pricing page,
+    # and that table is wrong the day the page changes — which is how
+    # this assistant came to report $0.0000 across 1077 calls while it
+    # spent its balance down to minus one cent.
+    if cfg.provider == "openrouter":
+        payload["usage"] = {"include": True}
     if tools is not None:
         payload["tools"] = tools
 
@@ -171,10 +203,15 @@ async def _openai_events(
                     usage = {
                         "type": "usage",
                         "model": chunk.get("model") or cfg.model,
+                        "provider": cfg.provider,
                         "input_tokens": chunk["usage"].get("prompt_tokens", 0),
                         "output_tokens": chunk["usage"].get(
                             "completion_tokens", 0
                         ),
+                        # None unless the provider costed it itself.
+                        # Absent and zero are different answers here, so
+                        # this stays None rather than falling to 0.0.
+                        "cost_usd": _reported_cost(chunk["usage"]),
                     }
                 choices = chunk.get("choices") or []
                 if not choices:
@@ -354,8 +391,10 @@ async def _anthropic_events(
             yield {
                 "type": "usage",
                 "model": model,
+                "provider": cfg.provider,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                "cost_usd": None,
             }
     finally:
         if owns_client:

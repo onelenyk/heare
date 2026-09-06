@@ -26,9 +26,10 @@ for _cfg in PROVIDERS.values():
     for _model_id, _in_price, _out_price in _cfg.pricing:
         _LLM_PRICES_USD_PER_1M[_model_id] = (_in_price, _out_price)
 
-# Google Gemini — public list prices, served via OpenRouter (which
-# isn't a standalone ProviderConfig yet).  Source: ai.google.dev/pricing.
-# These entries fill gaps until a dedicated OpenRouter config exists.
+# Google Gemini — public list prices, reachable through OpenRouter under
+# these same ids. Source: ai.google.dev/pricing. OpenRouter is a real
+# ProviderConfig now and reports its own per-call cost, so these are a
+# fallback for the case where it does not.
 _GEMINI_FALLBACK: dict[str, tuple[float, float]] = {
     "google/gemini-3.1-flash-lite-preview-20260303": (0.075, 0.30),
     "google/gemini-3.1-flash-lite": (0.075, 0.30),
@@ -52,7 +53,15 @@ _STT_PRICES_USD_PER_SECOND: dict[str, float] = {
 
 # TTS providers we use are free at the time of writing. Listed here so
 # adding a paid TTS later only changes this dict, not the recorder.
+#
+# Both spellings are present on purpose: the recorder calls this with
+# ``provider='edge'`` (``SpineUsage.tts``'s default) while the table was
+# written as ``edge_tts``, so every lookup missed and returned None. It
+# cost nothing to be wrong — Edge is free and the miss also produced
+# 0.0 — which is exactly why it survived: a bug whose two branches agree
+# today is a bug that surfaces on the day you start paying for speech.
 _TTS_PRICES_USD_PER_CHAR: dict[str, float] = {
+    "edge": 0.0,
     "edge_tts": 0.0,
 }
 

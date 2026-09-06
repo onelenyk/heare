@@ -29,14 +29,6 @@ def test_load_settings_groq_from_env(monkeypatch, tmp_path) -> None:
     assert s.groq_api_key == "gsk_testkey123"
 
 
-def test_load_settings_mode_from_env(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("HEARE_MODE", "silent")
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-    s = load_settings()
-
-
 def test_wake_word_default() -> None:
     """Empty, because the name is not this setting's job.
 
@@ -179,7 +171,9 @@ def test_conversation_memory_settings() -> None:
 def test_deepseek_settings_defaults() -> None:
     s = Settings()
     assert s.deepseek_api_key is None
-    assert s.deepseek_model == "deepseek-chat"
+    # not deepseek-chat: retired 24 July 2026, so a daemon that booted
+    # on the old default failed on its first turn with a model error
+    assert s.deepseek_model == "deepseek-v4-flash"
     assert s.deepseek_timeout_seconds == 5.0
 
 
@@ -242,7 +236,6 @@ def test_deprecated_enable_mcp_servers_warning(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.delenv("HEARE_MODE", raising=False)
 
     config_file = tmp_path / "config.toml"
     config_file.write_text('enable_mcp_servers = ["github", "notion"]\n')

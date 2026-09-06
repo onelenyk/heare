@@ -102,8 +102,16 @@ def test_tts_stores_char_count_with_zero_cost(tmp_db: Path) -> None:
     usage.close()
 
 
-def test_unknown_model_no_exception_cost_zero(tmp_db: Path) -> None:
-    """Test that unknown model → row inserted with cost 0.0, no exception."""
+def test_unknown_model_no_exception_cost_null(tmp_db: Path) -> None:
+    """An unknown model still records a row — with cost NULL, not 0.0.
+
+    This test used to assert 0.0 and carried the comment "Unknown model
+    → 0.0", certifying the defect rather than catching it: the recorder
+    flattened ``llm_cost``'s None into a zero, and the whole ledger then
+    reported a month of paid DeepSeek calls as free. The row must exist
+    (accounting is best-effort and must never break a conversation) and
+    it must not claim a price nobody computed.
+    """
     usage = SpineUsage(tmp_db)
 
     # Use a completely unknown model
@@ -127,7 +135,7 @@ def test_unknown_model_no_exception_cost_zero(tmp_db: Path) -> None:
     assert model == "unknown-model-xyz"
     assert input_tokens == 100
     assert output_tokens == 50
-    assert cost_usd == 0.0  # Unknown model → 0.0
+    assert cost_usd is None  # unpriced — which is not the same as free
     usage.close()
 
 
@@ -187,3 +195,83 @@ def test_broken_db_path_no_exception(tmp_path: Path) -> None:
     assert result == 0.0  # Should return 0.0 on error
 
     bad_usage.close()  # Should not raise
+
+
+class TestUnpricedIsNotFree:
+    """The distinction the whole ledger turns on.
+
+    ``pricing.llm_cost`` returns None for a model it does not know, and
+    its docstring says why: "Returning None lets the dashboard
+    distinguish 'free' (cost 0.0) from 'unknown' (cost ?)". The recorder
+    then did ``cost if cost is not None else 0.0`` and threw that
+    distinction away one line later. Every reader downstream did
+    ``COALESCE(cost_usd, 0)`` in good faith on top of it, so a month of
+    spending rendered as $0.0000 in the dashboard and in `make day`.
+    """
+
+    def test_an_uncatalogued_model_records_null_not_zero(self, tmp_path) -> None:
+        from src.spine.usage import SpineUsage
+
+        usage = SpineUsage(tmp_path / "u.db")
+        usage.llm("a-model-nobody-priced", 1_000_000, 500_000, provider="mystery")
+        row = usage._db.execute(
+            "SELECT cost_usd FROM usage_events WHERE kind='llm'"
+        ).fetchone()
+        usage.close()
+        assert row[0] is None, "unpriced was stored as a number, and 0.0 reads as free"
+
+    def test_a_catalogued_model_is_still_priced_from_the_table(self, tmp_path) -> None:
+        from src.spine.usage import SpineUsage
+
+        usage = SpineUsage(tmp_path / "u.db")
+        usage.llm("deepseek-v4-flash", 1_000_000, 1_000_000, provider="deepseek")
+        row = usage._db.execute(
+            "SELECT cost_usd FROM usage_events WHERE kind='llm'"
+        ).fetchone()
+        usage.close()
+        assert row[0] == pytest.approx(0.14 + 0.28)
+
+    def test_the_provider_number_wins_over_the_catalog(self, tmp_path) -> None:
+        """OpenRouter states the dollars it charged. A price list copied
+        off a web page by hand does not get to overrule the invoice."""
+        from src.spine.usage import SpineUsage
+
+        usage = SpineUsage(tmp_path / "u.db")
+        usage.llm(
+            "deepseek-v4-flash",
+            1_000_000,
+            1_000_000,
+            provider="openrouter",
+            cost_usd=0.0123,
+        )
+        row = usage._db.execute(
+            "SELECT cost_usd FROM usage_events WHERE kind='llm'"
+        ).fetchone()
+        usage.close()
+        assert row[0] == pytest.approx(0.0123)
+
+    def test_a_provider_reported_zero_is_kept_as_zero(self, tmp_path) -> None:
+        """A free model really does cost nothing, and that is a fact the
+        provider is entitled to state. Only *silence* becomes NULL."""
+        from src.spine.usage import SpineUsage
+
+        usage = SpineUsage(tmp_path / "u.db")
+        usage.llm("some/free-model", 10, 10, provider="openrouter", cost_usd=0.0)
+        row = usage._db.execute(
+            "SELECT cost_usd FROM usage_events WHERE kind='llm'"
+        ).fetchone()
+        usage.close()
+        assert row[0] == 0.0
+
+    def test_the_ledger_records_who_charged(self, tmp_path) -> None:
+        """``provider`` defaulted to 'deepseek' and the caller never
+        passed one, so every row claimed DeepSeek whoever answered."""
+        from src.spine.usage import SpineUsage
+
+        usage = SpineUsage(tmp_path / "u.db")
+        usage.llm("qwen/qwen3.7-flash", 10, 10, provider="openrouter")
+        row = usage._db.execute(
+            "SELECT provider FROM usage_events WHERE kind='llm'"
+        ).fetchone()
+        usage.close()
+        assert row[0] == "openrouter"

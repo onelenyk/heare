@@ -5,10 +5,12 @@ import json
 import os
 import sqlite3
 import time
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
+from src.agent.llm.providers import PROVIDERS
 from src.api import API, tail_lines
 
 
@@ -28,11 +30,21 @@ def mock_state():
 
 
 @pytest.fixture
-def mock_config():
+def mock_config(tmp_path):
     config = MagicMock()
     config.deepseek_api_key = "sk-test"
     config.zai_api_key = "sk-test"
     config.opencode_api_key = "sk-test"
+    config.openrouter_api_key = "sk-test"
+    # A MagicMock invents a child mock for any attribute nobody set, and
+    # `_handle_state` opens `config.db_path` as a SQLite file. Left
+    # unset, the path sqlite received was the child mock's *repr*, so
+    # every run of the fifteen /state tests wrote a file literally named
+    # `<MagicMock name='mock.db_path' id='...'>` into the repository
+    # root. 2702 of them had piled up since 3 June, and `.gitignore`
+    # grew a `<MagicMock*` line — hiding the symptom so well that the
+    # cause went unlooked-at for three months.
+    config.db_path = tmp_path / "state.db"
     return config
 
 
@@ -55,6 +67,26 @@ def _mock_request(
 
 
 # ---------------------------------------------------------------------------
+# The fixture itself
+# ---------------------------------------------------------------------------
+
+
+def test_the_api_config_fixture_hands_out_a_real_path(mock_config) -> None:
+    """Order-independent guard on the actual cause.
+
+    Checked here rather than by looking at the filesystem, because a
+    root-sweep only fails *after* something has already been written and
+    only if it runs late enough in the session to see it.
+    """
+    assert not isinstance(mock_config.db_path, Mock), (
+        "mock_config.db_path is an unset MagicMock attribute; anything "
+        "that opens it as a path will create a file named after its repr"
+    )
+    assert isinstance(mock_config.db_path, Path)
+    assert mock_config.db_path.parent.is_dir()
+
+
+# ---------------------------------------------------------------------------
 # _available_providers
 # ---------------------------------------------------------------------------
 
@@ -64,6 +96,7 @@ def test_available_providers_none(mock_state) -> None:
     config.deepseek_api_key = None
     config.zai_api_key = None
     config.opencode_api_key = None
+    config.openrouter_api_key = None
     api = API(mock_state, config)
     assert api._available_providers() == []
 
@@ -73,6 +106,7 @@ def test_available_providers_deepseek_only(mock_state) -> None:
     config.deepseek_api_key = "sk-test"
     config.zai_api_key = None
     config.opencode_api_key = None
+    config.openrouter_api_key = None
     api = API(mock_state, config)
     assert api._available_providers() == ["deepseek"]
 
@@ -82,6 +116,7 @@ def test_available_providers_zai_only(mock_state) -> None:
     config.deepseek_api_key = None
     config.zai_api_key = "sk-test"
     config.opencode_api_key = None
+    config.openrouter_api_key = None
     api = API(mock_state, config)
     assert api._available_providers() == ["zai"]
 
@@ -91,6 +126,7 @@ def test_available_providers_opencode_only(mock_state) -> None:
     config.deepseek_api_key = None
     config.zai_api_key = None
     config.opencode_api_key = "sk-test"
+    config.openrouter_api_key = None
     api = API(mock_state, config)
     assert api._available_providers() == ["opencode"]
 
@@ -100,12 +136,14 @@ def test_available_providers_all(mock_state) -> None:
     config.deepseek_api_key = "sk-test"
     config.zai_api_key = "sk-test"
     config.opencode_api_key = "sk-test"
+    config.openrouter_api_key = "sk-test"
     api = API(mock_state, config)
     providers = api._available_providers()
     assert "deepseek" in providers
     assert "zai" in providers
     assert "opencode" in providers
-    assert len(providers) == 3
+    assert "openrouter" in providers
+    assert len(providers) == len(PROVIDERS)
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +170,7 @@ async def test_get_state_providers_reflect_config(
     mock_config.deepseek_api_key = "sk-test"
     mock_config.zai_api_key = None
     mock_config.opencode_api_key = None
+    mock_config.openrouter_api_key = None
     api = API(mock_state, mock_config)
     request = _mock_request()
     resp = await api._handle_state(request)
@@ -228,6 +267,7 @@ async def test_post_provider_known_but_unconfigured(mock_state) -> None:
     config.deepseek_api_key = "sk-test"
     config.zai_api_key = "sk-test"
     config.opencode_api_key = None
+    config.openrouter_api_key = None
     api = API(mock_state, config)
     request = _mock_request(json_data={"provider": "opencode"})
     resp = await api._handle_provider(request)
@@ -292,7 +332,7 @@ async def test_get_providers_list(api) -> None:
     assert resp.status == 200
     data = json.loads(resp.body)
     keys = {p["key"] for p in data}
-    assert keys == {"deepseek", "zai", "opencode"}
+    assert keys == {"deepseek", "zai", "opencode", "openrouter"}
     assert all(p["configured"] is True for p in data)
 
 
@@ -302,6 +342,7 @@ async def test_get_models_live_no_key_falls_back(mock_state) -> None:
     config.deepseek_api_key = None
     config.zai_api_key = None
     config.opencode_api_key = None
+    config.openrouter_api_key = None
     api = API(mock_state, config)
     request = MagicMock()
     request.query = {"provider": "deepseek"}
@@ -310,7 +351,9 @@ async def test_get_models_live_no_key_falls_back(mock_state) -> None:
     data = json.loads(resp.body)
     assert data["ok"] is True
     assert data["source"] == "fallback"
-    assert "deepseek-chat" in data["models"]
+    # the registry whitelist, which no longer offers a model retired
+    # on 24 July 2026
+    assert "deepseek-v4-flash" in data["models"]
 
 
 @pytest.mark.asyncio

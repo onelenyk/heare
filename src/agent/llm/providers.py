@@ -47,15 +47,30 @@ PROVIDERS: dict[str, ProviderConfig] = {
         api_key_attr="deepseek_api_key",
         api_key_env="DEEPSEEK_API_KEY",
         base_url="https://api.deepseek.com/v1",
-        default_model="deepseek-chat",
+        default_model="deepseek-v4-flash",
         api_style="openai",
         dashboard_color="yellow",
         timeout=5.0,
         model_whitelist=(
-            "deepseek-chat",
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
             "deepseek-reasoner",
         ),
-        pricing=(),
+        # USD per 1M tokens, cache-MISS input. DeepSeek quotes two input
+        # prices — a cache hit is ~50x cheaper — and the wire does not
+        # say which one applied. Quoting the miss keeps the ledger an
+        # upper bound, which is the only side worth erring on: a bill
+        # that surprises you is the failure this table exists to stop.
+        #
+        # `deepseek-chat` was retired 24 July 2026 and is kept only so
+        # the 907 rows already in usage_events can be priced. It is out
+        # of the whitelist and is no longer the default — pointing the
+        # daemon at a retired model is how a boot fails on a name.
+        pricing=(
+            ("deepseek-v4-flash", 0.14, 0.28),
+            ("deepseek-v4-pro", 0.435, 0.87),
+            ("deepseek-chat", 0.14, 0.28),
+        ),
         identity_endpoint="https://api.deepseek.com/v1/chat/completions",
         identity_model="",
     ),
@@ -114,7 +129,64 @@ PROVIDERS: dict[str, ProviderConfig] = {
         identity_endpoint="https://opencode.ai/zen/go/v1/chat/completions",
         identity_model="",
     ),
+    "openrouter": ProviderConfig(
+        key="openrouter",
+        display_name="OpenRouter",
+        api_key_attr="openrouter_api_key",
+        api_key_env="OPENROUTER_API_KEY",
+        base_url="https://openrouter.ai/api/v1",
+        default_model="deepseek/deepseek-v4-flash",
+        api_style="openai",
+        dashboard_color="magenta",
+        timeout=30.0,
+        # 431 models on the router at the time of writing; a whitelist
+        # here would be a snapshot that rots. These are the cheap
+        # tool-calling ones worth reaching for by hand — the dashboard's
+        # picker calls ``list_models`` and sees all of them anyway.
+        model_whitelist=(
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+            "qwen/qwen3.7-flash",
+            "openai/gpt-5-nano",
+            "google/gemini-3.1-flash",
+        ),
+        # Deliberately thin, and it is not an oversight. OpenRouter
+        # reports the actual dollars for each completion in its own
+        # usage payload (see ``spine/llm.py``), so the ledger takes the
+        # provider's number and never consults this table. What is left
+        # here is the fallback for the one case that number is absent —
+        # priced from the live /models endpoint on 2026-09-05.
+        pricing=(
+            ("deepseek/deepseek-v4-flash", 0.084, 0.168),
+            ("deepseek/deepseek-v4-pro", 0.435, 0.87),
+            ("qwen/qwen3.7-flash", 0.030, 0.130),
+            ("openai/gpt-5-nano", 0.050, 0.400),
+            ("google/gemini-3.1-flash", 0.15, 0.60),
+        ),
+        identity_endpoint="https://openrouter.ai/api/v1/chat/completions",
+        identity_model="",
+    ),
 }
+
+
+# Providers whose list prices nobody here has verified. Their calls are
+# recorded with cost NULL — "unpriced", which is a different claim from
+# "free" and is printed as such by `make day`.
+#
+# This set exists so the gap is *declared*. The bug it replaces was an
+# empty `pricing=()` on the one provider in daily use, which read as an
+# ordinary blank field and meant the assistant billed itself nothing for
+# a month. A test asserts that every provider either prices its own
+# default model or is named here, so the next provider added cannot
+# repeat it by omission — someone has to write the name down.
+#
+#   zai      — its pricing tuple names claude-opus-4-7 / -sonnet-4-6 /
+#              -haiku-4-5 while its whitelist and default say
+#              claude-3-5-sonnet. Three naming schemes, no overlap, so
+#              nothing it can be asked for is priceable. Unpicking that
+#              needs an account to read the real invoice against.
+#   opencode — opencode.ai/zen publishes no per-token price list.
+PRICES_UNKNOWN: frozenset[str] = frozenset({"zai", "opencode"})
 
 
 def all_keys() -> list[str]:

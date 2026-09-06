@@ -345,9 +345,16 @@ class Settings:
     # API key is read from OPENCODE_API_KEY env var.
     opencode_api_key: str | None = None
     opencode_base_url: str = "https://opencode.ai/zen/go/v1"
+    # OpenRouter — OpenAI-compatible, and the one provider that reports
+    # what each call actually cost. API key from OPENROUTER_API_KEY.
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
     opencode_model: str = "minimax-m2.7"
     deepseek_api_key: str | None = None
-    deepseek_model: str = "deepseek-chat"
+    # `deepseek-chat` was retired 24 July 2026: it resolves to nothing
+    # and a daemon pointed at it fails on its first turn.
+    deepseek_model: str = "deepseek-v4-flash"
     deepseek_base_url: str = "https://api.deepseek.com/v1"
     deepseek_timeout_seconds: float = 5.0
     # Phase 2.1 — action worker.

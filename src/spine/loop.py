@@ -13,6 +13,7 @@ listed in the plan, paid when the AEC moves in.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
@@ -417,11 +418,21 @@ class SpineLoop:
                         tool_calls.append(ev)
                     elif ev.get("type") == "usage" and self.usage is not None:
                         try:
+                            # provider and cost travel with the event.
+                            # Before, the ledger stamped every row
+                            # 'deepseek' from a default argument and
+                            # priced it from a table, so a bill from
+                            # anyone else was filed under the wrong name
+                            # at the wrong price.
                             await asyncio.to_thread(
-                                self.usage.llm,
-                                ev.get("model") or "unknown",
-                                ev.get("input_tokens", 0),
-                                ev.get("output_tokens", 0),
+                                functools.partial(
+                                    self.usage.llm,
+                                    ev.get("model") or "unknown",
+                                    ev.get("input_tokens", 0),
+                                    ev.get("output_tokens", 0),
+                                    provider=ev.get("provider") or "unknown",
+                                    cost_usd=ev.get("cost_usd"),
+                                )
                             )
                         except Exception:
                             logger.debug("usage.llm failed (non-fatal)")
