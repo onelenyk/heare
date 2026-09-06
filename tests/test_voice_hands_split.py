@@ -37,14 +37,27 @@ def test_the_voice_agent_sees_its_five_verbs() -> None:
 
 
 def test_the_worker_is_offered_everything_except_delegate() -> None:
-    """It must not be able to hand its own job back to itself."""
-    from src.agent.hands import Hands
+    """It must not be able to hand its own job back to itself.
+
+    "Everything" has three named exceptions and no unnamed ones. The
+    count used to be asserted as ``> 40``, which is a number rather than
+    a claim: it passed just as happily while 17 of those schemas pointed
+    at collaborators this process never builds. Spelling the exclusions
+    out means a tool that disappears for any other reason fails here.
+    """
+    from src.agent.hands import Hands, unreachable_tools
+    from src.agent.tools.capability_index import INSTALL_TOOLS
     from src.config import Settings
 
     names = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
     assert "delegate" not in names
     assert "bash" in names
-    assert len(names) > 40
+
+    expected = {t.name for t in system.TOOLS if t.enabled}
+    expected -= {"delegate"}
+    expected -= set(INSTALL_TOOLS)  # off unless capability_install_enabled
+    expected -= unreachable_tools()  # no executor in this process
+    assert names == expected
 
 
 def test_delegate_exists_and_is_one_of_the_verbs() -> None:
