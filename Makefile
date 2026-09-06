@@ -158,12 +158,26 @@ build: frontend
 	@echo "Building Heare.app with PyInstaller..."
 	rm -rf dist/Heare build/HeareMenubar
 	uv run pyinstaller HeareMenubar.spec --noconfirm
+	@$(MAKE) --no-print-directory verify-app
 	@echo "✅ dist/Heare.app built"
 
 frontend:
 	@echo "Building frontend..."
 	cd src/frontend && npm ci && npm run build
 	@echo "✅ Frontend built"
+
+# PyInstaller exits 0 on a bundle that cannot start, so the return code
+# is not evidence. These are the same three checks CI runs — kept here
+# so a local build and a CI build agree about what "built" means, and so
+# neither can start passing while the other fails.
+verify-app:  ## Перевірити, що зібраний .app цілий
+	@test -d dist/Heare.app \
+		|| { echo "❌ dist/Heare.app не зібрався"; exit 1; }
+	@test -x dist/Heare.app/Contents/MacOS/Heare \
+		|| { echo "❌ у бандлі немає виконуваного файла"; exit 1; }
+	@test -f dist/Heare.app/Contents/Resources/src/frontend/index.html \
+		|| { echo "❌ дашборд не потрапив у бандл"; exit 1; }
+	@echo "✅ бандл цілий — $$(du -sh dist/Heare.app | cut -f1)"
 
 dmg: build
 	@echo "Creating Heare.dmg..."
