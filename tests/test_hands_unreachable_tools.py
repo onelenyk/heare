@@ -17,6 +17,8 @@ A tool the model can see is a promise to the person on the microphone.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -79,11 +81,29 @@ class TestTheGateIsProbedNotHardcoded:
         monkeypatch.setattr(sm, "get_agent_manager", lambda: object())
         assert not (_AGENT_TOOLS & unreachable_tools())
 
-    def test_browser_verbs_return_when_a_bridge_exists(self, monkeypatch) -> None:
+    def test_browser_verbs_return_when_an_extension_is_paired(
+        self, monkeypatch
+    ) -> None:
         import src.agent.browser_bridge as bb
 
-        monkeypatch.setattr(bb, "_get_bridge", lambda: object())
+        monkeypatch.setattr(
+            bb, "_get_bridge", lambda: SimpleNamespace(connected=True)
+        )
         assert not (_BROWSER_TOOLS & unreachable_tools())
+
+    def test_a_bridge_with_nothing_paired_to_it_is_still_no_browser(
+        self, monkeypatch
+    ) -> None:
+        """The daemon binds the bridge at boot whether or not Chrome ever
+        shows up. A bound socket is not a browser: every call through it
+        comes back "Browser not connected", and a verb that always fails
+        is worse than one that is not offered."""
+        import src.agent.browser_bridge as bb
+
+        monkeypatch.setattr(
+            bb, "_get_bridge", lambda: SimpleNamespace(connected=False)
+        )
+        assert _BROWSER_TOOLS <= unreachable_tools()
 
     def test_a_probe_that_explodes_hides_rather_than_crashes(
         self, monkeypatch

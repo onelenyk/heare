@@ -104,7 +104,16 @@ def unreachable_tools() -> frozenset[str]:
     try:
         from src.agent.browser_bridge import _get_bridge
 
-        if _get_bridge() is None:
+        # Two conditions, not one. Since 9 September the daemon actually
+        # builds a bridge at boot, so `is None` stopped being the whole
+        # question: a bound server with no extension paired to it answers
+        # every call with "Browser not connected". Offering the verbs then
+        # teaches the model it can drive a browser that is not there —
+        # the same lesson `sidetone` teaches by succeeding at nothing.
+        # `connected` flips on its own when Chrome pairs, and the worker
+        # rebuilds its schemas per job, so nothing needs a restart.
+        bridge = _get_bridge()
+        if bridge is None or not getattr(bridge, "connected", True):
             hidden |= _BROWSER_TOOLS
     except Exception:  # pragma: no cover - import guard
         hidden |= _BROWSER_TOOLS
