@@ -90,6 +90,11 @@ HEAR_EVERY_S = 5.0
 # deaf assistant still deserves to be told.
 DEAF_URGENCY = 0.9
 
+# Intent kinds the model does not get a vote on. Not a general escape
+# hatch — the bar is "the assistant is reporting its own failure, and
+# staying quiet is indistinguishable from ignoring you".
+UNVETOABLE: frozenset[str] = frozenset({"deaf"})
+
 # How pressing a repeated intention is. Low, and that is the point: it
 # is the least urgent thing the engine can hold, so it never outranks
 # "the thing you asked for finished", and at night it is filtered out
@@ -237,6 +242,7 @@ class Engine:
         idle: Any = None,
         summarise: Any = None,
         hearing: Any = None,
+        recover_hearing: Any = None,
         watch: Any = None,
         repeats: Any = None,
         tick_s: float = TICK_S,
@@ -272,6 +278,10 @@ class Engine:
         # outage was already mentioned. Absent, the engine behaves as
         # before: a broken microphone stays a line in a log.
         self._hearing = hearing
+        # Async () -> bool: try to bring the microphone back. Injected
+        # like everything else — the engine is not allowed to reach for a
+        # device. None means nothing can be done but say so.
+        self._recover_hearing = recover_hearing
         self._ears = None
         self._heard_ts = 0.0
         self._tick_s = tick_s
@@ -476,6 +486,22 @@ class Engine:
             if found is None:
                 return
             text, key = found
+            # Try to fix it before announcing it. If the stream comes
+            # back the remark is still worth making — the person was
+            # talking to nothing for twenty seconds and deserves to know
+            # why they were not answered — but it can then be the past
+            # tense instead of a standing fault.
+            recovered = False
+            if self._recover_hearing is not None:
+                try:
+                    recovered = bool(await self._recover_hearing())
+                except Exception:  # noqa: BLE001
+                    logger.exception("engine: could not reopen the ear (non-fatal)")
+            if recovered:
+                text = (
+                    "мікрофон щойно відвалився — я не чула тебе секунд "
+                    "двадцять. Уже полагодила, кажи ще раз."
+                )
             await self.notice(
                 "deaf", text, origin=I.USER, urgency=DEAF_URGENCY, dedupe_key=key
             )
@@ -599,7 +625,17 @@ class Engine:
         model is allowed to refuse.
         """
         text = intent.text
-        if self._ask is not None:
+        # One kind is not the model's to refuse. Everything else here is a
+        # remark about the world, and a remark declined costs nothing; this
+        # is the assistant reporting that it is broken. Measured live on
+        # 9 September: the microphone died mid-conversation, `hearing.py`
+        # caught it inside twenty seconds, raised it at urgency 0.9 — and
+        # the veto answered "не варте", so the person went on talking to a
+        # dead device while the log knew. That is exactly the class of bug
+        # hearing.py's own docstring exists to close, reopened at the last
+        # step. The conditions above still apply: it cannot cut into a
+        # sentence, and `dedupe_key` still means one outage is one remark.
+        if self._ask is not None and intent.kind not in UNVETOABLE:
             try:
                 verdict = await self._ask(intent, situation)
                 if not verdict:

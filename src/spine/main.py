@@ -480,6 +480,13 @@ async def _wire_full(loop, settings, cfg, memory, features):
                     detect=detector(_cfg, stream_chat),
                 )
 
+            async def _reopen_the_ear() -> bool:
+                """Try to bring the microphone back. Same reason this
+                lives here as `_still_hearing`: the device belongs to the
+                conductor, and the engine only ever gets collaborators."""
+                restart = getattr(loop.audio, "restart_input", None)
+                return bool(await restart()) if restart is not None else False
+
             async def _still_hearing():
                 """Ask the ear how it is doing.
 
@@ -502,6 +509,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
                 ask=_worth_saying(_cfg),
                 idle=_at_the_keyboard,
                 hearing=_still_hearing,
+                recover_hearing=_reopen_the_ear,
                 summarise=summariser(_cfg, stream_chat),
                 watch=watch,
                 repeats=repeats,
