@@ -206,6 +206,10 @@ async def execute_direct(
         return await _execute_show_display(args, settings)
     elif tool == "show_canvas":
         return await _execute_show_display(args, settings)
+    elif tool == "look_at_screen":
+        return await _execute_look_at_screen(args, settings)
+    elif tool == "clear_display":
+        return await _execute_clear_display(args, settings)
     elif tool == "discover_capability":
         return await _execute_discover_capability(args, settings)
     elif tool == "install_skill_tool":
@@ -609,6 +613,28 @@ async def _execute_web_fetch(args: str, settings: "Settings | None" = None) -> d
         }
 
 
+# DuckDuckGo's HTML endpoint serves results to something that looks like
+# a browser and a challenge page to everything else. This is the whole
+# difference between a working search tool and one that always says it
+# found nothing.
+_BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+)
+
+# Markers of the challenge page, in the order they are cheap to check.
+# 202 is the status it comes back with; `anomaly-modal` is the CSS class
+# of the puzzle box it renders.
+_CHALLENGE_MARKERS = ("anomaly-modal", "anomaly_modal")
+
+
+def _is_search_challenge(status: int, body: str) -> bool:
+    """True when the response is an anti-bot page rather than results."""
+    if status == 202:
+        return True
+    return any(marker in body for marker in _CHALLENGE_MARKERS)
+
+
 async def _execute_web_search(args: str, settings: "Settings | None" = None) -> dict:
     """Search via DuckDuckGo or Serper.dev and return results."""
     query = args.strip()
@@ -825,14 +851,41 @@ async def _search_duckduckgo(query: str, settings: "Settings | None" = None) -> 
     import re
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            # DuckDuckGo HTML version
-            resp = await client.get(
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            # POST with a browser User-Agent, and both matter. Measured
+            # 9 September 2026: a plain GET without one comes back 202
+            # carrying an anti-bot challenge page — no results, and no
+            # error either, because `raise_for_status()` does not fire on
+            # 202. The scraper then matched nothing and reported
+            # "No results found" with success=True, so every search this
+            # assistant ran for weeks answered «нічого не знайшов» to
+            # questions the web had answers to.
+            resp = await client.post(
                 "https://html.duckduckgo.com/html/",
-                params={"q": query},
+                data={"q": query},
+                headers={"User-Agent": _BROWSER_UA},
             )
             resp.raise_for_status()
             text = resp.text
+
+            # The challenge page again, which arrives for maybe every
+            # other query once DuckDuckGo starts counting. It must never
+            # be reported as an empty result: "nothing was found" and "I
+            # was not allowed to look" are different answers, and only
+            # one of them should stop a person from asking again.
+            if _is_search_challenge(resp.status_code, text):
+                logger.warning("web_search: DuckDuckGo challenge (HTTP %s)", resp.status_code)
+                return {
+                    "success": False,
+                    "output": "",
+                    "items": [],
+                    "error": "DuckDuckGo returned an anti-bot challenge, not results",
+                    "spoken": {
+                        "en": "Search is blocked right now, not empty.",
+                        "uk": "Пошук зараз заблокований — це не порожньо, це мене не пустили.",
+                        "ru": "Поиск сейчас заблокирован.",
+                    },
+                }
 
             items: list[dict] = []
             text_blocks: list[str] = []
@@ -2251,6 +2304,90 @@ async def _execute_read_display(args: str, settings: "Settings | None" = None) -
         }
 
 
+async def _execute_look_at_screen(args: str, settings: "Settings | None" = None) -> dict:
+    """Look at the screen. Shares one implementation with the voice path.
+
+    ``args`` is the question in plain text (see ``_SERIALIZERS``), which
+    is why there is no JSON parsing here.
+    """
+    from src.spine import vision
+
+    try:
+        if settings is None:
+            from src.config import load_settings
+
+            settings = load_settings()
+        answer = await vision.look(args.strip(), settings=settings)
+    except vision.VisionUnavailable as exc:
+        return {
+            "success": False,
+            "output": "",
+            "error": str(exc),
+            "spoken": {"uk": str(exc), "en": "Could not look at the screen."},
+        }
+    except Exception as e:
+        logger.exception("_execute_look_at_screen failed")
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Failed to look at screen: {e}",
+            "spoken": {"en": "Could not look at the screen."},
+        }
+    return {
+        "success": True,
+        "output": answer,
+        "spoken": {"uk": answer, "en": "Looked at the screen."},
+    }
+
+
+async def _execute_clear_display(args: str, settings: "Settings | None" = None) -> dict:
+    """Blank the screen panel.
+
+    Writes an empty newest row rather than deleting: `displays` is a
+    latest-only channel — every reader (src/state.py, src/api.py,
+    TranscriptStore.latest_display) takes the newest row — so this needs
+    no reader to change, and what was shown stays in the table.
+    """
+    try:
+        if settings is None:
+            from src.config import load_settings
+
+            settings = load_settings()
+        if not settings.db_path:
+            return {"success": False, "output": "", "error": "no db_path configured"}
+        from src.store.storage import TranscriptStore
+
+        store = TranscriptStore(settings.db_path)
+        try:
+            await store.init()
+            disp = await store.latest_display()
+            if not disp or not (disp.get("content") or "").strip():
+                return {
+                    "success": True,
+                    "output": "The screen panel was already empty.",
+                    "spoken": {
+                        "en": "The screen was already empty.",
+                        "uk": "Там і так порожньо.",
+                    },
+                }
+            await store.log_display(content="", fmt="text", title="")
+        finally:
+            await store.close()
+        return {
+            "success": True,
+            "output": "The screen panel is now empty.",
+            "spoken": {"en": "Cleared the screen.", "uk": "Прибрала з екрана."},
+        }
+    except Exception as e:
+        logger.exception("_execute_clear_display failed")
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Failed to clear display: {e}",
+            "spoken": {"en": "Could not clear the screen."},
+        }
+
+
 async def _execute_show_display(args: str, settings: "Settings | None" = None) -> dict:
     """Render a rich block on the watch dashboard display panel.
 
@@ -2766,7 +2903,10 @@ async def _execute_restart_daemon(
             },
         }
 
-    safe_task(daemon_control.schedule_self_exit(delay_s=self_exit_delay_s), name="daemon-restart-exit")
+    safe_task(
+        daemon_control.schedule_self_exit(delay_s=self_exit_delay_s),
+        name="daemon-restart-exit",
+    )
     logger.info(
         "[CAPABILITY DAEMON] restart scheduled respawner_pid=%d "
         "respawn_delay=%.2fs self_exit_delay=%.2fs",
@@ -3199,9 +3339,7 @@ def _list_mcp_servers(settings: "Settings | None") -> list[dict]:
         from src.skills.mcp_utils import read_mcp_servers
 
         mcp_dir = (
-            settings.mcp_dir
-            if settings is not None
-            else Path.home() / ".heare" / "mcp"
+            settings.mcp_dir if settings is not None else Path.home() / ".heare" / "mcp"
         )
         servers = read_mcp_servers(Path(mcp_dir))
         for slug, entry in servers.items():
@@ -3534,7 +3672,10 @@ async def _execute_sidetone(args: str, settings: "Settings | None" = None) -> di
             "success": False,
             "output": "",
             "error": "invalid arguments",
-            "spoken": {"en": "Invalid sidetone arguments.", "uk": "Неправильні аргументи."},
+            "spoken": {
+                "en": "Invalid sidetone arguments.",
+                "uk": "Неправильні аргументи.",
+            },
         }
     enabled = bool(parsed.get("enabled", False))
 
@@ -3654,9 +3795,7 @@ async def _execute_vad_sensitivity(
     }
 
 
-async def _execute_mic_gain(
-    args: str, settings: "Settings | None" = None
-) -> dict:
+async def _execute_mic_gain(args: str, settings: "Settings | None" = None) -> dict:
     """Adjust microphone input gain."""
     import json as _json
 
@@ -3697,9 +3836,7 @@ async def _execute_mic_gain(
     }
 
 
-async def _execute_volume(
-    args: str, settings: "Settings | None" = None
-) -> dict:
+async def _execute_volume(args: str, settings: "Settings | None" = None) -> dict:
     """Adjust speaker output volume."""
     import json as _json
 
