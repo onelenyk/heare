@@ -1,14 +1,23 @@
-"""Unified tool registry — single source of truth for all agent tools.
+"""The tool registry — a view over src/agent/tools/system.py, not a copy.
 
-Defines available tools with their metadata:
-- name: lowercase identifier used in intents/prompts
-- sdk_name: CamelCase identifier for claude-agent-sdk
-- execution: "direct" (fast) | "workflow" (special)
-- description: human-readable purpose
-- enabled: whether the tool is active
+There used to be two tables. This file held one, hand-maintained; system.py
+held the other, and system.py's is the one the worker turns into schemas,
+so it is the one the model sees. The May refactor that introduced system.py
+said in its own plan «update registry.py, schemas.py, direct.py — keep
+backward compat or delete», kept backward compat, and left two tables to
+drift.
 
-All other lists (ALLOWED_TOOLS, SIMPLE_TOOLS, agent_sdk_allowed_tools, etc.)
-are derived from this registry.
+They drifted. Measured 9 September 2026: system.py had 64 tools, this file
+53. Twelve names the model can be offered were unknown here — delegate,
+look_at_screen, read_display, clear_display, mute_mic, mute_bot, volume,
+mic_gain, sidetone, vad_sensitivity, audio_input, audio_output — so the
+capability index, which builds from this table, could not find any of them.
+Forty-one of the 53 shared names carried a different description: the
+copies here were the pre-compaction originals, frozen in May.
+
+There is one table now. What is left in this file is what system.py has no
+opinion about: the runtime registry for tools the model creates at request
+time (``create_tool``), and the predicates asked of the two together.
 """
 
 from __future__ import annotations
@@ -17,18 +26,22 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-ExecutionType = Literal["direct", "workflow", "mcp"]
-
 
 @dataclass(frozen=True)
 class Tool:
-    """Definition of a single tool capability."""
+    """One tool, as the capability index and the dynamic registry see it.
 
-    name: str  # lowercase: "bash", "read", etc.
-    sdk_name: str  # CamelCase for SDK: "Bash", "Read", etc.
-    execution: ExecutionType  # how it's executed
-    description: str  # what it does
-    enabled: bool = True  # can be toggled
+    Static tools are projected from ``system.ToolDef``; dynamic ones are
+    built here. No ``sdk_name`` and no ``execution`` column: the first fed
+    ``get_sdk_tools()`` -> ``DEFAULT_SDK_ALLOWED_TOOLS`` ->
+    ``Settings.get_sdk_allowed_tools()``, which nothing called, and the
+    second answered a question — "does this process run it itself?" — that
+    is a rule about ``mcp__`` names, not a column to keep in sync by hand.
+    """
+
+    name: str
+    description: str
+    enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -79,419 +92,26 @@ class ToolDefinition:
 
         return errors
 
-
 # ============================================================================
-# CORE TOOL REGISTRY — add new tools here
+# STATIC TOOLS — projected from the one table, at import
 # ============================================================================
 
-TOOLS: dict[str, Tool] = {
-    "bash": Tool(
-        name="bash",
-        sdk_name="Bash",
-        execution="direct",
-        description="Execute shell commands in the workspace directory",
-        enabled=True,
-    ),
-    "read": Tool(
-        name="read",
-        sdk_name="Read",
-        execution="direct",
-        description="Read file contents from the workspace",
-        enabled=True,
-    ),
-    "write": Tool(
-        name="write",
-        sdk_name="Write",
-        execution="direct",
-        description="Write content to a file (format: 'filepath: content')",
-        enabled=True,
-    ),
-    "web_fetch": Tool(
-        name="web_fetch",
-        sdk_name="WebFetch",
-        execution="direct",
-        description="Fetch and return content from a URL",
-        enabled=True,
-    ),
-    "web_search": Tool(
-        name="web_search",
-        sdk_name="WebSearch",
-        execution="direct",
-        description="Search the web (uses Serper.dev if key available, else DuckDuckGo)",
-        enabled=True,
-    ),
-    "workflow": Tool(
-        name="workflow",
-        sdk_name="Workflow",
-        execution="workflow",
-        description="Execute saved multi-step action sequences",
-        enabled=True,
-    ),
-    # CCS-05b: stable identifier for cancellation rows in the action log.
-    # The cancel "tool" never executes — IntentQueue.cancel_active /
-    # ActionWorker.cancel_in_flight short-circuit before dispatch — but
-    # registering it keeps the action_log shape consistent
-    # (tool='cancel' rather than empty string) and avoids tripping the
-    # is_tool_allowed allowlist if a future code path submits it.
-    "cancel": Tool(
-        name="cancel",
-        sdk_name="Cancel",  # No-op SDK mapping — tool never reaches the SDK.
-        execution="direct",
-        description="Cancel the in-flight action and drain pending intents",
-        enabled=True,
-    ),
-    # CRUD tools for dynamic tool management
-    "create_tool": Tool(
-        name="create_tool",
-        sdk_name="CreateTool",
-        execution="direct",
-        description="Create a new tool dynamically. Provide: name, description, arguments (JSON schema), implementation type (bash/fetch/python), and implementation string.",
-        enabled=True,
-    ),
-    "update_tool": Tool(
-        name="update_tool",
-        sdk_name="UpdateTool",
-        execution="direct",
-        description="Update an existing dynamic tool. Provide the tool name and fields to update.",
-        enabled=True,
-    ),
-    "delete_tool": Tool(
-        name="delete_tool",
-        sdk_name="DeleteTool",
-        execution="direct",
-        description="Delete a dynamic tool by name. Cannot delete built-in tools.",
-        enabled=True,
-    ),
-    "list_tools": Tool(
-        name="list_tools",
-        sdk_name="ListTools",
-        execution="direct",
-        description="List all available tools, including dynamically created ones.",
-        enabled=True,
-    ),
-    # Archive & Batch Tools
-    "create_archive": Tool(
-        name="create_archive",
-        sdk_name="CreateArchive",
-        execution="direct",
-        description="Create tar or zip archive from files/directories with compression options",
-        enabled=True,
-    ),
-    "extract_archive": Tool(
-        name="extract_archive",
-        sdk_name="ExtractArchive",
-        execution="direct",
-        description="Extract tar or zip archive to a directory with overwrite options",
-        enabled=True,
-    ),
-    "batch_operation": Tool(
-        name="batch_operation",
-        sdk_name="BatchOperation",
-        execution="direct",
-        description="Perform operations on multiple files matching a pattern (delete, copy, move, list, archive)",
-        enabled=True,
-    ),
-    # Profile Management Tools
-    "add_favorite": Tool(
-        name="add_favorite",
-        sdk_name="AddFavorite",
-        execution="direct",
-        description="Add a directory to favorites list",
-        enabled=True,
-    ),
-    "list_favorites": Tool(
-        name="list_favorites",
-        sdk_name="ListFavorites",
-        execution="direct",
-        description="List favorite locations with access counts",
-        enabled=True,
-    ),
-    "set_view_preference": Tool(
-        name="set_view_preference",
-        sdk_name="SetViewPreference",
-        execution="direct",
-        description="Set display preferences (show_hidden, detail_level, sort_by, sort_order)",
-        enabled=True,
-    ),
-    "show_profile": Tool(
-        name="show_profile",
-        sdk_name="ShowProfile",
-        execution="direct",
-        description="Show current user profile settings and preferences",
-        enabled=True,
-    ),
-    # Agent Skills meta-tools (agentskills.io format)
-    "list_skills": Tool(
-        name="list_skills",
-        sdk_name="ListSkills",
-        execution="direct",
-        description="List available Agent Skills. Returns skill names and one-line descriptions. Call this to discover what portable skills exist.",
-        enabled=True,
-    ),
-    "run_skill": Tool(
-        name="run_skill",
-        sdk_name="RunSkill",
-        execution="direct",
-        description="Execute an Agent Skill by name. Skills can orchestrate multiple heare tools internally. Provide the skill name and context dict with required parameters.",
-        enabled=True,
-    ),
-    "set_provider": Tool(
-        name="set_provider",
-        sdk_name="SetProvider",
-        execution="direct",
-        description="Switch the active LLM provider (deepseek, zai, or opencode). Change takes effect on the next user utterance.",
-        enabled=True,
-    ),
-    "show_text": Tool(
-        name="show_text",
-        sdk_name="ShowText",
-        execution="direct",
-        enabled=True,
-        description="Show text on the display panel. Use when voice is unavailable (muted/silent) or when content is better read than heard: facts, lists, references, explanations. Speak a short pointer ('showing on screen') then call this.",
-    ),
-    "show_canvas": Tool(
-        name="show_canvas",
-        sdk_name="ShowCanvas",
-        execution="direct",
-        enabled=True,
-        description="Render HTML/JS in the canvas panel. Use for charts, diagrams, visual demos, UI components. Speak a short pointer ('rendering chart') then call this.",
-    ),
-    # Capability discovery (US-007) — proactive skill/MCP install + revoke.
-    "discover_capability": Tool(
-        name="discover_capability",
-        sdk_name="DiscoverCapability",
-        execution="direct",
-        description="Search for an installable skill or MCP server matching the user's intent. Use when the user asks for something you don't have an existing tool for.",
-        enabled=True,
-    ),
-    "install_skill_tool": Tool(
-        name="install_skill_tool",
-        sdk_name="InstallSkillTool",
-        execution="direct",
-        description="Install a skill from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
-        enabled=True,
-    ),
-    "create_skill": Tool(
-        name="create_skill",
-        sdk_name="CreateSkill",
-        execution="direct",
-        description=(
-            "Author a new local skill from the conversation. Use when the user "
-            "asks to remember a procedure or workflow as a reusable skill. The "
-            "skill body is markdown instructions the LLM will read when "
-            "run_skill is later invoked. Requires user_confirmed=true after "
-            "explicit voice consent."
-        ),
-        enabled=True,
-    ),
-    "stop_daemon": Tool(
-        name="stop_daemon",
-        sdk_name="StopDaemon",
-        execution="direct",
-        description=(
-            "Gracefully stop the running daemon. Use ONLY when the user "
-            "explicitly asks to stop / shut down / quit / kill the bot. "
-            "Never call this to 'free resources' or as part of any other "
-            "task. Requires user_confirmed=true after explicit voice consent."
-        ),
-        enabled=True,
-    ),
-    "restart_daemon": Tool(
-        name="restart_daemon",
-        sdk_name="RestartDaemon",
-        execution="direct",
-        description=(
-            "Restart the running daemon. Use when the user asks to restart "
-            "/ reload after config or code changes. This is the ONLY safe "
-            "way to restart from inside the daemon — never run `make "
-            "restart` or `hearectl restart` via bash, those terminate the "
-            "agent without bringing it back. Requires user_confirmed=true."
-        ),
-        enabled=True,
-    ),
-    "install_mcp_server_tool": Tool(
-        name="install_mcp_server_tool",
-        sdk_name="InstallMcpServerTool",
-        execution="direct",
-        description="Install an MCP server from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
-        enabled=True,
-    ),
-    "register_mcp_server": Tool(
-        name="register_mcp_server",
-        sdk_name="RegisterMcpServer",
-        execution="direct",
-        description=(
-            "Register an MCP server directly from user-supplied launch info "
-            "(e.g., the user reads a README aloud). Use ONLY when "
-            "discover_capability has no matching entry. BEFORE setting "
-            "user_confirmed=true, ALWAYS read the proposed slug, command, args, "
-            "and env back to the user verbatim and wait for an explicit yes — "
-            "the user is consenting to the exact launch configuration, not the "
-            "slug. Requires user_confirmed=true. Daemon restart needed to use "
-            "the server."
-        ),
-        enabled=True,
-    ),
-    "revoke_capability": Tool(
-        name="revoke_capability",
-        sdk_name="RevokeCapability",
-        execution="direct",
-        description="Uninstall a previously installed skill or MCP server by slug. User-authored skills are protected and cannot be revoked.",
-        enabled=True,
-    ),
-    "list_capabilities": Tool(
-        name="list_capabilities",
-        sdk_name="ListCapabilities",
-        execution="direct",
-        description="List everything the agent can call, grouped into three buckets: built_in (code-backed tools), skills (markdown procedures), mcps (external MCP servers). Optional 'category' filter: built_in | skills | mcps.",
-        enabled=True,
-    ),
-    # Browser bridge tools (Phase 1)
-    "read_browser_page": Tool(
-        name="read_browser_page",
-        sdk_name="ReadBrowserPage",
-        execution="direct",
-        description="Read the URL, title, and text content of a browser tab via the Heare Bridge extension. Optional tab_id; defaults to the active tab.",
-        enabled=True,
-    ),
-    "list_browser_tabs": Tool(
-        name="list_browser_tabs",
-        sdk_name="ListBrowserTabs",
-        execution="direct",
-        description="List all open tabs in the connected Chrome browser with their id, url, title, and active state.",
-        enabled=True,
-    ),
-    "click_in_browser": Tool(
-        name="click_in_browser",
-        sdk_name="ClickInBrowser",
-        execution="direct",
-        description="Click an element in a browser tab identified by a CSS selector. Optional tab_id; defaults to the active tab.",
-        enabled=True,
-    ),
-    "fill_in_browser": Tool(
-        name="fill_in_browser",
-        sdk_name="FillInBrowser",
-        execution="direct",
-        description="Fill a form field in a browser tab identified by a CSS selector. Optional tab_id; defaults to the active tab.",
-        enabled=True,
-    ),
-    "navigate_browser": Tool(
-        name="navigate_browser",
-        sdk_name="NavigateBrowser",
-        execution="direct",
-        description="Navigate a browser tab to a URL and wait for the page to load. Optional tab_id; defaults to the active tab.",
-        enabled=True,
-    ),
-    "extract_in_browser": Tool(
-        name="extract_in_browser",
-        sdk_name="ExtractInBrowser",
-        execution="direct",
-        description="Extract matching DOM elements (tag, text, attrs) from a browser tab by CSS selector. Optional tab_id; defaults to the active tab.",
-        enabled=True,
-    ),
-    "open_browser_tab": Tool(
-        name="open_browser_tab",
-        sdk_name="OpenBrowserTab",
-        execution="direct",
-        description="Open a new tab in the connected Chrome browser and navigate it to the given URL.",
-        enabled=True,
-    ),
-    "activate_browser_tab": Tool(
-        name="activate_browser_tab",
-        sdk_name="ActivateBrowserTab",
-        execution="direct",
-        description="Bring an existing browser tab to the foreground without changing its URL or reloading it. Optional tab_id; defaults to the active tab.",
-        enabled=True,
-    ),
-    "run_agent": Tool(
-        name="run_agent",
-        sdk_name="RunAgent",
-        execution="direct",
-        description="Delegate a complex multi-step task to an OpenCode sub-agent. Use for analysis, code changes, research, or any task that requires multiple tool calls. Returns structured results including the answer, cost, and session ID for follow-up.",
-        enabled=True,
-    ),
-    "agent_start": Tool(
-        name="agent_start",
-        sdk_name="AgentStart",
-        execution="direct",
-        description="Start a background sub-agent via OpenCode server. Returns session_id immediately.",
-        enabled=True,
-    ),
-    "agent_status": Tool(
-        name="agent_status",
-        sdk_name="AgentStatus",
-        execution="direct",
-        description="Check the current status and progress of a background sub-agent.",
-        enabled=True,
-    ),
-    "agent_result": Tool(
-        name="agent_result",
-        sdk_name="AgentResult",
-        execution="direct",
-        description="Get the full output from a sub-agent. Returns partial output if still running.",
-        enabled=True,
-    ),
-    "agent_message": Tool(
-        name="agent_message",
-        sdk_name="AgentMessage",
-        execution="direct",
-        description="Continue a conversation with a sub-agent session. Only works on done/error/cancelled agents.",
-        enabled=True,
-    ),
-    "agent_cancel": Tool(
-        name="agent_cancel",
-        sdk_name="AgentCancel",
-        execution="direct",
-        description="Cancel a running sub-agent and stop its server.",
-        enabled=True,
-    ),
-    "agent_list": Tool(
-        name="agent_list",
-        sdk_name="AgentList",
-        execution="direct",
-        description="List all managed sub-agents with their status, progress, and cost.",
-        enabled=True,
-    ),
-    "agent_approve": Tool(
-        name="agent_approve",
-        sdk_name="AgentApprove",
-        execution="direct",
-        description="Approve a pending permission request from a sub-agent.",
-        enabled=True,
-    ),
-    "agent_deny": Tool(
-        name="agent_deny",
-        sdk_name="AgentDeny",
-        execution="direct",
-        description="Deny a pending permission request. Optionally send corrective instructions.",
-        enabled=True,
-    ),
-    # Memory tools
-    "remember": Tool(
-        name="remember",
-        sdk_name="Remember",
-        execution="direct",
-        description="Store a fact in persistent memory. Use when the user explicitly asks you to remember something (a preference, a name, a decision, an event).",
-    ),
-    "recall": Tool(
-        name="recall",
-        sdk_name="Recall",
-        execution="direct",
-        description="Search your persistent memory for facts, preferences, or past events. Use when you need to recall something the user told you before.",
-    ),
-    "forget": Tool(
-        name="forget",
-        sdk_name="Forget",
-        execution="direct",
-        description="Remove a memory by its ID. Use when the user asks you to forget something.",
-    ),
-    "memory_status": Tool(
-        name="memory_status",
-        sdk_name="MemoryStatus",
-        execution="direct",
-        description="Show how many memories you have stored, broken down by type.",
-    ),
-}
+
+def _static_tools() -> dict[str, Tool]:
+    """``system.TOOLS``, as ``Tool`` objects.
+
+    A plain import rather than a deferred one: system.py imports nothing
+    from this module, so there is no cycle to route around.
+    """
+    from src.agent.tools.system import TOOLS as _DEFS
+
+    return {
+        d.name: Tool(name=d.name, description=d.description, enabled=d.enabled)
+        for d in _DEFS
+    }
+
+
+TOOLS: dict[str, Tool] = _static_tools()
 
 
 # ============================================================================
@@ -511,11 +131,6 @@ def unregister_dynamic_tool(name: str) -> bool:
     return _DYNAMIC_TOOLS.pop(name, None) is not None
 
 
-def get_tool(name: str) -> Tool | None:
-    """Get tool from static or dynamic registry. Overrides the function below."""
-    return TOOLS.get(name) or _DYNAMIC_TOOLS.get(name)
-
-
 def get_all_tools() -> dict[str, Tool]:
     """Get all tools (static + dynamic)."""
     return {**TOOLS, **_DYNAMIC_TOOLS}
@@ -532,140 +147,27 @@ def is_static_tool(name: str) -> bool:
 
 
 # ============================================================================
-# DERIVED LISTS — generated from TOOLS, do not edit manually
+# DERIVED — asked of the two tables together
 # ============================================================================
 
 
 def get_enabled_tools() -> set[str]:
-    """Get all enabled tool names (lowercase), including dynamic tools."""
+    """Every enabled tool name, static and dynamic."""
     static = {t.name for t in TOOLS.values() if t.enabled}
     dynamic = {t.name for t in _DYNAMIC_TOOLS.values() if t.enabled}
     return static | dynamic
 
 
-def get_sdk_tools() -> list[str]:
-    """Get CamelCase tool names for claude-agent-sdk allowlist."""
-    return [
-        t.sdk_name for t in TOOLS.values() if t.enabled and t.execution != "workflow"
-    ]
-
-
-def get_direct_tools() -> set[str]:
-    """Get tools that execute directly (fast path, no Claude needed)."""
-    return {t.name for t in TOOLS.values() if t.enabled and t.execution == "direct"}
-
-
-def is_tool_allowed(name: str) -> bool:
-    """Check if a tool name is allowed and enabled.
-
-    Returns True for:
-    - Tools in the static registry that are enabled
-    - Dynamic tools that are enabled
-    - MCP tools (mcp__<server>__<action>)
-    """
-    tool = TOOLS.get(name) or _DYNAMIC_TOOLS.get(name)
-    if tool is not None and tool.enabled:
-        return True
-    # MCP tools are always allowed if they follow the pattern
-    return is_mcp_tool(name)
+def get_tool(name: str) -> Tool | None:
+    """One tool by name, static or dynamic."""
+    return TOOLS.get(name) or _DYNAMIC_TOOLS.get(name)
 
 
 def is_mcp_tool(name: str) -> bool:
-    """Check if a tool name is an MCP tool (mcp__<server>__<action>)."""
+    """Is this an MCP tool (``mcp__<server>__<action>``)?"""
     return name.startswith("mcp__") and name.count("__") >= 2
 
 
-def get_intent_to_sdk_mapping() -> dict[str, str]:
-    """Map lowercase intent names to CamelCase SDK names."""
-    return {t.name: t.sdk_name for t in TOOLS.values() if t.enabled}
-
-
-# Tool groups for compact prompt rendering.  Each tool name maps to its
-# category so the system prompt can list tools by group instead of one
-# verbose line per tool — saving ~800 tokens per LLM call.
-_TOOL_GROUPS: dict[str, list[str]] = {
-    "Lifecycle": [
-        "stop_daemon", "restart_daemon", "set_provider",
-        "mute_bot", "mute_mic", "cancel",
-        "vad_sensitivity", "mic_gain", "volume", "sidetone",
-    ],
-    "I/O": [
-        "bash", "read", "write",
-        "web_search", "web_fetch",
-        "create_archive", "extract_archive", "batch_operation", "workflow",
-    ],
-    "Browser": [
-        "list_browser_tabs", "read_browser_page",
-        "navigate_browser", "open_browser_tab", "activate_browser_tab",
-        "click_in_browser", "fill_in_browser", "extract_in_browser",
-    ],
-    "Display": ["show_text", "show_canvas"],
-    "Skills": [
-        "list_skills", "run_skill",
-        "discover_capability", "list_capabilities",
-        "install_skill_tool", "create_skill",
-        "install_mcp_server_tool", "register_mcp_server", "revoke_capability",
-    ],
-    "Dynamic tools": ["create_tool", "update_tool", "delete_tool", "list_tools"],
-    "Agents": [
-        "run_agent",
-        "agent_start", "agent_status", "agent_result",
-        "agent_message", "agent_cancel", "agent_list",
-        "agent_approve", "agent_deny",
-    ],
-    "Memory": ["remember", "recall", "forget", "memory_status"],
-    "Audio devices": ["audio_input", "audio_output"],
-    "Files": [
-        "add_favorite", "list_favorites",
-        "set_view_preference", "show_profile",
-    ],
-}
-
-
-def get_tool_descriptions() -> str:
-    """Generate a compact grouped listing of all enabled tools for prompts."""
-    # Merge registry tools with system.py tools (system tools include
-    # lifecycle controls not in the registry).
-    from src.agent.tools.system import TOOLS as _SYSTEM_TOOLS
-
-    enabled: set[str] = set()
-    for t in TOOLS.values():
-        if t.enabled:
-            enabled.add(t.name)
-    for t in _SYSTEM_TOOLS:
-        if t.enabled:
-            enabled.add(t.name)
-
-    lines = ["Tools by category:"]
-    for group, names in _TOOL_GROUPS.items():
-        present = [n for n in names if n in enabled]
-        if present:
-            lines.append(f"  {group}: {', '.join(present)}")
-    # Catch any tools not in any group
-    grouped = {n for names in _TOOL_GROUPS.values() for n in names}
-    orphaned = sorted(enabled - grouped)
-    if orphaned:
-        lines.append(f"  Other: {', '.join(orphaned)}")
-    lines.append("")
-    lines.append(
-        "All tools are registered for function calling — "
-        "schemas are in the API request, not here."
-    )
-    return "\n".join(lines)
-
-
-# ============================================================================
-# BACKWARD COMPATIBILITY — deprecated aliases, remove in v0.3
-# ============================================================================
-
-# Legacy: actions.py used this directly
-ALLOWED_TOOLS = get_enabled_tools()
-
-# Legacy: actions.py used this for name mapping
-INTENT_TOOL_TO_SDK = get_intent_to_sdk_mapping()
-
-# Legacy: config.py used this for SDK
-DEFAULT_SDK_ALLOWED_TOOLS = get_sdk_tools()
-
-# Legacy: direct_tools.py used this
-SIMPLE_TOOLS = get_direct_tools()
+def get_direct_tools() -> set[str]:
+    """Tools this process executes itself — everything but MCP."""
+    return {name for name in get_enabled_tools() if not is_mcp_tool(name)}

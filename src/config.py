@@ -15,13 +15,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-# Import tool registry defaults (lazy import to avoid circular dependency)
-def _get_default_sdk_tools():
-    from src.agent.tools.registry import DEFAULT_SDK_ALLOWED_TOOLS
-
-    return DEFAULT_SDK_ALLOWED_TOOLS
-
-
 logger = logging.getLogger("heare.config")
 
 
@@ -121,6 +114,9 @@ RETIRED: dict[str, str] = {
     "openrouter_model": "src/agent/llm/providers.py owns provider models",
     # Sidetone was never played by either engine.
     "sidetone_volume": "nothing plays a sidetone",
+    # An allowlist for claude-agent-sdk, whose only reader was a method
+    # nothing called. The worker's allowlist is the tool gate.
+    "agent_sdk_allowed_tools": "tool access is decided by src/agent/tool_gate.py",
 }
 
 
@@ -347,10 +343,6 @@ class Settings:
     # request with no object — sent the worker to read an unrelated panel
     # that happened to be in context. A broken sentence does not merely
     # annoy; it starts the wrong job.
-    # Phase 2: which tools the Pipecat-native pipeline may invoke via
-    # register_function. Names are the tool identifiers defined in
-    # src/tool_registry.py. None = use all enabled tools from the registry.
-    agent_sdk_allowed_tools: list[str] | None = None
     # Web search provider: "auto" (use Serper if key available, else DuckDuckGo),
     # "duckduckgo" (force DuckDuckGo), or "serper" (force Serper with API key)
     web_search_provider: str = "auto"
@@ -368,12 +360,6 @@ class Settings:
     # field) to be set before installing. Default False — checksum is verified
     # opportunistically when present.
     installation_signature_required: bool = False
-
-    def get_sdk_allowed_tools(self) -> list[str]:
-        """Get the list of allowed SDK tools, using defaults if not set."""
-        if self.agent_sdk_allowed_tools is not None:
-            return self.agent_sdk_allowed_tools
-        return _get_default_sdk_tools()
 
     # Context: how many recent transcripts to include in prompts.
     # Default 15 (~100 tokens, 0.05% of 200K context budget).

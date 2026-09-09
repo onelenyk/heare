@@ -117,8 +117,6 @@ def test_four_source_merge(tmp_path: Path):
     from src.agent.tools.registry import register_dynamic_tool, unregister_dynamic_tool, Tool
     register_dynamic_tool(Tool(
         name="dyn_test_tool",
-        sdk_name="DynTestTool",
-        execution="direct",
         description="A dynamic test tool",
     ))
 
@@ -432,8 +430,6 @@ def test_build_performance_under_50ms(tmp_path: Path):
         dyn_names.append(nm)
         register_dynamic_tool(Tool(
             name=nm,
-            sdk_name=f"DynPerf{i}",
-            execution="direct",
             description=f"Dynamic perf tool {i}",
         ))
 

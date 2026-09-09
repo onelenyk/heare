@@ -1017,8 +1017,6 @@ async def _execute_create_tool(args: str, settings: "Settings | None" = None) ->
     # Create Tool object
     tool = Tool(
         name=definition.name,
-        sdk_name=_to_camel_case(definition.name),
-        execution="direct",
         description=definition.description,
         enabled=True,
     )
@@ -1033,7 +1031,9 @@ async def _execute_create_tool(args: str, settings: "Settings | None" = None) ->
             await store.init()
             await store.create_dynamic_tool(
                 name=tool.name,
-                sdk_name=tool.sdk_name,
+                # The column predates the SDK path being dropped; it is
+                # written and never read back into anything.
+                sdk_name=_to_camel_case(definition.name),
                 execution_type=definition.implementation_type,
                 description=tool.description,
                 definition_json=args,

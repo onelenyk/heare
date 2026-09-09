@@ -131,8 +131,6 @@ def test_register_and_unregister_tool():
     """Test dynamic tool registration."""
     tool = Tool(
         name="test_tool",
-        sdk_name="TestTool",
-        execution="direct",
         description="A test tool",
     )
 
@@ -147,9 +145,9 @@ def test_register_and_unregister_tool():
 def test_register_multiple_tools():
     """Test registering multiple dynamic tools."""
     tools = [
-        Tool("tool1", "Tool1", "direct", "First tool"),
-        Tool("tool2", "Tool2", "direct", "Second tool"),
-        Tool("tool3", "Tool3", "direct", "Third tool"),
+        Tool("tool1", "First tool"),
+        Tool("tool2", "Second tool"),
+        Tool("tool3", "Third tool"),
     ]
 
     for tool in tools:
