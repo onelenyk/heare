@@ -106,16 +106,23 @@ def _make_toolbox(
 # -- schemas -------------------------------------------------------------
 
 
-def test_schemas_are_exactly_the_five_named_tools():
+def test_schemas_are_exactly_the_eight_named_tools():
     """`forget` joined them when the assistant started keeping what it
     overhears: a person has to be able to say "forget that" out loud and
     have it be true, without opening a database.
     `search_conversations` joined them once there was an index over what
     was said — `recall` finds facts someone chose to store, which is a
-    different question from what was actually said and when."""
+    different question from what was actually said and when.
+    `look_at_screen` is the eighth: the panel verbs let it see this app's
+    own display, and that is not the screen a person means when they ask
+    what you can see.
+    `read_display` and `clear_display` joined them on 9 September, after
+    a live run in which the assistant denied there was anything on a
+    screen the person was looking at: both panel verbs lived behind
+    `delegate`, so the model had no screen in its world at all."""
     toolbox, _ = _make_toolbox()
     schemas = toolbox.schemas
-    assert len(schemas) == 5
+    assert len(schemas) == 8
     names = {s["function"]["name"] for s in schemas}
     assert names == {
         "delegate",
@@ -123,6 +130,9 @@ def test_schemas_are_exactly_the_five_named_tools():
         "recall",
         "forget",
         "search_conversations",
+        "read_display",
+        "clear_display",
+        "look_at_screen",
     }
 
 
@@ -135,7 +145,12 @@ def test_schemas_are_valid_json_schema_shape():
         assert isinstance(fn["description"], str) and fn["description"]
         params = fn["parameters"]
         assert params["type"] == "object"
-        assert isinstance(params["properties"], dict) and params["properties"]
+        # A verb that takes no arguments has an empty `properties`, and
+        # that is a valid schema — `read_display` and `clear_display`
+        # need nothing said to them. What must never be empty is the
+        # description: it is the only thing telling the model the verb
+        # exists at all.
+        assert isinstance(params["properties"], dict)
         assert isinstance(params["required"], list)
         for prop_name in params["required"]:
             assert prop_name in params["properties"]

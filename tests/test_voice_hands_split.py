@@ -69,6 +69,9 @@ def test_delegate_exists_and_is_one_of_the_verbs() -> None:
         "recall",
         "forget",
         "search_conversations",
+        "read_display",
+        "clear_display",
+        "look_at_screen",
     }
 
 

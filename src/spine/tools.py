@@ -17,6 +17,7 @@ import asyncio
 import inspect
 import json
 import logging
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -50,6 +51,31 @@ MCP_CALL_TIMEOUT_S = 60.0
 # number as the pipecat path (``hands.PROGRESS_AFTER``) — a module-level
 # name here so it is one constant, readable at call time.
 BEACON_INTERVAL_S = PROGRESS_AFTER
+
+# How much of a text panel may be read aloud in one breath. Past this it
+# stops being an answer and becomes a recital.
+_SPOKEN_PANEL_LIMIT = 400
+
+_TAG_RE = re.compile(r"<(script|style)\b.*?</\1>|<[^>]+>", re.S | re.I)
+_WS_RE = re.compile(r"\s+")
+
+
+def _strip_markup(raw: str) -> str:
+    """Panel markup down to the words in it, or "" for a pure drawing.
+
+    Script and style bodies go whole: their contents are not text the
+    panel shows, and read aloud they are the worst noise of all.
+    """
+    text = _TAG_RE.sub(" ", raw)
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+    )
+    return _WS_RE.sub(" ", text).strip()
+
 
 # How many tool names to keep in memory so a result row can still say
 # which tool produced it. One turn's worth, many times over.
@@ -135,7 +161,9 @@ class McpHands(Hands):
         if bridge is None:
             return f"{name} failed: no MCP servers are connected"
 
-        intent_id = self._record_pending(name, json.dumps(arguments, ensure_ascii=False))
+        intent_id = self._record_pending(
+            name, json.dumps(arguments, ensure_ascii=False)
+        )
         try:
             result = await asyncio.wait_for(
                 bridge.call(name, arguments), timeout=MCP_CALL_TIMEOUT_S
@@ -520,6 +548,65 @@ SCHEMAS: list[dict] = [
             },
         },
     },
+    # The screen. Both verbs are here rather than behind `delegate` for
+    # the reason `search_conversations` is: one indexed query about the
+    # present moment. Delegated, the answer to «що там на екрані» would
+    # arrive a minute later as its own message, by which point it is an
+    # answer to a question nobody is still asking.
+    {
+        "type": "function",
+        "function": {
+            "name": "read_display",
+            "description": (
+                "Look at the screen panel the person is watching. Its "
+                "contents are NOT in your context — you cannot see it "
+                "unless you call this. Use it whenever they ask what is "
+                "on the screen, what you can see, or refer to something "
+                "shown there."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "look_at_screen",
+            "description": (
+                "Look at the person's actual computer screen — every "
+                "window, not just this app's panel. Use it whenever they "
+                "ask what is on their screen, what you can see, what a "
+                "window or page or error says, or what is open in their "
+                "browser. The browser is on the screen, so this is how "
+                "you read it. Takes about two seconds."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": (
+                            "What they want to know about the screen, in "
+                            "their own words. Leave out to just describe "
+                            "what is there."
+                        ),
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_display",
+            "description": (
+                "Wipe the screen panel — «очисти екран», «прибери "
+                "канвас», «забери це з екрана». Clears only the panel, "
+                "never memories or the conversation."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -582,6 +669,12 @@ class VoiceToolbox:
                 return await self._forget(arguments)
             if name == "search_conversations":
                 return await self._search_conversations(arguments)
+            if name == "read_display":
+                return await self._read_display(arguments)
+            if name == "clear_display":
+                return await self._clear_display(arguments)
+            if name == "look_at_screen":
+                return await self._look_at_screen(arguments)
             return "Такої дії я не знаю."
         except Exception:
             logger.exception("[SPINE TOOLS] %s failed: %.200s", name, arguments)
@@ -654,6 +747,69 @@ class VoiceToolbox:
         )
         logger.info("search: %r -> %d fragments", query, len(fragments))
         return search.spoken(fragments, now=now)
+
+    async def _read_display(self, arguments: dict) -> str:
+        """«Що в тебе на екрані» — look at the panel and say what is there.
+
+        Like every verb here, the return value is spoken verbatim
+        (``SpineLoop._run_tool``), so this finishes the sentence rather
+        than handing markup back to the model. That is also why the
+        markup is stripped: the panel is usually HTML, and a voice
+        assistant reading tags aloud is worse than one saying nothing.
+
+        A canvas whose text strips to nothing is not an empty panel — it
+        is a drawing. Saying "нічого немає" about something the person is
+        looking at is the exact failure this verb exists to end, so a
+        picture is reported as a picture, by title.
+        """
+        if self._persist is None:
+            return "Я не бачу екрана — записи вимкнено."
+        disp = await asyncio.to_thread(self._persist.latest_display)
+        if not disp:
+            return "Екран порожній."
+        title = (disp.get("title") or "").strip()
+        text = _strip_markup(disp.get("content") or "")
+        if not text:
+            return (
+                f"На екрані «{title}» — це картинка, словами її не переказати."
+                if title
+                else "На екрані щось намальоване, словами не переказати."
+            )
+        if len(text) > _SPOKEN_PANEL_LIMIT:
+            text = text[:_SPOKEN_PANEL_LIMIT].rsplit(" ", 1)[0] + "…"
+        return f"На екрані «{title}»: {text}" if title else f"На екрані: {text}"
+
+    async def _look_at_screen(self, arguments: dict) -> str:
+        """«Що в мене на екрані» — take a look and say.
+
+        In the fast path rather than behind `delegate` for the reason
+        the panel verbs are: it is a question about this second. Two
+        seconds is a long pause in a conversation, but it is a pause the
+        person asked for, and the alternative — an answer arriving a
+        minute later as its own message — is not an answer to "what am I
+        looking at".
+
+        The screenshot goes to the vision provider and nowhere else, is
+        never stored, and the file is deleted before this returns.
+        """
+        from src.spine import vision
+
+        try:
+            return await vision.look(
+                str(arguments.get("question", "") or ""),
+                settings=self._settings,
+            )
+        except vision.VisionUnavailable as exc:
+            # Its message is already a sentence fit to be spoken — a
+            # missing permission or a missing key is something the person
+            # can act on, and "не вийшло" would hide which.
+            return str(exc)
+
+    async def _clear_display(self, arguments: dict) -> str:
+        if self._persist is None:
+            return "Я не керую екраном — записи вимкнено."
+        cleared = await asyncio.to_thread(self._persist.clear_display)
+        return "Прибрала з екрана." if cleared else "Там і так порожньо."
 
     async def _remember(self, arguments: dict) -> str:
         content = str(arguments.get("content", "")).strip()
