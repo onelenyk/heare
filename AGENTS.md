@@ -22,6 +22,7 @@ for which dashboard controls actually reach the spine.
 | Add/change an adapter (STT/LLM/TTS) | `src/spine/stt.py`, `src/spine/llm.py`, `src/spine/tts.py` |
 | The daemon shell (State, pollers, HTTP glue) | `src/daemon/spine_engine.py` |
 | Turn a subsystem on/off | `src/spine/features.py` — `FEATURES` |
+| Find out what is actually connected | `make doctor` |
 
 ## COMMANDS
 
@@ -31,6 +32,7 @@ make test                        # uv run pytest -q
 make lint                        # uv run ruff check src/ tests/
 make format                      # uv run ruff format src/ tests/
 make check                       # lint + test
+make doctor                      # what is wired, asked of the live objects
 uv run python -m src.main start  # run the daemon in the foreground
 ```
 

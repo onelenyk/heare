@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs launch test stend clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar build frontend dmg
+.PHONY: doctor help install start stop restart status logs launch test stend clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar build frontend dmg
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -111,6 +111,11 @@ check:
 	$(MAKE) lint
 	$(MAKE) test
 	@echo "✅ All checks passed"
+
+# What is actually connected — asked of the live objects, not of the
+# config that described them. Opens no device, writes nothing down.
+doctor:
+	@uv run python -m src.doctor
 
 # MCP Server Management
 mcp-list:
