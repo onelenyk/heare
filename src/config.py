@@ -59,102 +59,95 @@ def _load_browser_bridge_settings(settings: "Settings", raw: dict) -> None:
         settings.browser_bridge_token = raw["token"]
 
 
+# Settings that were real once and are read by nothing now.
+#
+# Every one of these could be written into config.toml and would be
+# loaded into the object faithfully — and then no line of code would ever
+# look at it. Most belonged to the pipecat engine deleted on 17 August;
+# the rest were replaced by a knob that lives somewhere else and were
+# never taken out. It is the same disease as a tool that reports success
+# and changes nothing (see `_TOOLS_WITH_NO_READER` in src/agent/hands.py),
+# one layer down, and it is worse here because a person tuning an
+# assistant by ear has no way to tell "this made no difference" from
+# "this setting does nothing".
+#
+# The fields are gone. The names stay here so a config.toml written
+# against them says so out loud instead of loading in silence.
+RETIRED: dict[str, str] = {
+    # The old engine's turn clock. The spine's is spine_turn_hold_seconds
+    # / spine_turn_continuation_hold_seconds / spine_vad_stop_ms.
+    "turn_end": "the spine ends a turn on words, not on a mode — see spine_turn_hold_seconds",
+    "turn_silence_seconds": "use spine_turn_hold_seconds",
+    "transcript_debounce_seconds": "the turn assembler holds transcripts now",
+    "vad_confidence": "use spine_vad_stop_ms",
+    "vad_start_secs": "use spine_vad_stop_ms",
+    "vad_stop_secs": "use spine_vad_stop_ms",
+    "vad_min_volume": "the spine's VAD threshold is a constant in src/spine/vad.py",
+    "stt_min_rms": "silence is filtered by loud_ms() and the junk filter",
+    "stt_min_speech_seconds": "same",
+    # Echo. Three subsystems where there is now one — see
+    # docs/findings/echo-cancellation.md.
+    "echo_gate_enabled": "AEC3 cancels; the gate only ever muted",
+    "echo_gate_threshold": "same",
+    "echo_gate_buffer_seconds": "same",
+    "echo_gate_cooldown_seconds": "same",
+    "echo_gate_peak_decay": "same",
+    "echo_gate_peak_threshold": "same",
+    "echo_classifier_enabled": "it awaited a model call on the one path that must never wait",
+    "aec_enabled": "switch it with spine_features = { aec = false }",
+    "aec_measure_delay": "the measurement harness went with the old engine",
+    "audio_probe_enabled": "same",
+    "bot_speaking_cooldown_seconds": "the conductor owns when it may speak",
+    "barge_in_min_chars": "barge-in is decided by the VAD, not by the transcript",
+    "barge_in_echo_ratio": "same — AEC3 removes the echo before it is heard",
+    # Wake.
+    "wake_every_turn": "set wake_window_seconds = 0",
+    # Flag files State replaced. src/state.py still knows these two names,
+    # but only to import them once from a pre-State install.
+    "mute_file": "mute lives in State (mute_bot)",
+    "mute_input_file": "mute lives in State (mute_mic)",
+    "cancel_flag_file": "cancelling goes through the API",
+    # Memory.
+    "memory_auto_extract": "switch it with spine_features = { memory = false }",
+    "memory_block_max_chars": "the prompt takes the three most relevant memories",
+    "context_recent_transcripts_count": "the prompt takes four recent exchanges",
+    # Provider endpoints and model names. These duplicated the ones in
+    # src/agent/llm/providers.py, which is the table that is actually read.
+    "zai_base_url": "src/agent/llm/providers.py owns provider endpoints",
+    "zai_model": "src/agent/llm/providers.py owns provider models",
+    "opencode_base_url": "src/agent/llm/providers.py owns provider endpoints",
+    "opencode_model": "src/agent/llm/providers.py owns provider models",
+    "openrouter_base_url": "src/agent/llm/providers.py owns provider endpoints",
+    "openrouter_model": "src/agent/llm/providers.py owns provider models",
+    # Sidetone was never played by either engine.
+    "sidetone_volume": "nothing plays a sidetone",
+}
+
+
 @dataclass
 class Settings:
     tts_voice: str = "en-US-AriaNeural"
     tts_sample_rate: int = 24000
-    bot_speaking_cooldown_seconds: float = 1.0
     # Open-mic barge-in: while the bot is speaking, a genuine human
-    # interruption should stop it. Without headphones the bot's own
-    # audio echoes back through the mic, so we only treat heard speech
-    # as a barge-in when it does NOT closely match what the bot is
-    # currently saying (echo suppression) and is long enough to not be
-    # a noise fragment. Disable to restore the old "drop everything
-    # while bot speaks" behaviour.
+    # interruption should stop it. Off means it finishes its sentence
+    # even when talked over — some rooms want that.
     barge_in_enabled: bool = True
-    barge_in_min_chars: int = 4
-    barge_in_echo_ratio: float = 0.5
-    # Acoustic echo gate: cross-correlates mic input against recent bot
-    # output audio and drops mic frames whole when correlation exceeds the
-    # threshold.
-    #
-    # OFF by default. Measured on built-in speakers, correlation runs
-    # 0.55-0.78 against this 0.15 threshold, so it dropped 100% of frames
-    # for as long as the bot spoke — a microphone mute, not a filter, and
-    # it made barge-in impossible. With AEC3 actually cancelling (see
-    # below) there is nothing left for it to do. Enable only if echo still
-    # reaches STT on unusual hardware.
-    echo_gate_enabled: bool = False
-    echo_gate_threshold: float = 0.15
-    echo_gate_buffer_seconds: float = 1.0
-    echo_gate_cooldown_seconds: float = 0.3
-    echo_gate_peak_decay: float = 0.85
-    echo_gate_peak_threshold: float = 0.42
-
     # WebRTC AEC3 acoustic echo cancellation. Runs on every mic frame, in
     # 10 ms blocks, with a reference tapped after the output transport.
     # See docs/findings/echo-cancellation.md for the four bugs this
     # replaces and the measurements.
-    aec_enabled: bool = True
-    # Speaker-to-microphone delay. Measured ~125 ms on a MacBook Pro with
-    # built-in speakers; the previous 30 ms was a guess and capped
-    # suppression at a noisy 10-20 dB. Run with aec_measure_delay=true to
-    # measure it on other hardware.
+    #
+    # THESE TWO ARE NOT READ YET, and are kept rather than deleted with
+    # the rest of the dead settings because that is a live gap, not dead
+    # weight. The value below was measured — ~125 ms on a MacBook Pro
+    # with built-in speakers — after the previous 30 ms guess was found
+    # to cap suppression at a noisy 10-20 dB. `src/spine/aec.py` still
+    # hard-codes 30, under a comment saying it does so "the same way the
+    # daemon's default configuration does", which stopped being true when
+    # this was raised. Wiring them is a change to what the room sounds
+    # like, so it wants an ear, not a commit that tidies config.
     aec_stream_delay_ms: int = 120
     aec_noise_suppression: bool = True
-    # Logs measured-vs-configured delay, suppression in dB, and the depth
-    # of the reference queue once a second while the bot speaks. These
-    # three numbers are what turned "echo behaves oddly" into four
-    # located bugs; turn them on before guessing.
-    aec_measure_delay: bool = False
-    # Peak microphone level before and after the canceller, split by
-    # whether the bot was speaking. A stage that outputs -120 dB from a
-    # -28 dB input is not filtering, it is deleting — and that reads as
-    # perfect echo suppression to the ear.
-    audio_probe_enabled: bool = False
-
-    # Whisper is generative: handed silence it returns the likeliest text,
-    # which on this setup is "Дякую." Each one becomes a full turn — model
-    # call, synthesis, utterance — and the user's real questions queue up
-    # behind them, so the assistant seems slow while it answers a room.
-    # Observed: eight in ninety seconds. See
-    # the old engine's speech energy gate.
-    stt_min_rms: float = 180.0
-    # How the end of your turn is decided.
-    #
-    # "smart" runs LocalSmartTurnAnalyzerV3 — a model that judges whether
-    # a sentence sounds finished. Measured on a real turn: the transcript
-    # was ready at 02.676 and the turn was not declared over until
-    # 05.683. Three seconds of holding words it already had.
-    #
-    # "silence" ends the turn after `turn_silence_seconds` of quiet. It
-    # cannot tell a pause for thought from a finished sentence, so speak
-    # in whole thoughts — in exchange the assistant starts answering
-    # while you are still lowering your voice.
-    # "sentence" is the default and the only one of the three with a
-    # single clock. It ends the turn once the person has stopped speaking
-    # *and* the recogniser has stopped producing words, so a sentence
-    # whose second half is still being transcribed stays one turn. The
-    # other two start their countdown at silence and cannot be extended
-    # by words that arrive afterwards — which is every word, since
-    # recognition takes about a second. See docs/findings/two-clocks.md.
-    turn_end: str = "sentence"
-    # 1.4 s of silence ends a turn. Two measurements pushed it up from
-    # 0.7: at 0.7 "Подивись будь ласка, скільки вільного місця на диску"
-    # split at the comma and was acknowledged twice; at 1.0 it split into
-    # three, and the fragment "подивись, будь ласка" — a request with no
-    # object — sent the worker off to read an unrelated panel that
-    # happened to be in the context. A broken sentence does not merely
-    # annoy: it starts the wrong job.
-    #
-    # Still 1.6 s faster than the turn analyzer this replaced, which took
-    # three seconds and was not measurably better at the same thing.
-    #
-    # Caveat for anyone tuning this against the old engine's room loop:
-    # edge-tts pauses at commas for longer than a person does, so
-    # fragmentation there is worse than in life.
-    turn_silence_seconds: float = 1.0
-
     # Being addressed.
     #
     # Without this an always-on assistant answers the room. Observed live:
@@ -167,7 +160,7 @@ class Settings:
     # asked" possible at all.
     #
     # wake_window_seconds keeps the conversation open afterwards, so a
-    # follow-up needs no name. Set wake_every_turn when it should.
+    # follow-up needs no name.
     wake_required: bool = True
     wake_window_seconds: float = 45.0
     # The window grows with the conversation: `wake_window_seconds` per
@@ -178,24 +171,7 @@ class Settings:
     # wake word, then fifty-three seconds of looking at the screen, and
     # the name was needed again mid-conversation.
     wake_window_max_seconds: float = 180.0
-    wake_every_turn: bool = False
-    stt_min_speech_seconds: float = 0.30
 
-    # Voice/hands split. When on, the conversational model sees three
-    # verbs — delegate, remember, recall — and everything else runs in
-    # src/agent/hands.py: same model, same key, no deadline, off the
-    # speaking path. Measured on this machine, a turn that calls a tool
-    # inline takes 3822 ms to first audio against 1351 ms without one,
-    # and whether anything is said before the work begins is otherwise
-    # left to the model's whim. Set false to put all 63 tools back in
-    # front of the conversational model.
-
-    # OFF by default. This awaited a DeepSeek call inside process_frame,
-    # guarded by "the bot is speaking" — so it fired only while the user
-    # was interrupting, holding their words for up to
-    # deepseek_timeout_seconds. The one path that must never wait was the
-    # only one that did. Echo is already removed by AEC3 before STT.
-    echo_classifier_enabled: bool = False
     warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")
     session_file: Path = field(default_factory=lambda: HEARE_HOME / "session.json")
@@ -203,11 +179,6 @@ class Settings:
     db_path: Path = field(default_factory=lambda: HEARE_HOME / "heare.db")
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
-    mute_file: Path = field(default_factory=lambda: HEARE_HOME / "mute.flag")
-    mute_input_file: Path = field(
-        default_factory=lambda: HEARE_HOME / "mute_input.flag"
-    )
-    cancel_flag_file: Path = field(default_factory=lambda: HEARE_HOME / "cancel.flag")
     interrupt_enabled_file: Path = field(
         default_factory=lambda: HEARE_HOME / "interrupt_enabled.off"
     )
@@ -285,8 +256,6 @@ class Settings:
     # bug rather than a safeguard.
     conversation_memory_enabled: bool = True
     memory_backend: str = "sqlite"  # "sqlite" | "engram" | "mem0" | "noop"
-    memory_auto_extract: bool = True
-    memory_block_max_chars: int = 500
     topic_extraction_enabled: bool = True
     # CCS-01: hydration freshness window. The action log on startup is
     # filtered to rows newer than now - conversation_idle_seconds so a
@@ -338,18 +307,12 @@ class Settings:
     llm_provider: str = "deepseek"
     provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")
     zai_api_key: str | None = None
-    zai_base_url: str = "https://api.z.ai/api/anthropic"
-    zai_model: str = "claude-3-5-sonnet"
     # OpenCode Go — OpenAI-compatible API at opencode.ai/zen/go/v1.
     # API key is read from OPENCODE_API_KEY env var.
     opencode_api_key: str | None = None
-    opencode_base_url: str = "https://opencode.ai/zen/go/v1"
-    opencode_model: str = "minimax-m2.7"
     # OpenRouter — OpenAI-compatible, and the one provider that reports
     # what each call actually cost. API key from OPENROUTER_API_KEY.
     openrouter_api_key: str | None = None
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "deepseek/deepseek-v4-flash"
     # Looking at the screen is a separate choice from talking, because
     # the conversation model cannot do it: DeepSeek takes no images at
     # all. Kept as its own provider+model so switching the voice to a
@@ -384,7 +347,6 @@ class Settings:
     # request with no object — sent the worker to read an unrelated panel
     # that happened to be in context. A broken sentence does not merely
     # annoy; it starts the wrong job.
-    transcript_debounce_seconds: float = 1.2
     # Phase 2: which tools the Pipecat-native pipeline may invoke via
     # register_function. Names are the tool identifiers defined in
     # src/tool_registry.py. None = use all enabled tools from the registry.
@@ -416,7 +378,6 @@ class Settings:
     # Context: how many recent transcripts to include in prompts.
     # Default 15 (~100 tokens, 0.05% of 200K context budget).
     # Increase for longer conversation memory, decrease for faster prompts.
-    context_recent_transcripts_count: int = 15
     # DEPRECATED — remove in next release.
     # All servers in workspace/.mcp.json are now automatically enabled.
     # This field is retained only so load_settings() can detect its presence
@@ -469,16 +430,12 @@ class Settings:
     # generative — dutifully wrote words into the silence. The energy
     # gate after STT catches what still gets through; this stops most of
     # it reaching Whisper at all, which also stops paying for it.
-    vad_confidence: float = 0.6
-    vad_start_secs: float = 0.2
     # 0.6, not 0.2: this decides how long a pause has to be before the
     # room counts as quiet, and with turn_end="sentence" that is also
     # what holds one sentence together. At 0.2 the pause after a comma
     # ended the turn, so "Дока, привіт. Скажи одним реченням, як ти себе
     # почуваєш" was answered as two questions and greeted twice. The cost
     # is 0.4 s added to the end of every turn.
-    vad_stop_secs: float = 0.6
-    vad_min_volume: float = 0.25
 
     # Audio gain / volume controls. Applied as multipliers to raw PCM
     # samples. 1.0 = unity (no change). 0.0 = silence. >1.0 = amplify.
@@ -506,7 +463,6 @@ class Settings:
     # exactly what the agent hears. Gated off during bot speech to
     # prevent feedback loops.
     sidetone_file: Path = field(default_factory=lambda: HEARE_HOME / "sidetone.flag")
-    sidetone_volume: float = 0.5
 
     def __post_init__(self) -> None:
         # CCS-01 invariant: a refinement window longer than the idle
@@ -543,6 +499,11 @@ def load_settings() -> Settings:
     settings = Settings()
     toml_data = _read_toml(HEARE_HOME / "config.toml")
 
+    for key in RETIRED.keys() & toml_data.keys():
+        logger.warning(
+            "config.toml: %s is no longer a setting — %s", key, RETIRED[key]
+        )
+
     for key, value in toml_data.items():
         if key in ("indication", "browser_bridge"):
             # Nested tables. [browser_bridge] is handled below; [indication]
@@ -569,17 +530,12 @@ def load_settings() -> Settings:
             settings.interrupt_enabled_file.parent.mkdir(parents=True, exist_ok=True)
             settings.interrupt_enabled_file.touch(exist_ok=True)
 
-    # [audio] section — VAD sensitivity, mic gain, speaker volume.
+    # [audio] section — mic gain and speaker volume.
     audio_sec = toml_data.get("audio", {})
     if isinstance(audio_sec, dict):
         for attr, key in (
-            ("vad_confidence", "vad_confidence"),
-            ("vad_start_secs", "vad_start_secs"),
-            ("vad_stop_secs", "vad_stop_secs"),
-            ("vad_min_volume", "vad_min_volume"),
             ("input_gain", "input_gain"),
             ("output_volume", "output_volume"),
-            ("sidetone_volume", "sidetone_volume"),
         ):
             if key in audio_sec:
                 try:
@@ -594,10 +550,6 @@ def load_settings() -> Settings:
 
     # Env var overrides for audio settings
     for env_key, attr, min_val, max_val in (
-        ("HEARE_VAD_CONFIDENCE", "vad_confidence", 0.0, 1.0),
-        ("HEARE_VAD_START_SECS", "vad_start_secs", 0.0, 2.0),
-        ("HEARE_VAD_STOP_SECS", "vad_stop_secs", 0.0, 2.0),
-        ("HEARE_VAD_MIN_VOLUME", "vad_min_volume", 0.0, 2.0),
         ("HEARE_INPUT_GAIN", "input_gain", 0.0, 5.0),
         ("HEARE_OUTPUT_VOLUME", "output_volume", 0.0, 5.0),
     ):
