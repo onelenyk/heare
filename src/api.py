@@ -40,7 +40,6 @@ from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
-_INDEX_HTML: str | None = None
 
 # Requests that must pass without a token, because they are what puts the
 # token in the browser's hands in the first place. GET only — POST / is a
@@ -211,85 +210,17 @@ class API:
         self._token = self._resolve_token()
         self._app = web.Application(middlewares=[self._auth_middleware])
         logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
-        self._app.router.add_get("/state", self._handle_state)
-        self._app.router.add_post("/state", self._handle_state_post)
-        self._app.router.add_post("/mute", self._handle_mute)
-        self._app.router.add_post("/interrupt", self._handle_interrupt)
-        self._app.router.add_post("/provider", self._handle_provider)
-        self._app.router.add_post("/model", self._handle_model)
-        self._app.router.add_get("/api/providers", self._handle_providers_list)
-        self._app.router.add_get("/api/models", self._handle_models_live)
-        self._app.router.add_post("/cancel", self._handle_cancel)
-        self._app.router.add_get("/activity", self._handle_activity)
-        self._app.router.add_get("/logs", self._handle_logs)
-        self._app.router.add_get("/", self._handle_index)
-        self._app.router.add_post("/", self._handle_index)
-        self._app.router.add_get("/display", self._handle_display)
-        self._app.router.add_post("/daemon", self._handle_daemon)
-        self._app.router.add_post("/inject", self._handle_inject)
-        self._app.router.add_get("/settings/status", self._handle_settings_status)
-        self._app.router.add_post("/settings", self._handle_settings)
-        self._app.router.add_post(
-            "/api/settings/allow-installs", self._handle_allow_installs
-        )
-        self._app.router.add_post(
-            "/api/settings/reset-session", self._handle_reset_session
-        )
-        self._app.router.add_get("/api/features", self._handle_features)
-        self._app.router.add_post("/api/features", self._handle_features_set)
-        self._app.router.add_get("/mic/status", self._handle_mic_status)
-        self._app.router.add_get("/api/audio-devices", self._handle_audio_devices)
-        self._app.router.add_get("/api/tools", self._handle_tools)
-        self._app.router.add_post(
-            "/api/audio-devices/select", self._handle_audio_device_select
-        )
-        self._app.router.add_get("/api/bridge/status", self._handle_bridge_status)
-        self._app.router.add_get("/api/bridge/token", self._handle_bridge_token)
-        self._app.router.add_post(
-            "/api/bridge/rotate-token", self._handle_bridge_rotate_token
-        )
-        self._app.router.add_post("/api/bridge/toggle", self._handle_bridge_toggle)
-        self._app.router.add_get("/api/prompts", self._handle_prompts)
-        self._app.router.add_get("/api/prompts/preview", self._handle_prompt_preview)
-        self._app.router.add_get("/api/prompts/{key}", self._handle_prompt_section)
-        self._app.router.add_post("/api/prompts/{key}", self._handle_prompt_save)
-        self._app.router.add_get("/api/agents", self._handle_agents)
-        self._app.router.add_post("/api/agents/start", self._handle_agents_start)
-        self._app.router.add_post("/api/agents/cancel", self._handle_agents_cancel)
-        self._app.router.add_get(
-            "/api/agents/{session_id}/result", self._handle_agents_result
-        )
-        self._app.router.add_get("/api/setup", self._handle_setup_state)
-        self._app.router.add_post("/api/setup/identity", self._handle_setup_identity)
-        self._app.router.add_post(
-            "/api/setup/identity/regenerate", self._handle_setup_identity_regenerate
-        )
-        self._app.router.add_post("/api/setup/config", self._handle_settings)
-        self._app.router.add_post("/api/setup/complete", self._handle_setup_complete)
-        self._app.router.add_get("/api/memories", self._handle_memories)
-        self._app.router.add_post(
-            "/api/memories/{id}/forget", self._handle_memories_forget
-        )
-        self._app.router.add_get("/api/artifacts", self._handle_artifacts_list)
-        self._app.router.add_get(
-            "/api/artifacts/{name}", self._handle_artifacts_get
-        )
-        self._runner = None
-        self._site = None
+        self._add_routes()
 
-    def register_routes(self, app: "web.Application") -> None:
-        """Mount all API routes on an existing aiohttp app.
+    def _add_routes(self) -> None:
+        """The route table, written once.
 
-        Used when the API is embedded in another server (e.g. menubar Hub).
-        The standalone ``start()`` method still creates its own app.
+        It used to be written twice — verbatim, in ``__init__`` and in
+        ``register_routes`` — and the copies had already drifted: the
+        dashboard's own ``/`` was only ever in the first. Two tables mean
+        a route added to one of them works in one arrangement and 404s in
+        the other, and nothing says which.
         """
-        self._app = app
-        # The host app owns the request chain, so authentication has to be
-        # installed here as well — this is the app that actually listens on
-        # 9780. Appending is only legal before the app starts, which is
-        # where both callers (src/main.py, src/menubar.py) invoke this.
-        if self._auth_middleware not in app.middlewares:
-            app.middlewares.append(self._auth_middleware)
         self._app.router.add_get("/state", self._handle_state)
         self._app.router.add_post("/state", self._handle_state_post)
         self._app.router.add_post("/mute", self._handle_mute)
@@ -353,6 +284,22 @@ class API:
         self._app.router.add_post(
             "/api/memories/{id}/forget", self._handle_memories_forget
         )
+
+    def register_routes(self, app: "web.Application") -> None:
+        """Mount the API on an existing aiohttp app.
+
+        This is the only way the API is ever served: both callers
+        (src/main.py, src/menubar.py) own the listening app and serve the
+        SPA shell at ``/`` themselves.
+        """
+        self._app = app
+        # The host app owns the request chain, so authentication has to be
+        # installed here as well — this is the app that actually listens on
+        # 9780. Appending is only legal before the app starts, which is
+        # where both callers invoke this.
+        if self._auth_middleware not in app.middlewares:
+            app.middlewares.append(self._auth_middleware)
+        self._add_routes()
 
     # ── Authentication ─────────────────────────────────────
     #
@@ -426,10 +373,9 @@ class API:
     def _with_token_injected(self, response):
         """Serve the token inside the SPA shell so the page can use it.
 
-        Applied in the middleware rather than in one handler because three
-        different servers serve this document — src/api.py standalone,
-        src/main.py and src/menubar.py — and only the middleware is common
-        to all of them.
+        Applied in the middleware rather than in one handler because two
+        different servers serve this document — src/main.py and
+        src/menubar.py — and only the middleware is common to both.
         """
         if not isinstance(response, web.Response):
             return response
@@ -445,50 +391,6 @@ class API:
         if injected != body:
             response.text = injected
         return response
-
-    async def start(self):
-        self._runner = web.AppRunner(self._app)
-        await self._runner.setup()
-        self._site = web.TCPSite(self._runner, "127.0.0.1", 9778, reuse_address=True)
-        try:
-            await self._site.start()
-        except OSError:
-            logger.exception("non-fatal socket error during server start")
-
-    async def stop(self):
-        if self._site:
-            await self._site.stop()
-        if self._runner:
-            await self._runner.cleanup()
-
-    # ── Handlers ───────────────────────────────────────────
-
-    async def _handle_index(self, request):
-        if request.method == "POST":
-            post = await request.post()
-            await self._save_form_keys(post)
-            raise web.HTTPFound("/")
-        global _INDEX_HTML
-        if _INDEX_HTML is None:
-            for candidate in [
-                Path(__file__).resolve().parent.parent.parent
-                / "src"
-                / "frontend"
-                / "index.html",
-                Path(__file__).resolve().parent / "frontend" / "index.html",
-                Path(__file__).resolve().parent.parent / "frontend" / "index.html",
-            ]:
-                if candidate.exists():
-                    _INDEX_HTML = candidate.read_text()
-                    break
-            if _INDEX_HTML is None:
-                return web.Response(text="Frontend not found", status=500)
-        # Injected per response, not into the cache: the token can be
-        # rotated under a running daemon.
-        return web.Response(
-            text=_inject_token_html(_INDEX_HTML, self._expected_token()),
-            content_type="text/html",
-        )
 
     # ── API keys ──────────────────────────────────────────────────
     #
@@ -550,11 +452,6 @@ class API:
             setattr(self.config, attr, value)
             if self.state is not None:
                 await self.state.set(f"key_{attr}", value)
-
-    async def _save_form_keys(self, post):
-        keys = self._normalise_key_payload(dict(post))
-        if keys and not self._validate_api_keys(keys):
-            await self._apply_api_keys(keys)
 
     def _bridge_connected(self) -> bool:
         """True only when a Chrome extension is actually attached.

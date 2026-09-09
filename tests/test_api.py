@@ -472,6 +472,56 @@ def test_routes_registered(api) -> None:
     assert ("POST", "/cancel") in pairs
 
 
+def test_both_ways_of_mounting_expose_the_same_routes(mock_state, mock_config) -> None:
+    """The ratchet on a bug this file has already survived twice.
+
+    The route table used to be written out verbatim in two places —
+    ``__init__`` and ``register_routes`` — and the copies drifted. One
+    drift is still recorded in the source it was fixed in: «present in the
+    constructor's table but missing here, so the memories card 404'd under
+    the menubar». The other never was fixed, only unnoticed: ``/`` existed
+    in one table alone.
+
+    Two tables mean a route added to one of them works in one arrangement
+    and 404s in the other, and nothing anywhere says which. There is one
+    table now; this fails the day there are two again.
+    """
+    from aiohttp import web
+
+    def routes_of(app) -> set:
+        return {
+            (route.method, resource.canonical)
+            for resource in app.router.resources()
+            for route in resource
+        }
+
+    standalone = API(mock_state, mock_config)
+
+    hosted_app = web.Application()
+    API(mock_state, mock_config).register_routes(hosted_app)
+
+    assert routes_of(standalone._app) == routes_of(hosted_app)
+
+
+def test_the_api_does_not_serve_the_dashboard_itself(api) -> None:
+    """``/`` belongs to whoever owns the listening socket.
+
+    src/main.py and src/menubar.py each serve the SPA shell, and the token
+    is injected into it by this module's middleware, which is common to
+    both. The API's own copy — a handler, an ``_INDEX_HTML`` cache, a
+    no-JS form POST and a ``start()`` that bound port 9778 while the
+    dashboard has always been on 9780 — was reached by nothing: no caller
+    in src/ or tests/ ever invoked ``API.start()``.
+    """
+    pairs = [
+        (route.method, r.canonical)
+        for r in api._app.router.resources()
+        for route in r
+    ]
+    assert ("GET", "/") not in pairs
+    assert not hasattr(API, "start")
+
+
 def test_the_mode_endpoint_is_gone(api) -> None:
     """Modes were a global adjective nothing read: the endpoint took a
     value, wrote it to State, and changed nothing anywhere — see
