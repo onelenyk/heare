@@ -19,7 +19,7 @@ The main control script for managing Heare:
 ./hearectl uninstall  # Remove systemd service
 ```
 
-### 2. Systemd Service (`heare.service`)
+### 2. Systemd Service (`deploy/heare.service`)
 
 Installs Heare as a user systemd service with:
 - Auto-start on login
@@ -44,7 +44,7 @@ make lint           # Run linter
 make format         # Format code
 ```
 
-### 4. Quick Start Script (`quickstart.sh`)
+### 4. Quick Start Script (`deploy/quickstart.sh`)
 
 Automated setup that:
 - Checks dependencies (uv, python3)
@@ -53,7 +53,7 @@ Automated setup that:
 - Creates necessary directories
 - Installs portaudio for audio support
 
-### 5. Log Rotation (`heare.logrotate`)
+### 5. Log Rotation (`deploy/heare.logrotate`)
 
 Configures log rotation for:
 - Daily rotation
@@ -66,7 +66,7 @@ Configures log rotation for:
 
 1. **Run quickstart:**
    ```bash
-   ./quickstart.sh
+   ./deploy/quickstart.sh
    ```
 
 2. **Edit .env file:**
@@ -88,7 +88,7 @@ Start directly in terminal:
 ```bash
 make dev
 # or
-./quickstart.sh
+./deploy/quickstart.sh
 ```
 
 ### Production Mode (Systemd)
@@ -116,7 +116,7 @@ Use the control script:
 
 | File | Location | Purpose |
 |------|----------|---------|
-| **Daemon** | `./heare.service` | Systemd service definition |
+| **Daemon** | `./deploy/heare.service` | Systemd service definition |
 | **Control** | `./hearectl` | Main control script |
 | **Makefile** | `./Makefile` | Development commands |
 | **Environment** | `~/.heare/heare.env` | Environment for systemd |

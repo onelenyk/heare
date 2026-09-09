@@ -75,12 +75,11 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     engine see what the assistant is doing right now; without it every
     judgement about the present was made from half the facts.
     """
-    from datetime import datetime
 
     import time
 
     from src.spine.hallucinations import is_junk
-    from src.spine.llm import resolve_llm, stream_chat, stream_chat_events
+    from src.spine.llm import resolve_llm, stream_chat
     from src.spine.loop import SpineLoop
     from src.spine.sentences import sentences
     from src.spine.stt import Transcript, transcribe
@@ -164,10 +163,6 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         return loop
 
     from src.memory.sqlite_backend import SQLiteBackend
-    from src.spine.persist import SpinePersistence
-    from src.spine.prompt import build_system_prompt, load_persona
-    from src.spine.tools import VoiceToolbox
-    from src.spine.wake import WakeGate
 
     if audio is not None and features["aec"]:
         from src.spine.aec import SpineAEC
@@ -485,6 +480,13 @@ async def _wire_full(loop, settings, cfg, memory, features):
                     detect=detector(_cfg, stream_chat),
                 )
 
+            async def _reopen_the_ear() -> bool:
+                """Try to bring the microphone back. Same reason this
+                lives here as `_still_hearing`: the device belongs to the
+                conductor, and the engine only ever gets collaborators."""
+                restart = getattr(loop.audio, "restart_input", None)
+                return bool(await restart()) if restart is not None else False
+
             async def _still_hearing():
                 """Ask the ear how it is doing.
 
@@ -507,6 +509,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
                 ask=_worth_saying(_cfg),
                 idle=_at_the_keyboard,
                 hearing=_still_hearing,
+                recover_hearing=_reopen_the_ear,
                 summarise=summariser(_cfg, stream_chat),
                 watch=watch,
                 repeats=repeats,

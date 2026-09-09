@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import io
 import wave
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -360,7 +359,6 @@ async def test_transcribe_no_client_creates_temporary():
         async def post(self, url, **kwargs):
             return fake_response
 
-    import httpx
     import unittest.mock as mock
 
     pcm = _make_pcm_silence()

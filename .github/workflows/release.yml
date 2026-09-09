@@ -5,50 +5,102 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  # A tag used to go straight to a .dmg. Nothing ran the suite first, and
+  # CI itself had been red since 11 August — so "released" carried no
+  # claim about the thing inside beyond "PyInstaller exited 0".
+  test:
+    name: Test before shipping
     runs-on: macos-latest
-
+    timeout-minutes: 20
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-        cache: 'npm'
-        cache-dependency-path: src/frontend/package-lock.json
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v5
-      with:
-        enable-cache: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Install portaudio
+        run: brew install portaudio
 
-    - name: Install system dependencies
-      run: brew install portaudio libomp
+      - name: Sync dependencies
+        run: uv sync --frozen
 
-    - name: Build frontend
-      run: |
-        cd src/frontend
-        npm ci
-        npm run build
+      - name: Lint
+        run: uv run ruff check src/ tests/
 
-    - name: Sync Python dependencies
-      run: uv sync --frozen
+      - name: Test
+        run: uv run pytest -q
 
-    - name: Build .app with PyInstaller
-      run: uv run pyinstaller HeareMenubar.spec
+  release:
+    name: Build and publish
+    runs-on: macos-latest
+    timeout-minutes: 30
+    needs: [test]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Create .dmg
-      run: hdiutil create -volname Heare -srcfolder dist/Heare.app -ov -format UDZO Heare.dmg
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: Heare.dmg
-        generate_release_notes: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Install system dependencies
+        run: brew install portaudio libomp
+
+      - name: Build frontend
+        run: |
+          cd src/frontend
+          npm ci
+          npm run build
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Build .app with PyInstaller
+        run: uv run pyinstaller HeareMenubar.spec --noconfirm
+
+      # The same three checks CI runs on every change. PyInstaller exits
+      # 0 on a bundle that cannot start, so the return code alone is not
+      # evidence that anything shippable came out.
+      - name: Check the bundle is whole
+        run: |
+          test -d dist/Heare.app || { echo "no .app produced"; exit 1; }
+          test -x dist/Heare.app/Contents/MacOS/Heare || {
+            echo "no executable inside the bundle"; exit 1; }
+          test -f dist/Heare.app/Contents/Resources/src/frontend/index.html || {
+            echo "dashboard did not make it into the bundle"; exit 1; }
+          du -sh dist/Heare.app
+
+      - name: Create .dmg
+        run: hdiutil create -volname Heare -srcfolder dist/Heare.app -ov -format UDZO Heare.dmg
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Heare.dmg
+          generate_release_notes: true

@@ -919,6 +919,49 @@ async def run_spine_daemon(
                 dedupe_key=f"mcp_failed:{names}",
             )
 
+    # -- the browser bridge: Chrome, made callable by the worker -------
+    #
+    # It had never been built. `BrowserBridge` was written, the extension
+    # was written, `browser_bridge_enabled` defaulted to True, the
+    # dashboard rendered a pairing code from /api/bridge/* — and no line
+    # anywhere in src/ ever constructed one. `set_bridge()` was called
+    # only from tests. So `_get_bridge()` returned None forever and
+    # `unreachable_tools()` correctly hid all eight browser verbs, while
+    # every user-visible surface claimed the feature was on. It most
+    # likely went with the pipecat engine deleted on 17 August, the same
+    # way conversation-closing did.
+    #
+    # Same shape as MCP above and for the same reason: `start()` runs
+    # forever once it binds, so it is a task, and the extension may pair
+    # minutes later or never. The worker rebuilds its schema list before
+    # every job, so the verbs appear the moment Chrome connects.
+    bridge_task: asyncio.Task | None = None
+    browser_bridge: Any = None
+    if not getattr(settings, "browser_bridge_enabled", False):
+        logger.info("browser bridge: OFF — no server, no browser tools")
+    else:
+        try:
+            from src.agent.browser_bridge import BrowserBridge, set_bridge
+
+            browser_bridge = BrowserBridge(settings)
+            set_bridge(browser_bridge)
+            bridge_task = asyncio.create_task(
+                browser_bridge.start(), name="browser-bridge"
+            )
+
+            def _bridge_done(task: asyncio.Task) -> None:
+                if not task.cancelled() and task.exception() is not None:
+                    logger.exception(
+                        "browser bridge stopped", exc_info=task.exception()
+                    )
+
+            bridge_task.add_done_callback(_bridge_done)
+        except Exception:
+            # A port already taken must cost the browser verbs and nothing
+            # else — the assistant still has a voice.
+            logger.exception("browser bridge failed to start (non-fatal)")
+            browser_bridge = None
+
     mcp_task: asyncio.Task | None = None
     if not mcp_on:
         # `off` means no subprocess is spawned, no tool is registered for
@@ -1359,10 +1402,22 @@ async def run_spine_daemon(
         # mcp_task may still be waiting on a cold `npx`; cancelling it
         # is why it is a named task and not a fire-and-forget coroutine.
         background = [t for t in (poller, role_poller, ctl_poller, mcp_poller,
-                                  runner, mcp_task, greet_task) if t is not None]
+                                  runner, mcp_task, greet_task, bridge_task)
+                      if t is not None]
         for t in background:
             t.cancel()
         await asyncio.gather(*background, return_exceptions=True)
+        if browser_bridge is not None:
+            # Drops clients and fails outstanding RPCs; idempotent. The
+            # global goes with it, so a restarted daemon never inherits a
+            # bridge pointing at a closed socket.
+            from src.agent.browser_bridge import set_bridge as _set_bridge
+
+            try:
+                await browser_bridge.stop()
+            except Exception:
+                logger.exception("browser bridge did not stop cleanly")
+            _set_bridge(None)
         await audio.stop()
         await _close_loop(loop)
         try:

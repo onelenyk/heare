@@ -89,7 +89,7 @@ def _inject_token_html(html: str, token: str) -> str:
 
 from aiohttp import web  # noqa: E402
 from src.agent.identity import load_identity, save_identity, regenerate_identity  # noqa: E402
-from src.agent.llm.providers import (
+from src.agent.llm.providers import (  # noqa: E402
     PROVIDERS,
     get_available,
     get_config,

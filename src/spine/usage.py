@@ -62,24 +62,40 @@ class SpineUsage:
         input_tokens: int,
         output_tokens: int,
         provider: str = "deepseek",
+        cost_usd: float | None = None,
     ) -> None:
         """Record an LLM API call.
 
         Args:
-            model: Model identifier (e.g., 'deepseek-chat').
+            model: Model identifier (e.g., 'deepseek-v4-flash').
             input_tokens: Number of input tokens used.
             output_tokens: Number of output tokens generated.
             provider: Provider name (default: 'deepseek').
+            cost_usd: What the provider itself said the call cost. Wins
+                over the catalog when present — a number from the party
+                issuing the invoice beats one multiplied out of a price
+                list copied by hand.
+
+        A model the catalog does not know is stored with cost ``NULL``,
+        not ``0.0``. They are different claims: one says "this was free",
+        the other says "nobody knows". Flattening them is how 1077 calls
+        came to read $0.0000 while the balance went negative, and every
+        reader downstream then did ``COALESCE(cost_usd, 0)`` in good
+        faith on top of it.
         """
         try:
-            # Compute cost using the pricing catalog
-            cost = pricing.llm_cost(
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-            )
-            # Unknown model → cost None → store as 0.0
-            cost_usd = cost if cost is not None else 0.0
+            if cost_usd is None:
+                cost_usd = pricing.llm_cost(
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                )
+                if cost_usd is None:
+                    logger.warning(
+                        "usage: %s/%s is not in the price catalog — "
+                        "%d+%d tokens recorded as unpriced, not as free",
+                        provider, model, input_tokens, output_tokens,
+                    )
 
             db = self._get_db()
             if db is None:

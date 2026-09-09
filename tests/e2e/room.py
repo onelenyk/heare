@@ -21,12 +21,16 @@ and exactly three things replaced at the edge —
   filter that decides whether what came back was ever speech, are both
   real here, because both have turned an evening bad and neither was on
   a test path until 23 August;
-* **the mouth** — the synthesiser only. There was no mouth at all for
-  the first thirty-eight scenarios, on the reasoning that `audio=None`
-  costs no code. It cost three things that live only in the speaking
-  branch: the stamp the junk filter reads, the extension of the wake
-  window, and the choice of voice — and a wrong voice is silence, which
-  is this project's worst failure shape;
+* **the mouth** — the synthesiser, and a speaker that keeps a queue
+  instead of a device. There was no mouth at all for the first
+  thirty-eight scenarios, on the reasoning that `audio=None` costs no
+  code. It cost three things that live only in the speaking branch: the
+  stamp the junk filter reads, the extension of the wake window, and the
+  choice of voice — and a wrong voice is silence, which is this
+  project's worst failure shape. It then reported `playing = False`
+  forever, which cost a fourth: the conductor asks that question before
+  it will ever interrupt itself for someone, so every path that decides
+  to stop talking was unreachable from here;
 * **the model**, which is scripted, because a test that cannot say what
   the model answers is not testing anything downstream of it.
 
@@ -93,6 +97,12 @@ class Room:
     recognised: list = field(default_factory=list)
     through: list = field(default_factory=list)
     voiced: list = field(default_factory=list)
+    _tasks: list = field(default_factory=list)
+    # How long one synthesised sentence sounds for, in milliseconds, and
+    # how loud. Silent by default: a test that only needs the mouth to
+    # have been used should not pay to generate a voice.
+    _speech_ms: float = 10.0
+    _speech_amp: float = 0.0
 
     # -- what the model will answer -----------------------------------
 
@@ -176,6 +186,96 @@ class Room:
         await self.loop._transcribe(pcm, self.loop._starts_seen)
         return self.through[-1] if self.through else ""
 
+    # -- the microphone, and talking over it --------------------------
+
+    @property
+    def mouth(self) -> Any:
+        """The speaker, for tests that ask what is still coming out of it."""
+        return self.loop.audio
+
+    def speaks_for(self, ms: float) -> None:
+        """How long each synthesised sentence sounds for.
+
+        Ten milliseconds by default, which is why every scenario before
+        this one finished speaking before the next line of the test ran.
+        A test about interruption has to set this: the window in which
+        barge-in is even possible *is* the length of the reply.
+        """
+        self._speech_ms = ms
+
+    def speaks_aloud(self, amp: float = 9000.0) -> None:
+        """Render an actual voice instead of silence.
+
+        Only one kind of test needs this, and it is the kind that cannot
+        be faked: a room where the microphone hears the assistant coming
+        back. It is a knob here rather than a patch in the test, because
+        the synthesiser is one of the three edges this harness replaces
+        *before* the loop is wired — `loop.synthesise` holds the closure
+        from that moment, and a test that re-patches `src.spine.tts`
+        afterwards changes nothing and gets silence while believing it
+        has a voice. That mistake cost an hour and two scenarios that
+        passed for the wrong reason.
+        """
+        self._speech_amp = amp
+
+    async def until_speaking(self, timeout: float = 5.0) -> bool:
+        """Wait until audio is actually coming out of the speaker."""
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
+            if self.mouth.playing:
+                return True
+            await asyncio.sleep(0.005)
+        return False
+
+    async def into_the_mic(self, text: str, *, ms: float = 400.0,
+                          then_quiet_ms: float = 900.0) -> None:
+        """Speech as the device delivers it: 20 ms frames, one by one.
+
+        Everything else here hands the assembler a finished sentence.
+        That is the right entrance for a test about what the assistant
+        does with words, and the wrong one for a test about whether it
+        hears them at all — the canceller, the energy detector and the
+        decision to stop talking all live between the device and the
+        assembler, and none of them had ever run in this harness.
+
+        The quiet tail is not padding: the detector ends an utterance on
+        silence, and without it the words stay in flight forever.
+        """
+        self._next_heard = text
+        frame_bytes = int(16000 * 0.020) * 2
+        loud = _audio(ms)
+        quiet = _audio(then_quiet_ms, quiet=True)
+        for stream in (loud, quiet):
+            for at in range(0, len(stream) - frame_bytes + 1, frame_bytes):
+                await self.mouth.input_frames.put(stream[at:at + frame_bytes])
+                # Let the ear run: the queue is not the point, the frames
+                # reaching the detector one at a time is.
+                await asyncio.sleep(0)
+
+    async def frames(self, pcm: bytes) -> None:
+        """Raw microphone audio, delivered 20 ms at a time.
+
+        Below `into_the_mic`, for the one thing that has to build its own
+        frames: a room where the microphone hears the assistant's own
+        voice coming back as well as the person's.
+        """
+        frame_bytes = int(16000 * 0.020) * 2
+        for at in range(0, len(pcm) - frame_bytes + 1, frame_bytes):
+            await self.mouth.input_frames.put(pcm[at:at + frame_bytes])
+            await asyncio.sleep(0)
+
+    async def cuts_in(self, text: str, *, ms: float = 400.0) -> bool:
+        """Start talking while the assistant is still speaking.
+
+        Returns whether the interruption landed — which is the single
+        number the old measurement of this reported (two runs in four,
+        against an engine that no longer exists) and the one nothing has
+        measured since.
+        """
+        assert self.mouth.playing, "nothing to interrupt — the mouth is idle"
+        await self.into_the_mic(text, ms=ms)
+        return self.loop._interrupted
+
     def cost_events(self) -> list[tuple]:
         """What was billed. Silence that reaches Groq is money."""
         with sqlite3.connect(self.db) as db:
@@ -219,6 +319,21 @@ class Room:
             if latest != before:
                 return self.said()
         return ""
+
+    def mark(self) -> int:
+        """A bookmark in what it has said, to wait past later.
+
+        `drained()` is the wrong instrument when the next turn has not
+        started yet: it watches for nothing *changing*, and a turn still
+        travelling from the recogniser to the conductor changes nothing
+        for a moment. Waiting for the row itself is the honest wait.
+        """
+        return self._last_agent_row()
+
+    async def answer_after(self, mark: int) -> str:
+        """The next thing it says after that bookmark. Empty if it never
+        says anything, which is a verdict some of these tests want."""
+        return await self._settle(mark)
 
     async def drained(self) -> None:
         """Wait until nothing is in flight.
@@ -426,7 +541,16 @@ async def open_room(
     def _voice(text: str, *, voice: str = "", **_kw):
         async def stream():
             room.voiced.append((text, voice))
-            yield b"\x00\x00" * 240
+            # Ten milliseconds by default — enough for the mouth to have
+            # been used, short enough that fifty scenarios do not wait on
+            # a speaker. A test about being talked over asks for a real
+            # sentence's worth instead (`room.speaks_for`), because you
+            # cannot interrupt something that is already finished.
+            frames = int(24000 * room._speech_ms / 1000.0)
+            if not room._speech_amp:
+                yield b"\x00\x00" * frames
+                return
+            yield pack(voice_like(frames, 24000, room._speech_amp))
 
         return stream()
 
@@ -469,7 +593,17 @@ async def open_room(
     # move the mouse. Default is "just now" — someone is at the desk.
     if loop.engine is not None:
         loop.engine._idle = room._idle
-    room._task = asyncio.ensure_future(loop._converse())
+    # The ear, the recogniser's queue and the conductor — the three tasks
+    # `loop.run()` starts. Only the last one ran here until barge-in
+    # needed a test: everything reached the assembler by hand, so the VAD
+    # never segmented anything and `_listen` — where the decision to
+    # interrupt is actually made — was not on any path at all.
+    room._tasks = [
+        asyncio.ensure_future(loop._listen()),
+        asyncio.ensure_future(loop._stt_worker()),
+        asyncio.ensure_future(loop._converse()),
+    ]
+    room._task = room._tasks[-1]
     return room
 
 
@@ -485,26 +619,118 @@ class Mouth:
     The last one has a standing suspicion against it: Edge TTS renders
     Cyrillic on an English voice as silence.
 
-    Only the surface the loop actually touches is here. Nothing plays,
-    so `playing` is always False and a drain returns at once.
+    Then it played nothing, and `playing` was hardcoded False. That one
+    line was the whole reason barge-in had no coverage at this layer:
+    the conductor asks `audio.playing and self._duplex` before it will
+    interrupt, and the first half was a constant no. Everything else was
+    already real here — the canceller included, active, wired as the
+    far-end sink — so the branch that *decides* to stop the mouth was
+    unreachable while the branch that obeys the decision had five tests.
+
+    So the queue is honest now. Bytes leave at the output rate, which is
+    a clock and not a wait: nothing sleeps, `playing` simply answers
+    whether the audio handed over would still be coming out of a real
+    speaker at this instant.
     """
 
+    # 24 kHz mono int16 — what `play()` is handed, and the rate it would
+    # leave a device at.
+    BYTES_PER_SECOND = 24000 * 2
+
     def __init__(self) -> None:
-        self.input_frames: asyncio.Queue = asyncio.Queue(maxsize=200)
+        self.input_frames: asyncio.Queue = asyncio.Queue(maxsize=2000)
         self.mute_input = False
         self.mute_output = False
-        self.playing = False
         self.far_sink = None
         self.played: list[bytes] = []
+        # When the queue would run dry. Before that instant the speaker
+        # is still sounding; after it, silence.
+        self._quiet_at = 0.0
+        self.cleared_far_end = 0
+
+    def _now(self) -> float:
+        import time
+
+        return time.monotonic()
 
     def take_input_gap(self) -> bool:
         return False
 
     def play(self, pcm: bytes) -> None:
+        if self.mute_output:
+            return
         self.played.append(pcm)
+        self._quiet_at = max(self._quiet_at, self._now()) + (
+            len(pcm) / self.BYTES_PER_SECOND
+        )
+        # The canceller only has something to subtract if it is told what
+        # went to the speaker. The real audio layer does this in `play`;
+        # a mouth that skips it hands the AEC an empty reference and every
+        # echo test passes for the wrong reason.
+        sink = self.far_sink
+        push = getattr(sink, "push_far", None) if sink is not None else None
+        if push is not None:
+            try:
+                push(pcm)
+            except Exception:  # noqa: BLE001
+                pass
+
+    @property
+    def playing(self) -> bool:
+        return self._now() < self._quiet_at
+
+    def queued_bytes(self) -> int:
+        """What has not left the speaker yet."""
+        left = self._quiet_at - self._now()
+        return max(0, int(left * self.BYTES_PER_SECOND))
 
     def stop_playback(self) -> int:
-        return 0
+        dropped = self.queued_bytes()
+        self._quiet_at = self._now()
+        if dropped:
+            # Bytes that never reached the room must not be subtracted
+            # from the voice that interrupted them. Counted, because this
+            # is the half of barge-in nothing has ever checked.
+            sink = self.far_sink
+            clear = getattr(sink, "clear", None) if sink is not None else None
+            if clear is not None:
+                try:
+                    clear()
+                    self.cleared_far_end += 1
+                except Exception:  # noqa: BLE001
+                    pass
+        return dropped
+
+
+def voice_like(n: int, rate: int, amp: float) -> list[float]:
+    """Something a canceller can be honestly measured against.
+
+    Two formants over a wobbling pitch, not a tone. Speech is not
+    stationary, and this project has already published one number taken
+    against a tone and had to withdraw it: fed a tone the canceller
+    returns 29, fed speech over an echo it returns the speech intact.
+    """
+    import math
+
+    out = []
+    for i in range(n):
+        t = i / rate
+        pitch = 130 + 25 * math.sin(2 * math.pi * 3.1 * t)
+        v = (math.sin(2 * math.pi * pitch * t)
+             + 0.6 * math.sin(2 * math.pi * 3 * pitch * t)
+             + 0.3 * math.sin(2 * math.pi * 7 * pitch * t))
+        env = 0.55 + 0.45 * math.sin(2 * math.pi * 4.7 * t)
+        out.append(amp * env * v / 1.9)
+    return out
+
+
+def pack(samples) -> bytes:
+    import struct
+
+    return struct.pack(
+        "<%dh" % len(samples),
+        *[max(-32768, min(32767, int(s))) for s in samples],
+    )
 
 
 def _audio(ms: float, *, quiet: bool = False) -> bytes:
@@ -561,10 +787,11 @@ async def close_room(room: Room) -> None:
         import src.spine.tts as tts
 
         tts.synthesise = room._real_tts
-    if room._task is not None:
-        room._task.cancel()
+    for task in room._tasks or ([room._task] if room._task is not None else []):
+        task.cancel()
+    for task in room._tasks or ([room._task] if room._task is not None else []):
         try:
-            await room._task
+            await task
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
     from src.spine.main import _close_loop
@@ -575,4 +802,5 @@ async def close_room(room: Room) -> None:
         pass
 
 
-__all__ = ["Mouth", "Room", "Says", "close_room", "open_room"]
+__all__ = ["Mouth", "Room", "Says", "close_room", "open_room",
+           "pack", "voice_like"]

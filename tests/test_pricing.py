@@ -99,3 +99,90 @@ class TestIsKnownModel:
     def test_empty_returns_false(self) -> None:
         assert is_known_model("") is False
         assert is_known_model(None) is False
+
+
+class TestTheModelsThisAssistantActuallyRuns:
+    """The catalog was built from ``PROVIDERS[*].pricing`` and every
+    provider the daemon could reach shipped ``pricing=()``. So the one
+    model in daily use was the one model with no price, ``llm_cost``
+    returned None for it, and the recorder stored that as 0.0.
+
+    1077 calls read $0.0000 while the balance fell to minus one cent.
+    These assertions fail against that catalog.
+    """
+
+    def test_every_provider_prices_its_default_model_or_says_it_cannot(
+        self,
+    ) -> None:
+        """The gap must be declared, never inherited from a blank field.
+
+        ``pricing=()`` on DeepSeek looked like an ordinary empty tuple
+        and silently zeroed a month of bills. Now a provider either
+        prices the model it will actually be asked for, or its name
+        appears in PRICES_UNKNOWN — where a human had to type it.
+        """
+        from src.agent.llm.providers import PRICES_UNKNOWN, PROVIDERS
+
+        undeclared = [
+            f"{key}/{cfg.default_model}"
+            for key, cfg in PROVIDERS.items()
+            if not is_known_model(cfg.default_model) and key not in PRICES_UNKNOWN
+        ]
+        assert undeclared == [], (
+            "these providers will record every call as unpriced without "
+            f"anyone having decided that: {undeclared}"
+        )
+
+    def test_a_declared_gap_still_has_to_be_a_real_provider(self) -> None:
+        """PRICES_UNKNOWN must not outlive the provider it excuses, or it
+        becomes a blanket that quietly covers a future name."""
+        from src.agent.llm.providers import PRICES_UNKNOWN, PROVIDERS
+
+        assert PRICES_UNKNOWN <= set(PROVIDERS)
+
+    def test_deepseek_v4_flash_costs_real_money(self) -> None:
+        # $0.14 / 1M in (cache miss), $0.28 / 1M out.
+        cost = llm_cost(
+            model="deepseek-v4-flash",
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+        )
+        assert cost == 0.14 + 0.28
+
+    def test_the_retired_model_stays_priced_for_the_rows_it_left(self) -> None:
+        """deepseek-chat was retired 24 July 2026 and is no longer the
+        default, but 907 rows in usage_events still name it. Dropping it
+        from the catalog would re-zero exactly the history this fix is
+        meant to make readable."""
+        assert is_known_model("deepseek-chat")
+
+    def test_a_days_real_traffic_is_not_free(self) -> None:
+        """The shape of one recorded day: ~9.6M input tokens against
+        deepseek-chat. Whatever the catalog says, it must not say zero."""
+        cost = llm_cost(
+            model="deepseek-chat",
+            input_tokens=9_588_174,
+            output_tokens=61_368,
+        )
+        assert cost is not None and cost > 1.0
+
+
+class TestEdgeTTSKeySpelling:
+    """``SpineUsage.tts`` passes provider='edge'; the table said
+    'edge_tts'. Every lookup missed and returned None. Both branches
+    produced 0.0, so nothing showed — until the day speech costs money.
+    """
+
+    def test_the_name_the_recorder_actually_passes_is_priced(self) -> None:
+        assert tts_cost(provider="edge", char_count=1000) == 0.0
+
+    def test_the_recorders_default_matches_the_catalog(self) -> None:
+        import inspect
+
+        from src.spine.usage import SpineUsage
+
+        default = inspect.signature(SpineUsage.tts).parameters["provider"].default
+        assert tts_cost(provider=default, char_count=100) is not None, (
+            f"SpineUsage.tts defaults to provider={default!r}, which the "
+            "TTS price table does not know"
+        )

@@ -12,7 +12,6 @@ import secrets
 import sys
 import tomllib
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 
 
@@ -346,8 +345,21 @@ class Settings:
     opencode_api_key: str | None = None
     opencode_base_url: str = "https://opencode.ai/zen/go/v1"
     opencode_model: str = "minimax-m2.7"
+    # OpenRouter — OpenAI-compatible, and the one provider that reports
+    # what each call actually cost. API key from OPENROUTER_API_KEY.
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
+    # Looking at the screen is a separate choice from talking, because
+    # the conversation model cannot do it: DeepSeek takes no images at
+    # all. Kept as its own provider+model so switching the voice to a
+    # text-only model never silently blinds the assistant.
+    vision_provider: str = "openrouter"
+    vision_model: str = "google/gemini-3.1-flash-lite"
     deepseek_api_key: str | None = None
-    deepseek_model: str = "deepseek-chat"
+    # `deepseek-chat` was retired 24 July 2026: it resolves to nothing
+    # and a daemon pointed at it fails on its first turn.
+    deepseek_model: str = "deepseek-v4-flash"
     deepseek_base_url: str = "https://api.deepseek.com/v1"
     deepseek_timeout_seconds: float = 5.0
     # Phase 2.1 — action worker.
@@ -971,8 +983,44 @@ def load_env(*, override: bool = False) -> Path | None:
             )
     except OSError:
         logger.exception("could not check the permissions of %s", ENV_PATH)
+    if not override:
+        _warn_about_shadowed_keys()
     load_dotenv(ENV_PATH, override=override)
     return ENV_PATH
+
+
+def _warn_about_shadowed_keys() -> None:
+    """Say out loud when the shell is holding a different key than the file.
+
+    Found 9 September 2026, and it had been true for at least four days:
+    ``~/.zshrc`` exported a dead ``OPENROUTER_API_KEY``, so every daemon
+    started from a terminal inherited it, and the working key sitting in
+    ``~/.heare/.env`` never won — ``override`` is False by default, which
+    is the right default and was also the whole problem. The provider
+    answered ``401 User not found`` and the natural reading of that is
+    "the key in my .env is dead", which sent the search for the fault to
+    the wrong file entirely.
+
+    Deliberately a warning and not a correction: letting the shell win is
+    what makes ``GROQ_API_KEY=... uv run ...`` work, and silently
+    reversing that would break a real workflow to fix a typo. Naming the
+    conflict costs one log line and ends the guessing.
+    """
+    try:
+        from dotenv import dotenv_values
+
+        for name, in_file in (dotenv_values(ENV_PATH) or {}).items():
+            in_env = os.environ.get(name)
+            if in_file and in_env and in_env != in_file:
+                logger.warning(
+                    "%s: the shell's value wins over %s, and they differ. "
+                    "If this provider answers 401, the stale one is in your "
+                    "shell profile, not in the file.",
+                    name,
+                    ENV_PATH,
+                )
+    except Exception:  # noqa: BLE001 — a diagnostic must never break boot
+        logger.debug("could not compare env keys", exc_info=True)
 
 
 def _toml_literal(value: object) -> str:

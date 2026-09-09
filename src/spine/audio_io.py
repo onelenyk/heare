@@ -281,6 +281,59 @@ class AudioIO:
         # read as decades of silence before anything had a chance.
         self._last_frame_ts = time.monotonic()
 
+    async def restart_input(self) -> bool:
+        """Reopen the microphone stream. True when it came back.
+
+        Added 9 September 2026, after a live outage: CoreAudio raised
+        ``PaMacCore (AUHAL) err=-50`` while the assistant was speaking,
+        the input stream stopped calling back, and nothing anywhere
+        reopened it. ``hearing.py`` noticed inside twenty seconds and
+        reported it — correctly, and to no effect, because reporting was
+        all any layer could do. The assistant stayed deaf for the rest of
+        the session while its dashboard, its log and its menu bar all
+        looked normal.
+
+        A device that dies mid-conversation is not exotic on a laptop: a
+        sleep, a headset, a sample-rate renegotiation when playback opens.
+        Twenty seconds of deafness is a hiccup; the rest of the evening is
+        a broken assistant.
+
+        Deliberately only the input side. The speaker is working — it is
+        how the assistant said it had gone deaf — and closing a stream
+        that is mid-utterance would turn one fault into two.
+        """
+        import sounddevice
+
+        if self._loop is None:
+            return False
+        old = self._input_stream
+        self._input_stream = None
+        if old is not None:
+            try:
+                old.stop()
+                old.close()
+            except Exception:  # noqa: BLE001
+                logger.warning("audio: the dead input stream did not close cleanly")
+        try:
+            stream = sounddevice.RawInputStream(
+                channels=1,
+                samplerate=self.input_rate,
+                dtype="int16",
+                callback=self._on_input,
+                blocksize=(self.input_rate * self.frame_ms) // 1000,
+                device=self.input_device,
+            )
+            stream.start()
+        except Exception:  # noqa: BLE001
+            logger.exception("audio: could not reopen the microphone")
+            return False
+        self._input_stream = stream
+        # Same reason as in start(): a stream that opens and never calls
+        # back must not read as having been silent since the last frame.
+        self._last_frame_ts = time.monotonic()
+        logger.info("audio: microphone stream reopened")
+        return True
+
     async def stop(self) -> None:
         """Stop and close sounddevice streams."""
         if self._input_stream is not None:

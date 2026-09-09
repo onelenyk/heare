@@ -1,14 +1,13 @@
 """Tests for CLI argument parsing and subcommand dispatch in src/main.py."""
 from __future__ import annotations
 
-import asyncio
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.main import _cmd_status, _cmd_stop, build_parser, main
+from src.main import _cmd_status, _cmd_stop, build_parser
 from src.config import Settings
 
 

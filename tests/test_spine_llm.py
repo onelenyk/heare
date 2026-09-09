@@ -151,7 +151,7 @@ def test_resolve_llm_defaults_match_deepseek_registry():
     settings = SimpleNamespace(deepseek_api_key="k")
     cfg = resolve_llm(settings)
     assert cfg.base_url == "https://api.deepseek.com/v1"
-    assert cfg.model == "deepseek-chat"
+    assert cfg.model == "deepseek-v4-flash"
     assert cfg.api_key == "k"
 
 

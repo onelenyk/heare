@@ -111,21 +111,42 @@ def unbidden(db: sqlite3.Connection, since: float) -> None:
 
 
 def cost(db: sqlite3.Connection, since: float) -> None:
-    """Cost per day, which nobody has ever measured on this machine."""
+    """Cost per day, which nobody has ever measured on this machine.
+
+    A NULL ``cost_usd`` means nobody could price the call, and it is
+    counted separately rather than summed as zero. The old query said
+    ``COALESCE(cost_usd, 0)``, so a day of unpriced calls and a day of
+    free ones printed the same $0.0000 — which is what this report
+    showed while the DeepSeek balance drained to minus one cent.
+    """
     print("\n ЦІНА")
     rows = _rows(
         db,
-        "SELECT kind, COUNT(*), SUM(COALESCE(cost_usd, 0)) FROM usage_events "
-        "WHERE ts >= ? GROUP BY kind ORDER BY 3 DESC",
+        "SELECT kind, COUNT(*), SUM(COALESCE(cost_usd, 0)), "
+        "       SUM(cost_usd IS NULL) "
+        "FROM usage_events WHERE ts >= ? GROUP BY kind ORDER BY 3 DESC",
         since,
     )
     if not rows:
         print("   нічого не пораховано")
         return
-    for kind, count, spent in rows:
-        print(f"   {kind:6} {count:5} викликів   ${spent or 0:.4f}")
+    for kind, count, spent, unpriced in rows:
+        tail = f"   ({unpriced} без ціни)" if unpriced else ""
+        print(f"   {kind:6} {count:5} викликів   ${spent or 0:.4f}{tail}")
+    total_unpriced = sum(r[3] or 0 for r in rows)
     print(f"   {'разом':6} {sum(r[1] for r in rows):5}            "
           f"${sum(r[2] or 0 for r in rows):.4f}")
+    if total_unpriced:
+        print(f"\n   ⚠ {total_unpriced} викликів без ціни — це не «безкоштовно»,")
+        print("     це «нікому не відомо». Модель поза каталогом:")
+        for model, n in _rows(
+            db,
+            "SELECT COALESCE(provider,'?')||'/'||COALESCE(model,'?'), COUNT(*) "
+            "FROM usage_events WHERE ts >= ? AND cost_usd IS NULL "
+            "GROUP BY 1 ORDER BY 2 DESC LIMIT 5",
+            since,
+        ):
+            print(f"       {model}  ×{n}")
 
 
 def speed(since: float) -> None:

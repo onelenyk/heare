@@ -55,6 +55,72 @@ RESULT_PREFIX = (
 )
 
 
+# Tools whose executor needs a collaborator that the running daemon may
+# never have built. Each entry is (probe, names): the probe answers
+# "is the thing these need actually here?"
+#
+# They are not deleted. Every one of them is a working implementation
+# whose other half went out with an engine — the sub-agent manager was
+# only ever installed by ``src/pipeline/build.py`` (deleted 17 August)
+# and the browser bridge starts after an early return the spine takes.
+# Deleting them would lose the work; leaving them in the schema is
+# worse than either, because the model then offers the person something
+# that cannot happen and reports back a failure it cannot explain.
+#
+# The probes ask the live seam rather than consulting a list, so the day
+# either half is wired back, the tools reappear on their own and nobody
+# has to remember this file exists.
+_AGENT_TOOLS = frozenset({
+    "run_agent", "agent_start", "agent_status", "agent_result",
+    "agent_message", "agent_cancel", "agent_list", "agent_approve",
+    "agent_deny",
+})
+_BROWSER_TOOLS = frozenset({
+    "read_browser_page", "list_browser_tabs", "click_in_browser",
+    "fill_in_browser", "navigate_browser", "extract_in_browser",
+    "open_browser_tab", "activate_browser_tab",
+})
+# A different failure, and the quieter one: these two execute fine and
+# report success. They write a value into State that nothing on the
+# spine path reads — sidetone had a consumer only in a deleted pipecat
+# stage, and VAD sensitivity has never had one in either engine (the
+# spine's threshold is a constant in ``spine/vad.py``). A tool that
+# answers "done" and changes nothing teaches the model it did something.
+_TOOLS_WITH_NO_READER = frozenset({"sidetone", "vad_sensitivity"})
+
+
+def unreachable_tools() -> frozenset[str]:
+    """Names the worker must not offer, because nothing can carry them out."""
+    hidden: set[str] = set(_TOOLS_WITH_NO_READER)
+
+    try:
+        from src.agent.subagent_manager import get_agent_manager
+
+        if get_agent_manager() is None:
+            hidden |= _AGENT_TOOLS
+    except Exception:  # pragma: no cover - import guard
+        hidden |= _AGENT_TOOLS
+
+    try:
+        from src.agent.browser_bridge import _get_bridge
+
+        # Two conditions, not one. Since 9 September the daemon actually
+        # builds a bridge at boot, so `is None` stopped being the whole
+        # question: a bound server with no extension paired to it answers
+        # every call with "Browser not connected". Offering the verbs then
+        # teaches the model it can drive a browser that is not there —
+        # the same lesson `sidetone` teaches by succeeding at nothing.
+        # `connected` flips on its own when Chrome pairs, and the worker
+        # rebuilds its schemas per job, so nothing needs a restart.
+        bridge = _get_bridge()
+        if bridge is None or not getattr(bridge, "connected", True):
+            hidden |= _BROWSER_TOOLS
+    except Exception:  # pragma: no cover - import guard
+        hidden |= _BROWSER_TOOLS
+
+    return frozenset(hidden)
+
+
 def _label(task: str) -> str:
     """Two or three words, for telling concurrent jobs apart."""
     words = [w for w in task.split() if len(w) > 2][:3]
@@ -209,11 +275,14 @@ class Hands:
         install_ok = bool(
             getattr(self._settings, "capability_install_enabled", False)
         )
+        unreachable = unreachable_tools()
 
         def allowed(name: str) -> bool:
             if name == "delegate":
                 return False
             if name in INSTALL_TOOLS and not install_ok:
+                return False
+            if name in unreachable:
                 return False
             return is_tool_allowed(policy, name)
 

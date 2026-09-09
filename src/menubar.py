@@ -329,7 +329,7 @@ class HeareMenuBar(rumps.App):
 
         if error:
             self.title = "⚠️"
-            self.menu["Status: starting…"].title = f"Heare — error"
+            self.menu["Status: starting…"].title = "Heare — error"
             self.menu["Start"].set_callback(self._on_start)
             self.menu["Stop"].set_callback(None)
             return

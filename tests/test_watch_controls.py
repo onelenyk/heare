@@ -103,5 +103,35 @@ def test_start_daemon_refuses_when_already_running(tmp_path: Path):
 
 
 def test_start_daemon_spawns_subprocess(tmp_path: Path, monkeypatch):
+    """It spawns the daemon detached and reports the pid it then sees.
+
+    This test used to have no body at all — one unused import and
+    nothing else — so it passed no matter what `start_daemon` did. ruff
+    flagged the import; the empty test is what the import was hiding.
+    """
+    import subprocess
+
     from src.daemon import watch_controls
+
+    s = _settings(tmp_path)
+    spawned: dict = {}
+
+    def fake_popen(cmd, **kwargs):
+        spawned["cmd"] = cmd
+        spawned["kwargs"] = kwargs
+        # The daemon's first act is writing its pid file; stand in for it
+        # so start_daemon's wait loop has something to find.
+        s.pid_file.write_text(str(os.getpid()))
+        return object()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    msg = watch_controls.start_daemon(s)
+
+    assert "started" in msg and str(os.getpid()) in msg
+    assert spawned["cmd"][1:] == ["-m", "src.main", "start"]
+    # Detached, or it dies with whatever shell launched it.
+    assert spawned["kwargs"]["start_new_session"] is True
+    assert spawned["kwargs"]["stdin"] is subprocess.DEVNULL
+    # Output has to land in the log, not on a terminal nobody is watching.
+    assert (tmp_path / "logs" / "daemon.log").exists()
 

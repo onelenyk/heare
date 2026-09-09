@@ -6,37 +6,128 @@ on:
   pull_request:
     branches: [main]
 
+# A second push supersedes the first: nobody needs the results of a
+# commit that has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  # Cheap and first. Every CI run from 11 August to 5 September died
+  # here in under 21 seconds, which meant the test suite — 1820 tests —
+  # had never once run on a machine other than the author's.
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11"]
-
+    timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v5
-      with:
-        enable-cache: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      # No project sync: ruff needs none of the audio stack, and skipping
+      # it keeps the fastest signal the fastest.
+      - name: Ruff
+        run: uvx ruff@0.6 check src/ tests/
 
-    - name: Install dependencies
-      run: uv sync --frozen --group dev
+  test:
+    name: Test (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Lint
-      run: uv run ruff check src/ tests/
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
-    - name: Test with coverage
-      run: uv run pytest --cov=src --cov-report=xml --cov-report=term
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
 
-    - name: Upload coverage
-      uses: codecov/codecov-action@v5
-      with:
-        files: ./coverage.xml
-        fail_ci_if_error: false
+      # macOS because that is the only platform this app runs on: rumps
+      # is a macOS menu bar library and the audio stack is CoreAudio.
+      # Testing on Linux would prove something about a system nobody has.
+      - name: Install portaudio
+        run: brew install portaudio
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      # `spine_live` stays deselected by pyproject's addopts — those hit
+      # real Groq/DeepSeek/Edge endpoints and cost money.
+      - name: Test
+        run: uv run pytest --cov=src --cov-report=xml --cov-report=term
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  # The .app was only ever assembled while cutting a release, so a spec
+  # broken by an ordinary refactor stayed invisible until the moment it
+  # was most expensive to find. This builds it on every change instead.
+  build:
+    name: Build .app
+    runs-on: macos-latest
+    timeout-minutes: 25
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Install portaudio
+        run: brew install portaudio libomp
+
+      - name: Build frontend
+        run: |
+          cd src/frontend
+          npm ci
+          npm run build
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Build .app
+        run: uv run pyinstaller HeareMenubar.spec --noconfirm
+
+      # PyInstaller exits 0 on a bundle that cannot start, so check the
+      # shape of what came out rather than trusting the return code.
+      - name: Check the bundle is whole
+        run: |
+          test -d dist/Heare.app || { echo "no .app produced"; exit 1; }
+          test -x dist/Heare.app/Contents/MacOS/Heare || {
+            echo "no executable inside the bundle"; exit 1; }
+          test -f dist/Heare.app/Contents/Resources/src/frontend/index.html || {
+            echo "dashboard did not make it into the bundle"; exit 1; }
+          du -sh dist/Heare.app
+
+      - name: Keep the bundle for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: Heare-app-${{ github.sha }}
+          path: dist/Heare.app
+          retention-days: 7
+          if-no-files-found: error

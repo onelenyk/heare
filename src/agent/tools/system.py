@@ -58,11 +58,25 @@ class ToolDef:
 # — «що я казав про таймаут». Answered a minute later by a worker it is
 # no longer part of the exchange that asked, and the cost of keeping it
 # in the fast path is one indexed query, not a model call.
+# `read_display` and `clear_display` are the sixth and seventh, and they
+# are here for the same reason: the screen is the present moment. Before
+# them the voice model had no screen at all — both panel verbs lived
+# behind `delegate`, whose description names files, the shell, the web,
+# settings and the browser and not the panel — so asked what was on it,
+# the model answered "нічого не бачу" out of a prompt in which no screen
+# existed, while the person was looking straight at one.
 VOICE_TOOLS = frozenset(
-    {"delegate", "remember", "recall", "forget", "search_conversations"}
+    {
+        "delegate",
+        "remember",
+        "recall",
+        "forget",
+        "search_conversations",
+        "read_display",
+        "clear_display",
+        "look_at_screen",
+    }
 )
-
-
 
 
 ArgsSerializer = Callable[[dict[str, Any]], str]
@@ -101,6 +115,10 @@ def _json_serializer(args: dict[str, Any]) -> str:
 def _show_text_serializer(args: dict[str, Any]) -> str:
     args["format"] = "text"
     return json.dumps(args)
+
+
+def _query_serializer_question(args: dict[str, Any]) -> str:
+    return str(args.get("question", "")).strip()
 
 
 def _show_canvas_serializer(args: dict[str, Any]) -> str:
@@ -450,6 +468,25 @@ TOOLS: list[ToolDef] = [
             "title": {"type": "string", "description": "Optional heading."},
         },
         required=["content"],
+    ),
+    ToolDef(
+        name="look_at_screen",
+        description="Look at the user's actual computer screen — every window, including their browser. Use for any question about what is on screen, what a window or page shows, or what an error says. Not the same as read_display, which only reads this app's own panel.",
+        handler="vision",
+        schema_fields={
+            "question": {
+                "type": "string",
+                "description": "What to find out about the screen. Optional.",
+            },
+        },
+        required=[],
+    ),
+    ToolDef(
+        name="clear_display",
+        description="Wipe the screen panel. Use when the user asks to clear, empty or remove what is on the screen. Affects only the panel.",
+        handler="display_clear",
+        schema_fields={},
+        required=[],
     ),
     ToolDef(
         name="read_display",
@@ -1048,6 +1085,7 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "run_skill": _json_serializer,
     "set_provider": _provider_serializer,
     "show_text": _show_text_serializer,
+    "look_at_screen": _query_serializer_question,
     "show_canvas": _show_canvas_serializer,
     "discover_capability": _json_serializer,
     "install_skill_tool": _json_serializer,
@@ -1089,12 +1127,6 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "volume": _json_serializer,
     "sidetone": _json_serializer,
 }
-
-
-
-
-
-
 
 
 _intent_id_seq = itertools.count(start=1)
@@ -1149,10 +1181,6 @@ _TOOL_TIMEOUTS: dict[str, float] = {
 def tool_timeout_secs(name: str) -> float:
     """Our execution deadline for tool `name`, in seconds."""
     return _TOOL_TIMEOUTS.get(name, DEFAULT_TOOL_TIMEOUT_SECS)
-
-
-
-
 
 
 _DYNAMIC_TOOL_SCHEMAS: dict[str, tuple[dict[str, Any], str, str]] = {}

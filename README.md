@@ -31,13 +31,6 @@ cp .env.example .env
 $EDITOR .env                  # set GROQ_API_KEY and DEEPSEEK_API_KEY
 ```
 
-Select the live engine — the default is the old pipecat one:
-
-```bash
-mkdir -p ~/.heare
-echo 'engine = "spine"' >> ~/.heare/config.toml
-```
-
 Start the daemon in the foreground:
 
 ```bash
@@ -111,10 +104,15 @@ endpoints and cost money — excluded from the default run, see
 **Mic permission denied** — grant microphone access in System Settings →
 Privacy & Security; try `start` in the foreground first.
 
-**Nothing happens on `start`** — check `engine` in `~/.heare/config.toml`;
-if it's absent or `"pipecat"` you're on the rollback engine, which needs
-different keys (OpenRouter or z.ai) and `uv sync --extra local` no longer
-exists as a separate step, everything installs with plain `uv sync`.
+**Nothing happens on `start`** — run it in the foreground and read the
+`features:` line it logs at boot. Every optional subsystem can be off,
+and off means not wired at all; `HEARE_SAFE_MODE=1` turns all of them
+off at once, `HEARE_WITHOUT=roles,mcp` turns off named ones.
+
+There is no engine to select. `engine = "spine"` in `config.toml` did
+something until 17 August and is inert now — the pipecat pipeline it
+switched away from was deleted, `Settings` has no such field, and a test
+asserts it never comes back.
 
 **STT hanging or slow** — Groq Whisper is the bottleneck, not heare;
 check your network and rate limits.
@@ -131,7 +129,7 @@ check your network and rate limits.
 ~/.heare/
 ├── heare.db          # SQLite: transcripts, memories, usage_events, jobs, actions
 ├── heare.pid          # running daemon PID
-├── config.toml        # user settings — engine = "spine" lives here
+├── config.toml        # user settings — spine_features, wake window, voice
 ├── .env                # API keys (or use process env vars)
 ├── api_token           # dashboard auth token
 ├── identity.json       # auto-generated persona

@@ -432,6 +432,66 @@ class SpinePersistence:
             logger.exception("persist: forgetting failed (non-fatal)")
             return 0
 
+    # -- the screen panel ----------------------------------------------
+    #
+    # The panel is a latest-only channel: `displays` is append-only and
+    # whoever reads it takes the newest row (src/state.py, src/api.py and
+    # src/store/storage.py all do exactly that). Both methods below hold
+    # to that convention rather than inventing a second one.
+    #
+    # They exist because the voice model could not see the screen at all.
+    # `show_canvas` and `read_display` are worker tools, reachable only
+    # through `delegate` — whose own description names files, the shell,
+    # the web, settings and the browser, and not the screen. So asked
+    # what was on it, the model answered from a prompt in which no screen
+    # exists, and was not lying: it had no way to look.
+
+    def latest_display(self) -> dict | None:
+        """The newest row on the panel, or None when nothing is there.
+
+        Empty content counts as nothing: that is what clearing writes.
+        """
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "SELECT ts, title, format, content FROM displays"
+                    " ORDER BY ts DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: reading the panel failed (non-fatal)")
+            return None
+        if row is None or not (row[3] or "").strip():
+            return None
+        return {"ts": row[0], "title": row[1], "format": row[2], "content": row[3]}
+
+    def clear_display(self) -> bool:
+        """Blank the panel. True when something was actually cleared.
+
+        An empty newest row rather than a DELETE: every reader already
+        takes the newest row, so this needs no reader to change, and the
+        history of what was shown survives — which matters, because
+        "поверни назад" is the next thing a person says after "очисти".
+        """
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "SELECT content FROM displays ORDER BY ts DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+                if row is None or not (row[0] or "").strip():
+                    return False
+                self._conn.execute(
+                    "INSERT INTO displays (ts, title, format, content)"
+                    " VALUES (?, ?, ?, ?)",
+                    (time.time(), "", "text", ""),
+                )
+                self._conn.commit()
+                return True
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: clearing the panel failed (non-fatal)")
+            return False
+
     # -- where one conversation ends and the next begins ---------------
     #
     # Nothing had closed a conversation since 13 August: the code that
@@ -537,9 +597,7 @@ class SpinePersistence:
                 "ORDER BY end_ts ASC LIMIT ?",
                 (float(since_ts), int(limit)),
             )
-            return [
-                (int(row[0]), float(row[1]), str(row[2])) for row in cur.fetchall()
-            ]
+            return [(int(row[0]), float(row[1]), str(row[2])) for row in cur.fetchall()]
 
     def recent_exchanges(self, n: int = 6) -> list[dict]:
         """Last n closed turns as [{"user": ..., "agent": ...}] oldest
