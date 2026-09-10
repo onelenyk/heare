@@ -104,14 +104,6 @@ RETIRED: dict[str, str] = {
     "memory_auto_extract": "switch it with spine_features = { memory = false }",
     "memory_block_max_chars": "the prompt takes the three most relevant memories",
     "context_recent_transcripts_count": "the prompt takes four recent exchanges",
-    # Provider endpoints and model names. These duplicated the ones in
-    # src/agent/llm/providers.py, which is the table that is actually read.
-    "zai_base_url": "src/agent/llm/providers.py owns provider endpoints",
-    "zai_model": "src/agent/llm/providers.py owns provider models",
-    "opencode_base_url": "src/agent/llm/providers.py owns provider endpoints",
-    "opencode_model": "src/agent/llm/providers.py owns provider models",
-    "openrouter_base_url": "src/agent/llm/providers.py owns provider endpoints",
-    "openrouter_model": "src/agent/llm/providers.py owns provider models",
     # Sidetone was never played by either engine.
     "sidetone_volume": "nothing plays a sidetone",
     # An allowlist for claude-agent-sdk, whose only reader was a method
@@ -299,16 +291,31 @@ class Settings:
     # Silence that ends an utterance for the VAD. Short enough to stay
     # responsive, long enough that a breath is not a full stop.
     spine_vad_stop_ms: int = 800
-    # LLM provider switching (deepseek | zai | opencode)
+    # LLM provider switching (deepseek | zai | opencode | openrouter)
+    #
+    # Every `<provider>_base_url` and `<provider>_model` below is read by
+    # a name built at runtime — getattr(settings, f"{name}_model") in
+    # resolve_llm (src/spine/llm.py) and Hands._provider — and written the
+    # same way by the dashboard's model picker (src/api.py). No line of
+    # code spells any of them out, so a search for the literal name finds
+    # nothing. They were retired on that evidence on 9 September and put
+    # back the next day: without them a model chosen in the dashboard was
+    # dropped by load_settings on the next boot.
     llm_provider: str = "deepseek"
     provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")
     zai_api_key: str | None = None
+    zai_base_url: str = "https://api.z.ai/api/anthropic"
+    zai_model: str = "claude-3-5-sonnet"
     # OpenCode Go — OpenAI-compatible API at opencode.ai/zen/go/v1.
     # API key is read from OPENCODE_API_KEY env var.
     opencode_api_key: str | None = None
+    opencode_base_url: str = "https://opencode.ai/zen/go/v1"
+    opencode_model: str = "minimax-m2.7"
     # OpenRouter — OpenAI-compatible, and the one provider that reports
     # what each call actually cost. API key from OPENROUTER_API_KEY.
     openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
     # Looking at the screen is a separate choice from talking, because
     # the conversation model cannot do it: DeepSeek takes no images at
     # all. Kept as its own provider+model so switching the voice to a

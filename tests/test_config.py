@@ -567,3 +567,47 @@ def test_the_engine_setting_is_not_a_setting() -> None:
     it would switch to.
     """
     assert not hasattr(Settings(), "engine")
+
+
+# ── the model picker survives a restart ──────────────────────────────
+#
+# On 9 September six provider fields were retired as unread — a text
+# search found no line spelling out `openrouter_model`. The dashboard's
+# model picker writes it as f"{provider}_model", and resolve_llm and the
+# worker read it the same way, so the choice was written to config.toml
+# and then dropped by load_settings on the next boot. Restored the next day.
+
+
+import pytest  # noqa: E402
+
+from src.agent.llm.providers import PROVIDERS  # noqa: E402
+
+
+@pytest.mark.parametrize("provider", sorted(PROVIDERS))
+def test_a_chosen_model_survives_a_restart(monkeypatch, tmp_path, provider) -> None:
+    """The path the dashboard takes: write the key, boot, read it back."""
+    import src.config as cfg_mod
+
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    cfg_mod.write_config_toml_values({f"{provider}_model": "chosen/in-the-dashboard"})
+
+    settings = load_settings()
+
+    assert getattr(settings, f"{provider}_model") == "chosen/in-the-dashboard"
+
+
+def test_the_voice_uses_the_chosen_model(monkeypatch, tmp_path) -> None:
+    """Not just loaded — used. resolve_llm is what the voice calls on
+    every turn, and it asks for the model by a built name."""
+    import src.config as cfg_mod
+    from src.spine.llm import resolve_llm
+
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    (tmp_path / "config.toml").write_text(
+        'llm_provider = "openrouter"\n'
+        'openrouter_model = "~deepseek/deepseek-v4-flash-latest"\n'
+    )
+    settings = load_settings()
+    settings.openrouter_api_key = "sk-or-test"
+
+    assert resolve_llm(settings).model == "~deepseek/deepseek-v4-flash-latest"
