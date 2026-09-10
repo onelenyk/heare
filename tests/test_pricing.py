@@ -179,7 +179,7 @@ class TestEdgeTTSKeySpelling:
     def test_the_recorders_default_matches_the_catalog(self) -> None:
         import inspect
 
-        from src.spine.usage import SpineUsage
+        from src.features.usage.ledger import SpineUsage
 
         default = inspect.signature(SpineUsage.tts).parameters["provider"].default
         assert tts_cost(provider=default, char_count=100) is not None, (

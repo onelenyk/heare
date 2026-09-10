@@ -16,12 +16,43 @@ from __future__ import annotations
 
 import asyncio
 
-from src.doctor import _NOT_OURS_TO_SAY, _plugin_section, _tool_section
+import pytest
+
+from src.doctor import _NOT_OURS_TO_SAY, _plugin_section, _survey, _tool_section
 
 
-def test_the_empty_register_says_so_rather_than_looking_broken() -> None:
+@pytest.fixture
+def isolated_settings(monkeypatch, tmp_path):
+    """Settings that belong to no machine: a throwaway ~/.heare and a fake
+    key. The doctor builds a whole engine, and an engine built from this
+    laptop's keys and database is a test that passes here and nowhere
+    else — CI included."""
+    import src.config as cfg_mod
+
+    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
+    for var in ("DEEPSEEK_API_KEY", "ZAI_API_KEY", "OPENCODE_API_KEY",
+                "OPENROUTER_API_KEY", "HEARE_WITHOUT", "HEARE_SAFE_MODE"):
+        monkeypatch.delenv(var, raising=False)
+    settings = cfg_mod.load_settings()
+    settings.deepseek_api_key = "sk-test"
+    return settings
+
+
+def test_an_empty_register_says_so_rather_than_looking_broken(monkeypatch) -> None:
+    import src.plugins as plugins_mod
+
+    monkeypatch.setattr(plugins_mod, "_REGISTERED", {})
     lines = _plugin_section()
     assert lines and any("порожньо" in line for line in lines)
+
+
+def test_a_moved_feature_is_answered_by_its_plugin_not_twice(isolated_settings) -> None:
+    """`usage` moved into the register. It must appear there, in its own
+    words, and not also in the old-style section below it — a feature
+    listed twice with two different answers is worse than either."""
+    plugin_lines, feature_lines = asyncio.run(_survey(isolated_settings))
+    assert any(line.strip().startswith("usage") for line in plugin_lines)
+    assert not any(line.strip().startswith("usage") for line in feature_lines)
 
 
 def test_the_tool_section_counts_what_the_worker_would_offer() -> None:
@@ -37,12 +68,9 @@ def test_the_tool_section_counts_what_the_worker_would_offer() -> None:
         assert name in "\n".join(lines)
 
 
-def test_what_the_doctor_cannot_judge_is_labelled_not_guessed() -> None:
+def test_what_the_doctor_cannot_judge_is_labelled_not_guessed(isolated_settings) -> None:
     """`?` with a reason, never `OFF`."""
-    from src.config import load_settings
-    from src.doctor import _feature_section
-
-    lines = asyncio.run(_feature_section(load_settings()))
+    _, lines = asyncio.run(_survey(isolated_settings))
     for name, why in _NOT_OURS_TO_SAY.items():
         row = next(line for line in lines if line.strip().startswith(name))
         assert "OFF" not in row, (

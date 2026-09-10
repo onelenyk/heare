@@ -166,7 +166,7 @@ async def look(
         "max_tokens": 300,
         # OpenRouter reports what the call actually cost, but only when
         # asked. That number beats any price table copied by hand — see
-        # the comment in spine/usage.py about why this matters here.
+        # the comment in features/usage/ledger.py about why this matters here.
         "usage": {"include": True},
         "messages": [
             {"role": "system", "content": SYSTEM},
@@ -221,12 +221,15 @@ def _record(usage: Any, settings: Any, model: str, body: dict) -> None:
     u = body.get("usage") or {}
     try:
         if usage is None:
-            from src.spine.usage import SpineUsage
+            # Asked of the plugin, not built here. This used to open its
+            # own SQLite connection per look whenever no ledger was handed
+            # in — which was always — so switching `usage` off stopped
+            # every writer but this one.
+            from src.features.usage import ledger_for
 
-            db_path = getattr(settings, "db_path", None)
-            if not db_path:
+            usage = ledger_for(settings)
+            if usage is None:
                 return
-            usage = SpineUsage(db_path)
         usage.llm(
             model=model,
             input_tokens=int(u.get("prompt_tokens") or 0),

@@ -105,11 +105,23 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     # Shorter than a spoken word: don't pay Groq to hallucinate on it.
     min_speech_ms = 240
 
-    usage = None
-    if full and features["usage"]:
-        from src.spine.usage import SpineUsage
+    # Plugins go in the register before anything is wired, so `make doctor`
+    # and the dashboard can ask them about themselves.
+    from src.features import install as install_features
+    from src.plugins import WireContext
 
-        usage = SpineUsage(settings.db_path)
+    install_features()
+
+    # The first subsystem wired through the plugin contract rather than by
+    # hand. The switch is still resolved here — one place decides what
+    # runs — and handed to the plugin, which builds or declines.
+    usage = None
+    if full:
+        from src.features.usage import PLUGIN as usage_plugin
+
+        usage = usage_plugin.wire(
+            WireContext(settings=settings, enabled=features["usage"])
+        )
 
     async def _stt(pcm: bytes):
         lang = settings.groq_language or "uk"

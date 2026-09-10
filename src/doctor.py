@@ -12,8 +12,8 @@ reported what was *built*.
 So this builds the whole engine with no microphone and no speaker, the way
 `--check` does, and then asks the live objects rather than the config:
 
-    plugins   the register in src/plugins.py — empty until features move
-              into it, and that emptiness is honest, not a bug
+    plugins   the register in src/plugins.py — each feature that has
+              moved into src/features/ answers health() for itself
     features  wired_features(): `loop.aec is not None`, not
               `spine_features.aec`. A subsystem that failed to build
               reads OFF here, which is the whole point of the instrument
@@ -43,7 +43,7 @@ def _plugin_section() -> list[str]:
     rows = report()
     if not rows:
         return [
-            "  (порожньо — жодна фіча ще не переїхала в реєстр)",
+            "  (порожньо — жодна фіча не зареєстрована)",
             "  docs/core-and-plugins.md — у якому порядку вони їдуть і чому",
         ]
     width = max(len(name) for name, _ in rows)
@@ -66,17 +66,37 @@ _NOT_OURS_TO_SAY: dict[str, str] = {
 }
 
 
-async def _feature_section(settings) -> list[str]:
-    """Ask a fully wired engine, not the config that described it."""
+async def _survey(settings) -> tuple[list[str], list[str]]:
+    """Build the engine once and ask everything while it is standing.
+
+    Plugins have to be asked before the engine is closed: closing is what
+    releases the ledger's connection, and a health() read afterwards would
+    report the shutdown rather than the state.
+    """
     from src.daemon.spine_engine import wired_features
     from src.spine.main import _build_loop, _close_loop
 
     loop = await _build_loop(settings, audio=None, voice="", hold_s=1.3, full=True)
     try:
+        plugin_lines = _plugin_section()
         entries = wired_features(loop)
     finally:
         await _close_loop(loop)
+    return plugin_lines, _feature_lines(entries)
 
+
+def _feature_lines(entries: list[dict]) -> list[str]:
+    """The old way of answering, for whatever has not moved yet.
+
+    A feature answered by its plugin is left out here — it is in the
+    section above, in its own words. Watching rows leave this list is how
+    the migration shows.
+    """
+    from src.plugins import get as get_plugin
+
+    entries = [e for e in entries if get_plugin(e["name"]) is None]
+    if not entries:
+        return ["  (усі фічі вже відповідають за себе самі)"]
     width = max(len(e["name"]) for e in entries)
     lines = []
     for entry in sorted(entries, key=lambda e: (e["on"], e["name"])):
@@ -124,15 +144,20 @@ async def _amain(args: argparse.Namespace) -> int:
     load_env()
     settings = load_settings()
 
-    out: list[str] = []
-    out.append(_rule("ПЛАГІНИ  (src/plugins.py)"))
-    out += _plugin_section()
-
-    out.append(_rule("ФІЧІ  (що збудувалось, а не що просили)"))
     try:
-        out += await _feature_section(settings)
+        plugin_lines, feature_lines = await _survey(settings)
     except Exception as exc:  # noqa: BLE001 - report it, do not raise it
-        out.append(f"  двигун не зібрався: {exc}")
+        # The engine did not build; the plugins can still say what they
+        # know, which is at least that nothing was wired.
+        plugin_lines = _plugin_section()
+        feature_lines = [f"  двигун не зібрався: {exc}"]
+
+    out: list[str] = []
+    out.append(_rule("ПЛАГІНИ  (src/features/ — відповідають самі за себе)"))
+    out += plugin_lines
+
+    out.append(_rule("ФІЧІ  (ще по-старому: що збудувалось, а не що просили)"))
+    out += feature_lines
 
     out.append(_rule("ІНСТРУМЕНТИ"))
     out += _tool_section()

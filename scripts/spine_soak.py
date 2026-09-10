@@ -5,7 +5,7 @@ turns run through the *real* SpineLoop (src/spine/loop.py), real
 TurnAssembler (src/spine/turn.py), real EnergyVAD (src/spine/vad.py) and
 real sentence splitter (src/spine/sentences.py) — only the network/device
 edges are faked: STT, TTS and (offline, the default) the LLM. Persistence
-(src/spine/persist.py) and usage accounting (src/spine/usage.py) run for
+(src/spine/persist.py) and usage accounting (src/features/usage/ledger.py) run for
 real against a throwaway sqlite db in a temp directory, because real disk
 I/O is part of what a soak is supposed to catch.
 
@@ -49,7 +49,7 @@ from src.spine.sentences import sentences  # noqa: E402
 from src.spine.turn import TurnAssembler  # noqa: E402
 from src.spine.vad import EnergyVAD  # noqa: E402
 from src.spine.persist import SpinePersistence  # noqa: E402
-from src.spine.usage import SpineUsage  # noqa: E402
+from src.features.usage.ledger import SpineUsage  # noqa: E402
 
 
 # -- synthetic speech ---------------------------------------------------

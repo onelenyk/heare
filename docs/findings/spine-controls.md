@@ -36,7 +36,7 @@ four now works. What's left dead mostly drives a **pipecat stage**
 | roles strip (status) | `RolesCard.jsx:54-60` | `GET /state` | — | yes — `roles_available`, `role_active/turns/last_heard/finishing/channel/since/hint` | **WORKS** |
 | artifacts list / open | `RolesCard.jsx:76, 141` | `GET /api/artifacts[/{name}]` | reads `workspace/artifacts/*.md` | yes — written by `src/spine/main.py` | **WORKS** |
 | daemon start / stop / restart | `StatusBar.jsx:54, 57, 60` | `POST /daemon` (`api.py:729`) | in-process callbacks / SIGTERM | yes — cancels/recreates the task running `run_spine_daemon` | **WORKS** |
-| usage card | `UsageCard` ← `GET /state` | `api.py:422` | reads `usage_events` | yes — `src/spine/usage.py` writes llm/stt/tts rows | **WORKS** |
+| usage card | `UsageCard` ← `GET /state` | `api.py:422` | reads `usage_events` | yes — `src/features/usage/ledger.py` writes llm/stt/tts rows | **WORKS** |
 | running / transcript count / last response | `StatusBar.jsx:18-31`, `Dashboard.jsx:427` | `GET /state` | — | yes | **WORKS** |
 | identity (name/emoji/regenerate) | `SetupModal.jsx:62, 76` | `POST /api/setup/identity[/regenerate]` | `~/.heare/identity.json` | yes, after restart | **WORKS** |
 | panel toggles, canvas close, history tabs | `ControlsCard.jsx:38-68`, `Dashboard.jsx:448` | — | React state only | n/a — pure UI | **WORKS** |

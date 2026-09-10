@@ -18,7 +18,7 @@ from src.agent.llm import pricing
 from src.store.storage import SCHEMA
 
 
-logger = logging.getLogger("heare.spine.usage")
+logger = logging.getLogger("heare.features.usage")
 
 
 class SpineUsage:

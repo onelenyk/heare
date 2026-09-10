@@ -266,7 +266,6 @@ _LIVE_ATTR: dict[str, str] = {
     "mcp": "mcp",
     "memory": "memory",
     "persist": "persist",
-    "usage": "usage",
     "engine": "engine",
 }
 
@@ -321,12 +320,18 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
     subsystem that failed to build must read `off`, or the instrument is
     worse than useless.
 
+    A feature that has moved into the plugin register (src/features/)
+    answers for itself through ``health()``, and its entry also carries
+    ``verdict`` and ``detail`` — the difference between "built" and
+    "built, and the database it writes to is unreachable". Everything
+    below is the old way, one branch per feature, shrinking as they move.
+
     Each entry carries ``observed``:
 
-      observed=True   the answer comes from the live object — the eight
-                      names in ``_LIVE_ATTR`` (``loop.mcp is not None``,
-                      ``loop.aec is not None``, …) plus ``telemetry``,
-                      which is the object this runner built.
+      observed=True   the answer comes from the live object — a plugin's
+                      health(), a name in ``_LIVE_ATTR``
+                      (``loop.mcp is not None``, ``loop.aec is not None``,
+                      …), or ``telemetry``, the object this runner built.
       observed=False  no object exists to ask, so the resolved flag is
                       repeated as-is. Nothing is in this class today; the
                       branch is here so a future feature without a live
@@ -344,11 +349,30 @@ def wired_features(loop: Any, telemetry: Any = None) -> list[dict]:
     (a cold `npx` can take a minute), so it honestly reads `off` until the
     bridge lands — run_spine_daemon publishes again when it does.
     """
+    from src.plugins import get as get_plugin
     from src.spine.features import FEATURES
 
     declared = getattr(loop, "features", None) or {}
     entries: list[dict] = []
     for f in FEATURES:
+        plugin = get_plugin(f.name)
+        if plugin is not None:
+            # A feature that has moved into the register answers for
+            # itself. Every branch below is one this table had to write
+            # on the feature's behalf, knowing its insides; each move
+            # deletes one.
+            health = plugin.health()
+            entries.append(
+                {
+                    "name": f.name,
+                    "on": health.wired,
+                    "cost": f.cost,
+                    "observed": True,
+                    "verdict": health.verdict,
+                    "detail": health.detail,
+                }
+            )
+            continue
         if f.name == "watcher":
             # It has no object of its own: the watch is a collaborator
             # inside the engine, and with no engine there is nothing

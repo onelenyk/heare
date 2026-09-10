@@ -76,11 +76,14 @@ def test_off_is_not_a_fault() -> None:
 # ── the register ──────────────────────────────────────────────────────
 
 
+def _row(name: str):
+    return next(health for n, health in report() if n == name)
+
+
 def test_a_plugin_that_answers_is_taken() -> None:
     register(_Fine())
-    assert [p.name for p in plugins()] == ["fine"]
-    (name, health), = report()
-    assert (name, health.ok) == ("fine", True)
+    assert "fine" in [p.name for p in plugins()]
+    assert _row("fine").ok
 
 
 @pytest.mark.parametrize("missing", ["name", "cost", "wire", "health"])
@@ -89,9 +92,10 @@ def test_a_plugin_that_cannot_answer_is_refused(missing: str) -> None:
     that renders blank, and blank reads like working."""
     plugin = _Fine()
     setattr(plugin, missing, "" if missing in ("name", "cost") else None)
+    before = plugins()
     with pytest.raises(TypeError, match=missing):
         register(plugin)
-    assert not plugins()
+    assert plugins() == before
 
 
 def test_two_plugins_cannot_share_a_name() -> None:
@@ -112,10 +116,23 @@ def test_a_broken_probe_is_a_finding_not_a_crash() -> None:
             raise RuntimeError("сокет закритий")
 
     register(_Raises())
-    (name, health), = report()
-    assert name == "raises"
+    health = _row("raises")
     assert health.verdict == "NOT WIRED"
     assert "сокет закритий" in health.detail
+
+
+def test_install_is_idempotent_but_register_is_not() -> None:
+    """The composition root installs on every engine it builds; the same
+    object twice is one plugin. A different object under a taken name is
+    still a collision."""
+    from src.plugins import install
+
+    fine = _Fine()
+    install(fine)
+    install(fine)
+    assert [p.name for p in plugins()].count("fine") == 1
+    with pytest.raises(ValueError):
+        install(_Fine())
 
 
 def test_the_optional_half_defaults_to_nothing() -> None:

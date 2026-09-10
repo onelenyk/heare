@@ -38,7 +38,7 @@
 | `transcripts`, `turns` | `spine/persist.py` | контекст промпта, дашборд, пошук |
 | `role_sessions` | `role_session.py` через `persist` | відновлення після рестарту |
 | `memories` (+FTS) | тули `remember` / `forget` | блок пам'яті в промпті, `recall` |
-| `usage_events` | `spine/usage.py` | картка витрат |
+| `usage_events` | `features/usage/` (плагін) | картка витрат, `make doctor` |
 | `jobs`, `actions` | `agent/hands.py` | «що я робив» |
 | `turns.jsonl` | `spine/telemetry.py` | вимірювання якості розмови |
 

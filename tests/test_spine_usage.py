@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src.spine.usage import SpineUsage
+from src.features.usage.ledger import SpineUsage
 from src.store.storage import SCHEMA
 
 
@@ -210,7 +210,7 @@ class TestUnpricedIsNotFree:
     """
 
     def test_an_uncatalogued_model_records_null_not_zero(self, tmp_path) -> None:
-        from src.spine.usage import SpineUsage
+        from src.features.usage.ledger import SpineUsage
 
         usage = SpineUsage(tmp_path / "u.db")
         usage.llm("a-model-nobody-priced", 1_000_000, 500_000, provider="mystery")
@@ -221,7 +221,7 @@ class TestUnpricedIsNotFree:
         assert row[0] is None, "unpriced was stored as a number, and 0.0 reads as free"
 
     def test_a_catalogued_model_is_still_priced_from_the_table(self, tmp_path) -> None:
-        from src.spine.usage import SpineUsage
+        from src.features.usage.ledger import SpineUsage
 
         usage = SpineUsage(tmp_path / "u.db")
         usage.llm("deepseek-v4-flash", 1_000_000, 1_000_000, provider="deepseek")
@@ -234,7 +234,7 @@ class TestUnpricedIsNotFree:
     def test_the_provider_number_wins_over_the_catalog(self, tmp_path) -> None:
         """OpenRouter states the dollars it charged. A price list copied
         off a web page by hand does not get to overrule the invoice."""
-        from src.spine.usage import SpineUsage
+        from src.features.usage.ledger import SpineUsage
 
         usage = SpineUsage(tmp_path / "u.db")
         usage.llm(
@@ -253,7 +253,7 @@ class TestUnpricedIsNotFree:
     def test_a_provider_reported_zero_is_kept_as_zero(self, tmp_path) -> None:
         """A free model really does cost nothing, and that is a fact the
         provider is entitled to state. Only *silence* becomes NULL."""
-        from src.spine.usage import SpineUsage
+        from src.features.usage.ledger import SpineUsage
 
         usage = SpineUsage(tmp_path / "u.db")
         usage.llm("some/free-model", 10, 10, provider="openrouter", cost_usd=0.0)
@@ -266,7 +266,7 @@ class TestUnpricedIsNotFree:
     def test_the_ledger_records_who_charged(self, tmp_path) -> None:
         """``provider`` defaulted to 'deepseek' and the caller never
         passed one, so every row claimed DeepSeek whoever answered."""
-        from src.spine.usage import SpineUsage
+        from src.features.usage.ledger import SpineUsage
 
         usage = SpineUsage(tmp_path / "u.db")
         usage.llm("qwen/qwen3.7-flash", 10, 10, provider="openrouter")

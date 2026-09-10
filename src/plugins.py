@@ -26,7 +26,8 @@ A plugin that cannot answer them does not load. That is what turns
 `unreachable_tools()` from a hand-written list into a question, and
 `make doctor` into a print of the answer.
 
-Nothing is registered here yet. See docs/core-and-plugins.md for the order
+Plugins live in src/features/<name>/, and src/features/__init__.py is the
+one list of what is installed. See docs/core-and-plugins.md for the order
 things move in, and why the order is that one.
 """
 from __future__ import annotations
@@ -96,6 +97,25 @@ class Health:
         return cls(declared=True, wired=True, reachable=True)
 
 
+@dataclass(frozen=True)
+class WireContext:
+    """What a plugin is handed when it is attached — and nothing more.
+
+    ``enabled`` is the switch already resolved by the composition root
+    (env > --without > config.toml > default, see src/spine/features.py).
+    The plugin is told, not asked to work it out: there is one place that
+    decides what runs, and a plugin reading the config for itself would be
+    a second one.
+
+    Deliberately small. A plugin that needs something else from the core
+    should get it added here by name, in a commit that says why — not
+    reach for it through the conductor.
+    """
+
+    settings: Any
+    enabled: bool
+
+
 @runtime_checkable
 class Plugin(Protocol):
     """One optional capability, whole: its name, its price, its verbs, how
@@ -115,7 +135,7 @@ class Plugin(Protocol):
     name: str
     cost: str  # what the person loses when this is off, in their language
 
-    def wire(self, core: Any) -> Any: ...
+    def wire(self, ctx: WireContext) -> Any: ...
 
     def health(self) -> Health: ...
 
@@ -137,7 +157,7 @@ class PluginBase:
     name: str = ""
     cost: str = ""
 
-    def wire(self, core: Any) -> Any:  # pragma: no cover - overridden
+    def wire(self, ctx: WireContext) -> Any:  # pragma: no cover - overridden
         raise NotImplementedError
 
     def health(self) -> Health:  # pragma: no cover - overridden
@@ -183,6 +203,26 @@ def register(plugin: Plugin) -> Plugin:
     return plugin
 
 
+def install(*candidates: Plugin) -> None:
+    """Register each plugin once, however many times this is called.
+
+    The composition root runs once per engine it builds, and a process can
+    build several (the test suite builds hundreds, `make doctor` builds
+    one beside a live daemon). The same object twice is the same plugin;
+    a *different* object under a taken name is still refused by
+    ``register``.
+    """
+    for plugin in candidates:
+        if _REGISTERED.get(plugin.name) is plugin:
+            continue
+        register(plugin)
+
+
+def get(name: str) -> Plugin | None:
+    """One plugin by name, or None."""
+    return _REGISTERED.get(name)
+
+
 def unregister(name: str) -> bool:
     """Drop one. For tests; nothing in the running app removes a plugin."""
     return _REGISTERED.pop(name, None) is not None
@@ -223,6 +263,9 @@ __all__ = [
     "Health",
     "Plugin",
     "PluginBase",
+    "WireContext",
+    "get",
+    "install",
     "plugins",
     "register",
     "report",

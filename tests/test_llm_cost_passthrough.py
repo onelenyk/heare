@@ -147,7 +147,7 @@ class TestEndToEndIntoTheLedger:
     async def test_a_reported_cost_lands_in_the_database(self, tmp_path) -> None:
         """The seam this fix is really about: what the provider charged
         has to survive all the way into usage_events, not be recomputed."""
-        from src.spine.usage import SpineUsage
+        from src.features.usage.ledger import SpineUsage
 
         chunk = {
             "model": "qwen/qwen3.7-flash",
