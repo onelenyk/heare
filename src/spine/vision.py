@@ -219,23 +219,28 @@ def _record(usage: Any, settings: Any, model: str, body: dict) -> None:
     call. Leaving it uncounted is how the last accounting hole started.
     """
     u = body.get("usage") or {}
-    try:
-        if usage is None:
-            # Asked of the plugin, not built here. This used to open its
-            # own SQLite connection per look whenever no ledger was handed
-            # in — which was always — so switching `usage` off stopped
-            # every writer but this one.
-            from src.features.usage import ledger_for
 
-            usage = ledger_for(settings)
-            if usage is None:
-                return
-        usage.llm(
+    def _write(ledger: Any) -> None:
+        ledger.llm(
             model=model,
             input_tokens=int(u.get("prompt_tokens") or 0),
             output_tokens=int(u.get("completion_tokens") or 0),
             provider=(getattr(settings, "vision_provider", "") or "openrouter"),
             cost_usd=u.get("cost"),
         )
+
+    try:
+        if usage is not None:
+            _write(usage)
+            return
+        # Asked of the plugin, not built here. This used to open its own
+        # SQLite connection per look whenever no ledger was handed in —
+        # which was always — so switching `usage` off stopped every
+        # writer but this one.
+        from src.features.usage import counting
+
+        with counting(settings) as ledger:
+            if ledger is not None:
+                _write(ledger)
     except Exception:  # noqa: BLE001
         logger.exception("vision: failed to record usage (non-fatal)")

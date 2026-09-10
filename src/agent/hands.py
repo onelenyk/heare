@@ -499,16 +499,58 @@ class Hands:
         self, client: httpx.AsyncClient, messages: list[dict], schemas: list[dict]
     ) -> dict:
         """One completion against whichever provider the daemon is using."""
-        base_url, api_key, model = self._provider()
+        provider, base_url, api_key, model = self._provider()
+        payload: dict[str, Any] = {"model": model, "messages": messages, "tools": schemas}
+        # Same request the voice path makes: OpenRouter states what a call
+        # cost only when asked, and a stated cost beats a price table.
+        if provider == "openrouter":
+            payload["usage"] = {"include": True}
         resp = await client.post(
             f"{base_url.rstrip('/')}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "messages": messages, "tools": schemas},
+            json=payload,
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]
+        body = resp.json()
+        await self._count(provider, model, body.get("usage"))
+        return body["choices"][0]["message"]
 
-    def _provider(self) -> tuple[str, str, str]:
+    async def _count(self, provider: str, model: str, usage: dict | None) -> None:
+        """Put one worker call in the ledger.
+
+        Until 10 September this did not exist, and nothing else wrote the
+        worker's calls down either: every response carried a ``usage``
+        block and ``_chat`` threw it away with the rest of the envelope.
+        The voice path's calls were counted; the worker's — up to twelve
+        per job, each carrying the whole tool list in its prompt — were
+        not. Twenty-eight delegations between 10 and 21 August, sixty-nine
+        tool steps among them: on the order of a hundred calls the usage
+        card never saw.
+
+        Best-effort, like every other writer. A ledger that fails must not
+        fail the job.
+        """
+        if not usage:
+            return
+        from src.features.usage import counting
+        from src.spine.llm import _reported_cost
+
+        try:
+            with counting(self._settings) as ledger:
+                if ledger is None:
+                    return
+                await asyncio.to_thread(
+                    ledger.llm,
+                    model=model,
+                    input_tokens=int(usage.get("prompt_tokens") or 0),
+                    output_tokens=int(usage.get("completion_tokens") or 0),
+                    provider=provider,
+                    cost_usd=_reported_cost(usage),
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug("hands: failed to record usage (non-fatal)", exc_info=True)
+
+    def _provider(self) -> tuple[str, str, str, str]:
         """Follow the live provider so hands and voice never diverge."""
         from src.agent.llm.providers import PROVIDERS
 
@@ -534,4 +576,4 @@ class Hands:
         base_url = getattr(self._settings, f"{key}_base_url", "") or cfg.base_url
         model = getattr(self._settings, f"{key}_model", "") or cfg.default_model
         api_key = getattr(self._settings, cfg.api_key_attr, "") or ""
-        return base_url, api_key, model
+        return key, base_url, api_key, model

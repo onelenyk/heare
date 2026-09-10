@@ -15,7 +15,8 @@ writer now asks `ledger_for()`, and the answer is the plugin's.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 from src.features.usage.ledger import SpineUsage
 from src.plugins import Health, PluginBase, WireContext
@@ -100,4 +101,22 @@ def ledger_for(settings: Any) -> SpineUsage | None:
     return PLUGIN.ledger_for(settings)
 
 
-__all__ = ["PLUGIN", "SpineUsage", "UsagePlugin", "ledger_for"]
+@contextmanager
+def counting(settings: Any) -> Iterator[SpineUsage | None]:
+    """The ledger to write one call into, or None to count nothing.
+
+    The form every writer outside the composition root should use. A
+    standalone ledger — the no-engine case of ``ledger_for`` — owns a
+    SQLite connection, and a writer that asks once per call must not leave
+    one behind per call; the shared ledger belongs to the engine, which
+    closes it at shutdown.
+    """
+    ledger = PLUGIN.ledger_for(settings)
+    try:
+        yield ledger
+    finally:
+        if ledger is not None and ledger is not PLUGIN._ledger:
+            ledger.close()
+
+
+__all__ = ["PLUGIN", "SpineUsage", "UsagePlugin", "counting", "ledger_for"]
