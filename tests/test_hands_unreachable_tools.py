@@ -26,6 +26,7 @@ import pytest
 from src.agent.hands import (
     _AGENT_TOOLS,
     _BROWSER_TOOLS,
+    _DYNAMIC_TOOL_VERBS,
     _TOOLS_WITH_NO_READER,
     Hands,
     unreachable_tools,
@@ -64,6 +65,42 @@ class TestNothingIsOfferedWithoutAnExecutor:
         """Unlike the others these never come back on a probe: there is
         no reader to detect, in either engine."""
         assert not (_TOOLS_WITH_NO_READER & schema_names())
+
+    def test_verbs_that_make_unusable_tools_are_hidden(self, schema_names) -> None:
+        """create_tool makes something the worker never offers and
+        execute_direct cannot run. Offering it teaches the model it built
+        a tool; the person then asks for it and nothing answers."""
+        names = schema_names()
+        assert not (_DYNAMIC_TOOL_VERBS & names)
+        assert "list_tools" in names  # it works, and it tells the truth
+
+    def test_a_created_tool_really_is_unreachable(self) -> None:
+        """The reason for hiding, pinned — so the day someone wires dynamic
+        tools back in, this fails and says to unhide the verbs.
+
+        Two halves: the worker would not offer it, and the executor would
+        not run it."""
+        import asyncio
+
+        from src.agent.tools.direct import execute_direct
+        from src.agent.tools.registry import (
+            Tool,
+            register_dynamic_tool,
+            unregister_dynamic_tool,
+        )
+
+        register_dynamic_tool(Tool(name="weather_now", description="погода"))
+        try:
+            hands = Hands.__new__(Hands)
+            hands._settings = MagicMock(capability_install_enabled=False)
+            hands._session_state = None
+            offered = {s["function"]["name"] for s in hands._tool_schemas()}
+            assert "weather_now" not in offered
+            result = asyncio.run(execute_direct("weather_now", "{}"))
+            assert result["success"] is False
+            assert "Unknown direct tool" in result["error"]
+        finally:
+            unregister_dynamic_tool("weather_now")
 
     def test_the_worker_still_has_real_work(self, schema_names) -> None:
         """A gate that hides everything would pass all of the above."""
@@ -126,5 +163,7 @@ class TestEveryHiddenNameIsReal:
         from src.agent.tools.system import TOOLS
 
         defined = {t.name for t in TOOLS}
-        declared = _AGENT_TOOLS | _BROWSER_TOOLS | _TOOLS_WITH_NO_READER
+        declared = (
+            _AGENT_TOOLS | _BROWSER_TOOLS | _TOOLS_WITH_NO_READER | _DYNAMIC_TOOL_VERBS
+        )
         assert declared <= defined, f"gate names no such tool: {declared - defined}"

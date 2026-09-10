@@ -87,11 +87,24 @@ _BROWSER_TOOLS = frozenset({
 # spine's threshold is a constant in ``spine/vad.py``). A tool that
 # answers "done" and changes nothing teaches the model it did something.
 _TOOLS_WITH_NO_READER = frozenset({"sidetone", "vad_sensitivity"})
+# The third kind: a verb that makes something nothing can use. A tool made
+# by create_tool is never offered to the model again — _tool_schemas()
+# builds from system.TOOLS alone — and could not run if it were:
+# execute_direct has no branch for it, and the handler that did,
+# system.register_dynamic_tool_handler, registers with a pipecat LLM that
+# went on 17 August. Nothing loads the dynamic_tools table at boot either.
+# create_tool and delete_tool also import src.agent.tools.schemas, which
+# does not exist, so today they write their row and then raise; mending
+# that import would turn the crash into «created and ready to use» for a
+# tool no one will ever see. Hidden until the feature is either rebuilt
+# or removed (docs/core-and-plugins.md, phase 5). list_tools stays: it
+# works, and it says truthfully what is built in.
+_DYNAMIC_TOOL_VERBS = frozenset({"create_tool", "update_tool", "delete_tool"})
 
 
 def unreachable_tools() -> frozenset[str]:
     """Names the worker must not offer, because nothing can carry them out."""
-    hidden: set[str] = set(_TOOLS_WITH_NO_READER)
+    hidden: set[str] = set(_TOOLS_WITH_NO_READER) | _DYNAMIC_TOOL_VERBS
 
     try:
         from src.agent.subagent_manager import get_agent_manager
