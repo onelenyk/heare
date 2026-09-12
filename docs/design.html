@@ -1,0 +1,633 @@
+<title>Дизайн heare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+:root {
+  --ground: #E8ECEA; --surface: #FAFBFA; --ink: #1A201E; --muted: #56625D;
+  --line: #C5CDC9; --grid: #D9DFDC; --accent: #2C5D8A; --accent-soft: rgba(44,93,138,.10);
+  --core: #1A201E; --core-ink: #EEF2F0; --warn: #A8701A;
+  --font-display: "Unbounded","IBM Plex Sans",system-ui,sans-serif;
+  --font-body: "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono: "IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:#141917; --surface:#1C2320; --ink:#E3EAE6; --muted:#97A49E; --line:#2E3834; --grid:#26302C;
+    --accent:#86AEDA; --accent-soft:rgba(134,174,218,.13); --core:#E3EAE6; --core-ink:#141917; --warn:#D8A547;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#141917; --surface:#1C2320; --ink:#E3EAE6; --muted:#97A49E; --line:#2E3834; --grid:#26302C;
+  --accent:#86AEDA; --accent-soft:rgba(134,174,218,.13); --core:#E3EAE6; --core-ink:#141917; --warn:#D8A547;
+  color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 16px/1.6 var(--font-body)}
+.wrap{max-width:1100px;margin:0 auto;padding:44px 24px 96px;display:grid;gap:64px}
+@media (max-width:520px){.wrap{padding:28px 16px 72px;gap:48px}}
+h1,h2,h3{margin:0;text-wrap:balance}
+p{margin:0}
+section{display:grid;gap:22px}
+.prose{max-width:68ch;display:grid;gap:12px}
+.eyebrow{font:500 12px/1 var(--font-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+h1{font:600 clamp(32px,4.6vw,52px)/1.06 var(--font-display);letter-spacing:-.015em}
+h2{font:600 clamp(21px,2.4vw,27px)/1.15 var(--font-display)}
+h3{font:600 16px/1.3 var(--font-display)}
+.lede{font-size:18px;line-height:1.55;max-width:62ch}
+.muted{color:var(--muted)}
+.mono{font-family:var(--font-mono);font-size:.94em}
+.status{display:flex;flex-wrap:wrap;gap:8px 20px;font:400 13px var(--font-mono);color:var(--muted);padding-top:12px;border-top:1px solid var(--line)}
+.status b{font-weight:500;color:var(--ink)}
+
+figure{margin:0;display:grid;gap:12px}
+figcaption{font-size:14px;color:var(--muted);max-width:72ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 20px 16px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.diagram{display:block;width:100%;height:auto;min-width:760px;color:var(--ink)}
+.diagram text{font-family:var(--font-body);fill:currentColor}
+.diagram .m{font-family:var(--font-mono)}
+.diagram .d{font-family:var(--font-display);font-weight:600}
+.diagram .mu{fill:var(--muted)}
+.diagram .ac{fill:var(--accent);font-weight:600}
+.diagram .box{fill:var(--surface);stroke:var(--ink);stroke-width:1.2}
+.diagram .soft{fill:var(--ground);stroke:var(--line);stroke-width:1}
+.diagram .core{fill:var(--core)}
+.diagram .ci{fill:var(--core-ink)}
+.diagram .cid{fill:var(--core-ink);opacity:.72}
+.diagram .cbox{fill:none;stroke:var(--core-ink);stroke-width:1;opacity:.85}
+.diagram .w{stroke:currentColor;stroke-width:1.4;fill:none}
+.diagram .wd{stroke:var(--muted);stroke-width:1.2;fill:none;stroke-dasharray:4 4}
+.diagram .wa{stroke:var(--accent);stroke-width:1.8;fill:none;stroke-dasharray:6 4}
+.diagram .wc{stroke:var(--core-ink);stroke-width:1.2;fill:none;opacity:.85}
+.diagram .h{fill:currentColor}.diagram .hd{fill:var(--muted)}.diagram .ha{fill:var(--accent)}.diagram .hc{fill:var(--core-ink)}
+.diagram .item{fill:var(--surface);stroke:var(--line)}
+
+.rule{border-left:3px solid var(--ink);padding:4px 0 4px 18px;font:500 17px/1.5 var(--font-body);max-width:64ch}
+.rule small{display:block;font-weight:400;font-size:14.5px;color:var(--muted);margin-top:6px}
+
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:9px 14px 9px 0;border-bottom:1px solid var(--grid)}
+th{font:500 11.5px/1.3 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+td.c{text-align:center}
+.tbl{overflow-x:auto}
+
+pre{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow-x:auto;font:400 13px/1.55 var(--font-mono);color:var(--ink)}
+pre .c{color:var(--muted)}
+pre .k{color:var(--accent)}
+
+.variants{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 18px 14px;display:grid;gap:10px}
+.card.pick{border:1.5px solid var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.card .tag{font:500 11px/1 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.card.pick .tag{color:var(--accent)}
+.card ul{margin:0;padding-left:1.2em;display:grid;gap:4px;font-size:14.5px}
+.card .pro::marker{content:"+ ";color:var(--accent)}
+.card .con::marker{content:"− ";color:var(--warn)}
+
+.scenarios{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px;align-items:start}
+.scn{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 18px 12px;display:grid;gap:12px}
+.scn header{display:grid;gap:4px}
+.scn h3{font-size:15px}
+.steps{list-style:none;margin:0;padding:0;display:grid}
+.steps li{display:grid;grid-template-columns:78px 1fr;gap:10px;position:relative;padding-bottom:12px}
+.steps li::before{content:"";position:absolute;left:87px;top:18px;bottom:0;width:1px;background:var(--line)}
+.steps li:last-child::before{display:none}
+.steps .ph{font:500 11px/1.6 var(--font-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.steps .b{padding-left:16px;position:relative;font-size:14.5px;line-height:1.45}
+.steps .b::before{content:"";position:absolute;left:-5px;top:6px;width:9px;height:9px;border-radius:50%;background:var(--surface);border:1.5px solid var(--ink)}
+.steps li.hot .b::before{background:var(--accent);border-color:var(--accent)}
+.steps .say{font-weight:500}
+.steps .q{color:var(--muted);font-style:italic}
+.steps .new{color:var(--accent);font:600 10.5px/1 var(--font-mono);letter-spacing:.05em;text-transform:uppercase;margin-left:6px}
+
+.callout{display:grid;gap:8px;padding:16px 18px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:10px;max-width:78ch}
+.callout b{font-weight:600}
+.open{display:grid;gap:12px;max-width:74ch}
+.open .q{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:baseline}
+.open .q::before{content:"?";font:600 18px/1 var(--font-display);color:var(--accent)}
+.open .q small{display:block;color:var(--muted);font-size:14px}
+.log{font-size:14px;color:var(--muted);display:grid;gap:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<main class="wrap">
+
+<header style="display:grid;gap:18px">
+  <p class="eyebrow">heare · дизайн-документ · живий, дописується</p>
+  <h1>Дизайн heare</h1>
+  <p class="lede">Голосовий асистент, який живе поруч: слухає, відповідає, пам'ятає, робить і час від часу заговорює сам. Тут — з яких частин він складається, як вони з'єднані, і які рішення вже прийняті. Код сюди лягає <em>після</em> того, як картинка узгоджена, а не навпаки.</p>
+  <div class="status"><span>версія <b>3</b></span><span>12.09.2026</span><span>стан <b>чернетка</b></span><span>файл <b>docs/design.html</b></span></div>
+</header>
+
+<!-- ─── 1. big picture ─────────────────────────────── -->
+<section aria-labelledby="h-big">
+  <div class="prose">
+    <p class="eyebrow">1 · велика схема</p>
+    <h2 id="h-big">Входи → Ядро → Виходи, а збоку Пам'ять та Інструменти</h2>
+    <p class="muted">П'ять частин. Усе, що надходить, стає повідомленням у скриньці. Ядро — агентна петля: вирішує, що з повідомленням робити й що куди віддати. Голос — найважливіший вхід і найважливіший вихід, але для ядра він такий самий, як решта.</p>
+  </div>
+
+  <figure class="panel">
+    <div class="scroll">
+      <svg class="diagram" viewBox="0 0 1200 790" role="img" aria-label="Велика схема heare: входи (вухо, дашборд, налаштування, ініціатива) ідуть через ворота в скриньку; ядро — агентна петля з контекстом, моделлю й розподілом; знизу пам'ять та інструменти з руками; праворуч виходи — рот, текст, канвас, лог; один прямий дріт barge-in від вуха до рота">
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="h"/></marker>
+          <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="hd"/></marker>
+          <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ha"/></marker>
+          <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="hc"/></marker>
+        </defs>
+
+        <!-- barge-in wire, over the top -->
+        <path class="wa" d="M150,60 V26 H1065 V56" marker-end="url(#aa)"/>
+        <text class="ac" x="600" y="20" font-size="12.5" text-anchor="middle">людина заговорила → Рот: пауза, напряму за мілісекунди; хід скасовує ядро (розділ 6)</text>
+
+        <!-- INPUTS -->
+        <text class="m mu" x="30" y="48" font-size="11" letter-spacing=".08em">ВХОДИ</text>
+        <rect class="box" x="30" y="60" width="240" height="212" rx="10"/>
+        <text class="d" x="48" y="88" font-size="15">Вухо</text>
+        <text class="mu" x="48" y="112" font-size="12.5">безперервний звук, кадр / 10 мс</text>
+        <g font-size="12.5">
+          <text x="48" y="140">мікрофон → aec <tspan class="mu">не чути себе</tspan></text>
+          <text x="48" y="162">→ vad <tspan class="mu">заговорив / замовк</tspan></text>
+          <text x="48" y="184">→ stt → фільтр галюцинацій</text>
+          <text x="48" y="206">→ збирач ходу <tspan class="mu">скінчились слова,</tspan></text>
+          <text class="mu" x="76" y="224">а не минув час</text>
+        </g>
+        <text class="m mu" x="48" y="256" font-size="11.5">= Turn(text, source=mic)</text>
+
+        <rect class="box" x="30" y="300" width="240" height="52" rx="10"/>
+        <text class="d" x="48" y="323" font-size="14">Дашборд · текст</text>
+        <text class="m mu" x="48" y="342" font-size="11.5">Turn(text, source=dashboard)</text>
+
+        <rect class="box" x="30" y="372" width="240" height="52" rx="10"/>
+        <text class="d" x="48" y="395" font-size="14">Налаштування</text>
+        <text class="mu" x="48" y="414" font-size="12.5">config.toml · перемикачі · ключі</text>
+
+        <rect class="box" x="30" y="446" width="240" height="140" rx="10"/>
+        <text class="d" x="48" y="472" font-size="14">Ініціатива</text>
+        <text class="mu" x="48" y="494" font-size="12.5">приводи: результат Рук, нагадування,</text>
+        <text class="mu" x="48" y="512" font-size="12.5">«я оглух», повтори</text>
+        <text x="48" y="536" font-size="12.5">суддя миті: не посеред ходу, не вночі,</text>
+        <text x="48" y="554" font-size="12.5">не в порожню кімнату; вето: чи варте</text>
+        <text class="m mu" x="48" y="576" font-size="11.5">= Turn(text, source=initiative)</text>
+
+        <!-- gate -->
+        <line class="w" x1="270" y1="165" x2="316" y2="165" marker-end="url(#a)"/>
+        <rect class="box" x="320" y="140" width="112" height="50" rx="10"/>
+        <text class="d" x="376" y="160" font-size="13" text-anchor="middle">Ворота</text>
+        <text class="mu" x="376" y="178" font-size="12" text-anchor="middle">до мене? wake</text>
+        <line class="w" x1="432" y1="165" x2="466" y2="165" marker-end="url(#a)"/>
+        <path class="wd" d="M376,190 V655 H596" marker-end="url(#ad)"/>
+        <text class="mu" x="388" y="640" font-size="12">підслухане → у пам'ять (hear_all), у скриньку — ніколи</text>
+
+        <line class="w" x1="270" y1="326" x2="466" y2="326" marker-end="url(#a)"/>
+        <path class="wd" d="M270,398 H596" marker-end="url(#ad)"/>
+        <text class="mu" x="440" y="392" font-size="11.5">читає ядро; це не хід</text>
+        <path class="w" d="M270,516 H436 V326" />
+        <text class="mu" x="300" y="508" font-size="11.5">коли мить слушна</text>
+
+        <!-- INBOX -->
+        <rect class="box" x="470" y="60" width="90" height="290" rx="10"/>
+        <text class="d" x="515" y="88" font-size="13" text-anchor="middle">Скринька</text>
+        <text class="mu" x="515" y="106" font-size="11.5" text-anchor="middle">по одному</text>
+        <rect class="item" x="482" y="128" width="66" height="22" rx="4"/><text class="m mu" x="515" y="143" font-size="10.5" text-anchor="middle">mic</text>
+        <rect class="item" x="482" y="156" width="66" height="22" rx="4"/><text class="m mu" x="515" y="171" font-size="10.5" text-anchor="middle">hands</text>
+        <rect class="item" x="482" y="184" width="66" height="22" rx="4"/><text class="m mu" x="515" y="199" font-size="10.5" text-anchor="middle">initiative</text>
+        <text class="mu" x="515" y="330" font-size="11.5" text-anchor="middle">ходи, у порядку</text>
+        <line class="w" x1="560" y1="150" x2="596" y2="150" marker-end="url(#a)"/>
+
+        <!-- CORE -->
+        <rect class="core" x="600" y="60" width="300" height="500" rx="12"/>
+        <text class="d ci" x="620" y="90" font-size="14">ЯДРО — агентна петля</text>
+        <rect class="cbox" x="630" y="118" width="240" height="60" rx="8"/>
+        <text class="d ci" x="646" y="142" font-size="13">контекст</text>
+        <text class="cid" x="646" y="162" font-size="12">пам'ять · ситуація · роль · MCP</text>
+        <rect class="cbox" x="630" y="206" width="240" height="60" rx="8"/>
+        <text class="d ci" x="646" y="230" font-size="13">модель</text>
+        <text class="cid" x="646" y="250" font-size="12">текст потоком + виклики</text>
+        <rect class="cbox" x="630" y="294" width="240" height="96" rx="8"/>
+        <text class="d ci" x="646" y="318" font-size="13">розподіл</text>
+        <text class="cid" x="646" y="340" font-size="12">повертає? → результат у контекст,</text>
+        <text class="cid" x="668" y="356" font-size="12">ще один хід</text>
+        <text class="cid" x="646" y="378" font-size="12">видає? → у Виходи, ходу немає</text>
+        <line class="wc" x1="750" y1="178" x2="750" y2="202" marker-end="url(#ac)"/>
+        <line class="wc" x1="750" y1="266" x2="750" y2="290" marker-end="url(#ac)"/>
+        <path class="wc" d="M630,350 H612 V150 H626" marker-end="url(#ac)"/>
+        <text class="cid" x="606" y="260" font-size="11" transform="rotate(-90 606 260)" text-anchor="middle">ще хід</text>
+        <rect class="cbox" x="630" y="420" width="240" height="56" rx="8"/>
+        <text class="d ci" x="646" y="444" font-size="13">ролі</text>
+        <text class="cid" x="646" y="464" font-size="12">змінюють ворота й виходи: voice · log · hints</text>
+        <text class="cid" x="620" y="530" font-size="11.5">крутиться, поки є виклик, що повертає результат</text>
+        <text class="cid" x="620" y="546" font-size="11.5">довга робота → Руки, а голосу — «зараз гляну»</text>
+
+        <!-- MEMORY / TOOLS -->
+        <rect class="box" x="600" y="600" width="140" height="120" rx="10"/>
+        <text class="d" x="618" y="626" font-size="14">Пам'ять</text>
+        <text class="mu" x="618" y="648" font-size="12.5">факти про тебе</text>
+        <text class="mu" x="618" y="666" font-size="12.5">запис розмов</text>
+        <text class="mu" x="618" y="684" font-size="12.5">пошук «що я казав»</text>
+        <text class="mu" x="618" y="706" font-size="12">спільна для всіх</text>
+        <line class="w" x1="670" y1="600" x2="670" y2="564" marker-end="url(#a)" marker-start="url(#a)"/>
+        <text class="mu" x="680" y="586" font-size="11.5">читає · пише</text>
+
+        <rect class="box" x="760" y="600" width="140" height="120" rx="10"/>
+        <text class="d" x="778" y="626" font-size="14">Інструменти</text>
+        <text class="mu" x="778" y="648" font-size="12.5">bash · файли · веб</text>
+        <text class="mu" x="778" y="666" font-size="12.5">екран · MCP · скіли</text>
+        <rect class="soft" x="774" y="680" width="112" height="30" rx="6"/>
+        <text x="830" y="699" font-size="12" text-anchor="middle">Руки: довгі, окремо</text>
+        <line class="w" x1="880" y1="390" x2="880" y2="596" marker-end="url(#a)" marker-start="url(#a)"/>
+        <text class="mu" x="888" y="500" font-size="11.5">виклик</text>
+        <text class="mu" x="888" y="516" font-size="11.5">результат</text>
+        <path class="w" d="M760,700 H720 V740 H515 V354" marker-end="url(#a)"/>
+        <text class="mu" x="520" y="760" font-size="11.5">результат доручення → Turn(source=hands)</text>
+
+        <!-- OUTPUTS -->
+        <text class="m mu" x="960" y="48" font-size="11" letter-spacing=".08em">ВИХОДИ</text>
+        <rect class="box" x="960" y="60" width="210" height="80" rx="10"/>
+        <text class="d" x="978" y="88" font-size="14">Рот — голос</text>
+        <text class="mu" x="978" y="108" font-size="12.5">речення → tts → динамік</text>
+        <text class="mu" x="978" y="126" font-size="12.5">потоком, з першого речення</text>
+        <rect class="box" x="960" y="170" width="210" height="60" rx="10"/>
+        <text class="d" x="978" y="196" font-size="14">Текст — дашборд</text>
+        <text class="mu" x="978" y="216" font-size="12.5">коли голос вимкнено або зайвий</text>
+        <rect class="box" x="960" y="260" width="210" height="60" rx="10"/>
+        <text class="d" x="978" y="286" font-size="14">Канвас · панель</text>
+        <text class="mu" x="978" y="306" font-size="12.5">show_canvas · show_text</text>
+        <rect class="box" x="960" y="350" width="210" height="60" rx="10"/>
+        <text class="d" x="978" y="376" font-size="14">Лог · артефакт · підказки</text>
+        <text class="mu" x="978" y="396" font-size="12.5">тихі канали ролей</text>
+
+        <line class="w" x1="900" y1="318" x2="956" y2="100" marker-end="url(#a)"/>
+        <line class="w" x1="900" y1="334" x2="956" y2="200" marker-end="url(#a)"/>
+        <line class="w" x1="900" y1="350" x2="956" y2="290" marker-end="url(#a)"/>
+        <line class="w" x1="900" y1="366" x2="956" y2="380" marker-end="url(#a)"/>
+        <text class="mu" x="912" y="196" font-size="11" transform="rotate(-70 912 196)">текст моделі = сказати</text>
+      </svg>
+    </div>
+    <figcaption>Суцільні лінії — повідомлення й виклики. Пунктир — читання. Синій пунктир зверху — один прямий дріт повз скриньку: голос людини має поставити динамік на паузу за мілісекунди. Решта рішення про перебивання — у ядрі, розділ 6.</figcaption>
+  </figure>
+</section>
+
+<!-- ─── 2. variants ─────────────────────────────── -->
+<section aria-labelledby="h-var">
+  <div class="prose">
+    <p class="eyebrow">2 · варіанти, з яких вибирали</p>
+    <h2 id="h-var">Структура — з варіанта 1, поведінка ядра — з варіанта 2</h2>
+  </div>
+  <div class="variants">
+    <article class="card pick">
+      <span class="tag">варіант 1 · обрано як структуру</span>
+      <h3>П'ять модулів: Входи, Ядро, Виходи, Пам'ять, Інструменти</h3>
+      <ul>
+        <li class="pro">збігається з тим, як про асистента думають: що чує, що робить, що каже</li>
+        <li class="pro">кожен наявний модуль має рівно одне місце</li>
+        <li class="pro">нові входи й виходи додаються, не чіпаючи ядра</li>
+        <li class="con">сам по собі не каже, <em>як</em> ядро вирішує — це дає варіант 2</li>
+      </ul>
+    </article>
+    <article class="card pick">
+      <span class="tag">варіант 2 · обрано як поведінку ядра</span>
+      <h3>Агентна петля зі скринькою</h3>
+      <ul>
+        <li class="pro">твоя репліка, результат Рук і нагадування — однакові повідомлення</li>
+        <li class="pro">«заговорити самому» — не окрема фіча, а повідомлення від Ініціативи</li>
+        <li class="pro">модель бачить один словник викликів</li>
+        <li class="con">без правила «повертає чи видає» кожна фраза коштувала б зайвий хід</li>
+      </ul>
+    </article>
+    <article class="card">
+      <span class="tag">варіант 3 · відхилено</span>
+      <h3>Усе є тулзою, включно з «сказати»</h3>
+      <ul>
+        <li class="pro">одна форма для всього, що робить модель</li>
+        <li class="con">аргументи виклику приходять шматками JSON — речення не можна озвучувати з потоку; перший звук пізніше на ~1 с</li>
+        <li class="con">моделі однаково відповідають текстом повз тулзу — текст доведеться обробляти як мову, і `say` нічого не додає</li>
+        <li class="con">«як донести» — голосом, текстом, мовчки в лог — рішення ядра, не моделі</li>
+      </ul>
+    </article>
+    <article class="card">
+      <span class="tag">варіант 4 · відхилено</span>
+      <h3>Конвеєр стадій (як pipecat)</h3>
+      <ul>
+        <li class="pro">прозорий для «спитав — відповів»</li>
+        <li class="con">усе, що між репліками — фонова робота, ініціатива — не має місця в лінійній трубі</li>
+        <li class="con">heare уже був таким і пішов звідти</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<!-- ─── 3. the rule ─────────────────────────────── -->
+<section aria-labelledby="h-rule">
+  <div class="prose">
+    <p class="eyebrow">3 · головне правило</p>
+    <h2 id="h-rule">Інструмент повертає результат. Вихід — ні.</h2>
+  </div>
+  <p class="rule">Петля крутиться доти, доки у відповіді моделі є виклик, який <em>повертає</em> результат. Виклик, який лише <em>видає</em>, іде у Виходи й ходу не додає.<small>З погляду моделі все є викликом. Ядро розрізняє два види за однією ознакою: чи приходить щось назад. Тому «зараз гляну» + <span class="mono">bash</span> — це один додатковий хід, і він потрібен; а «ось графік» + <span class="mono">show_canvas</span> — жодного.</small></p>
+  <div class="tbl"><table>
+    <thead><tr><th>що</th><th>вид</th><th class="c">результат назад?</th><th class="c">зайвий хід?</th><th>куди йде</th></tr></thead>
+    <tbody>
+      <tr><td>звичайний текст моделі</td><td>вихід «сказати»</td><td class="c">ні</td><td class="c">ні</td><td>Рот — або Текст, або тиша: вирішує ядро за роллю й вимикачами</td></tr>
+      <tr><td><span class="mono">show_canvas</span>, <span class="mono">show_text</span>, <span class="mono">clear_display</span></td><td>вихід «показати»</td><td class="c">ні</td><td class="c">ні</td><td>Канвас · панель</td></tr>
+      <tr><td><span class="mono">bash</span>, <span class="mono">read</span>, <span class="mono">web_search</span>, <span class="mono">look_at_screen</span></td><td>інструмент</td><td class="c">так</td><td class="c">так</td><td>швидкі — сам; довгі — Руки, а голосу «зараз гляну»</td></tr>
+      <tr><td><span class="mono">recall</span>, <span class="mono">search_conversations</span></td><td>пам'ять, читання</td><td class="c">так</td><td class="c">так</td><td>Пам'ять</td></tr>
+      <tr><td><span class="mono">remember</span>, <span class="mono">forget</span></td><td>пам'ять, запис</td><td class="c">ні</td><td class="c">ні</td><td>Пам'ять; модель не чекає</td></tr>
+      <tr><td><span class="mono">delegate</span></td><td>інструмент, відкладений</td><td class="c">пізніше, як Turn(hands)</td><td class="c">ні зараз</td><td>Руки; результат повернеться у скриньку</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ─── 4. data & loop ─────────────────────────────── -->
+<section aria-labelledby="h-data">
+  <div class="prose">
+    <p class="eyebrow">4 · структури й петля</p>
+    <h2 id="h-data">Три структури даних і двадцять рядків петлі</h2>
+    <p class="muted">Це ескіз, не код на коміт. Він показує, наскільки мало потрібно, щоб усе описане вище склалось в одне.</p>
+  </div>
+<pre><span class="c"># Усе, що потрапляє в скриньку. Джерело — лише позначка: ядру байдуже, звідки.</span>
+<span class="k">@dataclass</span>(frozen=True)
+class Turn:
+    text: str
+    source: Literal["mic", "dashboard", "hands", "initiative", "replay"]
+    ts: float
+
+<span class="c"># Один виклик із відповіді моделі. `returns` — те саме правило з розділу 3.</span>
+<span class="k">@dataclass</span>(frozen=True)
+class Call:
+    name: str
+    args: dict
+    returns: bool          <span class="c"># True → петля крутиться далі; False → у Виходи</span>
+
+<span class="c"># Те, що йде людині. Канал вирішує ядро, а не модель.</span>
+<span class="k">@dataclass</span>(frozen=True)
+class Output:
+    kind: Literal["voice", "text", "canvas", "log", "hint"]
+    payload: str</pre>
+
+<pre><span class="k">async def</span> core_loop():
+    current: asyncio.Task | None = None
+    <span class="k">while</span> True:
+        turn = <span class="k">await</span> inbox.get()                       <span class="c"># mic, dashboard, hands, initiative…</span>
+        <span class="k">if</span> turn.source == "mic" <span class="k">and not</span> gate.accepts(turn):
+            memory.keep_overheard(turn)                  <span class="c"># якщо hear_all; у ядро — ніколи</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> turn.source <span class="k">in</span> PERSON:                       <span class="c"># mic, dashboard: людина перериває</span>
+            <span class="k">if</span> current: current.cancel()               <span class="c"># недоговорене — в історію, тулза — геть</span>
+        <span class="k">else</span>:                                        <span class="c"># hands, initiative: чекають тиші</span>
+            <span class="k">if</span> current: <span class="k">await</span> current
+        current = asyncio.create_task(one_turn(turn))
+
+<span class="k">async def</span> one_turn(turn):
+        ctx = <span class="k">await</span> context.build(turn)                <span class="c"># пам'ять · ситуація · роль · MCP; історія з репліками без відповіді</span>
+        <span class="k">while</span> True:
+            reply = model.stream(ctx)
+            outputs.say(reply.text)                      <span class="c"># потоком, речення за реченням; канал за роллю</span>
+            <span class="k">for</span> call <span class="k">in</span> reply.calls:
+                <span class="k">if</span> call.returns:
+                    ctx.add(<span class="k">await</span> tools.run(call))         <span class="c"># довгий → Руки, результат прийде як Turn</span>
+                <span class="k">else</span>:
+                    outputs.emit(call)                   <span class="c"># show_canvas, remember…</span>
+            <span class="k">if not any</span>(c.returns <span class="k">for</span> c <span class="k">in</span> reply.calls):
+                <span class="k">break</span>                                    <span class="c"># нема чого чекати — хід закінчено</span>
+        memory.record(turn, reply)</pre>
+</section>
+
+<!-- ─── 5. inputs ─────────────────────────────── -->
+<section aria-labelledby="h-in">
+  <div class="prose">
+    <p class="eyebrow">5 · входи</p>
+    <h2 id="h-in">Звук — єдиний вхід, який не є повідомленням</h2>
+    <p class="muted">Це безперервний потік, кадр кожні 10 мс. Між ним і скринькою стоїть Вухо: працює завжди, поза петлею, і перетворює звук на ходи. Решта входів — прості адаптери: дашборд, годинник нагадувань, результат Рук.</p>
+  </div>
+  <figure class="panel">
+    <div class="scroll">
+      <svg class="diagram" viewBox="0 0 1080 200" role="img" aria-label="Вухо: мікрофон, aec, vad, stt, фільтр, збирач ходу — і окремий дріт від vad до рота для barge-in">
+        <defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="h"/></marker>
+        <marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ha"/></marker></defs>
+        <g font-size="12.5">
+          <rect class="box" x="10" y="90" width="110" height="46" rx="8"/><text x="65" y="118" text-anchor="middle">мікрофон</text>
+          <line class="w" x1="120" y1="113" x2="146" y2="113" marker-end="url(#b)"/>
+          <rect class="box" x="150" y="90" width="120" height="46" rx="8"/><text x="210" y="112" text-anchor="middle">aec</text><text class="mu" x="210" y="128" font-size="11" text-anchor="middle">не чути себе</text>
+          <line class="w" x1="270" y1="113" x2="296" y2="113" marker-end="url(#b)"/>
+          <rect class="box" x="300" y="90" width="130" height="46" rx="8"/><text x="365" y="112" text-anchor="middle">vad</text><text class="mu" x="365" y="128" font-size="11" text-anchor="middle">заговорив · замовк</text>
+          <line class="w" x1="430" y1="113" x2="456" y2="113" marker-end="url(#b)"/>
+          <rect class="box" x="460" y="90" width="110" height="46" rx="8"/><text x="515" y="112" text-anchor="middle">stt</text><text class="mu" x="515" y="128" font-size="11" text-anchor="middle">Groq, ~0,4 с</text>
+          <line class="w" x1="570" y1="113" x2="596" y2="113" marker-end="url(#b)"/>
+          <rect class="box" x="600" y="90" width="120" height="46" rx="8"/><text x="660" y="112" text-anchor="middle">фільтр</text><text class="mu" x="660" y="128" font-size="11" text-anchor="middle">галюцинації Whisper</text>
+          <line class="w" x1="720" y1="113" x2="746" y2="113" marker-end="url(#b)"/>
+          <rect class="box" x="750" y="90" width="150" height="46" rx="8"/><text x="825" y="112" text-anchor="middle">збирач ходу</text><text class="mu" x="825" y="128" font-size="11" text-anchor="middle">два годинники</text>
+          <line class="w" x1="900" y1="113" x2="946" y2="113" marker-end="url(#b)"/>
+          <text class="m" x="952" y="109" font-size="11.5">Turn(text,</text><text class="m" x="952" y="124" font-size="11.5">source=mic)</text>
+        </g>
+        <path class="wa" d="M365,90 V40 H1010 V70" marker-end="url(#ba)"/>
+        <text class="ac" x="690" y="34" font-size="12" text-anchor="middle">«заговорив», поки Рот говорить → Рот: стоп, негайно</text>
+        <text class="mu" x="10" y="176" font-size="12">Усі константи часу живуть тут: 0,8 с тиші для VAD · 1,3 с утримання · 2,6 с, якщо думка не скінчилась. Ядро про них не знає.</text>
+      </svg>
+    </div>
+    <figcaption>Що петля ніколи не бачить: кадри, події VAD, шматки розпізнаного. Що Вухо ніколи не вирішує: що відповідати. Воно вирішує лише, коли хід закінчився.</figcaption>
+  </figure>
+  <div class="callout">
+    <b>Один прямий дріт: голос людини ставить Рот на паузу.</b>
+    <p>Коли ти заговорив, поки асистент говорить, динамік має замовкнути за мілісекунди. Через скриньку це було б повільно, тому Вухо смикає Рот напряму. Але це лише пауза, а не рішення: чи тебе справді перебили, стає відомо на пів секунди пізніше. Як саме — у розділі 6.</p>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>вхід</th><th>що приходить</th><th>чим стає</th><th>проходить ворота?</th></tr></thead>
+    <tbody>
+      <tr><td>Вухо</td><td>звук</td><td><span class="mono">Turn(mic)</span></td><td>так — wake, крім активної ролі</td></tr>
+      <tr><td>Дашборд</td><td>текст у полі, кнопка inject</td><td><span class="mono">Turn(dashboard)</span></td><td>ні — уже адресовано</td></tr>
+      <tr><td>Руки</td><td>результат доручення</td><td><span class="mono">Turn(hands)</span> з префіксом «перекажи вголос»</td><td>ні</td></tr>
+      <tr><td>Ініціатива</td><td>привід, який пройшов суддю миті й вето</td><td><span class="mono">Turn(initiative)</span></td><td>ні</td></tr>
+      <tr><td>Налаштування</td><td>config.toml, перемикачі, ключі</td><td>читаються ядром і Вухом</td><td>— (не хід)</td></tr>
+      <tr><td>Годинник</td><td>настав час обіцянки</td><td>привід → Ініціатива</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ─── 6. interruption ─────────────────────────────── -->
+<section aria-labelledby="h-int">
+  <div class="prose">
+    <p class="eyebrow">6 · людина перериває</p>
+    <h2 id="h-int">Пауза негайно, рішення потім</h2>
+    <p class="muted">У скриньці дві смуги. Репліка людини не чекає своєї черги, а перериває те, що ядро робить зараз. Руки й Ініціатива чекають тиші. Але «заговорив» ще не означає «перебив»: на «ага» люди не зупиняються. Тому перебивання відбувається у два кроки, як у людей: замовкнути на звук голосу, а через пів секунди зрозуміти, що це було.</p>
+  </div>
+  <figure class="panel">
+    <div class="scroll">
+      <svg class="diagram" viewBox="0 0 1080 250" role="img" aria-label="Двоступеневе перебивання: на початок мовлення рот ставиться на паузу; якщо мовлення триває довше порога — стоп і скасування ходу; якщо коротке — за текстом або продовжити, або скасувати">
+        <defs><marker id="i" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="h"/></marker>
+        <marker id="ia" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ha"/></marker></defs>
+        <g font-size="12.5">
+          <text class="m mu" x="10" y="30" font-size="11">t = 0</text>
+          <rect class="box" x="10" y="42" width="170" height="50" rx="8"/><text x="95" y="62" text-anchor="middle">заговорив (VAD)</text><text class="mu" x="95" y="80" font-size="11" text-anchor="middle">поки Рот говорить</text>
+          <line class="wa" x1="180" y1="67" x2="236" y2="67" marker-end="url(#ia)"/>
+          <rect class="box" x="240" y="42" width="190" height="50" rx="8"/><text x="335" y="62" text-anchor="middle">Рот: пауза</text><text class="mu" x="335" y="80" font-size="11" text-anchor="middle">на межі речення, черга лишається</text>
+          <text class="ac" x="335" y="110" font-size="11" text-anchor="middle">прямий дріт, ~10 мс</text>
+
+          <text class="m mu" x="480" y="30" font-size="11">t ≈ 0,6 с</text>
+          <line class="w" x1="430" y1="67" x2="476" y2="67" marker-end="url(#i)"/>
+          <rect class="box" x="480" y="42" width="170" height="50" rx="8"/><text x="565" y="62" text-anchor="middle">говорить досі?</text><text class="mu" x="565" y="80" font-size="11" text-anchor="middle">лише тривалість, без тексту</text>
+
+          <line class="w" x1="650" y1="58" x2="716" y2="30" marker-end="url(#i)"/><text class="mu" x="672" y="34" font-size="11">так</text>
+          <rect class="box" x="720" y="8" width="340" height="50" rx="8"/><text x="890" y="28" text-anchor="middle">Рот: стоп · Ядро: скасувати хід</text><text class="mu" x="890" y="46" font-size="11" text-anchor="middle">ще до розпізнавання; текст прийде новим ходом</text>
+
+          <line class="w" x1="650" y1="76" x2="716" y2="120" marker-end="url(#i)"/><text class="mu" x="664" y="112" font-size="11">ні, замовк</text>
+          <rect class="box" x="720" y="98" width="170" height="50" rx="8"/><text x="805" y="118" text-anchor="middle">чекаємо текст</text><text class="mu" x="805" y="136" font-size="11" text-anchor="middle">stt, ~0,4 с</text>
+
+          <line class="w" x1="890" y1="115" x2="946" y2="98" marker-end="url(#i)"/>
+          <rect class="soft" x="950" y="74" width="120" height="48" rx="8"/><text x="1010" y="93" font-size="12" text-anchor="middle">«ага», відлуння,</text><text x="1010" y="109" font-size="12" text-anchor="middle">галюцинація</text>
+          <line class="w" x1="890" y1="131" x2="946" y2="150" marker-end="url(#i)"/>
+          <rect class="soft" x="950" y="128" width="120" height="48" rx="8"/><text x="1010" y="147" font-size="12" text-anchor="middle">«стоп», «далі»,</text><text x="1010" y="163" font-size="12" text-anchor="middle">питання</text>
+
+          <text class="ac" x="1010" y="66" font-size="11.5" text-anchor="middle">→ Рот: продовжуй</text>
+          <text class="ac" x="1010" y="196" font-size="11.5" text-anchor="middle">→ скасувати, новий хід</text>
+          <text class="mu" x="10" y="232" font-size="12">Модель у цих рішеннях участі не бере. Тривалість дає VAD; список підтакувань живе в тому самому фільтрі, що вже відсіює галюцинації Whisper.</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>Справжнє перебивання: голос замовкає за мілісекунди, хід скасовується за ~0,6 с, швидше, ніж зараз. Кивок коштує півсекундну паузу й повтор поточного речення. Відлуння потрапляє в ту саму гілку, що й кивок, і не дає асистентові перебити самого себе.</figcaption>
+  </figure>
+  <div class="tbl"><table>
+    <thead><tr><th>ядро зараз…</th><th>твоя нова репліка</th><th>що з поточним ходом</th></tr></thead>
+    <tbody>
+      <tr><td>говорить</td><td>пауза негайно, далі за схемою вище</td><td>сказане лишається в історії; недоговорене або звучить далі, або не звучить</td></tr>
+      <tr><td>думає, крутить швидку тулзу</td><td>скасовує хід</td><td>недоговорене — в історію як репліка без відповіді; результат тулзи викидається</td></tr>
+      <tr><td>чекає Руки</td><td>ні на що не впливає</td><td>доручення живе; результат прийде як <span class="mono">Turn(hands)</span></td></tr>
+      <tr><td>мовчить</td><td>звичайний хід</td><td>—</td></tr>
+      <tr><td>будь-що, а ти сказав «стоп»</td><td>скасовує хід <em>і</em> доручення в Руках</td><td>єдине слово, що сягає за петлю</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">
+    <b>Продовження думки — не перебивання, але ляже само.</b>
+    <p>«Подивись, будь ласка… скільки місця на диску»: збирач закрив хід після паузи, модель уже думає, приходить друга половина. Хід скасовується, обидві половини лежать в історії як репліки без відповіді, і модель відповідає на розмову такою, якою вона стала. Склеювати текст не треба.</p>
+  </div>
+  <p class="muted" style="max-width:70ch;font-size:14.5px">Напівдуплекс (без AEC) стадії паузи не має: мікрофон глухий, поки асистент говорить. Там лишається тільки скасування під час думання. Повна версія залежить від робочого AEC: виміряні 40–50 дБ це дозволяють, але затримку 30 → 125 мс треба виправити раніше.</p>
+</section>
+
+<!-- ─── 7. outputs ─────────────────────────────── -->
+<section aria-labelledby="h-out">
+  <div class="prose">
+    <p class="eyebrow">7 · виходи</p>
+    <h2 id="h-out">Модель вирішує, що сказати. Ядро — як донести</h2>
+    <p class="muted">Один і той самий текст моделі може піти голосом, текстом у дашборд або лише в лог — залежно від ролі, вимикачів і того, чи є кому слухати. Модель про це не думає, і не повинна.</p>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>ситуація</th><th>текст моделі йде в</th><th>show_* йде в</th></tr></thead>
+    <tbody>
+      <tr><td>звичайна розмова</td><td>Рот, потоком з першого речення</td><td>Канвас · панель</td></tr>
+      <tr><td>голос вимкнено (mute_bot)</td><td>Текст — дашборд</td><td>Канвас · панель</td></tr>
+      <tr><td>роль «мітинг» (channel: log)</td><td>Лог, мовчки; наприкінці — артефакт і озвучений підсумок</td><td>Канвас · панель</td></tr>
+      <tr><td>роль «суфлер» (channel: hints)</td><td>Підказки в дашборд, мовчки</td><td>Канвас · панель</td></tr>
+      <tr><td>перебили (розділ 6)</td><td>пауза, потім або продовжити з початку речення, або стоп; що прозвучало — в історію</td><td>уже показане лишається</td></tr>
+      <tr><td>рот зламався (tts, пристрій)</td><td>Текст + одна службова фраза вголос, якщо можливо</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ─── 7. scenarios ─────────────────────────────── -->
+<section aria-labelledby="h-scn">
+  <div class="prose">
+    <p class="eyebrow">8 · чотири сценарії від входу до виходу</p>
+    <h2 id="h-scn">Як це виглядає на реальних фразах</h2>
+    <p class="muted">Позначка <span class="mono" style="color:var(--accent);font-weight:600">нове</span> — те, чого сьогодні немає.</p>
+  </div>
+  <div class="scenarios">
+    <article class="scn">
+      <header><span class="eyebrow">інструмент, що повертає</span><h3>«Скільки вільного місця на диску?»</h3></header>
+      <ol class="steps">
+        <li><span class="ph">вухо</span><div class="b">звук → хід → Turn(mic)</div></li>
+        <li><span class="ph">ворота</span><div class="b">на ім'я — пропускає</div></li>
+        <li><span class="ph">ядро</span><div class="b">модель: <span class="say">«Зараз гляну»</span> + <span class="mono">bash("df -h")</span></div></li>
+        <li><span class="ph">виходи</span><div class="b">Рот говорить одразу, потоком</div></li>
+        <li><span class="ph">розподіл</span><div class="b">bash повертає → ще один хід</div></li>
+        <li class="hot"><span class="ph">виходи</span><div class="b"><span class="say">«Сорок гігабайт вільно»</span></div></li>
+      </ol>
+    </article>
+    <article class="scn">
+      <header><span class="eyebrow">вихід, що лише видає</span><h3>«Намалюй графік витрат за тиждень»</h3></header>
+      <ol class="steps">
+        <li><span class="ph">ядро</span><div class="b">модель: <span class="say">«Ось графік»</span> + <span class="mono">show_canvas(html)</span></div></li>
+        <li class="hot"><span class="ph">виходи</span><div class="b">Рот говорить, Канвас малює — одночасно</div></li>
+        <li><span class="ph">розподіл</span><div class="b">нічого не повертає → хід закінчено, зайвого ходу немає</div></li>
+      </ol>
+    </article>
+    <article class="scn">
+      <header><span class="eyebrow">ініціатива</span><h3>«Нагадай о шостій про потяг»</h3></header>
+      <ol class="steps">
+        <li><span class="ph">16:05</span><div class="b">модель: <span class="mono">remind(18:00, "потяг")</span><span class="new">нове</span> + <span class="say">«Добре, о шостій»</span></div></li>
+        <li><span class="ph"></span><div class="b q">тиша — модель не викликається жодного разу</div></li>
+        <li><span class="ph">17:45</span><div class="b">годинник → привід у Ініціативу<span class="new">нове</span></div></li>
+        <li><span class="ph">суддя</span><div class="b">ти говориш по телефону → потримати</div></li>
+        <li class="hot"><span class="ph">17:47</span><div class="b">20 с тиші → Turn(initiative) → <span class="say">«За тринадцять хвилин потяг»</span></div></li>
+      </ol>
+    </article>
+    <article class="scn">
+      <header><span class="eyebrow">роль з тихим каналом</span><h3>«Дока, записуй мітинг»</h3></header>
+      <ol class="steps">
+        <li><span class="ph">ворота</span><div class="b">тригер ролі → сесія «мітинг», ворота відкриті для всієї кімнати</div></li>
+        <li><span class="ph">вухо</span><div class="b">кожна репліка → Turn(mic)</div></li>
+        <li><span class="ph">виходи</span><div class="b">текст моделі → Лог, Рот мовчить</div></li>
+        <li><span class="ph">«закінчили»</span><div class="b">артефакт у workspace/artifacts</div></li>
+        <li class="hot"><span class="ph">виходи</span><div class="b"><span class="say">озвучений підсумок</span> — роль знімає тишу на одну фразу</div></li>
+      </ol>
+    </article>
+  </div>
+</section>
+
+<!-- ─── 8. mapping ─────────────────────────────── -->
+<section aria-labelledby="h-map">
+  <div class="prose">
+    <p class="eyebrow">9 · що з наявного куди лягає</p>
+    <h2 id="h-map">Кожен модуль має рівно одне місце</h2>
+    <p class="muted">Це ще не план переносу — лише перевірка, що картинка вміщує все, що є. Субагенти, маркетплейс, динамічні інструменти й sidetone у таблиці відсутні: вирішено прибрати (v3).</p>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>частина</th><th>наявні модулі</th><th>примітка</th></tr></thead>
+    <tbody>
+      <tr><td>Вухо</td><td><span class="mono">audio_io · aec · far_end · vad · stt · turn · hallucinations · hearing</span>, гейт і фільтр з <span class="mono">main.py</span></td><td>сторож слуху «я оглух» — теж тут; шле привід в Ініціативу</td></tr>
+      <tr><td>Ворота</td><td><span class="mono">wake · wake_phrases</span>, тригери ролей</td><td>роль відкриває ворота для кімнати</td></tr>
+      <tr><td>Скринька</td><td><span class="mono">loop._injected</span> + збирач ходу</td><td>ходи, що назбирались під час відповіді, склеюються</td></tr>
+      <tr><td>Ядро</td><td><span class="mono">loop.respond · llm · prompt · sentences</span>, ролі: <span class="mono">roles · role_flow · role_session</span></td><td>петля з розділу 4</td></tr>
+      <tr><td>Пам'ять</td><td><span class="mono">src/memory · persist · search</span></td><td>спільна бібліотека, не окрема система: запис ходу синхронний</td></tr>
+      <tr><td>Інструменти · Руки</td><td><span class="mono">hands · jobs · mcp_bridge · browser_bridge · tools/system · tools/direct</span></td><td>ланцюг із 61 elif розкладається за вміннями; браузер — одне з них</td></tr>
+      <tr><td>Ініціатива</td><td><span class="mono">engine · intents · situation · when · repeats · environment · summary</span></td><td>«зайнятий?» — з подій ядра, а не з ключа дашборда</td></tr>
+      <tr><td>Рот</td><td><span class="mono">tts · voicing · audio_io (динамік)</span></td><td>потрібні пауза / продовжити / стоп з реченням як одиницею; один прямий дріт від Вуха</td></tr>
+      <tr><td>Текст · Канвас · Лог</td><td><span class="mono">display · api /display · artifacts · hint_sink</span></td><td>ролі вибирають канал</td></tr>
+      <tr><td>Дашборд, налаштування</td><td><span class="mono">api · config · daemon · menubar · doctor · usage · telemetry</span></td><td>вхід і вихід водночас; облік лише слухає</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ─── 9. open ─────────────────────────────── -->
+<section aria-labelledby="h-open">
+  <div class="prose">
+    <p class="eyebrow">10 · відкриті питання</p>
+    <h2 id="h-open">Що ще не вирішено</h2>
+  </div>
+  <div class="open">
+    <div class="q"><span>Показ: теги чи тулзи?<small>Модель може позначати шматки тегами <span class="mono">[voice] [text] [canvas]</span> (так було 31.05, DeepSeek слухався у 100% проб) або викликати <span class="mono">show_*</span> як тулзи (так зараз). Теги стрімляться, тулзи структурованіші. Можна підтримати обидва: ядру байдуже.</small></span></div>
+    <div class="q"><span>Скільки чекати результат у голосі?<small>Швидкий інструмент (<span class="mono">look_at_screen</span>, ~1 с) можна дочекатись у тому ж ході. Довгий — Руки. Де межа: константа чи модель вирішує через <span class="mono">delegate</span>?</small></span></div>
+    <div class="q"><span>Поріг «говорить досі» — 0,6 с?<small>Здогад. «Ага» триває ~200–300 мс, «стоп» ~400, коротке питання ~700. Межу треба зняти з реальних записів, а не вгадати. Вирішується в бою.</small></span></div>
+    <div class="q"><span>Після «ага» — повторити речення з початку чи продовжити з місця?<small>Коротке речення повторити природно; довге (10 с) повторювати цілком дратуватиме. Можливо: коротке — з початку, довге — з місця паузи. Це деталь, але її чутно.</small></span></div>
+    <div class="q"><span>Кілька перебивань поспіль.<small>Історія росте репліками без відповіді. Модель має бачити, які саме лишились без відповіді, а не просто список.</small></span></div>
+    <div class="q"><span>Одна модель чи дві?<small>Зараз голос і Руки — та сама модель із різним набором викликів. Чи має Ініціатива свій, дешевший, виклик для вето?</small></span></div>
+    <div class="q"><span>Один процес чи кілька?<small>Вухо, Ядро й Руки в одному процесі (як зараз) або окремо. За замовчуванням — один: голосовий шлях чутливий до затримок. Повідомлення робимо такими, щоб їх можна було винести пізніше.</small></span></div>
+  </div>
+</section>
+
+<section aria-labelledby="h-log">
+  <div class="prose">
+    <p class="eyebrow">журнал</p>
+    <h2 id="h-log">Що змінювалось</h2>
+  </div>
+  <div class="log">
+    <span><b>v3 · 12.09.2026</b> — рішення про «втрачену половину» pipecat: браузерний міст лишається (робочий, чекає розширення — лягає в Інструменти як «браузер»); субагенти OpenCode, динамічні інструменти, маркетплейс скілів/MCP і sidetone прибираються.</span>
+    <span><b>v2 · 12.09.2026</b> — «людина перериває»: дві смуги в скриньці, хід як скасовна задача, двоступеневе перебивання (пауза → рішення за тривалістю й текстом). Barge-in перестав бути винятком — це найшвидша частина правила. Три питання на вимірювання в бою.</span>
+    <span><b>v1 · 12.09.2026</b> — п'ять частин, петля зі скринькою, правило «повертає чи видає», Вухо й виняток barge-in, чотири сценарії, відхилено «сказати як тулзу» і конвеєр.</span>
+  </div>
+</section>
+
+</main>
