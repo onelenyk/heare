@@ -1329,7 +1329,7 @@ async def run_spine_daemon(
                     f.unlink(missing_ok=True)
                     if text:
                         logger.info("inject: %r", text[:60])
-                        await loop.inject(text)
+                        await loop.inject(text, source="dashboard")
             except Exception:
                 logger.exception("inject poll failed (non-fatal)")
 

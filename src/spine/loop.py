@@ -37,6 +37,12 @@ FAILURE_LINE = "Щось пішло не так — не змогла відпо
 # system prompt out of the model's attention.
 HISTORY_TURNS = 12
 
+# Who a turn came from. The person's own words — the microphone, the
+# dashboard's text box — interrupt whatever the loop is doing; everything
+# else — a worker's result, a remark the engine wants to make, a held
+# role turn replayed — waits for quiet. docs/design.html §6.
+PERSON_SOURCES = frozenset({"mic", "dashboard"})
+
 # The role platform used to be nine flat fields here. It is one object
 # now, but the daemon and the CLI still set and read the old names, so
 # they stay as views onto the flow: old name -> field on the flow.
@@ -154,6 +160,9 @@ class SpineLoop:
     # dashboard). They are already addressed to the assistant, so they
     # bypass the wake gate.
     _injected: asyncio.Queue = field(default_factory=asyncio.Queue)
+    # The turn being answered right now, as a task — so the next thing the
+    # person says can end it instead of waiting behind it.
+    _turn: Any = None
     # Speech-start counter: each STT job carries the count at its END so a
     # slow transcription can tell whether the user has started talking
     # again since — see TurnAssembler.transcript(speech_resumed=...).
@@ -234,6 +243,8 @@ class SpineLoop:
         try:
             await asyncio.gather(*tasks)
         finally:
+            if self._turn is not None:
+                tasks.append(self._turn)
             for t in tasks:
                 t.cancel()
             # cancel() only schedules; without this await the caller's own
@@ -376,19 +387,23 @@ class SpineLoop:
 
     # -- turn → mind → mouth ------------------------------------------
 
-    async def inject(self, text: str) -> None:
-        """Queue a turn that did not come from the microphone."""
-        self._injected.put_nowait(text)
+    async def inject(self, text: str, source: str = "other") -> None:
+        """Queue a turn that did not come from the microphone.
+
+        ``source`` says who: "dashboard" is the person and interrupts;
+        "hands", "initiative" and anything else waits its turn.
+        """
+        self._injected.put_nowait((text, source))
 
     async def _converse(self) -> None:
         while True:
             await asyncio.sleep(self.poll_interval)
             gated = True
             if not self._injected.empty():
-                turn = self._injected.get_nowait()
+                turn, source = self._injected.get_nowait()
                 gated = False
             else:
-                turn = self.assembler.poll()
+                turn, source = self.assembler.poll(), "mic"
             if not turn:
                 continue
             in_role = self.role_flow is not None and self.role_flow.in_session
@@ -414,9 +429,40 @@ class SpineLoop:
                 flow = self.role_flow
                 if flow is not None and await flow.handle(turn, injected=not gated):
                     continue  # a role session consumed the turn
-                await self.respond(turn)
             except Exception:
                 logger.exception("turn failed: %r", turn[:80])
+                continue
+            running = self._turn
+            if running is not None and not running.done():
+                if source in PERSON_SOURCES:
+                    # The person spoke: whatever was being answered is
+                    # over. Stopped, not killed — the reply still writes
+                    # down what of it was heard, then the task ends on
+                    # its own, quickly, because nothing is left to say.
+                    self.stop_speaking("barged")
+                    await self._let_finish(running)
+                else:
+                    await self._let_finish(running, patience=600.0)
+            self._turn = asyncio.create_task(self._answer(turn), name="spine-turn")
+
+    async def _answer(self, turn: str) -> None:
+        try:
+            await self.respond(turn)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("turn failed: %r", turn[:80])
+
+    async def _let_finish(self, task: Any, patience: float = 5.0) -> None:
+        """Wait for a stopped turn to write itself down; a turn that will
+        not end in that time is cancelled — the person is waiting."""
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=patience)
+        except asyncio.TimeoutError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        except Exception:  # noqa: BLE001 - already logged by _answer
+            pass
 
     async def _keep_overheard(self, text: str) -> None:
         """Keep a line said near it, if that was asked for.

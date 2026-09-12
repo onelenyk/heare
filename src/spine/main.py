@@ -336,7 +336,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
     from src.spine.wake import WakeGate
 
     async def _deliver(text: str) -> None:
-        await loop.inject(text)
+        await loop.inject(text, source="hands")
 
     # -- the role platform --------------------------------------------
     role_paths = [
@@ -531,7 +531,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
 
             loop.engine = Engine(
                 store=intent_store,
-                say=loop.inject,
+                say=lambda text: loop.inject(text, source="initiative"),
                 state=getattr(loop, "state", None),
                 persist=persist,
                 jobs=records.jobs,

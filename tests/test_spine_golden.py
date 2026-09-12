@@ -344,7 +344,7 @@ async def test_delegate_round_trip_lands_back_in_conversation(
         for prompt in attempts:
             last_reply = await loop.respond(prompt, speak=False)
             try:
-                delivered = await asyncio.wait_for(
+                delivered, _source = await asyncio.wait_for(
                     loop._injected.get(), timeout=60.0
                 )
                 break
