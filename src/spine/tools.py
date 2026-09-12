@@ -637,6 +637,16 @@ SCHEMAS: list[dict] = [
 ]
 
 
+def _minutes_word(n: int) -> str:
+    """«хвилину / хвилини / хвилин» — the rule, not the first three
+    cases: 21 хвилину, 22 хвилини, 25 хвилин, 111 хвилин."""
+    if n % 10 == 1 and n % 100 != 11:
+        return "хвилину"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "хвилини"
+    return "хвилин"
+
+
 class VoiceToolbox:
     """The voice agent's five verbs. Anything heavier goes to Hands."""
 
@@ -745,10 +755,9 @@ class VoiceToolbox:
         if not text:
             return "Скажи, про що нагадати."
 
-        # Call notice to store the reminder
         now = time.time()
         due_ts = now + minutes * 60
-        await self._notice(
+        held = await self._notice(
             kind="reminder",
             text=text,
             origin="user",
@@ -756,14 +765,11 @@ class VoiceToolbox:
             due_ts=due_ts,
             dedupe_key=f"remind:{text}:{due_ts:.0f}",
         )
-
-        # Return confirmation with proper Ukrainian plural
-        if minutes == 1:
-            return "Добре, нагадаю за 1 хвилину."
-        elif 2 <= minutes <= 4:
-            return f"Добре, нагадаю за {minutes} хвилини."
-        else:
-            return f"Добре, нагадаю за {minutes} хвилин."
+        if held is False:
+            # The engine is what keeps a reminder between turns; without
+            # one the promise would be made and never kept.
+            return "Не можу нагадати — нагадування вимкнені."
+        return f"Добре, нагадаю за {minutes} {_minutes_word(minutes)}."
 
     async def _forget(self, arguments: dict) -> str:
         """Erase overheard lines from the last N minutes.

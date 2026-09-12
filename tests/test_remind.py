@@ -293,7 +293,8 @@ async def test_remind_plural_2_4_minutes() -> None:
 
 @pytest.mark.asyncio
 async def test_remind_plural_5_plus_minutes() -> None:
-    """5+ minutes: хвилин (plural)."""
+    """5+ minutes: хвилин (plural) — and the teens and twenties follow
+    the rule: 11 хвилин, 21 хвилину, 22 хвилини, 25 хвилин."""
     store = InMemoryStore()
 
     async def notice(**kw):
@@ -310,6 +311,9 @@ async def test_remind_plural_5_plus_minutes() -> None:
     for minutes in [5, 10, 60, 1440]:
         result = await _call_remind(toolbox, minutes, f"тест {minutes}")
         assert f"за {minutes} хвилин" in result
+    for minutes, word in [(11, "хвилин"), (21, "хвилину"), (22, "хвилини"), (25, "хвилин"), (111, "хвилин")]:
+        result = await _call_remind(toolbox, minutes, f"тест {minutes}")
+        assert f"за {minutes} {word}." in result, result
 
 
 # ── judge behavior ────────────────────────────────────────────────────

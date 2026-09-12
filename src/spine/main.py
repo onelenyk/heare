@@ -419,6 +419,16 @@ async def _wire_full(loop, settings, cfg, memory, features):
     if features["persist"]:
         loop.persist = persist
 
+    async def _remind_notice(**kw) -> bool:
+        """The remind verb's door into the engine. Looked up at call time
+        because the engine is built after the toolbox; False when there is
+        none, so the verb can say reminders are off instead of promising."""
+        engine = getattr(loop, "engine", None)
+        if engine is None:
+            return False
+        await engine.notice(**kw)
+        return True
+
     if features["tools"]:
         loop.toolbox = VoiceToolbox(
             settings, memory, _deliver,
@@ -428,7 +438,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
             # not take the name out of four thousand rows that already
             # start with it.
             names=_wake_phrases(settings),
-            notice=lambda **kw: loop.engine.notice(**kw) if loop.engine else None,
+            notice=_remind_notice,
         )
         loop.stream_events = lambda messages, tools: stream_chat_events(
             messages, _cfg(), tools=tools
