@@ -3,14 +3,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 export default function AudioPanel({ state, post, onClose }) {
   const [gain, setGain] = useState(1.0);
   const [volume, setVolume] = useState(1.0);
-  const [sidetone, setSidetone] = useState(false);
   const [debounce, setDebounce] = useState(null);
 
   useEffect(() => {
     if (state.input_gain != null) setGain(parseFloat(state.input_gain));
     if (state.output_volume != null) setVolume(parseFloat(state.output_volume));
-    if (state.sidetone != null) setSidetone(state.sidetone === '1' || state.sidetone === true);
-  }, [state.input_gain, state.output_volume, state.sidetone]);
+  }, [state.input_gain, state.output_volume]);
 
   const send = useCallback((key, value) => {
     clearTimeout(debounce);
@@ -18,11 +16,6 @@ export default function AudioPanel({ state, post, onClose }) {
     setDebounce(t);
   }, [post, debounce]);
 
-  const toggleSidetone = useCallback(() => {
-    const next = !sidetone;
-    setSidetone(next);
-    post('/state', { key: 'sidetone', value: next ? '1' : '0' });
-  }, [sidetone, post]);
 
   const sliderStyle = {
     width: '100%',
@@ -108,38 +101,6 @@ export default function AudioPanel({ state, post, onClose }) {
           </div>
         </div>
 
-        <div className="controls-sep" style={{ margin: 'var(--s3) 0' }}></div>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>Sidetone</div>
-            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
-              Hear yourself through speakers
-            </div>
-          </div>
-          <button
-            className={'btn' + (sidetone ? ' active' : '')}
-            onClick={toggleSidetone}
-            style={{ minWidth: 80 }}
-          >
-            {sidetone ? '\uD83D\uDD0A on' : '\uD83D\uDD07 off'}
-          </button>
-        </div>
-
-        {sidetone && (
-          <div style={{
-            marginTop: 'var(--s2)',
-            padding: 'var(--s2)',
-            background: 'rgba(126,231,135,0.06)',
-            border: '1px solid rgba(126,231,135,0.15)',
-            borderRadius: 'var(--r-xs)',
-            fontSize: 10,
-            color: 'var(--accent)',
-          }}>
-            {'\u2139\uFE0F'} Sidetone is active — you will hear your mic input.
-            Gated off while the bot is speaking to prevent feedback.
-          </div>
-        )}
       </div>
     </div>
   );

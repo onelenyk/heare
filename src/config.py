@@ -106,6 +106,7 @@ RETIRED: dict[str, str] = {
     "context_recent_transcripts_count": "the prompt takes four recent exchanges",
     # Sidetone was never played by either engine.
     "sidetone_volume": "nothing plays a sidetone",
+    "sidetone_file": "same",
     # An allowlist for claude-agent-sdk, whose only reader was a method
     # nothing called. The worker's allowlist is the tool gate.
     "agent_sdk_allowed_tools": "tool access is decided by src/agent/tool_gate.py",
@@ -434,10 +435,6 @@ class Settings:
         default_factory=lambda: HEARE_HOME / "audio_output_device"
     )
 
-    # Sidetone — copies mic input to speaker so the user can monitor
-    # exactly what the agent hears. Gated off during bot speech to
-    # prevent feedback loops.
-    sidetone_file: Path = field(default_factory=lambda: HEARE_HOME / "sidetone.flag")
 
     def __post_init__(self) -> None:
         # CCS-01 invariant: a refinement window longer than the idle

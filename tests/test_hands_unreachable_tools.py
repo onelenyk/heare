@@ -3,9 +3,7 @@
 For a month the daemon handed the model schemas for tools whose other
 half did not exist in this process. The sub-agents are gone now
 (12 September); what remains is the browser bridge, constructed at boot
-since 9 September and reachable only once a Chrome extension pairs, and
-two tools that execute cleanly, write State, and return success to a
-reader that does not exist in either engine.
+since 9 September and reachable only once a Chrome extension pairs.
 
 A tool the model can see is a promise to the person on the microphone.
 """
@@ -19,7 +17,6 @@ import pytest
 
 from src.agent.hands import (
     _BROWSER_TOOLS,
-    _TOOLS_WITH_NO_READER,
     Hands,
     unreachable_tools,
 )
@@ -44,11 +41,6 @@ class TestNothingIsOfferedWithoutAnExecutor:
 
         assert _get_bridge() is None, "fixture assumption changed"
         assert not (_BROWSER_TOOLS & schema_names())
-
-    def test_the_two_with_no_reader_are_always_hidden(self, schema_names) -> None:
-        """Unlike the others these never come back on a probe: there is
-        no reader to detect, in either engine."""
-        assert not (_TOOLS_WITH_NO_READER & schema_names())
 
 
     def test_the_worker_still_has_real_work(self, schema_names) -> None:
@@ -105,6 +97,6 @@ class TestEveryHiddenNameIsReal:
 
         defined = {t.name for t in TOOLS}
         declared = (
-            _BROWSER_TOOLS | _TOOLS_WITH_NO_READER
+            _BROWSER_TOOLS
         )
         assert declared <= defined, f"gate names no such tool: {declared - defined}"

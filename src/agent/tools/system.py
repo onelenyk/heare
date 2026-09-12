@@ -606,18 +606,6 @@ TOOLS: list[ToolDef] = [
         required=["muted"],
     ),
     ToolDef(
-        name="vad_sensitivity",
-        description="Adjust VAD (Voice Activity Detection) sensitivity. Higher values (closer to 1.0) make the bot less likely to interrupt, requiring louder or clearer speech to trigger. Lower values (closer to 0.0) make it more sensitive to any sound.",
-        handler="vad_sensitivity",
-        schema_fields={
-            "level": {
-                "type": "number",
-                "description": "Sensitivity level from 0.0 (very sensitive) to 1.0 (least sensitive). Default 0.5.",
-            },
-        },
-        required=["level"],
-    ),
-    ToolDef(
         name="mic_gain",
         description="Adjust the microphone input gain. Higher values amplify quiet speech, lower values reduce loud input. Unity gain is 1.0.",
         handler="mic_gain",
@@ -712,20 +700,6 @@ TOOLS: list[ToolDef] = [
         handler="memory_status",
         schema_fields={},
     ),
-    ToolDef(
-        name="sidetone",
-        description="Увімкнути або вимкнути моніторинг мікрофону — "
-        "ви будете чути себе в динаміках так, як вас чує асистент. "
-        "Корисно для перевірки якості звуку та уникнення відлуння.",
-        handler="sidetone",
-        schema_fields={
-            "enabled": {
-                "type": "boolean",
-                "description": "True щоб увімкнути, False щоб вимкнути.",
-            },
-        },
-        required=["enabled"],
-    ),
 ]
 
 
@@ -769,10 +743,8 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "recall": _json_serializer,
     "forget": _json_serializer,
     "memory_status": _json_serializer,
-    "vad_sensitivity": _json_serializer,
     "mic_gain": _json_serializer,
     "volume": _json_serializer,
-    "sidetone": _json_serializer,
 }
 
 

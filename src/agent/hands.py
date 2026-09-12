@@ -64,18 +64,11 @@ _BROWSER_TOOLS = frozenset({
     "fill_in_browser", "navigate_browser", "extract_in_browser",
     "open_browser_tab", "activate_browser_tab",
 })
-# A different failure, and the quieter one: these two execute fine and
-# report success. They write a value into State that nothing on the
-# spine path reads — sidetone had a consumer only in a deleted pipecat
-# stage, and VAD sensitivity has never had one in either engine (the
-# spine's threshold is a constant in ``spine/vad.py``). A tool that
-# answers "done" and changes nothing teaches the model it did something.
-_TOOLS_WITH_NO_READER = frozenset({"sidetone", "vad_sensitivity"})
 
 
 def unreachable_tools() -> frozenset[str]:
     """Names the worker must not offer, because nothing can carry them out."""
-    hidden: set[str] = set(_TOOLS_WITH_NO_READER)
+    hidden: set[str] = set()
 
     try:
         from src.agent.browser_bridge import _get_bridge
@@ -85,7 +78,6 @@ def unreachable_tools() -> frozenset[str]:
         # question: a bound server with no extension paired to it answers
         # every call with "Browser not connected". Offering the verbs then
         # teaches the model it can drive a browser that is not there —
-        # the same lesson `sidetone` teaches by succeeding at nothing.
         # `connected` flips on its own when Chrome pairs, and the worker
         # rebuilds its schemas per job, so nothing needs a restart.
         bridge = _get_bridge()

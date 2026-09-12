@@ -76,8 +76,6 @@ def set_memory_backend(backend: Any) -> None:
     _memory_backend = backend
 
 
-
-
 class _PathOutsideWorkspace(Exception):
     """Raised when an LLM-supplied path resolves outside the workspace root."""
 
@@ -201,8 +199,6 @@ async def execute_direct(
         return await _execute_audio_device(args, settings, target="input")
     elif tool == "audio_output":
         return await _execute_audio_device(args, settings, target="output")
-    elif tool == "vad_sensitivity":
-        return await _execute_vad_sensitivity(args, settings)
     elif tool == "mic_gain":
         return await _execute_mic_gain(args, settings)
     elif tool == "volume":
@@ -215,8 +211,6 @@ async def execute_direct(
         return await _execute_forget(args, settings)
     elif tool == "memory_status":
         return await _execute_memory_status(args, settings)
-    elif tool == "sidetone":
-        return await _execute_sidetone(args, settings)
     else:
         return {
             "success": False,
@@ -2608,59 +2602,6 @@ async def _execute_mute_mic(args: str, settings: "Settings | None" = None) -> di
     }
 
 
-async def _execute_sidetone(args: str, settings: "Settings | None" = None) -> dict:
-    """Enable or disable sidetone (monitor mic input through speakers)."""
-    import json
-
-    try:
-        parsed = json.loads(args) if args.strip() else {}
-    except (ValueError, TypeError):
-        return {
-            "success": False,
-            "output": "",
-            "error": "invalid arguments",
-            "spoken": {
-                "en": "Invalid sidetone arguments.",
-                "uk": "Неправильні аргументи.",
-            },
-        }
-    enabled = bool(parsed.get("enabled", False))
-
-    state_value = "1" if enabled else "0"
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(
-                f"{API_BASE}/state",
-                json={"key": "sidetone", "value": state_value},
-                headers=_api_headers(),
-                timeout=5,
-            )
-            if resp.status_code != 200:
-                logger.warning("State API returned %s for sidetone", resp.status_code)
-        except httpx.RequestError as api_err:
-            logger.warning("State API unavailable for sidetone: %s", api_err)
-
-    if settings is not None:
-        flag_path = settings.sidetone_file
-        flag_path.parent.mkdir(parents=True, exist_ok=True)
-        if enabled:
-            flag_path.touch(exist_ok=True)
-        else:
-            try:
-                flag_path.unlink()
-            except FileNotFoundError:
-                pass
-
-    return {
-        "success": True,
-        "output": f"Sidetone {'on' if enabled else 'off'}",
-        "spoken": {
-            "en": f"Sidetone {'enabled' if enabled else 'disabled'}.",
-            "uk": f"Моніторинг мікрофону {'увімкнено' if enabled else 'вимкнено'}.",
-        },
-    }
-
-
 async def _execute_audio_device(
     args: str,
     settings: "Settings | None" = None,
@@ -2692,52 +2633,6 @@ async def _execute_audio_device(
         "spoken": {
             "en": f"Audio {target} device set to {name}.",
             "uk": f"Аудіо пристрій {target} встановлено на {name}.",
-        },
-    }
-
-
-async def _execute_vad_sensitivity(
-    args: str, settings: "Settings | None" = None
-) -> dict:
-    """Adjust VAD sensitivity (confidence threshold)."""
-    import json as _json
-
-    try:
-        params = _json.loads(args) if args.strip() else {}
-    except (_json.JSONDecodeError, TypeError):
-        params = {}
-    level = float(params.get("level", 0.5))
-    if not (0.0 <= level <= 1.0):
-        return {
-            "success": False,
-            "output": "",
-            "error": f"level must be between 0.0 and 1.0, got {level}",
-            "spoken": {
-                "en": "Sensitivity must be between 0.0 and 1.0.",
-                "uk": "Чутливість має бути від 0.0 до 1.0.",
-            },
-        }
-    pct = int(level * 100)
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(
-                f"{API_BASE}/state",
-                json={"key": "vad_sensitivity", "value": str(level)},
-                headers=_api_headers(),
-                timeout=5,
-            )
-            if resp.status_code != 200:
-                logger.warning(
-                    "State API returned %s for vad_sensitivity", resp.status_code
-                )
-        except httpx.RequestError as api_err:
-            logger.warning("State API unavailable for vad_sensitivity: %s", api_err)
-    return {
-        "success": True,
-        "output": f"VAD sensitivity set to {pct}%",
-        "spoken": {
-            "en": f"VAD sensitivity set to {pct} percent.",
-            "uk": f"Чутливість VAD встановлена на {pct} відсотків.",
         },
     }
 
