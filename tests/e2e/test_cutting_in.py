@@ -1,17 +1,17 @@
-"""Talking over it.
+"""Talking over it: when utterances are interrupted.
 
 The fastest thing the assistant does is stop. Everything else can be a
 second late and merely feel slow; being unable to stop is the difference
 between a machine you can talk to and one you have to wait out.
 
-Two halves, and only one of them was ever tested. The half that *obeys*
-a decision to stop — `_interrupted` set, the speaker starved, the text
-still landing in history — has five unit tests, each of which sets the
-flag by hand. The half that *makes* the decision — a voice arriving
-while the speaker is live, the detector calling it speech, the queued
-audio dropped, the canceller's reference thrown away with it — had none,
-at any layer, because the mouth in this harness reported `playing =
-False` forever and the conductor asks that question first.
+Each utterance now tracks its state: `.stopped`, `.paused`, and `.outcome`.
+The conductor checks `loop.interrupted` (a read-only view of whether the
+latest utterance was stopped) to decide whether barge-in succeeded.
+
+These scenarios test that interruption decision and the paths it affects:
+the detector calling it speech, the canceller dropping the queued audio,
+the speaker starving, the text still landing in history, and the next
+turn recognising what was said over the top.
 
 What stood in for the missing coverage was a measurement in
 `docs/findings/known-broken.md`: interruption lands "2 of 4, and the
@@ -182,7 +182,7 @@ async def test_speaking_into_a_silent_room_is_not_an_interruption(tmp_path) -> N
         assert not room.mouth.playing, "the premise: nothing is being said"
         await room.into_the_mic("а тепер інше питання")
 
-        assert not room.loop._interrupted, "silence was mistaken for being talked over"
+        assert not room.loop.interrupted, "silence was mistaken for being talked over"
     finally:
         await close_room(room)
 
@@ -300,7 +300,7 @@ async def test_it_does_not_interrupt_itself_when_it_hears_its_own_voice(
         echo = await _a_room_with_a_speaker_in_it(room)
         await room.frames(pack(echo))
 
-        assert not room.loop._interrupted, "it stopped talking because of itself"
+        assert not room.loop.interrupted, "it stopped talking because of itself"
     finally:
         await close_room(room)
 
@@ -324,6 +324,6 @@ async def test_a_person_still_gets_through_over_that_echo(tmp_path) -> None:
                  for i in range(_FRAMES * _FRAME)]
         await room.frames(pack(heard))
 
-        assert room.loop._interrupted, "the person was lost under the echo"
+        assert room.loop.interrupted, "the person was lost under the echo"
     finally:
         await close_room(room)

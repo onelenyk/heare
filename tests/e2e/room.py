@@ -21,16 +21,14 @@ and exactly three things replaced at the edge —
   filter that decides whether what came back was ever speech, are both
   real here, because both have turned an evening bad and neither was on
   a test path until 23 August;
-* **the mouth** — the synthesiser, and a speaker that keeps a queue
-  instead of a device. There was no mouth at all for the first
-  thirty-eight scenarios, on the reasoning that `audio=None` costs no
-  code. It cost three things that live only in the speaking branch: the
-  stamp the junk filter reads, the extension of the wake window, and the
-  choice of voice — and a wrong voice is silence, which is this
-  project's worst failure shape. It then reported `playing = False`
-  forever, which cost a fourth: the conductor asks that question before
-  it will ever interrupt itself for someone, so every path that decides
-  to stop talking was unreachable from here;
+* **the mouth** — the synthesiser only. There was no mouth at all for
+  the first thirty-eight scenarios, on the reasoning that `audio=None`
+  costs no code. It cost three things that live only in the speaking
+  branch: the stamp the junk filter reads, the extension of the wake
+  window, and the choice of voice — and a wrong voice is silence, which
+  is this project's worst failure shape. The Utterance object now tracks
+  each reply's state: `.stopped`, `.paused`, `.outcome` (done/barged/cancelled/
+  wedged). `room.outcome()` reads the latest utterance's outcome.
 * **the model**, which is scripted, because a test that cannot say what
   the model answers is not testing anything downstream of it.
 
@@ -264,18 +262,6 @@ class Room:
             await self.mouth.input_frames.put(pcm[at:at + frame_bytes])
             await asyncio.sleep(0)
 
-    async def cuts_in(self, text: str, *, ms: float = 400.0) -> bool:
-        """Start talking while the assistant is still speaking.
-
-        Returns whether the interruption landed — which is the single
-        number the old measurement of this reported (two runs in four,
-        against an engine that no longer exists) and the one nothing has
-        measured since.
-        """
-        assert self.mouth.playing, "nothing to interrupt — the mouth is idle"
-        await self.into_the_mic(text, ms=ms)
-        return self.loop._interrupted
-
     def cost_events(self) -> list[tuple]:
         """What was billed. Silence that reaches Groq is money."""
         with sqlite3.connect(self.db) as db:
@@ -410,6 +396,41 @@ class Room:
                 (time.time() - days_ago * 86400, text, agent),
             )
             db.commit()
+
+    async def nods(self, text: str = "ага", *, ms: float = 250.0) -> None:
+        """Short speech into the mic while the assistant is speaking.
+
+        Like `into_the_mic` with a short `ms`, used to pause the speaker
+        rather than interrupt it. The pause tests the two-stage decision
+        of docs/design.html §6: does the room say something short
+        («ага» = nod) or speak at length (barge-in)?
+        """
+        await self.spoken(text, ms=ms)
+
+    @property
+    def cuts_in(self) -> bool:
+        """Whether the latest utterance was cut short."""
+        return self.loop.interrupted
+
+    def paused(self) -> bool:
+        """Whether the latest utterance is paused.
+
+        Returns True if there is a mouth and a last utterance that is
+        paused, else False.
+        """
+        if hasattr(self.loop, "mouth") and self.loop.mouth is not None:
+            mouth = self.loop.mouth
+            if mouth.last is not None:
+                return mouth.last.paused
+        return False
+
+    def outcome(self) -> str | None:
+        """How the latest utterance ended: 'done', 'barged', 'cancelled', or None."""
+        if hasattr(self.loop, "mouth") and self.loop.mouth is not None:
+            mouth = self.loop.mouth
+            if mouth.last is not None:
+                return mouth.last.outcome
+        return None
 
     # -- what it did --------------------------------------------------
 
@@ -802,5 +823,69 @@ async def close_room(room: Room) -> None:
         pass
 
 
+def real_speech(text: str) -> bytes:
+    """Generate 16 kHz mono int16 PCM of spoken text using macOS `say`.
+
+    Uses `say` with a Ukrainian voice if available, falls back to any voice.
+    Converts the output to PCM via ffmpeg.
+    Raises `pytest.skip` if binaries are unavailable.
+    """
+    import subprocess
+
+    # Check that required binaries exist
+    try:
+        subprocess.run(["which", "say"], check=True, capture_output=True)
+        subprocess.run(["which", "ffmpeg"], check=True, capture_output=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        import pytest
+        pytest.skip("say or ffmpeg not available")
+
+    try:
+        # Try to find a Ukrainian voice
+        voices_output = subprocess.run(
+            ["say", "-v", "?"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        voice = None
+        for line in voices_output.stdout.split("\n"):
+            if "uk_UA" in line or "ukrainian" in line.lower():
+                voice = line.split()[0]
+                break
+        # Fall back to first available voice
+        if voice is None:
+            lines = [line for line in voices_output.stdout.split("\n") if line.strip()]
+            if lines:
+                voice = lines[0].split()[0]
+
+        voice_arg = ["-v", voice] if voice else []
+
+        # Generate AIFF file
+        aiff_path = "/tmp/heare_test_speech.aiff"
+        subprocess.run(
+            ["say"] + voice_arg + ["-o", aiff_path, text],
+            check=True,
+            timeout=10
+        )
+
+        # Convert to 16 kHz mono int16 PCM
+        pcm = subprocess.run(
+            ["ffmpeg", "-i", aiff_path, "-ar", "16000", "-ac", "1",
+             "-f", "s16le", "-"],
+            capture_output=True,
+            check=True,
+            timeout=10
+        )
+        return pcm.stdout
+
+    except subprocess.CalledProcessError as e:
+        import pytest
+        pytest.skip(f"real_speech failed: {e}")
+    except Exception as e:
+        import pytest
+        pytest.skip(f"real_speech error: {e}")
+
+
 __all__ = ["Mouth", "Room", "Says", "close_room", "open_room",
-           "pack", "voice_like"]
+           "pack", "voice_like", "real_speech"]
