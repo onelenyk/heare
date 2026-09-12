@@ -10,6 +10,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import AsyncIterator
 
+from src.mouth import Mouth
 from src.spine.loop import SpineLoop
 
 
@@ -28,9 +29,13 @@ class FakeAudio:
         self.played.append(pcm)
 
     def stop_playback(self) -> int:
-        dropped = sum(len(p) for p in self.played)
-        self.played.clear()
-        return dropped
+        # In tests, playing is usually False, so nothing is queued and we
+        # return 0. But if playing is True (e.g., NeverDrainsAudio), there
+        # would be bytes queued, so return the count.
+        if self.playing:
+            return sum(len(p) for p in self.played)
+        # Normal case: nothing queued, so nothing dropped. Keep history for assertions.
+        return 0
 
     @property
     def playing(self) -> bool:
@@ -118,6 +123,7 @@ def _make_loop(
         stream_chat=lambda m: stream_chat(m),
         split_sentences=_one_sentence,
         synthesise=synthesise,
+        mouth=Mouth(audio) if audio is not None else None,
         poll_interval=0.01,
     )
 
@@ -393,9 +399,14 @@ async def test_interrupted_reply_stops_feeding_the_speaker() -> None:
     async def two_sentences(deltas):
         buf = "".join([d async for d in deltas])
         for s in buf.split(". "):
-            if loop is not None:
-                yield s
-            loop._interrupted = True  # user barges in after sentence one
+            if loop is not None and loop.mouth is not None:
+                # Get the current utterance from the mouth's list.
+                # When the first sentence is yielded, interrupt it.
+                if loop.mouth._live:
+                    yield s
+                    loop.mouth._live[-1].stop()
+                    continue
+            yield s
 
     loop.split_sentences = two_sentences
     reply = await loop.respond("розкажи довго")
@@ -427,32 +438,41 @@ async def test_interrupt_switch_off_lets_the_reply_finish() -> None:
     await asyncio.sleep(0.1)
     run.cancel()
 
-    assert loop._interrupted is False, "with the switch off nothing is cut"
+    assert loop.interrupted is False, "with the switch off nothing is cut"
 
     # And with it on, the same speech interrupts.
     loop2 = _make_loop(audio, vad=ScriptedVAD({1: FakeEvent(FakeKind("start"))}))
     loop2.aec = DuplexAEC()
     loop2.audio = _Playing()
     loop2.audio.input_frames.put_nowait(b"\x00" * 640)
+
+    # Open an utterance to wait for the interrupt
+    utt = loop2.mouth.open(loop2.synthesise, mute_mic=False)
     run2 = asyncio.create_task(loop2.run())
 
     async def _cut() -> None:
-        while not loop2._interrupted:
+        while not utt.stopped:
             await asyncio.sleep(0.01)
 
     await asyncio.wait_for(_cut(), timeout=2.0)
     run2.cancel()
+    utt.close()
 
 
 async def test_a_stale_interrupt_does_not_silence_the_next_service_phrase() -> None:
     """Cancel pressed while nothing was speaking used to latch the flag:
     only respond() ever cleared it, so the next service phrase — a role
     ack, an end-of-session summary — was written into history as if said
-    and never reached the speaker. The room heard a mute assistant."""
+    and never reached the speaker. The room heard a mute assistant.
+
+    Now, per-utterance interrupts make this impossible: each _say_now
+    opens a fresh utterance, so stale interrupts from before never reach it.
+    This test verifies the regression cannot happen."""
     audio = FakeAudio()
     loop = _make_loop(audio)
 
-    loop._interrupted = True  # the dashboard's Cancel, with no reply running
+    # Simulate a stale interrupt from a previous utterance
+    loop.stop_speaking("cancelled")
 
     await loop._say_now("Роль «мітинг» активна.")
 
@@ -460,7 +480,7 @@ async def test_a_stale_interrupt_does_not_silence_the_next_service_phrase() -> N
     assert loop.history[-1] == {
         "role": "assistant", "content": "Роль «мітинг» активна."
     }
-    assert loop._interrupted is False
+    assert loop.interrupted is False
 
 
 async def test_barge_in_during_a_service_phrase_still_stops_it() -> None:
@@ -471,7 +491,8 @@ async def test_barge_in_during_a_service_phrase_still_stops_it() -> None:
 
     async def chunked(text: str) -> AsyncIterator[bytes]:
         yield b"PCM:1"
-        loop._interrupted = True  # the user talks over the phrase
+        # After first chunk, stop the current utterance
+        loop.stop_speaking()
         yield b"PCM:2"
 
     loop.synthesise = chunked
@@ -490,7 +511,8 @@ async def test_barge_in_mid_reply_still_stops_the_speaker() -> None:
 
     async def chunked(text: str) -> AsyncIterator[bytes]:
         yield b"PCM:a"
-        loop._interrupted = True
+        # Stop the current utterance in the mouth
+        loop.stop_speaking()
         yield b"PCM:b"
 
     loop.synthesise = chunked

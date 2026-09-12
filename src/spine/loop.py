@@ -123,6 +123,8 @@ class SpineLoop:
     # reachable under their old names through this loop — see _ROLE_ATTRS
     # — so wiring written against the old flat fields keeps working.
     role_flow: Any = None      # .in_session / await .handle(turn) -> bool
+    mouth: Any = None          # .open(synthesise, *, mute_mic: bool) -> Utterance,
+                               # .stop_all(outcome) -> int, .interrupted -> bool
     _stt_jobs: asyncio.Queue = field(default_factory=asyncio.Queue)
     # Turns injected from outside the microphone (Hands results, the
     # dashboard). They are already addressed to the assistant, so they
@@ -138,13 +140,24 @@ class SpineLoop:
     # The dashboard's interrupt switch. Off means the assistant finishes
     # its sentence even when talked over — some rooms want that.
     barge_in_enabled: bool = True
-    # Set when the user starts talking over the assistant (full duplex
-    # only) or when the dashboard's Cancel is pressed; respond() checks it
-    # between chunks and stops feeding the speaker, while still collecting
-    # the full reply text for history. It describes the utterance being
-    # spoken, so every freshly requested one — respond(), _say_now() —
-    # clears it first; otherwise it is a latch that mutes the assistant.
-    _interrupted: bool = False
+
+    def stop_speaking(self, outcome: str = "cancelled") -> int:
+        """Stop all utterances. Returns byte count dropped from the speaker."""
+        if self.mouth is not None:
+            return self.mouth.stop_all(outcome)
+        elif self.audio is not None:
+            return self.audio.stop_playback()
+        else:
+            return 0
+
+    @property
+    def interrupted(self) -> bool:
+        """True if any utterance in flight was interrupted by barge-in
+        or the dashboard's Cancel."""
+        if self.mouth is not None:
+            return self.mouth.interrupted
+        return False
+
 
     @property
     def _duplex(self) -> bool:
@@ -234,12 +247,11 @@ class SpineLoop:
                 if self.audio.playing and self._duplex and self.barge_in_enabled:
                     # Barge-in: the user talks over the assistant. Drop
                     # what is queued and tell respond() to stop feeding.
-                    self._interrupted = True
-                    # stop_playback also clears the far-end reference:
+                    # The stop_playback also clears the far-end reference:
                     # bytes that never leave the speaker must not be
                     # subtracted as echo from the very utterance that
                     # interrupted them.
-                    dropped = self.audio.stop_playback()
+                    dropped = self.stop_speaking("barged")
                     logger.info("barge-in: dropped %d queued bytes", dropped)
             elif kind == "end":
                 # Off the hot path — but through a single worker, not
@@ -349,27 +361,23 @@ class SpineLoop:
         part of the conversation, so it lands in history too."""
         if not text:
             return
-        # The interrupt belongs to the utterance being spoken, not to the
-        # loop. A service phrase is requested fresh, in the present tense,
-        # so an interrupt left over from before it existed — the dashboard
-        # Cancel pressed while nothing was playing, a barge-in whose own
-        # speech the junk filter then dropped — must not silence it. It
-        # used to: the ack landed in history as if said, and the room
-        # heard nothing. Only respond() cleared this flag.
-        self._interrupted = False
         logger.info("say (service): %r", text[:70])
         self.history.append({"role": "assistant", "content": text})
-        if self.audio is None:
+        if self.mouth is None:
             return
+        # A fresh utterance: the interrupt belongs to it alone, so a Cancel
+        # or a barge-in from before this phrase existed cannot silence it.
+        # That used to happen — the flag was on the loop, and only
+        # respond() cleared it.
+        utt = self.mouth.open(self.synthesise, mute_mic=not self._duplex)
         try:
-            await self._speak(text)
-            await asyncio.wait_for(self._drain_playback(), timeout=30.0)
-        except asyncio.TimeoutError:
-            self.audio.stop_playback()
+            await self._speak(utt, text)
+            await utt.finish(timeout=30.0)
+        finally:
+            utt.close()
 
     async def respond(self, user_text: str, *, speak: bool = True) -> str:
         """One full exchange. Returns the reply text (also spoken)."""
-        self._interrupted = False
         if self.engine is not None:
             # Whatever they just said is also the verdict on whatever it
             # last brought up unbidden. Reading it here is the whole
@@ -405,11 +413,20 @@ class SpineLoop:
         parts: list[str] = []
         tool_calls: list[dict] = []
 
+        # Open the utterance before the model streams. The half-duplex mute
+        # must cover thinking and tool calls, so the mute happens on open.
+        utt = (
+            self.mouth.open(self.synthesise, mute_mic=not self._duplex)
+            if (speak and self.mouth is not None)
+            else None
+        )
+        speaking = utt is not None
+
         async def _deltas() -> AsyncIterator[str]:
             if self.stream_events is not None and self.toolbox is not None:
                 events = self.stream_events(messages, self.toolbox.schemas)
                 async for ev in events:
-                    if self._interrupted:
+                    if utt is not None and utt.stopped:
                         break  # stop paying for a reply nobody will hear
                     if ev.get("type") == "delta":
                         parts.append(ev["text"])
@@ -441,11 +458,6 @@ class SpineLoop:
                     parts.append(delta)
                     yield delta
 
-        speaking = speak and self.audio is not None
-        half_duplex = speaking and not self._duplex
-        if half_duplex:
-            self.audio.mute_input = True
-
         # None = the turn completed; "mind" = the model (or the prompt
         # path below it) died; "mouth" = the words existed but could not
         # be voiced. An infrastructure failure never leaves respond() as
@@ -455,46 +467,40 @@ class SpineLoop:
             try:
                 async for sentence in self.split_sentences(_deltas()):
                     logger.info("say: %r", sentence)
-                    if speaking and not self._interrupted:
-                        await self._speak_guarded(sentence)
+                    if speaking and not utt.stopped:
+                        await self._speak_guarded(utt, sentence)
 
                 # The model answered with actions instead of (or besides)
                 # words: run them and speak each short acknowledgement.
                 # A barge-in cancels pending actions too — "стоп" must not
                 # be followed by the very delegation it was stopping.
                 for call in tool_calls:
-                    if self._interrupted:
+                    if utt is not None and utt.stopped:
                         break
                     spoken = await self._run_tool(call)
                     if spoken:
                         parts.append((" " if parts else "") + spoken)
-                        if speaking and not self._interrupted:
-                            await self._speak_guarded(spoken)
+                        if speaking and not utt.stopped:
+                            await self._speak_guarded(utt, spoken)
 
                 if speaking:
-                    # play() only queues; wait for the buffer to drain (in
-                    # half duplex the mic stays muted until then). Bounded: a
-                    # stalled output device must not wedge the loop forever.
-                    try:
-                        await asyncio.wait_for(self._drain_playback(), timeout=60.0)
-                    except asyncio.TimeoutError:
-                        dropped = self.audio.stop_playback()
-                        logger.warning(
-                            "playback wedged — dropped %d queued bytes", dropped
-                        )
-            finally:
-                if half_duplex:
-                    self.audio.mute_input = False
-        except asyncio.CancelledError:
-            # Shutdown, not a fault: it must reach the task that cancelled
-            # us, and it must not be answered with an apology out loud.
-            raise
-        except _MouthFailed:
-            logger.exception("mouth failed: reply produced but not voiced")
-            failure = "mouth"
-        except Exception:
-            logger.exception("mind failed: no reply for %r", user_text[:80])
-            failure = "mind"
+                    # say() only queues; wait for the sound to leave the
+                    # room (in half duplex the mic stays muted until then).
+                    # Bounded inside: a stalled device must not wedge the loop.
+                    await utt.finish(timeout=60.0)
+            except asyncio.CancelledError:
+                # Shutdown, not a fault: it must reach the task that cancelled
+                # us, and it must not be answered with an apology out loud.
+                raise
+            except _MouthFailed:
+                logger.exception("mouth failed: reply produced but not voiced")
+                failure = "mouth"
+            except Exception:
+                logger.exception("mind failed: no reply for %r", user_text[:80])
+                failure = "mind"
+        finally:
+            if utt is not None:
+                utt.close()
 
         # A mouth failure keeps whatever the model said — those words
         # existed, and the next prompt must see the answer the user was
@@ -536,10 +542,10 @@ class SpineLoop:
                     logger.exception("note_exchange failed (non-fatal)")
         return reply
 
-    async def _speak_guarded(self, sentence: str) -> None:
+    async def _speak_guarded(self, utt: Any, sentence: str) -> None:
         """_speak, with its failures labelled as the mouth's."""
         try:
-            await self._speak(sentence)
+            await self._speak(utt, sentence)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -566,7 +572,7 @@ class SpineLoop:
         if not self.history or self.history[-1].get("content") != FAILURE_LINE:
             self.history.append({"role": "assistant", "content": FAILURE_LINE})
 
-    async def _speak(self, sentence: str) -> None:
+    async def _speak(self, utt: Any, sentence: str) -> None:
         import time as _time
 
         self.last_spoke_ts = _time.time()
@@ -578,12 +584,8 @@ class SpineLoop:
                 self.wake.spoke()
             except Exception:
                 logger.debug("wake.spoke failed (non-fatal)")
-        chars = 0
-        async for chunk in self.synthesise(sentence):
-            if self._interrupted:
-                break
-            self.audio.play(chunk)
-            chars = len(sentence)
+        await utt.say(sentence)
+        chars = len(sentence) if not utt.stopped else 0
         if chars and self.usage is not None:
             try:
                 # to_thread: a sync sqlite write on the event loop can
@@ -607,6 +609,3 @@ class SpineLoop:
             logger.exception("tool %s failed", name)
             return "Не вийшло виконати дію."
 
-    async def _drain_playback(self) -> None:
-        while self.audio is not None and self.audio.playing:
-            await asyncio.sleep(0.05)
