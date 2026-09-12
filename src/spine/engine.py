@@ -546,6 +546,7 @@ class Engine:
         urgency: float = 0.5,
         dedupe_key: str | None = None,
         expires_ts: float | None = None,
+        due_ts: float | None = None,
     ) -> None:
         """Somewhere else in the system noticed something worth saying.
 
@@ -576,6 +577,7 @@ class Engine:
                 urgency=urgency,
                 dedupe_key=dedupe_key,
                 expires_ts=expires_ts,
+                due_ts=due_ts,
             )
         except Exception:  # noqa: BLE001
             logger.exception("engine: could not hold %r (non-fatal)", kind)
@@ -744,9 +746,10 @@ class Engine:
         knowing what is hanging between them instead of from a blank
         page.
         """
+        now = now if now is not None else time.time()
         try:
             situation = await self.observe(now=now)
-            pending = await self._store.pending(limit=3)
+            pending = await self._store.pending(limit=3, now=now)
         except Exception:  # noqa: BLE001
             logger.exception("engine: prompt block failed (non-fatal)")
             return ""
@@ -754,5 +757,12 @@ class Engine:
         lines = [f"Зараз: {situation.describe()}."]
         if pending:
             lines.append("Висить між вами:")
-            lines.extend(f"- {i.describe()}" for i in pending)
+            for i in pending:
+                # If it's not yet due, show the reminder time instead
+                if i.due_ts is not None and i.due_ts > now:
+                    from datetime import datetime
+                    due_time = datetime.fromtimestamp(i.due_ts).strftime("%H:%M")
+                    lines.append(f"- нагадати о {due_time}: {i.text}")
+                else:
+                    lines.append(f"- {i.describe()}")
         return "\n".join(lines)

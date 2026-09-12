@@ -119,13 +119,16 @@ def test_schemas_are_exactly_the_eight_named_tools():
     `read_display` and `clear_display` joined them on 9 September, after
     a live run in which the assistant denied there was anything on a
     screen the person was looking at: both panel verbs lived behind
-    `delegate`, so the model had no screen in its world at all."""
+    `delegate`, so the model had no screen in its world at all.
+    `remind` is the ninth: reminders are the first reason to speak
+    that is about the person, not about what is happening."""
     toolbox, _ = _make_toolbox()
     schemas = toolbox.schemas
-    assert len(schemas) == 8
+    assert len(schemas) == 9
     names = {s["function"]["name"] for s in schemas}
     assert names == {
         "delegate",
+        "remind",
         "remember",
         "recall",
         "forget",

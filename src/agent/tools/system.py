@@ -72,6 +72,7 @@ class ToolDef:
 VOICE_TOOLS = frozenset(
     {
         "delegate",
+        "remind",
         "remember",
         "recall",
         "forget",
@@ -708,6 +709,21 @@ TOOLS: list[ToolDef] = [
         description="Show memory statistics.",
         handler="memory_status",
         schema_fields={},
+    ),
+    ToolDef(
+        name="remind",
+        description="Set a reminder to say something later when the person is present and quiet.",
+        handler="remind",
+        schema_fields={
+            "minutes": {
+                "type": "integer",
+                "description": "How many minutes from now (1–1440).",
+            },
+            "text": {
+                "type": "string",
+                "description": "What to remind about.",
+            },
+        },
     ),
 ]
 

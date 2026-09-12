@@ -63,6 +63,7 @@ def test_delegate_exists_and_is_one_of_the_verbs() -> None:
     assert "delegate" in names
     assert system.VOICE_TOOLS == {
         "delegate",
+        "remind",
         "remember",
         "recall",
         "forget",

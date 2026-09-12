@@ -192,7 +192,7 @@ class _Store:
         self.dropped: list[int] = []
         self.items: list[I.Intent] = []
 
-    async def pending(self, limit: int = 10):
+    async def pending(self, limit: int = 10, now: float | None = None):
         return self.items[:limit]
 
     async def mark_voiced(self, intent_id):

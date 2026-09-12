@@ -436,6 +436,33 @@ SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "remind",
+            "description": (
+                "Set a reminder. The person will be reminded when the time "
+                "comes and they are present and quiet."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "description": (
+                            "How many minutes until the reminder. "
+                            "Must be between 1 and 1440 (24 hours)."
+                        ),
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "What to remind about.",
+                    },
+                },
+                "required": ["minutes", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "remember",
             "description": "Store a fact in persistent memory.",
             "parameters": {
@@ -622,6 +649,7 @@ class VoiceToolbox:
         hands_factory: HandsFactory | None = None,
         persist: Any = None,
         names: Sequence[str] = (),
+        notice: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         """memory: an initialized SQLiteBackend (or compatible).
         persist: the transcript store, for `forget` and
@@ -636,11 +664,16 @@ class VoiceToolbox:
         ``set_delivery``, ``start``, ``cancel_all``). Defaults to building
         a real ``Hands(settings)``. Hands is instantiated here, lazily,
         rather than at import time, so importing this module stays cheap.
+
+        notice: async fn for reminders — called with kind, text, origin,
+        urgency, due_ts, dedupe_key. Absent, the remind verb says
+        reminders are off.
         """
         self._settings = settings
         self._memory = memory
         self._deliver = deliver
         self._persist = persist
+        self._notice = notice
         # The assistant's own name, in every spelling Whisper produces.
         # A search query keeps it far more often than not — the person
         # said it out loud to be heard — and in the corpus it is the one
@@ -661,6 +694,8 @@ class VoiceToolbox:
         try:
             if name == "delegate":
                 return self._delegate(arguments)
+            if name == "remind":
+                return await self._remind(arguments)
             if name == "remember":
                 return await self._remember(arguments)
             if name == "recall":
@@ -688,6 +723,47 @@ class VoiceToolbox:
         # the conversation later through the wired ``deliver`` callback.
         self._hands.start(task)
         return "Прийнято, роблю."
+
+    async def _remind(self, arguments: dict) -> str:
+        """Set a reminder for later.
+
+        The reminder is stored as an intent with a due_ts, and will be
+        spoken when the person is present and quiet, even at night.
+        """
+        if self._notice is None:
+            return "Не можу нагадати — нагадування вимкнені."
+
+        try:
+            minutes = int(arguments.get("minutes", 0))
+        except (TypeError, ValueError):
+            return "Скажи, за скільки хвилин нагадати."
+
+        if minutes <= 0 or minutes > 24 * 60:
+            return "Нагадування має бути від 1 хвилини до 24 годин."
+
+        text = str(arguments.get("text", "")).strip()
+        if not text:
+            return "Скажи, про що нагадати."
+
+        # Call notice to store the reminder
+        now = time.time()
+        due_ts = now + minutes * 60
+        await self._notice(
+            kind="reminder",
+            text=text,
+            origin="user",
+            urgency=0.9,
+            due_ts=due_ts,
+            dedupe_key=f"remind:{text}:{due_ts:.0f}",
+        )
+
+        # Return confirmation with proper Ukrainian plural
+        if minutes == 1:
+            return "Добре, нагадаю за 1 хвилину."
+        elif 2 <= minutes <= 4:
+            return f"Добре, нагадаю за {minutes} хвилини."
+        else:
+            return f"Добре, нагадаю за {minutes} хвилин."
 
     async def _forget(self, arguments: dict) -> str:
         """Erase overheard lines from the last N minutes.

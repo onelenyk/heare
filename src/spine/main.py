@@ -78,6 +78,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
 
     import time
 
+    from src.mouth import Mouth
     from src.spine.hallucinations import is_junk
     from src.spine.llm import resolve_llm, stream_chat
     from src.spine.loop import SpineLoop
@@ -165,6 +166,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         stream_chat=_chat,
         split_sentences=sentences,
         synthesise=_tts,
+        mouth=Mouth(audio) if audio is not None else None,
         usage=usage,
     )
     loop.features = loop_features
@@ -426,6 +428,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
             # not take the name out of four thousand rows that already
             # start with it.
             names=_wake_phrases(settings),
+            notice=lambda **kw: loop.engine.notice(**kw) if loop.engine else None,
         )
         loop.stream_events = lambda messages, tools: stream_chat_events(
             messages, _cfg(), tools=tools
