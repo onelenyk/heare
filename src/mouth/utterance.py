@@ -75,6 +75,12 @@ class Utterance:
         """
         if self.stopped:
             return
+        if self._muted():
+            # A muted speaker drops the bytes at play(); synthesising
+            # them first cost a network round trip per sentence and made
+            # a muted reply slower than a spoken one. Nothing to keep for
+            # resume either — there is nothing to resume into.
+            return
         pcm = bytearray()
         self._sentences.append(pcm)
         async for chunk in self._synthesise(sentence):
@@ -84,6 +90,14 @@ class Utterance:
             if not self.paused:
                 self._speaker.play(chunk)
                 self._sent += len(chunk)
+
+    def _muted(self) -> bool:
+        """The speaker's own mute — a quiet role's, or the dashboard's —
+        read where the bytes would have been dropped anyway."""
+        return bool(
+            getattr(self._speaker, "mute_output", False)
+            or getattr(self._speaker, "mute_output_user", False)
+        )
 
     # -- interrupting ---------------------------------------------------
 

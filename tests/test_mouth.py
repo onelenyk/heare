@@ -657,3 +657,23 @@ async def test_multiple_sentences_in_one_utterance() -> None:
 
     # Should have the third sentence in the queue
     assert speaker.queued_bytes() == 100
+
+
+async def test_a_muted_speaker_is_not_synthesised_for() -> None:
+    """The bytes were being dropped at play() after a round trip to the
+    synthesiser per sentence; a muted reply was slower than a spoken one.
+    Muted means: do not make the sound at all."""
+    speaker = FakeSpeaker()
+    speaker.mute_output = True
+    calls: list[str] = []
+
+    async def counting(text: str):
+        calls.append(text)
+        yield b"x" * 10
+
+    mouth = Mouth(speaker)
+    utterance = mouth.open(counting, mute_mic=False)
+    await utterance.say("Тихо.")
+
+    assert calls == [], "nothing synthesised for a speaker that drops it"
+    assert await utterance.finish(timeout=0.1) == "done"
