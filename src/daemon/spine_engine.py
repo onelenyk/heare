@@ -1100,16 +1100,16 @@ async def run_spine_daemon(
 
     real_speak = loop._speak
 
-    async def _speak_with_state(sentence: str):
+    async def _speak_with_state(utt, sentence):
         _agent("talking")
         # First call per turn wins (first_audio() no-ops after that) —
         # the earliest hook available to this wrapper for "audio started
         # playing" without touching loop.py's synthesise loop directly.
         telemetry.first_audio()
         try:
-            return await real_speak(sentence)
+            return await real_speak(utt, sentence)
         finally:
-            _agent("interrupted" if loop._interrupted else "idle")
+            _agent("interrupted" if utt.stopped else "idle")
 
     loop._speak = _speak_with_state
 
@@ -1129,7 +1129,7 @@ async def run_spine_daemon(
             finally:
                 telemetry.finish(
                     chars=len(reply),
-                    interrupted=loop._interrupted,
+                    interrupted=loop.interrupted,
                     role=_active_role_name(),
                 )
 
@@ -1250,8 +1250,7 @@ async def run_spine_daemon(
                     )
                 if state.get("cancel") == "1":
                     await state.set("cancel", "0")
-                    dropped = audio.stop_playback()
-                    loop._interrupted = True
+                    dropped = loop.stop_speaking("cancelled")
                     if loop.toolbox is not None:
                         loop.toolbox.cancel_all()
                     logger.info("controls: cancel — dropped %d bytes", dropped)

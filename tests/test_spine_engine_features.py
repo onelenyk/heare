@@ -91,6 +91,13 @@ class _FakeState:
         return dict(self.cache)
 
 
+class _FakeUtterance:
+    """A simple utterance object for testing."""
+
+    def __init__(self):
+        self.stopped = False
+
+
 class _FakeLoop:
     """A conductor-shaped object that answers one turn and stops.
 
@@ -118,12 +125,22 @@ class _FakeLoop:
         self._closers: list = []
         self._role_log: list = []
         self.role_finishing = False
-        self._interrupted = False
+        self._interrupted_state = False
         self._duplex = True
         self.barge_in_enabled = True
         self._empty_stt = empty_stt
         self.turns: list[str] = []
         self.said: list[str] = []
+
+    @property
+    def interrupted(self) -> bool:
+        """Read-only property: whether the latest utterance was cut short."""
+        return self._interrupted_state
+
+    def stop_speaking(self, outcome: str = "cancelled") -> int:
+        """Stop every live utterance (drops queued audio, returns bytes dropped)."""
+        self._interrupted_state = True
+        return 0  # fake implementation
 
     async def transcribe(self, pcm: bytes):
         return SimpleNamespace(
@@ -134,14 +151,15 @@ class _FakeLoop:
         self.turns.append(user_text)
         return "ok"
 
-    async def _speak(self, sentence: str) -> None:
+    async def _speak(self, utt, sentence: str) -> None:
         return None
 
     async def _say_now(self, text: str) -> None:
         # The real one speaks through self._speak, which the runner has
         # wrapped — going through it keeps the wrapper on the path.
         self.said.append(text)
-        await self._speak(text)
+        utt = _FakeUtterance()
+        await self._speak(utt, text)
 
     async def inject(self, text: str) -> None:
         return None
