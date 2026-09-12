@@ -12,7 +12,6 @@ import pytest
 
 from src.config import Settings
 from src.agent.tools.direct import (
-    _is_simple_tool,
     execute_direct,
     _execute_bash,
     _execute_read,
@@ -30,42 +29,6 @@ def settings(tmp_path: Path) -> Settings:
     return Settings(workspace_dir=tmp_path)
 
 
-# -------- _is_simple_tool tests (US-HYB-04 preview) --------
-
-def test_bash_is_simple() -> None:
-    assert _is_simple_tool("bash") is True
-
-
-def test_read_is_simple() -> None:
-    assert _is_simple_tool("read") is True
-
-
-def test_write_is_simple() -> None:
-    assert _is_simple_tool("write") is True
-
-
-def test_web_fetch_is_simple() -> None:
-    assert _is_simple_tool("web_fetch") is True
-
-
-def test_web_search_is_simple() -> None:
-    assert _is_simple_tool("web_search") is True
-
-
-def test_edit_is_not_simple() -> None:
-    assert _is_simple_tool("edit") is False
-
-
-def test_mcp_tool_is_not_simple() -> None:
-    assert _is_simple_tool("mcp__github__create_issue") is False
-
-
-def test_mcp_filesystem_is_not_simple() -> None:
-    assert _is_simple_tool("mcp__filesystem__read_file") is False
-
-
-def test_unknown_tool_is_not_simple() -> None:
-    assert _is_simple_tool("unknown") is False
 
 
 # -------- execute_direct routing tests --------

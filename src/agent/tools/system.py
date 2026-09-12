@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.config import Settings
+    pass
 
 logger = logging.getLogger("heare.tools.system")
 
@@ -212,71 +212,6 @@ TOOLS: list[ToolDef] = [
         name="cancel",
         description="Cancel the in-flight action and drain pending intents.",
         handler="cancel",
-        schema_fields={},
-    ),
-    ToolDef(
-        name="create_tool",
-        description="Create a new tool dynamically. Provide: name, description, arguments (JSON schema), implementation type (bash/fetch), and implementation string.",
-        handler="tool_create",
-        schema_fields={
-            "name": {
-                "type": "string",
-                "description": "Tool name (lowercase, no spaces, letters/numbers/underscores only).",
-            },
-            "description": {"type": "string", "description": "What the tool does."},
-            "arguments": {
-                "type": "object",
-                "description": "JSON schema for tool arguments as a dict mapping arg names to their type/description.",
-            },
-            "implementation_type": {
-                "type": "string",
-                "enum": ["bash", "fetch"],
-                "description": "How the tool is executed: bash (shell command) or fetch (HTTP GET).",
-            },
-            "implementation": {
-                "type": "string",
-                "description": "The command or URL. Use {arg} placeholders for bash/fetch.",
-            },
-        },
-    ),
-    ToolDef(
-        name="update_tool",
-        description="Update an existing dynamic tool. Provide the tool name and fields to update.",
-        handler="tool_update",
-        schema_fields={
-            "name": {"type": "string", "description": "Tool name to update."},
-            "description": {
-                "type": "string",
-                "description": "New description (optional).",
-            },
-            "arguments": {
-                "type": "object",
-                "description": "New arguments schema (optional).",
-            },
-            "implementation_type": {
-                "type": "string",
-                "enum": ["bash", "fetch"],
-                "description": "New implementation type (optional).",
-            },
-            "implementation": {
-                "type": "string",
-                "description": "New implementation string (optional).",
-            },
-        },
-        required=["name"],
-    ),
-    ToolDef(
-        name="delete_tool",
-        description="Delete a dynamic tool by name. Cannot delete built-in tools.",
-        handler="tool_delete",
-        schema_fields={
-            "name": {"type": "string", "description": "Tool name to delete."},
-        },
-    ),
-    ToolDef(
-        name="list_tools",
-        description="List all available tools, including dynamically created ones.",
-        handler="tool_list",
         schema_fields={},
     ),
     ToolDef(
@@ -802,10 +737,6 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "web_search": _query_serializer,
     "cancel": _empty_serializer,
     "delegate": lambda args: str(args.get("task", "")).strip(),
-    "create_tool": _json_serializer,
-    "update_tool": _json_serializer,
-    "delete_tool": _name_serializer,
-    "list_tools": _empty_serializer,
     "create_archive": _json_serializer,
     "extract_archive": _json_serializer,
     "batch_operation": _json_serializer,
@@ -894,52 +825,6 @@ def tool_timeout_secs(name: str) -> float:
     return _TOOL_TIMEOUTS.get(name, DEFAULT_TOOL_TIMEOUT_SECS)
 
 
-_DYNAMIC_TOOL_SCHEMAS: dict[str, tuple[dict[str, Any], str, str]] = {}
-
-
-def register_dynamic_tool_schema(
-    name: str, schema: dict[str, Any], impl_type: str, impl: str
-) -> None:
-    """Register a dynamic tool's schema for immediate use."""
-    _DYNAMIC_TOOL_SCHEMAS[name] = (schema, impl_type, impl)
-
-
-def unregister_dynamic_tool_schema(name: str) -> bool:
-    """Unregister a dynamic tool's schema."""
-    return _DYNAMIC_TOOL_SCHEMAS.pop(name, None) is not None
-
-
-def get_dynamic_tool_schema(name: str) -> tuple[dict[str, Any], str, str] | None:
-    """Get a dynamic tool's schema."""
-    return _DYNAMIC_TOOL_SCHEMAS.get(name)
-
-
-def register_dynamic_tool_handler(
-    llm: Any,
-    name: str,
-    impl_type: str,
-    impl: str,
-    settings: "Settings | None" = None,
-    conversation_manager: Any = None,
-) -> None:
-    """Create and register a handler for a dynamically created tool."""
-    from src.agent.tools.dynamic import execute_bash_tool, execute_fetch_tool
-
-    async def handler(params: Any) -> None:
-        args = dict(params.arguments or {})
-
-        if impl_type == "bash":
-            result = await execute_bash_tool(impl, args, settings)
-        elif impl_type == "fetch":
-            result = await execute_fetch_tool(impl, args, settings)
-        else:
-            result = {"success": False, "error": f"Unknown impl_type: {impl_type}"}
-
-        await params.result_callback(result)
-
-    llm.register_function(name, handler, cancel_on_interruption=True)
-
-
 def get_tool(name: str) -> "ToolDef | None":
     for t in TOOLS:
         if t.name == name:
@@ -962,10 +847,6 @@ def get_tools_by_handler(handler: str) -> list["ToolDef"]:
 __all__ = [
     "ToolDef",
     "TOOLS",
-    "register_dynamic_tool_schema",
-    "unregister_dynamic_tool_schema",
-    "get_dynamic_tool_schema",
-    "register_dynamic_tool_handler",
     "get_tool",
     "get_tool_names",
     "get_handler_types",

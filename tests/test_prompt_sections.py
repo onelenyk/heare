@@ -183,15 +183,16 @@ def test_every_registry_tool_is_reachable_through_the_worker() -> None:
     """Nothing was lost by shrinking the catalog: the tools moved, they
     did not disappear."""
     from src.agent.hands import Hands
-    from src.agent.tools.registry import get_enabled_tools
     from src.config import Settings
 
     worker = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
     core_tools = {"bash", "read", "write", "web_search", "web_fetch"}
     assert core_tools <= worker
 
-    registry = get_enabled_tools()
-    assert registry & worker, "the worker should expose the registry's tools"
+    from src.agent.tools.system import TOOLS
+
+    declared = {t.name for t in TOOLS if t.enabled}
+    assert declared & worker, "the worker should expose the declared tools"
 
 
 # ============================================================================

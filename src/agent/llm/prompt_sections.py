@@ -246,14 +246,13 @@ def _render_hints_dynamic(capability_hints: list[dict] | None) -> str | None:
 
     labels = {
         "tool": "Built-in tools",
-        "dynamic_tool": "Built-in tools",
         "skill": "Installed skills",
         "mcp": "MCP servers",
     }
 
     lines: list[str] = []
     lines.append("Relevant for this turn (try these first):")
-    for source in ("tool", "dynamic_tool", "skill", "mcp"):
+    for source in ("tool", "skill", "mcp"):
         entries = by_source.get(source) or []
         if not entries:
             continue

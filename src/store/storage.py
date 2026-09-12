@@ -80,25 +80,10 @@ CREATE TABLE IF NOT EXISTS turns (
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS dynamic_tools (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
-    sdk_name TEXT NOT NULL,
-    execution_type TEXT NOT NULL,
-    description TEXT NOT NULL,
-    enabled BOOLEAN DEFAULT TRUE,
-    definition_json TEXT NOT NULL,
-    created_ts REAL NOT NULL,
-    modified_ts REAL NOT NULL,
-    last_used_ts REAL,
-    usage_count INTEGER DEFAULT 0
-);
 
 CREATE INDEX IF NOT EXISTS idx_conversations_mode ON conversations(mode);
 CREATE INDEX IF NOT EXISTS idx_conversations_active ON conversations(end_ts) WHERE end_ts IS NULL;
 CREATE INDEX IF NOT EXISTS idx_turns_conversation ON turns(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_dynamic_tools_enabled ON dynamic_tools(enabled);
-CREATE INDEX IF NOT EXISTS idx_dynamic_tools_last_used ON dynamic_tools(last_used_ts DESC);
 
 CREATE TABLE IF NOT EXISTS user_profile (
     key TEXT PRIMARY KEY,
@@ -495,123 +480,6 @@ class TranscriptStore:
                 "topic_tags": json.loads(r[5]) if r[5] else None,
             }
             for r in reversed(rows)
-        ]
-
-    # Dynamic tools methods
-
-    async def create_dynamic_tool(
-        self,
-        *,
-        name: str,
-        sdk_name: str,
-        execution_type: str,
-        description: str,
-        definition_json: str,
-        enabled: bool = True,
-    ) -> int:
-        """Create a new dynamic tool."""
-        now = time.time()
-        cursor = await self.db.execute(
-            """
-            INSERT INTO dynamic_tools
-                (name, sdk_name, execution_type, description, enabled, definition_json, created_ts, modified_ts)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                name,
-                sdk_name,
-                execution_type,
-                description,
-                enabled,
-                definition_json,
-                now,
-                now,
-            ),
-        )
-        await self.db.commit()
-        assert cursor.lastrowid is not None
-        return cursor.lastrowid
-
-    async def update_dynamic_tool(
-        self,
-        name: str,
-        *,
-        sdk_name: str | None = None,
-        execution_type: str | None = None,
-        description: str | None = None,
-        definition_json: str | None = None,
-        enabled: bool | None = None,
-    ) -> bool:
-        """Update a dynamic tool."""
-        updates: list[tuple[str, Any]] = []
-        values: list[Any] = []
-
-        if sdk_name is not None:
-            updates.append("sdk_name = ?")
-            values.append(sdk_name)
-        if execution_type is not None:
-            updates.append("execution_type = ?")
-            values.append(execution_type)
-        if description is not None:
-            updates.append("description = ?")
-            values.append(description)
-        if definition_json is not None:
-            updates.append("definition_json = ?")
-            values.append(definition_json)
-        if enabled is not None:
-            updates.append("enabled = ?")
-            values.append(enabled)
-
-        if not updates:
-            return False
-
-        updates.append("modified_ts = ?")
-        values.append(time.time())
-        values.append(name)
-
-        cursor = await self.db.execute(
-            f"UPDATE dynamic_tools SET {', '.join(updates)} WHERE name = ?",
-            values,
-        )
-        await self.db.commit()
-        return (cursor.rowcount or 0) > 0
-
-    async def delete_dynamic_tool(self, name: str) -> bool:
-        """Delete a dynamic tool."""
-        cursor = await self.db.execute(
-            "DELETE FROM dynamic_tools WHERE name = ?",
-            (name,),
-        )
-        await self.db.commit()
-        return (cursor.rowcount or 0) > 0
-
-    async def load_all_dynamic_tools(self) -> list[dict[str, Any]]:
-        """Load all enabled dynamic tools for startup hydration."""
-        cursor = await self.db.execute(
-            """
-            SELECT id, name, sdk_name, execution_type, description, enabled, definition_json,
-                   created_ts, modified_ts, last_used_ts, usage_count
-            FROM dynamic_tools
-            WHERE enabled = 1
-            ORDER BY name
-            """
-        )
-        rows = await cursor.fetchall()
-        return [
-            {
-                "id": r[0],
-                "name": r[1],
-                "sdk_name": r[2],
-                "execution_type": r[3],
-                "description": r[4],
-                "enabled": bool(r[5]),
-                "definition_json": r[6],
-                "created_ts": r[7],
-                "modified_ts": r[8],
-                "last_used_ts": r[9],
-                "usage_count": r[10],
-            }
-            for r in rows
         ]
 
     # ------------------------------------------------------------------

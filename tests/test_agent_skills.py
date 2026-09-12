@@ -13,7 +13,6 @@ import pytest
 from src.skills.agent_skills import SkillsLoader, SkillMetadata
 from src.agent.tools.direct import execute_direct
 from src.agent.tools.system import get_tool, get_tool_names
-from src.agent.tools.registry import get_enabled_tools
 from src.agent.tools.system import _SERIALIZERS, TOOLS
 
 # The schema table these tests read was a parallel structure beside the
@@ -202,7 +201,7 @@ def test_run_skill_tool_in_registry():
 
 def test_skill_tools_in_enabled_tools():
     """Assert both skill tools are in enabled tools list."""
-    enabled = get_enabled_tools()
+    enabled = {t.name for t in TOOLS if t.enabled}
     assert "list_skills" in enabled
     assert "run_skill" in enabled
 

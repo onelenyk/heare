@@ -69,7 +69,6 @@ _memory_backend: Any = None
 from src.agent.llm.providers import PROVIDERS  # noqa: E402
 
 # Import tool definitions from central registry
-from src.agent.tools.registry import get_direct_tools, is_mcp_tool  # noqa: E402
 
 
 def set_memory_backend(backend: Any) -> None:
@@ -77,7 +76,6 @@ def set_memory_backend(backend: Any) -> None:
     _memory_backend = backend
 
 
-SIMPLE_TOOLS = get_direct_tools()
 
 
 class _PathOutsideWorkspace(Exception):
@@ -102,16 +100,6 @@ def _resolve_in_workspace(filepath: str, workspace: Path) -> Path:
     if not candidate.is_absolute():
         candidate = workspace / candidate
     return candidate.resolve()
-
-
-def _is_simple_tool(tool: str) -> bool:
-    """Check if tool can be executed directly (no Claude needed)."""
-    if tool in SIMPLE_TOOLS:
-        return True
-    # MCP tools are complex (need Claude)
-    if is_mcp_tool(tool):
-        return False
-    return False
 
 
 async def execute_direct(
@@ -157,14 +145,6 @@ async def execute_direct(
     # does not exist.
     elif tool == "read_display":
         return await _execute_read_display(args, settings)
-    elif tool == "create_tool":
-        return await _execute_create_tool(args, settings)
-    elif tool == "update_tool":
-        return await _execute_update_tool(args, settings)
-    elif tool == "delete_tool":
-        return await _execute_delete_tool(args, settings)
-    elif tool == "list_tools":
-        return await _execute_list_tools(args, settings)
     elif tool == "create_archive":
         return await _execute_create_archive(args, settings)
     elif tool == "extract_archive":
@@ -930,279 +910,6 @@ async def _search_duckduckgo(query: str, settings: "Settings | None" = None) -> 
                 "ru": "Поиск не удался.",
             },
         }
-
-
-async def _execute_create_tool(args: str, settings: "Settings | None" = None) -> dict:
-    """Create a new dynamic tool.
-
-    Expects JSON args with: name, description, arguments, implementation_type, implementation
-    """
-    import json
-
-    from src.agent.tools.registry import (
-        ToolDefinition,
-        register_dynamic_tool,
-        Tool,
-        is_static_tool,
-    )
-    from src.store.storage import TranscriptStore
-
-    try:
-        spec = json.loads(args)
-    except json.JSONDecodeError as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Invalid JSON: {e}",
-        }
-
-    definition = ToolDefinition(
-        name=spec.get("name", ""),
-        description=spec.get("description", ""),
-        arguments=spec.get("arguments", {}),
-        implementation_type=spec.get("implementation_type", "bash"),
-        implementation=spec.get("implementation", ""),
-    )
-
-    # Validate
-    errors = definition.validate()
-    if errors:
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Validation failed: {'; '.join(errors)}",
-        }
-
-    # Check if tool already exists in static registry
-    if is_static_tool(definition.name):
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Tool '{definition.name}' is a built-in and cannot be replaced",
-        }
-
-    # Create Tool object
-    tool = Tool(
-        name=definition.name,
-        description=definition.description,
-        enabled=True,
-    )
-
-    # Register in runtime registry
-    register_dynamic_tool(tool)
-
-    # Persist to database if settings available
-    if settings and settings.db_path:
-        store = TranscriptStore(settings.db_path)
-        try:
-            await store.init()
-            await store.create_dynamic_tool(
-                name=tool.name,
-                # The column predates the SDK path being dropped; it is
-                # written and never read back into anything.
-                sdk_name=_to_camel_case(definition.name),
-                execution_type=definition.implementation_type,
-                description=tool.description,
-                definition_json=args,
-            )
-        finally:
-            await store.close()
-
-    # Dynamically add to llm_tools registry
-    from src.agent.tools import schemas as llm_tools
-
-    llm_tools.register_dynamic_tool_schema(
-        name=definition.name,
-        schema=definition.arguments,
-        impl_type=definition.implementation_type,
-        impl=definition.implementation,
-    )
-
-    return {
-        "success": True,
-        "output": f"Tool '{definition.name}' created and ready to use",
-        "error": None,
-        "spoken": {
-            "en": f"Created tool {definition.name}.",
-            "uk": f"Створено інструмент {definition.name}.",
-            "ru": f"Создан инструмент {definition.name}.",
-        },
-    }
-
-
-async def _execute_update_tool(args: str, settings: "Settings | None" = None) -> dict:
-    """Update an existing dynamic tool."""
-    import json
-
-    from src.agent.tools.registry import is_static_tool, _DYNAMIC_TOOLS
-    from src.store.storage import TranscriptStore
-
-    try:
-        spec = json.loads(args)
-    except json.JSONDecodeError as e:
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Invalid JSON: {e}",
-        }
-
-    name = spec.get("name")
-    if not name:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Tool name is required",
-        }
-
-    # Check if it's a static tool
-    if is_static_tool(name) and name not in _DYNAMIC_TOOLS:
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Tool '{name}' is a built-in and cannot be modified",
-        }
-
-    # Build updates dict
-    updates = {}
-    if "description" in spec:
-        updates["description"] = spec["description"]
-    if "definition_json" in spec:
-        updates["definition_json"] = json.dumps(spec["definition_json"])
-    elif (
-        "arguments" in spec or "implementation_type" in spec or "implementation" in spec
-    ):
-        # Rebuild definition_json from components
-        current_def = json.loads(spec.get("current_definition_json", "{}"))
-        if "arguments" in spec:
-            current_def["arguments"] = spec["arguments"]
-        if "implementation_type" in spec:
-            current_def["implementation_type"] = spec["implementation_type"]
-        if "implementation" in spec:
-            current_def["implementation"] = spec["implementation"]
-        updates["definition_json"] = json.dumps(current_def)
-
-    if not updates:
-        return {
-            "success": False,
-            "output": "",
-            "error": "No fields to update",
-        }
-
-    # Update database
-    if settings and settings.db_path:
-        store = TranscriptStore(settings.db_path)
-        try:
-            await store.init()
-            updated = await store.update_dynamic_tool(name, **updates)
-            if not updated:
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": f"Tool '{name}' not found",
-                }
-        finally:
-            await store.close()
-
-    return {
-        "success": True,
-        "output": f"Tool '{name}' updated",
-        "error": None,
-        "spoken": {
-            "en": f"Updated tool {name}.",
-            "uk": f"Оновлено інструмент {name}.",
-            "ru": f"Обновлен инструмент {name}.",
-        },
-    }
-
-
-async def _execute_delete_tool(args: str, settings: "Settings | None" = None) -> dict:
-    """Delete a dynamic tool."""
-    from src.agent.tools.registry import unregister_dynamic_tool, is_static_tool
-    from src.store.storage import TranscriptStore
-
-    name = args.strip()
-
-    if not name:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Tool name is required",
-        }
-
-    # Check if it's a static tool
-    if is_static_tool(name):
-        return {
-            "success": False,
-            "output": "",
-            "error": f"Tool '{name}' is a built-in and cannot be deleted",
-        }
-
-    # Unregister
-    if unregister_dynamic_tool(name):
-        # Delete from database
-        if settings and settings.db_path:
-            store = TranscriptStore(settings.db_path)
-            try:
-                await store.init()
-                deleted = await store.delete_dynamic_tool(name)
-                if not deleted:
-                    return {
-                        "success": False,
-                        "output": "",
-                        "error": f"Tool '{name}' not found in database",
-                    }
-            finally:
-                await store.close()
-
-        # Remove from llm_tools registry
-        from src.agent.tools import schemas as llm_tools
-
-        llm_tools.unregister_dynamic_tool_schema(name)
-
-        return {
-            "success": True,
-            "output": f"Tool '{name}' deleted",
-            "error": None,
-            "spoken": {
-                "en": f"Deleted tool {name}.",
-                "uk": f"Видалено інструмент {name}.",
-                "ru": f"Удален инструмент {name}.",
-            },
-        }
-
-    return {
-        "success": False,
-        "output": "",
-        "error": f"Tool '{name}' not found",
-    }
-
-
-async def _execute_list_tools(args: str, settings: "Settings | None" = None) -> dict:
-    """List all available tools."""
-    from src.agent.tools.registry import get_all_tools, is_dynamic_tool
-
-    all_tools = get_all_tools()
-    items = []
-    for name, tool in sorted(all_tools.items()):
-        items.append(
-            {
-                "name": name,
-                "description": tool.description,
-                "type": "dynamic" if is_dynamic_tool(name) else "built-in",
-            }
-        )
-
-    return {
-        "success": True,
-        "output": f"{len(items)} tools available",
-        "error": None,
-        "items": items,
-        "spoken": {
-            "en": f"{len(items)} tools available.",
-            "uk": f"{len(items)} інструментів доступно.",
-            "ru": f"{len(items)} инструментов доступно.",
-        },
-    }
 
 
 # ============================================================================
@@ -1987,11 +1694,6 @@ async def _execute_show_profile(args: str, settings: "Settings | None" = None) -
                 "ru": f"Ошибка при показе профиля: {str(e)}",
             },
         }
-
-
-def _to_camel_case(name: str) -> str:
-    """Convert lowercase_name to CamelCase."""
-    return "".join(word.capitalize() for word in name.split("_"))
 
 
 # ============================================================================
