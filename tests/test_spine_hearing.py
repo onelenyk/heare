@@ -159,7 +159,7 @@ async def test_the_engine_raises_it_like_anything_else() -> None:
 
     class _Store:
         async def add(self, kind, text, *, origin=I.SELF, urgency=0.5,
-                      dedupe_key=None, expires_ts=None):
+                      dedupe_key=None, expires_ts=None, due_ts=None):
             added.append((kind, origin, urgency, dedupe_key))
 
         async def pending(self, limit=10, now=None):

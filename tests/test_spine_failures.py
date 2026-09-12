@@ -33,6 +33,7 @@ from typing import AsyncIterator
 
 import pytest
 
+from src.mouth import Mouth
 from src.spine.loop import FAILURE_LINE, SpineLoop
 from src.spine.sentences import sentences as split_sentences
 from src.spine.turn import TurnAssembler
@@ -76,6 +77,8 @@ def _base_loop(**overrides) -> SpineLoop:
         poll_interval=0.01,
     )
     kwargs.update(overrides)
+    audio = kwargs.get("audio")
+    kwargs.setdefault("mouth", Mouth(audio) if audio is not None else None)
     return SpineLoop(**kwargs)
 
 

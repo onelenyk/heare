@@ -36,9 +36,9 @@ async def test_talking_over_it_ends_the_utterance_as_barged(tmp_path) -> None:
     room = await open_room(tmp_path)
     try:
         await _speaking(room, "Це довга відповідь, яку можна перебити.")
+        reply = room.loop.mouth.last  # what was said over gets its own utterance next
         assert await room.cuts_in("ні, стоп, не про те", ms=800)
-        assert room.outcome() == "barged"
-        assert room.loop.interrupted
+        assert reply.outcome == "barged"
     finally:
         await close_room(room)
 
@@ -48,30 +48,32 @@ async def test_talking_over_it_ends_the_utterance_as_barged(tmp_path) -> None:
 
 @pytest.mark.xfail(reason="two-stage interruption: step 2", strict=True)
 async def test_a_nod_pauses_and_the_reply_goes_on(tmp_path) -> None:
-    """«ага», 250 ms: the speaker pauses, the transcript says it was a
+    """«ага», 400 ms — long enough for the detector to call it speech,
+    short of the hold: the speaker pauses, the transcript says it was a
     nod, the sentence is said again from its start, the utterance ends
-    «done» and nothing counts as interrupted."""
+    «done» and nothing counts as interrupted. Today any speech stops it."""
     room = await open_room(tmp_path)
     try:
         await _speaking(room, "Перше речення відповіді. Друге речення відповіді.")
-        await room.nods("ага", ms=250)
+        reply = room.loop.mouth.last
+        await room.nods("ага", ms=400)
         await room.drained()
-        assert room.outcome() == "done"
-        assert not room.loop.interrupted, "a nod is not an interruption"
+        assert reply.outcome == "done", reply.outcome
+        assert not reply.stopped, "a nod is not an interruption"
     finally:
         await close_room(room)
 
 
-@pytest.mark.xfail(reason="two-stage interruption: step 2", strict=True)
 async def test_a_short_stop_still_stops(tmp_path) -> None:
-    """«стоп» is shorter than the hold, and still a command: the text
-    decides, and the answer is to end it."""
+    """«стоп» is shorter than the hold, and still a command. It holds
+    today because any speech stops it; it must keep holding once only
+    the text decides."""
     room = await open_room(tmp_path)
     try:
         await _speaking(room, "Розповідаю довго й не про те.")
+        reply = room.loop.mouth.last
         await room.nods("стоп", ms=400)
-        assert room.outcome() in ("cancelled", "barged")
-        assert room.loop.interrupted
+        assert reply.outcome in ("cancelled", "barged")
     finally:
         await close_room(room)
 
@@ -83,9 +85,10 @@ async def test_a_cough_is_waved_through(tmp_path) -> None:
     room = await open_room(tmp_path)
     try:
         await _speaking(room, "Перше речення. Друге речення.")
-        await room.nods("", ms=200)
+        reply = room.loop.mouth.last
+        await room.nods("", ms=400)
         await room.drained()
-        assert room.outcome() == "done"
+        assert reply.outcome == "done", reply.outcome
     finally:
         await close_room(room)
 

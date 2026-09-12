@@ -491,6 +491,7 @@ async def test_it_arrives_as_an_intent_and_inherits_every_guard(tmp_path) -> Non
             "urgency": pytest.approx(0.3),
             "dedupe_key": "repeat:1",
             "expires_ts": None,
+            "due_ts": None,
         }
     ]
 

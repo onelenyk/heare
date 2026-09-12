@@ -34,7 +34,7 @@ class _Store:
 
     async def add(
         self, kind, text, *, origin=I.SELF, urgency=0.5, dedupe_key=None,
-        expires_ts=None,
+        expires_ts=None, due_ts=None,
     ):
         if self.exploding:
             raise RuntimeError("disk full")
