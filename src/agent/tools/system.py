@@ -32,6 +32,10 @@ class ToolDef:
     schema_fields: dict[str, Any] = field(default_factory=dict)
     required: list[str] = field(default_factory=list)
     enabled: bool = True
+    returns: bool = True  # A call that returns a result keeps the agent loop going
+    # (the model needs it to answer); a call that only emits something to the person
+    # — show it, remember it — does not, and the loop must not pay for another
+    # model round because of it.
 
     def __post_init__(self):
         if not self.required and self.schema_fields:
@@ -390,6 +394,7 @@ TOOLS: list[ToolDef] = [
             "title": {"type": "string", "description": "Optional heading."},
         },
         required=["content"],
+        returns=False,
     ),
     ToolDef(
         name="show_canvas",
@@ -403,6 +408,7 @@ TOOLS: list[ToolDef] = [
             "title": {"type": "string", "description": "Optional heading."},
         },
         required=["content"],
+        returns=False,
     ),
     ToolDef(
         name="look_at_screen",
@@ -669,6 +675,7 @@ TOOLS: list[ToolDef] = [
             },
         },
         required=["type", "content"],
+        returns=False,
     ),
     ToolDef(
         name="recall",
@@ -693,6 +700,7 @@ TOOLS: list[ToolDef] = [
             },
         },
         required=["memory_id"],
+        returns=False,
     ),
     ToolDef(
         name="memory_status",
@@ -816,6 +824,18 @@ def get_tools_by_handler(handler: str) -> list["ToolDef"]:
     return [t for t in TOOLS if t.handler == handler]
 
 
+def returns_result(name: str) -> bool:
+    """Whether a tool call returns a result that the agent needs to read.
+
+    Unknown tool names return True (safe default for unknown tools and MCP tools).
+    """
+    t = get_tool(name)
+    if t is None:
+        # Unknown names and mcp__* names return True (safe default)
+        return True
+    return t.returns
+
+
 __all__ = [
     "ToolDef",
     "TOOLS",
@@ -823,4 +843,5 @@ __all__ = [
     "get_tool_names",
     "get_handler_types",
     "get_tools_by_handler",
+    "returns_result",
 ]

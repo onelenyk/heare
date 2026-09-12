@@ -417,6 +417,8 @@ class Hands:
             await self._jobs.finish(job_id, state, result=result, error=error)
 
     async def _loop(self, task: str, job_id: int | None = None) -> str:
+        from src.agent.tools.system import returns_result
+
         messages: list[dict] = [
             {
                 "role": "system",
@@ -438,6 +440,7 @@ class Hands:
                     return (reply.get("content") or "").strip() or "Готово."
 
                 messages.append(reply)
+                any_returns = False
                 for call in calls:
                     fn = call.get("function", {})
                     name = fn.get("name", "")
@@ -455,6 +458,15 @@ class Hands:
                             "content": output,
                         }
                     )
+                    if returns_result(name):
+                        any_returns = True
+
+                # If none of the calls in this reply returns a result, do not loop
+                # again — the agent loop must not cost another model round for
+                # emit-only tools.
+                if not any_returns:
+                    return (reply.get("content") or "").strip() or "Готово."
+
         return "Не вклався в ліміт кроків."
 
     async def _chat(
