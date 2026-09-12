@@ -62,7 +62,10 @@ def _built_names() -> dict[str, str]:
             ):
                 continue
             pattern = "".join(
-                re.escape(part.value) if isinstance(part, ast.Constant) else r"\w+"
+                # A built segment is a provider or device kind — never
+                # something with an underscore in it. `\w+` would let
+                # f"{provider}_model" claim every name ending in _model.
+                re.escape(part.value) if isinstance(part, ast.Constant) else r"[A-Za-z0-9]+"
                 for part in node.args[1].values
             )
             found.setdefault(pattern, f"{path.relative_to(ROOT)}:{node.lineno}")

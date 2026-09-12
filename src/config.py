@@ -109,6 +109,17 @@ RETIRED: dict[str, str] = {
     # An allowlist for claude-agent-sdk, whose only reader was a method
     # nothing called. The worker's allowlist is the tool gate.
     "agent_sdk_allowed_tools": "tool access is decided by src/agent/tool_gate.py",
+    # OpenCode sub-agents, removed 12 September 2026: the manager was built
+    # only by the pipecat engine, and Hands does the same job.
+    "opencode_binary": "sub-agents are gone; Hands does the work",
+    "opencode_default_model": "same",
+    "opencode_default_timeout": "same",
+    "opencode_max_output_chars": "same",
+    "agent_max_concurrent": "same",
+    "agent_result_ttl_seconds": "same",
+    "agent_server_start_timeout": "same",
+    "agent_port_range_start": "same",
+    "agent_permission_timeout_seconds": "same",
 }
 
 
@@ -401,18 +412,6 @@ class Settings:
     api_token: str = ""
     api_token_file: Path = field(default_factory=lambda: HEARE_HOME / "api_token")
 
-    # OpenCode sub-agent settings
-    opencode_binary: str = "opencode"
-    opencode_default_model: str | None = None  # None = use opencode's own config
-    opencode_default_timeout: float = 120.0
-    opencode_max_output_chars: int = 8000
-    # Multi-agent background sub-agent settings
-    agent_max_concurrent: int = 5
-    agent_result_ttl_seconds: float = 600.0
-    agent_server_start_timeout: float = 10.0
-    agent_port_range_start: int = 14100
-    agent_permission_timeout_seconds: float = 120.0
-    opencode_binary: str | None = None
 
     # VAD (Voice Activity Detection) parameters. Tune these to adjust how
     # sensitive heare is to speech vs silence. Lower confidence = more

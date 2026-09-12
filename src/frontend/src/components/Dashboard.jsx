@@ -8,7 +8,6 @@ import DisplayCard from './DisplayCard';
 import SettingsPanel from './SettingsPanel';
 import UsageCard from './UsageCard';
 import InjectPanel from './InjectPanel';
-import AgentsPanel from './AgentsPanel';
 import HistoryPanel from './HistoryPanel';
 import AudioDevicePicker from './AudioDevicePicker';
 import AudioPanel from './AudioPanel';
@@ -69,8 +68,6 @@ export default function Dashboard({ onOpenSetup }) {
   const [historyTab, setHistoryTab] = useState('activity');
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [noMoreActivity, setNoMoreActivity] = useState(false);
-  const [agents, setAgents] = useState([]);
-  const [showAgents, setShowAgents] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   const [showCanvas, setShowCanvas] = useState(true);
@@ -125,9 +122,6 @@ export default function Dashboard({ onOpenSetup }) {
           return dData;
         });
       }
-      // Agents poll
-      fetch(API + '/api/agents').then(r => r.json()).then(d => {
-        setAgents(d.agents || []);
       }).catch(() => {});
       setPollFailed(false);
     } catch(e) {
@@ -225,17 +219,6 @@ export default function Dashboard({ onOpenSetup }) {
       if (d.ok) { showToastMsg(d.kind + ': ' + d.device, 'ok'); poll(); }
       else showToastMsg('device select failed: ' + (d.error || ''), 'err');
     } catch(e) { showToastMsg('device select failed: ' + e.message, 'err'); }
-  }
-
-  async function handleAgentCancel(sid) {
-    try {
-      await fetch(API + '/api/agents/cancel', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({session_id: sid})
-      });
-      showToastMsg('agent cancelled', 'ok');
-    } catch(e) { showToastMsg('cancel failed: ' + e.message, 'err'); }
   }
 
   // ═══ 4g: Tools ═══
@@ -387,14 +370,13 @@ export default function Dashboard({ onOpenSetup }) {
         showBrain={showBrain}
         showAudio={showAudio}
         showAudioControls={showAudioControls}
-        showAgents={showAgents}
         showMemories={showMemories}
         showUsage={showUsage}
         showTools={showTools}
         showBridge={showBridge}
         showPrompts={showPrompts}
         onToggle={(w) => {
-          const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, agents: setShowAgents, memories: setShowMemories, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
+          const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, memories: setShowMemories, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
           if (setters[w]) setters[w](prev => !prev);
           // Refresh the device list only when opening the panel.
           if (w === 'audio' && !showAudio) fetchAudioDevices();
@@ -482,16 +464,6 @@ export default function Dashboard({ onOpenSetup }) {
           value={injectText}
           onChange={setInjectText}
           onSend={handleInject}
-        />
-      )}
-
-      {/* Agent management */}
-      {showAgents && (
-        <AgentsPanel
-          agents={agents}
-          onLaunch={poll}
-          onCancel={handleAgentCancel}
-          onToast={showToastMsg}
         />
       )}
 

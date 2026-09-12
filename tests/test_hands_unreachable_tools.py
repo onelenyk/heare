@@ -1,17 +1,11 @@
 """The worker must not offer what nothing can carry out.
 
-63 tools are defined; 62 are enabled; and for a month the daemon handed
-the model schemas for 17 of them whose other half does not exist in this
-process. ``set_agent_manager`` is called from nowhere since
-``src/pipeline/build.py`` was deleted on 17 August, so
-``get_agent_manager()`` is permanently None and all nine agent verbs
-503. ``BrowserBridge`` is constructed nowhere at all under the spine —
-it starts after an early return in ``src/main.py`` — so all eight
-browser verbs find no bridge.
-
-Two more are worse than broken: ``sidetone`` and ``vad_sensitivity``
-execute cleanly, write State, and return success to a reader that does
-not exist in either engine.
+For a month the daemon handed the model schemas for tools whose other
+half did not exist in this process. The sub-agents are gone now
+(12 September); what remains is the browser bridge, constructed at boot
+since 9 September and reachable only once a Chrome extension pairs, and
+two tools that execute cleanly, write State, and return success to a
+reader that does not exist in either engine.
 
 A tool the model can see is a promise to the person on the microphone.
 """
@@ -24,7 +18,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.agent.hands import (
-    _AGENT_TOOLS,
     _BROWSER_TOOLS,
     _DYNAMIC_TOOL_VERBS,
     _TOOLS_WITH_NO_READER,
@@ -45,14 +38,6 @@ def schema_names():
 
 
 class TestNothingIsOfferedWithoutAnExecutor:
-    def test_agent_verbs_are_hidden_while_the_manager_is_absent(
-        self, schema_names
-    ) -> None:
-        from src.agent.subagent_manager import get_agent_manager
-
-        assert get_agent_manager() is None, "fixture assumption changed"
-        assert not (_AGENT_TOOLS & schema_names())
-
     def test_browser_verbs_are_hidden_while_the_bridge_is_absent(
         self, schema_names
     ) -> None:
@@ -110,14 +95,6 @@ class TestNothingIsOfferedWithoutAnExecutor:
 
 
 class TestTheGateIsProbedNotHardcoded:
-    def test_agent_verbs_return_when_a_manager_exists(self, monkeypatch) -> None:
-        """The list must not outlive the outage it describes: wire the
-        manager back and the tools reappear without editing this file."""
-        import src.agent.subagent_manager as sm
-
-        monkeypatch.setattr(sm, "get_agent_manager", lambda: object())
-        assert not (_AGENT_TOOLS & unreachable_tools())
-
     def test_browser_verbs_return_when_an_extension_is_paired(
         self, monkeypatch
     ) -> None:
@@ -147,13 +124,13 @@ class TestTheGateIsProbedNotHardcoded:
     ) -> None:
         """Accounting for reachability must never break a turn. If the
         probe cannot answer, assume unreachable — the safe direction."""
-        import src.agent.subagent_manager as sm
+        import src.agent.browser_bridge as bb
 
         def boom():
-            raise RuntimeError("no manager module today")
+            raise RuntimeError("no bridge module today")
 
-        monkeypatch.setattr(sm, "get_agent_manager", boom)
-        assert _AGENT_TOOLS <= unreachable_tools()
+        monkeypatch.setattr(bb, "_get_bridge", boom)
+        assert _BROWSER_TOOLS <= unreachable_tools()
 
 
 class TestEveryHiddenNameIsReal:
@@ -164,6 +141,6 @@ class TestEveryHiddenNameIsReal:
 
         defined = {t.name for t in TOOLS}
         declared = (
-            _AGENT_TOOLS | _BROWSER_TOOLS | _TOOLS_WITH_NO_READER | _DYNAMIC_TOOL_VERBS
+            _BROWSER_TOOLS | _TOOLS_WITH_NO_READER | _DYNAMIC_TOOL_VERBS
         )
         assert declared <= defined, f"gate names no such tool: {declared - defined}"

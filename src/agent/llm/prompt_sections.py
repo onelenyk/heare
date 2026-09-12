@@ -85,7 +85,6 @@ PROMPT_SECTIONS: list[PromptSection] = [
     # Layer 2: Identity + Situation
     PromptSection("persona", 100, "inline"),
     PromptSection("context", 200, "dynamic"),
-    PromptSection("sub_agents", 205, "dynamic"),
     PromptSection("memory", 210, "dynamic"),
     PromptSection("mode", 300, "dynamic"),
     PromptSection("lifecycle", 310, "dynamic"),
@@ -112,7 +111,6 @@ VOICE_ONLY_SUPPRESSED = frozenset(
     {
         "capabilities",
         "installed_skills",
-        "sub_agents",
         "lifecycle",
         "hints",
         "tool_use",

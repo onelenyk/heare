@@ -56,25 +56,9 @@ RESULT_PREFIX = (
 
 
 # Tools whose executor needs a collaborator that the running daemon may
-# never have built. Each entry is (probe, names): the probe answers
-# "is the thing these need actually here?"
-#
-# They are not deleted. Every one of them is a working implementation
-# whose other half went out with an engine — the sub-agent manager was
-# only ever installed by ``src/pipeline/build.py`` (deleted 17 August)
-# and the browser bridge starts after an early return the spine takes.
-# Deleting them would lose the work; leaving them in the schema is
-# worse than either, because the model then offers the person something
-# that cannot happen and reports back a failure it cannot explain.
-#
-# The probes ask the live seam rather than consulting a list, so the day
-# either half is wired back, the tools reappear on their own and nobody
-# has to remember this file exists.
-_AGENT_TOOLS = frozenset({
-    "run_agent", "agent_start", "agent_status", "agent_result",
-    "agent_message", "agent_cancel", "agent_list", "agent_approve",
-    "agent_deny",
-})
+# never have built. The probe asks the live seam rather than consulting a
+# list, so the day the other half is wired, the tools reappear on their
+# own and nobody has to remember this file exists.
 _BROWSER_TOOLS = frozenset({
     "read_browser_page", "list_browser_tabs", "click_in_browser",
     "fill_in_browser", "navigate_browser", "extract_in_browser",
@@ -105,14 +89,6 @@ _DYNAMIC_TOOL_VERBS = frozenset({"create_tool", "update_tool", "delete_tool"})
 def unreachable_tools() -> frozenset[str]:
     """Names the worker must not offer, because nothing can carry them out."""
     hidden: set[str] = set(_TOOLS_WITH_NO_READER) | _DYNAMIC_TOOL_VERBS
-
-    try:
-        from src.agent.subagent_manager import get_agent_manager
-
-        if get_agent_manager() is None:
-            hidden |= _AGENT_TOOLS
-    except Exception:  # pragma: no cover - import guard
-        hidden |= _AGENT_TOOLS
 
     try:
         from src.agent.browser_bridge import _get_bridge

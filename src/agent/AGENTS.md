@@ -1,6 +1,6 @@
 # src/agent/
 
-LLM services, tool system, mode profiles, browser/MCP bridges, sub-agent manager.
+LLM services, tool system, browser/MCP bridges, the Hands worker.
 
 ## STRUCTURE
 
@@ -19,12 +19,10 @@ agent/
 │   ├── system.py            # Tool schema builder + registration
 │   ├── dynamic.py           # User-created tool execution
 │   ├── capability_index.py  # Unified index (tools + skills + MCP)
-│   └── subagent.py          # run_opencode() subprocess spawn
 ├── tool_gate.py             # what the active role forbids the worker
 ├── browser_bridge.py        # WebSocket server for Chrome extension
 ├── mcp_bridge.py            # stdio MCP server spawn + tool registration
 ├── identity.py              # Auto-generated persona (name, emoji, vibe)
-└── subagent_manager.py      # Background OpenCode sub-agent pool
 ```
 
 ## WHERE TO LOOK
@@ -42,5 +40,4 @@ agent/
 - **Tool handlers lost on LLM hot-swap**: `register_function` calls are cached in `schemas.py`. New registrations must replay on delegate rebuild. See commit `9463e35`.
 - **`direct.py` is 4k lines** — it's a switchboard router. Do NOT add more handlers without considering a split (tools/bash.py, tools/browser.py, etc.)
 - **`mcp_bridge.py` has 9 `except Exception` blocks** — best-effort per-server. A failing MCP server never blocks daemon startup.
-- **`subagent_manager.py` pooled at 5 concurrent** — `max_concurrent` in settings.
 - **Browser bridge** is single-client. Second WebSocket connection gets close code 4002.
