@@ -916,7 +916,9 @@ def real_speech(text: str) -> bytes:
             check=True,
             timeout=10
         )
-        return pcm.stdout
+        # A second of quiet after the word: the detector ends an utterance
+        # on silence, and `say` stops the instant the word does.
+        return pcm.stdout + b"\x00\x00" * 16000
 
     except subprocess.CalledProcessError as e:
         import pytest

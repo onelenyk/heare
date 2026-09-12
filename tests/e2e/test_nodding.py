@@ -106,19 +106,16 @@ def test_how_long_a_nod_lasts() -> None:
     for phrase, kind in phrases:
         pcm = real_speech(phrase)
         vad = EnergyVAD()
-        start = end = None
+        spoken = None
         frame = 640  # 20 ms at 16 kHz int16
         for at in range(0, len(pcm) - frame + 1, frame):
             event = vad.feed(pcm[at:at + frame])
-            if event is None:
-                continue
-            kind_of = getattr(event.kind, "value", event.kind)
-            ms = at / 32.0
-            if kind_of == "start" and start is None:
-                start = ms
-            elif kind_of == "end":
-                end = ms
-        rows.append((phrase, kind, (end - start) if start is not None and end is not None else None))
+            if event is not None and getattr(event.kind, "value", event.kind) == "end":
+                # The number the conductor judges by: loud audio since
+                # START, not the 600 ms of quiet the detector waits
+                # through before it will call END.
+                spoken = vad.loud_ms_in_speech
+        rows.append((phrase, kind, spoken))
     print("\nphrase        kind       ms")
     for phrase, kind, ms in rows:
         print(f"{phrase:<13} {kind:<10} {ms if ms is None else round(ms)}")
