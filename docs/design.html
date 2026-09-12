@@ -120,7 +120,7 @@ pre .k{color:var(--accent)}
   <p class="eyebrow">heare · дизайн-документ · живий, дописується</p>
   <h1>Дизайн heare</h1>
   <p class="lede">Голосовий асистент, який живе поруч: слухає, відповідає, пам'ятає, робить і час від часу заговорює сам. Тут — з яких частин він складається, як вони з'єднані, і які рішення вже прийняті. Код сюди лягає <em>після</em> того, як картинка узгоджена, а не навпаки.</p>
-  <div class="status"><span>версія <b>3</b></span><span>12.09.2026</span><span>стан <b>чернетка</b></span><span>файл <b>docs/design.html</b></span></div>
+  <div class="status"><span>версія <b>4</b></span><span>12.09.2026</span><span>стан <b>чернетка</b></span><span>файл <b>docs/design.html</b></span></div>
 </header>
 
 <!-- ─── 1. big picture ─────────────────────────────── -->
@@ -594,7 +594,7 @@ class Output:
       <tr><td>Пам'ять</td><td><span class="mono">src/memory · persist · search</span></td><td>спільна бібліотека, не окрема система: запис ходу синхронний</td></tr>
       <tr><td>Інструменти · Руки</td><td><span class="mono">hands · jobs · mcp_bridge · browser_bridge · tools/system · tools/direct</span></td><td>ланцюг із 61 elif розкладається за вміннями; браузер — одне з них</td></tr>
       <tr><td>Ініціатива</td><td><span class="mono">engine · intents · situation · when · repeats · environment · summary</span></td><td>«зайнятий?» — з подій ядра, а не з ключа дашборда</td></tr>
-      <tr><td>Рот</td><td><span class="mono">tts · voicing · audio_io (динамік)</span></td><td>потрібні пауза / продовжити / стоп з реченням як одиницею; один прямий дріт від Вуха</td></tr>
+      <tr><td>Рот</td><td><span class="mono">src/mouth</span> (є з v4) · <span class="mono">tts · voicing · audio_io (динамік)</span></td><td>пауза / продовжити / стоп з реченням як одиницею — зроблено; один прямий дріт від Вуха</td></tr>
       <tr><td>Текст · Канвас · Лог</td><td><span class="mono">display · api /display · artifacts · hint_sink</span></td><td>ролі вибирають канал</td></tr>
       <tr><td>Дашборд, налаштування</td><td><span class="mono">api · config · daemon · menubar · doctor · usage · telemetry</span></td><td>вхід і вихід водночас; облік лише слухає</td></tr>
     </tbody>
@@ -624,6 +624,7 @@ class Output:
     <h2 id="h-log">Що змінювалось</h2>
   </div>
   <div class="log">
+    <span><b>v4 · 12.09.2026</b> — перше залізо під документ: Рот існує (<span class="mono">src/mouth</span>: висловлювання з паузою, продовженням з початку речення, стопом і результатом), петля й демон говорять через нього, прапорець <span class="mono">_interrupted</span> зник. Вухо вміє відрізнити кивок від перебивання (<span class="mono">src/text/backchannel.py</span>), але в петлю це ще не підключено — сценарії лежать як xfail. Дієслово «нагадай» працює наскрізь: намір з часом → суддя → голос. Виклик, що лише видає (<span class="mono">show_*</span>, <span class="mono">remember</span>), більше не коштує Рукам зайвого ходу. Прибрано субагентів, маркетплейс, динамічні інструменти, sidetone: −6,1 тис. рядків.</span>
     <span><b>v3 · 12.09.2026</b> — рішення про «втрачену половину» pipecat: браузерний міст лишається (робочий, чекає розширення — лягає в Інструменти як «браузер»); субагенти OpenCode, динамічні інструменти, маркетплейс скілів/MCP і sidetone прибираються.</span>
     <span><b>v2 · 12.09.2026</b> — «людина перериває»: дві смуги в скриньці, хід як скасовна задача, двоступеневе перебивання (пауза → рішення за тривалістю й текстом). Barge-in перестав бути винятком — це найшвидша частина правила. Три питання на вимірювання в бою.</span>
     <span><b>v1 · 12.09.2026</b> — п'ять частин, петля зі скринькою, правило «повертає чи видає», Вухо й виняток barge-in, чотири сценарії, відхилено «сказати як тулзу» і конвеєр.</span>
