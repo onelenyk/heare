@@ -413,8 +413,15 @@ async def test_the_verb_answers_out_loud(tmp_path) -> None:
         Settings(), None, deliver, hands_factory=lambda s: FakeHands(), persist=p
     )
     # Settle the rows into the past: the verb will not answer with what
-    # is still being said, and these were written a moment ago.
-    p._conn.execute("UPDATE transcripts SET ts = ts - 600")
+    # is still being said, and these were written a moment ago. Not past
+    # midnight, though — at eight past twelve «ten minutes ago» is
+    # yesterday, and the verb says so.
+    import time as _time
+
+    now = _time.time()
+    lt = _time.localtime(now)
+    midnight = _time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, lt.tm_isdst))
+    p._conn.execute("UPDATE transcripts SET ts = ?", (max(now - 600, midnight + 1),))
     p._conn.commit()
 
     said = await toolbox.execute("search_conversations", {"query": "таймаут"})
