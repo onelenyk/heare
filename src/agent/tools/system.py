@@ -428,6 +428,7 @@ TOOLS: list[ToolDef] = [
         handler="display_clear",
         schema_fields={},
         required=[],
+        returns=False,
     ),
     ToolDef(
         name="read_display",

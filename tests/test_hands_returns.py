@@ -44,7 +44,7 @@ def test_returns_result_is_false_for_emit_only_tools() -> None:
 
 def test_every_tool_with_returns_false_is_in_the_expected_set() -> None:
     """Pin which tools are emit-only to prevent accidental additions."""
-    emit_only_names = {"show_text", "show_canvas", "remember", "forget"}
+    emit_only_names = {"show_text", "show_canvas", "clear_display", "remember", "forget"}
     actual_emit_only = {t.name for t in TOOLS if not t.returns}
     assert actual_emit_only == emit_only_names, (
         f"Emit-only tools changed: expected {emit_only_names}, got {actual_emit_only}"
