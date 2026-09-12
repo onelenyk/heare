@@ -122,7 +122,6 @@ export default function Dashboard({ onOpenSetup }) {
           return dData;
         });
       }
-      }).catch(() => {});
       setPollFailed(false);
     } catch(e) {
       setPollFailed(true);
