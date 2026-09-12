@@ -397,20 +397,27 @@ class Room:
             )
             db.commit()
 
-    async def nods(self, text: str = "ага", *, ms: float = 250.0) -> None:
-        """Short speech into the mic while the assistant is speaking.
+    async def cuts_in(self, text: str, *, ms: float = 400.0) -> bool:
+        """Start talking while the assistant is still speaking.
 
-        Like `into_the_mic` with a short `ms`, used to pause the speaker
-        rather than interrupt it. The pause tests the two-stage decision
-        of docs/design.html §6: does the room say something short
-        («ага» = nod) or speak at length (barge-in)?
+        Returns whether the interruption landed — which is the single
+        number the old measurement of this reported (two runs in four,
+        against an engine that no longer exists) and the one nothing has
+        measured since. Read off the utterance now, not a flag.
         """
-        await self.spoken(text, ms=ms)
-
-    @property
-    def cuts_in(self) -> bool:
-        """Whether the latest utterance was cut short."""
+        assert self.mouth.playing, "nothing to interrupt — the mouth is idle"
+        await self.into_the_mic(text, ms=ms)
         return self.loop.interrupted
+
+    async def nods(self, text: str = "ага", *, ms: float = 250.0) -> None:
+        """A short sound into the microphone while it is speaking.
+
+        Same path as `cuts_in` — frames, the detector, the canceller —
+        only shorter. Whether that pauses, stops or is waved through is
+        the two-stage decision of docs/design.html §6.
+        """
+        assert self.mouth.playing, "nothing to nod at — the mouth is idle"
+        await self.into_the_mic(text, ms=ms)
 
     def paused(self) -> bool:
         """Whether the latest utterance is paused.
@@ -861,8 +868,10 @@ def real_speech(text: str) -> bytes:
 
         voice_arg = ["-v", voice] if voice else []
 
-        # Generate AIFF file
-        aiff_path = "/tmp/heare_test_speech.aiff"
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as handle:
+            aiff_path = handle.name
         subprocess.run(
             ["say"] + voice_arg + ["-o", aiff_path, text],
             check=True,

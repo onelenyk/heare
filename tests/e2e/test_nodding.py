@@ -1,192 +1,128 @@
-"""Nodding and barge-in: pause at once, decide later (design.html §6).
+"""Nodding at it, and talking over it: pause at once, decide later.
 
-The two-stage interruption:
-1. As soon as the user starts speaking while the mouth is live, pause it (~10ms).
-2. After ~0.6 seconds, decide based on speech duration and content:
-   - Short utterance (< 0.6s): wait for recognition, decide by text
-   - Long utterance (≥ 0.6s): stop speaking immediately (outcome="barged")
-   - Commands like "стоп": stop (outcome="cancelled" or "barged")
-   - Acknowledgments like "ага": resume speaking
+docs/design.html §6. On the sound of a voice the speaker goes quiet
+within milliseconds; whether that was a nod («ага»), a command («стоп»)
+or an interruption is known half a second later, from how long the
+speech lasted and what it said. A nod costs a pause and the sentence
+again from its start; anything else ends the utterance.
 
-Tests marked `@pytest.mark.xfail(reason="two-stage interruption: step 2")` need
-the ear to recognize short vs. long speech and command words. The mouth side
-(pause/resume/stop) is implemented; the ear's decision is future work.
+Only the mouth half exists so far — pause, resume, stop, outcome. The
+ear's decision (src/text/backchannel.py wired into the listen loop) is
+step 2, and the scenarios that need it are marked xfail(strict) so they
+fail loudly the day it lands and must then be un-marked.
 """
-
 from __future__ import annotations
 
 import pytest
 
 from tests.e2e.room import close_room, open_room, real_speech
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.e2e]
+pytestmark = pytest.mark.asyncio
 
 
-@pytest.fixture
-async def room(tmp_path):
-    r = await open_room(tmp_path)
+async def _speaking(room, said: str, *, ms: float = 800.0) -> None:
+    """Get it talking, through the microphone, and wait until it is."""
+    room.speaks_for(ms)
+    room.will_say(said)
+    await room.into_the_mic("Дока, розкажи щось довге")
+    assert await room.until_speaking(), "it never got as far as speaking"
+
+
+# ── holds today ────────────────────────────────────────────────────────
+
+
+async def test_talking_over_it_ends_the_utterance_as_barged(tmp_path) -> None:
+    """The one thing the mouth already knows how to say about itself."""
+    room = await open_room(tmp_path)
     try:
-        yield r
+        await _speaking(room, "Це довга відповідь, яку можна перебити.")
+        assert await room.cuts_in("ні, стоп, не про те", ms=800)
+        assert room.outcome() == "barged"
+        assert room.loop.interrupted
     finally:
-        await close_room(r)
+        await close_room(room)
 
 
-# ─── Must pass today ────────────────────────────────────────────────
-
-
-async def test_long_speech_stops_the_speaker(room) -> None:
-    """Talking for 800 ms over the speaker stops it immediately.
-
-    This is step 1 of the two-stage decision: the mouth pauses at once
-    when speech starts, and if speech continues past ~0.6 s, the turn
-    is cancelled with outcome="barged". No recognition needed.
-    """
-    room.will_say("Це буде дуже довга репліка, якоїзавто скасована.")
-
-    await room.told("Дока, почни відповідь")
-    await room.spoken("довга фраза яка перебиває", ms=800)
-
-    assert room.outcome() == "barged"
-    assert room.cuts_in is True
-
-
-# ─── Future: need two-stage ear decision ────────────────────────────
+# ── step 2: the ear decides ────────────────────────────────────────────
 
 
 @pytest.mark.xfail(reason="two-stage interruption: step 2", strict=True)
-async def test_nod_pauses_and_resumes(room) -> None:
-    """A nod («ага», ~250 ms) pauses the speaker and reply resumes.
-
-    Short speech is recognized, and if it is an acknowledgment like «ага»,
-    the speaker resumes from the start of the sentence that was cut.
-    The utterance ends with outcome="done".
-    """
-    room.will_say(
-        "Це дуже довга репліка, яка буде перервана, але потім повторена "
-        "від поточного речення, і закінчена нормально в кінці."
-    )
-
-    await room.told("Дока, почни довгу репліку")
-    # Pause with a short acknowledgment
-    await room.nods("ага", ms=250)
-
-    # The reply should have been paused, then resumed
-    assert room.paused() is False, "should have resumed by now"
-    assert room.outcome() == "done"
-    assert room.cuts_in is False
+async def test_a_nod_pauses_and_the_reply_goes_on(tmp_path) -> None:
+    """«ага», 250 ms: the speaker pauses, the transcript says it was a
+    nod, the sentence is said again from its start, the utterance ends
+    «done» and nothing counts as interrupted."""
+    room = await open_room(tmp_path)
+    try:
+        await _speaking(room, "Перше речення відповіді. Друге речення відповіді.")
+        await room.nods("ага", ms=250)
+        await room.drained()
+        assert room.outcome() == "done"
+        assert not room.loop.interrupted, "a nod is not an interruption"
+    finally:
+        await close_room(room)
 
 
 @pytest.mark.xfail(reason="two-stage interruption: step 2", strict=True)
-async def test_real_interruption_ends_with_barged(room) -> None:
-    """A real interruption (≥ 600 ms) ends the utterance with outcome='barged'.
-
-    This is the second decision in step 2: if speech lasts longer than ~0.6 s,
-    stop speaking and cancel the turn.
-    """
-    room.will_say("Почни, але дозволи перебити довгою фразою")
-
-    await room.told("Дока, почни")
-    await room.spoken("це довга фраза яка точно перебиває", ms=700)
-
-    assert room.outcome() == "barged"
-    assert room.cuts_in is True
+async def test_a_short_stop_still_stops(tmp_path) -> None:
+    """«стоп» is shorter than the hold, and still a command: the text
+    decides, and the answer is to end it."""
+    room = await open_room(tmp_path)
+    try:
+        await _speaking(room, "Розповідаю довго й не про те.")
+        await room.nods("стоп", ms=400)
+        assert room.outcome() in ("cancelled", "barged")
+        assert room.loop.interrupted
+    finally:
+        await close_room(room)
 
 
 @pytest.mark.xfail(reason="two-stage interruption: step 2", strict=True)
-async def test_command_word_stops_immediately(room) -> None:
-    """A command word like «стоп» stops the utterance immediately.
-
-    «Стоп» is a command, not an acknowledgment, so the turn is cancelled
-    with outcome="cancelled" or "barged" (depending on implementation).
-    """
-    room.will_say("Починаю розповідати, але зупиняюсь на слові стоп")
-
-    await room.told("Дока, почни")
-    # Say "стоп" - should be recognized as a command
-    await room.spoken("стоп", ms=400)
-
-    # The utterance should be stopped
-    assert room.outcome() in ("cancelled", "barged")
-    assert room.cuts_in is True
+async def test_a_cough_is_waved_through(tmp_path) -> None:
+    """A short sound that transcribes to nothing pauses and resumes; the
+    reply is not lost to a cough."""
+    room = await open_room(tmp_path)
+    try:
+        await _speaking(room, "Перше речення. Друге речення.")
+        await room.nods("", ms=200)
+        await room.drained()
+        assert room.outcome() == "done"
+    finally:
+        await close_room(room)
 
 
-# ─── Live measurements with real speech ──────────────────────────────
+# ── the number the design guesses ──────────────────────────────────────
 
 
 @pytest.mark.spine_live
-async def test_speech_duration_measurements(room) -> None:
-    """Measure real speech durations to inform the 0.6 s threshold.
-
-    This test runs only when marked explicitly (not in default test suite).
-    It measures how long real Ukrainian speech actually takes for common
-    short utterances, to calibrate the decision threshold in design §6.
-    """
-    measurements = []
-
-    phrases = [
-        ("ага", "nod"),
-        ("угу", "nod"),
-        ("так-так", "acknowledgment"),
-        ("стоп", "command"),
-        ("далі", "command"),
-        ("а скільки?", "question"),
-    ]
-
-    # Try to generate real speech, skip if unavailable
-    try:
-        pcm = real_speech("ага")
-    except Exception:
-        pytest.skip("real_speech unavailable")
-
+def test_how_long_a_nod_lasts() -> None:
+    """Real speech through the real detector, so INTERRUPT_HOLD_MS is a
+    measurement and not a guess. Prints a table; asserts only that nods
+    are shorter than the hold."""
     from src.spine.vad import EnergyVAD
+    from src.text.backchannel import INTERRUPT_HOLD_MS
 
-    vad = EnergyVAD()
-
+    phrases = [("ага", "nod"), ("угу", "nod"), ("так-так", "nod"),
+               ("стоп", "command"), ("далі", "command"), ("а скільки?", "question")]
+    rows = []
     for phrase, kind in phrases:
-        try:
-            pcm = real_speech(phrase)
-        except Exception:
-            pytest.skip(f"Could not generate speech for '{phrase}'")
-            continue
-
-        # Feed PCM through VAD to measure duration
-        frame_size = 320  # 20 ms at 16 kHz
-        start_time = None
-        end_time = None
-
-        for i in range(0, len(pcm), frame_size):
-            frame = pcm[i : i + frame_size]
-            if len(frame) < frame_size:
-                break
-
-            event = vad.feed(frame)
-            time_ms = (i // 2) / 16  # Convert bytes to ms at 16 kHz
-
-            if event and event.kind.value == "start":
-                if start_time is None:
-                    start_time = time_ms
-            elif event and event.kind.value == "end":
-                end_time = time_ms
-
-        if start_time is not None and end_time is not None:
-            duration_ms = end_time - start_time
-            measurements.append((phrase, kind, duration_ms))
-
-    # Print results in a table
-    if measurements:
-        print("\n" + "=" * 60)
-        print("Speech Duration Measurements (16 kHz, EnergyVAD)")
-        print("=" * 60)
-        print(f"{'Phrase':<20} {'Type':<20} {'Duration (ms)':<15}")
-        print("-" * 60)
-        for phrase, kind, duration in measurements:
-            print(f"{phrase:<20} {kind:<20} {duration:>8.0f} ms")
-        print("=" * 60)
-
-        # Suggest threshold based on measurements
-        nod_durations = [d for p, k, d in measurements if k == "nod"]
-        if nod_durations:
-            max_nod = max(nod_durations)
-            print(f"\nMax nod duration: {max_nod:.0f} ms")
-            print(f"Suggested threshold: ~{min(600, max_nod * 2):.0f} ms")
-            print("(Current design assumes 600 ms)\n")
+        pcm = real_speech(phrase)
+        vad = EnergyVAD()
+        start = end = None
+        frame = 640  # 20 ms at 16 kHz int16
+        for at in range(0, len(pcm) - frame + 1, frame):
+            event = vad.feed(pcm[at:at + frame])
+            if event is None:
+                continue
+            kind_of = getattr(event.kind, "value", event.kind)
+            ms = at / 32.0
+            if kind_of == "start" and start is None:
+                start = ms
+            elif kind_of == "end":
+                end = ms
+        rows.append((phrase, kind, (end - start) if start is not None and end is not None else None))
+    print("\nphrase        kind       ms")
+    for phrase, kind, ms in rows:
+        print(f"{phrase:<13} {kind:<10} {ms if ms is None else round(ms)}")
+    nods = [ms for _, kind, ms in rows if kind == "nod" and ms is not None]
+    assert nods, "the detector never saw a nod start and end"
+    assert max(nods) < INTERRUPT_HOLD_MS, f"a nod lasted {max(nods):.0f} ms — over the hold"
