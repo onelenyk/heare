@@ -435,51 +435,9 @@ async def test_list_skills_returns_success():
     assert "en" in result["spoken"]
 
 
-
 # ============================================================================
 # US-002 Tests — SkillsLoader marketplace extensions
 # ============================================================================
-
-
-def test_invalidate_resets_cache():
-    """discover() populates cache; invalidate() clears it so next discover() re-scans."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir_path = Path(tmpdir)
-
-        skill_dir = tmpdir_path / "skill-a"
-        skill_dir.mkdir()
-        (skill_dir / "SKILL.md").write_text(
-            """---
-name: skill-a
-description: Skill A
----
-"""
-        )
-
-        loader = SkillsLoader([tmpdir_path])
-        first = loader.discover()
-        assert len(first) == 1
-
-        # Add a new skill to disk after first discovery
-        skill_dir2 = tmpdir_path / "skill-b"
-        skill_dir2.mkdir()
-        (skill_dir2 / "SKILL.md").write_text(
-            """---
-name: skill-b
-description: Skill B
----
-"""
-        )
-
-        # Without invalidate, cached result is returned
-        assert len(loader.discover()) == 1
-
-        loader.invalidate()
-
-        # After invalidate, re-scan picks up new skill
-        second = loader.discover()
-        assert len(second) == 2
-        assert {m.name for m in second} == {"skill-a", "skill-b"}
 
 
 def test_marketplace_subtree_discovery():

@@ -98,11 +98,6 @@ class SkillsLoader:
         self._discovered = True
         return self._metadata_cache
 
-    def invalidate(self) -> None:
-        """Force re-scan on next discover() call. Used post-install to surface freshly-installed skills mid-session."""
-        self._discovered = False
-        self._metadata_cache = []
-
     def load_instructions(self, name: str) -> str:
         """Return full SKILL.md body (everything after frontmatter). Raises KeyError if not found."""
         self.discover()

@@ -18,7 +18,6 @@ agent/
 │   ├── schemas.py           # Pipecat register_function bridge
 │   ├── system.py            # Tool schema builder + registration
 │   ├── dynamic.py           # User-created tool execution
-│   ├── capability_index.py  # Unified index (tools + skills + MCP)
 ├── tool_gate.py             # what the active role forbids the worker
 ├── browser_bridge.py        # WebSocket server for Chrome extension
 ├── mcp_bridge.py            # stdio MCP server spawn + tool registration

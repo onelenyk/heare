@@ -425,62 +425,6 @@ async def test_the_state_key_reports_the_surviving_set_after_a_failure(
     assert "boom" in status["error"]
 
 
-# --- the capability index ---------------------------------------------------
-
-
-async def test_reload_rebuilds_the_capability_index_when_there_is_one(
-    tmp_path, monkeypatch
-) -> None:
-    from src.agent.tools import direct as direct_tools
-
-    rebuilt: list[int] = []
-    fake_index = types.SimpleNamespace(rebuild=lambda: rebuilt.append(1))
-    monkeypatch.setattr(
-        direct_tools, "_capability_index_singleton", fake_index, raising=False
-    )
-    _write_config(tmp_path, {"notes": {"command": "notes-server"}})
-
-    await reload_mcp(
-        _settings(tmp_path),
-        _loop(),
-        _FakeState(),
-        connect=_connect_returning(_bridge_with("mcp__notes__search")),
-    )
-
-    assert rebuilt == [1]
-
-
-async def test_no_capability_index_is_not_an_error(tmp_path, monkeypatch) -> None:
-    from src.agent.tools import direct as direct_tools
-
-    monkeypatch.setattr(
-        direct_tools, "_capability_index_singleton", None, raising=False
-    )
-    _write_config(tmp_path, {"notes": {"command": "notes-server"}})
-
-    status = await reload_mcp(
-        _settings(tmp_path),
-        _loop(),
-        _FakeState(),
-        connect=_connect_returning(_bridge_with("mcp__notes__search")),
-    )
-
-    assert status["ok"] is True
-
-
-# --- who owns the sessions --------------------------------------------------
-#
-# An MCP stdio session lives inside an anyio cancel scope, and anyio only
-# lets a scope be left by the task that entered it, innermost first. A
-# reload breaks both rules by nature: the bridge was connected by the boot
-# task and is closed by the poller, and the replacement is connected
-# before the old one is closed. Reproduced against real servers as
-# "Attempted to exit cancel scope in a different task" and as a spurious
-# CancelledError at the next unrelated await — with the sessions left
-# running either way. These two use a bare anyio task group, which fails
-# in exactly the same place and costs no subprocess.
-
-
 @contextlib.asynccontextmanager
 async def _scope(record: list[str], name: str):
     async with anyio.create_task_group():

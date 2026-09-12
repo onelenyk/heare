@@ -120,6 +120,12 @@ RETIRED: dict[str, str] = {
     "agent_server_start_timeout": "same",
     "agent_port_range_start": "same",
     "agent_permission_timeout_seconds": "same",
+    # The skills/MCP marketplace, removed 12 September 2026: switched off
+    # from birth, and not one of its seven verbs was ever called.
+    "capability_install_enabled": "the marketplace is gone; edit ~/.heare/mcp/.mcp.json and ~/.heare/skills by hand",
+    "marketplace_url": "same",
+    "mcp_registry_url": "same",
+    "installation_signature_required": "same",
 }
 
 
@@ -215,21 +221,6 @@ class Settings:
     # Multi-language conversation: Groq detects other languages when spoken, TTS voice
     # automatically swaps to match detected language via TranscriptionGateProcessor.
     groq_language: str = "uk"
-    # May the agent install skills and MCP servers.
-    #
-    # This was a `confirmation_passphrase`, described as a shared secret
-    # you would say aloud to authorise an action. The code that listened
-    # for it lived in the decider and was deleted; what remained checked
-    # only that the string was *not empty* and never compared it to
-    # anything. A boolean wearing a secret's clothes, and a name that
-    # promised a protection nobody could get.
-    #
-    # It is written plainly now. What actually guards an install is this
-    # switch plus `user_confirmed`, a flag the model sets on its own — so
-    # the honest description is "the user turned installs on", not "the
-    # user approved this install". Making the second one true needs the
-    # consent checked against what was really said; see docs/next.md.
-    capability_install_enabled: bool = False
     # One MORE thing to answer to, on top of its own name. Not a second
     # name: the name lives in identity.json and `spine.wake_phrases.
     # own_name` is the only thing that resolves it.
@@ -370,14 +361,6 @@ class Settings:
     # Auto-fetch the top organic search result so the agent has full content
     # for content-style queries (recipe, how-to). Disable to save bandwidth.
     web_search_fetch_top: bool = True
-    # Capability discovery (US-004+): remote marketplace + MCP registry endpoints.
-    # Empty string disables remote fetch for that source.
-    marketplace_url: str = "https://skillsmp.com"
-    mcp_registry_url: str = ""
-    # US-006: when True, the installer requires entry.checksum (or a signature
-    # field) to be set before installing. Default False — checksum is verified
-    # opportunistically when present.
-    installation_signature_required: bool = False
 
     # Context: how many recent transcripts to include in prompts.
     # Default 15 (~100 tokens, 0.05% of 200K context budget).
@@ -574,8 +557,8 @@ def load_settings() -> Settings:
     if toml_data.get("confirmation_passphrase") is not None:
         logger.warning(
             "confirmation_passphrase is no longer a setting: it was never "
-            "compared to anything. Use capability_install_enabled to allow "
-            "installing skills and MCP servers."
+            "compared to anything, and installing skills from a marketplace "
+            "is gone altogether."
         )
 
     settings.groq_api_key = os.environ.get("GROQ_API_KEY")
@@ -774,37 +757,6 @@ def write_browser_bridge_token(settings: Settings, token: str) -> None:
     settings.browser_bridge_token = token
 
 
-def set_capability_install_enabled(enabled: bool) -> None:
-    """Persist the install switch as a top-level key in `~/.heare/config.toml`.
-
-    Restart required for the daemon to pick it up.
-
-    Appending a line at end-of-file — the old approach — parks it inside
-    whatever ``[table]`` happens to be last, and ``load_settings`` only reads
-    top-level keys, so the value silently did nothing. That is exactly how
-    one install-consent setting spent its life inside ``[browser_bridge]``.
-    Any misplaced copy, of either name, is removed before the key is
-    rewritten in the preamble.
-    """
-    import re
-
-    config_path = HEARE_HOME / "config.toml"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if config_path.exists():
-        content = config_path.read_text()
-        pruned = re.sub(
-            r"(?m)^[ \t]*(confirmation_passphrase|capability_install_enabled)"
-            r"[ \t]*=.*$\n?",
-            "",
-            content,
-        )
-        if pruned != content:
-            _atomic_write(config_path, pruned)
-
-    write_config_toml_values({"capability_install_enabled": bool(enabled)})
-
-
 def backup_session_file(settings: "Settings") -> Path | None:
     """Rename `settings.session_file` to a numbered backup, if it exists.
 
@@ -972,8 +924,7 @@ def _toml_literal(value: object) -> str:
 
     Everything used to be quoted, which is right for strings and wrong
     for everything else: a bool written as ``"True"`` parses back as a
-    non-empty string, so ``capability_install_enabled = "False"`` read as
-    permission granted.
+    non-empty string, so a switch written as ``"False"`` read as on.
     """
     if isinstance(value, bool):
         return "true" if value else "false"

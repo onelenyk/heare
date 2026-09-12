@@ -7,7 +7,6 @@ from src.config import (
     Settings,
     backup_session_file,
     load_settings,
-    set_capability_install_enabled,
 )
 
 
@@ -50,77 +49,6 @@ def test_wake_word_custom(monkeypatch, tmp_path) -> None:
     config_file.write_text('wake_word = "Хара"\n')
     s = load_settings()
     assert s.wake_word == "Хара"
-
-
-def test_installs_are_blocked_until_switched_on() -> None:
-    """The default has to be off: this permits a command line to be
-    installed that the daemon then runs at every start."""
-    assert Settings().capability_install_enabled is False
-
-
-def test_the_switch_is_read_from_config(monkeypatch, tmp_path) -> None:
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-
-    (tmp_path / "config.toml").write_text("capability_install_enabled = true\n")
-
-    assert load_settings().capability_install_enabled is True
-
-
-def test_setting_the_switch_writes_a_new_file(monkeypatch, tmp_path) -> None:
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-
-    set_capability_install_enabled(True)
-
-    assert load_settings().capability_install_enabled is True
-
-
-def test_setting_the_switch_keeps_the_rest_of_the_file(monkeypatch, tmp_path) -> None:
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-
-    (tmp_path / "config.toml").write_text(
-        'mode = "focus"\ncapability_install_enabled = true\n'
-    )
-    set_capability_install_enabled(False)
-    s = load_settings()
-
-    assert s.capability_install_enabled is False
-
-
-def test_the_switch_lands_above_the_first_table(monkeypatch, tmp_path) -> None:
-    """The failure this setting actually suffered: written to the end of
-    the file, it parked inside whatever [table] came last, load_settings
-    read only top-level keys, and the value silently did nothing. One
-    install-consent setting spent its whole life inside [browser_bridge].
-    """
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-
-    (tmp_path / "config.toml").write_text(
-        '[browser_bridge]\ntoken = "abc"\n'
-    )
-    set_capability_install_enabled(True)
-
-    assert load_settings().capability_install_enabled is True
-
-
-def test_a_leftover_passphrase_is_not_silently_honoured(
-    monkeypatch, tmp_path, caplog
-) -> None:
-    """It was never compared to anything, so a config carrying one must
-    not read as consent — and the reader deserves to be told why."""
-    import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "HEARE_HOME", tmp_path)
-
-    (tmp_path / "config.toml").write_text('confirmation_passphrase = "авторизую"\n')
-
-    with caplog.at_level("WARNING"):
-        s = load_settings()
-
-    assert s.capability_install_enabled is False
-    assert any("confirmation_passphrase" in r.getMessage() for r in caplog.records)
 
 
 def test_backup_session_file_no_file(tmp_path) -> None:
@@ -475,7 +403,7 @@ def test_browser_bridge_token_survives_a_key_save_roundtrip(
     assert reloaded.browser_bridge_token == "tok-abc"
 
 
-def test_the_switch_lands_top_level_not_inside_a_table(tmp_path, monkeypatch) -> None:
+def test_a_written_key_lands_top_level_not_inside_a_table(tmp_path, monkeypatch) -> None:
     """Regression: appending at EOF parked the key inside the last [table],
     where load_settings never looks — so the setting silently did nothing."""
     import tomllib
@@ -486,42 +414,18 @@ def test_the_switch_lands_top_level_not_inside_a_table(tmp_path, monkeypatch) ->
     cfg = tmp_path / "config.toml"
     cfg.write_text('[browser_bridge]\ntoken = "tok"\n')
 
-    config_mod.set_capability_install_enabled(True)
+    config_mod.write_config_toml_values({"wake_required": True})
 
     parsed = tomllib.loads(cfg.read_text())
-    assert parsed["capability_install_enabled"] is True
-    assert "capability_install_enabled" not in parsed["browser_bridge"]
+    assert parsed["wake_required"] is True
+    assert "wake_required" not in parsed["browser_bridge"]
     assert parsed["browser_bridge"]["token"] == "tok"
-
-
-def test_a_misplaced_key_is_moved_not_duplicated(tmp_path, monkeypatch) -> None:
-    """Including one written under the old name — that is the state a
-    real config was found in, carrying a dead passphrase inside
-    [browser_bridge]."""
-    import tomllib
-
-    import src.config as config_mod
-
-    monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
-    cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[browser_bridge]\ntoken = "tok"\nconfirmation_passphrase = "стара"\n'
-    )
-
-    config_mod.set_capability_install_enabled(True)
-
-    text = cfg.read_text()
-    assert "confirmation_passphrase" not in text
-    assert text.count("capability_install_enabled") == 1
-    parsed = tomllib.loads(text)
-    assert parsed["capability_install_enabled"] is True
-    assert parsed["browser_bridge"] == {"token": "tok"}
 
 
 def test_a_boolean_is_written_as_a_boolean(tmp_path, monkeypatch) -> None:
     """Every value used to be quoted. A bool written as "False" parses
-    back as a non-empty string, which is truthy — the switch would have
-    read as permission granted at the moment it was turned off."""
+    back as a non-empty string, which is truthy — a switch would have
+    read as on at the moment it was turned off."""
     import tomllib
 
     import src.config as config_mod
@@ -529,10 +433,10 @@ def test_a_boolean_is_written_as_a_boolean(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(config_mod, "HEARE_HOME", tmp_path)
     cfg = tmp_path / "config.toml"
 
-    config_mod.set_capability_install_enabled(False)
+    config_mod.write_config_toml_values({"wake_required": False})
 
-    assert tomllib.loads(cfg.read_text())["capability_install_enabled"] is False
-    assert load_settings().capability_install_enabled is False
+    assert tomllib.loads(cfg.read_text())["wake_required"] is False
+    assert load_settings().wake_required is False
 
 
 def test_the_daemon_boots_without_the_old_engine() -> None:

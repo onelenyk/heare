@@ -23,7 +23,7 @@ ROLE_POLL_SECS = 0.5
 # Fast enough that a mute button feels instant, cheap enough to ignore:
 # it reads an in-memory dict.
 CONTROL_POLL_SECS = 0.2
-# .mcp.json is edited by hand or by the installer, not at frame rate; one
+# .mcp.json is edited by hand, not at frame rate; one
 # stat a second is invisible and still feels immediate.
 MCP_POLL_SECS = 1.0
 # How long the file must hold still before it counts as a finished edit.
@@ -581,28 +581,6 @@ def _swap_closer(loop: Any, old: Any, new: Any) -> None:
     closers.append(new.aclose)
 
 
-def _rebuild_capability_index(settings: Any) -> None:
-    """Refresh the index *if* this process already built one.
-
-    The spine never builds it at boot (only the pipecat path does, in
-    the old engine's composition root); on this engine it appears lazily, the first
-    time a capability tool runs. Building one here would be inventing
-    work — and an index built later reads the new .mcp.json by itself.
-    So: rebuild what exists, touch nothing otherwise.
-    """
-    try:
-        from src.agent.tools import direct as direct_tools
-
-        index = getattr(direct_tools, "_capability_index_singleton", None)
-        if index is None:
-            logger.debug("mcp reload: no capability index in this process yet")
-            return
-        index.rebuild()
-        logger.info("mcp reload: capability index rebuilt")
-    except Exception:
-        logger.exception("mcp reload: capability index rebuild failed (non-fatal)")
-
-
 async def reload_mcp(
     settings: Any,
     loop: Any,
@@ -678,7 +656,6 @@ async def reload_mcp(
     _swap_closer(loop, old, new)
     await _aclose_bridge(old, unregister=False)
 
-    _rebuild_capability_index(settings)
     logger.info(
         "mcp reload: %d server(s) connected (%s), %d tool(s) for the worker "
         "(was %d)",
@@ -1294,9 +1271,7 @@ async def run_spine_daemon(
         an `npx` cold start. Once a second is plenty for a file a person
         edits, and it is one stat.
 
-        Two ways in, both free: the file changing (which is also how the
-        installer and `revoke_capability` announce themselves — they
-        write .mcp.json), and State key ``mcp_reload`` = "1", which the
+        Two ways in, both free: the file changing, and State key ``mcp_reload`` = "1", which the
         existing generic ``POST /state`` endpoint can set from the
         dashboard, a curl, or the agent's own bash tool. Same shape as
         the ``cancel`` key above.

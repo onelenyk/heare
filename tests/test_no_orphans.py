@@ -47,10 +47,6 @@ ALLOWED: dict[str, str] = {
     # restart mid-session. src/spine/role_flow.py uses the in-memory log
     # instead; connecting this is a feature, not a cleanup.
     "role_session_turns": "restart-resilience for role sessions — unfinished, 2026-08-19",
-    # Deliberate: the eager path for the capability index. The lazy
-    # fallback (_get_or_build_capability_index) covers every caller, and
-    # the tests use this to inject a fake.
-    "set_capability_index": "test seam for the capability index, 2026-08-19",
 }
 
 

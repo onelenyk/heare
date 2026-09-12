@@ -46,7 +46,6 @@ def test_the_worker_is_offered_everything_except_delegate() -> None:
     out means a tool that disappears for any other reason fails here.
     """
     from src.agent.hands import Hands, unreachable_tools
-    from src.agent.tools.capability_index import INSTALL_TOOLS
     from src.config import Settings
 
     names = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
@@ -55,7 +54,6 @@ def test_the_worker_is_offered_everything_except_delegate() -> None:
 
     expected = {t.name for t in system.TOOLS if t.enabled}
     expected -= {"delegate"}
-    expected -= set(INSTALL_TOOLS)  # off unless capability_install_enabled
     expected -= unreachable_tools()  # no executor in this process
     assert names == expected
 
@@ -258,22 +256,6 @@ def test_hands_never_offers_delegate_to_itself() -> None:
     names = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
     assert "delegate" not in names
     assert "bash" in names
-
-
-def test_hands_hides_install_tools_while_the_gate_is_closed() -> None:
-    """With capability_install_enabled off the installer refuses anyway;
-    keeping the schemas would make the worker offer what it must refuse."""
-    from src.agent.hands import Hands
-    from src.agent.tools.capability_index import INSTALL_TOOLS
-
-    closed = Settings()
-    assert not closed.capability_install_enabled
-    names = {s["function"]["name"] for s in Hands(closed)._tool_schemas()}
-    assert not (INSTALL_TOOLS & names), INSTALL_TOOLS & names
-
-    opened = Settings(capability_install_enabled=True)
-    open_names = {s["function"]["name"] for s in Hands(opened)._tool_schemas()}
-    assert INSTALL_TOOLS & open_names == INSTALL_TOOLS
 
 
 def test_hands_still_honours_what_the_role_forbids() -> None:

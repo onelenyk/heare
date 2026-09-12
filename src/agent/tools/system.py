@@ -496,148 +496,6 @@ TOOLS: list[ToolDef] = [
         required=[],
     ),
     ToolDef(
-        name="discover_capability",
-        description="Search for an installable skill or MCP server matching the user's intent. Use when the user asks for something you don't have an existing tool for.",
-        handler="capability_discover",
-        schema_fields={
-            "intent": {
-                "type": "string",
-                "description": "The user's intent / transcript describing what they want.",
-            },
-            "prefer_remote": {
-                "type": "boolean",
-                "description": "Set true to skip local index and query marketplace directly. Default false.",
-            },
-        },
-        required=["intent"],
-    ),
-    ToolDef(
-        name="install_skill_tool",
-        description="Install a skill from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
-        handler="capability_install_skill",
-        schema_fields={
-            "slug": {
-                "type": "string",
-                "description": "Skill slug returned from discover_capability.",
-            },
-            "user_confirmed": {
-                "type": "boolean",
-                "description": "Set true ONLY after the user said yes via voice.",
-            },
-            "replace": {
-                "type": "boolean",
-                "description": "Overwrite an existing skill with the same slug. Default false.",
-            },
-        },
-        required=["slug", "user_confirmed"],
-    ),
-    ToolDef(
-        name="create_skill",
-        description="Author a new local skill from the conversation. Requires user_confirmed=true after explicit voice consent.",
-        handler="capability_create_skill",
-        schema_fields={
-            "name": {
-                "type": "string",
-                "description": "Skill slug — lowercase letters, digits, hyphens; 1–64 chars.",
-            },
-            "description": {
-                "type": "string",
-                "description": "One-line summary (max 200 chars).",
-            },
-            "body": {
-                "type": "string",
-                "description": "Markdown body of the skill — the procedure the LLM will follow.",
-            },
-            "user_confirmed": {
-                "type": "boolean",
-                "description": "Set true ONLY after the user said yes via voice.",
-            },
-            "replace": {
-                "type": "boolean",
-                "description": "Overwrite an existing skill with the same name. Default false.",
-            },
-        },
-        required=["name", "description", "body", "user_confirmed"],
-    ),
-    ToolDef(
-        name="install_mcp_server_tool",
-        description="Install an MCP server from the marketplace by slug. Requires user_confirmed=true after explicit voice consent.",
-        handler="capability_install_mcp",
-        schema_fields={
-            "slug": {
-                "type": "string",
-                "description": "MCP server slug returned from discover_capability.",
-            },
-            "user_confirmed": {
-                "type": "boolean",
-                "description": "Set true ONLY after the user said yes via voice.",
-            },
-            "replace": {
-                "type": "boolean",
-                "description": "Overwrite an existing MCP server with the same slug. Default false.",
-            },
-        },
-        required=["slug", "user_confirmed"],
-    ),
-    ToolDef(
-        name="register_mcp_server",
-        description="Register an MCP server directly from user-supplied launch info. Use ONLY when discover_capability has no matching entry.",
-        handler="capability_register_mcp",
-        schema_fields={
-            "slug": {"type": "string", "description": "Lowercase slug, [a-z0-9-]+."},
-            "description": {
-                "type": "string",
-                "description": "One-line description (max 200 chars).",
-            },
-            "command": {
-                "type": "string",
-                "description": "Launch command (npx, uvx, python, node, etc.).",
-            },
-            "args": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Argument list passed to the command.",
-            },
-            "env": {"type": "object", "description": "Optional env vars (str->str)."},
-            "source_url": {
-                "type": "string",
-                "description": "Optional URL to the server's repo or docs.",
-            },
-            "user_confirmed": {
-                "type": "boolean",
-                "description": "Set true ONLY after explicit voice consent.",
-            },
-            "replace": {
-                "type": "boolean",
-                "description": "Overwrite an existing MCP server with the same slug. Default false.",
-            },
-        },
-        required=["slug", "description", "command", "args", "user_confirmed"],
-    ),
-    ToolDef(
-        name="revoke_capability",
-        description="Uninstall a previously installed skill or MCP server by slug.",
-        handler="capability_revoke",
-        schema_fields={
-            "slug": {
-                "type": "string",
-                "description": "Slug of the skill or MCP server to uninstall.",
-            },
-        },
-        required=["slug"],
-    ),
-    ToolDef(
-        name="list_capabilities",
-        description="List everything the agent can call, grouped into built_in, skills, and mcps buckets.",
-        handler="capability_list",
-        schema_fields={
-            "category": {
-                "type": "string",
-                "description": "Optional category filter (e.g., 'skill', 'mcp').",
-            },
-        },
-    ),
-    ToolDef(
         name="stop_daemon",
         description="Gracefully stop the running daemon. Requires user_confirmed=true after explicit voice consent.",
         handler="daemon_stop",
@@ -961,13 +819,6 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "show_text": _show_text_serializer,
     "look_at_screen": _query_serializer_question,
     "show_canvas": _show_canvas_serializer,
-    "discover_capability": _json_serializer,
-    "install_skill_tool": _json_serializer,
-    "create_skill": _json_serializer,
-    "install_mcp_server_tool": _json_serializer,
-    "register_mcp_server": _json_serializer,
-    "revoke_capability": _json_serializer,
-    "list_capabilities": _json_serializer,
     "stop_daemon": _json_serializer,
     "restart_daemon": _json_serializer,
     "read_browser_page": _json_serializer,
@@ -1030,10 +881,6 @@ _TOOL_TIMEOUTS: dict[str, float] = {
     "web_fetch": 45.0,  # httpx timeout is 30s
     "web_search": 90.0,  # 30s search + up to 30s top-page fetch
     "run_skill": 60.0,
-    "install_skill_tool": 120.0,
-    "install_mcp_server_tool": 120.0,
-    "register_mcp_server": 60.0,
-    "discover_capability": 60.0,
     "create_archive": 60.0,
     "extract_archive": 60.0,
     "read_browser_page": 45.0,

@@ -1,32 +1,9 @@
-# src/skills/
+# src/skills — skills the assistant can run
 
-Agent Skills (agentskills.io format) marketplace, installation, MCP server utilities, and capability discovery.
+Agent Skills (agentskills.io format): markdown procedures in
+`~/.heare/skills/`, listed with `list_skills` and run with `run_skill`.
+`mcp_utils.py` reads `~/.heare/mcp/.mcp.json` for the MCP bridge.
 
-## STRUCTURE
-
-```
-skills/
-├── marketplace.py      # Skill/MCP registry fetchers (GitHub, hostname validation)
-├── installer.py        # Security-gated installer (tarball, checksum, consent)
-├── discovery.py        # Capability discovery (local + remote + MCP)
-├── agent_skills.py     # SkillsLoader — SKILL.md parser with YAML frontmatter
-└── mcp_utils.py        # ~/.heare/workspace/.mcp.json reader
-```
-
-## CAPABILITY INDEX
-
-`CapabilityIndex` in `agent/tools/capability_index.py` provides a unified read-only view across: built-in tools + dynamic tools + installed skills + MCP servers. Built at startup, used for discovery and tool-deny gating.
-
-## CONVENTIONS
-
-- Best-effort everywhere — marketplace fetches never block startup
-- Cached 24h with HMAC integrity checks
-- Tarfile extraction has path traversal protection
-
-## GOTCHAS
-
-- Skill installation requires `user_confirmed=True` + consent passphrase
-- Default hostname allowlist in `marketplace.py` — `DEFAULT_HOSTNAME_ALLOWLIST`
-- All MCP errors are swallowed: `must never block daemon startup`
-- Skills are optional — pipeline runs without them
-- `Marketplace.py:591-line` `fetch_skill_candidates()` is the largest function — network I/O + security validation in one place
+The marketplace, installer and capability index were removed on
+12 September 2026: switched off from birth, never called. Skills and
+MCP servers are added by hand — a markdown file, a line in `.mcp.json`.
