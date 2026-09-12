@@ -68,6 +68,7 @@ class _Hold:
 
     heard_ms: float = 0.0          # loud audio since START — speech, in audio time
     speech_ms: float | None = None  # heard_ms as it stood at END
+    long: bool = False             # talked past the hold: no nod can resume this
     verdict: str | None = None      # interrupt | resume | cancel, once made
 
 
@@ -270,8 +271,10 @@ class SpineLoop:
                 # says so; neither may count as talking.
                 loud = getattr(self.vad, "loud_ms_in_speech", None)
                 hold.heard_ms = loud if loud is not None else hold.heard_ms + len(frame) / 32.0
-                if hold.heard_ms >= self.interrupt_hold_ms:
-                    self._still_talking(hold)
+                if hold.heard_ms >= self.interrupt_hold_ms and not hold.long:
+                    hold.long = True
+                    logger.info("still talking after %.0f ms — no nod resumes this",
+                                hold.heard_ms)
             if event is None:
                 continue
             kind = getattr(event.kind, "value", event.kind)
@@ -291,8 +294,6 @@ class SpineLoop:
                 # the assembler in speech order even when the network
                 # returns them in the other one.
                 self._stt_jobs.put_nowait((event.utterance, self._starts_seen, hold))
-                if hold is not None and hold.verdict is not None:
-                    self._hold = None
 
     def _voice_over_the_speaker(self) -> None:
         """Someone started talking while it was speaking.
@@ -315,22 +316,25 @@ class SpineLoop:
         self._hold = _Hold()
         logger.info("voice over the speaker — paused, deciding")
 
-    def _still_talking(self, hold: Any) -> None:
-        """Talking past the hold: that is an interruption, and it must not
-        wait for recognition to say so."""
-        hold.verdict = "interrupt"
-        dropped = self.stop_speaking("barged")
-        logger.info("barge-in after %.0f ms of speech — dropped %d queued bytes",
-                    hold.heard_ms, dropped)
-
     def _settle(self, hold: Any, text: str) -> bool:
         """The transcript arrived for a voice still on hold. Returns
-        whether the text is a turn — a nod and a cough are not."""
+        whether the text is a turn — a nod and a cough are not.
+
+        Talking past the hold makes it an interruption *unless nothing
+        was said*: a cough is loud and can last a second, and the first
+        live run of this cut a reply off on one. So a long voice stays
+        paused until its text is back, and only an empty transcript
+        resumes it. The person hears no difference — the speaker was
+        silent either way — and a cough no longer costs the sentence.
+        """
         if hold is None:
             return True
         if hold.verdict is not None:
-            return True  # decided by the clock; the words are a turn
-        verdict = self.judge_interruption(text, hold.speech_ms or 0.0)
+            return True
+        if hold.long:
+            verdict = "resume" if not text.strip() else "interrupt"
+        else:
+            verdict = self.judge_interruption(text, hold.speech_ms or 0.0)
         hold.verdict = verdict
         if self._hold is hold:
             self._hold = None
@@ -339,8 +343,9 @@ class SpineLoop:
             self.mouth.resume_all()
             return False
         outcome = "cancelled" if verdict == "cancel" else "barged"
-        dropped = self.stop_speaking(outcome)
-        logger.info("barge-in by text %r (%s) — dropped %d bytes", text[:40], outcome, dropped)
+        self.stop_speaking(outcome)
+        logger.info("barge-in: %r (%s, %.0f ms of speech)",
+                    text[:40], outcome, hold.speech_ms or hold.heard_ms)
         return True
 
     async def _stt_worker(self) -> None:

@@ -107,20 +107,20 @@ async def test_a_question_short_of_the_hold_interrupts_by_text() -> None:
     assert loop.assembler.fragments == ["а скільки?"]
 
 
-async def test_talking_past_the_hold_interrupts_before_any_text() -> None:
+async def test_talking_past_the_hold_stays_paused_until_the_words_are_back() -> None:
     """START, then nothing — the person is still talking when the hold
-    runs out. The speaker stops then, not after recognition."""
+    runs out. The speaker is silent already; whether the reply is over
+    waits for the transcript, because a cough is loud and long too."""
     loop, utt = await _loop_with_judge("довга фраза", hold_ms=60.0, script={1: _start()})
     await _feed(loop, 4)  # 4 × 20 ms of audio, no END in sight
 
-    assert utt.stopped
-    assert utt.outcome == "barged"
-    assert loop._hold is not None and loop._hold.verdict == "interrupt"
+    assert utt.paused and not utt.stopped
+    assert loop._hold is not None and loop._hold.long
 
 
-async def test_after_the_hold_the_words_are_still_a_turn() -> None:
-    """Decided by the clock, then transcribed: the text is not thrown
-    away with the pause — it is what the person wanted answered."""
+async def test_after_the_hold_the_words_end_it_and_are_a_turn() -> None:
+    """Long, and something was said: an interruption. The text is not
+    thrown away with the pause — it is what the person wanted answered."""
     loop, utt = await _loop_with_judge(
         "розкажи натомість про інше", hold_ms=30.0, script={1: _start(), 6: _end()}
     )
@@ -128,7 +128,27 @@ async def test_after_the_hold_the_words_are_still_a_turn() -> None:
 
     assert utt.outcome == "barged"
     assert loop.assembler.fragments == ["розкажи натомість про інше"]
-    assert loop._hold is None, "the hold is released once its END has passed"
+    assert loop._hold is None, "the hold is released with its verdict"
+
+
+async def test_a_long_cough_resumes_once_it_transcribes_to_nothing() -> None:
+    """The first live run cut a reply off on a cough that outlasted the
+    hold. Long and empty is not an interruption."""
+    loop, utt = await _loop_with_judge("", hold_ms=30.0, script={1: _start(), 6: _end()})
+    await _feed(loop, 6)
+
+    assert not utt.stopped and not utt.paused
+
+
+async def test_a_nod_after_the_hold_does_not_resume() -> None:
+    """Two seconds of talking that transcribe to «так» is not a nod; it
+    is a person whose words the recogniser lost. Stop, and let the turn
+    through."""
+    loop, utt = await _loop_with_judge("так", hold_ms=30.0, script={1: _start(), 6: _end()})
+    await _feed(loop, 6)
+
+    assert utt.outcome == "barged"
+    assert loop.assembler.fragments == ["так"]
 
 
 async def test_a_cough_that_transcribes_to_nothing_resumes() -> None:
