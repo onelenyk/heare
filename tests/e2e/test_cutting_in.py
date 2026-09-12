@@ -322,7 +322,11 @@ async def test_a_person_still_gets_through_over_that_echo(tmp_path) -> None:
         person = voice_like(_FRAMES * _FRAME, _MIC_RATE, 8000)
         heard = [echo[i] + (person[i] if i >= 20 * _FRAME else 0.0)
                  for i in range(_FRAMES * _FRAME)]
-        await room.frames(pack(heard))
+        # …and then stops talking: the detector ends the utterance on the
+        # quiet, and what they said comes back from recognition.
+        await room.frames(pack(heard) + b"\x00\x00" * (_MIC_RATE * 9 // 10))
+        # Their words were short of the hold, so the text decides.
+        await room._decided()
 
         assert room.loop.interrupted, "the person was lost under the echo"
     finally:

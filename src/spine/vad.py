@@ -81,6 +81,11 @@ class EnergyVAD:
         # State tracking.
         self.in_speech = False
         self.speech_frame_count = 0
+        # Milliseconds of *loud* audio since the last START — speech, not
+        # the silence the detector waits through before calling END. Read
+        # by the conductor while a voice over the speaker is on hold: the
+        # hold is about how long the person has been talking.
+        self.loud_ms_in_speech = 0.0
 
         # Ring buffer of preroll (pre-speech silence frames).
         self.preroll_buffer: deque[bytes] = deque(maxlen=self.preroll_frames)
@@ -165,11 +170,14 @@ class EnergyVAD:
             if self.above_threshold_count >= self.start_frames:
                 self.in_speech = True
                 self.speech_frame_count = 0
+                self.loud_ms_in_speech = float(self.start_frames * self.frame_ms)
                 return SpeechEvent(kind=EventKind.START)
         else:
             # In speech: accumulate frames.
             self.pending_frames.append(frame)
             self.speech_frame_count += 1
+            if is_loud:
+                self.loud_ms_in_speech += self.frame_ms
 
             # Check for forced end due to max duration.
             if self.speech_frame_count >= self.max_frames:

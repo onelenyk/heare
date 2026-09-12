@@ -6,10 +6,9 @@ or an interruption is known half a second later, from how long the
 speech lasted and what it said. A nod costs a pause and the sentence
 again from its start; anything else ends the utterance.
 
-Only the mouth half exists so far — pause, resume, stop, outcome. The
-ear's decision (src/text/backchannel.py wired into the listen loop) is
-step 2, and the scenarios that need it are marked xfail(strict) so they
-fail loudly the day it lands and must then be un-marked.
+Both halves are wired: the mouth (pause, resume, stop, outcome) and the
+ear's decision (src/text/backchannel.py, injected into the loop as its
+judge). What the room cannot tell is how it sounds — that is the ear's.
 """
 from __future__ import annotations
 
@@ -46,7 +45,6 @@ async def test_talking_over_it_ends_the_utterance_as_barged(tmp_path) -> None:
 # ── step 2: the ear decides ────────────────────────────────────────────
 
 
-@pytest.mark.xfail(reason="two-stage interruption: step 2", strict=True)
 async def test_a_nod_pauses_and_the_reply_goes_on(tmp_path) -> None:
     """«ага», 400 ms — long enough for the detector to call it speech,
     short of the hold: the speaker pauses, the transcript says it was a
@@ -57,9 +55,9 @@ async def test_a_nod_pauses_and_the_reply_goes_on(tmp_path) -> None:
         await _speaking(room, "Перше речення відповіді. Друге речення відповіді.")
         reply = room.loop.mouth.last
         await room.nods("ага", ms=400)
-        await room.drained()
-        assert reply.outcome == "done", reply.outcome
+        assert await room.finished(reply) == "done"
         assert not reply.stopped, "a nod is not an interruption"
+        assert not room.loop.interrupted
     finally:
         await close_room(room)
 
@@ -78,7 +76,6 @@ async def test_a_short_stop_still_stops(tmp_path) -> None:
         await close_room(room)
 
 
-@pytest.mark.xfail(reason="two-stage interruption: step 2", strict=True)
 async def test_a_cough_is_waved_through(tmp_path) -> None:
     """A short sound that transcribes to nothing pauses and resumes; the
     reply is not lost to a cough."""
@@ -87,8 +84,7 @@ async def test_a_cough_is_waved_through(tmp_path) -> None:
         await _speaking(room, "Перше речення. Друге речення.")
         reply = room.loop.mouth.last
         await room.nods("", ms=400)
-        await room.drained()
-        assert reply.outcome == "done", reply.outcome
+        assert await room.finished(reply) == "done"
     finally:
         await close_room(room)
 

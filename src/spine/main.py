@@ -90,6 +90,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     from src.spine.voicing import pick_voice
 
     from src.spine.features import describe, losses, resolve as resolve_features
+    from src.text.backchannel import INTERRUPT_HOLD_MS, decide as judge_interruption
 
     features = resolve_features(settings, without)
     # The engine's own answer to "what is actually running right now",
@@ -167,6 +168,9 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         split_sentences=sentences,
         synthesise=_tts,
         mouth=Mouth(audio) if audio is not None else None,
+        # A voice over the speaker pauses it; duration and text decide.
+        judge_interruption=lambda text, ms: judge_interruption(text, speech_ms=ms),
+        interrupt_hold_ms=float(INTERRUPT_HOLD_MS),
         usage=usage,
     )
     loop.features = loop_features

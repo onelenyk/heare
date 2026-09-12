@@ -55,6 +55,22 @@ class _MouthFailed(Exception):
     produced, only the voice for them was not."""
 
 
+@dataclass
+class _Hold:
+    """A voice heard while the speaker was live, and the decision it is
+    waiting on.
+
+    The speaker is already paused — that took a millisecond. Whether it
+    was interrupted, nodded at or coughed near is known later: from how
+    long the speech lasted, and failing that from what it said. Until
+    then this holds the clock.
+    """
+
+    heard_ms: float = 0.0          # loud audio since START — speech, in audio time
+    speech_ms: float | None = None  # heard_ms as it stood at END
+    verdict: str | None = None      # interrupt | resume | cancel, once made
+
+
 class AudioLike(Protocol):
     input_frames: asyncio.Queue
     mute_input: bool
@@ -125,6 +141,13 @@ class SpineLoop:
     role_flow: Any = None      # .in_session / await .handle(turn) -> bool
     mouth: Any = None          # .open(synthesise, *, mute_mic: bool) -> Utterance,
                                # .stop_all(outcome) -> int, .interrupted -> bool
+    # (text, speech_ms) -> "interrupt" | "resume" | "cancel". The two-stage
+    # decision of docs/design.html §6: with a judge, a voice over the
+    # speaker pauses it and the verdict comes from duration and text;
+    # without one, any voice stops it, as before.
+    judge_interruption: Any = None
+    interrupt_hold_ms: float = 600.0
+    _hold: Any = None
     _stt_jobs: asyncio.Queue = field(default_factory=asyncio.Queue)
     # Turns injected from outside the microphone (Hands results, the
     # dashboard). They are already addressed to the assistant, so they
@@ -238,6 +261,17 @@ class SpineLoop:
             if self.aec is not None:
                 frame = self.aec.process(frame)
             event = self.vad.feed(frame)
+            hold = self._hold
+            if hold is not None and hold.verdict is None:
+                # Audio time, not wall time — and speech, not the silence
+                # the detector waits through before END. A harness can
+                # deliver a second of speech in a millisecond, and a real
+                # nod is followed by 800 ms of quiet before the detector
+                # says so; neither may count as talking.
+                loud = getattr(self.vad, "loud_ms_in_speech", None)
+                hold.heard_ms = loud if loud is not None else hold.heard_ms + len(frame) / 32.0
+                if hold.heard_ms >= self.interrupt_hold_ms:
+                    self._still_talking(hold)
             if event is None:
                 continue
             kind = getattr(event.kind, "value", event.kind)
@@ -245,39 +279,92 @@ class SpineLoop:
                 self._starts_seen += 1
                 self.assembler.speech_started()
                 if self.audio.playing and self._duplex and self.barge_in_enabled:
-                    # Barge-in: the user talks over the assistant. Drop
-                    # what is queued and tell respond() to stop feeding.
-                    # The stop_playback also clears the far-end reference:
-                    # bytes that never leave the speaker must not be
-                    # subtracted as echo from the very utterance that
-                    # interrupted them.
-                    dropped = self.stop_speaking("barged")
-                    logger.info("barge-in: dropped %d queued bytes", dropped)
+                    self._voice_over_the_speaker()
             elif kind == "end":
+                hold = self._hold
+                if hold is not None and hold.verdict is None:
+                    # Short of the hold: the text decides. The clock stops
+                    # here; the transcript carries the record along.
+                    hold.speech_ms = hold.heard_ms
                 # Off the hot path — but through a single worker, not
                 # fire-and-forget: two utterances in one turn must reach
                 # the assembler in speech order even when the network
                 # returns them in the other one.
-                self._stt_jobs.put_nowait((event.utterance, self._starts_seen))
+                self._stt_jobs.put_nowait((event.utterance, self._starts_seen, hold))
+                if hold is not None and hold.verdict is not None:
+                    self._hold = None
+
+    def _voice_over_the_speaker(self) -> None:
+        """Someone started talking while it was speaking.
+
+        Without a judge this is the old barge-in: stop now, ask nothing.
+        With one, the speaker pauses now and the verdict waits — for the
+        hold to run out (a real interruption, decided before any text) or
+        for the transcript (a nod resumes, a command stops).
+        """
+        if self.judge_interruption is None or self.mouth is None:
+            # stop_playback also clears the far-end reference: bytes that
+            # never leave the speaker must not be subtracted as echo from
+            # the very utterance that interrupted them.
+            dropped = self.stop_speaking("barged")
+            logger.info("barge-in: dropped %d queued bytes", dropped)
+            return
+        if self._hold is not None:
+            return  # already deciding about this voice
+        self.mouth.pause_all()
+        self._hold = _Hold()
+        logger.info("voice over the speaker — paused, deciding")
+
+    def _still_talking(self, hold: Any) -> None:
+        """Talking past the hold: that is an interruption, and it must not
+        wait for recognition to say so."""
+        hold.verdict = "interrupt"
+        dropped = self.stop_speaking("barged")
+        logger.info("barge-in after %.0f ms of speech — dropped %d queued bytes",
+                    hold.heard_ms, dropped)
+
+    def _settle(self, hold: Any, text: str) -> bool:
+        """The transcript arrived for a voice still on hold. Returns
+        whether the text is a turn — a nod and a cough are not."""
+        if hold is None:
+            return True
+        if hold.verdict is not None:
+            return True  # decided by the clock; the words are a turn
+        verdict = self.judge_interruption(text, hold.speech_ms or 0.0)
+        hold.verdict = verdict
+        if self._hold is hold:
+            self._hold = None
+        if verdict == "resume":
+            logger.info("waved through: %r — resuming", text[:40])
+            self.mouth.resume_all()
+            return False
+        outcome = "cancelled" if verdict == "cancel" else "barged"
+        dropped = self.stop_speaking(outcome)
+        logger.info("barge-in by text %r (%s) — dropped %d bytes", text[:40], outcome, dropped)
+        return True
 
     async def _stt_worker(self) -> None:
         while True:
-            pcm, starts_at_end = await self._stt_jobs.get()
-            await self._transcribe(pcm, starts_at_end)
+            pcm, starts_at_end, hold = await self._stt_jobs.get()
+            await self._transcribe(pcm, starts_at_end, hold)
 
-    async def _transcribe(self, pcm: bytes, starts_at_end: int) -> None:
+    async def _transcribe(self, pcm: bytes, starts_at_end: int, hold: Any = None) -> None:
         try:
             result = await self.transcribe(pcm)
         except Exception:
             logger.exception("stt failed")
             # An utterance that produced no text must still release the
-            # turn the assembler is holding open for it.
+            # turn the assembler is holding open for it — and a voice on
+            # hold that transcribed to nothing was a cough: resume.
+            self._settle(hold, "")
             self.assembler.transcript(
                 "", speech_resumed=self._starts_seen > starts_at_end
             )
             return
         text = (getattr(result, "text", None) or "").strip()
         logger.info("heard: %r", text)
+        if not self._settle(hold, text):
+            text = ""  # a nod is not a turn; release what the assembler holds
         self.assembler.transcript(
             text, speech_resumed=self._starts_seen > starts_at_end
         )

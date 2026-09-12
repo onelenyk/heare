@@ -407,7 +407,22 @@ class Room:
         """
         assert self.mouth.playing, "nothing to interrupt — the mouth is idle"
         await self.into_the_mic(text, ms=ms)
+        await self._decided()
         return self.loop.interrupted
+
+    async def _decided(self, timeout: float = 2.0) -> None:
+        """Wait for the verdict on a voice over the speaker.
+
+        The speaker pauses on the spot; whether that was a nod or an
+        interruption is known only once the transcript is back, on the
+        STT worker, after `into_the_mic` has returned. A test that reads
+        the outcome before that reads the pause.
+        """
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
+            if getattr(self.loop, "_hold", None) is None and self.loop._stt_jobs.empty():
+                return
+            await asyncio.sleep(0.005)
 
     async def nods(self, text: str = "ага", *, ms: float = 250.0) -> None:
         """A short sound into the microphone while it is speaking.
@@ -418,6 +433,21 @@ class Room:
         """
         assert self.mouth.playing, "nothing to nod at — the mouth is idle"
         await self.into_the_mic(text, ms=ms)
+        await self._decided()
+
+    async def finished(self, utterance: Any, timeout: float = 6.0) -> str | None:
+        """Wait for one utterance to end, and say how.
+
+        `drained()` watches the database and the inject queue — the
+        conversation. This watches the speaker: a reply resumed after a
+        nod is still sounding long after the row for it was written.
+        """
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
+            if utterance.outcome is not None:
+                return utterance.outcome
+            await asyncio.sleep(0.02)
+        return utterance.outcome
 
     def paused(self) -> bool:
         """Whether the latest utterance is paused.
