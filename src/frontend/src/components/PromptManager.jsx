@@ -139,41 +139,42 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
           </>) : (<>
             <div className="map-view">
 
-              {/* Stage 1: Input Pipeline */}
+              {/* 1 · the ear: sound becomes a turn, outside the loop */}
               <div className="map-stage">
                 <div className="map-stage-header">
-                  <strong>1 \u00b7 Input Pipeline</strong>
+                  <strong>1 \u00b7 Вухо</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>src/spine — поза петлею</span>
                 </div>
                 <div className="map-body">
                   <div className="map-row">
-                    <span className="map-key">Capture</span>
+                    <span className="map-key">мікрофон</span>
                     <span className="map-source inline">audio</span>
-                    <span className="map-file">Microphone \u2192 VAD</span>
+                    <span className="map-file">audio_io \u2192 aec (не чути себе) \u2192 vad</span>
                   </div>
                   <div className="map-row">
-                    <span className="map-key">Transcribe</span>
+                    <span className="map-key">розпізнавання</span>
                     <span className="map-source inline">stt</span>
-                    <span className="map-file">GroqSTT (Whisper)</span>
+                    <span className="map-file">Groq Whisper \u2192 фільтр галюцинацій</span>
                   </div>
                   <div className="map-row">
-                    <span className="map-key">Gate</span>
-                    <span className="map-source inline">filter</span>
-                    <span className="map-file">transcription_gate</span>
+                    <span className="map-key">збирач ходу</span>
+                    <span className="map-source inline">turn</span>
+                    <span className="map-file">скінчились слова, не час \u2192 Turn(mic)</span>
                   </div>
                   <div className="map-row">
-                    <span className="map-key">Injector</span>
-                    <span className="map-source dynamic">rebuild</span>
-                    <span className="map-file">context_injector.py</span>
+                    <span className="map-key">ворота</span>
+                    <span className="map-source inline">wake</span>
+                    <span className="map-file">до мене? \u2014 інакше в пам\u2019ять, не в петлю</span>
                   </div>
                 </div>
               </div>
               <div className="map-arrow">\u2193</div>
 
-              {/* Stage 2: System Prompt Assembly */}
+              {/* 2 · the system prompt, as build_system_prompt assembles it */}
               <div className="map-stage">
                 <div className="map-stage-header">
-                  <strong>2 \u00b7 System Prompt</strong>
-                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>render_native_system_prompt()</span>
+                  <strong>2 \u00b7 Системний промпт</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>src/spine/prompt.py \u00b7 build_system_prompt()</span>
                 </div>
                 <div className="map-body">
                   {Array.isArray(prompts) && prompts.length > 0 ? (
@@ -181,34 +182,34 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
                       <div className="map-row" key={p.key}>
                         <span className="map-key">{p.key}</span>
                         <span className={"map-source " + (p.source || "inline")}>{p.source || "inline"}</span>
-                        <span className="map-file">{p.template_path ? p.template_path.replace("prompts/", "") : (p.source === "dynamic" ? "per-turn" : "identity data")}</span>
+                        <span className="map-file">{p.template_path ? p.template_path.replace("prompts/", "") : (p.note || "")}</span>
                       </div>
                     ))
                   ) : (
                     <div className="info-line" style={{padding:8}}>Loading sections\u2026</div>
                   )}
                   <div className="map-row" style={{borderTop:"1px solid var(--border)",marginTop:4,paddingTop:4}}>
-                    <span className="map-key">Assembled \u2192</span>
-                    <span className="map-source dynamic">render</span>
-                    <span className="map-file">LLM system prompt</span>
+                    <span className="map-key">статичне \u2192 динамічне</span>
+                    <span className="map-source dynamic">кеш</span>
+                    <span className="map-file">незмінне спереду, годинник останнім \u2014 щоб кеш префікса влучав</span>
                   </div>
                 </div>
               </div>
               <div className="map-arrow">\u2193</div>
 
-              {/* Stage 3: Mode Gate */}
+              {/* 3 · the core decides how, the model decides what */}
               <div className="map-stage">
                 <div className="map-stage-header">
-                  <strong>3 \u00b7 Mode Gate</strong>
-                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>modes.py \u2192 output gating</span>
+                  <strong>3 \u00b7 Ядро й виходи</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>loop.respond() \u2192 Рот</span>
                 </div>
                 <div className="map-body">
                   <div className="map-decider">
-                    Channel constraint: limits output, not personality
+                    Модель вирішує, що сказати. Ядро \u2014 як донести: за роллю й вимикачами
                     <div className="map-decider-options">
-                      <div className="map-decider-opt nothing">🔇 silent</div>
-                      <div className="map-decider-opt speak">🎯 focus</div>
-                      <div className="map-decider-opt act">🌊 ambient</div>
+                      <div className="map-decider-opt speak">\U0001f5e3 голос \u2014 Рот</div>
+                      <div className="map-decider-opt act">\U0001f4dd текст \u2014 дашборд</div>
+                      <div className="map-decider-opt nothing">\U0001f507 лог \u00b7 підказки \u2014 тихі ролі</div>
                     </div>
                   </div>
                 </div>

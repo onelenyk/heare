@@ -24,6 +24,41 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# The one sentence of the prompt that is policy rather than data. It is
+# the head of the STATIC block, and the one part a person tuning the
+# assistant by ear wants to edit — so it lives in a file the dashboard's
+# prompt editor writes, with this as the text when the file is absent.
+VOICE_RULES_DEFAULT = (
+    "Ти голосовий асистент на ім'я heare. Тебе слухають вухами, а не "
+    "читають: відповідай коротко, українською, простою прозою — без "
+    "розмітки, списків і коду. Одна-три фрази, як у живій розмові."
+)
+VOICE_RULES_FILE = "voice_rules.txt"
+
+
+def voice_rules_path() -> Path:
+    """Where the editable voice rules live: ``prompts/voice_rules.txt``
+    beside the code (or inside the frozen bundle)."""
+    from src.config import bundled_dir
+
+    return Path(bundled_dir("prompts")) / VOICE_RULES_FILE
+
+
+def load_voice_rules(path: Path | None = None) -> str:
+    """The voice rules as a person last saved them, or the default.
+
+    Read on every prompt build: it is one small file, and reading it is
+    what makes a save in the dashboard count from the next turn. A file
+    that is missing, unreadable or blank means the default — a blank
+    rules file is a mistake, not an instruction to have no rules.
+    """
+    path = path or voice_rules_path()
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return VOICE_RULES_DEFAULT
+    return text or VOICE_RULES_DEFAULT
+
 
 def build_system_prompt(
     *,
@@ -33,6 +68,7 @@ def build_system_prompt(
     exchanges: list[dict] | None = None,
     situation_block: str = "",
     now: datetime | None = None,
+    voice_rules: str | None = None,
 ) -> str:
     """Compose the spine's system prompt.
 
@@ -55,13 +91,11 @@ def build_system_prompt(
     Sections are added ONLY when non-empty. Same information, same headers,
     same truncation rules as before — only the order changed.
 
-    Deterministic: same inputs -> same string.
+    Deterministic given the voice rules: same inputs -> same string.
+    ``voice_rules`` defaults to whatever prompts/voice_rules.txt says.
     """
-    voice_rules = (
-        "Ти голосовий асистент на ім'я heare. Тебе слухають вухами, а не "
-        "читають: відповідай коротко, українською, простою прозою — без "
-        "розмітки, списків і коду. Одна-три фрази, як у живій розмові."
-    )
+    if voice_rules is None:
+        voice_rules = load_voice_rules()
 
     # STATIC block — stable across turns for a given persona.
     parts: list[str] = [voice_rules]

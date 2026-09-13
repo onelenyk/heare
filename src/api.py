@@ -1554,69 +1554,106 @@ class API:
 
     # ── Prompt Manager endpoints ─────────────────────────
 
+    # ── the prompt editor ─────────────────────────────────────────
+    #
+    # Until 13 September these four routes listed fifteen sections of a
+    # prompt the pipecat engine used to assemble, and "save" wrote seven
+    # English template files that no line of the spine reads. Now they
+    # describe the prompt src/spine/prompt.py actually builds — one
+    # editable file (the voice rules), one rendered from identity.json
+    # (the persona), and the rest computed per turn.
+
+    def _prompt_sections(self) -> list[dict]:
+        from src.spine.features import resolve
+        from src.spine.prompt import (
+            VOICE_RULES_FILE,
+            load_persona,
+            load_voice_rules,
+            voice_rules_path,
+        )
+
+        rules = load_voice_rules()
+        speaks_first = bool(resolve(self.config).get("engine", True))
+        persona = load_persona(self.config, speaks_first=speaks_first)
+        template_path = f"prompts/{VOICE_RULES_FILE}"
+        return [
+            {
+                "key": "voice_rules",
+                "order": 1,
+                "source": "template",
+                "template_path": template_path,
+                "path": str(voice_rules_path()),
+                "content": rules,
+                "note": "як говорити — читається з файлу на кожен хід",
+            },
+            {
+                "key": "persona",
+                "order": 2,
+                "source": "inline",
+                "template_path": None,
+                "content": persona,
+                "note": "хто ти — з ~/.heare/identity.json (Setup → identity)",
+            },
+            {
+                "key": "role",
+                "order": 3,
+                "source": "dynamic",
+                "template_path": None,
+                "content": None,
+                "note": "промпт активної ролі з roles/*.md, лише під час сесії",
+            },
+            {
+                "key": "mcp",
+                "order": 4,
+                "source": "dynamic",
+                "template_path": None,
+                "content": None,
+                "note": "що вміє виконавець через MCP — з ~/.heare/mcp/.mcp.json",
+            },
+            {
+                "key": "memory",
+                "order": 5,
+                "source": "dynamic",
+                "template_path": None,
+                "content": None,
+                "note": "три найдоречніші спогади до останньої репліки",
+            },
+            {
+                "key": "exchanges",
+                "order": 6,
+                "source": "dynamic",
+                "template_path": None,
+                "content": None,
+                "note": "чотири останні обміни з heare.db",
+            },
+            {
+                "key": "situation",
+                "order": 7,
+                "source": "dynamic",
+                "template_path": None,
+                "content": None,
+                "note": "що зараз і що висить між вами — від Ініціативи",
+            },
+        ]
+
     async def _handle_prompts(self, request):
         try:
-            from pathlib import Path
-            from src.agent.llm.prompt_sections import PROMPT_SECTIONS
-            from src.agent.llm.prompt_sections import (
-                _render_persona_inline,
-                _render_hard_constraints,
-                _render_tool_catalog,
-            )
-            from src.agent.identity import load_identity, render_persona
-
-            project_root = Path(__file__).resolve().parent.parent
-
-            # Load identity for persona rendering
-            identity = load_identity(Path.home() / ".heare" / "identity.json")
-            persona_text = ""
-            if identity:
-                persona_template = (
-                    project_root / "prompts" / "persona.txt"
-                ).read_text()
-                persona_text = render_persona(persona_template, identity)
-
-            lang = (
-                self.config.groq_language
-                if self.config.groq_language not in ("auto", "")
-                else "uk"
-            )
-
             results = []
-            for ps in PROMPT_SECTIONS:
-                char_count = 0
-                preview = ""
-                if ps.source == "template" and ps.template_path:
-                    tpath = project_root / ps.template_path
-                    if tpath.exists():
-                        content = tpath.read_text()
-                        char_count = len(content)
-                        preview = content[:120].replace("\n", " ")
-                elif ps.source == "inline":
-                    if ps.key == "persona":
-                        content = _render_persona_inline(persona_text, lang)
-                        char_count = len(content)
-                        preview = content[:120].replace("\n", " ")
-                    elif ps.key == "hard_constraints":
-                        content = _render_hard_constraints(lang)
-                        char_count = len(content)
-                        preview = content[:120].replace("\n", " ")
-                    elif ps.key == "tool_catalog":
-                        content = _render_tool_catalog()
-                        char_count = len(content)
-                        preview = content[:120].replace("\n", " ")
-                    else:
-                        preview = "(computed at render time)"
-                elif ps.source == "dynamic":
-                    preview = f"(computed from current {ps.key} state at render time)"
+            for section in self._prompt_sections():
+                content = section.get("content") or ""
                 results.append(
                     {
-                        "key": ps.key,
-                        "order": ps.order,
-                        "source": ps.source,
-                        "template_path": ps.template_path,
-                        "char_count": char_count,
-                        "content_preview": preview,
+                        "key": section["key"],
+                        "order": section["order"],
+                        "source": section["source"],
+                        "template_path": section["template_path"],
+                        "char_count": len(content),
+                        "content_preview": (
+                            content[:120].replace("\n", " ")
+                            if content
+                            else f"({section['note']})"
+                        ),
+                        "note": section["note"],
                     }
                 )
             return web.json_response(results)
@@ -1625,186 +1662,93 @@ class API:
 
     async def _handle_prompt_section(self, request):
         try:
-            from pathlib import Path
-            from src.agent.llm.prompt_sections import PROMPT_SECTIONS
-            from src.agent.llm.prompt_sections import (
-                _render_persona_inline,
-                _render_hard_constraints,
-                _render_tool_catalog,
-            )
-            from src.agent.identity import load_identity, render_persona
-
-            project_root = Path(__file__).resolve().parent.parent
             key = request.match_info["key"]
-            section = None
-            for ps in PROMPT_SECTIONS:
-                if ps.key == key:
-                    section = ps
-                    break
+            section = next(
+                (s for s in self._prompt_sections() if s["key"] == key), None
+            )
             if section is None:
                 return web.json_response({"error": f"unknown key: {key}"}, status=404)
-
-            lang = (
-                self.config.groq_language
-                if self.config.groq_language not in ("auto", "")
-                else "uk"
-            )
-
-            if section.source == "template" and section.template_path:
-                tpath = project_root / section.template_path
-                if tpath.exists():
-                    content = tpath.read_text()
-                    return web.json_response(
-                        {
-                            "key": section.key,
-                            "order": section.order,
-                            "source": section.source,
-                            "template_path": section.template_path,
-                            "char_count": len(content),
-                            "content": content,
-                        }
-                    )
-                return web.json_response(
-                    {
-                        "key": section.key,
-                        "source": section.source,
-                        "template_path": section.template_path,
-                        "content": None,
-                        "note": f"template not found: {section.template_path}",
-                    }
-                )
-
-            if section.source == "inline":
-                if section.key == "persona":
-                    identity = load_identity(Path.home() / ".heare" / "identity.json")
-                    persona_text = ""
-                    if identity:
-                        persona_template = (
-                            project_root / "prompts" / "persona.txt"
-                        ).read_text()
-                        persona_text = render_persona(persona_template, identity)
-                    content = _render_persona_inline(persona_text, lang)
-                elif section.key == "hard_constraints":
-                    content = _render_hard_constraints(lang)
-                elif section.key == "tool_catalog":
-                    content = _render_tool_catalog()
-                else:
-                    content = "(computed at render time)"
-                return web.json_response(
-                    {
-                        "key": section.key,
-                        "order": section.order,
-                        "source": section.source,
-                        "char_count": len(content),
-                        "content": content,
-                    }
-                )
-
+            content = section.get("content")
             return web.json_response(
                 {
-                    "key": section.key,
-                    "source": section.source,
-                    "content": None,
-                    "note": "computed at render time from context",
+                    "key": section["key"],
+                    "order": section["order"],
+                    "source": section["source"],
+                    "template_path": section["template_path"],
+                    "char_count": len(content or ""),
+                    "content": content,
+                    "note": section["note"],
                 }
             )
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_prompt_save(self, request):
+        """POST /api/prompts/{key} — only the voice rules are a file.
+
+        Written to prompts/voice_rules.txt, which build_system_prompt
+        reads on every turn: saved here, spoken from the next reply.
+        """
+        key = request.match_info.get("key", "")
         try:
-            from pathlib import Path
-            from src.agent.llm.prompt_sections import PROMPT_SECTIONS
+            from src.spine.prompt import voice_rules_path
 
-            project_root = Path(__file__).resolve().parent.parent
-            key = request.match_info["key"]
-            section = None
-            for ps in PROMPT_SECTIONS:
-                if ps.key == key:
-                    section = ps
-                    break
-            if section is None:
+            if key != "voice_rules":
                 return web.json_response(
-                    {"ok": False, "error": f"unknown key: {key}"}, status=404
-                )
-            if section.source != "template":
-                return web.json_response(
-                    {"ok": False, "error": f"section '{key}' is not template-backed"},
+                    {
+                        "ok": False,
+                        "error": f"section '{key}' is not a file — "
+                        "persona comes from identity.json, the rest is computed",
+                    },
                     status=400,
                 )
-            if not section.template_path:
-                return web.json_response(
-                    {"ok": False, "error": f"section '{key}' has no template_path"},
-                    status=400,
-                )
-
-            # Defense-in-depth: ensure template_path stays within prompts/
-            tpath = (project_root / section.template_path).resolve()
-            prompts_dir = (project_root / "prompts").resolve()
-            try:
-                tpath.relative_to(prompts_dir)
-            except ValueError:
-                return web.json_response(
-                    {"ok": False, "error": "invalid template path"}, status=400
-                )
-
             body = await request.json()
             content = body.get("content", "")
             if not isinstance(content, str):
                 return web.json_response(
                     {"ok": False, "error": "content must be a string"}, status=400
                 )
-
-            tpath.write_text(content)
+            if not content.strip():
+                return web.json_response(
+                    {"ok": False, "error": "voice rules cannot be blank"}, status=400
+                )
+            path = voice_rules_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
             return web.json_response(
-                {"ok": True, "key": key, "char_count": len(content)}
+                {"ok": True, "key": key, "char_count": len(content), "live": True}
             )
         except Exception as e:
             logger.exception("prompt save failed for key=%s", key)
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_prompt_preview(self, request):
+        """The prompt as the engine would build it now, with the per-turn
+        parts filled by a marked example rather than left out — so the
+        shape a person sees is the shape the model gets."""
         try:
-            from src.agent.llm.context_injector import render_native_system_prompt
-            from src.agent.identity import load_identity, render_persona
-            from pathlib import Path
+            from datetime import datetime
 
-            # Load the real identity from ~/.heare/identity.json
-            persona_text = ""
-            identity = load_identity(Path.home() / ".heare" / "identity.json")
-            if identity:
-                persona_template = (
-                    Path(__file__).resolve().parent.parent / "prompts" / "persona.txt"
-                ).read_text()
-                persona_text = render_persona(persona_template, identity)
+            from src.spine.prompt import build_system_prompt
 
-            # Use the language from settings (or default to uk)
-            lang = (
-                self.config.groq_language
-                if self.config.groq_language not in ("auto", "")
-                else "uk"
+            sections = {s["key"]: s for s in self._prompt_sections()}
+            preview = build_system_prompt(
+                voice_rules=sections["voice_rules"]["content"],
+                persona=sections["persona"]["content"],
+                mcp_block="",
+                memory_block="- (приклад) любить каву без цукру",
+                exchanges=[
+                    {"user": "(приклад) Скільки місця на диску?", "agent": "Сорок гігабайт вільно."}
+                ],
+                situation_block="",
+                now=datetime.now(),
             )
-
-            preview = render_native_system_prompt(
-                persona=persona_text,
-                language=lang,
-                context={
-                    "time": "2026-01-01 12:00:00",
-                    "timezone": "Europe/Kiev",
-                    "mode_block": "MODE GATE: ambient\nVoice output ON. Full engagement.",
-                    "recent_transcripts": "(none)",
-                    "conversation_summary": "No previous conversation.",
-                    "active_topics": "",
-                    "entities": "",
-                    "recent_turns": "(none)",
-                    "recent_actions": "(none)",
-                },
-            )
-            return web.Response(text=preview, content_type="text/plain; charset=utf-8")
+            # aiohttp refuses a charset inside content_type — the old
+            # handler passed one, so "preview" answered every click with
+            # a 500 wrapped in a 200.
+            return web.Response(text=preview, content_type="text/plain", charset="utf-8")
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
-
-    # ── Setup handlers ────────────────────────────────────
 
     async def _handle_setup_state(self, request):
         """GET /api/setup — full setup state."""
