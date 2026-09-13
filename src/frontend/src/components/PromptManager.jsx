@@ -75,12 +75,12 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
             <input
               className="modal-search"
               type="text"
-              placeholder="filter sections\u2026"
+              placeholder="filter sections…"
               value={search}
               onInput={e => setSearch(e.target.value)}
             />
             {!filtered || filtered.length === 0 ? (
-              <div className="info-line">Loading\u2026</div>
+              <div className="info-line">Loading…</div>
             ) : (
               filtered.map(p => (
                 <div
@@ -103,10 +103,10 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
               <h4>selected: {selectedPrompt.key}</h4>
               <div style={{fontSize: 10, color: "var(--muted)", marginBottom: 4}}>
                 {selectedPrompt.char_count != null && selectedPrompt.char_count > 0
-                  ? selectedPrompt.char_count.toLocaleString() + " chars \u00b7 " + selectedPrompt.source
+                  ? selectedPrompt.char_count.toLocaleString() + " chars · " + selectedPrompt.source
                   : selectedPrompt.source
                 }
-                {selectedPrompt.template_path && <span> \u00b7 {selectedPrompt.template_path}</span>}
+                {selectedPrompt.template_path && <span> · {selectedPrompt.template_path}</span>}
               </div>
               {selectedPrompt && selectedPrompt.source === "template" && selectedPrompt.content != null ? (
                 <div>
@@ -125,14 +125,14 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
                   {selectedPrompt.content}
                 </div>
               ) : selectedPrompt ? (
-                <div className="info-line">{selectedPrompt.note || "(rendered at runtime \u2014 no saved content)"}</div>
+                <div className="info-line">{selectedPrompt.note || "(rendered at runtime — no saved content)"}</div>
               ) : null}
             </div>
           )}
 
           {preview !== null && (
             <div className="modal-section">
-              <h4>preview \u2014 assembled system prompt</h4>
+              <h4>preview — assembled system prompt</h4>
               <div className="prompt-preview">{preview}</div>
             </div>
           )}
@@ -142,39 +142,39 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
               {/* 1 · the ear: sound becomes a turn, outside the loop */}
               <div className="map-stage">
                 <div className="map-stage-header">
-                  <strong>1 \u00b7 Вухо</strong>
+                  <strong>1 · Вухо</strong>
                   <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>src/spine — поза петлею</span>
                 </div>
                 <div className="map-body">
                   <div className="map-row">
                     <span className="map-key">мікрофон</span>
                     <span className="map-source inline">audio</span>
-                    <span className="map-file">audio_io \u2192 aec (не чути себе) \u2192 vad</span>
+                    <span className="map-file">audio_io → aec (не чути себе) → vad</span>
                   </div>
                   <div className="map-row">
                     <span className="map-key">розпізнавання</span>
                     <span className="map-source inline">stt</span>
-                    <span className="map-file">Groq Whisper \u2192 фільтр галюцинацій</span>
+                    <span className="map-file">Groq Whisper → фільтр галюцинацій</span>
                   </div>
                   <div className="map-row">
                     <span className="map-key">збирач ходу</span>
                     <span className="map-source inline">turn</span>
-                    <span className="map-file">скінчились слова, не час \u2192 Turn(mic)</span>
+                    <span className="map-file">скінчились слова, не час → Turn(mic)</span>
                   </div>
                   <div className="map-row">
                     <span className="map-key">ворота</span>
                     <span className="map-source inline">wake</span>
-                    <span className="map-file">до мене? \u2014 інакше в пам\u2019ять, не в петлю</span>
+                    <span className="map-file">до мене? — інакше в пам’ять, не в петлю</span>
                   </div>
                 </div>
               </div>
-              <div className="map-arrow">\u2193</div>
+              <div className="map-arrow">↓</div>
 
               {/* 2 · the system prompt, as build_system_prompt assembles it */}
               <div className="map-stage">
                 <div className="map-stage-header">
-                  <strong>2 \u00b7 Системний промпт</strong>
-                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>src/spine/prompt.py \u00b7 build_system_prompt()</span>
+                  <strong>2 · Системний промпт</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>src/spine/prompt.py · build_system_prompt()</span>
                 </div>
                 <div className="map-body">
                   {Array.isArray(prompts) && prompts.length > 0 ? (
@@ -186,30 +186,30 @@ export default function PromptManager({ prompts, selectedPrompt, editContent, pr
                       </div>
                     ))
                   ) : (
-                    <div className="info-line" style={{padding:8}}>Loading sections\u2026</div>
+                    <div className="info-line" style={{padding:8}}>Loading sections…</div>
                   )}
                   <div className="map-row" style={{borderTop:"1px solid var(--border)",marginTop:4,paddingTop:4}}>
-                    <span className="map-key">статичне \u2192 динамічне</span>
+                    <span className="map-key">статичне → динамічне</span>
                     <span className="map-source dynamic">кеш</span>
-                    <span className="map-file">незмінне спереду, годинник останнім \u2014 щоб кеш префікса влучав</span>
+                    <span className="map-file">незмінне спереду, годинник останнім — щоб кеш префікса влучав</span>
                   </div>
                 </div>
               </div>
-              <div className="map-arrow">\u2193</div>
+              <div className="map-arrow">↓</div>
 
               {/* 3 · the core decides how, the model decides what */}
               <div className="map-stage">
                 <div className="map-stage-header">
-                  <strong>3 \u00b7 Ядро й виходи</strong>
-                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>loop.respond() \u2192 Рот</span>
+                  <strong>3 · Ядро й виходи</strong>
+                  <span style={{marginLeft:"auto",fontSize:9,color:"var(--muted)"}}>loop.respond() → Рот</span>
                 </div>
                 <div className="map-body">
                   <div className="map-decider">
-                    Модель вирішує, що сказати. Ядро \u2014 як донести: за роллю й вимикачами
+                    Модель вирішує, що сказати. Ядро — як донести: за роллю й вимикачами
                     <div className="map-decider-options">
-                      <div className="map-decider-opt speak">\U0001f5e3 голос \u2014 Рот</div>
-                      <div className="map-decider-opt act">\U0001f4dd текст \u2014 дашборд</div>
-                      <div className="map-decider-opt nothing">\U0001f507 лог \u00b7 підказки \u2014 тихі ролі</div>
+                      <div className="map-decider-opt speak">🗣 голос — Рот</div>
+                      <div className="map-decider-opt act">📝 текст — дашборд</div>
+                      <div className="map-decider-opt nothing">🔇 лог · підказки — тихі ролі</div>
                     </div>
                   </div>
                 </div>

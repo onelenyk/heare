@@ -555,7 +555,12 @@ class API:
         # same Settings the loop does; if the chosen provider has no key
         # it falls back to one that has, and the header must say so, or
         # the card shows OpenCode while every reply comes from DeepSeek.
-        wanted = str(data.get("provider") or getattr(self.config, "llm_provider", "") or "")
+        # "Wanted" is what the engine is asked for — config.toml's
+        # llm_provider, the value resolve_llm reads — not State's memory of
+        # the last click, which can disagree with a hand-edited config.
+        wanted = getattr(self.config, "llm_provider", "")
+        if not isinstance(wanted, str) or wanted not in PROVIDERS:
+            wanted = str(data.get("provider") or "")
         live = self._effective_llm()
         if live is not None:
             data["provider"], data["model"] = live

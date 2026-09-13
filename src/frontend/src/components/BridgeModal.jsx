@@ -13,7 +13,7 @@ export default function BridgeModal({ data, onClose, onRotate, onToggle, revealT
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
-          <div className="info-line">Loading\u2026</div>
+          <div className="info-line">Loading…</div>
         </div>
       </div>
     </div>
