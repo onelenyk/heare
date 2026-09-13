@@ -14,6 +14,30 @@ inject drop-folder, the DB. Everything the dashboard drives through those
 four now works. What's left dead mostly drives a **pipecat stage**
 (`src/pipeline/stages/*`), which is no longer built.
 
+## 2026-09-13 — the rows below moved
+
+Verified by reading the code, running the tests, and `make doctor`.
+The tables under this heading are the 17 August picture; this list is
+what changed since and overrides them where they disagree.
+
+| Control | Was | Now | Why |
+|---|---|---|---|
+| API key save | PARTIAL (restart) | **WORKS, live** | after a key-wait boot the daemon reloaded Settings into a new object and the API kept mutating the old one; `run_spine_daemon` now hands the API the object `_live_cfg` resolves against |
+| provider switch | DEAD | **WORKS, live** | same object; `~/.heare/provider` no longer overrides `llm_provider` on restart; `/state` reports the provider the engine resolves, plus `provider_wanted` / `provider_fallback` when the chosen one has no key |
+| model switch | DEAD | **WORKS, live** | same object; Hands now resolve through `resolve_llm` too, so voice and worker never diverge |
+| language (setup) | PARTIAL (restart) | **WORKS, live** | `_save_locale_settings` also sets the live Settings; STT reads `groq_language` per turn |
+| prompts editor | DEAD | **WORKS, live** | `/api/prompts` now describes `src/spine/prompt.py`; the one file is `prompts/voice_rules.txt`, read by `build_system_prompt` on every turn |
+| bridge enable / rotate token | DEAD (restart) | **WORKS, live** | both set State `bridge_reload`; the daemon's bridge poller stops and rebuilds the bridge from the live Settings within a second |
+| chrome badge | honest | honest | the bridge is built by the daemon since 9 September; `make doctor` cannot see it and says so instead of "hidden" |
+| TTS voice (setup) | DEAD | removed from the UI | the voice follows the script of each reply; a configured English voice on Ukrainian text is silence |
+| sidetone, VAD sensitivity, agents panel | DEAD | removed | with the sub-agents, dynamic tools and sidetone (12 September) |
+| allow installs | PARTIAL | removed | the marketplace is gone (`capability_install_enabled` is in `RETIRED`) |
+
+Still needing a decision: `web_search` has no key (`SERPER_API_KEY`) and
+DuckDuckGo blocks scraping for minutes at a time — it reports that
+honestly now, but a key is the only fix. `src/agent/llm/prompt_sections.py`
+and `context_injector.py` are read by nothing but their own tests.
+
 ## WORKS — with the consuming line
 
 | Control | UI location | API endpoint | What it writes | Consumed by spine? | Verdict |

@@ -475,14 +475,15 @@ class API:
         evidence: the switch is an intention and the token file survives
         any process that wrote it.
 
-        The bridge registers itself in-process (``set_bridge`` in
-        src/main.py) and knows whether a client authenticated
+        The bridge registers itself in-process (``set_bridge``, called by
+        the daemon in src/daemon/spine_engine.py at boot and on every
+        ``bridge_reload``) and knows whether a client authenticated
         (``BrowserBridge.connected``). That object is the only local
-        evidence there is, so no object means not connected — which is the
-        honest answer on the spine engine, where the bridge is never
-        started at all. A daemon in *another* process would also read
-        false here; the status file it writes cannot tell "connected" from
-        "was connected when it died", so it is deliberately not consulted.
+        evidence there is, so no object means not connected: the switch
+        is off, the port was taken, or the daemon is not running. The
+        API and the daemon share one process on every launch path
+        (src/main.py, the menubar), so the status file is not consulted —
+        it cannot tell "connected" from "was connected when it died".
         """
         try:
             from src.agent.browser_bridge import _get_bridge
@@ -1470,20 +1471,32 @@ class API:
             with os.fdopen(fd, "w") as f:
                 f.write(token + "\n")
 
+            await self._reload_bridge()
             return web.json_response(
                 {
                     "ok": True,
                     "token": token,
-                    "restart_required": True,
-                    "message": "Restart the daemon for the new token to take effect.",
+                    "restart_required": False,
+                    "message": "New token in effect — re-pair the extension.",
                 }
             )
         except Exception as e:
             logger.exception("bridge/rotate-token failed")
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
+    async def _reload_bridge(self) -> None:
+        """Ask the daemon to rebuild the bridge from the live Settings.
+
+        State ``bridge_reload`` is read once a second by the daemon's
+        bridge poller; it stops the running bridge and, if
+        ``browser_bridge_enabled``, builds a new one — which is how a
+        rotated token or a flipped switch takes effect without a restart.
+        """
+        if self.state is not None:
+            await self.state.set("bridge_reload", "1")
+
     async def _handle_bridge_toggle(self, request):
-        """Toggle browser_bridge_enabled in config.toml."""
+        """Toggle browser_bridge_enabled in config.toml — and live."""
         try:
             body = await request.json()
             enabled = bool(body.get("enabled", True))
@@ -1537,15 +1550,22 @@ class API:
             os.chmod(tmp_path, 0o600)
             os.replace(tmp_path, config_path)
 
-            # Also update the in-memory config
+            # The live Settings is the object the daemon builds the
+            # bridge from, so this plus the reload flag is the whole
+            # change — no restart.
             self.config.browser_bridge_enabled = enabled
+            await self._reload_bridge()
 
             return web.json_response(
                 {
                     "ok": True,
                     "enabled": enabled,
-                    "restart_required": True,
-                    "message": "Restart the daemon for the change to take effect.",
+                    "restart_required": False,
+                    "message": (
+                        "Bridge starting — pair the extension."
+                        if enabled
+                        else "Bridge stopped."
+                    ),
                 }
             )
         except Exception as e:

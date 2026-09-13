@@ -129,9 +129,24 @@ def _tool_section() -> list[str]:
         f"  голосу прямо   {len(VOICE_TOOLS & names)}",
     ]
     if hidden:
-        lines.append(f"  сховано        {len(hidden)} — нічим виконати в цьому процесі:")
-        for name in sorted(hidden):
-            lines.append(f"                   {name}")
+        from src.agent.hands import _BROWSER_TOOLS
+
+        browser = hidden & _BROWSER_TOOLS
+        other = hidden - _BROWSER_TOOLS
+        if browser:
+            # Not a verdict: the bridge is built by the daemon, and this
+            # process is not it. Whether Chrome is paired is the
+            # dashboard's badge to answer, not the doctor's.
+            lines.append(
+                f"  браузер        {len(browser)} — будується демоном, не тут; "
+                "чи спарено Chrome, каже значок на дашборді:"
+            )
+            for name in sorted(browser):
+                lines.append(f"                   {name}")
+        if other:
+            lines.append(f"  сховано        {len(other)} — нічим виконати в цьому процесі:")
+            for name in sorted(other):
+                lines.append(f"                   {name}")
     disabled = {t.name for t in TOOLS if not t.enabled}
     if disabled:
         lines.append(f"  вимкнено       {', '.join(sorted(disabled))}")

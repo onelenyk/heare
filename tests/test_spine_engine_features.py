@@ -610,3 +610,114 @@ def test_the_greeting_says_the_name_the_model_believes_it_has(tmp_path) -> None:
     said = greeting_text(SimpleNamespace(wake_word="гава", identity_file=identity))
 
     assert said == "Дока на зв'язку."
+
+
+# ── the browser bridge follows the dashboard without a restart ────────
+
+
+class _FakeBridge:
+    """A BrowserBridge-shaped object: remembers what it was built from."""
+
+    instances: list["_FakeBridge"] = []
+
+    def __init__(self, settings) -> None:
+        self.token = getattr(settings, "browser_bridge_token", "")
+        self.stopped = False
+        _FakeBridge.instances.append(self)
+
+    async def start(self) -> None:
+        await asyncio.sleep(3600)  # serves forever, like the real one
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+
+async def _boot_with_bridge(
+    monkeypatch, tmp_path, during_run, *, before_boot=None, **settings_overrides
+):
+    import src.agent.browser_bridge as browser_bridge
+    import src.agent.mcp_bridge as mcp_bridge
+    import src.daemon.spine_engine as engine
+    import src.spine.audio_io as audio_io
+    import src.spine.main as spine_main
+
+    monkeypatch.setattr(engine, "BRIDGE_POLL_SECS", 0.01)
+    monkeypatch.setattr(browser_bridge, "BrowserBridge", _FakeBridge)
+    _FakeBridge.instances.clear()
+    state = _FakeState()
+    if before_boot is not None:
+        await before_boot(state)
+    settings = _settings(
+        tmp_path, browser_bridge_enabled=True, browser_bridge_token="old", **settings_overrides
+    )
+
+    class _Loop(_FakeLoop):
+        async def run(self) -> None:
+            await asyncio.sleep(0.05)
+            await during_run(settings, state)
+            await asyncio.sleep(0.1)
+
+    loop = _Loop({"mcp": False, "telemetry": False})
+
+    async def _fake_build_loop(settings, **kwargs):
+        return loop
+
+    async def _fake_connect(settings):
+        return SimpleNamespace(
+            connected_servers=[], tool_names=[], register_worker_tools=lambda: [],
+            aclose=lambda **kw: asyncio.sleep(0), prompt_block=lambda: "",
+        )
+
+    monkeypatch.setattr(audio_io, "AudioIO", _FakeAudio)
+    monkeypatch.setattr(spine_main, "_build_loop", _fake_build_loop)
+    monkeypatch.setattr(mcp_bridge, "connect_mcp_servers", _fake_connect)
+    api = SimpleNamespace(state=None, _memory_backend=None)
+    await asyncio.wait_for(
+        run_spine_daemon(settings, state, api, handle_signals=False), timeout=10
+    )
+    return _FakeBridge.instances, browser_bridge._get_bridge()
+
+
+async def test_a_rotated_token_rebuilds_the_bridge(monkeypatch, tmp_path) -> None:
+    """/api/bridge/rotate-token writes the token onto the live Settings
+    and sets bridge_reload; the daemon builds a new bridge from it."""
+
+    async def rotate(settings, state):
+        settings.browser_bridge_token = "new"
+        await state.set("bridge_reload", "1")
+
+    instances, live = await _boot_with_bridge(monkeypatch, tmp_path, rotate)
+    assert [b.token for b in instances] == ["old", "new"]
+    assert instances[0].stopped, "the old bridge kept its socket"
+    assert live is None, "shutdown left a bridge registered"
+    assert instances[1].stopped
+
+
+async def test_switching_the_bridge_off_stops_it(monkeypatch, tmp_path) -> None:
+    import src.agent.browser_bridge as browser_bridge
+
+    seen: dict[str, object] = {}
+
+    async def switch_off(settings, state):
+        settings.browser_bridge_enabled = False
+        await state.set("bridge_reload", "1")
+        await asyncio.sleep(0.05)
+        seen["after"] = browser_bridge._get_bridge()
+
+    instances, _ = await _boot_with_bridge(monkeypatch, tmp_path, switch_off)
+    assert len(instances) == 1 and instances[0].stopped
+    assert seen["after"] is None, "off, but the verbs still had a bridge to reach"
+
+
+async def test_a_stale_reload_flag_does_not_rebuild_at_boot(monkeypatch, tmp_path) -> None:
+    """bridge_reload is persisted; a request made just before the last
+    daemon died must not rebuild a bridge this boot has only just built."""
+
+    async def nothing(settings, state):
+        return None
+
+    async def stale(state):
+        await state.set("bridge_reload", "1")
+
+    instances, _ = await _boot_with_bridge(monkeypatch, tmp_path, nothing, before_boot=stale)
+    assert len(instances) == 1

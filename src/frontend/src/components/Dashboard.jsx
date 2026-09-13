@@ -311,8 +311,8 @@ export default function Dashboard({ onOpenSetup }) {
       const r = await fetch(API + '/api/bridge/rotate-token', { method: 'POST' });
       const d = await r.json();
       if (d.ok) {
-        setBridgeRestartNotice(true);
-        showToastMsg('new token generated (restart required): ' + d.token, 'ok');
+        setBridgeRestartNotice(Boolean(d.restart_required));
+        showToastMsg((d.message || 'new token in effect') + ': ' + d.token, 'ok');
         fetchBridgeStatus();
       } else {
         showToastMsg('rotate failed: ' + (d.error || ''), 'err');
@@ -330,8 +330,8 @@ export default function Dashboard({ onOpenSetup }) {
       });
       const d = await r.json();
       if (d.ok) {
-        setBridgeRestartNotice(true);
-        showToastMsg('bridge ' + (newEnabled ? 'enabled' : 'disabled') + ' (restart required)', 'ok');
+        setBridgeRestartNotice(Boolean(d.restart_required));
+        showToastMsg(d.message || ('bridge ' + (newEnabled ? 'enabled' : 'disabled')), 'ok');
         fetchBridgeStatus();
       } else {
         showToastMsg('toggle failed: ' + (d.error || ''), 'err');

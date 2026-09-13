@@ -38,6 +38,7 @@ BOOT_POLL_SECS = 1.0
 # A moment after the loop starts running, so the greeting does not race
 # the first audio callbacks.
 GREETING_DELAY_SECS = 0.6
+BRIDGE_POLL_SECS = 1.0
 
 
 # -- keys the engine cannot work without -----------------------------
@@ -964,36 +965,85 @@ async def run_spine_daemon(
     # likely went with the pipecat engine deleted on 17 August, the same
     # way conversation-closing did.
     #
-    # Same shape as MCP above and for the same reason: `start()` runs
+    # Same shape as MCP below and for the same reason: `start()` runs
     # forever once it binds, so it is a task, and the extension may pair
     # minutes later or never. The worker rebuilds its schema list before
     # every job, so the verbs appear the moment Chrome connects.
-    bridge_task: asyncio.Task | None = None
-    browser_bridge: Any = None
+    #
+    # Built from `settings` at boot and rebuilt on State ``bridge_reload``
+    # (the dashboard's enable switch and token rotation set it): the
+    # bridge reads its token and port in its constructor, so "apply the
+    # new token" is "make a new bridge", and the switch is "make none".
+    bridge: dict[str, Any] = {"obj": None, "task": None}
+
+    async def _start_bridge() -> None:
+        from src.agent.browser_bridge import BrowserBridge, set_bridge
+
+        obj = BrowserBridge(settings)
+        set_bridge(obj)
+        task = asyncio.create_task(obj.start(), name="browser-bridge")
+
+        def _bridge_done(task: asyncio.Task) -> None:
+            if not task.cancelled() and task.exception() is not None:
+                logger.exception("browser bridge stopped", exc_info=task.exception())
+
+        task.add_done_callback(_bridge_done)
+        bridge["obj"], bridge["task"] = obj, task
+
+    async def _stop_bridge() -> None:
+        """Drops clients and fails outstanding RPCs; idempotent. The
+        global goes with it, so nothing ever holds a bridge pointing at
+        a closed socket."""
+        from src.agent.browser_bridge import set_bridge
+
+        obj, task = bridge["obj"], bridge["task"]
+        bridge["obj"], bridge["task"] = None, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if obj is not None:
+            try:
+                await obj.stop()
+            except Exception:
+                logger.exception("browser bridge did not stop cleanly")
+        set_bridge(None)
+
     if not getattr(settings, "browser_bridge_enabled", False):
         logger.info("browser bridge: OFF — no server, no browser tools")
     else:
         try:
-            from src.agent.browser_bridge import BrowserBridge, set_bridge
-
-            browser_bridge = BrowserBridge(settings)
-            set_bridge(browser_bridge)
-            bridge_task = asyncio.create_task(
-                browser_bridge.start(), name="browser-bridge"
-            )
-
-            def _bridge_done(task: asyncio.Task) -> None:
-                if not task.cancelled() and task.exception() is not None:
-                    logger.exception(
-                        "browser bridge stopped", exc_info=task.exception()
-                    )
-
-            bridge_task.add_done_callback(_bridge_done)
+            await _start_bridge()
         except Exception:
             # A port already taken must cost the browser verbs and nothing
             # else — the assistant still has a voice.
             logger.exception("browser bridge failed to start (non-fatal)")
-            browser_bridge = None
+            bridge["obj"], bridge["task"] = None, None
+
+    async def _poll_bridge() -> None:
+        """Rebuild the bridge when the dashboard asks.
+
+        State ``bridge_reload`` = "1" is set by /api/bridge/toggle and
+        /api/bridge/rotate-token, both of which used to answer
+        ``restart_required: true`` — the only two controls left on the
+        dashboard that asked for a restart. The API and this daemon hold
+        the same Settings object, so what those handlers wrote there is
+        what the new bridge is built from.
+        """
+        if state.get("bridge_reload") == "1":
+            await state.set("bridge_reload", "0")
+        while True:
+            await asyncio.sleep(BRIDGE_POLL_SECS)
+            try:
+                if state.get("bridge_reload") != "1":
+                    continue
+                await state.set("bridge_reload", "0")
+                enabled = bool(getattr(settings, "browser_bridge_enabled", False))
+                logger.info("browser bridge reload: %s", "on" if enabled else "off")
+                await _stop_bridge()
+                if enabled:
+                    await _start_bridge()
+            except Exception:
+                logger.exception("browser bridge reload failed (non-fatal)")
 
     mcp_task: asyncio.Task | None = None
     if not mcp_on:
@@ -1380,6 +1430,7 @@ async def run_spine_daemon(
     mcp_poller = (
         asyncio.create_task(_poll_mcp(), name="spine-mcp-poll") if mcp_on else None
     )
+    bridge_poller = asyncio.create_task(_poll_bridge(), name="spine-bridge-poll")
     runner = asyncio.create_task(loop.run(), name="spine-run")
 
     # -- "I am alive", out loud ----------------------------------------
@@ -1432,22 +1483,12 @@ async def run_spine_daemon(
         # mcp_task may still be waiting on a cold `npx`; cancelling it
         # is why it is a named task and not a fire-and-forget coroutine.
         background = [t for t in (poller, role_poller, ctl_poller, mcp_poller,
-                                  runner, mcp_task, greet_task, bridge_task)
+                                  bridge_poller, runner, mcp_task, greet_task)
                       if t is not None]
         for t in background:
             t.cancel()
         await asyncio.gather(*background, return_exceptions=True)
-        if browser_bridge is not None:
-            # Drops clients and fails outstanding RPCs; idempotent. The
-            # global goes with it, so a restarted daemon never inherits a
-            # bridge pointing at a closed socket.
-            from src.agent.browser_bridge import set_bridge as _set_bridge
-
-            try:
-                await browser_bridge.stop()
-            except Exception:
-                logger.exception("browser bridge did not stop cleanly")
-            _set_bridge(None)
+        await _stop_bridge()
         await audio.stop()
         await _close_loop(loop)
         try:
