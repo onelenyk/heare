@@ -89,7 +89,9 @@ export default function KeysCard({ state = {}, post, onClose, bare = false }) {
       });
       const d = await r.json();
       if (d.ok) {
-        setStatus('saved — in effect from the next thing you say');
+        const home = d.stored_in === 'keychain' ? 'macOS Keychain'
+          : d.stored_in === 'file' ? '~/.heare/.env' : null;
+        setStatus('saved — in effect from the next thing you say' + (home ? ' · kept in ' + home : ''));
         setTyped({});
         await load();
       } else {

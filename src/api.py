@@ -101,7 +101,6 @@ from src.config import (  # noqa: E402
     backup_session_file,
     write_browser_bridge_token,
     write_config_toml_values,
-    write_env_updates,
 )
 from src.memory.base import MemoryType  # noqa: E402
 from src.spine.features import FEATURES  # noqa: E402
@@ -425,12 +424,14 @@ class API:
                 errors.append(f"{attr.replace('_', ' ').title()} key looks too short")
         return errors
 
-    async def _apply_api_keys(self, keys: dict[str, str]) -> None:
+    async def _apply_api_keys(self, keys: dict[str, str]) -> str | None:
         """Persist `keys` and apply them to the running daemon.
 
-        Writes ~/.heare/.env (durable) and os.environ + Settings (this
-        process). The Settings object is the one the engine resolves its
+        Stored through src/keys.py — the macOS Keychain, or ~/.heare/.env
+        where there is none — and set on os.environ + Settings for this
+        process. The Settings object is the one the engine resolves its
         provider against on every call, so the setattr *is* the hot-swap.
+        Returns where the keys went, for the card to say.
 
         A ``key_<attr>`` copy used to go into State as well, for a
         SwitchableLLMService that no longer exists — leaving every pasted
@@ -438,12 +439,15 @@ class API:
         masking in /state stays, for rows older installs still carry.
         """
         if not keys:
-            return
+            return None
+        from src.keys import store as store_key
+
         fields = api_key_fields()
-        write_env_updates({fields[attr]: value for attr, value in keys.items()})
+        home = None
         for attr, value in keys.items():
-            os.environ[fields[attr]] = value
+            home = store_key(fields[attr], value)
             setattr(self.config, attr, value)
+        return home
 
     def _effective_llm(self) -> tuple[str, str] | None:
         """(provider, model) the engine would use right now, or None.
@@ -1067,10 +1071,14 @@ class API:
         if errors:
             return web.json_response({"ok": False, "errors": errors}, status=400)
 
-        await self._apply_api_keys(keys)
+        try:
+            stored_in = await self._apply_api_keys(keys)
+        except Exception as exc:  # noqa: BLE001 — a Keychain refusal is an answer
+            logger.exception("saving keys failed")
+            return web.json_response({"ok": False, "errors": [str(exc)]}, status=500)
         self._save_locale_settings(body)
 
-        return web.json_response({"ok": True, "applied": True})
+        return web.json_response({"ok": True, "applied": True, "stored_in": stored_in})
 
     def _save_locale_settings(self, body) -> None:
         """Persist language / TTS voice from `body` to config.toml — and

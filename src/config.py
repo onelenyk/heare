@@ -557,13 +557,16 @@ def load_settings() -> Settings:
             "is gone altogether."
         )
 
-    settings.groq_api_key = os.environ.get("GROQ_API_KEY")
-    settings.serper_api_key = os.environ.get("SERPER_API_KEY")
-
+    # Keys: the environment, then the macOS Keychain — see src/keys.py.
+    # `.env`, where there is one, has already been loaded into the
+    # environment by load_env(), so it is covered by the first.
     from src.agent.llm.providers import PROVIDERS
+    from src.keys import get as _key
 
+    settings.groq_api_key = _key("GROQ_API_KEY")
+    settings.serper_api_key = _key("SERPER_API_KEY")
     for key, cfg in PROVIDERS.items():
-        setattr(settings, cfg.api_key_attr, os.environ.get(cfg.api_key_env))
+        setattr(settings, cfg.api_key_attr, _key(cfg.api_key_env))
 
     # CCS-05a: env override for cancel_stop_words (comma-separated). Empty
     # tokens are dropped; surrounding whitespace stripped; case preserved
@@ -874,6 +877,16 @@ def load_env(*, override: bool = False) -> Path | None:
             )
     except OSError:
         logger.exception("could not check the permissions of %s", ENV_PATH)
+    # On a machine with a Keychain the keys do not belong in this file;
+    # move them out before reading what is left. Non-key lines stay.
+    try:
+        from src.keys import migrate_env_file
+
+        migrate_env_file()
+    except Exception:  # noqa: BLE001 — a migration must never break boot
+        logger.exception("could not migrate keys out of %s", ENV_PATH)
+    if not ENV_PATH.exists():
+        return None
     if not override:
         _warn_about_shadowed_keys()
     load_dotenv(ENV_PATH, override=override)

@@ -153,6 +153,26 @@ def _tool_section() -> list[str]:
     return lines
 
 
+def _key_section() -> list[str]:
+    """Each key: present or not, and where it came from — the question
+    that took a day to answer when a dead key in ~/.zshrc was shadowing
+    the live one in .env (see config._warn_about_shadowed_keys)."""
+    from src.keys import backend, key_names, where
+
+    home = "macOS Keychain" if backend() == "keychain" else "~/.heare/.env"
+    lines = [f"  сховище        {home}"]
+    labels = {
+        "shell": "зі змінної оточення (shell або команда)",
+        "file": "з ~/.heare/.env",
+        "keychain": "з Keychain",
+    }
+    for name in key_names():
+        source = where(name)
+        mark = "є" if source else "—"
+        lines.append(f"  {name:<22}{mark:<4}{labels.get(source or '', 'не задано')}")
+    return lines
+
+
 async def _amain(args: argparse.Namespace) -> int:
     from src.config import load_env, load_settings
 
@@ -168,6 +188,9 @@ async def _amain(args: argparse.Namespace) -> int:
         feature_lines = [f"  двигун не зібрався: {exc}"]
 
     out: list[str] = []
+    out.append(_rule("КЛЮЧІ"))
+    out += _key_section()
+
     out.append(_rule("ПЛАГІНИ  (src/features/ — відповідають самі за себе)"))
     out += plugin_lines
 

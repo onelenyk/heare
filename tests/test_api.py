@@ -940,7 +940,7 @@ async def test_setup_config_and_settings_share_the_key_path(
     resp = await api._handle_settings(
         _mock_request(json_data={"DEEPSEEK_API_KEY": key})
     )
-    assert json.loads(resp.body) == {"ok": True, "applied": True}
+    assert json.loads(resp.body) == {"ok": True, "applied": True, "stored_in": "file"}
     assert mock_config.deepseek_api_key == key
 
 

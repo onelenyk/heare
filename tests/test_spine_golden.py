@@ -18,7 +18,6 @@ full_conductor_test.py that proved this approach out by hand.
 from __future__ import annotations
 
 import asyncio
-import os
 import shutil
 import sqlite3
 import subprocess
@@ -28,19 +27,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from src.config import load_env
+from src import keys as _keys
 
 # tests/test_spine_golden.py -> parents[1] is the repo root.
 REPO = Path(__file__).resolve().parent.parent
 
-# main.py's own _amain() does exactly this before load_settings(): keys
-# live in ~/.heare/.env, and load_settings() only ever reads os.environ.
-load_env()
-
+# Presence only, read the way the app reads them (environment, then the
+# Keychain). NOT load_env(): that call at import time ran before any
+# fixture could put the tests on the file backend, and on 13 September
+# it migrated the developer's real keys out of ~/.heare/.env in the
+# middle of `make test`. Harmless that once — it was the intended
+# change — but a test module must not write to the machine on import.
 _REQUIRED_KEYS = ("GROQ_API_KEY", "DEEPSEEK_API_KEY")
-_MISSING_KEYS = [k for k in _REQUIRED_KEYS if not os.environ.get(k)]
+_MISSING_KEYS = [k for k in _REQUIRED_KEYS if not _keys.get(k)]
 _SKIP_REASON = (
-    f"missing {', '.join(_MISSING_KEYS)} (set in ~/.heare/.env) — "
+    f"missing {', '.join(_MISSING_KEYS)} (Setup → Keys, or the environment) — "
     "spine_live acceptance tests need real Groq/DeepSeek keys"
     if _MISSING_KEYS
     else ""

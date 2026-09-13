@@ -26,9 +26,6 @@ full picture — this file only covers getting it running.
 git clone <repo>
 cd heare
 uv sync                       # installs everything, including audio deps
-
-cp .env.example .env
-$EDITOR .env                  # set GROQ_API_KEY and DEEPSEEK_API_KEY
 ```
 
 Start the daemon in the foreground:
@@ -37,9 +34,16 @@ Start the daemon in the foreground:
 uv run python -m src.main start
 ```
 
+Open the dashboard at http://127.0.0.1:9780 and paste your keys in
+Setup → Keys (Groq for hearing, and one of DeepSeek / OpenRouter / … for
+answering). On macOS they go into the Keychain, service `heare`; on any
+other platform into `~/.heare/.env` (mode 0600). A key exported in the
+shell wins over both, for development. A missing key doesn't crash the
+daemon — it waits, and picks the key up within a second of you saving it.
+`make doctor` says which key came from where.
+
 Speak into the microphone; heare transcribes, decides whether to answer,
-and replies out loud. A missing key doesn't crash the daemon — it waits,
-and picks the key up within a second of you saving it to `.env`.
+and replies out loud.
 
 Admin commands (`./hearectl` wraps the same daemon for background use —
 `./hearectl start|stop|status|logs`):
@@ -130,7 +134,7 @@ check your network and rate limits.
 ├── heare.db          # SQLite: transcripts, memories, usage_events, jobs, actions
 ├── heare.pid          # running daemon PID
 ├── config.toml        # user settings — spine_features, wake window, voice
-├── .env                # API keys (or use process env vars)
+├── .env                # API keys — only where there is no Keychain (Linux); macOS keeps them in the Keychain
 ├── api_token           # dashboard auth token
 ├── identity.json       # auto-generated persona
 ├── roles/               # optional user-added roles (see roles/README.md)

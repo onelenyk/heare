@@ -57,8 +57,9 @@ BRIDGE_POLL_SECS = 1.0
 LLM_KEY_COST = "нема кому відповідати — модель недоступна"
 GROQ_KEY = ("groq_api_key", "GROQ_API_KEY", "нічого не чує — розпізнавання мовлення недоступне")
 KEY_HINT = (
-    "Add it in the dashboard (Setup → Keys) or in ~/.heare/.env — "
-    "the daemon picks it up within a second, no restart needed."
+    "Add it in the dashboard (Setup → Keys) — it is kept in the macOS "
+    "Keychain (~/.heare/.env where there is none) and the daemon picks it "
+    "up within a second, no restart needed."
 )
 
 

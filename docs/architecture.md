@@ -27,7 +27,7 @@
 ┌─ СУБСТРАТ ─────────────────────────────────────────────────────────┐
 │  heare.db: transcripts · turns · role_sessions · memories(FTS)     │
 │            usage_events · jobs · actions                            │
-│  ~/.heare: config.toml · .env · api_token · roles/ · logs/          │
+│  ~/.heare: config.toml · api_token · roles/ · logs/  ключі: Keychain │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
