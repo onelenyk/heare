@@ -42,45 +42,68 @@ GREETING_DELAY_SECS = 0.6
 
 # -- keys the engine cannot work without -----------------------------
 #
-# The spine has exactly two: DeepSeek answers, Groq hears. Missing the
-# first, _build_loop raises out of resolve_llm and the daemon used to die
-# with a traceback; missing the second, it came up looking healthy and
+# The spine has exactly two needs: something answers, Groq hears. Missing
+# the first, _build_loop raises out of resolve_llm and the daemon used to
+# die with a traceback; missing the second, it came up looking healthy and
 # dropped every utterance in silence. Neither is a crash and neither is a
 # secret — both are a fact for the dashboard and a thing to wait for.
-REQUIRED_KEYS: tuple[tuple[str, str, str], ...] = (
-    (
-        "deepseek_api_key",
-        "DEEPSEEK_API_KEY",
-        "нема кому відповідати — модель недоступна",
-    ),
-    (
-        "groq_api_key",
-        "GROQ_API_KEY",
-        "нічого не чує — розпізнавання мовлення недоступне",
-    ),
-)
+#
+# "Something answers" is not "DeepSeek answers". Until 13 September this
+# table named DEEPSEEK_API_KEY outright, so a machine whose config.toml
+# chose OpenCode — with an OpenCode key and no DeepSeek one — waited at
+# boot forever for a key the engine would never have used. The rule is
+# resolve_llm's: any provider with a key will do, the chosen one first.
+LLM_KEY_COST = "нема кому відповідати — модель недоступна"
+GROQ_KEY = ("groq_api_key", "GROQ_API_KEY", "нічого не чує — розпізнавання мовлення недоступне")
 KEY_HINT = (
     "Add it in the dashboard (Setup → Keys) or in ~/.heare/.env — "
     "the daemon picks it up within a second, no restart needed."
 )
 
 
+def _set(settings: Any, attr: str) -> bool:
+    return bool(str(getattr(settings, attr, None) or "").strip())
+
+
+def _wanted_llm_key(settings: Any) -> tuple[str, str]:
+    """(attr, ENV) of the key for the provider config.toml asks for."""
+    from src.agent.llm.providers import PROVIDERS
+
+    wanted = str(getattr(settings, "llm_provider", "") or "deepseek").lower()
+    cfg = PROVIDERS.get(wanted) or PROVIDERS["deepseek"]
+    return cfg.api_key_attr, cfg.api_key_env
+
+
 def missing_keys(settings: Any) -> list[str]:
-    """Which required keys are not set on this settings object."""
-    return [
-        attr
-        for attr, _env, _cost in REQUIRED_KEYS
-        if not str(getattr(settings, attr, None) or "").strip()
-    ]
+    """Which required keys are not set on this settings object.
+
+    An LLM key is reported as missing only when *no* provider has one —
+    and then it is named after the chosen provider, because that is the
+    key the user meant to add.
+    """
+    from src.agent.llm.providers import PROVIDERS
+
+    missing: list[str] = []
+    if not any(_set(settings, cfg.api_key_attr) for cfg in PROVIDERS.values()):
+        missing.append(_wanted_llm_key(settings)[0])
+    if not _set(settings, GROQ_KEY[0]):
+        missing.append(GROQ_KEY[0])
+    return missing
 
 
 def _env_names(attrs: list[str]) -> str:
-    by_attr = {attr: env for attr, env, _cost in REQUIRED_KEYS}
+    from src.agent.llm.providers import PROVIDERS
+
+    by_attr = {cfg.api_key_attr: cfg.api_key_env for cfg in PROVIDERS.values()}
+    by_attr[GROQ_KEY[0]] = GROQ_KEY[1]
     return ", ".join(by_attr.get(a, a) for a in attrs)
 
 
 def _key_costs(attrs: list[str]) -> list[str]:
-    by_attr = {attr: cost for attr, _env, cost in REQUIRED_KEYS}
+    from src.agent.llm.providers import PROVIDERS
+
+    by_attr = {cfg.api_key_attr: LLM_KEY_COST for cfg in PROVIDERS.values()}
+    by_attr[GROQ_KEY[0]] = GROQ_KEY[2]
     return [f"{a}: {by_attr[a]}" for a in attrs if a in by_attr]
 
 
@@ -769,6 +792,15 @@ async def run_spine_daemon(
             except Exception:
                 pass
             return
+        # One Settings object, held by both. The wait above may have
+        # replaced `settings` with a freshly loaded one; the API was handed
+        # the boot-time object in src/main.py and, until 13 September, kept
+        # mutating that — so a key, provider or model saved in the dashboard
+        # after a key-wait boot landed on an object the engine never read,
+        # while the card said "in effect from the next thing you say".
+        # `_live_cfg` re-resolves against *this* object on every call, so
+        # sharing it is the whole of what makes the dashboard live.
+        api.config = settings
 
         # The device pickers write a name to a file; resolve it once,
         # here, because a stream's device cannot be changed after it is

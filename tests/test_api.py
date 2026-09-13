@@ -874,11 +874,13 @@ def test_validate_api_keys(api) -> None:
 
 
 @pytest.mark.asyncio
-async def test_apply_api_keys_persists_env_config_and_state(
+async def test_apply_api_keys_persists_env_and_config_but_not_state(
     mock_state, mock_config, tmp_path, monkeypatch
 ) -> None:
-    """One paste must land in all three places: the .env file (durable), the
-    Settings object (this process) and state (hot-swap into the LLM)."""
+    """One paste must land in two places: the .env file (durable) and the
+    Settings object (this process — the engine resolves against it on
+    every call). Not in State: the raw secret used to be copied into
+    heare.db for a service that no longer exists."""
     monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     api = API(mock_state, mock_config)
@@ -889,7 +891,40 @@ async def test_apply_api_keys_persists_env_config_and_state(
     assert f"DEEPSEEK_API_KEY={key}" in (tmp_path / ".env").read_text()
     assert os.environ["DEEPSEEK_API_KEY"] == key
     assert mock_config.deepseek_api_key == key
-    mock_state.set.assert_any_await("key_deepseek_api_key", key)
+    for call in mock_state.set.await_args_list:
+        assert not str(call.args[0]).startswith("key_"), call
+
+
+@pytest.mark.asyncio
+async def test_state_reports_the_provider_the_engine_resolves(mock_state) -> None:
+    """/state says which model answers *now*, from the same resolution the
+    loop makes — and admits a fallback when the chosen provider has no key."""
+    from src.config import Settings
+
+    config = Settings()
+    config.llm_provider = "opencode"
+    config.opencode_api_key = None
+    config.deepseek_api_key = "sk-" + "d" * 30
+    config.deepseek_model = "deepseek-v4-flash"
+    mock_state.snapshot.return_value = {"provider": "opencode"}
+    api = API(mock_state, config)
+
+    data = json.loads((await api._handle_state(_mock_request())).body)
+
+    assert data["provider"] == "deepseek"
+    assert data["model"] == "deepseek-v4-flash"
+    assert data["provider_wanted"] == "opencode"
+    assert data["provider_fallback"] is True
+
+
+@pytest.mark.asyncio
+async def test_language_applies_to_the_live_settings(mock_state, mock_config, tmp_path, monkeypatch) -> None:
+    """STT reads groq_language per turn; a saved language must reach the
+    object it reads, not only config.toml."""
+    monkeypatch.setattr("src.config.HEARE_HOME", tmp_path)
+    api = API(mock_state, mock_config)
+    api._save_locale_settings({"language": "en"})
+    assert mock_config.groq_language == "en"
 
 
 @pytest.mark.asyncio
@@ -906,7 +941,7 @@ async def test_setup_config_and_settings_share_the_key_path(
         _mock_request(json_data={"DEEPSEEK_API_KEY": key})
     )
     assert json.loads(resp.body) == {"ok": True, "applied": True}
-    mock_state.set.assert_any_await("key_deepseek_api_key", key)
+    assert mock_config.deepseek_api_key == key
 
 
 @pytest.mark.asyncio
@@ -936,7 +971,7 @@ async def test_saving_a_key_never_flattens_the_file(
     assert "GROQ_API_KEY=gsk_old" in text
     assert f"DEEPSEEK_API_KEY={key}" in text
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
-    mock_state.set.assert_any_await("key_deepseek_api_key", key)
+    assert mock_config.deepseek_api_key == key
 
 
 @pytest.mark.asyncio

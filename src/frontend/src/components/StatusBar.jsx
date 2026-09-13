@@ -58,7 +58,15 @@ export default function StatusBar({
           )}
         </div>
         <div className="status-group">
-          <span className="meta">provider <strong>{state.provider || '?'}</strong></span>
+          <span className="meta">
+            provider <strong>{state.provider || '?'}</strong>
+            {state.model && <span> · {state.model}</span>}
+            {state.provider_fallback && (
+              <span style={{ color: 'var(--accent-red)' }}>
+                {' '}(wanted {state.provider_wanted} {'—'} no key)
+              </span>
+            )}
+          </span>
           <span className="meta">{state.transcripts_count || 0} msgs</span>
           {state.pid != null && <span className="meta">pid <strong>{state.pid}</strong></span>}
           <span className="meta">

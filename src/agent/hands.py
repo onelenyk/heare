@@ -525,29 +525,19 @@ class Hands:
             logger.debug("hands: failed to record usage (non-fatal)", exc_info=True)
 
     def _provider(self) -> tuple[str, str, str, str]:
-        """Follow the live provider so hands and voice never diverge."""
-        from src.agent.llm.providers import PROVIDERS
+        """Follow the live provider so hands and voice never diverge.
 
-        key = None
-        if self._llm_service is not None:
-            key = getattr(self._llm_service, "active_provider", None)
-        if key not in PROVIDERS:
-            key = next(
-                (
-                    name
-                    for name, cfg in PROVIDERS.items()
-                    if getattr(self._settings, cfg.api_key_attr, None)
-                ),
-                None,
-            )
-        if key is None:
-            raise RuntimeError("no LLM provider configured for hands")
+        The same resolution the voice makes (`resolve_llm`), against the
+        same Settings object, on every request. Until 13 September this
+        took the *first* provider with a key, in registry order, and never
+        read `llm_provider` — so choosing OpenRouter in the dashboard moved
+        the voice and left the worker on DeepSeek, and the two halves of
+        one assistant answered from two different models.
+        """
+        from src.spine.llm import resolve_llm
 
-        cfg = PROVIDERS[key]
-        # Settings may override the registry defaults per provider
-        # (deepseek_base_url, deepseek_model, ...); fall back to the
-        # registry so a provider works the moment its key is present.
-        base_url = getattr(self._settings, f"{key}_base_url", "") or cfg.base_url
-        model = getattr(self._settings, f"{key}_model", "") or cfg.default_model
-        api_key = getattr(self._settings, cfg.api_key_attr, "") or ""
-        return key, base_url, api_key, model
+        try:
+            cfg = resolve_llm(self._settings)
+        except RuntimeError as exc:
+            raise RuntimeError("no LLM provider configured for hands") from exc
+        return cfg.provider, cfg.base_url, cfg.api_key, cfg.model

@@ -428,10 +428,14 @@ class API:
     async def _apply_api_keys(self, keys: dict[str, str]) -> None:
         """Persist `keys` and apply them to the running daemon.
 
-        Writes ~/.heare/.env (durable), os.environ + Settings (this process),
-        and the ``key_<attr>`` state entries that SwitchableLLMService watches
-        to rebuild its delegate — that last one is what makes a pasted key
-        take effect without a restart.
+        Writes ~/.heare/.env (durable) and os.environ + Settings (this
+        process). The Settings object is the one the engine resolves its
+        provider against on every call, so the setattr *is* the hot-swap.
+
+        A ``key_<attr>`` copy used to go into State as well, for a
+        SwitchableLLMService that no longer exists — leaving every pasted
+        secret in heare.db with no reader. Not written any more; the
+        masking in /state stays, for rows older installs still carry.
         """
         if not keys:
             return
@@ -440,8 +444,27 @@ class API:
         for attr, value in keys.items():
             os.environ[fields[attr]] = value
             setattr(self.config, attr, value)
-            if self.state is not None:
-                await self.state.set(f"key_{attr}", value)
+
+    def _effective_llm(self) -> tuple[str, str] | None:
+        """(provider, model) the engine would use right now, or None.
+
+        None means "could not tell" — no key anywhere, or a Settings that
+        is not a real Settings (tests hand in mocks) — and the caller
+        falls back to what State remembers. Only plain strings are
+        trusted: this goes straight into a JSON response.
+        """
+        try:
+            from src.spine.llm import resolve_llm
+
+            cfg = resolve_llm(self.config)
+        except Exception:
+            return None
+        provider, model = cfg.provider, cfg.model
+        if not (isinstance(provider, str) and isinstance(model, str)):
+            return None
+        if provider not in PROVIDERS or not model:
+            return None
+        return provider, model
 
     def _bridge_connected(self) -> bool:
         """True only when a Chrome extension is actually attached.
@@ -522,6 +545,18 @@ class API:
         data["version"] = app_version(include_sha=False)
         data["providers"] = self._available_providers()
 
+        # Which model answers — the engine's own answer, not the
+        # dashboard's memory of what was clicked. `resolve_llm` reads the
+        # same Settings the loop does; if the chosen provider has no key
+        # it falls back to one that has, and the header must say so, or
+        # the card shows OpenCode while every reply comes from DeepSeek.
+        wanted = str(data.get("provider") or getattr(self.config, "llm_provider", "") or "")
+        live = self._effective_llm()
+        if live is not None:
+            data["provider"], data["model"] = live
+        data["provider_wanted"] = wanted
+        data["provider_fallback"] = bool(wanted and wanted != data.get("provider"))
+
         # Models for current provider
         try:
             provider_key = data.get("provider", "")
@@ -532,13 +567,14 @@ class API:
                     if cfg.model_whitelist
                     else [cfg.default_model]
                 )
-                # Active model = the per-provider override (set via /model,
-                # hot-swapped by SwitchableLLMService) or the provider default.
-                # The top-level "model" snapshot is written once at startup and
-                # goes stale after a hot-swap, so derive the live value here.
-                data["model"] = (
-                    data.get(f"model_{provider_key}") or cfg.default_model
-                )
+                # The per-provider override (set via /model) or the
+                # provider default — unless the engine already answered
+                # above. The top-level "model" snapshot is written once at
+                # startup and goes stale, so it is never trusted.
+                if live is None:
+                    data["model"] = (
+                        data.get(f"model_{provider_key}") or cfg.default_model
+                    )
             else:
                 data["models"] = []
         except Exception:
@@ -813,6 +849,9 @@ class API:
         provider = body.get("provider", "")
         if provider not in PROVIDERS:
             return web.json_response({"ok": False}, status=400)
+        # A provider without a key may still be chosen (the key comes
+        # later); until it does, resolve_llm falls back to one that has,
+        # and /state reports that as `provider_fallback`.
         await self.state.set("provider", provider)
         self.config.llm_provider = provider
         write_config_toml_values({"llm_provider": provider})
@@ -1033,7 +1072,10 @@ class API:
         return web.json_response({"ok": True, "applied": True})
 
     def _save_locale_settings(self, body) -> None:
-        """Persist language / TTS voice from `body` to config.toml, if present."""
+        """Persist language / TTS voice from `body` to config.toml — and
+        onto the live Settings, which STT reads on every turn. Until 13
+        September only the file was written, and the modal said "restart
+        to apply" about a value the engine would have honoured at once."""
         locale = {}
         if body.get("language"):
             locale["groq_language"] = body["language"]
@@ -1041,6 +1083,8 @@ class API:
             locale["tts_voice"] = body["tts_voice"]
         if locale:
             write_config_toml_values(locale)
+            for attr, value in locale.items():
+                setattr(self.config, attr, value)
 
     async def _handle_reset_session(self, request):
         """POST /api/settings/reset-session — backup session.json and start fresh."""

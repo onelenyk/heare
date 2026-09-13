@@ -305,7 +305,6 @@ class Settings:
     # back the next day: without them a model chosen in the dashboard was
     # dropped by load_settings on the next boot.
     llm_provider: str = "deepseek"
-    provider_file: Path = field(default_factory=lambda: HEARE_HOME / "provider")
     zai_api_key: str | None = None
     zai_base_url: str = "https://api.z.ai/api/anthropic"
     zai_model: str = "claude-3-5-sonnet"
@@ -593,10 +592,10 @@ def load_settings() -> Settings:
                 barge_in_ratio_env,
             )
 
-    if settings.provider_file.exists():
-        raw = settings.provider_file.read_text().strip().lower()
-        if raw in PROVIDERS:
-            settings.llm_provider = raw
+    # `~/.heare/provider` used to override `llm_provider` here. Nothing
+    # has written that file since the dashboard started writing
+    # config.toml, so a stale one silently reverted every provider choice
+    # on the next restart. config.toml is the one durable answer now.
 
     if settings.audio_input_device_file.exists():
         raw = settings.audio_input_device_file.read_text().strip()
@@ -630,8 +629,7 @@ def ensure_api_token(settings: Settings) -> str:
     """Return the local HTTP API token, generating it on first run.
 
     The token lives alone in ``settings.api_token_file`` (``~/.heare/api_token``)
-    at mode 0600, following the same read-a-small-file pattern as
-    ``provider_file``. It is created with ``O_CREAT | O_EXCL``
+    at mode 0600. It is created with ``O_CREAT | O_EXCL``
     so two processes starting at once cannot each write a different token
     and leave one of them holding a stale one.
 

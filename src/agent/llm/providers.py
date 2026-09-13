@@ -12,7 +12,6 @@ No pipecat, no switchable, no build imports.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 
@@ -205,27 +204,6 @@ def get_available(settings: Any) -> list[str]:
     return available
 
 
-def get_active(settings: Any) -> str:
-    configured: str = getattr(settings, "llm_provider", "deepseek")
-
-    provider_file: Path = getattr(
-        settings,
-        "provider_file",
-        Path.home() / ".heare" / "provider",
-    )
-    if provider_file.exists():
-        raw = provider_file.read_text().strip()
-        if raw and raw in PROVIDERS:
-            cfg = PROVIDERS[raw]
-            if getattr(settings, cfg.api_key_attr, None):
-                return raw
-
-    available = get_available(settings)
-    if configured in available:
-        return configured
-    if available:
-        return available[0]
-    return "deepseek"
 
 
 # How long a completion may produce nothing before we treat the
@@ -355,7 +333,6 @@ __all__ = [
     "all_keys",
     "get_config",
     "get_available",
-    "get_active",
     "make_identity_bootstrap",
     "list_models",
 ]

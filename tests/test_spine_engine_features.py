@@ -528,6 +528,70 @@ def test_missing_keys_reads_both_of_them() -> None:
     assert missing_keys(SimpleNamespace(deepseek_api_key="x", groq_api_key="y")) == []
 
 
+def test_missing_keys_accepts_any_provider_the_engine_would() -> None:
+    """config.toml chose OpenCode, the OpenCode key is there, DeepSeek's is
+    not: the engine can answer, so nothing is missing. Until 13 September
+    this waited at boot for DEEPSEEK_API_KEY forever."""
+    assert missing_keys(
+        SimpleNamespace(llm_provider="opencode", opencode_api_key="x", groq_api_key="y")
+    ) == []
+    # Chosen OpenCode, but only DeepSeek has a key: resolve_llm falls back,
+    # loudly — still not a reason to block the boot.
+    assert missing_keys(
+        SimpleNamespace(llm_provider="opencode", deepseek_api_key="x", groq_api_key="y")
+    ) == []
+    # No key anywhere: named after the provider the user chose, because
+    # that is the one they mean to add.
+    assert missing_keys(
+        SimpleNamespace(llm_provider="openrouter", groq_api_key="y")
+    ) == ["openrouter_api_key"]
+
+
+async def test_api_shares_the_settings_the_engine_resolves_against(
+    monkeypatch, tmp_path
+) -> None:
+    """After a key-wait boot the engine runs on a *reloaded* Settings. The
+    API must hold that same object, or every key/provider/model saved in
+    the dashboard lands on one the engine never reads."""
+    import src.daemon.spine_engine as engine
+    import src.spine.audio_io as audio_io
+    import src.spine.main as spine_main
+    import src.agent.mcp_bridge as mcp_bridge
+
+    monkeypatch.setattr(engine, "BOOT_POLL_SECS", 0.01)
+    seen: dict[str, object] = {}
+    loop = _FakeLoop({"mcp": False, "telemetry": False})
+
+    async def _fake_build_loop(settings, **kwargs):
+        seen["engine_settings"] = settings
+        return loop
+
+    def _fake_reload(settings):
+        fresh = _settings(tmp_path, deepseek_api_key="sk-fresh")
+        return fresh  # a NEW object, as the real reload returns
+
+    async def _fake_connect(settings):
+        return SimpleNamespace(
+            connected_servers=[], tool_names=[], register_worker_tools=lambda: [],
+            aclose=lambda **kw: asyncio.sleep(0), prompt_block=lambda: "",
+        )
+
+    monkeypatch.setattr(audio_io, "AudioIO", _FakeAudio)
+    monkeypatch.setattr(spine_main, "_build_loop", _fake_build_loop)
+    monkeypatch.setattr(mcp_bridge, "connect_mcp_servers", _fake_connect)
+    monkeypatch.setattr(engine, "_reload_settings", _fake_reload)
+
+    boot_settings = _settings(tmp_path, deepseek_api_key="")
+    api = SimpleNamespace(state=None, _memory_backend=None, config=boot_settings)
+    await asyncio.wait_for(
+        run_spine_daemon(boot_settings, _FakeState(), api, handle_signals=False),
+        timeout=10,
+    )
+
+    assert seen["engine_settings"] is not boot_settings
+    assert api.config is seen["engine_settings"]
+
+
 def test_greeting_is_short_and_ukrainian(tmp_path) -> None:
     absent = SimpleNamespace(wake_word="гава", identity_file=tmp_path / "none.json")
     assert greeting_text(absent) == "Гава на зв'язку."
