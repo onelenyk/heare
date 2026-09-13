@@ -7,45 +7,73 @@
 // the prefix, so they must be folded into the entry above.
 const LOG_LINE = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}),(\d{3}) (\w+) (\S+) ([\s\S]*)$/;
 
-// Which subsystem each logger belongs to. Anything unlisted falls to 'daemon'.
+// Which part of the assistant each logger belongs to. Anything unlisted
+// falls to 'daemon'. The names are the spine's (src/spine, src/mouth,
+// src/agent); the old map named pipecat-era loggers that no longer exist,
+// so every real line fell to 'daemon' and the chips counted zero.
 const LOGGER_CATEGORY = {
-  'heare.transcription_gate': 'stt',
-  'heare.text_injector': 'stt',
-  'heare.tts': 'tts',
-  'heare.switchable_llm': 'llm',
-  'heare.llm_context_injector': 'llm',
-  'heare.assistant_response': 'llm',
-  'heare.events': 'llm',
+  // the ear and the mouth: hearing, turns, replies, speech
+  'spine': 'voice',
+  'spine.loop': 'voice',
+  'spine.tts': 'voice',
+  'heare.mouth': 'voice',
+  'heare.wake': 'voice',
+  'heare.voice_state': 'voice',
+  // the model
+  'heare.spine.llm': 'llm',
+  'heare.spine.vision': 'llm',
+  // the worker and its tools
+  'heare.hands': 'tools',
+  'heare.spine.tools': 'tools',
   'heare.direct_tools': 'tools',
+  'heare.tools.system': 'tools',
+  'heare.tool_gate': 'tools',
   'heare.agent_skills': 'tools',
-  'heare.subagent_manager': 'tools',
-  'heare.mute_gate': 'audio',
-  'heare.echo_gate': 'audio',
-  'heare.interrupt_toggle_gate': 'audio',
-  'heare.cancel_flag_gate': 'audio',
+  'heare.mcp_bridge': 'tools',
+  'heare.jobs': 'tools',
+  // speaking first
+  'spine.engine': 'initiative',
+  'heare.intents': 'initiative',
+  'spine.repeats': 'initiative',
+  'spine.summary': 'initiative',
+  'spine.hearing': 'initiative',
+  'heare.spine.environment': 'initiative',
+  // roles
+  'spine.role_flow': 'roles',
+  'heare.spine.roles': 'roles',
+  'heare.spine.role_session': 'roles',
+  // what is written down
+  'spine.persist': 'memory',
+  'spine.search': 'memory',
+  'heare.storage': 'memory',
+  'heare.state': 'memory',
+  // the browser bridge
   'heare.browser_bridge': 'browser',
   'websockets.server': 'browser',
+  // money
+  'heare.features.usage': 'usage',
+  // the menubar and dashboard polling their own API
   'httpx': 'http',
-  'heare.usage_recorder': 'usage',
+  'aiohttp.access': 'http',
 };
 
 // Order here is the chip order in the UI.
 export const LOG_CATEGORIES = [
-  { key: 'tools', label: 'tool calls' },
+  { key: 'voice', label: 'voice' },
   { key: 'llm', label: 'LLM' },
-  { key: 'stt', label: 'STT' },
-  { key: 'tts', label: 'TTS' },
-  { key: 'audio', label: 'audio' },
+  { key: 'tools', label: 'tools' },
+  { key: 'initiative', label: 'initiative' },
+  { key: 'roles', label: 'roles' },
+  { key: 'memory', label: 'memory' },
   { key: 'browser', label: 'browser' },
   { key: 'usage', label: 'usage' },
   { key: 'daemon', label: 'daemon' },
   { key: 'http', label: 'HTTP' },
 ];
 
-// Off by default: 'audio' is the mic-muted frame-drop heartbeat and 'http' is
-// the menubar polling its own /state — together ~94% of lines, which buries
-// everything worth reading. Both are one chip click away.
-export const NOISY_CATEGORIES = ['audio', 'http'];
+// Off by default: 'http' is the menubar and the dashboard polling /state
+// once a second — most of the file, and never what you came to read.
+export const NOISY_CATEGORIES = ['http'];
 
 export function defaultCategories() {
   return new Set(

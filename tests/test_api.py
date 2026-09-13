@@ -380,37 +380,6 @@ async def test_post_cancel(api, mock_state) -> None:
 
 
 # ---------------------------------------------------------------------------
-# POST /api/settings/reset-session
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_reset_session_found(api, monkeypatch) -> None:
-    from pathlib import Path
-
-    monkeypatch.setattr(
-        "src.api.backup_session_file", lambda settings: Path("/tmp/session_0.backup.json")
-    )
-    request = _mock_request()
-    resp = await api._handle_reset_session(request)
-    assert resp.status == 200
-    data = json.loads(resp.body)
-    assert data["ok"] is True
-    assert data["backup_path"] == "/tmp/session_0.backup.json"
-    assert data["restart_required"] is True
-
-
-@pytest.mark.asyncio
-async def test_reset_session_none(api, monkeypatch) -> None:
-    monkeypatch.setattr("src.api.backup_session_file", lambda settings: None)
-    request = _mock_request()
-    resp = await api._handle_reset_session(request)
-    assert resp.status == 400
-    data = json.loads(resp.body)
-    assert data["ok"] is False
-
-
-# ---------------------------------------------------------------------------
 # Integration: multiple routes registered
 # ---------------------------------------------------------------------------
 
@@ -426,7 +395,6 @@ def test_routes_registered(api) -> None:
     assert ("POST", "/model") in pairs
     assert ("GET", "/api/providers") in pairs
     assert ("GET", "/api/models") in pairs
-    assert ("POST", "/api/settings/reset-session") in pairs
     assert ("POST", "/cancel") in pairs
 
 

@@ -98,7 +98,6 @@ from src.agent.llm.providers import (  # noqa: E402
 from src.config import (  # noqa: E402
     HEARE_HOME,
     api_key_fields,
-    backup_session_file,
     write_browser_bridge_token,
     write_config_toml_values,
 )
@@ -235,9 +234,6 @@ class API:
         self._app.router.add_post("/inject", self._handle_inject)
         self._app.router.add_get("/settings/status", self._handle_settings_status)
         self._app.router.add_post("/settings", self._handle_settings)
-        self._app.router.add_post(
-            "/api/settings/reset-session", self._handle_reset_session
-        )
         self._app.router.add_get("/api/features", self._handle_features)
         self._app.router.add_post("/api/features", self._handle_features_set)
         self._app.router.add_get("/mic/status", self._handle_mic_status)
@@ -599,7 +595,8 @@ class API:
         except Exception:
             data["chrome_enabled"] = False
 
-        data["interrupt_enabled"] = not self.config.interrupt_enabled_file.exists()
+        # The switch lives in State; the daemon reads `interrupt_off` there.
+        data["interrupt_enabled"] = not self.state.get_bool("interrupt_off")
 
         try:
             identity = load_identity(self.config.identity_file)
@@ -628,7 +625,6 @@ class API:
             con = open_db(self.config.db_path)
             cnt = counts(con)
             data["transcripts_count"] = cnt.get("transcripts", 0)
-            data["actions_count"] = cnt.get("actions", 0)
             usage = fetch_usage(con)
             data["usage"] = {
                 "llm_calls": usage.llm_calls,
@@ -832,11 +828,9 @@ class API:
         except Exception:
             body = {}
         enabled = body.get("enabled", True)
-        if enabled:
-            self.config.interrupt_enabled_file.unlink(missing_ok=True)
-        else:
-            self.config.interrupt_enabled_file.parent.mkdir(parents=True, exist_ok=True)
-            self.config.interrupt_enabled_file.touch()
+        # One home: the State key the daemon's control poller reads. A
+        # marker file used to be written beside it, read back only by
+        # /state — two answers to one question.
         await self.state.set_bool("interrupt_off", not enabled)
         return web.json_response({"ok": True, "enabled": enabled})
 
@@ -1041,23 +1035,14 @@ class API:
         return web.json_response({"ok": True, "delivered": running})
 
     async def _handle_settings_status(self, request):
-        """Return current configuration status."""
-        import os
+        """GET /settings/status — a liveness ping, nothing more.
 
-        groq = bool(
-            os.environ.get("GROQ_API_KEY", "").startswith("gsk_")
-            or os.environ.get("GROQ_API_KEY", "").startswith("sk-")
-        )
-        deepseek = bool(os.environ.get("DEEPSEEK_API_KEY", "").startswith("sk-"))
-        return web.json_response(
-            {
-                "configured": groq or deepseek,
-                "groq_key": groq,
-                "deepseek_key": deepseek,
-                "language": self.config.groq_language or "uk",
-                "tts_voice": self.config.tts_voice or "uk-UA-OstapNeural",
-            }
-        )
+        It used to answer which keys were set (DeepSeek only, from
+        os.environ) and the TTS voice; no shipped frontend read any of
+        it — App.jsx only checks that the API answers. Keys are the Keys
+        card's business (/api/providers, /api/setup).
+        """
+        return web.json_response({"ok": True})
 
     async def _handle_settings(self, request):
         """POST /settings — the one endpoint that takes an API key.
@@ -1099,19 +1084,6 @@ class API:
             write_config_toml_values(locale)
             for attr, value in locale.items():
                 setattr(self.config, attr, value)
-
-    async def _handle_reset_session(self, request):
-        """POST /api/settings/reset-session — backup session.json and start fresh."""
-        if not self.config:
-            return web.json_response({"ok": False, "error": "no config"}, status=500)
-        backup = backup_session_file(self.config)
-        if backup is None:
-            return web.json_response(
-                {"ok": False, "error": "no session file to reset"}, status=400
-            )
-        return web.json_response(
-            {"ok": True, "backup_path": str(backup), "restart_required": True}
-        )
 
     # ── Subsystem switches ─────────────────────────────────
     #
@@ -1489,7 +1461,6 @@ class API:
                 {
                     "ok": True,
                     "token": token,
-                    "restart_required": False,
                     "message": "New token in effect — re-pair the extension.",
                 }
             )
@@ -1573,7 +1544,6 @@ class API:
                 {
                     "ok": True,
                     "enabled": enabled,
-                    "restart_required": False,
                     "message": (
                         "Bridge starting — pair the extension."
                         if enabled

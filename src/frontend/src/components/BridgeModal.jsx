@@ -138,12 +138,6 @@ export default function BridgeModal({ data, onClose, onRotate, onToggle, revealT
             </div>
           </div>
 
-          {data.restart_notice && (
-            <div className="bridge-footer">
-              restart required for changes to take effect
-            </div>
-          )}
-
           <details className="bridge-instructions">
             <summary>how to install the extension</summary>
             <ol>

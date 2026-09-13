@@ -1,11 +1,11 @@
 import React from 'react';
 
-// The rail owns what to *show*; the header owns what to *do* (mode, audio,
-// daemon). Panel toggles open cards in the centre column rather than
+// The rail owns what to *show*; the header owns what to *do* (mute, cancel,
+// interrupt, daemon). Panel toggles open cards in the centre column rather than
 // navigating, so several can be open at once.
 export default function ControlsCard({
   showCanvas, showHistory, showInject,
-  showSettings, showBrain, showAudio, showAudioControls, showMemories, showUsage,
+  showBrain, showAudio, showAudioControls, showMemories, showUsage,
   showTools, showBridge, showPrompts,
   onOpenSetup,
   onToggle,
@@ -20,7 +20,6 @@ export default function ControlsCard({
     ['memories', '🧩', 'memories', showMemories],
     ['usage', '📊', 'usage', showUsage],
     ['inject', '💬', 'inject', showInject],
-    ['settings', '⚙', 'settings', showSettings],
   ];
 
   const dialogs = [

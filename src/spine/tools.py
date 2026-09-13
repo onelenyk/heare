@@ -47,9 +47,9 @@ def _default_hands_factory(settings: Any) -> Any:
 # default (30s) because "npx some-server" doing real work is normal.
 MCP_CALL_TIMEOUT_S = 60.0
 
-# How long a job stays quiet before the spine says "still working". Same
-# number as the pipecat path (``hands.PROGRESS_AFTER``) — a module-level
-# name here so it is one constant, readable at call time.
+# How long a job stays quiet before the spine says "still working" — the
+# worker's own ``hands.PROGRESS_AFTER``, a module-level name here so it is
+# one constant, readable at call time.
 BEACON_INTERVAL_S = PROGRESS_AFTER
 
 # How much of a text panel may be read aloud in one breath. Past this it

@@ -13,7 +13,6 @@ import threading
 import time
 from pathlib import Path
 
-import httpx
 import rumps
 from aiohttp import web
 
@@ -86,7 +85,7 @@ class HeareMenuBar(rumps.App):
         super().__init__(name="Heare", title="🎧", quit_button=None)
         self._cmd_queue: queue.Queue = queue.Queue()
         self._status_lock = threading.Lock()
-        self._status: dict = {"running": False, "mode": "?", "error": None}
+        self._status: dict = {"running": False, "error": None}
         # Filled in by _serve() from settings once the config is loaded.
         self._api_token: str = ""
         self._build_menu()
@@ -334,18 +333,9 @@ class HeareMenuBar(rumps.App):
             self.menu["Stop"].set_callback(None)
             return
 
-        try:
-            resp = httpx.get(
-                f"{URL}/state", timeout=3, headers=_api_headers(self._api_token)
-            )
-            data = resp.json()
-            mode = data.get("mode", "?")
-        except Exception:
-            mode = "?"
-
         if running:
             self.title = "🟢"
-            self.menu["Status: starting…"].title = f"Heare — running ({mode})"
+            self.menu["Status: starting…"].title = "Heare — running"
             self.menu["Start"].set_callback(None)
             self.menu["Stop"].set_callback(self._on_stop)
         else:

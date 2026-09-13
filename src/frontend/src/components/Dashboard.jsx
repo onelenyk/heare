@@ -5,7 +5,6 @@ import ControlsCard from './ControlsCard';
 import UserVoiceBar from './UserVoiceBar';
 import AgentStatusBar from './AgentStatusBar';
 import DisplayCard from './DisplayCard';
-import SettingsPanel from './SettingsPanel';
 import UsageCard from './UsageCard';
 import InjectPanel from './InjectPanel';
 import HistoryPanel from './HistoryPanel';
@@ -38,7 +37,6 @@ export default function Dashboard({ onOpenSetup }) {
   const [state, setState] = useState({});
   const [activity, setActivity] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [showSettings, setShowSettings] = useState(false);
   const [showBrain, setShowBrain] = useState(false);
   const [toast, setToast] = useState(null);
   const [injectText, setInjectText] = useState('');
@@ -51,7 +49,6 @@ export default function Dashboard({ onOpenSetup }) {
   const [showBridge, setShowBridge] = useState(false);
   const [bridge, setBridge] = useState(null);
   const [bridgeRevealing, setBridgeRevealing] = useState(false);
-  const [bridgeRestartNotice, setBridgeRestartNotice] = useState(false);
   // Prompt Manager state
   const [showPrompts, setShowPrompts] = useState(false);
   const [prompts, setPrompts] = useState(null);
@@ -62,7 +59,6 @@ export default function Dashboard({ onOpenSetup }) {
   const [interruptEnabled, setInterruptEnabled] = useState(true);
   // Display widget state
   const [display, setDisplay] = useState(null);
-  const [displayVisible, setDisplayVisible] = useState(true);
   const [displayFlash, setDisplayFlash] = useState(false);
   const [pollFailed, setPollFailed] = useState(false);
   const [historyTab, setHistoryTab] = useState('activity');
@@ -117,7 +113,6 @@ export default function Dashboard({ onOpenSetup }) {
           if (!prev || prev.ts !== dData.ts) {
             setDisplayFlash(true);
             setTimeout(() => setDisplayFlash(false), 1200);
-            setDisplayVisible(true);
           }
           return dData;
         });
@@ -282,7 +277,6 @@ export default function Dashboard({ onOpenSetup }) {
 
   async function openBridgeSetup() {
     setBridgeRevealing(false);
-    setBridgeRestartNotice(false);
     await fetchBridgeStatus();
     setShowBridge(true);
   }
@@ -311,7 +305,6 @@ export default function Dashboard({ onOpenSetup }) {
       const r = await fetch(API + '/api/bridge/rotate-token', { method: 'POST' });
       const d = await r.json();
       if (d.ok) {
-        setBridgeRestartNotice(Boolean(d.restart_required));
         showToastMsg((d.message || 'new token in effect') + ': ' + d.token, 'ok');
         fetchBridgeStatus();
       } else {
@@ -330,7 +323,6 @@ export default function Dashboard({ onOpenSetup }) {
       });
       const d = await r.json();
       if (d.ok) {
-        setBridgeRestartNotice(Boolean(d.restart_required));
         showToastMsg(d.message || ('bridge ' + (newEnabled ? 'enabled' : 'disabled')), 'ok');
         fetchBridgeStatus();
       } else {
@@ -338,8 +330,6 @@ export default function Dashboard({ onOpenSetup }) {
       }
     } catch(e) { showToastMsg('toggle failed: ' + e.message, 'err'); }
   }
-
-  const running = state.running === true;
 
   return (
     <div className="dash">
@@ -365,7 +355,6 @@ export default function Dashboard({ onOpenSetup }) {
         showCanvas={showCanvas}
         showHistory={showHistory}
         showInject={showInject}
-        showSettings={showSettings}
         showBrain={showBrain}
         showAudio={showAudio}
         showAudioControls={showAudioControls}
@@ -375,7 +364,6 @@ export default function Dashboard({ onOpenSetup }) {
         showBridge={showBridge}
         showPrompts={showPrompts}
         onToggle={(w) => {
-          const setters = { settings: setShowSettings, brain: setShowBrain, audio: setShowAudio, audiocontrols: setShowAudioControls, memories: setShowMemories, usage: setShowUsage, canvas: setShowCanvas, history: setShowHistory, inject: setShowInject };
           if (setters[w]) setters[w](prev => !prev);
           // Refresh the device list only when opening the panel.
           if (w === 'audio' && !showAudio) fetchAudioDevices();
@@ -413,16 +401,7 @@ export default function Dashboard({ onOpenSetup }) {
         <DisplayCard
           display={display}
           flash={displayFlash}
-          visible={true}
           onDismiss={() => setShowCanvas(false)}
-        />
-      )}
-
-      {/* Settings Panel */}
-      {showSettings && (
-        <SettingsPanel
-          state={state}
-          onToast={showToastMsg}
         />
       )}
 
@@ -516,7 +495,7 @@ export default function Dashboard({ onOpenSetup }) {
       {/* Bridge setup modal */}
       {showBridge && (
         <BridgeModal
-          data={bridge ? {...bridge, restart_notice: bridgeRestartNotice} : null}
+          data={bridge}
           onClose={closeBridgeSetup}
           onRotate={handleBridgeRotate}
           onToggle={handleBridgeToggle}
@@ -533,7 +512,6 @@ export default function Dashboard({ onOpenSetup }) {
           selectedPrompt={selectedPrompt}
           editContent={editContent}
           preview={preview}
-          usage={state.usage}
           onSelect={handlePromptEdit}
           onPreview={handlePromptPreview}
           onSave={handlePromptSave}

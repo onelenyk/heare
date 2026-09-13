@@ -242,7 +242,6 @@ def _cmd_status(args: argparse.Namespace) -> int:
             settings.pid_file.unlink(missing_ok=True)
     print(f"heare running: {running}")
     print(f"db:           {settings.db_path}")
-    print(f"session:      {settings.session_file}")
     return 0
 
 
@@ -317,18 +316,6 @@ def _cmd_rotate_browser_token(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_reset_session(args: argparse.Namespace) -> int:
-    from src.config import backup_session_file  # noqa: E402
-
-    settings = load_settings()
-    backup = backup_session_file(settings)
-    if backup is None:
-        print("no session file to reset")
-        return 0
-    print(f"session backed up to {backup}")
-    return 0
-
-
 def _cmd_reset_identity(args: argparse.Namespace) -> int:
     from src.agent.identity import reset_identity
 
@@ -340,16 +327,6 @@ def _cmd_reset_identity(args: argparse.Namespace) -> int:
         print(f"identity backed up to {backup}")
     return 0
 
-
-def _cmd_watch(args: argparse.Namespace) -> int:
-    print("heare watch has been removed. Use the web UI at http://127.0.0.1:9780")
-    return 0
-
-
-def _cmd_portal(args: argparse.Namespace) -> int:
-    print("'portal' command is deprecated. Use 'menubar' instead:")
-    print("  uv run python -m src.main menubar")
-    return 0
 
 
 def _cmd_logs(args: argparse.Namespace) -> int:
@@ -393,16 +370,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audio_out_p.add_argument("name", help="Device name substring (e.g. AirPods Pro)")
 
-    sub.add_parser("reset-session", help="Backup session.json and start fresh")
     sub.add_parser("reset-identity", help="Backup identity.json and regenerate")
     sub.add_parser(
         "rotate-browser-token",
         help="Generate a new browser-bridge token (restart daemon to apply)",
-    )
-
-
-    _ = sub.add_parser(
-        "watch", help="(removed) TUI dashboard — use web UI at http://127.0.0.1:9780"
     )
 
     sub.add_parser("menubar", help="Run macOS menu bar controller")
@@ -436,16 +407,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_audio_input(args)
     if cmd == "audio-output":
         return _cmd_audio_output(args)
-    if cmd == "reset-session":
-        return _cmd_reset_session(args)
     if cmd == "reset-identity":
         return _cmd_reset_identity(args)
     if cmd == "rotate-browser-token":
         return _cmd_rotate_browser_token(args)
-    if cmd == "watch":
-        return _cmd_watch(args)
-    if cmd == "portal":
-        return _cmd_portal(args)
     if cmd == "menubar":
         from src.menubar import main as menubar_main
 

@@ -13,8 +13,8 @@ function inferBuiltInCategory(name) {
   // ui-output — tools that push content to the display/canvas widget
   if (/^(show_text|show_canvas)$/.test(n))
     return {key:"ui-output", label:"ui output", icon:"📺"};
-  // agent — mode, config, capabilities, favorites, views
-  if (/^(set_(mode|provider|view_preference)|show_profile|discover_capability|install_(skill|mcp)_tool|list_capabilities|revoke_capability|add_favorite|list_favorites|cancel)$/.test(n))
+  // agent — provider, profile, favorites, views
+  if (/^(set_(provider|view_preference)|show_profile|add_favorite|list_favorites|cancel)$/.test(n))
     return {key:"agent", label:"agent", icon:"🤖"};
   // daemon — process lifecycle
   if (/_daemon$/.test(n))
@@ -22,9 +22,6 @@ function inferBuiltInCategory(name) {
   // skill — agent skills lifecycle
   if (/_skill/.test(n))
     return {key:"skill", label:"skill", icon:"🧩"};
-  // tooling — MCP + dynamic tool management
-  if (/^(list_(mcp_servers|tools)|create_tool|update_tool|delete_tool|register_mcp_server)$/.test(n))
-    return {key:"tooling", label:"tooling", icon:"🔧"};
   // anything else
   return {key:"other", label:"other", icon:"📦"};
 }
@@ -37,8 +34,8 @@ function inferBuiltInCategory(name) {
 // ever showed the wish list.
 function mcpStatusLine(status) {
   if (!status) {
-    // The pipecat engine never writes the key. Silence is not an outage.
-    return { text: "connection status unknown — this engine does not report it", cls: "off" };
+    // The daemon writes the key once its servers connect. Silence is not an outage.
+    return { text: "connection status unknown — the daemon has not reported yet", cls: "off" };
   }
   const servers = Array.isArray(status.servers) ? status.servers : [];
   const tools = Number(status.tools) || 0;
@@ -96,7 +93,7 @@ export default function ToolsModal({ data, onClose }) {
   const filteredMC = searchActive ? mcpsAll.filter(itemMatches) : mcpsAll;
   const totalMatches = filteredBI.length + filteredSK.length + filteredMC.length;
 
-  const BI_CATEGORY_ORDER = ["file", "browser", "ui-output", "agent", "daemon", "skill", "tooling", "other"];
+  const BI_CATEGORY_ORDER = ["file", "browser", "ui-output", "agent", "daemon", "skill", "other"];
   const biGroups = {};
   filteredBI.forEach(function(t) {
     const cat = inferBuiltInCategory(t.name);
@@ -104,8 +101,7 @@ export default function ToolsModal({ data, onClose }) {
     biGroups[cat.key].items.push(t);
   });
 
-  const bundledSkills   = filteredSK.filter(function(s) { return !s.installed_via_discovery; });
-  const discoverySkills = filteredSK.filter(function(s) { return s.installed_via_discovery; });
+  const bundledSkills = filteredSK;
 
   const activeMcps   = filteredMC.filter(function(m) { return !m.disabled; });
   const disabledMcps = filteredMC.filter(function(m) { return m.disabled; });
@@ -145,7 +141,6 @@ export default function ToolsModal({ data, onClose }) {
       const allSubKeys = new Set();
       BI_CATEGORY_ORDER.forEach(function(k) { if (biGroups[k]) allSubKeys.add("bi:"+k); });
       if (bundledSkills.length > 0) allSubKeys.add("sk:bundled");
-      if (discoverySkills.length > 0) allSubKeys.add("sk:discovery");
       if (activeMcps.length > 0) allSubKeys.add("mc:active");
       if (disabledMcps.length > 0) allSubKeys.add("mc:disabled");
       setCollapsedSubgroups(allSubKeys);
@@ -157,7 +152,7 @@ export default function ToolsModal({ data, onClose }) {
       return Object.keys(biGroups).length > 0;
     }
     if (section === "skills") {
-      return bundledSkills.length > 0 || discoverySkills.length > 0;
+      return bundledSkills.length > 0;
     }
     if (section === "mcps") {
       return activeMcps.length > 0 || disabledMcps.length > 0;
@@ -277,7 +272,6 @@ export default function ToolsModal({ data, onClose }) {
             return (
               <div>
                 {renderSubgroup("sk:bundled", "📦", "bundled", bundledSkills)}
-                {renderSubgroup("sk:discovery", "\u2B07", "discovery-installed", discoverySkills)}
               </div>
             );
           })}

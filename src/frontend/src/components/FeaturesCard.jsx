@@ -47,15 +47,15 @@ export default function FeaturesCard({ state, post, onToast }) {
   const config = (fetched && fetched.config) || {};
   const defaults = (fetched && fetched.defaults) || {};
 
-  // ── State 3: the running engine says nothing about subsystems ──
-  // (the pipecat engine, or a daemon older than the state key). Guessing
-  // from config.toml here would be a lie about what is running.
+  // ── State 3: the daemon has not said what it wired yet ──
+  // (still booting, or not running). Guessing from config.toml here
+  // would be a lie about what is running.
   if (!live) {
     return (
       <div className="card">
         <div className="card-header">{'🧩'} Підсистеми</div>
         <div className="info-line">
-          поточний двигун не повідомляє про підсистеми
+          демон ще не повідомив, що зібрав
         </div>
       </div>
     );

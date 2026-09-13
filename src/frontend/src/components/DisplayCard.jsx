@@ -1,7 +1,7 @@
 import React from 'react';
 
-export default function DisplayCard({ display, visible, flash, onDismiss }) {
-  if (!display || !display.content || !visible) return null;
+export default function DisplayCard({ display, flash, onDismiss }) {
+  if (!display || !display.content) return null;
 
   return (
     <div className={"display-card" + (flash ? ' flash' : '')}>

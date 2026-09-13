@@ -5,7 +5,6 @@ import os
 
 from src.config import (
     Settings,
-    backup_session_file,
     load_settings,
 )
 
@@ -49,35 +48,6 @@ def test_wake_word_custom(monkeypatch, tmp_path) -> None:
     config_file.write_text('wake_word = "Хара"\n')
     s = load_settings()
     assert s.wake_word == "Хара"
-
-
-def test_backup_session_file_no_file(tmp_path) -> None:
-    s = Settings()
-    s.session_file = tmp_path / "session.json"
-    assert backup_session_file(s) is None
-
-
-def test_backup_session_file_renames(tmp_path) -> None:
-    s = Settings()
-    s.session_file = tmp_path / "session.json"
-    s.session_file.write_text('{"id": "abc"}')
-
-    backup = backup_session_file(s)
-
-    assert backup == tmp_path / "session_0.backup.json"
-    assert backup.exists()
-    assert not s.session_file.exists()
-
-
-def test_backup_session_file_increments(tmp_path) -> None:
-    s = Settings()
-    s.session_file = tmp_path / "session.json"
-    (tmp_path / "session_0.backup.json").write_text("{}")
-
-    s.session_file.write_text('{"id": "abc"}')
-    backup = backup_session_file(s)
-
-    assert backup == tmp_path / "session_1.backup.json"
 
 
 

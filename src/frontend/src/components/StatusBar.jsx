@@ -2,8 +2,9 @@ import React from 'react';
 
 // The engine publishes `mcp_status` as a JSON string in /state:
 // { servers: [...], tools: N, ok: bool, error: str }. An absent key means
-// this engine never said anything (the pipecat path never writes it) —
-// which must read as "unknown", not as an outage, so nothing is rendered.
+// the daemon has not reported yet (it writes the key once its servers
+// connect) — which must read as "unknown", not as an outage, so nothing
+// is rendered.
 function mcpChip(raw) {
   if (!raw || typeof raw !== 'string') return null;
   let s;

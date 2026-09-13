@@ -180,14 +180,10 @@ class Settings:
 
     warmup_interval_seconds: float = 240.0
     workspace_dir: Path = field(default_factory=lambda: HEARE_HOME / "workspace")
-    session_file: Path = field(default_factory=lambda: HEARE_HOME / "session.json")
     identity_file: Path = field(default_factory=lambda: HEARE_HOME / "identity.json")
     db_path: Path = field(default_factory=lambda: HEARE_HOME / "heare.db")
     log_dir: Path = field(default_factory=lambda: HEARE_HOME / "logs")
     pid_file: Path = field(default_factory=lambda: HEARE_HOME / "heare.pid")
-    interrupt_enabled_file: Path = field(
-        default_factory=lambda: HEARE_HOME / "interrupt_enabled.off"
-    )
     voice_state_file: Path = field(
         default_factory=lambda: HEARE_HOME / "voice_state.json"
     )
@@ -490,16 +486,15 @@ def load_settings() -> Settings:
 
     _load_browser_bridge_settings(settings, toml_data.get("browser_bridge", {}))
 
-    # [interrupt] section — persistent default for barge-in behaviour.
-    # When enabled=false, the flag file is created on daemon start so the
-    # pipeline gate drops mic input while the bot is speaking. The
-    # /interrupt API endpoint toggles the flag at runtime independently.
-    interrupt_sec = toml_data.get("interrupt", {})
-    if isinstance(interrupt_sec, dict):
-        interrupt_enabled = interrupt_sec.get("enabled", True)
-        if not interrupt_enabled:
-            settings.interrupt_enabled_file.parent.mkdir(parents=True, exist_ok=True)
-            settings.interrupt_enabled_file.touch(exist_ok=True)
+    # `[interrupt] enabled = false` used to touch a marker file that only
+    # the API ever read back; the daemon reads the switch from State
+    # (`interrupt_off`, the dashboard's toggle). Say so instead of
+    # loading it in silence.
+    if isinstance(toml_data.get("interrupt"), dict):
+        logger.warning(
+            "[interrupt] is no longer a setting: the switch lives in the "
+            "dashboard (State key interrupt_off) and applies at once."
+        )
 
     # [audio] section — mic gain and speaker volume.
     audio_sec = toml_data.get("audio", {})
@@ -753,23 +748,6 @@ def write_browser_bridge_token(settings: Settings, token: str) -> None:
         raise
 
     settings.browser_bridge_token = token
-
-
-def backup_session_file(settings: "Settings") -> Path | None:
-    """Rename `settings.session_file` to a numbered backup, if it exists.
-
-    Returns the backup path, or None if there was no session file to reset.
-    """
-    if not settings.session_file.exists():
-        return None
-    idx = 0
-    while True:
-        backup = settings.session_file.with_name(f"session_{idx}.backup.json")
-        if not backup.exists():
-            break
-        idx += 1
-    settings.session_file.rename(backup)
-    return backup
 
 
 # ── API key plumbing ──────────────────────────────────────────────────

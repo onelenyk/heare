@@ -48,7 +48,7 @@ export default function SetupModal({ show, onClose, onComplete }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       });
       const d = await r.json();
-      if (d.ok) { setStatus('Persona saved! Restart daemon to apply.'); setIdentity(d.identity); }
+      if (d.ok) { setStatus('Persona saved — in effect from the next reply.'); setIdentity(d.identity); }
       else setStatus(d.error || 'Save failed');
     } catch (e) { setStatus('Save failed: ' + e.message); }
     setLoading(false);
@@ -151,7 +151,7 @@ export default function SetupModal({ show, onClose, onComplete }) {
               </div>
               {status && <div style={{fontSize: 11, color: status.includes('fail') || status.includes('error') ? 'var(--accent-red)' : 'var(--accent)', marginTop: 4}}>{status}</div>}
               <div style={{fontSize: 10, color: 'var(--muted)', marginTop: 8}}>
-                Regenerate asks the LLM to invent a new persona. Save keeps your edits. Restart daemon to apply changes.
+                Regenerate asks the LLM to invent a new persona. Save keeps your edits. Both apply from the next reply.
               </div>
             </div>
           )}
