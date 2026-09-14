@@ -568,6 +568,18 @@ class API:
         data["provider_wanted"] = wanted
         data["provider_fallback"] = bool(wanted and wanted != data.get("provider"))
 
+        # Engine awareness: ears (awake/gate/duplex) and active job.
+        try:
+            ears_str = data.get("ears", "")
+            data["ears"] = json.loads(ears_str) if ears_str else None
+        except Exception:
+            data["ears"] = None
+        try:
+            job_str = data.get("job", "")
+            data["job"] = json.loads(job_str) if job_str else None
+        except Exception:
+            data["job"] = None
+
         # Models for current provider
         try:
             provider_key = data.get("provider", "")

@@ -288,7 +288,23 @@ class WakeGate:
 
     @property
     def awake(self) -> bool:
-        return self._awake
+        """Is the gate awake right now?
+
+        True when wake is not required, or when the gate has been
+        explicitly woken and the window has not yet closed.
+        """
+        if not self._required:
+            return True
+        return (
+            self._awake
+            and self._last_accept is not None
+            and (self._clock() - self._last_accept) <= self.window_s
+        )
+
+    @property
+    def required(self) -> bool:
+        """Is the wake word required to accept a turn?"""
+        return self._required
 
     def sleep(self) -> None:
         """Force asleep (e.g. after "спи"). The next conversation starts

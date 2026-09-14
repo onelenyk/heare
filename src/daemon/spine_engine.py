@@ -39,6 +39,8 @@ BOOT_POLL_SECS = 1.0
 # the first audio callbacks.
 GREETING_DELAY_SECS = 0.6
 BRIDGE_POLL_SECS = 1.0
+# Awareness poller: write ears/job state twice a second, only when changed.
+AWARE_POLL_SECS = 0.5
 
 
 # -- keys the engine cannot work without -----------------------------
@@ -1290,6 +1292,59 @@ async def run_spine_daemon(
             except Exception:
                 logger.exception("role state poll failed (non-fatal)")
 
+    # -- awareness poller: engine state the dashboard reads --
+
+    async def _poll_awareness() -> None:
+        """Write wake gate and job state to State, only when changed.
+
+        Two values, polled half-second: ears (awake, gate required, duplex
+        mode) and job (the running Hands job, or empty). The dashboard
+        polls /state once a second, so writing on every tick is waste;
+        keep the last written strings and compare.
+        """
+        from src.agent.jobs import RUNNING
+
+        last_ears_str: str | None = None
+        last_job_str: str | None = None
+        while True:
+            await asyncio.sleep(AWARE_POLL_SECS)
+            try:
+                # Ears: awake status, gate requirement, duplex mode.
+                awake = loop.wake.awake if loop.wake is not None else True
+                gate = loop.wake is not None and loop.wake.required
+                duplex = bool(getattr(loop, "_duplex", False))
+                ears = {"awake": awake, "gate": gate, "duplex": duplex}
+                ears_str = json.dumps(ears, ensure_ascii=False)
+                if ears_str != last_ears_str:
+                    last_ears_str = ears_str
+                    state.set_cache_only("ears", ears_str)
+
+                # Job: the running Hands job, or empty string.
+                job_str = ""
+                toolbox = getattr(loop, "toolbox", None)
+                if toolbox is not None:
+                    hands = getattr(toolbox, "_hands", None)
+                    jobs_store = getattr(hands, "_jobs", None) if hands else None
+                    if jobs_store is not None:
+                        recent_jobs = await jobs_store.recent(limit=1)
+                        for job in recent_jobs:
+                            if job.state == RUNNING:
+                                job_str = json.dumps(
+                                    {
+                                        "id": job.id,
+                                        "label": job.label,
+                                        "task": job.task,
+                                        "started_ts": job.created_ts,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                                break
+                if job_str != last_job_str:
+                    last_job_str = job_str
+                    state.set_cache_only("job", job_str)
+            except Exception:
+                logger.exception("awareness poll failed (non-fatal)")
+
     # -- control poller: the dashboard's switches must reach the audio --
 
     async def _poll_controls() -> None:
@@ -1429,6 +1484,7 @@ async def run_spine_daemon(
 
     poller = asyncio.create_task(_poll_inject(), name="spine-inject-poll")
     role_poller = asyncio.create_task(_poll_role(), name="spine-role-poll")
+    aware_poller = asyncio.create_task(_poll_awareness(), name="spine-aware-poll")
     ctl_poller = asyncio.create_task(_poll_controls(), name="spine-ctl-poll")
     mcp_poller = (
         asyncio.create_task(_poll_mcp(), name="spine-mcp-poll") if mcp_on else None
@@ -1485,7 +1541,7 @@ async def run_spine_daemon(
     finally:
         # mcp_task may still be waiting on a cold `npx`; cancelling it
         # is why it is a named task and not a fire-and-forget coroutine.
-        background = [t for t in (poller, role_poller, ctl_poller, mcp_poller,
+        background = [t for t in (poller, role_poller, aware_poller, ctl_poller, mcp_poller,
                                   bridge_poller, runner, mcp_task, greet_task)
                       if t is not None]
         for t in background:

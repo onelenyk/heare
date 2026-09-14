@@ -83,9 +83,17 @@ class _FakeState:
         self.cache[key] = value
         self.history.append((key, value))
 
-    def written(self, key: str) -> list[dict]:
-        """Every JSON value ever written to `key`, in order."""
-        return [json.loads(v) for k, v in self.history if k == key]
+    def written(self, key: str) -> list[dict | str]:
+        """Every JSON value (or raw string) ever written to `key`, in order."""
+        result = []
+        for k, v in self.history:
+            if k == key:
+                try:
+                    result.append(json.loads(v))
+                except (json.JSONDecodeError, ValueError):
+                    # Not JSON, return the raw string
+                    result.append(v)
+        return result
 
     def snapshot(self) -> dict:
         return dict(self.cache)
@@ -112,7 +120,8 @@ class _FakeLoop:
         self.mcp = None
         self.memory = object()
         self.aec = object()
-        self.wake = object()
+        # wake with awake and required properties for the awareness poller.
+        self.wake = SimpleNamespace(awake=True, required=True)
         self.toolbox = object()
         self.role_flow = object()
         self.persist = None
@@ -721,3 +730,54 @@ async def test_a_stale_reload_flag_does_not_rebuild_at_boot(monkeypatch, tmp_pat
 
     instances, _ = await _boot_with_bridge(monkeypatch, tmp_path, nothing, before_boot=stale)
     assert len(instances) == 1
+
+
+# -- awareness poller: ears and job state ----------------------------------
+
+
+async def test_awareness_poller_writes_ears(monkeypatch, tmp_path) -> None:
+    """The awareness poller writes ears (awake, gate, duplex) to state."""
+    import src.daemon.spine_engine as spine_engine
+
+    # Speed up polling so it completes before boot finishes
+    monkeypatch.setattr(spine_engine, "AWARE_POLL_SECS", 0.01)
+
+    loop, state, _, _ = await _boot(
+        monkeypatch,
+        tmp_path,
+        {"mcp": False, "telemetry": False},
+        empty_stt=True,
+    )
+
+    # Check that ears was written at least once with correct structure
+    ears_written = state.written("ears")
+    assert len(ears_written) > 0, "ears was never written"
+    ears = ears_written[-1]
+    assert isinstance(ears, dict)
+    assert "awake" in ears
+    assert "gate" in ears
+    assert "duplex" in ears
+    assert isinstance(ears["awake"], bool)
+    assert isinstance(ears["gate"], bool)
+    assert isinstance(ears["duplex"], bool)
+
+
+async def test_awareness_poller_writes_job_empty_without_toolbox(monkeypatch, tmp_path) -> None:
+    """When there is no toolbox, the awareness poller writes job as empty string."""
+    import src.daemon.spine_engine as spine_engine
+
+    monkeypatch.setattr(spine_engine, "AWARE_POLL_SECS", 0.01)
+
+    loop, state, _, _ = await _boot(
+        monkeypatch,
+        tmp_path,
+        {"mcp": False, "telemetry": False},
+        empty_stt=True,
+    )
+
+    # Check that job was written (should be empty string when no job)
+    job_written = state.written("job")
+    assert len(job_written) > 0, "job was never written"
+    # The last written job should be an empty string (no running job)
+    job = job_written[-1]
+    assert job == ""

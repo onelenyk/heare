@@ -650,3 +650,56 @@ def test_a_suspend_takes_the_long_line_away() -> None:
 
     assert gate.accepts("а що там") is False
     assert gate.window_s == 45.0
+
+
+# -- awake property tests -----------------------------------------------
+
+
+def test_awake_property_required_false_always_true() -> None:
+    """When wake is not required, the gate is always awake."""
+    clock = Clock()
+    gate = WakeGate(phrases=doka_phrases(), window_s=45.0, required=False, clock=as_clock(clock))
+
+    assert gate.awake is True
+    clock.set(100.0)
+    assert gate.awake is True
+
+
+def test_awake_property_after_accepted_turn() -> None:
+    """After an accepted turn wakes the gate, awake is True."""
+    clock = Clock()
+    gate = WakeGate(phrases=doka_phrases(), window_s=45.0, required=True, clock=as_clock(clock))
+
+    assert gate.awake is False
+    gate.accepts("дока привіт")
+    assert gate.awake is True
+
+
+def test_awake_property_after_window_closes() -> None:
+    """After the window expires without a new turn, awake becomes False."""
+    clock = Clock()
+    gate = WakeGate(phrases=doka_phrases(), window_s=45.0, required=True, clock=as_clock(clock))
+
+    gate.accepts("дока привіт")
+    assert gate.awake is True
+
+    clock.set(50.0)
+    assert gate.awake is False
+
+
+def test_awake_property_after_rejected_turn() -> None:
+    """A rejected turn does not wake the gate, so awake stays False."""
+    clock = Clock()
+    gate = WakeGate(phrases=doka_phrases(), window_s=45.0, required=True, clock=as_clock(clock))
+
+    gate.accepts("зовсім не про нього")
+    assert gate.awake is False
+
+
+def test_required_property() -> None:
+    """The required property reflects whether wake is mandatory."""
+    gate_required = WakeGate(phrases=doka_phrases(), required=True)
+    gate_not_required = WakeGate(phrases=doka_phrases(), required=False)
+
+    assert gate_required.required is True
+    assert gate_not_required.required is False
