@@ -69,7 +69,7 @@ async def test_a_decision_to_speak_reaches_the_conductor() -> None:
     voice and the reply is spoken by the same path as any other."""
     injected: list[str] = []
 
-    async def inject(text: str) -> None:
+    async def inject(text: str, kind: str = "") -> None:
         injected.append(text)
 
     engine = Engine(
@@ -135,7 +135,7 @@ async def test_the_round_trip_costs_the_engine_its_patience() -> None:
     store = _Store([_intent()])
     injected: list[str] = []
 
-    async def inject(text: str) -> None:
+    async def inject(text: str, kind: str = "") -> None:
         injected.append(text)
 
     engine = Engine(store=store, say=inject, persist=_Persist())

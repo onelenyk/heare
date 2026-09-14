@@ -46,7 +46,7 @@ class _Store:
 
 
 def _engine(store: _Store) -> Engine:
-    async def say(_text: str) -> None:  # pragma: no cover — not exercised here
+    async def say(_text: str, _kind: str = "") -> None:  # pragma: no cover — not exercised here
         return None
 
     return Engine(store=store, say=say)

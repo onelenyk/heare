@@ -531,7 +531,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
 
             loop.engine = Engine(
                 store=intent_store,
-                say=lambda text: loop.inject(text, source="initiative"),
+                say=lambda text, kind="": loop.inject(text, source=f"initiative:{kind}" if kind else "initiative"),
                 state=getattr(loop, "state", None),
                 persist=persist,
                 jobs=records.jobs,

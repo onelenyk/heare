@@ -269,7 +269,7 @@ async def test_it_does_not_ask_the_database_on_every_tick(tmp_path) -> None:
     assert calls["n"] == 1, "once a minute, not once a tick"
 
 
-async def _silent(_text: str) -> None:
+async def _silent(_text: str, _kind: str = "") -> None:
     return None
 
 

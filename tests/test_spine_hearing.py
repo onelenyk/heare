@@ -202,5 +202,5 @@ async def test_the_engine_does_not_ask_the_device_on_every_call() -> None:
     assert calls["n"] == 1, "the tick runs every five seconds; this is not free"
 
 
-async def _silent(_text: str) -> None:
+async def _silent(_text: str, _kind: str = "") -> None:
     return None

@@ -47,6 +47,30 @@ logger = logging.getLogger("spine.persist")
 ADDRESSED = "voice"  # said to the assistant, and answered — kept
 OVERHEARD = "overheard"  # said near it, never a turn — expires
 
+# Map loop sources to stored source values. This translation layer keeps
+# the mapping (mic, dashboard, etc.) in one place and the persist module
+# free to change without touching the loop's turn boundaries.
+SOURCE_MAP = {
+    "mic": "voice",        # microphone input
+    "dashboard": "typed",  # dashboard text box
+    "hands": "hands",      # worker result
+    # "initiative:*" and anything else: stored as-is
+}
+
+
+def _normalize_source(source: str) -> str:
+    """Map loop source to stored value.
+
+    Maps known sources to their stored equivalents. "initiative:*" sources
+    are stored with the kind preserved (e.g., "initiative:reminder").
+    Unmapped sources fall through to "other".
+    """
+    if source in SOURCE_MAP:
+        return SOURCE_MAP[source]
+    if source.startswith("initiative:"):
+        return source
+    return "other"
+
 # How a `delegate` result re-enters the conversation: as a user turn
 # carrying `src.agent.hands.RESULT_PREFIX`. Those rows have
 # `agent_spoken = 0` and are therefore indistinguishable from something
@@ -302,7 +326,7 @@ class SpinePersistence:
         assert cur.lastrowid is not None
         return cur.lastrowid
 
-    def log_user_turn(self, text: str, fragment_count: int = 1) -> int:
+    def log_user_turn(self, text: str, fragment_count: int = 1, source: str = "voice") -> int:
         """Insert the user turn: a transcripts row (mode='spine',
         agent_spoken=0) AND a turns row (aggregated_text=text,
         utterance_count=fragment_count, start_ts/end_ts=now), linking
@@ -318,25 +342,27 @@ class SpinePersistence:
             )
             turn_id = cur.lastrowid
             assert turn_id is not None
+            stored_source = _normalize_source(source)
             self._conn.execute(
                 "INSERT INTO transcripts "
                 "(ts, text, mode, agent_spoken, turn_id, source) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (now, text, "spine", 0, turn_id, ADDRESSED),
+                (now, text, "spine", 0, turn_id, stored_source),
             )
             self._conn.commit()
             return turn_id
 
-    def log_agent_reply(self, text: str, turn_id: int) -> None:
+    def log_agent_reply(self, text: str, turn_id: int, source: str = "voice") -> None:
         """Insert the reply as transcripts row (agent_spoken=1) with the
         same turn_id, and stamp turns.end_ts=now."""
         with self._lock:
             now = time.time()
+            stored_source = _normalize_source(source)
             self._conn.execute(
                 "INSERT INTO transcripts "
                 "(ts, text, mode, agent_spoken, turn_id, source) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (now, text, "spine", 1, turn_id, ADDRESSED),
+                (now, text, "spine", 1, turn_id, stored_source),
             )
             self._conn.execute(
                 "UPDATE turns SET end_ts = ? WHERE id = ?", (now, turn_id)

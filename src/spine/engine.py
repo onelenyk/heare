@@ -667,7 +667,7 @@ class Engine:
                 logger.exception("engine: ask failed — raising as written")
 
         self._said_text = text
-        await self._say(text)
+        await self._say(text, intent.kind)
         await self._store.mark_voiced(intent.id)
         # Tell the source it was actually said. Most of what reaches this
         # point is still refused above, and a source that cannot tell

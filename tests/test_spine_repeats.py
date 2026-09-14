@@ -583,5 +583,5 @@ def _now(p) -> float:
     return float(p.last_turn_times()["any"])
 
 
-async def _silent(_text: str) -> None:
+async def _silent(_text: str, _kind: str = "") -> None:
     return None

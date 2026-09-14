@@ -221,11 +221,21 @@ def _engine(**kw) -> tuple[Engine, _Store, list[str]]:
     store = _Store()
     said: list[str] = []
 
-    async def say(text: str) -> None:
+    async def say(text: str, kind: str = "") -> None:
         said.append(text)
 
     kw.setdefault("persist", _Persist())
-    return Engine(store=store, say=say, **kw), store, said
+    result = Engine(store=store, say=say, **kw)
+    result._say_calls = []  # track (text, kind) pairs for testing
+
+    # Wrap the say function to record calls
+    original_say = result._say
+    async def tracked_say(text: str, kind: str = "") -> None:
+        result._say_calls.append((text, kind))
+        await original_say(text, kind)
+    result._say = tracked_say
+
+    return result, store, said
 
 
 def test_being_ignored_costs_it_patience() -> None:
@@ -309,6 +319,19 @@ def test_a_refusal_from_the_model_is_not_fatal() -> None:
 
     asyncio.run(engine.tick(now=NOW))
     assert said, "a failing judge must fall back to raising it as written"
+
+
+def test_say_is_called_with_intent_kind() -> None:
+    """The engine passes the intent kind to _say so the turn source reflects it."""
+    engine, store, _ = _engine()
+    store.items = [intent(kind="job_done", text="завдання завершено")]
+
+    asyncio.run(engine.tick(now=NOW))
+
+    assert engine._say_calls, "say should have been called"
+    text, kind = engine._say_calls[0]
+    assert kind == "job_done", "the intent kind should be passed as the second argument"
+    assert text == "завдання завершено"
 
 
 def test_the_prompt_carries_what_is_outstanding() -> None:

@@ -382,3 +382,91 @@ def test_unicode_ukrainian_round_trips(persist: SpinePersistence) -> None:
 
     exchanges = persist.recent_exchanges(n=1)
     assert exchanges == [{"user": user_text, "agent": agent_text}]
+
+
+def test_log_user_turn_stores_source_as_typed(
+    persist: SpinePersistence, db_path: Path
+) -> None:
+    # "dashboard" source should map to "typed" when stored
+    turn_id = persist.log_user_turn("text box input", source="dashboard")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        t_row = _row(
+            conn,
+            "SELECT source FROM transcripts WHERE turn_id = ? AND agent_spoken = 0",
+            (turn_id,),
+        )
+        assert t_row["source"] == "typed"
+    finally:
+        conn.close()
+
+
+def test_log_agent_reply_stores_source_as_initiative(
+    persist: SpinePersistence, db_path: Path
+) -> None:
+    turn_id = persist.log_user_turn("what happened", source="mic")
+    # "initiative:reminder" should be stored as-is
+    persist.log_agent_reply("the engine spoke", turn_id, source="initiative:reminder")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        reply_row = _row(
+            conn,
+            "SELECT source FROM transcripts WHERE turn_id = ? AND agent_spoken = 1",
+            (turn_id,),
+        )
+        assert reply_row["source"] == "initiative:reminder"
+    finally:
+        conn.close()
+
+
+def test_source_mapping_mic_to_voice(
+    persist: SpinePersistence, db_path: Path
+) -> None:
+    turn_id = persist.log_user_turn("from microphone", source="mic")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        t_row = _row(
+            conn,
+            "SELECT source FROM transcripts WHERE turn_id = ? AND agent_spoken = 0",
+            (turn_id,),
+        )
+        assert t_row["source"] == "voice"
+    finally:
+        conn.close()
+
+
+def test_source_mapping_hands_stays_hands(
+    persist: SpinePersistence, db_path: Path
+) -> None:
+    turn_id = persist.log_user_turn("worker result", source="hands")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        t_row = _row(
+            conn,
+            "SELECT source FROM transcripts WHERE turn_id = ? AND agent_spoken = 0",
+            (turn_id,),
+        )
+        assert t_row["source"] == "hands"
+    finally:
+        conn.close()
+
+
+def test_source_mapping_unknown_becomes_other(
+    persist: SpinePersistence, db_path: Path
+) -> None:
+    turn_id = persist.log_user_turn("unknown source", source="unknown_source_type")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        t_row = _row(
+            conn,
+            "SELECT source FROM transcripts WHERE turn_id = ? AND agent_spoken = 0",
+            (turn_id,),
+        )
+        assert t_row["source"] == "other"
+    finally:
+        conn.close()

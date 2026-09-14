@@ -521,3 +521,96 @@ async def test_barge_in_mid_reply_still_stops_the_speaker() -> None:
     assert audio.played == [b"PCM:a"]
     assert reply == "Довга відповідь."
     assert loop.history[-1]["content"] == "Довга відповідь."
+
+
+# -- source tracking through persist ----------------------------------
+
+
+class FakePersist:
+    """Records calls to log_user_turn and log_agent_reply with their sources.
+
+    Applies the same source mapping as the real persist module, so tests
+    verify the behavior matches the production implementation.
+    """
+
+    def __init__(self) -> None:
+        self.user_calls: list[tuple[str, str]] = []  # (text, stored_source)
+        self.reply_calls: list[tuple[str, int, str]] = []  # (text, turn_id, stored_source)
+        self._turn_id = 0
+
+    @staticmethod
+    def _normalize_source(source: str) -> str:
+        """Same mapping as src/spine/persist.py._normalize_source."""
+        source_map = {"mic": "voice", "dashboard": "typed", "hands": "hands"}
+        if source in source_map:
+            return source_map[source]
+        if source.startswith("initiative:"):
+            return source
+        return "other"
+
+    def log_user_turn(self, text: str, fragment_count: int = 1, source: str = "voice") -> int:
+        self._turn_id += 1
+        stored_source = self._normalize_source(source)
+        self.user_calls.append((text, stored_source))
+        return self._turn_id
+
+    def log_agent_reply(self, text: str, turn_id: int, source: str = "voice") -> None:
+        stored_source = self._normalize_source(source)
+        self.reply_calls.append((text, turn_id, stored_source))
+
+
+async def test_mic_turn_stores_voice_source() -> None:
+    """A turn from the microphone is stored with source='voice' (the default)."""
+    audio = FakeAudio()
+    loop = _make_loop(audio, stt_text="привіт")
+    persist = FakePersist()
+    loop.persist = persist
+
+    # respond() is called with default source="mic", which maps to "voice"
+    await loop.respond("привіт", speak=False)
+
+    assert len(persist.user_calls) == 1
+    text, source = persist.user_calls[0]
+    assert text == "привіт"
+    assert source == "voice"
+    assert len(persist.reply_calls) == 1
+    _, _, reply_source = persist.reply_calls[0]
+    assert reply_source == "voice"
+
+
+async def test_dashboard_source_stored_as_typed() -> None:
+    """respond() called with source='dashboard' stores it as 'typed'."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    persist = FakePersist()
+    loop.persist = persist
+
+    # Call respond directly with source='dashboard'
+    await loop.respond("з дашборду", speak=False, source="dashboard")
+
+    assert len(persist.user_calls) == 1
+    text, source = persist.user_calls[0]
+    assert text == "з дашборду"
+    assert source == "typed"
+    assert len(persist.reply_calls) == 1
+    _, _, reply_source = persist.reply_calls[0]
+    assert reply_source == "typed"
+
+
+async def test_initiative_kind_stored_with_kind() -> None:
+    """respond() with source='initiative:reminder' stores it exactly that way."""
+    audio = FakeAudio()
+    loop = _make_loop(audio)
+    persist = FakePersist()
+    loop.persist = persist
+
+    # Call respond with initiative source including kind
+    await loop.respond("нагадання", speak=False, source="initiative:reminder")
+
+    assert len(persist.user_calls) == 1
+    text, source = persist.user_calls[0]
+    assert text == "нагадання"
+    assert source == "initiative:reminder"
+    assert len(persist.reply_calls) == 1
+    _, _, reply_source = persist.reply_calls[0]
+    assert reply_source == "initiative:reminder"

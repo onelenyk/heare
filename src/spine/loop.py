@@ -443,11 +443,11 @@ class SpineLoop:
                     await self._let_finish(running)
                 else:
                     await self._let_finish(running, patience=600.0)
-            self._turn = asyncio.create_task(self._answer(turn), name="spine-turn")
+            self._turn = asyncio.create_task(self._answer(turn, source), name="spine-turn")
 
-    async def _answer(self, turn: str) -> None:
+    async def _answer(self, turn: str, source: str = "mic") -> None:
         try:
-            await self.respond(turn)
+            await self.respond(turn, source=source)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -479,12 +479,12 @@ class SpineLoop:
         except Exception:  # noqa: BLE001
             logger.exception("could not keep an overheard line (non-fatal)")
 
-    async def _persist_user_turn(self, text: str) -> int | None:
+    async def _persist_user_turn(self, text: str, source: str = "mic") -> int | None:
         """Log a heard turn; None when no persistence is wired. Errors
         are the caller's to swallow — never a reason to stop talking."""
         if self.persist is None:
             return None
-        return await asyncio.to_thread(self.persist.log_user_turn, text)
+        return await asyncio.to_thread(self.persist.log_user_turn, text, 1, source)
 
     def _output_muted(self) -> bool:
         return bool(getattr(self.audio, "mute_output", False))
@@ -514,7 +514,7 @@ class SpineLoop:
         finally:
             utt.close()
 
-    async def respond(self, user_text: str, *, speak: bool = True) -> str:
+    async def respond(self, user_text: str, *, speak: bool = True, source: str = "mic") -> str:
         """One full exchange. Returns the reply text (also spoken)."""
         if self.engine is not None:
             # Whatever they just said is also the verdict on whatever it
@@ -527,7 +527,7 @@ class SpineLoop:
                 logger.exception("engine: reading the reply failed (non-fatal)")
         turn_id: int | None = None
         try:
-            turn_id = await self._persist_user_turn(user_text)
+            turn_id = await self._persist_user_turn(user_text, source=source)
         except Exception:
             logger.exception("persist failed (non-fatal)")
 
@@ -664,7 +664,7 @@ class SpineLoop:
             if recorded and self.persist is not None and turn_id is not None:
                 try:
                     await asyncio.to_thread(
-                        self.persist.log_agent_reply, recorded, turn_id
+                        self.persist.log_agent_reply, recorded, turn_id, source=source
                     )
                 except Exception:
                     logger.exception("persist failed (non-fatal)")
