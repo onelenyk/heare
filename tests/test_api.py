@@ -592,6 +592,12 @@ def activity_db(tmp_path):
         "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, status TEXT, "
         "result_summary TEXT, tool TEXT, args TEXT)"
     )
+    # The activity feed also UNIONs closed conversations ('closed' rows).
+    conn.execute(
+        "CREATE TABLE conversations ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, start_ts REAL NOT NULL, "
+        "end_ts REAL, mode TEXT NOT NULL, summary TEXT, entity_map TEXT)"
+    )
     for i in range(1, 121):
         conn.execute(
             "INSERT INTO transcripts (ts, text, mode, agent_spoken, source)"
@@ -1101,6 +1107,11 @@ def authorship_db(tmp_path):
         "CREATE TABLE actions ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, status TEXT, "
         "result_summary TEXT, tool TEXT, args TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE conversations ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, start_ts REAL NOT NULL, "
+        "end_ts REAL, mode TEXT NOT NULL, summary TEXT, entity_map TEXT)"
     )
     conn.executemany(
         "INSERT INTO transcripts (ts, text, mode, agent_spoken) VALUES (?, ?, ?, ?)",

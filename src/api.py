@@ -721,6 +721,10 @@ class API:
         except Exception:
             data["judge"] = None
 
+        # reply_ms: the last 12 total_ms values from turns.jsonl, oldest first.
+        # This is the number the design's sparkline draws.
+        data["reply_ms"] = self._read_reply_times()
+
         return web.json_response(data)
 
     async def _handle_state_post(self, request):
@@ -745,11 +749,12 @@ class API:
 
     async def _handle_activity(self, request):
         limit = _clamp_int(request.query.get("limit"), 50, 1, 500)
-        # The feed merges two append-only tables — transcripts ('said' rows)
-        # and actions ('did' rows: the agent's tool calls). Their id sequences
-        # are independent, so paging is keyed on ts, the only cursor comparable
-        # across both. Composite ids ('t<id>' / 'a<id>') keep React keys stable
-        # and unambiguous.
+        # The feed merges three append-only tables — transcripts ('said' rows),
+        # actions ('did' rows: the agent's tool calls), and closed conversations
+        # ('closed' rows: conversation summaries). Their id sequences are
+        # independent, so paging is keyed on ts, the only cursor comparable
+        # across all. Composite ids ('t<id>' / 'a<id>' / 'c<id>') keep React
+        # keys stable and unambiguous.
         raw_before = request.query.get("before_ts")
         try:
             before_ts = (
@@ -766,19 +771,27 @@ class API:
                 # 'assistant' on agent rows, the spine writes 'spine' on
                 # both), so reading authorship from it labelled every
                 # spine row as the user.
-                "SELECT rid, ts, who, content, source, kind, tool, status "
+                "SELECT rid, ts, who, content, source, kind, tool, status, start_ts, end_ts "
                 "FROM ("
                 "  SELECT 't'||id AS rid, ts, "
                 "         CASE WHEN agent_spoken = 1 OR mode = 'assistant' "
                 "              THEN 'bot' ELSE 'you' END AS who, "
                 "         text AS content, "
-                "         source, 'said' AS kind, NULL AS tool, NULL AS status "
+                "         source, 'said' AS kind, NULL AS tool, NULL AS status, "
+                "         NULL AS start_ts, NULL AS end_ts "
                 "  FROM transcripts "
                 "  UNION ALL "
                 "  SELECT 'a'||id AS rid, ts, NULL AS who, "
                 "         COALESCE(tool || ': ' || args, tool, 'action') AS content, "
-                "         NULL AS source, 'did' AS kind, tool, status "
-                "  FROM actions"
+                "         NULL AS source, 'did' AS kind, tool, status, "
+                "         NULL AS start_ts, NULL AS end_ts "
+                "  FROM actions "
+                "  UNION ALL "
+                "  SELECT 'c'||id AS rid, end_ts AS ts, NULL AS who, "
+                "         COALESCE(summary, '') AS content, "
+                "         NULL AS source, 'closed' AS kind, NULL AS tool, NULL AS status, "
+                "         start_ts, end_ts "
+                "  FROM conversations WHERE end_ts IS NOT NULL"
                 ") "
             )
             params: list = []
@@ -804,6 +817,19 @@ class API:
                             "content": r["content"],
                             "tool": r["tool"],
                             "status": r["status"],
+                            "start_ts": r["start_ts"],
+                            "end_ts": r["end_ts"],
+                        }
+                    )
+                elif r["kind"] == "closed":
+                    out.append(
+                        {
+                            "id": r["rid"],
+                            "ts": r["ts"],
+                            "type": "closed",
+                            "content": r["content"],
+                            "start_ts": r["start_ts"],
+                            "end_ts": r["end_ts"],
                         }
                     )
                 else:
@@ -817,6 +843,8 @@ class API:
                             # NULL predates the column; every turn logged back
                             # then did arrive by mic, so it reads as 'voice'.
                             "source": r["source"] or "voice",
+                            "start_ts": r["start_ts"],
+                            "end_ts": r["end_ts"],
                         }
                     )
             return web.json_response(out)
@@ -2023,3 +2051,58 @@ class API:
 
     def _available_providers(self):
         return get_available(self.config)
+
+    def _read_reply_times(self) -> list[int]:
+        """Read last 12 total_ms values from turns.jsonl, oldest first.
+
+        turns.jsonl is the only place reply time exists. Skips lines where
+        dropped_junk is true or total_ms is 0. Returns [] if file missing,
+        unreadable, or contains only garbage.
+        """
+        try:
+            log_dir = Path(getattr(self.config, "log_dir", "~/.heare/logs"))
+            turns_file = log_dir / "turns.jsonl"
+
+            if not turns_file.exists():
+                return []
+
+            # Tail-read efficiently: seek to last 64 KiB to avoid reading huge files
+            size = turns_file.stat().st_size
+            start_pos = max(0, size - 65536)
+
+            with open(turns_file, "rb") as f:
+                f.seek(start_pos)
+                data = f.read()
+
+            # Decode and split lines
+            text = data.decode("utf-8", errors="replace")
+            lines = text.split("\n")
+
+            # Ignore the first (potentially partial) line if not at start
+            if start_pos > 0 and lines:
+                lines = lines[1:]
+
+            # Parse JSON lines forward, collecting valid total_ms values.
+            # Keep only the last 12 by maintaining a deque-like behavior.
+            times: list[int] = []
+            for line in lines:
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                    dropped = obj.get("dropped_junk", False)
+                    total = obj.get("total_ms", 0)
+                    # Only include if not junk and total_ms > 0
+                    if not dropped and total > 0:
+                        times.append(int(total))
+                        # Keep only the last 12
+                        if len(times) > 12:
+                            times = times[-12:]
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    # Ignore malformed lines
+                    continue
+
+            return times
+        except Exception:
+            # Never let this raise out of /state
+            return []
