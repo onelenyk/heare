@@ -54,20 +54,28 @@ SOURCE_MAP = {
     "mic": "voice",        # microphone input
     "dashboard": "typed",  # dashboard text box
     "hands": "hands",      # worker result
-    # "initiative:*" and anything else: stored as-is
 }
+# Values that are already in their stored form. The defaults of
+# log_user_turn / log_agent_reply are "voice", so a caller that passes
+# nothing must land here — not fall through to "other", which is what the
+# first version of this map did to every call without a source.
+STORED_SOURCES = frozenset({"voice", "typed", "hands", "other"})
 
 
 def _normalize_source(source: str) -> str:
-    """Map loop source to stored value.
+    """Map a loop source to the value kept in ``transcripts.source``.
 
-    Maps known sources to their stored equivalents. "initiative:*" sources
-    are stored with the kind preserved (e.g., "initiative:reminder").
-    Unmapped sources fall through to "other".
+    ``mic`` → ``voice``, ``dashboard`` → ``typed``; stored values pass
+    through; ``initiative`` with or without a kind (``initiative:reminder``)
+    is kept as given, because the kind is what the dashboard shows as the
+    reason the assistant spoke on its own. Anything else is ``other``.
     """
+    source = (source or "").strip()
     if source in SOURCE_MAP:
         return SOURCE_MAP[source]
-    if source.startswith("initiative:"):
+    if source in STORED_SOURCES:
+        return source
+    if source == "initiative" or source.startswith("initiative:"):
         return source
     return "other"
 

@@ -2060,7 +2060,7 @@ class API:
         unreadable, or contains only garbage.
         """
         try:
-            log_dir = Path(getattr(self.config, "log_dir", "~/.heare/logs"))
+            log_dir = Path(str(getattr(self.config, "log_dir", "") or "~/.heare/logs")).expanduser()
             turns_file = log_dir / "turns.jsonl"
 
             if not turns_file.exists():

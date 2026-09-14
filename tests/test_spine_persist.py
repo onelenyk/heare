@@ -470,3 +470,23 @@ def test_source_mapping_unknown_becomes_other(
         assert t_row["source"] == "other"
     finally:
         conn.close()
+
+
+def test_a_call_without_a_source_is_stored_as_voice() -> None:
+    """The defaults are "voice"; the first version of the map sent every
+    call without a source to "other"."""
+    from src.spine.persist import _normalize_source
+
+    assert _normalize_source("voice") == "voice"
+    assert _normalize_source("typed") == "typed"
+
+
+def test_initiative_is_kept_with_or_without_a_kind() -> None:
+    from src.spine.persist import _normalize_source
+
+    assert _normalize_source("initiative") == "initiative"
+    assert _normalize_source("initiative:reminder") == "initiative:reminder"
+    assert _normalize_source("mic") == "voice"
+    assert _normalize_source("dashboard") == "typed"
+    assert _normalize_source("something-new") == "other"
+    assert _normalize_source("") == "other"
