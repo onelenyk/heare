@@ -204,6 +204,7 @@ class API:
         self.config = config
         self._control = daemon_control  # (start_fn, stop_fn, restart_fn)
         self._memory_backend = memory_backend
+        self._intents = None
         self._token = self._resolve_token()
         self._app = web.Application(middlewares=[self._auth_middleware])
         logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
@@ -268,6 +269,10 @@ class API:
         self._app.router.add_get("/api/memories", self._handle_memories)
         self._app.router.add_post(
             "/api/memories/{id}/forget", self._handle_memories_forget
+        )
+        self._app.router.add_get("/api/intents", self._handle_intents)
+        self._app.router.add_post(
+            "/api/intents/{id}/drop", self._handle_intent_drop
         )
 
     def register_routes(self, app: "web.Application") -> None:
@@ -694,6 +699,15 @@ class API:
                     data["last_response_mode"] = row[0][1]
         except Exception:
             pass
+
+        try:
+            raw = self.state.get("engine_verdict", "")
+            if raw:
+                data["judge"] = json.loads(raw)
+            else:
+                data["judge"] = None
+        except Exception:
+            data["judge"] = None
 
         return web.json_response(data)
 
@@ -1881,6 +1895,64 @@ class API:
         if not ok:
             return web.json_response({"ok": False, "error": "memory not found"}, status=404)
         return web.json_response({"ok": True})
+
+    # ── Intents (pending work and voiced items awaiting reaction) ─────
+
+    async def _handle_intents(self, request):
+        """GET /api/intents — list pending intents and those awaiting reaction."""
+        if self._intents is None:
+            return web.json_response(
+                {"ok": True, "intents": [], "note": "engine not running"}
+            )
+        rows = await self._intents.pending(limit=20)
+        intents_list = [
+            {
+                "id": i.id,
+                "kind": i.kind,
+                "text": i.text,
+                "origin": i.origin,
+                "state": i.state,
+                "urgency": i.urgency,
+                "created_ts": i.created_ts,
+                "due_ts": i.due_ts,
+                "expires_ts": i.expires_ts,
+            }
+            for i in rows
+        ]
+        # Also include intents in "voiced" state that await a reaction.
+        awaiting = await self._intents.awaiting_reaction()
+        if awaiting is not None:
+            awaiting_dict = {
+                "id": awaiting.id,
+                "kind": awaiting.kind,
+                "text": awaiting.text,
+                "origin": awaiting.origin,
+                "state": awaiting.state,
+                "urgency": awaiting.urgency,
+                "created_ts": awaiting.created_ts,
+                "due_ts": awaiting.due_ts,
+                "expires_ts": awaiting.expires_ts,
+            }
+            # Avoid duplicates if already in pending list.
+            if not any(i["id"] == awaiting.id for i in intents_list):
+                intents_list.append(awaiting_dict)
+        return web.json_response({"ok": True, "intents": intents_list})
+
+    async def _handle_intent_drop(self, request):
+        """POST /api/intents/{id}/drop — drop an intent by id."""
+        intent_id_str = request.match_info.get("id", "")
+        try:
+            intent_id = int(intent_id_str)
+        except (TypeError, ValueError):
+            return web.json_response(
+                {"ok": False, "error": "invalid id"}, status=400
+            )
+        if self._intents is None:
+            return web.json_response(
+                {"ok": False, "error": "engine not running"}, status=503
+            )
+        await self._intents.drop(intent_id, reason="dashboard")
+        return web.json_response({"ok": True, "id": intent_id})
 
     # ── Artifacts (role sessions: meeting secretary, etc.) ────────
 

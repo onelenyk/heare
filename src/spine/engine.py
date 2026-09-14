@@ -38,6 +38,7 @@ the only reason "freely" does not become "constantly" inside a day.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -324,6 +325,23 @@ class Engine:
         pending = await self._store.pending()
         verdict = judge(situation, pending, self.engine_state)
         self.last_verdict = verdict
+        # Publish verdict to State so the dashboard can ask why it is silent.
+        # The failure mode of a proactive system is silence you cannot interrogate.
+        state = self._state
+        if state is not None and hasattr(state, 'set_cache_only'):
+            try:
+                verdict_data = {
+                    "speak": verdict.speak,
+                    "reason": verdict.reason,
+                    "intent_id": verdict.intent.id if verdict.intent else None,
+                    "intent_kind": verdict.intent.kind if verdict.intent else None,
+                    "intent_text": verdict.intent.text if verdict.intent else None,
+                    "trust": round(self.engine_state.trust, 2),
+                    "ts": time.time(),
+                }
+                state.set_cache_only("engine_verdict", json.dumps(verdict_data, ensure_ascii=False))
+            except Exception:
+                logger.debug("engine_verdict write failed (non-fatal)")
         if verdict.speak and verdict.intent is not None:
             await self._voice(verdict.intent, situation)
         return verdict

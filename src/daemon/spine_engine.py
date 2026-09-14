@@ -857,6 +857,8 @@ async def run_spine_daemon(
     # The memories card asks the API, and the API needs the backend the
     # spine already opened — it was only ever set on the pipecat path.
     api._memory_backend = getattr(loop, "memory", None)
+    # The dashboard reads pending intents from the same store the engine writes to.
+    api._intents = getattr(getattr(loop, "engine", None), "_store", None)
 
     # -- telemetry: one JSONL line per turn -----------------------------
     # Cheap, stdlib-only, never raises into the conversation. See
