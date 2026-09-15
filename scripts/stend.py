@@ -467,7 +467,7 @@ TEMPLATE = """<!doctype html>
   <footer>
     <span>зібрано {built}</span>
     <span>make stend</span>
-    <span>tests/e2e · docs/live-tests.md · docs/findings/known-broken.md</span>
+    <span>tests/e2e · docs/archive/2026-09-16/live-tests.md · docs/archive/2026-09-16/findings/known-broken.md</span>
   </footer>
 
 </div>

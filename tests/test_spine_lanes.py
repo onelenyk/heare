@@ -1,4 +1,4 @@
-"""Two lanes into the conversation — docs/design.html §6, the inbox.
+"""Two lanes into the conversation — docs/archive/2026-09-16/design.html §6, the inbox.
 
 What the person says interrupts what the loop is doing; what anything
 else sends — a worker's result, a remark the engine wants to make —

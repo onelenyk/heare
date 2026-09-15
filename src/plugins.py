@@ -27,7 +27,7 @@ A plugin that cannot answer them does not load. That is what turns
 `make doctor` into a print of the answer.
 
 Plugins live in src/features/<name>/, and src/features/__init__.py is the
-one list of what is installed. See docs/core-and-plugins.md for the order
+one list of what is installed. See docs/archive/2026-09-16/core-and-plugins.md for the order
 things move in, and why the order is that one.
 """
 from __future__ import annotations

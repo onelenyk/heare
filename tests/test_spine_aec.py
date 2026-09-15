@@ -197,7 +197,7 @@ def test_malformed_far_chunks_do_not_crash_when_inactive(monkeypatch):
 # of these corresponds to a bug that shipped and survived for months,
 # because the only instrument was a pair of ears and every one of these
 # failures sounds exactly like "echo cancellation is working". See
-# docs/findings/echo-cancellation.md.
+# docs/archive/2026-09-16/findings/echo-cancellation.md.
 
 
 def test_take_returns_zeros_when_nothing_is_playing():

@@ -40,7 +40,7 @@ HISTORY_TURNS = 12
 # Who a turn came from. The person's own words — the microphone, the
 # dashboard's text box — interrupt whatever the loop is doing; everything
 # else — a worker's result, a remark the engine wants to make, a held
-# role turn replayed — waits for quiet. docs/design.html §6.
+# role turn replayed — waits for quiet. docs/archive/2026-09-16/design.html §6.
 PERSON_SOURCES = frozenset({"mic", "dashboard"})
 
 # The role platform used to be nine flat fields here. It is one object
@@ -149,7 +149,7 @@ class SpineLoop:
     mouth: Any = None          # .open(synthesise, *, mute_mic: bool) -> Utterance,
                                # .stop_all(outcome) -> int, .interrupted -> bool
     # (text, speech_ms) -> "interrupt" | "resume" | "cancel". The two-stage
-    # decision of docs/design.html §6: with a judge, a voice over the
+    # decision of docs/archive/2026-09-16/design.html §6: with a judge, a voice over the
     # speaker pauses it and the verdict comes from duration and text;
     # without one, any voice stops it, as before.
     judge_interruption: Any = None

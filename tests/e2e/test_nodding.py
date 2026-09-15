@@ -1,6 +1,6 @@
 """Nodding at it, and talking over it: pause at once, decide later.
 
-docs/design.html §6. On the sound of a voice the speaker goes quiet
+docs/archive/2026-09-16/design.html §6. On the sound of a voice the speaker goes quiet
 within milliseconds; whether that was a nod («ага»), a command («стоп»)
 or an interruption is known half a second later, from how long the
 speech lasted and what it said. A nod costs a pause and the sentence

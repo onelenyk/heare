@@ -14,7 +14,7 @@ the speaker starving, the text still landing in history, and the next
 turn recognising what was said over the top.
 
 What stood in for the missing coverage was a measurement in
-`docs/findings/known-broken.md`: interruption lands "2 of 4, and the
+`docs/archive/2026-09-16/findings/known-broken.md`: interruption lands "2 of 4, and the
 canceller is involved". That number was taken in the pipecat engine,
 whose file (`src/pipeline/stages/echo_classifier.py`) was deleted on 17
 August. The spine has its own barge-in and its own canceller and has

@@ -2,7 +2,7 @@
 
 The old engine's canceller was fixed after an int16/float overflow bug
 turned it into a mute (40-50 dB of real suppression once fixed; see
-``docs/findings/echo-cancellation.md``). The adaptive-filter logic
+``docs/archive/2026-09-16/findings/echo-cancellation.md``). The adaptive-filter logic
 (``AudioProcessor`` from ``pywebrtc-audio``, WebRTC's AEC3) and the
 far-end reference buffer (``FarEnd``, now ``src/spine/far_end.py``) never
 needed pipecat — only the factory functions that wrap them into frame

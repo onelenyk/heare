@@ -21,7 +21,7 @@ def _scale_int16(data: bytes, factor: float) -> bytes:
 
     Clamping is the whole point: an unclamped multiply wraps +32800 to a
     large negative sample, which is heard as a crack and, historically,
-    was what destroyed the echo canceller (docs/findings/echo-cancellation.md).
+    was what destroyed the echo canceller (docs/archive/2026-09-16/findings/echo-cancellation.md).
     stdlib only — this file must import without numpy.
     """
     usable = len(data) - (len(data) % 2)

@@ -429,7 +429,7 @@ class Room:
 
         Same path as `cuts_in` — frames, the detector, the canceller —
         only shorter. Whether that pauses, stops or is waved through is
-        the two-stage decision of docs/design.html §6.
+        the two-stage decision of docs/archive/2026-09-16/design.html §6.
         """
         assert self.mouth.playing, "nothing to nod at — the mouth is idle"
         await self.into_the_mic(text, ms=ms)

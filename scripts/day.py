@@ -92,7 +92,7 @@ def unbidden(db: sqlite3.Connection, since: float) -> None:
           f"відхилено моделлю {len(refused)}")
     if len(intents) and not spoke:
         print("   ⚠  жодного разу не заговорило — перевір вето "
-              "(docs/live-tests.md, «Вето, яке ніколи не казало так»)")
+              "(docs/archive/2026-09-16/live-tests.md, «Вето, яке ніколи не казало так»)")
     for kind, text, state, outcome, created, voiced in intents:
         mark = {"voiced": "🔊", "dropped": "· "}.get(state, "  ")
         when = _clock(voiced or created)

@@ -1,4 +1,4 @@
-"""Pause at once, decide later — the loop's half of docs/design.html §6.
+"""Pause at once, decide later — the loop's half of docs/archive/2026-09-16/design.html §6.
 
 A voice over the speaker used to mean stop, whatever the voice said. On
 «ага» that cut every explanation off at the first nod. Now, with a judge

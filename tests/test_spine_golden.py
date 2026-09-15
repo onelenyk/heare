@@ -177,7 +177,7 @@ async def test_unaddressed_turn_is_rejected_without_llm(shared_db: SharedDB) -> 
 @pytest.mark.spine_live
 @live_keys_required
 async def test_fragmented_turn_answers_once(shared_db: SharedDB) -> None:
-    """The double-answer regression (docs/findings/two-clocks.md), at
+    """The double-answer regression (docs/archive/2026-09-16/findings/two-clocks.md), at
     acceptance level: a real TurnAssembler joins two fragments spoken
     0.3*hold_s apart into ONE turn, and that turn gets exactly one real
     reply."""

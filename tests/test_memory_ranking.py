@@ -4,7 +4,7 @@ For months it returned the worst. Two independent sign errors in one
 ORDER BY clause, and no test caught either, because every test asserted
 that results *exist* rather than that they are the right ones.
 
-See docs/findings/known-broken.md.
+See docs/archive/2026-09-16/findings/known-broken.md.
 """
 
 from __future__ import annotations

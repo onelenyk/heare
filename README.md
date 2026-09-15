@@ -10,8 +10,12 @@ conversational path, so the voice never blocks on a tool call.
 
 The live engine is `src/spine/`, a framework-free voice loop: DeepSeek
 for conversation and tool-calling, Groq Whisper for speech-to-text, Edge
-TTS for speech. See [docs/architecture.md](docs/architecture.md) for the
-full picture — this file only covers getting it running.
+TTS for speech. The prose description is being rewritten: everything moved to
+[docs/archive/2026-09-16/](docs/archive/2026-09-16/) on 16 September
+because it described last month's assistant. Read it for the reasoning,
+not as a statement about today; the plan for the replacement is
+[docs/README.md](docs/README.md). This file only covers getting it
+running.
 
 ## Requirements
 
@@ -59,9 +63,8 @@ uv run python -m src.main reset-identity  # regenerate the persona
 
 `http://127.0.0.1:9780`, served by the same daemon. First visit opens a
 setup modal (identity, language, API keys). The dashboard polls `/state`,
-`/activity` and `/display` every second — no WebSocket. Which dashboard
-controls actually reach the live engine (several still don't) is tracked
-in [docs/findings/spine-controls.md](docs/findings/spine-controls.md).
+`/activity` and `/display` every second — no WebSocket. Every control on it reaches the live
+engine; `make doctor` is the instrument that says what is wired.
 
 ## Roles
 
@@ -120,9 +123,6 @@ asserts it never comes back.
 
 **STT hanging or slow** — Groq Whisper is the bottleneck, not heare;
 check your network and rate limits.
-
-**Session corruption** — `uv run python -m src.main reset-session`
-(backs up `session.json` first).
 
 **Persona feels wrong** — `uv run python -m src.main reset-identity`
 (backs up `identity.json`, regenerates).

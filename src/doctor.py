@@ -44,7 +44,7 @@ def _plugin_section() -> list[str]:
     if not rows:
         return [
             "  (порожньо — жодна фіча не зареєстрована)",
-            "  docs/core-and-plugins.md — у якому порядку вони їдуть і чому",
+            "  docs/archive/2026-09-16/core-and-plugins.md — у якому порядку вони їдуть і чому",
         ]
     width = max(len(name) for name, _ in rows)
     lines = []

@@ -864,7 +864,7 @@ async def run_spine_daemon(
 
     # -- telemetry: one JSONL line per turn -----------------------------
     # Cheap, stdlib-only, never raises into the conversation. See
-    # docs/findings/measuring.md — "it feels slow" used to only be
+    # docs/archive/2026-09-16/findings/measuring.md — "it feels slow" used to only be
     # answerable by ear; this is the instrument for that question.
     #
     # Switched off it is not built at all: a null object stands in at the

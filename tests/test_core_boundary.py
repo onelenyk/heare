@@ -19,7 +19,7 @@ silently. Nothing would fail. Nobody would notice until the day someone
 tried to run the core without roles and found they could not.
 
 So this is the ratchet. It is the first thing built in the core/plugins
-migration (docs/core-and-plugins.md) because every later phase leans on
+migration (docs/archive/2026-09-16/core-and-plugins.md) because every later phase leans on
 the boundary holding, and a boundary nothing measures is a wish.
 
 What it does NOT claim: that the twelve are the *right* twelve. That is a

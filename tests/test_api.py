@@ -451,7 +451,7 @@ def test_the_api_does_not_serve_the_dashboard_itself(api) -> None:
 def test_the_mode_endpoint_is_gone(api) -> None:
     """Modes were a global adjective nothing read: the endpoint took a
     value, wrote it to State, and changed nothing anywhere — see
-    docs/findings/known-broken.md. Roles replaced them, and a role is
+    docs/archive/2026-09-16/findings/known-broken.md. Roles replaced them, and a role is
     entered by saying so, not by POSTing."""
     pairs = [
         (route.method, r.canonical)

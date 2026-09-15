@@ -1,6 +1,6 @@
 """The mouth — sentences in, sound out, in order, and stoppable.
 
-One of the five parts in docs/design.html. The conductor decides *what*
+One of the five parts in docs/archive/2026-09-16/design.html. The conductor decides *what*
 is said; this decides nothing and owns the one thing speech needs that a
 function call does not: a stream that is already playing while the next
 part is still being made, and can be paused, resumed or stopped from

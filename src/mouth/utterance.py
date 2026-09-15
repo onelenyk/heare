@@ -12,7 +12,7 @@ What it can do that a boolean could not:
 
 * **pause and resume.** The ear hears a voice while the speaker is live
   and needs the sound to stop *now*, before it knows whether it was
-  interrupted or nodded at (docs/design.html §6). Pausing keeps what was
+  interrupted or nodded at (docs/archive/2026-09-16/design.html §6). Pausing keeps what was
   going to be said; resuming replays from the start of the sentence that
   was cut, so «ага» costs a half-second and «то що я казав», not the
   rest of the reply.

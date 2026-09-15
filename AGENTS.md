@@ -6,11 +6,18 @@ the pipecat engine, deleted on 17 August, and the `engine = "pipecat"`
 rollback they were kept for stopped existing with them. Nothing reads
 that setting; `Settings` has no such field.
 
-Read [docs/architecture.md](docs/architecture.md) first — it is the
-source of truth for how the process is laid out. Then
-[docs/findings/*.md](docs/findings) for why things are the shape they
-are, and [docs/findings/spine-controls.md](docs/findings/spine-controls.md)
-for which dashboard controls actually reach the spine.
+**The prose description is being rewritten.** Every document was moved to
+[docs/archive/2026-09-16/](docs/archive/2026-09-16/) on 16 September,
+because it described the assistant of a month ago. Read it for the
+reasoning, never as a statement about today; the plan for the
+replacement is [docs/README.md](docs/README.md).
+
+Until it lands, the truthful sources are the code itself, `make doctor`
+(what is actually wired) and the tests. The archive's
+[architecture.md](docs/archive/2026-09-16/architecture.md) is still the
+best picture of the layout, and
+[findings/](docs/archive/2026-09-16/findings/) is still the best account
+of why things are the shape they are.
 
 ## WHERE TO LOOK
 

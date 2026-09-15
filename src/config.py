@@ -79,7 +79,7 @@ RETIRED: dict[str, str] = {
     "stt_min_rms": "silence is filtered by loud_ms() and the junk filter",
     "stt_min_speech_seconds": "same",
     # Echo. Three subsystems where there is now one — see
-    # docs/findings/echo-cancellation.md.
+    # docs/archive/2026-09-16/findings/echo-cancellation.md.
     "echo_gate_enabled": "AEC3 cancels; the gate only ever muted",
     "echo_gate_threshold": "same",
     "echo_gate_buffer_seconds": "same",
@@ -140,7 +140,7 @@ class Settings:
     barge_in_enabled: bool = True
     # WebRTC AEC3 acoustic echo cancellation. Runs on every mic frame, in
     # 10 ms blocks, with a reference tapped after the output transport.
-    # See docs/findings/echo-cancellation.md for the four bugs this
+    # See docs/archive/2026-09-16/findings/echo-cancellation.md for the four bugs this
     # replaces and the measurements.
     #
     # THESE TWO ARE NOT READ YET, and are kept rather than deleted with

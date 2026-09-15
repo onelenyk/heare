@@ -4,7 +4,7 @@ A turn ends because the words stopped coming, not because time passed
 in some unrelated timer. `TurnAssembler` owns that single deadline:
 every fragment (and every speech-start) pushes it back, and the turn
 closes only once `hold_s` has elapsed with no speech in progress and
-no new fragment. See docs/findings/two-clocks.md for why a second,
+no new fragment. See docs/archive/2026-09-16/findings/two-clocks.md for why a second,
 independent clock (a silence-based turn-stop strategy racing a
 transcript debounce) produces double answers.
 

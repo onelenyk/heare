@@ -9,7 +9,7 @@ advertised and paired for months without ever being constructed.
 A feature lands here only with its whole contract (see src/plugins.py):
 what it costs to switch off, how it attaches, and a health() that can say
 whether it is actually working. The order they move in, and why, is in
-docs/core-and-plugins.md.
+docs/archive/2026-09-16/core-and-plugins.md.
 """
 from __future__ import annotations
 
