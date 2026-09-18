@@ -139,6 +139,7 @@ class _FakeLoop:
         self.barge_in_enabled = True
         self._empty_stt = empty_stt
         self.turns: list[str] = []
+        self.sources: list[str] = []
         self.said: list[str] = []
 
     @property
@@ -156,8 +157,13 @@ class _FakeLoop:
             text="" if self._empty_stt else "привіт", language="uk"
         )
 
-    async def respond(self, user_text: str, *, speak: bool = True) -> str:
+    async def respond(
+        self, user_text: str, *, speak: bool = True, source: str = "mic"
+    ) -> str:
+        # Same signature as SpineLoop.respond, so a wrapper that drops a
+        # keyword fails here the way it would in the daemon.
         self.turns.append(user_text)
+        self.sources.append(source)
         return "ok"
 
     async def _speak(self, utt, sentence: str) -> None:
@@ -179,7 +185,8 @@ class _FakeLoop:
         # daemon before the bridge had a chance to land.
         await asyncio.sleep(0.05)
         await self.transcribe(b"\x00\x00")
-        await self.respond("привіт")
+        # As SpineLoop._answer does: the source travels with the turn.
+        await self.respond("привіт", source="mic")
 
 
 def _settings(tmp_path, **overrides) -> SimpleNamespace:
@@ -296,6 +303,23 @@ async def test_telemetry_on_writes_the_line(monkeypatch, tmp_path) -> None:
     assert path.exists(), "telemetry was on and wrote nothing"
     rows = [json.loads(line) for line in path.read_text("utf-8").splitlines() if line]
     assert rows and rows[0]["dropped_junk"] is True
+
+
+async def test_the_telemetry_wrapper_passes_the_source_through(
+    monkeypatch, tmp_path
+) -> None:
+    """Commit 8f27476 taught the loop to call respond(turn, source=...);
+    the daemon's telemetry wrapper still took only `speak`, so every
+    spoken turn died with a TypeError before a word was said. The tests
+    were blind: they called the loop's respond, never the daemon's."""
+    loop, state, _, _ = await _boot(
+        monkeypatch, tmp_path, {"mcp": False, "telemetry": True}
+    )
+    assert loop.turns == ["привіт"], "the boot turn never reached respond"
+    assert loop.sources == ["mic"]
+    # The attribute the loop's _answer calls is now the wrapper.
+    await loop.respond("з дашборду", speak=False, source="dashboard")
+    assert loop.sources[-1] == "dashboard", "the wrapper flattened the source"
 
 
 async def test_published_state_is_what_was_wired(monkeypatch, tmp_path) -> None:

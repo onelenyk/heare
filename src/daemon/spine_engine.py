@@ -1205,13 +1205,17 @@ async def run_spine_daemon(
     if telemetry_on:
         real_respond = loop.respond
 
+        # The loop calls respond(turn, source=...) — the wrapper must take
+        # every keyword the loop passes and hand it on, or the daemon's
+        # turn dies with a TypeError the tests never see, because they
+        # call the loop's own respond and not this one.
         async def _respond_with_telemetry(
-            user_text: str, *, speak: bool = True
+            user_text: str, *, speak: bool = True, source: str = "mic"
         ) -> str:
             telemetry.turn_closed()
             reply = ""
             try:
-                reply = await real_respond(user_text, speak=speak)
+                reply = await real_respond(user_text, speak=speak, source=source)
                 return reply
             finally:
                 telemetry.finish(
