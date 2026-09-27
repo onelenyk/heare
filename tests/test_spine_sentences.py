@@ -175,3 +175,26 @@ async def test_whitespace_only_input():
     """Input with only whitespace produces no output."""
     result = [s async for s in sentences(_gen("   \n  \t  "))]
     assert result == []
+
+
+# -- what reaches the synthesiser ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("written", "said"),
+    [
+        ("**Готово** ✅", "Готово"),
+        ("- перший пункт", "перший пункт"),
+        ("1. другий", "другий"),
+        ("### Заголовок", "Заголовок"),
+        ("Код `ls -la` працює", "Код ls -la працює"),
+        # Symbols that are words when read stay.
+        ("Температура 20° і №5", "Температура 20° і №5"),
+        # Nothing left: the caller skips the sentence rather than voicing it.
+        ("👍🏽", ""),
+    ],
+)
+def test_only_what_can_be_said_reaches_the_voice(written: str, said: str) -> None:
+    from src.spine.sentences import speakable
+
+    assert speakable(written) == said

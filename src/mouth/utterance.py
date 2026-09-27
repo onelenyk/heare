@@ -34,6 +34,10 @@ logger = logging.getLogger("heare.mouth")
 Synthesise = Callable[[str], AsyncIterator[bytes]]
 
 
+
+class SilentSentence(RuntimeError):
+    """A sentence was synthesised into no sound at all."""
+
 class Utterance:
     """Sentences go in through ``say``; the speaker gets them as they are
     synthesised; ``finish`` waits for the last of them to leave the room."""
@@ -90,6 +94,13 @@ class Utterance:
             if not self.paused:
                 self._speaker.play(chunk)
                 self._sent += len(chunk)
+        if not pcm and not self.stopped:
+            # Synthesis ended with not one byte for a sentence that had
+            # words: edge-tts's NoAudioReceived, a voice that cannot read
+            # the script. Returning normally here counted a silent reply
+            # as said; raising makes it the mouth failing, and the caller
+            # already knows what to do with that.
+            raise SilentSentence(sentence[:60])
 
     def _muted(self) -> bool:
         """The speaker's own mute — a quiet role's, or the dashboard's —

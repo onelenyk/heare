@@ -346,8 +346,12 @@ async def test_tts_empty_generator_completes_without_hanging() -> None:
 
     reply = await asyncio.wait_for(loop.respond("тихо, будь ласка"), timeout=2.0)
 
+    # A sentence that produced no sound is the mouth failing, not a reply
+    # said: the words are kept, and the failure line is attempted after
+    # them (it is silent too here, and must not hang either).
     assert reply, "reply text is still produced even if nothing was voiced"
-    assert loop.history[-1] == {"role": "assistant", "content": reply}
+    assert {"role": "assistant", "content": reply} in loop.history
+    assert loop.history[-1] == {"role": "assistant", "content": FAILURE_LINE}
     assert audio.played == [], "an empty synth stream must play nothing, not hang"
 
     async def working_synth(text: str) -> AsyncIterator[bytes]:

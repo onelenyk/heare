@@ -82,7 +82,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     from src.spine.hallucinations import is_junk
     from src.spine.llm import resolve_llm, stream_chat
     from src.spine.loop import SpineLoop
-    from src.spine.sentences import sentences
+    from src.spine.sentences import sentences, speakable
     from src.spine.stt import Transcript, transcribe
     from src.spine.tts import synthesise
     from src.spine.turn import TurnAssembler
@@ -152,6 +152,14 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         chosen = voice or pick_voice(text, fallback_lang="uk")
         return synthesise(text, voice=chosen)
 
+    async def _voiced(deltas):
+        """Sentences as the synthesiser should get them: markup and emoji
+        out, and a sentence with nothing left to say never reaches it.
+        The transcript keeps the model's text as written."""
+        async for sentence in sentences(deltas):
+            if spoken := speakable(sentence):
+                yield spoken
+
     loop = SpineLoop(
         audio=audio,
         vad=EnergyVAD(
@@ -165,7 +173,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         ),
         transcribe=_stt,
         stream_chat=_chat,
-        split_sentences=sentences,
+        split_sentences=_voiced,
         synthesise=_tts,
         mouth=Mouth(audio) if audio is not None else None,
         # A voice over the speaker pauses it; duration and text decide.

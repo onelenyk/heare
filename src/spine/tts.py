@@ -92,7 +92,9 @@ async def synthesise(
                 except (BrokenPipeError, ConnectionResetError):
                     return
         except edge_tts.exceptions.NoAudioReceived:
-            pass
+            # No bytes reach the caller, which is how Utterance.say tells a
+            # silent sentence from a spoken one; say which voice it was.
+            logger.warning("tts: no audio for %r with %s", text[:60], voice)
         finally:
             if proc.stdin is not None and not proc.stdin.is_closing():
                 try:

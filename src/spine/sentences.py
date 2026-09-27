@@ -1,4 +1,37 @@
+import re
+import unicodedata
 from typing import AsyncIterator
+
+# Markdown a model writes out of habit, read aloud as «зірочка зірочка»
+# or, on a Cyrillic voice, not at all: bold and code marks anywhere,
+# headings and list markers at the start of a line.
+_MARKUP = re.compile(r"\*\*|__|`+|^\s{0,3}#{1,6}\s+|^\s*(?:[-*•]|\d+[.)])\s+", re.M)
+# Symbols that are words when read: kept.
+_SPOKEN_SYMBOLS = frozenset("№°©®℃€$")
+
+
+def speakable(text: str) -> str:
+    """What of a sentence can be said: markup and pictographs removed.
+
+    The transcript keeps the model's text as written; only what reaches
+    the synthesiser is cleaned. An emoji is not a word — edge-tts either
+    spells its name or goes silent on it — so everything drawn rather
+    than written (emoji, dingbats, arrows, and the joiners and variation
+    selectors that build them) is dropped. Returns "" when nothing is
+    left to say, and the caller skips the sentence.
+    """
+    text = _MARKUP.sub("", text)
+    text = "".join(
+        ch
+        for ch in text
+        if ch in _SPOKEN_SYMBOLS
+        or not (
+            (unicodedata.category(ch) == "So" and ord(ch) >= 0x2190)
+            or ch in "\u200d\ufe0f"
+            or 0x1F3FB <= ord(ch) <= 0x1F3FF
+        )
+    )
+    return re.sub(r"[ \t]+", " ", text).strip()
 
 
 async def sentences(

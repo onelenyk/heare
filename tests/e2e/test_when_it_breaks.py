@@ -73,7 +73,6 @@ async def test_model_streams_then_raises(room) -> None:
 # ── the mouth fails ──────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="src/spine/tts.py:94 — NoAudioReceived is swallowed, a sentence goes silent and the turn counts as done")
 async def test_tts_returns_no_audio_is_treated_as_failure(room) -> None:
     """When the synthesiser returns no audio (edge-tts NoAudioReceived,
     silently swallowed in src/spine/tts.py:94), the turn must not silently
@@ -82,18 +81,17 @@ async def test_tts_returns_no_audio_is_treated_as_failure(room) -> None:
     room.will_say("Готово, готово.")
     room.silent_voice = True  # Every sentence yields no audio
 
-    said = await room.told("Дока, привіт.")
+    await room.told("Дока, привіт.")
 
-    # What the person heard: the failure line, not silence.
-    # When TTS fails, it should trigger the mouth failure path and speak
-    # FAILURE_LINE instead of finishing silently.
-    assert said == FAILURE_LINE
+    # What the person is offered: the failure line, not silence. The
+    # record keeps the model's own answer — a mouth failure keeps the
+    # words that existed (loop.py), so the check is on what was voiced.
+    assert FAILURE_LINE in [text for text, _voice in room.voiced]
 
 
 # ── text formatting ──────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="no markdown/emoji scrub before TTS (known-broken.md)")
 async def test_markdown_and_emoji_are_stripped_before_tts(room) -> None:
     """When the model answers with formatting and symbols that are rendered
     as silence by edge-tts on Cyrillic text, they must be stripped before
