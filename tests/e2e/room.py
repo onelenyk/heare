@@ -51,6 +51,7 @@ cost it again.
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -967,7 +968,10 @@ class Worker:
     shown; each answer is plain text, i.e. a finished job.
     """
 
-    def __init__(self, *answers: str) -> None:
+    def __init__(self, *answers: str | dict) -> None:
+        # A string is a finished job. A dict is the worker's model calling
+        # tools: {"tool_calls": [("remind", {...}), ...]} — the real Hands
+        # runs them and asks again, so script the next answer after it.
         self._answers = list(answers)
         self.calls: list[tuple[list[dict], list[dict]]] = []
         self.gate: asyncio.Event | None = None
@@ -979,6 +983,16 @@ class Worker:
             # unset Event and the worker waits on it, still "running".
             await self.gate.wait()
         answer = self._answers.pop(0) if self._answers else "Готово."
+        if isinstance(answer, dict):
+            calls = [
+                {
+                    "id": f"call-{len(self.calls)}-{i}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
+                }
+                for i, (name, args) in enumerate(answer["tool_calls"])
+            ]
+            return {"role": "assistant", "content": "", "tool_calls": calls}
         return {"role": "assistant", "content": answer}
 
     def offered(self, n: int = -1) -> set[str]:
@@ -993,7 +1007,7 @@ class Worker:
         return self.calls[n][0][-1]["content"]
 
 
-def hire(monkeypatch: Any, *answers: str) -> Worker:
+def hire(monkeypatch: Any, *answers: str | dict) -> Worker:
     """Put a scripted worker behind `delegate` for the length of a test."""
     worker = Worker(*answers)
 

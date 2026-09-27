@@ -16,7 +16,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from src.agent.hands import PROGRESS_AFTER, Hands
 
@@ -84,6 +84,16 @@ class McpHands(Hands):
         super().__init__(settings, **kwargs)
         self._mcp_provider = mcp_provider
         self._on_long_running = on_long_running
+        # Verbs the voice lends: name -> the voice's own implementation.
+        # The worker is shown `remind` (src/agent/tools/system.py), and
+        # `execute_direct` has no executor for it — nor should it: a
+        # reminder is a line of the conversation, said later, and only
+        # the voice keeps the conversation. So the voice lends its verb.
+        self._lent: dict[str, Callable[[dict], Awaitable[str]]] = {}
+
+    def lend(self, name: str, run: Callable[[dict], Awaitable[str]]) -> None:
+        """Let the worker call one of the voice's verbs."""
+        self._lent[name] = run
 
     async def _beacon(self, label: str) -> None:
         """Say "still working" the spine's way, or fall back to the daemon's."""
@@ -105,6 +115,13 @@ class McpHands(Hands):
                 logger.exception("[SPINE TOOLS] long-running callback failed")
 
     async def _execute(self, name: str, arguments: dict) -> str:
+        if name in self._lent:
+            intent_id = self._record_pending(
+                name, json.dumps(arguments, ensure_ascii=False)
+            )
+            output = await self._lent[name](arguments)
+            self._record_result(intent_id, output)
+            return output
         if not name.startswith("mcp__"):
             return await super()._execute(name, arguments)
 

@@ -176,12 +176,6 @@ TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
-        name="cancel",
-        description="Cancel the in-flight action and drain pending intents.",
-        handler="cancel",
-        schema_fields={},
-    ),
-    ToolDef(
         name="create_archive",
         description="Create tar or zip archive from files/directories with compression options.",
         handler="archive_create",
@@ -672,6 +666,9 @@ TOOLS: list[ToolDef] = [
         handler="memory_status",
         schema_fields={},
     ),
+    # No executor in direct.py, on purpose: a reminder is a line of the
+    # conversation, said later. The spine's hands run the voice's own verb,
+    # lent to them (src/spine/verbs.py `lent=True`, src/spine/hands.py).
     ToolDef(
         name="remind",
         description="Set a reminder to say something later when the person is present and quiet.",
@@ -696,7 +693,6 @@ _SERIALIZERS: dict[str, ArgsSerializer] = {
     "write": _write_serializer,
     "web_fetch": _url_serializer,
     "web_search": _query_serializer,
-    "cancel": _empty_serializer,
     "delegate": lambda args: str(args.get("task", "")).strip(),
     "create_archive": _json_serializer,
     "extract_archive": _json_serializer,

@@ -212,3 +212,27 @@ async def test_a_promised_reminder_is_set_not_handed_off(room) -> None:
 
     assert room.intents(), "the reminder must actually be held"
 
+
+async def test_the_hands_can_set_a_reminder(room, monkeypatch) -> None:
+    """«Нагадай, коли закінчиться білд» is a job that ends in a line said
+    later. The hands are shown `remind`; it runs as the voice's own verb,
+    lent to them, so the reminder is held exactly as if the voice had set
+    it — and the action is written down like any other."""
+    hands = hire(
+        monkeypatch,
+        {"tool_calls": [("remind", {"minutes": 15, "text": "білд мав закінчитись"})]},
+        "Поставила нагадування за 15 хвилин.",
+    )
+    room.will_say(
+        Says(calls=(("delegate", {"task": "нагадай за 15 хвилин про білд"}),)),
+        "Нагадаю про білд за чверть години.",
+    )
+
+    await room.told("Дока, нагадай за чверть години глянути білд")
+    await until(lambda: "Нагадаю про білд за чверть години." in lines(room))
+
+    assert "remind" in hands.offered(0)
+    assert any("білд" in str(row) for row in room.intents()), room.intents()
+    tool_result = next(m for m in hands.calls[1][0] if m["role"] == "tool")
+    assert tool_result["content"] == "Добре, нагадаю за 15 хвилин."
+

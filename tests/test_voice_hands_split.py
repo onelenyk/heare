@@ -567,3 +567,28 @@ def test_the_worker_answers_in_the_language_being_spoken() -> None:
     hands = Hands(Settings(), session_state=EnglishSession())
     assert hands._language() == "English"
     assert "English" in SYSTEM.format(language=hands._language())
+
+
+def test_every_tool_the_hands_see_can_be_carried_out() -> None:
+    """A tool the model can see is a promise. `remind` and `cancel` were
+    shown to the worker for months with nothing behind them: `cancel` a
+    pipecat-era command whose handler went with that engine, `remind` a
+    voice verb that leaked into the shared registry. A call to either
+    ended in «Unknown direct tool».
+
+    Executors are read from `execute_direct`'s dispatch, plus the verbs the
+    voice lends to the hands (src/spine/verbs.py, `lent=True`)."""
+    import re
+    from pathlib import Path
+
+    from src.agent.hands import Hands
+    from src.spine.verbs import VERBS
+
+    source = Path("src/agent/tools/direct.py").read_text()
+    dispatch = source[source.index("async def execute_direct(") :]
+    dispatch = dispatch[: dispatch.index("\nasync def ", 10)]
+    carried = set(re.findall(r'tool == "([a-z_]+)"', dispatch))
+    carried |= {v.name for v in VERBS if getattr(v, "lent", False)}
+
+    shown = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
+    assert shown - carried == set()

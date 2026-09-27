@@ -22,6 +22,10 @@ world — the screen, the panel, a notebook — until it was choosing among
 nine schemas, ~1,300 prompt tokens a turn. A slow door is fixed in the
 hands, not by cutting a new one.
 
+A conversation verb can be lent to the hands (``lent=True``): the worker
+is shown it and calls it, and it runs here, because what it touches is
+the conversation. ``remind`` is: a job may end in something to say later.
+
 To add a verb: ask first whether it is about the conversation or about
 the world. About the world, it is a tool for the hands
 (``src/agent/tools/system.py``), not a verb. About the conversation, it
@@ -69,6 +73,9 @@ class Verb:
     required: tuple[str, ...]
     run: Callable[[Any, dict], Awaitable[str]]
     offered: Callable[[Any], bool] | None = None
+    # Lent to the hands: the worker may call it too, and it runs here, in
+    # the voice, because what it touches is the conversation.
+    lent: bool = False
 
     @property
     def schema(self) -> dict:
@@ -93,6 +100,7 @@ def verb(
     *,
     required: Sequence[str] = (),
     offered: Callable[[Any], bool] | None = None,
+    lent: bool = False,
 ):
     """Make a ``VoiceToolbox`` method a verb. The method's name is the verb's."""
 
@@ -105,6 +113,7 @@ def verb(
             tuple(required),
             fn,
             offered,
+            lent,
         )
         return fn
 
@@ -154,6 +163,10 @@ class VoiceToolbox:
         self._hands = (hands_factory or _default_hands_factory)(settings)
         self._hands.set_delivery(deliver)
         self._verbs = {v.name: v for v in VERBS if v.offered is None or v.offered(self)}
+        lend = getattr(self._hands, "lend", None)
+        for v in self._verbs.values():
+            if v.lent and lend is not None:
+                lend(v.name, lambda arguments, name=v.name: self.execute(name, arguments))
 
     @property
     def schemas(self) -> list[dict]:
@@ -275,6 +288,9 @@ class VoiceToolbox:
             "text": {"type": "string", "description": "What to remind about."},
         },
         required=("minutes", "text"),
+        # The hands need it too: «нагадай, коли закінчиться білд» is a job
+        # that ends in a line said later.
+        lent=True,
     )
     async def remind(self, arguments: dict) -> str:
         """Stored as an intent with a due time; the engine speaks it."""
