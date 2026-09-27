@@ -150,7 +150,24 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
         # The reply's script picks the voice: Cyrillic on an English
         # voice is silence. An explicit --voice wins.
         chosen = voice or pick_voice(text, fallback_lang="uk")
-        return synthesise(text, voice=chosen)
+        return _timed(synthesise(text, voice=chosen), text)
+
+    async def _timed(chunks: AsyncIterator[bytes], text: str) -> AsyncIterator[bytes]:
+        """Log how long the synthesiser took to its first sound. Never
+        measured before: the turn telemetry stamps «first audio» when the
+        sentence is handed over, not when anything is heard."""
+        import time as _time
+
+        t0 = _time.monotonic()
+        first = True
+        async for chunk in chunks:
+            if first:
+                first = False
+                logger.info(
+                    "tts: first audio in %.0f ms (%d chars)",
+                    (_time.monotonic() - t0) * 1000, len(text),
+                )
+            yield chunk
 
     async def _voiced(deltas):
         """Sentences as the synthesiser should get them: markup and emoji
@@ -163,7 +180,7 @@ async def _build_loop(settings, *, audio, voice: str, hold_s: float,
     loop = SpineLoop(
         audio=audio,
         vad=EnergyVAD(
-            stop_ms=int(getattr(settings, "spine_vad_stop_ms", 800))
+            stop_ms=int(getattr(settings, "spine_vad_stop_ms", 600))
         ),
         assembler=TurnAssembler(
             hold_s=hold_s,
@@ -705,7 +722,7 @@ async def _amain(args: argparse.Namespace) -> int:
     # renders Cyrillic on an English voice as silence, so the reply's
     # script decides. An explicit --voice overrides everything.
     hold = args.hold or float(
-        getattr(settings, "spine_turn_hold_seconds", 1.3)
+        getattr(settings, "spine_turn_hold_seconds", 0.8)
     )
     voice = args.voice
 

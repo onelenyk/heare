@@ -822,7 +822,7 @@ async def run_spine_daemon(
                 settings,
                 audio=audio,
                 voice="",
-                hold_s=float(getattr(settings, "spine_turn_hold_seconds", 1.3)),
+                hold_s=float(getattr(settings, "spine_turn_hold_seconds", 0.8)),
                 full=True,
                 state=state,
             )

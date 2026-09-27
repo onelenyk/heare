@@ -285,11 +285,16 @@ class Settings:
     # How long the spine waits after your words stop before answering.
     # The second value applies when the words themselves say you are not
     # finished (a trailing «і», «тобто», no closing punctuation).
-    spine_turn_hold_seconds: float = 1.3
+    # 27.09: 1.3 → 0.8 for a finished sentence. It was ~2 s of deliberate
+    # waiting in a ~4 s answer; an unfinished thought still gets 2.6.
+    spine_turn_hold_seconds: float = 0.8
     spine_turn_continuation_hold_seconds: float = 2.6
     # Silence that ends an utterance for the VAD. Short enough to stay
     # responsive, long enough that a breath is not a full stop.
-    spine_vad_stop_ms: int = 800
+    # 27.09: 800 → 600. It went up to 800 (4ceb3e3) when a breath split a
+    # turn in two; since then the assembler rejoins a split sentence
+    # within the hold, so a short stop costs a fragment, not a turn.
+    spine_vad_stop_ms: int = 600
     # LLM provider switching (deepseek | zai | opencode | openrouter)
     #
     # Every `<provider>_base_url` and `<provider>_model` below is read by
