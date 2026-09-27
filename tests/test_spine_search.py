@@ -396,7 +396,7 @@ async def test_the_verb_answers_out_loud(tmp_path) -> None:
     """`SpineLoop._run_tool` speaks what a verb returns, verbatim — so
     the sentence has to be finished by the toolbox, not by the model."""
     from src.config import Settings
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
     p = SpinePersistence(tmp_path / "heare.db")
     turn = p.log_user_turn("запам'ятай: таймаут піднімаємо до тридцяти, це тимчасово")
@@ -410,7 +410,7 @@ async def test_the_verb_answers_out_loud(tmp_path) -> None:
         pass
 
     toolbox = VoiceToolbox(
-        Settings(), None, deliver, hands_factory=lambda s: FakeHands(), persist=p
+        Settings(), deliver, hands_factory=lambda s: FakeHands(), persist=p
     )
     # Settle the rows into the past: the verb will not answer with what
     # is still being said, and these were written a moment ago. Not past
@@ -424,7 +424,7 @@ async def test_the_verb_answers_out_loud(tmp_path) -> None:
     p._conn.execute("UPDATE transcripts SET ts = ?", (max(now - 600, midnight + 1),))
     p._conn.commit()
 
-    said = await toolbox.execute("search_conversations", {"query": "таймаут"})
+    said = await toolbox.execute("recall", {"query": "таймаут"})
     p.close()
 
     assert "тридцяти" in said and "тимчасово" in said
@@ -436,7 +436,7 @@ async def test_the_verb_says_so_when_nothing_is_written_down() -> None:
     """With persistence off there is nothing to search, and inventing an
     apology about not finding anything would be a different lie."""
     from src.config import Settings
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
     class FakeHands:
         def set_delivery(self, fn):
@@ -446,17 +446,15 @@ async def test_the_verb_says_so_when_nothing_is_written_down() -> None:
         pass
 
     toolbox = VoiceToolbox(
-        Settings(), None, deliver, hands_factory=lambda s: FakeHands(), persist=None
+        Settings(), deliver, hands_factory=lambda s: FakeHands(), persist=None
     )
-    assert await toolbox.execute("search_conversations", {"query": "таймаут"}) == (
-        "Я не веду записів наших розмов."
-    )
+    assert "recall" not in {s["function"]["name"] for s in toolbox.schemas}
 
 
 @pytest.mark.asyncio
 async def test_the_verb_never_raises_into_the_conversation(tmp_path) -> None:
     from src.config import Settings
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
     class Exploding:
         def search_transcripts(self, *a, **kw):
@@ -471,12 +469,11 @@ async def test_the_verb_never_raises_into_the_conversation(tmp_path) -> None:
 
     toolbox = VoiceToolbox(
         Settings(),
-        None,
         deliver,
         hands_factory=lambda s: FakeHands(),
         persist=Exploding(),
     )
-    said = await toolbox.execute("search_conversations", {"query": "таймаут"})
+    said = await toolbox.execute("recall", {"query": "таймаут"})
     assert said == "Не вийшло. Спробуй ще раз."
 
 
@@ -485,9 +482,9 @@ def test_now_is_read_once_per_search() -> None:
     they disagree by a day — «вчора» searched, «позавчора» said."""
     import inspect
 
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
-    source = inspect.getsource(VoiceToolbox._search_conversations)
+    source = inspect.getsource(VoiceToolbox.recall)
     assert source.count("datetime.now()") == 1
 
 

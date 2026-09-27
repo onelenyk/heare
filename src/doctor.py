@@ -117,7 +117,8 @@ def _feature_lines(entries: list[dict]) -> list[str]:
 
 def _tool_section() -> list[str]:
     from src.agent.hands import unreachable_tools
-    from src.agent.tools.system import TOOLS, VOICE_TOOLS
+    from src.agent.tools.system import TOOLS
+    from src.spine.verbs import VERBS
 
     hidden = unreachable_tools()
     names = {t.name for t in TOOLS if t.enabled}
@@ -126,7 +127,7 @@ def _tool_section() -> list[str]:
     lines = [
         f"  оголошено      {len(names)}",
         f"  доручається    {len(offered)}",
-        f"  голосу прямо   {len(VOICE_TOOLS & names)}",
+        f"  голосу прямо   {len(VERBS)}",
     ]
     if hidden:
         from src.agent.hands import _BROWSER_TOOLS

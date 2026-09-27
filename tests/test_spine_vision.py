@@ -228,31 +228,18 @@ def test_a_ledger_failure_never_swallows_the_answer(monkeypatch) -> None:
     assert said == "На екрані таблиця з трьома потягами."
 
 
-# ── reachable from the voice, not only from the worker ────────────────
+# ── reachable through the hands ─────────────────────────────────────────
 
 
-def test_the_voice_model_is_handed_the_verb() -> None:
-    from src.spine.tools import SCHEMAS
+def test_the_hands_are_handed_the_eye() -> None:
+    """The screen is part of the world, and the world is behind
+    `delegate`: the hands carry `look_at_screen`, and the voice's one
+    door names the screen so the model never answers «не бачу» first."""
+    from src.agent.hands import Hands
+    from src.config import Settings
+    from src.spine.verbs import VERBS
 
-    assert "look_at_screen" in {s["function"]["name"] for s in SCHEMAS}
-
-
-def test_the_verb_speaks_the_reason_it_could_not_look(monkeypatch) -> None:
-    """A missing permission and a missing key are things a person can go
-    and fix. "Не вийшло" hides which one it was."""
-    from src.spine.tools import VoiceToolbox
-
-    class _NoHands:
-        def set_delivery(self, d): ...
-        def start(self, t): raise AssertionError("must not delegate")
-        def cancel_all(self): return 0
-
-    box = VoiceToolbox(
-        settings=_settings(openrouter_api_key=None),
-        memory=None,
-        deliver=lambda t: asyncio.sleep(0),
-        hands_factory=lambda s: _NoHands(),
-        persist=None,
-    )
-    said = asyncio.run(box.execute("look_at_screen", {"question": "що там"}))
-    assert "ключ" in said
+    offered = {s["function"]["name"] for s in Hands(Settings())._tool_schemas()}
+    assert "look_at_screen" in offered
+    door = next(v for v in VERBS if v.name == "delegate")
+    assert "screen" in door.description

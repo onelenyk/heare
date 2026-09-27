@@ -24,16 +24,15 @@ from src.config import Settings
 # ── what the conversational model can see ─────────────────────────────
 
 
-def test_the_voice_agent_sees_its_five_verbs() -> None:
+def test_the_voice_agent_sees_its_verbs_and_the_world_through_one_door() -> None:
     """The schemas the voice model is handed, from the toolbox that hands
-    them over. This used to read the pipeline's registration helpers; they
-    went with the engine, and the spine builds its own — so asserting
-    against the old ones would have proved something about deleted code.
-    """
-    from src.spine.tools import SCHEMAS
+    them over. The world — screen, panel, files, browser — has exactly one
+    verb; everything else is about the conversation itself."""
+    from src.spine.verbs import VERBS, Category
 
-    names = {s["function"]["name"] for s in SCHEMAS}
-    assert names == system.VOICE_TOOLS
+    world = [v.name for v in VERBS if v.category is Category.WORLD]
+    assert world == ["delegate"]
+    assert {v.name for v in VERBS} == {"delegate", "recall", "remind", "forget"}
 
 
 def test_the_worker_is_offered_everything_except_delegate() -> None:
@@ -58,24 +57,11 @@ def test_the_worker_is_offered_everything_except_delegate() -> None:
     assert names == expected
 
 
-def test_delegate_exists_and_is_one_of_the_verbs() -> None:
+def test_what_left_the_voice_is_still_in_the_hands() -> None:
+    """Nothing was lost by taking the screen and the panel out of the
+    voice: the hands carry the same tools."""
     names = {t.name for t in system.TOOLS if t.enabled}
-    assert "delegate" in names
-    assert system.VOICE_TOOLS == {
-        "delegate",
-        "remind",
-        "remember",
-        "recall",
-        "forget",
-        "search_conversations",
-        "read_display",
-        "clear_display",
-        "look_at_screen",
-    }
-
-
-
-
+    assert {"look_at_screen", "read_display", "clear_display"} <= names
 
 
 # ── the prompt must not describe tools that are not there ─────────────
@@ -134,10 +120,10 @@ def test_hard_constraints_make_delegation_an_obligation() -> None:
 
 
 def test_delegate_returns_before_the_work_finishes() -> None:
-    """The entire point: the speaking path never waits — _delegate returns
+    """The entire point: the speaking path never waits — delegate returns
     at once with an acknowledgement, never awaiting the job it just started.
     """
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
     started: list[str] = []
 
@@ -151,13 +137,6 @@ def test_delegate_returns_before_the_work_finishes() -> None:
         def set_delivery(self, fn):
             pass
 
-    class FakeMemory:
-        async def store(self, entry):
-            pass
-
-        async def search(self, query, limit=3):
-            return []
-
     async def deliver(text: str) -> None:
         pass
 
@@ -165,9 +144,9 @@ def test_delegate_returns_before_the_work_finishes() -> None:
         return SlowHands()
 
     toolbox = VoiceToolbox(
-        Settings(), FakeMemory(), deliver, hands_factory=hands_factory
+        Settings(), deliver, hands_factory=hands_factory
     )
-    result = toolbox._delegate({"task": "count to a million"})
+    result = asyncio.run(toolbox.delegate({"task": "count to a million"}))
 
     # The delegate returns instantly with an acknowledgement, never awaiting.
     assert result == "Прийнято, роблю."
@@ -178,7 +157,7 @@ def test_delegate_rejects_an_empty_task() -> None:
     """The voice agent must be told what to do; an empty task gets a request
     for clarification instead of silent failure or a meaningless response.
     """
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
     class FakeHands:
         def start(self, task: str) -> None:
@@ -190,13 +169,6 @@ def test_delegate_rejects_an_empty_task() -> None:
         def set_delivery(self, fn):
             pass
 
-    class FakeMemory:
-        async def store(self, entry):
-            pass
-
-        async def search(self, query, limit=3):
-            return []
-
     async def deliver(text: str) -> None:
         pass
 
@@ -204,9 +176,9 @@ def test_delegate_rejects_an_empty_task() -> None:
         return FakeHands()
 
     toolbox = VoiceToolbox(
-        Settings(), FakeMemory(), deliver, hands_factory=hands_factory
+        Settings(), deliver, hands_factory=hands_factory
     )
-    result = toolbox._delegate({"task": "   "})
+    result = asyncio.run(toolbox.delegate({"task": "   "}))
 
     # Empty task gets a request for clarification.
     assert result == "Скажи, що саме зробити."

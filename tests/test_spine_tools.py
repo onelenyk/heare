@@ -1,4 +1,5 @@
-"""Tests for src/spine/tools.py — no network, fakes and a temp DB only."""
+"""Tests for src/spine/verbs.py and src/spine/hands.py — no network, fakes
+and a temp DB only."""
 
 from __future__ import annotations
 
@@ -9,14 +10,13 @@ from typing import Any
 import pytest
 
 from src.agent.jobs import DONE, FAILED, INTERRUPTED, RUNNING
-from src.memory.base import MemoryEntry, MemoryType
-from src.spine.tools import (
+from src.spine.hands import (
     McpHands,
     SpineActionLog,
-    VoiceToolbox,
     make_hands_factory,
     open_spine_records,
 )
+from src.spine.verbs import VERBS, Category, VoiceToolbox
 
 
 class FakeHands:
@@ -47,45 +47,12 @@ class BrokenHands(FakeHands):
         raise RuntimeError("boom")
 
 
-class FakeMemory:
-    """Fake SQLiteBackend-compatible memory: store/search only."""
-
-    def __init__(self, search_results: list[MemoryEntry] | None = None) -> None:
-        self.stored: list[MemoryEntry] = []
-        self.search_calls: list[tuple[str, int]] = []
-        self._search_results = search_results or []
-
-    async def store(self, entry: MemoryEntry) -> str:
-        self.stored.append(entry)
-        return entry.id or "fake-id"
-
-    async def search(
-        self, query: str, *, limit: int = 5, types: list | None = None
-    ) -> list[MemoryEntry]:
-        self.search_calls.append((query, limit))
-        return self._search_results[:limit]
-
-
-class BrokenMemory(FakeMemory):
-    async def store(self, entry: MemoryEntry) -> str:
-        raise RuntimeError("db is on fire")
-
-    async def search(
-        self, query: str, *, limit: int = 5, types: list | None = None
-    ) -> list[MemoryEntry]:
-        raise RuntimeError("db is on fire")
-
-
-def _entry(content: str, id_: str = "id1") -> MemoryEntry:
-    return MemoryEntry(id=id_, type=MemoryType.FACT, content=content)
-
-
 async def _deliver(text: str) -> None:
     pass
 
 
 def _make_toolbox(
-    memory: Any = None, deliver=None, hands_cls: type = FakeHands
+    deliver=None, hands_cls: type = FakeHands, **kwargs: Any
 ) -> tuple[VoiceToolbox, FakeHands]:
     holder: dict[str, FakeHands] = {}
 
@@ -96,9 +63,9 @@ def _make_toolbox(
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=memory if memory is not None else FakeMemory(),
         deliver=deliver or _deliver,
         hands_factory=factory,
+        **kwargs,
     )
     return toolbox, holder["hands"]
 
@@ -106,41 +73,27 @@ def _make_toolbox(
 # -- schemas -------------------------------------------------------------
 
 
-def test_schemas_are_exactly_the_eight_named_tools():
-    """`forget` joined them when the assistant started keeping what it
-    overhears: a person has to be able to say "forget that" out loud and
-    have it be true, without opening a database.
-    `search_conversations` joined them once there was an index over what
-    was said — `recall` finds facts someone chose to store, which is a
-    different question from what was actually said and when.
-    `look_at_screen` is the eighth: the panel verbs let it see this app's
-    own display, and that is not the screen a person means when they ask
-    what you can see.
-    `read_display` and `clear_display` joined them on 9 September, after
-    a live run in which the assistant denied there was anything on a
-    screen the person was looking at: both panel verbs lived behind
-    `delegate`, so the model had no screen in its world at all.
-    `remind` is the ninth: reminders are the first reason to speak
-    that is about the person, not about what is happening."""
-    toolbox, _ = _make_toolbox()
-    schemas = toolbox.schemas
-    assert len(schemas) == 9
-    names = {s["function"]["name"] for s in schemas}
-    assert names == {
-        "delegate",
-        "remind",
-        "remember",
-        "recall",
-        "forget",
-        "search_conversations",
-        "read_display",
-        "clear_display",
-        "look_at_screen",
+def test_every_verb_says_what_it_is_about():
+    """Two categories, and the world has one door. A tenth verb for the
+    world is a tool for the hands, not a new window for the voice."""
+    assert {v.category for v in VERBS} <= set(Category)
+    assert [v.name for v in VERBS if v.category is Category.WORLD] == ["delegate"]
+
+
+def test_the_model_is_shown_only_what_can_be_done_here():
+    """Without transcripts there is nothing to recall; without the room
+    kept, nothing to forget. A tool the model can see is a promise."""
+    bare, _ = _make_toolbox()
+    assert {s["function"]["name"] for s in bare.schemas} == {"delegate", "remind"}
+
+    kept, _ = _make_toolbox(persist=object(), overheard=True)
+    assert {s["function"]["name"] for s in kept.schemas} == {
+        "delegate", "recall", "remind", "forget",
     }
 
 
 def test_schemas_are_valid_json_schema_shape():
-    toolbox, _ = _make_toolbox()
+    toolbox, _ = _make_toolbox(persist=object(), overheard=True)
     for schema in toolbox.schemas:
         assert schema["type"] == "function"
         fn = schema["function"]
@@ -148,9 +101,8 @@ def test_schemas_are_valid_json_schema_shape():
         assert isinstance(fn["description"], str) and fn["description"]
         params = fn["parameters"]
         assert params["type"] == "object"
-        # A verb that takes no arguments has an empty `properties`, and
-        # that is a valid schema — `read_display` and `clear_display`
-        # need nothing said to them. What must never be empty is the
+        # A verb that takes no arguments may have an empty `properties`,
+        # and that is a valid schema. What must never be empty is the
         # description: it is the only thing telling the model the verb
         # exists at all.
         assert isinstance(params["properties"], dict)
@@ -200,87 +152,6 @@ async def test_delegate_missing_task_key_is_refused():
     assert isinstance(reply, str) and reply
 
 
-# -- remember --------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_remember_stores_content_and_confirms():
-    memory = FakeMemory()
-    toolbox, _ = _make_toolbox(memory=memory)
-    reply = await toolbox.execute(
-        "remember", {"type": "fact", "content": "любить каву без цукру"}
-    )
-    assert len(memory.stored) == 1
-    stored = memory.stored[0]
-    assert stored.content == "любить каву без цукру"
-    assert stored.type == MemoryType.FACT
-    assert isinstance(reply, str) and reply
-
-
-@pytest.mark.asyncio
-async def test_remember_empty_content_is_refused_without_storing():
-    memory = FakeMemory()
-    toolbox, _ = _make_toolbox(memory=memory)
-    reply = await toolbox.execute("remember", {"type": "fact", "content": ""})
-    assert memory.stored == []
-    assert isinstance(reply, str) and reply
-
-
-@pytest.mark.asyncio
-async def test_remember_falls_back_to_fact_type_on_bad_type():
-    memory = FakeMemory()
-    toolbox, _ = _make_toolbox(memory=memory)
-    await toolbox.execute("remember", {"type": "nonsense", "content": "щось"})
-    assert memory.stored[0].type == MemoryType.FACT
-
-
-# -- recall ------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_recall_formats_top_results_as_prose():
-    memory = FakeMemory(
-        search_results=[
-            _entry("живе у Львові", "id1"),
-            _entry("любить каву", "id2"),
-            _entry("програміст", "id3"),
-            _entry("не має значення, зайвий", "id4"),
-        ]
-    )
-    toolbox, _ = _make_toolbox(memory=memory)
-    reply = await toolbox.execute("recall", {"query": "де живе"})
-    assert memory.search_calls == [("де живе", 3)]
-    assert "живе у Львові" in reply
-    assert "любить каву" in reply
-    assert "програміст" in reply
-    assert "не має значення, зайвий" not in reply
-
-
-@pytest.mark.asyncio
-async def test_recall_zero_results():
-    """Scoped to the notebook, not to the world.
-
-    Observed live: the model called `recall` alongside
-    `search_conversations`, and every acknowledgement a verb returns is
-    spoken verbatim, one after another. A bare "Нічого не знайшов"
-    landed straight after a real finding from the transcripts and
-    contradicted it in the same breath.
-    """
-    memory = FakeMemory(search_results=[])
-    toolbox, _ = _make_toolbox(memory=memory)
-    reply = await toolbox.execute("recall", {"query": "щось невідоме"})
-    assert reply == "У записнику про це нічого."
-
-
-@pytest.mark.asyncio
-async def test_recall_empty_query_is_refused():
-    memory = FakeMemory()
-    toolbox, _ = _make_toolbox(memory=memory)
-    reply = await toolbox.execute("recall", {"query": ""})
-    assert memory.search_calls == []
-    assert isinstance(reply, str) and reply
-
-
 # -- unknown tool / error handling -----------------------------------------
 
 
@@ -295,20 +166,6 @@ async def test_unknown_tool_returns_refusal_not_exception():
 async def test_execute_never_raises_when_hands_start_throws():
     toolbox, _ = _make_toolbox(hands_cls=BrokenHands)
     reply = await toolbox.execute("delegate", {"task": "будь-що"})
-    assert isinstance(reply, str) and reply
-
-
-@pytest.mark.asyncio
-async def test_execute_never_raises_when_memory_store_throws():
-    toolbox, _ = _make_toolbox(memory=BrokenMemory())
-    reply = await toolbox.execute("remember", {"type": "fact", "content": "щось"})
-    assert isinstance(reply, str) and reply
-
-
-@pytest.mark.asyncio
-async def test_execute_never_raises_when_memory_search_throws():
-    toolbox, _ = _make_toolbox(memory=BrokenMemory())
-    reply = await toolbox.execute("recall", {"query": "щось"})
     assert isinstance(reply, str) and reply
 
 
@@ -632,7 +489,7 @@ def test_the_factory_still_builds_a_gated_mcp_capable_worker():
 
 @pytest.mark.asyncio
 async def test_a_long_job_calls_the_progress_seam_with_its_label(monkeypatch):
-    monkeypatch.setattr("src.spine.tools.BEACON_INTERVAL_S", 0.01)
+    monkeypatch.setattr("src.spine.hands.BEACON_INTERVAL_S", 0.01)
     seen: list[str] = []
 
     worker = _worker(on_long_running=seen.append, hold=0.1, answer="все")
@@ -644,7 +501,7 @@ async def test_a_long_job_calls_the_progress_seam_with_its_label(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_the_progress_seam_may_be_async(monkeypatch):
-    monkeypatch.setattr("src.spine.tools.BEACON_INTERVAL_S", 0.01)
+    monkeypatch.setattr("src.spine.hands.BEACON_INTERVAL_S", 0.01)
     seen: list[str] = []
 
     async def on_long_running(label: str) -> None:
@@ -658,7 +515,7 @@ async def test_the_progress_seam_may_be_async(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_broken_progress_seam_does_not_stop_the_job(monkeypatch):
-    monkeypatch.setattr("src.spine.tools.BEACON_INTERVAL_S", 0.01)
+    monkeypatch.setattr("src.spine.hands.BEACON_INTERVAL_S", 0.01)
     delivered: list[str] = []
 
     async def deliver(text: str) -> None:
@@ -677,7 +534,7 @@ async def test_a_broken_progress_seam_does_not_stop_the_job(monkeypatch):
 async def test_without_a_seam_the_beacon_is_the_daemons_own(monkeypatch):
     """No callback = today's behaviour: Hands._beacon, which logs that it
     is still working and says nothing out loud."""
-    monkeypatch.setattr("src.spine.tools.BEACON_INTERVAL_S", 0.01)
+    monkeypatch.setattr("src.spine.hands.BEACON_INTERVAL_S", 0.01)
     worker = _worker(hold=0.05, answer="тихо")
     worker.set_delivery(_deliver)
     await worker._run("робота", "робота")

@@ -13,7 +13,7 @@ import pytest
 
 from tests.e2e.room import Says, close_room, open_room
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.e2e]
+pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.e2e_text]
 
 
 @pytest.fixture
@@ -79,7 +79,7 @@ async def test_the_search_does_not_answer_with_the_room(listening) -> None:
     listening.remembers("а по бекапах беремо rsync на другий диск", days_ago=3)
 
     listening.will_say(
-        Says(calls=(("search_conversations", {"query": "криптовалюта"}),))
+        Says(calls=(("recall", {"query": "криптовалюта"}),))
     )
     said = await listening.told("Дока, що я казав про криптовалюту?")
 

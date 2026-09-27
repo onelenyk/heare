@@ -15,19 +15,9 @@ from src.agent.tools import system
 from src.spine import intents as I
 from src.spine.engine import EngineState, judge
 from src.spine.situation import Situation
-from src.spine.tools import VoiceToolbox
+from src.spine.verbs import VoiceToolbox
 
 NOW = 1_000_000.0
-
-
-class FakeMemory:
-    """Fake memory for the toolbox."""
-
-    async def store(self, entry):
-        pass
-
-    async def search(self, query, *, limit=5, types=None):
-        return []
 
 
 class FakeHands:
@@ -166,9 +156,11 @@ def sit(**kw) -> Situation:
 # ── verb schema and registration ──────────────────────────────────────
 
 
-def test_remind_in_voice_tools() -> None:
-    """The remind verb is in the set of voice tools."""
-    assert "remind" in system.VOICE_TOOLS
+def test_remind_is_a_verb_about_the_conversation() -> None:
+    """A reminder is a line of the conversation, said later."""
+    from src.spine.verbs import VERBS, Category
+
+    assert {v.name: v.category for v in VERBS}["remind"] is Category.CONVERSATION
 
 
 def test_remind_tooldef_exists() -> None:
@@ -183,10 +175,9 @@ def test_remind_tooldef_exists() -> None:
 
 def test_remind_schema_in_spine_toolbox() -> None:
     """The remind schema appears in the voice toolbox's SCHEMAS."""
-    from src.spine.tools import SCHEMAS
+    from src.spine.verbs import VERBS
 
-    names = {s["function"]["name"] for s in SCHEMAS}
-    assert "remind" in names
+    assert "remind" in {v.name for v in VERBS}
 
 
 # ── basic remind verb behavior ────────────────────────────────────────
@@ -207,7 +198,6 @@ async def test_remind_stores_intent_with_due_ts() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,
@@ -237,7 +227,6 @@ async def test_remind_returns_confirmation() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,
@@ -260,7 +249,6 @@ async def test_remind_plural_1_minute() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,
@@ -280,7 +268,6 @@ async def test_remind_plural_2_4_minutes() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,
@@ -302,7 +289,6 @@ async def test_remind_plural_5_plus_minutes() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,
@@ -418,7 +404,6 @@ async def test_remind_without_engine_says_reminders_off() -> None:
     """With no notice callback, the verb says reminders are off."""
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=None,  # No engine
@@ -438,7 +423,6 @@ async def test_remind_needs_minutes() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,
@@ -458,7 +442,6 @@ async def test_remind_needs_text() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,
@@ -478,7 +461,6 @@ async def test_remind_respects_minutes_bound() -> None:
 
     toolbox = VoiceToolbox(
         settings=object(),
-        memory=FakeMemory(),
         deliver=lambda x: asyncio.sleep(0),
         hands_factory=lambda s: FakeHands(s),
         notice=notice,

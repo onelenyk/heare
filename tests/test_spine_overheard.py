@@ -168,7 +168,7 @@ def test_a_store_that_falls_over_does_not_stop_it_listening(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_forget_erases_the_last_hour_of_the_room(tmp_path) -> None:
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
     p = _persist(tmp_path)
     p.log_overheard("те, чого не мало лишитись")
@@ -177,8 +177,8 @@ async def test_forget_erases_the_last_hour_of_the_room(tmp_path) -> None:
         return None
 
     box = VoiceToolbox(
-        object(), None, _deliver,
-        hands_factory=lambda _s: _NoHands(), persist=p,
+        object(), _deliver,
+        hands_factory=lambda _s: _NoHands(), persist=p, overheard=True,
     )
     spoken = await box.execute("forget", {"minutes": 60})
 
@@ -188,29 +188,34 @@ async def test_forget_erases_the_last_hour_of_the_room(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_forget_says_so_when_there_was_nothing(tmp_path) -> None:
-    from src.spine.tools import VoiceToolbox
+    from src.spine.verbs import VoiceToolbox
 
     async def _deliver(_text: str) -> None:
         return None
 
     box = VoiceToolbox(
-        object(), None, _deliver,
+        object(), _deliver,
         hands_factory=lambda _s: _NoHands(), persist=_persist(tmp_path),
+        overheard=True,
     )
     assert "не було" in await box.execute("forget", {})
 
 
 @pytest.mark.asyncio
-async def test_forget_is_honest_when_nothing_is_written_down(tmp_path) -> None:
-    from src.spine.tools import VoiceToolbox
+async def test_forget_is_not_offered_when_the_room_is_not_kept(tmp_path) -> None:
+    """A tool the model can see is a promise. With nothing overheard being
+    kept there is nothing to erase, so the model is not shown the verb."""
+    from src.spine.verbs import VoiceToolbox
 
     async def _deliver(_text: str) -> None:
         return None
 
-    box = VoiceToolbox(
-        object(), None, _deliver, hands_factory=lambda _s: _NoHands(), persist=None
-    )
-    assert "нічого не записую" in await box.execute("forget", {})
+    for persist, overheard in ((None, True), (_persist(tmp_path), False)):
+        box = VoiceToolbox(
+            object(), _deliver, hands_factory=lambda _s: _NoHands(),
+            persist=persist, overheard=overheard,
+        )
+        assert "forget" not in {s["function"]["name"] for s in box.schemas}
 
 
 class _NoHands:

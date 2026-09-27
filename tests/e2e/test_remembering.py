@@ -13,7 +13,7 @@ import pytest
 
 from tests.e2e.room import Says, close_room, open_room
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.e2e]
+pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.e2e_text]
 
 HOUR = 3600.0
 
@@ -42,7 +42,7 @@ async def test_it_does_not_answer_a_question_with_the_question(room) -> None:
                    days_ago=7)
     room.will_say(
         Says(text="Дай гляну.",
-             calls=(("search_conversations", {"query": "бекапи"}),))
+             calls=(("recall", {"query": "бекапи"}),))
     )
 
     said = await room.told("Дока, що я казав про бекапи?")
@@ -61,7 +61,7 @@ async def test_asking_the_same_thing_twice_does_not_quote_the_first_asking(
     room.remembers("Дока, що я казав про бекапи?", days_ago=0.02)  # ~30 min
 
     room.will_say(
-        Says(text="", calls=(("search_conversations", {"query": "бекапи"}),))
+        Says(text="", calls=(("recall", {"query": "бекапи"}),))
     )
     said = await room.told("Дока, що я казав про бекапи?")
 

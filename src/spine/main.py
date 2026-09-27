@@ -330,9 +330,10 @@ async def _wire_full(loop, settings, cfg, memory, features):
     from src.spine.prompt import build_system_prompt, load_persona
     from src.spine.role_session import RoleManager
     from src.spine.roles import RoleLoader, is_end_trigger, match_trigger
-    from src.spine.tools import (
-        SpineRecords, VoiceToolbox, make_hands_factory, open_spine_records,
+    from src.spine.hands import (
+        SpineRecords, make_hands_factory, open_spine_records,
     )
+    from src.spine.verbs import VoiceToolbox
     from src.spine.wake import WakeGate
 
     async def _deliver(text: str) -> None:
@@ -414,6 +415,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
         jobs=records.jobs,
         conversation_manager=records.actions,
         on_long_running=_long_running,
+        recent_turns=lambda: loop.history,
     )
 
     # Built before the toolbox, which now needs it: `forget` erases what
@@ -435,7 +437,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
 
     if features["tools"]:
         loop.toolbox = VoiceToolbox(
-            settings, memory, _deliver,
+            settings, _deliver,
             hands_factory=_hands_factory,
             persist=persist if features["persist"] else None,
             # Not behind features["wake"]: switching the gate off does
@@ -443,6 +445,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
             # start with it.
             names=_wake_phrases(settings),
             notice=_remind_notice,
+            overheard=bool(features["hear_all"]),
         )
         loop.stream_events = lambda messages, tools: stream_chat_events(
             messages, _cfg(), tools=tools

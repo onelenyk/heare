@@ -52,6 +52,8 @@ testpaths = ["tests"]
 addopts = "--strict-markers --tb=short -m 'not spine_live'"
 markers = [
     "e2e: the assembled app — real loop, real engine, real database, scripted model",
+    "e2e_text: from the text of a turn onward — what it decides, says, keeps and hands off",
+    "e2e_voice: up to the text of a turn and the sound after it — mic, VAD, recogniser, echo, barge-in",
     "spine_live: acceptance tests hitting real Groq/DeepSeek/EdgeTTS",
 ]
 filterwarnings = [

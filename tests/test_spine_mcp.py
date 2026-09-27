@@ -17,7 +17,7 @@ import pytest
 from src.agent.hands import Hands
 from src.agent.mcp_bridge import McpBridge, connect_mcp_servers
 from src.spine.prompt import build_system_prompt
-from src.spine.tools import McpHands, make_hands_factory
+from src.spine.hands import McpHands, make_hands_factory
 
 
 class _FakeSession:

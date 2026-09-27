@@ -159,7 +159,7 @@ def build_system_prompt(
 # executing code ... on its own initiative"). Injected verbatim, that text
 # tells the voice model it IS a terminal, so it narrates work it never did
 # and promises initiative it structurally cannot take: the spine has three
-# verbs (delegate / remember / recall) and never speaks unprompted.
+# verbs (delegate / recall / remind) and never speaks unprompted.
 #
 # So a `creature` string is only trusted as CHARACTER. It is dropped when
 # it looks like a capability blurb instead — see _is_character().

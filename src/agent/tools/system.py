@@ -42,46 +42,8 @@ class ToolDef:
             object.__setattr__(self, "required", list(self.schema_fields.keys()))
 
 
-# The verbs the conversational agent keeps when the voice/hands split is
-# on. Everything else moves behind `delegate`, which returns instantly.
-#
-# The split is temporal, not intellectual: same model, same key. One call
-# must answer within a second and therefore chooses among three schemas;
-# the other has no deadline and sees all sixty-three. Measured on this
-# machine, a turn that calls a tool inline takes 3822 ms to first audio
-# against 1351 ms without one — and whether anything is said before the
-# work begins is otherwise left to the model's whim.
-# `forget` is the fourth, and it belongs here rather than behind
-# `delegate` for the same reason the other three do: it has to land while
-# the person is still in the room. "Forget the last hour" answered a
-# minute later, after a worker has been spun up, is an apology rather
-# than an action — and the thing it erases is the one thing someone
-# might be waiting to see gone.
-# `search_conversations` is the fifth, and it is here rather than behind
-# `delegate` because it is a question about this conversation's own past
-# — «що я казав про таймаут». Answered a minute later by a worker it is
-# no longer part of the exchange that asked, and the cost of keeping it
-# in the fast path is one indexed query, not a model call.
-# `read_display` and `clear_display` are the sixth and seventh, and they
-# are here for the same reason: the screen is the present moment. Before
-# them the voice model had no screen at all — both panel verbs lived
-# behind `delegate`, whose description names files, the shell, the web,
-# settings and the browser and not the panel — so asked what was on it,
-# the model answered "нічого не бачу" out of a prompt in which no screen
-# existed, while the person was looking straight at one.
-VOICE_TOOLS = frozenset(
-    {
-        "delegate",
-        "remind",
-        "remember",
-        "recall",
-        "forget",
-        "search_conversations",
-        "read_display",
-        "clear_display",
-        "look_at_screen",
-    }
-)
+# The voice's own verbs are not listed here: they live, by category, in
+# src/spine/verbs.py. Everything in this file is a tool for the hands.
 
 
 ArgsSerializer = Callable[[dict[str, Any]], str]
