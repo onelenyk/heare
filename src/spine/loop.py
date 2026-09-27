@@ -32,6 +32,18 @@ DEFAULT_SYSTEM_PROMPT = (
 # me" — so a broken turn must still end with a sound.
 FAILURE_LINE = "Щось пішло не так — не змогла відповісти."
 
+# Sent once, after a reply that promised work and called no verb.
+KEEP_THE_PROMISE = (
+    "You just told the person you would do that, but you called no tool, "
+    "so nothing is happening. Call the tool you meant now. Write no text."
+)
+
+
+def _json_dumps(value: Any) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False)
+
 # The generator keeps only a short tail of the dialogue: the skeleton has
 # no summarisation yet, and an unbounded history would slowly push the
 # system prompt out of the model's attention.
@@ -154,6 +166,13 @@ class SpineLoop:
     # without one, any voice stops it, as before.
     judge_interruption: Any = None
     interrupt_hold_ms: float = 600.0
+    # (text) -> bool: the whole turn is a command to stop («Дока, стоп»).
+    # Caught here, never sent to the model: a command has to work every
+    # time, and it calls off the hands' work as well as the voice.
+    is_halt: Callable[[str], bool] | None = None
+    # (reply) -> bool: the reply announces work («гляну, секунду») in
+    # place of calling a verb. The loop delegates what the model meant.
+    promises_work: Callable[[str], bool] | None = None
     _hold: Any = None
     _stt_jobs: asyncio.Queue = field(default_factory=asyncio.Queue)
     # Turns injected from outside the microphone (Hands results, the
@@ -355,6 +374,8 @@ class SpineLoop:
             return False
         outcome = "cancelled" if verdict == "cancel" else "barged"
         self.stop_speaking(outcome)
+        if verdict == "cancel" and self.is_halt is not None and self.is_halt(text):
+            self._call_off_work()
         logger.info("barge-in: %r (%s, %.0f ms of speech)",
                     text[:40], outcome, hold.speech_ms or hold.heard_ms)
         return True
@@ -432,6 +453,9 @@ class SpineLoop:
             except Exception:
                 logger.exception("turn failed: %r", turn[:80])
                 continue
+            if source != "hands" and self.is_halt is not None and self.is_halt(turn):
+                await self._halt()
+                continue
             running = self._turn
             if running is not None and not running.done():
                 if source in PERSON_SOURCES:
@@ -444,6 +468,30 @@ class SpineLoop:
                 else:
                     await self._let_finish(running, patience=600.0)
             self._turn = asyncio.create_task(self._answer(turn, source), name="spine-turn")
+
+    def _call_off_work(self) -> int:
+        """Cancel the hands' jobs; how many there were. Never raises."""
+        if self.toolbox is None:
+            return 0
+        try:
+            return int(self.toolbox.cancel_all() or 0)
+        except Exception:
+            logger.exception("calling off work failed (non-fatal)")
+            return 0
+
+    async def _halt(self) -> None:
+        """«Стоп» as a turn: the voice and the work stop, and it says so.
+
+        Before, «стоп» went to the model like any sentence while a job
+        ran on, and seconds later its result was announced — the work the
+        person had just called off (findings/two-agents.md)."""
+        running = self._turn
+        if running is not None and not running.done():
+            self.stop_speaking("cancelled")
+            await self._let_finish(running)
+        called_off = self._call_off_work()
+        logger.info("halt: %d job(s) called off", called_off)
+        await self._say_now("Зупинила." if called_off else "Добре.")
 
     async def _answer(self, turn: str, source: str = "mic") -> None:
         try:
@@ -678,7 +726,49 @@ class SpineLoop:
                     self.role_flow.note_exchange(user_text, recorded, turn_id)
                 except Exception:
                     logger.exception("note_exchange failed (non-fatal)")
+        if (
+            failure is None
+            and not tool_calls
+            and source != "hands"
+            and self.toolbox is not None
+            and self.promises_work is not None
+            and self.promises_work(reply)
+        ):
+            await self._keep_the_promise(messages, reply, user_text, speak)
         return reply
+
+    async def _keep_the_promise(
+        self, messages: list[dict], reply: str, user_text: str, speak: bool
+    ) -> None:
+        """The reply said «гляну» and called nothing. Ask once more, for the
+        call only; the model then picks the verb it meant — a reminder, a
+        search, the hands. If it still calls nothing, the hands get the
+        request: they answer, or say what stopped them. Never raises."""
+        logger.info("promised work, called nothing: %r", reply[:60])
+        calls: list[dict] = []
+        if self.stream_events is not None:
+            nudge = [
+                *messages,
+                {"role": "assistant", "content": reply},
+                {"role": "system", "content": KEEP_THE_PROMISE},
+            ]
+            try:
+                async for ev in self.stream_events(nudge, self.toolbox.schemas):
+                    if ev.get("type") == "tool_call":
+                        calls.append(ev)
+            except Exception:
+                logger.exception("asking again failed (non-fatal)")
+        if not calls:
+            calls = [{"name": "delegate", "arguments": _json_dumps({"task": user_text})}]
+        for call in calls:
+            spoken = await self._run_tool(call)
+            # The person already heard «гляну»; a second «роблю» adds
+            # nothing. Anything else a verb returns is the answer itself.
+            if spoken and call.get("name") != "delegate":
+                if speak:
+                    await self._say_now(spoken)
+                else:
+                    self.history.append({"role": "assistant", "content": spoken})
 
     async def _speak_guarded(self, utt: Any, sentence: str) -> None:
         """_speak, with its failures labelled as the mouth's."""

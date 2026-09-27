@@ -185,3 +185,23 @@ __all__ = [
     "is_stop_word",
     "decide",
 ]
+
+
+# Words that call work off, said as a turn of their own. Narrower than
+# the stop words above: «ні» or «тихо» over the speaker stop the voice,
+# but said into silence «ні» is an answer to a question, not an order.
+_HALT_WORDS: frozenset[str] = frozenset(
+    {
+        "стоп", "стій", "зупинись", "зупинися", "зупини", "припини",
+        "досить", "скасуй", "відбій", "stop", "cancel", "хватит",
+    }
+)
+_WORD = re.compile(r"[\w'ʼ’]+", re.UNICODE)
+
+
+def is_halt(text: str, names: frozenset[str] = frozenset()) -> bool:
+    """True when the whole turn is a command to stop: «стоп», «Дока, стоп»,
+    «зупинись, зупинись». The assistant's own name is not a word of it."""
+    words = [w for w in _WORD.findall(_normalise(text or "")) if w not in names]
+    return 0 < len(words) <= 3 and all(w in _HALT_WORDS for w in words)
+

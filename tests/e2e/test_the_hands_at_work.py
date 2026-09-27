@@ -98,12 +98,6 @@ async def test_two_answers_at_once_can_be_told_apart(room, worker) -> None:
 # ── «стоп» means the work too ─────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="src/spine/loop.py ~256 — cancel_all runs only at shutdown (and from "
-    "the dashboard button); «стоп» as a turn goes to the model, the job runs on "
-    "and its answer is said anyway",
-)
 async def test_stop_calls_off_the_work_and_its_answer(room, worker) -> None:
     """Observed before (findings/two-agents.md): the voice fell silent on
     «стоп» and, seconds later, announced the result of the work the person
@@ -118,22 +112,29 @@ async def test_stop_calls_off_the_work_and_its_answer(room, worker) -> None:
 
     await room.told("Дока, опублікуй чотири додатки")
     await until(lambda: hands.calls)
-    await room.told("Дока, стоп")
+    await room.said_to_it("Дока, стоп")
     hands.gate.set()
     await asyncio.sleep(0.5)
 
+    assert "Зупинила." in [text for text, _voice in room.voiced]
     assert "Опубліковано чотири додатки." not in lines(room)
     assert not any("[результат роботи]" in _last_user_line(m) for m in room.prompts)
+
+
+async def test_stop_with_nothing_running_is_answered_without_the_model(room) -> None:
+    """A command is caught in code, every time: the model is not asked
+    whether «стоп» meant stop."""
+    asked = len(room.prompts)
+
+    await room.said_to_it("Дока, стоп")
+
+    assert len(room.prompts) == asked
+    assert "Добре." in [text for text, _voice in room.voiced]
 
 
 # ── nothing vanishes ────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="src/spine/main.py ~405 — a job swept as interrupted at start is "
-    "logged, never said",
-)
 async def test_a_job_the_last_run_dropped_is_mentioned(tmp_path) -> None:
     """A restart mid-job used to leave the person waiting for an answer
     that could never come. The job is found at start (swept to
@@ -150,11 +151,33 @@ async def test_a_job_the_last_run_dropped_is_mentioned(tmp_path) -> None:
 
     second = await open_room(tmp_path)
     try:
+        second.will_say("Публікація чотирьох додатків перервалась — повторити?")
         with sqlite3.connect(tmp_path / "heare.db") as db:
             state = db.execute("SELECT state FROM jobs").fetchone()[0]
         assert state == "interrupted", "the sweep itself must work for this test to mean anything"
+        await until(lambda: any("перервалась" in line for line in lines(second)))
+        told = _last_user_line(second.prompts[0])
+        assert "опублікуй чотири додатки" in told and "перезапуск" in told
+    finally:
+        await close_room(second)
+
+
+async def test_a_job_dropped_long_ago_is_not_news(tmp_path) -> None:
+    """A start once announced week-old jobs, which is worse than saying
+    nothing: only what the last run dropped recently is mentioned."""
+    first = await open_room(tmp_path)
+    await close_room(first)
+    with sqlite3.connect(tmp_path / "heare.db") as db:
+        db.execute(
+            "INSERT INTO jobs (label, task, state, created_ts, updated_ts)"
+            " VALUES ('старе', 'старе доручення', 'running', ?, ?)",
+            (time.time() - 3 * 86400, time.time() - 3 * 86400),
+        )
+
+    second = await open_room(tmp_path)
+    try:
         await second.drained()
-        assert any("опубл" in line for line in lines(second)), lines(second)
+        assert second.prompts == []
     finally:
         await close_room(second)
 
@@ -162,11 +185,6 @@ async def test_a_job_the_last_run_dropped_is_mentioned(tmp_path) -> None:
 # ── saying is not doing ────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the model says it will act and calls nothing; ~10% of live turns "
-    "(tests/test_spine_verbs_live.py) — the turn just ends and no answer ever comes",
-)
 async def test_announcing_work_is_not_the_work(room, worker) -> None:
     """«Гляну, секунду.» with no tool call is a promise nobody keeps: the
     person waits for an answer that was never asked for. Either the work
@@ -178,3 +196,19 @@ async def test_announcing_work_is_not_the_work(room, worker) -> None:
     await asyncio.sleep(0.5)
 
     assert hands.calls, "said it would look, and nothing looked"
+
+
+async def test_a_promised_reminder_is_set_not_handed_off(room) -> None:
+    """«Ставлю нагадування» with no call: asked once more, the model makes
+    the call it meant. A reminder is the voice's own verb — the hands are
+    shown a `remind` they cannot run, so sending it there would fail."""
+    room.will_say(
+        Says(text="Ставлю нагадування на десять хвилин."),
+        Says(calls=(("remind", {"minutes": 10, "text": "випити води"}),)),
+    )
+
+    await room.told("Дока, нагадай за десять хвилин випити води")
+    await until(lambda: "Добре, нагадаю за 10 хвилин." in [t for t, _v in room.voiced])
+
+    assert room.intents(), "the reminder must actually be held"
+

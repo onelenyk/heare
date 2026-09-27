@@ -329,6 +329,31 @@ def _worth_saying(cfg_of):
     return ask
 
 
+# A job cut off longer ago than this is history, not news: a start once
+# announced week-old jobs, and that was worse than saying nothing.
+_STRANDED_NEWS_S = 12 * 3600
+
+
+async def _mention_stranded(loop, stranded) -> None:
+    """Say, once, which jobs the last process dropped.
+
+    Before, a restart mid-job left the person waiting for an answer that
+    could never arrive, and only the log knew why. It goes in as a hands
+    result — the voice retells it in its own words, in the quiet lane,
+    exactly as it would a finished job."""
+    from src.agent.hands import RESULT_PREFIX
+
+    fresh = [j for j in stranded if j.age_seconds < _STRANDED_NEWS_S]
+    if not fresh:
+        return
+    tasks = "; ".join(f"«{j.task[:120]}»" for j in fresh)
+    await loop.inject(
+        f"{RESULT_PREFIX} Не вдалося: доручення {tasks} перервалось, бо я "
+        "перезапускалась. Скажи про це й запитай, чи повторити.",
+        source="hands",
+    )
+
+
 async def _wire_full(loop, settings, cfg, memory, features):
     _cfg = _live_cfg(settings, cfg)
     from datetime import datetime
@@ -412,6 +437,7 @@ async def _wire_full(loop, settings, cfg, memory, features):
     loop.records = records
     if records.stranded:
         logger.info("jobs: %d interrupted by a restart", len(records.stranded))
+        await _mention_stranded(loop, records.stranded)
 
     def _long_running(label: str):
         cb = getattr(loop, "on_long_running", None)
@@ -458,6 +484,15 @@ async def _wire_full(loop, settings, cfg, memory, features):
         loop.stream_events = lambda messages, tools: stream_chat_events(
             messages, _cfg(), tools=tools
         )
+
+    from src.text.backchannel import is_halt
+    from src.text.promises import promises_work
+
+    _name_words = frozenset(
+        w for phrase in _wake_phrases(settings) for w in phrase.lower().split()
+    )
+    loop.is_halt = lambda text: is_halt(text, _name_words)
+    loop.promises_work = promises_work
 
     if features["wake"]:
         loop.wake = WakeGate(
