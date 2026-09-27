@@ -13,7 +13,7 @@ import pytest
 
 from tests.e2e.room import close_room, open_room
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.e2e]
+pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.e2e_text]
 
 
 @pytest.fixture

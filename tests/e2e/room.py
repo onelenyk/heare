@@ -74,6 +74,10 @@ class Says:
 
     text: str = ""
     calls: tuple[tuple[str, dict], ...] = ()
+    # The model falling over mid-answer: whatever `text` it managed is
+    # streamed first, then this is raised. A broken turn must still end
+    # with a sound, and this is how a test asks for one.
+    fails: str = ""
 
 
 @dataclass
@@ -101,6 +105,15 @@ class Room:
     # have been used should not pay to generate a voice.
     _speech_ms: float = 10.0
     _speech_amp: float = 0.0
+    # The synthesiser answering with no audio at all — what edge-tts does
+    # on NoAudioReceived, which `tts.py` swallows. Set it and every
+    # sentence comes back empty.
+    silent_voice: bool = False
+    # The settings object the assistant was built with and still reads,
+    # so a test can change one mid-run and see whether it takes; and the
+    # config each model call was made with, to see which one did.
+    settings: Any = None
+    configs: list = field(default_factory=list)
 
     # -- what the model will answer -----------------------------------
 
@@ -515,6 +528,7 @@ async def open_room(
     *,
     without: str = "",
     features: dict | None = None,
+    settings: dict | None = None,
 ) -> Room:
     """Assemble the assistant the way the daemon does, minus the world.
 
@@ -526,7 +540,7 @@ async def open_room(
     from src.config import load_settings
     from src.spine.main import _build_loop
 
-    settings = load_settings()
+    overrides, settings = settings, load_settings()
     settings.db_path = tmp_path / "heare.db"
     # Nothing here may reach the network. The keys are set so that
     # resolution succeeds and the scripted model replaces the real one
@@ -547,6 +561,10 @@ async def open_room(
     # leaving nothing behind go red on a machine that is merely
     # configured differently.
     settings.spine_features = dict(features or {})
+    # Last, so a test can put back what the room winds down — the turn
+    # hold, for one — and say so in its own arguments.
+    for name, value in (overrides or {}).items():
+        setattr(settings, name, value)
 
     # Patched on the module, before anything is wired — because the model
     # is reached by four different roads and only two of them go through
@@ -557,7 +575,7 @@ async def open_room(
     # getting a 401 out of a test that was not supposed to have a wire.
     import src.spine.llm as llm
 
-    room = Room(db=settings.db_path, loop=None)
+    room = Room(db=settings.db_path, loop=None, settings=settings)
     room._real = (llm.stream_chat, llm.stream_chat_events)
 
     def _plain(messages, _cfg=None, **_kw) -> AsyncIterator[str]:
@@ -569,6 +587,7 @@ async def open_room(
         return stream()
 
     def _events(messages, _cfg=None, *, tools=None, **_kw) -> AsyncIterator[dict]:
+        room.configs.append(_cfg)
         return _speak(room, messages)
 
     llm.stream_chat = _plain
@@ -599,6 +618,8 @@ async def open_room(
     def _voice(text: str, *, voice: str = "", **_kw):
         async def stream():
             room.voiced.append((text, voice))
+            if room.silent_voice:
+                return
             # Ten milliseconds by default — enough for the mouth to have
             # been used, short enough that fifty scenarios do not wait on
             # a speaker. A test about being talked over asks for a real
@@ -818,8 +839,10 @@ async def _speak(room: Room, messages: list[dict]) -> AsyncIterator[dict]:
     """
     room._asked.append(messages)
     answer = room._script.pop(0) if room._script else Says()
-    for word in answer.text.split(" "):
+    for word in answer.text.split(" ") if answer.text else ():
         yield {"type": "delta", "text": word + " "}
+    if answer.fails:
+        raise RuntimeError(answer.fails)
     for name, arguments in answer.calls:
         import json
 
@@ -930,3 +953,67 @@ def real_speech(text: str) -> bytes:
 
 __all__ = ["Mouth", "Room", "Says", "close_room", "open_room",
            "pack", "voice_like", "real_speech"]
+
+
+# -- the hands, and waiting on them --------------------------------------
+
+
+class Worker:
+    """The hands' model, scripted — the worker's twin of `Says`.
+
+    Only `Hands._chat` is replaced: the real toolbox starts the real
+    worker, which builds its real prompt and tool list and hands both
+    here. Each call is recorded, so a test can ask what the worker was
+    shown; each answer is plain text, i.e. a finished job.
+    """
+
+    def __init__(self, *answers: str) -> None:
+        self._answers = list(answers)
+        self.calls: list[tuple[list[dict], list[dict]]] = []
+        self.gate: asyncio.Event | None = None
+
+    async def chat(self, messages: list[dict], schemas: list[dict]) -> dict:
+        self.calls.append((messages, schemas))
+        if self.gate is not None:
+            # A job that takes as long as the test says: set `gate` to an
+            # unset Event and the worker waits on it, still "running".
+            await self.gate.wait()
+        answer = self._answers.pop(0) if self._answers else "Готово."
+        return {"role": "assistant", "content": answer}
+
+    def offered(self, n: int = -1) -> set[str]:
+        """Tool names the worker was shown on call `n`."""
+        return {s["function"]["name"] for s in self.calls[n][1]}
+
+    def context(self, n: int = -1) -> str:
+        """Everything the worker was told besides the task, on call `n`."""
+        return "\n".join(m["content"] for m in self.calls[n][0] if m["role"] == "system")
+
+    def task(self, n: int = -1) -> str:
+        return self.calls[n][0][-1]["content"]
+
+
+def hire(monkeypatch: Any, *answers: str) -> Worker:
+    """Put a scripted worker behind `delegate` for the length of a test."""
+    worker = Worker(*answers)
+
+    async def _chat(_hands: Any, _client: Any, messages: list, schemas: list) -> dict:
+        return await worker.chat(messages, schemas)
+
+    monkeypatch.setattr("src.agent.hands.Hands._chat", _chat)
+    return worker
+
+
+async def until(check: Any, timeout: float = TURN_TIMEOUT_S) -> None:
+    """Wait for `check()` to be true, or fail saying it never was."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not check():
+        if asyncio.get_running_loop().time() > deadline:
+            raise AssertionError("never happened")
+        await asyncio.sleep(0.02)
+
+
+def lines(room: Room) -> list[str]:
+    """Everything the assistant said, oldest first, from the database."""
+    return [text for _ts, agent, text, _src in room.rows() if agent]
+

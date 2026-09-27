@@ -27,7 +27,7 @@ import pytest
 
 from tests.e2e.room import close_room, open_room, pack, voice_like
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.e2e_voice]
 
 
 async def _speaking(room, said: str, *, ms: float = 800.0) -> None:

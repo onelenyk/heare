@@ -1,4 +1,4 @@
-.PHONY: doctor help install start stop restart status logs launch test stend clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar build frontend dmg
+.PHONY: e2e-text e2e-voice e2e-live doctor help install start stop restart status logs launch test stend clean mcp-list mcp-enable mcp-disable mcp-status mcp-edit-catalog test-recognizer reset-identity reset-session menubar build frontend dmg
 
 help:
 	@echo "Heare Voice AI Assistant - Control Commands"
@@ -8,6 +8,9 @@ help:
 	@echo "  make dev        - Start development server"
 	@echo "  make test        - Run tests"
 	@echo "  make e2e         - Run the assembled-app scenarios only"
+	@echo "  make e2e-text    - ...from the text of a turn onward (no audio)"
+	@echo "  make e2e-voice   - ...the ear and the mouth: mic, VAD, echo, barge-in"
+	@echo "  make e2e-live    - The real model choosing verbs (costs cents)"
 	@echo "  make stend       - Rebuild docs/stend.html from the code"
 	@echo "  make test-recognizer - Interactive speaker recognition tester"
 	@echo "  make clean       - Clean build artifacts"
@@ -68,6 +71,20 @@ launch:
 # directory with a marker pointing at it.
 e2e:
 	uv run pytest tests/e2e -q
+
+# The line between the two is the text of a turn: everything that begins
+# once there are words is text; the microphone, the recogniser, the echo
+# and being talked over are voice. See tests/e2e/COVERAGE.md.
+e2e-text:
+	uv run pytest tests/e2e -q -m e2e_text
+
+e2e-voice:
+	uv run pytest tests/e2e -q -m e2e_voice
+
+# Not wiring but choice: which verb the real model reaches for. A rate,
+# not a verdict — the model is not deterministic. Costs a fraction of a cent.
+e2e-live:
+	uv run pytest tests/test_spine_verbs_live.py -q -m spine_live
 
 test:
 	uv run pytest -q
