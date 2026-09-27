@@ -56,6 +56,14 @@ async def synthesise(
         "-hide_banner",
         "-loglevel",
         "error",
+        # The input is known to be MP3: probing it first held the first
+        # sound back ~230 ms while ffmpeg read ahead. Measured 27.09 on
+        # edge-tts output fed in 20 ms steps: 237 → 22 ms to the first
+        # PCM, and the decoded audio identical byte for byte.
+        "-probesize",
+        "32",
+        "-analyzeduration",
+        "0",
         "-f",
         "mp3",
         "-i",
