@@ -20,11 +20,17 @@ from heare.core import Core
 
 
 def build(settings: Settings | None = None) -> Core:
-    """The core with a model and a character, and nothing attached yet."""
+    """The core with a model, a memory and a character; no channel yet."""
     from heare.model.chat import Chat
 
+    from heare.memory.book import Book
+
     settings = settings or Settings()
-    return Core(Chat(settings), prompt=persona.prompt, names=persona.names())
+    names = persona.names()
+    return Core(
+        Chat(settings), memory=Book(settings.db_path, names=sorted(names)),
+        prompt=persona.prompt, names=names,
+    )
 
 
 async def _main(args: argparse.Namespace) -> int:

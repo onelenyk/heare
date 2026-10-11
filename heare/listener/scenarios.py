@@ -24,7 +24,12 @@ STOP = "Дока, стоп."
 NOD = "Ага."
 
 
-async def run(tape: Tape, rounds: int = 2) -> dict:
+# Planted in the database as said yesterday, then asked about aloud.
+REMEMBERED = "Мій улюблений колір бірюзовий, запам'ятай це."
+RECALL = ("Дока, що я казав про мій улюблений колір?", ("бірюзов",))
+
+
+async def run(tape: Tape, rounds: int = 2, *, recall: bool = False) -> dict:
     failed = 0
     firsts: list[float] = []
     for _ in range(rounds):
@@ -38,6 +43,14 @@ async def run(tape: Tape, rounds: int = 2) -> dict:
                 firsts.append(answer.first_sound)
             await asyncio.sleep(1.0)
 
+    if recall:
+        answer = await ear.ask(tape, RECALL[0])
+        if not answer.has(*RECALL[1]):
+            answer.problems.append(f"у відповіді немає {RECALL[1]}")
+        print(answer.line(), flush=True)
+        failed += bool(answer.problems)
+        await asyncio.sleep(1.0)
+
     # Talked over: how long until it is quiet, and what it says next.
     cut = await ear.cut_in(tape, LONG, STOP)
     print(cut.line(), flush=True)
@@ -45,7 +58,7 @@ async def run(tape: Tape, rounds: int = 2) -> dict:
         "first_sound_median_s": round(statistics.median(firsts), 2) if firsts else None,
         "first_sound_all_s": [round(f, 2) for f in firsts],
         "answers_with_problems": failed,
-        "answers": len(QUESTIONS) * rounds,
+        "answers": len(QUESTIONS) * rounds + int(recall),
         "quiet_after_interruption_s": (
             None if cut.quiet_after is None else round(cut.quiet_after, 2)
         ),

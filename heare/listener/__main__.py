@@ -12,7 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 import sys
+import tempfile
+import time
+from pathlib import Path
 
 from heare.app import build
 from heare.channels.voice.channel import build as build_voice
@@ -21,19 +25,33 @@ from heare.listener import scenarios
 from heare.listener.tape import Tape
 
 
+def _plant(db: Path, text: str) -> None:
+    """Something the person said a day ago, for the recall question."""
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO transcripts (ts, text, mode, agent_spoken, source) "
+        "VALUES (?, ?, 'spine', 0, 'voice')", (time.time() - 86400, text),
+    )
+    conn.commit()
+    conn.close()
+
+
 async def main() -> int:
     rounds = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-    settings = Settings()
+    # A database of its own: nothing said here enters the person's history.
+    db = Path(tempfile.mkdtemp(prefix="heare-listen-")) / "heare.db"
+    settings = Settings(db_path=db)
     tape = Tape()
     await tape.start()
     core = build(settings)
+    _plant(db, scenarios.REMEMBERED)
     voice = build_voice(tape, settings)
     core.add_input(voice)
     core.add_output(voice)
     running = asyncio.create_task(core.run())
     await asyncio.sleep(0.5)
     try:
-        summary = await scenarios.run(tape, rounds)
+        summary = await scenarios.run(tape, rounds, recall=True)
     finally:
         running.cancel()
         await asyncio.gather(running, return_exceptions=True)

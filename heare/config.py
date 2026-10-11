@@ -20,7 +20,7 @@ HOME = Path.home() / ".heare"
 
 # What a setting is when the file does not say. Only what a part cannot
 # sensibly default by itself belongs here.
-DEFAULTS = {"identity_file": HOME / "identity.json"}
+DEFAULTS = {"identity_file": HOME / "identity.json", "db_path": HOME / "heare.db"}
 
 
 class Settings:
