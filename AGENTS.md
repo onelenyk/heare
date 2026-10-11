@@ -19,6 +19,31 @@ best picture of the layout, and
 [findings/](docs/archive/2026-09-16/findings/) is still the best account
 of why things are the shape they are.
 
+## THE NEW APP: `heare/`
+
+Being written beside `src/`, which keeps running until the new one is
+better by ear. One core (`heare/core/`) works with messages and reads or
+writes nothing itself; everything else is one of five kinds of part —
+input, output, model, memory, executor — described in
+`heare/core/forms.py`. A channel (voice, text) is an input, an output,
+or both.
+
+Three rules, enforced by `tests/heare/test_dependencies.py`: the core
+imports only itself and the standard library; a part imports only the
+core and itself; nothing under `heare/` imports `src`. `heare/app.py` is
+the one file that knows every part. Inside `heare/`, imports are
+`from heare....`.
+
+```bash
+uv run python -m heare            # the new app, by typing
+uv run python -m heare --voice    # the new app, aloud
+uv run pytest tests/heare -q      # the core against stand-ins, no network
+uv run python -m heare.listener   # real speech in, the reply listened to (costs cents)
+uv run python -m tests.e2e.listen_old   # the same listener on the old app
+```
+
+What is covered and what is not: `tests/heare/COVERAGE.md`.
+
 ## WHERE TO LOOK
 
 | Task | Location |
@@ -43,5 +68,5 @@ make doctor                      # what is wired, asked of the live objects
 uv run python -m src.main start  # run the daemon in the foreground
 ```
 
-`from __future__ import annotations` and absolute `from src....` imports
-are mandatory throughout.
+`from __future__ import annotations` and absolute imports (`from src....`
+in the old app, `from heare....` in the new) are mandatory throughout.

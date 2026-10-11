@@ -113,15 +113,15 @@ uninstall:
 
 lint:
 	@echo "Running linter..."
-	uv run ruff check src/ tests/
+	uv run ruff check src/ heare/ tests/
 
 lint-fix:
 	@echo "Running linter with auto-fix..."
-	uv run ruff check --fix src/ tests/
+	uv run ruff check --fix src/ heare/ tests/
 
 format:
 	@echo "Formatting code..."
-	uv run ruff format src/ tests/
+	uv run ruff format src/ heare/ tests/
 
 check:
 	@echo "Running all checks..."

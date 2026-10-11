@@ -1,0 +1,338 @@
+"""Centralised LLM provider configuration — the single source of truth.
+
+Every other module imports provider metadata from here instead of
+hardcoding provider names, API keys, base URLs, or model lists.
+Adding a new provider = add one ``ProviderConfig`` entry in the
+``PROVIDERS`` dict — everything else auto-discovers it.
+
+Dependency-free by design: standard library + dataclasses only.
+No pipecat, no switchable, no build imports.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class ProviderConfig:
+    """All the metadata the system needs to talk to one LLM provider.
+
+    Frozen so a stray assignment cannot mutate the registry at runtime.
+    Every field maps to exactly one concern: auth, routing, pricing,
+    identity bootstrap, or dashboard presentation.
+    """
+
+    key: str
+    display_name: str
+    api_key_attr: str
+    api_key_env: str
+    base_url: str
+    default_model: str
+    api_style: str
+    dashboard_color: str
+    timeout: float = 30.0
+    model_whitelist: tuple[str, ...] = ()
+    pricing: tuple[tuple[str, float, float], ...] = ()
+    identity_endpoint: str = ""
+    identity_model: str = ""
+
+
+PROVIDERS: dict[str, ProviderConfig] = {
+    "deepseek": ProviderConfig(
+        key="deepseek",
+        display_name="DeepSeek",
+        api_key_attr="deepseek_api_key",
+        api_key_env="DEEPSEEK_API_KEY",
+        base_url="https://api.deepseek.com/v1",
+        default_model="deepseek-v4-flash",
+        api_style="openai",
+        dashboard_color="yellow",
+        timeout=5.0,
+        model_whitelist=(
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-reasoner",
+        ),
+        # USD per 1M tokens, cache-MISS input. DeepSeek quotes two input
+        # prices — a cache hit is ~50x cheaper — and the wire does not
+        # say which one applied. Quoting the miss keeps the ledger an
+        # upper bound, which is the only side worth erring on: a bill
+        # that surprises you is the failure this table exists to stop.
+        #
+        # `deepseek-chat` was retired 24 July 2026 and is kept only so
+        # the 907 rows already in usage_events can be priced. It is out
+        # of the whitelist and is no longer the default — pointing the
+        # daemon at a retired model is how a boot fails on a name.
+        pricing=(
+            ("deepseek-v4-flash", 0.14, 0.28),
+            ("deepseek-v4-pro", 0.435, 0.87),
+            ("deepseek-chat", 0.14, 0.28),
+        ),
+        identity_endpoint="https://api.deepseek.com/v1/chat/completions",
+        identity_model="",
+    ),
+    "zai": ProviderConfig(
+        key="zai",
+        display_name="Z.AI",
+        api_key_attr="zai_api_key",
+        api_key_env="ZAI_API_KEY",
+        base_url="https://api.z.ai/api/anthropic",
+        default_model="claude-3-5-sonnet",
+        api_style="anthropic",
+        dashboard_color="cyan",
+        timeout=30.0,
+        model_whitelist=(
+            "claude-3-5-sonnet",
+            "claude-3-7-sonnet",
+            "claude-haiku-4.5",
+        ),
+        pricing=(
+            ("claude-opus-4-7", 15.00, 75.00),
+            ("claude-sonnet-4-6", 3.00, 15.00),
+            ("claude-haiku-4-5", 0.80, 4.00),
+        ),
+        identity_endpoint="https://api.z.ai/api/anthropic/v1/messages",
+        identity_model="",
+    ),
+    "opencode": ProviderConfig(
+        key="opencode",
+        display_name="OpenCode Go",
+        api_key_attr="opencode_api_key",
+        api_key_env="OPENCODE_API_KEY",
+        base_url="https://opencode.ai/zen/go/v1",
+        default_model="minimax-m2.7",
+        api_style="openai",
+        dashboard_color="green",
+        timeout=30.0,
+        model_whitelist=(
+            "minimax-m2.7",
+            "minimax-m2.5",
+            "kimi-k2.6",
+            "kimi-k2.5",
+            "glm-5.1",
+            "glm-5",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash",
+            "qwen3.7-max",
+            "qwen3.6-plus",
+            "qwen3.5-plus",
+            "mimo-v2.5-pro",
+            "mimo-v2.5",
+            "mimo-v2-pro",
+            "mimo-v2-omni",
+            "hy3-preview",
+        ),
+        pricing=(),
+        identity_endpoint="https://opencode.ai/zen/go/v1/chat/completions",
+        identity_model="",
+    ),
+    "openrouter": ProviderConfig(
+        key="openrouter",
+        display_name="OpenRouter",
+        api_key_attr="openrouter_api_key",
+        api_key_env="OPENROUTER_API_KEY",
+        base_url="https://openrouter.ai/api/v1",
+        default_model="deepseek/deepseek-v4-flash",
+        api_style="openai",
+        dashboard_color="magenta",
+        timeout=30.0,
+        # 431 models on the router at the time of writing; a whitelist
+        # here would be a snapshot that rots. These are the cheap
+        # tool-calling ones worth reaching for by hand — the dashboard's
+        # picker calls ``list_models`` and sees all of them anyway.
+        model_whitelist=(
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+            "qwen/qwen3.7-flash",
+            "openai/gpt-5-nano",
+            "google/gemini-3.1-flash",
+        ),
+        # Deliberately thin, and it is not an oversight. OpenRouter
+        # reports the actual dollars for each completion in its own
+        # usage payload (see ``spine/llm.py``), so the ledger takes the
+        # provider's number and never consults this table. What is left
+        # here is the fallback for the one case that number is absent —
+        # priced from the live /models endpoint on 2026-09-05.
+        pricing=(
+            ("deepseek/deepseek-v4-flash", 0.084, 0.168),
+            ("deepseek/deepseek-v4-pro", 0.435, 0.87),
+            ("qwen/qwen3.7-flash", 0.030, 0.130),
+            ("openai/gpt-5-nano", 0.050, 0.400),
+            ("google/gemini-3.1-flash", 0.15, 0.60),
+        ),
+        identity_endpoint="https://openrouter.ai/api/v1/chat/completions",
+        identity_model="",
+    ),
+}
+
+
+# Providers whose list prices nobody here has verified. Their calls are
+# recorded with cost NULL — "unpriced", which is a different claim from
+# "free" and is printed as such by `make day`.
+#
+# This set exists so the gap is *declared*. The bug it replaces was an
+# empty `pricing=()` on the one provider in daily use, which read as an
+# ordinary blank field and meant the assistant billed itself nothing for
+# a month. A test asserts that every provider either prices its own
+# default model or is named here, so the next provider added cannot
+# repeat it by omission — someone has to write the name down.
+#
+#   zai      — its pricing tuple names claude-opus-4-7 / -sonnet-4-6 /
+#              -haiku-4-5 while its whitelist and default say
+#              claude-3-5-sonnet. Three naming schemes, no overlap, so
+#              nothing it can be asked for is priceable. Unpicking that
+#              needs an account to read the real invoice against.
+#   opencode — opencode.ai/zen publishes no per-token price list.
+PRICES_UNKNOWN: frozenset[str] = frozenset({"zai", "opencode"})
+
+
+def all_keys() -> list[str]:
+    return list(PROVIDERS.keys())
+
+
+def get_config(key: str) -> ProviderConfig:
+    return PROVIDERS[key]
+
+
+def get_available(settings: Any) -> list[str]:
+    available: list[str] = []
+    for cfg in PROVIDERS.values():
+        if getattr(settings, cfg.api_key_attr, None):
+            available.append(cfg.key)
+    return available
+
+
+
+
+# How long a completion may produce nothing before we treat the
+# connection as stalled and retry it once. Deliberately generous: the
+# retry costs a second completion, so this is a stall detector, not a
+# latency budget.
+LLM_STALL_TIMEOUT_SECS = 20.0
+
+
+# ── Factory functions ────────────────────────────────────────────
+# Pipecat imports are DEFERRED inside each function body to avoid
+# pulling in the portaudio dependency during admin CLI commands
+# (e.g. `heare status`, `heare mode`).  Nothing outside the audio
+# daemon should ever import pipecat at module level.
+
+
+
+
+
+
+async def list_models(
+    config: ProviderConfig, api_key: str, timeout: float = 10.0
+) -> list[str]:
+    """Fetch the live list of model ids available from *config*'s API.
+
+    Raises on any failure (HTTP error, timeout, unexpected shape) — the
+    caller is responsible for falling back to ``config.model_whitelist``.
+    """
+    import httpx  # deferred
+
+    base = config.base_url.rstrip("/")
+    headers = {"Authorization": f"Bearer {api_key}"}
+    if config.api_style == "anthropic":
+        url = f"{base}/v1/models"
+        headers["anthropic-version"] = "2023-06-01"
+    else:
+        url = f"{base}/models"
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return [item["id"] for item in data["data"]]
+
+
+def make_identity_bootstrap(
+    config: ProviderConfig,
+    api_key: str,
+    model: str,
+    timeout: float = 30.0,
+) -> Any:
+    """Return an async ``bootstrap(prompt) -> dict`` backed by *config*.
+
+    Routes to the correct API automatically based on
+    ``config.api_style``:
+
+    * ``"openai"``  → ``POST {endpoint}/chat/completions``
+    * ``"anthropic"`` → ``POST {endpoint}/messages`` (Messages API)
+
+    The caller gets back a plain async callable — no pipecat
+    dependency is required to *create* the bootstrap.
+    """
+    import json  # deferred
+    import httpx  # deferred
+
+    endpoint = config.identity_endpoint or (
+        config.base_url.rstrip("/") + "/chat/completions"
+    )
+    is_anthropic = config.api_style == "anthropic"
+
+    async def _bootstrap(prompt: str) -> dict:
+        headers: dict[str, str] = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        if is_anthropic:
+            payload: dict[str, Any] = {
+                "model": model or config.default_model,
+                "max_tokens": 400,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            headers.setdefault("anthropic-version", "2023-06-01")
+        else:
+            payload = {
+                "model": model or config.default_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are inventing a small voice-assistant persona. "
+                            "Reply with ONLY one compact JSON object — no prose, "
+                            "no code fence."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 400,
+                "temperature": 0.9,
+            }
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(endpoint, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        # Extract text content
+        if is_anthropic:
+            raw = data["content"][0]["text"]
+        else:
+            raw = data["choices"][0]["message"]["content"]
+
+        text = raw.strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise RuntimeError("identity bootstrap: no JSON object in reply")
+        return json.loads(text[start : end + 1])
+
+    return _bootstrap
+
+
+__all__ = [
+    "ProviderConfig",
+    "PROVIDERS",
+    "all_keys",
+    "get_config",
+    "get_available",
+    "make_identity_bootstrap",
+    "list_models",
+]
