@@ -2,6 +2,7 @@
 
     uv run python -m heare            # talk by typing
     uv run python -m heare --voice    # talk aloud
+    uv run python -m heare --serve    # the screen and the API (add --voice for both)
 
 Everything else knows the core and itself. If a second file starts
 needing to know two parts, the shape has gone wrong.
@@ -34,16 +35,22 @@ def build(settings: Settings | None = None) -> Core:
 
 
 async def _main(args: argparse.Namespace) -> int:
-    core = build()
+    settings = Settings()
+    core = build(settings)
     ended: list[asyncio.Event] = []
+    if args.serve:
+        from heare.api.server import serve
+
+        await serve(core, settings)
+        print(f"екран: http://127.0.0.1:{settings.api_port}/", file=sys.stderr)
     if args.voice:
         from heare.channels.voice.channel import open_voice
 
-        core_voice = await open_voice(Settings())
+        core_voice = await open_voice(settings)
         core.add_input(core_voice)
         core.add_output(core_voice)
         print("слухаю (Ctrl+C — вихід)", file=sys.stderr)
-    else:
+    elif not args.serve:
         from heare.channels.text.terminal import Terminal
 
         terminal = Terminal()
@@ -68,6 +75,7 @@ async def _main(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="heare")
     parser.add_argument("--voice", action="store_true", help="microphone and speaker")
+    parser.add_argument("--serve", action="store_true", help="the API and the screen")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)

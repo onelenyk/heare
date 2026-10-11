@@ -17,7 +17,7 @@ def get(name: str) -> str | None:
     value = os.environ.get(name)
     if value is not None:
         return value.strip() or None
-    if os.environ.get("HEARE_KEYS_BACKEND", "").strip().lower() == "file":
+    if _in_a_file():
         return None
     try:
         import keyring
@@ -26,3 +26,19 @@ def get(name: str) -> str | None:
     except Exception:  # noqa: BLE001 — no Keychain is "no key", not a crash
         return None
     return (value or "").strip() or None
+
+
+def store(name: str, value: str) -> None:
+    """Keep a key. In the Keychain; in tests, in the process only — a
+    test must never write the developer's own Keychain."""
+    value = value.strip()
+    if _in_a_file():
+        os.environ[name] = value
+        return
+    import keyring
+
+    keyring.set_password(SERVICE, name, value)
+
+
+def _in_a_file() -> bool:
+    return os.environ.get("HEARE_KEYS_BACKEND", "").strip().lower() == "file"
