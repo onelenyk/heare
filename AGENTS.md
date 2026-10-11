@@ -37,8 +37,10 @@ the one file that knows every part. Inside `heare/`, imports are
 ```bash
 uv run python -m heare            # the new app, by typing
 uv run python -m heare --voice    # the new app, aloud
+uv run python -m heare --serve    # the screen and the API on 127.0.0.1:9790
 uv run pytest tests/heare -q      # the core against stand-ins, no network
 uv run python -m heare.listener   # real speech in, the reply listened to (costs cents)
+uv run python -m heare.listener 1 opencode   # ...and a spoken task for a real agent
 uv run python -m tests.e2e.listen_old   # the same listener on the old app
 ```
 

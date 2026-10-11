@@ -176,3 +176,43 @@ async def test_a_delegated_reply_can_be_watched_from_the_screen(tmp_path):
     state = await (await client.get("/api/state", headers=auth)).json()
     assert state["tasks"][0]["status"] == "done"
     await _close(room, client)
+
+
+async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
+    from heare.api.screens import ScreenMaker
+
+    room, client, auth, settings = await _open(tmp_path)
+
+    async def write(system: str, request: str) -> str:
+        assert "/api/state" in system  # the model is told what it may call
+        return "name: my-tasks\n<!doctype html><h1>Справи</h1>"
+
+    room.core.add_executor(
+        ScreenMaker(settings.screens_dir, write, room.core.state.emit)
+    )
+    room.model.will_say("Екран готовий.")
+    task = room.core.delegate("зроби екран зі справами")
+    await room.until(lambda: task.status == "done")
+    assert "my-tasks" in task.result
+    assert await (await client.get("/api/screens", headers=auth)).json() == ["my-tasks"]
+    assert "<h1>Справи</h1>" in await (await client.get("/screens/my-tasks")).text()
+    await _close(room, client)
+
+
+async def test_a_model_that_returns_no_page_is_said_plainly(tmp_path):
+    from heare.api.screens import ScreenMaker
+
+    room, client, auth, settings = await _open(tmp_path)
+
+    async def write(system: str, request: str) -> str:
+        return "Вибач, не можу."
+
+    room.core.add_executor(
+        ScreenMaker(settings.screens_dir, write, room.core.state.emit)
+    )
+    task = room.core.delegate("зроби екран")
+    await room.until(lambda: task.status == "done")
+    assert task.result.startswith("Не вдалося")
+    assert any(e.kind == "cannot" for e in room.core.state.journal)
+    assert await (await client.get("/api/screens", headers=auth)).json() == []
+    await _close(room, client)

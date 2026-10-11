@@ -210,20 +210,26 @@ class Voice:
         return "stopped" if utterance.stopped else "done"
 
     async def _synthesise(self, text: str) -> AsyncIterator[bytes]:
-        """One retry. The synthesiser's service refuses a connection now
-        and then, and without this a whole reply became the failure line
-        because of one handshake."""
+        """Three tries, then the machine's own voice. The synthesiser's
+        service refuses a connection now and then, sometimes several times
+        running, and a whole reply used to become the failure line — or
+        silence — because of a handshake. An uglier voice is a far smaller
+        failure than no voice."""
         voice = self._voice or pick_voice(text, fallback_lang="uk")
-        for attempt in (1, 2):
+        for wait in (0.2, 0.6, None):
             sounded = False
             async for chunk in synthesise(text, voice=voice):
                 sounded = True
                 yield chunk
             if sounded:
                 return
-            if attempt == 1:
-                logger.warning("no audio for %r — trying once more", text[:40])
-                await asyncio.sleep(0.3)
+            if wait is not None:
+                logger.warning("no audio for %r — trying again", text[:40])
+                await asyncio.sleep(wait)
+        logger.warning("the synthesiser is refusing — using the system voice")
+        pcm = await asyncio.to_thread(_system_voice, text)
+        if pcm:
+            yield pcm
 
     def pause(self) -> None:
         self.mouth.pause_all()
@@ -233,6 +239,37 @@ class Voice:
 
     def stop(self) -> None:
         self.mouth.stop_all("barged")
+
+
+def _system_voice(text: str) -> bytes:
+    """The sentence in the machine's built-in voice, as 24 kHz PCM. Empty
+    when there is no such voice or no ffmpeg — then it really is silence,
+    and the core says so."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    if not (shutil.which("say") and shutil.which("ffmpeg")):
+        return b""
+    try:
+        listed = subprocess.run(["say", "-v", "?"], capture_output=True, text=True,
+                                timeout=5).stdout
+        cyrillic = any("\u0400" <= ch <= "\u04ff" for ch in text)
+        wanted = "uk_UA" if cyrillic else "en_US"
+        name = next((line.split("  ")[0].strip() for line in listed.splitlines()
+                     if wanted in line), None)
+        if name is None:
+            return b""
+        with tempfile.NamedTemporaryFile(suffix=".aiff") as out:
+            subprocess.run(["say", "-v", name, "-o", out.name, text], check=True,
+                           timeout=20)
+            return subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", out.name,
+                 "-ar", "24000", "-ac", "1", "-f", "s16le", "-"],
+                capture_output=True, check=True, timeout=20,
+            ).stdout
+    except (subprocess.SubprocessError, OSError):
+        return b""
 
 
 def _or(settings: Any, name: str, default: Any) -> Any:

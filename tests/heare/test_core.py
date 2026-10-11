@@ -287,6 +287,17 @@ async def test_a_promise_without_a_call_is_asked_for_again():
     await room.close()
 
 
+async def test_a_promise_still_not_kept_is_handed_over_as_asked():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.model.will_say("Створюю.", "І досі нічого не викликаю.")
+    room.says("Створи файл note.txt")
+    await room.until(lambda: worker.tasks)
+    assert "Створи файл note.txt" in worker.tasks[0]
+    await room.close()
+
+
 async def test_everything_that_happens_is_an_event():
     room = await open_room()
     events = room.core.state.subscribe()

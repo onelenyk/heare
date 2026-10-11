@@ -29,7 +29,15 @@ REMEMBERED = "Мій улюблений колір бірюзовий, запа�
 RECALL = ("Дока, що я казав про мій улюблений колір?", ("бірюзов",))
 
 
-async def run(tape: Tape, rounds: int = 2, *, recall: bool = False) -> dict:
+# Asked aloud about a folder the listener made; an agent has to look.
+WORK = ("Дока, глянь, скільки файлів у робочій теці і як вони називаються.",
+        # Latin file names read by a Ukrainian voice come back mangled
+        # from the second recogniser; the count does not.
+        ("alpha", "альфа", "beta", "бета", "два файли", "2 файли"))
+
+
+async def run(tape: Tape, rounds: int = 2, *, recall: bool = False,
+              work: bool = False) -> dict:
     failed = 0
     firsts: list[float] = []
     for _ in range(rounds):
@@ -51,6 +59,16 @@ async def run(tape: Tape, rounds: int = 2, *, recall: bool = False) -> dict:
         failed += bool(answer.problems)
         await asyncio.sleep(1.0)
 
+    if work:
+        taken = await ear.ask(tape, WORK[0])
+        print(taken.line(), flush=True)
+        result = await ear.then(tape, "…результат роботи агента")
+        if not result.has(*WORK[1]):
+            result.problems.append(f"у результаті немає {WORK[1]}")
+        print(result.line(), flush=True)
+        failed += bool(result.problems)
+        await asyncio.sleep(1.0)
+
     # Talked over: how long until it is quiet, and what it says next.
     cut = await ear.cut_in(tape, LONG, STOP)
     print(cut.line(), flush=True)
@@ -58,7 +76,7 @@ async def run(tape: Tape, rounds: int = 2, *, recall: bool = False) -> dict:
         "first_sound_median_s": round(statistics.median(firsts), 2) if firsts else None,
         "first_sound_all_s": [round(f, 2) for f in firsts],
         "answers_with_problems": failed,
-        "answers": len(QUESTIONS) * rounds + int(recall),
+        "answers": len(QUESTIONS) * rounds + int(recall) + int(work),
         "quiet_after_interruption_s": (
             None if cut.quiet_after is None else round(cut.quiet_after, 2)
         ),

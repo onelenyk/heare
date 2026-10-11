@@ -1,6 +1,6 @@
 """The listener, pointed at this app.
 
-    uv run python -m heare.listener [rounds]
+    uv run python -m heare.listener [rounds] [agent]
 
 Real speech into the voice channel, the real recogniser, model and
 synthesiser, and a second recogniser on what would have left the
@@ -40,7 +40,14 @@ async def main() -> int:
     rounds = int(sys.argv[1]) if len(sys.argv) > 1 else 2
     # A database of its own: nothing said here enters the person's history.
     db = Path(tempfile.mkdtemp(prefix="heare-listen-")) / "heare.db"
-    settings = Settings(db_path=db)
+    # A folder of its own for an agent to look into.
+    work = db.parent / "work"
+    work.mkdir()
+    (work / "alpha.txt").write_text("перший", encoding="utf-8")
+    (work / "beta.md").write_text("# другий", encoding="utf-8")
+    agent = sys.argv[2] if len(sys.argv) > 2 else ""
+    settings = Settings(db_path=db, executor=agent or "none", executor_cwd=str(work),
+                        screens_dir=db.parent / "screens")
     tape = Tape()
     await tape.start()
     core = build(settings)
@@ -51,7 +58,7 @@ async def main() -> int:
     running = asyncio.create_task(core.run())
     await asyncio.sleep(0.5)
     try:
-        summary = await scenarios.run(tape, rounds, recall=True)
+        summary = await scenarios.run(tape, rounds, recall=True, work=bool(agent))
     finally:
         running.cancel()
         await asyncio.gather(running, return_exceptions=True)

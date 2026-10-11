@@ -160,6 +160,24 @@ async def ask(tape: Tape, question: str, *, settle: float = 1.5,
     return answer
 
 
+async def then(tape: Tape, what: str, *, timeout: float = 90.0,
+               settle: float = 1.5) -> Answer:
+    """Listen to the next thing said without being asked — the result of
+    work that was handed off. ``first_sound`` is how long it took to come."""
+    mark = time.monotonic()
+    answer = Answer(what)
+    try:
+        await tape.until_sound(mark, timeout=timeout)
+        await tape.until_quiet(settle=settle, timeout=timeout)
+    except TimeoutError as exc:
+        answer.problems.append(str(exc))
+        return answer
+    pieces = tape.since(mark)
+    answer = measure(what, pieces, mark)
+    answer.text = await heard(b"".join(p.pcm for p in pieces))
+    return answer
+
+
 @dataclass
 class Cut:
     """What happened when the person talked over a reply."""

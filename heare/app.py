@@ -28,10 +28,24 @@ def build(settings: Settings | None = None) -> Core:
 
     settings = settings or Settings()
     names = persona.names()
-    return Core(
+    from heare.model.delegate import Dispatcher
+    from heare.reach.agents import connect
+
+    from heare.api.screens import ScreenMaker
+
+    dispatcher = Dispatcher(settings)
+    core = Core(
         Chat(settings), memory=Book(settings.db_path, names=sorted(names)),
-        prompt=persona.prompt, names=names,
+        delegator=dispatcher, prompt=persona.prompt, names=names,
     )
+    core.add_executor(
+        ScreenMaker(settings.screens_dir, dispatcher.ask, core.state.emit)
+    )
+    # Whichever agents this machine has. None is fine: the verb is then
+    # simply not offered, and the assistant only talks and remembers.
+    for agent in connect(settings):
+        core.add_executor(agent)
+    return core
 
 
 async def _main(args: argparse.Namespace) -> int:

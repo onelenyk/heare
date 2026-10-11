@@ -59,6 +59,7 @@ HISTORY_TURNS = 12
 # nothing without them.
 CONTEXT_TURNS = 6
 PERMISSION_TIMEOUT_S = 60.0
+SAY_CHARS = 70
 
 
 class Plain:
@@ -383,6 +384,10 @@ class Core:
             elif outcome != "stopped":
                 for call in calls:
                     spoken = await self._run_verb(call)
+                    # The model already said it is on it; «Беру.» on top
+                    # of «Зараз гляну.» is the same thing said twice.
+                    if reply and call.get("name") == "delegate":
+                        continue
                     if spoken:
                         reply = f"{reply} {spoken}".strip()
                         outcome = await self._say(out, spoken)
@@ -408,7 +413,7 @@ class Core:
             failure is None and not calls and message.person
             and outcome != "stopped" and self._verbs() and promises_work(reply)
         ):
-            await self._keep_the_promise(messages, reply, out)
+            await self._keep_the_promise(messages, reply, out, message.text)
 
     async def _voice(
         self, out: Output | None, messages: list[dict]
@@ -452,9 +457,12 @@ class Core:
         return "".join(parts).strip(), calls, outcome, broke
 
     async def _keep_the_promise(
-        self, messages: list[dict], reply: str, out: Output | None
+        self, messages: list[dict], reply: str, out: Output | None, asked: str
     ) -> None:
-        """«Гляну, секунду» with no verb called: ask once more for the call."""
+        """«Гляну, секунду» with no verb called: ask once more for the
+        call — and if it still does not come, hand over what the person
+        asked for. A promise heard and not kept is worse than a refusal:
+        the next turn the model believes its own words."""
         again = [
             *messages,
             {"role": "assistant", "content": reply},
@@ -469,6 +477,9 @@ class Core:
             logger.exception("asking for the promised call failed")
             return
         logger.info("promise without a call: asked again, got %d call(s)", len(calls))
+        if not calls and self.executors:
+            self.delegate(asked)
+            return
         for call in calls:
             spoken = await self._run_verb(call)
             # The model already said it is on it; «Беру.» again is noise.
@@ -630,8 +641,11 @@ class Core:
             self._answered = asyncio.get_running_loop().create_future()
             self._permission = self.state.permission = permission
             self.state.emit("permission", **permission.view())
+            # Said short: a shell command read out in full is noise. The
+            # whole of it is in the event, for a screen to show.
+            short = what if len(what) <= SAY_CHARS else what[:SAY_CHARS].rstrip() + "…"
             self.hear(Message(
-                text=f"{task.executor} хоче: {what}. Дозволяєш?",
+                text=f"{task.executor} хоче: {short}. Дозволяєш?",
                 channel=task.executor, person=False, verbatim=True,
             ))
             allowed = False
