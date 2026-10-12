@@ -128,6 +128,21 @@ class Canvas:
         self._emit("canvas", op="remove", id=block.strip().lower())
         return True
 
+    def arrange(self, order: list[str], sizes: dict[str, str] | None = None) -> None:
+        """Change where the widgets stand and how wide they are, without
+        touching what is in them. Ids left out keep their place after
+        the ones named."""
+        named = [k for k in dict.fromkeys(str(i).strip().lower() for i in order)
+                 if k in self.blocks]
+        rest = [k for k in self.blocks if k not in named]
+        self.blocks = {k: self.blocks[k] for k in (*named, *rest)}
+        for key, size in (sizes or {}).items():
+            if key in self.blocks and size in SIZES:
+                self.sizes[key] = size
+        self._keep()
+        self._emit("canvas", op="arrange", order=list(self.blocks),
+                   sizes={k: self.sizes.get(k, "s") for k in self.blocks})
+
     def clear(self) -> None:
         self.blocks, self.sizes = {}, {}
         self._keep()
@@ -148,12 +163,21 @@ class Canvas:
         self.remove(str(arguments.get("id", "")))
         return "Прибрала."
 
+    async def _arrange(self, arguments: dict) -> str:
+        order = arguments.get("order") or []
+        sizes = arguments.get("sizes") or {}
+        if not isinstance(order, list) or not isinstance(sizes, dict):
+            return ""
+        self.arrange(order, sizes)
+        return "Переставила."
+
     async def _clear(self, arguments: dict) -> str:
         self.clear()
         return "Очистила екран."
 
     def verbs(self) -> list[tuple[dict, object]]:
-        return [(_PUT, self._put), (_REMOVE, self._remove), (_CLEAR, self._clear)]
+        return [(_PUT, self._put), (_ARRANGE, self._arrange),
+                (_REMOVE, self._remove), (_CLEAR, self._clear)]
 
     def context(self) -> str:
         """An outline: names and first words. Enough to change the right
@@ -161,13 +185,15 @@ class Canvas:
         if not self.blocks:
             return "Канвас (екран перед людиною) зараз порожній."
         lines = [
-            f"- {key}{' (живий)' if '<script' in html.lower() else ''}: "
+            f"- {key} [{self.sizes.get(key, 's')}]"
+            f"{' (живий)' if '<script' in html.lower() else ''}: "
             f"{_text(html)[:OUTLINE_CHARS]}" for key, html in self.blocks.items()
         ]
         outline = "\n".join(lines)
         if len(outline) > OUTLINE_TOTAL:
             outline = outline[:OUTLINE_TOTAL] + " …"
-        return ("На канвасі (екран перед людиною) зараз такі віджети. Вони вже "
+        return ("На канвасі (екран перед людиною) зараз такі віджети, у порядку "
+                "зліва направо і згори донизу; у дужках ширина. Вони вже "
                 "намальовані й лишаються, поки їх не приберуть — не малюй те "
                 "саме вдруге:\n" + outline)
 
@@ -235,6 +261,23 @@ _PUT = _verb(
                                 "width, l: the full row."},
     },
     ["id", "html", "say"],
+)
+_ARRANGE = _verb(
+    "canvas_arrange",
+    "Move widgets around or resize them without redrawing them: when the "
+    "person asks to sort, group, reorder, put something first, or make a "
+    "widget wider or smaller. The canvas fills left to right, top to "
+    "bottom, in this order.",
+    {
+        "order": {"type": "array", "items": {"type": "string"},
+                  "description": "Widget ids in the new order. Ones you "
+                                 "leave out follow in their current order."},
+        "sizes": {"type": "object",
+                  "description": "Optional: id -> \"s\", \"m\" or \"l\" for "
+                                 "widgets whose width should change.",
+                  "additionalProperties": {"type": "string", "enum": ["s", "m", "l"]}},
+    },
+    ["order"],
 )
 _REMOVE = _verb(
     "canvas_remove", "Take one widget off the canvas.",
