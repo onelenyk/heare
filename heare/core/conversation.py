@@ -429,6 +429,7 @@ class Core:
         await self._interrupt()
         called_off = self.stop_all()
         await self._keep("user", message.text, message.channel)
+        self.history.append({"role": "user", "content": message.text})
         line = "Зупинив." if called_off else "Добре."
         self._turn = asyncio.create_task(self._answer(Message(
             text=line, channel=message.channel, reply_on=message.reply_on,
@@ -450,6 +451,10 @@ class Core:
         out = self._output_for(message)
         try:
             if message.verbatim:
+                # Part of the conversation the model reads next turn:
+                # without «Зупинив.» in it, it went on describing the
+                # work it had just been told to stop.
+                self.history.append({"role": "assistant", "content": message.text})
                 await self._say(out, message.text)
                 await self._keep("assistant", message.text, out.name if out else "")
                 self.state.emit("said", text=message.text,
@@ -653,7 +658,8 @@ class Core:
             lines.append(f"- {status}: {task.request[:90]}")
         busy = sum(t.status == "running" for t in self.state.tasks.values())
         known = ("\n\nЗапис системи про справи (не твої слова). Зараз у роботі: "
-                 f"{busy}." + ("\n" + "\n".join(lines) if lines else "")
+                 f"{busy}" + ("" if busy else " — тобто зараз ти нічого не робиш")
+                 + "." + ("\n" + "\n".join(lines) if lines else "")
                  + "\nСправа існує лише тоді, коли вона є в цьому записі. Нове прохання "
                  "про роботу — це завжди новий виклик delegate; сказати «доручив» без "
                  "виклику означає нічого не зробити.") if self.executors else ""

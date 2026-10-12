@@ -460,3 +460,20 @@ async def test_room_talk_does_not_end_a_reply_in_progress():
     assert room.page.outcomes == ["done"]
     assert len(room.model.asked) == 1
     await room.close()
+
+
+async def test_what_the_code_says_itself_is_part_of_the_conversation():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.core.delegate("довга справа")
+    await room.until(lambda: worker.tasks)
+    room.says("Зупини все")
+    await room.settled()
+    room.model.will_say("Нічого.")
+    room.says("Що ти зараз робиш?")
+    await room.settled()
+    seen = [(m["role"], m["content"]) for m in room.model.asked[-1][1:]]
+    assert ("user", "Зупини все") in seen and ("assistant", "Зупинив.") in seen
+    assert "зараз ти нічого не робиш" in room.model.asked[-1][0]["content"]
+    await room.close()
