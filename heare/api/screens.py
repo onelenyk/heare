@@ -22,7 +22,9 @@ API = """\
 The page is served by the assistant and may call its API. Every request
 needs the header "X-Heare-Token": window.HEARE_TOKEN (already defined).
 
-GET  /api/state            -> {phase: idle|hearing|thinking|speaking, parts:{inputs,outputs,executors}, tasks:[...], permission, controls}
+GET  /api/state            -> {phase: idle|hearing|thinking|speaking, parts:{inputs,outputs,executors}, tasks:[...], permission, controls,
+                              model:{provider, model, wanted, fallback}, session:{started, turns, cost_usd, unpriced}}
+GET  /api/history?n=20     -> [{user, agent}] the last exchanges, oldest first
 GET  /api/controls         -> {part: {name: value}}, e.g. {"voice": {"mic": true, "speaker": true, "volume": 1.0, "listen": "judge"}}
 POST /api/controls         {part, name, value}   turn one (mic/speaker: bool, volume: 0..1, listen: "judge"|"name")
 POST /api/stop                              stop the reply and all work now
@@ -31,7 +33,7 @@ POST /api/tasks            {request}        start a piece of work
 POST /api/tasks/{id}/stop                   stop it
 POST /api/permission/{id}  {allow: bool}    answer a pending question
 POST /api/message          {text}           say something to the assistant
-GET  /api/events?token=…   Server-Sent Events: {kind, at, ...}; kinds: heard{text,channel},
+GET  /api/events?token=…&replay=50   Server-Sent Events (replay = how many past events first): {kind, at, ...}; kinds: heard{text,channel},
                            reply{text}, said{text,channel}, phase{phase}, task{...},
                            permission{id,executor,what}, usage{...}
 GET  /api/settings         -> plain settings (never keys)

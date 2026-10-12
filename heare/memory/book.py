@@ -51,6 +51,11 @@ class Book:
         )
         return search.spoken(fragments, now=now)
 
+    async def recent(self, n: int = 20) -> list[dict]:
+        """The last exchanges, oldest first, for a screen that has just
+        opened: ``[{"user": …, "agent": …}]``."""
+        return await asyncio.to_thread(self._store.recent_exchanges, n)
+
     async def always(self) -> str:
         return ""
 

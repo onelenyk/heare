@@ -49,6 +49,28 @@ def build(settings: Settings | None = None) -> Core:
     return core
 
 
+def _model(settings: Settings) -> dict:
+    """Which model is answering — and whether it is the one that was
+    chosen. A chosen provider with no key falls back to another, and that
+    must be visible: the old dashboard showed a choice that changed nothing."""
+    from heare.model.llm import resolve_llm
+    from heare.model.providers import PROVIDERS
+
+    wanted = str(settings.llm_provider or "deepseek").lower()
+    logging.getLogger("heare.spine.llm").disabled = True  # asked often; said once elsewhere
+    try:
+        cfg = resolve_llm(settings)
+    except RuntimeError as exc:
+        return {"wanted": wanted, "error": str(exc), "name": persona.name()}
+    finally:
+        logging.getLogger("heare.spine.llm").disabled = False
+    return {
+        "provider": cfg.provider, "model": cfg.model, "wanted": wanted,
+        "fallback": cfg.provider != wanted, "providers": sorted(PROVIDERS),
+        "name": persona.name(),
+    }
+
+
 async def _main(args: argparse.Namespace) -> int:
     settings = Settings()
     core = build(settings)
@@ -56,7 +78,7 @@ async def _main(args: argparse.Namespace) -> int:
     if args.serve:
         from heare.api.server import serve
 
-        await serve(core, settings)
+        await serve(core, settings, lambda: _model(settings))
         print(f"екран: http://127.0.0.1:{settings.api_port}/", file=sys.stderr)
     if args.voice:
         from heare.channels.voice.channel import open_voice

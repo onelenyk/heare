@@ -20,6 +20,7 @@ import asyncio
 import json
 import re
 import secrets
+import time
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -88,9 +89,40 @@ def token(path: Path) -> str:
     return made
 
 
-def build(core: Core, settings: Any) -> web.Application:
+class Tally:
+    """What this run has added up to: turns, work, money. Counted from
+    the core's events, so it is the same account every screen reads."""
+
+    def __init__(self, core: Core) -> None:
+        self.started = time.time()
+        self.turns = 0
+        self.cost_usd = 0.0
+        # A call the provider put no price on. Unknown is not free, and
+        # is shown as unknown.
+        self.unpriced = 0
+        self._reader = core.state.subscribe(size=10000)
+
+    def read(self) -> dict:
+        while not self._reader.empty():
+            event = self._reader.get_nowait()
+            if event.kind == "said" and event.data.get("text"):
+                self.turns += 1
+            elif event.kind == "usage":
+                cost = event.data.get("cost_usd")
+                if cost is None:
+                    self.unpriced += 1
+                else:
+                    self.cost_usd += float(cost)
+        return {"started": self.started, "turns": self.turns,
+                "cost_usd": round(self.cost_usd, 6), "unpriced": self.unpriced}
+
+
+def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
+    """vitals: () -> dict of what the app knows and the core does not —
+    which model is answering, and whether it is the one that was chosen."""
     secret = token(Path(settings.api_token_file))
     screens = Path(settings.screens_dir)
+    tally = Tally(core)
 
     @web.middleware
     async def guard(request: web.Request, handler):
@@ -132,7 +164,10 @@ def build(core: Core, settings: Any) -> web.Application:
         await response.prepare(request)
         reader = core.state.subscribe()
         try:
-            for past in list(core.state.journal)[-50:]:
+            # The past only when asked for: a page that also loads the
+            # history would otherwise show the last exchange twice.
+            replay = max(0, min(int(request.query.get("replay", "0")), 200))
+            for past in list(core.state.journal)[-replay:] if replay else ():
                 await response.write(_sse(past.view()))
             while True:
                 try:
@@ -147,7 +182,24 @@ def build(core: Core, settings: Any) -> web.Application:
         return response
 
     async def state(request: web.Request) -> web.Response:
-        return web.json_response({**core.state.snapshot(), "controls": core.controls()})
+        about: dict = {}
+        if vitals is not None:
+            try:
+                about = vitals()
+            except Exception as exc:  # noqa: BLE001 — a vital that fails is shown, not hidden
+                about = {"error": str(exc)}
+        return web.json_response({
+            **core.state.snapshot(), "controls": core.controls(),
+            "model": about, "session": tally.read(),
+        })
+
+    async def history(request: web.Request) -> web.Response:
+        """The conversation before this page was opened."""
+        recent = getattr(core.memory, "recent", None)
+        if recent is None:
+            return web.json_response([])
+        count = max(1, min(int(request.query.get("n", "20")), 100))
+        return web.json_response(await recent(count))
 
     # -- controls ---------------------------------------------------------
 
@@ -264,6 +316,7 @@ def build(core: Core, settings: Any) -> web.Application:
         web.post("/api/message", message),
         web.get("/api/events", events),
         web.get("/api/state", state),
+        web.get("/api/history", history),
         web.get("/api/controls", controls),
         web.post("/api/controls", control),
         web.post("/api/stop", stop),
@@ -287,10 +340,10 @@ def _sse(data: dict) -> bytes:
     return f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n".encode()
 
 
-async def serve(core: Core, settings: Any) -> web.AppRunner:
+async def serve(core: Core, settings: Any, vitals: Any = None) -> web.AppRunner:
     """Start the API on this machine only. Returns the runner to stop it."""
     core.add_output(Screen(core))
-    runner = web.AppRunner(build(core, settings))
+    runner = web.AppRunner(build(core, settings, vitals))
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", int(settings.api_port)).start()
     return runner

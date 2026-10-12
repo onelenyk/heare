@@ -159,7 +159,7 @@ async def test_a_screen_is_saved_listed_and_served_as_a_client(tmp_path):
 async def test_the_built_in_page_is_served(tmp_path):
     room, client, _, _ = await _open(tmp_path)
     page = await (await client.get("/")).text()
-    assert "HEARE_TOKEN" in page and "Розмова" in page
+    assert "HEARE_TOKEN" in page and "Керування" in page
     await _close(room, client)
 
 
@@ -277,4 +277,24 @@ async def test_the_stop_button_ends_the_reply_and_the_work_without_a_word(tmp_pa
     assert stopped == {"tasks_stopped": 1}
     await room.settled()
     assert room.page.outcomes == ["stopped"] and worker.stopped == 1
+    await _close(room, client)
+
+
+async def test_the_state_carries_the_model_the_tally_and_recent_history(tmp_path):
+    from heare.api.server import build as build_api
+
+    room, client, auth, settings = await _open(tmp_path)
+    await client.close()
+    client = TestClient(TestServer(build_api(
+        room.core, settings, lambda: {"provider": "deepseek", "wanted": "opencode",
+                                      "fallback": True},
+    )))
+    await client.start_server()
+    room.model.will_say("Чотири.")
+    await client.post("/api/message", json={"text": "2+2?"}, headers=auth)
+    await room.settled()
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert state["model"]["fallback"] is True
+    assert state["session"]["turns"] == 1 and state["session"]["cost_usd"] == 0
+    assert await (await client.get("/api/history", headers=auth)).json() == []
     await _close(room, client)
