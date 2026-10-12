@@ -334,7 +334,7 @@ async def test_the_machine_can_be_read_and_a_widget_closed_by_hand(tmp_path):
     assert machine["cpu"]["cores"] >= 1 and 0 <= machine["cpu"]["percent"] <= 100
     assert (await client.get("/api/system")).status == 401
     drawn = await (await client.get("/api/canvas", headers=auth)).json()
-    assert drawn == [{"id": "cpu", "html": "<h3>Процесор</h3>", "size": "s"}]
+    assert drawn == {"blocks": [{"id": "cpu", "html": "<h3>Процесор</h3>", "size": "s"}], "css": ""}
     closed = await client.post("/api/canvas/remove", json={"id": "cpu"}, headers=auth)
     assert await closed.json() == {"removed": True}
     assert canvas.blocks == {}

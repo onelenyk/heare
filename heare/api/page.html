@@ -169,6 +169,7 @@
   .note { color:var(--soft); font-size:12px; min-height:18px; }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
+<style id="own"></style>
 
 <div id="app">
   <div id="left">
@@ -350,8 +351,19 @@ const refresh = () => api("state").then(s => {
 
 /* the canvas: one screen of widgets, changed in place */
 const SHEET = [...document.styleSheets[0].cssRules].filter(r => r.selectorText && r.selectorText.startsWith(".w ")).map(r => r.cssText).join("\n");
-const ROOT = getComputedStyle(document.documentElement);
-const VARS = ["--bg","--card","--card-2","--line","--ink","--soft","--accent","--accent-ink","--ok","--warn","--bad","--info","--sans","--mono"].map(v => `${v}:${ROOT.getPropertyValue(v)}`).join(";");
+const NAMES = ["--bg","--card","--card-2","--line","--ink","--soft","--accent","--accent-ink","--ok","--warn","--bad","--info","--sans","--mono"];
+// Read from the stage, not the page: a theme the assistant set on the
+// canvas has to reach the inside of live widgets too.
+const vars = () => { const c = getComputedStyle($("stage")); return NAMES.map(v => `${v}:${c.getPropertyValue(v)}`).join(";"); };
+let own = "";
+// The canvas's own stylesheet applies to the canvas and nothing else.
+// @keyframes cannot live inside a scope, so they are lifted out.
+function restyle(css) {
+  own = css || "";
+  const frames = own.match(/@keyframes[^{]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g) || [];
+  const rest = frames.reduce((text, f) => text.replace(f, ""), own);
+  $("own").textContent = frames.join("\n") + (rest.trim() ? `\n@scope (#stage) {\n${rest}\n}` : "");
+}
 // What a live widget may ask for. It runs in a sealed frame and reaches
 // the assistant only through these.
 const MAY_GET = /^(system|state|tasks|history(\?n=\d+)?|canvas|memory\?q=[^&]+)$/;
@@ -363,13 +375,14 @@ addEventListener("message", e => { const w = heare._w[e.data && e.data.id]; if (
 addEventListener("click", e => { const b = e.target.closest("[data-say]"); if (b) heare.say(b.dataset.say); });
 new ResizeObserver(() => parent.postMessage({heare: "size", h: document.documentElement.scrollHeight}, "*")).observe(document.documentElement);
 <\/script>`;
-const framed = html => `<!doctype html><meta charset="utf-8"><style>:root{${VARS}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}</style>${BRIDGE}<body class="w">${html}`;
+const framed = html => `<!doctype html><meta charset="utf-8"><style>:root{${vars()}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}\n${own}</style>${BRIDGE}<body class="w">${html}`;
 
 function block(b) {
   let node = document.getElementById("blk-" + b.id);
   if (!node) { node = el("div", "blk"); node.id = "blk-" + b.id; $("live").append(node); }
   node.className = "blk " + (b.size || "s");
   const x = el("button", "x", "×"); x.title = "прибрати"; x.onclick = () => api("canvas/remove", {method: "POST", body: {id: b.id}});
+  node.dataset.html = b.html;
   if (/<script/i.test(b.html)) {
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "allow-scripts"); frame.srcdoc = framed(b.html);
@@ -383,7 +396,12 @@ function block(b) {
 }
 const few = () => { $("empty").style.display = $("live").children.length ? "none" : "grid"; };
 function drawn(e) {
-  if (e.op === "clear") $("live").replaceChildren();
+  if (e.op === "clear") { $("live").replaceChildren(); restyle(""); }
+  else if (e.op === "style") {
+    restyle(e.css);
+    // Live widgets carry the sheet inside their frames: give it to them again.
+    for (const f of document.querySelectorAll("#live iframe")) f.srcdoc = framed(f.closest(".blk").dataset.html);
+  }
   else if (e.op === "remove") document.getElementById("blk-" + e.id)?.remove();
   else if (e.op === "arrange") for (const key of e.order) {
     const n = document.getElementById("blk-" + key);
@@ -392,7 +410,7 @@ function drawn(e) {
   else { const node = block(e); node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1600); node.scrollIntoView({behavior: "smooth", block: "nearest"}); }
   few();
 }
-api("canvas").then(blocks => { blocks.forEach(block); few(); });
+api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
 $("live").addEventListener("click", ev => {
   const say = ev.target.closest("[data-say]");
   if (say) api("message", {method: "POST", body: {text: say.dataset.say}});

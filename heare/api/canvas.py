@@ -41,6 +41,8 @@ _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,40}")
 _PAIRED = re.compile(r"<\s*(iframe|object|embed)\b.*?</\s*\1\s*>", re.IGNORECASE | re.DOTALL)
 _LONE = re.compile(r"</?\s*(iframe|object|embed|link|meta|base)\b[^>]*>?", re.IGNORECASE)
 SIZES = ("s", "m", "l")
+STYLE_CHARS = 6000
+_IMPORT = re.compile(r"@import[^;]*;?", re.IGNORECASE)
 _HANDLER = re.compile(r"\son[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.IGNORECASE)
 _JS_URL = re.compile(r"javascript\s*:", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")
@@ -72,8 +74,16 @@ class Canvas:
         self._emit = emit
         self.blocks: dict[str, str] = {}
         self.sizes: dict[str, str] = {}
+        # The canvas's own stylesheet: how it is laid out and how it
+        # looks, beyond the default. Content, order and this are the
+        # whole of what a screen is, so nothing about it is out of reach.
+        self.css = ""
         try:
-            for row in json.loads(self._path.read_text(encoding="utf-8")):
+            saved = json.loads(self._path.read_text(encoding="utf-8"))
+            if isinstance(saved, dict):
+                self.css = str(saved.get("css", ""))
+                saved = saved.get("blocks", [])
+            for row in saved:
                 self.blocks[str(row[0])] = str(row[1])
                 if len(row) > 2 and row[2] in SIZES:
                     self.sizes[str(row[0])] = row[2]
@@ -84,16 +94,22 @@ class Canvas:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             self._path.write_text(
-                json.dumps([[k, v, self.sizes.get(k, "s")] for k, v in self.blocks.items()],
-                           ensure_ascii=False),
+                json.dumps({
+                    "blocks": [[k, v, self.sizes.get(k, "s")]
+                               for k, v in self.blocks.items()],
+                    "css": self.css,
+                }, ensure_ascii=False),
                 encoding="utf-8",
             )
         except OSError:
             pass  # a drawing that cannot be saved is still drawn
 
-    def view(self) -> list[dict]:
-        return [{"id": k, "html": v, "size": self.sizes.get(k, "s")}
-                for k, v in self.blocks.items()]
+    def view(self) -> dict:
+        return {
+            "blocks": [{"id": k, "html": v, "size": self.sizes.get(k, "s")}
+                       for k, v in self.blocks.items()],
+            "css": self.css,
+        }
 
     # -- what the model does -------------------------------------------
 
@@ -128,6 +144,14 @@ class Canvas:
         self._emit("canvas", op="remove", id=block.strip().lower())
         return True
 
+    def style(self, css: str) -> None:
+        """Replace the canvas's own stylesheet. Nothing is fetched by it:
+        an @import is taken out, and what it can do is change how the
+        canvas looks."""
+        self.css = _JS_URL.sub("", _IMPORT.sub("", css)).replace("</style", "")[:STYLE_CHARS]
+        self._keep()
+        self._emit("canvas", op="style", css=self.css)
+
     def arrange(self, order: list[str], sizes: dict[str, str] | None = None) -> None:
         """Change where the widgets stand and how wide they are, without
         touching what is in them. Ids left out keep their place after
@@ -144,7 +168,7 @@ class Canvas:
                    sizes={k: self.sizes.get(k, "s") for k in self.blocks})
 
     def clear(self) -> None:
-        self.blocks, self.sizes = {}, {}
+        self.blocks, self.sizes, self.css = {}, {}, ""
         self._keep()
         self._emit("canvas", op="clear")
 
@@ -163,6 +187,10 @@ class Canvas:
         self.remove(str(arguments.get("id", "")))
         return "Прибрала."
 
+    async def _style(self, arguments: dict) -> str:
+        self.style(str(arguments.get("css", "")))
+        return str(arguments.get("say", "")).strip() or "Змінила вигляд."
+
     async def _arrange(self, arguments: dict) -> str:
         order = arguments.get("order") or []
         sizes = arguments.get("sizes") or {}
@@ -176,7 +204,7 @@ class Canvas:
         return "Очистила екран."
 
     def verbs(self) -> list[tuple[dict, object]]:
-        return [(_PUT, self._put), (_ARRANGE, self._arrange),
+        return [(_PUT, self._put), (_STYLE, self._style), (_ARRANGE, self._arrange),
                 (_REMOVE, self._remove), (_CLEAR, self._clear)]
 
     def context(self) -> str:
@@ -192,10 +220,12 @@ class Canvas:
         outline = "\n".join(lines)
         if len(outline) > OUTLINE_TOTAL:
             outline = outline[:OUTLINE_TOTAL] + " …"
+        own = (f"\nВласний стиль канвасу зараз (canvas_style замінює його цілком):\n"
+               f"{self.css[:1800]}" if self.css else "")
         return ("На канвасі (екран перед людиною) зараз такі віджети, у порядку "
                 "зліва направо і згори донизу; у дужках ширина. Вони вже "
                 "намальовані й лишаються, поки їх не приберуть — не малюй те "
-                "саме вдруге:\n" + outline)
+                "саме вдруге:\n" + outline + own)
 
     # -- as an output: a reply sent here is written, not spoken --------
 
@@ -261,6 +291,27 @@ _PUT = _verb(
                                 "width, l: the full row."},
     },
     ["id", "html", "say"],
+)
+_STYLE = _verb(
+    "canvas_style",
+    "Change how the canvas looks and how it is laid out — anything about "
+    "appearance that is not the content of one widget: columns and rows, "
+    "where things stand and how big they are, grouping, colours and theme, "
+    "fonts, backgrounds, rounded or round widgets, animation. Plain CSS; "
+    "this REPLACES the canvas's own stylesheet, so include what should "
+    "stay. Selectors: `#live` is the grid of widgets (display:grid — set "
+    "grid-template-columns, gap, grid-auto-rows…); `.blk` is every widget "
+    "card; `#blk-<id>` is one widget (grid-column / grid-row to place it, "
+    "any look); `.w h3`, `.w .big`, `.w .row`, `.w table` are what is "
+    "inside. Theme by setting variables on `#stage`: --bg --card --card-2 "
+    "--line --ink --soft --accent. @keyframes are allowed. An empty css "
+    "returns the default look.",
+    {
+        "css": {"type": "string", "description": "The whole stylesheet."},
+        "say": {"type": "string",
+                "description": "One short sentence to say aloud about it."},
+    },
+    ["css", "say"],
 )
 _ARRANGE = _verb(
     "canvas_arrange",

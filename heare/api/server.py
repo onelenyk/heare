@@ -221,9 +221,11 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
         return web.json_response({"tasks_stopped": await core.halt()})
 
     async def canvas(request: web.Request) -> web.Response:
-        """What is drawn now, block by block."""
+        """What is drawn now: the widgets, and the canvas's own stylesheet."""
         drawn = core.outputs.get("canvas")
-        return web.json_response(drawn.view() if drawn is not None else [])
+        return web.json_response(
+            drawn.view() if drawn is not None else {"blocks": [], "css": ""}
+        )
 
     async def canvas_remove(request: web.Request) -> web.Response:
         """The person closing a widget by hand."""

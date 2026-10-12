@@ -54,7 +54,7 @@ def test_widgets_stay_side_by_side_each_with_a_size(tmp_path):
     canvas.put("weather", "<h3>Бурштин</h3><p class='big' id='t'>…</p><script>load()</script>")
     canvas.put("cpu", "<h3>Процесор</h3><div class='meter'></div>", size="m")
     canvas.put("cities", "<table><tr><td>Київ</td></tr></table>")
-    assert [(b["id"], b["size"]) for b in canvas.view()] == [
+    assert [(b["id"], b["size"]) for b in canvas.view()["blocks"]] == [
         ("weather", "s"), ("cpu", "m"), ("cities", "m"),
     ]
     told = canvas.context()
@@ -81,7 +81,7 @@ async def test_the_talking_model_draws_in_the_same_turn_and_says_only_its_words(
     )))
     room.says("Як зварити каву?")
     await room.settled()
-    assert {"canvas_put", "canvas_arrange", "canvas_remove", "canvas_clear"} <= set(room.model.offered[0])
+    assert {"canvas_put", "canvas_style", "canvas_arrange", "canvas_remove", "canvas_clear"} <= set(room.model.offered[0])
     assert canvas.blocks["steps"].startswith("<ol>")
     assert room.page.said == ["Ось три кроки. "]  # drawing adds nothing to the speech
     room.model.will_say("Гаразд.")
@@ -170,3 +170,18 @@ def test_widgets_are_moved_and_resized_without_being_redrawn(tmp_path):
     assert canvas.blocks["plan"] == "<h3>plan</h3>"
     assert "- plan [l]" in canvas.context()
     assert list(_canvas(tmp_path).blocks) == ["plan", "cpu", "clock", "weather"]
+
+
+def test_the_look_of_the_canvas_is_its_own_stylesheet(tmp_path):
+    events: list = []
+    canvas = _canvas(tmp_path, events)
+    canvas.put("clock", "<h3>Час</h3>")
+    canvas.style("@import url(//evil.css); #live { grid-template-columns: 1fr 2fr } "
+                 "#blk-clock { grid-column: 1 / -1 } #stage { --accent: #e0a030 }")
+    assert "@import" not in canvas.css and "grid-template-columns: 1fr 2fr" in canvas.css
+    assert events[-1][1] == {"op": "style", "css": canvas.css}
+    assert "--accent: #e0a030" in canvas.context()
+    again = _canvas(tmp_path)
+    assert again.css == canvas.css and list(again.blocks) == ["clock"]
+    again.clear()
+    assert again.css == ""
