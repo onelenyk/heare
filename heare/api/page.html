@@ -344,7 +344,13 @@ function tasks(list, permission) {
   }
 }
 
+let born = null;
 const refresh = () => api("state").then(s => {
+  // The assistant was restarted: this page is from before, and may not
+  // know what the new one can do. A stale page once showed nothing that
+  // was drawn until it was reloaded by hand.
+  if (born && s.session.started !== born) return location.reload();
+  born = s.session.started;
   state = s; phase = s.phase; voice = s.controls.voice || null;
   show(); vitals(s); tasks(s.tasks, s.permission);
 });
@@ -407,7 +413,7 @@ function drawn(e) {
     const n = document.getElementById("blk-" + key);
     if (n) { n.className = "blk " + (e.sizes[key] || "s"); $("live").append(n); n.classList.add("fresh"); setTimeout(() => n.classList.remove("fresh"), 1200); }
   }
-  else { const node = block(e); node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1600); node.scrollIntoView({behavior: "smooth", block: "nearest"}); }
+  else if (e.op === "put") { const node = block(e); node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1600); node.scrollIntoView({behavior: "smooth", block: "nearest"}); }
   few();
 }
 api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
@@ -488,6 +494,7 @@ stream.onmessage = m => {
   if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted"].includes(e.kind)) refresh();
 };
 stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = "немає зв'язку з heare"; };
+stream.onopen = () => refresh();
 
 $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; api("message", {method: "POST", body: {text}}); };
 refresh(); setInterval(refresh, 15000);
