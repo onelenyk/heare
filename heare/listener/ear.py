@@ -52,8 +52,13 @@ async def spoken(text: str, voice: str = ASKING_VOICE) -> bytes:
     path = CACHE / f"{name}.pcm"
     if path.exists():
         return path.read_bytes()
-    chunks = [c async for c in synthesise(text, voice=voice, sample_rate=IN_RATE)]
-    pcm = _trim(b"".join(chunks))
+    pcm = b""
+    for wait in (0.3, 0.8, 1.5, 3.0, None):  # the service refuses now and then
+        chunks = [c async for c in synthesise(text, voice=voice, sample_rate=IN_RATE)]
+        pcm = _trim(b"".join(chunks))
+        if pcm or wait is None:
+            break
+        await asyncio.sleep(wait)
     if not pcm:
         raise RuntimeError(f"the asking voice produced no audio for {text!r}")
     path.write_bytes(pcm)
