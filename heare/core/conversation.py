@@ -54,6 +54,14 @@ RESULT_PREFIX = (
     "щось перевіриш: це вже перевірено. Результат:"
 )
 
+# The word that means "I have nothing to say". The rule for when to say
+# it is text beside the core (``persona.JUDGE``), handed in as ``judge``.
+SILENCE = "МОВЧУ"
+JUDGE = (
+    "Наступну репліку сказано в кімнаті, не до тебе на ім'я. Якщо тобі є що "
+    f"сказати по суті — відповідай коротко. Якщо ні — напиши рівно: {SILENCE}."
+)
+
 HISTORY_TURNS = 12
 # How many recent turns an executor is shown: «відкрий той файл» names
 # nothing without them.
@@ -94,6 +102,10 @@ class _Port:
     def nothing(self, channel: str) -> None:
         self._core._nothing(channel)
 
+    def overheard(self, channel: str, text: str) -> None:
+        self._core.state.emit("overheard", text=text, channel=channel)
+        self._core._nothing(channel)
+
     def said_over(self, channel: str, text: str, speech_ms: float, long: bool) -> bool:
         return self._core._said_over(text, speech_ms, long)
 
@@ -120,6 +132,7 @@ class Core:
         prompt: Callable[[], Awaitable[str]] | None = None,
         names: frozenset[str] = frozenset(),
         permission_timeout: float = PERMISSION_TIMEOUT_S,
+        judge: str = JUDGE,
     ) -> None:
         """names: the assistant's own name in every spelling, lower case.
         It is not a word of a command: «Дока, стоп» is «стоп»."""
@@ -128,6 +141,7 @@ class Core:
         self.delegator = delegator or Plain()
         self.names = names
         self.permission_timeout = permission_timeout
+        self.judge = judge
         self.state = State()
         self.history: list[dict] = []
         self.inputs: dict[str, Input] = {}
@@ -291,9 +305,17 @@ class Core:
         if not message.person:
             self._turn = asyncio.create_task(self._answer(message))
             return
-        self._last_channel = message.reply_on or message.channel
-        self.state.emit("heard", text=message.text, channel=message.channel)
         held = self._hold is not None
+        if not message.addressed and not held and (
+            self._turn is not None and not self._turn.done()
+        ):
+            # Room talk while a turn is in progress does not get to end it.
+            self.state.emit("overheard", text=message.text, channel=message.channel,
+                            why="busy")
+            return
+        self._last_channel = message.reply_on or message.channel
+        if message.addressed:
+            self.state.emit("heard", text=message.text, channel=message.channel)
 
         if self._permission is not None:
             verdict = words.consent(message.text, self.names)
@@ -366,6 +388,11 @@ class Core:
             self._wake.set()
 
     async def _exchange(self, message: Message, out: Output | None) -> None:
+        if not message.addressed:
+            if not await self._worth_answering(message):
+                return
+            # It chose to answer: from here this is an ordinary turn.
+            self.state.emit("heard", text=message.text, channel=message.channel)
         if message.person:
             await self._keep("user", message.text, message.channel)
         self.history.append({"role": "user", "content": message.text})
@@ -414,6 +441,36 @@ class Core:
             and outcome != "stopped" and self._verbs() and promises_work(reply)
         ):
             await self._keep_the_promise(messages, reply, out, message.text)
+
+    async def _worth_answering(self, message: Message) -> bool:
+        """Something said in the room: does the assistant have anything
+        to say? Asked of the model without a word reaching any output, so
+        a decision to stay silent is silent. Nothing is written down
+        unless it answers — what was not said to it is not its to keep."""
+        messages = [
+            {"role": "system", "content": f"{await self._system()}\n\n{self.judge}"},
+            *self.history[-HISTORY_TURNS:],
+            {"role": "user", "content": message.text},
+        ]
+        parts: list[str] = []
+        called = False
+        try:
+            async for event in self.model.reply(messages, self._schemas()):
+                if event.get("type") == "delta":
+                    parts.append(event["text"])
+                elif event.get("type") == "tool_call":
+                    called = True
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("could not decide about room talk — staying silent")
+            parts, called = [SILENCE], False
+        verdict = "".join(parts).strip()
+        speak = called or (bool(verdict) and SILENCE not in verdict.upper())
+        if not speak:
+            self.state.emit("overheard", text=message.text, channel=message.channel,
+                            why="chose silence")
+        return speak
 
     async def _voice(
         self, out: Output | None, messages: list[dict]

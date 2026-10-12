@@ -175,7 +175,14 @@ class Voice:
                 self._reported = False
                 if self.wake is not None and not self.wake.accepts(turn):
                     logger.info("not addressed to me: %r", turn[:60])
-                    self._port.nothing(self.name)
+                    if _or(self.settings, "listen", "judge") == "name":
+                        self._port.overheard(self.name, turn)
+                    else:
+                        # No name: the assistant decides for itself
+                        # whether this is worth a word.
+                        self._port.heard(
+                            Message(text=turn, channel=self.name, addressed=False)
+                        )
                     continue
                 self._port.heard(Message(text=turn, channel=self.name))
             elif self._reported and not self.assembler.open:

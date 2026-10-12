@@ -34,6 +34,10 @@ class Message:
     reply_on: str = ""
     # How long the voice lasted, when it was a voice. A nod is short.
     speech_ms: float | None = None
+    # False when it was said in the room and nothing marks it as meant
+    # for the assistant. The assistant then decides for itself whether
+    # there is anything worth saying, and may say nothing.
+    addressed: bool = True
     # Said exactly as written, without asking the model: a question the
     # code needs answered, not one the model should rephrase.
     verbatim: bool = False
@@ -51,6 +55,11 @@ class Port(Protocol):
 
     def nothing(self, channel: str) -> None:
         """What began was not a turn after all: a cough, a breath."""
+
+    def overheard(self, channel: str, text: str) -> None:
+        """Something was said and understood, but not to the assistant.
+        It is not answered — and it is shown, because silence with no
+        reason looks exactly like being deaf."""
 
     def said_over(self, channel: str, text: str, speech_ms: float, long: bool) -> bool:
         """What was said over a reply, as soon as it is known and before

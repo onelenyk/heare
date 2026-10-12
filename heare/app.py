@@ -37,6 +37,7 @@ def build(settings: Settings | None = None) -> Core:
     core = Core(
         Chat(settings), memory=Book(settings.db_path, names=sorted(names)),
         delegator=dispatcher, prompt=persona.prompt, names=names,
+        judge=persona.JUDGE,
     )
     core.add_executor(
         ScreenMaker(settings.screens_dir, dispatcher.ask, core.state.emit)

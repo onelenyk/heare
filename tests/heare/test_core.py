@@ -325,3 +325,58 @@ async def test_what_is_always_known_is_in_every_prompt():
     await room.settled()
     assert "Людину звати Назар." in room.model.asked[0][0]["content"]
     await room.close()
+
+
+async def test_speech_not_meant_for_it_is_shown_and_not_answered():
+    room = await open_room()
+    events = room.core.state.subscribe()
+    room.starts()
+    room.line.port.overheard("text", "Чутно мене чи не чутно?")
+    await room.settled()
+    seen = [events.get_nowait() for _ in range(events.qsize())]
+    assert [e.data["text"] for e in seen if e.kind == "overheard"] == ["Чутно мене чи не чутно?"]
+    assert room.model.asked == [] and room.page.said == []
+    await room.close()
+
+
+async def test_room_talk_it_has_nothing_to_say_about_stays_silent_and_unkept():
+    from heare.core import Message
+
+    room = await open_room()
+    room.model.will_say("МОВЧУ")
+    room.core.hear(Message(text="Так, я тобі передзвоню ввечері", channel="text",
+                           addressed=False))
+    await room.settled()
+    assert room.page.said == [] and room.memory.kept == []
+    assert room.core.history == []
+    assert [e.data["why"] for e in room.core.state.journal if e.kind == "overheard"] == [
+        "chose silence"
+    ]
+    assert "не до тебе" in room.model.asked[0][0]["content"]
+    await room.close()
+
+
+async def test_room_talk_worth_a_word_is_answered_like_any_turn():
+    from heare.core import Message
+
+    room = await open_room()
+    room.model.will_say("Так, чую.", "Так, чую тебе добре.")
+    room.core.hear(Message(text="Чутно мене чи ні?", channel="text", addressed=False))
+    await room.settled()
+    assert room.page.said == ["Так, чую тебе добре. "]
+    assert [r for r, _, _ in room.memory.kept] == ["user", "assistant"]
+    await room.close()
+
+
+async def test_room_talk_does_not_end_a_reply_in_progress():
+    from heare.core import Message
+
+    room = await open_room(slow=0.04)
+    room.model.will_say("Раз два три чотири п'ять.")
+    room.says("Порахуй")
+    await room.until(lambda: room.page.speaking)
+    room.core.hear(Message(text="Ну таке", channel="text", addressed=False))
+    await room.settled()
+    assert room.page.outcomes == ["done"]
+    assert len(room.model.asked) == 1
+    await room.close()
