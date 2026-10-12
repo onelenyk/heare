@@ -21,11 +21,9 @@ import logging
 import time
 from typing import AsyncIterator, Awaitable, Callable
 
-from heare.core import words
 from heare.core.forms import (
     Delegator, Executor, Input, Memory, Message, Model, Output, Permission, Task,
 )
-from heare.core.promises import claims_done, promises_work
 from heare.core.state import State
 
 logger = logging.getLogger("heare.core")
@@ -68,6 +66,29 @@ HISTORY_TURNS = 12
 CONTEXT_TURNS = 6
 PERMISSION_TIMEOUT_S = 60.0
 SAY_CHARS = 70
+
+
+class NoWords:
+    """The language the core has when it is handed none: nothing is a
+    command and nothing is a promise. A real one (``heare.language.uk``)
+    is given by whoever assembles the app; the core holds no words."""
+
+    def is_halt(self, text: str, names: frozenset = frozenset()) -> bool:
+        return False
+
+    def consent(self, text: str, names: frozenset = frozenset()) -> bool | None:
+        return None
+
+    def decide(self, text: str, *, speech_ms: float) -> str:
+        return "interrupt" if text.strip() else "resume"
+
+    def promises_work(self, reply: str) -> bool:
+        return False
+
+    claims_done = promises_work
+
+    def tokens(self, text: str) -> list[str]:
+        return text.lower().split()
 
 
 class Plain:
@@ -133,6 +154,7 @@ class Core:
         names: frozenset[str] = frozenset(),
         permission_timeout: float = PERMISSION_TIMEOUT_S,
         judge: str = JUDGE,
+        words: object = None,
     ) -> None:
         """names: the assistant's own name in every spelling, lower case.
         It is not a word of a command: «Дока, стоп» is «стоп»."""
@@ -142,6 +164,7 @@ class Core:
         self.names = names
         self.permission_timeout = permission_timeout
         self.judge = judge
+        self.words = words or NoWords()
         self.state = State()
         self.history: list[dict] = []
         self.inputs: dict[str, Input] = {}
@@ -267,7 +290,7 @@ class Core:
         if long:
             verdict = "interrupt" if text.strip() else "resume"
         else:
-            verdict = words.decide(text, speech_ms=speech_ms)
+            verdict = self.words.decide(text, speech_ms=speech_ms)
         if verdict == "resume":
             self._resume()
             self._refresh()
@@ -275,7 +298,7 @@ class Core:
         held, self._hold = self._hold, None
         for output in held:
             output.stop()
-        if verdict == "cancel" and words.is_halt(text, self.names):
+        if verdict == "cancel" and self.words.is_halt(text, self.names):
             self.stop_all()
         return True
 
@@ -355,16 +378,22 @@ class Core:
             self.state.emit("heard", text=message.text, channel=message.channel)
 
         if self._permission is not None:
-            verdict = words.consent(message.text, self.names)
+            verdict = self.words.consent(message.text, self.names)
             if verdict is not None:
                 self._resume()
                 self.permit(self._permission.id, verdict)
+                # A yes met with silence looks like not being heard.
+                await self._interrupt()
+                self._turn = asyncio.create_task(self._answer(Message(
+                    text="Добре." if verdict else "Добре, не буду.",
+                    channel=message.channel, reply_on=message.reply_on, verbatim=True,
+                )))
                 return
-        if words.is_halt(message.text, self.names):
+        if self.words.is_halt(message.text, self.names):
             await self._halt(message)
             return
         if held:
-            verdict = words.decide(message.text, speech_ms=message.speech_ms or 0.0)
+            verdict = self.words.decide(message.text, speech_ms=message.speech_ms or 0.0)
             if verdict == "resume":
                 self._resume()
                 self._refresh()
@@ -478,12 +507,10 @@ class Core:
             failure is None and not calls and message.person
             and outcome != "stopped" and self._verbs()
         ):
-            if promises_work(reply):
-                await self._keep_the_promise(messages, reply, out, message.text)
-            elif len(self._acknowledging()) > 1 and claims_done(reply):
-                # Said to be drawn, and nothing was: ask for the drawing,
-                # but never send it to an executor.
-                await self._keep_the_promise(messages, reply, out, "")
+            if self.words.promises_work(reply) or (
+                len(self._acknowledging()) > 2 and self.words.claims_done(reply)
+            ):
+                await self._keep_the_promise(messages, reply, out)
 
     async def _worth_answering(self, message: Message) -> bool:
         """Something said in the room: does the assistant have anything
@@ -557,12 +584,12 @@ class Core:
         return "".join(parts).strip(), calls, outcome, broke
 
     async def _keep_the_promise(
-        self, messages: list[dict], reply: str, out: Output | None, asked: str
+        self, messages: list[dict], reply: str, out: Output | None
     ) -> None:
         """«Гляну, секунду» with no verb called: ask once more for the
-        call — and if it still does not come, hand over what the person
-        asked for. A promise heard and not kept is worse than a refusal:
-        the next turn the model believes its own words."""
+        call. That is all — handing the person's words to an executor
+        when the call still did not come turned a refusal («скажи, і я
+        зроблю») into a job nobody asked for."""
         again = [
             *messages,
             {"role": "assistant", "content": reply},
@@ -577,9 +604,6 @@ class Core:
             logger.exception("asking for the promised call failed")
             return
         logger.info("promise without a call: asked again, got %d call(s)", len(calls))
-        if not calls and self.executors and asked:
-            self.delegate(asked)
-            return
         for call in calls:
             spoken = await self._run_verb(call)
             # The model already said it; an acknowledgement again is noise.
@@ -638,6 +662,8 @@ class Core:
             verbs["recall"] = (_RECALL, self._recall)
         if self.executors:
             verbs["delegate"] = (_DELEGATE, self._delegate)
+        if self._jobs:
+            verbs["stop_work"] = (_STOP, self._stop_work)
         # What an output lets the model write on directly (a canvas).
         for output in self.outputs.values():
             for schema, run in getattr(output, "verbs", lambda: ())():
@@ -646,7 +672,7 @@ class Core:
 
     def _acknowledging(self) -> set[str]:
         """Verbs whose answer is only «done»: said when nothing else was."""
-        names = {"delegate"}
+        names = {"delegate", "stop_work"}
         for output in self.outputs.values():
             for schema, _ in getattr(output, "verbs", lambda: ())():
                 names.add(schema["function"]["name"])
@@ -686,8 +712,27 @@ class Core:
         request = str(arguments.get("task", "")).strip()
         if not request:
             return "Скажи, що саме зробити."
+        if self._same(request) is not None:
+            return "Це вже в роботі."
         self.delegate(request)
         return "Беру."
+
+    async def _stop_work(self, arguments: dict) -> str:
+        return "Зупинив." if self.stop_all() else "Нічого не було запущено."
+
+    def _same(self, request: str) -> Task | None:
+        """A piece of work already running that this request repeats. One
+        request is one job: asked again before it is done, it is the same
+        job, not a second one."""
+        asked = set(self.words.tokens(request))
+        for task in self.state.tasks.values():
+            if task.status != "running":
+                continue
+            running = set(self.words.tokens(task.request))
+            common = len(asked & running)
+            if common and common >= 0.5 * min(len(asked), len(running)):
+                return task
+        return None
 
     # -- work -------------------------------------------------------------
 
@@ -753,6 +798,10 @@ class Core:
         if kind == "read":
             return True
         async with self._asking:
+            # Asked once for the whole piece of work. Thirty questions in
+            # ten minutes, one per command, made talking impossible.
+            if task.allowed is not None:
+                return task.allowed
             permission = Permission(next(self._ids), task.id, task.executor, what)
             self._answered = asyncio.get_running_loop().create_future()
             self._permission = self.state.permission = permission
@@ -761,7 +810,8 @@ class Core:
             # whole of it is in the event, for a screen to show.
             short = what if len(what) <= SAY_CHARS else what[:SAY_CHARS].rstrip() + "…"
             self.hear(Message(
-                text=f"{task.executor} хоче: {short}. Дозволяєш?",
+                text=(f"{task.executor} просить дозволу на зміни для цієї справи. "
+                      f"Почне з: {short}. Дозволяєш?"),
                 channel=task.executor, person=False, verbatim=True,
             ))
             allowed = False
@@ -772,6 +822,7 @@ class Core:
             except TimeoutError:
                 logger.info("permission %d: no answer — refused", permission.id)
             finally:
+                task.allowed = allowed
                 self._permission = self.state.permission = None
                 self.state.emit("permission_closed", id=permission.id, allowed=allowed)
             return allowed
@@ -812,6 +863,19 @@ _RECALL = {
             },
             "required": ["query"],
         },
+    },
+}
+
+_STOP = {
+    "type": "function",
+    "function": {
+        "name": "stop_work",
+        "description": (
+            "Stop all the work that is running now. Whenever the person asks "
+            "to stop, cancel or call off what the agents are doing, in any "
+            "words. Never say it is stopped without calling this."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
     },
 }
 

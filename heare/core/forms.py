@@ -173,6 +173,9 @@ class Task:
     status: str = "running"  # running · done · failed · stopped
     step: str = ""
     result: str = ""
+    # The person's answer for this piece of work: asked once, and it
+    # holds for everything the work needs after that. None: not asked yet.
+    allowed: bool | None = None
     started: float = field(default_factory=time.time)
     ended: float | None = None
 
@@ -180,6 +183,7 @@ class Task:
         return {
             "id": self.id, "request": self.request, "executor": self.executor,
             "status": self.status, "step": self.step, "result": self.result,
+            "allowed": self.allowed,
             "started": self.started, "ended": self.ended,
         }
 

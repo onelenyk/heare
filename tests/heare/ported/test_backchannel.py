@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from heare.core.words import INTERRUPT_HOLD_MS, decide, is_backchannel, is_stop_word
+from heare.language.uk import INTERRUPT_HOLD_MS, decide, is_backchannel, is_stop_word
 
 
 # ============================================================================

@@ -26,7 +26,7 @@ KNOW_EVERYTHING = {"app", "listener"}
 LEAVES = {"heare.keys"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part.
-CORE_LINES = 1450
+CORE_LINES = 1250
 
 
 def _imports(path: Path) -> set[str]:

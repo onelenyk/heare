@@ -227,7 +227,9 @@ async def test_a_change_waits_for_a_yes_said_by_the_person():
     room.core.delegate("запиши")
     await room.until(lambda: room.core.state.permission is not None)
     await room.until(lambda: room.page.said)
-    assert room.page.said == ["worker хоче: записати файл. Дозволяєш?"]
+    assert room.page.said == [
+        "worker просить дозволу на зміни для цієї справи. Почне з: записати файл. Дозволяєш?"
+    ]
     room.says("Так")
     await room.until(lambda: len(worker.allowed) == 2)
     assert worker.allowed == [True, True]
@@ -287,14 +289,92 @@ async def test_a_promise_without_a_call_is_asked_for_again():
     await room.close()
 
 
-async def test_a_promise_still_not_kept_is_handed_over_as_asked():
+async def test_a_promise_still_not_kept_is_never_handed_over_by_itself():
+    """After a refusal the reply «скажи, і я зроблю» is a promise by its
+    words; handing the person's «ні» to an executor was how jobs multiplied."""
     room = await open_room()
     worker = Worker()
     room.core.add_executor(worker)
-    room.model.will_say("Створюю.", "І досі нічого не викликаю.")
-    room.says("Створи файл note.txt")
+    room.model.will_say("Гаразд. Якщо передумаєш, скажи, і я зроблю.", "Нічого не викликаю.")
+    room.says("Ні, не треба")
+    await room.settled()
+    assert worker.tasks == []
+    await room.close()
+
+
+async def test_one_piece_of_work_is_asked_about_once():
+    room = await open_room()
+    worker = Worker(asks=(("записати a.txt", "change"), ("запустити скрипт", "change"),
+                          ("записати b.txt", "change")))
+    room.core.add_executor(worker)
+    task = room.core.delegate("зроби три речі")
+    await room.until(lambda: room.core.state.permission is not None)
+    room.says("Дозволяєм")
+    await room.until(lambda: len(worker.allowed) == 3)
+    assert worker.allowed == [True, True, True]
+    asked = [e for e in room.core.state.journal if e.kind == "permission"]
+    assert len(asked) == 1 and task.allowed is True
+    await room.settled()
+    assert "Добре." in room.page.said  # a yes is answered, not met with silence
+    assert room.model.asked == []
+    await room.close()
+
+
+async def test_asking_again_for_work_in_progress_does_not_start_it_twice():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    call = ("delegate", {"task": "глянь, скільки файлів у робочій теці"})
+    again = ("delegate", {"task": "скільки файлів у робочій теці, глянь ще раз"})
+    room.model.will_say(Says(calls=(call,)), Says(calls=(again,)))
+    room.says("Глянь, скільки файлів у теці")
     await room.until(lambda: worker.tasks)
-    assert "Створи файл note.txt" in worker.tasks[0]
+    room.says("Ну то що там з файлами?")
+    await room.settled()
+    assert len(worker.tasks) == 1
+    assert room.page.said[-1] == "Це вже в роботі."
+    await room.close()
+
+
+async def test_stop_in_any_of_the_ways_a_person_says_it():
+    for phrase in ("Зупини все.", "Дока, скасуй усі справи негайно", "А ну стоп",
+                   "зупини агентів", "Припини це, будь ласка"):
+        room = await open_room()
+        worker = Worker()
+        room.core.add_executor(worker)
+        room.core.delegate("довга справа")
+        await room.until(lambda: worker.tasks)
+        room.says(phrase)
+        await room.settled()
+        assert worker.stopped == 1 and room.page.said[-1] == "Зупинив.", phrase
+        assert room.model.asked == [], phrase
+        await room.close()
+
+
+async def test_stop_about_something_else_is_not_a_command():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.core.delegate("довга справа")
+    await room.until(lambda: worker.tasks)
+    room.model.will_say("Це не до мене.")
+    room.says("Зупини музику")
+    await room.settled()
+    assert worker.stopped == 0
+    await room.close()
+
+
+async def test_the_model_can_stop_the_work_when_asked_in_a_long_way():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.core.delegate("довга справа")
+    await room.until(lambda: worker.tasks)
+    room.model.will_say(Says(calls=(("stop_work", {}),)))
+    room.says("Слухай, щось ті твої помічники надто довго там копаються, хай кидають")
+    await room.settled()
+    assert "stop_work" in room.model.offered[0]
+    assert worker.stopped == 1 and room.page.said[-1] == "Зупинив."
     await room.close()
 
 

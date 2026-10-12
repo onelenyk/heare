@@ -196,6 +196,19 @@ _HALT_WORDS: frozenset[str] = frozenset(
     {
         "стоп", "стій", "зупинись", "зупинися", "зупини", "припини",
         "досить", "скасуй", "відбій", "stop", "cancel", "хватит",
+        "зупиняй", "зупиніть", "скасовуй", "відміни", "відміняй", "припиняй",
+    }
+)
+# Words that may stand around a halt word without making the turn
+# anything else: «зупини все», «скасуй усі справи негайно», «а ну стоп».
+# «Зупини музику» is not a command to the assistant about its own work,
+# and «музику» is not here.
+_HALT_FILL: frozenset[str] = frozenset(
+    {
+        "все", "усе", "всі", "усі", "всіх", "усіх", "це", "то", "роботу", "роботи",
+        "агентів", "агента", "агенти", "справи", "справу", "негайно", "будь",
+        "ласка", "поки", "зараз", "там", "їх", "повністю", "взагалі", "а", "ну",
+        "і", "й", "та", "вже", "кажу",
     }
 )
 _WORD = re.compile(r"[\w'ʼ’]+", re.UNICODE)
@@ -205,7 +218,11 @@ def is_halt(text: str, names: frozenset[str] = frozenset()) -> bool:
     """True when the whole turn is a command to stop: «стоп», «Дока, стоп»,
     «зупинись, зупинись». The assistant's own name is not a word of it."""
     words = [w for w in _WORD.findall(_normalise(text or "")) if w not in names]
-    return 0 < len(words) <= 3 and all(w in _HALT_WORDS for w in words)
+    return (
+        0 < len(words) <= 6
+        and any(w in _HALT_WORDS for w in words)
+        and all(w in _HALT_WORDS or w in _HALT_FILL for w in words)
+    )
 
 
 
@@ -213,7 +230,9 @@ def is_halt(text: str, names: frozenset[str] = frozenset()) -> bool:
 # code: whether the person allowed something must not be a model's guess.
 _YES: frozenset[str] = frozenset(
     {"так", "да", "yes", "ага", "угу", "давай", "добре", "дозволяю", "можна",
-     "роби", "ок", "окей", "звісно", "авжеж"}
+     "роби", "ок", "окей", "звісно", "авжеж", "дозволяєм", "дозволяємо",
+     "дозволено", "згоден", "згодна", "згода", "погоджуюсь", "звичайно",
+     "нехай", "хай"}
 )
 _NO: frozenset[str] = frozenset(
     {"ні", "нет", "no", "не", "не треба", "не можна", "забороняю", "стоп",
@@ -237,3 +256,14 @@ def consent(text: str, names: frozenset[str] = frozenset()) -> bool | None:
     if said in _YES or all(w in _YES for w in words):
         return True
     return None
+
+
+def tokens(text: str) -> list[str]:
+    """The words of a phrase, lower-cased: for telling whether two
+    requests are about the same thing."""
+    return _WORD.findall((text or "").lower())
+
+
+from heare.language.promises import claims_done, promises_work  # noqa: E402
+
+__all__ += ["claims_done", "promises_work", "tokens"]

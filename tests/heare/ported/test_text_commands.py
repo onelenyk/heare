@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from heare.core.words import is_halt
-from heare.core.promises import promises_work
+from heare.language.uk import is_halt
+from heare.language.promises import promises_work
 
 NAMES = frozenset({"дока", "доко", "докер"})
 

@@ -32,7 +32,7 @@ from heare.api.canvas import Canvas
 from heare.app import build
 from heare.config import Settings
 from heare.core import Message
-from heare.core.promises import claims_done, promises_work
+from heare.language.promises import claims_done, promises_work
 
 _ASKS_FOR_WORK = re.compile(
     r"(що (потрібно|ще|зробити)|чим (можу|допомог)|є щось|кажи|хочеш|що далі)[^.!?]*\?\s*$",
@@ -132,11 +132,7 @@ class Session:
     def _drain(self, turn: Turn) -> None:
         while not self.events.empty():
             event = self.events.get_nowait()
-            if event.kind == "task" and event.data.get("status") == "running" \
-                    and not event.data.get("step") and event.data.get("executor"):
-                turn.jobs += 1
-                turn.acted = True
-            elif event.kind == "permission":
+            if event.kind == "permission":
                 turn.questions += 1
             elif event.kind == "canvas":
                 turn.drew.append(event.data.get("op", ""))
@@ -150,6 +146,7 @@ class Session:
         turn = Turn(text)
         self.turns.append(turn)
         mark, started = len(self.page.said), time.monotonic()
+        jobs_before = len(self.core.state.tasks)
         self.core.hear(Message(text=text, channel="text"))
         await asyncio.sleep(0.3)
         quiet_since = None
@@ -169,6 +166,9 @@ class Session:
         turn.replies = [t for _, t in fresh]
         turn.first = round(fresh[0][0] - started, 2) if fresh else None
         self._drain(turn)
+        # A job exists from the moment it is asked for, whenever it starts.
+        turn.jobs = len(self.core.state.tasks) - jobs_before
+        turn.acted = turn.acted or turn.jobs > 0
         print(f"ТИ:  {text}\n     → {turn.text[:200] or '(тиша)'}\n       "
               f"[перше слово {turn.first} с · справ {turn.jobs} · питань дозволу "
               f"{turn.questions} · канвас {turn.drew or '—'}]", flush=True)
@@ -176,6 +176,7 @@ class Session:
 
 
 async def play(agent: str) -> dict:
+    home_before = {p.name for p in Path.home().iterdir()}
     s = Session(agent)
     await s.open()
     core, work = s.core, s.work
@@ -201,9 +202,7 @@ async def play(agent: str) -> dict:
                             until=lambda: s.running() > 0 or core.settled, wait=20)
         again = await s.say("Ну то що там з файлами?", wait=90)
         found["jobs_for_one_request"] = first.jobs + again.jobs
-        found["read_answer_has_files"] = bool(
-            re.search(r"alpha|beta|два|2", " ".join(t.text for t in s.turns[-2:]))
-        )
+        files_from = len(s.turns) - 2
         # -- a change, allowed with a word that is not «так»
         await s.say("Створи там файл note.txt з текстом привіт.", until=asked, wait=60)
         found["write_was_asked_about"] = asked()
@@ -244,17 +243,16 @@ async def play(agent: str) -> dict:
         await s.close()
 
     turns = s.turns
+    found["read_answer_has_files"] = bool(
+        re.search(r"alpha|beta", " ".join(t.text for t in turns[files_from:]))
+    )
     replies = [t for t in turns if t.text]
     said_not_done = [
         t.said for t in turns
         if t.text and not t.acted and (promises_work(t.text) or claims_done(t.text))
     ]
     firsts = [t.first for t in turns if t.first is not None]
-    outside = [p.name for p in Path.home().iterdir()
-               if p.stat().st_mtime > time.time() - 900
-               and p.name not in ("heare-work", ".heare", "Library", ".local", ".cache",
-                                  ".npm", ".config", ".opencode", ".claude")
-               and not p.name.startswith(".")]
+    outside = sorted({p.name for p in Path.home().iterdir()} - home_before)
     summary = {
         "turns": len(turns),
         "first_word_median_s": round(statistics.median(firsts), 2) if firsts else None,

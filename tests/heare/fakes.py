@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
 from heare.core import Core, Message
+from heare.language import uk
 
 
 class Line:
@@ -202,7 +203,7 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
     model, line, page = Script(), Line(), Page(slow=slow)
     notebook = Notebook()
     core = Core(model, memory=notebook if memory else None,
-                names=frozenset({"дока"}), **core_kw)
+                names=frozenset({"дока"}), words=uk, **core_kw)
     core.add_input(line)
     core.add_output(page)
     room = Room(core, model, line, page, notebook)

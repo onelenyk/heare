@@ -16,6 +16,7 @@ import logging
 import sys
 
 from heare import persona
+from heare.language import uk
 from heare.config import Settings
 from heare.core import Core
 
@@ -35,7 +36,7 @@ def build(settings: Settings | None = None) -> Core:
     core = Core(
         Chat(settings), memory=Book(settings.db_path, names=sorted(names)),
         delegator=dispatcher, prompt=persona.prompt, names=names,
-        judge=persona.JUDGE,
+        judge=persona.JUDGE, words=uk,
     )
     # Whichever agents this machine has. None is fine: the verb is then
     # simply not offered, and the assistant only talks and remembers.
