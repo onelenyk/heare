@@ -62,9 +62,10 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
 class ScreenMaker:
     name = "screens"
-    about = ("малює на канвасі — великій області в центрі екрана: таблиця, "
-             "схема, список, форма, сторінка зі станом чи даними самого "
-             "асистента; також змінює те, що вже намальовано")
+    about = ("робить окремий екран — цілу сторінку зі скриптами, яка живе сама "
+             "і показує стан чи дані асистента наживо (панель, монітор, "
+             "форма налаштувань). Для звичайних таблиць, списків і тексту "
+             "не потрібен: їх асистент малює на канвасі сам")
 
     def __init__(self, folder: Path, write: Callable[[str, str], Awaitable[str]],
                  emit: Callable[..., object]) -> None:
@@ -101,4 +102,4 @@ class ScreenMaker:
         (self._folder / f"{name}.html").write_text(html.strip(), encoding="utf-8")
         self._last = name
         self._emit("screen", name=name)
-        return f"Намальовано на канвасі: «{name}»."
+        return f"Екран «{name}» готовий, він у вкладках над канвасом."

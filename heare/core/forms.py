@@ -97,6 +97,23 @@ class Output(Protocol):
     def stop(self) -> None: ...
 
 
+class Surface(Protocol):
+    """Optional, on any output: something the model can write on directly.
+
+    Speaking needs no verb — the reply *is* the speech. A surface gives
+    the model the same directness for something that is not speech: it is
+    offered the surface's verbs in every turn and is told, in every
+    prompt, what is on it now. A verb here returns a
+    short sentence to say, used only when the model drew without a word.
+    """
+
+    def verbs(self) -> list[tuple[dict, object]]:
+        """``(schema, async run(arguments) -> str)`` for each verb."""
+
+    def context(self) -> str:
+        """What is on the surface now, short enough for every prompt."""
+
+
 class Model(Protocol):
     def reply(self, messages: list[dict], verbs: list[dict]) -> AsyncIterator[dict]:
         """Events as they come: ``{"type": "delta", "text": …}`` and

@@ -26,6 +26,7 @@ DEFAULTS = {
     "identity_file": HOME / "identity.json",
     "db_path": HOME / "heare.db",
     "screens_dir": HOME / "screens",
+    "canvas_file": HOME / "canvas.json",
     "api_token_file": HOME / "api_token",
     "api_port": 9790,
 }

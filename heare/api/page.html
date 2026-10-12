@@ -102,6 +102,24 @@
   #tabs .label { margin:0 8px 0 0; flex:none; }
   .chip.on { border-color:var(--accent); color:var(--accent); }
   #canvas { flex:1; position:relative; min-height:0; }
+  #live { position:absolute; inset:0; overflow-y:auto; padding:28px clamp(18px, 5vw, 64px) 60px; }
+  #live .blk { max-width:860px; margin:0 auto 18px; border-radius:10px; transition:background .8s ease, box-shadow .8s ease; }
+  #live .blk.fresh { background:rgba(157,124,255,.10); box-shadow:0 0 0 8px rgba(157,124,255,.10); }
+  #live h1, #live h2 { font:700 24px/1.25 var(--sans); letter-spacing:-.3px; margin-bottom:6px; }
+  #live h3 { font:600 16px/1.3 var(--sans); margin-bottom:6px; }
+  #live p { font-size:15px; line-height:1.6; margin-bottom:8px; }
+  #live ul, #live ol { padding-left:22px; font-size:15px; line-height:1.7; }
+  #live li { margin-bottom:2px; }
+  #live table { width:100%; border-collapse:collapse; font-size:14px; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  #live th { text-align:left; font:600 11px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--soft); padding:10px 14px; background:var(--card-2); }
+  #live td { padding:10px 14px; border-top:1px solid var(--line); vertical-align:top; }
+  #live pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; overflow-x:auto; font:13px/1.55 var(--mono); }
+  #live code { font:13px var(--mono); background:var(--card-2); padding:1px 5px; border-radius:4px; }
+  #live pre code { background:none; padding:0; }
+  #live a { color:var(--accent); }
+  #live button { background:var(--card-2); border:1px solid var(--line); border-radius:8px; padding:8px 14px; cursor:pointer; margin:4px 6px 4px 0; }
+  #live button:hover { border-color:var(--accent); color:var(--accent); }
+  #live strong { font-weight:650; }
   #frame { position:absolute; inset:0; width:100%; height:100%; border:0; background:var(--bg); display:none; }
   #blank { position:absolute; inset:0; display:grid; place-content:center; text-align:center; color:var(--soft); padding:24px; gap:8px; }
   #blank b { font:600 20px var(--sans); color:var(--ink); }
@@ -174,7 +192,8 @@
   <main id="stage">
     <div id="tabs"><span class="label">Канвас</span><span id="screens" class="chips"></span></div>
     <div id="canvas">
-      <div id="blank"><b>Тут він малює</b><span>Попроси: «покажи таблицею…», «намалюй…», «зроби екран…»</span></div>
+      <div id="live"></div>
+      <div id="blank"><b>Тут він малює</b><span>Сам, коли щось краще побачити, ніж почути. Або попроси: «покажи таблицею…»</span></div>
       <iframe id="frame" title="канвас"></iframe>
       <div id="drawing">малює…</div>
     </div>
@@ -305,26 +324,50 @@ const refresh = () => api("state").then(s => {
   show(); vitals(s); tasks(s.tasks, s.permission);
 });
 
-let shown = null;
+let shown = null;  // null = the live canvas; otherwise a saved screen's name
+function mark() {
+  for (const c of $("screens").children) c.classList.toggle("on", (c.dataset.name || null) === shown);
+  const drawn = $("live").children.length > 0;
+  $("frame").style.display = shown ? "block" : "none";
+  $("live").style.display = shown ? "none" : "block";
+  $("blank").style.display = (!shown && !drawn) ? "grid" : "none";
+}
 function put(name) {
-  shown = name;
-  $("frame").src = "/screens/" + name + "?t=" + Date.now();
-  $("frame").style.display = "block"; $("blank").style.display = "none";
-  for (const c of $("screens").children) c.classList.toggle("on", c.textContent === name);
-  try { localStorage.setItem("heare.canvas", name); } catch (e) {}
+  shown = name || null;
+  if (shown) $("frame").src = "/screens/" + shown + "?t=" + Date.now();
+  mark();
 }
 function screens(show) {
   return api("screens").then(names => {
-    $("screens").replaceChildren(...names.map(n => {
-      const b = el("button", "chip" + (n === shown ? " on" : ""), n);
-      b.onclick = () => put(n);
+    const live = el("button", "chip", "канвас"); live.onclick = () => put(null);
+    $("screens").replaceChildren(live, ...names.map(n => {
+      const b = el("button", "chip", n); b.dataset.name = n; b.onclick = () => put(n);
       return b;
     }));
-    let want = show;
-    if (!want && !shown) { try { want = localStorage.getItem("heare.canvas"); } catch (e) {} }
-    if (want && names.includes(want)) put(want);
+    if (show && names.includes(show)) put(show); else mark();
   });
 }
+
+/* the live canvas: blocks the assistant puts, changed in place */
+function block(id, html, order) {
+  let node = document.getElementById("blk-" + id);
+  if (!node) { node = el("div", "blk"); node.id = "blk-" + id; $("live").append(node); }
+  node.innerHTML = html;
+  if (order) for (const key of order) { const n = document.getElementById("blk-" + key); if (n) $("live").append(n); }
+  node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1400);
+  return node;
+}
+function drawn(e) {
+  if (e.op === "clear") $("live").replaceChildren();
+  else if (e.op === "remove") document.getElementById("blk-" + e.id)?.remove();
+  else { put(null); block(e.id, e.html, e.order).scrollIntoView({behavior: "smooth", block: "nearest"}); }
+  mark();
+}
+api("canvas").then(blocks => { for (const b of blocks) block(b.id, b.html).classList.remove("fresh"); mark(); });
+$("live").addEventListener("click", ev => {
+  const say = ev.target.closest("[data-say]");
+  if (say) api("message", {method: "POST", body: {text: say.dataset.say}});
+});
 
 /* ── controls ── */
 const turn = (name, value) => api("controls", {method: "POST", body: {part: "voice", name, value}}).then(v => { voice = v; show(); });
@@ -383,7 +426,8 @@ stream.onmessage = m => {
     if (e.phase === "speaking" && askedAt) { speeds.push(e.at - askedAt); if (speeds.length > 20) speeds.shift(); askedAt = null; spark(); }
   }
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
-  else if (e.kind === "screen") { screens(e.name); aside(`намалював: ${e.name}`); }
+  else if (e.kind === "canvas") drawn(e);
+  else if (e.kind === "screen") { screens(e.name); aside(`новий екран: ${e.name}`); }
   else if (e.kind === "task") $("drawing").style.display = (e.executor === "screens" && e.status === "running") ? "block" : "none";
   if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted"].includes(e.kind)) refresh();
 };

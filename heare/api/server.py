@@ -220,6 +220,11 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
     async def stop(request: web.Request) -> web.Response:
         return web.json_response({"tasks_stopped": await core.halt()})
 
+    async def canvas(request: web.Request) -> web.Response:
+        """What is drawn now, block by block."""
+        drawn = core.outputs.get("canvas")
+        return web.json_response(drawn.view() if drawn is not None else [])
+
     # -- tasks ------------------------------------------------------------
 
     async def tasks(request: web.Request) -> web.Response:
@@ -317,6 +322,7 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
         web.get("/api/events", events),
         web.get("/api/state", state),
         web.get("/api/history", history),
+        web.get("/api/canvas", canvas),
         web.get("/api/controls", controls),
         web.post("/api/controls", control),
         web.post("/api/stop", stop),
@@ -342,7 +348,10 @@ def _sse(data: dict) -> bytes:
 
 async def serve(core: Core, settings: Any, vitals: Any = None) -> web.AppRunner:
     """Start the API on this machine only. Returns the runner to stop it."""
+    from heare.api.canvas import Canvas
+
     core.add_output(Screen(core))
+    core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
     runner = web.AppRunner(build(core, settings, vitals))
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", int(settings.api_port)).start()

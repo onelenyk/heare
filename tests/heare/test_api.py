@@ -193,7 +193,7 @@ async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
     room.model.will_say("Екран готовий.")
     task = room.core.delegate("зроби екран зі справами")
     await room.until(lambda: task.status == "done")
-    assert "my-tasks" in task.result and "канвас" in task.result
+    assert "my-tasks" in task.result
     assert await (await client.get("/api/screens", headers=auth)).json() == ["my-tasks"]
     assert "<h1>Справи</h1>" in await (await client.get("/screens/my-tasks")).text()
     await _close(room, client)

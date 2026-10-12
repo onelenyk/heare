@@ -448,9 +448,10 @@ class Core:
             elif outcome != "stopped":
                 for call in calls:
                     spoken = await self._run_verb(call)
-                    # The model already said it is on it; «Беру.» on top
-                    # of «Зараз гляну.» is the same thing said twice.
-                    if reply and call.get("name") == "delegate":
+                    # The model already said something; «Беру.» on top of
+                    # «Зараз гляну.» is the same thing said twice. A verb
+                    # that only acknowledges speaks when the model did not.
+                    if reply and call.get("name") in self._acknowledging():
                         continue
                     if spoken:
                         reply = f"{reply} {spoken}".strip()
@@ -595,6 +596,10 @@ class Core:
                 known = ""
             if known:
                 prompt = f"{prompt}\n\n{known}"
+        for output in self.outputs.values():
+            shown = getattr(output, "context", lambda: "")()
+            if shown:
+                prompt = f"{prompt}\n\n{shown}"
         return prompt
 
     async def _say(self, out: Output | None, text: str) -> str:
@@ -628,7 +633,19 @@ class Core:
             verbs["recall"] = (_RECALL, self._recall)
         if self.executors:
             verbs["delegate"] = (_DELEGATE, self._delegate)
+        # What an output lets the model write on directly (a canvas).
+        for output in self.outputs.values():
+            for schema, run in getattr(output, "verbs", lambda: ())():
+                verbs[schema["function"]["name"]] = (schema, run)
         return verbs
+
+    def _acknowledging(self) -> set[str]:
+        """Verbs whose answer is only «done»: said when nothing else was."""
+        names = {"delegate"}
+        for output in self.outputs.values():
+            for schema, _ in getattr(output, "verbs", lambda: ())():
+                names.add(schema["function"]["name"])
+        return names
 
     def _schemas(self) -> list[dict]:
         return [schema for schema, _ in self._verbs().values()]
@@ -800,9 +817,7 @@ _DELEGATE = {
         "description": (
             "Hand work to an agent. Everything outside this conversation "
             "goes through here: files, code, the shell, the web, other "
-            "programs — and drawing on the canvas in the centre of the "
-            "screen (show a table, a list, a chart, a form, change what is "
-            "drawn). You cannot see or touch any of it yourself, so never "
+            "programs. You cannot see or touch any of it yourself, so never "
             "say you cannot before you have asked. Returns at once: say in "
             "one short sentence that you are on it, then stop. The answer "
             "arrives later as its own message."
