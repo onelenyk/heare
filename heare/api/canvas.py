@@ -185,11 +185,11 @@ class Canvas:
 
     async def _remove(self, arguments: dict) -> str:
         self.remove(str(arguments.get("id", "")))
-        return "Прибрала."
+        return "Прибрав."
 
     async def _style(self, arguments: dict) -> str:
         self.style(str(arguments.get("css", "")))
-        return str(arguments.get("say", "")).strip() or "Змінила вигляд."
+        return str(arguments.get("say", "")).strip() or "Змінив вигляд."
 
     async def _arrange(self, arguments: dict) -> str:
         order = arguments.get("order") or []
@@ -197,11 +197,11 @@ class Canvas:
         if not isinstance(order, list) or not isinstance(sizes, dict):
             return ""
         self.arrange(order, sizes)
-        return "Переставила."
+        return "Переставив."
 
     async def _clear(self, arguments: dict) -> str:
         self.clear()
-        return "Очистила екран."
+        return "Очистив екран."
 
     def verbs(self) -> list[tuple[dict, object]]:
         return [(_PUT, self._put), (_STYLE, self._style), (_ARRANGE, self._arrange),

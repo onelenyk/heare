@@ -123,7 +123,7 @@ async def test_stop_halts_the_reply_and_the_work_without_the_model():
     room.says("Дока, стоп")
     await room.settled()
     assert worker.stopped == 1
-    assert room.page.said[-1] == "Зупинила."
+    assert room.page.said[-1] == "Зупинив."
     assert len(room.model.asked) == 2
     assert room.core.state.tasks[1].status == "stopped"
     await room.close()

@@ -38,6 +38,9 @@ async def prompt() -> str:
     parts = [rules] if rules else []
     if called := name():
         parts.append(f"Тебе звати {called}.")
+    # The voice is a man's; «зрозуміла» in it is a second person talking.
+    parts.append("Про себе завжди говори в чоловічому роді: «зробив», «зрозумів». "
+                 "До людини звертайся на «ти».")
     # A model does not know the hour unless it is told.
     now = datetime.now()
     parts.append(f"Зараз {_DAYS[now.weekday()]}, {now:%d.%m.%Y}, {now:%H:%M}.")

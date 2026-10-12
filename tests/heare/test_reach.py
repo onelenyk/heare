@@ -75,7 +75,7 @@ async def test_stop_reaches_the_agent(tmp_path):
     room.says("Дока, стоп")
     await room.until(lambda: task.status == "stopped", timeout=10)
     await room.settled()
-    assert room.page.said[-1] == "Зупинила."
+    assert room.page.said[-1] == "Зупинив."
     # The same process still answers: stopping one task is not killing the agent.
     room.model.will_say("Є.")
     again = room.core.delegate("ще одне")

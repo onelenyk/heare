@@ -248,13 +248,17 @@ class Voice:
         return "stopped" if utterance.stopped else "done"
 
     async def _synthesise(self, text: str) -> AsyncIterator[bytes]:
-        """Three tries, then the machine's own voice. The synthesiser's
+        """Four tries, then the machine's own voice. The synthesiser's
         service refuses a connection now and then, sometimes several times
         running, and a whole reply used to become the failure line — or
         silence — because of a handshake. An uglier voice is a far smaller
         failure than no voice."""
-        voice = self._voice or pick_voice(text, fallback_lang="uk")
-        for wait in (0.2, 0.6, None):
+        # One voice for everything it says. The old rule picked a voice by
+        # the letters of each sentence, so a sentence that was mostly
+        # Latin — «Python, Go і Rust» — came out in another person's
+        # voice, in the middle of a reply.
+        voice = self._voice or _or(self.settings, "voice", "") or pick_voice("а", fallback_lang="uk")
+        for wait in (0.2, 0.5, 1.0, None):
             sounded = False
             async for chunk in synthesise(text, voice=voice):
                 sounded = True

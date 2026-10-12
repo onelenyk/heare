@@ -38,7 +38,7 @@ DEFAULT_PROMPT = (
 # Said when a turn dies below the core — the model, an output, anything.
 # Silence is indistinguishable from "it did not hear me", so a broken turn
 # still ends with words.
-FAILURE_LINE = "Щось пішло не так — не змогла відповісти."
+FAILURE_LINE = "Щось пішло не так — не зміг відповісти."
 
 # Sent once, after a reply that promised work and called no verb.
 KEEP_THE_PROMISE = (
@@ -392,7 +392,7 @@ class Core:
         await self._interrupt()
         called_off = self.stop_all()
         await self._keep("user", message.text, message.channel)
-        line = "Зупинила." if called_off else "Добре."
+        line = "Зупинив." if called_off else "Добре."
         self._turn = asyncio.create_task(self._answer(Message(
             text=line, channel=message.channel, reply_on=message.reply_on,
             verbatim=True,
