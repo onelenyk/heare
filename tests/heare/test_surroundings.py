@@ -36,7 +36,7 @@ async def test_when_it_is_quiet_again_he_is_understood_without_the_name():
     room = await open_room()
     room.line.port.note("playing", ["Music"])
     room.line.port.note("playing", [])
-    room.model.will_say("Так.", "Так, тепер тихо.")
+    room.model.will_say("Так, тепер тихо.")
     room.core.hear(Message(text="О, нарешті тихо, правда?", channel="text",
                            addressed=False))
     await room.settled()

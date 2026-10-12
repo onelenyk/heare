@@ -467,16 +467,19 @@ class Core:
             self._wake.set()
 
     async def _exchange(self, message: Message, out: Output | None) -> None:
-        if not message.addressed:
-            if not await self._worth_answering(message):
-                return
-            # It chose to answer: from here this is an ordinary turn.
-            self.state.emit("heard", text=message.text, channel=message.channel)
-        if message.person:
+        # Room talk is answered in one go: the model either replies or
+        # says the one word for silence, and that word never reaches an
+        # output. (It used to be asked twice — once to decide, once to
+        # answer — and every such reply cost a second of waiting.)
+        judged = not message.addressed
+        system = await self._system()
+        if judged:
+            system = f"{system}\n\n{self.judge}"
+        elif message.person:
             await self._keep("user", message.text, message.channel)
         self.history.append({"role": "user", "content": message.text})
         messages = [
-            {"role": "system", "content": await self._system()},
+            {"role": "system", "content": system},
             *self.history[-HISTORY_TURNS:],
         ]
         self.state.set_phase("thinking")
@@ -484,7 +487,17 @@ class Core:
         failure: str | None = None
         reply, calls, outcome = "", [], "done"
         try:
-            reply, calls, outcome, broke = await self._voice(out, messages)
+            reply, calls, outcome, broke = await self._voice(out, messages, judged)
+            if judged:
+                if not reply and not calls:
+                    # It chose silence. Nothing is kept: what was not
+                    # said to it is not its to remember.
+                    self.history.pop()
+                    self.state.emit("overheard", text=message.text,
+                                    channel=message.channel, why="chose silence")
+                    return
+                self.state.emit("heard", text=message.text, channel=message.channel)
+                await self._keep("user", message.text, message.channel)
             if broke:
                 failure, reply = "model", ""
             elif outcome != "stopped":
@@ -525,57 +538,37 @@ class Core:
             ):
                 await self._keep_the_promise(messages, reply, out)
 
-    async def _worth_answering(self, message: Message) -> bool:
-        """Something said in the room: does the assistant have anything
-        to say? Asked of the model without a word reaching any output, so
-        a decision to stay silent is silent. Nothing is written down
-        unless it answers — what was not said to it is not its to keep."""
-        messages = [
-            {"role": "system", "content": f"{await self._system()}\n\n{self.judge}"},
-            *self.history[-HISTORY_TURNS:],
-            {"role": "user", "content": message.text},
-        ]
-        parts: list[str] = []
-        called = False
-        try:
-            async for event in self.model.reply(messages, self._schemas()):
-                if event.get("type") == "delta":
-                    parts.append(event["text"])
-                elif event.get("type") == "tool_call":
-                    called = True
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("could not decide about room talk — staying silent")
-            parts, called = [SILENCE], False
-        verdict = "".join(parts).strip()
-        speak = called or (bool(verdict) and SILENCE not in verdict.upper())
-        if not speak:
-            self.state.emit("overheard", text=message.text, channel=message.channel,
-                            why="chose silence")
-        return speak
-
     async def _voice(
-        self, out: Output | None, messages: list[dict]
+        self, out: Output | None, messages: list[dict], may_be_silent: bool = False
     ) -> tuple[str, list[dict], str, bool]:
         """The model's reply, delivered while it is written. Returns the
         text, the verbs it called, how delivery ended, and whether the
         model fell over — which is not the output's failure and must not
-        be reported as one."""
+        be reported as one. With ``may_be_silent`` the first few letters
+        are held back until it is clear they are not the word for
+        silence; if they are, nothing is delivered and the text is empty."""
         parts: list[str] = []
         calls: list[dict] = []
         broke = False
+        held, decided = "", not may_be_silent
 
         async def pieces() -> AsyncIterator[str]:
-            nonlocal broke
+            nonlocal broke, held, decided
             try:
                 async for event in self.model.reply(messages, self._schemas()):
                     kind = event.get("type")
                     if kind == "delta":
+                        text = event["text"]
+                        if not decided:
+                            held += text
+                            start = held.strip().upper()
+                            if SILENCE.startswith(start) or start.startswith(SILENCE):
+                                continue  # silence, or still could be
+                            decided, text = True, held
                         if not parts:
                             self.state.set_phase("speaking")
-                        parts.append(event["text"])
-                        yield event["text"]
+                        parts.append(text)
+                        yield text
                     elif kind == "tool_call":
                         calls.append(event)
                     elif kind == "usage":
@@ -587,6 +580,9 @@ class Core:
             except Exception:
                 logger.exception("model failed mid-reply")
                 broke = True
+            if not decided and held.strip() and not held.strip().upper().startswith(SILENCE):
+                parts.append(held)  # a short answer that only looked like the start
+                yield held
 
         if out is None:
             async for _ in pieces():

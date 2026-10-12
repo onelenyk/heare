@@ -440,10 +440,11 @@ async def test_room_talk_worth_a_word_is_answered_like_any_turn():
     from heare.core import Message
 
     room = await open_room()
-    room.model.will_say("Так, чую.", "Так, чую тебе добре.")
+    room.model.will_say("Так, чую тебе добре.")
     room.core.hear(Message(text="Чутно мене чи ні?", channel="text", addressed=False))
     await room.settled()
     assert room.page.said == ["Так, чую тебе добре. "]
+    assert len(room.model.asked) == 1  # decided and answered in one go
     assert [r for r, _, _ in room.memory.kept] == ["user", "assistant"]
     await room.close()
 
@@ -476,4 +477,15 @@ async def test_what_the_code_says_itself_is_part_of_the_conversation():
     seen = [(m["role"], m["content"]) for m in room.model.asked[-1][1:]]
     assert ("user", "Зупини все") in seen and ("assistant", "Зупинив.") in seen
     assert "зараз ти нічого не робиш" in room.model.asked[-1][0]["content"]
+    await room.close()
+
+
+async def test_a_short_answer_that_starts_like_the_word_for_silence_is_still_said():
+    from heare.core import Message
+
+    room = await open_room()
+    room.model.will_say("Мо")
+    room.core.hear(Message(text="Як буде «може» скорочено?", channel="text", addressed=False))
+    await room.settled()
+    assert room.page.said == ["Мо "]
     await room.close()
