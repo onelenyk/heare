@@ -321,3 +321,21 @@ async def test_asking_to_change_the_drawing_hands_the_model_what_is_drawn(tmp_pa
     assert await (await client.get("/api/screens", headers=auth)).json() == ["board"]
     assert "<button>" in await (await client.get("/screens/board")).text()
     await _close(room, client)
+
+
+async def test_the_machine_can_be_read_and_a_widget_closed_by_hand(tmp_path):
+    from heare.api.canvas import Canvas
+
+    room, client, auth, _ = await _open(tmp_path)
+    canvas = Canvas(tmp_path / "canvas.json", room.core.state.emit)
+    room.core.add_output(canvas)
+    canvas.put("cpu", "<h3>Процесор</h3>")
+    machine = await (await client.get("/api/system", headers=auth)).json()
+    assert machine["cpu"]["cores"] >= 1 and 0 <= machine["cpu"]["percent"] <= 100
+    assert (await client.get("/api/system")).status == 401
+    drawn = await (await client.get("/api/canvas", headers=auth)).json()
+    assert drawn == [{"id": "cpu", "html": "<h3>Процесор</h3>", "size": "s"}]
+    closed = await client.post("/api/canvas/remove", json={"id": "cpu"}, headers=auth)
+    assert await closed.json() == {"removed": True}
+    assert canvas.blocks == {}
+    await _close(room, client)

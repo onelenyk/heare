@@ -225,6 +225,17 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
         drawn = core.outputs.get("canvas")
         return web.json_response(drawn.view() if drawn is not None else [])
 
+    async def canvas_remove(request: web.Request) -> web.Response:
+        """The person closing a widget by hand."""
+        drawn = core.outputs.get("canvas")
+        name = str((await body(request)).get("id", ""))
+        return web.json_response({"removed": bool(drawn and drawn.remove(name))})
+
+    async def machine(request: web.Request) -> web.Response:
+        from heare.api import system
+
+        return web.json_response(await asyncio.to_thread(system.read))
+
     # -- tasks ------------------------------------------------------------
 
     async def tasks(request: web.Request) -> web.Response:
@@ -323,6 +334,8 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
         web.get("/api/state", state),
         web.get("/api/history", history),
         web.get("/api/canvas", canvas),
+        web.post("/api/canvas/remove", canvas_remove),
+        web.get("/api/system", machine),
         web.get("/api/controls", controls),
         web.post("/api/controls", control),
         web.post("/api/stop", stop),

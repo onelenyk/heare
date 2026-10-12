@@ -32,7 +32,7 @@
   #open-settings:hover { color:var(--ink); }
   #name { font:800 22px/1 var(--sans); letter-spacing:-.4px; }
   #up { color:var(--soft); font:11px var(--mono); margin-left:auto; }
-  #now { display:flex; align-items:center; gap:10px; margin-top:14px; font:600 17px/1.2 var(--sans); }
+  #now { display:flex; align-items:center; gap:14px; margin-top:12px; font:600 17px/1.2 var(--sans); }
   #dot { width:12px; height:12px; border-radius:50%; background:var(--soft); flex:none; }
   #dot.hearing { background:var(--info); box-shadow:0 0 10px var(--info); }
   #dot.thinking { background:var(--warn); animation:pulse 1s ease infinite; }
@@ -96,37 +96,65 @@
   #say input:focus { outline:none; border-color:var(--accent); }
   #say button { background:var(--accent); color:var(--accent-ink); border:0; border-radius:9px; padding:0 14px; font-weight:700; cursor:pointer; }
 
-  /* ── the canvas: the centre, where it draws ── */
-  #stage { display:flex; flex-direction:column; min-width:0; height:100vh; }
-  #tabs { display:flex; gap:6px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); overflow-x:auto; min-height:47px; }
-  #tabs .label { margin:0 8px 0 0; flex:none; }
-  .chip.on { border-color:var(--accent); color:var(--accent); }
-  #canvas { flex:1; position:relative; min-height:0; }
-  #live { position:absolute; inset:0; overflow-y:auto; padding:28px clamp(18px, 5vw, 64px) 60px; }
-  #live .blk { max-width:860px; margin:0 auto 18px; border-radius:10px; transition:background .8s ease, box-shadow .8s ease; }
-  #live .blk.fresh { background:rgba(157,124,255,.10); box-shadow:0 0 0 8px rgba(157,124,255,.10); }
-  #live h1, #live h2 { font:700 24px/1.25 var(--sans); letter-spacing:-.3px; margin-bottom:6px; }
-  #live h3 { font:600 16px/1.3 var(--sans); margin-bottom:6px; }
-  #live p { font-size:15px; line-height:1.6; margin-bottom:8px; }
-  #live ul, #live ol { padding-left:22px; font-size:15px; line-height:1.7; }
-  #live li { margin-bottom:2px; }
-  #live table { width:100%; border-collapse:collapse; font-size:14px; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-  #live th { text-align:left; font:600 11px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--soft); padding:10px 14px; background:var(--card-2); }
-  #live td { padding:10px 14px; border-top:1px solid var(--line); vertical-align:top; }
-  #live pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; overflow-x:auto; font:13px/1.55 var(--mono); }
-  #live code { font:13px var(--mono); background:var(--card-2); padding:1px 5px; border-radius:4px; }
-  #live pre code { background:none; padding:0; }
-  #live a { color:var(--accent); }
-  #live button { background:var(--card-2); border:1px solid var(--line); border-radius:8px; padding:8px 14px; cursor:pointer; margin:4px 6px 4px 0; }
-  #live button:hover { border-color:var(--accent); color:var(--accent); }
-  #live strong { font-weight:650; }
-  #frame { position:absolute; inset:0; width:100%; height:100%; border:0; background:var(--bg); display:none; }
-  #blank { position:absolute; inset:0; display:grid; place-content:center; text-align:center; color:var(--soft); padding:24px; gap:8px; }
-  #blank b { font:600 20px var(--sans); color:var(--ink); }
-  #blank span { font:12.5px var(--mono); }
-  #drawing { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); background:var(--card); border:1px solid var(--accent); border-radius:999px; padding:6px 14px; font:12px var(--mono); color:var(--accent); display:none; animation:pulse 1.4s ease infinite; }
+  /* ── the canvas: one screen of widgets ── */
+  #stage { position:relative; min-width:0; height:100vh; overflow-y:auto; background:
+    radial-gradient(1200px 500px at 70% -10%, rgba(157,124,255,.07), transparent 60%), var(--bg); }
+  #live { display:grid; grid-template-columns:repeat(auto-fill, minmax(270px, 1fr)); gap:16px; padding:22px; align-items:start; }
+  .blk { position:relative; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; min-width:0; transition:box-shadow .9s ease, border-color .9s ease; }
+  .blk.m { grid-column:span 2; } .blk.l { grid-column:1 / -1; }
+  @media (max-width:1100px) { .blk.m { grid-column:1 / -1; } }
+  .blk.fresh { border-color:var(--accent); box-shadow:0 0 0 4px rgba(157,124,255,.14), 0 12px 40px rgba(157,124,255,.12); }
+  .blk .x { position:absolute; top:8px; right:10px; border:0; background:transparent; color:var(--soft); cursor:pointer; opacity:0; font-size:15px; transition:opacity .15s; }
+  .blk:hover .x { opacity:.8; } .blk .x:hover { color:var(--bad); }
+  .blk iframe { width:100%; border:0; display:block; background:transparent; height:60px; }
+  #empty { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:14px; text-align:center; color:var(--soft); pointer-events:none; }
+  #empty .face { width:150px; height:150px; }
+  #empty b { font:700 26px var(--sans); color:var(--ink); letter-spacing:-.4px; }
+  #empty span { font:12.5px var(--mono); max-width:340px; }
 
-  /* ── settings and screens: over the top, out of the way ── */
+  /* ── the face: what it is doing, at a glance ── */
+  .face { width:54px; height:54px; flex:none; color:var(--accent); overflow:visible; }
+  .face .head { fill:var(--card-2); stroke:currentColor; stroke-width:2.5; transition:stroke .3s; filter:drop-shadow(0 0 6px rgba(157,124,255,.35)); }
+  .face .eye { fill:currentColor; transform-box:fill-box; transform-origin:center; animation:blink 5.2s infinite; transition:transform .25s, fill .3s; }
+  .face .bar { fill:currentColor; transform-box:fill-box; transform-origin:center; transform:scaleY(.25); transition:transform .2s, fill .3s; }
+  @keyframes blink { 0%, 94%, 100% { transform:scaleY(1); } 97% { transform:scaleY(.1); } }
+  .face.hearing { color:var(--info); } .face.hearing .eye { animation:none; transform:scaleY(1.25); }
+  .face.hearing .head { animation:listen 1.3s ease-in-out infinite; }
+  @keyframes listen { 50% { filter:drop-shadow(0 0 16px rgba(111,184,217,.75)); } }
+  .face.thinking { color:var(--warn); } .face.thinking .eye { animation:none; transform:translate(4px,-5px) scale(.8); }
+  .face.thinking .bar { animation:dots 1s ease-in-out infinite; }
+  .face.thinking .bar:nth-child(2) { animation-delay:.15s; } .face.thinking .bar:nth-child(3) { animation-delay:.3s; }
+  .face.thinking .bar:nth-child(4) { animation-delay:.45s; } .face.thinking .bar:nth-child(5) { animation-delay:.6s; }
+  @keyframes dots { 0%, 100% { transform:scaleY(.25); } 50% { transform:scaleY(.6) translateY(-3px); } }
+  .face.speaking .bar { animation:talk .5s ease-in-out infinite; }
+  .face.speaking .bar:nth-child(2) { animation-duration:.38s; } .face.speaking .bar:nth-child(3) { animation-duration:.62s; }
+  .face.speaking .bar:nth-child(4) { animation-duration:.44s; } .face.speaking .bar:nth-child(5) { animation-duration:.56s; }
+  @keyframes talk { 0%, 100% { transform:scaleY(.3); } 50% { transform:scaleY(1.35); } }
+  .face.off { color:var(--soft); } .face.off .eye { animation:none; transform:scaleY(.12); } .face.off .head { filter:none; }
+
+  /* ── what a widget is made of (the same sheet is given to live frames) ── */
+  .w h3 { font:600 11px var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--soft); margin:0 0 12px; }
+  .w h2 { font:700 20px/1.25 var(--sans); letter-spacing:-.3px; margin:0 0 8px; }
+  .w p { font-size:14.5px; line-height:1.6; margin:0 0 8px; }
+  .w ul, .w ol { padding-left:20px; font-size:14.5px; line-height:1.7; margin:0; }
+  .w table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  .w th { text-align:left; font:600 10.5px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--soft); padding:6px 10px 8px 0; }
+  .w td { padding:8px 10px 8px 0; border-top:1px solid var(--line); vertical-align:top; }
+  .w pre { background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px; overflow-x:auto; font:12.5px/1.55 var(--mono); }
+  .w code { font:12.5px var(--mono); background:var(--card-2); padding:1px 5px; border-radius:4px; }
+  .w pre code { background:none; padding:0; }
+  .w a { color:var(--accent); } .w strong { font-weight:650; }
+  .w .big { font:700 44px/1.05 var(--sans); letter-spacing:-1.5px; }
+  .w .muted { color:var(--soft); font-size:12.5px; }
+  .w .row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:13.5px; border-top:1px solid var(--line); }
+  .w .row:first-of-type { border-top:0; } .w .row > :first-child { color:var(--soft); }
+  .w .meter { height:6px; border-radius:3px; background:var(--card-2); overflow:hidden; margin:8px 0; }
+  .w .meter::after { content:""; display:block; height:100%; width:calc(var(--v, 0) * 100%); background:var(--accent); border-radius:3px; transition:width .6s ease; }
+  .w .pill { display:inline-block; padding:2px 9px; border:1px solid var(--line); border-radius:999px; font:11px var(--mono); color:var(--soft); }
+  .w button { background:var(--card-2); border:1px solid var(--line); border-radius:8px; padding:7px 12px; cursor:pointer; margin:6px 6px 0 0; color:inherit; font:inherit; }
+  .w button:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* ── settings: over the top, out of the way ── */
   .veil { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:10; }
   .veil.on { display:block; }
   #settings { position:fixed; top:0; left:0; bottom:0; width:min(420px, 100%); background:var(--card); border-right:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(-100%); transition:transform .2s ease; z-index:11; }
@@ -147,7 +175,7 @@
     <aside id="pult">
       <div class="block">
         <div id="who"><span id="name">heare</span><span id="up"></span><button id="open-settings" title="налаштування: ключі, модель">⚙</button></div>
-        <div id="now"><span id="dot"></span><span id="nowtext">…</span></div>
+        <div id="now"><svg class="face" id="face" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><span><span id="nowtext">…</span></span><span id="dot" hidden></span></div>
         <div class="lanes">
           <div class="lane"><span>ти</span><div class="bar" id="you"><i></i></div></div>
           <div class="lane"><span>він</span><div class="bar" id="it"><i></i></div></div>
@@ -190,13 +218,8 @@
   </div>
 
   <main id="stage">
-    <div id="tabs"><span class="label">Канвас</span><span id="screens" class="chips"></span></div>
-    <div id="canvas">
-      <div id="live"></div>
-      <div id="blank"><b>Тут він малює</b><span>Сам, коли щось краще побачити, ніж почути. Або попроси: «покажи таблицею…»</span></div>
-      <iframe id="frame" title="канвас"></iframe>
-      <div id="drawing">малює…</div>
-    </div>
+    <div id="live"></div>
+    <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span>Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима.</span></div>
   </main>
 </div>
 
@@ -249,7 +272,8 @@ api("history?n=20").then(past => {
 /* ── the panel ── */
 function show() {
   const off = voice && !voice.mic && !voice.speaker;
-  $("dot").className = off ? "off" : phase;
+  const mood = off ? "off" : phase;
+  $("face").setAttribute("class", "face " + mood); $("bigface").setAttribute("class", "face " + mood);
   $("nowtext").textContent = off ? "на паузі" : NOW[phase] + (voice ? (voice.mic ? "" : " · не чує") : " · без голосу");
   $("you").classList.toggle("live", phase === "hearing" && !off);
   $("it").classList.toggle("live", phase === "thinking" || phase === "speaking");
@@ -273,7 +297,7 @@ function show() {
 
 function vitals(s) {
   const m = s.model || {};
-  if (m.name) { $("name").textContent = m.name; document.title = m.name + " · heare"; }
+  if (m.name) { $("name").textContent = m.name; $("bigname").textContent = m.name; document.title = m.name + " · heare"; }
   const box = $("model"); box.replaceChildren();
   if (m.error) box.append(el("b", "bad", "немає ключа жодної моделі"));
   else {
@@ -324,49 +348,60 @@ const refresh = () => api("state").then(s => {
   show(); vitals(s); tasks(s.tasks, s.permission);
 });
 
-let shown = null;  // null = the live canvas; otherwise a saved screen's name
-function mark() {
-  for (const c of $("screens").children) c.classList.toggle("on", (c.dataset.name || null) === shown);
-  const drawn = $("live").children.length > 0;
-  $("frame").style.display = shown ? "block" : "none";
-  $("live").style.display = shown ? "none" : "block";
-  $("blank").style.display = (!shown && !drawn) ? "grid" : "none";
-}
-function put(name) {
-  shown = name || null;
-  if (shown) $("frame").src = "/screens/" + shown + "?t=" + Date.now();
-  mark();
-}
-function screens(show) {
-  return api("screens").then(names => {
-    const live = el("button", "chip", "канвас"); live.onclick = () => put(null);
-    $("screens").replaceChildren(live, ...names.map(n => {
-      const b = el("button", "chip", n); b.dataset.name = n; b.onclick = () => put(n);
-      return b;
-    }));
-    if (show && names.includes(show)) put(show); else mark();
-  });
-}
+/* the canvas: one screen of widgets, changed in place */
+const SHEET = [...document.styleSheets[0].cssRules].filter(r => r.selectorText && r.selectorText.startsWith(".w ")).map(r => r.cssText).join("\n");
+const ROOT = getComputedStyle(document.documentElement);
+const VARS = ["--bg","--card","--card-2","--line","--ink","--soft","--accent","--accent-ink","--ok","--warn","--bad","--info","--sans","--mono"].map(v => `${v}:${ROOT.getPropertyValue(v)}`).join(";");
+// What a live widget may ask for. It runs in a sealed frame and reaches
+// the assistant only through these.
+const MAY_GET = /^(system|state|tasks|history(\?n=\d+)?|canvas|memory\?q=[^&]+)$/;
+const BRIDGE = `<script>
+const heare = { _n: 0, _w: {},
+  get(path) { return new Promise((ok, no) => { const id = ++this._n; this._w[id] = [ok, no]; parent.postMessage({heare: "get", id, path}, "*"); }); },
+  say(text) { parent.postMessage({heare: "say", text}, "*"); } };
+addEventListener("message", e => { const w = heare._w[e.data && e.data.id]; if (!w) return; delete heare._w[e.data.id]; e.data.error ? w[1](new Error(e.data.error)) : w[0](e.data.data); });
+addEventListener("click", e => { const b = e.target.closest("[data-say]"); if (b) heare.say(b.dataset.say); });
+new ResizeObserver(() => parent.postMessage({heare: "size", h: document.documentElement.scrollHeight}, "*")).observe(document.documentElement);
+<\/script>`;
+const framed = html => `<!doctype html><meta charset="utf-8"><style>:root{${VARS}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}</style>${BRIDGE}<body class="w">${html}`;
 
-/* the live canvas: blocks the assistant puts, changed in place */
-function block(id, html, order) {
-  let node = document.getElementById("blk-" + id);
-  if (!node) { node = el("div", "blk"); node.id = "blk-" + id; $("live").append(node); }
-  node.innerHTML = html;
-  if (order) for (const key of order) { const n = document.getElementById("blk-" + key); if (n) $("live").append(n); }
-  node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1400);
+function block(b) {
+  let node = document.getElementById("blk-" + b.id);
+  if (!node) { node = el("div", "blk"); node.id = "blk-" + b.id; $("live").append(node); }
+  node.className = "blk " + (b.size || "s");
+  const x = el("button", "x", "×"); x.title = "прибрати"; x.onclick = () => api("canvas/remove", {method: "POST", body: {id: b.id}});
+  if (/<script/i.test(b.html)) {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-scripts"); frame.srcdoc = framed(b.html);
+    node.replaceChildren(x, frame);
+  } else {
+    const body = el("div", "w"); body.innerHTML = b.html;
+    node.replaceChildren(x, body);
+  }
+  if (b.order) for (const key of b.order) { const n = document.getElementById("blk-" + key); if (n) $("live").append(n); }
   return node;
 }
+const few = () => { $("empty").style.display = $("live").children.length ? "none" : "grid"; };
 function drawn(e) {
   if (e.op === "clear") $("live").replaceChildren();
   else if (e.op === "remove") document.getElementById("blk-" + e.id)?.remove();
-  else { put(null); block(e.id, e.html, e.order).scrollIntoView({behavior: "smooth", block: "nearest"}); }
-  mark();
+  else { const node = block(e); node.classList.add("fresh"); setTimeout(() => node.classList.remove("fresh"), 1600); node.scrollIntoView({behavior: "smooth", block: "nearest"}); }
+  few();
 }
-api("canvas").then(blocks => { for (const b of blocks) block(b.id, b.html).classList.remove("fresh"); mark(); });
+api("canvas").then(blocks => { blocks.forEach(block); few(); });
 $("live").addEventListener("click", ev => {
   const say = ev.target.closest("[data-say]");
   if (say) api("message", {method: "POST", body: {text: say.dataset.say}});
+});
+addEventListener("message", ev => {
+  const m = ev.data, frame = [...document.querySelectorAll("#live iframe")].find(f => f.contentWindow === ev.source);
+  if (!m || !m.heare || !frame) return;
+  if (m.heare === "size") frame.style.height = Math.min(Math.max(m.h, 40), 900) + "px";
+  else if (m.heare === "say" && typeof m.text === "string") api("message", {method: "POST", body: {text: m.text.slice(0, 500)}});
+  else if (m.heare === "get") {
+    if (!MAY_GET.test(String(m.path))) return ev.source.postMessage({id: m.id, error: "not allowed"}, "*");
+    api(m.path).then(data => ev.source.postMessage({id: m.id, data}, "*"), err => ev.source.postMessage({id: m.id, error: String(err)}, "*"));
+  }
 });
 
 /* ── controls ── */
@@ -427,13 +462,12 @@ stream.onmessage = m => {
   }
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
   else if (e.kind === "canvas") drawn(e);
-  else if (e.kind === "screen") { screens(e.name); aside(`новий екран: ${e.name}`); }
-  else if (e.kind === "task") $("drawing").style.display = (e.executor === "screens" && e.status === "running") ? "block" : "none";
+
   if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted"].includes(e.kind)) refresh();
 };
-stream.onerror = () => { $("dot").className = "off"; $("nowtext").textContent = "немає зв'язку з heare"; };
+stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = "немає зв'язку з heare"; };
 
 $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; api("message", {method: "POST", body: {text}}); };
-refresh(); screens(); setInterval(refresh, 15000);
+refresh(); setInterval(refresh, 15000);
 </script>
 </html>

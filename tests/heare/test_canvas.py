@@ -38,13 +38,28 @@ def test_the_drawing_survives_a_restart(tmp_path):
     assert _canvas(tmp_path).blocks == {"note": "<p>пам'ятай</p>"}
 
 
-def test_a_block_holds_markup_and_never_code():
-    dirty = ('<p onclick="steal()">привіт</p><script>steal()</script>'
-             '<a href="javascript:steal()">x</a><iframe src="//evil"></iframe>')
+def test_what_could_reach_outside_the_frame_is_taken_out():
+    dirty = ('<p onclick="steal()">привіт</p><a href="javascript:steal()">x</a>'
+             '<iframe src="//evil"></iframe><link rel="stylesheet" href="//evil.css">'
+             '<script>setInterval(tick, 1000)</script>')
     cleaned = clean(dirty)
-    for bad in ("script", "onclick", "javascript:", "iframe"):
+    for bad in ("onclick", "javascript:", "iframe", "<link"):
         assert bad not in cleaned
-    assert "привіт" in cleaned
+    # A script stays: the page only ever runs it inside a sealed frame.
+    assert "привіт" in cleaned and "setInterval" in cleaned
+
+
+def test_widgets_stay_side_by_side_each_with_a_size(tmp_path):
+    canvas = _canvas(tmp_path)
+    canvas.put("weather", "<h3>Бурштин</h3><p class='big' id='t'>…</p><script>load()</script>")
+    canvas.put("cpu", "<h3>Процесор</h3><div class='meter'></div>", size="m")
+    canvas.put("cities", "<table><tr><td>Київ</td></tr></table>")
+    assert [(b["id"], b["size"]) for b in canvas.view()] == [
+        ("weather", "s"), ("cpu", "m"), ("cities", "m"),
+    ]
+    told = canvas.context()
+    assert "weather (живий): Бурштин" in told and "load()" not in told
+    assert _canvas(tmp_path).sizes == {"weather": "s", "cpu": "m", "cities": "m"}
 
 
 def test_the_model_is_told_what_is_drawn_as_an_outline_not_as_markup(tmp_path):

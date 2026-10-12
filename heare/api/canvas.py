@@ -5,10 +5,16 @@ was not: it was a job handed through two more models that wrote a whole
 page each time, twenty seconds for a table. Here the model that talks
 draws by itself, in the same turn, and changes only what it means to.
 
-The canvas is a column of named blocks. Three verbs: put a block (new,
-or in place of the one with that name), remove one, clear all. The page
-supplies the styling, so a block is plain HTML — a heading, a table, a
-list — and small. What is on the canvas is told to the model in every
+The canvas is one screen of named widgets laid out as cards, and they
+stay: asking for a second thing adds a card beside the first. Three
+verbs: put a widget (new, or in place of the one with that name), remove
+one, clear all. The page supplies the styling, so everything on it looks
+like one thing made by one hand, and a widget is small plain HTML.
+
+A widget may be alive. One that carries a script is run by the page in
+a sealed frame of its own, where it can refresh itself, ask a public
+service for data, and ask the assistant about this machine through a
+small bridge (``heare.get``) — and nothing else. What is on the canvas is told to the model in every
 prompt as an outline, not as markup: the old app put the whole display
 into the prompt and the model drowned in it.
 
@@ -32,22 +38,25 @@ BLOCK_CHARS = 6000
 OUTLINE_CHARS = 400
 OUTLINE_TOTAL = 2400
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,40}")
-_SCRIPT = re.compile(r"<\s*(script|iframe|object|embed|link|meta)\b.*?(</\s*\1\s*>|$)",
-                     re.IGNORECASE | re.DOTALL)
+_PAIRED = re.compile(r"<\s*(iframe|object|embed)\b.*?</\s*\1\s*>", re.IGNORECASE | re.DOTALL)
+_LONE = re.compile(r"</?\s*(iframe|object|embed|link|meta|base)\b[^>]*>?", re.IGNORECASE)
+SIZES = ("s", "m", "l")
 _HANDLER = re.compile(r"\son[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.IGNORECASE)
 _JS_URL = re.compile(r"javascript\s*:", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")
 
 
 def clean(html: str) -> str:
-    """A block may hold markup, not code: what runs on the page is the
-    page's own. Scripts, frames and inline handlers are taken out."""
-    html = _SCRIPT.sub("", html)
+    """Frames, external sheets, inline handlers and script URLs are taken
+    out. A <script> stays: the page never runs it in itself, only inside
+    a sealed frame that can reach nothing of the person's."""
+    html = _LONE.sub("", _PAIRED.sub("", html))
     html = _HANDLER.sub("", html)
     return _JS_URL.sub("", html)
 
 
 def _text(html: str) -> str:
+    html = re.sub(r"<\s*(script|style)\b.*?</\s*\1\s*>", " ", html, flags=re.I | re.S)
     return re.sub(r"\s+", " ", _TAG.sub(" ", html)).strip()
 
 
@@ -62,32 +71,42 @@ class Canvas:
         self._path = Path(path)
         self._emit = emit
         self.blocks: dict[str, str] = {}
+        self.sizes: dict[str, str] = {}
         try:
-            saved = json.loads(self._path.read_text(encoding="utf-8"))
-            self.blocks = {str(k): str(v) for k, v in saved}
-        except (OSError, ValueError, TypeError):
+            for row in json.loads(self._path.read_text(encoding="utf-8")):
+                self.blocks[str(row[0])] = str(row[1])
+                if len(row) > 2 and row[2] in SIZES:
+                    self.sizes[str(row[0])] = row[2]
+        except (OSError, ValueError, TypeError, IndexError):
             pass
 
     def _keep(self) -> None:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             self._path.write_text(
-                json.dumps(list(self.blocks.items()), ensure_ascii=False),
+                json.dumps([[k, v, self.sizes.get(k, "s")] for k, v in self.blocks.items()],
+                           ensure_ascii=False),
                 encoding="utf-8",
             )
         except OSError:
             pass  # a drawing that cannot be saved is still drawn
 
     def view(self) -> list[dict]:
-        return [{"id": k, "html": v} for k, v in self.blocks.items()]
+        return [{"id": k, "html": v, "size": self.sizes.get(k, "s")}
+                for k, v in self.blocks.items()]
 
     # -- what the model does -------------------------------------------
 
-    def put(self, block: str, html: str, after: str = "") -> None:
+    def put(self, block: str, html: str, after: str = "", size: str = "") -> None:
         block = block.strip().lower()
         if not _ID.fullmatch(block):
             raise ValueError("a block's name is lowercase latin letters, digits, dashes")
         html = clean(html)[:BLOCK_CHARS]
+        if size in SIZES:
+            self.sizes[block] = size
+        elif block not in self.sizes:
+            # Unsaid: a table or a long text wants the width, a number does not.
+            self.sizes[block] = "m" if "<table" in html or len(_text(html)) > 400 else "s"
         if block in self.blocks or after not in self.blocks:
             self.blocks[block] = html  # in place, or at the end
         else:
@@ -99,24 +118,26 @@ class Canvas:
             self.blocks = dict(items)
         self._keep()
         self._emit("canvas", op="put", id=block, html=html,
-                   order=list(self.blocks))
+                   size=self.sizes[block], order=list(self.blocks))
 
     def remove(self, block: str) -> bool:
         if self.blocks.pop(block.strip().lower(), None) is None:
             return False
+        self.sizes.pop(block.strip().lower(), None)
         self._keep()
         self._emit("canvas", op="remove", id=block.strip().lower())
         return True
 
     def clear(self) -> None:
-        self.blocks = {}
+        self.blocks, self.sizes = {}, {}
         self._keep()
         self._emit("canvas", op="clear")
 
     async def _put(self, arguments: dict) -> str:
         try:
             self.put(str(arguments.get("id", "")), str(arguments.get("html", "")),
-                     str(arguments.get("after", "") or ""))
+                     str(arguments.get("after", "") or ""),
+                     str(arguments.get("size", "") or ""))
         except ValueError:
             return ""
         # Said only when the model drew without a word: silence after a
@@ -140,13 +161,15 @@ class Canvas:
         if not self.blocks:
             return "Канвас (екран перед людиною) зараз порожній."
         lines = [
-            f"- {key}: {_text(html)[:OUTLINE_CHARS]}" for key, html in self.blocks.items()
+            f"- {key}{' (живий)' if '<script' in html.lower() else ''}: "
+            f"{_text(html)[:OUTLINE_CHARS]}" for key, html in self.blocks.items()
         ]
         outline = "\n".join(lines)
         if len(outline) > OUTLINE_TOTAL:
             outline = outline[:OUTLINE_TOTAL] + " …"
-        return ("На канвасі (екран перед людиною) зараз такі блоки, згори донизу. "
-                "Це вже намальовано — не малюй те саме вдруге:\n" + outline)
+        return ("На канвасі (екран перед людиною) зараз такі віджети. Вони вже "
+                "намальовані й лишаються, поки їх не приберуть — не малюй те "
+                "саме вдруге:\n" + outline)
 
     # -- as an output: a reply sent here is written, not spoken --------
 
@@ -176,37 +199,46 @@ def _verb(name: str, description: str, properties: dict, required: list[str]) ->
 
 _PUT = _verb(
     "canvas_put",
-    "Draw on the canvas — the screen in front of the person. Use it by "
-    "yourself, without being asked, whenever something is better seen than "
-    "heard: a list, steps, a table, a comparison, numbers, code, an address, "
-    "anything they may want to look at again. Not for small talk or a "
-    "one-line answer. The gist goes in `say` — one short spoken sentence "
-    "that answers the person — and the detail goes on the canvas; do not "
-    "read the detail out. "
-    "One call puts ONE block. A block with a new id is added at the end; a "
-    "block with an id that exists is replaced in place. To change part of "
-    "what is drawn, put only that block again — never redraw the rest. Keep "
-    "blocks small: a heading is a block, a table is a block. Plain HTML "
-    "only (h2, h3, p, ul, ol, table, pre, code, strong, em, a, button) — "
-    "no style, no script: the canvas styles it. A <button data-say=\"…\"> "
-    "says that text to you when pressed.",
+    "Put a widget on the canvas — the one screen in front of the person. "
+    "Use it by yourself, without being asked, whenever something is better "
+    "seen than heard (a list, steps, a table, numbers, code) or the person "
+    "wants something to keep an eye on (weather, the processor, a timer). "
+    "Not for small talk or a one-line answer. The gist goes in `say`, the "
+    "detail on the canvas. Widgets stay side by side: a new id adds a card, "
+    "an existing id replaces that card in place — to change one thing, put "
+    "only that widget again. Keep each small.\n"
+    "HTML only, no <style>: the canvas styles everything alike. Start with "
+    "<h3>title</h3>. Helpers: class=\"big\" a large value, \"muted\" small "
+    "grey text, \"row\" a label–value line (two spans), \"meter\" with "
+    "style=\"--v:0.42\" a bar, \"pill\" a tag. <button data-say=\"…\"> says "
+    "that to you.\n"
+    "A LIVE widget carries one <script> that fills elements by id and "
+    "refreshes itself with setInterval. In it: `await heare.get('system')` "
+    "-> {cpu:{percent,load,cores}, memory:{percent,used_gb,total_gb}, "
+    "battery:{percent,state}, disk:{free_gb,total_gb}, top:[{name,cpu,mb}]}; "
+    "`heare.get('state')`, `heare.get('tasks')`; and fetch() of public JSON "
+    "APIs, e.g. weather: https://geocoding-api.open-meteo.com/v1/search?"
+    "name=CITY&count=1 then https://api.open-meteo.com/v1/forecast?latitude="
+    "…&longitude=…&current=temperature_2m,apparent_temperature,"
+    "weather_code,wind_speed_10m. Never invent live numbers — fetch them.",
     {
         "id": {"type": "string",
-               "description": "Short latin name of the block, e.g. «plan», "
-                              "«prices-table». Reuse it to change the block."},
-        "html": {"type": "string", "description": "The block's HTML."},
+               "description": "Short latin name, e.g. «weather-burshtyn», "
+                              "«cpu». Reuse it to change the widget."},
+        "html": {"type": "string", "description": "The widget's HTML."},
         "say": {"type": "string",
                 "description": "One short sentence to say aloud, in the "
                                "person's language: the answer in brief, not "
                                "«look at the screen»."},
-        "after": {"type": "string",
-                  "description": "Optional: id of the block to put a new one after."},
+        "size": {"type": "string", "enum": ["s", "m", "l"],
+                 "description": "s: a small card (default), m: double "
+                                "width, l: the full row."},
     },
     ["id", "html", "say"],
 )
 _REMOVE = _verb(
-    "canvas_remove", "Take one block off the canvas.",
-    {"id": {"type": "string", "description": "The block's id."}}, ["id"],
+    "canvas_remove", "Take one widget off the canvas.",
+    {"id": {"type": "string", "description": "The widget's id."}}, ["id"],
 )
 _CLEAR = _verb(
     "canvas_clear",
