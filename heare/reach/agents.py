@@ -201,8 +201,11 @@ class Agent:
 
 
 def connect(settings: Any) -> list[Agent]:
-    """Every installed agent, or only the one the settings name."""
+    """The agent the settings name (``executor``; «all» for every
+    installed one), working in its own folder (``executor_cwd``)."""
     only = str(getattr(settings, "executor", "") or "").strip().lower()
     cwd = getattr(settings, "executor_cwd", "") or None
-    found = [k for k in installed() if not only or k.name == only]
+    if cwd:
+        Path(cwd).mkdir(parents=True, exist_ok=True)
+    found = [k for k in installed() if only in ("", "all") or k.name == only]
     return [Agent(k, cwd=cwd) for k in found]

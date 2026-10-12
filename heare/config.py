@@ -29,6 +29,12 @@ DEFAULTS = {
     "canvas_file": HOME / "canvas.json",
     "api_token_file": HOME / "api_token",
     "api_port": 9790,
+    # One agent does the work unless the person names another; two at
+    # once made three versions of one program in twenty minutes.
+    "executor": "opencode",
+    # Where agents work. Never the home folder: on 12 October an agent
+    # left files in four places there.
+    "executor_cwd": Path.home() / "heare-work",
 }
 
 

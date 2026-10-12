@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Анатомія heare</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root{
+  color-scheme: dark;
+  --ground:#0b0d12; --panel:#12161e; --panel-2:#181e28; --line:#252e3b;
+  --ink:#e8e3d8; --ink-2:#b9b4a8; --muted:#7d8795;
+  --ears:#5cc8d6; --turn:#8fb7ff; --mind:#f2a93b; --hands:#ee7657;
+  --memory:#b59cf5; --mouth:#86cf87; --engine:#e6d25a; --surface:#9aa4b2; --ext:#d9dde3;
+  --ok:#86cf87; --warn:#e6c35a; --bad:#ee6a57; --off:#6b7480;
+  --display:"Unbounded", "Golos Text", system-ui, sans-serif;
+  --body:"Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+*{box-sizing:border-box}
+html,body{background:var(--ground);margin:0}
+body{color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;padding-inline:clamp(16px,4vw,48px);padding-block:0 64px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;font-weight:600;letter-spacing:-.01em}
+h2{font-size:clamp(20px,2.4vw,28px)}
+h3{font-size:15px;font-weight:600;letter-spacing:0}
+p{margin:0;max-width:70ch}
+code,.mono{font-family:var(--mono);font-size:.86em}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.wrap{max-width:1320px;margin:0 auto}
+section{margin-top:76px;display:grid;gap:20px}
+.lede{color:var(--ink-2);font-size:16px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 32px;padding-block:32px 20px;border-bottom:1px solid var(--line)}
+header.top h1{font-size:clamp(34px,6vw,64px);font-weight:800;line-height:.95}
+header.top h1 span{color:var(--mind)}
+.stamp{font-family:var(--mono);font-size:12px;color:var(--muted);display:grid;gap:2px;text-align:right}
+.stamp b{color:var(--ink-2);font-weight:600}
+
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;margin-top:20px}
+@media (max-width:1000px){.stage{grid-template-columns:minmax(0,1fr)}}
+.viewport{position:relative;background:radial-gradient(ellipse at 50% 45%,#141c28 0%,var(--ground) 72%);border:1px solid var(--line);border-radius:10px;overflow:hidden;height:min(72vh,720px);min-height:420px;touch-action:none;cursor:grab}
+.viewport:active{cursor:grabbing}
+.viewport canvas{display:block;width:100%;height:100%}
+.labels{position:absolute;inset:0;pointer-events:none}
+.lbl{position:absolute;transform:translate(-50%,-100%);font-family:var(--mono);font-size:10.5px;white-space:nowrap;color:var(--ink-2);background:rgba(11,13,18,.74);border:1px solid rgba(255,255,255,.07);padding:1px 6px;border-radius:4px;pointer-events:auto;cursor:pointer;transition:opacity .25s,border-color .2s,color .2s}
+.lbl.ext{border-style:dashed}
+.lbl.zone{font-family:var(--display);font-size:11px;letter-spacing:.1em;text-transform:uppercase;background:none;border:none;pointer-events:none;transform:translate(-50%,-50%)}
+.lbl.core{font-family:var(--display);font-size:10.5px;background:none;border:none;color:var(--ink-2);pointer-events:none;text-align:center;transform:translate(-50%,-50%);white-space:normal;width:150px}
+.lbl.hot{color:var(--ink);border-color:currentColor}
+.lbl.back{opacity:.22}
+.lbl.dim{opacity:.3}
+.hud{position:absolute;left:12px;right:12px;bottom:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.nogl{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted)}
+
+.side{display:grid;gap:12px;align-content:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.scen{display:grid;gap:4px}
+.scen button{all:unset;cursor:pointer;display:grid;grid-template-columns:auto 1fr;gap:1px 10px;padding:7px 10px;border-radius:7px;border:1px solid transparent}
+.scen button:hover{background:var(--panel-2)}
+.scen button:focus-visible,.chip:focus-visible,.btn:focus-visible{outline:2px solid var(--mind);outline-offset:1px}
+.scen button[aria-pressed="true"]{background:var(--panel-2);border-color:var(--line)}
+.scen .dot{width:8px;height:8px;border-radius:50%;margin-top:7px;grid-row:span 2}
+.scen .t{font-weight:600}
+.scen .s{font-size:12.5px;color:var(--muted);grid-column:2}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+.btn{all:unset;cursor:pointer;font-family:var(--mono);font-size:12px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;color:var(--ink-2)}
+.btn:hover{color:var(--ink);border-color:var(--muted)}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;padding:4px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink-2)}
+.chip i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.chip.dash i{background:repeating-linear-gradient(90deg,currentColor 0 3px,transparent 3px 5px)!important}
+.chip[aria-pressed="true"]{border-color:currentColor;color:var(--ink);background:var(--panel-2)}
+
+.trace{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;margin-top:16px}
+@media (max-width:1000px){.trace{grid-template-columns:minmax(0,1fr)}}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:2px;max-height:380px;overflow:auto}
+.steps li{display:grid;grid-template-columns:18px 1fr auto;gap:10px;align-items:baseline;padding:6px 8px;border-radius:6px;color:var(--muted);font-size:13.5px}
+.steps li .n{font-family:var(--mono);font-size:11px}
+.steps li .ms{font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;text-align:right}
+.steps li .ch{display:block;font-family:var(--mono);font-size:10.5px;margin-top:1px}
+.steps li.on{background:var(--panel-2);color:var(--ink)}
+.steps li.done{color:var(--ink-2)}
+.payload{font-family:var(--mono);font-size:12px;line-height:1.55;background:#080a0e;border:1px solid var(--line);border-radius:8px;padding:12px;min-height:200px;max-height:380px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--ink-2)}
+.payload .k{color:var(--muted)}
+.payload .v{color:var(--ink)}
+.payload .tag{display:inline-block;padding:0 6px;border-radius:3px;color:#0b0d12;font-weight:600;margin:0 6px 6px 0}
+.total{display:flex;justify-content:space-between;gap:12px;font-family:var(--mono);font-size:12px;color:var(--muted);padding:8px 8px 0}
+.total b{color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.types{display:flex;flex-wrap:wrap;gap:6px 14px;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.types span{display:inline-flex;align-items:center;gap:6px}
+.types i{width:9px;height:9px;border-radius:50%;display:inline-block;box-shadow:0 0 8px currentColor}
+
+.zones{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.zone{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:10px;align-content:start;border-top:3px solid var(--c)}
+.zone h3{color:var(--c)}
+.zone .files{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.6}
+.zone ul{margin:0;padding-left:16px;display:grid;gap:4px;font-size:13.5px;color:var(--ink-2)}
+.zone dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px}
+.zone dt{color:var(--muted);font-family:var(--mono);font-size:11.5px}
+.zone dd{margin:0;font-family:var(--mono);font-size:11.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+
+.bar{display:flex;height:44px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.bar div{display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:#0b0d12;font-weight:600;min-width:0;overflow:hidden;white-space:nowrap}
+.barkey{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.barkey div{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:baseline;font-size:13px;color:var(--ink-2)}
+.barkey i{width:10px;height:10px;border-radius:2px;display:inline-block;align-self:center}
+.barkey b{font-family:var(--mono);font-size:12px;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.note{font-size:13px;color:var(--muted)}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:700px;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--panel)}
+tr:last-child td{border-bottom:none}
+td.grp{font-family:var(--display);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#0e1117;padding-top:14px}
+td .sw{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:8px}
+td .sw.dash{background:repeating-linear-gradient(90deg,currentColor 0 4px,transparent 4px 7px)!important}
+td b{font-weight:600;color:var(--ink)}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)} .pill.off{color:var(--off)}
+
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:8px;align-content:start}
+.card h3{font-size:14px}
+.card p{font-size:13.5px;color:var(--ink-2)}
+.card .who{font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.6}
+.flow{font-family:var(--mono);font-size:12px;color:var(--ink-2);background:#080a0e;border-radius:6px;padding:10px;overflow-x:auto;white-space:pre}
+
+footer{margin-top:76px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">голосовий асистент для macOS · гілка refactor/design-v2</div>
+    <h1>Анатомія <span>heare</span></h1>
+  </div>
+  <div class="stamp">
+    <span>стан на <b>28 вересня 2026</b></span>
+    <span>звірено з кодом і живим запуском</span>
+    <span>після коміту <b>d765c95</b></span>
+  </div>
+</header>
+
+<p class="lede" style="margin-top:20px">heare — це один процес на маку. Усередині — дев'ять зон, що сидять на одній сфері навколо спільного ядра: циклу asyncio, через який проходить кожна подія. Зовні, на орбіті, — те, від чого heare залежить: мікрофон macOS, Groq, DeepSeek, Microsoft, ffmpeg, Chrome, база. Лінії між ними — канали даних, і колір лінії каже, як саме дані переходять: викликом функції, чергою, опитуванням, HTTP, WebSocket чи трубою до іншого процесу. Оберіть сценарій — і він пробіжить системою.</p>
+
+<div class="stage">
+  <div class="viewport" id="viewport" aria-label="Тривимірна схема heare у вигляді сфери">
+    <div class="labels" id="labels"></div>
+    <div class="hud"><span>тягніть — обертати · колесо — ближче · клацніть станцію</span><span id="hudstate">готово</span></div>
+  </div>
+  <aside class="side">
+    <div class="panel">
+      <div class="eyebrow" style="margin-bottom:8px">сценарії</div>
+      <div class="scen" id="scenarios" role="group" aria-label="Сценарії"></div>
+    </div>
+    <div class="panel controls">
+      <button class="btn" id="play" type="button">▶ ще раз</button>
+      <button class="btn" id="speed" type="button">швидкість: 1×</button>
+      <button class="btn" id="spin" type="button">обертання: так</button>
+    </div>
+  </aside>
+</div>
+
+<div class="panel" style="margin-top:16px;display:grid;gap:10px">
+  <div class="eyebrow">канали даних — клацніть, щоб підсвітити на сфері</div>
+  <div class="chips" id="chips"></div>
+</div>
+
+<div class="trace">
+  <div class="panel">
+    <div class="eyebrow" style="margin-bottom:6px" id="scenTitle">кроки</div>
+    <ol class="steps" id="steps"></ol>
+    <div class="total"><span>від кінця фрази до першого звуку</span><b id="total">—</b></div>
+  </div>
+  <div class="panel">
+    <div class="eyebrow" style="margin-bottom:6px">що зараз біжить</div>
+    <div class="payload" id="payload"><span class="k">Оберіть сценарій, канал або станцію.</span></div>
+  </div>
+</div>
+
+<div style="display:grid;gap:10px;margin-top:16px">
+  <div class="legend" id="legend"></div>
+  <div class="types" id="types"></div>
+</div>
+
+<section id="channels">
+  <div class="eyebrow">канали</div>
+  <h2>Як дані переходять з місця на місце</h2>
+  <p class="lede">Дванадцять способів, і кожен має свій ритм. Хтось штовхає одразу, хтось опитує з інтервалом, хтось чекає відповіді з мережі. Здебільшого затримка ховається в останніх двох.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th style="width:21%">Канал</th><th style="width:31%">Між чим</th><th style="width:26%">Механізм</th><th>Ритм</th></tr></thead>
+    <tbody id="chanrows"></tbody>
+  </table></div>
+</section>
+
+<section id="deps">
+  <div class="eyebrow">залежності</div>
+  <h2>Від чого heare залежить і що буде, якщо воно відпаде</h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th style="width:17%">Залежність</th><th style="width:20%">Навіщо</th><th style="width:19%">Як з'єднано</th><th style="width:14%">Час · ціна</th><th>Якщо відпаде</th></tr></thead>
+    <tbody id="deprows"></tbody>
+  </table></div>
+</section>
+
+<section id="threads">
+  <div class="eyebrow">виконання</div>
+  <h2>Хто що крутить: потоки й процеси</h2>
+  <p class="lede">Один процес і майже все — в одному циклі asyncio. Окремо живуть лише ті, кому не можна чекати (звук) або хто сам по собі блокує (SQLite, дочірні процеси).</p>
+  <div class="cols" id="threadcards"></div>
+</section>
+
+<section id="zones">
+  <div class="eyebrow">зони</div>
+  <h2>Дев'ять зон, у кожної одна робота</h2>
+  <p class="lede">Колір зони той самий, що на сфері. Під назвою — файли, де вона живе; внизу — числа, які задають її поведінку.</p>
+  <div class="zones" id="zonecards"></div>
+</section>
+
+<section id="turn">
+  <div class="eyebrow">один хід, медіана</div>
+  <h2>≈ 3,4 секунди від останнього слова до першого звуку</h2>
+  <p class="lede">Половина цього часу — навмисне очікування: heare перевіряє, що ви договорили. Решта — мережа: розпізнавання, модель, синтез. Числа — медіани з <code>~/.heare/logs/turns.jsonl</code> і журналу синтезу; очікування — з налаштувань.</p>
+  <div class="bar" id="turnbar"></div>
+  <div class="barkey" id="turnkey"></div>
+  <p class="note">Незакінчена думка («і…», «тобто…», без крапки) чекає 2,6 с замість 0,8. 28 вересня очікування скоротили з 1,3 до 0,8 с, VAD — з 800 до 600 мс, а ffmpeg перестав «придивлятися» до MP3 (237 → 22 мс). Разом ≈ −0,9 с.</p>
+</section>
+
+<section id="features">
+  <div class="eyebrow">можливості</div>
+  <h2>Що вміє зараз</h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th style="width:34%">Можливість</th><th style="width:14%">Стан</th><th>Як і де</th></tr></thead>
+    <tbody id="featrows"></tbody>
+  </table></div>
+</section>
+
+<section id="lanes">
+  <div class="eyebrow">взаємодії</div>
+  <h2>Правила, на яких тримається розмова</h2>
+  <div class="cols" id="rules"></div>
+</section>
+
+<section id="data">
+  <div class="eyebrow">дані</div>
+  <h2>Що де лежить</h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th style="width:26%">Де</th><th style="width:30%">Що</th><th>Хто пише · хто читає</th></tr></thead>
+    <tbody id="datarows"></tbody>
+  </table></div>
+</section>
+
+<section id="gaps">
+  <div class="eyebrow">чесно</div>
+  <h2>Що не працює або працює наполовину</h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th style="width:32%">Що</th><th style="width:12%">Стан</th><th>Чому і що з цим</th></tr></thead>
+    <tbody id="gaprows"></tbody>
+  </table></div>
+</section>
+
+<footer>
+  <span>heare · src/spine — власний голосовий тракт без pipecat · 1 989 тестів зелені</span>
+  <span>Джерела: код, <code>make doctor</code>, живий лог 27–28.09, <code>tests/e2e/COVERAGE.md</code></span>
+</footer>
+</div>
+
+<script src="three.min.js"></script>
+<script>
+(() => {
+"use strict";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const Z = {
+  device:{name:"Пристрій",c:css("--surface")}, ears:{name:"Вуха",c:css("--ears")}, turn:{name:"Хід",c:css("--turn")},
+  mind:{name:"Голос",c:css("--mind")}, hands:{name:"Руки",c:css("--hands")}, memory:{name:"Пам'ять",c:css("--memory")},
+  engine:{name:"Ініціатива",c:css("--engine")}, mouth:{name:"Рот",c:css("--mouth")}, surface:{name:"Оболонка",c:css("--surface")},
+  ext:{name:"Зовні",c:css("--ext")},
+};
+
+/* data types that travel */
+const T = {
+  pcm:{name:"PCM 16 кГц · кадри 20 мс",c:"#5cc8d6"}, text:{name:"текст",c:"#e8e3d8"}, json:{name:"виклик інструмента (JSON)",c:"#f2a93b"},
+  audio:{name:"звук (MP3 → PCM 24 кГц)",c:"#86cf87"}, img:{name:"скріншот",c:"#ee7657"}, row:{name:"рядок у базі",c:"#b59cf5"}, sig:{name:"сигнал керування",c:"#e6d25a"},
+};
+
+/* channels: how data moves */
+const C = {
+  func:  {name:"виклик · await", c:"#c9c2b4", how:"пряма функція в тому ж циклі asyncio", rhythm:"одразу, без черги", dash:false},
+  thread:{name:"межа потоку", c:"#5cc8d6", how:"колбек CoreAudio → call_soon_threadsafe; вихід — байтовий буфер під threading.Lock", rhythm:"кожні 20 мс, реальний час", dash:false},
+  queue: {name:"черга asyncio", c:"#8fb7ff", how:"asyncio.Queue: кадри мікрофона (200), завдання STT, «ін'єкції» (руки, дашборд, двигун)", rhythm:"штовхає; читач бере, коли вільний", dash:false},
+  task:  {name:"фонова задача", c:"#ffb38a", how:"asyncio.create_task — голос не чекає результату", rhythm:"одразу; результат повертається чергою", dash:false},
+  poll:  {name:"опитування", c:"#9aa4b2", how:"хтось питає стан з інтервалом", rhythm:"збирач 100 мс · State 0,2–1 с · двигун 5 с · дашборд 1–3 с", dash:true},
+  http:  {name:"HTTP запит→відповідь", c:"#ee7657", how:"httpx POST і чекати цілу відповідь", rhythm:"~0,4–2 с, таймаут 15–60 с", dash:false},
+  sse:   {name:"HTTP-потік (SSE)", c:"#f2a93b", how:"модель віддає текст рядками data: {…} поки пише", rhythm:"перший шматок ~0,9 с, далі потоком", dash:false},
+  ws:    {name:"WebSocket", c:"#f07fb6", how:"довге двостороннє з'єднання", rhythm:"edge-tts: нове на кожне речення (~0,45 с); Chrome: постійне", dash:false},
+  pipe:  {name:"труба процесу", c:"#86cf87", how:"stdin/stdout дочірнього процесу", rhythm:"ffmpeg — на кожне речення; MCP — постійний; bash — на команду", dash:false},
+  sql:   {name:"SQLite", c:"#b59cf5", how:"sqlite3 через asyncio.to_thread або aiosqlite; стан у таблиці state", rhythm:"запис у фоні, не блокує звук", dash:false},
+  file:  {name:"файл", c:"#d7c29a", how:"тека ~/.heare/inject, turns.jsonl, config.toml, roles/*.md", rhythm:"inject опитується кожні 0,25 с", dash:true},
+  key:   {name:"Keychain", c:"#e6d25a", how:"keyring, сервіс heare; змінна середовища сильніша", rhythm:"при читанні налаштувань", dash:true},
+};
+
+/* geometry helpers */
+const R = 9;
+const sph = (lat, lon, r=R) => { const la=lat*Math.PI/180, lo=lon*Math.PI/180; return [r*Math.cos(la)*Math.sin(lo), r*Math.sin(la), r*Math.cos(la)*Math.cos(lo)]; };
+
+/* stations: on the sphere (ll) or on the orbit (ext) */
+const N = {
+  mic:{z:"device",ll:[14,-150],label:"Мікрофон",shape:"cyl",what:"Потік з мікрофона: 16 кГц моно, кадри по 20 мс. Колбек CoreAudio не блокує — кадр іде через межу потоку в чергу на 4 с.",file:"src/spine/audio_io.py",k:{"частота":"16 000 Гц","кадр":"20 мс · 640 байт","черга":"200 кадрів"}},
+  speaker:{z:"device",ll:[-22,-150],label:"Динамік",shape:"cyl",what:"24 кГц. Цикл кладе байти в буфер під замком, колбек CoreAudio їх забирає. Те, що пішло сюди, стає еталоном для ехоподавлення.",file:"src/spine/audio_io.py",k:{"частота":"24 000 Гц"}},
+  aec:{z:"ears",ll:[16,-122],label:"Ехоподавлення",shape:"cyl",what:"WebRTC AEC3 віднімає власний голос heare — тому його можна перебивати.",file:"src/spine/aec.py · far_end.py",k:{"блок":"10 мс","затримка":"30 мс (виміряно ~125)","придушення":"40–50 дБ"}},
+  vad:{z:"ears",ll:[18,-98],label:"VAD",shape:"cyl",what:"Де фраза почалась і скінчилась — за енергією. Коротке й тихе відсікається до розпізнавання.",file:"src/spine/vad.py",k:{"поріг":"−38 dBFS","стоп":"600 мс","гучного мінімум":"240 мс"}},
+  stt:{z:"ears",ll:[20,-74],label:"Розпізнавання",shape:"cyl",what:"Фраза → WAV → Groq Whisper → текст; потім фільтр вигадок («Дякую за перегляд!», «*тиша*»).",file:"src/spine/stt.py · src/text/hallucinations.py",k:{"модель":"whisper-large-v3","медіана":"~0,45 с"}},
+  turn:{z:"turn",ll:[20,-48],label:"Збирач ходу",shape:"ring",what:"Один годинник: кожен шматок тексту відсуває кінець ходу. Цикл опитує його кожні 100 мс.",file:"src/spine/turn.py",k:{"закінчена фраза":"0,8 с","незакінчена":"2,6 с"}},
+  wake:{z:"turn",ll:[18,-26],label:"«Дока»",shape:"ring",what:"Чи зверталися до мене. Вікно росте з розмовою, відмови його не продовжують.",file:"src/spine/wake.py",k:{"вікно":"45 с × хід","стеля":"180 с"}},
+  brain:{z:"mind",ll:[20,4],label:"Модель голосу",shape:"ico",what:"Короткий промпт, 12 повідомлень історії, три дієслова. Текст приходить потоком SSE; перше речення йде в синтез, поки модель ще пише.",file:"src/spine/loop.py · llm.py · prompt.py",k:{"провайдер":"deepseek-chat (відкат з opencode)","перше слово":"~0,9 с"}},
+  verbs:{z:"mind",ll:[42,22],label:"Дієслова",shape:"ico",what:"Сталий перелік за категоріями. Розмова: recall, remind, forget. Світ: одні двері — delegate. «Стоп» і невиконані обіцянки ловить код.",file:"src/spine/verbs.py",k:{"розмова":"recall · remind · forget","світ":"delegate"}},
+  worker:{z:"hands",ll:[40,58],label:"Модель рук",shape:"box",what:"Окремий агент без дедлайну: фонова задача, 6 останніх ходів розмови, до 12 кроків. Результат повертається в голос через чергу «ін'єкцій».",file:"src/agent/hands.py · src/spine/hands.py",k:{"кроків":"до 12","інструментів":"33 + 14 MCP","маячок":"12 с"}},
+  screen:{z:"hands",ll:[62,86],label:"Екран",shape:"box",what:"screencapture (дочірній процес) → JPEG → модель зору через OpenRouter. Скріншот видаляється.",file:"src/spine/vision.py",k:{"модель":"gemini-3.1-flash-lite","ціна":"~$0.0004"}},
+  shell:{z:"hands",ll:[34,92],label:"Shell · файли",shape:"box",what:"bash — дочірній процес на кожну команду (killpg, щоб не лишав сиріт); файли; MCP files.",file:"src/agent/tools/direct.py",k:{"дозвіл перед зміною":"ще ні"}},
+  web:{z:"hands",ll:[14,72],label:"Веб · браузер",shape:"box",what:"web_fetch — HTTP. Браузер — через розширення Chrome по WebSocket :9333; не спарене, тож 8 інструментів сховані.",file:"src/agent/browser_bridge.py",k:{"міст":"9333","розширення":"не спарене"}},
+  canvas:{z:"hands",ll:[64,36],label:"Канвас",shape:"box",what:"show_text / show_canvas пишуть рядок у displays; дашборд його підхоплює опитуванням.",file:"src/agent/tools/direct.py",k:{"таблиця":"displays"}},
+  db:{z:"memory",ll:[-30,34],label:"Записи",shape:"disc",what:"Кожен хід обох сторін — у transcripts; задачі, дії, витрати, наміри. Запис іде через to_thread, щоб не блокувати звук.",file:"src/spine/persist.py · src/store/storage.py",k:{"транскриптів":"~4 700"}},
+  search:{z:"memory",ll:[-10,26],label:"Пошук у розмовах",shape:"disc",what:"«Що я казав про…»: час з питання, ім'я вирізано, без останніх 90 с, FTS5 bm25 × свіжість.",file:"src/spine/search.py · when.py",k:{"уривків":"≤ 3 × 180 символів"}},
+  engine:{z:"engine",ll:[-52,-6],label:"Двигун",shape:"oct",what:"Тік кожні 5 с: наміри → суддя (ніч, присутність, пів речення) → вето моделі → черга «ін'єкцій». Звідси звучать нагадування.",file:"src/spine/engine.py · intents.py",k:{"тік":"5 с","нагадування":"urgency 0,9"}},
+  split:{z:"mouth",ll:[-22,-22],label:"Речення",shape:"cone",what:"Потік тексту ріжеться на речення; markdown і emoji вирізаються.",file:"src/spine/sentences.py",k:{"до першого речення":"~0,19 с"}},
+  tts:{z:"mouth",ll:[-26,-62],label:"Синтез",shape:"cone",what:"Голос за письмом речення; edge-tts по WebSocket віддає MP3, ffmpeg перетворює в PCM.",file:"src/spine/tts.py · voicing.py",k:{"голоси":"Ostap · Aria"}},
+  utter:{z:"mouth",ll:[-24,-110],label:"Вимова",shape:"cone",what:"Тримає кожне речення: пауза, продовження з обірваного речення, стоп. Речення без звуку — збій рота.",file:"src/mouth/utterance.py",k:{"кивок":"< 600 мс → пауза й далі"}},
+  api:{z:"surface",ll:[52,-96],label:"Сервер :9780",shape:"box",what:"aiohttp у тому ж циклі: дашборд, /inject, налаштування, стан. Bearer-токен. Меню-бар опитує його кожні 1,5 с.",file:"src/api.py · src/menubar.py",k:{"порт":"9780","маршрутів":"~48"}},
+  state:{z:"surface",ll:[54,-50],label:"State",shape:"box",what:"Таблиця state у SQLite: mute, гучність, «скасуй», стан голосу. Поллери дзеркалять її в живі об'єкти кожні 0,2 с.",file:"src/state.py · src/daemon/spine_engine.py",k:{"поллер керування":"0,2 с"}},
+
+  /* the orbit: what heare depends on */
+  coreaudio:{z:"ext",ext:[4,-160],label:"CoreAudio",shape:"sat",what:"Звукова система macOS; sounddevice/PortAudio. Колбеки у своїх потоках реального часу.",file:"sounddevice",k:{"пристрої":"вбудовані або обрані"}},
+  groq:{z:"ext",ext:[40,-78],label:"Groq",shape:"sat",what:"Розпізнавання мови Whisper large-v3 — HTTP multipart, ключ GROQ_API_KEY.",file:"api.groq.com",k:{"час":"~0,45 с"}},
+  deepseek:{z:"ext",ext:[36,20],label:"DeepSeek",shape:"sat",what:"Модель голосу (потоком SSE) і модель рук (HTTP). У конфігу — opencode без ключа, тому гучний відкат на DeepSeek.",file:"api.deepseek.com",k:{"модель":"deepseek-chat"}},
+  openrouter:{z:"ext",ext:[70,110],label:"OpenRouter",shape:"sat",what:"Модель зору для скріншотів; ціну каже сам провайдер.",file:"openrouter.ai",k:{"модель":"gemini-3.1-flash-lite"}},
+  chrome:{z:"ext",ext:[4,96],label:"Chrome",shape:"sat",what:"Розширення, яке керує вкладками. З'єднується з мостом :9333 по WebSocket після спарювання кодом.",file:"extensions/",k:{"стан":"не спарене"}},
+  mcp:{z:"ext",ext:[26,124],label:"MCP · npx",shape:"sat",what:"Сервер файлів як дочірній процес, JSON-RPC по stdio. Підключається у фоні — старт не блокує.",file:"~/.heare/mcp/.mcp.json",k:{"інструментів":"14"}},
+  mstts:{z:"ext",ext:[-40,-66],label:"Microsoft TTS",shape:"sat",what:"Неофіційний безкоштовний сервіс Edge; нове WebSocket-з'єднання на кожне речення.",file:"edge-tts 7.2.8",k:{"до першого MP3":"~0,45 с"}},
+  ffmpeg:{z:"ext",ext:[-48,-100],label:"ffmpeg",shape:"sat",what:"Дочірній процес на кожне речення: MP3 у stdin → PCM 24 кГц зі stdout. Без аналізу потоку.",file:"/opt/homebrew/bin/ffmpeg",k:{"декодування":"~22 мс"}},
+  sqlite:{z:"ext",ext:[-44,52],label:"heare.db",shape:"sat",what:"Файл ~/.heare/heare.db у режимі WAL.",file:"~/.heare/heare.db",k:{"режим":"WAL"}},
+  keychain:{z:"ext",ext:[70,-60],label:"Keychain",shape:"sat",what:"Ключі провайдерів у Keychain (сервіс heare). Змінна середовища перемагає — через це колись мертвий ключ з ~/.zshrc перекривав живий.",file:"src/keys.py",k:{"сервіс":"heare"}},
+  tab:{z:"ext",ext:[34,-128],label:"Вкладка дашборда",shape:"sat",what:"React-застосунок у браузері. Нічого не отримує поштовхом: опитує сервер кожні 1–3 с з Bearer-токеном.",file:"src/frontend/",k:{"опитування":"1–3 с"}},
+};
+for (const n of Object.values(N)) n.p = n.ext ? sph(n.ext[0], n.ext[1], 16) : sph(n.ll[0], n.ll[1]);
+
+/* edges: [from, to, channel] */
+const E = [
+  ["coreaudio","mic","thread"],["mic","aec","queue"],["aec","vad","func"],["vad","stt","queue"],["stt","groq","http"],
+  ["stt","turn","func"],["turn","wake","poll"],["wake","brain","func"],["brain","deepseek","sse"],["brain","verbs","func"],
+  ["verbs","worker","task"],["worker","deepseek","http"],["worker","screen","func"],["screen","openrouter","http"],
+  ["worker","shell","func"],["shell","mcp","pipe"],["worker","web","func"],["web","chrome","ws"],["worker","canvas","func"],
+  ["canvas","sqlite","sql"],["worker","brain","queue"],["verbs","search","func"],["search","sqlite","sql"],["brain","db","sql"],
+  ["db","sqlite","sql"],["verbs","engine","func"],["engine","sqlite","sql"],["engine","brain","queue"],["wake","engine","func"],
+  ["brain","split","func"],["split","tts","func"],["tts","mstts","ws"],["tts","ffmpeg","pipe"],["ffmpeg","utter","pipe"],
+  ["utter","speaker","thread"],["speaker","coreaudio","thread"],["speaker","aec","thread"],["vad","utter","func"],
+  ["tab","api","poll"],["api","brain","file"],["api","state","sql"],["state","utter","poll"],["state","sqlite","sql"],["keychain","api","key"],
+];
+const ek = (a,b) => a+">"+b;
+const EMAP = {}; for (const [a,b,ch] of E) EMAP[ek(a,b)] = ch;
+
+/* scenarios */
+const S = [
+ {id:"chat",title:"Балачка",sub:"«Дока, як справи?»",c:Z.mind.c,total:"≈ 3,4 с",steps:[
+  {e:["coreaudio","mic"],t:"pcm",ms:"20 мс/кадр",d:"CoreAudio віддає кадр у своєму потоці",pl:{"межа потоку":"call_soon_threadsafe → asyncio.Queue","кадр":"640 байт int16"}},
+  {e:["mic","aec"],t:"pcm",ms:"≈0",d:"Цикл бере кадр із черги, віднімає власний голос",pl:{"AEC3":"2 × 10 мс"}},
+  {e:["aec","vad"],t:"pcm",ms:"600 мс",d:"VAD чекає тиші й віддає фразу",pl:{"фраза":"1,4 с аудіо","гучного":"1 020 мс ≥ 240"}},
+  {e:["vad","stt"],t:"pcm",ms:"≈0",d:"Фраза стає в чергу STT (порядок зберігається)",pl:{"черга":"_stt_jobs"}},
+  {e:["stt","groq"],t:"pcm",ms:"~450 мс",d:"HTTP multipart до Groq",pl:{"POST":"/openai/v1/audio/transcriptions","model":"whisper-large-v3","language":"uk"}},
+  {e:["groq","stt"],t:"text",ms:"",d:"Текст назад, фільтр вигадок",pl:{"text":"«Дока, як справи?»","сміття?":"ні"}},
+  {e:["stt","turn"],t:"text",ms:"≈0",d:"Шматок тексту в збирач — відсуває кінець ходу",pl:{}},
+  {e:["turn","wake"],t:"text",ms:"800 мс",d:"Цикл опитує збирач кожні 100 мс; хід закрито",pl:{"утримання":"0,8 с — фраза закінчена"}},
+  {e:["wake","brain"],t:"text",ms:"≈0",d:"«Дока» є — хід прийнято, вікно 45 с",pl:{}},
+  {e:["brain","db"],t:"row",ms:"фон",d:"Хід людини — у базу через to_thread",pl:{"transcripts":"agent_spoken=0, source=mic"}},
+  {e:["brain","deepseek"],t:"text",ms:"~900 мс",d:"Промпт + історія → DeepSeek, відповідь потоком SSE",pl:{"stream":"true","tools":"recall · remind · delegate"}},
+  {e:["deepseek","brain"],t:"text",ms:"",d:"Шматки тексту прибувають",pl:{"data":"{\"delta\":\"Та все гаразд\"}"}},
+  {e:["brain","split"],t:"text",ms:"~190 мс",d:"Перше речення готове",pl:{"sentence":"«Та все гаразд, братан.»"}},
+  {e:["split","tts"],t:"text",ms:"≈0",d:"Очищене від markdown речення — у синтез",pl:{}},
+  {e:["tts","mstts"],t:"text",ms:"~450 мс",d:"Нове WebSocket-з'єднання до Microsoft",pl:{"voice":"uk-UA-OstapNeural"}},
+  {e:["mstts","tts"],t:"audio",ms:"",d:"MP3 шматками",pl:{"format":"MP3 24 кГц 48 кбіт/с"}},
+  {e:["tts","ffmpeg"],t:"audio",ms:"~22 мс",d:"MP3 у stdin нового процесу ffmpeg",pl:{"-probesize":"32","-analyzeduration":"0"}},
+  {e:["ffmpeg","utter"],t:"audio",ms:"",d:"PCM зі stdout",pl:{"PCM":"24 000 Гц, шматки по 4 КБ"}},
+  {e:["utter","speaker"],t:"audio",ms:"перший звук",d:"Байти в буфер динаміка (під замком)",pl:{}},
+  {e:["speaker","coreaudio"],t:"audio",ms:"",d:"CoreAudio забирає звук у своєму потоці — чути",pl:{"еталон AEC":"оновлено"}},
+ ]},
+ {id:"screen",title:"Що на екрані?",sub:"світ → одні двері → руки",c:Z.hands.c,total:"«гляну» ≈ 3,4 с · відповідь ≈ 7 с",steps:[
+  {e:["wake","brain"],t:"text",ms:"≈ 2,3 с",d:"(вуха й хід — як у балачці)",pl:{"text":"«Дока, що в мене на екрані?»"}},
+  {e:["brain","deepseek"],t:"text",ms:"~900 мс",d:"Модель голосу вирішує",pl:{}},
+  {e:["deepseek","brain"],t:"json",ms:"",d:"Екран — це світ: виклик delegate",pl:{"tool":"delegate","task":"Подивись, що зараз на екрані…"}},
+  {e:["brain","verbs"],t:"json",ms:"≈0",d:"Дієслово світу",pl:{"категорія":"WORLD"}},
+  {e:["verbs","worker"],t:"json",ms:"≈0",d:"Фонова задача; голос одразу вільний",pl:{"голос каже":"«Прийнято, роблю.»","jobs":"state=running","рукам":"6 останніх ходів"}},
+  {e:["worker","deepseek"],t:"json",ms:"~1 с",d:"Модель рук обирає інструмент (HTTP)",pl:{"tool":"look_at_screen"}},
+  {e:["worker","screen"],t:"json",ms:"≈0",d:"screencapture — дочірній процес",pl:{"команда":"/usr/sbin/screencapture -x -t jpg"}},
+  {e:["screen","openrouter"],t:"img",ms:"~1–2 с",d:"JPEG → модель зору",pl:{"model":"gemini-3.1-flash-lite","ціна":"~$0.0004"}},
+  {e:["openrouter","screen"],t:"text",ms:"",d:"Опис екрана; скріншот видалено",pl:{}},
+  {e:["worker","brain"],t:"text",ms:"≈0",d:"Результат — у чергу «ін'єкцій», тиха смуга",pl:{"source":"hands","prefix":"[результат роботи] …перекажи 1–2 реченнями"}},
+  {e:["brain","split"],t:"text",ms:"~900 мс",d:"Голос переказує своїми словами",pl:{"reply":"«У тебе відкритий Chrome з дашбордом Доки.»"}},
+  {e:["tts","ffmpeg"],t:"audio",ms:"~470 мс",d:"(рот)",pl:{}},
+  {e:["utter","speaker"],t:"audio",ms:"звук",d:"Відповідь звучить",pl:{}},
+ ]},
+ {id:"remind",title:"Нагадай",sub:"розмова → майбутнє",c:Z.engine.c,total:"ack ≈ 3,4 с · нагадування — у свій час",steps:[
+  {e:["wake","brain"],t:"text",ms:"≈ 2,3 с",d:"«Дока, нагадай за 10 хвилин випити води»",pl:{}},
+  {e:["deepseek","brain"],t:"json",ms:"~900 мс",d:"Це про розмову: remind",pl:{"tool":"remind","minutes":"10","text":"випити води"}},
+  {e:["brain","verbs"],t:"json",ms:"≈0",d:"Дієслово розмови",pl:{"категорія":"CONVERSATION"}},
+  {e:["verbs","engine"],t:"row",ms:"≈0",d:"Намір із часом",pl:{"intents":"kind=reminder, origin=user","due_ts":"+600 с"}},
+  {e:["engine","sqlite"],t:"row",ms:"фон",d:"Записано в базу — переживе перезапуск",pl:{}},
+  {e:["brain","split"],t:"text",ms:"≈0",d:"Повернення дієслова звучить дослівно",pl:{"say":"«Добре, нагадаю за 10 хвилин.»"}},
+  {e:["wake","engine"],t:"sig",ms:"кожні 5 с",d:"Двигун тікає: ви тут і мовчите?",pl:{"ніч":"нагадування пропускає","людина говорить":"чекає тиші"}},
+  {e:["engine","brain"],t:"text",ms:"через 10 хв",d:"Час настав — намір стає ходом у черзі",pl:{"source":"reminder (тиха смуга)"}},
+  {e:["brain","split"],t:"text",ms:"~900 мс",d:"«Нагадую: випий води.»",pl:{}},
+  {e:["utter","speaker"],t:"audio",ms:"звук",d:"Звучить",pl:{}},
+ ]},
+ {id:"recall",title:"Що я казав про…",sub:"розмова → минуле",c:Z.memory.c,total:"≈ 3,5 с",steps:[
+  {e:["wake","brain"],t:"text",ms:"≈ 2,3 с",d:"«Дока, що я казав про rsync?»",pl:{}},
+  {e:["deepseek","brain"],t:"json",ms:"~900 мс",d:"recall",pl:{"tool":"recall","query":"rsync"}},
+  {e:["brain","verbs"],t:"json",ms:"≈0",d:"Дієслово розмови",pl:{}},
+  {e:["verbs","search"],t:"json",ms:"≈0",d:"Правила пошуку",pl:{"ім'я":"вирізано","останні 90 с":"виключено — щоб не знайти саме питання"}},
+  {e:["search","sqlite"],t:"row",ms:"~50 мс",d:"FTS5 через to_thread",pl:{"ранжування":"bm25 × свіжість 30 днів"}},
+  {e:["sqlite","search"],t:"row",ms:"",d:"2 уривки",pl:{}},
+  {e:["brain","split"],t:"text",ms:"≈0",d:"Готове речення з «коли», дослівно",pl:{"say":"«22 серпня ти казав: rsync щоночі о третій.»"}},
+  {e:["utter","speaker"],t:"audio",ms:"~470 мс",d:"Звучить",pl:{}},
+ ]},
+ {id:"nod",title:"«Ага» посеред відповіді",sub:"перебивання в два кроки",c:Z.ears.c,total:"пауза миттєво · рішення за текстом",steps:[
+  {e:["utter","speaker"],t:"audio",ms:"говорить",d:"heare говорить довгу відповідь",pl:{}},
+  {e:["speaker","aec"],t:"audio",ms:"≈0",d:"Звук динаміка — еталон, його віднімуть",pl:{}},
+  {e:["coreaudio","mic"],t:"pcm",ms:"20 мс",d:"Ви кажете «ага»",pl:{}},
+  {e:["aec","vad"],t:"pcm",ms:"120 мс",d:"Голос поверх мови",pl:{}},
+  {e:["vad","utter"],t:"sig",ms:"≈0",d:"Одразу ПАУЗА",pl:{"дія":"pause_all()"}},
+  {e:["stt","groq"],t:"pcm",ms:"~450 мс",d:"Що сказали?",pl:{}},
+  {e:["groq","stt"],t:"text",ms:"",d:"«ага»",pl:{}},
+  {e:["vad","utter"],t:"sig",ms:"≈0",d:"Кивок → продовжити з початку обірваного речення",pl:{"«стоп»":"зупинити й скасувати задачі","довго/інше":"перебити"}},
+  {e:["utter","speaker"],t:"audio",ms:"далі",d:"Відповідь іде далі",pl:{}},
+ ]},
+ {id:"stop",title:"«Дока, стоп»",sub:"команда — у коді, не в моделі",c:Z.hands.c,total:"≈ 2,3 с + фраза",steps:[
+  {e:["verbs","worker"],t:"json",ms:"працює",d:"Руки виконують довгу задачу",pl:{"jobs":"state=running"}},
+  {e:["groq","stt"],t:"text",ms:"~450 мс",d:"«Дока, стоп»",pl:{}},
+  {e:["turn","wake"],t:"text",ms:"800 мс",d:"Хід зібрано",pl:{}},
+  {e:["wake","brain"],t:"sig",ms:"≈0",d:"is_halt(): увесь хід — слова зупинки; модель не питають",pl:{"«ні», «тихо»":"у тиші — не команда"}},
+  {e:["brain","verbs"],t:"sig",ms:"≈0",d:"Голос стоп, задачі скасовано",pl:{"cancel_all()":"1","результат":"ніколи не прозвучить"}},
+  {e:["brain","split"],t:"text",ms:"≈0",d:"«Зупинила.»",pl:{}},
+  {e:["utter","speaker"],t:"audio",ms:"~470 мс",d:"Звучить",pl:{}},
+ ]},
+ {id:"dash",title:"Написати з дашборда",sub:"текст замість голосу",c:Z.surface.c,total:"опитування до 0,25 с + модель",steps:[
+  {e:["tab","api"],t:"text",ms:"≈0",d:"POST /inject з Bearer-токеном",pl:{"text":"«що жере ресурси?»"}},
+  {e:["api","brain"],t:"text",ms:"≤ 250 мс",d:"Сервер кладе файл у ~/.heare/inject; поллер забирає і видаляє",pl:{"файл":"1790…-uuid.txt","чому файл":"демон може впасти посеред — лист не загубиться"}},
+  {e:["wake","brain"],t:"text",ms:"≈0",d:"«Людська» смуга: без «Дока», перебиває",pl:{"source":"dashboard"}},
+  {e:["brain","deepseek"],t:"text",ms:"~900 мс",d:"Далі як завжди",pl:{}},
+  {e:["tab","api"],t:"text",ms:"1–3 с",d:"Вкладка опитує сервер і показує відповідь",pl:{}},
+ ]},
+ {id:"promise",title:"«Гляну, секунду» без дії",sub:"обіцянку виконано",c:Z.mind.c,total:"+ ~1 с на перепитування",steps:[
+  {e:["wake","brain"],t:"text",ms:"≈ 2,3 с",d:"«Дока, що жере ресурси?»",pl:{}},
+  {e:["deepseek","brain"],t:"text",ms:"~900 мс",d:"«Гляну, секунду.» — і нічого не кличе",pl:{"tool_calls":"[]","було":"~1 хід з 10"}},
+  {e:["brain","deepseek"],t:"sig",ms:"~1 с",d:"promises_work() → перепитати: «виклич, що мала на увазі»",pl:{"KEEP_THE_PROMISE":"Call the tool you meant now. Write no text."}},
+  {e:["deepseek","brain"],t:"json",ms:"",d:"delegate",pl:{"живий тест":"0 з 35 промахів (було 4 з 35)"}},
+  {e:["verbs","worker"],t:"json",ms:"≈0",d:"Руки працюють",pl:{}},
+  {e:["worker","shell"],t:"json",ms:"~1 с",d:"bash: ps -Ao pcpu,comm -r | head",pl:{}},
+  {e:["worker","brain"],t:"text",ms:"≈0",d:"Результат — у голос",pl:{}},
+  {e:["utter","speaker"],t:"audio",ms:"…",d:"«Найбільше їсть Chrome, потім Telegram.»",pl:{}},
+ ]},
+];
+
+/* tables */
+const DEPS = [
+ ["CoreAudio","мікрофон і динамік","sounddevice, колбеки у потоках реального часу","кадр 20 мс","мікрофон зник — вартовий за 20 с перевідкриває і каже один раз «я перестала чути»"],
+ ["Groq","розпізнавання мови","HTTP multipart, ключ GROQ_API_KEY","~0,45 с · платно за секунди аудіо","у лозі «stt failed», фраза втрачена; збирач закриє хід через 13 с"],
+ ["DeepSeek","модель голосу і рук","SSE-потік (голос), HTTP (руки)","~0,9 с до першого слова","голос: запасна фраза «Щось пішло не так»; руки: «Не вдалося: …»"],
+ ["OpenRouter","зір (скріншоти)","HTTP, ключ OPENROUTER_API_KEY","~1–2 с · ~$0.0004","без ключа руки кажуть, чого бракує — не «не вийшло»"],
+ ["Microsoft Edge TTS","синтез мовлення","WebSocket на кожне речення (edge-tts)","~0,45 с · безкоштовно, неофіційно","речення без звуку — збій рота → запасна фраза"],
+ ["ffmpeg","MP3 → PCM","дочірній процес, труба stdin/stdout","~22 мс","немає в PATH — синтез не стартує, запасна фраза"],
+ ["MCP · npx","файли для рук","дочірній процес, JSON-RPC по stdio","холодний npx до хвилини","підключається у фоні; старт не блокує, інструменти просто не з'являються"],
+ ["Chrome + розширення","браузер для рук","WebSocket :9333 після спарювання","—","8 інструментів браузера сховані від рук (зараз так)"],
+ ["heare.db","усе записане","sqlite3/aiosqlite, WAL","запис у фоні","помилка запису не зупиняє розмову — лише лог"],
+ ["Keychain","ключі","keyring; змінна середовища сильніша","—","провайдер без ключа — гучний відкат на наступний"],
+ ["Вкладка дашборда","подивитись і написати","HTTP-опитування 1–3 с, Bearer","—","без неї heare працює як працював"],
+];
+const THREADS = [
+ {h:"Головний потік — меню-бар",p:"rumps, іконка в меню-барі. Нічого не робить із голосом, лише показує стан, опитуючи власний сервер кожні 1,5 с.",who:"src/menubar.py"},
+ {h:"Потік asyncio — майже все",p:"Один цикл подій: голосовий цикл spine, сервер aiohttp :9780, міст Chrome :9333, двигун (тік 5 с), поллери State (0,2–1 с) і теки inject (0,25 с), руки як фонові задачі.",who:"src/spine/loop.py · src/daemon/spine_engine.py"},
+ {h:"Потоки CoreAudio",p:"Два колбеки реального часу: вхід кладе кадр у чергу через call_soon_threadsafe, вихід бере байти з буфера під замком. Жоден не чекає на мережу.",who:"src/spine/audio_io.py"},
+ {h:"Пул to_thread",p:"Синхронний SQLite (запис ходів, пошук FTS по тисячах рядків) — поза циклом, бо цикл несе звук.",who:"src/spine/persist.py · search.py"},
+ {h:"Дочірні процеси",p:"ffmpeg — на кожне речення; bash — на кожну команду рук (з killpg); screencapture — на кожен погляд; MCP files — один постійний.",who:"tts.py · direct.py · vision.py · mcp_bridge.py"},
+];
+const ZONES = [
+ {z:"device",files:"audio_io.py · hearing.py",ul:["Два потоки sounddevice, колбеки не блокують","Окремі прапорці тиші: системні й «людські»","Вартовий глухоти: 20 с без кадрів → перевідкрити"],dl:{"вхід":"16 кГц","вихід":"24 кГц","кадр":"20 мс"}},
+ {z:"ears",files:"aec.py · far_end.py · vad.py · stt.py · text/hallucinations.py",ul:["AEC3 віднімає власний голос — тому можна перебивати","VAD ріже фрази за енергією","Groq Whisper → текст; фільтр вигадок"],dl:{"VAD стоп":"600 мс","поріг":"−38 dBFS","STT":"~0,45 с"}},
+ {z:"turn",files:"turn.py · wake.py · wake_phrases.py",ul:["Один годинник ходу; цикл опитує його кожні 100 мс","Незакінчена думка чекає довше","«Дока» будить; вікно росте з розмовою"],dl:{"утримання":"0,8 / 2,6 с","вікно":"45 с × хід, ≤ 180 с"}},
+ {z:"mind",files:"loop.py · llm.py · prompt.py · verbs.py",ul:["Швидка модель, короткий промпт, 12 повідомлень","Три дієслова за категоріями, одні двері у світ","Команди й невиконані обіцянки — у коді","Будь-який збій → запасна фраза"],dl:{"модель":"deepseek-chat","перше слово":"~0,9 с"}},
+ {z:"hands",files:"src/agent/hands.py · src/spine/hands.py · src/agent/tools/",ul:["Фонова задача, бачить 6 останніх ходів","Екран, shell, файли, веб, канвас, налаштування heare","Нагадування — позиченим дієсловом голосу","«Стоп» скасовує; перервана задача озвучується"],dl:{"кроків":"≤ 12","інструментів":"33 + 14 MCP"}},
+ {z:"memory",files:"persist.py · search.py · when.py · store/",ul:["Кожен хід обох сторін — у transcripts з джерелом","Пошук: час з питання, відмінки, свіжість","Розмова закінчується 30 хв тиші й лишає підсумок"],dl:{"база":"~/.heare/heare.db","пошук":"FTS5"}},
+ {z:"engine",files:"engine.py · intents.py · situation.py",ul:["Тік 5 с: наміри → суддя → вето моделі → черга","Нагадування — те, що справді звучить","Не в пів речення, не в порожню кімнату"],dl:{"тік":"5 с"}},
+ {z:"mouth",files:"sentences.py · tts.py · voicing.py · mouth/utterance.py",ul:["Потік → речення → синтез, поки модель ще пише","Markdown і emoji вирізаються; тиша — це збій","Пауза/продовження з обірваного речення"],dl:{"синтез":"~0,45 с","ffmpeg":"~22 мс"}},
+ {z:"surface",files:"menubar.py · api.py · state.py · frontend/ · keys.py",ul:["Меню-бар + сервер :9780 + агент — один процес","Дашборд опитує, State дзеркалиться поллерами","Ключі в Keychain; налаштування живі"],dl:{"порт":"9780","міст":"9333"}},
+];
+const FEATS = [
+ ["Розмова"],["Відповідає голосом на «Дока, …»","ok","≈ 3,4 с до першого звуку"],["Не перебиває посеред думки","ok","0,8 с / 2,6 с на незакінчене"],
+ ["Можна перебити; «ага» — продовжує","ok","AEC3 + пауза одразу, рішення за текстом"],["«Дока, стоп» зупиняє і голос, і роботу","ok","is_halt() у коді"],
+ ["Не відповідає кімнаті й вигадкам Whisper","ok","поріг 240 мс, фільтр, активатор"],["Українська й англійська","ok","голос за письмом речення"],
+ ["Ролі: інтерв'ю, вчитель, суфлер, мітинг","ok","вхід/вихід фразою"],["Писати текстом з дашборда","ok","/inject → тека → черга; перебиває як голос"],
+ ["Пам'ять"],["«Що я казав про…»","ok","recall → FTS5"],["Підсумок розмови","ok","після 30 хв тиші"],["Забути підслухане","off","лише коли пишеться кімната (hear_all вимкнено)"],
+ ["Справи (руки)"],["Що на екрані","ok","delegate → look_at_screen"],["Shell, файли, архіви","ok","bash, read/write, MCP files"],["Нагадування","ok","голос і руки"],
+ ["Канвас на дашборді","ok","show_text / show_canvas / clear"],["Керувати heare","ok","гучність, мікрофон, провайдер"],
+ ["Пошук в інтернеті","bad","DDG змінив розмітку; потрібен SERPER_API_KEY"],["Браузер","warn","розширення Chrome не спарене"],["Пошта, календар","off","інтеграції немає"],["Дозвіл перед зміною","off","shell і запис — без питання"],
+ ["Сам по собі"],["Нагадати в свій час","ok","двигун"],["Повтори («треба…» тричі)","warn","увімкнено; не звучало"],["Бачити, чим ви зайняті","warn","watcher увімкнено; звучить рідко"],
+];
+const RULES = [
+ {h:"Дві смуги",p:"Людина (мікрофон, дашборд) перебиває. Руки, нагадування й ролі чекають тиші — до 600 с.",f:"mic, dashboard  → перебиває\nhands, reminder → чекає тиші"},
+ {h:"Хід закінчують слова",p:"Один годинник у збирачі; кожен шматок тексту відсуває кінець. VAD лише ріже шматки.",f:"«а потім я» … «напишу нотатку.»\n→ один хід"},
+ {h:"Перебивання в два кроки",p:"Пауза одразу; рішення за текстом. Кашель — продовжити.",f:"< 600 мс і «ага» → далі\n«стоп»           → зупинити\nінше            → перебити"},
+ {h:"Одні двері у світ",p:"Голос має дієслова про розмову й одне про світ: delegate.",f:"CONVERSATION  recall · remind · forget\nWORLD         delegate"},
+ {h:"Команди — у коді",p:"«Стоп» і невиконані обіцянки не питають у моделі.",f:"is_halt(turn)      → зупинити\npromises_work(txt) → перепитати"},
+ {h:"Нічого не мовчить",p:"Модель упала чи синтез повернув тишу — звучить запасна фраза.",f:"mind / mouth failure\n→ «Щось пішло не так — не змогла відповісти.»"},
+];
+const DATA = [
+ ["heare.db · transcripts","кожне сказане: хто, коли, джерело","loop · recall, дашборд, підсумки"],["heare.db · turns, conversations","ходи й межі розмов","loop · двигун"],
+ ["heare.db · jobs, actions","задачі рук і кожен крок","руки · дашборд"],["heare.db · intents","нагадування й наміри двигуна","remind, двигун · суддя"],
+ ["heare.db · usage_events","витрати; «невідомо» ≠ 0","усі виклики · дашборд"],["heare.db · state","mute, гучність, «скасуй», стан голосу","дашборд пише · поллери 0,2 с"],
+ ["heare.db · displays","вміст канвасу","руки · дашборд"],["~/.heare/inject/*.txt","текст із дашборда, по файлу на повідомлення","сервер пише · поллер 0,25 с забирає"],
+ ["~/.heare/logs/turns.jsonl","час кожного ходу","телеметрія"],["~/.heare/logs/menubar.out","живий журнал: heard, say, tool, tts first audio","усе"],
+ ["~/.heare/config.toml","провайдер, модель, фічі","дашборд · Settings, без рестарту"],["Keychain · heare","ключі провайдерів","keys.py"],
+];
+const GAPS = [
+ ["Пошук в інтернеті","bad","розмітка DDG змінилась; парсер каже «нічого не знайшов». Ліки — ключ Serper."],
+ ["Браузер","warn","розширення не спарене: 8 інструментів сховані."],["Дозвіл перед зміною","off","руки виконують shell і запис без питання."],
+ ["Питання посеред задачі","off","застрягши, руки не можуть спитати."],["Довгі задачі","warn","12 кроків — замало для багатокрокових справ."],
+ ["Затримка ехоподавлення","warn","зашито 30 мс, виміряно ~125 мс."],["Синтез ~0,45 с мережі","warn","нове WebSocket-з'єднання на кожне речення."],
+ ["Дашборд опитує","warn","нічого не приходить поштовхом: 1–3 с запізнення на екрані."],["Живі golden-тести","warn","з 13.09 не бачать ключів."],
+];
+
+/* ── render static ────────────────────────────── */
+const $ = s => document.querySelector(s);
+const el = (tag, attrs={}, html="") => { const e=document.createElement(tag); for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v); if (html) e.innerHTML=html; return e; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pill = s => ({ok:'<span class="pill ok">працює</span>',warn:'<span class="pill warn">частково</span>',bad:'<span class="pill bad">зламано</span>',off:'<span class="pill off">немає</span>'})[s];
+const sw = ch => `<span class="sw${C[ch].dash?" dash":""}" style="background:${C[ch].c};color:${C[ch].c}"></span>`;
+
+for (const [k,z] of Object.entries(Z)) $("#legend").append(el("span",{},`<i style="background:${z.c}"></i>${esc(z.name)}`));
+for (const t of Object.values(T)) $("#types").append(el("span",{},`<i style="background:${t.c};color:${t.c}"></i>${esc(t.name)}`));
+
+for (const [id,ch] of Object.entries(C)) {
+  const pairs = E.filter(e => e[2]===id).map(([a,b]) => `${N[a].label} → ${N[b].label}`);
+  $("#chanrows").append(el("tr",{},`<td>${sw(id)}<b>${esc(ch.name)}</b></td><td>${esc(pairs.join(" · ")||"—")}</td><td>${esc(ch.how)}</td><td>${esc(ch.rhythm)}</td>`));
+}
+for (const d of DEPS) $("#deprows").append(el("tr",{},`<td><b>${esc(d[0])}</b></td><td>${esc(d[1])}</td><td>${esc(d[2])}</td><td class="mono">${esc(d[3])}</td><td>${esc(d[4])}</td>`));
+for (const t of THREADS) $("#threadcards").append(el("article",{class:"card"},`<h3>${esc(t.h)}</h3><p>${esc(t.p)}</p><div class="who">${esc(t.who)}</div>`));
+for (const z of ZONES) { const Zz=Z[z.z]; $("#zonecards").append(el("article",{class:"zone",style:`--c:${Zz.c}`},`<h3>${esc(Zz.name)}</h3><div class="files">${esc(z.files)}</div><ul>${z.ul.map(x=>`<li>${esc(x)}</li>`).join("")}</ul><dl>${Object.entries(z.dl).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`)); }
+const TURN = [["VAD чекає тиші",600,Z.ears.c],["розпізнавання",450,Z.ears.c],["чи договорили",800,Z.turn.c],["модель до першого слова",900,Z.mind.c],["перше речення",190,Z.mind.c],["синтез: мережа",450,Z.mouth.c],["ffmpeg",22,Z.mouth.c]];
+const sum = TURN.reduce((a,b)=>a+b[1],0);
+for (const [n,ms,c] of TURN) { $("#turnbar").append(el("div",{style:`flex:${ms};background:${c}`,title:`${n}: ${ms} мс`}, ms>=300?`${ms}`:"")); $("#turnkey").append(el("div",{},`<i style="background:${c}"></i><span>${esc(n)}</span><b>${ms} мс</b>`)); }
+$("#turnkey").append(el("div",{},`<i style="background:transparent;border:1px solid var(--muted)"></i><span>разом</span><b>${(sum/1000).toFixed(2).replace(".",",")} с</b>`));
+for (const f of FEATS) { if (f.length===1) { $("#featrows").append(el("tr",{},`<td class="grp" colspan="3">${esc(f[0])}</td>`)); continue; } $("#featrows").append(el("tr",{},`<td>${esc(f[0])}</td><td>${pill(f[1])}</td><td>${esc(f[2])}</td>`)); }
+for (const r of RULES) $("#rules").append(el("article",{class:"card"},`<h3>${esc(r.h)}</h3><p>${esc(r.p)}</p><div class="flow">${esc(r.f)}</div>`));
+for (const d of DATA) $("#datarows").append(el("tr",{},`<td class="mono">${esc(d[0])}</td><td>${esc(d[1])}</td><td>${esc(d[2])}</td>`));
+for (const g of GAPS) $("#gaprows").append(el("tr",{},`<td>${esc(g[0])}</td><td>${pill(g[1])}</td><td>${esc(g[2])}</td>`));
+
+function showPayload(tags, obj, note) {
+  const rows = Object.entries(obj||{}).map(([k,v]) => `<span class="k">${esc(k)}:</span> <span class="v">${esc(v)}</span>`).join("\n");
+  $("#payload").innerHTML = tags.map(([t,c]) => `<span class="tag" style="background:${c}">${esc(t)}</span>`).join("") + "\n" + (note?esc(note)+"\n\n":"") + rows;
+}
+
+/* ── 3D ───────────────────────────────────────── */
+const vp = $("#viewport"), labelsBox = $("#labels");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let glOk = false; try { const c=document.createElement("canvas"); glOk = !!(c.getContext("webgl")||c.getContext("experimental-webgl")); } catch(e) {}
+const has3d = typeof THREE !== "undefined" && glOk;
+let renderer, scene, camera, clock, world;
+const nodeMesh={}, edgeObj={}, labels={}, zoneLabels=[], packets=[];
+let yaw=0.25, pitch=0.32, dist=38, spin=!reduced, speed=1, focus=null;
+const runState = {active:false, token:0};
+
+if (!has3d) {
+  vp.append(el("div",{class:"nogl"},"Тривимірна сцена потребує WebGL, а цей переглядач його не дає. Кроки сценаріїв, канали й усі розділи нижче працюють і без неї."));
+} else {
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+  vp.prepend(renderer.domElement);
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+  world = new THREE.Group(); scene.add(world);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.85); keyLight.position.set(-14,20,18); scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0x8fb7ff, 0.45); rimLight.position.set(16,-6,-18); scene.add(rimLight);
+  clock = new THREE.Clock();
+
+  const glowTex = (() => { const c=document.createElement("canvas"); c.width=c.height=64; const g=c.getContext("2d"); const r=g.createRadialGradient(32,32,0,32,32,32); r.addColorStop(0,"rgba(255,255,255,1)"); r.addColorStop(.28,"rgba(255,255,255,.55)"); r.addColorStop(1,"rgba(255,255,255,0)"); g.fillStyle=r; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
+  const glow = (color, size, opacity=1) => { const s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:new THREE.Color(color),transparent:true,opacity,depthWrite:false,blending:THREE.AdditiveBlending})); s.scale.setScalar(size); return s; };
+
+  // stars
+  { const g=new THREE.BufferGeometry(), pos=[]; for (let i=0;i<900;i++){ const u=Math.random()*2-1, th=Math.random()*Math.PI*2, r=60+Math.random()*60, s=Math.sqrt(1-u*u); pos.push(r*s*Math.cos(th), r*u, r*s*Math.sin(th)); } g.setAttribute("position", new THREE.Float32BufferAttribute(pos,3)); scene.add(new THREE.Points(g, new THREE.PointsMaterial({color:0x6d7888,size:0.18,transparent:true,opacity:0.7}))); }
+
+  // the sphere: dark body, graticule, rim
+  world.add(new THREE.Mesh(new THREE.SphereGeometry(R*0.97,64,48), new THREE.MeshStandardMaterial({color:0x0f141c, roughness:0.9, metalness:0.1, transparent:true, opacity:0.78})));
+  const grat = new THREE.LineBasicMaterial({color:0x2a3444, transparent:true, opacity:0.55});
+  for (let lat=-60; lat<=60; lat+=30) { const pts=[]; for (let lon=0; lon<=360; lon+=4) pts.push(new THREE.Vector3(...sph(lat,lon,R*0.975))); world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), grat)); }
+  for (let lon=0; lon<360; lon+=30) { const pts=[]; for (let lat=-90; lat<=90; lat+=4) pts.push(new THREE.Vector3(...sph(lat,lon,R*0.975))); world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), grat)); }
+  const atmo = glow(0x3a5a86, R*3.1, 0.35); world.add(atmo);
+
+  // the core: one asyncio loop
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25,1), new THREE.MeshStandardMaterial({color:0xf2a93b, emissive:0xf2a93b, emissiveIntensity:0.9, roughness:0.3, wireframe:true}));
+  world.add(core); const coreGlow = glow(0xf2a93b, 5.5, 0.55); world.add(coreGlow);
+  const coreLbl = el("div",{class:"lbl core"},"ядро · один цикл asyncio<br>усі події проходять тут"); labelsBox.append(coreLbl);
+  zoneLabels.push({el:coreLbl, pos:new THREE.Vector3(0,-2.2,0), core:true});
+  // spokes: every sphere station hangs on the loop
+  { const m=new THREE.LineBasicMaterial({color:0xf2a93b, transparent:true, opacity:0.07}); for (const n of Object.values(N)) if (!n.ext) world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(...n.p)]), m)); }
+
+  // the orbit ring
+  { const pts=[]; for (let a=0;a<=360;a+=3) pts.push(new THREE.Vector3(...sph(0,a,16))); const ring=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({color:0x4a5566, dashSize:0.5, gapSize:0.4, transparent:true, opacity:0.6})); ring.computeLineDistances(); world.add(ring); }
+
+  // zone regions: glowing point clouds on the surface
+  const byZone={};
+  for (const n of Object.values(N)) if (!n.ext) (byZone[n.z] ||= []).push(new THREE.Vector3(...n.p).normalize());
+  for (const [z,dirs] of Object.entries(byZone)) {
+    const c = dirs.reduce((a,b)=>a.add(b), new THREE.Vector3()).normalize();
+    const spread = Math.max(0.28, ...dirs.map(d => d.angleTo(c))) + 0.2;
+    const pos=[]; const tmp=new THREE.Vector3();
+    for (let i=0;i<260;i++) { // random directions inside the cap
+      tmp.set(Math.random()*2-1, Math.random()*2-1, Math.random()*2-1).normalize();
+      const d = c.clone().lerp(tmp, Math.random()*Math.sin(spread)*0.9).normalize();
+      if (d.angleTo(c) > spread) continue;
+      pos.push(...d.multiplyScalar(R*1.003).toArray());
+    }
+    const g=new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
+    world.add(new THREE.Points(g, new THREE.PointsMaterial({color:new THREE.Color(Z[z].c), size:0.09, transparent:true, opacity:0.75})));
+    const zl = el("div",{class:"lbl zone"}, esc(Z[z].name)); zl.style.color = Z[z].c; labelsBox.append(zl);
+    zoneLabels.push({el:zl, pos:c.clone().multiplyScalar(R*1.02), dir:c.clone()});
+  }
+
+  // stations
+  const geo = {cyl:new THREE.CylinderGeometry(0.42,0.42,0.7,24), ring:new THREE.TorusGeometry(0.45,0.16,12,32), ico:new THREE.IcosahedronGeometry(0.7,0),
+    box:new THREE.BoxGeometry(0.75,0.75,0.75), disc:new THREE.CylinderGeometry(0.6,0.6,0.28,28), oct:new THREE.OctahedronGeometry(0.65,0),
+    cone:new THREE.ConeGeometry(0.45,0.8,20), sat:new THREE.OctahedronGeometry(0.55,0)};
+  const up = new THREE.Vector3(0,1,0);
+  for (const [id,n] of Object.entries(N)) {
+    const col = new THREE.Color(Z[n.z].c);
+    const mat = new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:n.ext?0.35:0.2, roughness:0.4, metalness:0.2});
+    const m = new THREE.Mesh(geo[n.shape], mat);
+    const p = new THREE.Vector3(...n.p);
+    m.position.copy(n.ext ? p : p.clone().multiplyScalar(1.05));
+    m.quaternion.setFromUnitVectors(up, p.clone().normalize()); // stand on the surface
+    if (n.ext) { const r=new THREE.Mesh(new THREE.TorusGeometry(0.95,0.035,8,48), new THREE.MeshBasicMaterial({color:0xd9dde3, transparent:true, opacity:0.45})); r.rotation.x=Math.PI/2.4; m.add(r); m.add(glow(0xd9dde3,2.2,0.25)); }
+    m.userData.id=id; world.add(m); nodeMesh[id]=m;
+    const lb = el("div",{class:"lbl"+(n.ext?" ext":""),role:"button",tabindex:"0"}, esc(n.label));
+    lb.style.color = Z[n.z].c;
+    lb.addEventListener("click", () => selectNode(id));
+    lb.addEventListener("keydown", ev => { if (ev.key==="Enter"||ev.key===" ") { ev.preventDefault(); selectNode(id); }});
+    labelsBox.append(lb); labels[id]=lb;
+  }
+
+  // edges: arcs over the surface, or cables out to the orbit
+  const slerp = (a,b,t) => { const ang=a.angleTo(b); if (ang<1e-3) return a.clone().lerp(b,t).normalize(); const s=Math.sin(ang); return a.clone().multiplyScalar(Math.sin((1-t)*ang)/s).add(b.clone().multiplyScalar(Math.sin(t*ang)/s)); };
+  function curveFor(a,b) {
+    const A=new THREE.Vector3(...N[a].p), B=new THREE.Vector3(...N[b].p);
+    const ra=N[a].ext?A.length():R*1.05, rb=N[b].ext?B.length():R*1.05;
+    const da=A.clone().normalize(), db=B.clone().normalize(); const ang=da.angleTo(db);
+    const lift = (N[a].ext||N[b].ext) ? 1.2 : 0.9 + ang*1.6;
+    const pts=[]; for (let i=0;i<=48;i++){ const t=i/48; pts.push(slerp(da,db,t).multiplyScalar(ra+(rb-ra)*t + lift*Math.sin(Math.PI*t))); }
+    return new THREE.CatmullRomCurve3(pts);
+  }
+  for (const [a,b,ch] of E) {
+    const curve = curveFor(a,b); const col = new THREE.Color(C[ch].c);
+    let obj;
+    if (C[ch].dash) { const g=new THREE.BufferGeometry().setFromPoints(curve.getPoints(80)); obj=new THREE.Line(g, new THREE.LineDashedMaterial({color:col, dashSize:0.28, gapSize:0.2, transparent:true, opacity:0.5})); obj.computeLineDistances(); }
+    else obj = new THREE.Mesh(new THREE.TubeGeometry(curve, 60, ch==="thread"||ch==="pipe"?0.05:0.035, 6, false), new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:0.4}));
+    world.add(obj); edgeObj[ek(a,b)] = {curve, obj, ch, base:C[ch].dash?0.5:0.4};
+  }
+
+  window.__glow = glow;
+  // ambient traffic, colored by channel
+  if (!reduced) for (const [a,b,ch] of E) if (Math.random()<0.55) packets.push({sprite:(()=>{const s=glow(C[ch].c,0.38,0.8); world.add(s); return s;})(), key:ek(a,b), t:Math.random(), dur:(ch==="poll"||ch==="file"?4:2.2)+Math.random(), ambient:true});
+
+  // controls
+  let drag=null;
+  vp.addEventListener("pointerdown", ev => { if (ev.target.closest(".lbl")) return; drag={x:ev.clientX,y:ev.clientY,yaw,pitch,moved:false}; vp.setPointerCapture(ev.pointerId); });
+  vp.addEventListener("pointermove", ev => { if(!drag) return; const dx=ev.clientX-drag.x, dy=ev.clientY-drag.y; if(Math.abs(dx)+Math.abs(dy)>3) drag.moved=true; yaw=drag.yaw-dx*0.006; pitch=Math.max(-1.2,Math.min(1.2,drag.pitch+dy*0.005)); });
+  vp.addEventListener("pointerup", ev => { if (drag && !drag.moved) pick(ev); drag=null; });
+  vp.addEventListener("wheel", ev => { ev.preventDefault(); dist=Math.max(16,Math.min(70,dist*(1+Math.sign(ev.deltaY)*0.08))); }, {passive:false});
+  const ray=new THREE.Raycaster(), mouse=new THREE.Vector2();
+  function pick(ev){ const r=vp.getBoundingClientRect(); mouse.set(((ev.clientX-r.left)/r.width)*2-1, -((ev.clientY-r.top)/r.height)*2+1); ray.setFromCamera(mouse,camera); const hit=ray.intersectObjects(Object.values(nodeMesh),false)[0]; if(hit) selectNode(hit.object.userData.id); }
+  const resize = () => { const w=vp.clientWidth, h=vp.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); if (w<640) dist=Math.max(dist,52); };
+  new ResizeObserver(resize).observe(vp); resize();
+
+  const v=new THREE.Vector3(), camDir=new THREE.Vector3(), wp=new THREE.Vector3();
+  function place(elm, local, yOff, facing, limit=-0.05) {
+    wp.copy(local); world.localToWorld(wp);
+    let behind = false;
+    if (facing) { const n = facing.clone().applyQuaternion(world.quaternion); camDir.copy(camera.position).normalize(); behind = n.dot(camDir) < limit; }
+    v.copy(wp); v.y += yOff; v.project(camera);
+    if (v.z>1) { elm.style.display="none"; return; }
+    elm.style.display="";
+    elm.classList.toggle("back", behind);
+    elm.style.left=((v.x+1)/2*vp.clientWidth)+"px"; elm.style.top=((-v.y+1)/2*vp.clientHeight)+"px";
+  }
+  function frame() {
+    const dt=Math.min(clock.getDelta(),0.05), tm=clock.elapsedTime;
+    if (spin && !drag) yaw += dt*0.06;
+    let tgt = new THREE.Vector3(0,0,0);
+    camera.position.set(dist*Math.cos(pitch)*Math.sin(yaw), dist*Math.sin(pitch), dist*Math.cos(pitch)*Math.cos(yaw));
+    camera.lookAt(tgt);
+    core.rotation.y += dt*0.5; core.rotation.x += dt*0.2;
+    const pulse = 1 + Math.sin(tm*3.2)*0.08 + (runState.active?0.12:0); core.scale.setScalar(pulse); coreGlow.material.opacity = 0.45 + Math.sin(tm*3.2)*0.12;
+    for (const [id,m] of Object.entries(nodeMesh)) {
+      const hot=m.userData.hot||0;
+      m.material.emissiveIntensity = (N[id].ext?0.35:0.2) + hot*1.0;
+      m.scale.setScalar(1 + hot*0.3);
+      if (hot) m.userData.hot=Math.max(0,hot-dt*0.35);
+      if (N[id].ext) m.rotateOnAxis(up, dt*0.7);
+    }
+    for (const eo of Object.values(edgeObj)) {
+      if (!eo.obj.material) continue;
+      const h=eo.hot||0; const filt = focus ? (eo.ch===focus ? 1 : 0.12) : 1;
+      eo.obj.material.opacity = Math.min(1, (eo.base + h*0.6) * filt + (focus && eo.ch===focus ? 0.4 : 0));
+      if (eo.hot) eo.hot=Math.max(0,eo.hot-dt*0.25);
+    }
+    for (let i=packets.length-1;i>=0;i--) {
+      const p=packets[i], eo=edgeObj[p.key]; if(!eo) continue;
+      p.t += dt*speed/p.dur;
+      if (p.t>=1) { if (p.ambient) p.t=0; else { world.remove(p.sprite); packets.splice(i,1); p.done&&p.done(); continue; } }
+      eo.curve.getPointAt(Math.min(p.t,1), p.sprite.position);
+      if (p.ambient) { const vis = focus ? (eo.ch===focus?1:0.05) : (runState.active?0.18:0.8); p.sprite.material.opacity = vis*Math.sin(p.t*Math.PI); }
+    }
+    // An orbit station is hidden by the sphere only when it is well behind it.
+    for (const [id,lb] of Object.entries(labels)) { const m=nodeMesh[id]; place(lb, m.position, 0.95, new THREE.Vector3(...N[id].p).normalize(), N[id].ext?-0.45:-0.05); }
+    for (const z of zoneLabels) place(z.el, z.pos, 0, z.dir||null);
+    renderer.render(scene,camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ── channels chips ─────────────────────────── */
+for (const [id,ch] of Object.entries(C)) {
+  const b = el("button",{type:"button",class:"chip"+(ch.dash?" dash":""),"aria-pressed":"false","data-ch":id}, `<i style="background:${ch.c};color:${ch.c}"></i>${esc(ch.name)}`);
+  b.style.color = ch.c;
+  b.addEventListener("click", () => {
+    focus = focus===id ? null : id;
+    document.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.ch===focus)));
+    if (focus) { const pairs = E.filter(e=>e[2]===id).map(([a,b2]) => `${N[a].label} → ${N[b2].label}`); showPayload([[ch.name, ch.c]], {"механізм":ch.how,"ритм":ch.rhythm,"де":pairs.join("\n     ")}, null); }
+  });
+  $("#chips").append(b);
+}
+
+/* ── station select ────────────────────────── */
+function selectNode(id) {
+  const n=N[id], z=Z[n.z];
+  const links = E.filter(e => e[0]===id || e[1]===id).map(([a,b,ch]) => `${a===id?"→ "+N[b].label:"← "+N[a].label} · ${C[ch].name}`);
+  showPayload([[`${z.name} · ${n.label}`, z.c]], Object.assign({"де":n.file}, n.k, {"зв'язки":"\n  "+links.join("\n  ")}), n.what);
+  if (has3d) nodeMesh[id].userData.hot = 1;
+}
+
+/* ── scenarios ─────────────────────────────── */
+S.forEach((s,i) => { const b=el("button",{type:"button","aria-pressed":"false","data-i":i}); b.innerHTML=`<span class="dot" style="background:${s.c}"></span><span class="t">${esc(s.title)}</span><span class="s">${esc(s.sub)}</span>`; b.addEventListener("click",()=>startScenario(i)); $("#scenarios").append(b); });
+let currentScenario = 0;
+function chOf(a,b){ return EMAP[ek(a,b)] || EMAP[ek(b,a)]; }
+function startScenario(i) {
+  const s=S[i]; currentScenario=i;
+  document.querySelectorAll("#scenarios button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.i===i)));
+  $("#scenTitle").textContent=`кроки · ${s.title}`; $("#total").textContent=s.total;
+  const ol=$("#steps"); ol.innerHTML="";
+  s.steps.forEach((st,k) => { const ch=C[chOf(...st.e)]; ol.append(el("li",{},`<span class="n">${k+1}</span><span>${esc(st.d)}<span class="ch" style="color:${ch?ch.c:"var(--muted)"}">${esc(N[st.e[0]].label)} → ${esc(N[st.e[1]].label)} · ${esc(ch?ch.name:"")}</span></span><span class="ms">${esc(st.ms)}</span>`)); });
+  runState.active=true; const token=++runState.token;
+  $("#hudstate").textContent=s.title;
+  if (has3d) Object.values(labels).forEach(l => l.classList.add("dim"));
+  let k=0;
+  const next = () => {
+    if (token!==runState.token) return;
+    const items=ol.children;
+    if (k>0) { items[k-1].classList.remove("on"); items[k-1].classList.add("done"); }
+    if (k>=s.steps.length) { runState.active=false; $("#hudstate").textContent=`${s.title} · готово`; if (has3d) Object.values(labels).forEach(l => l.classList.remove("dim","hot")); return; }
+    const st=s.steps[k]; items[k].classList.add("on"); items[k].scrollIntoView({block:"nearest"});
+    const [a,b]=st.e, ty=T[st.t], chId=chOf(a,b), ch=C[chId];
+    showPayload([[ty.name, ty.c],[ch?ch.name:"", ch?ch.c:"#777"]], st.pl, `${N[a].label} → ${N[b].label}: ${st.d}`);
+    const dur = reduced ? 0.05 : (chId==="poll"||chId==="file" ? 1.5 : 1.05);
+    if (has3d) {
+      [a,b].forEach(id => { labels[id].classList.remove("dim"); labels[id].classList.add("hot"); nodeMesh[id].userData.hot=1; });
+      let key = ek(a,b);
+      if (!edgeObj[key] && edgeObj[ek(b,a)]) { key = "rev:"+ek(a,b); if (!edgeObj[key]) { const src=edgeObj[ek(b,a)]; edgeObj[key] = {curve:new THREE.CatmullRomCurve3(src.curve.getPoints(60).reverse()), obj:{}, ch:src.ch, base:0}; } edgeObj[ek(b,a)].hot=1; }
+      if (edgeObj[key]) {
+        edgeObj[key].hot=1;
+        const sp = window.__glow(ty.c, 1.1, 1); world.add(sp);
+        packets.push({sprite:sp, key, t:0, dur, done:()=>{ k++; setTimeout(next, reduced?0:220/speed); }});
+        return;
+      }
+    }
+    k++; setTimeout(next, (reduced?50:1300)/speed);
+  };
+  next();
+}
+$("#play").addEventListener("click", () => startScenario(currentScenario));
+$("#speed").addEventListener("click", ev => { speed = speed===1?2:speed===2?0.5:1; ev.currentTarget.textContent=`швидкість: ${speed===0.5?"½":speed}×`; });
+$("#spin").addEventListener("click", ev => { spin=!spin; ev.currentTarget.textContent=`обертання: ${spin?"так":"ні"}`; });
+if (reduced) $("#spin").textContent="обертання: ні";
+startScenario(0);
+})();
+</script>
+</body>
+</html>
