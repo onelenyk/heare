@@ -19,16 +19,19 @@
   button, input, select { font:inherit; color:inherit; }
   ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
 
-  #app { display:grid; grid-template-columns:360px minmax(0,1fr); height:100vh; }
-  @media (max-width:860px) { #app { grid-template-columns:minmax(0,1fr); height:auto; } #talkcol { height:80vh; } }
+  #app { display:grid; grid-template-columns:380px minmax(0,1fr); height:100vh; }
+  @media (max-width:860px) { #app { grid-template-columns:minmax(0,1fr); height:auto; } #left { height:auto; } #stage { height:70vh; } }
 
   /* ── the panel ── */
-  #pult { border-right:1px solid var(--line); background:var(--card); overflow-y:auto; font-family:var(--mono); font-size:12.5px; display:flex; flex-direction:column; }
+  #left { border-right:1px solid var(--line); background:var(--card); display:flex; flex-direction:column; min-height:0; height:100vh; }
+  #pult { overflow-y:auto; font-family:var(--mono); font-size:12.5px; flex:1 1 auto; min-height:120px; }
   .block { padding:16px 18px; border-bottom:1px solid var(--line); }
   .label { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--soft); margin-bottom:10px; }
   #who { display:flex; align-items:baseline; gap:10px; }
+  #open-settings { border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:15px; padding:0 2px; }
+  #open-settings:hover { color:var(--ink); }
   #name { font:800 22px/1 var(--sans); letter-spacing:-.4px; }
-  #up { color:var(--soft); font-size:11px; margin-left:auto; }
+  #up { color:var(--soft); font:11px var(--mono); margin-left:auto; }
   #now { display:flex; align-items:center; gap:10px; margin-top:14px; font:600 17px/1.2 var(--sans); }
   #dot { width:12px; height:12px; border-radius:50%; background:var(--soft); flex:none; }
   #dot.hearing { background:var(--info); box-shadow:0 0 10px var(--info); }
@@ -77,27 +80,33 @@
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .chip { padding:4px 10px; border:1px solid var(--line); border-radius:999px; background:transparent; cursor:pointer; font-size:11.5px; }
   .chip:hover { border-color:var(--accent); color:var(--accent); }
-  #open-settings { margin-top:auto; border:0; border-top:1px solid var(--line); background:transparent; padding:14px 18px; text-align:left; cursor:pointer; color:var(--soft); font-family:var(--mono); font-size:12px; }
-  #open-settings:hover { color:var(--ink); }
-
-  /* ── the conversation ── */
-  #talkcol { display:flex; flex-direction:column; min-width:0; height:100vh; }
-  #top { display:flex; gap:10px; align-items:center; padding:12px 22px; border-bottom:1px solid var(--line); }
-  #top input { flex:1; min-width:0; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:13px; }
-  #top input:focus, #say input:focus { outline:none; border-color:var(--accent); }
-  #talk { flex:1; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:10px; }
-  .line { max-width:min(680px, 82%); padding:10px 14px; border-radius:14px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:14.5px; }
+  /* ── the conversation: compact, under the panel ── */
+  #talkcol { flex:0 0 40%; min-height:240px; display:flex; flex-direction:column; border-top:1px solid var(--line); background:var(--bg); }
+  #talk { flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:7px; }
+  .line { max-width:88%; padding:7px 11px; border-radius:12px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.45; }
   .me { align-self:flex-end; background:var(--accent); color:var(--accent-ink); border-bottom-right-radius:4px; }
   .it { align-self:flex-start; background:var(--card); border:1px solid var(--line); border-bottom-left-radius:4px; }
-  .old { opacity:.62; }
-  .via { display:block; font:10.5px var(--mono); opacity:.7; margin-top:3px; }
-  .aside { align-self:center; color:var(--soft); font:11.5px var(--mono); text-align:center; max-width:80%; }
-  .divider { align-self:stretch; display:flex; align-items:center; gap:12px; color:var(--soft); font:10.5px var(--mono); letter-spacing:.1em; text-transform:uppercase; margin:6px 0; }
+  .old { opacity:.55; }
+  .via { display:block; font:10px var(--mono); opacity:.7; margin-top:2px; }
+  .aside { align-self:center; color:var(--soft); font:10.5px var(--mono); text-align:center; max-width:92%; }
+  .divider { align-self:stretch; display:flex; align-items:center; gap:10px; color:var(--soft); font:10px var(--mono); letter-spacing:.1em; text-transform:uppercase; margin:4px 0; }
   .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--line); }
-  #say { display:flex; gap:10px; padding:14px 22px 18px; border-top:1px solid var(--line); }
-  #say input { flex:1; min-width:0; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:11px 14px; font-size:14.5px; }
-  #say button { background:var(--accent); color:var(--accent-ink); border:0; border-radius:10px; padding:0 18px; font-weight:700; cursor:pointer; }
-  #hint { padding:0 22px 12px; color:var(--soft); font:11.5px var(--mono); }
+  #say { display:flex; gap:8px; padding:10px 12px 12px; border-top:1px solid var(--line); }
+  #say input { flex:1; min-width:0; background:var(--card); border:1px solid var(--line); border-radius:9px; padding:9px 12px; font-size:13.5px; }
+  #say input:focus { outline:none; border-color:var(--accent); }
+  #say button { background:var(--accent); color:var(--accent-ink); border:0; border-radius:9px; padding:0 14px; font-weight:700; cursor:pointer; }
+
+  /* ── the canvas: the centre, where it draws ── */
+  #stage { display:flex; flex-direction:column; min-width:0; height:100vh; }
+  #tabs { display:flex; gap:6px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); overflow-x:auto; min-height:47px; }
+  #tabs .label { margin:0 8px 0 0; flex:none; }
+  .chip.on { border-color:var(--accent); color:var(--accent); }
+  #canvas { flex:1; position:relative; min-height:0; }
+  #frame { position:absolute; inset:0; width:100%; height:100%; border:0; background:var(--bg); display:none; }
+  #blank { position:absolute; inset:0; display:grid; place-content:center; text-align:center; color:var(--soft); padding:24px; gap:8px; }
+  #blank b { font:600 20px var(--sans); color:var(--ink); }
+  #blank span { font:12.5px var(--mono); }
+  #drawing { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); background:var(--card); border:1px solid var(--accent); border-radius:999px; padding:6px 14px; font:12px var(--mono); color:var(--accent); display:none; animation:pulse 1.4s ease infinite; }
 
   /* ── settings and screens: over the top, out of the way ── */
   .veil { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:10; }
@@ -112,66 +121,64 @@
   .pair { display:grid; grid-template-columns:1fr auto; gap:8px; }
   .btn { background:var(--accent); color:var(--accent-ink); border:0; border-radius:8px; padding:9px 14px; font-weight:700; cursor:pointer; }
   .note { color:var(--soft); font-size:12px; min-height:18px; }
-  #viewer { position:fixed; inset:4vh 4vw; background:var(--card); border:1px solid var(--line); border-radius:12px; display:none; flex-direction:column; z-index:12; overflow:hidden; }
-  #viewer.on { display:flex; }
-  #viewer header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--line); font:12px var(--mono); color:var(--soft); }
-  #viewer iframe { flex:1; border:0; background:#fff; }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
 
 <div id="app">
-  <aside id="pult">
-    <div class="block">
-      <div id="who"><span id="name">heare</span><span id="up"></span></div>
-      <div id="now"><span id="dot"></span><span id="nowtext">…</span></div>
-      <div class="lanes">
-        <div class="lane"><span>ти</span><div class="bar" id="you"><i></i></div></div>
-        <div class="lane"><span>він</span><div class="bar" id="it"><i></i></div></div>
+  <div id="left">
+    <aside id="pult">
+      <div class="block">
+        <div id="who"><span id="name">heare</span><span id="up"></span><button id="open-settings" title="налаштування: ключі, модель">⚙</button></div>
+        <div id="now"><span id="dot"></span><span id="nowtext">…</span></div>
+        <div class="lanes">
+          <div class="lane"><span>ти</span><div class="bar" id="you"><i></i></div></div>
+          <div class="lane"><span>він</span><div class="bar" id="it"><i></i></div></div>
+        </div>
       </div>
-    </div>
 
-    <div class="block">
-      <div class="label">Керування</div>
-      <div class="keys">
-        <button class="key" id="mic"><span class="led"></span><span><b>Мікрофон</b><small></small></span></button>
-        <button class="key" id="speaker"><span class="led"></span><span><b>Звук</b><small></small></span></button>
-        <div class="vol"><span>гучність</span><input id="volume" type="range" min="0" max="1" step="0.05"><span id="volpct"></span></div>
-        <button class="key wide" id="listen"><span class="led"></span><span><b></b><small></small></span></button>
-        <button class="key" id="pause"><span class="led"></span><span><b>Пауза</b><small>глухий і німий</small></span></button>
-        <button class="key stop" id="stop">■ Стоп</button>
+      <div class="block">
+        <div class="label">Керування</div>
+        <div class="keys">
+          <button class="key" id="mic"><span class="led"></span><span><b>Мікрофон</b><small></small></span></button>
+          <button class="key" id="speaker"><span class="led"></span><span><b>Звук</b><small></small></span></button>
+          <div class="vol"><span>гучність</span><input id="volume" type="range" min="0" max="1" step="0.05"><span id="volpct"></span></div>
+          <button class="key wide" id="listen"><span class="led"></span><span><b></b><small></small></span></button>
+          <button class="key" id="pause"><span class="led"></span><span><b>Пауза</b><small>глухий і німий</small></span></button>
+          <button class="key stop" id="stop">■ Стоп</button>
+        </div>
       </div>
-    </div>
 
-    <div class="block">
-      <div class="label">Стан</div>
-      <div class="rows">
-        <div class="row"><span>модель</span><span id="model">…</span></div>
-        <div class="row"><span>руки</span><span id="hands">…</span></div>
-        <div class="row"><span>відповідь</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
-        <div class="row"><span>цей запуск</span><span id="session">…</span></div>
+      <div class="block">
+        <div class="label">Стан</div>
+        <div class="rows">
+          <div class="row"><span>модель</span><span id="model">…</span></div>
+          <div class="row"><span>руки</span><span id="hands">…</span></div>
+          <div class="row"><span>відповідь</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
+          <div class="row"><span>цей запуск</span><span id="session">…</span></div>
+        </div>
       </div>
+
+      <div class="block">
+        <div class="label">Тримаю в голові</div>
+        <div id="ask"></div>
+        <div id="tasks"><p class="empty">Зараз нічого не роблю.</p></div>
+      </div>
+    </aside>
+
+    <section id="talkcol">
+      <div id="talk"></div>
+      <form id="say"><input id="text" placeholder="Напиши…" autocomplete="off" autofocus><button>→</button></form>
+    </section>
+  </div>
+
+  <main id="stage">
+    <div id="tabs"><span class="label">Канвас</span><span id="screens" class="chips"></span></div>
+    <div id="canvas">
+      <div id="blank"><b>Тут він малює</b><span>Попроси: «покажи таблицею…», «намалюй…», «зроби екран…»</span></div>
+      <iframe id="frame" title="канвас"></iframe>
+      <div id="drawing">малює…</div>
     </div>
-
-    <div class="block">
-      <div class="label">Тримаю в голові</div>
-      <div id="ask"></div>
-      <div id="tasks"><p class="empty">Зараз нічого не роблю.</p></div>
-    </div>
-
-    <div class="block">
-      <div class="label">Твої екрани</div>
-      <div id="screens" class="chips"><span class="empty">Ще жодного. Попроси зробити екран.</span></div>
-    </div>
-
-    <button id="open-settings">⚙ налаштування — ключі, модель</button>
-  </aside>
-
-  <section id="talkcol">
-    <form id="top"><input id="find" placeholder="що я казав про…" autocomplete="off"><button class="mini">знайти</button></form>
-    <div id="talk"></div>
-    <div id="hint"></div>
-    <form id="say"><input id="text" placeholder="Напиши…" autocomplete="off" autofocus><button>Надіслати</button></form>
-  </section>
+  </main>
 </div>
 
 <div class="veil" id="veil"></div>
@@ -186,7 +193,6 @@
   <div class="field"><label for="keyvalue">значення</label><div class="pair"><input id="keyvalue" type="password" placeholder="встав токен" autocomplete="off"><button class="btn" id="save-key">Зберегти</button></div></div>
   <p class="note" id="keynote">Ключ можна зберегти, але не можна прочитати назад.</p>
 </aside>
-<div id="viewer"><header><span id="viewname"></span><button class="mini" id="close-view">закрити</button></header><iframe id="frame" title="екран"></iframe></div>
 
 <script>
 const T = window.HEARE_TOKEN, $ = id => document.getElementById(id);
@@ -297,17 +303,26 @@ function tasks(list, permission) {
 const refresh = () => api("state").then(s => {
   state = s; phase = s.phase; voice = s.controls.voice || null;
   show(); vitals(s); tasks(s.tasks, s.permission);
-  $("hint").textContent = voice ? (voice.listen === "name" ? "Голосом: «Дока, …»." : "Можна говорити як є: він сам вирішує, чи відповідати.") : "";
 });
 
-function screens() {
-  api("screens").then(names => {
-    if (!names.length) return;
+let shown = null;
+function put(name) {
+  shown = name;
+  $("frame").src = "/screens/" + name + "?t=" + Date.now();
+  $("frame").style.display = "block"; $("blank").style.display = "none";
+  for (const c of $("screens").children) c.classList.toggle("on", c.textContent === name);
+  try { localStorage.setItem("heare.canvas", name); } catch (e) {}
+}
+function screens(show) {
+  return api("screens").then(names => {
     $("screens").replaceChildren(...names.map(n => {
-      const b = el("button", "chip", n);
-      b.onclick = () => { $("frame").src = "/screens/" + n; $("viewname").textContent = n; $("viewer").classList.add("on"); $("veil").classList.add("on"); };
+      const b = el("button", "chip" + (n === shown ? " on" : ""), n);
+      b.onclick = () => put(n);
       return b;
     }));
+    let want = show;
+    if (!want && !shown) { try { want = localStorage.getItem("heare.canvas"); } catch (e) {} }
+    if (want && names.includes(want)) put(want);
   });
 }
 
@@ -322,8 +337,8 @@ $("pause").onclick = () => { const on = !voice.mic && !voice.speaker; turn("mic"
 $("stop").onclick = () => api("stop", {method: "POST"}).then(() => aside("зупинено"));
 
 /* ── settings ── */
-const shut = () => { for (const id of ["veil", "settings", "viewer"]) $(id).classList.remove("on"); $("frame").src = "about:blank"; };
-$("veil").onclick = shut; $("close-view").onclick = shut;
+const shut = () => { for (const id of ["veil", "settings"]) $(id).classList.remove("on"); };
+$("veil").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") shut(); });
 function keys() {
   api("keys").then(have => {
@@ -357,7 +372,6 @@ $("save-key").onclick = () => {
 
 /* ── live ── */
 const stream = new EventSource("/api/events?token=" + encodeURIComponent(T));
-const caughtUp = true;
 stream.onmessage = m => {
   const e = JSON.parse(m.data);
   if (e.kind === "heard") { writing = null; askedAt = e.at; line(e.text, "me", e.channel); }
@@ -369,16 +383,13 @@ stream.onmessage = m => {
     if (e.phase === "speaking" && askedAt) { speeds.push(e.at - askedAt); if (speeds.length > 20) speeds.shift(); askedAt = null; spark(); }
   }
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
-  else if (e.kind === "screen") { screens(); if (caughtUp) aside(`новий екран: ${e.name}`); }
-  if (caughtUp && ["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted"].includes(e.kind)) refresh();
+  else if (e.kind === "screen") { screens(e.name); aside(`намалював: ${e.name}`); }
+  else if (e.kind === "task") $("drawing").style.display = (e.executor === "screens" && e.status === "running") ? "block" : "none";
+  if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted"].includes(e.kind)) refresh();
 };
 stream.onerror = () => { $("dot").className = "off"; $("nowtext").textContent = "немає зв'язку з heare"; };
 
 $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; api("message", {method: "POST", body: {text}}); };
-$("top").onsubmit = ev => {
-  ev.preventDefault(); const q = $("find").value.trim(); if (!q) return;
-  api("memory?q=" + encodeURIComponent(q)).then(r => aside(`пам'ять про «${q}»: ${r.said}`)).catch(() => aside("пошук не вдався"));
-};
 refresh(); screens(); setInterval(refresh, 15000);
 </script>
 </html>

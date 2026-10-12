@@ -193,7 +193,7 @@ async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
     room.model.will_say("Екран готовий.")
     task = room.core.delegate("зроби екран зі справами")
     await room.until(lambda: task.status == "done")
-    assert "my-tasks" in task.result
+    assert "my-tasks" in task.result and "канвас" in task.result
     assert await (await client.get("/api/screens", headers=auth)).json() == ["my-tasks"]
     assert "<h1>Справи</h1>" in await (await client.get("/screens/my-tasks")).text()
     await _close(room, client)
@@ -297,4 +297,27 @@ async def test_the_state_carries_the_model_the_tally_and_recent_history(tmp_path
     assert state["model"]["fallback"] is True
     assert state["session"]["turns"] == 1 and state["session"]["cost_usd"] == 0
     assert await (await client.get("/api/history", headers=auth)).json() == []
+    await _close(room, client)
+
+
+async def test_asking_to_change_the_drawing_hands_the_model_what_is_drawn(tmp_path):
+    from heare.api.screens import ScreenMaker
+
+    room, client, auth, settings = await _open(tmp_path)
+    seen: list[str] = []
+
+    async def write(system: str, request: str) -> str:
+        seen.append(request)
+        return "name: board\n<!doctype html><h1>Дошка</h1>" + ("<button>ок</button>" if len(seen) > 1 else "")
+
+    maker = ScreenMaker(settings.screens_dir, write, room.core.state.emit)
+    room.core.add_executor(maker)
+    room.model.will_say("Є.", "Додав.")
+    first = room.core.delegate("намалюй дошку")
+    await room.until(lambda: first.status == "done")
+    second = room.core.delegate("додай туди кнопку")
+    await room.until(lambda: second.status == "done")
+    assert "<h1>Дошка</h1>" in seen[1] and "board" in seen[1]
+    assert await (await client.get("/api/screens", headers=auth)).json() == ["board"]
+    assert "<button>" in await (await client.get("/screens/board")).text()
     await _close(room, client)

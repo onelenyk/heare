@@ -45,12 +45,15 @@ GET  /api/screens          -> [names]
 """
 
 _WRITE = (
-    "You write one self-contained HTML page for a person's own assistant. "
+    "You draw on the assistant's canvas: one self-contained HTML page that "
+    "fills a large area in the centre of its screen. "
     "Inline CSS and JavaScript only, no external resources. Ukrainian text. "
     "Clean and readable in light and dark (prefers-color-scheme), works on a "
-    "narrow window. Use only the API below; if what is asked needs data the "
-    "API does not have, show that plainly on the page instead of inventing "
-    "numbers.\n\n" + API + "\n"
+    "narrow window. For anything about the assistant itself — its state, "
+    "tasks, costs, settings, memory — use only the API below, and if the "
+    "API does not have it, say so on the page instead of inventing it. "
+    "General knowledge (facts, capitals, numbers anyone can look up) you "
+    "simply write in.\n\n" + API + "\n"
     "Answer with exactly this and nothing else:\n"
     "name: <short-latin-name-with-dashes>\n<!doctype html>…the page…"
 )
@@ -59,8 +62,9 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
 class ScreenMaker:
     name = "screens"
-    about = ("робить для людини екран (сторінку): показати стан, справи, "
-             "налаштування, форму чи таблицю з даних самого асистента")
+    about = ("малює на канвасі — великій області в центрі екрана: таблиця, "
+             "схема, список, форма, сторінка зі станом чи даними самого "
+             "асистента; також змінює те, що вже намальовано")
 
     def __init__(self, folder: Path, write: Callable[[str, str], Awaitable[str]],
                  emit: Callable[..., object]) -> None:
@@ -69,10 +73,24 @@ class ScreenMaker:
         self._folder = Path(folder)
         self._write = write
         self._emit = emit
+        # What is on the canvas now, so «додай туди кнопку» changes that
+        # drawing instead of starting another.
+        self._last = ""
 
     async def run(self, task: str, desk: Desk) -> str:
         desk.step("пишу екран")
-        answer = (await self._write(_WRITE, task)).strip()
+        request = task
+        current = self._folder / f"{self._last}.html"
+        if self._last and current.is_file():
+            html_now = current.read_text(encoding="utf-8")
+            if len(html_now) <= 24000:
+                request = (
+                    f"{task}\n\nOn the canvas now is «{self._last}». If the request "
+                    "is about changing or adding to it, return the whole page "
+                    f"again under the same name ({self._last}); otherwise make a "
+                    f"new one.\n\n{html_now}"
+                )
+        answer = (await self._write(_WRITE, request)).strip()
         answer = re.sub(r"^```[a-z]*\n|\n```$", "", answer)
         first, _, html = answer.partition("\n")
         name = first.removeprefix("name:").strip().lower()
@@ -81,5 +99,6 @@ class ScreenMaker:
             return "Не вдалося: модель не повернула сторінку."
         self._folder.mkdir(parents=True, exist_ok=True)
         (self._folder / f"{name}.html").write_text(html.strip(), encoding="utf-8")
+        self._last = name
         self._emit("screen", name=name)
-        return f"Екран «{name}» готовий, він у переліку твоїх екранів."
+        return f"Намальовано на канвасі: «{name}»."

@@ -800,7 +800,9 @@ _DELEGATE = {
         "description": (
             "Hand work to an agent. Everything outside this conversation "
             "goes through here: files, code, the shell, the web, other "
-            "programs. You cannot see or touch any of it yourself, so never "
+            "programs — and drawing on the canvas in the centre of the "
+            "screen (show a table, a list, a chart, a form, change what is "
+            "drawn). You cannot see or touch any of it yourself, so never "
             "say you cannot before you have asked. Returns at once: say in "
             "one short sentence that you are on it, then stop. The answer "
             "arrives later as its own message."
