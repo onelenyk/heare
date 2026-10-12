@@ -368,7 +368,11 @@ function restyle(css) {
   own = css || "";
   const frames = own.match(/@keyframes[^{]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g) || [];
   const rest = frames.reduce((text, f) => text.replace(f, ""), own);
-  $("own").textContent = frames.join("\n") + (rest.trim() ? `\n@scope (#stage) {\n${rest}\n}` : "");
+  // Inside a scope a bare selector means "a descendant of the root", so
+  // the root itself has to be named as :scope or a theme set on #stage
+  // never lands.
+  const scoped = rest.replace(/#stage(?![\w-])/g, ":scope");
+  $("own").textContent = frames.join("\n") + (scoped.trim() ? `\n@scope (#stage) {\n${scoped}\n}` : "");
 }
 // What a live widget may ask for. It runs in a sealed frame and reaches
 // the assistant only through these.
@@ -381,7 +385,9 @@ addEventListener("message", e => { const w = heare._w[e.data && e.data.id]; if (
 addEventListener("click", e => { const b = e.target.closest("[data-say]"); if (b) heare.say(b.dataset.say); });
 new ResizeObserver(() => parent.postMessage({heare: "size", h: document.documentElement.scrollHeight}, "*")).observe(document.documentElement);
 <\/script>`;
-const framed = html => `<!doctype html><meta charset="utf-8"><style>:root{${vars()}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}\n${own}</style>${BRIDGE}<body class="w">${html}`;
+// The frame's body carries the widget's id, so a rule written for
+// `#blk-clock .big` reaches the inside of a live widget too.
+const framed = (html, id) => `<!doctype html><meta charset="utf-8"><style>:root{${vars()}} *{box-sizing:border-box} html,body{margin:0;background:transparent;color:var(--ink);font:14px/1.55 var(--sans);overflow:hidden} ${SHEET}\n${own}</style>${BRIDGE}<body class="w" id="blk-${id}">${html}`;
 
 function block(b) {
   let node = document.getElementById("blk-" + b.id);
@@ -391,7 +397,7 @@ function block(b) {
   node.dataset.html = b.html;
   if (/<script/i.test(b.html)) {
     const frame = document.createElement("iframe");
-    frame.setAttribute("sandbox", "allow-scripts"); frame.srcdoc = framed(b.html);
+    frame.setAttribute("sandbox", "allow-scripts"); frame.srcdoc = framed(b.html, b.id);
     node.replaceChildren(x, frame);
   } else {
     const body = el("div", "w"); body.innerHTML = b.html;
@@ -406,7 +412,7 @@ function drawn(e) {
   else if (e.op === "style") {
     restyle(e.css);
     // Live widgets carry the sheet inside their frames: give it to them again.
-    for (const f of document.querySelectorAll("#live iframe")) f.srcdoc = framed(f.closest(".blk").dataset.html);
+    for (const f of document.querySelectorAll("#live iframe")) { const card = f.closest(".blk"); f.srcdoc = framed(card.dataset.html, card.id.slice(4)); }
   }
   else if (e.op === "remove") document.getElementById("blk-" + e.id)?.remove();
   else if (e.op === "arrange") for (const key of e.order) {
