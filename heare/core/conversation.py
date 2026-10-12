@@ -643,12 +643,20 @@ class Core:
         """What it knows without being told: the work and the room. Asked
         «що ти зараз робиш?» after everything was stopped, it answered
         that the work was under way — it had no way to know."""
+        # Stated as the system's record, not as the assistant's own past:
+        # worded «справи, які ти доручав», the model began to answer
+        # «доручив агенту» to every new request and call nothing.
         lines = []
         for task in list(self.state.tasks.values())[-5:]:
-            status = {"running": "у роботі", "done": "готово", "failed": "не вийшло",
+            status = {"running": "У РОБОТІ", "done": "готово", "failed": "не вийшло",
                       "stopped": "зупинено"}.get(task.status, task.status)
-            lines.append(f"- {status} ({task.executor or '…'}): {task.request[:90]}")
-        known = "\n\nСправи, які ти доручав (остання внизу):\n" + "\n".join(lines) if lines else ""
+            lines.append(f"- {status}: {task.request[:90]}")
+        busy = sum(t.status == "running" for t in self.state.tasks.values())
+        known = ("\n\nЗапис системи про справи (не твої слова). Зараз у роботі: "
+                 f"{busy}." + ("\n" + "\n".join(lines) if lines else "")
+                 + "\nСправа існує лише тоді, коли вона є в цьому записі. Нове прохання "
+                 "про роботу — це завжди новий виклик delegate; сказати «доручив» без "
+                 "виклику означає нічого не зробити.") if self.executors else ""
         playing = self.state.around.get("playing")
         if playing:
             known += ("\n\nЗараз поруч грає звук (" + ", ".join(map(str, playing)) + "). "
