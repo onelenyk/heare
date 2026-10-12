@@ -46,3 +46,24 @@ def promises_work(reply: str) -> bool:
     """True when `reply` announces work in place of doing it."""
     text = (reply or "").strip()
     return bool(text) and len(text) <= _MAX_PROMISE_CHARS and bool(_PROMISE.search(text))
+
+
+# A reply that says something was drawn or changed. Found on 12 October:
+# «Оновив погоду — тепер там і вологість» and «Готую план із п'яти
+# кроків», each with no call at all — the screen stayed as it was. Unlike
+# a promise of work, this is never handed to an executor: it is asked for
+# again, and that is all.
+_CLAIM = re.compile(
+    r"\b("
+    r"оновив|оновила|додав|додала|поставив|поставила|намалював|намалювала|"
+    r"прибрав|прибрала|змінив|змінила|зробив|зробила|готово|готую|малюю|"
+    r"намалюю|показую|покажу|ставлю|поставлю|оновлюю|оновлю|додаю|додам"
+    r")\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def claims_done(reply: str) -> bool:
+    """True when `reply` says a thing was shown or changed."""
+    text = (reply or "").strip()
+    return bool(text) and len(text) <= _MAX_PROMISE_CHARS and bool(_CLAIM.search(text))

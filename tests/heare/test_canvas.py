@@ -124,3 +124,33 @@ async def test_drawing_without_a_word_still_ends_in_words(tmp_path):
     assert room.page.said == ["Ось коротко."]
     assert room.memory.kept[-1][:2] == ("assistant", "Ось коротко.")
     await room.close()
+
+
+async def test_saying_it_is_drawn_without_drawing_is_asked_for_again(tmp_path):
+    room = await open_room()
+    canvas = _canvas(tmp_path)
+    room.core.add_output(canvas)
+    canvas.put("weather", "<h3>Погода</h3>")
+    room.model.will_say("Оновив погоду — тепер там і вологість.", Says(calls=(
+        ("canvas_put", {"id": "weather", "html": "<h3>Погода</h3><p>вологість 70%</p>",
+                        "say": "Оновив."}),
+    )))
+    room.says("Додай у погоду вологість")
+    await room.settled()
+    assert "вологість 70%" in canvas.blocks["weather"]
+    assert room.page.said == ["Оновив погоду — тепер там і вологість. "]  # said once
+    await room.close()
+
+
+async def test_a_claim_that_stays_empty_is_never_sent_to_an_executor(tmp_path):
+    from tests.heare.fakes import Worker
+
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.core.add_output(_canvas(tmp_path))
+    room.model.will_say("Готово, додав.", "Нічого не викликаю.")
+    room.says("Додай рядок у таблицю")
+    await room.settled()
+    assert worker.tasks == []
+    await room.close()

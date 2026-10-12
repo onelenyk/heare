@@ -25,7 +25,7 @@ from heare.core import words
 from heare.core.forms import (
     Delegator, Executor, Input, Memory, Message, Model, Output, Permission, Task,
 )
-from heare.core.promises import promises_work
+from heare.core.promises import claims_done, promises_work
 from heare.core.state import State
 
 logger = logging.getLogger("heare.core")
@@ -476,9 +476,14 @@ class Core:
 
         if (
             failure is None and not calls and message.person
-            and outcome != "stopped" and self._verbs() and promises_work(reply)
+            and outcome != "stopped" and self._verbs()
         ):
-            await self._keep_the_promise(messages, reply, out, message.text)
+            if promises_work(reply):
+                await self._keep_the_promise(messages, reply, out, message.text)
+            elif len(self._acknowledging()) > 1 and claims_done(reply):
+                # Said to be drawn, and nothing was: ask for the drawing,
+                # but never send it to an executor.
+                await self._keep_the_promise(messages, reply, out, "")
 
     async def _worth_answering(self, message: Message) -> bool:
         """Something said in the room: does the assistant have anything
@@ -572,13 +577,13 @@ class Core:
             logger.exception("asking for the promised call failed")
             return
         logger.info("promise without a call: asked again, got %d call(s)", len(calls))
-        if not calls and self.executors:
+        if not calls and self.executors and asked:
             self.delegate(asked)
             return
         for call in calls:
             spoken = await self._run_verb(call)
-            # The model already said it is on it; «Беру.» again is noise.
-            if spoken and call.get("name") != "delegate":
+            # The model already said it; an acknowledgement again is noise.
+            if spoken and call.get("name") not in self._acknowledging():
                 await self._say(out, spoken)
 
     async def _system(self) -> str:
