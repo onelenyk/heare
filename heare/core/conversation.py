@@ -123,6 +123,11 @@ class _Port:
     def nothing(self, channel: str) -> None:
         self._core._nothing(channel)
 
+    def note(self, key: str, value: object) -> None:
+        if self._core.state.around.get(key) != value:
+            self._core.state.around[key] = value
+            self._core.state.emit("around", key=key, value=value)
+
     def overheard(self, channel: str, text: str) -> None:
         self._core.state.emit("overheard", text=text, channel=channel)
         self._core._nothing(channel)
@@ -366,13 +371,16 @@ class Core:
             self._turn = asyncio.create_task(self._answer(message))
             return
         held = self._hold is not None
-        if not message.addressed and not held and (
-            self._turn is not None and not self._turn.done()
-        ):
-            # Room talk while a turn is in progress does not get to end it.
-            self.state.emit("overheard", text=message.text, channel=message.channel,
-                            why="busy")
-            return
+        if not message.addressed and not held:
+            # Room talk does not end a turn in progress — and while
+            # something is playing, what is not said to the assistant by
+            # name is the music or the film, and is left alone.
+            why = ("busy" if self._turn is not None and not self._turn.done()
+                   else "playing" if self.state.around.get("playing") else "")
+            if why:
+                self.state.emit("overheard", text=message.text,
+                                channel=message.channel, why=why)
+                return
         self._last_channel = message.reply_on or message.channel
         if message.addressed:
             self.state.emit("heard", text=message.text, channel=message.channel)
@@ -629,7 +637,23 @@ class Core:
             shown = getattr(output, "context", lambda: "")()
             if shown:
                 prompt = f"{prompt}\n\n{shown}"
-        return prompt
+        return f"{prompt}{self._known()}"
+
+    def _known(self) -> str:
+        """What it knows without being told: the work and the room. Asked
+        «що ти зараз робиш?» after everything was stopped, it answered
+        that the work was under way — it had no way to know."""
+        lines = []
+        for task in list(self.state.tasks.values())[-5:]:
+            status = {"running": "у роботі", "done": "готово", "failed": "не вийшло",
+                      "stopped": "зупинено"}.get(task.status, task.status)
+            lines.append(f"- {status} ({task.executor or '…'}): {task.request[:90]}")
+        known = "\n\nСправи, які ти доручав (остання внизу):\n" + "\n".join(lines) if lines else ""
+        playing = self.state.around.get("playing")
+        if playing:
+            known += ("\n\nЗараз поруч грає звук (" + ", ".join(map(str, playing)) + "). "
+                      "Поки він грає, ти відповідаєш лише на пряме звертання на ім'я.")
+        return known
 
     async def _say(self, out: Output | None, text: str) -> str:
         if out is None or not text:

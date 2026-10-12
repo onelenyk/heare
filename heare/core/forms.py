@@ -56,6 +56,11 @@ class Port(Protocol):
     def nothing(self, channel: str) -> None:
         """What began was not a turn after all: a cough, a breath."""
 
+    def note(self, key: str, value: object) -> None:
+        """A fact about the surroundings that has changed — «playing»:
+        what is making sound now. Not a message: nothing is answered, the
+        core simply knows it from here on."""
+
     def overheard(self, channel: str, text: str) -> None:
         """Something was said and understood, but not to the assistant.
         It is not answered — and it is shown, because silence with no

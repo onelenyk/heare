@@ -41,6 +41,17 @@ async def prompt() -> str:
     # The voice is a man's; «зрозуміла» in it is a second person talking.
     parts.append("Про себе завжди говори в чоловічому роді: «зробив», «зрозумів». "
                  "До людини звертайся на «ти».")
+    # What it is, so it does not have to guess — it once answered «у мене
+    # немає доступу до мікрофона», and once built a music recogniser when
+    # asked not to react to music.
+    parts.append(
+        "Ти чуєш людину через мікрофон і відповідаєш голосом; маєш канвас — "
+        "екран перед людиною; справжню роботу з файлами, кодом і програмами "
+        "доручаєш агентові. Коли поруч грає музика чи відео, ти сам відповідаєш "
+        "лише на звертання на ім'я — це вже так працює, для цього нічого не "
+        "треба будувати. Якщо просять змінити, як ти сам поводишся, і в тебе "
+        "немає для цього дії — скажи прямо, що цього не вмієш, а не доручай."
+    )
     # A model does not know the hour unless it is told.
     now = datetime.now()
     parts.append(f"Зараз {_DAYS[now.weekday()]}, {now:%d.%m.%Y}, {now:%H:%M}.")

@@ -200,6 +200,7 @@
         <div class="rows">
           <div class="row"><span>модель</span><span id="model">…</span></div>
           <div class="row"><span>руки</span><span id="hands">…</span></div>
+          <div class="row"><span>довкола</span><span id="around">тихо</span></div>
           <div class="row"><span>відповідь</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
           <div class="row"><span>цей запуск</span><span id="session">…</span></div>
         </div>
@@ -247,7 +248,7 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 
 const NOW = {idle: "чекає", hearing: "слухає тебе", thinking: "думає", speaking: "говорить"};
 const VIA = {voice: "голосом", text: "текстом", screen: ""};
-const WHY = {busy: "був зайнятий", "chose silence": "вирішив не відповідати"};
+const WHY = {busy: "був зайнятий", "chose silence": "вирішив не відповідати", playing: "щось грає, а звертання не було"};
 let voice = null, phase = "idle", state = null, writing = null, askedAt = null;
 const speeds = [];
 
@@ -307,6 +308,8 @@ function vitals(s) {
   }
   const hands = s.parts.executors.filter(n => n !== "screens");
   $("hands").replaceChildren(hands.length ? el("b", "ok", hands.join(" · ")) : el("span", "warn", "агентів не знайдено"));
+  const playing = (s.around && s.around.playing) || [];
+  $("around").replaceChildren(playing.length ? el("span", "warn", "грає: " + playing.join(", ") + " — відповідаю лише на ім'я") : el("span", "", "тихо"));
   const t = s.session, mins = Math.round((Date.now() / 1000 - t.started) / 60);
   $("up").textContent = mins < 1 ? "щойно запущено" : mins < 60 ? `${mins} хв` : `${Math.floor(mins / 60)} год ${mins % 60} хв`;
   const cost = t.unpriced && !t.cost_usd ? "ціна невідома" : "$" + t.cost_usd.toFixed(4) + (t.unpriced ? " + невідомо" : "");
@@ -494,6 +497,7 @@ stream.onmessage = m => {
     phase = e.phase; show();
     if (e.phase === "speaking" && askedAt) { speeds.push(e.at - askedAt); if (speeds.length > 20) speeds.shift(); askedAt = null; spark(); }
   }
+  else if (e.kind === "around") refresh();
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
   else if (e.kind === "canvas") drawn(e);
 

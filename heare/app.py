@@ -45,6 +45,13 @@ def build(settings: Settings | None = None) -> Core:
     return core
 
 
+def attach_surroundings(core: Core) -> None:
+    """Keep the core told of what is going on around it."""
+    from heare.surroundings.watch import Surroundings
+
+    core.add_input(Surroundings())
+
+
 def _model(settings: Settings) -> dict:
     """Which model is answering — and whether it is the one that was
     chosen. A chosen provider with no key falls back to another, and that
@@ -82,6 +89,7 @@ async def _main(args: argparse.Namespace) -> int:
         core_voice = await open_voice(settings)
         core.add_input(core_voice)
         core.add_output(core_voice)
+        attach_surroundings(core)
         print("слухаю (Ctrl+C — вихід)", file=sys.stderr)
     elif not args.serve:
         from heare.channels.text.terminal import Terminal

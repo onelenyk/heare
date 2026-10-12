@@ -38,6 +38,8 @@ class State:
     parts: dict[str, list[str]] = field(
         default_factory=lambda: {"inputs": [], "outputs": [], "executors": []}
     )
+    # What is going on around it, as its inputs last reported.
+    around: dict[str, object] = field(default_factory=dict)
     journal: deque = field(default_factory=lambda: deque(maxlen=JOURNAL))
     _readers: list[asyncio.Queue] = field(default_factory=list)
 
@@ -72,4 +74,5 @@ class State:
             "parts": self.parts,
             "tasks": [t.view() for t in self.tasks.values()],
             "permission": self.permission.view() if self.permission else None,
+            "around": self.around,
         }
