@@ -38,8 +38,27 @@
   #screens a { display:inline-block; margin:0 8px 8px 0; color:var(--accent); }
   iframe { width:100%; height:50vh; border:1px solid var(--line); border-radius:8px; background:#fff; display:none; }
   .wide { grid-column: 1 / -1; }
+  #bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  #now { display:flex; align-items:center; gap:10px; font-size:20px; font-weight:600; margin-right:auto; min-width:150px; }
+  #dot { width:14px; height:14px; border-radius:50%; background:var(--soft); transition:background .2s; }
+  #dot.hearing { background:#3b82f6; } #dot.thinking { background:#eab308; } #dot.speaking { background:var(--accent); } #dot.off { background:var(--warn); }
+  button.off { background:transparent; color:var(--warn); border-color:var(--warn); }
+  button.stop { background:var(--warn); }
+  #volume { flex:0 1 120px; padding:0; }
+  #bar label { color:var(--soft); font-size:13px; display:flex; align-items:center; gap:6px; }
 </style>
 <main>
+  <section class="wide">
+    <div id="bar">
+      <div id="now"><span id="dot"></span><span id="nowtext">…</span></div>
+      <button id="mic" class="quiet">Мікрофон</button>
+      <button id="speaker" class="quiet">Звук</button>
+      <label>гучність <input id="volume" type="range" min="0" max="1" step="0.05"></label>
+      <button id="listen" class="quiet"></button>
+      <button id="pause" class="quiet">Пауза</button>
+      <button id="stop" class="stop">Стоп</button>
+    </div>
+  </section>
   <section>
     <h2>Розмова <span id="phase"></span></h2>
     <div id="talk"></div>
@@ -71,6 +90,28 @@ const api = (path, opts = {}) => fetch("/api/" + path, {
   body: opts.body ? JSON.stringify(opts.body) : undefined,
 }).then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)));
 const PHASES = {idle: "", hearing: "слухає", thinking: "думає", speaking: "відповідає"};
+const NOW = {idle: "чекає", hearing: "слухає тебе", thinking: "думає", speaking: "говорить"};
+let voice = null, phase = "idle";
+
+function bar() {
+  const off = voice && !voice.mic && !voice.speaker;
+  $("dot").className = off ? "off" : phase;
+  $("nowtext").textContent = !voice ? (NOW[phase] + " · без голосу") : off ? "на паузі" : !voice.mic ? NOW[phase] + " · мікрофон вимкнено" : NOW[phase];
+  for (const id of ["mic", "speaker", "volume", "listen", "pause"]) $(id).disabled = !voice;
+  if (!voice) return;
+  $("mic").textContent = voice.mic ? "Мікрофон увімкнено" : "Мікрофон вимкнено"; $("mic").className = voice.mic ? "quiet" : "off";
+  $("speaker").textContent = voice.speaker ? "Звук увімкнено" : "Звук вимкнено"; $("speaker").className = voice.speaker ? "quiet" : "off";
+  if (document.activeElement !== $("volume")) $("volume").value = voice.volume;
+  $("listen").textContent = voice.listen === "name" ? "Відповідає лише на ім'я" : "Сам вирішує, чи відповідати";
+  $("pause").textContent = off ? "Увімкнути" : "Пауза"; $("pause").className = off ? "off" : "quiet";
+}
+const turn = (name, value) => api("controls", {method: "POST", body: {part: "voice", name, value}}).then(v => { voice = v; bar(); });
+$("mic").onclick = () => turn("mic", !voice.mic);
+$("speaker").onclick = () => turn("speaker", !voice.speaker);
+$("volume").onchange = () => turn("volume", Number($("volume").value));
+$("listen").onclick = () => turn("listen", voice.listen === "name" ? "judge" : "name");
+$("pause").onclick = () => { const on = !voice.mic && !voice.speaker; turn("mic", on).then(() => turn("speaker", on)); };
+$("stop").onclick = () => api("stop", {method: "POST"});
 const VIA = {voice: "голосом", text: "текстом", screen: ""};
 let writing = null;
 
@@ -112,6 +153,7 @@ function tasks(list, permission) {
 
 const refresh = () => api("state").then(s => {
   $("phase").textContent = PHASES[s.phase] || ""; tasks(s.tasks, s.permission);
+  phase = s.phase; voice = s.controls.voice || null; bar();
   $("hint").textContent = s.parts.inputs.includes("voice")
     ? "Мікрофон увімкнено. Говори як є: він сам вирішує, чи відповідати. «Дока, …» — відповість напевно."
     : "Голос вимкнено: запусти з --voice, щоб говорити.";
@@ -143,7 +185,8 @@ stream.onmessage = m => {
   else if (e.kind === "reply") { writing = writing || line("", "it"); writing.textContent += e.text; $("talk").scrollTop = $("talk").scrollHeight; }
   else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; }
   else if (e.kind === "overheard") line(`почув «${e.text}» — ${e.why === "busy" ? "був зайнятий" : e.why === "chose silence" ? "вирішив не відповідати" : "без імені, не відповідаю"}`, "aside");
-  else if (e.kind === "phase") $("phase").textContent = PHASES[e.phase] || "";
+  else if (e.kind === "phase") { phase = e.phase; $("phase").textContent = PHASES[e.phase] || ""; bar(); }
+  else if (e.kind === "control") refresh();
   else if (e.kind === "screen") screens();
   else if (e.kind === "key") keys();
   if (["task", "permission", "permission_closed"].includes(e.kind)) refresh();

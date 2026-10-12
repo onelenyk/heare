@@ -4,8 +4,8 @@ The built-in page uses exactly this and nothing else — no private door.
 If the page that ships can be built on it, so can the ones a person
 makes for themselves.
 
-Eight groups: messages, events, state, tasks, settings, keys, memory,
-screens. Each is the core's own surface and holds no logic of its own.
+Nine groups: messages, events, state, controls, tasks, settings, keys,
+memory, screens. Each is the core's own surface and holds no logic of its own.
 
 A key can be written here and can never be read back: a screen a model
 drew may save a token, and cannot fetch one.
@@ -147,7 +147,26 @@ def build(core: Core, settings: Any) -> web.Application:
         return response
 
     async def state(request: web.Request) -> web.Response:
-        return web.json_response(core.state.snapshot())
+        return web.json_response({**core.state.snapshot(), "controls": core.controls()})
+
+    # -- controls ---------------------------------------------------------
+
+    async def controls(request: web.Request) -> web.Response:
+        return web.json_response(core.controls())
+
+    async def control(request: web.Request) -> web.Response:
+        data = await body(request)
+        try:
+            now = core.control(str(data.get("part", "")), str(data.get("name", "")),
+                               data.get("value"))
+        except KeyError:
+            raise web.HTTPNotFound(text="no such control") from None
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from None
+        return web.json_response(now)
+
+    async def stop(request: web.Request) -> web.Response:
+        return web.json_response({"tasks_stopped": await core.halt()})
 
     # -- tasks ------------------------------------------------------------
 
@@ -245,6 +264,9 @@ def build(core: Core, settings: Any) -> web.Application:
         web.post("/api/message", message),
         web.get("/api/events", events),
         web.get("/api/state", state),
+        web.get("/api/controls", controls),
+        web.post("/api/controls", control),
+        web.post("/api/stop", stop),
         web.get("/api/tasks", tasks),
         web.post("/api/tasks", start_task),
         web.post("/api/tasks/{id:\\d+}/stop", stop_task),

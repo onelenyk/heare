@@ -216,3 +216,65 @@ async def test_a_model_that_returns_no_page_is_said_plainly(tmp_path):
     assert any(e.kind == "cannot" for e in room.core.state.journal)
     assert await (await client.get("/api/screens", headers=auth)).json() == []
     await _close(room, client)
+
+
+class _Dials:
+    """An output with controls, the way the voice has them."""
+
+    name = "voice"
+    abilities: frozenset[str] = frozenset()
+    speaking = False
+
+    def __init__(self):
+        self.controls = {"mic": True, "speaker": True, "volume": 1.0}
+
+    def set_control(self, name, value):
+        if name == "volume":
+            value = max(0.0, min(1.0, float(value)))
+        self.controls[name] = value
+
+    async def say(self, pieces):
+        async for _ in pieces:
+            pass
+        return "done"
+
+    def pause(self): ...
+    def resume(self): ...
+    def stop(self): ...
+
+
+async def test_controls_are_listed_turned_and_announced(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    room.core.add_output(_Dials())
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert state["controls"] == {"voice": {"mic": True, "speaker": True, "volume": 1.0}}
+    events = room.core.state.subscribe()
+    turned = await client.post(
+        "/api/controls", json={"part": "voice", "name": "mic", "value": False}, headers=auth
+    )
+    assert (await turned.json())["mic"] is False
+    loud = await client.post(
+        "/api/controls", json={"part": "voice", "name": "volume", "value": 7}, headers=auth
+    )
+    assert (await loud.json())["volume"] == 1.0
+    assert [e.kind for e in (events.get_nowait(), events.get_nowait())] == ["control"] * 2
+    missing = await client.post(
+        "/api/controls", json={"part": "voice", "name": "warp", "value": 1}, headers=auth
+    )
+    assert missing.status == 404
+    await _close(room, client)
+
+
+async def test_the_stop_button_ends_the_reply_and_the_work_without_a_word(tmp_path):
+    room, client, auth, _ = await _open(tmp_path, slow=0.05)
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.core.delegate("довга справа")
+    room.model.will_say("Дуже довга відповідь, якої ніхто не дослухає до кінця.")
+    room.says("Розкажи щось")
+    await room.until(lambda: room.page.speaking and worker.tasks)
+    stopped = await (await client.post("/api/stop", headers=auth)).json()
+    assert stopped == {"tasks_stopped": 1}
+    await room.settled()
+    assert room.page.outcomes == ["stopped"] and worker.stopped == 1
+    await _close(room, client)

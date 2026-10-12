@@ -177,6 +177,43 @@ class Core:
         self.executors[part.name] = part
         self.state.parts["executors"] = sorted(self.executors)
 
+    # -- controls ---------------------------------------------------------
+
+    def controls(self) -> dict[str, dict]:
+        """Every switch and dial the attached parts have, by part. The
+        core does not know what a microphone is; a part that has controls
+        says so, and the core only passes them along."""
+        found: dict[str, dict] = {}
+        for part in (*self.inputs.values(), *self.outputs.values(),
+                     *self.executors.values()):
+            own = getattr(part, "controls", None)
+            if own is not None:
+                found[part.name] = dict(own)
+        return found
+
+    def control(self, part: str, name: str, value) -> dict:
+        """Turn one of them. Raises KeyError for a part or a control that
+        does not exist, ValueError for a value it cannot take."""
+        for group in (self.inputs, self.outputs, self.executors):
+            target = group.get(part)
+            if target is not None and hasattr(target, "set_control"):
+                if name not in target.controls:
+                    raise KeyError(name)
+                target.set_control(name, value)
+                self.state.emit("control", part=part, name=name,
+                                value=target.controls[name])
+                return dict(target.controls)
+        raise KeyError(part)
+
+    async def halt(self) -> int:
+        """Stop the reply and all work, now, without a word: the button's
+        «стоп». Returns how many tasks were called off."""
+        await self._interrupt()
+        called_off = self.stop_all()
+        self.state.emit("halted", tasks=called_off)
+        self._refresh()
+        return called_off
+
     # -- running ----------------------------------------------------------
 
     async def run(self) -> None:

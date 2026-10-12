@@ -90,6 +90,37 @@ class Voice:
         assistant speaks, which is what lets the person cut in."""
         return self.aec is not None and bool(getattr(self.aec, "active", False))
 
+    # -- controls ---------------------------------------------------------
+
+    @property
+    def controls(self) -> dict:
+        device = self.device
+        return {
+            "mic": not getattr(device, "mute_input_user", False),
+            "speaker": not getattr(device, "mute_output_user", False),
+            "volume": float(getattr(device, "output_volume", 1.0)),
+            # "judge": decides for itself about speech without the name;
+            # "name": answers only when called.
+            "listen": _or(self.settings, "listen", "judge"),
+        }
+
+    def set_control(self, name: str, value) -> None:
+        device = self.device
+        if name == "mic":
+            device.mute_input_user = not bool(value)
+        elif name == "speaker":
+            device.mute_output_user = not bool(value)
+            if not value:
+                self.stop()  # muted means silent now, not after this sentence
+        elif name == "volume":
+            device.output_volume = max(0.0, min(1.0, float(value)))
+        elif name == "listen":
+            if value not in ("judge", "name"):
+                raise ValueError("listen is «judge» or «name»")
+            self.settings.set("listen", value)
+        else:
+            raise KeyError(name)
+
     # -- input ------------------------------------------------------------
 
     async def run(self, port: Port) -> None:

@@ -22,7 +22,10 @@ API = """\
 The page is served by the assistant and may call its API. Every request
 needs the header "X-Heare-Token": window.HEARE_TOKEN (already defined).
 
-GET  /api/state            -> {phase, parts:{inputs,outputs,executors}, tasks:[...], permission}
+GET  /api/state            -> {phase: idle|hearing|thinking|speaking, parts:{inputs,outputs,executors}, tasks:[...], permission, controls}
+GET  /api/controls         -> {part: {name: value}}, e.g. {"voice": {"mic": true, "speaker": true, "volume": 1.0, "listen": "judge"}}
+POST /api/controls         {part, name, value}   turn one (mic/speaker: bool, volume: 0..1, listen: "judge"|"name")
+POST /api/stop                              stop the reply and all work now
 GET  /api/tasks            -> [{id, request, executor, status, step, result, started, ended}]
 POST /api/tasks            {request}        start a piece of work
 POST /api/tasks/{id}/stop                   stop it
