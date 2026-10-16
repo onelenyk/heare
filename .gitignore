@@ -4,6 +4,9 @@
 .omc/state/
 .omc/sessions/
 .claude/
+# opencode — personal agent config, like .claude/
+.opencode/
+opencode.json
 __pycache__/
 *.pyc
 *.pyo
