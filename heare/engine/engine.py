@@ -23,56 +23,104 @@ WORK_NEWS_S = 2 * 3600
 # doing and is not.
 _WORTH_TELLING = {"done": "task_done", "failed": "task_failed"}
 
+# The least it says two things in a row. It grows bolder when the person
+# answers and waits longer when nobody does — trust, earned and lost.
+BASE_GAP_S = 4 * 60.0
+MIN_GAP_S = 60.0
+MAX_GAP_S = 30 * 60.0
+# A reply within this long of a remark counts as the person listening to it.
+ANSWERED_S = 90.0
+BOLDER = 0.6
+SHYER = 1.5
+
 
 class Engine:
-    """Watches the core's events; holds an intent when one means something."""
+    """Watches the core's events; holds intents, and tells them at a good moment."""
 
     def __init__(self, intents: Intents, *, state: Any = None,
-                 speak: Any = None, now=time.time) -> None:
+                 speak: Any = None, gap: float = BASE_GAP_S,
+                 now=time.time) -> None:
         self._intents = intents
         self._state = state
         self._speak = speak
         self._now = now
+        self._gap_s = gap
+        self._ready_at: float | None = None
+        self._last_spoke: float | None = None
+        self._answered = True
 
     def note(self, event: Any) -> None:
         """One event from the core: hold what it means, then deliver what is due."""
-        if getattr(event, "kind", "") != "task":
-            self._deliver_due()
-            return
+        kind = getattr(event, "kind", "")
+        if kind == "heard":
+            self._the_person_spoke()
+        elif kind == "task":
+            self._hold(event)
+        self._deliver_due()
+
+    def _hold(self, event: Any) -> None:
         data = event.data
         why = _WORTH_TELLING.get(data.get("status", ""))
         news = str(data.get("news") or "").strip()
-        if why is not None and news:
-            self._intents.hold(
-                what=news[:200], why=why, weight=2,
-                about=f"task:{data.get('id')}", until=self._now() + WORK_NEWS_S,
-            )
-        self._deliver_due()
+        if why is None or not news:
+            return
+        self._intents.hold(
+            what=news[:200], why=why, weight=2,
+            about=f"task:{data.get('id')}", until=self._now() + WORK_NEWS_S,
+        )
+
+    def _the_person_spoke(self) -> None:
+        """Spoke right after a remark of mine: that remark was answered."""
+        if self._answered or self._last_spoke is None:
+            return
+        if self._now() - self._last_spoke <= ANSWERED_S:
+            self._answered = True
+            self._gap_s = max(MIN_GAP_S, self._gap_s * BOLDER)
+            self._ready_at = self._last_spoke + self._gap_s
 
     def _deliver_due(self) -> None:
-        """Deliver what is held — but only at a moment that suits."""
+        """Deliver what is held — all of it in one breath — at a moment that suits."""
         if self._speak is None or not self._good_moment():
             return
-        for intent in self._intents.alive(self._now()):
-            self._deliver(intent)
+        due = self._intents.alive(self._now())
+        if due:
+            self._deliver(due)
 
     def _good_moment(self) -> bool:
-        """Present, and not mid-turn: away means it waits.
+        """Not too soon, present, and not mid-turn.
 
-        This is the first cell of the decision table in docs/engine.md §3.5.
-        The rest — music, a late hour, the three ways — grows from here (D4).
+        This is the decision table of docs/engine.md §3.5 as far as it goes:
+        away means it waits, mid-turn means it waits, and the gap since the
+        last remark widens when remarks go unanswered. The ways — writing
+        instead of saying — need a second body, and come later.
         """
+        if self._ready_at is not None and self._now() < self._ready_at:
+            return False
         if self._state is None:
             return True
         if not getattr(self._state, "around", {}).get("present", True):
             return False
         return getattr(self._state, "phase", "idle") == "idle"
 
-    def _deliver(self, intent: Intent) -> None:
-        """Hand it to the conversation; the core says it at a quiet moment."""
-        self._speak(Message(text=f"{RESULT_PREFIX}{intent.what}",
+    def _deliver(self, intents: list[Intent]) -> None:
+        """One message for all of them; the core says it at a quiet moment.
+
+        Three pieces of work finished while you were away are one remark,
+        not three — told apart in one breath instead of minutes apart.
+        """
+        news = "\n".join(f"— {i.what}" for i in intents)
+        self._speak(Message(text=f"{RESULT_PREFIX}\n{news}",
                             channel="engine", person=False))
-        self._intents.done(intent)
+        now = self._now()
+        if (self._last_spoke is not None and not self._answered
+                and now - self._last_spoke > ANSWERED_S):
+            # The last remark went unanswered: wait longer before the next.
+            self._gap_s = min(MAX_GAP_S, self._gap_s * SHYER)
+        for intent in intents:
+            self._intents.done(intent)
+        self._last_spoke = now
+        self._ready_at = now + self._gap_s
+        self._answered = False
 
     async def run(self) -> None:
         """Read the core's events until cancelled."""

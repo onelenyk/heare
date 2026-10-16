@@ -103,3 +103,36 @@ def test_it_waits_while_the_brain_is_mid_turn(tmp_path):
     state.phase = "idle"
     motor.note(Ev("phase", {}))
     assert len(said) == 1
+
+
+def test_several_finished_tasks_are_told_in_one_breath(tmp_path):
+    store = Intents(tmp_path / "intents.json")
+    said: list = []
+    state = State(around={"present": False})
+    motor = Engine(store, state=state, speak=said.append, now=lambda: 100.0)
+
+    motor.note(event("done", id=1, news="Перше готове."))
+    motor.note(event("done", id=2, news="Друге готове."))
+    assert said == []  # away: both kept
+
+    state.around = {"present": True}
+    motor.note(Ev("around", {}))
+    assert len(said) == 1  # one remark, not two
+    assert "Перше готове." in said[0].text and "Друге готове." in said[0].text
+
+
+def test_an_answered_remark_makes_the_next_one_sooner(tmp_path):
+    store = Intents(tmp_path / "intents.json")
+    said: list = []
+    clock = {"t": 0.0}
+    motor = Engine(store, speak=said.append, now=lambda: clock["t"])
+
+    motor.note(event("done", id=1, news="Перше"))  # told at t=0
+    motor.note(event("done", id=2, news="Друге"))
+    assert len(said) == 1  # too soon: held
+
+    clock["t"] = 10.0
+    motor.note(Ev("heard", {"text": "дякую"}))  # answered, so it grows bolder
+    clock["t"] = 200.0
+    motor.note(Ev("phase", {}))
+    assert len(said) == 2  # sooner than the base gap of four minutes
