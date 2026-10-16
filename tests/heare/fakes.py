@@ -218,8 +218,8 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
     # Delivery is the engine's now: a scenario that expects a result to come
     # back needs the engine running, exactly as the app runs it.
     motor = Engine(Intents(Path(tempfile.mkdtemp()) / "intents.json"),
-                   speak=core.hear)
+                   state=core.state, speak=core.hear)
     room._run = asyncio.create_task(core.run())
-    room._motor = asyncio.create_task(motor.run(core.state))
+    room._motor = asyncio.create_task(motor.run())
     await asyncio.sleep(0.01)
     return room

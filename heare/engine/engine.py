@@ -27,42 +27,57 @@ _WORTH_TELLING = {"done": "task_done", "failed": "task_failed"}
 class Engine:
     """Watches the core's events; holds an intent when one means something."""
 
-    def __init__(self, intents: Intents, *, speak: Any = None,
-                 now=time.time) -> None:
+    def __init__(self, intents: Intents, *, state: Any = None,
+                 speak: Any = None, now=time.time) -> None:
         self._intents = intents
+        self._state = state
         self._speak = speak
         self._now = now
 
     def note(self, event: Any) -> None:
-        """One event from the core: hold an intent if it means something."""
+        """One event from the core: hold what it means, then deliver what is due."""
         if getattr(event, "kind", "") != "task":
+            self._deliver_due()
             return
         data = event.data
         why = _WORTH_TELLING.get(data.get("status", ""))
         news = str(data.get("news") or "").strip()
-        if why is None or not news:
+        if why is not None and news:
+            self._intents.hold(
+                what=news[:200], why=why, weight=2,
+                about=f"task:{data.get('id')}", until=self._now() + WORK_NEWS_S,
+            )
+        self._deliver_due()
+
+    def _deliver_due(self) -> None:
+        """Deliver what is held — but only at a moment that suits."""
+        if self._speak is None or not self._good_moment():
             return
-        intent = self._intents.hold(
-            what=news[:200], why=why, weight=2,
-            about=f"task:{data.get('id')}", until=self._now() + WORK_NEWS_S,
-        )
-        self._deliver(intent)
+        for intent in self._intents.alive(self._now()):
+            self._deliver(intent)
+
+    def _good_moment(self) -> bool:
+        """Present, and not mid-turn: away means it waits.
+
+        This is the first cell of the decision table in docs/engine.md §3.5.
+        The rest — music, a late hour, the three ways — grows from here (D4).
+        """
+        if self._state is None:
+            return True
+        if not getattr(self._state, "around", {}).get("present", True):
+            return False
+        return getattr(self._state, "phase", "idle") == "idle"
 
     def _deliver(self, intent: Intent) -> None:
-        """Hand it to the conversation; the core says it at a quiet moment.
-
-        This is all of delivery for now — no moments, no three ways, which
-        are D4. Here the engine only stops being silent about work that has
-        ended, which the core used to do on its own.
-        """
-        if self._speak is None:
-            return
+        """Hand it to the conversation; the core says it at a quiet moment."""
         self._speak(Message(text=f"{RESULT_PREFIX}{intent.what}",
                             channel="engine", person=False))
         self._intents.done(intent)
 
-    async def run(self, state: Any) -> None:
+    async def run(self) -> None:
         """Read the core's events until cancelled."""
-        reader = state.subscribe()
+        if self._state is None:
+            return
+        reader = self._state.subscribe()
         while True:
             self.note(await reader.get())

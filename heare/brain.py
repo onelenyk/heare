@@ -70,7 +70,7 @@ class Brain:
         for agent in connect(self.settings):
             self.core.add_executor(agent)
         self.engine = Engine(Intents(self.settings.intents_path),
-                             speak=self.core.hear)
+                             state=self.core.state, speak=self.core.hear)
         self._runner: Any = None
 
     async def run(self) -> None:
@@ -82,7 +82,7 @@ class Brain:
         )
         print(f"мозок на http://127.0.0.1:{self.settings.api_port}/", file=sys.stderr)
         await asyncio.gather(
-            self.core.run(), self.engine.run(self.core.state)
+            self.core.run(), self.engine.run()
         )
 
 

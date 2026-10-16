@@ -65,7 +65,8 @@ async def _main(args: argparse.Namespace) -> int:
     from heare.engine import Engine, Intents
 
     motor = asyncio.create_task(
-        Engine(Intents(settings.intents_path), speak=core.hear).run(core.state)
+        Engine(Intents(settings.intents_path), state=core.state,
+               speak=core.hear).run()
     )
     try:
         if ended:

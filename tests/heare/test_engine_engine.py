@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from heare.engine import Engine, Intents
 
@@ -69,3 +69,37 @@ def test_with_no_way_to_speak_the_intent_waits(tmp_path):
     store = Intents(tmp_path / "intents.json")
     Engine(store, now=lambda: 100.0).note(event("done"))
     assert [i.why for i in store.alive(now=100.0)] == ["task_done"]
+
+
+@dataclass
+class State:
+    phase: str = "idle"
+    around: dict = field(default_factory=dict)
+
+
+def test_it_waits_while_the_person_is_away(tmp_path):
+    store = Intents(tmp_path / "intents.json")
+    said: list = []
+    state = State(around={"present": False})
+    motor = Engine(store, state=state, speak=said.append, now=lambda: 100.0)
+
+    motor.note(event("done"))
+    assert said == []  # away: it waits
+    assert [i.what for i in store.alive(now=100.0)] == ["Сайт готовий."]
+
+    state.around = {"present": True}
+    motor.note(Ev("around", {}))
+    assert len(said) == 1 and "Сайт готовий." in said[0].text
+
+
+def test_it_waits_while_the_brain_is_mid_turn(tmp_path):
+    store = Intents(tmp_path / "intents.json")
+    said: list = []
+    state = State(phase="speaking")
+    motor = Engine(store, state=state, speak=said.append, now=lambda: 100.0)
+
+    motor.note(event("done"))
+    assert said == []  # mid-reply: it waits
+    state.phase = "idle"
+    motor.note(Ev("phase", {}))
+    assert len(said) == 1
