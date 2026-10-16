@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2] / "heare"
-KNOW_EVERYTHING = {"app", "listener"}
+KNOW_EVERYTHING = {"app", "listener", "brain"}
 LEAVES = {"heare.keys"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part.

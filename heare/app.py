@@ -15,34 +15,14 @@ import asyncio
 import logging
 import sys
 
-from heare import persona
-from heare.language import uk
+from heare.brain import Brain, model_info
 from heare.config import Settings
 from heare.core import Core
 
 
 def build(settings: Settings | None = None) -> Core:
-    """The core with a model, a memory and a character; no channel yet."""
-    from heare.model.chat import Chat
-
-    from heare.memory.book import Book
-
-    settings = settings or Settings()
-    names = persona.names()
-    from heare.model.delegate import Dispatcher
-    from heare.reach.agents import connect
-
-    dispatcher = Dispatcher(settings)
-    core = Core(
-        Chat(settings), memory=Book(settings.db_path, names=sorted(names)),
-        delegator=dispatcher, prompt=persona.prompt, names=names,
-        judge=persona.JUDGE, words=uk,
-    )
-    # Whichever agents this machine has. None is fine: the verb is then
-    # simply not offered, and the assistant only talks and remembers.
-    for agent in connect(settings):
-        core.add_executor(agent)
-    return core
+    """The brain's core, built and returned; no channel yet."""
+    return Brain(settings).core
 
 
 def attach_surroundings(core: Core) -> None:
@@ -53,25 +33,8 @@ def attach_surroundings(core: Core) -> None:
 
 
 def _model(settings: Settings) -> dict:
-    """Which model is answering — and whether it is the one that was
-    chosen. A chosen provider with no key falls back to another, and that
-    must be visible: the old dashboard showed a choice that changed nothing."""
-    from heare.model.llm import resolve_llm
-    from heare.model.providers import PROVIDERS
-
-    wanted = str(settings.llm_provider or "deepseek").lower()
-    logging.getLogger("heare.spine.llm").disabled = True  # asked often; said once elsewhere
-    try:
-        cfg = resolve_llm(settings)
-    except RuntimeError as exc:
-        return {"wanted": wanted, "error": str(exc), "name": persona.name()}
-    finally:
-        logging.getLogger("heare.spine.llm").disabled = False
-    return {
-        "provider": cfg.provider, "model": cfg.model, "wanted": wanted,
-        "fallback": cfg.provider != wanted, "providers": sorted(PROVIDERS),
-        "name": persona.name(),
-    }
+    """Which model is answering; kept as a name the old wiring still reads."""
+    return model_info(settings)
 
 
 async def _main(args: argparse.Namespace) -> int:
@@ -99,6 +62,9 @@ async def _main(args: argparse.Namespace) -> int:
         core.add_output(terminal)
         ended.append(terminal.closed)
     running = asyncio.create_task(core.run())
+    from heare.engine import Engine, Intents
+
+    motor = asyncio.create_task(Engine(Intents(settings.intents_path)).run(core.state))
     try:
         if ended:
             await ended[0].wait()
@@ -109,7 +75,8 @@ async def _main(args: argparse.Namespace) -> int:
             await running
     finally:
         running.cancel()
-        await asyncio.gather(running, return_exceptions=True)
+        motor.cancel()
+        await asyncio.gather(running, motor, return_exceptions=True)
     return 0
 
 
