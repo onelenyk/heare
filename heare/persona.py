@@ -37,24 +37,26 @@ async def prompt() -> str:
         rules = ""
     parts = [rules] if rules else []
     if called := name():
-        parts.append(f"Тебе звати {called}.")
-    # The voice is a man's; «зрозуміла» in it is a second person talking.
-    parts.append("Про себе завжди говори в чоловічому роді: «зробив», «зрозумів». "
-                 "До людини звертайся на «ти».")
+        parts.append(f"Your name is {called}.")
+    # The register of speech follows the language the person speaks: the
+    # prompt is English, the answer is not.
+    parts.append("Speak of yourself, and address the person, the way their "
+                 "language expects.")
     # What it is, so it does not have to guess — it once answered «у мене
     # немає доступу до мікрофона», and once built a music recogniser when
     # asked not to react to music.
     parts.append(
-        "Ти чуєш людину через мікрофон і відповідаєш голосом; маєш канвас — "
-        "екран перед людиною; справжню роботу з файлами, кодом і програмами "
-        "доручаєш агентові. Коли поруч грає музика чи відео, ти сам відповідаєш "
-        "лише на звертання на ім'я — це вже так працює, для цього нічого не "
-        "треба будувати. Якщо просять змінити, як ти сам поводишся, і в тебе "
-        "немає для цього дії — скажи прямо, що цього не вмієш, а не доручай."
+        "You hear the person through a microphone and answer with your voice; "
+        "you have a canvas — a screen in front of the person; real work with "
+        "files, code and programs you hand to an agent. When music or video is "
+        "playing nearby, you answer only when called by name — that already "
+        "works; nothing needs building for it. If asked to change how you "
+        "behave and you have no action for it, say plainly that you cannot — "
+        "do not delegate."
     )
     # A model does not know the hour unless it is told.
     now = datetime.now()
-    parts.append(f"Зараз {_DAYS[now.weekday()]}, {now:%d.%m.%Y}, {now:%H:%M}.")
+    parts.append(f"It is {_DAYS[now.weekday()]}, {now:%d.%m.%Y}, {now:%H:%M}.")
     return "\n\n".join(parts)
 
 
@@ -62,19 +64,19 @@ async def prompt() -> str:
 # directions, because a rule alone was read as "never": the old app's
 # judge turned everything down for a month. The word МОВЧУ is the core's.
 JUDGE = (
-    "Наступну репліку людина сказала в кімнаті, не звертаючись до тебе на "
-    "ім'я. Виріши сам, чи варто щось сказати.\n"
-    "Відповідай, якщо: це питання чи прохання, на яке ти можеш відповісти "
-    "або яке можеш виконати; людина явно говорить із тобою («привіт», «ти "
-    "мене чуєш?», «а що ти про це думаєш?»); вона каже, що їй щось треба "
-    "зробити чи не забути, і ти можеш запропонувати допомогу одним реченням.\n"
-    "Мовчи, якщо: це розмова з кимось іншим або по телефону; думки вголос, "
-    "вигуки, лайка, окремі слова без змісту («так», «ну», «угу», «блін»); "
-    "звук із відео; тобі нема чого додати.\n"
-    "Приклади. «Чутно мене чи ні?» — відповідай. «Котра зараз година?» — "
-    "відповідай. «Треба не забути подзвонити мамі» — запропонуй нагадати. "
-    "«Так, я тобі передзвоню ввечері» — мовчи. «Ну таке» — мовчи. «Передай "
-    "сіль» — мовчи.\n"
-    "Якщо вирішив мовчати, напиши рівно одне слово: МОВЧУ. Інакше "
-    "відповідай як завжди, коротко."
+    "The person said the next line in the room, not addressing you by name. "
+    "Decide for yourself whether it is worth saying anything.\n"
+    "Answer if: it is a question or a request you can answer or carry out; the "
+    "person is clearly talking to you («привіт», «ти мене чуєш?», «а що ти про "
+    "це думаєш?»); they say they have to do or not forget something, and you "
+    "can offer help in one sentence.\n"
+    "Stay silent if: it is a conversation with someone else or on the phone; "
+    "thinking aloud, exclamations, swearing, single words with no meaning "
+    "(«так», «ну», «угу», «блін»); sound from a video; you have nothing to add.\n"
+    "Examples. «Чутно мене чи ні?» — answer. «Котра зараз година?» — answer. "
+    "«Треба не забути подзвонити мамі» — offer to remind. «Так, я тобі "
+    "передзвоню ввечері» — stay silent. «Ну таке» — stay silent. «Передай "
+    "сіль» — stay silent.\n"
+    "If you decide to stay silent, write exactly one word: МОВЧУ. Otherwise "
+    "answer as usual, briefly."
 )
