@@ -11,6 +11,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from heare.core import Message
+from heare.core.conversation import RESULT_PREFIX
+from heare.engine.intent import Intent
 from heare.engine.store import Intents
 
 # A finished piece of work is worth telling for this long, then it is stale.
@@ -24,8 +27,10 @@ _WORTH_TELLING = {"done": "task_done", "failed": "task_failed"}
 class Engine:
     """Watches the core's events; holds an intent when one means something."""
 
-    def __init__(self, intents: Intents, *, now=time.time) -> None:
+    def __init__(self, intents: Intents, *, speak: Any = None,
+                 now=time.time) -> None:
         self._intents = intents
+        self._speak = speak
         self._now = now
 
     def note(self, event: Any) -> None:
@@ -34,13 +39,27 @@ class Engine:
             return
         data = event.data
         why = _WORTH_TELLING.get(data.get("status", ""))
-        if why is None:
+        news = str(data.get("news") or "").strip()
+        if why is None or not news:
             return
-        what = (data.get("result") or data.get("request") or "справа").strip()
-        self._intents.hold(
-            what=what[:200], why=why, weight=2,
+        intent = self._intents.hold(
+            what=news[:200], why=why, weight=2,
             about=f"task:{data.get('id')}", until=self._now() + WORK_NEWS_S,
         )
+        self._deliver(intent)
+
+    def _deliver(self, intent: Intent) -> None:
+        """Hand it to the conversation; the core says it at a quiet moment.
+
+        This is all of delivery for now — no moments, no three ways, which
+        are D4. Here the engine only stops being silent about work that has
+        ended, which the core used to do on its own.
+        """
+        if self._speak is None:
+            return
+        self._speak(Message(text=f"{RESULT_PREFIX}{intent.what}",
+                            channel="engine", person=False))
+        self._intents.done(intent)
 
     async def run(self, state: Any) -> None:
         """Read the core's events until cancelled."""

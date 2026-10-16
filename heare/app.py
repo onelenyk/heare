@@ -64,7 +64,9 @@ async def _main(args: argparse.Namespace) -> int:
     running = asyncio.create_task(core.run())
     from heare.engine import Engine, Intents
 
-    motor = asyncio.create_task(Engine(Intents(settings.intents_path)).run(core.state))
+    motor = asyncio.create_task(
+        Engine(Intents(settings.intents_path), speak=core.hear).run(core.state)
+    )
     try:
         if ended:
             await ended[0].wait()

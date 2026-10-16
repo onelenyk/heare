@@ -167,6 +167,7 @@ class Room:
     page: Page
     memory: Notebook
     _run: Any = None
+    _motor: Any = None
     extra: dict = field(default_factory=dict)
 
     def says(self, text: str, *, channel: str = "", ms: float | None = None) -> None:
@@ -195,11 +196,18 @@ class Room:
         raise AssertionError("timed out waiting")
 
     async def close(self) -> None:
-        self._run.cancel()
-        await asyncio.gather(self._run, return_exceptions=True)
+        tasks = [self._run] + ([self._motor] if self._motor is not None else [])
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Room:
+    import tempfile
+    from pathlib import Path
+
+    from heare.engine import Engine, Intents
+
     model, line, page = Script(), Line(), Page(slow=slow)
     notebook = Notebook()
     core = Core(model, memory=notebook if memory else None,
@@ -207,6 +215,11 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
     core.add_input(line)
     core.add_output(page)
     room = Room(core, model, line, page, notebook)
+    # Delivery is the engine's now: a scenario that expects a result to come
+    # back needs the engine running, exactly as the app runs it.
+    motor = Engine(Intents(Path(tempfile.mkdtemp()) / "intents.json"),
+                   speak=core.hear)
     room._run = asyncio.create_task(core.run())
+    room._motor = asyncio.create_task(motor.run(core.state))
     await asyncio.sleep(0.01)
     return room

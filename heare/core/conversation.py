@@ -792,13 +792,12 @@ class Core:
             task.status = "done"
         except asyncio.CancelledError:
             task.status = "stopped"
+            task.ended = time.time()
+            self.state.emit("task", **task.view())
             raise
         except Exception as exc:  # failed work must still be reported
             logger.exception("task %d failed: %.120s", task.id, task.request)
             task.status, task.result = "failed", f"Не вдалося: {exc}"
-        finally:
-            task.ended = time.time()
-            self.state.emit("task", **task.view())
         try:
             news = await self.delegator.brief(task)
         except Exception:
@@ -808,9 +807,11 @@ class Core:
         # label, two arriving out of order cannot be told apart without.
         others = any(t.status == "running" for t in self.state.tasks.values())
         tag = f" [{task.request[:40]}]" if others else ""
-        self.hear(Message(
-            text=f"{RESULT_PREFIX}{tag} {news}", channel=task.executor, person=False,
-        ))
+        task.ended = time.time()
+        # The engine delivers it: the core says only that a piece of work
+        # ended and what came of it, and never puts it into the conversation
+        # itself. Delivery is the engine's job now — see docs/engine.md, D3.
+        self.state.emit("task", **task.view(), news=f"{tag} {news}".strip())
 
     def stop_task(self, task_id: int) -> bool:
         job = self._jobs.get(task_id)

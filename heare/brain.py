@@ -69,7 +69,8 @@ class Brain:
         # simply not offered, and the brain only talks and remembers.
         for agent in connect(self.settings):
             self.core.add_executor(agent)
-        self.engine = Engine(Intents(self.settings.intents_path))
+        self.engine = Engine(Intents(self.settings.intents_path),
+                             speak=self.core.hear)
         self._runner: Any = None
 
     async def run(self) -> None:
