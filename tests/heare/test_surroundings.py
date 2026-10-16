@@ -69,9 +69,11 @@ async def test_a_gap_between_two_tracks_is_not_silence():
 
     class Port:
         def note(self, key, value):
-            told.append((key, list(value)))
+            if key == "playing":
+                told.append((key, list(value)))
 
-    watch = Surroundings(sense=lambda: next(heard, []))
+    watch = Surroundings(playing=lambda: next(heard, []), front=lambda: "",
+                         idle=lambda: 0.0)
     import heare.surroundings.watch as module
 
     module.EVERY_S, was = 0.01, module.EVERY_S
@@ -84,6 +86,31 @@ async def test_a_gap_between_two_tracks_is_not_silence():
     finally:
         module.EVERY_S, module.QUIET_AFTER_S = was, quiet
     assert told == [("playing", ["Music"]), ("playing", [])]
+
+
+async def test_it_reports_the_app_and_whether_the_person_is_present():
+    told: list = []
+
+    class Port:
+        def note(self, key, value):
+            told.append((key, value))
+
+    watch = Surroundings(playing=lambda: [], front=lambda: "Cursor",
+                         idle=lambda: 5.0)
+    import heare.surroundings.watch as module
+
+    was = module.EVERY_S
+    module.EVERY_S = 0.01
+    try:
+        run = asyncio.create_task(watch.run(Port()))
+        await asyncio.sleep(0.05)
+        run.cancel()
+        await asyncio.gather(run, return_exceptions=True)
+    finally:
+        module.EVERY_S = was
+    reported = dict(told)
+    assert reported["app"] == "Cursor"
+    assert reported["present"] is True
 
 
 async def test_a_drawing_request_is_not_swallowed_by_the_rule():
