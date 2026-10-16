@@ -10,6 +10,8 @@ For now only the intent — step D1.
 
 from __future__ import annotations
 
+from heare.engine.engine import Engine
 from heare.engine.intent import Intent
+from heare.engine.store import Intents
 
-__all__ = ["Intent"]
+__all__ = ["Engine", "Intent", "Intents"]
