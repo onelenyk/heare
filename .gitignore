@@ -39,3 +39,6 @@ coverage.xml
 desktop/
 target/
 node_modules/
+
+# Agent tooling artifacts: kept on disk, not in the repo
+.omc/
