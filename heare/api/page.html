@@ -376,18 +376,19 @@ function tasks(list, permission) {
 
 /* ── the parts that connect to the brain ── */
 const FORM = {input: "вхід", output: "вихід", executor: "виконавець"};
+const PART_LABEL = {web: "сторінка", eyes: "очі", text: "чат", voice: "голос", opencode: "руки"};
 const PART_STATE = {pending: "чекає", approved: "під'єднано", rejected: "відхилено", expired: "не дочекався"};
 const PART_ORDER = {pending: 0, approved: 1, rejected: 2, expired: 3};
 
 function partCard(pid, b) {
   if (b.state === "rejected" || b.state === "expired") {
     const gone = el("div", "part gone");
-    gone.append(el("b", "", b.channel || pid), el("span", "", "· " + (PART_STATE[b.state] || b.state)));
+    gone.append(el("b", "", PART_LABEL[b.channel] || b.channel || pid), el("span", "", "· " + (PART_STATE[b.state] || b.state)));
     return gone;
   }
   const card = el("div", "part" + (b.state === "pending" ? " wait" : ""));
   const top = el("div", "part-top");
-  top.append(el("b", "part-name", b.channel || pid), el("span", "part-state", PART_STATE[b.state] || b.state));
+  top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid), el("span", "part-state", PART_STATE[b.state] || b.state));
   card.append(top);
   if (b.about) card.append(el("p", "about", b.about));
   if (b.forms && b.forms.length) {
