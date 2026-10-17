@@ -18,6 +18,7 @@ from pathlib import Path
 
 import httpx
 
+from heare import part
 from heare.config import Settings
 from heare.core import Message
 from heare.surroundings.watch import Surroundings
@@ -25,6 +26,10 @@ from heare.surroundings.watch import Surroundings
 logger = logging.getLogger("heare.eyes")
 
 ABOUT = "очі: застосунок, простій, чи щось грає"
+UI = [
+    {"name": "looking", "kind": "toggle", "label": "Дивитись", "value": True},
+    {"name": "sees", "kind": "label", "label": "Бачить", "value": "тихо"},
+]
 
 
 def _token(settings: Settings) -> str:
@@ -43,9 +48,29 @@ class Door:
     def __init__(self, client: httpx.AsyncClient, base: str) -> None:
         self._client, self._base = client, base
         self._sending: set[asyncio.Task] = set()
+        self.looking = True
+        self.sees = "тихо"
+
+    def values(self) -> dict:
+        return {"looking": self.looking, "sees": self.sees}
+
+    def event(self, event: dict) -> None:
+        if event.get("kind") == "control" and event.get("name") == "looking":
+            self.looking = bool(event.get("value"))
+            self.tell()
+
+    def tell(self) -> None:
+        task = asyncio.create_task(
+            part.report(self._client, self._base, self.name, self.values()))
+        self._sending.add(task)
+        task.add_done_callback(self._sending.discard)
 
     def note(self, key: str, value: object) -> None:
         """Post the fact without waiting: a sensor must not stall the loop."""
+        if not self.looking:
+            return
+        if key == "app":
+            self.sees = str(value or "тихо")
         task = asyncio.create_task(self._post(key, value))
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)
@@ -58,6 +83,8 @@ class Door:
             answer.raise_for_status()
         except httpx.HTTPError as exc:
             logger.warning("could not tell the brain about %s: %s", key, exc)
+        if key == "app":
+            self.tell()
 
     async def settle(self) -> None:
         """Wait for every note already posted to reach the door."""
@@ -94,7 +121,7 @@ async def run() -> int:
         try:
             answer = (await client.post(f"{base}/api/bodies", json={
                 "channel": "eyes", "forms": ["input"], "about": ABOUT,
-                "key": f"eyes@{host}", "host": host,
+                "key": f"eyes@{host}", "host": host, "ui": UI,
             })).json()
         except httpx.HTTPError as exc:
             print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
@@ -105,9 +132,13 @@ async def run() -> int:
             return 1
         print("очі: дивлюсь навколо", file=sys.stderr)
         door = Door(client, base)
+        await part.report(client, base, "eyes", door.values())
+        following = asyncio.create_task(part.follow(base, secret, "eyes", door.event))
         try:
-            await Surroundings().run(door)
+            await Surroundings().run(door, gate=lambda: door.looking)
         finally:
+            following.cancel()
+            await asyncio.gather(following, return_exceptions=True)
             await door.settle()
     return 0
 

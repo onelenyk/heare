@@ -325,6 +325,7 @@ const NOW = {idle: "чекає", hearing: "слухає тебе", thinking: "д
 const VIA = {voice: "голосом", text: "текстом", screen: ""};
 const WHY = {busy: "був зайнятий", "chose silence": "вирішив не відповідати", playing: "щось грає, а звертання не було"};
 let voice = null, phase = "idle", state = null, writing = null, askedAt = null;
+let aloud = localStorage.getItem("heare.aloud") === "1", webPid = null;
 const speeds = [];
 
 /* ── the conversation ── */
@@ -523,6 +524,8 @@ const refresh = () => api("state").then(s => {
   if (born && s.session.started !== born) return location.reload();
   born = s.session.started;
   state = s; phase = s.phase; voice = voiceOf(s);
+  const web = Object.entries(s.bodies || {}).find(([, b]) => b.channel === "web");
+  webPid = web ? web[0] : null;
   show(); vitals(s); tasks(s.tasks, s.permission); parts(s.bodies);
 });
 
@@ -827,7 +830,13 @@ function drawn(e) {
 api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
 // The page is a body too: it knocks so the person sees it among the parts,
 // and knocks again whenever its stream reconnects (a brain restarted).
-const knock = () => api("bodies", {method: "POST", body: {channel: "web", forms: ["input", "output"], about: "сторінка в браузері"}}).catch(() => {});
+const knock = () => api("bodies", {method: "POST", body: {
+  channel: "web", forms: ["input", "output"], about: "сторінка в браузері",
+  ui: [
+    {name: "aloud", kind: "toggle", label: "Чути відповідь", value: aloud},
+    {name: "state", kind: "label", label: "Стан", value: "на зв'язку"},
+  ]}}).then(() => api("input", {method: "POST", body: {
+    kind: "state", channel: "web", values: {aloud}}})).catch(() => {});
 knock();
 $("live").addEventListener("click", ev => {
   const say = ev.target.closest("[data-say]");
@@ -849,7 +858,6 @@ const turn = (part, name, value) => api("controls", {method: "POST", body: {part
 $("stop").onclick = () => api("stop", {method: "POST"}).then(() => aside("зупинено"));
 
 /* ── talking to it, and hearing it back ── */
-let aloud = localStorage.getItem("heare.aloud") === "1";
 const speech = window.speechSynthesis;
 const speak = (text, channel) => {
   if (!aloud || !text || !speech || (channel !== "screen" && channel !== "web")) return;
@@ -858,12 +866,16 @@ const speak = (text, channel) => {
   said.lang = "uk-UA";
   speech.speak(said);
 };
-$("speak").classList.toggle("yes", aloud);
-$("speak").onclick = () => {
-  aloud = !aloud; localStorage.setItem("heare.aloud", aloud ? "1" : "0");
+const setAloud = on => {
+  aloud = !!on;
+  localStorage.setItem("heare.aloud", aloud ? "1" : "0");
   $("speak").classList.toggle("yes", aloud);
   if (!aloud && speech) speech.cancel();
+  if (webPid) api("input", {method: "POST", body: {
+    kind: "state", channel: "web", values: {aloud}}}).catch(() => {});
 };
+$("speak").classList.toggle("yes", aloud);
+$("speak").onclick = () => setAloud(!aloud);
 if (!speech) $("speak").hidden = true;
 
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -934,6 +946,7 @@ stream.onmessage = m => {
   }
   else if (e.kind === "around") refresh();
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
+  else if (e.kind === "control" && e.channel === "web" && e.name === "aloud") setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
 
   if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();

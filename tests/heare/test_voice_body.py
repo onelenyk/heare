@@ -191,7 +191,7 @@ async def test_a_control_from_the_page_is_applied_and_reported():
     assert ears.controls["volume"] == 0.4
     assert seen == [("/api/input", {
         "channel": "voice", "kind": "state",
-        "values": {"mic": True, "volume": 0.4},
+        "values": {"mic": True, "volume": 0.4, "mode": "чує"},
     })]
 
 
@@ -210,7 +210,7 @@ async def test_a_refused_control_still_reports_what_is_true():
     assert ears.controls == {"mic": True, "volume": 1.0}
     assert seen[-1] == ("/api/input", {
         "channel": "voice", "kind": "state",
-        "values": {"mic": True, "volume": 1.0},
+        "values": {"mic": True, "volume": 1.0, "mode": "чує"},
     })
 
 

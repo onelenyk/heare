@@ -5,6 +5,7 @@ whether the person is at the desk."""
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 from heare.core import Port
 from heare.surroundings import sense, sound
@@ -34,10 +35,13 @@ class Surroundings:
             "present": (await asyncio.to_thread(self._idle)) < PRESENT_S,
         }
 
-    async def run(self, port: Port) -> None:
+    async def run(self, port: Port, gate: Callable[[], bool] | None = None) -> None:
         told: dict = {}
         silent_for = 0.0
         while True:
+            if gate is not None and not gate():
+                await asyncio.sleep(EVERY_S)
+                continue
             facts = await self._facts()
             if facts["playing"]:
                 silent_for = 0.0

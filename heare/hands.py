@@ -18,6 +18,7 @@ from pathlib import Path
 
 import httpx
 
+from heare import part
 from heare.config import Settings
 from heare.reach.agents import Agent, installed
 
@@ -60,6 +61,13 @@ async def run() -> int:
         print(f"агента {wanted} немає на PATH", file=sys.stderr)
         return 1
     agent = Agent(known, cwd=settings.executor_cwd or None)
+    ui = [
+        {"name": "taking", "kind": "toggle", "label": "Брати справи",
+         "value": True},
+        {"name": "agent", "kind": "label", "label": "Агент", "value": agent.name},
+        {"name": "work", "kind": "label", "label": "Стан", "value": "чекає"},
+    ]
+    values = {"taking": True, "agent": agent.name, "work": "чекає"}
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
         host = socket.gethostname()
@@ -67,32 +75,55 @@ async def run() -> int:
               file=sys.stderr)
         registration = await client.post(f"{base}/api/bodies", json={
             "channel": agent.name, "forms": ["executor"], "about": agent.about,
-            "key": f"{agent.name}@{host}", "host": host})
+            "key": f"{agent.name}@{host}", "host": host, "ui": ui})
         answer = registration.json()
         if not answer.get("approved"):
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
                   file=sys.stderr)
             return 1
         print(f"руки: {agent.name}", file=sys.stderr)
-        while True:
-            claim = await client.post(f"{base}/api/executor/claim",
-                                      json={"name": agent.name})
-            task = claim.json() if claim.status_code == 200 else {}
-            if not task or "id" not in task:
-                continue
-            print(f"взято {task['id']}: {task['request'][:60]}", file=sys.stderr)
-            desk = RemoteDesk(client, base, task["id"], agent.name)
-            status, result = "done", ""
-            try:
-                result = await agent.run(task["request"], desk)
-            except asyncio.CancelledError:
-                status, result = "stopped", "Зупинено."
-            except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
-                status, result = "failed", str(exc)
-            print(f"готово {task['id']}: {status} {result[:60]}", file=sys.stderr)
-            await client.post(
-                f"{base}/api/executor/{task['id']}/result?name={agent.name}",
-                json={"status": status, "result": result})
+
+        def on_control(event: dict) -> None:
+            if event.get("kind") == "control" and event.get("name") == "taking":
+                values["taking"] = bool(event.get("value"))
+                asyncio.create_task(
+                    part.report(client, base, agent.name, values))
+
+        await part.report(client, base, agent.name, values)
+        following = asyncio.create_task(
+            part.follow(base, secret, agent.name, on_control))
+        try:
+            while True:
+                if not values["taking"]:
+                    await asyncio.sleep(1.0)
+                    continue
+                claim = await client.post(f"{base}/api/executor/claim",
+                                          json={"name": agent.name})
+                task = claim.json() if claim.status_code == 200 else {}
+                if not task or "id" not in task:
+                    continue
+                print(f"взято {task['id']}: {task['request'][:60]}",
+                      file=sys.stderr)
+                values["work"] = f"роблю #{task['id']}"
+                await part.report(client, base, agent.name, values)
+                desk = RemoteDesk(client, base, task["id"], agent.name)
+                status, result = "done", ""
+                try:
+                    result = await agent.run(task["request"], desk)
+                except asyncio.CancelledError:
+                    status, result = "stopped", "Зупинено."
+                except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
+                    status, result = "failed", str(exc)
+                print(f"готово {task['id']}: {status} {result[:60]}",
+                      file=sys.stderr)
+                await client.post(
+                    f"{base}/api/executor/{task['id']}/result?name={agent.name}",
+                    json={"status": status, "result": result})
+                values["work"] = "чекає"
+                await part.report(client, base, agent.name, values)
+        finally:
+            following.cancel()
+            await asyncio.gather(following, return_exceptions=True)
 
 
 def main() -> int:

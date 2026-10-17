@@ -19,8 +19,14 @@ from pathlib import Path
 
 import httpx
 
-from heare import persona
+from heare import part, persona
 from heare.config import Settings
+
+UI = [
+    {"name": "printing", "kind": "toggle", "label": "Друкувати", "value": True},
+    {"name": "state", "kind": "label", "label": "Стан",
+     "value": "слухає термінал"},
+]
 
 
 def _token(settings: Settings) -> str:
@@ -35,11 +41,22 @@ def _show(event: dict, name: str) -> None:
         print(f"  ({event.get('why') or event['kind']})", flush=True)
 
 
-async def _print_events(client: httpx.AsyncClient, base: str, name: str) -> None:
+async def _print_events(client: httpx.AsyncClient, base: str, name: str,
+                        values: dict) -> None:
     async with client.stream("GET", f"{base}/api/events") as response:
         async for line in response.aiter_lines():
-            if line.startswith("data: "):
-                _show(json.loads(line[6:]), name)
+            if not line.startswith("data: "):
+                continue
+            event = json.loads(line[6:])
+            if event.get("kind") == "control" and event.get("channel") == "text":
+                if event.get("name") == "printing":
+                    values["printing"] = bool(event.get("value"))
+                    values["state"] = ("слухає термінал" if values["printing"]
+                                       else "мовчить")
+                    await part.report(client, base, "text", values)
+                continue
+            if values["printing"]:
+                _show(event, name)
 
 
 def _line() -> str | None:
@@ -88,6 +105,7 @@ async def run() -> int:
             answer = (await client.post(f"{base}/api/bodies", json={
                 "channel": "text", "forms": ["input", "output"],
                 "about": "чат у терміналі", "key": f"text@{host}", "host": host,
+                "ui": UI,
             })).json()
         except httpx.HTTPError as exc:
             print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
@@ -96,7 +114,9 @@ async def run() -> int:
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
                   file=sys.stderr)
             return 1
-        printer = asyncio.create_task(_print_events(client, base, name))
+        values = {"printing": True, "state": "слухає термінал"}
+        await part.report(client, base, "text", values)
+        printer = asyncio.create_task(_print_events(client, base, name, values))
         try:
             await _typed(client, base)
         finally:

@@ -40,7 +40,15 @@ UI = [
     {"name": "listen", "kind": "choice", "label": "Відповідає", "value": "judge",
      "options": [{"value": "judge", "label": "сам вирішує"},
                  {"value": "name", "label": "лише на ім'я"}]},
+    {"name": "mode", "kind": "label", "label": "Стан", "value": "чує"},
 ]
+
+
+def values_of(voice: Voice) -> dict:
+    """The controls' present worth, with the one line a person reads first."""
+    values = dict(voice.controls)
+    values["mode"] = "чує" if values.get("mic") else "на паузі"
+    return values
 
 
 def _token(settings: Settings) -> str:
@@ -184,7 +192,7 @@ class _Speaker:
         except (KeyError, ValueError, TypeError) as exc:
             logger.warning("the voice refused %r: %s", name, exc)
         if self._port is not None:
-            self._port.state(self._voice.controls)
+            self._port.state(values_of(self._voice))
 
     async def cancel(self) -> None:
         reply, self._reply = self._reply, None
@@ -225,7 +233,7 @@ async def _live(settings: Settings, base: str, secret: str,
                 client: httpx.Client) -> int:
     voice = await open_voice(settings)
     port = HttpPort(client, base)
-    port.state(voice.controls)
+    port.state(values_of(voice))
     speaker = _Speaker(voice, port)
     listening = asyncio.create_task(voice.run(port))
     headers = {"X-Heare-Token": secret}
