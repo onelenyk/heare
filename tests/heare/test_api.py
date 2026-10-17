@@ -68,6 +68,23 @@ async def test_a_voice_body_talks_to_the_core_over_the_door(tmp_path):
     await _close(room, client)
 
 
+async def test_a_note_updates_the_surroundings_and_is_announced(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    events = room.core.state.subscribe()
+    answered = await client.post("/api/input", json={
+        "kind": "note", "channel": "eyes", "key": "playing", "value": ["Music"],
+    }, headers=auth)
+    assert answered.status == 200
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert state["around"]["playing"] == ["Music"]
+    seen = []
+    while not events.empty():
+        seen.append(events.get_nowait())
+    around = [e for e in seen if e.kind == "around"]
+    assert around[-1].data == {"key": "playing", "value": ["Music"]}
+    await _close(room, client)
+
+
 async def test_a_voice_over_the_reply_gets_a_verdict(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     response = await client.post("/api/input/said_over", json={

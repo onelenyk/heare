@@ -323,6 +323,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
             core.port.nothing(channel)
         elif kind == "overheard":
             core.port.overheard(channel, str(data.get("text", "")))
+        elif kind == "note":
+            core.port.note(str(data.get("key", "")), data.get("value"))
         elif kind == "heard":
             text = str(data.get("text", "")).strip()
             if not text:
