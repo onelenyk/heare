@@ -117,6 +117,44 @@ class Tally:
                 "cost_usd": round(self.cost_usd, 6), "unpriced": self.unpriced}
 
 
+class VoiceOut:
+    """The voice body's side of the door: the reply, piece by piece, and the
+    mouth's controls — pause, resume, stop — the body obeys from afar."""
+
+    name = "voice"
+    abilities: frozenset[str] = frozenset({"pause"})
+
+    def __init__(self, core: Core) -> None:
+        self._core = core
+        self._speaking = False
+        self._stop = False
+
+    @property
+    def speaking(self) -> bool:
+        return self._speaking
+
+    async def say(self, pieces: AsyncIterator[str]) -> str:
+        self._speaking, self._stop = True, False
+        try:
+            async for piece in pieces:
+                if self._stop:
+                    return "stopped"
+                self._core.state.emit("reply", channel=self.name, text=piece)
+            return "done"
+        finally:
+            self._speaking = False
+
+    def pause(self) -> None:
+        self._core.state.emit("voice_paused", channel=self.name)
+
+    def resume(self) -> None:
+        self._core.state.emit("voice_resumed", channel=self.name)
+
+    def stop(self) -> None:
+        self._stop = True
+        self._core.state.emit("voice_stopped", channel=self.name)
+
+
 def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen."""
@@ -403,6 +441,7 @@ async def serve(core: Core, settings: Any, vitals: Any = None) -> web.AppRunner:
     from heare.api.canvas import Canvas
 
     core.add_output(Screen(core))
+    core.add_output(VoiceOut(core))
     core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
     runner = web.AppRunner(build(core, settings, vitals))
     await runner.setup()

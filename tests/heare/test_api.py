@@ -7,7 +7,7 @@ import json
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from heare.api.server import Screen, build
+from heare.api.server import Screen, VoiceOut, build
 from heare.config import Settings
 from tests.heare.fakes import Says, Worker, open_room
 
@@ -75,6 +75,23 @@ async def test_a_voice_over_the_reply_gets_a_verdict(tmp_path):
     }, headers=auth)
     assert response.status == 200
     assert isinstance((await response.json())["turn"], bool)
+    await _close(room, client)
+
+
+async def test_the_voice_output_streams_the_reply_as_pieces(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    room.core.add_output(VoiceOut(room.core))
+    events = room.core.state.subscribe()
+    room.model.will_say("Привіт.")
+    await client.post("/api/voice", json={"kind": "heard", "channel": "voice",
+                                          "text": "привіт"}, headers=auth)
+    await room.settled()
+    channels = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "reply":
+            channels.append(event.data["channel"])
+    assert channels and set(channels) == {"voice"}  # the reply went to the voice
     await _close(room, client)
 
 
