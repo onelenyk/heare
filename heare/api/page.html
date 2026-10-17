@@ -80,6 +80,26 @@
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .chip { padding:4px 10px; border:1px solid var(--line); border-radius:999px; background:transparent; cursor:pointer; font-size:11.5px; }
   .chip:hover { border-color:var(--accent); color:var(--accent); }
+  /* ── the parts that connect to the brain ── */
+  #bodies { display:grid; gap:8px; }
+  .host { display:flex; align-items:center; gap:8px; color:var(--soft); font-size:10.5px; margin-top:4px; overflow-wrap:anywhere; }
+  .host:first-child { margin-top:0; }
+  .host::after { content:""; flex:1; height:1px; background:var(--line); }
+  .part { border:1px solid var(--line); border-radius:9px; padding:9px 10px; background:var(--card-2); }
+  .part.wait { border-color:var(--warn); background:rgba(219,182,79,.07); }
+  .part-top { display:flex; align-items:baseline; gap:8px; }
+  .part-name { font-weight:600; overflow-wrap:anywhere; }
+  .part-state { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .part.wait .part-state { color:var(--warn); }
+  .part .about { margin-top:4px; color:var(--soft); font-family:var(--sans); font-size:12.5px; overflow-wrap:anywhere; }
+  .badges { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .badge { padding:1px 7px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:10.5px; }
+  .badge.input { color:var(--info); } .badge.output { color:var(--accent); } .badge.executor { color:var(--ok); }
+  .part .actions { display:flex; gap:6px; margin-top:9px; }
+  .part.gone { display:flex; gap:6px; border:0; padding:2px 0; background:none; color:var(--soft); font-size:11.5px; overflow-wrap:anywhere; }
+  .part.gone b { font-weight:600; }
+  .mini:disabled { opacity:.4; cursor:default; }
+  .mini:disabled:hover { border-color:var(--line); }
   /* ── the conversation: compact, under the panel ── */
   #talkcol { flex:0 0 40%; min-height:240px; display:flex; flex-direction:column; border-top:1px solid var(--line); background:var(--bg); }
   #talk { flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:7px; }
@@ -210,6 +230,11 @@
         <div class="label">Тримаю в голові</div>
         <div id="ask"></div>
         <div id="tasks"><p class="empty">Зараз нічого не роблю.</p></div>
+      </div>
+
+      <div class="block">
+        <div class="label">Частини</div>
+        <div id="bodies"><p class="empty">жодна частина не під'єднана</p></div>
       </div>
     </aside>
 
@@ -347,6 +372,59 @@ function tasks(list, permission) {
   }
 }
 
+/* ── the parts that connect to the brain ── */
+const FORM = {input: "вхід", output: "вихід", executor: "виконавець"};
+const PART_STATE = {pending: "чекає", approved: "під'єднано", rejected: "відхилено", expired: "не дочекався"};
+const PART_ORDER = {pending: 0, approved: 1, rejected: 2, expired: 3};
+
+function partCard(pid, b) {
+  if (b.state === "rejected" || b.state === "expired") {
+    const gone = el("div", "part gone");
+    gone.append(el("b", "", b.channel || pid), el("span", "", "· " + (PART_STATE[b.state] || b.state)));
+    return gone;
+  }
+  const card = el("div", "part" + (b.state === "pending" ? " wait" : ""));
+  const top = el("div", "part-top");
+  top.append(el("b", "part-name", b.channel || pid), el("span", "part-state", PART_STATE[b.state] || b.state));
+  card.append(top);
+  if (b.about) card.append(el("p", "about", b.about));
+  if (b.forms && b.forms.length) {
+    const badges = el("div", "badges");
+    for (const f of b.forms) badges.append(el("span", "badge" + (FORM[f] ? " " + f : ""), FORM[f] || f));
+    card.append(badges);
+  }
+  if (b.state === "pending") {
+    const actions = el("div", "actions"), yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Відхилити");
+    const decide = (what, btn) => {
+      btn.disabled = true;
+      api(`bodies/${encodeURIComponent(pid)}/${what}`, {method: "POST"}).catch(() => { btn.disabled = false; });
+    };
+    yes.onclick = () => decide("approve", yes);
+    no.onclick = () => decide("reject", no);
+    actions.append(yes, no); card.append(actions);
+  }
+  return card;
+}
+
+function parts(map) {
+  const box = $("bodies"), all = Object.entries(map || {});
+  if (!all.length) { box.replaceChildren(el("p", "empty", "жодна частина не під'єднана")); return; }
+  const groups = new Map();
+  for (const [pid, b] of all) {
+    const host = String(b.host || "").trim() || "без хоста";
+    if (!groups.has(host)) groups.set(host, []);
+    groups.get(host).push([pid, b]);
+  }
+  const first = ([, list]) => Math.min(...list.map(([, b]) => PART_ORDER[b.state] ?? 9));
+  const frag = document.createDocumentFragment();
+  for (const [host, list] of [...groups].sort((a, b) => first(a) - first(b))) {
+    frag.append(el("div", "host", host));
+    list.sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
+    for (const [pid, b] of list) frag.append(partCard(pid, b));
+  }
+  box.replaceChildren(frag);
+}
+
 let born = null;
 const refresh = () => api("state").then(s => {
   // The assistant was restarted: this page is from before, and may not
@@ -355,7 +433,7 @@ const refresh = () => api("state").then(s => {
   if (born && s.session.started !== born) return location.reload();
   born = s.session.started;
   state = s; phase = s.phase; voice = s.controls.voice || null;
-  show(); vitals(s); tasks(s.tasks, s.permission);
+  show(); vitals(s); tasks(s.tasks, s.permission); parts(s.bodies);
 });
 
 /* the canvas: one screen of widgets, changed in place */
@@ -501,7 +579,7 @@ stream.onmessage = m => {
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
   else if (e.kind === "canvas") drawn(e);
 
-  if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted"].includes(e.kind)) refresh();
+  if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
 };
 stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = "немає зв'язку з heare"; };
 stream.onopen = () => refresh();
