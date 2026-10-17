@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import logging
+import socket
 import sys
 from pathlib import Path
 
@@ -80,10 +81,20 @@ async def run() -> int:
         return 1
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
+        host = socket.gethostname()
+        print("стучу в мозок… (нова частина чекає на одобрення на сторінці)",
+              file=sys.stderr)
         try:
-            await client.get(f"{base}/api/state")
+            answer = (await client.post(f"{base}/api/bodies", json={
+                "channel": "text", "forms": ["input", "output"],
+                "about": "чат у терміналі", "key": f"text@{host}", "host": host,
+            })).json()
         except httpx.HTTPError as exc:
             print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
+            return 1
+        if not answer.get("approved"):
+            print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
+                  file=sys.stderr)
             return 1
         printer = asyncio.create_task(_print_events(client, base, name))
         try:

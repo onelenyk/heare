@@ -63,6 +63,8 @@ async def run() -> int:
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
         host = socket.gethostname()
+        print("стучу в мозок… (нова частина чекає на одобрення на сторінці)",
+              file=sys.stderr)
         registration = await client.post(f"{base}/api/bodies", json={
             "channel": agent.name, "forms": ["executor"], "about": agent.about,
             "key": f"{agent.name}@{host}", "host": host})

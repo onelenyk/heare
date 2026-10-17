@@ -20,6 +20,7 @@ import asyncio
 import json
 import re
 import secrets
+import socket
 import time
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -270,22 +271,23 @@ def build(core: Core, settings: Any, vitals: Any = None,
         channel = str(data.get("channel") or "").strip()
         if not channel:
             raise web.HTTPBadRequest(text="a part needs a channel")
-        host = str(data.get("host") or "")
-        pid = str(data.get("key") or f"{channel}@{host or '?'}")
+        host = str(data.get("host") or socket.gethostname())
+        pid = str(data.get("key") or f"{channel}@{host}")
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         if pid in trusted():
             attach(pid, channel, forms, about, host, "approved")
             return web.json_response({"approved": True})
         attach(pid, channel, forms, about, host, "pending")
-        waiting[pid] = asyncio.Event()
+        event = waiting.setdefault(pid, asyncio.Event())
         try:
-            await asyncio.wait_for(waiting[pid].wait(), APPROVAL_WAIT_S)
+            await asyncio.wait_for(event.wait(), APPROVAL_WAIT_S)
         except TimeoutError:
             bodies[pid]["state"] = "expired"
             return web.json_response({"approved": False, "why": "ніхто не відповів"})
         finally:
-            waiting.pop(pid, None)
+            if waiting.get(pid) is event:
+                waiting.pop(pid, None)
         if bodies[pid]["state"] != "approved":
             return web.json_response({"approved": False, "why": bodies[pid]["state"]})
         attach(pid, channel, forms, about, host, "approved")
