@@ -4,25 +4,18 @@ version = "0.1.1"
 description = "Proactive ambient voice AI assistant"
 requires-python = ">=3.11"
 dependencies = [
-    # The client the MCP bridge imports. It was never declared, so
-    # src/agent/mcp_bridge.py raised ModuleNotFoundError on every
-    # connection attempt — caught, logged, and indistinguishable from
-    # "no servers configured". The constraint is the one pipecat's [mcp]
-    # extra used, kept after pipecat itself went: we need the client,
-    # not typer.
-    "mcp>=1.11.0,<2",
-    "websockets>=12.0",
-    "edge-tts>=7.0.0",
-    "aiosqlite>=0.20.0",
-    "python-dotenv>=1.0.0",
-    "sounddevice>=0.5.0",
-    "anthropic>=0.40.0",
-    "httpx>=0.27.0",
+    # The app as it stands: the door (aiohttp), reaching the model and the
+    # parts (httpx), one file of memory (aiosqlite), the keys (keyring), and
+    # the voice's own sound path (sounddevice, pywebrtc-audio, numpy) with
+    # its speech (edge-tts).
     "aiohttp>=3.13.5",
-    "pyaudio>=0.2.14",
-    "rumps>=0.4.0",
-    "pywebrtc-audio>=0.1.0",
+    "aiosqlite>=0.20.0",
+    "edge-tts>=7.0.0",
+    "httpx>=0.27.0",
     "keyring>=25.7.0",
+    "numpy>=1.26",
+    "pywebrtc-audio>=0.1.0",
+    "sounddevice>=0.5.0",
 ]
 
 [dependency-groups]
@@ -32,37 +25,24 @@ dev = [
     "pytest-cov>=5.0",
     "mypy>=1.11",
     "ruff>=0.6",
-    # A build tool, not something the app needs in order to run. It was
-    # in the runtime list, which is also how it ended up inside the
-    # bundle it produces.
-    "pyinstaller>=6.20.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-# E2E scenarios drive the whole daemon against real Groq, DeepSeek and
-# Edge endpoints: minutes, not milliseconds, and they cost money. They
-# are excluded here and run deliberately — `make e2e` or `pytest -m e2e`.
-# `e2e` runs by default. It needs no network and no keys — the model is
-# scripted at the module seam — and it costs twelve seconds. Excluded, it
-# would rot: this directory sat empty for weeks with a marker pointing at
-# it, which is the same shape as every other switch nobody read.
-# `spine_live` stays out: that one costs money.
+# `spine_live` leaves the machine — real Edge and DeepSeek, real cost. It is
+# excluded here and run deliberately.
 addopts = "--strict-markers --tb=short -m 'not spine_live'"
 markers = [
-    "e2e: the assembled app — real loop, real engine, real database, scripted model",
-    "e2e_text: from the text of a turn onward — what it decides, says, keeps and hands off",
-    "e2e_voice: up to the text of a turn and the sound after it — mic, VAD, recogniser, echo, barge-in",
-    "spine_live: acceptance tests hitting real Groq/DeepSeek/EdgeTTS",
+    "spine_live: tests that leave the machine and cost money",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning",
 ]
 
 [tool.coverage.run]
-source = ["src"]
-omit = ["*/test_*", "tests/*", ".venv/*", "setup.py", "scripts/setup_directories.py"]
+source = ["heare"]
+omit = ["*/test_*", "tests/*", ".venv/*"]
 
 [tool.coverage.report]
 show_missing = true
@@ -86,4 +66,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src", "heare"]
+packages = ["heare"]

@@ -18,26 +18,16 @@ build/
 *.egg-info/
 .DS_Store
 
-Heare.dmg
-
 # Sisyphus planning
 .sisyphus/
 
 # Playwright MCP artifacts
 .playwright-mcp/
 
-# Pytest temporary artifacts (mock repr files at project root)
-<MagicMock*
-# Stray debug scripts at project root
-/pytest_debug_*.py
-/coverage_report.txt
 htmlcov/
 .coverage
 coverage.xml
 
-# Tauri desktop app (prototype, build artifacts)
-desktop/
-target/
 node_modules/
 
 # Agent tooling artifacts: kept on disk, not in the repo

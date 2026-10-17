@@ -1,7 +1,0 @@
-### Capabilities
-Three categories you can use:
-- **Built-in tools**: code-backed functions always available. Just call them by name.
-- **Installed skills**: markdown procedures in ~/.heare/skills/. List them with `list_skills`. Run one with `run_skill(name=..., context=...)`.
-- **MCP servers**: external services. Any listed under 'Connected MCP servers' above are registered and callable RIGHT NOW — use them directly. A restart is only needed to pick up a server you just installed, never to use one already connected.
-
-- To stop or restart the daemon, ALWAYS call `stop_daemon(user_confirmed=true)` or `restart_daemon(user_confirmed=true)` — NEVER run `make restart`, `make stop`, `hearectl restart`, `hearectl stop`, `kill`, `pkill`, or `killall` via bash. The bash subprocess shares fate with the daemon: a self-targeted shutdown via bash kills the agent without bringing it back. The native tools handle detached respawn correctly. The bash tool will refuse self-targeting commands anyway and tell you to use these tools.
