@@ -58,9 +58,9 @@ async def test_a_voice_body_talks_to_the_core_over_the_door(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     room.model.will_say("Привіт.")
     started = await client.post(
-        "/api/voice", json={"kind": "started", "channel": "voice"}, headers=auth)
+        "/api/input", json={"kind": "started", "channel": "voice"}, headers=auth)
     heard = await client.post(
-        "/api/voice", json={"kind": "heard", "channel": "voice", "text": "привіт"},
+        "/api/input", json={"kind": "heard", "channel": "voice", "text": "привіт"},
         headers=auth)
     assert started.status == 200 and heard.status == 200
     await room.settled()
@@ -70,7 +70,7 @@ async def test_a_voice_body_talks_to_the_core_over_the_door(tmp_path):
 
 async def test_a_voice_over_the_reply_gets_a_verdict(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
-    response = await client.post("/api/voice/said_over", json={
+    response = await client.post("/api/input/said_over", json={
         "channel": "voice", "text": "ага", "speech_ms": 200.0, "long": False,
     }, headers=auth)
     assert response.status == 200
@@ -83,7 +83,7 @@ async def test_the_voice_output_streams_the_reply_as_pieces(tmp_path):
     room.core.add_output(VoiceOut(room.core))
     events = room.core.state.subscribe()
     room.model.will_say("Привіт.")
-    await client.post("/api/voice", json={"kind": "heard", "channel": "voice",
+    await client.post("/api/input", json={"kind": "heard", "channel": "voice",
                                           "text": "привіт"}, headers=auth)
     await room.settled()
     channels = []
@@ -379,4 +379,16 @@ async def test_the_machine_can_be_read_and_a_widget_closed_by_hand(tmp_path):
     closed = await client.post("/api/canvas/remove", json={"id": "cpu"}, headers=auth)
     assert await closed.json() == {"removed": True}
     assert canvas.blocks == {}
+    await _close(room, client)
+
+
+async def test_a_body_registers_and_the_brain_knows_it(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    response = await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input", "output"],
+        "about": "мікрофон і динамік",
+    }, headers=auth)
+    assert response.status == 200
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert state["bodies"]["voice"]["forms"] == ["input", "output"]
     await _close(room, client)

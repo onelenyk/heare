@@ -193,11 +193,26 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
         core.hear(Message(text=text, channel="screen"))
         return web.json_response({"ok": True})
 
-    async def voice(request: web.Request) -> web.Response:
-        """A voice body's side: what it heard, and what it did with it."""
+    bodies: dict[str, dict] = {}
+
+    async def register(request: web.Request) -> web.Response:
+        """A body says it is here and what it can do; the brain routes by channel."""
+        data = await body(request)
+        channel = str(data.get("channel") or "").strip()
+        if not channel:
+            raise web.HTTPBadRequest(text="a body needs a channel")
+        bodies[channel] = {
+            "forms": list(data.get("forms") or []),
+            "about": str(data.get("about") or ""),
+        }
+        core.state.emit("body", channel=channel, forms=bodies[channel]["forms"])
+        return web.json_response({"ok": True})
+
+    async def input_event(request: web.Request) -> web.Response:
+        """A body's side: what it heard, and what it did with it."""
         data = await body(request)
         kind = str(data.get("kind", ""))
-        channel = str(data.get("channel") or "voice")
+        channel = str(data.get("channel") or "text")
         if kind == "started":
             core.port.started(channel)
         elif kind == "nothing":
@@ -214,14 +229,14 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
                 speech_ms=data.get("speech_ms"),
             ))
         else:
-            raise web.HTTPBadRequest(text="unknown voice event")
+            raise web.HTTPBadRequest(text="unknown input event")
         return web.json_response({"ok": True})
 
     async def said_over(request: web.Request) -> web.Response:
         """A voice over the reply: did it mean a turn, or was it a nod?"""
         data = await body(request)
         turn = core.port.said_over(
-            str(data.get("channel") or "voice"),
+            str(data.get("channel") or "text"),
             str(data.get("text", "")),
             float(data.get("speech_ms") or 0.0),
             bool(data.get("long", False)),
@@ -263,7 +278,7 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
                 about = {"error": str(exc)}
         return web.json_response({
             **core.state.snapshot(), "controls": core.controls(),
-            "model": about, "session": tally.read(),
+            "model": about, "session": tally.read(), "bodies": bodies,
         })
 
     async def history(request: web.Request) -> web.Response:
@@ -405,8 +420,9 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
     app.add_routes([
         web.get("/", page),
         web.post("/api/message", message),
-        web.post("/api/voice", voice),
-        web.post("/api/voice/said_over", said_over),
+        web.post("/api/bodies", register),
+        web.post("/api/input", input_event),
+        web.post("/api/input/said_over", said_over),
         web.get("/api/events", events),
         web.get("/api/state", state),
         web.get("/api/history", history),
