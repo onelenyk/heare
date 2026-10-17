@@ -14,13 +14,16 @@
     --mono:'SF Mono','Fira Code','Cascadia Code',ui-monospace,monospace;
   }
   * { box-sizing:border-box; margin:0; }
+  /* A class that sets display (a key, a slider) outranks the browser's own
+     rule for the hidden attribute, so hiding has to be said again here —
+     otherwise a control that does nothing stays on the page. */
+  [hidden] { display:none !important; }
   html, body { height:100%; }
   body { background:var(--bg); color:var(--ink); font:14px/1.55 var(--sans); -webkit-font-smoothing:antialiased; }
   button, input, select { font:inherit; color:inherit; }
   ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
 
   #app { display:grid; grid-template-columns:380px minmax(0,1fr); height:100vh; }
-  @media (max-width:860px) { #app { grid-template-columns:minmax(0,1fr); height:auto; } #left { height:auto; } #stage { height:70vh; } }
 
   /* ── the panel ── */
   #left { border-right:1px solid var(--line); background:var(--card); display:flex; flex-direction:column; min-height:0; height:100vh; }
@@ -194,6 +197,16 @@
   .pair { display:grid; grid-template-columns:1fr auto; gap:8px; }
   .btn { background:var(--accent); color:var(--accent-ink); border:0; border-radius:8px; padding:9px 14px; font-weight:700; cursor:pointer; }
   .note { color:var(--soft); font-size:12px; min-height:18px; }
+  /* A narrow window stacks the panel, the talk and the screen: the panel keeps
+     its own height (no inner scrollbar hiding its lower blocks), the talk gets
+     a fixed share with its input reachable, the screen comes last. */
+  @media (max-width:860px) {
+    #app { grid-template-columns:minmax(0,1fr); height:auto; }
+    #left { height:auto; }
+    #pult { flex:none; overflow:visible; }
+    #talkcol { flex:none; height:min(65vh, 560px); }
+    #stage { height:70vh; }
+  }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
 <style id="own"></style>
