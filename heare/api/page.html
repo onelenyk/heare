@@ -104,6 +104,11 @@
   .badge { padding:1px 7px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:10.5px; }
   .badge.input { color:var(--info); } .badge.output { color:var(--accent); } .badge.executor { color:var(--ok); }
   .part .actions { display:flex; gap:6px; margin-top:9px; }
+  .part .part-controls { margin-top:9px; }
+  .part .part-controls .keys { grid-template-columns:1fr 1fr; }
+  .part .part-controls .vol { font-size:11.5px; gap:8px; }
+  .part .part-controls .vol b { color:var(--ink); }
+  .part .part-controls select { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 6px; color:inherit; min-width:0; font-size:11.5px; }
   .part.gone { display:flex; gap:6px; border:0; padding:2px 0; background:none; color:var(--soft); font-size:11.5px; overflow-wrap:anywhere; }
   .part.gone b { font-weight:600; }
   .mini:disabled { opacity:.4; cursor:default; }
@@ -125,6 +130,11 @@
   #say input { flex:1; min-width:0; background:var(--card); border:1px solid var(--line); border-radius:9px; padding:9px 12px; font-size:13.5px; }
   #say input:focus { outline:none; border-color:var(--accent); }
   #say button { background:var(--accent); color:var(--accent-ink); border:0; border-radius:9px; padding:0 14px; font-weight:700; cursor:pointer; }
+  #say .talk { background:var(--card-2); color:var(--soft); border:1px solid var(--line); padding:0 11px; font-size:15px; }
+  #say .talk:hover { border-color:var(--accent); color:var(--accent); }
+  #say .talk.on { color:var(--accent); border-color:var(--accent); }
+  #speak { margin-left:10px; color:var(--soft); }
+  #speak.yes { color:var(--ok); border-color:var(--ok); }
 
   /* ── the canvas: one screen of widgets ── */
   #stage { position:relative; min-width:0; height:100vh; overflow-y:auto; background:
@@ -247,13 +257,6 @@
       <div class="block">
         <div class="label">Керування</div>
         <div class="keys">
-          <!-- The voice controls wait until the protocol can carry them: the
-               voice is a body now, and a switch that changes nothing is a lie. -->
-          <button class="key" id="mic" hidden><span class="led"></span><span><b>Мікрофон</b><small></small></span></button>
-          <button class="key" id="speaker" hidden><span class="led"></span><span><b>Звук</b><small></small></span></button>
-          <div class="vol" hidden><span>гучність</span><input id="volume" type="range" min="0" max="1" step="0.05"><span id="volpct"></span></div>
-          <button class="key wide" id="listen" hidden><span class="led"></span><span><b></b><small></small></span></button>
-          <button class="key" id="pause" hidden><span class="led"></span><span><b>Пауза</b><small>глухий і німий</small></span></button>
           <button class="key stop wide" id="stop">■ Стоп</button>
         </div>
       </div>
@@ -283,9 +286,9 @@
     </aside>
 
     <section id="talkcol">
-      <div class="band"><b>Розмова</b><span>він і ти</span></div>
+      <div class="band"><b>Розмова</b><button id="speak" class="mini" title="чути відповідь уголос">чути</button><span>він і ти</span></div>
       <div id="talk"></div>
-      <form id="say"><input id="text" placeholder="Напиши…" autocomplete="off" autofocus><button>→</button></form>
+      <form id="say"><button type="button" id="hear" class="talk" title="говорити й почути">◉</button><input id="text" placeholder="Напиши…" autocomplete="off" autofocus><button>→</button></form>
     </section>
   </div>
 
@@ -350,22 +353,6 @@ function show() {
   $("nowtext").textContent = off ? "на паузі" : NOW[phase] + (voice ? (voice.mic ? "" : " · не чує") : " · без голосу");
   $("you").classList.toggle("live", phase === "hearing" && !off);
   $("it").classList.toggle("live", phase === "thinking" || phase === "speaking");
-  for (const id of ["mic", "speaker", "volume", "listen", "pause"]) $(id).disabled = !voice;
-  const set = (id, on, small) => { $(id).classList.toggle("off", !on); $(id).querySelector("small").textContent = small; };
-  if (!voice) {
-    set("mic", true, "немає голосу"); set("speaker", true, "запусти з --voice");
-    $("listen").querySelector("b").textContent = "Голос вимкнено"; $("listen").querySelector("small").textContent = "працює лише текст";
-    $("volpct").textContent = ""; return;
-  }
-  set("mic", voice.mic, voice.mic ? "чує" : "вимкнено");
-  set("speaker", voice.speaker, voice.speaker ? "говорить" : "вимкнено");
-  if (document.activeElement !== $("volume")) $("volume").value = voice.volume;
-  $("volpct").textContent = Math.round(voice.volume * 100) + "%";
-  $("listen").querySelector("b").textContent = voice.listen === "name" ? "Відповідає лише на ім'я" : "Сам вирішує, чи відповідати";
-  $("listen").querySelector("small").textContent = voice.listen === "name" ? "скажи «Дока, …»" : "ім'я не обов'язкове";
-  $("pause").classList.toggle("off", !!off);
-  $("pause").querySelector("b").textContent = off ? "Увімкнути" : "Пауза";
-  $("pause").querySelector("small").textContent = off ? "зараз глухий і німий" : "глухий і німий";
 }
 
 function vitals(s) {
@@ -424,6 +411,54 @@ const PART_LABEL = {web: "сторінка", eyes: "очі", text: "чат", voi
 const PART_STATE = {pending: "чекає", approved: "під'єднано", rejected: "відхилено", expired: "не дочекався"};
 const PART_ORDER = {pending: 0, approved: 1, rejected: 2, expired: 3};
 
+const truth = (b, c) => (b.values && Object.prototype.hasOwnProperty.call(b.values, c.name)) ? b.values[c.name] : c.value;
+
+function controlsFor(pid, b) {
+  const list = Array.isArray(b.ui) ? b.ui : [];
+  if (b.state !== "approved" || !list.length) return null;
+  const grid = el("div", "keys"), extra = el("div", "actions");
+  for (const c of list) {
+    const value = truth(b, c);
+    if (c.kind === "toggle") {
+      const key = el("button", "key" + (value ? "" : " off")), text = el("span");
+      text.append(el("b", "", c.label || c.name), el("small", "", value ? "увімк" : "вимк"));
+      key.append(el("span", "led"), text);
+      key.onclick = () => turn(pid, c.name, !value);
+      grid.append(key);
+    } else if (c.kind === "slider") {
+      const row = el("div", "vol"), range = el("input");
+      range.type = "range"; range.min = c.min ?? 0; range.max = c.max ?? 1;
+      range.step = c.step ?? 0.05; range.value = value;
+      const pct = el("span", "", Math.round(Number(value) * 100) + "%");
+      range.oninput = () => { pct.textContent = Math.round(Number(range.value) * 100) + "%"; };
+      range.onchange = () => turn(pid, c.name, Number(range.value));
+      row.append(el("span", "", c.label || c.name), range, pct);
+      grid.append(row);
+    } else if (c.kind === "choice") {
+      const row = el("div", "vol"), pick = el("select");
+      for (const o of c.options || []) {
+        const option = el("option", "", o.label || o.value); option.value = o.value; pick.append(option);
+      }
+      pick.value = value;
+      pick.onchange = () => turn(pid, c.name, pick.value);
+      row.append(el("span", "", c.label || c.name), pick, el("span", ""));
+      grid.append(row);
+    } else if (c.kind === "label") {
+      const row = el("div", "vol");
+      row.append(el("span", "", c.label || c.name), el("b", "", String(value ?? "")), el("span", ""));
+      grid.append(row);
+    } else if (c.kind === "button") {
+      const push = el("button", "mini" + (c.action === "stop" ? " yes" : ""), c.label || c.name);
+      push.onclick = () => turn(pid, c.name, true);
+      extra.append(push);
+    }
+  }
+  const box = el("div", "part-controls");
+  if (grid.childElementCount) box.append(grid);
+  if (extra.childElementCount) box.append(extra);
+  return box;
+}
+
 function partCard(pid, b) {
   if (b.state === "rejected" || b.state === "expired") {
     const gone = el("div", "part gone");
@@ -440,6 +475,8 @@ function partCard(pid, b) {
     for (const f of b.forms) badges.append(el("span", "badge" + (FORM[f] ? " " + f : ""), FORM[f] || f));
     card.append(badges);
   }
+  const controls = controlsFor(pid, b);
+  if (controls) card.append(controls);
   if (b.state === "pending") {
     const actions = el("div", "actions"), yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Відхилити");
     const decide = (what, btn) => {
@@ -473,13 +510,18 @@ function parts(map) {
 }
 
 let born = null;
+const voiceOf = s => {
+  const part = Object.values(s.bodies || {}).find(b => b.channel === "voice" && b.state === "approved");
+  if (!part) return s.controls.voice || null;
+  return {mic: true, speaker: true, ...(part.values || {})};
+};
 const refresh = () => api("state").then(s => {
   // The assistant was restarted: this page is from before, and may not
   // know what the new one can do. A stale page once showed nothing that
   // was drawn until it was reloaded by hand.
   if (born && s.session.started !== born) return location.reload();
   born = s.session.started;
-  state = s; phase = s.phase; voice = s.controls.voice || null;
+  state = s; phase = s.phase; voice = voiceOf(s);
   show(); vitals(s); tasks(s.tasks, s.permission); parts(s.bodies);
 });
 
@@ -802,14 +844,45 @@ addEventListener("message", ev => {
 });
 
 /* ── controls ── */
-const turn = (name, value) => api("controls", {method: "POST", body: {part: "voice", name, value}}).then(v => { voice = v; show(); });
-$("mic").onclick = () => turn("mic", !voice.mic);
-$("speaker").onclick = () => turn("speaker", !voice.speaker);
-$("volume").oninput = () => { $("volpct").textContent = Math.round($("volume").value * 100) + "%"; };
-$("volume").onchange = () => turn("volume", Number($("volume").value));
-$("listen").onclick = () => turn("listen", voice.listen === "name" ? "judge" : "name").then(refresh);
-$("pause").onclick = () => { const on = !voice.mic && !voice.speaker; turn("mic", on).then(() => turn("speaker", on)); };
+const turn = (part, name, value) => api("controls", {method: "POST", body: {part, name, value}}).catch(() => {});
 $("stop").onclick = () => api("stop", {method: "POST"}).then(() => aside("зупинено"));
+
+/* ── talking to it, and hearing it back ── */
+let aloud = localStorage.getItem("heare.aloud") === "1";
+const speech = window.speechSynthesis;
+const speak = (text, channel) => {
+  if (!aloud || !text || !speech || (channel !== "screen" && channel !== "web")) return;
+  speech.cancel();
+  const said = new SpeechSynthesisUtterance(text);
+  said.lang = "uk-UA";
+  speech.speak(said);
+};
+$("speak").classList.toggle("yes", aloud);
+$("speak").onclick = () => {
+  aloud = !aloud; localStorage.setItem("heare.aloud", aloud ? "1" : "0");
+  $("speak").classList.toggle("yes", aloud);
+  if (!aloud && speech) speech.cancel();
+};
+if (!speech) $("speak").hidden = true;
+
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const hear = $("hear");
+if (!Recognition) hear.hidden = true;
+else {
+  const rec = new Recognition();
+  rec.lang = "uk-UA"; rec.interimResults = false; rec.continuous = false;
+  let listening = false;
+  rec.onresult = e => {
+    const text = [...e.results].map(r => r[0].transcript).join(" ").trim();
+    if (text) api("input", {method: "POST", body: {kind: "heard", channel: "screen", text, addressed: true}});
+  };
+  rec.onend = rec.onerror = () => { listening = false; hear.classList.remove("on"); };
+  hear.onclick = () => {
+    if (listening) { rec.stop(); return; }
+    if (speech) speech.cancel();
+    try { rec.start(); listening = true; hear.classList.add("on"); } catch (e) {}
+  };
+}
 
 /* ── settings ── */
 const shut = () => { for (const id of ["veil", "settings"]) $(id).classList.remove("on"); };
@@ -852,7 +925,7 @@ stream.onmessage = m => {
   const e = JSON.parse(m.data);
   if (e.kind === "heard") { writing = null; askedAt = e.at; line(e.text, "me", e.channel); }
   else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); $("talk").scrollTop = $("talk").scrollHeight; }
-  else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; if (e.failed) aside("збій: " + e.failed); }
+  else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; if (e.failed) aside("збій: " + e.failed); else speak(e.text, e.channel); }
   else if (e.kind === "overheard") aside(`почув «${e.text}» — ${WHY[e.why] || "без імені, не відповідаю"}`);
   else if (e.kind === "phase") {
     phase = e.phase; show();
