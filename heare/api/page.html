@@ -135,8 +135,27 @@
   @media (max-width:1100px) { .blk.m { grid-column:1 / -1; } }
   .blk.fresh { border-color:var(--accent); box-shadow:0 0 0 4px rgba(157,124,255,.14), 0 12px 40px rgba(157,124,255,.12); }
   .blk .x { position:absolute; top:8px; right:10px; border:0; background:transparent; color:var(--soft); cursor:pointer; opacity:0; font-size:15px; transition:opacity .15s; }
-  .blk:hover .x { opacity:.8; } .blk .x:hover { color:var(--bad); }
+  .blk:hover .x, .blk:hover .ed { opacity:.8; } .blk .x:hover { color:var(--bad); }
+  .blk .ed { position:absolute; top:8px; right:34px; border:0; background:transparent; color:var(--soft); cursor:pointer; opacity:0; font-size:14px; transition:opacity .15s; }
+  .blk .ed:hover, .blk.editing .ed { color:var(--accent); opacity:1; }
+  .blk.editing { border-color:var(--accent); }
   .blk iframe { width:100%; border:0; display:block; background:transparent; height:60px; }
+
+  /* ── redrawing a widget by hand ── */
+  .blk.editing .w svg { touch-action:none; cursor:crosshair; overflow:visible; }
+  .blk.editing .w svg circle, .blk.editing .w svg path,
+  .blk.editing .w svg ellipse, .blk.editing .w svg rect { cursor:grab; }
+  .w path.ed-sel { filter:drop-shadow(0 0 4px var(--accent)); }
+  .w .ed-preview { pointer-events:none; opacity:.7; }
+  .w .ed-handle { fill:var(--accent); stroke:var(--bg); stroke-width:1.5; vector-effect:non-scaling-stroke; cursor:nwse-resize; }
+  .edbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); font:11.5px var(--mono); color:var(--soft); }
+  .edbar .edhint { flex:1 1 140px; min-width:120px; }
+  .edbar button { padding:4px 9px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; cursor:pointer; font:inherit; }
+  .edbar button:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  .edbar button:disabled { opacity:.4; cursor:default; }
+  .edbar .edsave { border-color:var(--accent); color:var(--accent); font-weight:700; }
+  .edbar input[type=color] { width:26px; height:22px; padding:0; border:1px solid var(--line); border-radius:6px; background:transparent; cursor:pointer; }
+  .edbar .ederror { flex-basis:100%; color:var(--bad); }
   #empty { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:14px; text-align:center; color:var(--soft); pointer-events:none; }
   #empty .face { width:150px; height:150px; }
   #empty b { font:700 26px var(--sans); color:var(--ink); letter-spacing:-.4px; }
@@ -500,6 +519,7 @@ const framed = (html, id) => `<!doctype html><meta charset="utf-8"><style>:root{
 
 function block(b) {
   let node = document.getElementById("blk-" + b.id);
+  if (editing && editing.node === node) editing.stop();
   if (!node) { node = el("div", "blk"); node.id = "blk-" + b.id; $("live").append(node); }
   node.className = "blk " + (b.size || "s");
   const x = el("button", "x", "×"); x.title = "прибрати"; x.onclick = () => api("canvas/remove", {method: "POST", body: {id: b.id}});
@@ -511,19 +531,249 @@ function block(b) {
   } else {
     const body = el("div", "w"); body.innerHTML = b.html;
     node.replaceChildren(x, body);
+    if (/<svg[\s>]/i.test(b.html)) {
+      const pen = el("button", "ed", "✎"); pen.title = "редагувати малюнок";
+      pen.onclick = () => editDrawing(node, b.id);
+      node.insertBefore(pen, body);
+    }
   }
   if (b.order) for (const key of b.order) { const n = document.getElementById("blk-" + key); if (n) $("live").append(n); }
   return node;
 }
+
+/* ── a drawing is not a picture: circles move, lines can be drawn again ── */
+const SVGNS = "http://www.w3.org/2000/svg";
+let editing = null;
+const point = (svg, ev) => {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY;
+  return p.matrixTransform(ctm.inverse());
+};
+const num = (shape, name) => Number(shape.getAttribute(name)) || 0;
+const tidy = n => Math.round(n * 10) / 10;
+const curve = pts => {
+  let d = `M ${tidy(pts[0].x)} ${tidy(pts[0].y)}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const x = (pts[i].x + pts[i + 1].x) / 2, y = (pts[i].y + pts[i + 1].y) / 2;
+    d += ` Q ${tidy(pts[i].x)} ${tidy(pts[i].y)} ${tidy(x)} ${tidy(y)}`;
+  }
+  const last = pts[pts.length - 1];
+  return d + ` L ${tidy(last.x)} ${tidy(last.y)}`;
+};
+const hex = value => {
+  const c = document.createElement("canvas").getContext("2d");
+  c.fillStyle = value || ""; const out = String(c.fillStyle);
+  return /^#[0-9a-f]{6}$/i.test(out) ? out : "#9d7cff";
+};
+
+function editDrawing(node, id) {
+  const body = node.querySelector(".w"), svg = body && body.querySelector("svg");
+  if (!svg) return;
+  if (editing) editing.cancel();
+  const before = body.innerHTML;
+  const box = svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width
+    ? svg.viewBox.baseVal : {x: 0, y: 0, width: svg.clientWidth || 200, height: svg.clientHeight || 120};
+  const span = Math.max(box.width, box.height);
+  const handles = document.createElementNS(SVGNS, "g");
+  handles.setAttribute("class", "ed-handles");
+  svg.append(handles);
+
+  let selected = null, drag = null, preview = null, live = true;
+  const bar = el("div", "edbar");
+  const hint = el("span", "edhint", "вибери коло чи лінію");
+  const color = document.createElement("input");
+  color.type = "color"; color.value = "#9d7cff"; color.title = "колір вибраного"; color.disabled = true;
+  const addCircle = /<circle[\s>]/i.test(body.innerHTML) ? el("button", "", "＋ коло") : null;
+  const addPath = /<path[\s>]/i.test(body.innerHTML) ? el("button", "", "＋ лінія") : null;
+  const dropBtn = el("button", "", "прибрати"); dropBtn.disabled = true;
+  const cancelBtn = el("button", "", "скасувати");
+  const saveBtn = el("button", "edsave", "готово");
+  bar.append(hint, color);
+  if (addCircle) bar.append(addCircle);
+  if (addPath) bar.append(addPath);
+  bar.append(dropBtn, cancelBtn, saveBtn);
+  node.append(bar);
+  node.classList.add("editing");
+
+  const placeHandle = () => {
+    handles.replaceChildren();
+    if (!selected || selected.tagName.toLowerCase() !== "circle") return;
+    const h = document.createElementNS(SVGNS, "circle");
+    h.setAttribute("class", "ed-handle");
+    h.setAttribute("cx", num(selected, "cx") + num(selected, "r"));
+    h.setAttribute("cy", num(selected, "cy"));
+    h.setAttribute("r", Math.max(3, span * 0.022));
+    handles.append(h);
+  };
+  const sync = () => {
+    const tag = selected ? selected.tagName.toLowerCase() : "";
+    hint.textContent = tag === "path" ? "потягни по полю — лінія перемалюється"
+      : tag === "circle" ? "тягни коло, а вузол — щоб змінити радіус"
+      : "вибери коло чи лінію";
+    dropBtn.disabled = color.disabled = !selected;
+    if (selected) color.value = hex(tag === "path" ? selected.getAttribute("stroke")
+      : (selected.getAttribute("fill") || "none") !== "none" ? selected.getAttribute("fill")
+      : selected.getAttribute("stroke"));
+  };
+  const select = shape => {
+    if (selected && selected !== shape) selected.classList.remove("ed-sel");
+    selected = shape;
+    if (selected && selected.tagName.toLowerCase() === "path") selected.classList.add("ed-sel");
+    placeHandle(); sync();
+  };
+  const stop = () => {
+    if (!live) return;
+    live = false;
+    document.removeEventListener("keydown", keys);
+    if (preview) preview.remove();
+    handles.remove();
+    bar.remove();
+    node.classList.remove("editing");
+    editing = null;
+  };
+  const cancel = () => { body.innerHTML = before; stop(); };
+  const done = () => {
+    const holder = document.createElement("div");
+    holder.innerHTML = body.innerHTML;
+    holder.querySelectorAll(".ed-handles, .ed-preview").forEach(n => n.remove());
+    holder.querySelectorAll(".ed-sel").forEach(n => n.classList.remove("ed-sel"));
+    const html = holder.innerHTML;
+    saveBtn.disabled = cancelBtn.disabled = dropBtn.disabled = true;
+    saveBtn.textContent = "зберігаю…";
+    api("canvas/put", {method: "POST", body: {id, html}}).then(() => {
+      body.innerHTML = html;
+      stop();
+    }, err => {
+      saveBtn.disabled = cancelBtn.disabled = false; saveBtn.textContent = "готово";
+      const note = bar.querySelector(".ederror") || el("span", "ederror");
+      note.textContent = "не збереглося: " + err;
+      bar.append(note);
+    });
+  };
+  const startDraw = (ev, p) => {
+    if (!selected || selected.tagName.toLowerCase() !== "path") return;
+    preview = document.createElementNS(SVGNS, "path");
+    for (const a of ["stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "opacity"])
+      if (selected.hasAttribute(a)) preview.setAttribute(a, selected.getAttribute(a));
+    preview.setAttribute("fill", "none");
+    preview.setAttribute("class", "ed-preview");
+    svg.append(preview);
+    drag = {kind: "draw", path: selected, pts: [p], id: ev.pointerId};
+    svg.setPointerCapture(ev.pointerId);
+  };
+
+  const down = ev => {
+    if (ev.button !== 0) return;
+    const p = point(svg, ev); if (!p) return;
+    const handle = ev.target.closest && ev.target.closest(".ed-handle");
+    if (handle && selected) {
+      drag = {kind: "resize", shape: selected, id: ev.pointerId};
+      svg.setPointerCapture(ev.pointerId); ev.preventDefault(); return;
+    }
+    const shape = ev.target.closest && ev.target.closest("circle, path, ellipse, rect, line, polyline, polygon");
+    if (shape && !shape.closest(".ed-handles")) {
+      const tag = shape.tagName.toLowerCase();
+      if (tag === "path") {
+        if (selected === shape) startDraw(ev, p); else select(shape);
+      } else if (tag === "circle") {
+        select(shape);
+        drag = {kind: "move", shape, id: ev.pointerId, at: p,
+                cx: num(shape, "cx"), cy: num(shape, "cy")};
+        svg.setPointerCapture(ev.pointerId);
+      } else select(shape);
+      ev.preventDefault(); return;
+    }
+    if (selected && selected.tagName.toLowerCase() === "path") { startDraw(ev, p); ev.preventDefault(); return; }
+    select(null);
+  };
+  const move = ev => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const p = point(svg, ev); if (!p) return;
+    if (drag.kind === "move") {
+      drag.shape.setAttribute("cx", tidy(drag.cx + p.x - drag.at.x));
+      drag.shape.setAttribute("cy", tidy(drag.cy + p.y - drag.at.y));
+      placeHandle();
+    } else if (drag.kind === "resize") {
+      const d = Math.hypot(p.x - num(drag.shape, "cx"), p.y - num(drag.shape, "cy"));
+      drag.shape.setAttribute("r", tidy(Math.max(1, d)));
+      placeHandle();
+    } else if (drag.kind === "draw") {
+      const last = drag.pts[drag.pts.length - 1];
+      if (Math.hypot(p.x - last.x, p.y - last.y) > span * 0.008) drag.pts.push(p);
+      preview.setAttribute("d", curve(drag.pts));
+    }
+  };
+  const up = ev => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    if (drag.kind === "draw") {
+      if (drag.pts.length > 2) drag.path.setAttribute("d", curve(drag.pts));
+      if (preview) preview.remove();
+      preview = null;
+      select(drag.path);
+    } else placeHandle();
+    drag = null;
+  };
+  const keys = ev => {
+    if (ev.key === "Escape") { ev.preventDefault(); cancel(); }
+    else if (ev.key === "Enter") { ev.preventDefault(); done(); }
+  };
+
+  color.oninput = () => {
+    if (!selected) return;
+    const tag = selected.tagName.toLowerCase();
+    if (tag === "path") selected.setAttribute("stroke", color.value);
+    else {
+      const fill = selected.getAttribute("fill"), stroke = selected.getAttribute("stroke");
+      if (fill && fill !== "none") selected.setAttribute("fill", color.value);
+      if (stroke && stroke !== "none") selected.setAttribute("stroke", color.value);
+      if ((!fill || fill === "none") && (!stroke || stroke === "none"))
+        selected.setAttribute("fill", color.value);
+    }
+  };
+  if (addCircle) addCircle.onclick = () => {
+    const c = document.createElementNS(SVGNS, "circle");
+    c.setAttribute("cx", tidy(box.x + box.width / 2));
+    c.setAttribute("cy", tidy(box.y + box.height / 2));
+    c.setAttribute("r", tidy(span * 0.13));
+    c.setAttribute("fill", "none");
+    c.setAttribute("stroke", color.value);
+    c.setAttribute("stroke-width", "2");
+    svg.insertBefore(c, handles); select(c);
+  };
+  if (addPath) addPath.onclick = () => {
+    const y = box.y + box.height / 2, x0 = box.x + box.width * 0.05, x1 = box.x + box.width * 0.95;
+    const p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("d", `M ${tidy(x0)} ${tidy(y)} Q ${tidy(x0 + (x1 - x0) * 0.25)} ${tidy(y - span * 0.18)} `
+      + `${tidy(x0 + (x1 - x0) * 0.5)} ${tidy(y)} T ${tidy(x1)} ${tidy(y)}`);
+    p.setAttribute("fill", "none");
+    p.setAttribute("stroke", color.value);
+    p.setAttribute("stroke-width", "2");
+    p.setAttribute("stroke-linecap", "round");
+    svg.insertBefore(p, handles); select(p);
+  };
+  dropBtn.onclick = () => { if (selected) { const gone = selected; select(null); gone.remove(); } };
+  cancelBtn.onclick = cancel;
+  saveBtn.onclick = done;
+  svg.addEventListener("pointerdown", down);
+  svg.addEventListener("pointermove", move);
+  svg.addEventListener("pointerup", up);
+  svg.addEventListener("pointercancel", up);
+  document.addEventListener("keydown", keys);
+  editing = {node, stop, cancel};
+}
 const few = () => { $("empty").style.display = $("live").children.length ? "none" : "grid"; };
 function drawn(e) {
-  if (e.op === "clear") { $("live").replaceChildren(); restyle(""); }
+  if (e.op === "clear") { if (editing) editing.stop(); $("live").replaceChildren(); restyle(""); }
   else if (e.op === "style") {
     restyle(e.css);
     // Live widgets carry the sheet inside their frames: give it to them again.
     for (const f of document.querySelectorAll("#live iframe")) { const card = f.closest(".blk"); f.srcdoc = framed(card.dataset.html, card.id.slice(4)); }
   }
-  else if (e.op === "remove") document.getElementById("blk-" + e.id)?.remove();
+  else if (e.op === "remove") {
+    if (editing && editing.node.id === "blk-" + e.id) editing.stop();
+    document.getElementById("blk-" + e.id)?.remove();
+  }
   else if (e.op === "arrange") for (const key of e.order) {
     const n = document.getElementById("blk-" + key);
     if (n) { n.className = "blk " + (e.sizes[key] || "s"); $("live").append(n); n.classList.add("fresh"); setTimeout(() => n.classList.remove("fresh"), 1200); }

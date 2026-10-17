@@ -427,6 +427,21 @@ def build(core: Core, settings: Any, vitals: Any = None,
         name = str((await body(request)).get("id", ""))
         return web.json_response({"removed": bool(drawn and drawn.remove(name))})
 
+    async def canvas_put(request: web.Request) -> web.Response:
+        """The person redrawing a widget by hand. The same block the model
+        drew, put back in its place, so the drawing stays one drawing."""
+        drawn = core.outputs.get("canvas")
+        if drawn is None:
+            raise web.HTTPConflict(text="nothing is drawn here")
+        data = await body(request)
+        try:
+            drawn.put(str(data.get("id", "")), str(data.get("html", "")))
+        except ValueError:
+            raise web.HTTPBadRequest(
+                text="a block's name is lowercase latin letters, digits, dashes"
+            ) from None
+        return web.json_response(drawn.view())
+
     async def machine(request: web.Request) -> web.Response:
         from heare.api import system
 
@@ -539,6 +554,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/state", state),
         web.get("/api/history", history),
         web.get("/api/canvas", canvas),
+        web.post("/api/canvas/put", canvas_put),
         web.post("/api/canvas/remove", canvas_remove),
         web.get("/api/system", machine),
         web.get("/api/controls", controls),

@@ -399,6 +399,23 @@ async def test_the_machine_can_be_read_and_a_widget_closed_by_hand(tmp_path):
     await _close(room, client)
 
 
+async def test_the_person_can_redraw_a_widget_by_hand(tmp_path):
+    from heare.api.canvas import Canvas
+
+    room, client, auth, _ = await _open(tmp_path)
+    canvas = Canvas(tmp_path / "canvas.json", room.core.state.emit)
+    room.core.add_output(canvas)
+    canvas.put("doodle", "<h3>Щось інше</h3><svg><circle cx='10' cy='10' r='4'/></svg>")
+    redrawn = "<h3>Щось інше</h3><svg><circle cx='30' cy='20' r='8'/></svg>"
+    drawn = await client.post("/api/canvas/put", json={"id": "doodle", "html": redrawn}, headers=auth)
+    assert drawn.status == 200
+    assert canvas.blocks["doodle"] == redrawn
+    assert (await (await client.get("/api/canvas", headers=auth)).json())["blocks"][0]["html"] == redrawn
+    bad = await client.post("/api/canvas/put", json={"id": "nope!", "html": "<p>x</p>"}, headers=auth)
+    assert bad.status == 400
+    await _close(room, client)
+
+
 async def test_a_new_part_waits_and_is_approved(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     registration = asyncio.create_task(client.post("/api/bodies", json={
