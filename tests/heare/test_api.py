@@ -453,3 +453,54 @@ async def test_a_remembered_part_does_not_ask_again(tmp_path):
         "key": "voice@mac", "host": "mac"}, headers=auth)
     assert (await answer.json())["approved"] is True
     await _close(room, client)
+
+
+async def test_a_part_declares_the_controls_the_person_will_see(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, auth, _ = await _open(tmp_path)
+    ui = [
+        {"name": "mic", "kind": "toggle", "label": "Мікрофон", "value": True},
+        {"name": "volume", "kind": "slider", "label": "Гучність",
+         "value": 1.0, "min": 0, "max": 1, "step": 0.05},
+    ]
+    await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input", "output"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac", "ui": ui}, headers=auth)
+    body = (await (await client.get("/api/state", headers=auth)).json()
+            )["bodies"]["voice@mac"]
+    assert body["ui"] == ui
+    assert body["values"] == {}
+    await _close(room, client)
+
+
+async def test_turning_a_parts_control_is_a_wish_the_part_answers(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, auth, _ = await _open(tmp_path)
+    await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input", "output"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac",
+        "ui": [{"name": "mic", "kind": "toggle", "label": "Мікрофон", "value": True}],
+    }, headers=auth)
+    events = room.core.state.subscribe()
+    turned = await client.post("/api/controls", json={
+        "part": "voice@mac", "name": "mic", "value": False}, headers=auth)
+    assert turned.status == 200
+    assert await turned.json() == {"ok": True}
+    seen = []
+    while not events.empty():
+        seen.append(events.get_nowait())
+    wish = [e for e in seen if e.kind == "control"][-1]
+    assert wish.data == {"channel": "voice", "name": "mic", "value": False}
+
+    reported = await client.post("/api/input", json={
+        "kind": "state", "channel": "voice", "values": {"mic": False}},
+        headers=auth)
+    assert reported.status == 200
+    body = (await (await client.get("/api/state", headers=auth)).json()
+            )["bodies"]["voice@mac"]
+    assert body["values"] == {"mic": False}
+
+    wrong = await client.post("/api/controls", json={
+        "part": "voice@mac", "name": "warp", "value": 1}, headers=auth)
+    assert wrong.status == 404
+    await _close(room, client)

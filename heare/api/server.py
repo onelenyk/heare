@@ -254,13 +254,26 @@ def build(core: Core, settings: Any, vitals: Any = None,
         )
 
     def attach(pid: str, channel: str, forms: list, about: str,
-               host: str, state: str) -> None:
-        bodies[pid] = {"channel": channel, "forms": forms, "about": about,
-                       "host": host, "state": state}
+               host: str, state: str, ui: list | None = None) -> None:
+        old = bodies.get(pid) or {}
+        bodies[pid] = {
+            "channel": channel, "forms": forms, "about": about,
+            "host": host, "state": state,
+            # What the part offers to the person, and what it last reported
+            # those controls are worth. Both travel to the page untouched.
+            "ui": list(ui if ui is not None else old.get("ui") or []),
+            "values": dict(old.get("values") or {}),
+        }
         if state == "approved" and "executor" in forms and make_executor is not None:
             core.add_executor(make_executor(channel, about))
         core.state.emit("part", channel=channel, forms=forms, about=about,
                         host=host, state=state)
+
+    def part_by_channel(channel: str) -> dict | None:
+        found = [b for b in bodies.values() if b.get("channel") == channel]
+        approved = [b for b in found if b.get("state") == "approved"]
+        chosen = (approved or found)[-1:] if found else []
+        return chosen[0] if chosen else None
 
     async def register(request: web.Request) -> web.Response:
         """A part knocks; the person decides whether to trust it.
@@ -275,10 +288,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
         pid = str(data.get("key") or f"{channel}@{host}")
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
+        ui = list(data.get("ui") or [])
         if pid in trusted():
-            attach(pid, channel, forms, about, host, "approved")
+            attach(pid, channel, forms, about, host, "approved", ui)
             return web.json_response({"approved": True})
-        attach(pid, channel, forms, about, host, "pending")
+        attach(pid, channel, forms, about, host, "pending", ui)
         event = waiting.setdefault(pid, asyncio.Event())
         try:
             await asyncio.wait_for(event.wait(), APPROVAL_WAIT_S)
@@ -290,7 +304,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 waiting.pop(pid, None)
         if bodies[pid]["state"] != "approved":
             return web.json_response({"approved": False, "why": bodies[pid]["state"]})
-        attach(pid, channel, forms, about, host, "approved")
+        attach(pid, channel, forms, about, host, "approved", ui)
         return web.json_response({"approved": True})
 
     async def approve(request: web.Request) -> web.Response:
@@ -325,6 +339,17 @@ def build(core: Core, settings: Any, vitals: Any = None,
             core.port.overheard(channel, str(data.get("text", "")))
         elif kind == "note":
             core.port.note(str(data.get("key", "")), data.get("value"))
+        elif kind == "state":
+            values = data.get("values")
+            if not isinstance(values, dict):
+                raise web.HTTPBadRequest(text="values must be an object")
+            entry = part_by_channel(channel)
+            if entry is None:
+                raise web.HTTPNotFound(text="no such part")
+            entry["values"].update(values)
+            core.state.emit("part", channel=entry["channel"],
+                            forms=entry["forms"], about=entry["about"],
+                            host=entry["host"], state=entry["state"])
         elif kind == "heard":
             text = str(data.get("text", "")).strip()
             if not text:
@@ -402,9 +427,19 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     async def control(request: web.Request) -> web.Response:
         data = await body(request)
+        part = str(data.get("part", ""))
+        name = str(data.get("name", ""))
+        value = data.get("value")
+        target = bodies.get(part) or part_by_channel(part)
+        if target is not None:
+            names = {str(c.get("name", "")) for c in target.get("ui") or []}
+            if target.get("state") != "approved" or name not in names:
+                raise web.HTTPNotFound(text="no such control")
+            core.state.emit("control", channel=target["channel"], name=name,
+                            value=value)
+            return web.json_response({"ok": True})
         try:
-            now = core.control(str(data.get("part", "")), str(data.get("name", "")),
-                               data.get("value"))
+            now = core.control(part, name, value)
         except KeyError:
             raise web.HTTPNotFound(text="no such control") from None
         except (ValueError, TypeError) as exc:

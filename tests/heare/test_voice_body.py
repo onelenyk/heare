@@ -23,6 +23,12 @@ class Ears:
         self.resumed = 0
         self.stopped = 0
         self.finished = asyncio.Event()
+        self.controls = {"mic": True, "volume": 1.0}
+
+    def set_control(self, name: str, value) -> None:
+        if name not in self.controls:
+            raise KeyError(name)
+        self.controls[name] = value
 
     async def say(self, pieces) -> str:
         parts = []
@@ -107,6 +113,21 @@ def test_said_over_reads_the_brain_s_verdict():
     assert _port(handler).said_over("voice", "ага", 200.0, False) is True
 
 
+def test_the_port_reports_what_the_controls_are_worth():
+    seen: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True})
+
+    _port(handler).state({"mic": True, "volume": 0.5})
+
+    assert seen == [("/api/input", {
+        "channel": "voice", "kind": "state",
+        "values": {"mic": True, "volume": 0.5},
+    })]
+
+
 def test_a_dropped_report_does_not_stop_the_body():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("gone")
@@ -153,6 +174,44 @@ async def test_the_mouth_controls_are_obeyed():
     ]), _Speaker(ears))
 
     assert (ears.paused, ears.resumed, ears.stopped) == (1, 1, 1)
+
+
+async def test_a_control_from_the_page_is_applied_and_reported():
+    ears = Ears()
+    seen: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True})
+
+    await _follow(_lines([
+        'data: {"kind": "control", "channel": "voice", "name": "volume", "value": 0.4}',
+    ]), _Speaker(ears, _port(handler)))
+
+    assert ears.controls["volume"] == 0.4
+    assert seen == [("/api/input", {
+        "channel": "voice", "kind": "state",
+        "values": {"mic": True, "volume": 0.4},
+    })]
+
+
+async def test_a_refused_control_still_reports_what_is_true():
+    ears = Ears()
+    seen: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True})
+
+    await _follow(_lines([
+        'data: {"kind": "control", "channel": "voice", "name": "warp", "value": 9}',
+    ]), _Speaker(ears, _port(handler)))
+
+    assert ears.controls == {"mic": True, "volume": 1.0}
+    assert seen[-1] == ("/api/input", {
+        "channel": "voice", "kind": "state",
+        "values": {"mic": True, "volume": 1.0},
+    })
 
 
 async def test_stopping_ends_the_reply_in_flight():

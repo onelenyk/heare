@@ -30,6 +30,18 @@ logger = logging.getLogger("heare.voice.body")
 CHANNEL = "voice"
 _END = object()
 
+# What the person can touch on this body. The values here are the defaults
+# the page shows until the voice is open and reports the real ones.
+UI = [
+    {"name": "mic", "kind": "toggle", "label": "Мікрофон", "value": True},
+    {"name": "speaker", "kind": "toggle", "label": "Звук", "value": True},
+    {"name": "volume", "kind": "slider", "label": "Гучність", "value": 1.0,
+     "min": 0, "max": 1, "step": 0.05},
+    {"name": "listen", "kind": "choice", "label": "Відповідає", "value": "judge",
+     "options": [{"value": "judge", "label": "сам вирішує"},
+                 {"value": "name", "label": "лише на ім'я"}]},
+]
+
 
 def _token(settings: Settings) -> str:
     return Path(settings.api_token_file).read_text(encoding="utf-8").strip()
@@ -77,6 +89,11 @@ class HttpPort:
     def overheard(self, channel: str, text: str) -> None:
         self._post("/api/input", {
             "channel": channel, "kind": "overheard", "text": text,
+        })
+
+    def state(self, values: dict) -> None:
+        self._post("/api/input", {
+            "channel": CHANNEL, "kind": "state", "values": dict(values),
         })
 
     def said_over(self, channel: str, text: str, speech_ms: float,
@@ -128,8 +145,9 @@ class _Reply:
 class _Speaker:
     """What the brain streams, applied to one voice body."""
 
-    def __init__(self, voice: Voice) -> None:
+    def __init__(self, voice: Voice, port: HttpPort | None = None) -> None:
         self._voice = voice
+        self._port = port
         self._reply: _Reply | None = None
 
     def feed(self, event: dict) -> None:
@@ -140,6 +158,8 @@ class _Speaker:
             self._piece(str(event.get("text", "")))
         elif kind == "said":
             self._end()
+        elif kind == "control":
+            self._turn(str(event.get("name", "")), event.get("value"))
         elif kind == "voice_paused":
             self._voice.pause()
         elif kind == "voice_resumed":
@@ -157,6 +177,14 @@ class _Speaker:
         if self._reply is not None:
             self._reply.end()
             self._reply = None
+
+    def _turn(self, name: str, value) -> None:
+        try:
+            self._voice.set_control(name, value)
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.warning("the voice refused %r: %s", name, exc)
+        if self._port is not None:
+            self._port.state(self._voice.controls)
 
     async def cancel(self) -> None:
         reply, self._reply = self._reply, None
@@ -187,6 +215,7 @@ def _register(client: httpx.Client, base: str, host: str) -> dict:
     response = client.post(f"{base}/api/bodies", json={
         "channel": CHANNEL, "forms": ["input", "output"],
         "about": "мікрофон і динамік", "key": f"voice@{host}", "host": host,
+        "ui": UI,
     })
     response.raise_for_status()
     return response.json()
@@ -195,8 +224,10 @@ def _register(client: httpx.Client, base: str, host: str) -> dict:
 async def _live(settings: Settings, base: str, secret: str,
                 client: httpx.Client) -> int:
     voice = await open_voice(settings)
-    speaker = _Speaker(voice)
-    listening = asyncio.create_task(voice.run(HttpPort(client, base)))
+    port = HttpPort(client, base)
+    port.state(voice.controls)
+    speaker = _Speaker(voice, port)
+    listening = asyncio.create_task(voice.run(port))
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as events:
         following = asyncio.create_task(_follow(_events(events, base, secret),
