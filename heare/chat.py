@@ -41,12 +41,24 @@ async def _print_events(client: httpx.AsyncClient, base: str, name: str) -> None
                 _show(json.loads(line[6:]), name)
 
 
+def _line() -> str | None:
+    """One line from the terminal, read without readline's thread trouble.
+
+    ``input`` goes through readline, which is not safe from a thread while
+    another task writes the reply to the same terminal: it has read one
+    multi-byte character in pieces and raised UnicodeDecodeError. ``sys.stdin``
+    is asked directly instead, and a mangled byte becomes «�», not a crash.
+    """
+    print("ти: ", end="", flush=True)
+    line = sys.stdin.readline()
+    return line.rstrip("\n") if line else None
+
+
 async def _typed(client: httpx.AsyncClient, base: str) -> None:
     """Send each line you type to the brain, until the input ends."""
     while True:
-        try:
-            line = await asyncio.to_thread(input, "ти: ")
-        except EOFError:
+        line = await asyncio.to_thread(_line)
+        if line is None:
             return
         if line.strip():
             await client.post(f"{base}/api/message", json={"text": line.strip()})
@@ -56,6 +68,10 @@ async def run() -> int:
     settings = Settings()
     base = f"http://127.0.0.1:{settings.api_port}"
     name = persona.name() or "heare"
+    try:
+        sys.stdin.reconfigure(errors="replace")
+    except (AttributeError, OSError):
+        pass
     try:
         secret = _token(settings)
     except OSError:
