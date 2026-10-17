@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -17,6 +18,7 @@ async def _open(tmp_path, **room_kw):
     settings = Settings(
         path=tmp_path / "config.toml", api_token_file=tmp_path / "token",
         screens_dir=tmp_path / "screens", parts_file=tmp_path / "parts.json",
+        parts_dir=tmp_path / "parts",
     )
     room.core.add_output(Screen(room.core))
     client = TestClient(TestServer(build(room.core, settings)))
@@ -452,6 +454,31 @@ async def test_a_remembered_part_does_not_ask_again(tmp_path):
         "channel": "voice", "forms": ["input"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac"}, headers=auth)
     assert (await answer.json())["approved"] is True
+    await _close(room, client)
+
+
+async def test_a_folder_is_a_part_the_brain_already_knows(tmp_path):
+    folder = tmp_path / "parts" / "demo"
+    folder.mkdir(parents=True)
+    (folder / "heare.json").write_text(json.dumps({
+        "channel": "demo", "forms": ["input"], "about": "кіно",
+        "ui": [{"name": "on", "kind": "toggle", "label": "Увімк", "value": False}],
+    }), encoding="utf-8")
+    room, client, auth, _ = await _open(tmp_path)
+    pid = f"demo@{socket.gethostname()}"
+
+    body = (await (await client.get("/api/state", headers=auth)).json()
+            )["bodies"][pid]
+    assert body["state"] == "away"
+    assert body["ui"][0]["name"] == "on"
+
+    knocked = await client.post("/api/bodies", json={
+        "channel": "demo", "forms": ["input"], "about": "кіно"}, headers=auth)
+    assert (await knocked.json())["approved"] is True
+    body = (await (await client.get("/api/state", headers=auth)).json()
+            )["bodies"][pid]
+    assert body["state"] == "approved"
+    assert body["ui"][0]["name"] == "on"
     await _close(room, client)
 
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import secrets
 import socket
@@ -29,6 +30,8 @@ from aiohttp import web
 
 from heare import keys
 from heare.core import Core, Message
+
+logger = logging.getLogger("heare.api.server")
 
 PAGE = Path(__file__).with_name("page.html")
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
@@ -242,9 +245,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     def trusted() -> set[str]:
         try:
-            return set(json.loads(trusted_file.read_text(encoding="utf-8")))
+            remembered = set(json.loads(trusted_file.read_text(encoding="utf-8")))
         except (OSError, ValueError):
-            return set()
+            remembered = set()
+        # A folder the person put in the parts directory is a yes already:
+        # nothing knocks its way in, it had to be carried there by hand.
+        return remembered | {pid for pid, b in bodies.items()
+                             if b.get("state") == "away"}
 
     def remember(pid: str) -> None:
         trusted_file.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +282,30 @@ def build(core: Core, settings: Any, vitals: Any = None,
         chosen = (approved or found)[-1:] if found else []
         return chosen[0] if chosen else None
 
+    def manifests() -> list[dict]:
+        try:
+            files = sorted(Path(settings.parts_dir).glob("*/heare.json"))
+        except OSError:
+            return []
+        found = []
+        for path in files:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                logger.warning("not a manifest: %s", path)
+                continue
+            if isinstance(data, dict) and data.get("channel"):
+                found.append(data)
+        return found
+
+    for manifest in manifests():
+        channel = str(manifest["channel"])
+        host = str(manifest.get("host") or socket.gethostname())
+        attach(str(manifest.get("key") or f"{channel}@{host}"), channel,
+               list(manifest.get("forms") or []),
+               str(manifest.get("about") or ""), host, "away",
+               list(manifest.get("ui") or []))
+
     async def register(request: web.Request) -> web.Response:
         """A part knocks; the person decides whether to trust it.
 
@@ -288,7 +319,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         pid = str(data.get("key") or f"{channel}@{host}")
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
-        ui = list(data.get("ui") or [])
+        ui = list(data.get("ui") or []) or list(
+            (bodies.get(pid) or {}).get("ui") or [])
         if pid in trusted():
             attach(pid, channel, forms, about, host, "approved", ui)
             return web.json_response({"approved": True})

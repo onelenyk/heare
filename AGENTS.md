@@ -51,6 +51,7 @@ uv run python -m heare.hands
 uv run python -m heare.eyes
 uv run python -m heare.voice
 uv run python -m heare.chat
+uv run python -m heare.desktop    # один маяк: піднімає частини з ~/.heare/parts
 ```
 
 `uv run python -m heare.listener` drives real speech in and the reply out;

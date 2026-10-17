@@ -95,6 +95,7 @@
   .host::after { content:""; flex:1; height:1px; background:var(--line); }
   .part { border:1px solid var(--line); border-radius:9px; padding:9px 10px; background:var(--card-2); }
   .part.wait { border-color:var(--warn); background:rgba(219,182,79,.07); }
+  .part.away { opacity:.6; border-style:dashed; }
   .part-top { display:flex; align-items:baseline; gap:8px; }
   .part-name { font-weight:600; overflow-wrap:anywhere; }
   .part-state { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
@@ -408,8 +409,8 @@ function tasks(list, permission) {
 /* ── the parts that connect to the brain ── */
 const FORM = {input: "вхід", output: "вихід", executor: "виконавець"};
 const PART_LABEL = {web: "сторінка", eyes: "очі", text: "чат", voice: "голос", opencode: "руки"};
-const PART_STATE = {pending: "чекає", approved: "під'єднано", rejected: "відхилено", expired: "не дочекався"};
-const PART_ORDER = {pending: 0, approved: 1, rejected: 2, expired: 3};
+const PART_STATE = {pending: "чекає", approved: "під'єднано", away: "не на зв'язку", rejected: "відхилено", expired: "не дочекався"};
+const PART_ORDER = {pending: 0, approved: 1, away: 2, rejected: 3, expired: 4};
 
 const truth = (b, c) => (b.values && Object.prototype.hasOwnProperty.call(b.values, c.name)) ? b.values[c.name] : c.value;
 
@@ -465,7 +466,7 @@ function partCard(pid, b) {
     gone.append(el("b", "", PART_LABEL[b.channel] || b.channel || pid), el("span", "", "· " + (PART_STATE[b.state] || b.state)));
     return gone;
   }
-  const card = el("div", "part" + (b.state === "pending" ? " wait" : ""));
+  const card = el("div", "part" + (b.state === "pending" ? " wait" : b.state === "away" ? " away" : ""));
   const top = el("div", "part-top");
   top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid), el("span", "part-state", PART_STATE[b.state] || b.state));
   card.append(top);

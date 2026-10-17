@@ -1,4 +1,4 @@
-.PHONY: help run serve voice listener test lint format check clean
+.PHONY: help run serve voice listener desktop test lint format check clean
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -7,6 +7,7 @@ help:
 	@echo "  make serve     - the page and the API on 127.0.0.1:9790"
 	@echo "  make voice     - the app, aloud"
 	@echo "  make listener  - real speech in, the reply listened to (costs cents)"
+	@echo "  make desktop   - the beacon: parts from ~/.heare/parts, kept alive"
 	@echo "  make test      - the core against stand-ins: no network, no keys"
 	@echo "  make lint      - ruff"
 	@echo "  make format    - ruff format"
@@ -24,6 +25,9 @@ voice:
 
 listener:
 	uv run python -m heare.listener
+
+desktop:
+	uv run python -m heare.desktop
 
 test:
 	uv run pytest tests/heare -q
