@@ -504,8 +504,10 @@ function drawn(e) {
   few();
 }
 api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
-// The page is a body too: it knocks so the person sees it among the parts.
-api("bodies", {method: "POST", body: {channel: "web", forms: ["input", "output"], about: "сторінка в браузері"}}).catch(() => {});
+// The page is a body too: it knocks so the person sees it among the parts,
+// and knocks again whenever its stream reconnects (a brain restarted).
+const knock = () => api("bodies", {method: "POST", body: {channel: "web", forms: ["input", "output"], about: "сторінка в браузері"}}).catch(() => {});
+knock();
 $("live").addEventListener("click", ev => {
   const say = ev.target.closest("[data-say]");
   if (say) api("message", {method: "POST", body: {text: say.dataset.say}});
@@ -567,6 +569,7 @@ $("save-key").onclick = () => {
 
 /* ── live ── */
 const stream = new EventSource("/api/events?token=" + encodeURIComponent(T));
+stream.onopen = knock;
 stream.onmessage = m => {
   const e = JSON.parse(m.data);
   if (e.kind === "heard") { writing = null; askedAt = e.at; line(e.text, "me", e.channel); }
