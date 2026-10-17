@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import socket
 import sys
 from pathlib import Path
 
@@ -61,8 +62,15 @@ async def run() -> int:
     agent = Agent(known, cwd=settings.executor_cwd or None)
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
-        await client.post(f"{base}/api/bodies", json={
-            "channel": agent.name, "forms": ["executor"], "about": agent.about})
+        host = socket.gethostname()
+        registration = await client.post(f"{base}/api/bodies", json={
+            "channel": agent.name, "forms": ["executor"], "about": agent.about,
+            "key": f"{agent.name}@{host}", "host": host})
+        answer = registration.json()
+        if not answer.get("approved"):
+            print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
+                  file=sys.stderr)
+            return 1
         print(f"руки: {agent.name}", file=sys.stderr)
         while True:
             claim = await client.post(f"{base}/api/executor/claim",

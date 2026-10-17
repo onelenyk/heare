@@ -38,6 +38,9 @@ KEY_NAMES = (
     "ZAI_API_KEY",
 )
 
+# How long a part waits for the person's answer before it leaves.
+APPROVAL_WAIT_S = 120.0
+
 
 class Screen:
     """The page as a channel. What is typed there is a message; a reply
@@ -195,6 +198,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.json_response({"ok": True})
 
     bodies: dict[str, dict] = {}
+    waiting: dict[str, asyncio.Event] = {}
 
     async def claim(request: web.Request) -> web.Response:
         """A body's hands ask for work; the brain hands one out, or nothing."""
@@ -233,18 +237,77 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPNotFound(text="no such body")
         return found
 
+    trusted_file = Path(settings.parts_file)
+
+    def trusted() -> set[str]:
+        try:
+            return set(json.loads(trusted_file.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            return set()
+
+    def remember(pid: str) -> None:
+        trusted_file.parent.mkdir(parents=True, exist_ok=True)
+        trusted_file.write_text(
+            json.dumps(sorted(trusted() | {pid}), ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def attach(pid: str, channel: str, forms: list, about: str,
+               host: str, state: str) -> None:
+        bodies[pid] = {"channel": channel, "forms": forms, "about": about,
+                       "host": host, "state": state}
+        if state == "approved" and "executor" in forms and make_executor is not None:
+            core.add_executor(make_executor(channel, about))
+        core.state.emit("part", channel=channel, forms=forms, about=about,
+                        host=host, state=state)
+
     async def register(request: web.Request) -> web.Response:
-        """A body says it is here and what it can do; the brain routes by channel."""
+        """A part knocks; the person decides whether to trust it.
+
+        The request waits for that answer: a part not trusted is not used, and
+        a part nobody answered leaves rather than lurk."""
         data = await body(request)
         channel = str(data.get("channel") or "").strip()
         if not channel:
-            raise web.HTTPBadRequest(text="a body needs a channel")
+            raise web.HTTPBadRequest(text="a part needs a channel")
+        host = str(data.get("host") or "")
+        pid = str(data.get("key") or f"{channel}@{host or '?'}")
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
-        bodies[channel] = {"forms": forms, "about": about}
-        if "executor" in forms and make_executor is not None:
-            core.add_executor(make_executor(channel, about))
-        core.state.emit("body", channel=channel, forms=forms)
+        if pid in trusted():
+            attach(pid, channel, forms, about, host, "approved")
+            return web.json_response({"approved": True})
+        attach(pid, channel, forms, about, host, "pending")
+        waiting[pid] = asyncio.Event()
+        try:
+            await asyncio.wait_for(waiting[pid].wait(), APPROVAL_WAIT_S)
+        except TimeoutError:
+            bodies[pid]["state"] = "expired"
+            return web.json_response({"approved": False, "why": "ніхто не відповів"})
+        finally:
+            waiting.pop(pid, None)
+        if bodies[pid]["state"] != "approved":
+            return web.json_response({"approved": False, "why": bodies[pid]["state"]})
+        attach(pid, channel, forms, about, host, "approved")
+        return web.json_response({"approved": True})
+
+    async def approve(request: web.Request) -> web.Response:
+        return _decide(request, "approved")
+
+    async def reject(request: web.Request) -> web.Response:
+        return _decide(request, "rejected")
+
+    def _decide(request: web.Request, state: str) -> web.Response:
+        pid = request.match_info["id"]
+        entry = bodies.get(pid)
+        if entry is None or entry.get("state") != "pending":
+            raise web.HTTPNotFound(text="no such part is waiting")
+        entry["state"] = state
+        if state == "approved":
+            remember(pid)
+        event = waiting.get(pid)
+        if event is not None:
+            event.set()
         return web.json_response({"ok": True})
 
     async def input_event(request: web.Request) -> web.Response:
@@ -460,6 +523,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/", page),
         web.post("/api/message", message),
         web.post("/api/bodies", register),
+        web.post("/api/bodies/{id}/approve", approve),
+        web.post("/api/bodies/{id}/reject", reject),
         web.post("/api/executor/claim", claim),
         web.post("/api/executor/{id:\\d+}/step", step),
         web.post("/api/executor/{id:\\d+}/permit", executor_permit),

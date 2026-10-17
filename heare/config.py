@@ -28,6 +28,7 @@ DEFAULTS = {
     "screens_dir": HOME / "screens",
     "canvas_file": HOME / "canvas.json",
     "intents_path": HOME / "intents.json",
+    "parts_file": HOME / "parts.json",
     "api_token_file": HOME / "api_token",
     "api_port": 9790,
     # One agent does the work unless the person names another; two at

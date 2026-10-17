@@ -16,7 +16,7 @@ async def _open(tmp_path, **room_kw):
     room = await open_room(**room_kw)
     settings = Settings(
         path=tmp_path / "config.toml", api_token_file=tmp_path / "token",
-        screens_dir=tmp_path / "screens",
+        screens_dir=tmp_path / "screens", parts_file=tmp_path / "parts.json",
     )
     room.core.add_output(Screen(room.core))
     client = TestClient(TestServer(build(room.core, settings)))
@@ -382,13 +382,40 @@ async def test_the_machine_can_be_read_and_a_widget_closed_by_hand(tmp_path):
     await _close(room, client)
 
 
-async def test_a_body_registers_and_the_brain_knows_it(tmp_path):
+async def test_a_new_part_waits_and_is_approved(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
-    response = await client.post("/api/bodies", json={
-        "channel": "voice", "forms": ["input", "output"],
-        "about": "мікрофон і динамік",
-    }, headers=auth)
-    assert response.status == 200
+    registration = asyncio.create_task(client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac"}, headers=auth))
+    await asyncio.sleep(0.1)
     state = await (await client.get("/api/state", headers=auth)).json()
-    assert state["bodies"]["voice"]["forms"] == ["input", "output"]
+    assert state["bodies"]["voice@mac"]["state"] == "pending"
+
+    approved = await client.post("/api/bodies/voice@mac/approve", headers=auth)
+    assert approved.status == 200
+    assert (await (await registration).json())["approved"] is True
+
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert state["bodies"]["voice@mac"]["state"] == "approved"
+    await _close(room, client)
+
+
+async def test_a_rejected_part_is_not_used(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    registration = asyncio.create_task(client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac"}, headers=auth))
+    await asyncio.sleep(0.1)
+    await client.post("/api/bodies/voice@mac/reject", headers=auth)
+    assert (await (await registration).json())["approved"] is False
+    await _close(room, client)
+
+
+async def test_a_remembered_part_does_not_ask_again(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, auth, _ = await _open(tmp_path)
+    answer = await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac"}, headers=auth)
+    assert (await answer.json())["approved"] is True
     await _close(room, client)
