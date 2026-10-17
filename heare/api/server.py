@@ -155,7 +155,8 @@ class VoiceOut:
         self._core.state.emit("voice_stopped", channel=self.name)
 
 
-def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
+def build(core: Core, settings: Any, vitals: Any = None,
+          make_executor: Any = None) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen."""
     secret = token(Path(settings.api_token_file))
@@ -195,17 +196,55 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
 
     bodies: dict[str, dict] = {}
 
+    async def claim(request: web.Request) -> web.Response:
+        """A body's hands ask for work; the brain hands one out, or nothing."""
+        data = await body(request)
+        found = core.executors.get(str(data.get("name") or ""))
+        task = await found.claim() if hasattr(found, "claim") else None
+        return web.json_response(task or {})
+
+    async def step(request: web.Request) -> web.Response:
+        data = await body(request)
+        found = _executor_for(request)
+        return web.json_response({"stopped": found.step(
+            int(request.match_info["id"]), str(data.get("text", "")))})
+
+    async def executor_permit(request: web.Request) -> web.Response:
+        data = await body(request)
+        found = _executor_for(request)
+        allow, stopped = await found.permit(
+            int(request.match_info["id"]),
+            str(data.get("what", "")), str(data.get("kind", "change")),
+        )
+        return web.json_response({"allow": bool(allow), "stopped": bool(stopped)})
+
+    async def result(request: web.Request) -> web.Response:
+        data = await body(request)
+        found = _executor_for(request)
+        return web.json_response({"ok": found.result(
+            int(request.match_info["id"]),
+            str(data.get("status", "done")), str(data.get("result", "")),
+        )})
+
+    def _executor_for(request: web.Request):
+        name = request.query.get("name") or ""
+        found = core.executors.get(name)
+        if not hasattr(found, "claim"):
+            raise web.HTTPNotFound(text="no such body")
+        return found
+
     async def register(request: web.Request) -> web.Response:
         """A body says it is here and what it can do; the brain routes by channel."""
         data = await body(request)
         channel = str(data.get("channel") or "").strip()
         if not channel:
             raise web.HTTPBadRequest(text="a body needs a channel")
-        bodies[channel] = {
-            "forms": list(data.get("forms") or []),
-            "about": str(data.get("about") or ""),
-        }
-        core.state.emit("body", channel=channel, forms=bodies[channel]["forms"])
+        forms = list(data.get("forms") or [])
+        about = str(data.get("about") or "")
+        bodies[channel] = {"forms": forms, "about": about}
+        if "executor" in forms and make_executor is not None:
+            core.add_executor(make_executor(channel, about))
+        core.state.emit("body", channel=channel, forms=forms)
         return web.json_response({"ok": True})
 
     async def input_event(request: web.Request) -> web.Response:
@@ -421,6 +460,10 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
         web.get("/", page),
         web.post("/api/message", message),
         web.post("/api/bodies", register),
+        web.post("/api/executor/claim", claim),
+        web.post("/api/executor/{id:\\d+}/step", step),
+        web.post("/api/executor/{id:\\d+}/permit", executor_permit),
+        web.post("/api/executor/{id:\\d+}/result", result),
         web.post("/api/input", input_event),
         web.post("/api/input/said_over", said_over),
         web.get("/api/events", events),
@@ -452,14 +495,16 @@ def _sse(data: dict) -> bytes:
     return f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n".encode()
 
 
-async def serve(core: Core, settings: Any, vitals: Any = None) -> web.AppRunner:
+async def serve(core: Core, settings: Any, vitals: Any = None,
+                make_executor: Any = None) -> web.AppRunner:
     """Start the API on this machine only. Returns the runner to stop it."""
     from heare.api.canvas import Canvas
 
     core.add_output(Screen(core))
     core.add_output(VoiceOut(core))
     core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
-    runner = web.AppRunner(build(core, settings, vitals))
+    runner = web.AppRunner(build(core, settings, vitals,
+                                 make_executor=make_executor))
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", int(settings.api_port)).start()
     return runner

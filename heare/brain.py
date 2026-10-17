@@ -55,7 +55,6 @@ class Brain:
         from heare.memory.book import Book
         from heare.model.chat import Chat
         from heare.model.delegate import Dispatcher
-        from heare.reach.agents import connect
 
         self.settings = settings or Settings()
         names = persona.names()
@@ -65,10 +64,8 @@ class Brain:
             delegator=Dispatcher(self.settings), prompt=persona.prompt,
             names=names, judge=persona.JUDGE, words=uk,
         )
-        # Whichever agents this machine has. None is fine: the verb is then
-        # simply not offered, and the brain only talks and remembers.
-        for agent in connect(self.settings):
-            self.core.add_executor(agent)
+        # Hands are a body: they register over the door and are added then.
+        # The brain itself holds no agent's process.
         self.engine = Engine(Intents(self.settings.intents_path),
                              state=self.core.state, speak=self.core.hear)
         self._runner: Any = None
@@ -76,9 +73,11 @@ class Brain:
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""
         from heare.api.server import serve
+        from heare.reach.remote import RemoteExecutor
 
         self._runner = await serve(
-            self.core, self.settings, lambda: model_info(self.settings)
+            self.core, self.settings, lambda: model_info(self.settings),
+            make_executor=lambda name, about: RemoteExecutor(name, about),
         )
         print(f"мозок на http://127.0.0.1:{self.settings.api_port}/", file=sys.stderr)
         await asyncio.gather(
