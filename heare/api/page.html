@@ -206,12 +206,14 @@
       <div class="block">
         <div class="label">Керування</div>
         <div class="keys">
-          <button class="key" id="mic"><span class="led"></span><span><b>Мікрофон</b><small></small></span></button>
-          <button class="key" id="speaker"><span class="led"></span><span><b>Звук</b><small></small></span></button>
-          <div class="vol"><span>гучність</span><input id="volume" type="range" min="0" max="1" step="0.05"><span id="volpct"></span></div>
-          <button class="key wide" id="listen"><span class="led"></span><span><b></b><small></small></span></button>
-          <button class="key" id="pause"><span class="led"></span><span><b>Пауза</b><small>глухий і німий</small></span></button>
-          <button class="key stop" id="stop">■ Стоп</button>
+          <!-- The voice controls wait until the protocol can carry them: the
+               voice is a body now, and a switch that changes nothing is a lie. -->
+          <button class="key" id="mic" hidden><span class="led"></span><span><b>Мікрофон</b><small></small></span></button>
+          <button class="key" id="speaker" hidden><span class="led"></span><span><b>Звук</b><small></small></span></button>
+          <div class="vol" hidden><span>гучність</span><input id="volume" type="range" min="0" max="1" step="0.05"><span id="volpct"></span></div>
+          <button class="key wide" id="listen" hidden><span class="led"></span><span><b></b><small></small></span></button>
+          <button class="key" id="pause" hidden><span class="led"></span><span><b>Пауза</b><small>глухий і німий</small></span></button>
+          <button class="key stop wide" id="stop">■ Стоп</button>
         </div>
       </div>
 
