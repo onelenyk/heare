@@ -171,6 +171,7 @@ class Core:
         self.judge = judge
         self.words = words or NoWords()
         self.state = State()
+        self.port = _Port(self)
         self.history: list[dict] = []
         self.inputs: dict[str, Input] = {}
         self.outputs: dict[str, Output] = {}
@@ -246,7 +247,7 @@ class Core:
 
     async def run(self) -> None:
         """Listen and answer until cancelled."""
-        port = _Port(self)
+        port = self.port
         tasks = [
             asyncio.create_task(part.run(port), name=f"input-{name}")
             for name, part in self.inputs.items()

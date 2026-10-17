@@ -54,6 +54,30 @@ async def test_a_typed_message_is_answered_as_events(tmp_path):
     await _close(room, client)
 
 
+async def test_a_voice_body_talks_to_the_core_over_the_door(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    room.model.will_say("Привіт.")
+    started = await client.post(
+        "/api/voice", json={"kind": "started", "channel": "voice"}, headers=auth)
+    heard = await client.post(
+        "/api/voice", json={"kind": "heard", "channel": "voice", "text": "привіт"},
+        headers=auth)
+    assert started.status == 200 and heard.status == 200
+    await room.settled()
+    assert any("привіт" in str(m) for m in room.model.asked)
+    await _close(room, client)
+
+
+async def test_a_voice_over_the_reply_gets_a_verdict(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    response = await client.post("/api/voice/said_over", json={
+        "channel": "voice", "text": "ага", "speech_ms": 200.0, "long": False,
+    }, headers=auth)
+    assert response.status == 200
+    assert isinstance((await response.json())["turn"], bool)
+    await _close(room, client)
+
+
 async def test_the_event_stream_carries_what_happens(tmp_path):
     room, client, auth, _ = await _open(tmp_path)
     stream = await client.get("/api/events", headers=auth)

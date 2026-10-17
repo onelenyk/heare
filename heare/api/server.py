@@ -155,6 +155,41 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
         core.hear(Message(text=text, channel="screen"))
         return web.json_response({"ok": True})
 
+    async def voice(request: web.Request) -> web.Response:
+        """A voice body's side: what it heard, and what it did with it."""
+        data = await body(request)
+        kind = str(data.get("kind", ""))
+        channel = str(data.get("channel") or "voice")
+        if kind == "started":
+            core.port.started(channel)
+        elif kind == "nothing":
+            core.port.nothing(channel)
+        elif kind == "overheard":
+            core.port.overheard(channel, str(data.get("text", "")))
+        elif kind == "heard":
+            text = str(data.get("text", "")).strip()
+            if not text:
+                raise web.HTTPBadRequest(text="nothing was said")
+            core.port.heard(Message(
+                text=text, channel=channel,
+                addressed=bool(data.get("addressed", True)),
+                speech_ms=data.get("speech_ms"),
+            ))
+        else:
+            raise web.HTTPBadRequest(text="unknown voice event")
+        return web.json_response({"ok": True})
+
+    async def said_over(request: web.Request) -> web.Response:
+        """A voice over the reply: did it mean a turn, or was it a nod?"""
+        data = await body(request)
+        turn = core.port.said_over(
+            str(data.get("channel") or "voice"),
+            str(data.get("text", "")),
+            float(data.get("speech_ms") or 0.0),
+            bool(data.get("long", False)),
+        )
+        return web.json_response({"turn": bool(turn)})
+
     # -- events and state -------------------------------------------------
 
     async def events(request: web.Request) -> web.StreamResponse:
@@ -332,6 +367,8 @@ def build(core: Core, settings: Any, vitals: Any = None) -> web.Application:
     app.add_routes([
         web.get("/", page),
         web.post("/api/message", message),
+        web.post("/api/voice", voice),
+        web.post("/api/voice/said_over", said_over),
         web.get("/api/events", events),
         web.get("/api/state", state),
         web.get("/api/history", history),
