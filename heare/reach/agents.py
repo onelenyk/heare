@@ -19,14 +19,21 @@ import json
 import logging
 import os
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from heare.core import Desk
 from heare.reach import acp
+from heare.reach.life import guarded
 
 logger = logging.getLogger("heare.reach")
+
+# How long an agent may say nothing before it is called stuck, and how long one
+# task may run in total. A coder thinks for minutes, so idle is generous.
+IDLE_S = 5 * 60.0
+TOTAL_S = 30 * 60.0
 
 # What an agent may do without asking: looking is not changing.
 _READING = frozenset({"read", "search", "think", "fetch"})
@@ -80,6 +87,12 @@ _LOOKING = (
     "ps", "uname", "whoami", "git status", "git log", "git diff", "git show",
     "git branch",
 )
+
+
+# The agent's own key (opencode's default provider) expired on 17 Oct. The
+# model is chosen per session, not in the config: an ACP session has its own
+# model option, and only naming it there avoids the expired default.
+MODEL = "deepseek/deepseek-flash"
 
 
 def _opencode_config() -> dict:
@@ -165,13 +178,19 @@ class Agent:
         agent = await self._started()
 
         def on_event(event: acp.Event) -> None:
+            self._activity = time.monotonic()
             if event.kind == "tool" and event.text:
                 desk.step(event.text[:80])
 
         session = await agent.session(on_event)
+        # Name the model on the session itself: its default is the provider
+        # whose key has expired, and the session's own list has a working one.
+        await session.set("model", MODEL)
         self._desks[session.id] = desk
+        self._activity = time.monotonic()
         try:
-            await session.prompt(task)
+            await guarded(session.prompt(task), lambda: self._activity,
+                          idle_s=IDLE_S, total_s=TOTAL_S, stop=session.cancel)
         except asyncio.CancelledError:
             # Being cancelled is how it is told to stop — and it must.
             try:

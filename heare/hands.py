@@ -24,17 +24,20 @@ from heare.reach.agents import Agent, installed
 class RemoteDesk:
     """What the agent asks the brain for, over the door."""
 
-    def __init__(self, client: httpx.AsyncClient, base: str, job_id: int) -> None:
-        self._client, self._base, self._id = client, base, job_id
+    def __init__(self, client: httpx.AsyncClient, base: str, job_id: int,
+                 name: str) -> None:
+        self._client, self._base = client, base
+        self._id, self._name = job_id, name
 
     def step(self, text: str) -> None:
         """What it is doing — said without waiting: a step is not an answer."""
         asyncio.create_task(self._client.post(
-            f"{self._base}/api/executor/{self._id}/step", json={"text": text}))
+            f"{self._base}/api/executor/{self._id}/step?name={self._name}",
+            json={"text": text}))
 
     async def permit(self, what: str, kind: str = "change") -> bool:
         response = await self._client.post(
-            f"{self._base}/api/executor/{self._id}/permit",
+            f"{self._base}/api/executor/{self._id}/permit?name={self._name}",
             json={"what": what, "kind": kind})
         answer = response.json()
         if answer.get("stopped"):
@@ -67,7 +70,8 @@ async def run() -> int:
             task = claim.json() if claim.status_code == 200 else {}
             if not task or "id" not in task:
                 continue
-            desk = RemoteDesk(client, base, task["id"])
+            print(f"взято {task['id']}: {task['request'][:60]}", file=sys.stderr)
+            desk = RemoteDesk(client, base, task["id"], agent.name)
             status, result = "done", ""
             try:
                 result = await agent.run(task["request"], desk)
@@ -75,8 +79,10 @@ async def run() -> int:
                 status, result = "stopped", "Зупинено."
             except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
                 status, result = "failed", str(exc)
-            await client.post(f"{base}/api/executor/{task['id']}/result",
-                              json={"status": status, "result": result})
+            print(f"готово {task['id']}: {status} {result[:60]}", file=sys.stderr)
+            await client.post(
+                f"{base}/api/executor/{task['id']}/result?name={agent.name}",
+                json={"status": status, "result": result})
 
 
 def main() -> int:

@@ -48,12 +48,16 @@
 
 1. `POST /api/executor/claim  {v, name, about}` — довгий запит; повертає
    `{task: {id, request}}` або `{}` (нічого немає).
-2. `POST /api/executor/{id}/step  {text}` — що роблю зараз. Повертає
+2. `POST /api/executor/{id}/step?name=…  {text}` — що роблю зараз. Повертає
    `{stopped: bool}`.
-3. `POST /api/executor/{id}/permit  {what, kind}` — довгий запит до людини;
-   повертає `{allow: bool, stopped: bool}`. `kind` — `read` або `change`.
-4. `POST /api/executor/{id}/result  {status, result}` — чим скінчилось
+3. `POST /api/executor/{id}/permit?name=…  {what, kind}` — довгий запит до
+   людини; повертає `{allow: bool, stopped: bool}`. `kind` — `read` або
+   `change`.
+4. `POST /api/executor/{id}/result?name=…  {status, result}` — чим скінчилось
    (`done` · `failed` · `stopped`).
+
+`name` — ім'я виконавця: за ним мозок знаходить, чия це робота. Без нього
+`step`/`permit`/`result` не знаходять тіла й відповідають 404.
 
 Кожен крок і кожен дозвіл несе `stopped` — так виконавець дізнається «стоп», не
 маючи власного сервера.
