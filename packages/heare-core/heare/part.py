@@ -16,7 +16,8 @@ RETRY_S = 1.0
 
 
 async def follow(base: str, secret: str, channel: str,
-                 on_event: Callable[[dict], None]) -> None:
+                 on_event: Callable[[dict], None],
+                 on_open: Callable[[], None] | None = None) -> None:
     """Read the brain's stream forever, handing this channel's events over.
 
     A brain that restarts is not a reason to die: the stream is opened
@@ -28,6 +29,11 @@ async def follow(base: str, secret: str, channel: str,
                 async with client.stream(
                     "GET", f"{base}/api/events?token={quote(secret, safe='')}"
                 ) as response:
+                    if on_open is not None:
+                        try:
+                            on_open()
+                        except Exception:  # noqa: BLE001 — the stream will try again
+                            logger.exception("the knock on reconnect failed")
                     async for line in response.aiter_lines():
                         if not line.startswith("data: "):
                             continue

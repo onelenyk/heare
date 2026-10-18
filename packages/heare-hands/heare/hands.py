@@ -183,9 +183,13 @@ async def run() -> int:
         host = socket.gethostname()
         print("стучу в мозок… (нова частина чекає на одобрення на сторінці)",
               file=sys.stderr)
-        registration = await client.post(f"{base}/api/bodies", json={
-            "channel": agent.name, "forms": ["executor"], "about": agent.about,
-            "key": f"{agent.name}@{host}", "host": host, "ui": ui})
+        def knock():
+            return client.post(f"{base}/api/bodies", json={
+                "channel": agent.name, "forms": ["executor"],
+                "about": agent.about, "key": f"{agent.name}@{host}",
+                "host": host, "ui": ui})
+
+        registration = await knock()
         answer = registration.json()
         if not answer.get("approved"):
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
@@ -204,7 +208,8 @@ async def run() -> int:
 
         await part.report(client, base, agent.name, values)
         following = asyncio.create_task(
-            part.follow(base, secret, agent.name, on_control))
+            part.follow(base, secret, agent.name, on_control,
+                        on_open=lambda: asyncio.create_task(knock())))
         sent = 0
 
         async def report_wire() -> None:
