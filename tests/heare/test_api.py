@@ -482,6 +482,27 @@ async def test_a_folder_is_a_part_the_brain_already_knows(tmp_path):
     await _close(room, client)
 
 
+async def test_the_voice_body_says_when_the_sound_has_stopped(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, auth, _ = await _open(tmp_path)
+    out = VoiceOut(room.core)
+    room.core.add_output(out)
+    await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input", "output"], "about": "",
+        "key": "voice@mac", "host": "mac"}, headers=auth)
+
+    await client.post("/api/input", json={
+        "kind": "state", "channel": "voice",
+        "values": {"speaking": True}}, headers=auth)
+    assert out.speaking is True
+
+    await client.post("/api/input", json={
+        "kind": "state", "channel": "voice",
+        "values": {"speaking": False}}, headers=auth)
+    assert out.speaking is False
+    await _close(room, client)
+
+
 async def test_a_part_declares_the_controls_the_person_will_see(tmp_path):
     (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
     room, client, auth, _ = await _open(tmp_path)

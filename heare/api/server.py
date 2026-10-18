@@ -134,11 +134,17 @@ class VoiceOut:
     def __init__(self, core: Core) -> None:
         self._core = core
         self._speaking = False
+        self._sounding = False
         self._stop = False
 
     @property
     def speaking(self) -> bool:
-        return self._speaking
+        """Streaming or still audible. The body says when the sound ends:
+        the text is done long before the room stops hearing it."""
+        return self._speaking or self._sounding
+
+    def sounding(self, on: bool) -> None:
+        self._sounding = bool(on)
 
     async def say(self, pieces: AsyncIterator[str]) -> str:
         self._speaking, self._stop = True, False
@@ -379,6 +385,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
             if entry is None:
                 raise web.HTTPNotFound(text="no such part")
             entry["values"].update(values)
+            if channel == "voice" and "speaking" in values:
+                out = core.outputs.get("voice")
+                if isinstance(out, VoiceOut):
+                    out.sounding(bool(values["speaking"]))
             core.state.emit("part", channel=entry["channel"],
                             forms=entry["forms"], about=entry["about"],
                             host=entry["host"], state=entry["state"])

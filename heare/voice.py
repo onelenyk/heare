@@ -104,6 +104,13 @@ class HttpPort:
             "channel": CHANNEL, "kind": "state", "values": dict(values),
         })
 
+    def sounding(self, on: bool) -> None:
+        """Whether sound is still leaving the body — the brain waits on it."""
+        self._post("/api/input", {
+            "channel": CHANNEL, "kind": "state",
+            "values": {"speaking": bool(on)},
+        })
+
     def said_over(self, channel: str, text: str, speech_ms: float,
                   long: bool) -> bool:
         response = self._post("/api/input/said_over", {
@@ -116,8 +123,9 @@ class HttpPort:
 class _Reply:
     """One reply's pieces, queued until the mouth is ready for them."""
 
-    def __init__(self, voice: Voice) -> None:
+    def __init__(self, voice: Voice, port: HttpPort | None = None) -> None:
         self._voice = voice
+        self._port = port
         self._queue: asyncio.Queue[str | object] = asyncio.Queue()
         self._task: asyncio.Task | None = None
 
@@ -137,12 +145,17 @@ class _Reply:
             yield piece
 
     async def _run(self) -> None:
+        if self._port is not None:
+            self._port.sounding(True)
         try:
             logger.info("the reply %s", await self._voice.say(self._pieces()))
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("the mouth failed mid-reply")
+        finally:
+            if self._port is not None:
+                self._port.sounding(False)
 
     async def cancel(self) -> None:
         if self._task is not None:
@@ -157,6 +170,7 @@ class _Speaker:
         self._voice = voice
         self._port = port
         self._reply: _Reply | None = None
+        self._sounded = False
 
     def feed(self, event: dict) -> None:
         if event.get("channel") != CHANNEL:
@@ -178,13 +192,19 @@ class _Speaker:
 
     def _piece(self, text: str) -> None:
         if self._reply is None:
-            self._reply = _Reply(self._voice)
+            if self._sounded:
+                # The last reply's text ended, its sound may not have: a new
+                # one begins on a clean line.
+                self._voice.stop()
+                self._sounded = False
+            self._reply = _Reply(self._voice, self._port)
         self._reply.piece(text)
 
     def _end(self) -> None:
         if self._reply is not None:
             self._reply.end()
             self._reply = None
+            self._sounded = True
 
     def _turn(self, name: str, value) -> None:
         try:

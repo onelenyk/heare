@@ -176,6 +176,39 @@ async def test_the_mouth_controls_are_obeyed():
     assert (ears.paused, ears.resumed, ears.stopped) == (1, 1, 1)
 
 
+async def test_a_new_reply_stops_what_is_still_sounding():
+    ears = Ears()
+    await _follow(_lines([
+        _event("reply", text="перша"),
+        _event("said", text="перша"),
+        _event("reply", text="друга"),
+    ]), _Speaker(ears))
+
+    assert ears.stopped >= 1
+
+
+async def test_the_body_says_when_the_mouth_is_sounding():
+    ears = Ears()
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True})
+
+    await _follow(_lines([
+        _event("reply", text="раз"),
+        _event("said", text="раз"),
+    ]), _Speaker(ears, _port(handler)))
+
+    for _ in range(100):
+        if any(v.get("values", {}).get("speaking") is False for v in seen):
+            break
+        await asyncio.sleep(0)
+    sounds = [v["values"] for v in seen if v.get("kind") == "state"]
+    assert sounds[0] == {"speaking": True}
+    assert sounds[-1] == {"speaking": False}
+
+
 async def test_a_control_from_the_page_is_applied_and_reported():
     ears = Ears()
     seen: list[tuple[str, dict]] = []
