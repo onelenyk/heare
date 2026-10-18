@@ -351,6 +351,29 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def reject(request: web.Request) -> web.Response:
         return _decide(request, "rejected")
 
+    async def forget(request: web.Request) -> web.Response:
+        """The person takes a part out of the registry and out of trust.
+
+        The brain cannot kill a process it does not own, and does not
+        pretend to: the part keeps running, but is no longer known — the
+        next knock is a question again."""
+        pid = request.match_info["id"]
+        entry = bodies.pop(pid, None)
+        if entry is None:
+            raise web.HTTPNotFound(text="no such part")
+        try:
+            remembered = set(json.loads(trusted_file.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            remembered = set()
+        remembered.discard(pid)
+        trusted_file.write_text(json.dumps(sorted(remembered), ensure_ascii=False),
+                                encoding="utf-8")
+        core.executors.pop(str(entry.get("channel", "")), None)
+        core.state.emit("part", channel=entry.get("channel", ""),
+                        forms=entry.get("forms", []), about=entry.get("about", ""),
+                        host=entry.get("host", ""), state="forgotten")
+        return web.json_response({"ok": True})
+
     def _decide(request: web.Request, state: str) -> web.Response:
         pid = request.match_info["id"]
         entry = bodies.get(pid)
@@ -621,6 +644,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/bodies", register),
         web.post("/api/bodies/{id}/approve", approve),
         web.post("/api/bodies/{id}/reject", reject),
+        web.post("/api/bodies/{id}/forget", forget),
         web.post("/api/executor/claim", claim),
         web.post("/api/executor/{id:\\d+}/step", step),
         web.post("/api/executor/{id:\\d+}/permit", executor_permit),

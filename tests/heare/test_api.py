@@ -457,6 +457,30 @@ async def test_a_remembered_part_does_not_ask_again(tmp_path):
     await _close(room, client)
 
 
+async def test_a_part_can_be_forgotten_and_must_ask_again(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, auth, _ = await _open(tmp_path)
+    await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac"}, headers=auth)
+
+    forgotten = await client.post("/api/bodies/voice@mac/forget", headers=auth)
+    assert forgotten.status == 200
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert "voice@mac" not in state["bodies"]
+    assert json.loads((tmp_path / "parts.json").read_text()) == []
+
+    again = asyncio.create_task(client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac"}, headers=auth))
+    await asyncio.sleep(0.1)
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert state["bodies"]["voice@mac"]["state"] == "pending"
+    await client.post("/api/bodies/voice@mac/reject", headers=auth)
+    await again
+    await _close(room, client)
+
+
 async def test_a_folder_is_a_part_the_brain_already_knows(tmp_path):
     folder = tmp_path / "parts" / "demo"
     folder.mkdir(parents=True)
