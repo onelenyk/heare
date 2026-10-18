@@ -35,9 +35,9 @@ protocol first, implementation second. Never abstract for one.
 
 ```bash
 uv sync
-uv run python -m heare            # by typing
-uv run python -m heare --voice    # aloud
-uv run python -m heare --serve    # the page and the API on 127.0.0.1:9790
+uv run heare            # by typing
+uv run heare --voice    # aloud
+uv run heare --serve    # the page and the API on 127.0.0.1:9790
 
 make test                         # the core against stand-ins: no network, no keys
 make lint                         # ruff
@@ -48,11 +48,11 @@ make check                        # lint + test
 Parts — separate processes that knock and wait for approval on the page:
 
 ```bash
-uv run python -m heare.hands
-uv run python -m heare.eyes
-uv run python -m heare.voice
-uv run python -m heare.chat
-uv run python -m heare.desktop    # один маяк: піднімає частини з ~/.heare/parts
+uv run heare-hands
+uv run heare-eyes
+uv run heare-voice
+uv run heare-chat
+uv run heare-desktop    # один маяк: піднімає частини з ~/.heare/parts
 ```
 
 `uv run python -m heare.listener` drives real speech in and the reply out;

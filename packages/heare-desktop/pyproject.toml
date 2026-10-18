@@ -4,6 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = ["heare-core"]
 
+[project.scripts]
+heare-desktop = "heare.desktop:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

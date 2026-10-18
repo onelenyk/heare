@@ -23,19 +23,19 @@ commit is tagged `legacy-app`.
 
 ```bash
 uv sync
-uv run python -m heare            # by typing
-uv run python -m heare --voice    # aloud
-uv run python -m heare --serve    # the page and the API on 127.0.0.1:9790
+uv run heare            # by typing
+uv run heare --voice    # aloud
+uv run heare --serve    # the page and the API on 127.0.0.1:9790
 ```
 
 The page arrives without a token baked in: it is handed one when served.
 The parts are separate processes and knock on the brain:
 
 ```bash
-uv run python -m heare.hands      # the agent: files, commands, search
-uv run python -m heare.eyes       # what is around: the front app, sound
-uv run python -m heare.voice      # speech in, speech out
-uv run python -m heare.chat       # the conversation in a terminal
+uv run heare-hands      # the agent: files, commands, search
+uv run heare-eyes       # what is around: the front app, sound
+uv run heare-voice      # speech in, speech out
+uv run heare-chat       # the conversation in a terminal
 ```
 
 ## Test

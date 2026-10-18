@@ -4,6 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = ["heare-core", "heare-reach", "aiohttp>=3.13.5", "aiosqlite>=0.20.0", "keyring>=25.7.0", "httpx>=0.27.0"]
 
+[project.scripts]
+heare-brain = "heare.brain:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -4,6 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = ["heare-core", "httpx>=0.27.0"]
 
+[project.scripts]
+heare-chat = "heare.chat:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
