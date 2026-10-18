@@ -473,7 +473,7 @@ function commandFor(role, parts) {
   }
   flags.push(`--from https://github.com/${REPO}/releases/download/v${VERSION}`);
   flags.push(`--version ${VERSION}`);
-  return `curl -sSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh -s -- ${flags.join(" ")}`;
+  return `curl -sSL https://raw.githubusercontent.com/${REPO}/v${VERSION}/install.sh | sh -s -- ${flags.join(" ")}`;
 }
 
 if (typeof document !== "undefined") {
