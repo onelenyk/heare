@@ -178,7 +178,11 @@ mac)
 </dict></plist>
 EOF
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-        launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist"
+        sleep 1
+        launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist" 2>/dev/null || {
+            sleep 2
+            launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist"
+        }
         say "launchd: $label"
     }
     plist com.heare.brain heare-brain brain.log
