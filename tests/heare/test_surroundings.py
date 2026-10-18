@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from heare.core import Message
 from heare.surroundings import sound
 from heare.surroundings.watch import Surroundings
 from tests.heare.fakes import Says, Worker, open_room
+
+
+def test_the_assistants_own_bodies_are_not_other_programs(monkeypatch):
+    monkeypatch.setattr(sound, "subprocess", SimpleNamespace(run=lambda *a, **k: (
+        SimpleNamespace(stdout="/venv/bin/python3 -m heare.voice\n"))))
+    assert sound._ours(123) is True
+
+    monkeypatch.setattr(sound, "subprocess", SimpleNamespace(run=lambda *a, **k: (
+        SimpleNamespace(stdout="/Applications/Spotify.app/Contents/MacOS/Spotify\n"))))
+    assert sound._ours(456) is False
 
 
 def test_the_sense_answers_with_names_and_never_breaks():

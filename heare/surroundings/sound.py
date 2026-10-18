@@ -15,12 +15,14 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import os
+import re
 import struct
 import subprocess
 import sys
 
 _SYSTEM = 1
 _library = None
+_OURS = re.compile(r"-m\s+heare(?:[.\s]|$)")
 
 
 def _code(four: str) -> int:
@@ -43,6 +45,23 @@ def _get(obj: int, selector: str) -> bytes | None:
                                            ctypes.byref(size), data):
         return None
     return bytes(data)
+
+
+def _ours(pid: int) -> bool:
+    """Whether this is one of the assistant's own bodies.
+
+    The voice keeps its output device open, so CoreAudio reports it as
+    running output even when it is silent — the eyes then tell the brain
+    that something is playing, and every unaddressed phrase is dropped as
+    room noise. Its own bodies are not other programs.
+    """
+    try:
+        command = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                                 capture_output=True, text=True,
+                                 timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return bool(_OURS.search(command))
 
 
 def _name(pid: int) -> str:
@@ -73,7 +92,7 @@ def playing() -> list[str]:
             if not pid or not out or not struct.unpack("I", out)[0]:
                 continue
             pid = struct.unpack("i", pid)[0]
-            if pid != os.getpid() and (name := _name(pid)):
+            if pid != os.getpid() and not _ours(pid) and (name := _name(pid)):
                 names.add(name)
         return sorted(names)
     except Exception:  # noqa: BLE001 — a sense that fails reports nothing, never breaks
