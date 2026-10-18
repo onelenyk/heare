@@ -196,3 +196,56 @@ setup_port = 9791                          # форма (можна не вка�
    форма їх не потребує.
 5. **Локальний браузер (127.0.0.1) — авто-сесія?** — ні: усі браузери —
    кодом, бо господар хоче все через домен.
+
+## 14. Досяжність: тунель (Ф6)
+
+Мозок слухає лише `127.0.0.1`. Назовні його виводить тунель — сама машина
+дзвонить назовні, портів не відкриваємо.
+
+### Швидка перевірка (без домену, без акаунта)
+
+```bash
+brew install cloudflared
+cloudflared tunnel --url http://127.0.0.1:9790
+```
+
+Дає випадкову адресу `https://<щось>.trycloudflare.com` — вона живе, поки
+живе процес, і змінюється після перезапуску. Досить, щоб перевірити телефон:
+відкрив → екран підключення → `heare-brain code` на Mac → код → вікно.
+
+### Постійна адреса (домен)
+
+```bash
+cloudflared tunnel login                     # один раз, у браузері
+cloudflared tunnel create heare
+cloudflared tunnel route dns heare heare.onelenyk.dev
+cloudflared tunnel run heare
+```
+
+Конфіг `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: heare
+credentials-file: /Users/<ім'я>/.cloudflared/<id>.json
+ingress:
+  - hostname: heare.onelenyk.dev
+    service: http://127.0.0.1:9790
+  - service: http_status:404
+```
+
+Постійний запуск — `cloudflared service install` (launchd/systemd).
+
+### Чому це безпечно
+
+- Мозок не видно в інтернеті: тунель сам відкриває з'єднання назовні.
+- Сторінка віддається **без ключа**: без коду — лише екран підключення.
+- API без ключа → 401; токени — HttpOnly cookie / заголовок.
+- За тунелем `X-Forwarded-Proto: https` → cookie стає `Secure`.
+- Майстер-ключ не покидає машину мозку ніколи.
+
+### Порядок, коли домен з'явиться
+
+1. `cloudflared tunnel login` і `create`, `route dns`.
+2. `install.json` не потрібен — тунель ставиться окремо.
+3. Відкрити `https://heare.onelenyk.dev` на телефоні, ввести код.
+4. За бажанням — Cloudflare Access (тільки твоя пошта) перед мозком.
