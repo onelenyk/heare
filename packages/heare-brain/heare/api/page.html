@@ -279,6 +279,16 @@
     #talkdrawer #talk { max-height:40vh; }
   }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+  /* ── the pairing: a browser that has no key yet ── */
+  #pairing { position:fixed; inset:0; z-index:90; display:grid; place-content:center; padding:24px; background:var(--bg); }
+  #pairing[hidden] { display:none; }
+  #pairing form { width:min(420px,92vw); background:var(--card); border:1px solid var(--line); border-radius:16px; padding:26px; display:grid; gap:12px; }
+  #pairing h1 { margin:0; font:700 22px var(--sans); letter-spacing:-.3px; color:var(--ink); }
+  #pairing p { margin:0; color:var(--soft); font:13px/1.5 var(--sans); }
+  #pairing input { padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink); font:700 20px var(--mono); letter-spacing:.35em; text-transform:uppercase; text-align:center; outline:none; }
+  #pairing input:focus { border-color:var(--accent); }
+  #pairing button { padding:12px; border:0; border-radius:10px; background:var(--accent); color:var(--accent-ink); font:700 15px var(--sans); cursor:pointer; }
+  #pairing .pairerror { color:var(--bad); min-height:18px; }
 </style>
 <style id="own"></style>
 
@@ -366,12 +376,54 @@
   <p class="note" id="keynote">Ключ можна зберегти, але не можна прочитати назад.</p>
 </aside>
 
+<div id="pairing" hidden>
+  <form id="pairform" autocomplete="off">
+    <h1>Підключити цей браузер</h1>
+    <p>Код показує машина мозку: <b>heare-brain code</b></p>
+    <input id="paircode" maxlength="12" autocomplete="off" spellcheck="false" placeholder="8 символів">
+    <button type="submit">Підключити</button>
+    <p class="pairerror" id="pairerror" role="alert"></p>
+  </form>
+</div>
+
 <script>
-const T = window.HEARE_TOKEN, $ = id => document.getElementById(id);
+const $ = id => document.getElementById(id);
 const api = (path, opts = {}) => fetch("/api/" + path, {
-  ...opts, headers: {"X-Heare-Token": T, "Content-Type": "application/json"},
+  ...opts, credentials: "same-origin",
+  headers: {"Content-Type": "application/json"},
   body: opts.body ? JSON.stringify(opts.body) : undefined,
-}).then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)));
+}).then(r => {
+  if (r.status === 401) { showPairing(); return Promise.reject("pair"); }
+  return r.ok ? r.json() : r.text().then(t => Promise.reject(t));
+});
+
+function showPairing() {
+  const p = $("pairing");
+  if (p) { p.hidden = false; setTimeout(() => $("paircode").focus(), 30); }
+}
+const webName = () => {
+  const ua = navigator.userAgent;
+  return /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome"
+    : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "браузер";
+};
+$("pairform").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const code = $("paircode").value.trim().toUpperCase();
+  $("pairerror").textContent = "";
+  try {
+    const answer = await fetch("/api/pair", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({code, kind: "window", name: webName()}),
+    });
+    if (answer.ok) { location.reload(); return; }
+    $("pairerror").textContent = answer.status === 429
+      ? "занадто багато спроб — зачекай хвилину"
+      : "код невірний або прострочений — візьми новий: heare-brain code";
+  } catch {
+    $("pairerror").textContent = "мозок не відповідає";
+  }
+});
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
 const NOW = {idle: "чекає", hearing: "слухає тебе", thinking: "думає", speaking: "говорить"};
@@ -1040,7 +1092,7 @@ $("save-key").onclick = () => {
 };
 
 /* ── live ── */
-const stream = new EventSource("/api/events?token=" + encodeURIComponent(T));
+const stream = new EventSource("/api/events");
 stream.onopen = knock;
 stream.onmessage = m => {
   const e = JSON.parse(m.data);

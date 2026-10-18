@@ -46,6 +46,7 @@ KEY_NAMES = (
 
 # How long a part waits for the person's answer before it leaves.
 APPROVAL_WAIT_S = 120.0
+SESSION = "heare_session"
 
 
 class Slow:
@@ -213,9 +214,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def guard(request: web.Request, handler):
         if request.path == "/api/pair":
             return await handler(request)
-        if not request.path.startswith("/api/"):
+        if not (request.path.startswith("/api/")
+                or request.path.startswith("/screens/")):
             return await handler(request)
-        given = request.headers.get("X-Heare-Token") or request.query.get("token") or ""
+        given = (request.headers.get("X-Heare-Token")
+                 or request.query.get("token")
+                 or request.cookies.get(SESSION, "") or "")
         if given and secrets.compare_digest(given, secret):
             return await handler(request)
         pid = auth.owner(part_tokens, given)
@@ -248,7 +252,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPUnauthorized(text="bad code")
         name = re.sub(r"[^A-Za-z0-9._-]", "", str(data.get("name") or ""))[:40]
         pid = f"{kind}@{name or request.remote or 'here'}"
-        return web.json_response({"pid": pid, "token": auth.issue(part_tokens, pid)})
+        token = auth.issue(part_tokens, pid)
+        if kind == "machine":
+            return web.json_response({"pid": pid, "token": token})
+        answer = web.json_response({"pid": pid})
+        secure = (request.scheme == "https"
+                  or request.headers.get("X-Forwarded-Proto") == "https")
+        answer.set_cookie(SESSION, token, httponly=True, samesite="Strict",
+                          secure=secure, max_age=30 * 24 * 3600, path="/")
+        return answer
 
     async def body(request: web.Request) -> dict:
         try:
@@ -260,9 +272,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return data
 
     def handed(html: str) -> web.Response:
-        """A page, with the token it needs to be a client of this API."""
-        script = f"<script>window.HEARE_TOKEN={json.dumps(secret)}</script>"
-        return web.Response(text=script + html, content_type="text/html")
+        """A page as it is. A key is never written into it: the page pairs."""
+        return web.Response(text=html, content_type="text/html")
 
     # -- messages ---------------------------------------------------------
 
@@ -417,13 +428,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
         host = str(data.get("host") or socket.gethostname())
         pid = str(data.get("key") or f"{channel}@{host}")
         who = request.get("part")
+        if who is not None and who.startswith("window@"):
+            pid = who
         if who is not None and who != pid and not who.startswith("machine@"):
             raise web.HTTPForbidden(text="not your name")
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
-        if pid in trusted():
+        if pid in trusted() or str(who or "").startswith("window@"):
             attach(pid, channel, forms, about, host, "approved", ui)
             return web.json_response({"approved": True, **granted(request, pid)})
         attach(pid, channel, forms, about, host, "pending", ui)

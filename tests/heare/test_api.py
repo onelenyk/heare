@@ -212,8 +212,9 @@ async def test_a_screen_is_saved_listed_and_served_as_a_client(tmp_path):
     saved = await client.put("/api/screens/costs", json={"html": "<h1>Витрати</h1>"}, headers=auth)
     assert saved.status == 200
     assert await (await client.get("/api/screens", headers=auth)).json() == ["costs"]
-    shown = await (await client.get("/screens/costs")).text()
-    assert "<h1>Витрати</h1>" in shown and "HEARE_TOKEN" in shown
+    assert (await client.get("/screens/costs")).status == 401
+    shown = await (await client.get("/screens/costs", headers=auth)).text()
+    assert "<h1>Витрати</h1>" in shown and "HEARE_TOKEN" not in shown
     bad = await client.put("/api/screens/..%2Fevil", json={"html": "x"}, headers=auth)
     assert bad.status in (400, 404)
     assert not (tmp_path / "evil.html").exists()
@@ -223,7 +224,8 @@ async def test_a_screen_is_saved_listed_and_served_as_a_client(tmp_path):
 async def test_the_built_in_page_is_served(tmp_path):
     room, client, _, _ = await _open(tmp_path)
     page = await (await client.get("/")).text()
-    assert "HEARE_TOKEN" in page and "Керування" in page
+    assert "HEARE_TOKEN" not in page and "Керування" in page
+    assert 'id="pairing"' in page  # a browser without a key asks for a code
     await _close(room, client)
 
 
@@ -259,7 +261,7 @@ async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
     await room.until(lambda: task.status == "done")
     assert "my-tasks" in task.result
     assert await (await client.get("/api/screens", headers=auth)).json() == ["my-tasks"]
-    assert "<h1>Справи</h1>" in await (await client.get("/screens/my-tasks")).text()
+    assert "<h1>Справи</h1>" in await (await client.get("/screens/my-tasks", headers=auth)).text()
     await _close(room, client)
 
 
@@ -383,7 +385,7 @@ async def test_asking_to_change_the_drawing_hands_the_model_what_is_drawn(tmp_pa
     await room.until(lambda: second.status == "done")
     assert "<h1>Дошка</h1>" in seen[1] and "board" in seen[1]
     assert await (await client.get("/api/screens", headers=auth)).json() == ["board"]
-    assert "<button>" in await (await client.get("/screens/board")).text()
+    assert "<button>" in await (await client.get("/screens/board", headers=auth)).text()
     await _close(room, client)
 
 
@@ -635,8 +637,9 @@ async def test_a_pairing_code_gives_a_window_the_person_s_powers(tmp_path):
     answer = await client.post(
         "/api/pair", json={"code": code, "kind": "window", "name": "phone"})
     assert answer.status == 200
-    window = {"X-Heare-Token": (await answer.json())["token"]}
-    assert (await client.get("/api/state", headers=window)).status == 200
+    given = await answer.json()
+    assert "token" not in given  # the browser never sees it: only the cookie
+    assert (await client.get("/api/state")).status == 200
     await _close(room, client)
 
 

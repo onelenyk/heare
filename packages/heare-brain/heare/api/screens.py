@@ -20,7 +20,7 @@ from heare.core import Desk
 
 API = """\
 The page is served by the assistant and may call its API. Every request
-needs the header "X-Heare-Token": window.HEARE_TOKEN (already defined).
+is answered by the cookie the page pairs with: no token in the HTML.
 
 GET  /api/state            -> {phase: idle|hearing|thinking|speaking, parts:{inputs,outputs,executors}, tasks:[...], permission, controls,
                               model:{provider, model, wanted, fallback}, session:{started, turns, cost_usd, unpriced}}
