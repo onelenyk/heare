@@ -6,16 +6,16 @@ worktree на задачу.*
 
 ## Де ми
 
-- Руки — **тіло**: [`heare/hands.py`](../../heare/hands.py) реєструється, бере
+- Руки — **тіло**: [`packages/heare-hands/heare/hands.py`](../../packages/heare-hands/heare/hands.py) реєструється, бере
   задачу (`claim`), водить opencode через ACP, доносить результат.
 - Двері — `/api/executor/*` ([protocol.md](protocol.md) §3); мозок —
-  [`heare/reach/remote.py`](../../heare/reach/remote.py).
+  [`packages/heare-reach/heare/reach/remote.py`](../../packages/heare-reach/heare/reach/remote.py).
 - **Працює:** агент сам відповідає — модель ставиться на сесії; тіло має
   життя — тиша 5 хв або 30 хв усього → `LifeOver`, «стоп» від мозку
-  скасовує роботу ([`reach/life.py`](../../heare/reach/life.py)).
+  скасовує роботу ([`reach/life.py`](../../packages/heare-reach/heare/reach/life.py)).
 - **Не працює:** Р3 (дим-тест), Р5 (стеля), Р6 (тести на кожен крок).
 - **Дозволи й нотифікації:** opencode питає на кожну зміну; ми зводимо це до
-  **одного** питання на задачу ([`conversation._ask`](../../heare/core/conversation.py):
+  **одного** питання на задачу ([`conversation._ask`](../../packages/heare-core/heare/core/conversation.py):
   вікно 60 с, потім «ні»). opencode при цьому **сам** показує системну
   нотифікацію на кожен свій запит — звідси «Agent needs permission to
   continue» десятками. Це шум інструмента, а не зависання.

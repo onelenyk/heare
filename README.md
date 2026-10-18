@@ -3,8 +3,9 @@
 macOS voice assistant: it listens, decides when to answer, and acts
 through an agent (opencode over ACP) without blocking the conversation.
 
-The app is `heare/` — one core and five kinds of part (input, output,
-model, memory, executor; `heare/core/forms.py`). A channel (voice, text)
+The app is nine distributions under `packages/` — one core and five
+kinds of part (input, output,
+model, memory, executor; `packages/heare-core/heare/core/forms.py`). A channel (voice, text)
 is an input, an output, or both. Parts connect to the brain's door over
 HTTP, knock with a key, and wait for the person's approval on the page.
 

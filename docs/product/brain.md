@@ -16,11 +16,11 @@
 - **справи** — `Task` (running · done · failed · stopped) зі згодою
   (`allowed`), і `Permission` — запитання, що чекає «так/ні».
 - **двигун** — наміри, моменти, спосіб донести ([../engine.md](../engine.md);
-  [`engine/`](../../heare/engine/)).
+  [`engine/`](../../packages/heare-brain/heare/engine/)).
 - **стан** — журнал подій + знімок: `phase`, `parts`, `tasks`, `permission`,
-  `around` ([`core/state.py`](../../heare/core/state.py)).
+  `around` ([`core/state.py`](../../packages/heare-core/heare/core/state.py)).
 - **канвас** — те, що мозок показує: іменовані блоки в `~/.heare/canvas.json`
-  ([`api/canvas.py`](../../heare/api/canvas.py)). Це **вміст, не частина**:
+  ([`api/canvas.py`](../../packages/heare-brain/heare/api/canvas.py)). Це **вміст, не частина**:
   сторінка — лише екран, а ручне редагування пише назад через двері
   (`POST /api/canvas/put`), і всі відкриті екрани йдуть за подією `canvas`.
 
@@ -41,8 +41,8 @@
 
 ## Стан сьогодні
 
-Мозок — **окремий процес** (`heare/brain.py`): `heare/core/` +
-`heare/memory/` + `heare/model/` + `heare/api/` + `heare/engine/`; пам'ять —
+Мозок — **окремий процес** (`packages/heare-brain/heare/brain.py`): `packages/heare-core/heare/core/` +
+`packages/heare-brain/heare/memory/` + `packages/heare-brain/heare/model/` + `packages/heare-brain/heare/api/` + `packages/heare-brain/heare/engine/`; пам'ять —
 локальний SQLite. Тіла приходять через двері — руки, чат, сторінка, голос,
 очі — і мозок не тримає жодного чужого процесу.
 

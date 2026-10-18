@@ -11,13 +11,13 @@
 ## Що дає (чого немає в інших тіл)
 
 - **руки** — виконавці opencode / Claude Code через ACP
-  ([`reach/agents.py`](../../heare/reach/agents.py)): доручає, питає дозвіл на
+  ([`reach/agents.py`](../../packages/heare-reach/heare/reach/agents.py)): доручає, питає дозвіл на
   кожну зміну, показує кроки, зупиняє, повертає результат.
 - **обстановка** — що грає (CoreAudio); пізніше «що спереду», «чи людина
-  поруч» ([`surroundings/`](../../heare/surroundings/); сьогодні лише «що
+  поруч» ([`surroundings/`](../../packages/heare-eyes/heare/surroundings/); сьогодні лише «що
   грає»).
 - **голос** — мікрофон і динамік, приглушення луни, кінець ходу, кивок
-  ([`channels/voice/`](../../heare/channels/voice/)).
+  ([`channels/voice/`](../../packages/heare-voice/heare/channels/voice/)).
 
 ## Контракт
 
@@ -30,11 +30,11 @@
 
 - `reach`: `installed()` знаходить агентів на `PATH`; `executor_cwd` —
   типова тека `~/heare-work`.
-- **Руки, голос і очі — тіла** (`heare/hands.py`, `heare/voice.py`,
-  `heare/eyes.py`): кожне реєструється, проходить одобрення і говорить з
+- **Руки, голос і очі — тіла** (`packages/heare-hands/heare/hands.py`, `packages/heare-voice/heare/voice.py`,
+  `packages/heare-eyes/heare/eyes.py`): кожне реєструється, проходить одобрення і говорить з
   мозком по дроту. Очі шлють `note` — застосунок, простій, що грає.
 - Мозок керує руками через `/api/executor/*`, а не викликом.
-- **Маяк:** `heare/desktop.py` читає `~/.heare/parts/*/heare.json`, запускає
+- **Маяк:** `packages/heare-desktop/heare/desktop.py` читає `~/.heare/parts/*/heare.json`, запускає
   те, що там сказано в `run`, піднімає знову, якщо впало, і зупиняє, коли
   маніфест прибрали. Один процес замість трьох команд.
 

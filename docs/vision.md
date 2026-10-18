@@ -52,7 +52,7 @@
 
 - **очі** — бачити екран, браузер, що відкрито;
 - **зв'язка з твоєю живою сесією CLI** (крок 6 у [plan.md](plan.md)) —
-  доручати нову справу heare вже вміє: [`heare/reach/`](../heare/reach/agents.py);
+  доручати нову справу heare вже вміє: [`packages/heare-reach/heare/reach/`](../packages/heare-reach/heare/reach/agents.py);
 - **проактивність** — самому вирішувати, коли діяти ([engine.md](engine.md)).
 
 Найважче — останнє: коли чуєш усе, продукт не «дотягнутись», а **вчасно
@@ -71,7 +71,7 @@
 він через opencode править власний код. Один такий оберт доводить усі три
 бажання одразу.
 
-Зв'язка heare → opencode **вже стоїть** ([`heare/reach/agents.py`](../heare/reach/agents.py)):
+Зв'язка heare → opencode **вже стоїть** ([`packages/heare-reach/heare/reach/agents.py`](../packages/heare-reach/heare/reach/agents.py)):
 heare доручає задачу, питає дозвіл на кожну зміну (читати — вільно), показує
 кроки, зупиняє, повертає результат. Бракує одного: вказати виконавцю теку
 самого heare — типово він працює в `~/heare-work`. Порядок кроків — у
