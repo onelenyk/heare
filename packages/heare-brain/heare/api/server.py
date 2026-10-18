@@ -37,12 +37,6 @@ logger = logging.getLogger("heare.api.server")
 
 PAGE = Path(__file__).with_name("page.html")
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
-# Keys a screen may set. Named, so the API cannot be used to plant
-# arbitrary secrets under the assistant's service.
-KEY_NAMES = (
-    "GROQ_API_KEY", "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_API_KEY",
-    "ZAI_API_KEY",
-)
 
 # How long a part waits for the person's answer before it leaves.
 APPROVAL_WAIT_S = 120.0
@@ -705,15 +699,25 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.json_response(settings.view())
 
     async def get_keys(request: web.Request) -> web.Response:
-        """Which keys exist. Never what they are."""
-        return web.json_response({name: bool(keys.get(name)) for name in KEY_NAMES})
+        """Where each key comes from. Never what it is."""
+        return web.json_response(await asyncio.to_thread(keys.view))
 
     async def set_key(request: web.Request) -> web.Response:
         data = await body(request)
         name, value = str(data.get("name", "")), str(data.get("value", "")).strip()
-        if name not in KEY_NAMES or not value:
+        if name not in keys.NAMES or not value:
             raise web.HTTPBadRequest(text="not a key this assistant uses")
         await asyncio.to_thread(keys.store, name, value)
+        core.state.emit("key", name=name)
+        return web.json_response({"saved": name})
+
+    async def adopt_key(request: web.Request) -> web.Response:
+        """Copy a key the environment already holds into the store."""
+        name = str((await body(request)).get("name", ""))
+        if name not in keys.NAMES:
+            raise web.HTTPBadRequest(text="not a key this assistant uses")
+        if not await asyncio.to_thread(keys.adopt, name):
+            raise web.HTTPBadRequest(text="no such key in the environment")
         core.state.emit("key", name=name)
         return web.json_response({"saved": name})
 
@@ -792,6 +796,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/settings", set_settings),
         web.get("/api/keys", get_keys),
         web.post("/api/keys", set_key),
+        web.post("/api/keys/adopt", adopt_key),
         web.get("/api/memory", memory),
         web.get("/api/screens", list_screens),
         web.put("/api/screens/{name}", save_screen),

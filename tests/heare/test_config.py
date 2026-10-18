@@ -34,7 +34,8 @@ def test_a_part_knocks_with_the_machine_key_when_there_is_one(tmp_path):
     master.write_text("master", encoding="utf-8")
     machine = tmp_path / "machine_token"
     machine.write_text("machine", encoding="utf-8")
-    alone = Settings(path=tmp_path / "none.toml", api_token_file=master)
+    alone = Settings(path=tmp_path / "none.toml", api_token_file=master,
+                     machine_token_file=tmp_path / "no_machine")
     paired = Settings(path=tmp_path / "none.toml", api_token_file=master,
                       machine_token_file=machine)
     assert alone.secret == "master"

@@ -11,7 +11,12 @@ from __future__ import annotations
 
 import pytest
 
+from heare import keys
+
 
 @pytest.fixture(autouse=True)
 def _keys_in_a_file(monkeypatch):
     monkeypatch.setenv("HEARE_KEYS_BACKEND", "file")
+    keys._STORED.clear()
+    for name in keys.NAMES:
+        monkeypatch.delenv(name, raising=False)

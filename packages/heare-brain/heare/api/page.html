@@ -265,6 +265,17 @@
   .pair { display:grid; grid-template-columns:1fr auto; gap:8px; }
   .btn { background:var(--accent); color:var(--accent-ink); border:0; border-radius:8px; padding:9px 14px; font-weight:700; cursor:pointer; }
   .note { color:var(--soft); font-size:12px; min-height:18px; }
+  /* Keys: where each one comes from, then the way to put one in the store. */
+  .keylist { display:grid; gap:6px; margin-bottom:14px; }
+  .keyrow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:var(--card-2); }
+  .kname { flex:1 1 130px; min-width:0; font:11.5px/1.4 var(--mono); color:var(--ink); overflow-wrap:anywhere; }
+  .kchip { flex:none; padding:2px 8px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .kchip.env { color:var(--accent); border-color:rgba(157,124,255,.55); background:rgba(157,124,255,.1); }
+  .kchip.stored { color:var(--ok); border-color:rgba(95,191,143,.42); background:rgba(95,191,143,.08); }
+  .kchip.none { color:var(--bad); border-color:rgba(239,122,107,.34); background:rgba(239,122,107,.06); }
+  .kadopt { flex:none; padding:4px 8px; border:1px solid var(--line); border-radius:7px; background:transparent; color:var(--ink); font-size:11px; cursor:pointer; white-space:nowrap; }
+  .kadopt:hover { border-color:var(--accent); color:var(--accent); }
+  .kadopt:disabled { opacity:.45; cursor:progress; }
   /* A narrow window stacks the regions in reading order: brain, its index,
      the parts' widgets, the canvas, then the conversation inline. */
   @media (max-width:900px) {
@@ -371,9 +382,10 @@
   <div class="field"><label for="modelname">модель</label><div class="pair"><input id="modelname" placeholder="назва моделі"><button class="btn" id="save-model">Зберегти</button></div></div>
   <p class="note" id="modelnote"></p>
   <h3>Ключі</h3>
-  <div class="field"><label for="keyname">який ключ</label><select id="keyname"></select></div>
+  <div class="keylist" id="keylist"></div>
+  <div class="field"><label for="keyname">свій ключ</label><select id="keyname"></select></div>
   <div class="field"><label for="keyvalue">значення</label><div class="pair"><input id="keyvalue" type="password" placeholder="встав токен" autocomplete="off"><button class="btn" id="save-key">Зберегти</button></div></div>
-  <p class="note" id="keynote">Ключ можна зберегти, але не можна прочитати назад.</p>
+  <p class="note" id="keynote">Значення не показуються ніколи — тільки те, звідки ключ.</p>
 </aside>
 
 <div id="pairing" hidden>
@@ -1061,12 +1073,51 @@ else {
 const shut = () => { for (const id of ["veil", "settings"]) $(id).classList.remove("on"); };
 $("veil").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
+function keyRows(have) {
+  const list = $("keylist");
+  if (!have) {
+    list.replaceChildren(el("p", "empty", "не вдалося дізнатися, звідки ключі"));
+    return;
+  }
+  list.replaceChildren(...Object.keys(have).map(name => {
+    const info = have[name] || {};
+    const state = info.env ? "env" : info.stored ? "stored" : "none";
+    const row = el("div", "keyrow");
+    row.append(el("span", "kname", name));
+    const chip = el("span", "kchip " + state,
+      {env: "в оточенні", stored: "збережено", none: "немає"}[state]);
+    row.append(chip);
+    if (info.env) {
+      const adopt = el("button", "kadopt", "Використати з оточення");
+      adopt.type = "button";
+      adopt.onclick = () => adoptKey(name, adopt, chip);
+      row.append(adopt);
+    }
+    return row;
+  }));
+}
+function adoptKey(name, button, chip) {
+  button.disabled = true;
+  api("keys/adopt", {method: "POST", body: {name}})
+    .then(() => {
+      chip.className = "kchip stored";
+      chip.textContent = "збережено";
+      button.remove();
+      $("keynote").textContent = `${name} взято з оточення. Діє з наступної відповіді.`;
+      refresh();
+    })
+    .catch(() => {
+      $("keynote").textContent = "Не вийшло взяти ключ з оточення.";
+      button.disabled = false;
+    });
+}
 function keys() {
   api("keys").then(have => {
     const chosen = $("keyname").value;
-    $("keyname").replaceChildren(...Object.keys(have).map(n => new Option((have[n] ? "✓ " : "— ") + n, n)));
+    $("keyname").replaceChildren(...Object.keys(have).map(n => new Option(((have[n] || {}).source ? "✓ " : "— ") + n, n)));
     if (chosen) $("keyname").value = chosen;
-  });
+    keyRows(have);
+  }).catch(() => keyRows(null));
 }
 $("open-settings").onclick = () => {
   const m = (state && state.model) || {};

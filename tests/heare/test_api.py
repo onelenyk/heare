@@ -168,20 +168,68 @@ async def test_a_key_can_be_saved_and_never_read(tmp_path, monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     room, client, auth, _ = await _open(tmp_path)
     before = await (await client.get("/api/keys", headers=auth)).json()
-    assert before["DEEPSEEK_API_KEY"] is False
+    assert before["DEEPSEEK_API_KEY"] == {"source": None, "env": False, "stored": False}
     saved = await client.post(
-        "/api/keys", json={"name": "DEEPSEEK_API_KEY", "value": "sk-secret-123"}, headers=auth
+        "/api/keys", json={"name": "DEEPSEEK_API_KEY", "value": "sk-test-value"}, headers=auth
     )
     assert saved.status == 200
-    after = await client.get("/api/keys", headers=auth)
-    text = await after.text()
-    assert json.loads(text)["DEEPSEEK_API_KEY"] is True
-    assert "sk-secret-123" not in text
+    after = await (await client.get("/api/keys", headers=auth)).json()
+    assert after["DEEPSEEK_API_KEY"] == {"source": "stored", "env": False, "stored": True}
+    text = await (await client.get("/api/keys", headers=auth)).text()
+    assert "sk-test-value" not in text
     for path in ("/api/settings", "/api/state"):
-        assert "sk-secret-123" not in await (await client.get(path, headers=auth)).text()
+        assert "sk-test-value" not in await (await client.get(path, headers=auth)).text()
     refused = await client.post("/api/keys", json={"name": "PATH", "value": "x"}, headers=auth)
     assert refused.status == 400
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    await _close(room, client)
+
+
+async def test_a_key_in_the_environment_is_never_read_back(tmp_path, monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "sk-test-value")
+    room, client, auth, _ = await _open(tmp_path)
+    response = await client.get("/api/keys", headers=auth)
+    text = await response.text()
+    assert "sk-test-value" not in text
+    assert json.loads(text)["GROQ_API_KEY"] == {
+        "source": "env", "env": True, "stored": False,
+    }
+    await _close(room, client)
+
+
+async def test_a_key_in_the_environment_can_be_adopted(tmp_path, monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "sk-test-value")
+    room, client, auth, _ = await _open(tmp_path)
+    events = room.core.state.subscribe()
+    saved = await client.post(
+        "/api/keys/adopt", json={"name": "GROQ_API_KEY"}, headers=auth)
+    assert saved.status == 200
+    assert await saved.json() == {"saved": "GROQ_API_KEY"}
+    report = await (await client.get("/api/keys", headers=auth)).json()
+    assert report["GROQ_API_KEY"] == {"source": "env", "env": True, "stored": True}
+    seen = []
+    while not events.empty():
+        seen.append(events.get_nowait())
+    assert any(e.kind == "key" and e.data == {"name": "GROQ_API_KEY"} for e in seen)
+    monkeypatch.delenv("GROQ_API_KEY")
+    report = await (await client.get("/api/keys", headers=auth)).json()
+    assert report["GROQ_API_KEY"] == {"source": "stored", "env": False, "stored": True}
+    await _close(room, client)
+
+
+async def test_adopting_refuses_an_unknown_key_or_an_empty_environment(tmp_path, monkeypatch):
+    monkeypatch.delenv("ZAI_API_KEY", raising=False)
+    room, client, auth, _ = await _open(tmp_path)
+    unknown = await client.post(
+        "/api/keys/adopt", json={"name": "PATH"}, headers=auth)
+    assert unknown.status == 400
+    missing = await client.post(
+        "/api/keys/adopt", json={"name": "ZAI_API_KEY"}, headers=auth)
+    assert missing.status == 400
+    monkeypatch.setenv("ZAI_API_KEY", "   ")
+    blank = await client.post(
+        "/api/keys/adopt", json={"name": "ZAI_API_KEY"}, headers=auth)
+    assert blank.status == 400
     await _close(room, client)
 
 

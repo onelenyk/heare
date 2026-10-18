@@ -16,6 +16,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from heare import keys
 from heare.config import Settings
 
 PARTS = ("eyes", "voice", "hands")
@@ -129,6 +130,22 @@ def _remember(data: dict) -> None:
         settings.set("url", _text(data, "url"))
 
 
+def _keep_keys(data: dict) -> list[str]:
+    """Store the keys the person typed. A store that will not answer is a
+    note in the log, not a failed install: the installer also gets them."""
+    notes: list[str] = []
+    for field, name in (("deepseek_key", "DEEPSEEK_API_KEY"),
+                        ("groq_key", "GROQ_API_KEY")):
+        value = data.get(field)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        try:
+            keys.store(name, value)
+        except OSError as error:
+            notes.append(f"{field}: {error}")
+    return notes
+
+
 def _tail(text: str) -> str:
     text = text.strip()
     return text[-LOG_TAIL:] if len(text) > LOG_TAIL else text
@@ -183,7 +200,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self) -> None:
-        if self.path.split("?", 1)[0] != "/":
+        path = self.path.split("?", 1)[0]
+        if path == "/keys":
+            self._send(200, keys.view())
+            return
+        if path != "/":
             self._send(404, {"errors": ["не знаю такої сторінки"]})
             return
         self._send(200, FORM_HTML, content_type="text/html; charset=utf-8")
@@ -209,7 +230,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
-        if path != "/setup":
+        if path not in ("/setup", "/keys"):
             self._send(404, {"errors": ["не знаю такої дії"]})
             return
 
@@ -223,21 +244,41 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"errors": ["не розібрав запит"]})
             return
 
+        if path == "/keys":
+            self._adopt(data)
+            return
+
         errors = validate(data)
         if errors:
             self._send(400, {"errors": errors})
             return
 
         with _RUN_LOCK:
+            notes = _keep_keys(data)
             try:
                 _remember(data)
             except OSError as error:
-                self._send(200, {"ok": False, "log": str(error)})
+                self._send(200, {"ok": False, "log": "\n".join([*notes, str(error)])})
                 return
             ok, log = _run(data, self.server.installer, self.server.wheels)
             if ok:
                 Settings().set("setup_done", True)
-        self._send(200, {"ok": ok, "log": log})
+        self._send(200, {"ok": ok, "log": "\n".join([*notes, log])})
+
+    def _adopt(self, data: dict) -> None:
+        name = data.get("name")
+        if not isinstance(name, str) or name not in keys.NAMES:
+            self._send(400, {"errors": ["невідомий ключ"]})
+            return
+        try:
+            saved = keys.adopt(name)
+        except OSError as error:
+            self._send(400, {"errors": [str(error)]})
+            return
+        if not saved:
+            self._send(400, {"errors": ["немає такого ключа в оточенні"]})
+            return
+        self._send(200, {"saved": name})
 
 
 def _install_info() -> tuple[str, str]:
@@ -304,6 +345,7 @@ FORM_HTML = """<!doctype html>
     --ink: #ece8e2;
     --soft: #96909e;
     --accent: #9d7cff;
+    --ok: #5fbf8f;
     --bad: #ef7a6b;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -468,8 +510,80 @@ FORM_HTML = """<!doctype html>
     background: rgba(157, 124, 255, .06);
   }
   .parts input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .keys-sect { margin: 0 0 20px; }
+  .keys-lede {
+    margin: -2px 2px 14px;
+    color: var(--soft);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .keybox {
+    padding: 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #17151c;
+  }
+  .keyhead { display: flex; align-items: flex-start; gap: 10px; }
+  .keyid { min-width: 0; }
+  .keyid b { display: block; font-size: 14.5px; font-weight: 600; line-height: 1.3; }
+  .keydim { color: var(--soft); font-weight: 400; }
+  .keymono {
+    display: block;
+    margin-top: 3px;
+    color: var(--soft);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .02em;
+    overflow-wrap: anywhere;
+  }
+  .keychip {
+    flex: none;
+    margin-left: auto;
+    padding: 3px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--soft);
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+  .keychip.env {
+    color: var(--accent);
+    border-color: rgba(157, 124, 255, .55);
+    background: rgba(157, 124, 255, .1);
+  }
+  .keychip.stored {
+    color: var(--ok);
+    border-color: rgba(95, 191, 143, .42);
+    background: rgba(95, 191, 143, .08);
+  }
+  .keychip.none {
+    color: var(--bad);
+    border-color: rgba(239, 122, 107, .34);
+    background: rgba(239, 122, 107, .06);
+  }
+  .keyenv { margin-top: 11px; }
+  button.adopt {
+    width: auto;
+    min-height: 36px;
+    margin: 0;
+    padding: 0 13px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 550;
+  }
+  button.adopt:hover { border-color: rgba(157, 124, 255, .55); color: var(--accent); filter: none; }
+  button.adopt:disabled { color: var(--soft); border-color: var(--line); filter: none; }
+  .keymsg { margin: 9px 2px 0; color: var(--soft); font-size: 12.5px; line-height: 1.45; }
+  .keymsg.err { color: var(--bad); }
+  .keyown { margin-top: 12px; }
+  .key-or { display: block; margin-bottom: 7px; color: var(--soft); font-size: 12px; }
+  .keys-note { margin-top: 12px; }
   .field { margin-bottom: 18px; }
-  .field input {
+  .field input, .keyown input {
     width: 100%;
     min-height: 46px;
     padding: 0 14px;
@@ -481,8 +595,8 @@ FORM_HTML = """<!doctype html>
     font-size: 15px;
     transition: border-color .18s ease, box-shadow .18s ease;
   }
-  .field input::placeholder { color: #625c6c; }
-  .field input:focus {
+  .field input::placeholder, .keyown input::placeholder { color: #625c6c; }
+  .field input:focus, .keyown input:focus {
     outline: none;
     border-color: rgba(157, 124, 255, .75);
     box-shadow: 0 0 0 3px rgba(157, 124, 255, .13);
@@ -604,16 +718,51 @@ FORM_HTML = """<!doctype html>
     </div>
 
     <div id="brain-fields">
-      <div class="field">
-        <label class="label" for="deepseek_key">Ключ DeepSeek</label>
-        <input id="deepseek_key" name="deepseek_key" type="password"
-               placeholder="можна пропустити" autocomplete="off">
+      <div class="keys-sect">
+        <div class="label">Ключі</div>
+        <p class="keys-lede">Два джерела: оточення цього запуску або сховище.</p>
+
+        <div class="keybox">
+          <div class="keyhead">
+            <div class="keyid">
+              <b>Модель <span class="keydim">(розмова)</span></b>
+              <span class="keymono">DEEPSEEK_API_KEY</span>
+            </div>
+            <span class="keychip" data-chip="DEEPSEEK_API_KEY">невідомо</span>
+          </div>
+          <div class="keyenv" data-env="DEEPSEEK_API_KEY" hidden>
+            <button type="button" class="adopt" data-name="DEEPSEEK_API_KEY">Використати з оточення</button>
+          </div>
+          <p class="keymsg" data-msg="DEEPSEEK_API_KEY" hidden></p>
+          <div class="keyown">
+            <label class="key-or" for="deepseek_key">або введи свій</label>
+            <input id="deepseek_key" name="deepseek_key" type="password"
+                   placeholder="можна пропустити" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="keybox">
+          <div class="keyhead">
+            <div class="keyid">
+              <b>Слух</b>
+              <span class="keymono">GROQ_API_KEY</span>
+            </div>
+            <span class="keychip" data-chip="GROQ_API_KEY">невідомо</span>
+          </div>
+          <div class="keyenv" data-env="GROQ_API_KEY" hidden>
+            <button type="button" class="adopt" data-name="GROQ_API_KEY">Використати з оточення</button>
+          </div>
+          <p class="keymsg" data-msg="GROQ_API_KEY" hidden></p>
+          <div class="keyown">
+            <label class="key-or" for="groq_key">або введи свій</label>
+            <input id="groq_key" name="groq_key" type="password"
+                   placeholder="можна пропустити" autocomplete="off">
+          </div>
+        </div>
+
+        <p class="hint keys-note">Ключ зберігається в Keychain. Прочитати його назад не можна.</p>
       </div>
-      <div class="field">
-        <label class="label" for="groq_key">Ключ Groq</label>
-        <input id="groq_key" name="groq_key" type="password"
-               placeholder="можна пропустити" autocomplete="off">
-      </div>
+
       <div class="field">
         <label class="label" for="port">Порт мозку</label>
         <input id="port" name="port" type="number" min="1" max="65535" value="9790">
@@ -661,6 +810,68 @@ FORM_HTML = """<!doctype html>
   brainYes.addEventListener('change', sync);
   brainNo.addEventListener('change', sync);
   sync();
+
+  const KEY_NAMES = ['DEEPSEEK_API_KEY', 'GROQ_API_KEY'];
+  const chipFor = (name) => document.querySelector('[data-chip="' + name + '"]');
+  const envFor = (name) => document.querySelector('[data-env="' + name + '"]');
+  const msgFor = (name) => document.querySelector('[data-msg="' + name + '"]');
+
+  function paintKey(name, info) {
+    const chip = chipFor(name);
+    if (!chip) return;
+    const state = !info ? 'unknown' : info.env ? 'env' : info.stored ? 'stored' : 'none';
+    const text = { env: 'в оточенні', stored: 'збережено', none: 'немає', unknown: 'невідомо' };
+    chip.className = state === 'unknown' ? 'keychip' : 'keychip ' + state;
+    chip.textContent = text[state];
+    const env = envFor(name);
+    if (env) env.hidden = state !== 'env';
+  }
+
+  function loadKeys() {
+    fetch('/keys')
+      .then((answer) => {
+        if (!answer.ok) throw new Error('keys');
+        return answer.json();
+      })
+      .then((have) => {
+        for (const name of KEY_NAMES) paintKey(name, have[name]);
+      })
+      .catch(() => {
+        for (const name of KEY_NAMES) paintKey(name, null);
+      });
+  }
+  loadKeys();
+
+  document.querySelectorAll('button.adopt[data-name]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const name = button.dataset.name;
+      const msg = msgFor(name);
+      button.disabled = true;
+      msg.hidden = true;
+      msg.classList.remove('err');
+      try {
+        const answer = await fetch('/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const result = await answer.json();
+        if (!answer.ok) throw new Error((result.errors || ['не вийшло']).join(' · '));
+        const chip = chipFor(name);
+        chip.className = 'keychip stored';
+        chip.textContent = 'збережено';
+        envFor(name).hidden = true;
+        msg.textContent = 'Ключ узято з оточення.';
+        msg.hidden = false;
+      } catch (error) {
+        msg.textContent = error.message || String(error);
+        msg.classList.add('err');
+        msg.hidden = false;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
 
   function showFail(why, log) {
     formScreen.hidden = true;

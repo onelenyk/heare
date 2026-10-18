@@ -12,6 +12,7 @@ import urllib.request
 
 import pytest
 
+from heare import keys
 from heare import setup
 from heare.config import Settings
 
@@ -223,3 +224,82 @@ def test_the_form_runs_the_installer_and_closes(tmp_path, monkeypatch):
     assert result["ok"] is True
     thread.join(timeout=5)
     assert not thread.is_alive()
+
+
+@pytest.fixture
+def form(tmp_path, monkeypatch):
+    monkeypatch.setenv("HEARE_NO_BROWSER", "1")
+    monkeypatch.setattr(setup, "_run", lambda data, installer, wheels: (True, "ok"))
+    config = tmp_path / "config.toml"
+    machine = tmp_path / "machine_token"
+    monkeypatch.setattr(
+        setup, "Settings",
+        lambda: Settings(config, machine_token_file=machine),
+    )
+    port = _free_port()
+    thread = threading.Thread(
+        target=setup.serve,
+        kwargs={"installer": "install.sh", "wheels": "wheels", "port": port},
+        daemon=True,
+    )
+    thread.start()
+    base = f"http://127.0.0.1:{port}"
+    _wait_for(base + "/")
+    yield base, config
+    try:
+        _post(base + "/close", {})
+    except OSError:
+        pass
+    thread.join(timeout=5)
+
+
+def test_the_form_reports_where_each_key_comes_from(form, monkeypatch):
+    base, _ = form
+    monkeypatch.setenv("GROQ_API_KEY", "test-value")
+    with urllib.request.urlopen(base + "/keys", timeout=2) as answer:
+        assert answer.status == 200
+        report = json.loads(answer.read().decode())
+    assert set(report) == set(keys.NAMES)
+    assert report["GROQ_API_KEY"] == {"source": "env", "env": True, "stored": False}
+    assert report["DEEPSEEK_API_KEY"] == {"source": None, "env": False, "stored": False}
+
+
+def test_the_form_adopts_a_key_from_the_environment(form, monkeypatch):
+    base, _ = form
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-value")
+    status, result = _post(base + "/keys", {"name": "DEEPSEEK_API_KEY"})
+    assert status == 200
+    assert result == {"saved": "DEEPSEEK_API_KEY"}
+    with urllib.request.urlopen(base + "/keys", timeout=2) as answer:
+        report = json.loads(answer.read().decode())
+    assert report["DEEPSEEK_API_KEY"] == {"source": "env", "env": True, "stored": True}
+
+
+def test_the_form_refuses_to_adopt_what_is_not_there(form):
+    base, _ = form
+    with pytest.raises(urllib.error.HTTPError) as unknown:
+        _post(base + "/keys", {"name": "PATH"})
+    assert unknown.value.code == 400
+    with pytest.raises(urllib.error.HTTPError) as missing:
+        _post(base + "/keys", {"name": "GROQ_API_KEY"})
+    assert missing.value.code == 400
+    assert json.loads(missing.value.read().decode())["errors"]
+
+
+def test_a_typed_key_is_stored_and_still_reaches_the_installer(form, monkeypatch):
+    base, _ = form
+    sent = {}
+
+    def run(data, installer, wheels):
+        sent.update(data)
+        return True, "ok"
+
+    monkeypatch.setattr(setup, "_run", run)
+    status, result = _post(base + "/setup", _body(
+        brain_here=True, parts=[], deepseek_key="test-deepseek", groq_key="test-groq"))
+    assert status == 200
+    assert result["ok"] is True
+    assert keys.get("DEEPSEEK_API_KEY") == "test-deepseek"
+    assert keys.get("GROQ_API_KEY") == "test-groq"
+    assert sent["deepseek_key"] == "test-deepseek"
+    assert sent["groq_key"] == "test-groq"
