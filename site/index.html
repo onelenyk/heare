@@ -378,7 +378,7 @@
             <input type="radio" name="role" value="server">
             <span class="role-body">
               <span class="role-title"><span class="radio-dot" aria-hidden="true"></span>Сервер</span>
-              <span class="role-sub">лише мозок; частини — на Mac</span>
+              <span class="role-sub">мозок і частини тут — руки, голос із мікрофоном</span>
             </span>
           </label>
         </div>
@@ -467,10 +467,8 @@ const PART_ORDER = ["eyes", "voice", "hands"];
 
 function commandFor(role, parts) {
   const flags = [`--role ${role}`];
-  if (role === "mac") {
-    const chosen = PART_ORDER.filter((part) => parts.includes(part));
-    if (chosen.length > 0) flags.push(`--parts ${chosen.join(",")}`);
-  }
+  const chosen = PART_ORDER.filter((part) => parts.includes(part));
+  if (chosen.length > 0) flags.push(`--parts ${chosen.join(",")}`);
   flags.push(`--from https://github.com/${REPO}/releases/download/v${VERSION}`);
   flags.push(`--version ${VERSION}`);
   return `curl -sSL https://raw.githubusercontent.com/${REPO}/v${VERSION}/install.sh | sh -s -- ${flags.join(" ")}`;
@@ -503,16 +501,8 @@ if (typeof document !== "undefined") {
   }
 
   function render() {
-    const role = selectedRole();
-    const isMac = role === "mac";
-
-    partsFieldset.disabled = !isMac;
-    partsFieldset.classList.toggle("off", !isMac);
-    partsHint.textContent = isMac
-      ? "обрані частини ставляться на цей Mac"
-      : "сервер ставить лише мозок";
-
-    out.textContent = commandFor(role, selectedParts());
+    partsHint.textContent = "обрані частини ставляться на цю машину";
+    out.textContent = commandFor(selectedRole(), selectedParts());
     idleCopy();
   }
 

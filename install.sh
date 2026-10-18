@@ -120,7 +120,7 @@ if [ "$ROLE" = "mac" ] || [ "$ROLE" = "server" ]; then
     install_brain
 fi
 
-if [ "$ROLE" = "mac" ]; then
+if [ -n "$PARTS" ]; then
     for part in $PARTS; do
         install_part "$part"
     done
@@ -187,7 +187,7 @@ EOF
     }
     plist com.heare.brain heare-brain brain.log
     launchctl bootout "gui/$(id -u)/com.heare.desktop" 2>/dev/null || true
-    [ "$ROLE" = "mac" ] && plist com.heare.keeper heare-keeper parts.log
+    [ -n "$PARTS" ] && plist com.heare.keeper heare-keeper parts.log
     ;;
 linux)
     UNITS="$HOME/.config/systemd/user"
@@ -213,7 +213,7 @@ EOF
         say "systemd: $name"
     }
     unit heare-brain heare-brain
-    [ "$ROLE" = "mac" ] && unit heare-keeper heare-keeper
+    [ -n "$PARTS" ] && unit heare-keeper heare-keeper
     ;;
 esac
 
