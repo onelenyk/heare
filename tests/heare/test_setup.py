@@ -303,3 +303,12 @@ def test_a_typed_key_is_stored_and_still_reaches_the_installer(form, monkeypatch
     assert keys.get("GROQ_API_KEY") == "test-groq"
     assert sent["deepseek_key"] == "test-deepseek"
     assert sent["groq_key"] == "test-groq"
+
+
+def test_choosing_the_deepseek_key_makes_deepseek_the_provider(form):
+    base, config = form
+    status, result = _post(base + "/setup", _body(
+        brain_here=True, parts=[], deepseek_key="test-deepseek"))
+    assert status == 200
+    assert result["ok"] is True
+    assert Settings(config).view()["llm_provider"] == "deepseek"

@@ -126,6 +126,11 @@ def _remember(data: dict) -> None:
         port = _port_value(data.get("port"))
         if port is not None:
             settings.set("api_port", port)
+        # The key this form asks for is DeepSeek's; choosing it is choosing
+        # the provider, so the brain must not keep a provider it has no key
+        # for and fall back on every turn.
+        if keys.get("DEEPSEEK_API_KEY"):
+            settings.set("llm_provider", "deepseek")
     else:
         settings.set("url", _text(data, "url"))
 
