@@ -1,8 +1,8 @@
-"""The desktop body: one command for this machine's parts.
+"""The keeper: one command for this machine's parts.
 
-    uv run python -m heare.desktop
+    uv run heare-keeper
 
-A beacon, not a brain: it starts what the manifests under the parts
+Not a brain: it starts what the manifests under the parts
 folder name, starts a part again when it falls, and stops it when the
 manifest is taken away. The brain never holds a part's process; this one
 does, and only this one.
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from heare.config import Settings
 
-logger = logging.getLogger("heare.desktop")
+logger = logging.getLogger("heare.keeper")
 
 POLL_S = 5.0
 BACKOFF_S = 3.0
@@ -48,7 +48,7 @@ def _resolve(command: list[str]) -> list[str]:
     return command
 
 
-class Beacon:
+class Keeper:
     def __init__(self, folder: Path) -> None:
         self._folder = folder
         self._running: dict[str, asyncio.subprocess.Process] = {}
@@ -90,13 +90,13 @@ class Beacon:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="heare.desktop")
+    parser = argparse.ArgumentParser(prog="heare.keeper")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     settings = Settings()
     try:
-        asyncio.run(Beacon(Path(settings.parts_dir)).run())
+        asyncio.run(Keeper(Path(settings.parts_dir)).run())
     except KeyboardInterrupt:
         return 0
     return 0

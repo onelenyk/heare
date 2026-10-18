@@ -1,11 +1,11 @@
 [project]
-name = "heare-desktop"
+name = "heare-keeper"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = ["heare-core"]
 
 [project.scripts]
-heare-desktop = "heare.desktop:main"
+heare-keeper = "heare.keeper:main"
 
 [build-system]
 requires = ["hatchling"]

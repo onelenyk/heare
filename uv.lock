@@ -14,10 +14,10 @@ members = [
     "heare-brain",
     "heare-chat",
     "heare-core",
-    "heare-desktop",
     "heare-dev",
     "heare-eyes",
     "heare-hands",
+    "heare-keeper",
     "heare-reach",
     "heare-voice",
     "heare-workspace",
@@ -610,17 +610,6 @@ requires-dist = [
 ]
 
 [[package]]
-name = "heare-desktop"
-version = "0.1.0"
-source = { editable = "packages/heare-desktop" }
-dependencies = [
-    { name = "heare-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "heare-core", editable = "packages/heare-core" }]
-
-[[package]]
 name = "heare-dev"
 version = "0.1.0"
 source = { editable = "packages/heare-dev" }
@@ -676,6 +665,17 @@ requires-dist = [
 ]
 
 [[package]]
+name = "heare-keeper"
+version = "0.1.0"
+source = { editable = "packages/heare-keeper" }
+dependencies = [
+    { name = "heare-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "heare-core", editable = "packages/heare-core" }]
+
+[[package]]
 name = "heare-reach"
 version = "0.1.0"
 source = { editable = "packages/heare-reach" }
@@ -719,10 +719,10 @@ dependencies = [
     { name = "heare-brain" },
     { name = "heare-chat" },
     { name = "heare-core" },
-    { name = "heare-desktop" },
     { name = "heare-dev" },
     { name = "heare-eyes" },
     { name = "heare-hands" },
+    { name = "heare-keeper" },
     { name = "heare-reach" },
     { name = "heare-voice" },
 ]
@@ -741,10 +741,10 @@ requires-dist = [
     { name = "heare-brain", editable = "packages/heare-brain" },
     { name = "heare-chat", editable = "packages/heare-chat" },
     { name = "heare-core", editable = "packages/heare-core" },
-    { name = "heare-desktop", editable = "packages/heare-desktop" },
     { name = "heare-dev", editable = "packages/heare-dev" },
     { name = "heare-eyes", editable = "packages/heare-eyes" },
     { name = "heare-hands", editable = "packages/heare-hands" },
+    { name = "heare-keeper", editable = "packages/heare-keeper" },
     { name = "heare-reach", editable = "packages/heare-reach" },
     { name = "heare-voice", editable = "packages/heare-voice" },
 ]

@@ -65,7 +65,7 @@ if [ -d "$FROM" ]; then
     cp "$FROM"/heare_*.whl "$WHEELS"/ || die "у $FROM немає wheel — збери: uv build --all-packages -o dist"
 else
     [ -n "$VERSION" ] || die "з URL потрібен --version"
-    for name in core reach eyes voice hands chat brain desktop; do
+    for name in core reach eyes voice hands chat brain keeper; do
         curl -fsSL "$FROM/heare_${name}-${VERSION}-py3-none-any.whl" \
             -o "$WHEELS/heare_${name}-${VERSION}-py3-none-any.whl" \
             || die "не завантажив heare-${name}"
@@ -124,8 +124,8 @@ if [ "$ROLE" = "mac" ]; then
     for part in $PARTS; do
         install_part "$part"
     done
-    tool_install "$(ls "$WHEELS"/heare_desktop-*.whl)" --with "$CORE"
-    say "маяк: heare-desktop"
+    tool_install "$(ls "$WHEELS"/heare_keeper-*.whl)" --with "$CORE"
+    say "наглядач: heare-keeper"
     for part in $PARTS; do
         case "$part" in
             eyes) manifest eyes eyes '["input"]' "очі: застосунок, простій, чи щось грає" ;;
@@ -186,7 +186,8 @@ EOF
         say "launchd: $label"
     }
     plist com.heare.brain heare-brain brain.log
-    [ "$ROLE" = "mac" ] && plist com.heare.desktop heare-desktop parts.log
+    launchctl bootout "gui/$(id -u)/com.heare.desktop" 2>/dev/null || true
+    [ "$ROLE" = "mac" ] && plist com.heare.keeper heare-keeper parts.log
     ;;
 linux)
     UNITS="$HOME/.config/systemd/user"
@@ -212,7 +213,7 @@ EOF
         say "systemd: $name"
     }
     unit heare-brain heare-brain
-    [ "$ROLE" = "mac" ] && unit heare-desktop heare-desktop
+    [ "$ROLE" = "mac" ] && unit heare-keeper heare-keeper
     ;;
 esac
 

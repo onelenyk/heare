@@ -10,7 +10,7 @@ dependencies = [
     "heare-hands",
     "heare-chat",
     "heare-brain",
-    "heare-desktop",
+    "heare-keeper",
     "heare-dev",
 ]
 
@@ -34,7 +34,7 @@ heare-voice = { workspace = true }
 heare-hands = { workspace = true }
 heare-chat = { workspace = true }
 heare-brain = { workspace = true }
-heare-desktop = { workspace = true }
+heare-keeper = { workspace = true }
 heare-dev = { workspace = true }
 
 [tool.uv]

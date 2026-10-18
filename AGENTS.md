@@ -52,7 +52,7 @@ uv run heare-hands
 uv run heare-eyes
 uv run heare-voice
 uv run heare-chat
-uv run heare-desktop    # один маяк: піднімає частини з ~/.heare/parts
+uv run heare-keeper     # наглядач: піднімає частини з ~/.heare/parts
 ```
 
 `uv run python -m heare.listener` drives real speech in and the reply out;

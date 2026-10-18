@@ -6,7 +6,7 @@ import asyncio
 import json
 import sys
 
-from heare import desktop
+from heare import keeper
 
 
 def test_a_manifest_names_the_command_to_run(tmp_path):
@@ -21,17 +21,17 @@ def test_a_manifest_names_the_command_to_run(tmp_path):
     (folder / "broken").mkdir()
     (folder / "broken" / "heare.json").write_text("not json", encoding="utf-8")
 
-    assert desktop.wanted(folder) == {"eyes": ["python", "-m", "heare.eyes"]}
+    assert keeper.wanted(folder) == {"eyes": ["python", "-m", "heare.eyes"]}
 
 
 def test_python_in_a_manifest_is_the_beacon_s_own():
-    assert desktop._resolve(["python", "-m", "x"])[0] == sys.executable
-    assert desktop._resolve(["echo", "x"]) == ["echo", "x"]
+    assert keeper._resolve(["python", "-m", "x"])[0] == sys.executable
+    assert keeper._resolve(["echo", "x"]) == ["echo", "x"]
 
 
 async def test_a_fallen_part_is_started_again(tmp_path, monkeypatch):
-    monkeypatch.setattr(desktop, "POLL_S", 0.05)
-    monkeypatch.setattr(desktop, "BACKOFF_S", 0.05)
+    monkeypatch.setattr(keeper, "POLL_S", 0.05)
+    monkeypatch.setattr(keeper, "BACKOFF_S", 0.05)
     marks = tmp_path / "marks"
     folder = tmp_path / "parts" / "tick"
     folder.mkdir(parents=True)
@@ -40,7 +40,7 @@ async def test_a_fallen_part_is_started_again(tmp_path, monkeypatch):
         "channel": "tick", "run": [sys.executable, "-c", code]}),
         encoding="utf-8")
 
-    running = asyncio.create_task(desktop.Beacon(tmp_path / "parts").run())
+    running = asyncio.create_task(keeper.Keeper(tmp_path / "parts").run())
     try:
         for _ in range(200):
             if marks.exists() and len(marks.read_text()) >= 2:
