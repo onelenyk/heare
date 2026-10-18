@@ -100,6 +100,10 @@ install_part() {
 }
 
 BIN=$(uv tool dir --bin)
+case ":$PATH:" in
+    *":$BIN:"*) ;;
+    *) say "додай $BIN до PATH: uv tool update-shell" ;;
+esac
 MANIFEST_DIR="$HOME/.heare/parts"
 
 manifest() {

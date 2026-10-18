@@ -19,7 +19,22 @@ commit is tagged `legacy-app`.
 - keys for the model and the speech: set on the page, or in the Keychain
   (service `heare`), or in `~/.heare/.env`
 
+## Install
+
+From the repository, with the wheels built once (`uv build --all-packages -o dist`):
+
+```bash
+./install.sh --role mac --parts eyes,voice,hands   # brain + beacon + chosen parts
+./install.sh --role server                         # the brain alone
+```
+
+The installer puts each distribution in its own tool environment, writes the
+manifests the beacon reads, and keeps everything alive with launchd or
+systemd. `--no-service` installs without starting.
+
 ## Run
+
+From a checkout:
 
 ```bash
 uv sync
