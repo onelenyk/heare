@@ -115,7 +115,9 @@
   .partrow .pstate { color:var(--soft); font-size:10.5px; white-space:nowrap; }
   .partrow .pstate.pending { color:var(--warn); }
   .partrow .pactions { margin-left:auto; display:flex; gap:4px; }
-  .partrow .mini { padding:2px 7px; font-size:10.5px; line-height:1.35; }
+  .partrow .mini { padding:1px 6px; font-size:10px; line-height:1.35; }
+  .pchan { padding:1px 6px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:9.5px; letter-spacing:.04em; }
+  .part .plog { grid-column:1 / -1; max-height:120px; overflow:auto; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--soft); font:10.5px/1.45 var(--mono); white-space:pre-wrap; }
 
   .part { border:1px solid var(--line); border-radius:12px; padding:11px 12px; background:var(--card); min-width:0; }
   .part.wait { border-color:var(--warn); background:linear-gradient(rgba(219,182,79,.08), rgba(219,182,79,.08)), var(--card); }
@@ -506,6 +508,8 @@ function controlsFor(pid, b) {
       const push = el("button", "mini" + (c.action === "stop" ? " yes" : ""), c.label || c.name);
       push.onclick = () => turn(pid, c.name, true);
       extra.append(push);
+    } else if (c.kind === "log") {
+      if (value) grid.append(el("pre", "plog", String(value)));
     }
   }
   const box = el("div", "part-controls");
@@ -545,7 +549,8 @@ function partRow(pid, b) {
 function partWidget(pid, b) {
   const card = el("div", "part" + (b.state === "pending" ? " wait" : b.state === "away" ? " away" : ""));
   const top = el("div", "part-top");
-  top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid), el("span", "part-state", PART_STATE[b.state] || b.state));
+  top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid),
+             el("span", "pchan", b.channel || ""));
   card.append(top);
   if (b.about) card.append(el("p", "about", b.about));
   if (b.forms && b.forms.length) {
