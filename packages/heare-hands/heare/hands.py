@@ -31,6 +31,15 @@ def _short(value: object, width: int = 70) -> str:
     return text[:width] + "…" if len(text) > width else text
 
 
+def _price(cost: float, used: int, size: int) -> str:
+    """What the last turn cost, and how much of the window it used."""
+    if not cost and not used:
+        return ""
+    window = f"{size // 1_000_000}M" if size >= 1_000_000 else f"{size // 1000}k"
+    tokens = f"{used // 1000}k" if used >= 1000 else str(used)
+    return f"${cost:.4f} · {tokens} / {window}"
+
+
 def _line(direction: str, msg: dict) -> str:
     """One message of the ACP wire, as a person reads it."""
     arrow = "→" if direction == "out" else "←"
@@ -101,11 +110,26 @@ async def run() -> int:
     if known is None:
         print(f"агента {wanted} немає на PATH", file=sys.stderr)
         return 1
+    session_file = Path(settings.parts_file).parent / "agent-session.json"
+    try:
+        resume = session_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        resume = ""
+
     wire: collections.deque[str] = collections.deque(maxlen=40)
+    usage = {"cost": 0.0, "used": 0, "size": 0}
     told = 0
 
     def tap(direction: str, message: dict) -> None:
         nonlocal told
+        update = ((message.get("params") or {}).get("update") or {}
+                  if message.get("method") == "session/update" else {})
+        if update.get("sessionUpdate") == "usage_update":
+            cost = update.get("cost") or {}
+            usage["cost"] = float(cost.get("amount") or 0.0)
+            usage["used"] = int(update.get("used") or 0)
+            usage["size"] = int(update.get("size") or 0)
+            told += 1
         line = _line(direction, message)
         if line:
             wire.append(line)
@@ -149,9 +173,11 @@ async def run() -> int:
          "value": True},
         {"name": "agent", "kind": "label", "label": "Агент", "value": agent.name},
         {"name": "work", "kind": "label", "label": "Стан", "value": "чекає"},
+        {"name": "usage", "kind": "label", "label": "Ціна", "value": "—"},
         {"name": "acp", "kind": "log", "label": "ACP", "value": ""},
     ]
-    values = {"taking": True, "agent": agent.name, "work": "чекає", "acp": ""}
+    values = {"taking": True, "agent": agent.name, "work": "чекає",
+              "usage": "—", "acp": ""}
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
         host = socket.gethostname()
@@ -188,6 +214,7 @@ async def run() -> int:
                 if told != sent:
                     sent = told
                     values["acp"] = "\n".join(wire)
+                    values["usage"] = _price(**usage) or values["usage"]
                     await part.report(client, base, agent.name, values)
 
         wiring = asyncio.create_task(report_wire())
@@ -209,17 +236,23 @@ async def run() -> int:
                 status, result = "done", ""
                 current["desk"] = desk
                 try:
-                    result = await agent.run(task["request"], desk)
+                    result = await agent.run(task["request"], desk, resume=resume)
                 except asyncio.CancelledError:
                     status, result = "stopped", "Зупинено."
                 except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
                     status, result = "failed", str(exc)
+                resume = ""
                 print(f"готово {task['id']}: {status} {result[:60]}",
                       file=sys.stderr)
                 await client.post(
                     f"{base}/api/executor/{task['id']}/result?name={agent.name}",
                     json={"status": status, "result": result})
                 current["desk"] = None
+                if agent.last_session:
+                    try:
+                        session_file.write_text(agent.last_session, encoding="utf-8")
+                    except OSError:
+                        pass
                 values["work"] = "чекає"
                 await part.report(client, base, agent.name, values)
         finally:

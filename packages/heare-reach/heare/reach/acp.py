@@ -267,6 +267,23 @@ class Agent:
         self._sessions[s.id] = s
         return s
 
+    async def reopened(
+        self, session_id: str,
+        on_event: Callable[[Event], None] | None = None,
+    ) -> Session:
+        """A session from an earlier process, continued where it stopped."""
+        result = await self._call("session/resume", {
+            "sessionId": session_id, "cwd": self.cwd,
+            "mcpServers": self.mcp_servers,
+        })
+        options = {
+            o["id"]: [v.get("value") for v in o.get("options") or []]
+            for o in result.get("configOptions") or []
+        }
+        s = Session(self, session_id, options, on_event)
+        self._sessions[s.id] = s
+        return s
+
     async def ask(
         self, text: str, on_event: Callable[[Event], None] | None = None
     ) -> Session:

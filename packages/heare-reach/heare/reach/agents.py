@@ -145,6 +145,7 @@ class Agent:
         self._tap = tap
         self._mcp = mcp_servers or []
         self._agent: acp.Agent | None = None
+        self._last: str = ""
         self._desks: dict[str, Desk] = {}
         self._refused: dict[str, list[str]] = {}
         self._starting = asyncio.Lock()
@@ -180,7 +181,11 @@ class Agent:
             self._refused.setdefault(session.id, []).append(what)
         return "allow" if allowed else "reject"
 
-    async def run(self, task: str, desk: Desk) -> str:
+    @property
+    def last_session(self) -> str:
+        return self._last
+
+    async def run(self, task: str, desk: Desk, *, resume: str = "") -> str:
         agent = await self._started()
 
         def on_event(event: acp.Event) -> None:
@@ -188,7 +193,15 @@ class Agent:
             if event.kind == "tool" and event.text:
                 desk.step(event.text[:80])
 
-        session = await agent.session(on_event)
+        session = None
+        if resume:
+            try:
+                session = await agent.reopened(resume, on_event)
+            except acp.AcpError:
+                logger.info("%s: session %s is gone; a new one", self.name, resume)
+        if session is None:
+            session = await agent.session(on_event)
+        self._last = session.id
         # Name the model on the session itself: its default is the provider
         # whose key has expired, and the session's own list has a working one.
         await session.set("model", MODEL)

@@ -33,3 +33,9 @@ def test_a_long_line_is_cut_at_the_hands_own_width():
     line = hands._line("out", {"method": "session/prompt", "params": {
         "prompt": [{"text": "я" * 200}]}})
     assert line.endswith("…") and len(line) < 90
+
+
+def test_the_price_says_what_the_turn_cost():
+    assert hands._price(0.000152, 39392, 1000000) == "$0.0002 · 39k / 1M"
+    assert hands._price(0.0, 0, 0) == ""
+    assert hands._price(0.5, 900, 200000) == "$0.5000 · 900 / 200k"
