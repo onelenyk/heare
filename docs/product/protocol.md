@@ -110,6 +110,7 @@
 | `choice` | `name`, `label`, `value`, `options: [{value, label}]` | список |
 | `label` | `name`, `label`, `value` | рядок «назва — значення» |
 | `button` | `name`, `label`, `action` | кнопка: шле `value: true` |
+| `log` | `name`, `label`, `value` (рядки) | останні рядки, лише читати |
 | `text` | `name`, `label`, `value` | поле (пізніше) |
 
 `value` — те, що тіло вважає правдою **зараз**. `name` — у межах тіла.

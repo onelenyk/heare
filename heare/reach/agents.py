@@ -20,6 +20,7 @@ import logging
 import os
 import shutil
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -131,7 +132,8 @@ class Agent:
 
     def __init__(self, known: Known, *, cwd: str | Path | None = None,
                  home: Path | None = None, command: list[str] | None = None,
-                 env: dict[str, str] | None = None) -> None:
+                 env: dict[str, str] | None = None,
+                 tap: Callable[[str, dict], None] | None = None) -> None:
         self.name = known.name
         self.about = known.about
         self._known = known
@@ -139,6 +141,7 @@ class Agent:
         self._home = home or Path.home() / ".heare"
         self._command = command or list(known.command)
         self._env = env
+        self._tap = tap
         self._agent: acp.Agent | None = None
         self._desks: dict[str, Desk] = {}
         self._refused: dict[str, list[str]] = {}
@@ -156,7 +159,7 @@ class Agent:
                 agent = acp.Agent(
                     self.name, on_permission=self._decide, cwd=self._cwd,
                     stderr=logs / f"agent-{self.name}.log",
-                    command=self._command, env=env,
+                    command=self._command, env=env, tap=self._tap,
                 )
                 await agent.start()
                 self._agent = agent

@@ -188,10 +188,12 @@ class Agent:
         stderr: str | Path | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
+        tap: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.name = name
         self.command = command or AGENTS[name]
         self._env = env
+        self._tap = tap
         self.cwd = str(Path(cwd or Path.home()).resolve())
         self.mcp_servers = mcp_servers or []
         self.info: dict = {}
@@ -285,6 +287,16 @@ class Agent:
         assert self._proc and self._proc.stdin
         self._proc.stdin.write((json.dumps(msg, ensure_ascii=False) + "\n").encode())
         await self._proc.stdin.drain()
+        self._tapped("out", msg)
+
+    def _tapped(self, direction: str, msg: dict) -> None:
+        """Show the wire to whoever watches, without ever breaking it."""
+        if self._tap is None:
+            return
+        try:
+            self._tap(direction, msg)
+        except Exception:  # noqa: BLE001 — a watcher's failure is not the agent's
+            pass
 
     async def _call(self, method: str, params: dict) -> dict:
         rid = next(self._ids)
@@ -305,6 +317,7 @@ class Agent:
                 msg = json.loads(line)
             except ValueError:
                 continue  # an agent's stray log line, not a message
+            self._tapped("in", msg)
             method = msg.get("method")
             if method and "id" in msg:
                 asyncio.create_task(self._answer(msg))
