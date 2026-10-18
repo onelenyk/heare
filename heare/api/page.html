@@ -23,11 +23,13 @@
   button, input, select { font:inherit; color:inherit; }
   ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
 
-  #app { display:grid; grid-template-columns:396px minmax(0,1fr); height:100vh; }
+  /* Desktop: brain and list down the left, the parts' own widgets over the
+     canvas on the right, and the conversation as a bar across the bottom. */
+  #app { display:grid; grid-template-columns:370px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; height:100vh; }
 
   /* ── the panel: a stack of widget cards, grouped by where the data comes from ── */
-  #left { border-right:1px solid var(--line); background:var(--bg); display:flex; flex-direction:column; min-height:0; height:100vh; }
-  #pult { overflow-y:auto; font-family:var(--mono); font-size:12.5px; flex:1 1 auto; min-height:120px; display:flex; flex-direction:column; gap:10px; padding:12px 12px 14px; }
+  #left { grid-column:1; grid-row:1 / span 2; border-right:1px solid var(--line); background:var(--bg); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  #pult { overflow-y:auto; font-family:var(--mono); font-size:12.5px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:10px; padding:12px 12px 14px; }
   /* A widget is one card; the group header above a list of them is not. */
   .widgets { display:grid; gap:10px; min-width:0; }
   .widget { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; min-width:0; }
@@ -92,39 +94,63 @@
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .chip { padding:4px 10px; border:1px solid var(--line); border-radius:999px; background:transparent; cursor:pointer; font-size:11.5px; }
   .chip:hover { border-color:var(--accent); color:var(--accent); }
-  /* ── the parts that connect to the brain: one widget per part, in a list ── */
-  #bodies { display:grid; gap:10px; min-width:0; }
-  #bodies > .empty { border:1px dashed var(--line); border-radius:12px; padding:14px; }
+  /* ── the parts that connect to the brain: rows in the index, widgets above
+        the canvas ── */
+  #partcol { grid-column:2; grid-row:1; min-width:0; min-height:0; overflow:hidden; border-bottom:1px solid var(--line); background:var(--bg); }
+  #partcol .band { padding:12px 22px 0; }
+  #partwidgets { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); align-content:start; gap:10px; padding:10px 22px 14px; min-width:0; overflow:hidden; }
+  #partwidgets > .empty, #bodies > .empty { border:1px dashed var(--line); border-radius:12px; padding:10px 12px; }
+  #partwidgets > .empty { grid-column:1 / -1; }
+
+  #bodies { display:grid; gap:4px; min-width:0; }
   .host { display:flex; align-items:center; gap:8px; color:var(--soft); font-size:10.5px; margin:2px 4px 0; overflow-wrap:anywhere; }
   .host:first-child { margin-top:0; }
   .host::after { content:""; flex:1; height:1px; background:var(--line); }
-  .part { border:1px solid var(--line); border-radius:12px; padding:12px; background:var(--card); }
+  .partrow { display:flex; align-items:center; gap:8px; height:34px; min-width:0; padding:0 2px; font-size:12px; }
+  .pdot { width:8px; height:8px; border-radius:50%; background:var(--soft); flex:none; }
+  .pdot.pending { background:var(--warn); box-shadow:0 0 0 3px rgba(219,182,79,.15); }
+  .pdot.approved { background:var(--ok); }
+  .pdot.rejected, .pdot.expired { background:var(--bad); }
+  .partrow .pname { font-weight:600; overflow-wrap:anywhere; }
+  .partrow .pstate { color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .partrow .pstate.pending { color:var(--warn); }
+  .partrow .pactions { margin-left:auto; display:flex; gap:4px; }
+  .partrow .mini { padding:2px 7px; font-size:10.5px; line-height:1.35; }
+
+  .part { border:1px solid var(--line); border-radius:12px; padding:11px 12px; background:var(--card); min-width:0; }
   .part.wait { border-color:var(--warn); background:linear-gradient(rgba(219,182,79,.08), rgba(219,182,79,.08)), var(--card); }
   .part.away { opacity:.6; border-style:dashed; }
-  .part-top { display:flex; align-items:baseline; gap:8px; }
+  .part-top { display:flex; align-items:baseline; gap:8px; min-width:0; }
   .part-name { font-weight:600; overflow-wrap:anywhere; }
   .part-state { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
   .part.wait .part-state { color:var(--warn); }
-  .part .about { margin-top:4px; color:var(--soft); font-family:var(--sans); font-size:12.5px; overflow-wrap:anywhere; }
-  .badges { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
-  .badge { padding:1px 7px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:10.5px; }
+  .part .about { margin-top:3px; color:var(--soft); font-family:var(--sans); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+  .badge { padding:1px 6px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:10px; }
   .badge.input { color:var(--info); } .badge.output { color:var(--accent); } .badge.executor { color:var(--ok); }
-  .part .actions { display:flex; gap:6px; margin-top:9px; }
-  .part .part-controls { margin-top:9px; }
-  .part .part-controls .keys { grid-template-columns:1fr 1fr; }
-  .part .part-controls .vol { font-size:11.5px; gap:8px; }
+  .part .actions { display:flex; gap:6px; margin-top:7px; }
+  .part .part-controls { margin-top:7px; }
+  .part .part-controls .keys { grid-template-columns:1fr 1fr; gap:5px; }
+  .part .part-controls .vol { font-size:11px; gap:7px; }
   .part .part-controls .vol b { color:var(--ink); }
-  .part .part-controls select { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 6px; color:inherit; min-width:0; font-size:11.5px; }
+  .part .part-controls select { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:3px 6px; color:inherit; min-width:0; font-size:11px; }
+  .part .pstatus { margin-top:7px; padding-top:6px; border-top:1px dashed var(--line); color:var(--soft); font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .part.gone { display:flex; gap:6px; border:0; padding:2px 0; background:none; color:var(--soft); font-size:11.5px; overflow-wrap:anywhere; }
   .part.gone b { font-weight:600; }
   .mini:disabled { opacity:.4; cursor:default; }
   .mini:disabled:hover { border-color:var(--line); }
-  /* ── the conversation: its own widget under the panel ── */
-  #talkcol { flex:0 0 40%; min-height:240px; display:flex; flex-direction:column; gap:10px; background:var(--bg); padding:0 12px 12px; }
-  #talkcol .band { flex:none; padding:2px 2px 0; }
-  .talk-card { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
-  #stage .band { padding:18px 22px 0; }
-  #talk { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:7px; }
+  /* ── the conversation: a bar under everything, its transcript a drawer
+        that opens upward over the canvas ── */
+  #talkcol { grid-column:1 / -1; grid-row:3; position:relative; min-width:0; background:var(--bg); border-top:1px solid var(--line); padding:10px 14px; }
+  #talkbar { display:flex; align-items:center; gap:8px; min-width:0; }
+  #talktoggle { flex:none; height:38px; padding:0 12px; border:1px solid var(--line); border-radius:9px; background:var(--card-2); color:var(--soft); cursor:pointer; font-size:12px; }
+  #talktoggle:hover { border-color:var(--accent); color:var(--accent); }
+  #talktoggle.on { border-color:var(--accent); color:var(--accent); }
+  #talkdrawer { position:absolute; left:0; right:0; bottom:100%; z-index:8; display:none; flex-direction:column; max-height:45vh; background:var(--card); border-top:1px solid var(--line); box-shadow:0 -24px 70px rgba(0,0,0,.55); }
+  #talkdrawer.on { display:flex; }
+  #talkdrawer .band { flex:none; padding:12px 16px 0; }
+  #stage .band { padding:14px 22px 0; }
+  #talk { flex:1; min-height:0; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:7px; }
   .line { max-width:88%; padding:7px 11px; border-radius:12px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.45; }
   .me { align-self:flex-end; background:var(--accent); color:var(--accent-ink); border-bottom-right-radius:4px; }
   .it { align-self:flex-start; background:var(--card-2); border:1px solid var(--line); border-bottom-left-radius:4px; }
@@ -133,18 +159,20 @@
   .aside { align-self:center; color:var(--soft); font:10.5px var(--mono); text-align:center; max-width:92%; }
   .divider { align-self:stretch; display:flex; align-items:center; gap:10px; color:var(--soft); font:10px var(--mono); letter-spacing:.1em; text-transform:uppercase; margin:4px 0; }
   .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--line); }
-  #say { display:flex; gap:8px; padding:10px; border-top:1px solid var(--line); }
+  #say { display:flex; flex:1; gap:8px; min-width:0; padding:0; border:0; }
   #say input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:9px 12px; font-size:13.5px; }
   #say input:focus { outline:none; border-color:var(--accent); }
   #say button { background:var(--accent); color:var(--accent-ink); border:0; border-radius:9px; padding:0 14px; font-weight:700; cursor:pointer; }
   #say .talk { background:var(--card-2); color:var(--soft); border:1px solid var(--line); padding:0 11px; font-size:15px; }
   #say .talk:hover { border-color:var(--accent); color:var(--accent); }
   #say .talk.on { color:var(--accent); border-color:var(--accent); }
-  #speak { margin-left:10px; color:var(--soft); }
+  #speak { flex:none; margin-left:0; color:var(--soft); }
   #speak.yes { color:var(--ok); border-color:var(--ok); }
+  .stopask { grid-column:1 / -1; display:flex; align-items:center; gap:8px; font-size:12px; }
+  .stopask span { color:var(--soft); }
 
   /* ── the canvas: one screen of widgets ── */
-  #stage { position:relative; min-width:0; height:100vh; overflow-y:auto; background:
+  #stage { grid-column:2; grid-row:2; position:relative; min-width:0; min-height:0; overflow-y:auto; background:
     radial-gradient(1200px 500px at 70% -10%, rgba(157,124,255,.07), transparent 60%), var(--bg); }
   #live { display:grid; grid-template-columns:repeat(auto-fill, minmax(270px, 1fr)); grid-auto-flow:dense; gap:16px; padding:14px 22px 22px; align-items:start; }
   .blk { position:relative; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; min-width:0; transition:box-shadow .9s ease, border-color .9s ease; }
@@ -233,15 +261,18 @@
   .pair { display:grid; grid-template-columns:1fr auto; gap:8px; }
   .btn { background:var(--accent); color:var(--accent-ink); border:0; border-radius:8px; padding:9px 14px; font-weight:700; cursor:pointer; }
   .note { color:var(--soft); font-size:12px; min-height:18px; }
-  /* A narrow window stacks the panel, the talk and the screen: the panel keeps
-     its own height (no inner scrollbar hiding its lower blocks), the talk gets
-     a fixed share with its input reachable, the screen comes last. */
-  @media (max-width:860px) {
-    #app { grid-template-columns:minmax(0,1fr); height:auto; }
-    #left { height:auto; border-right:0; }
+  /* A narrow window stacks the regions in reading order: brain, its index,
+     the parts' widgets, the canvas, then the conversation inline. */
+  @media (max-width:900px) {
+    #app { grid-template-columns:minmax(0,1fr); grid-template-rows:auto; height:auto; }
+    #left { grid-column:1; grid-row:auto; height:auto; overflow:visible; border-right:0; }
     #pult { flex:none; overflow:visible; }
-    #talkcol { flex:none; height:min(65vh, 560px); }
-    #stage { height:70vh; }
+    #partcol { grid-column:1; grid-row:auto; overflow:visible; }
+    #partwidgets { overflow:visible; padding:10px 14px 14px; }
+    #stage { grid-column:1; grid-row:auto; height:70vh; }
+    #talkcol { grid-column:1; grid-row:auto; position:static; padding:10px 14px 14px; }
+    #talkdrawer { position:static; max-height:none; margin-bottom:8px; border:1px solid var(--line); border-radius:12px; box-shadow:none; }
+    #talkdrawer #talk { max-height:40vh; }
   }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
@@ -266,23 +297,24 @@
           <div class="label">Стан</div>
           <div class="rows">
             <div class="row"><span>модель</span><span id="model">…</span></div>
-            <div class="row"><span>руки</span><span id="hands">…</span></div>
+            <span id="hands" hidden></span>
             <div class="row"><span>довкола</span><span id="around">тихо</span></div>
             <div class="row"><span>відповідь</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
             <div class="row"><span>цей запуск</span><span id="session">…</span></div>
           </div>
         </section>
 
-        <section class="widget">
+        <section class="widget" id="hold" hidden>
           <div class="label">Тримаю в голові</div>
           <div id="ask"></div>
-          <div id="tasks"><p class="empty">Зараз нічого не роблю.</p></div>
+          <div id="tasks"></div>
         </section>
 
         <section class="widget">
           <div class="label">Керування</div>
           <div class="keys">
             <button class="key stop wide" id="stop">■ Стоп</button>
+            <div class="stopask" id="confirm" hidden><span>Зупинити все?</span><button class="mini yes" id="stop-yes">Так</button><button class="mini" id="stop-no">Ні</button></div>
           </div>
         </section>
       </div>
@@ -291,21 +323,30 @@
 
       <div id="bodies"><p class="empty">жодна частина не під'єднана</p></div>
     </aside>
-
-    <section id="talkcol">
-      <div class="band"><b>Розмова</b><button id="speak" class="mini" title="чути відповідь уголос">чути</button><span>він і ти</span></div>
-      <div class="talk-card">
-        <div id="talk"></div>
-        <form id="say"><button type="button" id="hear" class="talk" title="говорити й почути">◉</button><input id="text" placeholder="Напиши…" autocomplete="off" autofocus><button>→</button></form>
-      </div>
-    </section>
   </div>
+
+  <section id="partcol">
+    <div class="band"><b>Віджети частин</b></div>
+    <div id="partwidgets"></div>
+  </section>
 
   <main id="stage">
     <div class="band"><b>Екран</b><span>ставить модель</span></div>
     <div id="live"></div>
     <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span>Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима.</span></div>
   </main>
+
+  <section id="talkcol">
+    <div id="talkdrawer">
+      <div class="band"><b>Розмова</b><span>він і ти</span></div>
+      <div id="talk"></div>
+    </div>
+    <div id="talkbar">
+      <button type="button" id="talktoggle" class="mini" aria-expanded="false" aria-controls="talkdrawer">Розмова</button>
+      <button type="button" id="speak" class="mini" title="чути відповідь уголос">чути</button>
+      <form id="say"><button type="button" id="hear" class="talk" title="говорити й почути">◉</button><input id="text" placeholder="Напиши…" autocomplete="off"><button>→</button></form>
+    </div>
+  </section>
 </div>
 
 <div class="veil" id="veil"></div>
@@ -376,12 +417,15 @@ function vitals(s) {
   }
   const hands = s.parts.executors.filter(n => n !== "screens");
   $("hands").replaceChildren(hands.length ? el("b", "ok", hands.join(" · ")) : el("span", "warn", "агентів не знайдено"));
-  const playing = (s.around && s.around.playing) || [];
-  $("around").replaceChildren(playing.length ? el("span", "warn", "грає: " + playing.join(", ") + " — відповідаю лише на ім'я") : el("span", "", "тихо"));
+  const around = s.around || {}, playing = around.playing || [];
+  const near = [];
+  if (around.app) near.push(around.app);
+  near.push(playing.length ? "грає: " + playing.join(", ") : "тихо");
+  near.push(around.present === false ? "не тут" : "ти тут");
+  $("around").replaceChildren(el("span", playing.length ? "warn" : "", near.join(" · ")));
   const t = s.session, mins = Math.round((Date.now() / 1000 - t.started) / 60);
   $("up").textContent = mins < 1 ? "щойно запущено" : mins < 60 ? `${mins} хв` : `${Math.floor(mins / 60)} год ${mins % 60} хв`;
-  const cost = t.unpriced && !t.cost_usd ? "ціна невідома" : "$" + t.cost_usd.toFixed(4) + (t.unpriced ? " + невідомо" : "");
-  $("session").textContent = `відповідей: ${t.turns} · ${cost}`;
+  $("session").textContent = `відповідей: ${t.turns}`;
 }
 
 function spark() {
@@ -394,6 +438,7 @@ function spark() {
 
 function tasks(list, permission) {
   const live = list.filter(t => t.status === "running" || Date.now() / 1000 - (t.ended || 0) < 180);
+  $("hold").hidden = !live.length && !permission;
   $("tasks").replaceChildren(...(live.length ? live.reverse().map(t => {
     const row = el("div", "task"), what = el("div");
     what.append(el("p", "", t.request));
@@ -469,12 +514,35 @@ function controlsFor(pid, b) {
   return box;
 }
 
-function partCard(pid, b) {
-  if (b.state === "rejected" || b.state === "expired") {
-    const gone = el("div", "part gone");
-    gone.append(el("b", "", PART_LABEL[b.channel] || b.channel || pid), el("span", "", "· " + (PART_STATE[b.state] || b.state)));
-    return gone;
+function partRow(pid, b) {
+  const row = el("div", "partrow");
+  row.append(el("span", "pdot " + b.state));
+  row.append(el("b", "pname", PART_LABEL[b.channel] || b.channel || pid));
+  row.append(el("span", "pstate " + b.state, PART_STATE[b.state] || b.state));
+  const acts = el("div", "pactions");
+  const decide = (what, btn) => {
+    btn.disabled = true;
+    api(`bodies/${encodeURIComponent(pid)}/${what}`, {method: "POST"}).catch(() => { btn.disabled = false; });
+  };
+  const forget = btn => {
+    btn.disabled = true;
+    api(`bodies/${encodeURIComponent(pid)}/forget`, {method: "POST"}).catch(() => { btn.disabled = false; });
+  };
+  if (b.state === "pending") {
+    const yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Відхилити");
+    yes.onclick = () => decide("approve", yes);
+    no.onclick = () => decide("reject", no);
+    acts.append(yes, no);
+  } else {
+    const gone = el("button", "mini", "Забути");
+    gone.onclick = () => forget(gone);
+    acts.append(gone);
   }
+  row.append(acts);
+  return row;
+}
+
+function partWidget(pid, b) {
   const card = el("div", "part" + (b.state === "pending" ? " wait" : b.state === "away" ? " away" : ""));
   const top = el("div", "part-top");
   top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid), el("span", "part-state", PART_STATE[b.state] || b.state));
@@ -487,22 +555,16 @@ function partCard(pid, b) {
   }
   const controls = controlsFor(pid, b);
   if (controls) card.append(controls);
-  if (b.state === "pending") {
-    const actions = el("div", "actions"), yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Відхилити");
-    const decide = (what, btn) => {
-      btn.disabled = true;
-      api(`bodies/${encodeURIComponent(pid)}/${what}`, {method: "POST"}).catch(() => { btn.disabled = false; });
-    };
-    yes.onclick = () => decide("approve", yes);
-    no.onclick = () => decide("reject", no);
-    actions.append(yes, no); card.append(actions);
-  }
   return card;
 }
 
 function parts(map) {
-  const box = $("bodies"), all = Object.entries(map || {});
-  if (!all.length) { box.replaceChildren(el("p", "empty", "жодна частина не під'єднана")); return; }
+  const box = $("bodies"), grid = $("partwidgets"), all = Object.entries(map || {});
+  if (!all.length) {
+    box.replaceChildren(el("p", "empty", "жодна частина не під'єднана"));
+    grid.replaceChildren(el("p", "empty", "жодна частина не під'єднана"));
+    return;
+  }
   const groups = new Map();
   for (const [pid, b] of all) {
     const host = String(b.host || "").trim() || "без хоста";
@@ -514,9 +576,11 @@ function parts(map) {
   for (const [host, list] of [...groups].sort((a, b) => first(a) - first(b))) {
     frag.append(el("div", "host", host));
     list.sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
-    for (const [pid, b] of list) frag.append(partCard(pid, b));
+    for (const [pid, b] of list) frag.append(partRow(pid, b));
   }
   box.replaceChildren(frag);
+  const ordered = [...all].sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
+  grid.replaceChildren(...ordered.map(([pid, b]) => partWidget(pid, b)));
 }
 
 let born = null;
@@ -863,7 +927,20 @@ addEventListener("message", ev => {
 
 /* ── controls ── */
 const turn = (part, name, value) => api("controls", {method: "POST", body: {part, name, value}}).catch(() => {});
-$("stop").onclick = () => api("stop", {method: "POST"}).then(() => aside("зупинено"));
+const confirming = on => { $("stop").hidden = on; $("confirm").hidden = !on; };
+$("stop").onclick = () => confirming(true);
+$("stop-no").onclick = () => confirming(false);
+$("stop-yes").onclick = () => api("stop", {method: "POST"}).then(() => { confirming(false); aside("зупинено"); });
+
+/* ── the conversation drawer: open on the toggle or on the input ── */
+const talkOn = on => {
+  $("talkdrawer").classList.toggle("on", on);
+  $("talktoggle").classList.toggle("on", on);
+  $("talktoggle").setAttribute("aria-expanded", on ? "true" : "false");
+  if (on) $("talk").scrollTop = $("talk").scrollHeight;
+};
+$("talktoggle").onclick = () => talkOn(!$("talkdrawer").classList.contains("on"));
+$("text").addEventListener("focus", () => talkOn(true));
 
 /* ── talking to it, and hearing it back ── */
 const speech = window.speechSynthesis;
@@ -908,7 +985,7 @@ else {
 /* ── settings ── */
 const shut = () => { for (const id of ["veil", "settings"]) $(id).classList.remove("on"); };
 $("veil").onclick = shut;
-document.addEventListener("keydown", e => { if (e.key === "Escape") shut(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
 function keys() {
   api("keys").then(have => {
     const chosen = $("keyname").value;
