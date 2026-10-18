@@ -45,14 +45,16 @@ async def health(client):
 
 
 async def chat(client):
-    before = len((await client.get(f"{BASE}/api/history?n=5", headers=HEAD)).json())
-    await client.post(f"{BASE}/api/message",
-                      json={"text": "Скажи одне слово: тест."}, headers=HEAD)
+    said = "Скажи одне слово: тест."
+    await client.post(f"{BASE}/api/message", json={"text": said}, headers=HEAD)
 
     async def replied():
+        # The last turn, not the length: history?n=5 is a page, so once the
+        # history is longer than that the length never grows again.
         past = (await client.get(f"{BASE}/api/history?n=5", headers=HEAD)).json()
-        if len(past) > before and past[-1].get("agent"):
-            return past[-1]["agent"]
+        last = past[-1] if past else {}
+        if last.get("user") == said and last.get("agent"):
+            return last["agent"]
 
     text = await wait_for(replied, 60)
     return bool(text), (text or "no reply")[:70]
