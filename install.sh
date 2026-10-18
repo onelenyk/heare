@@ -172,6 +172,7 @@ mac)
   <key>ProgramArguments</key><array><string>$BIN/$program</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string></dict>
   <key>StandardOutPath</key><string>$LOGS/$log</string>
   <key>StandardErrorPath</key><string>$LOGS/$log</string>
 </dict></plist>
@@ -195,6 +196,7 @@ After=network-online.target
 
 [Service]
 ExecStart=$BIN/$program
+Environment=PATH=$PATH
 Restart=always
 RestartSec=3
 
