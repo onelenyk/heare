@@ -40,9 +40,13 @@ VOICE_RULES = (
     "одним-двома реченнями, як людина. Без markdown, списків, таблиць і коду. "
     "Українською. Якщо робиш щось довге, наприкінці скажи одним реченням, що "
     "вийшло. Якщо для роботи потрібне слово людини — шлях, вибір, деталь, якої "
-    "ти не знаєш — виклич інструмент ask (MCP-сервер heare) і дочекайся "
-    "відповіді, а не вгадуй."
+    "ти не знаєш — виклич інструмент {ask} і дочекайся відповіді, а не вгадуй."
 )
+
+
+def ask_tool(agent: str) -> str:
+    """How this CLI spells a tool from our MCP server «heare»."""
+    return "mcp__heare__ask" if agent == "claude" else "heare_ask"
 
 # The end of a first sentence: terminal punctuation followed by a space or
 # the end of the text so far, or a line break.
@@ -104,7 +108,8 @@ class Session:
         self.status = "running"
         blocks = [{"type": "text", "text": text}]
         if self._turns == 0:
-            blocks.insert(0, {"type": "text", "text": VOICE_RULES})
+            blocks.insert(0, {"type": "text", "text": VOICE_RULES.format(
+                ask=ask_tool(self.agent.name))})
         self._turns += 1
         self._started = time.monotonic()
         try:
