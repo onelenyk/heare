@@ -59,6 +59,13 @@ class RemoteExecutor:
         job.desk.step(text)
         return False
 
+    async def ask(self, job_id: int, text: str) -> str:
+        """An executor's question, waiting for the person's words."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            return ""
+        return await job.desk.question(text)
+
     async def permit(self, job_id: int, what: str, kind: str) -> tuple[bool, bool]:
         job = self._jobs.get(job_id)
         if job is None:

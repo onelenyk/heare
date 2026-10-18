@@ -7,6 +7,8 @@ that has the form.
 
 from __future__ import annotations
 
+import asyncio
+
 from heare.core import FAILURE_LINE, RESULT_PREFIX
 from tests.heare.fakes import Page, Says, Worker, open_room
 
@@ -488,4 +490,27 @@ async def test_a_short_answer_that_starts_like_the_word_for_silence_is_still_sai
     room.core.hear(Message(text="Як буде «може» скорочено?", channel="text", addressed=False))
     await room.settled()
     assert room.page.said == ["Мо "]
+    await room.close()
+
+
+async def test_an_executor_can_ask_the_person_and_gets_their_words():
+    from heare.core import Message, Task
+
+    room = await open_room()
+    task = Task(id=1, request="перевір", executor="opencode")
+    asking = asyncio.create_task(room.core._question_of(task, "який файл?"))
+
+    for _ in range(50):
+        if room.core.state.question is not None:
+            break
+        await asyncio.sleep(0.01)
+    question = room.core.state.question
+    assert question is not None and question.text == "який файл?"
+    assert any(e.kind == "question" for e in room.core.state.journal)
+
+    room.core.hear(Message(text="той, що в /tmp", channel="text"))
+    answer = await asyncio.wait_for(asking, 2.0)
+    assert answer == "той, що в /tmp"
+    assert room.core.state.question is None
+    assert any(e.kind == "question_closed" for e in room.core.state.journal)
     await room.close()

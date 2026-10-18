@@ -25,8 +25,9 @@ ROOT = Path(__file__).resolve().parents[2] / "heare"
 KNOW_EVERYTHING = {"app", "listener", "brain"}
 LEAVES = {"heare.keys"}
 # The core may grow, but not into the tangle it replaces. If this fails,
-# something in the core is a part.
-CORE_LINES = 1250
+# something in the core is a part. Raised deliberately for the question
+# channel (an executor asking the person mid-work), not by drift.
+CORE_LINES = 1350
 
 
 def _imports(path: Path) -> set[str]:

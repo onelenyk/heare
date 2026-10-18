@@ -22,7 +22,8 @@ import time
 from typing import AsyncIterator, Awaitable, Callable
 
 from heare.core.forms import (
-    Delegator, Executor, Input, Memory, Message, Model, Output, Permission, Task,
+    Delegator, Executor, Input, Memory, Message, Model, Output, Permission,
+    Question, Task,
 )
 from heare.core.state import State
 
@@ -65,6 +66,8 @@ HISTORY_TURNS = 12
 # nothing without them.
 CONTEXT_TURNS = 6
 PERMISSION_TIMEOUT_S = 60.0
+# An executor's question waits this long; the agent's own idle guard is 5 min.
+QUESTION_TIMEOUT_S = 240.0
 SAY_CHARS = 70
 
 
@@ -147,6 +150,9 @@ class _Desk:
     async def permit(self, what: str, kind: str = "change") -> bool:
         return await self._core._ask(self._task, what, kind)
 
+    async def question(self, text: str) -> str:
+        return await self._core._question_of(self._task, text)
+
 
 class Core:
     def __init__(
@@ -189,6 +195,8 @@ class Core:
         self._jobs: dict[int, asyncio.Task] = {}
         self._permission: Permission | None = None
         self._answered: asyncio.Future | None = None
+        self._question: Question | None = None
+        self._spoken: asyncio.Future | None = None
         self._asking = asyncio.Lock()
         self._taking = False
 
@@ -386,6 +394,12 @@ class Core:
         if message.addressed:
             self.state.emit("heard", text=message.text, channel=message.channel)
 
+        if self._question is not None and self._spoken is not None:
+            if self.words.is_halt(message.text, self.names):
+                await self._halt(message)
+                return
+            self.answer(self._question.id, message.text)
+            return
         if self._permission is not None:
             verdict = self.words.consent(message.text, self.names)
             if verdict is not None:
@@ -870,6 +884,41 @@ class Core:
             return False
         if answered is not None and not answered.done():
             answered.set_result(bool(allowed))
+        return True
+
+    async def _question_of(self, task: Task, text: str) -> str:
+        """An executor asking the person mid-work, in words.
+
+        The answer is the person's own next message, caught from their lane
+        — never a model's guess at what they would have said.
+        """
+        async with self._asking:
+            asked = Question(next(self._ids), task.id, task.executor, text)
+            self._spoken = asyncio.get_running_loop().create_future()
+            self._question = self.state.question = asked
+            self.state.emit("question", **asked.view())
+            short = text if len(text) <= SAY_CHARS else text[:SAY_CHARS].rstrip() + "…"
+            self.hear(Message(
+                text=f"{task.executor} питає: {short}",
+                channel=task.executor, person=False, verbatim=True,
+            ))
+            answer = ""
+            try:
+                answer = await asyncio.wait_for(self._spoken, QUESTION_TIMEOUT_S)
+            except TimeoutError:
+                logger.info("question %d: no answer", asked.id)
+            finally:
+                self._question = self.state.question = None
+                self.state.emit("question_closed", id=asked.id, answer=answer)
+            return answer
+
+    def answer(self, question_id: int, text: str) -> bool:
+        """The person's words for the open question."""
+        asked, spoken = self._question, self._spoken
+        if asked is None or asked.id != question_id:
+            return False
+        if spoken is not None and not spoken.done():
+            spoken.set_result(str(text))
         return True
 
 

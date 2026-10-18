@@ -184,7 +184,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         ("POST", re.compile(r"^/api/input/said_over$")),
         ("GET", re.compile(r"^/api/events$")),
         ("POST", re.compile(r"^/api/executor/claim$")),
-        ("POST", re.compile(r"^/api/executor/\d+/(step|permit|result)$")),
+        ("POST", re.compile(r"^/api/executor/\d+/(step|permit|result|ask)$")),
     )
 
     def part_may(request: web.Request) -> bool:
@@ -264,6 +264,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
             str(data.get("what", "")), str(data.get("kind", "change")),
         )
         return web.json_response({"allow": bool(allow), "stopped": bool(stopped)})
+
+    async def executor_ask(request: web.Request) -> web.Response:
+        """The agent's question mid-work: the person's answer comes back."""
+        data = await body(request)
+        found = _executor_for(request)
+        answer = await found.ask(int(request.match_info["id"]),
+                                 str(data.get("question", "")))
+        return web.json_response({"answer": answer})
 
     async def result(request: web.Request) -> web.Response:
         data = await body(request)
@@ -612,6 +620,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def stop_task(request: web.Request) -> web.Response:
         return web.json_response({"stopped": core.stop_task(int(request.match_info["id"]))})
 
+    async def answer(request: web.Request) -> web.Response:
+        """The person's words for an executor's open question."""
+        data = await body(request)
+        ok = core.answer(int(request.match_info["id"]), str(data.get("text", "")))
+        return web.json_response({"ok": bool(ok)})
+
     async def permit(request: web.Request) -> web.Response:
         allow = bool((await body(request)).get("allow"))
         return web.json_response(
@@ -695,6 +709,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/executor/claim", claim),
         web.post("/api/executor/{id:\\d+}/step", step),
         web.post("/api/executor/{id:\\d+}/permit", executor_permit),
+        web.post("/api/executor/{id:\\d+}/ask", executor_ask),
         web.post("/api/executor/{id:\\d+}/result", result),
         web.post("/api/input", input_event),
         web.post("/api/input/said_over", said_over),
@@ -712,6 +727,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/tasks", start_task),
         web.post("/api/tasks/{id:\\d+}/stop", stop_task),
         web.post("/api/permission/{id:\\d+}", permit),
+        web.post("/api/answer/{id:\\d+}", answer),
         web.get("/api/settings", get_settings),
         web.post("/api/settings", set_settings),
         web.get("/api/keys", get_keys),

@@ -14,7 +14,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
-from heare.core.forms import Permission, Task
+from heare.core.forms import Permission, Question, Task
 
 JOURNAL = 200
 
@@ -35,6 +35,7 @@ class State:
     phase: str = "idle"
     tasks: dict[int, Task] = field(default_factory=dict)
     permission: Permission | None = None
+    question: Question | None = None
     parts: dict[str, list[str]] = field(
         default_factory=lambda: {"inputs": [], "outputs": [], "executors": []}
     )
@@ -74,5 +75,6 @@ class State:
             "parts": self.parts,
             "tasks": [t.view() for t in self.tasks.values()],
             "permission": self.permission.view() if self.permission else None,
+            "question": self.question.view() if self.question else None,
             "around": self.around,
         }

@@ -133,7 +133,8 @@ class Agent:
     def __init__(self, known: Known, *, cwd: str | Path | None = None,
                  home: Path | None = None, command: list[str] | None = None,
                  env: dict[str, str] | None = None,
-                 tap: Callable[[str, dict], None] | None = None) -> None:
+                 tap: Callable[[str, dict], None] | None = None,
+                 mcp_servers: list[dict] | None = None) -> None:
         self.name = known.name
         self.about = known.about
         self._known = known
@@ -142,6 +143,7 @@ class Agent:
         self._command = command or list(known.command)
         self._env = env
         self._tap = tap
+        self._mcp = mcp_servers or []
         self._agent: acp.Agent | None = None
         self._desks: dict[str, Desk] = {}
         self._refused: dict[str, list[str]] = {}
@@ -160,6 +162,7 @@ class Agent:
                     self.name, on_permission=self._decide, cwd=self._cwd,
                     stderr=logs / f"agent-{self.name}.log",
                     command=self._command, env=env, tap=self._tap,
+                    mcp_servers=self._mcp,
                 )
                 await agent.start()
                 self._agent = agent

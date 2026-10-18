@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import collections
+import json
 import logging
+import os
 import socket
 import sys
 from pathlib import Path
@@ -99,7 +101,38 @@ async def run() -> int:
             wire.append(line)
             told += 1
 
-    agent = Agent(known, cwd=settings.executor_cwd or None, tap=tap)
+    socket_path = Path(settings.parts_file).parent / f"hands-{os.getpid()}.sock"
+    try:
+        socket_path.unlink()
+    except OSError:
+        pass
+    current: dict = {"desk": None}
+
+    async def handle(reader, writer):
+        try:
+            line = await reader.readline()
+            try:
+                request = json.loads(line or b"{}")
+            except ValueError:
+                request = {}
+            desk = current.get("desk")
+            answer = ""
+            if request.get("tool") == "ask" and desk is not None:
+                answer = await desk.ask(str(request.get("question") or ""))
+            writer.write((json.dumps({"answer": answer},
+                                     ensure_ascii=False) + "\n").encode())
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    asks = await asyncio.start_unix_server(handle, path=str(socket_path))
+    agent = Agent(
+        known, cwd=settings.executor_cwd or None, tap=tap,
+        mcp_servers=[{"name": "heare", "command": sys.executable,
+                      "args": ["-m", "heare.reach.bridge",
+                               "--socket", str(socket_path)]}],
+    )
     ui = [
         {"name": "taking", "kind": "toggle", "label": "Брати справи",
          "value": True},
@@ -163,6 +196,7 @@ async def run() -> int:
                 await part.report(client, base, agent.name, values)
                 desk = RemoteDesk(client, base, task["id"], agent.name)
                 status, result = "done", ""
+                current["desk"] = desk
                 try:
                     result = await agent.run(task["request"], desk)
                 except asyncio.CancelledError:
@@ -174,12 +208,15 @@ async def run() -> int:
                 await client.post(
                     f"{base}/api/executor/{task['id']}/result?name={agent.name}",
                     json={"status": status, "result": result})
+                current["desk"] = None
                 values["work"] = "чекає"
                 await part.report(client, base, agent.name, values)
         finally:
             following.cancel()
             wiring.cancel()
+            asks.close()
             await asyncio.gather(following, wiring, return_exceptions=True)
+            socket_path.unlink(missing_ok=True)
 
 
 def main() -> int:

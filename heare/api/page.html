@@ -89,6 +89,8 @@
   .ask { border:1px solid var(--warn); border-radius:10px; padding:11px; margin-bottom:12px; background:rgba(219,182,79,.07); }
   .ask p { font-family:var(--sans); font-size:13.5px; margin-bottom:9px; }
   .ask button { margin-right:6px; }
+  .ask input { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 10px; min-width:0; font:inherit; }
+  .ask .pair { display:grid; grid-template-columns:1fr auto; gap:8px; }
   .yes { background:var(--ok); border-color:var(--ok); color:var(--accent-ink); font-weight:700; }
   .empty { color:var(--soft); }
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
@@ -438,9 +440,9 @@ function spark() {
   $("spark").innerHTML = speeds.map((v, i) => `<rect x="${i * w}" y="${16 - v / max * 15}" width="${Math.max(w - 1.5, 1)}" height="${v / max * 15}" fill="currentColor" opacity=".55"/>`).join("");
 }
 
-function tasks(list, permission) {
+function tasks(list, permission, question) {
   const live = list.filter(t => t.status === "running" || Date.now() / 1000 - (t.ended || 0) < 180);
-  $("hold").hidden = !live.length && !permission;
+  $("hold").hidden = !live.length && !permission && !question;
   $("tasks").replaceChildren(...(live.length ? live.reverse().map(t => {
     const row = el("div", "task"), what = el("div");
     what.append(el("p", "", t.request));
@@ -452,6 +454,22 @@ function tasks(list, permission) {
     return row;
   }) : [el("p", "empty", "Зараз нічого не роблю.")]));
   $("ask").replaceChildren();
+  if (question) {
+    const box = el("div", "ask");
+    box.append(el("p", "", `${question.executor} питає: ${question.text}`));
+    const field = el("input"); field.placeholder = "Відповідь…"; field.autocomplete = "off";
+    const send = el("button", "mini yes", "Надіслати");
+    const reply = () => {
+      const text = field.value.trim();
+      if (!text) return;
+      send.disabled = true;
+      api(`answer/${question.id}`, {method: "POST", body: {text}}).catch(() => { send.disabled = false; });
+    };
+    send.onclick = reply;
+    field.onkeydown = e => { if (e.key === "Enter") reply(); };
+    const row = el("div", "pair"); row.append(field, send);
+    box.append(row); $("ask").append(box);
+  }
   if (permission) {
     const box = el("div", "ask");
     box.append(el("p", "", `${permission.executor} хоче: ${permission.what}`));
@@ -603,7 +621,7 @@ const refresh = () => api("state").then(s => {
   state = s; phase = s.phase; voice = voiceOf(s);
   const web = Object.entries(s.bodies || {}).find(([, b]) => b.channel === "web");
   webPid = web ? web[0] : null;
-  show(); vitals(s); tasks(s.tasks, s.permission); parts(s.bodies);
+  show(); vitals(s); tasks(s.tasks, s.permission, s.question); parts(s.bodies);
 });
 
 /* the canvas: one screen of widgets, changed in place */
@@ -1039,7 +1057,7 @@ stream.onmessage = m => {
   else if (e.kind === "control" && e.channel === "web" && e.name === "aloud") setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
 
-  if (["task", "permission", "permission_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
+  if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
 };
 stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = "немає зв'язку з heare"; };
 stream.onopen = () => refresh();

@@ -205,3 +205,17 @@ class Permission:
     def view(self) -> dict:
         return {"id": self.id, "task": self.task, "executor": self.executor,
                 "what": self.what}
+
+
+@dataclass
+class Question:
+    """An executor asking the person something mid-work, in words."""
+
+    id: int
+    task: int
+    executor: str
+    text: str
+
+    def view(self) -> dict:
+        return {"id": self.id, "task": self.task, "executor": self.executor,
+                "text": self.text}
