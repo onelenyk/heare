@@ -1,0 +1,225 @@
+"""The setup form: what it accepts, what it runs, and that it closes."""
+
+from __future__ import annotations
+
+import json
+import socket
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+
+import pytest
+
+from heare import setup
+from heare.config import Settings
+
+
+def _body(**overrides) -> dict:
+    data = {
+        "brain_here": False,
+        "parts": ["voice"],
+        "url": "https://brain.example",
+        "code": "ABCDEFGH",
+        "deepseek_key": "",
+        "groq_key": "",
+    }
+    data.update(overrides)
+    return data
+
+
+def test_want_setup_until_a_run_succeeds(tmp_path):
+    settings = Settings(tmp_path / "config.toml")
+    assert setup.want_setup(settings)
+    settings.set("setup_done", True)
+    assert not setup.want_setup(settings)
+    settings.set("setup_done", False)
+    assert setup.want_setup(settings)
+
+
+def test_the_role_is_a_switch():
+    data = _body()
+    data.pop("brain_here")
+    assert any("мозок" in error for error in setup.validate(data))
+
+
+def test_a_remote_machine_needs_a_url():
+    data = _body()
+    data.pop("url")
+    assert any("адресу" in error for error in setup.validate(data))
+
+
+def test_a_url_must_be_http():
+    errors = setup.validate(_body(url="brain.example"))
+    assert any("http" in error for error in errors)
+
+
+def test_a_remote_machine_needs_a_code():
+    data = _body()
+    data.pop("code")
+    assert any("код" in error for error in setup.validate(data))
+
+
+def test_a_code_is_eight_characters():
+    assert any("8 символів" in error for error in setup.validate(_body(code="ABCDEFG")))
+    assert setup.validate(_body(code="  ABCDEFGH  ")) == []
+
+
+def test_a_remote_machine_needs_a_part():
+    assert any("частину" in error for error in setup.validate(_body(parts=[])))
+
+
+def test_only_known_parts_are_accepted():
+    assert any("невідому" in error for error in setup.validate(_body(parts=["tail"])))
+
+
+def test_a_brain_port_is_checked():
+    assert any("порт" in error for error in
+               setup.validate({"brain_here": True, "parts": [], "port": 0}))
+    assert any("порт" in error for error in
+               setup.validate({"brain_here": True, "parts": [], "port": 70000}))
+    assert setup.validate({"brain_here": True, "parts": [], "port": 9800}) == []
+    assert setup.validate({"brain_here": True, "parts": []}) == []
+
+
+def test_keys_are_optional_text():
+    assert setup.validate(_body(deepseek_key=None, groq_key="")) == []
+    assert any("DeepSeek" in error for error in
+               setup.validate(_body(deepseek_key=["not", "a", "key"])))
+
+
+def test_the_installer_runs_for_a_brain():
+    argv = setup.command(
+        {"brain_here": True, "parts": ["eyes", "voice"], "port": 9800},
+        "/i/install.sh", "/w",
+    )
+    assert argv[:4] == ["sh", "/i/install.sh", "--from", "/w"]
+    assert argv[argv.index("--role") + 1] == (
+        "mac" if sys.platform == "darwin" else "server")
+    assert argv[argv.index("--parts") + 1] == "eyes,voice"
+    assert argv[argv.index("--port") + 1] == "9800"
+    assert "--url" not in argv
+    assert "--code" not in argv
+
+
+def test_the_installer_runs_for_a_body():
+    argv = setup.command(
+        _body(parts=["voice", "hands"], url="https://brain.example",
+              code=" ABCDEEGH "),
+        "/i/install.sh", "/w",
+    )
+    assert argv[argv.index("--url") + 1] == "https://brain.example"
+    assert argv[argv.index("--code") + 1] == "ABCDEEGH"
+    assert argv[argv.index("--parts") + 1] == "voice,hands"
+    assert "--port" not in argv
+    assert "--deepseek-key" not in argv
+    assert "--groq-key" not in argv
+
+
+def test_a_brain_with_no_parts_clears_the_installer_default():
+    argv = setup.command({"brain_here": True, "parts": [], "port": 9790}, "/i", "/w")
+    assert argv[argv.index("--parts") + 1] == ""
+
+
+def test_the_role_follows_the_platform(monkeypatch):
+    monkeypatch.setattr(setup.sys, "platform", "linux")
+    argv = setup.command({"brain_here": True, "parts": []}, "/i", "/w")
+    assert argv[argv.index("--role") + 1] == "server"
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _wait_for(url: str) -> None:
+    for _ in range(100):
+        try:
+            with urllib.request.urlopen(url, timeout=1) as answer:
+                if answer.status == 200:
+                    return
+        except (OSError, urllib.error.URLError):
+            time.sleep(0.02)
+    raise AssertionError("the form did not start")
+
+
+def _post(url: str, data: dict) -> tuple[int, dict]:
+    request = urllib.request.Request(
+        url, data=json.dumps(data).encode(), method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as answer:
+        return answer.status, json.loads(answer.read().decode())
+
+
+def test_the_form_runs_the_installer_and_closes(tmp_path, monkeypatch):
+    monkeypatch.setenv("HEARE_NO_BROWSER", "1")
+    monkeypatch.setenv("TMP_LOG", str(tmp_path / "args.log"))
+    script = tmp_path / "install.sh"
+    script.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$@" >> "$TMP_LOG"\necho installed "$@"\n',
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+    config = tmp_path / "config.toml"
+    machine = tmp_path / "machine_token"
+    monkeypatch.setattr(
+        setup, "Settings",
+        lambda: Settings(config, machine_token_file=machine),
+    )
+
+    port = _free_port()
+    thread = threading.Thread(
+        target=setup.serve,
+        kwargs={"installer": str(script), "wheels": str(tmp_path / "wheels"),
+                "port": port},
+        daemon=True,
+    )
+    thread.start()
+    base = f"http://127.0.0.1:{port}"
+    _wait_for(base + "/")
+
+    with urllib.request.urlopen(base + "/", timeout=2) as answer:
+        assert answer.status == 200
+        assert "Адреса мозку" in answer.read().decode()
+
+    status, result = _post(base + "/setup", {
+        "brain_here": False,
+        "parts": ["voice", "hands"],
+        "url": "https://brain.example",
+        "code": "ABCDEFGH",
+        "deepseek_key": "",
+        "groq_key": "",
+    })
+    assert status == 200
+    assert result["ok"] is True
+    assert "installed" in result["log"]
+
+    args = (tmp_path / "args.log").read_text(encoding="utf-8").splitlines()
+    assert args == [
+        "--from", str(tmp_path / "wheels"),
+        "--role", "mac" if sys.platform == "darwin" else "server",
+        "--parts", "voice,hands",
+        "--url", "https://brain.example",
+        "--code", "ABCDEFGH",
+    ]
+    saved = Settings(config)
+    assert saved.url == "https://brain.example"
+    assert saved.setup_done is True
+
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        _post(base + "/setup", {
+            "brain_here": False, "parts": ["voice"], "code": "ABCDEFGH",
+        })
+    assert refused.value.code == 400
+    errors = json.loads(refused.value.read().decode())["errors"]
+    assert any("адресу" in error for error in errors)
+
+    status, result = _post(base + "/close", {})
+    assert status == 200
+    assert result["ok"] is True
+    thread.join(timeout=5)
+    assert not thread.is_alive()

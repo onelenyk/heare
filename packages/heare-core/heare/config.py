@@ -39,6 +39,9 @@ DEFAULTS = {
     # is told once, by the setup form.
     "url": "",
     "api_port": 9790,
+    # Where the keeper's setup form listens. Fixed, with a fallback to the
+    # next free port; the address is printed when the form starts.
+    "setup_port": 9791,
     # One agent does the work unless the person names another; two at
     # once made three versions of one program in twenty minutes.
     "executor": "opencode",

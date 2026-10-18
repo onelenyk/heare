@@ -15,9 +15,11 @@ import asyncio
 import json
 import logging
 import sys
+import threading
 from pathlib import Path
 
 from heare.config import Settings
+from heare.setup import serve, want_setup
 
 logger = logging.getLogger("heare.keeper")
 
@@ -89,12 +91,32 @@ class Keeper:
             await asyncio.gather(*tasks.values(), return_exceptions=True)
 
 
+def _serve_form() -> None:
+    try:
+        serve()
+    except SystemExit as stop:
+        logger.warning("%s", stop)
+    except Exception:  # noqa: BLE001 — a UI failure must not stop supervision
+        logger.exception("the setup form did not start")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="heare.keeper")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("command", nargs="?", choices=["setup"])
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     settings = Settings()
+
+    if args.command == "setup":
+        serve()
+        return 0
+
+    if want_setup(settings):
+        threading.Thread(
+            target=_serve_form, name="heare-setup", daemon=True,
+        ).start()
+
     try:
         asyncio.run(Keeper(Path(settings.parts_dir)).run())
     except KeyboardInterrupt:

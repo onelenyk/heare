@@ -1,15 +1,21 @@
 #!/bin/sh
-# heare — one line: install the brain and the parts you choose, write their
+# heare — install the brain, the keeper and the parts you choose, write their
 # manifests, and keep them running with launchd or systemd.
 #
 #   ./install.sh --role mac --parts eyes,voice,hands
 #   ./install.sh --role server
+#   ./install.sh --setup          # core + keeper only; the keeper serves the form
 #
 # --from DIR|URL   where the wheels are (default: ./dist)
 # --version V      the version the URL holds
 # --port P         the brain's port (default 9790)
+# --url URL        where the brain is (empty: this machine)
+# --code CODE      pair this machine with a brain at --url
 # --deepseek-key K, --groq-key K   store a key in the Keychain
 # --no-service     install only; do not start anything
+#
+# Keys also come from HEARE_DEEPSEEK_KEY and HEARE_GROQ_KEY, so they never
+# have to appear on a command line.
 set -eu
 
 ROLE=mac
@@ -17,12 +23,15 @@ PARTS="eyes voice hands"
 FROM="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/dist"
 VERSION=""
 PORT=""
-DEEPSEEK_KEY=""
-GROQ_KEY=""
+URL=""
+CODE=""
+SETUP=0
+DEEPSEEK_KEY="${HEARE_DEEPSEEK_KEY:-}"
+GROQ_KEY="${HEARE_GROQ_KEY:-}"
 SERVICE=1
 
 usage() {
-    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+    awk 'NR > 1 && /^set -eu/ { exit } NR > 1 { sub(/^# ?/, ""); print }' "$0"
     exit "${1:-0}"
 }
 
@@ -33,8 +42,11 @@ while [ $# -gt 0 ]; do
         --from) FROM=$2; shift 2 ;;
         --version) VERSION=$2; shift 2 ;;
         --port) PORT=$2; shift 2 ;;
+        --url) URL=$2; shift 2 ;;
+        --code) CODE=$2; shift 2 ;;
         --deepseek-key) DEEPSEEK_KEY=$2; shift 2 ;;
         --groq-key) GROQ_KEY=$2; shift 2 ;;
+        --setup) SETUP=1; shift ;;
         --no-service) SERVICE=0; shift ;;
         -h|--help) usage 0 ;;
         *) echo "невідомий прапорець: $1" >&2; usage 1 ;;
@@ -51,6 +63,7 @@ case "$(uname -s)" in
 esac
 
 [ "$ROLE" = "connect" ] && die "частини до віддаленого мозку ще не вміють (Ф6)"
+[ -n "$CODE" ] && [ -z "$URL" ] && die "для --code потрібен --url"
 if [ -n "$PORT" ]; then
     case "$PORT" in ''|*[!0-9]*) die "порт має бути числом" ;; esac
     if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
@@ -67,8 +80,14 @@ command -v uv >/dev/null 2>&1 || {
     export PATH
 }
 
-WHEELS=$(mktemp -d)
-trap 'rm -rf "$WHEELS"' EXIT
+if [ "$SETUP" = "1" ]; then
+    WHEELS="$HOME/.heare/wheels"
+    mkdir -p "$WHEELS"
+    rm -f "$WHEELS"/heare_*.whl
+else
+    WHEELS=$(mktemp -d)
+    trap 'rm -rf "$WHEELS"' EXIT
+fi
 
 if [ -d "$FROM" ]; then
     cp "$FROM"/heare_*.whl "$WHEELS"/ || die "у $FROM немає wheel — збери: uv build --all-packages -o dist"
@@ -125,24 +144,72 @@ EOF
     say "маніфест: $name/heare.json"
 }
 
-if [ "$ROLE" = "mac" ] || [ "$ROLE" = "server" ]; then
-    install_brain
-fi
-
-if [ -n "$PARTS" ]; then
-    for part in $PARTS; do
-        install_part "$part"
-    done
+if [ "$SETUP" = "1" ]; then
     tool_install "$(ls "$WHEELS"/heare_keeper-*.whl)" --with "$CORE"
     say "наглядач: heare-keeper"
-    for part in $PARTS; do
-        case "$part" in
-            eyes) manifest eyes eyes '["input"]' "очі: застосунок, простій, чи щось грає" ;;
-            voice) manifest voice voice '["input", "output"]' "мікрофон і динамік" ;;
-            hands) manifest hands opencode '["executor"]' "агент у терміналі: код, файли, команди, пошук в інтернеті" ;;
-            chat) say "чат — окремо, він потребує термінала" ;;
-        esac
-    done
+    INSTALLER="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    mkdir -p "$HOME/.heare"
+    cat > "$HOME/.heare/install.json" <<EOF
+{"installer": "$INSTALLER", "wheels": "$WHEELS"}
+EOF
+    say "форма: $INSTALLER"
+else
+    if [ "$ROLE" = "mac" ] || [ "$ROLE" = "server" ]; then
+        install_brain
+    fi
+
+    if [ -n "$PARTS" ]; then
+        for part in $PARTS; do
+            install_part "$part"
+        done
+        tool_install "$(ls "$WHEELS"/heare_keeper-*.whl)" --with "$CORE"
+        say "наглядач: heare-keeper"
+        for part in $PARTS; do
+            case "$part" in
+                eyes) manifest eyes eyes '["input"]' "очі: застосунок, простій, чи щось грає" ;;
+                voice) manifest voice voice '["input", "output"]' "мікрофон і динамік" ;;
+                hands) manifest hands opencode '["executor"]' "агент у терміналі: код, файли, команди, пошук в інтернеті" ;;
+                chat) say "чат — окремо, він потребує термінала" ;;
+            esac
+        done
+    fi
+fi
+
+if [ -n "$URL" ]; then
+    uv run --no-project --with "$CORE" python -c \
+      'import sys
+from heare.config import Settings
+Settings().set("url", sys.argv[1])' "$URL"
+    say "мозок: $URL"
+fi
+
+if [ -n "$CODE" ]; then
+    PAIR_CODE='import sys
+import urllib.error
+from pathlib import Path
+
+from heare.config import Settings
+from heare.pairing import pair
+
+try:
+    answer = pair(sys.argv[1], sys.argv[2], "machine", sys.argv[3])
+except urllib.error.HTTPError as error:
+    sys.stderr.write(
+        "код невірний або прострочений (HTTP %s) — візьми новий: heare-brain code\n"
+        % error.code)
+    raise SystemExit(1)
+except urllib.error.URLError as error:
+    sys.stderr.write("не знайшов адресу мозку: %s\n" % error.reason)
+    raise SystemExit(1)
+
+path = Path(Settings().machine_token_file)
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(answer["token"], encoding="utf-8")
+path.chmod(0o600)'
+    uv run --no-project --with "$CORE" python -c "$PAIR_CODE" \
+        "$URL" "$CODE" "$(uname -n)" \
+        || die "не підключився до мозку — перевір адресу й код"
+    say "машина підключена"
 fi
 
 if [ -n "$PORT" ]; then
@@ -160,10 +227,12 @@ if sys.argv[2]: store("GROQ_API_KEY", sys.argv[2])'
     say "ключі в Keychain"
 fi
 
-command -v ffmpeg >/dev/null 2>&1 || say "немає ffmpeg — голос візьме системний, або постав його"
-case "$OS" in
-    mac) command -v opencode >/dev/null 2>&1 || say "немає opencode — руки не матимуть агента" ;;
-esac
+if [ "$SETUP" != "1" ]; then
+    command -v ffmpeg >/dev/null 2>&1 || say "немає ffmpeg — голос візьме системний, або постав його"
+    case "$OS" in
+        mac) command -v opencode >/dev/null 2>&1 || say "немає opencode — руки не матимуть агента" ;;
+    esac
+fi
 
 if [ "$SERVICE" = "0" ]; then
     echo "готово (нічого не запускав)"
@@ -172,6 +241,15 @@ fi
 
 LOGS="$HOME/.heare/logs"
 mkdir -p "$LOGS"
+
+BRAIN=0
+KEEPER=0
+if [ "$SETUP" = "1" ]; then
+    KEEPER=1
+else
+    if [ "$ROLE" = "mac" ] || [ "$ROLE" = "server" ]; then BRAIN=1; fi
+    if [ -n "$PARTS" ]; then KEEPER=1; fi
+fi
 
 case "$OS" in
 mac)
@@ -200,9 +278,13 @@ EOF
         }
         say "launchd: $label"
     }
-    plist com.heare.brain heare-brain brain.log
-    launchctl bootout "gui/$(id -u)/com.heare.desktop" 2>/dev/null || true
-    [ -n "$PARTS" ] && plist com.heare.keeper heare-keeper parts.log
+    if [ "$BRAIN" = "1" ]; then
+        plist com.heare.brain heare-brain brain.log
+        launchctl bootout "gui/$(id -u)/com.heare.desktop" 2>/dev/null || true
+    fi
+    if [ "$KEEPER" = "1" ] && [ -z "${HEARE_FROM_SETUP:-}" ]; then
+        plist com.heare.keeper heare-keeper parts.log
+    fi
     ;;
 linux)
     UNITS="$HOME/.config/systemd/user"
@@ -227,14 +309,22 @@ EOF
         systemctl --user enable --now "$name.service"
         say "systemd: $name"
     }
-    unit heare-brain heare-brain
-    [ -n "$PARTS" ] && unit heare-keeper heare-keeper
+    if [ "$BRAIN" = "1" ]; then unit heare-brain heare-brain; fi
+    if [ "$KEEPER" = "1" ] && [ -z "${HEARE_FROM_SETUP:-}" ]; then unit heare-keeper heare-keeper; fi
     ;;
 esac
 
-cat <<EOF
+if [ "$SETUP" = "1" ]; then
+    cat <<EOF
+
+готово. Форма: http://127.0.0.1:9791/
+Логи: $LOGS
+EOF
+else
+    cat <<EOF
 
 готово. Сторінка: http://127.0.0.1:${PORT:-9790}/
 Логи: $LOGS
 Ключі: сторінка → ⚙
 EOF
+fi
