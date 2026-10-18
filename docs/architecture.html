@@ -1,0 +1,1933 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="heare — знімок архітектури й інфраструктури на 18 жовтня 2026.">
+<title>heare — як воно влаштоване зараз</title>
+<style>
+  :root {
+    --bg: #0d0f13;
+    --panel: #161a21;
+    --panel-2: #1b2029;
+    --panel-3: #10141a;
+    --line: #262c36;
+    --line-soft: #1f252e;
+    --ink: #e8ecf2;
+    --muted: #93a0b4;
+    --faint: #657084;
+    --accent: #7c9cff;
+    --accent-wash: rgba(124, 156, 255, .07);
+    --accent-line: rgba(124, 156, 255, .34);
+    --warn: #e8b06a;
+    --warn-wash: rgba(232, 176, 106, .06);
+    --warn-line: rgba(232, 176, 106, .3);
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+    --radius: 16px;
+    --max: 1200px;
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 520px at 50% -260px, rgba(124, 156, 255, .10), transparent 72%),
+      var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: rgba(124, 156, 255, .3); }
+  a { color: inherit; }
+  code, pre { font-family: var(--mono); }
+  code { overflow-wrap: anywhere; }
+
+  .poster {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 64px 36px 84px;
+  }
+
+  /* ── шапка ── */
+
+  .masthead {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 34px;
+  }
+  .brandline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    font: 10.5px/1.4 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .brandline .mark {
+    color: var(--ink);
+    font: 600 13px/1 var(--mono);
+    letter-spacing: .1em;
+    text-transform: none;
+  }
+  .proper {
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .brandline .mark::after {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(124, 156, 255, .10);
+    vertical-align: 1px;
+  }
+  h1 {
+    margin: 28px 0 16px;
+    max-width: 940px;
+    font-size: clamp(38px, 6vw, 68px);
+    line-height: 1.04;
+    font-weight: 640;
+    letter-spacing: -.045em;
+    text-wrap: balance;
+  }
+  .dateline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    font: 11.5px/1.5 var(--mono);
+    letter-spacing: .06em;
+    color: var(--accent);
+  }
+  .dateline::before {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: var(--accent);
+    opacity: .7;
+  }
+  .note {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 14.5px;
+  }
+
+  /* ── зміст ── */
+
+  .toc {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    margin-top: 26px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .toc a {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 13px 11px 13px 0;
+    border-right: 1px solid var(--line-soft);
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.35;
+    text-decoration: none;
+    transition: color .15s ease;
+  }
+  .toc a:last-child { border-right: 0; padding-right: 0; }
+  .toc a:hover { color: var(--ink); }
+  .toc .n {
+    font: 10px/1.3 var(--mono);
+    letter-spacing: .1em;
+    color: var(--accent);
+  }
+
+  /* ── секції ── */
+
+  .section {
+    padding-top: 76px;
+    scroll-margin-top: 24px;
+  }
+  .sec-head {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .sec-num {
+    padding-top: 7px;
+    font: 10.5px/1.4 var(--mono);
+    letter-spacing: .14em;
+    color: var(--accent);
+  }
+  h2 {
+    margin: 0;
+    font-size: clamp(26px, 3.4vw, 40px);
+    line-height: 1.12;
+    font-weight: 620;
+    letter-spacing: -.03em;
+  }
+  .sec-sub {
+    max-width: 780px;
+    margin: 9px 0 0;
+    color: var(--muted);
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+  .sec-sub code {
+    color: var(--ink);
+    font-size: .9em;
+  }
+
+  /* ── схема 1 ── */
+
+  .frame {
+    position: relative;
+    margin: 24px 0 0;
+    padding: 26px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background:
+      radial-gradient(900px 320px at 50% -120px, rgba(124, 156, 255, .08), transparent 68%),
+      var(--panel);
+  }
+  .frame::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 34px 34px;
+    opacity: .38;
+    -webkit-mask-image: radial-gradient(90% 80% at 50% 0%, #000, transparent 78%);
+    mask-image: radial-gradient(90% 80% at 50% 0%, #000, transparent 78%);
+  }
+  .frame > * { position: relative; }
+
+  .machine {
+    position: relative;
+    padding: 28px 22px 20px;
+    border: 1px dashed var(--accent-line);
+    border-radius: 16px;
+    background: rgba(13, 15, 19, .56);
+  }
+  .machine-label {
+    position: absolute;
+    top: -9px;
+    left: 20px;
+    padding: 0 9px;
+    background: var(--panel);
+    color: var(--accent);
+    font: 9.5px/1.6 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  .machine-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(250px, .8fr);
+    gap: 26px;
+  }
+  .flow { min-width: 0; }
+
+  .node {
+    min-width: 0;
+    padding: 13px 15px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel-2);
+  }
+  .node-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .node-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .node-tag {
+    padding: 2px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+    font: 9px/1.5 var(--mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .node p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .node p code {
+    padding: 1px 4px;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: var(--panel-3);
+    font-size: 10.5px;
+    color: var(--ink);
+  }
+  .node.browser {
+    border-left: 2px solid var(--accent);
+    background: linear-gradient(90deg, rgba(124, 156, 255, .055), transparent 55%), var(--panel-2);
+  }
+  .node.browser .node-tag { color: var(--warn); border-color: var(--warn-line); }
+
+  .wire {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    padding: 9px 0 9px 6px;
+  }
+  .wire .mark {
+    padding-top: 1px;
+    color: var(--accent);
+    font: 13px/1.3 var(--mono);
+  }
+  .wire .lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .wire .lines span {
+    color: var(--muted);
+    font: 10.5px/1.55 var(--mono);
+    overflow-wrap: anywhere;
+  }
+  .wire .lines b { color: var(--ink); font-weight: 500; }
+
+  .brain {
+    padding: 16px;
+    border: 1px solid var(--accent-line);
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, rgba(124, 156, 255, .07), transparent 58%),
+      var(--panel-2);
+  }
+  .brain-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .brain-title { font-size: 15px; font-weight: 600; }
+  .door {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    background: var(--accent-wash);
+    color: var(--accent);
+    font: 10px/1.5 var(--mono);
+    letter-spacing: .03em;
+  }
+  .door::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 156, 255, .13);
+  }
+  .modules {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 13px;
+  }
+  .module {
+    min-width: 0;
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(13, 15, 19, .48);
+  }
+  .module b {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .module span {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font: 9.5px/1.4 var(--mono);
+    overflow-wrap: anywhere;
+  }
+  .brain-foot {
+    margin-top: 11px;
+    padding-top: 9px;
+    border-top: 1px dashed var(--line);
+    color: var(--muted);
+    font: 9.5px/1.5 var(--mono);
+    overflow-wrap: anywhere;
+  }
+
+  .zone-label {
+    margin: 1px 0 7px;
+    color: var(--muted);
+    font: 9.5px/1.5 var(--mono);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  .parts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .part {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel-2);
+  }
+  .part-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .part-top b { font-size: 13px; font-weight: 600; }
+  .ch {
+    color: var(--muted);
+    font: 8.5px/1.5 var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .part p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .proc {
+    display: block;
+    margin-top: 5px;
+    color: var(--faint);
+    font: 9px/1.4 var(--mono);
+  }
+
+  .rail {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding-left: 22px;
+    border-left: 1px solid var(--line);
+  }
+  .rail-wire {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 0 8px 3px;
+    color: var(--muted);
+    font: 10px/1.5 var(--mono);
+  }
+  .rail-wire .mark { color: var(--accent); font-size: 13px; line-height: 1.2; }
+  .rail-wire b { color: var(--ink); font-weight: 500; }
+  .state-list {
+    display: grid;
+    gap: 5px;
+    margin: 9px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .state-list li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font: 9.5px/1.45 var(--mono);
+  }
+  .state-list code {
+    color: var(--ink);
+    font-size: 9.5px;
+    overflow-wrap: anywhere;
+  }
+  .state-list span {
+    flex: none;
+    color: var(--faint);
+    text-align: right;
+  }
+
+  .boundary {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--line);
+  }
+  .boundary-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: var(--faint);
+    font: 9px/1.5 var(--mono);
+    letter-spacing: .15em;
+    text-transform: uppercase;
+  }
+  .services {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .service {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel-2);
+  }
+  .via {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--accent);
+    font: 9px/1.4 var(--mono);
+    letter-spacing: .05em;
+  }
+  .via span:last-child { color: var(--muted); }
+  .service b {
+    display: block;
+    margin-top: 5px;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .service p {
+    margin: 2px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .caption {
+    margin-top: 12px;
+    color: var(--faint);
+    font: 9.5px/1.5 var(--mono);
+    letter-spacing: .02em;
+  }
+
+  /* ── дистрибутиви ── */
+
+  .dist-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .dist {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    min-width: 0;
+    padding: 17px 18px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+  }
+  .dist.core {
+    border-left: 2px solid var(--accent);
+    background: linear-gradient(90deg, rgba(124, 156, 255, .04), transparent 50%), var(--panel);
+  }
+  .dist-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .dist-name {
+    color: var(--accent);
+    font: 11px/1.4 var(--mono);
+    letter-spacing: .04em;
+  }
+  .dist-index { color: var(--faint); font: 9px/1.4 var(--mono); }
+  .dist h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -.012em;
+  }
+  .dist p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.52;
+  }
+  .dist p code {
+    padding: 1px 4px;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: var(--panel-3);
+    font-size: 10.5px;
+    color: var(--ink);
+  }
+  .files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: auto;
+    padding-top: 2px;
+  }
+  .files code {
+    padding: 2px 6px;
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    background: var(--panel-3);
+    color: var(--ink);
+    font: 9.5px/1.5 var(--mono);
+  }
+  .import {
+    padding-top: 8px;
+    border-top: 1px solid var(--line-soft);
+    color: var(--muted);
+    font: 9.5px/1.5 var(--mono);
+    overflow-wrap: anywhere;
+  }
+  .import b { color: var(--accent); font-weight: 500; }
+
+  .law {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 12px;
+    padding: 15px 17px;
+    border: 1px solid var(--accent-line);
+    border-radius: 12px;
+    background: var(--accent-wash);
+  }
+  .law-mark {
+    color: var(--accent);
+    font: 9px/1.6 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .law p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+  .law code {
+    padding: 1px 4px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel-3);
+    font-size: 10.5px;
+    color: var(--ink);
+  }
+
+  /* ── шлях фрази ── */
+
+  .journey {
+    display: flex;
+    flex-direction: column;
+    margin-top: 22px;
+  }
+  .jstep {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .jnum {
+    padding-top: 15px;
+    color: var(--accent);
+    font: 10px/1.4 var(--mono);
+    letter-spacing: .1em;
+    text-align: right;
+  }
+  .jcard {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 14px 17px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+  }
+  .jcard h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .jcard p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .jmeta {
+    flex: none;
+    color: var(--faint);
+    font: 9.5px/1.5 var(--mono);
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .jwire {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 16px;
+  }
+  .jline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+    margin-left: 18px;
+    padding-left: 18px;
+    border-left: 1px solid var(--line);
+    color: var(--muted);
+    font: 10px/1.5 var(--mono);
+  }
+  .jline .arr { color: var(--accent); font-size: 14px; }
+  .jline b { color: var(--ink); font-weight: 500; }
+
+  .fork {
+    margin: 18px 0 0 68px;
+    padding: 15px 18px;
+    border: 1px solid var(--warn-line);
+    border-radius: 12px;
+    background: var(--warn-wash);
+  }
+  .fork h3 {
+    margin: 0;
+    color: var(--warn);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .fork p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .fork code {
+    padding: 1px 4px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel-3);
+    font-size: 10.5px;
+    color: var(--ink);
+  }
+
+  /* ── справи й руки ── */
+
+  .exec-frame {
+    margin-top: 22px;
+    padding: 20px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--panel);
+  }
+  .exec-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 70px minmax(0, 1fr) 70px minmax(0, 1fr) 70px minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .ex {
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: var(--panel-2);
+  }
+  .ex .k {
+    color: var(--accent);
+    font: 9px/1.4 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .ex h3 {
+    margin: 6px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .ex p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+  .ex code {
+    padding: 1px 3px;
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    background: var(--panel-3);
+    color: var(--ink);
+    font-size: 9.5px;
+  }
+  .ex-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 6px;
+    color: var(--muted);
+    font: 9.5px/1.4 var(--mono);
+    text-align: center;
+  }
+  .ex-arrow .arrow {
+    color: var(--accent);
+    font-size: 16px;
+    line-height: 1;
+  }
+  .exec-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .fact {
+    padding: 10px 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 9px;
+    background: var(--panel-3);
+  }
+  .fact b {
+    display: block;
+    color: var(--accent);
+    font: 9px/1.4 var(--mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  .fact p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+  .fact code {
+    padding: 1px 3px;
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 9.5px;
+  }
+
+  /* ── ключі ── */
+
+  .trust-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .trust {
+    min-width: 0;
+    padding: 16px 17px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: var(--panel);
+  }
+  .trust .k {
+    color: var(--accent);
+    font: 9px/1.4 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .trust h3 {
+    margin: 6px 0 0;
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .trust p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .trust code {
+    padding: 1px 4px;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: var(--panel-3);
+    color: var(--ink);
+    font-size: 10px;
+  }
+  .trust .tagline {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--faint);
+    font: 8.5px/1.5 var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .trust .tagline.master { color: var(--warn); border-color: var(--warn-line); }
+
+  .warning {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 12px;
+    padding: 15px 17px;
+    border: 1px solid var(--warn-line);
+    border-radius: 12px;
+    background: var(--warn-wash);
+  }
+  .warning .w-mark {
+    color: var(--warn);
+    font: 9px/1.6 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .warning p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+  .warning b { color: var(--ink); font-weight: 500; }
+
+  /* ── доставка ── */
+
+  .delivery {
+    display: flex;
+    flex-direction: column;
+    margin-top: 22px;
+  }
+  .del-stage {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .del-num {
+    padding-top: 17px;
+    color: var(--accent);
+    font: 10px/1.4 var(--mono);
+    letter-spacing: .1em;
+    text-align: right;
+  }
+  .del-card {
+    min-width: 0;
+    padding: 15px 18px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: var(--panel);
+  }
+  .del-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .del-head h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .del-card p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .del-card code {
+    padding: 1px 4px;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: var(--panel-3);
+    color: var(--ink);
+    font-size: 10.5px;
+  }
+  .del-link {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 16px;
+  }
+  .del-link .lo {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 30px;
+    margin-left: 18px;
+    padding-left: 17px;
+    border-left: 1px solid var(--line);
+    color: var(--muted);
+    font: 9.5px/1.5 var(--mono);
+  }
+  .del-link .lo .arr { color: var(--accent); font-size: 13px; }
+  .del-link .lo b { color: var(--ink); font-weight: 500; }
+
+  .badge-warn {
+    padding: 2px 8px;
+    border: 1px solid var(--warn-line);
+    border-radius: 999px;
+    background: var(--warn-wash);
+    color: var(--warn);
+    font: 9.5px/1.5 var(--mono);
+    letter-spacing: .03em;
+    white-space: nowrap;
+  }
+  .badge {
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--faint);
+    font: 9.5px/1.5 var(--mono);
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+
+  .jobs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .job {
+    padding: 7px 9px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font: 10px/1.5 var(--mono);
+  }
+  .job b { color: var(--ink); font-weight: 500; }
+
+  .cmd {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--warn-line);
+    border-radius: 12px;
+    background: var(--warn-wash);
+  }
+  .cmd-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .cmd-head span:first-child {
+    color: var(--warn);
+    font: 9px/1.5 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .cmd p {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.55;
+  }
+  .cmd pre {
+    margin: 9px 0 0;
+    padding: 12px;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 10.5px/1.7 var(--mono);
+  }
+
+  /* ── чого ще немає ── */
+
+  .gaps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .gap-item {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 14px;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: var(--panel);
+  }
+  .milestone {
+    align-self: start;
+    padding: 3px 0;
+    border: 1px solid var(--warn-line);
+    border-radius: 6px;
+    background: var(--warn-wash);
+    color: var(--warn);
+    font: 10px/1.5 var(--mono);
+    text-align: center;
+    letter-spacing: .06em;
+  }
+  .gap-item h3 {
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .gap-item p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .gap-item code {
+    padding: 1px 4px;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: var(--panel-3);
+    color: var(--ink);
+    font-size: 10px;
+  }
+
+  .status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    margin-top: 14px;
+    padding-top: 13px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font: 10px/1.6 var(--mono);
+  }
+  .status b { color: var(--ink); font-weight: 500; }
+
+  /* ── підвал ── */
+
+  .footer {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 68px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    color: var(--faint);
+    font: 9.5px/1.6 var(--mono);
+    letter-spacing: .02em;
+  }
+  .footer a {
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+    transition: color .15s ease;
+  }
+  .footer a:hover { color: var(--ink); }
+
+  /* ── адаптив ── */
+
+  @media (max-width: 1000px) {
+    .machine-grid { grid-template-columns: 1fr; }
+    .rail {
+      margin-top: 4px;
+      padding-top: 18px;
+      padding-left: 0;
+      border-top: 1px solid var(--line);
+      border-left: 0;
+    }
+    .rail-wire { padding-left: 0; }
+  }
+
+  @media (max-width: 900px) {
+    .poster { padding: 44px 22px 64px; }
+    .toc { grid-template-columns: 1fr; }
+    .toc a {
+      padding: 10px 0;
+      border-top: 1px solid var(--line-soft);
+      border-right: 0;
+    }
+    .toc a:first-child { border-top: 0; }
+    .modules { grid-template-columns: 1fr; }
+    .parts { grid-template-columns: 1fr; }
+    .services { grid-template-columns: 1fr; }
+    .dist-grid { grid-template-columns: 1fr; }
+    .trust-grid { grid-template-columns: 1fr; }
+    .gaps { grid-template-columns: 1fr; }
+    .exec-grid { grid-template-columns: 1fr; }
+    .jobs { grid-template-columns: 1fr; }
+    .law, .warning { grid-template-columns: 1fr; gap: 6px; }
+    .ex-arrow {
+      flex-direction: row;
+      justify-content: flex-start;
+      gap: 8px;
+      padding: 8px 0;
+    }
+    .ex-arrow .arrow { transform: rotate(90deg); }
+    .exec-facts { grid-template-columns: 1fr; }
+    .jcard { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .jmeta { text-align: left; }
+    .jstep, .jwire { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
+    .jline { margin-left: 14px; padding-left: 14px; }
+    .fork { margin-left: 50px; }
+    .del-stage, .del-link { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
+    .del-link .lo { margin-left: 14px; padding-left: 14px; }
+  }
+
+  @media (max-width: 600px) {
+    .poster { padding: 38px 16px 54px; }
+    .brandline { font-size: 9.5px; }
+    h1 { font-size: clamp(34px, 11vw, 46px); }
+    .sec-head { grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+    .frame { padding: 12px; }
+    .machine { padding: 23px 13px 14px; }
+    .machine-label { left: 14px; }
+    .jstep, .jwire { grid-template-columns: 1fr; }
+    .jnum { padding: 0; text-align: left; }
+    .jline { margin-left: 0; padding-left: 0; border-left: 0; }
+    .fork { margin-left: 0; }
+    .del-stage, .del-link { grid-template-columns: 1fr; }
+    .del-num { padding: 0; text-align: left; }
+    .del-link .lo { margin-left: 0; padding-left: 0; border-left: 0; }
+    .status { flex-direction: column; }
+  }
+
+  /* ── друк ── */
+
+  @page { margin: 12mm; }
+
+  @media print {
+    html, body {
+      background: var(--bg) !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body { font-size: 10.5pt; }
+    .poster { max-width: none; padding: 0; }
+    .toc { display: none; }
+    .section { padding-top: 30px; }
+    .frame, .dist, .jcard, .exec-frame, .trust, .del-card, .gap-item,
+    .node, .brain, .service, .law, .warning, .cmd { break-inside: avoid; }
+    .frame::before { display: none; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<main class="poster">
+
+  <header class="masthead">
+    <div class="brandline">
+      <span class="mark">heare</span>
+      <span>архітектурний знімок · прототип на одному <span class="proper">Mac</span></span>
+    </div>
+    <h1>heare — як воно влаштоване зараз</h1>
+    <p class="dateline">18 жовтня 2026</p>
+    <p class="note">знімок архітектури; джерело правди — код</p>
+  </header>
+
+  <nav class="toc" aria-label="Зміст">
+    <a href="#frame"><span class="n">01</span>Один кадр</a>
+    <a href="#distributions"><span class="n">02</span>Вісім дистрибутивів</a>
+    <a href="#phrase"><span class="n">03</span>Шлях фрази</a>
+    <a href="#executor"><span class="n">04</span>Справи й руки</a>
+    <a href="#trust"><span class="n">05</span>Ключі й довіра</a>
+    <a href="#delivery"><span class="n">06</span>Доставка</a>
+    <a href="#missing"><span class="n">07</span>Чого ще немає</a>
+  </nav>
+
+  <section class="section" id="frame" aria-labelledby="frame-title">
+    <div class="sec-head">
+      <span class="sec-num" aria-hidden="true">01</span>
+      <div>
+        <h2 id="frame-title">Один кадр</h2>
+        <p class="sec-sub">Усе, що зараз працює на одному Mac: один мозок, частини як окремі процеси, наглядач і спільний стан. Частини ніколи не говорять одна з одною — тільки через мозок.</p>
+      </div>
+    </div>
+
+    <figure class="frame">
+      <div class="machine">
+        <span class="machine-label"><span class="proper">Mac</span> · одна машина</span>
+
+        <div class="machine-grid">
+          <div class="flow">
+
+            <div class="node browser">
+              <div class="node-head">
+                <span class="node-title">Сторінка в браузері</span>
+                <span class="node-tag">майстер-ключ</span>
+              </div>
+              <p>Вікно людини: схвалює частини, відповідає на питання, зупиняє роботу.</p>
+            </div>
+
+            <div class="wire">
+              <span class="mark" aria-hidden="true">↕</span>
+              <div class="lines">
+                <span><b>HTTP</b> · стук як частина · ключ власника · <b>/api/answer/{id}</b></span>
+              </div>
+            </div>
+
+            <div class="brain">
+              <div class="brain-head">
+                <span class="brain-title">heare-brain · один процес</span>
+                <span class="door">двері 127.0.0.1:9790</span>
+              </div>
+              <div class="modules">
+                <div class="module"><b>розмова</b><span>core/conversation.py</span></div>
+                <div class="module"><b>модель</b><span>model/</span></div>
+                <div class="module"><b>пам'ять</b><span>memory/</span></div>
+                <div class="module"><b>двигун</b><span>engine/ · інтенти, моменти, доставка</span></div>
+              </div>
+              <div class="brain-foot">api/server.py · api/page.html · api/canvas.py · api/auth.py</div>
+            </div>
+
+            <div class="wire">
+              <span class="mark" aria-hidden="true">↑↓</span>
+              <div class="lines">
+                <span><b>↑ HTTP POST</b> /api/input — фраза, стан</span>
+                <span><b>↑ HTTP POST</b> /api/input/said_over — перебивання</span>
+                <span><b>↓ HTTP SSE</b> GET /api/events — події каналу</span>
+              </div>
+            </div>
+
+            <div class="zone-label">частини · окремі процеси</div>
+            <div class="parts">
+              <div class="part">
+                <div class="part-top"><b>очі</b><span class="ch">вхід</span></div>
+                <p>Переднє вікно, простій, звук.</p>
+                <span class="proc">heare-eyes</span>
+              </div>
+              <div class="part">
+                <div class="part-top"><b>голос</b><span class="ch">вхід · вихід</span></div>
+                <p>Мікрофон, VAD, розпізнавання, синтез, програвання.</p>
+                <span class="proc">heare-voice</span>
+              </div>
+              <div class="part">
+                <div class="part-top"><b>руки</b><span class="ch">виконавець</span></div>
+                <p>Агент opencode через ACP: файли, команди, пошук.</p>
+                <span class="proc">heare-hands</span>
+              </div>
+              <div class="part">
+                <div class="part-top"><b>чат</b><span class="ch">вхід · вихід</span></div>
+                <p>Розмова текстом у терміналі.</p>
+                <span class="proc">heare-chat</span>
+              </div>
+            </div>
+          </div>
+
+          <aside class="rail" aria-label="Наглядач і стан">
+            <div class="node">
+              <div class="node-head">
+                <span class="node-title">launchd</span>
+                <span class="node-tag">сервіс</span>
+              </div>
+              <p><code>com.heare.brain</code> · <code>com.heare.keeper</code></p>
+              <p>Логи: <code>~/.heare/logs/brain.log</code>, <code>parts.log</code>.</p>
+            </div>
+
+            <div class="rail-wire">
+              <span class="mark" aria-hidden="true">↓</span>
+              <span><b>launchd →</b> мозок і наглядач · старт при вході</span>
+            </div>
+
+            <div class="node">
+              <div class="node-head">
+                <span class="node-title">heare-keeper</span>
+                <span class="node-tag">наглядач</span>
+              </div>
+              <p>Кожні 5 с читає <code>~/.heare/parts/*/heare.json</code>. Запускає частини, перезапускає полеглу через 3 с, зупиняє, коли маніфест зник.</p>
+            </div>
+
+            <div class="rail-wire">
+              <span class="mark" aria-hidden="true">←</span>
+              <span><b>manifest → частини:</b> запуск · перезапуск через 3 с · зупинка</span>
+            </div>
+
+            <div class="node">
+              <div class="node-head">
+                <span class="node-title">~/.heare/</span>
+                <span class="node-tag">стан</span>
+              </div>
+              <ul class="state-list">
+                <li><code>api_token</code><span>майстер-ключ</span></li>
+                <li><code>part_tokens.json</code><span>SHA-256 відбитки</span></li>
+                <li><code>parts.json</code><span>дозволи</span></li>
+                <li><code>parts/&lt;name&gt;/heare.json</code><span>маніфест</span></li>
+                <li><code>agent-session.json</code><span>сесія агента</span></li>
+                <li><code>logs/</code><span>brain.log, parts.log</span></li>
+              </ul>
+            </div>
+
+            <div class="rail-wire">
+              <span class="mark" aria-hidden="true">↔</span>
+              <span><b>файли:</b> читають і пишуть мозок, частини, наглядач</span>
+            </div>
+          </aside>
+        </div>
+
+        <div class="boundary">
+          <div class="boundary-head">
+            <span>поза машиною</span>
+            <span>мережа / stdio</span>
+          </div>
+          <div class="services">
+            <div class="service">
+              <div class="via"><span>brain →</span><span>HTTPS</span></div>
+              <b>DeepSeek</b>
+              <p>модель, яка відповідає</p>
+            </div>
+            <div class="service">
+              <div class="via"><span>voice →</span><span>HTTPS</span></div>
+              <b>Groq</b>
+              <p>розпізнавання мови</p>
+            </div>
+            <div class="service">
+              <div class="via"><span>voice →</span><span>HTTPS</span></div>
+              <b>Edge TTS</b>
+              <p>синтез мови; запасний — системний голос</p>
+            </div>
+            <div class="service">
+              <div class="via"><span>hands →</span><span>ACP · stdio</span></div>
+              <b>opencode</b>
+              <p>агент: файли, команди, пошук</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <figcaption class="caption">Схема 1 · мозок слухає лише 127.0.0.1:9790; сторінка тримає ключ власника; частини ходять у двері й читають свій канал.</figcaption>
+    </figure>
+  </section>
+
+  <section class="section" id="distributions" aria-labelledby="dist-title">
+    <div class="sec-head">
+      <span class="sec-num" aria-hidden="true">02</span>
+      <div>
+        <h2 id="dist-title">Вісім дистрибутивів</h2>
+        <p class="sec-sub">Усі вісім живуть під одним простором імен <code>heare</code> і збираються з <code>packages/</code>. Ядро — одне; навколо нього — мозок, частини, наглядач і шар для агентів.</p>
+      </div>
+    </div>
+
+    <div class="dist-grid">
+      <article class="dist core">
+        <div class="dist-top"><span class="dist-name">heare-core</span><span class="dist-index">01 / 08</span></div>
+        <h3>Мова системи</h3>
+        <p>Форми, якими все розмовляє: <code>Message</code>, <code>Port</code>, <code>Output</code>, <code>Executor</code>. Дріт частини — <code>follow()</code> як SSE і <code>report()</code> як стан. Налаштування, Keychain, закони.</p>
+        <div class="files">
+          <code>core/forms.py</code><code>part.py</code><code>config.py</code><code>keys.py</code><code>laws.py</code>
+        </div>
+        <div class="import"><b>може імпортувати:</b> лише стандартну бібліотеку і <code>heare.core</code></div>
+      </article>
+
+      <article class="dist">
+        <div class="dist-top"><span class="dist-name">heare-reach</span><span class="dist-index">02 / 08</span></div>
+        <h3>Зв'язок з агентами</h3>
+        <p>ACP через stdio: <code>session/resume</code>, <code>usage_update</code>. Обгортки opencode і claude, модель на сесію, дозволи. Життя агента — 5 хв простою / 30 хв усього. MCP-міст з інструментом <code>ask</code>. <code>RemoteExecutor</code> — бік мозку в черзі справ.</p>
+        <div class="files">
+          <code>acp.py</code><code>agents.py</code><code>life.py</code><code>bridge.py</code><code>remote.py</code>
+        </div>
+        <div class="import"><b>може імпортувати:</b> <code>heare.core</code> + <code>heare.reach</code></div>
+      </article>
+
+      <article class="dist">
+        <div class="dist-top"><span class="dist-name">heare-brain</span><span class="dist-index">03 / 08</span></div>
+        <h3>Мозок</h3>
+        <p>Двері, розмова, пам'ять, двигун. Сторінка на 127.0.0.1:9790, події, API; <code>canvas.py</code> — те, що малює модель; <code>auth.py</code> — SHA-256 відбитки токенів.</p>
+        <div class="files">
+          <code>brain.py</code><code>api/server.py</code><code>api/page.html</code><code>api/canvas.py</code><code>api/auth.py</code><code>engine/</code><code>model/</code><code>memory/</code><code>language/</code><code>persona/</code><code>prompts/voice_rules.txt</code>
+        </div>
+        <div class="import"><b>може імпортувати:</b> <code>heare.core</code>, <code>heare.reach</code>, <code>heare.brain</code></div>
+      </article>
+
+      <article class="dist">
+        <div class="dist-top"><span class="dist-name">heare-keeper</span><span class="dist-index">04 / 08</span></div>
+        <h3>Наглядач</h3>
+        <p>Кожні 5 с читає маніфести з <code>~/.heare/parts/*/heare.json</code>. Запускає частини, перезапускає полеглу через 3 с, зупиняє, коли маніфест прибрали.</p>
+        <div class="files"><code>keeper.py</code></div>
+        <div class="import"><b>може імпортувати:</b> <code>heare.core</code> + <code>heare.keeper</code></div>
+      </article>
+
+      <article class="dist">
+        <div class="dist-top"><span class="dist-name">heare-eyes</span><span class="dist-index">05 / 08</span></div>
+        <h3>Що навколо</h3>
+        <p>Переднє вікно, простій, звук. Очі не вирішують — вони повідомляють мозок про те, що бачать і чують навколо.</p>
+        <div class="files"><code>eyes.py</code><code>surroundings/</code></div>
+        <div class="import"><b>може імпортувати:</b> <code>heare.core</code> + <code>heare.eyes</code></div>
+      </article>
+
+      <article class="dist">
+        <div class="dist-top"><span class="dist-name">heare-voice</span><span class="dist-index">06 / 08</span></div>
+        <h3>Слухає і говорить</h3>
+        <p>Мікрофон, VAD, Groq для розпізнавання, Edge TTS для синтезу (запасний шлях — системний голос), програвання.</p>
+        <div class="files"><code>voice.py</code><code>channels/voice/</code></div>
+        <div class="import"><b>може імпортувати:</b> <code>heare.core</code> + <code>heare.voice</code></div>
+      </article>
+
+      <article class="dist">
+        <div class="dist-top"><span class="dist-name">heare-hands</span><span class="dist-index">07 / 08</span></div>
+        <h3>Агент у системі</h3>
+        <p>opencode через ACP: файли, команди, пошук. Тримає unix-сокет для MCP-мосту. Руки — єдина частина, якій мозок дає роботу.</p>
+        <div class="files"><code>hands.py</code><code>heare-reach</code></div>
+        <div class="import"><b>може імпортувати:</b> <code>heare.core</code>, <code>heare.reach</code>, <code>heare.hands</code></div>
+      </article>
+
+      <article class="dist">
+        <div class="dist-top"><span class="dist-name">heare-chat</span><span class="dist-index">08 / 08</span></div>
+        <h3>Розмова в терміналі</h3>
+        <p>Текстовий канал до того самого мозку. Те саме вікно, тільки без сторінки й без голосу.</p>
+        <div class="files"><code>chat.py</code></div>
+        <div class="import"><b>може імпортувати:</b> <code>heare.core</code> + <code>heare.chat</code></div>
+      </article>
+    </div>
+
+    <div class="law">
+      <span class="law-mark">Закон імпортів</span>
+      <p>Ядро імпортує лише себе і стандартну бібліотеку. Частина імпортує лише ядро і себе; дві частини ніколи не імпортують одна одну. Це не домовленість — це перевіряє <code>tests/heare/test_dependencies.py</code>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="phrase" aria-labelledby="phrase-title">
+    <div class="sec-head">
+      <span class="sec-num" aria-hidden="true">03</span>
+      <div>
+        <h2 id="phrase-title">Шлях фрази</h2>
+        <p class="sec-sub">Одна фраза проходить кілька меж: звук, розпізнавання, двері мозку, модель, подію на каналі, синтез. Кожен перехід має свій протокол.</p>
+      </div>
+    </div>
+
+    <div class="journey">
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">01</span>
+        <div class="jcard">
+          <div>
+            <h3>Мікрофон</h3>
+            <p>Звук із мікрофона; VAD вирішує, що це мова, а не шум.</p>
+          </div>
+          <span class="jmeta">heare-voice</span>
+        </div>
+      </div>
+      <div class="jwire">
+        <span></span>
+        <div class="jline"><span class="arr" aria-hidden="true">↓</span><b>аудіо</b> · HTTPS</div>
+      </div>
+
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">02</span>
+        <div class="jcard">
+          <div>
+            <h3>Розпізнавання</h3>
+            <p>Groq перетворює мову на текст.</p>
+          </div>
+          <span class="jmeta">HTTPS</span>
+        </div>
+      </div>
+      <div class="jwire">
+        <span></span>
+        <div class="jline"><span class="arr" aria-hidden="true">↓</span><b>текст</b> · локально, у частину</div>
+      </div>
+
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">03</span>
+        <div class="jcard">
+          <div>
+            <h3>Двері мозку</h3>
+            <p>Частина кладе фразу у свій канал. Більше нічого вона не торкається.</p>
+          </div>
+          <span class="jmeta">HTTP POST /api/input</span>
+        </div>
+      </div>
+      <div class="jwire">
+        <span></span>
+        <div class="jline"><span class="arr" aria-hidden="true">↓</span><b>HTTP</b> · у двері 127.0.0.1:9790</div>
+      </div>
+
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">04</span>
+        <div class="jcard">
+          <div>
+            <h3>Ядро</h3>
+            <p>Вирішує, коли відповідати, і тримає розмову.</p>
+          </div>
+          <span class="jmeta">core/conversation.py</span>
+        </div>
+      </div>
+      <div class="jwire">
+        <span></span>
+        <div class="jline"><span class="arr" aria-hidden="true">↓</span><b>HTTPS</b> · запит до моделі</div>
+      </div>
+
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">05</span>
+        <div class="jcard">
+          <div>
+            <h3>Модель</h3>
+            <p>DeepSeek повертає відповідь; мозок вирішує, що з нею робити.</p>
+          </div>
+          <span class="jmeta">DeepSeek</span>
+        </div>
+      </div>
+      <div class="jwire">
+        <span></span>
+        <div class="jline"><span class="arr" aria-hidden="true">↓</span><b>відповідь</b> · ядро формує подію</div>
+      </div>
+
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">06</span>
+        <div class="jcard">
+          <div>
+            <h3>Подія на каналі</h3>
+            <p>У кожної події є канал; частина бере лише свою і не бачить чужого.</p>
+          </div>
+          <span class="jmeta">SSE GET /api/events</span>
+        </div>
+      </div>
+      <div class="jwire">
+        <span></span>
+        <div class="jline"><span class="arr" aria-hidden="true">↓</span><b>текст</b> · голос бере свою подію з SSE</div>
+      </div>
+
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">07</span>
+        <div class="jcard">
+          <div>
+            <h3>Синтез</h3>
+            <p>Edge TTS перетворює текст на мову; запасний шлях — системний голос.</p>
+          </div>
+          <span class="jmeta">Edge TTS</span>
+        </div>
+      </div>
+      <div class="jwire">
+        <span></span>
+        <div class="jline"><span class="arr" aria-hidden="true">↓</span><b>аудіо</b> · локально</div>
+      </div>
+
+      <div class="jstep">
+        <span class="jnum" aria-hidden="true">08</span>
+        <div class="jcard">
+          <div>
+            <h3>Динамік</h3>
+            <p>Програвання. Розмова не блокується на час відповіді.</p>
+          </div>
+          <span class="jmeta">heare-voice</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="fork">
+      <h3>Перебивання · окремий вхід, не окремий потік</h3>
+      <p>Поки голос слухає або говорить, людина може перебити: <code>POST /api/input/said_over</code> (HTTP). Ядро спиняє поточну відповідь; наступна фраза йде тим самим шляхом.</p>
+    </div>
+  </section>
+
+  <section class="section" id="executor" aria-labelledby="exec-title">
+    <div class="sec-head">
+      <span class="sec-num" aria-hidden="true">04</span>
+      <div>
+        <h2 id="exec-title">Справи й руки</h2>
+        <p class="sec-sub">Справу веде мозок. Руки отримують роботу через двері мозку, працюють із агентом і повертають результат у справу. Руки не кличуть інші частини.</p>
+      </div>
+    </div>
+
+    <div class="exec-frame">
+      <div class="exec-grid">
+        <div class="ex">
+          <span class="k">01 · claim</span>
+          <h3>Мозок бере справу</h3>
+          <p>Двигун бере справу з черги; <code>RemoteExecutor</code> тримає її на боці мозку.</p>
+        </div>
+        <div class="ex-arrow" aria-hidden="true">
+          <span class="arrow">→</span>
+          <span>справа готова</span>
+        </div>
+        <div class="ex">
+          <span class="k">02 · step</span>
+          <h3>Крок рукам</h3>
+          <p>Мозок надсилає рукам <code>POST /api/executor/{id}/step</code> (HTTP).</p>
+        </div>
+        <div class="ex-arrow" aria-hidden="true">
+          <span class="arrow">→</span>
+          <span>крок потребує рішення</span>
+        </div>
+        <div class="ex">
+          <span class="k">03 · ask / permit</span>
+          <h3>Питання людині</h3>
+          <p>Питання показує сторінка; людина відповідає <code>POST /api/answer/{id}</code>. Дозвіл іде як <code>POST /api/executor/{id}/permit</code>.</p>
+        </div>
+        <div class="ex-arrow" aria-hidden="true">
+          <span class="arrow">→</span>
+          <span>відповідь або дозвіл</span>
+        </div>
+        <div class="ex">
+          <span class="k">04 · result</span>
+          <h3>Результат</h3>
+          <p><code>POST /api/executor/{id}/result</code> (HTTP); справа закривається.</p>
+        </div>
+      </div>
+
+      <div class="exec-facts">
+        <div class="fact">
+          <b>Хто кличе</b>
+          <p>Мозок → руки: <code>/step</code>, <code>/permit</code>, <code>/result</code>, <code>/ask</code>. Усі чотири — через двері мозку.</p>
+        </div>
+        <div class="fact">
+          <b>Питання</b>
+          <p>Сторінка → мозок: <code>/api/answer/{id}</code>. Людина бачить питання у своєму вікні, не в руках.</p>
+        </div>
+        <div class="fact">
+          <b>Агент</b>
+          <p>Руки → opencode: ACP через stdio. Життя агента — 5 хв простою / 30 хв усього. MCP-міст — unix-сокет, інструмент <code>ask</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="trust" aria-labelledby="trust-title">
+    <div class="sec-head">
+      <span class="sec-num" aria-hidden="true">05</span>
+      <div>
+        <h2 id="trust-title">Ключі й довіра</h2>
+        <p class="sec-sub">Майстер-ключ — один, у <code>~/.heare/api_token</code>. Частина читає його, щоб постукати, і отримує власний ключ; мозок зберігає лише відбитки ключів частин.</p>
+      </div>
+    </div>
+
+    <div class="trust-grid">
+      <article class="trust">
+        <span class="k">01 · майстер</span>
+        <h3>Один ключ</h3>
+        <p><code>~/.heare/api_token</code> створюється один раз. Це ключ власника, не частини.</p>
+        <span class="tagline master">майстер-ключ</span>
+      </article>
+
+      <article class="trust">
+        <span class="k">02 · сторінка</span>
+        <h3>Ключ у вікні</h3>
+        <p>На localhost HTML приходить із ключем усередині: <code>window.HEARE_TOKEN</code>. Сторінка схвалює частини, відповідає на питання, зупиняє роботу.</p>
+        <span class="tagline">лише 127.0.0.1</span>
+      </article>
+
+      <article class="trust">
+        <span class="k">03 · стук</span>
+        <h3>Частина приходить</h3>
+        <p>Частина читає той самий файл і стукає один раз. Мозок видає їй власний ключ.</p>
+        <span class="tagline">один стук</span>
+      </article>
+
+      <article class="trust">
+        <span class="k">04 · відбиток</span>
+        <h3>Ключа немає на диску</h3>
+        <p><code>part_tokens.json</code> зберігає лише SHA-256 відбитки ключів частин. Сам ключ частини мозок не тримає.</p>
+        <span class="tagline">SHA-256</span>
+      </article>
+
+      <article class="trust">
+        <span class="k">05 · межа</span>
+        <h3>Що може ключ частини</h3>
+        <p>Лише свій канал, свій executor і потік подій. Більше нічого.</p>
+        <span class="tagline">свій канал · свій executor</span>
+      </article>
+
+      <article class="trust">
+        <span class="k">06 · маніфести</span>
+        <h3>Схвалення</h3>
+        <p><code>parts.json</code> і <code>parts/&lt;name&gt;/heare.json</code>: відомі частини схвалені наперед, без питань. Невідома отримує картку на сторінці; «забути» відкликає ключ.</p>
+        <span class="tagline">відомі — без питань</span>
+      </article>
+    </div>
+
+    <div class="warning">
+      <span class="w-mark">Чесно</span>
+      <p><b>Це авторизація прототипу.</b> Вона безпечна лише тому, що мозок слухає <code>127.0.0.1</code>. Публічний мозок потребує переробки: токени на пристрій, одноразові коди, cookies замість токенів в URL, ліміти, аудит. Цього ще немає.</p>
+    </div>
+  </section>
+
+  <section class="section" id="delivery" aria-labelledby="delivery-title">
+    <div class="sec-head">
+      <span class="sec-num" aria-hidden="true">06</span>
+      <div>
+        <h2 id="delivery-title">Доставка</h2>
+        <p class="sec-sub">Від репозиторію до запущеного сервісу — ланцюг, який сьогодні ще не замкнений: остання ланка існує в коді, але релізу ще немає.</p>
+      </div>
+    </div>
+
+    <div class="delivery">
+      <div class="del-stage">
+        <span class="del-num" aria-hidden="true">01</span>
+        <div class="del-card">
+          <div class="del-head"><h3>Репозиторій</h3><span class="badge">GitHub</span></div>
+          <p><code>onelenyk/heare</code>, публічний. Вісім дистрибутивів під <code>packages/</code>.</p>
+        </div>
+      </div>
+      <div class="del-link">
+        <span></span>
+        <div class="lo"><span class="arr" aria-hidden="true">↓</span><b>push</b> · тег <code>v*</code></div>
+      </div>
+
+      <div class="del-stage">
+        <span class="del-num" aria-hidden="true">02</span>
+        <div class="del-card">
+          <div class="del-head"><h3>CI</h3><span class="badge">.github/workflows/ci.yml</span></div>
+          <div class="jobs">
+            <div class="job"><b>lint</b> — ruff</div>
+            <div class="job"><b>test</b> — macOS, 669 тестів</div>
+            <div class="job"><b>build</b> — 8 коліс як артефакт</div>
+            <div class="job"><b>release</b> — на теги v*, <code>gh release create</code></div>
+          </div>
+        </div>
+      </div>
+      <div class="del-link">
+        <span></span>
+        <div class="lo"><span class="arr" aria-hidden="true">↓</span><b>release job</b> · публікує колеса</div>
+      </div>
+
+      <div class="del-stage">
+        <span class="del-num" aria-hidden="true">03</span>
+        <div class="del-card">
+          <div class="del-head"><h3>GitHub Release</h3><span class="badge-warn">не опубліковано</span></div>
+          <p>Вісім коліс на тегу <code>v0.1.0</code>. Гілка (171 коміт) не запушена, тег <code>v0.1.0</code> не існує — релізу й однорядкового встановлення ще немає.</p>
+        </div>
+      </div>
+      <div class="del-link">
+        <span></span>
+        <div class="lo"><span class="arr" aria-hidden="true">↓</span><b>URL релізу</b> · на сторінці встановлення</div>
+      </div>
+
+      <div class="del-stage">
+        <span class="del-num" aria-hidden="true">04</span>
+        <div class="del-card">
+          <div class="del-head"><h3>Сторінка вибору</h3><span class="badge">site/index.html</span></div>
+          <p>Український вибір: роль (цей Mac або сервер) і частини (очі, голос, руки). З вибору народжується одна команда.</p>
+        </div>
+      </div>
+      <div class="del-link">
+        <span></span>
+        <div class="lo"><span class="arr" aria-hidden="true">↓</span><b>людина копіює</b> · <code>curl | sh</code></div>
+      </div>
+
+      <div class="del-stage">
+        <span class="del-num" aria-hidden="true">05</span>
+        <div class="del-card">
+          <div class="del-head"><h3>install.sh</h3><span class="badge">POSIX sh</span></div>
+          <p>Визначає macOS або Linux; ставить uv, якщо його немає; завантажує 8 коліс; кожен дистрибутив — в окреме середовище <code>uv tool</code>; пише маніфести; може зберегти ключі <code>--deepseek-key</code>, <code>--groq-key</code>; ставить launchd plists або systemd user units з PATH; <code>--no-service</code> — без запуску.</p>
+        </div>
+      </div>
+      <div class="del-link">
+        <span></span>
+        <div class="lo"><span class="arr" aria-hidden="true">↓</span><b>ставить</b> · середовища, маніфести, сервіс</div>
+      </div>
+
+      <div class="del-stage">
+        <span class="del-num" aria-hidden="true">06</span>
+        <div class="del-card">
+          <div class="del-head"><h3>Середовище</h3><span class="badge">uv tool · launchd · systemd</span></div>
+          <p>Вісім окремих <code>uv tool</code> середовищ; маніфести в <code>~/.heare/parts/</code>; launchd на macOS або systemd user units на Linux; PATH у середовищі сервісу.</p>
+        </div>
+      </div>
+      <div class="del-link">
+        <span></span>
+        <div class="lo"><span class="arr" aria-hidden="true">↓</span><b>запуск</b> · мозок і наглядач</div>
+      </div>
+
+      <div class="del-stage">
+        <span class="del-num" aria-hidden="true">07</span>
+        <div class="del-card">
+          <div class="del-head"><h3>Запущено</h3><span class="badge">127.0.0.1:9790</span></div>
+          <p>Двері мозку слухають localhost; наглядач тримає частини; логи — у <code>~/.heare/logs</code>. Сторінка відкривається на цьому Mac.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cmd">
+      <div class="cmd-head">
+        <span>одна команда · поки не діє</span>
+        <span class="badge-warn">релізу v0.1.0 немає</span>
+      </div>
+      <pre><code>curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.1.0/install.sh | sh -s -- --role mac --parts eyes,voice,hands --from https://github.com/onelenyk/heare/releases/download/v0.1.0 --version 0.1.0</code></pre>
+      <p>Команда вже згенерована сторінкою, але веде на тег і реліз, яких ще не існує. Спочатку — push гілки й тег <code>v0.1.0</code>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="missing" aria-labelledby="missing-title">
+    <div class="sec-head">
+      <span class="sec-num" aria-hidden="true">07</span>
+      <div>
+        <h2 id="missing-title">Чого ще немає</h2>
+        <p class="sec-sub">Чесно: цей знімок описує прототип на одному Mac. Ось що не зроблено — і до якого кроку плану належить.</p>
+      </div>
+    </div>
+
+    <div class="gaps">
+      <article class="gap-item">
+        <span class="milestone">Ф6</span>
+        <div>
+          <h3>Мозок ззовні</h3>
+          <p>Публічний домен, https, тунель назовні. Зараз двері чують лише <code>127.0.0.1</code>.</p>
+        </div>
+      </article>
+
+      <article class="gap-item">
+        <span class="milestone">Ф6</span>
+        <div>
+          <h3>Мікрофон у браузері з телефона</h3>
+          <p>Мікрофон у браузері потребує https (secure context). З телефона ще не перевірено.</p>
+        </div>
+      </article>
+
+      <article class="gap-item">
+        <span class="milestone">Ф6</span>
+        <div>
+          <h3>Переробка pairing/auth</h3>
+          <p>Токени на пристрій, одноразові коди, cookies замість токенів в URL, ліміти, аудит. Планується до того, як мозок стане публічним.</p>
+        </div>
+      </article>
+
+      <article class="gap-item">
+        <span class="milestone">Ф3</span>
+        <div>
+          <h3>Мозок на сервері</h3>
+          <p>Тіла тягнуться назовні до мозку на сервері. Готово, коли закрив Mac — а присутність лишилась.</p>
+        </div>
+      </article>
+
+      <article class="gap-item">
+        <span class="milestone">Ф5</span>
+        <div>
+          <h3>Мобільний застосунок</h3>
+          <p>Постійне тіло на телефоні. Спершу його роль грає сторінка в браузері.</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="status">
+      <span><b>Стан на 18 жовтня:</b> Ф1 — зроблено</span>
+      <span>Ф2 — ≈70%</span>
+      <span>Ф4 — ≈90%</span>
+      <span>Ф3, Ф5, Ф6 — не почато</span>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <a href="https://github.com/onelenyk/heare">onelenyk/heare</a>
+    <span>18 жовтня 2026 · знімок архітектури; джерело правди — код</span>
+  </footer>
+
+</main>
+</body>
+</html>

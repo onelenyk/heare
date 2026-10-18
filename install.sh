@@ -7,6 +7,7 @@
 #
 # --from DIR|URL   where the wheels are (default: ./dist)
 # --version V      the version the URL holds
+# --port P         the brain's port (default 9790)
 # --deepseek-key K, --groq-key K   store a key in the Keychain
 # --no-service     install only; do not start anything
 set -eu
@@ -15,6 +16,7 @@ ROLE=mac
 PARTS="eyes voice hands"
 FROM="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/dist"
 VERSION=""
+PORT=""
 DEEPSEEK_KEY=""
 GROQ_KEY=""
 SERVICE=1
@@ -30,6 +32,7 @@ while [ $# -gt 0 ]; do
         --parts) PARTS=$(printf '%s' "$2" | tr ',' ' '); shift 2 ;;
         --from) FROM=$2; shift 2 ;;
         --version) VERSION=$2; shift 2 ;;
+        --port) PORT=$2; shift 2 ;;
         --deepseek-key) DEEPSEEK_KEY=$2; shift 2 ;;
         --groq-key) GROQ_KEY=$2; shift 2 ;;
         --no-service) SERVICE=0; shift ;;
@@ -48,6 +51,12 @@ case "$(uname -s)" in
 esac
 
 [ "$ROLE" = "connect" ] && die "частини до віддаленого мозку ще не вміють (Ф6)"
+if [ -n "$PORT" ]; then
+    case "$PORT" in ''|*[!0-9]*) die "порт має бути числом" ;; esac
+    if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+        die "порт поза 1..65535"
+    fi
+fi
 
 echo "heare: роль $ROLE, система $OS"
 
@@ -136,6 +145,12 @@ if [ -n "$PARTS" ]; then
     done
 fi
 
+if [ -n "$PORT" ]; then
+    uv run --no-project --with "$CORE" python -c \
+      "from heare.config import Settings; Settings().set('api_port', int('$PORT'))"
+    say "порт: $PORT"
+fi
+
 if [ -n "$DEEPSEEK_KEY" ] || [ -n "$GROQ_KEY" ]; then
     KEYCODE='import sys
 from heare.keys import store
@@ -219,7 +234,7 @@ esac
 
 cat <<EOF
 
-готово. Сторінка: http://127.0.0.1:9790/
+готово. Сторінка: http://127.0.0.1:${PORT:-9790}/
 Логи: $LOGS
 Ключі: сторінка → ⚙
 EOF

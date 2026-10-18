@@ -15,9 +15,11 @@ import argparse
 import asyncio
 import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 from heare import persona
+from heare.api import pair as codes
 from heare.config import Settings
 from heare.core import Core
 from heare.engine import Engine, Intents
@@ -86,10 +88,14 @@ class Brain:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="heare.brain")
+    parser = argparse.ArgumentParser(prog="heare-brain")
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "code"])
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    if args.command == "code":
+        print(codes.make(Path(Settings().pair_codes_file)))
+        return 0
     try:
         asyncio.run(Brain().run())
     except KeyboardInterrupt:

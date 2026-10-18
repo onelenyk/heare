@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
+from heare.api import pair
 from heare.api.server import Screen, VoiceOut, build
 from heare.config import Settings
 from tests.heare.fakes import Says, Worker, open_room
@@ -20,6 +22,7 @@ async def _open(tmp_path, **room_kw):
         screens_dir=tmp_path / "screens", parts_file=tmp_path / "parts.json",
         parts_dir=tmp_path / "parts",
         part_tokens_file=tmp_path / "part_tokens.json",
+        pair_codes_file=tmp_path / "pair_codes.json",
     )
     room.core.add_output(Screen(room.core))
     client = TestClient(TestServer(build(room.core, settings)))
@@ -609,4 +612,81 @@ async def test_turning_a_parts_control_is_a_wish_the_part_answers(tmp_path):
     wrong = await client.post("/api/controls", json={
         "part": "voice@mac", "name": "warp", "value": 1}, headers=auth)
     assert wrong.status == 404
+    await _close(room, client)
+
+
+async def test_a_pairing_code_gives_a_machine_a_key_that_only_knocks(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    answer = await client.post(
+        "/api/pair", json={"code": code, "kind": "machine", "name": "mac"})
+    assert answer.status == 200
+    given = await answer.json()
+    assert given["pid"] == "machine@mac"
+    machine = {"X-Heare-Token": given["token"]}
+    assert (await client.get("/api/state", headers=machine)).status == 403
+    assert (await client.get("/api/events", headers=machine)).status == 403
+    await _close(room, client)
+
+
+async def test_a_pairing_code_gives_a_window_the_person_s_powers(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    answer = await client.post(
+        "/api/pair", json={"code": code, "kind": "window", "name": "phone"})
+    assert answer.status == 200
+    window = {"X-Heare-Token": (await answer.json())["token"]}
+    assert (await client.get("/api/state", headers=window)).status == 200
+    await _close(room, client)
+
+
+async def test_a_bad_or_used_code_is_refused(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    bad = await client.post("/api/pair", json={"code": "ZZZZZZZZ", "kind": "window"})
+    assert bad.status == 401
+    code = pair.make(Path(settings.pair_codes_file))
+    assert (await client.post(
+        "/api/pair", json={"code": code, "kind": "window"})).status == 200
+    again = await client.post("/api/pair", json={"code": code, "kind": "window"})
+    assert again.status == 401
+    await _close(room, client)
+
+
+async def test_too_many_tries_from_one_address_are_slow(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    for _ in range(10):
+        tried = await client.post(
+            "/api/pair", json={"code": "ZZZZZZZZ", "kind": "window"})
+        assert tried.status == 401
+    late = await client.post("/api/pair", json={"code": "ZZZZZZZZ", "kind": "window"})
+    assert late.status == 429
+    await _close(room, client)
+
+
+async def test_a_machine_key_knocks_for_its_part_and_the_part_gets_its_own(tmp_path):
+    manifest = tmp_path / "parts" / "voice"
+    manifest.mkdir(parents=True)
+    (manifest / "heare.json").write_text(
+        json.dumps({"channel": "voice", "host": "mac"}), encoding="utf-8")
+    room = await open_room()
+    settings = Settings(
+        path=tmp_path / "config.toml", api_token_file=tmp_path / "token",
+        screens_dir=tmp_path / "screens", parts_file=tmp_path / "parts.json",
+        parts_dir=tmp_path / "parts",
+        part_tokens_file=tmp_path / "part_tokens.json",
+        pair_codes_file=tmp_path / "pair_codes.json",
+    )
+    room.core.add_output(Screen(room.core))
+    client = TestClient(TestServer(build(room.core, settings)))
+    await client.start_server()
+    code = pair.make(Path(settings.pair_codes_file))
+    answer = await client.post(
+        "/api/pair", json={"code": code, "kind": "machine", "name": "mac"})
+    machine = {"X-Heare-Token": (await answer.json())["token"]}
+    knock = await client.post("/api/bodies", headers=machine, json={
+        "channel": "voice", "host": "mac", "forms": ["input"]})
+    assert knock.status == 200
+    granted = await knock.json()
+    assert granted["approved"] is True
+    assert granted["token"]
     await _close(room, client)

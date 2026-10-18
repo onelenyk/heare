@@ -1,11 +1,12 @@
-"""Settings, read from the same ``~/.heare/config.toml`` the old app uses.
+"""Settings, read from ``~/.heare/config.toml``.
 
 Live: the file is looked at again whenever it changes, so a provider or a
 model chosen while the assistant runs takes effect on the next reply. A
 dead lever is worse than no lever.
 
-Only ``heare.app`` reads this. Parts are handed the object and ask it for
-plain values; none of them knows there is a file.
+Every distribution that needs a setting makes its own Settings and asks it
+for plain values; the file is the one place they agree on. The port is the
+exception to "live": a socket is bound once, so a new port needs a restart.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ DEFAULTS = {
     "intents_path": HOME / "intents.json",
     "parts_file": HOME / "parts.json",
     "part_tokens_file": HOME / "part_tokens.json",
+    "pair_codes_file": HOME / "pair_codes.json",
     "parts_dir": HOME / "parts",
     "api_token_file": HOME / "api_token",
     "api_port": 9790,

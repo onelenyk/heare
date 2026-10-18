@@ -31,6 +31,7 @@ from aiohttp import web
 from heare import keys
 from heare.core import Core, Message
 from heare.api import auth
+from heare.api import pair as codes
 
 logger = logging.getLogger("heare.api.server")
 
@@ -45,6 +46,23 @@ KEY_NAMES = (
 
 # How long a part waits for the person's answer before it leaves.
 APPROVAL_WAIT_S = 120.0
+
+
+class Slow:
+    """Ten tries a minute from one address: the code is short, the door is not."""
+
+    def __init__(self, limit: int = 10) -> None:
+        self._limit = limit
+        self._seen: dict[str, list[float]] = {}
+
+    def allow(self, who: str, now: float | None = None) -> bool:
+        now = time.time() if now is None else now
+        seen = [t for t in self._seen.get(who, []) if now - t < 60.0]
+        self._seen[who] = seen
+        if len(seen) >= self._limit:
+            return False
+        seen.append(now)
+        return True
 
 
 class Screen:
@@ -193,6 +211,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     @web.middleware
     async def guard(request: web.Request, handler):
+        if request.path == "/api/pair":
+            return await handler(request)
         if not request.path.startswith("/api/"):
             return await handler(request)
         given = request.headers.get("X-Heare-Token") or request.query.get("token") or ""
@@ -201,10 +221,34 @@ def build(core: Core, settings: Any, vitals: Any = None,
         pid = auth.owner(part_tokens, given)
         if pid is None:
             raise web.HTTPUnauthorized(text="no token")
+        if pid.startswith("window@"):
+            return await handler(request)
+        if pid.startswith("machine@"):
+            if request.method == "POST" and request.path == "/api/bodies":
+                request["part"] = pid
+                return await handler(request)
+            raise web.HTTPForbidden(text="a machine only knocks")
         if not part_may(request):
             raise web.HTTPForbidden(text="not for a part")
         request["part"] = pid
         return await handler(request)
+
+    code_path = Path(settings.pair_codes_file)
+    pace = Slow()
+
+    async def pair(request: web.Request) -> web.Response:
+        """A machine or a window with a one-time code takes a key of its own."""
+        if not pace.allow(request.remote or "?"):
+            raise web.HTTPTooManyRequests(text="too many tries")
+        data = await body(request)
+        kind = str(data.get("kind") or "window")
+        if kind not in ("machine", "window"):
+            raise web.HTTPBadRequest(text="kind is machine or window")
+        if not codes.redeem(code_path, str(data.get("code") or "")):
+            raise web.HTTPUnauthorized(text="bad code")
+        name = re.sub(r"[^A-Za-z0-9._-]", "", str(data.get("name") or ""))[:40]
+        pid = f"{kind}@{name or request.remote or 'here'}"
+        return web.json_response({"pid": pid, "token": auth.issue(part_tokens, pid)})
 
     async def body(request: web.Request) -> dict:
         try:
@@ -355,8 +399,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
                list(manifest.get("ui") or []))
 
     def granted(request: web.Request, pid: str) -> dict:
-        """A key of its own for a part that knocked with the master key."""
-        if request.get("part") is not None:
+        """A key of its own for a part that knocked with the master or a machine key."""
+        who = request.get("part")
+        if who is not None and not who.startswith("machine@"):
             return {}
         return {"token": auth.issue(part_tokens, pid)}
 
@@ -372,7 +417,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         host = str(data.get("host") or socket.gethostname())
         pid = str(data.get("key") or f"{channel}@{host}")
         who = request.get("part")
-        if who is not None and who != pid:
+        if who is not None and who != pid and not who.startswith("machine@"):
             raise web.HTTPForbidden(text="not your name")
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
@@ -701,6 +746,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     app = web.Application(middlewares=[guard])
     app.add_routes([
         web.get("/", page),
+        web.post("/api/pair", pair),
         web.post("/api/message", message),
         web.post("/api/bodies", register),
         web.post("/api/bodies/{id}/approve", approve),
