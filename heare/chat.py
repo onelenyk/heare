@@ -79,7 +79,10 @@ async def _typed(client: httpx.AsyncClient, base: str) -> None:
         if line is None:
             return
         if line.strip():
-            await client.post(f"{base}/api/message", json={"text": line.strip()})
+            await client.post(f"{base}/api/input", json={
+                "channel": "text", "kind": "heard", "text": line.strip(),
+                "addressed": True,
+            })
 
 
 async def run() -> int:
@@ -114,6 +117,9 @@ async def run() -> int:
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
                   file=sys.stderr)
             return 1
+        if answer.get("token"):
+            secret = answer["token"]
+            client.headers["X-Heare-Token"] = secret
         values = {"printing": True, "state": "слухає термінал"}
         await part.report(client, base, "text", values)
         printer = asyncio.create_task(_print_events(client, base, name, values))

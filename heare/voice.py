@@ -297,6 +297,9 @@ async def run(settings: Settings | None = None, *,
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
                   file=sys.stderr)
             return 1
+        if answer.get("token"):
+            secret = answer["token"]
+            sync.headers["X-Heare-Token"] = secret
         return await _live(settings, base, secret, sync)
     finally:
         if client is None:

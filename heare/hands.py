@@ -121,6 +121,9 @@ async def run() -> int:
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
                   file=sys.stderr)
             return 1
+        if answer.get("token"):
+            secret = answer["token"]
+            client.headers["X-Heare-Token"] = secret
         print(f"руки: {agent.name}", file=sys.stderr)
 
         def on_control(event: dict) -> None:

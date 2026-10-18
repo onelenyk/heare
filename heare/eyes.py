@@ -130,6 +130,9 @@ async def run() -> int:
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
                   file=sys.stderr)
             return 1
+        if answer.get("token"):
+            secret = answer["token"]
+            client.headers["X-Heare-Token"] = secret
         print("очі: дивлюсь навколо", file=sys.stderr)
         door = Door(client, base)
         await part.report(client, base, "eyes", door.values())

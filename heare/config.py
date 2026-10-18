@@ -29,6 +29,7 @@ DEFAULTS = {
     "canvas_file": HOME / "canvas.json",
     "intents_path": HOME / "intents.json",
     "parts_file": HOME / "parts.json",
+    "part_tokens_file": HOME / "part_tokens.json",
     "parts_dir": HOME / "parts",
     "api_token_file": HOME / "api_token",
     "api_port": 9790,

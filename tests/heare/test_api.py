@@ -19,6 +19,7 @@ async def _open(tmp_path, **room_kw):
         path=tmp_path / "config.toml", api_token_file=tmp_path / "token",
         screens_dir=tmp_path / "screens", parts_file=tmp_path / "parts.json",
         parts_dir=tmp_path / "parts",
+        part_tokens_file=tmp_path / "part_tokens.json",
     )
     room.core.add_output(Screen(room.core))
     client = TestClient(TestServer(build(room.core, settings)))
@@ -478,6 +479,39 @@ async def test_a_part_can_be_forgotten_and_must_ask_again(tmp_path):
     assert state["bodies"]["voice@mac"]["state"] == "pending"
     await client.post("/api/bodies/voice@mac/reject", headers=auth)
     await again
+    await _close(room, client)
+
+
+async def test_a_part_gets_its_own_key_and_no_more(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+
+    answer = await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input", "output"], "about": "",
+        "key": "voice@mac", "host": "mac"}, headers=master)
+    body = await answer.json()
+    assert body["approved"] is True
+    assert body["token"]
+    own = {"X-Heare-Token": body["token"]}
+
+    assert (await client.post("/api/input", json={
+        "kind": "heard", "channel": "voice", "text": "привіт"},
+        headers=own)).status == 200
+    assert (await client.post("/api/input", json={
+        "kind": "heard", "channel": "text", "text": "не моє"},
+        headers=own)).status == 403
+
+    for path in ("/api/keys", "/api/stop", "/api/settings", "/api/canvas"):
+        assert (await client.post(path, json={}, headers=own)).status == 403, path
+
+    other = await client.post("/api/bodies", json={
+        "channel": "eyes", "key": "eyes@mac", "host": "mac"}, headers=own)
+    assert other.status == 403
+
+    await client.post("/api/bodies/voice@mac/forget", headers=master)
+    assert (await client.post("/api/input", json={
+        "kind": "heard", "channel": "voice", "text": "ще"},
+        headers=own)).status == 401
     await _close(room, client)
 
 

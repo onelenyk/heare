@@ -30,6 +30,7 @@ from aiohttp import web
 
 from heare import keys
 from heare.core import Core, Message
+from heare.api import auth
 
 logger = logging.getLogger("heare.api.server")
 
@@ -173,15 +174,36 @@ def build(core: Core, settings: Any, vitals: Any = None,
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen."""
     secret = token(Path(settings.api_token_file))
+    part_tokens = Path(settings.part_tokens_file)
     screens = Path(settings.screens_dir)
     tally = Tally(core)
 
+    PART_CALLS = (
+        ("POST", re.compile(r"^/api/bodies$")),
+        ("POST", re.compile(r"^/api/input$")),
+        ("POST", re.compile(r"^/api/input/said_over$")),
+        ("GET", re.compile(r"^/api/events$")),
+        ("POST", re.compile(r"^/api/executor/claim$")),
+        ("POST", re.compile(r"^/api/executor/\d+/(step|permit|result)$")),
+    )
+
+    def part_may(request: web.Request) -> bool:
+        return any(request.method == method and rx.match(request.path)
+                   for method, rx in PART_CALLS)
+
     @web.middleware
     async def guard(request: web.Request, handler):
-        if request.path.startswith("/api/"):
-            given = request.headers.get("X-Heare-Token") or request.query.get("token")
-            if not given or not secrets.compare_digest(given, secret):
-                raise web.HTTPUnauthorized(text="no token")
+        if not request.path.startswith("/api/"):
+            return await handler(request)
+        given = request.headers.get("X-Heare-Token") or request.query.get("token") or ""
+        if given and secrets.compare_digest(given, secret):
+            return await handler(request)
+        pid = auth.owner(part_tokens, given)
+        if pid is None:
+            raise web.HTTPUnauthorized(text="no token")
+        if not part_may(request):
+            raise web.HTTPForbidden(text="not for a part")
+        request["part"] = pid
         return await handler(request)
 
     async def body(request: web.Request) -> dict:
@@ -210,9 +232,20 @@ def build(core: Core, settings: Any, vitals: Any = None,
     bodies: dict[str, dict] = {}
     waiting: dict[str, asyncio.Event] = {}
 
+    def channel_of(pid: str) -> str:
+        entry = bodies.get(pid) or {}
+        return str(entry.get("channel") or pid.split("@")[0])
+
+    def own_channel(request: web.Request, channel: str) -> None:
+        """A part may speak for its own channel and no other."""
+        pid = request.get("part")
+        if pid is not None and channel and channel != channel_of(pid):
+            raise web.HTTPForbidden(text="not your channel")
+
     async def claim(request: web.Request) -> web.Response:
         """A body's hands ask for work; the brain hands one out, or nothing."""
         data = await body(request)
+        own_channel(request, str(data.get("name") or ""))
         found = core.executors.get(str(data.get("name") or ""))
         task = await found.claim() if hasattr(found, "claim") else None
         return web.json_response(task or {})
@@ -242,6 +275,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     def _executor_for(request: web.Request):
         name = request.query.get("name") or ""
+        own_channel(request, name)
         found = core.executors.get(name)
         if not hasattr(found, "claim"):
             raise web.HTTPNotFound(text="no such body")
@@ -312,6 +346,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
                str(manifest.get("about") or ""), host, "away",
                list(manifest.get("ui") or []))
 
+    def granted(request: web.Request, pid: str) -> dict:
+        """A key of its own for a part that knocked with the master key."""
+        if request.get("part") is not None:
+            return {}
+        return {"token": auth.issue(part_tokens, pid)}
+
     async def register(request: web.Request) -> web.Response:
         """A part knocks; the person decides whether to trust it.
 
@@ -323,13 +363,16 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPBadRequest(text="a part needs a channel")
         host = str(data.get("host") or socket.gethostname())
         pid = str(data.get("key") or f"{channel}@{host}")
+        who = request.get("part")
+        if who is not None and who != pid:
+            raise web.HTTPForbidden(text="not your name")
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
         if pid in trusted():
             attach(pid, channel, forms, about, host, "approved", ui)
-            return web.json_response({"approved": True})
+            return web.json_response({"approved": True, **granted(request, pid)})
         attach(pid, channel, forms, about, host, "pending", ui)
         event = waiting.setdefault(pid, asyncio.Event())
         try:
@@ -343,7 +386,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if bodies[pid]["state"] != "approved":
             return web.json_response({"approved": False, "why": bodies[pid]["state"]})
         attach(pid, channel, forms, about, host, "approved", ui)
-        return web.json_response({"approved": True})
+        return web.json_response({"approved": True, **granted(request, pid)})
 
     async def approve(request: web.Request) -> web.Response:
         return _decide(request, "approved")
@@ -368,6 +411,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         remembered.discard(pid)
         trusted_file.write_text(json.dumps(sorted(remembered), ensure_ascii=False),
                                 encoding="utf-8")
+        auth.revoke(part_tokens, pid)
         core.executors.pop(str(entry.get("channel", "")), None)
         core.state.emit("part", channel=entry.get("channel", ""),
                         forms=entry.get("forms", []), about=entry.get("about", ""),
@@ -392,6 +436,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         data = await body(request)
         kind = str(data.get("kind", ""))
         channel = str(data.get("channel") or "text")
+        own_channel(request, channel)
         if kind == "started":
             core.port.started(channel)
         elif kind == "nothing":
@@ -431,8 +476,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def said_over(request: web.Request) -> web.Response:
         """A voice over the reply: did it mean a turn, or was it a nod?"""
         data = await body(request)
+        channel = str(data.get("channel") or "text")
+        own_channel(request, channel)
         turn = core.port.said_over(
-            str(data.get("channel") or "text"),
+            channel,
             str(data.get("text", "")),
             float(data.get("speech_ms") or 0.0),
             bool(data.get("long", False)),
