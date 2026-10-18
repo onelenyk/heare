@@ -14,7 +14,6 @@ members = [
     "heare-brain",
     "heare-chat",
     "heare-core",
-    "heare-dev",
     "heare-eyes",
     "heare-hands",
     "heare-keeper",
@@ -610,29 +609,6 @@ requires-dist = [
 ]
 
 [[package]]
-name = "heare-dev"
-version = "0.1.0"
-source = { editable = "packages/heare-dev" }
-dependencies = [
-    { name = "heare-brain" },
-    { name = "heare-chat" },
-    { name = "heare-core" },
-    { name = "heare-eyes" },
-    { name = "heare-reach" },
-    { name = "heare-voice" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "heare-brain", editable = "packages/heare-brain" },
-    { name = "heare-chat", editable = "packages/heare-chat" },
-    { name = "heare-core", editable = "packages/heare-core" },
-    { name = "heare-eyes", editable = "packages/heare-eyes" },
-    { name = "heare-reach", editable = "packages/heare-reach" },
-    { name = "heare-voice", editable = "packages/heare-voice" },
-]
-
-[[package]]
 name = "heare-eyes"
 version = "0.1.0"
 source = { editable = "packages/heare-eyes" }
@@ -719,7 +695,6 @@ dependencies = [
     { name = "heare-brain" },
     { name = "heare-chat" },
     { name = "heare-core" },
-    { name = "heare-dev" },
     { name = "heare-eyes" },
     { name = "heare-hands" },
     { name = "heare-keeper" },
@@ -741,7 +716,6 @@ requires-dist = [
     { name = "heare-brain", editable = "packages/heare-brain" },
     { name = "heare-chat", editable = "packages/heare-chat" },
     { name = "heare-core", editable = "packages/heare-core" },
-    { name = "heare-dev", editable = "packages/heare-dev" },
     { name = "heare-eyes", editable = "packages/heare-eyes" },
     { name = "heare-hands", editable = "packages/heare-hands" },
     { name = "heare-keeper", editable = "packages/heare-keeper" },

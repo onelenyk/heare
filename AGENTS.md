@@ -2,16 +2,16 @@
 
 macOS voice assistant: it listens, decides when to answer, and acts
 through an agent (opencode over ACP) without blocking the conversation.
-The app is nine distributions under `packages/` sharing one `heare`
+The app is eight distributions under `packages/` sharing one `heare`
 namespace; the old app that lived in `src/` was removed on
 18 October 2026 and its last commit is tagged `legacy-app`.
 
-## THE APP (`packages/`, nine distributions)
+## THE APP (`packages/`, eight distributions)
 
 One core and five kinds of part: **input, output, model, memory,
 executor** (`packages/heare-core/heare/core/forms.py`). A channel (voice, text) is an input,
-an output, or both. `packages/heare-dev/heare/app.py` builds the local app; `packages/heare-brain/heare/api/server.py`
-builds the door — the page, the events, the API the parts knock on.
+an output, or both. `packages/heare-brain/heare/api/server.py` builds the
+door — the page, the events, the API the parts knock on.
 
 HARD RULES:
 
@@ -35,9 +35,9 @@ protocol first, implementation second. Never abstract for one.
 
 ```bash
 uv sync
-uv run heare            # by typing
-uv run heare --voice    # aloud
-uv run heare --serve    # the page and the API on 127.0.0.1:9790
+uv run heare-brain      # the brain, and the page on 127.0.0.1:9790
+uv run heare-chat       # the conversation in a terminal
+uv run heare-voice      # speech in, speech out
 
 make test                         # the core against stand-ins: no network, no keys
 make lint                         # ruff
@@ -55,9 +55,8 @@ uv run heare-chat
 uv run heare-keeper     # наглядач: піднімає частини з ~/.heare/parts
 ```
 
-`uv run python -m heare.listener` drives real speech in and the reply out;
-it pays for the recogniser and reads the real keys. Tests marked
-`spine_live` do the same and are excluded by default.
+Tests marked `spine_live` leave the machine — the real recogniser, the real
+model — and are excluded by default.
 
 ## WHERE TO LOOK
 

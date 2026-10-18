@@ -3,7 +3,7 @@
 macOS voice assistant: it listens, decides when to answer, and acts
 through an agent (opencode over ACP) without blocking the conversation.
 
-The app is nine distributions under `packages/` — one core and five
+The app is eight distributions under `packages/` — one core and five
 kinds of part (input, output,
 model, memory, executor; `packages/heare-core/heare/core/forms.py`). A channel (voice, text)
 is an input, an output, or both. Parts connect to the brain's door over
@@ -38,9 +38,9 @@ From a checkout:
 
 ```bash
 uv sync
-uv run heare            # by typing
-uv run heare --voice    # aloud
-uv run heare --serve    # the page and the API on 127.0.0.1:9790
+uv run heare-brain      # the brain, and the page on 127.0.0.1:9790
+uv run heare-chat       # the conversation in a terminal
+uv run heare-voice      # speech in, speech out
 ```
 
 The page arrives without a token baked in: it is handed one when served.
