@@ -156,7 +156,7 @@ async def run() -> int:
                     continue
                 print(f"взято {task['id']}: {task['request'][:60]}",
                       file=sys.stderr)
-                values["work"] = f"роблю #{task['id']}"
+                values["work"] = f"роблю: {task['request'][:50]}"
                 await part.report(client, base, agent.name, values)
                 desk = RemoteDesk(client, base, task["id"], agent.name)
                 status, result = "done", ""
