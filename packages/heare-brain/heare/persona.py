@@ -12,7 +12,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-RULES = Path(__file__).resolve().parent.parent / "prompts" / "voice_rules.txt"
+RULES = Path(__file__).resolve().parent / "prompts" / "voice_rules.txt"
 IDENTITY = Path.home() / ".heare" / "identity.json"
 _DAYS = ("понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя")
 

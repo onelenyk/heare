@@ -24,7 +24,7 @@ jobs:
           enable-cache: true
 
       - name: Ruff
-        run: uvx ruff@0.6 check heare/ tests/
+        run: uvx ruff@0.6 check packages/ tests/
 
   test:
     name: Test (macOS)

@@ -68,6 +68,16 @@ class RemoteDesk:
             f"{self._base}/api/executor/{self._id}/step?name={self._name}",
             json={"text": text}))
 
+    async def ask(self, text: str) -> str:
+        """The agent's question: the person's words come back as the answer."""
+        response = await self._client.post(
+            f"{self._base}/api/executor/{self._id}/ask?name={self._name}",
+            json={"question": text})
+        answer = response.json()
+        if answer.get("stopped"):
+            raise asyncio.CancelledError
+        return str(answer.get("answer") or "")
+
     async def permit(self, what: str, kind: str = "change") -> bool:
         response = await self._client.post(
             f"{self._base}/api/executor/{self._id}/permit?name={self._name}",
@@ -131,7 +141,8 @@ async def run() -> int:
         known, cwd=settings.executor_cwd or None, tap=tap,
         mcp_servers=[{"name": "heare", "command": sys.executable,
                       "args": ["-m", "heare.reach.bridge",
-                               "--socket", str(socket_path)]}],
+                               "--socket", str(socket_path)],
+                      "env": []}],
     )
     ui = [
         {"name": "taking", "kind": "toggle", "label": "Брати справи",

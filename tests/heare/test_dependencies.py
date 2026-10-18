@@ -21,7 +21,7 @@ import ast
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2] / "heare"
+ROOT = Path(__file__).resolve().parents[2] / "packages"
 KNOW_EVERYTHING = {"app", "listener", "brain"}
 LEAVES = {"heare.keys"}
 # The core may grow, but not into the tangle it replaces. If this fails,
@@ -45,11 +45,23 @@ def _imports(path: Path) -> set[str]:
 
 
 def _part(path: Path) -> str:
-    """The part a file belongs to: ``core``, ``channels.voice``, ``memory``…"""
-    rel = path.relative_to(ROOT).with_suffix("").parts
-    if rel[0] == "channels" and len(rel) > 2:
-        return f"channels.{rel[1]}"
-    return rel[0]
+    """The part a file belongs to: ``core``, ``channels.voice``, ``memory``…
+
+    Files live under ``packages/<distribution>/heare/…``; the part is what
+    comes after ``heare``, so the distribution a part ships in never
+    changes its name.
+    """
+    inner = path.relative_to(ROOT).with_suffix("").parts[2:]
+    if len(inner) == 1:
+        return inner[0]
+    if inner[0] == "channels" and len(inner) > 2:
+        return f"channels.{inner[1]}"
+    return inner[0]
+
+
+def _is_assembly(path: Path) -> bool:
+    """A body at the top of a distribution — it wires parts together."""
+    return len(path.relative_to(ROOT).with_suffix("").parts) == 3
 
 
 def _files() -> list[Path]:
@@ -66,7 +78,7 @@ def test_nothing_new_imports_the_old_app():
 
 def test_the_core_imports_only_itself_and_the_standard_library():
     guilty = []
-    for path in (ROOT / "core").rglob("*.py"):
+    for path in (ROOT / "heare-core" / "heare" / "core").rglob("*.py"):
         for module in _imports(path):
             top = module.split(".")[0]
             if module.startswith("heare.core") or top in sys.stdlib_module_names:
@@ -79,7 +91,7 @@ def test_a_part_imports_only_the_core_and_itself():
     guilty = []
     for path in _files():
         part = _part(path)
-        if part in KNOW_EVERYTHING or part == "core" or path.parent == ROOT:
+        if part in KNOW_EVERYTHING or part == "core" or _is_assembly(path):
             continue
         for module in _imports(path):
             if not module.startswith("heare"):
@@ -95,6 +107,6 @@ def test_a_part_imports_only_the_core_and_itself():
 def test_the_core_stays_small():
     lines = sum(
         len(p.read_text(encoding="utf-8").splitlines())
-        for p in (ROOT / "core").rglob("*.py")
+        for p in (ROOT / "heare-core" / "heare" / "core").rglob("*.py")
     )
     assert lines <= CORE_LINES, f"the core is {lines} lines"

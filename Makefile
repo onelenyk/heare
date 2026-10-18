@@ -33,10 +33,10 @@ test:
 	uv run pytest tests/heare -q
 
 lint:
-	uv run ruff check heare/ tests/
+	uv run ruff check packages/ tests/
 
 format:
-	uv run ruff format heare/ tests/
+	uv run ruff format packages/ tests/
 
 check: lint test
 

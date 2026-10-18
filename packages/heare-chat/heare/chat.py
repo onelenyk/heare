@@ -19,7 +19,7 @@ from pathlib import Path
 
 import httpx
 
-from heare import part, persona
+from heare import part
 from heare.config import Settings
 
 UI = [
@@ -88,7 +88,7 @@ async def _typed(client: httpx.AsyncClient, base: str) -> None:
 async def run() -> int:
     settings = Settings()
     base = f"http://127.0.0.1:{settings.api_port}"
-    name = persona.name() or "heare"
+    name = "heare"
     try:
         sys.stdin.reconfigure(errors="replace")
     except (AttributeError, OSError):
@@ -120,6 +120,8 @@ async def run() -> int:
         if answer.get("token"):
             secret = answer["token"]
             client.headers["X-Heare-Token"] = secret
+        heard = (await client.get(f"{base}/api/state")).json()
+        name = (heard.get("model") or {}).get("name") or name
         values = {"printing": True, "state": "слухає термінал"}
         await part.report(client, base, "text", values)
         printer = asyncio.create_task(_print_events(client, base, name, values))
