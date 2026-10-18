@@ -436,7 +436,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         about = str(data.get("about") or "")
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
-        if pid in trusted() or str(who or "").startswith("window@"):
+        if (pid in trusted()
+                or str(who or "").startswith(("window@", "machine@"))):
             attach(pid, channel, forms, about, host, "approved", ui)
             return web.json_response({"approved": True, **granted(request, pid)})
         attach(pid, channel, forms, about, host, "pending", ui)

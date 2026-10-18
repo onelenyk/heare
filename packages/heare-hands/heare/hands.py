@@ -99,9 +99,9 @@ class RemoteDesk:
 
 async def run() -> int:
     settings = Settings()
-    base = f"http://127.0.0.1:{settings.api_port}"
+    base = settings.base
     try:
-        secret = Path(settings.api_token_file).read_text(encoding="utf-8").strip()
+        secret = settings.secret
     except OSError:
         print("немає ключа — мозок запущений?", file=sys.stderr)
         return 1

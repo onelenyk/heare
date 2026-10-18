@@ -9,6 +9,7 @@ from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
+from heare import pairing
 from heare.api import pair
 from heare.api.server import Screen, VoiceOut, build
 from heare.config import Settings
@@ -692,4 +693,27 @@ async def test_a_machine_key_knocks_for_its_part_and_the_part_gets_its_own(tmp_p
     granted = await knock.json()
     assert granted["approved"] is True
     assert granted["token"]
+    await _close(room, client)
+
+
+async def test_a_machine_key_knocks_without_a_second_card(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    given = await (await client.post(
+        "/api/pair", json={"code": code, "kind": "machine", "name": "mac"})).json()
+    knock = await client.post("/api/bodies", headers={
+        "X-Heare-Token": given["token"]},
+        json={"channel": "voice", "host": "mac", "forms": ["input"]})
+    assert knock.status == 200
+    answer = await knock.json()
+    assert answer["approved"] is True and answer["token"]
+    await _close(room, client)
+
+
+async def test_the_pairing_client_speaks_to_the_door(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    base = str(client.make_url("/")).rstrip("/")
+    given = await asyncio.to_thread(pairing.pair, base, code, "machine", "mac")
+    assert given["pid"] == "machine@mac" and given["token"]
     await _close(room, client)

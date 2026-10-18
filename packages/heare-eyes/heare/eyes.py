@@ -14,7 +14,6 @@ import asyncio
 import logging
 import socket
 import sys
-from pathlib import Path
 
 import httpx
 
@@ -33,7 +32,7 @@ UI = [
 
 
 def _token(settings: Settings) -> str:
-    return Path(settings.api_token_file).read_text(encoding="utf-8").strip()
+    return settings.secret
 
 
 class Door:
@@ -106,7 +105,7 @@ class Door:
 
 async def run() -> int:
     settings = Settings()
-    base = f"http://127.0.0.1:{settings.api_port}"
+    base = settings.base
     try:
         secret = _token(settings)
     except OSError:

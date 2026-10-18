@@ -34,6 +34,10 @@ DEFAULTS = {
     "pair_codes_file": HOME / "pair_codes.json",
     "parts_dir": HOME / "parts",
     "api_token_file": HOME / "api_token",
+    "machine_token_file": HOME / "machine_token",
+    # Where the brain is. Empty means this machine — a body on another one
+    # is told once, by the setup form.
+    "url": "",
     "api_port": 9790,
     # One agent does the work unless the person names another; two at
     # once made three versions of one program in twenty minutes.
@@ -72,6 +76,21 @@ class Settings:
         if name.endswith("_api_key"):
             return keys.get(name.upper())
         return self._read().get(name, DEFAULTS.get(name, ""))
+
+    @property
+    def base(self) -> str:
+        """Where the brain is: its own machine unless the file names another."""
+        url = str(self.url).rstrip("/")
+        return url or f"http://127.0.0.1:{self.api_port}"
+
+    @property
+    def secret(self) -> str:
+        """What a part knocks with: a machine's own pairing first, the master
+        second. A machine that paired for a brain elsewhere has no master."""
+        machine = Path(self.machine_token_file)
+        if machine.is_file():
+            return machine.read_text(encoding="utf-8").strip()
+        return Path(self.api_token_file).read_text(encoding="utf-8").strip()
 
     def view(self) -> dict:
         """The plain settings as the file has them — never a key."""

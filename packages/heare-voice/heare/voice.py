@@ -16,7 +16,6 @@ import logging
 import socket
 import sys
 from collections.abc import AsyncIterator
-from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -52,7 +51,7 @@ def values_of(voice: Voice) -> dict:
 
 
 def _token(settings: Settings) -> str:
-    return Path(settings.api_token_file).read_text(encoding="utf-8").strip()
+    return settings.secret
 
 
 class HttpPort:
@@ -274,7 +273,7 @@ async def _live(settings: Settings, base: str, secret: str,
 async def run(settings: Settings | None = None, *,
               client: httpx.Client | None = None) -> int:
     settings = settings or Settings()
-    base = f"http://127.0.0.1:{settings.api_port}"
+    base = settings.base
     try:
         secret = _token(settings)
     except OSError:
