@@ -130,3 +130,75 @@ def test_an_unknown_runner_type_is_refused(tmp_path, capsys):
     settings = _settings(tmp_path, executor="hosted")
     assert hands._agent(settings, None, []) is None
     assert "hosted" in capsys.readouterr().err
+
+
+def _named(ui: list[dict]) -> dict[str, dict]:
+    return {c["name"]: c for c in ui}
+
+
+def test_the_hands_declare_their_runner_as_their_own_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    monkeypatch.setattr(hands.runner, "_EXTRA_DIRS", ())
+    monkeypatch.setattr(hands.runner, "login", lambda kind, binary: {
+        "ok": True, "summary": "deepseek", "detail": ""})
+    monkeypatch.setattr(hands.runner, "models", lambda kind, binary: [
+        {"group": "deepseek", "models": [{"id": "deepseek/deepseek-chat",
+                                          "name": "DeepSeek"}]}])
+    shim = _shim(tmp_path / "bin", "opencode")
+
+    ui = _named(hands._settings_ui(_settings(tmp_path, executor="opencode")))
+
+    assert all(c["group"] == "settings" for c in ui.values())
+    assert ui["type"]["value"] == "opencode"
+    assert {o["value"] for o in ui["type"]["options"]} == set(hands.runner.KNOWN)
+    assert ui["found"]["value"] == str(shim)
+    assert [o["value"] for o in ui["model"]["options"]] == [
+        "", "deepseek/deepseek-chat"]
+    assert ui["login"]["value"] == "deepseek"
+    assert "auth_env" not in ui
+
+
+def test_a_key_sign_in_shows_the_key_and_whether_it_is_there(tmp_path, monkeypatch):
+    monkeypatch.setattr(hands.runner, "models", lambda kind, binary: [])
+    keys.store("ANTHROPIC_API_KEY", "stored-value")
+
+    ui = _named(hands._settings_ui(_settings(
+        tmp_path, executor="claude", executor_auth="key",
+        executor_auth_env="ANTHROPIC_API_KEY")))
+
+    assert ui["auth_env"]["value"] == "ANTHROPIC_API_KEY"
+    assert ui["key"]["value"] == "є"
+    assert "login" not in ui
+
+
+def test_without_a_model_list_the_model_is_typed(tmp_path, monkeypatch):
+    monkeypatch.setattr(hands.runner, "models", lambda kind, binary: [])
+    monkeypatch.setattr(hands.runner, "login", lambda kind, binary: {
+        "ok": False, "summary": "—", "detail": ""})
+
+    ui = _named(hands._settings_ui(_settings(
+        tmp_path, executor="opencode", executor_model="x/y")))
+
+    assert ui["model"]["kind"] == "text"
+    assert ui["model"]["value"] == "x/y"
+
+
+def test_a_control_becomes_a_setting_only_when_the_value_is_one_it_takes():
+    assert hands._setting("type", "claude") == ("executor", "claude")
+    assert hands._setting("model", " a/b ") == ("executor_model", "a/b")
+    assert hands._setting("auth_env", "DEEPSEEK_API_KEY") == (
+        "executor_auth_env", "DEEPSEEK_API_KEY")
+    assert hands._setting("type", "hosted") is None
+    assert hands._setting("auth", "password") is None
+    assert hands._setting("auth_env", "HOME") is None
+    assert hands._setting("taking", "yes") is None
+    assert hands._setting("binary", 3) is None
+
+
+def test_the_check_is_one_line_per_need(tmp_path, monkeypatch):
+    monkeypatch.setattr(hands.runner, "health", lambda *a: {"ok": False, "checks": [
+        {"name": "binary", "ok": True, "detail": "/bin/opencode"},
+        {"name": "auth", "ok": False, "detail": "no sign-in"}]})
+
+    assert hands._checks(_settings(tmp_path)) == (
+        "✓ binary: /bin/opencode\n✗ auth: no sign-in")

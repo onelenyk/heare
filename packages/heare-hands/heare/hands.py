@@ -21,10 +21,25 @@ from pathlib import Path
 
 import httpx
 
-from heare import part
+from heare import keys, part
 from heare.config import Settings
 from heare.reach import runner
 from heare.reach.agents import KNOWN as AGENTS, Agent
+
+# run() returns this when the person changed the runner: main() starts the
+# hands again, so the agent is built once from settings, never patched live.
+RESTART = -1
+
+# Which control sets which setting. The hands own their runner; the page only
+# draws what is declared here and hands the person's choice back.
+_SETTINGS = {
+    "type": "executor",
+    "binary": "executor_binary",
+    "model": "executor_model",
+    "auth": "executor_auth",
+    "auth_env": "executor_auth_env",
+    "base_url": "executor_base_url",
+}
 
 
 def _short(value: object, width: int = 70) -> str:
@@ -96,6 +111,103 @@ class RemoteDesk:
         if answer.get("stopped"):
             raise asyncio.CancelledError
         return bool(answer.get("allow"))
+
+
+def _kind(settings: Settings) -> str:
+    kind = str(settings.executor or "opencode").strip()
+    return kind if kind in runner.KNOWN else "opencode"
+
+
+def _settings_ui(settings: Settings) -> list[dict]:
+    """The runner's settings as controls, read on this machine.
+
+    Read here and not by the brain: the binary, the sign-in and the models
+    are facts of the machine the hands run on, which need not be the
+    brain's.
+    """
+    kind = _kind(settings)
+    binary = str(settings.executor_binary or "").strip()
+    resolved = runner.resolve(binary or runner.KNOWN[kind]["binary"])
+    model = str(settings.executor_model or "").strip()
+    auth = str(settings.executor_auth or "login").strip()
+    auth_env = str(settings.executor_auth_env or "").strip()
+
+    ui: list[dict] = [
+        {"name": "type", "kind": "choice", "label": "Тип", "value": kind,
+         "options": [{"value": name, "label": entry["label"]}
+                     for name, entry in runner.KNOWN.items()]},
+        {"name": "binary", "kind": "text", "label": "Бінарник", "value": binary,
+         "hint": "порожньо — шукати самому"},
+        {"name": "found", "kind": "label", "label": "Знайдено",
+         "value": resolved or "не знайдено"},
+    ]
+    listed = [m["id"] for group in runner.models(kind, resolved)
+              for m in group["models"]]
+    options = [{"value": "", "label": "— як у CLI —"}] + [
+        {"value": id_, "label": id_} for id_ in listed]
+    if model and model not in listed:
+        options.append({"value": model, "label": model})
+    if listed:
+        ui.append({"name": "model", "kind": "choice", "label": "Модель",
+                   "value": model, "options": options})
+    else:
+        ui.append({"name": "model", "kind": "text", "label": "Модель",
+                   "value": model, "hint": "список не прийшов — id вручну"})
+    ui.append({"name": "auth", "kind": "choice", "label": "Вхід", "value": auth,
+               "options": [{"value": "login", "label": "Логін CLI"},
+                           {"value": "key", "label": "Свій токен"}]})
+    if auth == "key":
+        present = bool(auth_env) and keys.get(auth_env) is not None
+        ui += [
+            {"name": "auth_env", "kind": "choice", "label": "Ключ",
+             "value": auth_env,
+             "options": [{"value": "", "label": "—"}]
+             + [{"value": name, "label": name} for name in keys.NAMES]},
+            {"name": "key", "kind": "label", "label": "Токен",
+             "value": "є" if present else "немає — додай у ⚙ → Ключі"},
+        ]
+    else:
+        ui.append({"name": "login", "kind": "label", "label": "Логін",
+                   "value": runner.login(kind, resolved)["summary"]})
+    ui += [
+        {"name": "base_url", "kind": "text", "label": "Base URL",
+         "value": str(settings.executor_base_url or ""),
+         "hint": "порожньо — рідний endpoint; тільки для проксі"},
+        {"name": "check", "kind": "button", "label": "Перевірити"},
+        {"name": "checks", "kind": "log", "label": "Перевірка", "value": ""},
+    ]
+    for control in ui:
+        control["group"] = "settings"
+    return ui
+
+
+def _setting(name: str, value: object) -> tuple[str, str] | None:
+    """The setting a control changes, or None when it is not one it takes."""
+    setting = _SETTINGS.get(name)
+    if setting is None or not isinstance(value, str):
+        return None
+    value = value.strip()
+    if name == "type" and value not in runner.KNOWN:
+        return None
+    if name == "auth" and value not in ("login", "key"):
+        return None
+    if name == "auth_env" and value and value not in keys.NAMES:
+        return None
+    return setting, value
+
+
+def _checks(settings: Settings) -> str:
+    """What "Перевірити" shows: one line per thing the runner needs."""
+    kind = _kind(settings)
+    health = runner.health(
+        kind,
+        str(settings.executor_binary or "").strip() or None,
+        str(settings.executor_auth or "login"),
+        str(settings.executor_auth_env or ""),
+        str(settings.executor_base_url or ""),
+    )
+    return "\n".join(f"{'✓' if c['ok'] else '✗'} {c['name']}: {c['detail']}"
+                     for c in health["checks"])
 
 
 def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
@@ -211,19 +323,23 @@ async def run() -> int:
                              "--socket", str(socket_path)],
                     "env": []}]
     agent = _agent(settings, tap, mcp_servers)
-    if agent is None:
-        return 1
+    # Hands without an agent still knock: their settings are the only place
+    # a wrong path can be put right, and they take no work meanwhile.
+    name = agent.name if agent is not None else _kind(settings)
+    about = agent.about if agent is not None else "агента не знайдено — глянь ⚙"
+    forms = ["executor"] if agent is not None else []
     asks = await asyncio.start_unix_server(handle, path=str(socket_path))
     ui = [
         {"name": "taking", "kind": "toggle", "label": "Брати справи",
          "value": True},
-        {"name": "agent", "kind": "label", "label": "Агент", "value": agent.name},
-        {"name": "work", "kind": "label", "label": "Стан", "value": "чекає"},
+        {"name": "agent", "kind": "label", "label": "Агент", "value": name},
+        {"name": "work", "kind": "label", "label": "Стан",
+         "value": "чекає" if agent is not None else "не готові"},
         {"name": "usage", "kind": "label", "label": "Ціна", "value": "—"},
         {"name": "acp", "kind": "log", "label": "ACP", "value": ""},
-    ]
-    values = {"taking": True, "agent": agent.name, "work": "чекає",
-              "usage": "—", "acp": ""}
+    ] + await asyncio.to_thread(_settings_ui, settings)
+    values = {c["name"]: c["value"] for c in ui if "value" in c}
+    restart = asyncio.Event()
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
         host = socket.gethostname()
@@ -235,9 +351,8 @@ async def run() -> int:
             # manifest still says "opencode"; the manifest is the lead's
             # decision, not this part's.
             return client.post(f"{base}/api/bodies", json={
-                "channel": agent.name, "forms": ["executor"],
-                "about": agent.about, "key": f"{agent.name}@{host}",
-                "host": host, "ui": ui})
+                "channel": name, "forms": forms, "about": about,
+                "key": f"{name}@{host}", "host": host, "ui": ui})
 
         registration = await knock()
         answer = registration.json()
@@ -248,17 +363,33 @@ async def run() -> int:
         if answer.get("token"):
             secret = answer["token"]
             client.headers["X-Heare-Token"] = secret
-        print(f"руки: {agent.name}", file=sys.stderr)
+        print(f"руки: {name}", file=sys.stderr)
+
+        async def check() -> None:
+            values["checks"] = await asyncio.to_thread(_checks, Settings())
+            await part.report(client, base, name, values)
 
         def on_control(event: dict) -> None:
-            if event.get("kind") == "control" and event.get("name") == "taking":
-                values["taking"] = bool(event.get("value"))
-                asyncio.create_task(
-                    part.report(client, base, agent.name, values))
+            if event.get("kind") != "control":
+                return
+            control, value = event.get("name"), event.get("value")
+            if control == "taking":
+                values["taking"] = bool(value)
+            elif control == "check":
+                asyncio.create_task(check())
+                return
+            elif (change := _setting(str(control), value)) is not None:
+                settings.set(*change)
+                values[str(control)] = change[1]
+                values["work"] = "застосую налаштування, щойно звільнюсь"
+                restart.set()
+            else:
+                return
+            asyncio.create_task(part.report(client, base, name, values))
 
-        await part.report(client, base, agent.name, values)
+        await part.report(client, base, name, values)
         following = asyncio.create_task(
-            part.follow(base, secret, agent.name, on_control,
+            part.follow(base, secret, name, on_control,
                         on_open=lambda: asyncio.create_task(knock())))
         sent = 0
 
@@ -270,24 +401,31 @@ async def run() -> int:
                     sent = told
                     values["acp"] = "\n".join(wire)
                     values["usage"] = _price(**usage) or values["usage"]
-                    await part.report(client, base, agent.name, values)
+                    await part.report(client, base, name, values)
 
         wiring = asyncio.create_task(report_wire())
         try:
             while True:
-                if not values["taking"]:
-                    await asyncio.sleep(1.0)
+                # A claim already in flight is let finish, so work the brain
+                # handed out is never dropped by a restart.
+                if restart.is_set():
+                    return RESTART
+                if agent is None or not values["taking"]:
+                    try:
+                        await asyncio.wait_for(restart.wait(), 1.0)
+                    except TimeoutError:
+                        pass
                     continue
                 claim = await client.post(f"{base}/api/executor/claim",
-                                          json={"name": agent.name})
+                                          json={"name": name})
                 task = claim.json() if claim.status_code == 200 else {}
                 if not task or "id" not in task:
                     continue
                 print(f"взято {task['id']}: {task['request'][:60]}",
                       file=sys.stderr)
                 values["work"] = f"роблю: {task['request'][:50]}"
-                await part.report(client, base, agent.name, values)
-                desk = RemoteDesk(client, base, task["id"], agent.name)
+                await part.report(client, base, name, values)
+                desk = RemoteDesk(client, base, task["id"], name)
                 status, result = "done", ""
                 current["desk"] = desk
                 try:
@@ -300,7 +438,7 @@ async def run() -> int:
                 print(f"готово {task['id']}: {status} {result[:60]}",
                       file=sys.stderr)
                 await client.post(
-                    f"{base}/api/executor/{task['id']}/result?name={agent.name}",
+                    f"{base}/api/executor/{task['id']}/result?name={name}",
                     json={"status": status, "result": result})
                 current["desk"] = None
                 if agent.last_session:
@@ -308,13 +446,17 @@ async def run() -> int:
                         session_file.write_text(agent.last_session, encoding="utf-8")
                     except OSError:
                         pass
-                values["work"] = "чекає"
-                await part.report(client, base, agent.name, values)
+                if not restart.is_set():
+                    values["work"] = "чекає"
+                await part.report(client, base, name, values)
         finally:
             following.cancel()
             wiring.cancel()
             asks.close()
             await asyncio.gather(following, wiring, return_exceptions=True)
+            if agent is not None:
+                # A restart stays in this process; the old agent must not.
+                await agent.close()
             socket_path.unlink(missing_ok=True)
 
 
@@ -324,7 +466,9 @@ def main() -> int:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     try:
-        return asyncio.run(run())
+        while (code := asyncio.run(run())) == RESTART:
+            print("руки: нові налаштування, починаю знову", file=sys.stderr)
+        return code
     except KeyboardInterrupt:
         return 0
 
