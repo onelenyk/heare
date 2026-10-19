@@ -41,6 +41,9 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
 # How long a part waits for the person's answer before it leaves.
 APPROVAL_WAIT_S = 120.0
+# How often a quiet stream is written to. A closed page is only noticed when
+# a write to it fails, so this is also how long it takes to show it left.
+HEARTBEAT_S = 5.0
 SESSION = "heare_session"
 
 
@@ -577,12 +580,32 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     # -- events and state -------------------------------------------------
 
+    # How many event streams each part holds open. A part is there while it
+    # listens: a closed page or a stopped body ends its stream, and the last
+    # stream to end makes it "away" — nothing else would ever say it left.
+    listening: dict[str, int] = {}
+
+    def left(pid: str) -> None:
+        listening[pid] -= 1
+        if listening[pid]:
+            return
+        del listening[pid]
+        entry = bodies.get(pid)
+        if entry is None or entry.get("state") != "approved":
+            return
+        entry["state"] = "away"
+        core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
+                        about=entry["about"], host=entry["host"], state="away")
+
     async def events(request: web.Request) -> web.StreamResponse:
         response = web.StreamResponse(headers={
             "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
         })
         await response.prepare(request)
         reader = core.state.subscribe()
+        who = request.get("part") or request.get("window")
+        if who is not None:
+            listening[who] = listening.get(who, 0) + 1
         try:
             # The past only when asked for: a page that also loads the
             # history would otherwise show the last exchange twice.
@@ -591,7 +614,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 await response.write(_sse(past.view()))
             while True:
                 try:
-                    event = await asyncio.wait_for(reader.get(), 15.0)
+                    event = await asyncio.wait_for(reader.get(), HEARTBEAT_S)
                     await response.write(_sse(event.view()))
                 except TimeoutError:
                     await response.write(b": still here\n\n")
@@ -599,6 +622,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
             pass
         finally:
             core.state.unsubscribe(reader)
+            if who is not None:
+                left(who)
         return response
 
     async def state(request: web.Request) -> web.Response:

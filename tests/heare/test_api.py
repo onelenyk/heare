@@ -916,3 +916,33 @@ async def test_two_open_pages_are_two_parts_named_after_themselves(tmp_path):
     assert {bodies[pid]["host"] for pid in pids} == {
         pid.split("@", 1)[1] for pid in pids}
     await _close(room, client)
+
+
+async def test_a_closed_page_is_away_and_comes_back_by_knocking(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.05)
+    room, client, headers, settings = await _open(tmp_path)
+    paired = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "laptop"})
+    window = {"X-Heare-Token": paired.cookies["heare_session"].value}
+    knock = {"channel": "web", "forms": ["input", "output"]}
+    pid = (await (await client.post("/api/bodies", headers=window,
+                                     json=knock)).json())["pid"]
+
+    async def state() -> str:
+        bodies = (await (await client.get("/api/state", headers=headers)).json())["bodies"]
+        return bodies[pid]["state"]
+
+    stream = await client.get("/api/events", headers=window)
+    await stream.content.readany()
+    assert await state() == "approved"
+    stream.close()
+    for _ in range(50):
+        if await state() == "away":
+            break
+        await asyncio.sleep(0.02)
+    assert await state() == "away"
+
+    await client.post("/api/bodies", headers=window, json=knock)
+    assert await state() == "approved"
+    await _close(room, client)

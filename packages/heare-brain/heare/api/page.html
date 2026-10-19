@@ -693,6 +693,7 @@ function partWidget(pid, b) {
   }
   const controls = controlsFor(pid, b);
   if (controls) card.append(controls);
+  if (b.state === "away") card.append(el("p", "pstatus", "не на зв'язку"));
   if (settable && settingsOpen.has(pid)) card.append(settingsFor(pid, b));
   return card;
 }
