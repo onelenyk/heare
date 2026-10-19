@@ -128,7 +128,7 @@
   .part-name { font-weight:600; overflow-wrap:anywhere; }
   .part-state { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
   .part-gear { margin-left:auto; flex:none; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
-  .part-gear:hover { color:var(--accent); }
+  .part-gear:hover, .part-gear.on { color:var(--accent); }
   .part.wait .part-state { color:var(--warn); }
   .part .about { margin-top:3px; color:var(--soft); font-family:var(--sans); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
@@ -257,15 +257,10 @@
   /* ── settings: over the top, out of the way ── */
   .veil { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:10; }
   .veil.on { display:block; }
-  #settings, #partsettings { position:fixed; top:0; left:0; bottom:0; width:min(420px, 100%); background:var(--card); border-right:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(-100%); transition:transform .2s ease; z-index:11; }
-  #settings.on, #partsettings.on { transform:none; }
+  #settings { position:fixed; top:0; left:0; bottom:0; width:min(420px, 100%); background:var(--card); border-right:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(-100%); transition:transform .2s ease; z-index:11; }
+  #settings.on { transform:none; }
   #settings h2 { font-size:18px; margin-bottom:18px; }
-  #partsettings h2 { font-size:18px; margin:0; }
   #settings h3 { font:10px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--soft); margin:22px 0 10px; }
-  .drawer-head { display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:start; margin-bottom:18px; }
-  .drawer-sub { grid-column:1; color:var(--soft); font:11px var(--mono); }
-  .drawer-close { grid-column:2; grid-row:1 / span 2; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:16px; line-height:1.2; padding:0 2px; }
-  .drawer-close:hover { color:var(--ink); }
   .field { display:grid; gap:6px; margin-bottom:10px; }
   .field label { color:var(--soft); font-size:12px; }
   .field input, .field select { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:9px 11px; min-width:0; }
@@ -288,18 +283,20 @@
   .devicecode { display:flex; align-items:center; gap:8px; margin:12px 0 6px; flex-wrap:wrap; }
   .devicecode code { flex:1 1 150px; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:var(--bg); color:var(--ink); font:700 22px/1.2 var(--mono); letter-spacing:.14em; text-align:center; overflow-wrap:anywhere; }
   .devicecode .btn { flex:none; }
-  /* A part's settings drawer: the controls it declared in its "settings" group. */
-  #part-controls .keys { grid-template-columns:1fr; gap:10px; }
-  #part-controls .vol { font-size:12px; }
-  #part-controls .vol b { color:var(--ink); font-weight:500; overflow-wrap:anywhere; }
-  #part-controls .actions { margin-top:12px; }
-  #part-controls .plog { white-space:pre-wrap; overflow-wrap:anywhere; }
-  #part-controls select, #part-controls input, .part .part-controls input { min-width:0; width:100%; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 7px; color:inherit; font:12px var(--mono); }
+  /* A part's settings, opened in place on its card by ⚙: the controls it
+     declared in its "settings" group. */
+  .part .psettings { margin-top:9px; padding-top:8px; border-top:1px dashed var(--line); }
+  .part .psettings > small { display:block; margin-bottom:6px; color:var(--soft); font:9.5px var(--mono); letter-spacing:.14em; text-transform:uppercase; }
+  .part .psettings .part-controls { margin-top:0; }
+  .part .psettings .keys { grid-template-columns:1fr; gap:7px; }
+  .part .psettings .vol b { overflow-wrap:anywhere; font-weight:500; }
+  .part .psettings .plog { white-space:pre-wrap; overflow-wrap:anywhere; }
+  .part .psettings select, .part .part-controls input { width:100%; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 7px; color:inherit; font:11px var(--mono); }
   .btn.quiet { background:var(--card-2); color:var(--ink); border:1px solid var(--line); }
   .btn.quiet:hover { border-color:var(--accent); }
   .btn:disabled { opacity:.5; cursor:progress; }
-  #settings code, #partsettings code { font:11.5px var(--mono); }
-  #settings select:disabled, #partsettings select:disabled { opacity:.55; }
+  #settings code { font:11.5px var(--mono); }
+  #settings select:disabled { opacity:.55; }
   /* A narrow window stacks the regions in reading order: brain, its index,
      the parts' widgets, the canvas, then the conversation inline. */
   @media (max-width:900px) {
@@ -418,15 +415,6 @@
     <p class="note">одноразовий, живе 5 хвилин</p>
   </div>
   <p class="note" id="pair-code-note"></p>
-</aside>
-
-<aside id="partsettings">
-  <div class="drawer-head">
-    <h2 id="part-title">Руки</h2>
-    <button type="button" class="drawer-close" id="close-part" title="закрити">✕</button>
-    <span class="drawer-sub" id="part-channel"></span>
-  </div>
-  <div id="part-controls"></div>
 </aside>
 
 <div id="pairing" hidden>
@@ -681,12 +669,19 @@ function partWidget(pid, b) {
   const top = el("div", "part-top");
   top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid),
              el("span", "pchan", b.channel || ""));
-  if (b.state === "approved" && (b.ui || []).some(c => c.group === "settings")) {
-    const gear = el("button", "part-gear", "⚙");
+  const settable = b.state === "approved" && (b.ui || []).some(c => c.group === "settings");
+  if (settable) {
+    const open = settingsOpen.has(pid);
+    const gear = el("button", "part-gear" + (open ? " on" : ""), "⚙");
     gear.type = "button";
-    gear.title = "налаштування";
-    gear.setAttribute("aria-label", "налаштування");
-    gear.onclick = () => openPart(pid, b);
+    gear.title = open ? "сховати налаштування" : "налаштування";
+    gear.setAttribute("aria-label", gear.title);
+    gear.setAttribute("aria-expanded", String(open));
+    gear.onclick = () => {
+      if (open) settingsOpen.delete(pid); else settingsOpen.add(pid);
+      gear.blur();
+      parts(state && state.bodies);
+    };
     top.append(gear);
   }
   card.append(top);
@@ -698,6 +693,7 @@ function partWidget(pid, b) {
   }
   const controls = controlsFor(pid, b);
   if (controls) card.append(controls);
+  if (settable && settingsOpen.has(pid)) card.append(settingsFor(pid, b));
   return card;
 }
 
@@ -723,8 +719,33 @@ function parts(map) {
   }
   box.replaceChildren(frag);
   const ordered = [...all].sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
-  grid.replaceChildren(...ordered.map(([pid, b]) => partWidget(pid, b)));
-  paintPart();
+  // A card the person is working in is left where it is: moving or
+  // replacing it would close an open list or take the field being typed in.
+  const fresh = ordered.map(([pid, b]) => {
+    const kept = cards.get(pid);
+    const card = kept && kept.isConnected && kept.contains(document.activeElement) ? kept : partWidget(pid, b);
+    cards.set(pid, card);
+    return card;
+  });
+  const now = [...grid.children];
+  if (now.length === fresh.length && fresh.every((card, i) => card === now[i] || !fresh.includes(now[i]))) {
+    fresh.forEach((card, i) => { if (now[i] !== card) now[i].replaceWith(card); });
+  } else grid.replaceChildren(...fresh);
+}
+
+/* The cards are drawn again on every report, and the hands report their ACP
+   log many times a second. Open settings are kept, not redrawn, until what
+   they show changes, so the card does not flicker under the person's hand. */
+const cards = new Map(), settingsOpen = new Set(), settingsDrawn = new Map();
+function settingsFor(pid, b) {
+  const mine = (b.ui || []).filter(c => c.group === "settings");
+  const drawn = JSON.stringify(mine.map(c => [c, truth(b, c)]));
+  const kept = settingsDrawn.get(pid);
+  if (kept && kept.drawn === drawn) return kept.node;
+  const node = el("div", "psettings");
+  node.append(el("small", "", "налаштування"), controlsFor(pid, b, "settings") || el("span"));
+  settingsDrawn.set(pid, {drawn, node});
+  return node;
 }
 
 let born = null;
@@ -1127,32 +1148,8 @@ else {
 }
 
 /* ── settings ── */
-const shut = () => { for (const id of ["veil", "settings", "partsettings"]) $(id).classList.remove("on"); };
+const shut = () => { for (const id of ["veil", "settings"]) $(id).classList.remove("on"); };
 $("veil").onclick = shut;
-let openPid = null, openDrawn = "";
-function paintPart(force) {
-  if (!openPid || !$("partsettings").classList.contains("on")) return;
-  const b = (state && state.bodies || {})[openPid];
-  const mine = b ? (b.ui || []).filter(c => c.group === "settings") : [];
-  const drawn = JSON.stringify([b && b.state, mine.map(c => [c, truth(b, c)])]);
-  if (!force && drawn === openDrawn) return;
-  const box = $("part-controls");
-  if (!force && box.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
-  openDrawn = drawn;
-  box.replaceChildren((b && controlsFor(openPid, b, "settings")) || el("p", "note", "частина не на зв'язку"));
-}
-function openPart(pid, b) {
-  const name = PART_LABEL[b.channel] || b.channel || pid;
-  $("part-title").textContent = name.charAt(0).toUpperCase() + name.slice(1);
-  $("part-channel").textContent = b.channel || "";
-  $("settings").classList.remove("on");
-  $("partsettings").scrollTop = 0;
-  $("partsettings").classList.add("on");
-  $("veil").classList.add("on");
-  openPid = pid;
-  paintPart(true);
-}
-$("close-part").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
 function keyRows(have) {
   const list = $("keylist");
@@ -1245,7 +1242,6 @@ $("open-settings").onclick = () => {
       .then(s => loadModels(s[$("provider").value + "_model"] || ""))
       .catch(() => loadModels(""));
   };
-  $("partsettings").classList.remove("on");
   $("pair-code-box").hidden = true;
   $("pair-code-note").textContent = "";
   keys(); $("settings").classList.add("on"); $("veil").classList.add("on");
