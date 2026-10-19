@@ -127,6 +127,8 @@
   .part-top { display:flex; align-items:baseline; gap:8px; min-width:0; }
   .part-name { font-weight:600; overflow-wrap:anywhere; }
   .part-state { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .part-gear { margin-left:auto; flex:none; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
+  .part-gear:hover { color:var(--accent); }
   .part.wait .part-state { color:var(--warn); }
   .part .about { margin-top:3px; color:var(--soft); font-family:var(--sans); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
@@ -255,10 +257,15 @@
   /* ── settings: over the top, out of the way ── */
   .veil { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:10; }
   .veil.on { display:block; }
-  #settings { position:fixed; top:0; left:0; bottom:0; width:min(420px, 100%); background:var(--card); border-right:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(-100%); transition:transform .2s ease; z-index:11; }
-  #settings.on { transform:none; }
+  #settings, #partsettings { position:fixed; top:0; left:0; bottom:0; width:min(420px, 100%); background:var(--card); border-right:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(-100%); transition:transform .2s ease; z-index:11; }
+  #settings.on, #partsettings.on { transform:none; }
   #settings h2 { font-size:18px; margin-bottom:18px; }
+  #partsettings h2 { font-size:18px; margin:0; }
   #settings h3 { font:10px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--soft); margin:22px 0 10px; }
+  .drawer-head { display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:start; margin-bottom:18px; }
+  .drawer-sub { grid-column:1; color:var(--soft); font:11px var(--mono); }
+  .drawer-close { grid-column:2; grid-row:1 / span 2; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:16px; line-height:1.2; padding:0 2px; }
+  .drawer-close:hover { color:var(--ink); }
   .field { display:grid; gap:6px; margin-bottom:10px; }
   .field label { color:var(--soft); font-size:12px; }
   .field input, .field select { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:9px 11px; min-width:0; }
@@ -303,8 +310,8 @@
   .btn.quiet { background:var(--card-2); color:var(--ink); border:1px solid var(--line); }
   .btn.quiet:hover { border-color:var(--accent); }
   .btn:disabled { opacity:.5; cursor:progress; }
-  #settings code { font:11.5px var(--mono); }
-  #settings select:disabled { opacity:.55; }
+  #settings code, #partsettings code { font:11.5px var(--mono); }
+  #settings select:disabled, #partsettings select:disabled { opacity:.55; }
   @media (max-width:420px) { .choices { grid-template-columns:1fr; } }
   /* A narrow window stacks the regions in reading order: brain, its index,
      the parts' widgets, the canvas, then the conversation inline. */
@@ -411,7 +418,19 @@
   <div class="field"><label for="provider">провайдер</label><select id="provider"></select></div>
   <div class="field"><label for="modelname">модель</label><div class="pair"><input id="modelname" placeholder="назва моделі"><button class="btn" id="save-model">Зберегти</button></div></div>
   <p class="note" id="modelnote"></p>
-  <h3>Руки</h3>
+  <h3>Ключі</h3>
+  <div class="keylist" id="keylist"></div>
+  <div class="field"><label for="keyname">свій ключ</label><select id="keyname"></select></div>
+  <div class="field"><label for="keyvalue">значення</label><div class="pair"><input id="keyvalue" type="password" placeholder="встав токен" autocomplete="off"><button class="btn" id="save-key">Зберегти</button></div></div>
+  <p class="note" id="keynote">Значення не показуються ніколи — тільки те, звідки ключ.</p>
+</aside>
+
+<aside id="partsettings">
+  <div class="drawer-head">
+    <h2 id="part-title">Руки</h2>
+    <button type="button" class="drawer-close" id="close-part" title="закрити">✕</button>
+    <span class="drawer-sub" id="part-channel"></span>
+  </div>
   <p class="note">Виконавець: CLI, модель і вхід.</p>
   <div class="field"><label for="runner-type">тип</label><select id="runner-type"></select></div>
   <div class="field">
@@ -454,11 +473,6 @@
   <div class="checks" id="runner-checks"></div>
   <p class="note" id="runner-note"></p>
   <p class="note">Токен лежить у Keychain і ніколи не показується назад.</p>
-  <h3>Ключі</h3>
-  <div class="keylist" id="keylist"></div>
-  <div class="field"><label for="keyname">свій ключ</label><select id="keyname"></select></div>
-  <div class="field"><label for="keyvalue">значення</label><div class="pair"><input id="keyvalue" type="password" placeholder="встав токен" autocomplete="off"><button class="btn" id="save-key">Зберегти</button></div></div>
-  <p class="note" id="keynote">Значення не показуються ніколи — тільки те, звідки ключ.</p>
 </aside>
 
 <div id="pairing" hidden>
@@ -706,6 +720,14 @@ function partWidget(pid, b) {
   const top = el("div", "part-top");
   top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid),
              el("span", "pchan", b.channel || ""));
+  if ((b.forms || []).includes("executor")) {
+    const gear = el("button", "part-gear", "⚙");
+    gear.type = "button";
+    gear.title = "налаштування рук";
+    gear.setAttribute("aria-label", "налаштування рук");
+    gear.onclick = () => openPart(pid, b);
+    top.append(gear);
+  }
   card.append(top);
   if (b.about) card.append(el("p", "about", b.about));
   if (b.forms && b.forms.length) {
@@ -1143,8 +1165,19 @@ else {
 }
 
 /* ── settings ── */
-const shut = () => { for (const id of ["veil", "settings"]) $(id).classList.remove("on"); };
+const shut = () => { for (const id of ["veil", "settings", "partsettings"]) $(id).classList.remove("on"); };
 $("veil").onclick = shut;
+function openPart(pid, b) {
+  const name = PART_LABEL[b.channel] || b.channel || pid;
+  $("part-title").textContent = name.charAt(0).toUpperCase() + name.slice(1);
+  $("part-channel").textContent = b.channel || "";
+  $("settings").classList.remove("on");
+  $("partsettings").scrollTop = 0;
+  $("partsettings").classList.add("on");
+  $("veil").classList.add("on");
+  runnerLoad();
+}
+$("close-part").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
 function keyRows(have) {
   const list = $("keylist");
@@ -1197,7 +1230,8 @@ $("open-settings").onclick = () => {
   $("provider").replaceChildren(...(m.providers || []).map(p => new Option(p, p)));
   $("provider").value = m.wanted || m.provider || "";
   api("settings").then(s => { $("modelname").value = s[$("provider").value + "_model"] || ""; $("provider").onchange = () => { $("modelname").value = s[$("provider").value + "_model"] || ""; }; });
-  keys(); runnerLoad(); $("settings").classList.add("on"); $("veil").classList.add("on");
+  $("partsettings").classList.remove("on");
+  keys(); $("settings").classList.add("on"); $("veil").classList.add("on");
 };
 $("save-model").onclick = () => {
   const change = {llm_provider: $("provider").value};
