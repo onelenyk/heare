@@ -87,11 +87,10 @@ class PageWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate
 /// what a page cannot do: the microphone, and starting at login.
 final class InstallerWindow: PageWindow, WKScriptMessageHandler {
     var onDone: (() -> Void)?
-    private var loginAnswered = false
+    private let controller = WKUserContentController()
 
     init() {
         let configuration = WKWebViewConfiguration()
-        let controller = WKUserContentController()
         configuration.userContentController = controller
         super.init(title: "heare — налаштування", size: NSSize(width: 640, height: 760),
                    configuration: configuration)
@@ -99,6 +98,12 @@ final class InstallerWindow: PageWindow, WKScriptMessageHandler {
     }
 
     func show(_ config: Config) {
+        // What only the shell knows, told to the page before it draws: the
+        // login switch shows the truth, not a guess.
+        controller.removeAllUserScripts()
+        let said = "window.heareShell = {login: \(Login.on)};"
+        controller.addUserScript(WKUserScript(source: said, injectionTime: .atDocumentStart,
+                                              forMainFrameOnly: true))
         load(config.setupBase)
         front()
     }
@@ -109,20 +114,19 @@ final class InstallerWindow: PageWindow, WKScriptMessageHandler {
         if body["ask"] as? String == "microphone" {
             AVCaptureDevice.requestAccess(for: .audio) { _ in }
         }
-        if let on = body["login"] as? Bool {
-            loginAnswered = true
-            login(on)
-        }
+        if let on = body["login"] as? Bool { Login.set(on) }
         if body["done"] as? Bool == true {
-            // The switch is drawn on: a first run that never touched it
-            // asked for what it showed.
-            if !loginAnswered && SMAppService.mainApp.status != .enabled { login(true) }
             window.close()
             onDone?()
         }
     }
+}
 
-    private func login(_ on: Bool) {
+/// Starting with the Mac: one switch, read from and written to the system.
+enum Login {
+    static var on: Bool { SMAppService.mainApp.status == .enabled }
+
+    static func set(_ on: Bool) {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {

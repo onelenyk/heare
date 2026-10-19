@@ -121,6 +121,10 @@ final class Child {
         // The app shows the installer in its own window; the keeper must
         // not also open it in a browser.
         env["HEARE_NO_BROWSER"] = "1"
+        // The brain and the keeper watch this: if the app is killed and
+        // cannot stop them, they stop themselves instead of holding the
+        // ports against the next app (heare.lifeline).
+        env["HEARE_PARENT_PID"] = String(getpid())
         // An app opened from Finder gets launchd's bare PATH; hands look for
         // an agent CLI where installers usually put one.
         let home = Config.home.path

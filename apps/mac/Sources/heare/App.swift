@@ -115,6 +115,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         parts.submenu = list
         menu.addItem(parts)
         menu.addItem(action("Налаштування…", #selector(openSettings), key: ","))
+        let login = action("Запускати при вході", #selector(toggleLogin), key: "")
+        login.state = Login.on ? .on : .off
+        menu.addItem(login)
         menu.addItem(.separator())
         menu.addItem(action("Вийти", #selector(quit), key: "q"))
     }
@@ -123,6 +126,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let entry = NSMenuItem(title: title, action: selector, keyEquivalent: key)
         entry.target = self
         return entry
+    }
+
+    @objc private func toggleLogin() {
+        Login.set(!Login.on)
+        draw()
     }
 
     @objc private func toggle(_ sender: NSMenuItem) {

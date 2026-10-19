@@ -185,7 +185,7 @@ function parts() {
   out.push(foot(forward));
   return out;
 }
-let partSaid = "";
+let partSaid = "", loginSwitch = null;
 
 // A server has no Keychain: there the key goes to a file only its owner reads.
 const vault = () => machine.platform === "darwin"
@@ -235,7 +235,12 @@ function ready() {
   if (shell) {
     const mic = el("button", "btn", "Дозволити"); mic.onclick = () => shell.postMessage({ask: "microphone"});
     line("Мікрофон", "голос слухає тебе", mic);
-    const login = el("button", "sw on"); login.onclick = () => { login.classList.toggle("on"); shell.postMessage({login: login.classList.contains("on")}); };
+    // The shell tells the truth before the page draws; a first run starts
+    // with it on, and finishing says what the switch shows.
+    const truth = window.heareShell && window.heareShell.login;
+    const login = el("button", "sw" + (truth || !machine.done ? " on" : ""));
+    login.onclick = () => { login.classList.toggle("on"); shell.postMessage({login: login.classList.contains("on")}); };
+    loginSwitch = login;
     line("Запускати при вході", "heare піднімається разом з комп'ютером", login);
   } else {
     line("Дозволи", "мікрофон macOS попросить сам, коли голос уперше почне слухати");
@@ -248,7 +253,7 @@ function ready() {
     go.disabled = true;
     try {
       await post("done", {});
-      if (shell) shell.postMessage({done: true});
+      if (shell) shell.postMessage({login: Boolean(loginSwitch && loginSwitch.classList.contains("on")), done: true});
       else if (role !== "body") location.href = `http://127.0.0.1:${machine.api_port}/`;
       else { note.className = "say ok"; note.textContent = "готово — частини підключаються до мозку"; machine.done = true; draw(); }
     } catch (error) { note.className = "say bad"; note.textContent = error.message; go.disabled = false; }

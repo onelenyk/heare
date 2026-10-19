@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from heare import persona
+from heare import lifeline, persona
 from heare.api import pair as codes
 from heare.config import Settings
 from heare.core import Core
@@ -96,6 +96,7 @@ def main() -> int:
     if args.command == "code":
         print(codes.make(Path(Settings().pair_codes_file)))
         return 0
+    lifeline.watch()
     try:
         asyncio.run(Brain().run())
     except KeyboardInterrupt:

@@ -9,8 +9,10 @@ conversation goes on. It runs on your own machine, with your own keys.
 
 ### Mac
 
-1. Download `heare.dmg` from the latest release:
-   <https://github.com/onelenyk/heare/releases/latest>
+1. Download the app from the latest release:
+   <https://github.com/onelenyk/heare/releases/latest> —
+   `heare-arm64.dmg` for an Apple Silicon Mac (M1 and later),
+   `heare-x86_64.dmg` for an Intel one.
 2. Open it and drag heare to Applications.
 3. Open heare. The app is not signed by Apple, so the first time macOS
    will refuse to open it. Either:
@@ -80,7 +82,7 @@ from other machines appear there and wait until you approve them.
 
 ## Update
 
-- **Mac:** download the new `heare.dmg` from
+- **Mac:** download the new `.dmg` from
   [Releases](https://github.com/onelenyk/heare/releases/latest) and replace
   the app.
 - **Linux:** run the install command again with the new version number.

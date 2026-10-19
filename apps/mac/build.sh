@@ -15,9 +15,17 @@ APP="$DIST/heare.app"
 # Pinned to one release and checked by hash: the app ships whatever this
 # file is, so it must be the same file on every build.
 PY_RELEASE=20250918
-PY_FILE="cpython-3.12.11+${PY_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
+# Built for the machine it is built on: the wheels inside (numpy, the
+# audio ones) are that machine's, so an Intel app is built on an Intel Mac.
+case "$(uname -m)" in
+    arm64) PY_ARCH=aarch64
+           PY_SHA256=f7bd4b224b5257a2530a9f798612239d9f95043a8432d44c93761a01c58492e9 ;;
+    x86_64) PY_ARCH=x86_64
+            PY_SHA256=2fa58b2877effd507b481f69be6fe9f1a7a4bcb5b9dc8ab2e8acc02b927b8e19 ;;
+    *) echo "не знаю архітектури $(uname -m)" >&2; exit 1 ;;
+esac
+PY_FILE="cpython-3.12.11+${PY_RELEASE}-${PY_ARCH}-apple-darwin-install_only.tar.gz"
 PY_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PY_RELEASE}/${PY_FILE}"
-PY_SHA256=f7bd4b224b5257a2530a9f798612239d9f95043a8432d44c93761a01c58492e9
 
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/packages/heare-core/pyproject.toml" | head -1)
 [ -n "$VERSION" ] || { echo "no version in heare-core" >&2; exit 1; }

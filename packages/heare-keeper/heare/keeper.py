@@ -19,6 +19,7 @@ import sys
 import threading
 from pathlib import Path
 
+from heare import lifeline
 from heare.config import Settings
 from heare.setup import serve
 
@@ -145,6 +146,7 @@ def main() -> int:
     # The installer's page stays up after the first run: it is the settings.
     threading.Thread(target=_serve_form, name="heare-setup", daemon=True).start()
 
+    lifeline.watch()
     asyncio.run(kept(Path(settings.parts_dir)))
     return 0
 

@@ -1,20 +1,20 @@
-"""Put this checkout live on this Mac, or take the one before back.
+"""Put this checkout live on this Mac as the app, or take the one before back.
 
-    make live        build, install what is installed, restart, wait, say
-    make rollback    the release before the live one, the same way
+    make live        check, build heare.app, replace the one in Applications,
+                     start it, wait until every part is connected, say
+    make rollback    the app before the live one, the same way
     make releases    what there is to go back to
 
-Every release is kept as its wheels in ~/.heare/releases/<when>-<commit>/,
-so going back installs exactly what ran before, not a rebuild of an old
-tree. Only the tools already installed are updated: this is the daily
-update, not the installer (install.sh writes manifests and services).
+Every release is kept as its whole app in ~/.heare/releases/<when>-<commit>/,
+so going back runs exactly what ran before, not a rebuild of an old tree.
+This is the developer's daily update; a person updates by downloading the
+new .dmg.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -29,21 +29,14 @@ RELEASES = HOME / "releases"
 LIVE = RELEASES / "live"
 KEEP = 5
 BASE = os.environ.get("HEARE_URL", "http://127.0.0.1:9790")
-WAIT_S = 60.0
+WAIT_S = 90.0
+STOP_S = 20.0
 REPO = Path(__file__).resolve().parents[1]
-UID = os.getuid()
-
-# What each tool is installed with, besides its own wheel.
-TOOLS = {
-    "heare-brain": ("core", "reach"),
-    "heare-hands": ("core", "reach"),
-    "heare-eyes": ("core",),
-    "heare-voice": ("core",),
-    "heare-chat": ("core",),
-    "heare-keeper": ("core",),
-}
-# The parts the keeper runs; one that outlived its keeper is an orphan.
-PARTS = re.compile(r"/bin/heare-(eyes|voice|hands)$")
+APP = Path("/Applications/heare.app")
+BINARY = APP / "Contents/MacOS/heare"
+# Commands a terminal still wants, run with the app's own Python.
+SHIMS = {"heare-chat": "heare.chat"}
+SHIM_DIR = Path.home() / ".local/bin"
 
 
 def say(text: str = "") -> None:
@@ -65,10 +58,11 @@ def run(*argv: str, cwd: Path | None = None) -> str:
 # -- releases ---------------------------------------------------------------
 
 def releases() -> list[Path]:
-    """Oldest first; a release is a folder with its wheels and a note."""
+    """Oldest first; a release is a folder with its app and a note."""
     if not RELEASES.is_dir():
         return []
-    return sorted(p for p in RELEASES.iterdir() if (p / "release.json").exists())
+    return sorted(p for p in RELEASES.iterdir()
+                  if (p / "release.json").exists() and (p / "heare.app").is_dir())
 
 
 def live_name() -> str:
@@ -88,10 +82,13 @@ def build() -> Path:
     if dirty:
         say("  ! у дереві є незакомічене — воно теж поїде, але відкат до нього"
             " буде без коміту")
+    say("  збираю застосунок (make app)…")
+    run("make", "app", cwd=REPO)
     name = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{commit}" + ("-dirty" if dirty else "")
     release = RELEASES / name
     release.mkdir(parents=True)
-    run("uv", "build", "--all-packages", "-q", "-o", str(release), cwd=REPO)
+    # ditto keeps the bundle as macOS made it: links, modes, the signature.
+    run("ditto", str(REPO / "dist/heare.app"), str(release / "heare.app"))
     (release / "release.json").write_text(json.dumps({
         "commit": commit, "dirty": dirty,
         "built": datetime.now().isoformat(timespec="seconds"),
@@ -101,34 +98,62 @@ def build() -> Path:
 
 
 def prune() -> None:
-    """Keep the newest few, and never the live one."""
-    kept = releases()
-    for old in kept[:-KEEP]:
+    """Keep the newest few, and never the live one. Releases from before the
+    app (wheels only) cannot run any more and go too."""
+    if not RELEASES.is_dir():
+        return
+    runnable = releases()
+    for old in RELEASES.iterdir():
+        if old.is_dir() and old not in runnable and old.name != live_name():
+            shutil.rmtree(old, ignore_errors=True)
+    for old in runnable[:-KEEP]:
         if old.name != live_name():
             shutil.rmtree(old, ignore_errors=True)
 
 
-# -- installing and restarting ----------------------------------------------
+# -- the app ----------------------------------------------------------------
 
-def installed() -> list[str]:
-    listed = run("uv", "tool", "list")
-    return [tool for tool in TOOLS if re.search(rf"^{tool} ", listed, re.M)]
+def running_app() -> list[int]:
+    found = subprocess.run(["pgrep", "-f", str(BINARY)], capture_output=True, text=True)
+    return [int(pid) for pid in found.stdout.split()]
+
+
+def quit_app() -> None:
+    """Ask the app to go — it stops the brain, the keeper and the parts —
+    and wait until it has."""
+    pids = running_app()
+    for pid in pids:
+        os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + STOP_S
+    while running_app() and time.monotonic() < deadline:
+        time.sleep(0.3)
+    for pid in running_app():
+        os.kill(pid, signal.SIGKILL)
+    if pids:
+        say("  зупинив застосунок")
 
 
 def install(release: Path) -> None:
-    def wheel(name: str) -> str:
-        found = sorted(release.glob(f"heare_{name}-*.whl"))
-        if not found:
-            stop(f"у {release.name} немає heare-{name}")
-        return str(found[-1])
+    quit_app()
+    staged = APP.with_name("heare.app.new")
+    shutil.rmtree(staged, ignore_errors=True)
+    run("ditto", str(release / "heare.app"), str(staged))
+    if APP.exists():
+        shutil.rmtree(APP)
+    staged.rename(APP)
+    python = APP / "Contents/Resources/python/bin/python3"
+    SHIM_DIR.mkdir(parents=True, exist_ok=True)
+    for name, module in SHIMS.items():
+        shim = SHIM_DIR / name
+        if shim.is_symlink() or shim.exists():
+            shim.unlink()
+        shim.write_text(f'#!/bin/sh\nexec "{python}" -m {module} "$@"\n', encoding="utf-8")
+        shim.chmod(0o755)
+    say(f"  поставив {APP}")
 
-    for tool in installed():
-        withs = [arg for dep in TOOLS[tool] for arg in ("--with", wheel(dep))]
-        # --reinstall: every release is version 0.1.0, and uv must not keep
-        # what it has because the number did not change.
-        run("uv", "tool", "install", "-q", "--force", "--reinstall",
-            wheel(tool.removeprefix("heare-")), *withs)
-        say(f"  поставив {tool}")
+
+def start() -> None:
+    run("open", str(APP))
 
 
 def state() -> dict | None:
@@ -140,29 +165,6 @@ def state() -> dict | None:
             return json.load(answer)
     except (OSError, ValueError):
         return None
-
-
-def orphans() -> list[int]:
-    """Parts whose keeper is gone — one run by hand and stopped — that the
-    new keeper would otherwise run a second time."""
-    listed = run("ps", "-axo", "pid=,ppid=,command=")
-    found = []
-    for line in listed.splitlines():
-        pid, ppid, command = line.split(None, 2)
-        if ppid == "1" and PARTS.search(command):
-            found.append(int(pid))
-    return found
-
-
-def restart() -> None:
-    # The keeper first: its parts stop with it, and the new ones wait for
-    # the new brain instead of reconnecting to the old one.
-    for label in ("com.heare.keeper", "com.heare.brain"):
-        run("launchctl", "kickstart", "-k", f"gui/{UID}/{label}")
-    time.sleep(1.0)
-    for pid in orphans():
-        os.kill(pid, signal.SIGTERM)
-        say(f"  прибрав сироту {pid}")
 
 
 def wanted_parts() -> dict[str, str]:
@@ -195,27 +197,29 @@ def wait(before: str) -> bool:
     return False
 
 
-def falls_since(offset: int) -> list[str]:
-    log = HOME / "logs" / "parts.log"
-    try:
-        with log.open(encoding="utf-8", errors="replace") as lines:
-            lines.seek(offset)
-            return [line.strip() for line in lines if " fell " in line]
-    except OSError:
-        return []
+def falls_since(offsets: dict[Path, int]) -> list[str]:
+    found = []
+    for log, offset in offsets.items():
+        try:
+            with log.open(encoding="utf-8", errors="replace") as lines:
+                lines.seek(offset)
+                found += [line.strip() for line in lines if " fell " in line]
+        except OSError:
+            continue
+    return found
 
 
 def put_live(release: Path, why: str) -> int:
     started = time.monotonic()
     was = state()
     before = (was or {}).get("session", {}).get("started", "")
-    log = HOME / "logs" / "parts.log"
-    offset = log.stat().st_size if log.exists() else 0
+    logs = [HOME / "logs" / "app-keeper.log"]
+    offsets = {log: log.stat().st_size if log.exists() else 0 for log in logs}
     say(f"{why}: {release.name}")
     install(release)
-    restart()
+    start()
     ok = wait(before)
-    falls = falls_since(offset)
+    falls = falls_since(offsets)
     if not ok or falls:
         for line in falls[-5:]:
             say(f"  впало: {line}")
@@ -224,7 +228,7 @@ def put_live(release: Path, why: str) -> int:
         return 1
     LIVE.write_text(release.name, encoding="utf-8")
     n = note(release)
-    parts = ", ".join(sorted(wanted_parts()))
+    parts = ", ".join(sorted(wanted_parts())) or "без частин"
     say(f"живе {n['commit']}{' (з незакоміченим)' if n['dirty'] else ''} — "
         f"«{n.get('subject', '')}»")
     say(f"за {time.monotonic() - started:.0f} с; мозок і {parts} під'єднані, падінь 0")
@@ -235,9 +239,8 @@ def put_live(release: Path, why: str) -> int:
 
 def live() -> int:
     if sys.platform != "darwin":
-        stop("лише Mac (launchd); на сервері — install.sh")
+        stop("лише Mac; на сервері — install.sh")
     RELEASES.mkdir(parents=True, exist_ok=True)
-    say("збираю…")
     release = build()
     code = put_live(release, "оновлюю")
     prune()

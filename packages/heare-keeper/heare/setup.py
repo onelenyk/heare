@@ -25,7 +25,6 @@ from heare.pairing import pair
 ROLES = ("all", "body", "brain")
 INSTALLER = Path(__file__).with_name("installer.html")
 DEFAULT_PORT = 9791
-PORT_TRIES = 20
 
 
 def want_setup(settings: Settings) -> bool:
@@ -235,16 +234,14 @@ def _open(address: str) -> None:
 
 
 def serve(port: int | None = None) -> None:
-    start = port if port is not None else int(Settings().setup_port or DEFAULT_PORT)
-    httpd: _FormServer | None = None
-    for candidate in range(start, start + PORT_TRIES + 1):
-        try:
-            httpd = _FormServer(("127.0.0.1", candidate))
-            break
-        except OSError:
-            continue
-    if httpd is None:
-        raise OSError(f"немає вільного порту від {start} до {start + PORT_TRIES}")
+    # Exactly the configured port: the app and the person look for the page
+    # there, and a page that moved to the next free port quietly was a page
+    # nobody could find.
+    port = port if port is not None else int(Settings().setup_port or DEFAULT_PORT)
+    try:
+        httpd = _FormServer(("127.0.0.1", port))
+    except OSError as error:
+        raise OSError(f"порт {port} зайнятий — сторінка налаштувань недоступна: {error}") from error
 
     address = f"http://127.0.0.1:{httpd.server_address[1]}/"
     print(f"форма: {address}", file=sys.stderr, flush=True)
