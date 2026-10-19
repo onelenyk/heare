@@ -19,7 +19,7 @@ from heare import part
 
 UI = [
     {"name": "printing", "kind": "toggle", "label": "Друкувати", "value": True},
-    {"name": "state", "kind": "label", "label": "Стан",
+    {"name": "state", "kind": "label", "label": "Стан", "head": True,
      "value": "слухає термінал"},
 ]
 

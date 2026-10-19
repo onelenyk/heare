@@ -27,7 +27,8 @@ logger = logging.getLogger("heare.eyes")
 ABOUT = "очі: застосунок, простій, чи щось грає"
 UI = [
     {"name": "looking", "kind": "toggle", "label": "Дивитись", "value": True},
-    {"name": "sees", "kind": "label", "label": "Бачить", "value": "тихо"},
+    {"name": "sees", "kind": "label", "label": "Бачить", "value": "тихо",
+     "head": True},
 ]
 
 

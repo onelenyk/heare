@@ -66,8 +66,6 @@
   .key:hover:not(:disabled) { border-color:var(--accent); }
   .key:disabled { opacity:.4; cursor:default; }
   .key b { font-weight:600; } .key small { display:block; color:var(--soft); font-size:10.5px; }
-  .key .led { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; }
-  .key.off { border-color:var(--bad); } .key.off .led { background:var(--bad); }
   .key.wide { grid-column:1 / -1; }
   .key.stop { background:var(--bad); border-color:var(--bad); color:var(--accent-ink); justify-content:center; font-weight:700; }
   .key.stop:hover { filter:brightness(1.1); }
@@ -96,13 +94,30 @@
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .chip { padding:4px 10px; border:1px solid var(--line); border-radius:999px; background:transparent; cursor:pointer; font-size:11.5px; }
   .chip:hover { border-color:var(--accent); color:var(--accent); }
-  /* ── the parts that connect to the brain: rows in the index, widgets above
-        the canvas ── */
-  #partcol { grid-column:2; grid-row:1; min-width:0; min-height:0; overflow:hidden; border-bottom:1px solid var(--line); background:var(--bg); }
-  #partcol .band { padding:12px 22px 0; }
-  #partwidgets { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); align-content:start; align-items:start; gap:10px; padding:10px 22px 14px; min-width:0; overflow:hidden; }
+  /* ── the parts that connect to the brain: rows in the index, a strip of
+        cards above the canvas ──
+     The strip and the canvas stand on one grid — the same columns, gap and
+     edges — so the parts read as the top row of the same surface. A part
+     gets a card; a page or a part that is away gets a chip in one line under
+     them, so the strip stays about one row high. A part's settings open in a
+     drawer across the strip, under the row of its card: the cards never move
+     and never grow into a long column. */
+  #app { --col:270px; --gap:16px; --pad:22px; }
+  #partcol { grid-column:2; grid-row:1; min-width:0; min-height:0; overflow:hidden; scrollbar-gutter:stable; border-bottom:1px solid var(--line); background:var(--bg); }
+  #partcol .band { padding:12px var(--pad) 0; min-height:27px; }
+  #partcol .band button { margin-left:auto; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:10px; padding:0; }
+  #partcol .band button:hover { color:var(--accent); }
+  #partfold { display:none; flex-wrap:wrap; gap:4px 12px; min-width:0; font-size:11px; color:var(--soft); }
+  #partfold span { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+  #partfold b { color:var(--ink); font-weight:600; font-size:11px; letter-spacing:0; text-transform:none; }
+  #partcol.folded #partfold { display:flex; }
+  #partcol.folded #partwidgets, #partcol.folded #partchips { display:none; }
+  #partcol.folded .band { padding-bottom:12px; }
+  #partwidgets { position:relative; display:grid; grid-template-columns:repeat(auto-fill, minmax(var(--col), 1fr)); align-items:start; gap:var(--gap); padding:12px var(--pad) 0; min-width:0; }
   #partwidgets > .empty, #bodies > .empty { border:1px dashed var(--line); border-radius:12px; padding:10px 12px; }
   #partwidgets > .empty { grid-column:1 / -1; }
+  #partchips { display:flex; flex-wrap:wrap; gap:6px 8px; padding:10px var(--pad) 14px; min-width:0; }
+  #partchips:empty { padding-top:0; }
 
   #bodies { display:grid; gap:4px; min-width:0; }
   .host { display:flex; align-items:center; gap:8px; color:var(--soft); font-size:10.5px; margin:2px 4px 0; overflow-wrap:anywhere; }
@@ -122,31 +137,61 @@
   .partrow.asking { flex-wrap:wrap; height:auto; padding:6px 2px; row-gap:6px; }
   .partrow.asking .pactions { flex-basis:100%; justify-content:flex-end; align-items:center; gap:6px; }
   .partrow .mini { padding:1px 6px; font-size:10px; line-height:1.35; }
-  .pchan { padding:1px 6px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:9.5px; letter-spacing:.04em; }
   .part .plog { grid-column:1 / -1; max-height:120px; overflow:auto; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--soft); font:10.5px/1.45 var(--mono); white-space:pre-wrap; }
 
-  .part { border:1px solid var(--line); border-radius:12px; padding:11px 12px; background:var(--card); min-width:0; }
+  /* A card: who and what it does now on top, its controls as rows. */
+  .part { border:1px solid var(--line); border-radius:16px; padding:13px 15px; background:var(--card); min-width:0; transition:border-color .2s, box-shadow .2s; }
   .part.wait { border-color:var(--warn); background:linear-gradient(rgba(219,182,79,.08), rgba(219,182,79,.08)), var(--card); }
-  .part.away { opacity:.6; border-style:dashed; }
-  .part-top { display:flex; align-items:baseline; gap:8px; min-width:0; }
-  .part-name { font-weight:600; overflow-wrap:anywhere; }
-  .part-state { margin-left:auto; color:var(--soft); font-size:10.5px; white-space:nowrap; }
-  .part-gear { margin-left:auto; flex:none; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
+  .part.open, .part.lit, .pchip.lit { border-color:var(--accent); }
+  .part.lit, .pchip.lit { box-shadow:0 0 0 3px rgba(157,124,255,.12); }
+  .part-top { display:flex; align-items:center; gap:8px; min-width:0; }
+  .part-name { font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .part-state { margin-left:auto; color:var(--soft); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .part-gear { flex:none; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
   .part-gear:hover, .part-gear.on { color:var(--accent); }
   .part.wait .part-state { color:var(--warn); }
-  .part .about { margin-top:3px; color:var(--soft); font-family:var(--sans); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .part .about { margin-top:3px; color:var(--soft); font-family:var(--sans); font-size:11.5px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .part .phost { margin-top:2px; color:var(--soft); font:10.5px var(--mono); }
   .badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
   .badge { padding:1px 6px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:10px; }
-  .badge.input { color:var(--info); } .badge.output { color:var(--accent); } .badge.executor { color:var(--ok); }
-  .part .actions { display:flex; gap:6px; margin-top:7px; }
-  .part .part-controls { margin-top:7px; }
-  .part .part-controls .keys { grid-template-columns:1fr 1fr; gap:5px; }
-  .part .part-controls .vol { font-size:11px; gap:7px; }
+  .part .actions { display:flex; gap:6px; margin-top:9px; }
+  .part .part-controls { margin-top:9px; }
+  .part .part-controls .keys { grid-template-columns:1fr; gap:6px; }
+  .part .part-controls .vol { grid-template-columns:76px minmax(0,1fr) auto; font-size:11.5px; gap:8px; }
   .part .part-controls .vol b { color:var(--ink); }
   .part .part-controls select { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:3px 6px; color:inherit; min-width:0; font-size:11px; }
-  .part .pstatus { margin-top:7px; padding-top:6px; border-top:1px dashed var(--line); color:var(--soft); font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .part.gone { display:flex; gap:6px; border:0; padding:2px 0; background:none; color:var(--soft); font-size:11.5px; overflow-wrap:anywhere; }
-  .part.gone b { font-weight:600; }
+  .part .pfacts { margin-top:8px; color:var(--soft); font-size:11px; overflow-wrap:anywhere; }
+  .part .pfacts b { color:var(--ink); font-weight:500; }
+  /* A switch is a row: what it turns on the left, the switch on the right.
+     Off is grey — a choice the person made, not a fault. */
+  .swrow { display:flex; align-items:center; gap:10px; width:100%; min-width:0; padding:2px 0; border:0; background:transparent; color:var(--ink); cursor:pointer; text-align:left; font-size:12.5px; }
+  .swrow > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .swrow .sw { margin-left:auto; flex:none; position:relative; width:30px; height:17px; border-radius:999px; background:var(--line); transition:background .15s; }
+  .swrow .sw::after { content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--soft); transition:left .15s, background .15s; }
+  .swrow.on .sw { background:var(--accent); }
+  .swrow.on .sw::after { left:15px; background:var(--accent-ink); }
+  .swrow:hover .sw { box-shadow:0 0 0 3px rgba(157,124,255,.15); }
+  /* A chip: a page, or a part that is not here — one line, its switches in it. */
+  .pchip { display:inline-flex; align-items:center; gap:7px; max-width:100%; min-width:0; padding:4px 11px; border:1px solid var(--line); border-radius:999px; background:var(--card); font-size:11.5px; }
+  .pchip > b { font-weight:600; white-space:nowrap; }
+  .pchip .pstate { color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .pchip.away, .pchip.rejected, .pchip.expired { opacity:.6; border-style:dashed; background:transparent; }
+  .pchip .part-controls, .pchip .keys { display:flex; gap:10px; margin:0; }
+  .pchip .swrow { width:auto; font-size:11px; color:var(--soft); gap:7px; }
+  .pchip .swrow .sw { transform:scale(.85); }
+  /* The drawer: a part's settings across the strip, its tongue under the card. */
+  .pdrawer { grid-column:1 / -1; position:relative; border:1px solid var(--accent); border-radius:16px; background:var(--card); padding:12px 16px 14px; min-width:0; }
+  .pdrawer::before { content:""; position:absolute; top:-7px; left:calc(var(--tongue, 40px) - 6px); width:12px; height:12px; background:var(--card); border-left:1px solid var(--accent); border-top:1px solid var(--accent); transform:rotate(45deg); }
+  .pdrawer-top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .pdrawer-top small { color:var(--soft); font:9.5px var(--mono); letter-spacing:.14em; text-transform:uppercase; }
+  .pdrawer-top button { margin-left:auto; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:13px; padding:0 2px; }
+  .pdrawer-top button:hover { color:var(--accent); }
+  .pdrawer .keys { grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:8px 28px; }
+  .pdrawer .vol { grid-column:auto; grid-template-columns:76px minmax(0,1fr) auto; font-size:11.5px; gap:8px; }
+  .pdrawer .vol b { overflow-wrap:anywhere; font-weight:500; color:var(--ink); }
+  .pdrawer .plog { grid-column:1 / -1; max-height:160px; overflow:auto; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--soft); font:10.5px/1.45 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+  .pdrawer .actions { display:flex; gap:6px; margin-top:10px; justify-content:flex-end; }
+  .pdrawer select, .pdrawer input, .part .part-controls input { width:100%; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 7px; color:inherit; font:11px var(--mono); }
   .mini:disabled { opacity:.4; cursor:default; }
   .mini:disabled:hover { border-color:var(--line); }
   /* ── the conversation: a bar under everything, its transcript a drawer
@@ -159,7 +204,7 @@
   #talkdrawer { position:absolute; left:0; right:0; bottom:100%; z-index:8; display:none; flex-direction:column; max-height:45vh; background:var(--card); border-top:1px solid var(--line); box-shadow:0 -24px 70px rgba(0,0,0,.55); }
   #talkdrawer.on { display:flex; }
   #talkdrawer .band { flex:none; padding:12px 16px 0; }
-  #stage .band { padding:14px 22px 0; }
+  #stage .band { padding:14px var(--pad) 0; }
   #talk { flex:1; min-height:0; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:7px; }
   .line { max-width:88%; padding:7px 11px; border-radius:12px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.45; }
   .me { align-self:flex-end; background:var(--accent); color:var(--accent-ink); border-bottom-right-radius:4px; }
@@ -182,9 +227,9 @@
   .stopask span { color:var(--soft); }
 
   /* ── the canvas: one screen of widgets ── */
-  #stage { grid-column:2; grid-row:2; position:relative; min-width:0; min-height:0; overflow-y:auto; background:
+  #stage { grid-column:2; grid-row:2; position:relative; min-width:0; min-height:0; overflow-y:auto; scrollbar-gutter:stable; background:
     radial-gradient(1200px 500px at 70% -10%, rgba(157,124,255,.07), transparent 60%), var(--bg); }
-  #live { display:grid; grid-template-columns:repeat(auto-fill, minmax(270px, 1fr)); grid-auto-flow:dense; gap:16px; padding:14px 22px 22px; align-items:start; }
+  #live { display:grid; grid-template-columns:repeat(auto-fill, minmax(var(--col), 1fr)); grid-auto-flow:dense; gap:var(--gap); padding:14px var(--pad) 22px; align-items:start; }
   .blk { position:relative; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; min-width:0; transition:box-shadow .9s ease, border-color .9s ease; }
   .blk.m { grid-column:span 2; } .blk.l { grid-column:1 / -1; }
   @media (max-width:1100px) { .blk.m { grid-column:1 / -1; } }
@@ -289,13 +334,6 @@
   .devicecode .btn { flex:none; }
   /* A part's settings, opened in place on its card by ⚙: the controls it
      declared in its "settings" group. */
-  .part .psettings { margin-top:9px; padding-top:8px; border-top:1px dashed var(--line); }
-  .part .psettings > small { display:block; margin-bottom:6px; color:var(--soft); font:9.5px var(--mono); letter-spacing:.14em; text-transform:uppercase; }
-  .part .psettings .part-controls { margin-top:0; }
-  .part .psettings .keys { grid-template-columns:1fr; gap:7px; }
-  .part .psettings .vol b { overflow-wrap:anywhere; font-weight:500; }
-  .part .psettings .plog { white-space:pre-wrap; overflow-wrap:anywhere; }
-  .part .psettings select, .part .part-controls input { width:100%; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 7px; color:inherit; font:11px var(--mono); }
   .btn.quiet { background:var(--card-2); color:var(--ink); border:1px solid var(--line); }
   .btn.quiet:hover { border-color:var(--accent); }
   .btn:disabled { opacity:.5; cursor:progress; }
@@ -308,7 +346,7 @@
     #left { grid-column:1; grid-row:auto; height:auto; overflow:visible; border-right:0; }
     #pult { flex:none; overflow:visible; }
     #partcol { grid-column:1; grid-row:auto; overflow:visible; }
-    #partwidgets { overflow:visible; padding:10px 14px 14px; }
+    #app { --pad:14px; }
     #stage { grid-column:1; grid-row:auto; height:70vh; }
     #talkcol { grid-column:1; grid-row:auto; position:static; padding:10px 14px 14px; }
     #talkdrawer { position:static; max-height:none; margin-bottom:8px; border:1px solid var(--line); border-radius:12px; box-shadow:none; }
@@ -376,8 +414,9 @@
   </div>
 
   <section id="partcol">
-    <div class="band"><b>Віджети частин</b></div>
+    <div class="band"><b>Частини</b><div id="partfold"></div><button type="button" id="partfoldbtn" aria-expanded="true">згорнути</button></div>
     <div id="partwidgets"></div>
+    <div id="partchips"></div>
   </section>
 
   <main id="stage">
@@ -582,21 +621,36 @@ const FORM = {input: "вхід", output: "вихід", executor: "виконав
 const PART_LABEL = {web: "сторінка", eyes: "очі", text: "чат", voice: "голос", opencode: "руки"};
 const PART_STATE = {pending: "чекає", approved: "під'єднано", away: "не на зв'язку", rejected: "відхилено", expired: "не дочекався"};
 const PART_ORDER = {pending: 0, approved: 1, away: 2, rejected: 3, expired: 4};
+// Where a card stands on the strip. Always the same order, so a part that
+// drops out or comes back moves nothing; only a part that asks comes first.
+const PART_PLACE = {voice: 1, opencode: 2, eyes: 3, text: 4};
+const placeOf = (pid, b) => b.state === "pending" ? 0
+  : pid === webPid ? 8 : pid.startsWith("window@") ? 9
+  : PART_PLACE[b.channel] ?? ((b.forms || []).includes("executor") ? 2 : 5);
+// A page has one switch, and a part that is away has none to offer: both
+// are a chip in one line under the cards, not a card.
+const isChip = (pid, b) => pid.startsWith("window@") || !["approved", "pending"].includes(b.state);
+const nameOf = (pid, b) => pid === webPid ? "ця сторінка"
+  : pid.startsWith("window@") ? "сторінка · " + (b.host || pid.slice(7))
+  : PART_LABEL[b.channel] || b.channel || pid;
 
 const truth = (b, c) => (b.values && Object.prototype.hasOwnProperty.call(b.values, c.name)) ? b.values[c.name] : c.value;
 
 function controlsFor(pid, b, group = "") {
   const list = (Array.isArray(b.ui) ? b.ui : []).filter(c => (c.group || "") === group);
   if (b.state !== "approved" || !list.length) return null;
-  const grid = el("div", "keys"), extra = el("div", "actions");
+  const grid = el("div", "keys"), extra = el("div", "actions"), facts = el("p", "pfacts");
   for (const c of list) {
     const value = truth(b, c);
     if (c.kind === "toggle") {
-      const key = el("button", "key" + (value ? "" : " off")), text = el("span");
-      text.append(el("b", "", c.label || c.name), el("small", "", value ? "увімк" : "вимк"));
-      key.append(el("span", "led"), text);
-      key.onclick = () => turn(pid, c.name, !value);
-      grid.append(key);
+      const row = el("button", "swrow" + (value ? " on" : ""));
+      row.type = "button";
+      row.setAttribute("role", "switch");
+      row.setAttribute("aria-checked", String(Boolean(value)));
+      row.title = value ? "увімкнено" : "вимкнено";
+      row.append(el("span", "", c.label || c.name), el("i", "sw"));
+      row.onclick = () => turn(pid, c.name, !value);
+      grid.append(row);
     } else if (c.kind === "slider") {
       const row = el("div", "vol"), range = el("input");
       range.type = "range"; range.min = c.min ?? 0; range.max = c.max ?? 1;
@@ -623,9 +677,18 @@ function controlsFor(pid, b, group = "") {
       row.append(el("span", "", c.label || c.name), field, el("span", ""));
       grid.append(row);
     } else if (c.kind === "label") {
-      const row = el("div", "vol");
-      row.append(el("span", "", c.label || c.name), el("b", "", String(value ?? "")), el("span", ""));
-      grid.append(row);
+      // The one marked head is what the part is doing now: the card's top
+      // says it. The rest are facts — on a card one quiet line, in the
+      // drawer a row each, where there is room to read them.
+      if (c.head) continue;
+      if (group) {
+        const row = el("div", "vol");
+        row.append(el("span", "", c.label || c.name), el("b", "", String(value ?? "")), el("span", ""));
+        grid.append(row);
+      } else {
+        if (facts.childNodes.length) facts.append(" · ");
+        facts.append((c.label || c.name) + " ", el("b", "", String(value ?? "—")));
+      }
     } else if (c.kind === "button") {
       const push = el("button", "mini" + (c.action === "stop" ? " yes" : ""), c.label || c.name);
       push.onclick = () => turn(pid, c.name, true);
@@ -636,8 +699,15 @@ function controlsFor(pid, b, group = "") {
   }
   const box = el("div", "part-controls");
   if (grid.childElementCount) box.append(grid);
+  if (facts.childNodes.length) box.append(facts);
   if (extra.childElementCount) box.append(extra);
-  return box;
+  return box.childElementCount ? box : null;
+}
+
+// The person's answer to a part, and forgetting one.
+function partCall(pid, what, btn) {
+  btn.disabled = true;
+  api(`bodies/${encodeURIComponent(pid)}/${what}`, {method: "POST"}).catch(() => { btn.disabled = false; });
 }
 
 /* Forgetting a window takes its key: that page goes back to pairing, and if
@@ -649,24 +719,20 @@ function partRow(pid, b) {
   row.append(el("span", "pdot " + b.state));
   row.append(el("b", "pname", (PART_LABEL[b.channel] || b.channel || pid) + (pid === webPid ? " · ця" : "")));
   row.append(el("span", "pstate " + b.state, PART_STATE[b.state] || b.state));
+  // The list is the registry, the strip the controls: pointing at a row
+  // shows which card on the strip it is.
+  row.onmouseenter = () => lit(pid, true);
+  row.onmouseleave = () => lit(pid, false);
   const acts = el("div", "pactions");
-  const decide = (what, btn) => {
-    btn.disabled = true;
-    api(`bodies/${encodeURIComponent(pid)}/${what}`, {method: "POST"}).catch(() => { btn.disabled = false; });
-  };
-  const forget = btn => {
-    btn.disabled = true;
-    api(`bodies/${encodeURIComponent(pid)}/forget`, {method: "POST"}).catch(() => { btn.disabled = false; });
-  };
   if (b.state === "pending") {
     const yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Відхилити");
-    yes.onclick = () => decide("approve", yes);
-    no.onclick = () => decide("reject", no);
+    yes.onclick = () => partCall(pid, "approve", yes);
+    no.onclick = () => partCall(pid, "reject", no);
     acts.append(yes, no);
   } else if (pid.startsWith("window@") && unpairing === pid) {
     row.classList.add("asking");
     const yes = el("button", "mini yes", "Відключити"), no = el("button", "mini", "Ні");
-    yes.onclick = () => { unpairing = null; forget(yes); };
+    yes.onclick = () => { unpairing = null; partCall(pid, "forget", yes); };
     no.onclick = () => { unpairing = null; parts(state && state.bodies); };
     acts.append(el("span", "pstate", pid === webPid ? "ця сторінка попросить код" : "вікно попросить код"), yes, no);
   } else if (pid.startsWith("window@")) {
@@ -676,48 +742,77 @@ function partRow(pid, b) {
     acts.append(gone);
   } else {
     const gone = el("button", "mini", "Забути");
-    gone.onclick = () => forget(gone);
+    gone.onclick = () => partCall(pid, "forget", gone);
     acts.append(gone);
   }
   row.append(acts);
   return row;
 }
 
-function partWidget(pid, b) {
-  const card = el("div", "part" + (b.state === "pending" ? " wait" : b.state === "away" ? " away" : ""));
-  const top = el("div", "part-top");
-  top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid),
-             el("span", "pchan", b.channel || ""));
-  const settable = b.state === "approved" && (b.ui || []).some(c => c.group === "settings");
-  if (settable) {
-    const open = settingsOpen.has(pid);
+function lit(pid, on) {
+  for (const n of document.querySelectorAll("#partcol [data-pid]"))
+    if (n.dataset.pid === pid) n.classList.toggle("lit", on);
+}
+
+// What a part is called, what it is (in a tooltip, not on the card), and
+// what it is doing now.
+function partHead(pid, b) {
+  const top = el("div", "part-top"), name = el("b", "part-name", nameOf(pid, b));
+  name.title = [b.channel, ...(b.forms || []).map(f => FORM[f] || f), b.host].filter(Boolean).join(" · ");
+  const head = (b.ui || []).find(c => c.head && c.kind === "label");
+  const now = b.state === "approved" && head ? String(truth(b, head) ?? "") : PART_STATE[b.state] || b.state;
+  top.append(el("span", "pdot " + b.state), name, el("span", "part-state", now));
+  if (b.state === "approved" && (b.ui || []).some(c => c.group === "settings")) {
+    const open = drawerPid === pid;
     const gear = el("button", "part-gear" + (open ? " on" : ""), "⚙");
     gear.type = "button";
     gear.title = open ? "сховати налаштування" : "налаштування";
     gear.setAttribute("aria-label", gear.title);
     gear.setAttribute("aria-expanded", String(open));
     gear.onclick = () => {
-      if (open) settingsOpen.delete(pid); else settingsOpen.add(pid);
+      drawerPid = open ? null : pid;
       gear.blur();
       parts(state && state.bodies);
     };
     top.append(gear);
   }
-  card.append(top);
+  return top;
+}
+
+function partWidget(pid, b) {
+  const card = el("div", "part" + (b.state === "pending" ? " wait" : "") + (drawerPid === pid ? " open" : ""));
+  card.dataset.pid = pid;
+  card.append(partHead(pid, b));
   if (b.about) card.append(el("p", "about", b.about));
-  if (b.forms && b.forms.length) {
+  // Shown, because it is a wider trust than the rest: this part hears
+  // the whole conversation, not only its own channel.
+  if (b.hears === "all") {
     const badges = el("div", "badges");
-    for (const f of b.forms) badges.append(el("span", "badge" + (FORM[f] ? " " + f : ""), FORM[f] || f));
-    // Shown, because it is a wider trust than the rest: this part hears
-    // the whole conversation, not only its own channel.
-    if (b.hears === "all") badges.append(el("span", "badge", "чує всю розмову"));
+    badges.append(el("span", "badge", "чує всю розмову"));
     card.append(badges);
+  }
+  if (b.state === "pending") {
+    card.append(el("p", "phost", b.host || ""));
+    const acts = el("div", "actions");
+    const yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Ні");
+    yes.onclick = () => partCall(pid, "approve", yes);
+    no.onclick = () => partCall(pid, "reject", no);
+    acts.append(yes, no);
+    card.append(acts);
   }
   const controls = controlsFor(pid, b);
   if (controls) card.append(controls);
-  if (b.state === "away") card.append(el("p", "pstatus", "не на зв'язку"));
-  if (settable && settingsOpen.has(pid)) card.append(settingsFor(pid, b));
   return card;
+}
+
+function partChip(pid, b) {
+  const chip = el("div", "pchip " + b.state);
+  chip.dataset.pid = pid;
+  chip.append(el("span", "pdot " + b.state), el("b", "", nameOf(pid, b)));
+  const controls = controlsFor(pid, b);
+  if (controls) chip.append(controls);
+  else chip.append(el("span", "pstate", PART_STATE[b.state] || b.state));
+  return chip;
 }
 
 function parts(map) {
@@ -725,6 +820,8 @@ function parts(map) {
   if (!all.length) {
     box.replaceChildren(el("p", "empty", "жодна частина не під'єднана"));
     grid.replaceChildren(el("p", "empty", "жодна частина не під'єднана"));
+    $("partchips").replaceChildren();
+    $("partfold").replaceChildren();
     return;
   }
   const groups = new Map();
@@ -741,35 +838,101 @@ function parts(map) {
     for (const [pid, b] of list) frag.append(partRow(pid, b));
   }
   box.replaceChildren(frag);
-  const ordered = [...all].sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
+  const ordered = [...all].sort((a, b) => placeOf(...a) - placeOf(...b));
+  const big = ordered.filter(([pid, b]) => !isChip(pid, b));
+  if (drawerPid && !big.some(([pid]) => pid === drawerPid)) drawerPid = null;
   // A card the person is working in is left where it is: moving or
   // replacing it would close an open list or take the field being typed in.
-  const fresh = ordered.map(([pid, b]) => {
+  const fresh = big.map(([pid, b]) => {
     const kept = cards.get(pid);
     const card = kept && kept.isConnected && kept.contains(document.activeElement) ? kept : partWidget(pid, b);
     cards.set(pid, card);
     return card;
   });
-  const now = [...grid.children];
+  const now = [...grid.children].filter(n => n !== drawer);
   if (now.length === fresh.length && fresh.every((card, i) => card === now[i] || !fresh.includes(now[i]))) {
     fresh.forEach((card, i) => { if (now[i] !== card) now[i].replaceWith(card); });
-  } else grid.replaceChildren(...fresh);
+  } else grid.replaceChildren(...(fresh.length ? fresh : [el("p", "empty", "жодна частина не на зв'язку")]));
+  const chips = $("partchips");
+  if (!chips.contains(document.activeElement))
+    chips.replaceChildren(...ordered.filter(([pid, b]) => isChip(pid, b)).map(([pid, b]) => partChip(pid, b)));
+  $("partfold").replaceChildren(...ordered.map(([pid, b]) => {
+    const head = (b.ui || []).find(c => c.head && c.kind === "label");
+    const one = el("span");
+    one.append(el("i", "pdot " + b.state), el("b", "", nameOf(pid, b)),
+               b.state === "approved" && head ? String(truth(b, head) ?? "") : PART_STATE[b.state] || b.state);
+    return one;
+  }));
+  placeDrawer();
 }
 
 /* The cards are drawn again on every report, and the hands report their ACP
-   log many times a second. Open settings are kept, not redrawn, until what
-   they show changes, so the card does not flicker under the person's hand. */
-const cards = new Map(), settingsOpen = new Set(), settingsDrawn = new Map();
+   log many times a second. The drawer's settings are kept, not redrawn,
+   until what they show changes, so they do not flicker under the hand. */
+const cards = new Map(), settingsDrawn = new Map();
+let drawerPid = null;
+const drawer = el("section", "pdrawer");
 function settingsFor(pid, b) {
   const mine = (b.ui || []).filter(c => c.group === "settings");
   const drawn = JSON.stringify(mine.map(c => [c, truth(b, c)]));
   const kept = settingsDrawn.get(pid);
   if (kept && kept.drawn === drawn) return kept.node;
-  const node = el("div", "psettings");
-  node.append(el("small", "", "налаштування"), controlsFor(pid, b, "settings") || el("span"));
+  const node = controlsFor(pid, b, "settings") || el("span");
   settingsDrawn.set(pid, {drawn, node});
   return node;
 }
+
+/* The drawer goes under the row its card is in — on a phone, where a row is
+   one card, right under the card — and its tongue points at the card. */
+function placeDrawer() {
+  const b = drawerPid && state && state.bodies && state.bodies[drawerPid];
+  const card = b && cards.get(drawerPid);
+  if (!card || !card.isConnected) { drawer.remove(); return; }
+  if (drawer.dataset.pid !== drawerPid) {
+    drawer.dataset.pid = drawerPid;
+    const top = el("div", "pdrawer-top"), close = el("button", "", "✕");
+    close.type = "button"; close.title = "сховати налаштування";
+    close.onclick = () => { drawerPid = null; parts(state && state.bodies); };
+    top.append(el("small", "", "налаштування · " + nameOf(drawerPid, b)), close);
+    drawer.replaceChildren(top);
+  }
+  const node = settingsFor(drawerPid, b);
+  if (drawer.children[1] !== node && !(drawer.children[1] && drawer.children[1].contains(document.activeElement))) {
+    if (drawer.children[1]) drawer.children[1].replaceWith(node); else drawer.append(node);
+  }
+  // The rows are measured without the drawer, which is a row itself and
+  // would push the rest of its card's row down. Hiding it would take the
+  // field being typed in, so then it stays where it is.
+  if (!drawer.contains(document.activeElement)) {
+    drawer.hidden = true;
+    let last = card;
+    for (let n = card.nextElementSibling; n; n = n.nextElementSibling) {
+      if (n === drawer) continue;
+      if (n.offsetTop !== card.offsetTop) break;
+      last = n;
+    }
+    if (last.nextElementSibling !== drawer) last.after(drawer);
+    drawer.hidden = false;
+  }
+  drawer.style.setProperty("--tongue", (card.offsetLeft - drawer.offsetLeft + card.offsetWidth / 2) + "px");
+}
+addEventListener("resize", () => placeDrawer());
+addEventListener("keydown", ev => {
+  if (ev.key === "Escape" && drawerPid) { drawerPid = null; parts(state && state.bodies); }
+});
+
+// The strip can fold to one line when the canvas wants the room; the choice
+// is this browser's own and only a convenience, so a storage that refuses
+// costs nothing.
+const FOLD_KEY = "heare.parts.folded";
+function fold(on) {
+  $("partcol").classList.toggle("folded", on);
+  $("partfoldbtn").textContent = on ? "розгорнути" : "згорнути";
+  $("partfoldbtn").setAttribute("aria-expanded", String(!on));
+  try { localStorage.setItem(FOLD_KEY, on ? "1" : ""); } catch { /* kept for this visit only */ }
+}
+$("partfoldbtn").onclick = () => fold(!$("partcol").classList.contains("folded"));
+try { if (localStorage.getItem(FOLD_KEY)) fold(true); } catch { /* unfolded */ }
 
 let born = null;
 const voiceOf = s => {
@@ -1092,7 +1255,7 @@ const knock = () => api("bodies", {method: "POST", body: {
   channel: "web", forms: ["input", "output"], about: "сторінка в браузері",
   ui: [
     {name: "aloud", kind: "toggle", label: "Чути відповідь", value: aloud},
-    {name: "state", kind: "label", label: "Стан", value: "на зв'язку"},
+    {name: "state", kind: "label", label: "Стан", value: "на зв'язку", head: true},
   ]}}).then(answer => { webPid = (answer && answer.pid) || webPid; }).then(() => api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}})).catch(() => {});
 knock();

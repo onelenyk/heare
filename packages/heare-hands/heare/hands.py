@@ -334,10 +334,11 @@ async def run() -> int:
         {"name": "taking", "kind": "toggle", "label": "Брати справи",
          "value": True},
         {"name": "agent", "kind": "label", "label": "Агент", "value": name},
-        {"name": "work", "kind": "label", "label": "Стан",
+        {"name": "work", "kind": "label", "label": "Стан", "head": True,
          "value": "чекає" if agent is not None else "не готові"},
         {"name": "usage", "kind": "label", "label": "Ціна", "value": "—"},
-        {"name": "acp", "kind": "log", "label": "ACP", "value": ""},
+        {"name": "acp", "kind": "log", "label": "ACP", "value": "",
+         "group": "settings"},
     ] + await asyncio.to_thread(_settings_ui, settings)
     values = {c["name"]: c["value"] for c in ui if "value" in c}
     restart = asyncio.Event()

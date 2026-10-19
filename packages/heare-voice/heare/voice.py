@@ -39,7 +39,8 @@ UI = [
     {"name": "listen", "kind": "choice", "label": "Відповідає", "value": "judge",
      "options": [{"value": "judge", "label": "сам вирішує"},
                  {"value": "name", "label": "лише на ім'я"}]},
-    {"name": "mode", "kind": "label", "label": "Стан", "value": "чує"},
+    {"name": "mode", "kind": "label", "label": "Стан", "value": "чує",
+     "head": True},
 ]
 
 
