@@ -1,71 +1,126 @@
 # heare
 
-macOS voice assistant: it listens, decides when to answer, and acts
-through an agent (opencode over ACP) without blocking the conversation.
-
-The app is eight distributions under `packages/` — one core and five
-kinds of part (input, output,
-model, memory, executor; `packages/heare-core/heare/core/forms.py`). A channel (voice, text)
-is an input, an output, or both. Parts connect to the brain's door over
-HTTP, knock with a key, and wait for the person's approval on the page.
-
-The old app that lived in `src/` was removed on 18 October 2026; its last
-commit is tagged `legacy-app`.
-
-## Requirements
-
-- macOS with a microphone and speaker; `brew install portaudio`
-- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
-- keys for the model and the speech: set on the page, or in the Keychain
-  (service `heare`), or in `~/.heare/.env`
+heare is a voice assistant you talk to out loud. It listens, decides when
+it is being spoken to, answers in a voice, and can hand real work — files,
+commands, searches — to a coding agent on your computer while the
+conversation goes on. It runs on your own machine, with your own keys.
 
 ## Install
 
-From the repository, with the wheels built once (`uv build --all-packages -o dist`):
+### Mac
+
+1. Download `heare.dmg` from the latest release:
+   <https://github.com/onelenyk/heare/releases/latest>
+2. Open it and drag heare to Applications.
+3. Open heare. The app is not signed by Apple, so the first time macOS
+   will refuse to open it. Either:
+   - right-click (or Control-click) heare in Applications → **Open** →
+     **Open**, or
+   - open **System Settings → Privacy & Security**, scroll down to the
+     message about heare and click **Open Anyway**.
+
+   You only need to do this once.
+
+### Linux server
+
+The brain alone — no microphone needed — on a Linux machine you keep on:
 
 ```bash
-./install.sh --role mac --parts eyes,voice,hands   # brain + beacon + chosen parts
-./install.sh --role server                         # the brain alone
+curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.1.0/install.sh | sh -s -- --role server --from https://github.com/onelenyk/heare/releases/download/v0.1.0 --version 0.1.0
 ```
 
-The installer puts each distribution in its own tool environment, writes the
-manifests the beacon reads, and keeps everything alive with launchd or
-systemd. `--no-service` installs without starting.
+It installs [uv](https://docs.astral.sh/uv/) if it is missing, installs
+heare, and keeps it running with systemd. The same command for other
+choices (which parts, which role) is built for you on the project page,
+[site/index.html](site/index.html).
 
-## Run
+To run it in Docker instead, see [docker/](docker/).
 
-From a checkout:
+## First run
+
+The first time, heare opens a setup page in your browser
+(<http://127.0.0.1:9791/>). It asks three things:
+
+- **Role** — this computer as the whole assistant, as the brain only
+  (memory and conversation), or as a body that connects to a brain
+  elsewhere with an address and a pairing code from that brain's page.
+- **Parts** — what heare may use here: *voice* (microphone and speaker),
+  *eyes* (which app is in front, whether something is playing),
+  *hands* (a coding agent that does the work).
+- **Keys** — heare needs two:
+  - **DeepSeek**, for thinking: create a key at
+    <https://platform.deepseek.com/api_keys>
+  - **Groq**, for hearing (speech to text): create a key at
+    <https://console.groq.com/keys>
+
+  A key is written once and never shown again. Thinking needs DeepSeek;
+  hearing needs Groq only where the voice part runs.
+
+**Hands** need a coding agent already installed and signed in on this
+computer: [opencode](https://opencode.ai) or
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code). Without one,
+heare still talks; it just cannot do things for you.
+
+After setup, the assistant's own page is at <http://127.0.0.1:9790/>. New
+parts appear there and wait until you approve them. The setup page stays
+as the settings: open it again to change keys or parts.
+
+## Update
+
+- **Mac:** download the new `heare.dmg` from
+  [Releases](https://github.com/onelenyk/heare/releases/latest) and replace
+  the app.
+- **Linux:** run the install command again with the new version number.
+
+Your conversations, keys and settings stay where they are. The page shows
+which version is running beside the uptime, and marks any part that is on
+a different version from the brain.
+
+## Uninstall
+
+Stop the services, then remove what was installed:
+
+**Mac**
+
+```bash
+launchctl bootout gui/$(id -u)/com.heare.brain
+launchctl bootout gui/$(id -u)/com.heare.keeper
+rm ~/Library/LaunchAgents/com.heare.*.plist
+uv tool list | grep '^heare' | cut -d' ' -f1 | xargs -n1 uv tool uninstall
+rm -rf /Applications/heare.app
+```
+
+**Linux**
+
+```bash
+systemctl --user disable --now heare-brain heare-keeper
+rm ~/.config/systemd/user/heare-*.service
+uv tool list | grep '^heare' | cut -d' ' -f1 | xargs -n1 uv tool uninstall
+```
+
+Everything heare remembers — conversations, settings, logs — is in
+`~/.heare`. Delete that folder to forget it all. On a Mac, the keys are in
+Keychain Access under the name `heare`; delete those entries too.
+
+## Develop
+
+From a checkout, with Python 3.11+ and uv (`brew install portaudio` for
+the voice on a Mac):
 
 ```bash
 uv sync
-uv run heare-brain      # the brain, and the page on 127.0.0.1:9790
-uv run heare-chat       # the conversation in a terminal
-uv run heare-voice      # speech in, speech out
+make brain        # the brain, and its page on 127.0.0.1:9790
+make chat         # the conversation in a terminal
+make voice        # speech in, speech out
+
+make check        # lint + tests: no network, no keys
+make live         # check, then put this checkout live on this Mac
+make rollback     # back to the release before
+make release V=x.y.z   # one version everywhere, committed and tagged locally
 ```
 
-The page arrives without a token baked in: it is handed one when served.
-The parts are separate processes and knock on the brain:
+Pushing a `v*` tag makes CI build the wheels and publish the release.
 
-```bash
-uv run heare-hands      # the agent: files, commands, search
-uv run heare-eyes       # what is around: the front app, sound
-uv run heare-voice      # speech in, speech out
-uv run heare-chat       # the conversation in a terminal
-```
-
-## Test
-
-```bash
-make test     # the core against stand-ins: no network, no keys, no audio
-make check    # lint + test
-```
-
-`spine_live` tests leave the machine and cost money; they are excluded by
-default.
-
-## Where to read
-
-- [AGENTS.md](AGENTS.md) — the shape of the code, the rules, the commands
-- [docs/product/README.md](docs/product/README.md) — the plan: one mind,
-  many parts
+- [AGENTS.md](AGENTS.md) — the shape of the code and its rules
+- [docs/product/README.md](docs/product/README.md) — the plan
 - [docs/laws.md](docs/laws.md) — the laws it works under

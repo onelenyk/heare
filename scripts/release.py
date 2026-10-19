@@ -22,6 +22,8 @@ PYPROJECT = re.compile(r'^version = "([^"]+)"$', re.M)
 # The site's install command and footer name the release they install.
 SITE = (re.compile(r'const VERSION = "([^"]+)";'),
         re.compile(r"<span data-version>v([^<]+)</span>"))
+# The README's Linux one-liner names the release in three places.
+README = re.compile(r"(releases/download/v|heare/v|--version )\d+\.\d+\.\d+")
 
 
 def stop(text: str) -> None:
@@ -46,11 +48,11 @@ def parse(version: str) -> tuple[int, int, int]:
 
 
 def carriers(repo: Path = REPO) -> list[Path]:
-    """Every file that says the version: each package, and the site."""
+    """Every file that says the version: each package, the site, the README."""
     files = sorted(repo.glob("packages/*/pyproject.toml"))
-    site = repo / "site" / "index.html"
-    if site.exists():
-        files.append(site)
+    for extra in (repo / "site" / "index.html", repo / "README.md"):
+        if extra.exists():
+            files.append(extra)
     return files
 
 
@@ -72,6 +74,8 @@ def rewrite(path: Path, version: str) -> bool:
     text = path.read_text(encoding="utf-8")
     if path.name == "pyproject.toml":
         new = PYPROJECT.sub(f'version = "{version}"', text, count=1)
+    elif path.name == "README.md":
+        new = README.sub(lambda m: m.group(1) + version, text)
     else:
         new = SITE[0].sub(f'const VERSION = "{version}";', text)
         new = SITE[1].sub(f"<span data-version>v{version}</span>", new)
