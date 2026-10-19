@@ -346,6 +346,7 @@ async def test_the_built_in_page_is_served(tmp_path):
     page = await (await client.get("/")).text()
     assert "HEARE_TOKEN" not in page and "Керування" in page
     assert 'id="pairing"' in page  # a browser without a key asks for a code
+    assert "Пристрої" in page and "Підключити пристрій" in page
     await _close(room, client)
 
 
@@ -783,6 +784,43 @@ async def test_too_many_tries_from_one_address_are_slow(tmp_path):
         assert tried.status == 401
     late = await client.post("/api/pair", json={"code": "ZZZZZZZZ", "kind": "window"})
     assert late.status == 429
+    await _close(room, client)
+
+
+async def test_the_page_mints_a_code_that_pairs_a_window_once(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    answer = await client.post("/api/pair-code", headers=auth)
+    assert answer.status == 200
+    given = await answer.json()
+    assert len(given["code"]) == 8 and given["ttl"] == 300
+
+    first = await client.post(
+        "/api/pair", json={"code": given["code"], "kind": "window", "name": "phone"})
+    assert first.status == 200
+    again = await client.post(
+        "/api/pair", json={"code": given["code"], "kind": "window", "name": "phone"})
+    assert again.status == 401
+    await _close(room, client)
+
+
+async def test_a_pairing_code_is_not_minted_without_a_token(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    assert (await client.post("/api/pair-code")).status == 401
+    await _close(room, client)
+
+
+async def test_a_part_may_not_mint_a_pairing_code(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    part = {"X-Heare-Token": authlib.issue(
+        Path(settings.part_tokens_file), "voice@mac")}
+    assert (await client.post("/api/pair-code", headers=part)).status == 403
+    await _close(room, client)
+
+
+async def test_a_pairing_code_is_minted_once_every_two_seconds(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    assert (await client.post("/api/pair-code", headers=auth)).status == 200
+    assert (await client.post("/api/pair-code", headers=auth)).status == 429
     await _close(room, client)
 
 

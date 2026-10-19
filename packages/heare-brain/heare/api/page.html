@@ -283,6 +283,11 @@
   .kadopt { flex:none; padding:4px 8px; border:1px solid var(--line); border-radius:7px; background:transparent; color:var(--ink); font-size:11px; cursor:pointer; white-space:nowrap; }
   .kadopt:hover { border-color:var(--accent); color:var(--accent); }
   .kadopt:disabled { opacity:.45; cursor:progress; }
+  /* Devices: a fresh pairing code, taken on the page and typed on the new one. */
+  .devicehint { margin-bottom:10px; }
+  .devicecode { display:flex; align-items:center; gap:8px; margin:12px 0 6px; flex-wrap:wrap; }
+  .devicecode code { flex:1 1 150px; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:var(--bg); color:var(--ink); font:700 22px/1.2 var(--mono); letter-spacing:.14em; text-align:center; overflow-wrap:anywhere; }
+  .devicecode .btn { flex:none; }
   /* Hands: the executor — a CLI, a model, and one of two ways in. */
   .choices { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
   .choice { padding:9px 10px; border:1px solid var(--line); border-radius:9px; background:var(--card-2); color:var(--ink); cursor:pointer; text-align:left; transition:border-color .15s, background .15s; }
@@ -423,6 +428,14 @@
   <div class="field"><label for="keyname">свій ключ</label><select id="keyname"></select></div>
   <div class="field"><label for="keyvalue">значення</label><div class="pair"><input id="keyvalue" type="password" placeholder="встав токен" autocomplete="off"><button class="btn" id="save-key">Зберегти</button></div></div>
   <p class="note" id="keynote">Значення не показуються ніколи — тільки те, звідки ключ.</p>
+  <h3>Пристрої</h3>
+  <p class="note devicehint">Новий браузер чи телефон: візьми код тут і введи його там.</p>
+  <button type="button" class="btn quiet" id="pair-code">Підключити пристрій</button>
+  <div id="pair-code-box" hidden>
+    <div class="devicecode"><code id="pair-code-value"></code><button type="button" class="btn quiet" id="pair-code-copy">Копіювати</button></div>
+    <p class="note">одноразовий, живе 5 хвилин</p>
+  </div>
+  <p class="note" id="pair-code-note"></p>
 </aside>
 
 <aside id="partsettings">
@@ -478,7 +491,7 @@
 <div id="pairing" hidden>
   <form id="pairform" autocomplete="off">
     <h1>Підключити цей браузер</h1>
-    <p>Код показує машина мозку: <b>heare-brain code</b></p>
+    <p>Код покаже вже підключена сторінка: ⚙ → Пристрої. Або в терміналі: heare-brain code</p>
     <input id="paircode" maxlength="12" autocomplete="off" spellcheck="false" placeholder="8 символів">
     <button type="submit">Підключити</button>
     <p class="pairerror" id="pairerror" role="alert"></p>
@@ -1271,6 +1284,8 @@ $("open-settings").onclick = () => {
       .catch(() => loadModels(""));
   };
   $("partsettings").classList.remove("on");
+  $("pair-code-box").hidden = true;
+  $("pair-code-note").textContent = "";
   keys(); $("settings").classList.add("on"); $("veil").classList.add("on");
 };
 $("save-model").onclick = () => {
@@ -1288,6 +1303,31 @@ $("save-key").onclick = () => {
   api("keys", {method: "POST", body: {name, value}})
     .then(() => { $("keynote").textContent = `${name} збережено. Діє з наступної відповіді.`; keys(); refresh(); })
     .catch(why => { $("keynote").textContent = "Не збережено: " + why; });
+};
+$("pair-code").onclick = () => {
+  const button = $("pair-code"), note = $("pair-code-note");
+  button.disabled = true;
+  note.textContent = "";
+  api("pair-code", {method: "POST"})
+    .then(answer => {
+      $("pair-code-value").textContent = answer.code;
+      $("pair-code-copy").textContent = "Копіювати";
+      $("pair-code-box").hidden = false;
+    })
+    .catch(why => {
+      note.textContent = why === "too fast"
+        ? "зачекай пару секунд і спробуй ще раз"
+        : "не вдалося взяти код";
+    })
+    .finally(() => { button.disabled = false; });
+};
+$("pair-code-copy").onclick = () => {
+  const code = $("pair-code-value").textContent;
+  if (!code) return;
+  navigator.clipboard.writeText(code).then(() => {
+    $("pair-code-copy").textContent = "Скопійовано";
+    setTimeout(() => { $("pair-code-copy").textContent = "Копіювати"; }, 1500);
+  }).catch(() => {});
 };
 
 /* ── hands: the runner the executor starts ── */

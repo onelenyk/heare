@@ -234,6 +234,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     code_path = Path(settings.pair_codes_file)
     pace = Slow()
+    minted_at: dict[str, float] = {}
 
     async def pair(request: web.Request) -> web.Response:
         """A machine or a window with a one-time code takes a key of its own."""
@@ -260,6 +261,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
         answer.set_cookie(SESSION, token, httponly=True, samesite="Strict",
                           secure=secure, max_age=30 * 24 * 3600, path="/")
         return answer
+
+    async def pair_code(request: web.Request) -> web.Response:
+        """A paired page mints a code for a browser that is not paired yet."""
+        who = request.remote or "?"
+        now = time.time()
+        if now - minted_at.get(who, 0.0) < 2.0:
+            raise web.HTTPTooManyRequests(text="too fast")
+        minted_at[who] = now
+        return web.json_response({
+            "code": codes.make(code_path),
+            "ttl": int(codes.TTL_S),
+        })
 
     async def body(request: web.Request) -> dict:
         try:
@@ -877,6 +890,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     app.add_routes([
         web.get("/", page),
         web.post("/api/pair", pair),
+        web.post("/api/pair-code", pair_code),
         web.post("/api/message", message),
         web.post("/api/bodies", register),
         web.post("/api/bodies/{id}/approve", approve),
