@@ -115,16 +115,14 @@ async def run() -> int:
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
         host = socket.gethostname()
-        print("стучу в мозок… (нова частина чекає на одобрення на сторінці)",
-              file=sys.stderr)
-        try:
-            def knock():
-                return client.post(f"{base}/api/bodies", json={
-                    "channel": "eyes", "forms": ["input"], "about": ABOUT,
-                    "key": f"eyes@{host}", "host": host, "ui": UI,
-                })
+        about = {"channel": "eyes", "forms": ["input"], "about": ABOUT,
+                 "key": f"eyes@{host}", "host": host, "ui": UI}
 
-            answer = (await knock()).json()
+        def knock():
+            return client.post(f"{base}/api/bodies", json=about)
+
+        try:
+            answer = await part.knock(client, base, about)
         except httpx.HTTPError as exc:
             print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
             return 1

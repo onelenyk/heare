@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 from collections.abc import Callable
 from urllib.parse import quote
 
@@ -13,6 +14,40 @@ import httpx
 logger = logging.getLogger("heare.part")
 
 RETRY_S = 1.0
+# A knock answered later than this is waiting for the person; only then is
+# that worth a line.
+ASKING_S = 2.0
+
+
+async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
+                about: dict) -> dict:
+    """Knock until the brain answers; say only what the person must know.
+
+    A brain that is not up yet is waited for, not a reason to die: the
+    keeper starts the brain and the parts together, and a part that fell
+    on that race was only started again. A knock trusted at once says
+    nothing; one still unanswered after a moment is waiting for the person
+    on the page, and that is said once.
+    """
+    url = f"{base}/api/bodies"
+    said_down = False
+    while True:
+        asking = asyncio.ensure_future(
+            client.post(url, json=about) if isinstance(client, httpx.AsyncClient)
+            else asyncio.to_thread(client.post, url, json=about))
+        try:
+            done, _ = await asyncio.wait({asking}, timeout=ASKING_S)
+            if not done:
+                print("чекаю, доки мене одобрять на сторінці…", file=sys.stderr)
+            answer = await asking
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            if not said_down:
+                print(f"мозок ще не відповідає на {base} — чекаю", file=sys.stderr)
+                said_down = True
+            await asyncio.sleep(RETRY_S)
+            continue
+        answer.raise_for_status()
+        return answer.json()
 
 
 async def follow(base: str, secret: str, channel: str,

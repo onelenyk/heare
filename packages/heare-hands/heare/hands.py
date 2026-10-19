@@ -343,19 +343,21 @@ async def run() -> int:
     headers = {"X-Heare-Token": secret}
     async with httpx.AsyncClient(headers=headers, timeout=None) as client:
         host = socket.gethostname()
-        print("стучу в мозок… (нова частина чекає на одобрення на сторінці)",
-              file=sys.stderr)
-        def knock():
-            # The channel is the agent's name. Switching the runner type
-            # therefore changes the channel, while the away card in the
-            # manifest still says "opencode"; the manifest is the lead's
-            # decision, not this part's.
-            return client.post(f"{base}/api/bodies", json={
-                "channel": name, "forms": forms, "about": about,
-                "key": f"{name}@{host}", "host": host, "ui": ui})
+        # The channel is the agent's name. Switching the runner type
+        # therefore changes the channel, while the away card in the
+        # manifest still says "opencode"; the manifest is the lead's
+        # decision, not this part's.
+        knocking = {"channel": name, "forms": forms, "about": about,
+                    "key": f"{name}@{host}", "host": host, "ui": ui}
 
-        registration = await knock()
-        answer = registration.json()
+        def knock():
+            return client.post(f"{base}/api/bodies", json=knocking)
+
+        try:
+            answer = await part.knock(client, base, knocking)
+        except httpx.HTTPError as exc:
+            print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
+            return 1
         if not answer.get("approved"):
             print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
                   file=sys.stderr)

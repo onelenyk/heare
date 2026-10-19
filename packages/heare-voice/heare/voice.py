@@ -20,6 +20,7 @@ from urllib.parse import quote
 
 import httpx
 
+from heare import part
 from heare.channels.voice.channel import Voice, open_voice
 from heare.config import Settings
 from heare.core import Message
@@ -238,14 +239,12 @@ async def _follow(lines: AsyncIterator[str], speaker: _Speaker) -> None:
             logger.warning("not an event: %r", line)
 
 
-def _register(client: httpx.Client, base: str, host: str) -> dict:
-    response = client.post(f"{base}/api/bodies", json={
+async def _register(client: httpx.Client, base: str, host: str) -> dict:
+    return await part.knock(client, base, {
         "channel": CHANNEL, "forms": ["input", "output"],
         "about": "мікрофон і динамік", "key": f"voice@{host}", "host": host,
         "ui": UI,
     })
-    response.raise_for_status()
-    return response.json()
 
 
 async def _live(settings: Settings, base: str, secret: str,
@@ -285,10 +284,8 @@ async def run(settings: Settings | None = None, *,
         headers=headers, timeout=None)
     try:
         host = socket.gethostname()
-        print("стучу в мозок… (нова частина чекає на одобрення на сторінці)",
-              file=sys.stderr)
         try:
-            answer = _register(sync, base, host)
+            answer = await _register(sync, base, host)
         except httpx.HTTPError as exc:
             print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
             return 1
