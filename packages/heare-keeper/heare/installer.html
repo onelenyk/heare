@@ -187,14 +187,19 @@ function parts() {
 }
 let partSaid = "";
 
+// A server has no Keychain: there the key goes to a file only its owner reads.
+const vault = () => machine.platform === "darwin"
+  ? {into: "в Keychain", in: "у Keychain"}
+  : {into: "у сховище ключів", in: "у сховищі"};
+
 function keys() {
-  const out = [el("h2", "", "Ключі"), el("p", "lead", "Розум і слух heare — у хмарних моделях. Ключ лягає в Keychain цього комп'ютера; зберігаю лише той, що провайдер прийняв.")];
+  const out = [el("h2", "", "Ключі"), el("p", "lead", `Розум і слух heare — у хмарних моделях. Ключ лягає ${vault().into} цього комп'ютера; зберігаю лише той, що провайдер прийняв.`)];
   const wanted = needs();
   if (!wanted.length) out.push(el("p", "note", "Цьому комп'ютеру ключі не потрібні: мозок деінде, а голос вимкнено."));
   for (const name of wanted) {
     const info = KEYS[name], held = machine.keys[name] || {};
     const box = el("div", "key"), top = el("div", "top"), state = el("span", "state");
-    state.textContent = held.source === "env" ? "✓ є (з оточення)" : held.source === "stored" ? "✓ є (у Keychain)" : "немає";
+    state.textContent = held.source === "env" ? "✓ є (з оточення)" : held.source === "stored" ? `✓ є (${vault().in})` : "немає";
     state.className = "state " + (held.source ? "ok" : "warn");
     const where = el("a", "", "де взяти"); where.href = info.get; where.target = "_blank"; where.rel = "noopener";
     top.append(el("b", "", info.label), el("small", "", info.why), state);
