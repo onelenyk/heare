@@ -32,3 +32,9 @@ node_modules/
 
 # Agent tooling artifacts: kept on disk, not in the repo
 .omc/
+
+# The Mac app: swift build output and the downloaded Python
+apps/mac/.build/
+apps/mac/.cache/
+# A scratch home for running the app without touching the real ~/.heare
+.scratch-home/

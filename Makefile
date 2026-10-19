@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test lint format check clean live rollback releases release
+.PHONY: help brain chat voice keeper test lint format check clean app live rollback releases release
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -12,6 +12,7 @@ help:
 	@echo "  make format    - ruff format"
 	@echo "  make check     - lint + test"
 	@echo "  make clean     - caches and bytecode"
+	@echo "  make app       - dist/heare.app and dist/heare.dmg: the menubar app, Python inside"
 	@echo ""
 	@echo "  make live      - check, then put this checkout live on this Mac and wait"
 	@echo "  make rollback  - the release before the live one (TO=name for another)"
@@ -44,6 +45,10 @@ check: lint test
 clean:
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache
+
+# A stranger's Mac: no uv, no terminal, no launchd plists.
+app:
+	sh apps/mac/build.sh
 
 # The daily update on this Mac: never a red tree, and always a way back.
 live: check
