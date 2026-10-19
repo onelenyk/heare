@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test lint format check clean live rollback releases
+.PHONY: help brain chat voice keeper test lint format check clean live rollback releases release
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -16,6 +16,7 @@ help:
 	@echo "  make live      - check, then put this checkout live on this Mac and wait"
 	@echo "  make rollback  - the release before the live one (TO=name for another)"
 	@echo "  make releases  - the kept releases; ● is the live one"
+	@echo "  make release V=x.y.z - one version everywhere, checked, committed, tagged here"
 
 brain:
 	uv run heare-brain
@@ -53,3 +54,7 @@ rollback:
 
 releases:
 	uv run --no-project python scripts/live.py releases
+
+# A public release: committed and tagged here, pushed by hand.
+release:
+	uv run --no-project python scripts/release.py $(V)
