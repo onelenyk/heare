@@ -66,10 +66,12 @@ model — and are excluded by default.
 | The door: HTTP, events, page, parts registry | `packages/heare-brain/heare/api/server.py`, `packages/heare-brain/heare/api/page.html` |
 | The canvas: what the model shows | `packages/heare-brain/heare/api/canvas.py` |
 | Hands: an agent over ACP | `packages/heare-hands/heare/hands.py`, `packages/heare-reach/heare/reach/` |
+| Hands' runner: which CLI, sign-in, models | `packages/heare-reach/heare/reach/runner.py` — the hands', never the brain's |
+| How a part knocks, listens, reports | `packages/heare-core/heare/part.py` (`knock`, `follow`, `report`) |
 | Voice: hearing and speech | `packages/heare-voice/heare/voice.py`, `packages/heare-voice/heare/channels/voice/` |
 | Eyes: what is around | `packages/heare-eyes/heare/eyes.py`, `packages/heare-eyes/heare/surroundings/` |
 | Intents, moments, delivery | `packages/heare-brain/heare/engine/` |
-| The plan | `docs/product/README.md` |
+| The plan | `docs/product/README.md`; what we do now: `docs/product/clock.md` |
 | The laws | `packages/heare-core/heare/laws.py`, `docs/laws.md` |
 
 ## WRITING CODE
