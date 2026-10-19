@@ -43,7 +43,14 @@ make test                         # the core against stand-ins: no network, no k
 make lint                         # ruff
 make format                       # ruff format
 make check                        # lint + test
+
+make live                         # check, then put this checkout live on this Mac and wait
+make rollback                     # the release before (TO=name for another)
+make releases                     # what is kept; ● is live
 ```
+
+Never copy files into the installed tools by hand: `make live` is the
+update, and the release it leaves behind is the way back.
 
 Parts — separate processes that knock and wait for approval on the page:
 

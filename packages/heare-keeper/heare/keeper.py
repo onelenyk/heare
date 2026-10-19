@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import logging
+import signal
 import sys
 import threading
 from pathlib import Path
@@ -25,6 +26,8 @@ logger = logging.getLogger("heare.keeper")
 
 POLL_S = 5.0
 BACKOFF_S = 3.0
+# How long a part has to go when asked before it is killed.
+STOP_S = 5.0
 
 
 def wanted(folder: Path) -> dict[str, list[str]]:
@@ -66,7 +69,7 @@ class Keeper:
             finally:
                 self._running.pop(name, None)
                 if child.returncode is None:
-                    child.kill()
+                    await _stop(child)
             if self._stopping:
                 return
             logger.warning("%s fell (code %s); starting it again", name, code)
@@ -89,6 +92,33 @@ class Keeper:
             for task in tasks.values():
                 task.cancel()
             await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+
+async def _stop(child: asyncio.subprocess.Process) -> None:
+    """Ask a part to go, and make it go if it does not."""
+    child.terminate()
+    try:
+        await asyncio.wait_for(child.wait(), STOP_S)
+    except TimeoutError:
+        child.kill()
+        await child.wait()
+
+
+async def kept(folder: Path) -> None:
+    """Keep the parts until told to stop, and take them along when stopping.
+
+    Without this, SIGTERM ended the keeper at once and no ``finally`` ran:
+    the parts were never asked to go. launchd killed them with the keeper's
+    process group; a keeper run by hand left them running, and the next one
+    ran each of them a second time."""
+    running = asyncio.create_task(Keeper(folder).run())
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, running.cancel)
+    try:
+        await running
+    except asyncio.CancelledError:
+        pass
 
 
 def _serve_form() -> None:
@@ -117,10 +147,7 @@ def main() -> int:
             target=_serve_form, name="heare-setup", daemon=True,
         ).start()
 
-    try:
-        asyncio.run(Keeper(Path(settings.parts_dir)).run())
-    except KeyboardInterrupt:
-        return 0
+    asyncio.run(kept(Path(settings.parts_dir)))
     return 0
 
 

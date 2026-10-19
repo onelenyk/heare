@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import signal
+import subprocess
 import sys
+import time
 
 from heare import keeper
 
@@ -51,3 +55,41 @@ async def test_a_fallen_part_is_started_again(tmp_path, monkeypatch):
         await asyncio.gather(running, return_exceptions=True)
 
     assert len(marks.read_text()) >= 2
+
+
+def test_a_keeper_told_to_stop_takes_its_parts_along(tmp_path):
+    """launchd stops the keeper with SIGTERM; a part left running then was
+    started a second time by the next keeper."""
+    pidfile = tmp_path / "part.pid"
+    folder = tmp_path / "parts" / "sleeper"
+    folder.mkdir(parents=True)
+    code = (f"import os, pathlib, time; pathlib.Path({str(pidfile)!r})"
+            ".write_text(str(os.getpid())); time.sleep(60)")
+    (folder / "heare.json").write_text(json.dumps({
+        "channel": "sleeper", "run": [sys.executable, "-c", code]}),
+        encoding="utf-8")
+    boss = subprocess.Popen([sys.executable, "-c",
+                             "import asyncio, sys; from pathlib import Path; "
+                             "from heare.keeper import kept; "
+                             "asyncio.run(kept(Path(sys.argv[1])))",
+                             str(tmp_path / "parts")])
+    try:
+        for _ in range(250):
+            if pidfile.exists() and pidfile.read_text():
+                break
+            time.sleep(0.02)
+        part = int(pidfile.read_text())
+        boss.send_signal(signal.SIGTERM)
+        assert boss.wait(timeout=10) == 0
+        for _ in range(250):
+            try:
+                os.kill(part, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.02)
+        else:
+            os.kill(part, signal.SIGKILL)
+            raise AssertionError("the part outlived its keeper")
+    finally:
+        if boss.poll() is None:
+            boss.kill()
