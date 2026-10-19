@@ -67,7 +67,8 @@ model — and are excluded by default.
 | The canvas: what the model shows | `packages/heare-brain/heare/api/canvas.py` |
 | Hands: an agent over ACP | `packages/heare-hands/heare/hands.py`, `packages/heare-reach/heare/reach/` |
 | Hands' runner: which CLI, sign-in, models | `packages/heare-reach/heare/reach/runner.py` — the hands', never the brain's |
-| How a part knocks, listens, reports | `packages/heare-core/heare/part.py` (`knock`, `follow`, `report`) |
+| How a part lives: knock, key, stream, reports, outliving the brain | `packages/heare-core/heare/part.py` — `part.live(about, work)`; every part uses it |
+| Which parts the brain knows, trust, presence, who hears what | `packages/heare-brain/heare/api/registry.py` |
 | Voice: hearing and speech | `packages/heare-voice/heare/voice.py`, `packages/heare-voice/heare/channels/voice/` |
 | Eyes: what is around | `packages/heare-eyes/heare/eyes.py`, `packages/heare-eyes/heare/surroundings/` |
 | Intents, moments, delivery | `packages/heare-brain/heare/engine/` |
