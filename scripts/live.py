@@ -247,7 +247,9 @@ def live() -> int:
 def rollback(to: str = "") -> int:
     known = releases()
     if to:
-        target = next((r for r in known if r.name == to or r.name.startswith(to)), None)
+        # By its name, or by its commit: TO=8ed418f is enough.
+        target = next((r for r in reversed(known)
+                       if r.name.startswith(to) or r.name.split("-")[2].startswith(to)), None)
         if target is None:
             stop(f"немає релізу {to} — дивись: make releases")
     else:
