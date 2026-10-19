@@ -19,6 +19,7 @@ from urllib.parse import quote
 import httpx
 
 from heare.config import Settings
+from heare.core import PROTOCOL
 
 logger = logging.getLogger("heare.part")
 
@@ -26,9 +27,6 @@ RETRY_S = 1.0
 # A knock answered later than this is waiting for the person; only then is
 # that worth a line.
 ASKING_S = 2.0
-# The wire's own version, sent with every knock. A brain of another version
-# says so instead of half understanding.
-PROTOCOL = 1
 
 
 async def knock(client: httpx.AsyncClient | httpx.Client, base: str,

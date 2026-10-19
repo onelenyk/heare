@@ -17,6 +17,10 @@ import time
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Protocol
 
+# The version of the wire a part and the brain speak. Both ends read it from
+# here, so they cannot disagree about which number is theirs.
+PROTOCOL = 1
+
 
 @dataclass(frozen=True)
 class Message:

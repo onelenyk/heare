@@ -708,6 +708,9 @@ function partWidget(pid, b) {
   if (b.forms && b.forms.length) {
     const badges = el("div", "badges");
     for (const f of b.forms) badges.append(el("span", "badge" + (FORM[f] ? " " + f : ""), FORM[f] || f));
+    // Shown, because it is a wider trust than the rest: this part hears
+    // the whole conversation, not only its own channel.
+    if (b.hears === "all") badges.append(el("span", "badge", "чує всю розмову"));
     card.append(badges);
   }
   const controls = controlsFor(pid, b);

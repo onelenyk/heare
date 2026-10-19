@@ -1040,3 +1040,66 @@ async def test_a_page_that_listens_again_is_back_without_a_knock(tmp_path, monke
     assert await state() == "approved"
     new.close()
     await _close(room, client)
+
+
+async def _part_listening(client, headers, knock: dict) -> tuple[dict, object]:
+    """Let a part in (trusted by its manifest-free approval) and open its stream."""
+    asked = asyncio.create_task(client.post("/api/bodies", headers=headers, json=knock))
+    await asyncio.sleep(0.05)
+    await client.post(f"/api/bodies/{knock['key']}/approve", headers=headers)
+    token = (await (await asked).json())["token"]
+    stream = await client.get(f"/api/events?token={token}")
+    await stream.content.readany()
+    return token, stream
+
+
+async def _heard(stream, room, *events) -> list[dict]:
+    for kind, data in events:
+        room.core.state.emit(kind, **data)
+    got: list[dict] = []
+    # A fixed window: the stream is never quiet, it says "still here".
+    end = asyncio.get_running_loop().time() + 0.3
+    while (left := end - asyncio.get_running_loop().time()) > 0:
+        try:
+            chunk = await asyncio.wait_for(stream.content.readany(), left)
+        except TimeoutError:
+            break
+        for line in chunk.decode().splitlines():
+            if line.startswith("data: "):
+                got.append(json.loads(line[6:]))
+    return [e for e in got if e["kind"] in {k for k, _ in events}]
+
+
+async def test_a_part_hears_its_own_channel_not_the_conversation(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.05)
+    room, client, headers, _ = await _open(tmp_path)
+    _, stream = await _part_listening(client, headers, {
+        "channel": "eyes", "forms": ["input"], "key": "eyes@mac"})
+    got = await _heard(stream, room,
+                       ("heard", {"text": "мій пароль", "channel": "voice"}),
+                       ("control", {"channel": "eyes", "name": "looking", "value": False}))
+    assert [e["kind"] for e in got] == ["control"]
+    stream.close()
+    await _close(room, client)
+
+
+async def test_a_chat_that_shows_the_conversation_hears_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.05)
+    room, client, headers, _ = await _open(tmp_path)
+    _, stream = await _part_listening(client, headers, {
+        "channel": "text", "forms": ["input", "output"], "key": "text@mac",
+        "hears": "all"})
+    got = await _heard(stream, room, ("said", {"text": "Готово.", "channel": "voice"}))
+    assert [e["text"] for e in got] == ["Готово."]
+    bodies = (await (await client.get("/api/state", headers=headers)).json())["bodies"]
+    assert bodies["text@mac"]["hears"] == "all"
+    stream.close()
+    await _close(room, client)
+
+
+async def test_a_part_of_another_wire_is_told_why(tmp_path):
+    room, client, headers, _ = await _open(tmp_path)
+    answer = await (await client.post("/api/bodies", headers=headers, json={
+        "v": 99, "channel": "eyes", "key": "eyes@mac"})).json()
+    assert answer["approved"] is False and "v99" in answer["why"]
+    await _close(room, client)

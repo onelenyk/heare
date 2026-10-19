@@ -29,7 +29,7 @@ from typing import Any, AsyncIterator
 from aiohttp import web
 
 from heare import keys
-from heare.core import Core, Message
+from heare.core import PROTOCOL, Core, Message
 from heare.api import auth
 from heare.api import pair as codes
 from heare.model.providers import PROVIDERS, list_models
@@ -385,11 +385,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
         )
 
     def attach(pid: str, channel: str, forms: list, about: str,
-               host: str, state: str, ui: list | None = None) -> None:
+               host: str, state: str, ui: list | None = None,
+               hears: str | None = None) -> None:
         old = bodies.get(pid) or {}
         bodies[pid] = {
             "channel": channel, "forms": forms, "about": about,
             "host": host, "state": state,
+            # "all" for a part that shows the whole conversation (a chat);
+            # any other part hears only its own channel.
+            "hears": hears or old.get("hears") or "own",
             # What the part offers to the person, and what it last reported
             # those controls are worth. Both travel to the page untouched.
             "ui": list(ui if ui is not None else old.get("ui") or []),
@@ -467,16 +471,23 @@ def build(core: Core, settings: Any, vitals: Any = None,
         pid = who if window else str(data.get("key") or f"{channel}@{host}")
         if who is not None and who != pid and not who.startswith("machine@"):
             raise web.HTTPForbidden(text="not your name")
+        version = data.get("v")
+        if version is not None and version != PROTOCOL:
+            # Said, not half understood: a part of another wire leaves with
+            # the reason instead of talking past the brain.
+            return web.json_response({"approved": False, "why": (
+                f"мозок говорить протоколом v{PROTOCOL}, частина — v{version}")})
+        hears = "all" if data.get("hears") == "all" else "own"
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
         if (pid in trusted()
                 or str(who or "").startswith(("window@", "machine@"))):
-            attach(pid, channel, forms, about, host, "approved", ui)
+            attach(pid, channel, forms, about, host, "approved", ui, hears)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
-        attach(pid, channel, forms, about, host, "pending", ui)
+        attach(pid, channel, forms, about, host, "pending", ui, hears)
         event = waiting.setdefault(pid, asyncio.Event())
         try:
             await asyncio.wait_for(event.wait(), APPROVAL_WAIT_S)
@@ -488,7 +499,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 waiting.pop(pid, None)
         if bodies[pid]["state"] != "approved":
             return web.json_response({"approved": False, "why": bodies[pid]["state"]})
-        attach(pid, channel, forms, about, host, "approved", ui)
+        attach(pid, channel, forms, about, host, "approved", ui, hears)
         return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 
@@ -637,6 +648,24 @@ def build(core: Core, settings: Any, vitals: Any = None,
             fading[pid] = asyncio.get_running_loop().call_later(
                 WINDOW_GONE_S, drop, pid)
 
+    def hears(request: web.Request, event) -> bool:
+        """Whether this listener may hear *event*.
+
+        The person — the master key, a window — hears everything. A part
+        hears its own channel and what is addressed to it, unless it was let
+        in as one that shows the whole conversation: the conversation is the
+        person's, not every part's that happens to be trusted."""
+        pid = request.get("part")
+        if pid is None:
+            return True
+        entry = bodies.get(pid)
+        if entry is None:
+            return False
+        if entry.get("hears") == "all":
+            return True
+        data = event.data
+        return data.get("channel") == entry["channel"] or data.get("part") == pid
+
     async def events(request: web.Request) -> web.StreamResponse:
         response = web.StreamResponse(headers={
             "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
@@ -654,11 +683,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
             # history would otherwise show the last exchange twice.
             replay = max(0, min(int(request.query.get("replay", "0")), 200))
             for past in list(core.state.journal)[-replay:] if replay else ():
-                await response.write(_sse(past.view()))
+                if hears(request, past):
+                    await response.write(_sse(past.view()))
             while True:
                 try:
                     event = await asyncio.wait_for(reader.get(), HEARTBEAT_S)
-                    await response.write(_sse(event.view()))
+                    if hears(request, event):
+                        await response.write(_sse(event.view()))
                 except TimeoutError:
                     await response.write(b": still here\n\n")
         except (ConnectionResetError, asyncio.CancelledError):
