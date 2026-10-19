@@ -167,7 +167,7 @@ def test_a_key_sign_in_shows_the_key_and_whether_it_is_there(tmp_path, monkeypat
         executor_auth_env="ANTHROPIC_API_KEY")))
 
     assert ui["auth_env"]["value"] == "ANTHROPIC_API_KEY"
-    assert ui["key"]["value"] == "є"
+    assert ui["key"]["value"] == "є (у Keychain)"
     assert "login" not in ui
 
 
@@ -202,3 +202,27 @@ def test_the_check_is_one_line_per_need(tmp_path, monkeypatch):
 
     assert hands._checks(_settings(tmp_path)) == (
         "✓ binary: /bin/opencode\n✗ auth: no sign-in")
+
+
+def test_a_missing_key_says_how_to_add_it_on_this_machine(tmp_path, monkeypatch):
+    monkeypatch.setattr(hands.runner, "models", lambda kind, binary: [])
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    ui = _named(hands._settings_ui(_settings(
+        tmp_path, executor="opencode", executor_auth="key",
+        executor_auth_env="GROQ_API_KEY")))
+
+    assert "heare-hands key GROQ_API_KEY" in ui["key"]["value"]
+
+
+def test_a_key_is_kept_on_the_hands_machine(monkeypatch, capsys):
+    monkeypatch.setattr(hands.getpass, "getpass", lambda prompt: " typed ")
+    assert hands._store_key("ZAI_API_KEY") == 0
+    assert keys.get("ZAI_API_KEY") == "typed"
+    assert "typed" not in capsys.readouterr().out
+
+
+def test_an_unknown_key_or_nothing_typed_is_not_kept(monkeypatch):
+    monkeypatch.setattr(hands.getpass, "getpass", lambda prompt: "")
+    assert hands._store_key("HOME") == 1
+    assert hands._store_key("ZAI_API_KEY") == 1

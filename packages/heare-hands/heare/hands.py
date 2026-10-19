@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import collections
+import getpass
 import json
 import logging
 import os
@@ -157,14 +158,20 @@ def _settings_ui(settings: Settings) -> list[dict]:
                "options": [{"value": "login", "label": "Логін CLI"},
                            {"value": "key", "label": "Свій токен"}]})
     if auth == "key":
-        present = bool(auth_env) and keys.get(auth_env) is not None
+        # The key is read here, on the hands' machine. The brain's own key
+        # store is another machine's once the brain lives elsewhere, so the
+        # way to add one is said in the terms of this machine.
+        source = keys.source(auth_env) if auth_env else None
+        missing = (f"немає на {socket.gethostname()}: heare-hands key {auth_env}"
+                   if auth_env else "обери ключ")
         ui += [
             {"name": "auth_env", "kind": "choice", "label": "Ключ",
              "value": auth_env,
              "options": [{"value": "", "label": "—"}]
              + [{"value": name, "label": name} for name in keys.NAMES]},
             {"name": "key", "kind": "label", "label": "Токен",
-             "value": "є" if present else "немає — додай у ⚙ → Ключі"},
+             "value": {"env": "є (з оточення)", "stored": "є (у Keychain)"}.get(
+                 source or "", missing)},
         ]
     else:
         ui.append({"name": "login", "kind": "label", "label": "Логін",
@@ -462,10 +469,31 @@ async def run() -> int:
             socket_path.unlink(missing_ok=True)
 
 
+def _store_key(name: str) -> int:
+    """Keep a token for the agent on this machine, typed and never echoed."""
+    if name not in keys.NAMES:
+        print(f"не знаю ключа {name}; відомі: {', '.join(keys.NAMES)}",
+              file=sys.stderr)
+        return 1
+    value = getpass.getpass(f"{name} (не показується): ").strip()
+    if not value:
+        print("нічого не введено — не збережено", file=sys.stderr)
+        return 1
+    keys.store(name, value)
+    print(f"{name} збережено на {socket.gethostname()}. Руки візьмуть його, "
+          "коли почнуть знову: після будь-якої зміни в ⚙ або перезапуску.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="heare.hands")
     parser.add_argument("-v", "--verbose", action="store_true")
+    sub = parser.add_subparsers(dest="command")
+    key = sub.add_parser("key", help="зберегти токен агента на цій машині")
+    key.add_argument("name", choices=keys.NAMES)
     args = parser.parse_args()
+    if args.command == "key":
+        return _store_key(args.name)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     try:
         while (code := asyncio.run(run())) == RESTART:
