@@ -21,8 +21,9 @@ from pathlib import Path
 
 import httpx
 
-from heare import part, runner
+from heare import part
 from heare.config import Settings
+from heare.reach import runner
 from heare.reach.agents import KNOWN as AGENTS, Agent
 
 

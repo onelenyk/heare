@@ -12,7 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from heare import keys, runner
+from heare import keys
+from heare.reach import runner
 
 
 @pytest.fixture(autouse=True)

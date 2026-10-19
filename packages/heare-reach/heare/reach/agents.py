@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from heare import runner
+from heare.reach import runner
 from heare.core import Desk
 from heare.reach import acp
 from heare.reach.life import guarded
@@ -72,7 +72,7 @@ _ABOUT = {
     "claude": "Claude Code: код, файли, команди; сильніший у складних задачах",
 }
 
-# The table lives in the core so the hands that spawn an agent and the brain
+# The table lives beside the agents so the hands that spawn one and the brain
 # that configures one cannot disagree about its binary or command.
 KNOWN: tuple[Known, ...] = tuple(
     Known(

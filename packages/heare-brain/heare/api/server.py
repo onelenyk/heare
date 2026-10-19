@@ -28,7 +28,8 @@ from typing import Any, AsyncIterator
 
 from aiohttp import web
 
-from heare import keys, runner
+from heare import keys
+from heare.reach import runner
 from heare.core import Core, Message
 from heare.api import auth
 from heare.api import pair as codes

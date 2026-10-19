@@ -9,7 +9,8 @@ from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from heare import keys, pairing, runner
+from heare import keys, pairing
+from heare.reach import runner
 from heare.api import auth as authlib, pair
 from heare.api import server as api_server
 from heare.api.server import Screen, VoiceOut, build
