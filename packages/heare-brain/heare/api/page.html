@@ -416,7 +416,7 @@
   <h2>Налаштування</h2>
   <h3>Модель для розмови</h3>
   <div class="field"><label for="provider">провайдер</label><select id="provider"></select></div>
-  <div class="field"><label for="modelname">модель</label><div class="pair"><input id="modelname" placeholder="назва моделі"><button class="btn" id="save-model">Зберегти</button></div></div>
+  <div class="field"><label for="modelpick">модель</label><div class="pair"><select id="modelpick"></select><button class="btn" id="save-model">Зберегти</button></div><input id="modelcustom" placeholder="або id моделі" autocomplete="off" spellcheck="false"></div>
   <p class="note" id="modelnote"></p>
   <h3>Ключі</h3>
   <div class="keylist" id="keylist"></div>
@@ -1225,17 +1225,58 @@ function keys() {
     keyRows(have);
   }).catch(() => keyRows(null));
 }
+let modelListSeq = 0;
+function loadModels(saved) {
+  const pick = $("modelpick"), custom = $("modelcustom"), note = $("modelnote");
+  const provider = $("provider").value;
+  const seq = ++modelListSeq;
+  custom.value = "";
+  note.textContent = "";
+  if (!provider) {
+    pick.replaceChildren(new Option("— типова —", ""));
+    pick.disabled = false;
+    return;
+  }
+  pick.disabled = true;
+  pick.replaceChildren(new Option("шукаю…", ""));
+  api("models?provider=" + encodeURIComponent(provider)).then(answer => {
+    if (seq !== modelListSeq) return;
+    const models = (answer && answer.models) || [];
+    const frag = document.createDocumentFragment();
+    frag.append(new Option("— типова —", ""));
+    for (const id of models) frag.append(new Option(id, id));
+    pick.replaceChildren(frag);
+    pick.disabled = false;
+    const want = saved || "";
+    if (want && models.includes(want)) pick.value = want;
+    else { pick.value = ""; custom.value = want; }
+  }).catch(() => {
+    if (seq !== modelListSeq) return;
+    pick.replaceChildren(new Option("— типова —", ""));
+    pick.disabled = false;
+    custom.value = saved || "";
+    note.textContent = "список не прийшов — впиши id вручну.";
+  });
+}
 $("open-settings").onclick = () => {
   const m = (state && state.model) || {};
   $("provider").replaceChildren(...(m.providers || []).map(p => new Option(p, p)));
   $("provider").value = m.wanted || m.provider || "";
-  api("settings").then(s => { $("modelname").value = s[$("provider").value + "_model"] || ""; $("provider").onchange = () => { $("modelname").value = s[$("provider").value + "_model"] || ""; }; });
+  $("modelcustom").value = "";
+  api("settings").then(s => loadModels(s[$("provider").value + "_model"] || ""))
+    .catch(() => loadModels(""));
+  $("provider").onchange = () => {
+    api("settings")
+      .then(s => loadModels(s[$("provider").value + "_model"] || ""))
+      .catch(() => loadModels(""));
+  };
   $("partsettings").classList.remove("on");
   keys(); $("settings").classList.add("on"); $("veil").classList.add("on");
 };
 $("save-model").onclick = () => {
-  const change = {llm_provider: $("provider").value};
-  if ($("modelname").value.trim()) change[$("provider").value + "_model"] = $("modelname").value.trim();
+  const provider = $("provider").value;
+  const chosen = $("modelcustom").value.trim() || $("modelpick").value;
+  const change = {llm_provider: provider, [provider + "_model"]: chosen};
   api("settings", {method: "POST", body: change})
     .then(() => { $("modelnote").textContent = "Збережено. Діє з наступної відповіді."; refresh(); })
     .catch(why => { $("modelnote").textContent = "Не збережено: " + why; });

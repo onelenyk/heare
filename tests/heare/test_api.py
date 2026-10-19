@@ -10,9 +10,11 @@ from pathlib import Path
 from aiohttp.test_utils import TestClient, TestServer
 
 from heare import keys, pairing, runner
-from heare.api import pair
+from heare.api import auth as authlib, pair
+from heare.api import server as api_server
 from heare.api.server import Screen, VoiceOut, build
 from heare.config import Settings
+from heare.model.providers import PROVIDERS
 from tests.heare.fakes import Says, Worker, open_room
 
 
@@ -246,6 +248,75 @@ async def test_a_setting_changed_is_read_back_and_a_key_is_not_a_setting(tmp_pat
     assert "[table]" in (tmp_path / "config.toml").read_text()
     refused = await client.post("/api/settings", json={"deepseek_api_key": "x"}, headers=auth)
     assert refused.status == 400
+    await _close(room, client)
+
+
+async def test_models_are_read_live_when_the_provider_answers(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-live-secret")
+    seen: dict = {}
+
+    async def fake_models(config, api_key, timeout=10.0):
+        seen["key"] = api_key
+        return ["deepseek-v4-flash", "deepseek-v4-pro", "extra-model"]
+
+    monkeypatch.setattr(api_server, "list_models", fake_models)
+    room, client, auth, _ = await _open(tmp_path)
+    response = await client.get(
+        "/api/models", params={"provider": "deepseek"}, headers=auth)
+    assert await response.json() == {
+        "provider": "deepseek",
+        "models": ["deepseek-v4-flash", "deepseek-v4-pro", "extra-model"],
+        "source": "live",
+        "default": "deepseek-v4-flash",
+    }
+    assert seen["key"] == "sk-live-secret"
+    text = await (await client.get(
+        "/api/models", params={"provider": "deepseek"}, headers=auth)).text()
+    assert "sk-live-secret" not in text
+    await _close(room, client)
+
+
+async def test_models_fall_back_to_the_whitelist_when_the_provider_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-broken")
+
+    async def broken(config, api_key, timeout=10.0):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(api_server, "list_models", broken)
+    room, client, auth, _ = await _open(tmp_path)
+    body = await (await client.get(
+        "/api/models", params={"provider": "deepseek"}, headers=auth)).json()
+    assert body["source"] == "whitelist"
+    assert body["models"] == list(PROVIDERS["deepseek"].model_whitelist)
+    assert body["default"] == PROVIDERS["deepseek"].default_model
+    await _close(room, client)
+
+
+async def test_models_without_a_key_use_the_whitelist_and_do_not_call_out(tmp_path, monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    called = False
+
+    async def fake_models(config, api_key, timeout=10.0):
+        nonlocal called
+        called = True
+        return ["should-not-be-used"]
+
+    monkeypatch.setattr(api_server, "list_models", fake_models)
+    room, client, auth, _ = await _open(tmp_path)
+    body = await (await client.get(
+        "/api/models", params={"provider": "deepseek"}, headers=auth)).json()
+    assert body["source"] == "whitelist"
+    assert body["models"] == list(PROVIDERS["deepseek"].model_whitelist)
+    assert called is False
+    await _close(room, client)
+
+
+async def test_models_refuse_an_unknown_provider(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    refused = await client.get(
+        "/api/models", params={"provider": "nope"}, headers=auth)
+    assert refused.status == 400
+    assert "unknown provider" in await refused.text()
     await _close(room, client)
 
 
@@ -861,4 +932,21 @@ async def test_runner_health_and_models_are_proxied(tmp_path, monkeypatch):
     ]}
     assert seen["health"][0] == "opencode"
     assert seen["models"][0] == "opencode"
+    await _close(room, client)
+
+
+async def test_two_windows_of_one_browser_do_not_revoke_each_other(tmp_path):
+    room, client, _headers, settings = await _open(tmp_path)
+    first = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "Chrome"})
+    second = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "Chrome"})
+    assert first.status == 200 and second.status == 200
+    one, two = await first.json(), await second.json()
+    assert one["pid"] != two["pid"]
+    tokens = Path(settings.part_tokens_file)
+    assert authlib.owner(tokens, first.cookies["heare_session"].value)
+    assert authlib.owner(tokens, second.cookies["heare_session"].value)
     await _close(room, client)

@@ -32,6 +32,7 @@ from heare import keys, runner
 from heare.core import Core, Message
 from heare.api import auth
 from heare.api import pair as codes
+from heare.model.providers import PROVIDERS, list_models
 
 logger = logging.getLogger("heare.api.server")
 
@@ -245,7 +246,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if not codes.redeem(code_path, str(data.get("code") or "")):
             raise web.HTTPUnauthorized(text="bad code")
         name = re.sub(r"[^A-Za-z0-9._-]", "", str(data.get("name") or ""))[:40]
-        pid = f"{kind}@{name or request.remote or 'here'}"
+        who = name or request.remote or "here"
+        # Every tab of one browser calls itself "Chrome". A pid of its own per
+        # pairing keeps a second tab from revoking the first one's key, which
+        # otherwise makes two open tabs take turns asking for a code.
+        pid = f"{kind}@{who}" if kind == "machine" else f"window@{who}-{secrets.token_hex(2)}"
         token = auth.issue(part_tokens, pid)
         if kind == "machine":
             return web.json_response({"pid": pid, "token": token})
@@ -698,6 +703,33 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPBadRequest(text=str(exc)) from None
         return web.json_response(settings.view())
 
+    async def models(request: web.Request) -> web.Response:
+        """The models a provider offers, live when there is a key.
+
+        The live list is a convenience, not a dependency: no key, a bad
+        key or a dead endpoint all fall back to the whitelist. The key
+        itself never leaves this process.
+        """
+        name = request.query.get("provider", "").strip().lower()
+        config = PROVIDERS.get(name)
+        if config is None:
+            raise web.HTTPBadRequest(text="unknown provider")
+        key = await asyncio.to_thread(keys.get, config.api_key_env)
+        source = "whitelist"
+        found = list(config.model_whitelist)
+        if key:
+            try:
+                found = await list_models(config, key)
+                source = "live"
+            except Exception:  # noqa: BLE001 — the whitelist is the fallback
+                found = list(config.model_whitelist)
+        return web.json_response({
+            "provider": config.key,
+            "models": found,
+            "source": source,
+            "default": config.default_model,
+        })
+
     async def get_keys(request: web.Request) -> web.Response:
         """Where each key comes from. Never what it is."""
         return web.json_response(await asyncio.to_thread(keys.view))
@@ -874,6 +906,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/answer/{id:\\d+}", answer),
         web.get("/api/settings", get_settings),
         web.post("/api/settings", set_settings),
+        web.get("/api/models", models),
         web.get("/api/keys", get_keys),
         web.post("/api/keys", set_key),
         web.post("/api/keys/adopt", adopt_key),
