@@ -846,7 +846,12 @@ def _sse(data: dict) -> bytes:
 
 async def serve(core: Core, settings: Any, vitals: Any = None,
                 make_executor: Any = None) -> web.AppRunner:
-    """Start the API on this machine only. Returns the runner to stop it."""
+    """Start the API, on this machine only unless ``api_host`` says else.
+    Returns the runner to stop it.
+
+    Another host (a container's 0.0.0.0) opens nothing unguarded: every
+    /api/ and /screens/ route asks for the master token or a paired key,
+    the page carries no key, and pairing takes a one-time code."""
     from heare.api.canvas import Canvas
 
     core.add_output(Screen(core))
@@ -855,5 +860,6 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     runner = web.AppRunner(build(core, settings, vitals,
                                  make_executor=make_executor))
     await runner.setup()
-    await web.TCPSite(runner, "127.0.0.1", int(settings.api_port)).start()
+    host = str(settings.api_host or "127.0.0.1")
+    await web.TCPSite(runner, host, int(settings.api_port)).start()
     return runner

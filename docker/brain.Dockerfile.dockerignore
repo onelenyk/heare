@@ -1,0 +1,6 @@
+# Only what the image builds from; the rest of the checkout stays out.
+*
+!packages/heare-core
+!packages/heare-reach
+!packages/heare-brain
+**/__pycache__

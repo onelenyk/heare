@@ -1,9 +1,10 @@
-"""The setup form: a machine is configured once, then the form goes away.
+"""The installer page, which stays as this machine's settings.
 
-The keeper serves this page on ``127.0.0.1`` only while ``setup_done`` is
-not true. The page asks a few questions and hands the answers to
-``install.sh``; the form never installs anything itself and never runs a
-command the person typed.
+The keeper serves it on ``127.0.0.1`` always; it opens by itself only
+until the first run is done. Every answer is applied as it is given — a
+part is a manifest written or removed, a key is checked and kept — so the
+page never runs an installer and never runs a command the person typed.
+Everything a machine can run is already installed by ``install.sh``.
 """
 
 from __future__ import annotations
@@ -21,18 +22,14 @@ from heare import keys, machine
 from heare.config import Settings
 from heare.pairing import pair
 
-PARTS = ("eyes", "voice", "hands")
 ROLES = ("all", "body", "brain")
 INSTALLER = Path(__file__).with_name("installer.html")
 DEFAULT_PORT = 9791
 PORT_TRIES = 20
-LOG_TAIL = 4000
-
-_RUN_LOCK = threading.Lock()
 
 
 def want_setup(settings: Settings) -> bool:
-    """The form is shown until a run has succeeded."""
+    """The page opens by itself until the first run is finished."""
     return settings.setup_done is not True
 
 
@@ -41,153 +38,12 @@ def _text(data: dict, name: str) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _port_value(value) -> int | None:
-    if value is None or value == "" or isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip())
-    return None
-
-
-def validate(data: dict) -> list[str]:
-    """What is wrong with the form, in the words the person will read."""
-    errors: list[str] = []
-
-    brain = data.get("brain_here")
-    if not isinstance(brain, bool):
-        errors.append("вкажи, чи ця машина — мозок")
-        brain = False
-
-    raw_parts = data.get("parts", [])
-    if not isinstance(raw_parts, list):
-        errors.append("частини мають бути списком")
-        raw_parts = []
-    unknown = [str(part) for part in raw_parts if part not in PARTS]
-    if unknown:
-        errors.append("обрано невідому частину: " + ", ".join(unknown))
-    parts = [part for part in raw_parts if part in PARTS]
-
-    if not brain:
-        url = _text(data, "url")
-        if not url:
-            errors.append("вкажи адресу мозку")
-        elif not url.startswith(("http://", "https://")):
-            errors.append("адреса має починатися з http:// або https://")
-
-        code = _text(data, "code")
-        if not code:
-            errors.append("вкажи код підключення")
-        elif len(code) != 8:
-            errors.append("код має бути 8 символів")
-
-        if not parts:
-            errors.append("обери хоча б одну частину: очі, голос або руки")
-    else:
-        value = data.get("port")
-        if value is not None and value != "":
-            port = _port_value(value)
-            if port is None or not 1 <= port <= 65535:
-                errors.append("порт мозку має бути від 1 до 65535")
-
-    for name, label in (("deepseek_key", "DeepSeek"), ("groq_key", "Groq")):
-        value = data.get(name)
-        if value is not None and not isinstance(value, str):
-            errors.append(f"ключ {label} має бути текстом")
-
-    return errors
-
-
-def command(data: dict, installer: str, wheels: str) -> list[str]:
-    """The installer argv. Keys travel in the environment, not here."""
-    brain = data.get("brain_here") is True
-    argv = [
-        "sh", installer, "--from", wheels,
-        "--role", "mac" if sys.platform == "darwin" else "server",
-    ]
-
-    raw_parts = data.get("parts")
-    if isinstance(raw_parts, list):
-        parts = [part for part in raw_parts if part in PARTS]
-        argv += ["--parts", ",".join(parts)]
-
-    if brain:
-        port = _port_value(data.get("port"))
-        if port is not None:
-            argv += ["--port", str(port)]
-    else:
-        argv += ["--url", _text(data, "url"), "--code", _text(data, "code")]
-    return argv
-
-
-def _remember(data: dict) -> None:
-    """Write what the installer will write before it runs, so the keeper
-    reads the same config while the install is still going."""
-    settings = Settings()
-    if data.get("brain_here") is True:
-        settings.set("url", "")
-        port = _port_value(data.get("port"))
-        if port is not None:
-            settings.set("api_port", port)
-        # The key this form asks for is DeepSeek's; choosing it is choosing
-        # the provider, so the brain must not keep a provider it has no key
-        # for and fall back on every turn.
-        if keys.get("DEEPSEEK_API_KEY"):
-            settings.set("llm_provider", "deepseek")
-    else:
-        settings.set("url", _text(data, "url"))
-
-
-def _keep_keys(data: dict) -> list[str]:
-    """Store the keys the person typed. A store that will not answer is a
-    note in the log, not a failed install: the installer also gets them."""
-    notes: list[str] = []
-    for field, name in (("deepseek_key", "DEEPSEEK_API_KEY"),
-                        ("groq_key", "GROQ_API_KEY")):
-        value = data.get(field)
-        if not isinstance(value, str) or not value.strip():
-            continue
-        try:
-            keys.store(name, value)
-        except OSError as error:
-            notes.append(f"{field}: {error}")
-    return notes
-
-
-def _tail(text: str) -> str:
-    text = text.strip()
-    return text[-LOG_TAIL:] if len(text) > LOG_TAIL else text
-
-
-def _run(data: dict, installer: str, wheels: str) -> tuple[bool, str]:
-    env = os.environ.copy()
-    # The keeper is the form's own host: restarting it would kill the page
-    # before it can answer. Its plist is already in place from --setup.
-    env["HEARE_FROM_SETUP"] = "1"
-    for name, variable in (("deepseek_key", "HEARE_DEEPSEEK_KEY"),
-                           ("groq_key", "HEARE_GROQ_KEY")):
-        value = data.get(name)
-        env[variable] = value if isinstance(value, str) else ""
-    try:
-        finished = subprocess.run(
-            command(data, installer, wheels),
-            env=env, capture_output=True, text=True, timeout=900,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        return False, str(error)
-    output = (finished.stdout or "") + (finished.stderr or "")
-    return finished.returncode == 0, _tail(output)
-
-
 class _FormServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address, installer: str, wheels: str) -> None:
+    def __init__(self, address) -> None:
         super().__init__(address, _Handler)
-        self.installer = installer
-        self.wheels = wheels
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -243,7 +99,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
-        if path not in ("/setup", "/keys", "/part", "/key", "/role", "/done"):
+        if path not in ("/keys", "/part", "/key", "/role", "/done"):
             self._send(404, {"errors": ["не знаю такої дії"]})
             return
 
@@ -259,40 +115,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/keys":
             self._adopt(data)
-            return
-        if path == "/part":
+        elif path == "/part":
             self._turn(data)
-            return
-        if path == "/key":
+        elif path == "/key":
             self._key(data)
-            return
-        if path == "/role":
+        elif path == "/role":
             self._role(data)
-            return
-        if path == "/done":
+        else:
             Settings().set("setup_done", True)
             self._send(200, _machine())
-            return
-
-        if not self.server.installer:
-            self._send(400, {"errors": ["тут немає встановлювача — частини вмикаються перемикачами"]})
-            return
-        errors = validate(data)
-        if errors:
-            self._send(400, {"errors": errors})
-            return
-
-        with _RUN_LOCK:
-            notes = _keep_keys(data)
-            try:
-                _remember(data)
-            except OSError as error:
-                self._send(200, {"ok": False, "log": "\n".join([*notes, str(error)])})
-                return
-            ok, log = _run(data, self.server.installer, self.server.wheels)
-            if ok:
-                Settings().set("setup_done", True)
-        self._send(200, {"ok": ok, "log": "\n".join([*notes, log])})
 
     def _turn(self, data: dict) -> None:
         name, on = data.get("name"), data.get("on")
@@ -357,6 +188,11 @@ class _Handler(BaseHTTPRequestHandler):
                 keys.store(name, value)
             except OSError as error:
                 ok, said = False, f"не зберіг: {error}"
+        if ok and name == "DEEPSEEK_API_KEY":
+            # The brain's key this page asks for is DeepSeek's; giving it is
+            # choosing the provider, so the brain must not keep one it has
+            # no key for and fall back on every turn.
+            Settings().set("llm_provider", "deepseek")
         self._send(200, {"ok": ok, "said": said, "keys": keys.view()})
 
     def _adopt(self, data: dict) -> None:
@@ -387,17 +223,6 @@ def _machine() -> dict:
             "api_port": settings.api_port}
 
 
-def _install_info() -> tuple[str, str]:
-    """The installer and its wheels, when install.sh --setup left them;
-    empty in an app, which has every part in it and installs nothing."""
-    path = Path.home() / ".heare" / "install.json"
-    try:
-        info = json.loads(path.read_text(encoding="utf-8"))
-        return str(info["installer"]), str(info["wheels"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return "", ""
-
-
 def _open(address: str) -> None:
     opener = "open" if sys.platform == "darwin" else "xdg-open"
     try:
@@ -409,18 +234,12 @@ def _open(address: str) -> None:
         pass
 
 
-def serve(installer: str | None = None, wheels: str | None = None,
-          port: int | None = None) -> None:
-    if installer is None or wheels is None:
-        found_installer, found_wheels = _install_info()
-        installer = installer or found_installer
-        wheels = wheels or found_wheels
-
+def serve(port: int | None = None) -> None:
     start = port if port is not None else int(Settings().setup_port or DEFAULT_PORT)
     httpd: _FormServer | None = None
     for candidate in range(start, start + PORT_TRIES + 1):
         try:
-            httpd = _FormServer(("127.0.0.1", candidate), installer, wheels)
+            httpd = _FormServer(("127.0.0.1", candidate))
             break
         except OSError:
             continue

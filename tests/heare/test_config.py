@@ -13,6 +13,13 @@ def test_without_a_file_the_port_is_the_default(tmp_path):
     assert Settings(tmp_path / "none.toml").api_port == 9790
 
 
+def test_the_brain_listens_on_this_machine_only_unless_told(tmp_path):
+    path = tmp_path / "config.toml"
+    assert Settings(path).api_host == "127.0.0.1"
+    Settings(path).set("api_host", "0.0.0.0")
+    assert Settings(path).api_host == "0.0.0.0"
+
+
 def test_the_runner_defaults_are_a_login_and_no_binary(tmp_path):
     settings = Settings(tmp_path / "none.toml")
     assert settings.executor == "opencode"

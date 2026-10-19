@@ -39,6 +39,9 @@ DEFAULTS = {
     # is told once, by the setup form.
     "url": "",
     "api_port": 9790,
+    # This machine only. A container sets 0.0.0.0 so its published port
+    # reaches it; the master token still guards every route but the page.
+    "api_host": "127.0.0.1",
     # Where the keeper's setup form listens. Fixed, with a fallback to the
     # next free port; the address is printed when the form starts.
     "setup_port": 9791,

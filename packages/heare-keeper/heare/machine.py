@@ -121,3 +121,39 @@ def check_key(name: str, value: str) -> tuple[bool, str]:
     if answer.status_code >= 400:
         return False, f"провайдер відповів {answer.status_code}"
     return True, "живий"
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Turn parts on or off from a shell: install.sh does it this way, so
+    a manifest it writes is the very one the page writes.
+
+        python -m heare.machine --bin ~/.local/bin on voice hands
+    """
+    import argparse
+
+    from heare.config import Settings
+
+    parser = argparse.ArgumentParser(prog="python -m heare.machine")
+    parser.add_argument("--bin", type=Path, default=None,
+                        help="where the parts' scripts are (default: beside this Python)")
+    parser.add_argument("switch", choices=["on", "off"])
+    parser.add_argument("names", nargs="+", choices=sorted(PARTS))
+    args = parser.parse_args(argv)
+    # Run as a module, argv[0] is this file: the scripts are beside the
+    # interpreter, not beside it.
+    bin_dir = args.bin or Path(sys.executable).parent
+    folder = Path(Settings().parts_dir)
+    failed = 0
+    for name in args.names:
+        try:
+            turn(folder, name, args.switch == "on", bin_dir)
+        except (ValueError, OSError) as error:
+            print(f"не ввімкнув: {error}", file=sys.stderr)
+            failed += 1
+            continue
+        print(f"{name}: {'увімкнено' if args.switch == 'on' else 'вимкнено'}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

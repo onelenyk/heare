@@ -29,12 +29,24 @@ The brain alone — no microphone needed — on a Linux machine you keep on:
 curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.1.0/install.sh | sh -s -- --role server --from https://github.com/onelenyk/heare/releases/download/v0.1.0 --version 0.1.0
 ```
 
-It installs [uv](https://docs.astral.sh/uv/) if it is missing, installs
-heare, and keeps it running with systemd. The same command for other
-choices (which parts, which role) is built for you on the project page,
-[site/index.html](site/index.html).
+It installs [uv](https://docs.astral.sh/uv/) if it is missing, puts every
+tool this system can run in its own environment, and keeps the brain and the
+keeper alive with systemd. Which parts run is a switch on the setup page,
+http://127.0.0.1:9791 — on a server, reach it with
+`ssh -L 9791:127.0.0.1:9791 user@server`. Other roles:
+`--role body --url URL --code CODE` makes this machine parts only, paired
+with a brain elsewhere; `--parts voice,hands` turns parts on at install;
+`--no-service` starts nothing. Without a system keyring (a server) keys live
+in `~/.heare/keys.json`, mode 0600; the environment wins.
 
-To run it in Docker instead, see [docker/](docker/).
+The brain alone in Docker, state in a volume, keys from the environment:
+
+```bash
+DEEPSEEK_API_KEY=… docker compose -f docker/compose.yaml up -d --build
+docker compose -f docker/compose.yaml exec brain heare-brain code   # pair a browser
+```
+
+More in [docker/](docker/).
 
 ## First run
 

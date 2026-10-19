@@ -86,3 +86,22 @@ def test_a_key_with_no_way_to_reach_its_provider_says_so(monkeypatch):
 
     monkeypatch.setattr(machine.httpx, "get", get)
     assert machine.check_key("DEEPSEEK_API_KEY", "sk")[0] is False
+
+
+def test_the_installer_turns_parts_on_as_the_page_does(tmp_path, bin_dir, monkeypatch, capsys):
+    from heare import config
+
+    parts = tmp_path / "parts"
+    real = config.Settings
+    monkeypatch.setattr(config, "Settings", lambda: real(
+        tmp_path / "config.toml", parts_dir=parts))
+    monkeypatch.setattr(machine.sys, "platform", "linux")
+
+    code = machine.main(["--bin", str(bin_dir), "on", "voice", "eyes"])
+
+    # Eyes cannot live here: said, and the rest still turned on.
+    assert code == 1
+    assert "лише на Mac" in capsys.readouterr().err
+    assert keeper.wanted(parts) == {"voice": [str(bin_dir / "heare-voice")]}
+    assert machine.main(["--bin", str(bin_dir), "off", "voice"]) == 0
+    assert machine.running(parts) == set()
