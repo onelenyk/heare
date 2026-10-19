@@ -44,6 +44,9 @@ APPROVAL_WAIT_S = 120.0
 # How often a quiet stream is written to. A closed page is only noticed when
 # a write to it fails, so this is also how long it takes to show it left.
 HEARTBEAT_S = 5.0
+# How long a closed page stays on the list as away. A window is not a part
+# anyone installed: every tab ever opened would otherwise stay there.
+WINDOW_GONE_S = 300.0
 SESSION = "heare_session"
 
 
@@ -586,6 +589,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
     # listens: a closed page or a stopped body ends its stream, and the last
     # stream to end makes it "away" — nothing else would ever say it left.
     listening: dict[str, int] = {}
+    fading: dict[str, asyncio.TimerHandle] = {}
+
+    def drop(pid: str) -> None:
+        """A window away long enough leaves the list; its key stays, so the
+        page comes back by knocking."""
+        fading.pop(pid, None)
+        entry = bodies.get(pid)
+        if entry is None or entry.get("state") != "away":
+            return
+        del bodies[pid]
+        core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
+                        about=entry["about"], host=entry["host"], state="forgotten")
 
     def left(pid: str) -> None:
         listening[pid] -= 1
@@ -598,6 +613,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         entry["state"] = "away"
         core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
                         about=entry["about"], host=entry["host"], state="away")
+        if pid.startswith("window@"):
+            fading[pid] = asyncio.get_running_loop().call_later(
+                WINDOW_GONE_S, drop, pid)
 
     async def events(request: web.Request) -> web.StreamResponse:
         response = web.StreamResponse(headers={
@@ -608,6 +626,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         who = request.get("part") or request.get("window")
         if who is not None:
             listening[who] = listening.get(who, 0) + 1
+            if who in fading:
+                fading.pop(who).cancel()
         try:
             # The past only when asked for: a page that also loads the
             # history would otherwise show the last exchange twice.

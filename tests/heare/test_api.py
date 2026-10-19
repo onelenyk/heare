@@ -978,3 +978,33 @@ async def test_one_page_s_switch_is_not_another_s(tmp_path):
     wish = await asyncio.wait_for(seen.get(), 1)
     assert wish.kind == "control" and wish.data["part"] == pids[1]
     await _close(room, client)
+
+
+async def test_a_closed_page_leaves_the_list_after_a_while(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.02)
+    monkeypatch.setattr(api_server, "WINDOW_GONE_S", 0.1)
+    room, client, headers, settings = await _open(tmp_path)
+    paired = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "laptop"})
+    window = {"X-Heare-Token": paired.cookies["heare_session"].value}
+    knock = {"channel": "web", "forms": ["input", "output"]}
+    pid = (await (await client.post("/api/bodies", headers=window,
+                                     json=knock)).json())["pid"]
+
+    async def listed() -> bool:
+        state = await (await client.get("/api/state", headers=headers)).json()
+        return pid in state["bodies"]
+
+    stream = await client.get("/api/events", headers=window)
+    await stream.content.readany()
+    stream.close()
+    for _ in range(100):
+        if not await listed():
+            break
+        await asyncio.sleep(0.02)
+    assert not await listed()
+    # The key was not taken: the page comes back by knocking.
+    assert (await client.post("/api/bodies", headers=window, json=knock)).status == 200
+    assert await listed()
+    await _close(room, client)
