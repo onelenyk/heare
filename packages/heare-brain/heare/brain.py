@@ -36,13 +36,13 @@ def model_info(settings: Settings) -> dict:
     from heare.model.providers import PROVIDERS
 
     wanted = str(settings.llm_provider or "deepseek").lower()
-    logging.getLogger("heare.spine.llm").disabled = True
+    logging.getLogger("heare.model.llm").disabled = True
     try:
         cfg = resolve_llm(settings)
     except RuntimeError as exc:
         return {"wanted": wanted, "error": str(exc), "name": persona.name()}
     finally:
-        logging.getLogger("heare.spine.llm").disabled = False
+        logging.getLogger("heare.model.llm").disabled = False
     return {
         "provider": cfg.provider, "model": cfg.model, "wanted": wanted,
         "fallback": cfg.provider != wanted, "providers": sorted(PROVIDERS),

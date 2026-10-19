@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-logger = logging.getLogger("spine.hearing")
+logger = logging.getLogger("heare.voice.hearing")
 
 # How long the device may go without calling before something is wrong.
 # Frames arrive every few tens of milliseconds, so this is three orders

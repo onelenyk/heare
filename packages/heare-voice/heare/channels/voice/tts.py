@@ -17,7 +17,7 @@ import logging
 import shutil
 from typing import AsyncIterator
 
-logger = logging.getLogger("spine.tts")
+logger = logging.getLogger("heare.voice.tts")
 
 _CHUNK_SIZE = 4096
 

@@ -77,7 +77,7 @@ class SpineAEC:
             )
             self._active = True
         except Exception:
-            logger.info("spine.aec: pywebrtc_audio unavailable, passthrough")
+            logger.info("aec: pywebrtc_audio unavailable, passthrough")
             self._apm = None
             self._active = False
 
@@ -94,7 +94,7 @@ class SpineAEC:
                 return
             self._far.push(pcm[:usable], self._far_rate)
         except Exception:
-            logger.debug("spine.aec: push_far failed on malformed chunk", exc_info=True)
+            logger.debug("aec: push_far failed on malformed chunk", exc_info=True)
 
     def clear(self) -> None:
         """Drop the queued far-end reference.
@@ -155,7 +155,7 @@ class SpineAEC:
                 return frame
             return result
         except Exception:
-            logger.debug("spine.aec: process() failed, passthrough", exc_info=True)
+            logger.debug("aec: process() failed, passthrough", exc_info=True)
             return frame
 
     @property

@@ -38,7 +38,7 @@ from typing import Any
 
 from heare.memory.storage import SCHEMA, SCHEMA_VERSION, TRANSCRIPTS_FTS_SCHEMA
 
-logger = logging.getLogger("spine.persist")
+logger = logging.getLogger("heare.memory.persist")
 
 # What `transcripts.source` says about a line. The column already held
 # "voice" and "typed" from the old engine; these are the spine's two, and

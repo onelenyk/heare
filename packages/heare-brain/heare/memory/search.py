@@ -73,7 +73,7 @@ from typing import Any
 from heare.memory.fts import _sanitize_fts_query
 from heare.memory.when import parse_when, said_when, strip_when
 
-logger = logging.getLogger("spine.search")
+logger = logging.getLogger("heare.memory.search")
 
 # Three, because this is spoken. A fourth fragment is not more recall,
 # it is a paragraph read aloud at someone who asked a question.

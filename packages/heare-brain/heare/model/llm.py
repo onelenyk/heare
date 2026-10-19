@@ -15,7 +15,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 
-logger = logging.getLogger("heare.spine.llm")
+logger = logging.getLogger("heare.model.llm")
 
 
 @dataclass(frozen=True)
