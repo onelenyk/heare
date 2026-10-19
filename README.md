@@ -38,8 +38,8 @@ To run it in Docker instead, see [docker/](docker/).
 
 ## First run
 
-The first time, heare opens a setup page in your browser
-(<http://127.0.0.1:9791/>). It asks three things:
+The first time, heare opens its setup: on a Mac in the app's own window,
+on a server in the browser (<http://127.0.0.1:9791/>). It asks three things:
 
 - **Role** — this computer as the whole assistant, as the brain only
   (memory and conversation), or as a body that connects to a brain
@@ -61,9 +61,10 @@ computer: [opencode](https://opencode.ai) or
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Without one,
 heare still talks; it just cannot do things for you.
 
-After setup, the assistant's own page is at <http://127.0.0.1:9790/>. New
-parts appear there and wait until you approve them. The setup page stays
-as the settings: open it again to change keys or parts.
+On a Mac, heare lives in the menu bar: **Відкрити heare** opens the
+assistant's page, **Частини** turns parts on and off, **Налаштування…** is the
+same setup again. On a server the page is at <http://127.0.0.1:9790/>. Parts
+from other machines appear there and wait until you approve them.
 
 ## Update
 
@@ -78,17 +79,13 @@ a different version from the brain.
 
 ## Uninstall
 
-Stop the services, then remove what was installed:
+**Mac:** choose **Вийти** in heare's menu, then move `/Applications/heare.app`
+to the Trash. The app runs everything itself — there are no services to stop.
 
-**Mac**
-
-```bash
-launchctl bootout gui/$(id -u)/com.heare.brain
-launchctl bootout gui/$(id -u)/com.heare.keeper
-rm ~/Library/LaunchAgents/com.heare.*.plist
-uv tool list | grep '^heare' | cut -d' ' -f1 | xargs -n1 uv tool uninstall
-rm -rf /Applications/heare.app
-```
+(If you installed heare the developer way, with `install.sh`, also run
+`launchctl bootout gui/$(id -u)/com.heare.brain` and `…/com.heare.keeper`,
+remove `~/Library/LaunchAgents/com.heare.*.plist`, and uninstall the
+`heare-*` uv tools.)
 
 **Linux**
 
