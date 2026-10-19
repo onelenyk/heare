@@ -234,7 +234,8 @@ def form(tmp_path, monkeypatch):
     machine = tmp_path / "machine_token"
     monkeypatch.setattr(
         setup, "Settings",
-        lambda: Settings(config, machine_token_file=machine),
+        lambda: Settings(config, machine_token_file=machine,
+                         parts_dir=tmp_path / "parts"),
     )
     port = _free_port()
     thread = threading.Thread(
@@ -312,3 +313,35 @@ def test_choosing_the_deepseek_key_makes_deepseek_the_provider(form):
     assert status == 200
     assert result["ok"] is True
     assert Settings(config).view()["llm_provider"] == "deepseek"
+
+
+def test_the_form_turns_a_part_on_and_off_with_no_install(form, tmp_path):
+    base, _ = form
+    with urllib.request.urlopen(base + "/machine", timeout=2) as answer:
+        before = json.loads(answer.read().decode())
+    assert {p["name"]: p["on"] for p in before["parts"]} == {
+        "voice": False, "eyes": False, "hands": False}
+
+    status, after = _post(base + "/part", {"name": "voice", "on": True})
+    assert status == 200
+    assert next(p for p in after["parts"] if p["name"] == "voice")["on"] is True
+    assert (tmp_path / "parts" / "voice" / "heare.json").exists()
+
+    _post(base + "/part", {"name": "voice", "on": False})
+    assert not (tmp_path / "parts" / "voice").exists()
+
+
+def test_the_form_keeps_a_key_only_if_its_provider_takes_it(form, monkeypatch):
+    base, _ = form
+
+    def check(name, value):
+        return (True, "живий") if value == "good" else (False, "ключ не підходить")
+
+    monkeypatch.setattr(setup.machine, "check_key", check)
+
+    status, bad = _post(base + "/key", {"name": "GROQ_API_KEY", "value": "bad"})
+    assert status == 200 and bad["ok"] is False and bad["said"] == "ключ не підходить"
+    assert keys.get("GROQ_API_KEY") is None
+
+    _, good = _post(base + "/key", {"name": "GROQ_API_KEY", "value": "good"})
+    assert good["ok"] is True and keys.get("GROQ_API_KEY") == "good"

@@ -16,7 +16,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from heare import keys
+from heare import keys, machine
 from heare.config import Settings
 
 PARTS = ("eyes", "voice", "hands")
@@ -209,6 +209,9 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/keys":
             self._send(200, keys.view())
             return
+        if path == "/machine":
+            self._send(200, _machine())
+            return
         if path != "/":
             self._send(404, {"errors": ["не знаю такої сторінки"]})
             return
@@ -235,7 +238,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
-        if path not in ("/setup", "/keys"):
+        if path not in ("/setup", "/keys", "/part", "/key"):
             self._send(404, {"errors": ["не знаю такої дії"]})
             return
 
@@ -251,6 +254,12 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/keys":
             self._adopt(data)
+            return
+        if path == "/part":
+            self._turn(data)
+            return
+        if path == "/key":
+            self._key(data)
             return
 
         errors = validate(data)
@@ -270,6 +279,32 @@ class _Handler(BaseHTTPRequestHandler):
                 Settings().set("setup_done", True)
         self._send(200, {"ok": ok, "log": "\n".join([*notes, log])})
 
+    def _turn(self, data: dict) -> None:
+        name, on = data.get("name"), data.get("on")
+        if name not in machine.PARTS or not isinstance(on, bool):
+            self._send(400, {"errors": ["невідома частина"]})
+            return
+        try:
+            machine.turn(Path(Settings().parts_dir), name, on)
+        except (ValueError, OSError) as error:
+            self._send(400, {"errors": [str(error)]})
+            return
+        self._send(200, _machine())
+
+    def _key(self, data: dict) -> None:
+        """Check a key with its provider and keep it only if it works."""
+        name, value = data.get("name"), data.get("value")
+        if name not in keys.NAMES or not isinstance(value, str) or not value.strip():
+            self._send(400, {"errors": ["невідомий або порожній ключ"]})
+            return
+        ok, said = machine.check_key(name, value)
+        if ok:
+            try:
+                keys.store(name, value)
+            except OSError as error:
+                ok, said = False, f"не зберіг: {error}"
+        self._send(200, {"ok": ok, "said": said, "keys": keys.view()})
+
     def _adopt(self, data: dict) -> None:
         name = data.get("name")
         if not isinstance(name, str) or name not in keys.NAMES:
@@ -284,6 +319,15 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"errors": ["немає такого ключа в оточенні"]})
             return
         self._send(200, {"saved": name})
+
+
+def _machine() -> dict:
+    """What the installer shows: the parts here, and which keys are held."""
+    settings = Settings()
+    return {"platform": sys.platform,
+            "parts": machine.parts(Path(settings.parts_dir)),
+            "keys": keys.view(),
+            "url": settings.url or ""}
 
 
 def _install_info() -> tuple[str, str]:

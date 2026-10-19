@@ -646,10 +646,14 @@ version = "0.1.0"
 source = { editable = "packages/heare-keeper" }
 dependencies = [
     { name = "heare-core" },
+    { name = "httpx" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "heare-core", editable = "packages/heare-core" }]
+requires-dist = [
+    { name = "heare-core", editable = "packages/heare-core" },
+    { name = "httpx", specifier = ">=0.27.0" },
+]
 
 [[package]]
 name = "heare-reach"
