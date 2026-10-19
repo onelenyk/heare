@@ -16,7 +16,6 @@ import logging
 import socket
 import sys
 from collections.abc import AsyncIterator
-from urllib.parse import quote
 
 import httpx
 
@@ -51,10 +50,6 @@ def values_of(voice: Voice) -> dict:
     return values
 
 
-def _token(settings: Settings) -> str:
-    return settings.secret
-
-
 class HttpPort:
     """The core's port, spoken over the door.
 
@@ -62,8 +57,11 @@ class HttpPort:
     its own loop: a dropped report is noted and forgotten, never awaited.
     """
 
-    def __init__(self, client: httpx.Client, base: str) -> None:
+    def __init__(self, client: httpx.Client, base: str,
+                 wire: part.Wire | None = None) -> None:
         self._client, self._base = client, base
+        # The part's wire keeps the last values, to tell a brain that restarted.
+        self._wire = wire
 
     def _post(self, path: str, payload: dict) -> httpx.Response | None:
         try:
@@ -100,6 +98,8 @@ class HttpPort:
         })
 
     def state(self, values: dict) -> None:
+        if self._wire is not None:
+            self._wire.values.update(values)
         self._post("/api/input", {
             "channel": CHANNEL, "kind": "state", "values": dict(values),
         })
@@ -220,15 +220,6 @@ class _Speaker:
             await reply.cancel()
 
 
-async def _events(client: httpx.AsyncClient, base: str,
-                  secret: str) -> AsyncIterator[str]:
-    async with client.stream(
-        "GET", f"{base}/api/events?token={quote(secret, safe='')}"
-    ) as response:
-        async for line in response.aiter_lines():
-            yield line
-
-
 async def _follow(lines: AsyncIterator[str], speaker: _Speaker) -> None:
     async for line in lines:
         if not line.startswith("data: "):
@@ -239,67 +230,49 @@ async def _follow(lines: AsyncIterator[str], speaker: _Speaker) -> None:
             logger.warning("not an event: %r", line)
 
 
-async def _register(client: httpx.Client, base: str, host: str) -> dict:
-    return await part.knock(client, base, {
-        "channel": CHANNEL, "forms": ["input", "output"],
-        "about": "мікрофон і динамік", "key": f"voice@{host}", "host": host,
-        "ui": UI,
-    })
-
-
-async def _live(settings: Settings, base: str, secret: str,
-                client: httpx.Client) -> int:
+async def _live(settings: Settings, wire: part.Wire, client: httpx.Client,
+                held: dict) -> int:
     voice = await open_voice(settings)
-    port = HttpPort(client, base)
+    port = HttpPort(client, wire.base, wire)
     port.state(values_of(voice))
     speaker = _Speaker(voice, port)
+    held["speaker"] = speaker
     listening = asyncio.create_task(voice.run(port))
-    headers = {"X-Heare-Token": secret}
-    async with httpx.AsyncClient(headers=headers, timeout=None) as events:
-        following = asyncio.create_task(_follow(_events(events, base, secret),
-                                                speaker))
-        try:
-            await asyncio.gather(listening, following)
-        finally:
-            listening.cancel()
-            following.cancel()
-            await asyncio.gather(listening, following, return_exceptions=True)
-            await speaker.cancel()
-            await voice.device.stop()
+    try:
+        await listening
+    finally:
+        held.pop("speaker", None)
+        listening.cancel()
+        await asyncio.gather(listening, return_exceptions=True)
+        await speaker.cancel()
+        await voice.device.stop()
     return 0
 
 
 async def run(settings: Settings | None = None, *,
-              client: httpx.Client | None = None) -> int:
+              client: httpx.AsyncClient | None = None) -> int:
     settings = settings or Settings()
-    base = settings.base
-    try:
-        secret = _token(settings)
-    except OSError:
-        print(f"немає ключа ({settings.api_token_file}) — мозок запущений?",
-              file=sys.stderr)
-        return 1
-    headers = {"X-Heare-Token": secret}
-    sync = client if client is not None else httpx.Client(
-        headers=headers, timeout=None)
-    try:
-        host = socket.gethostname()
-        try:
-            answer = await _register(sync, base, host)
-        except httpx.HTTPError as exc:
-            print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
-            return 1
-        if not answer.get("approved"):
-            print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
-                  file=sys.stderr)
-            return 1
-        if answer.get("token"):
-            secret = answer["token"]
-            sync.headers["X-Heare-Token"] = secret
-        return await _live(settings, base, secret, sync)
-    finally:
-        if client is None:
-            sync.close()
+    host = socket.gethostname()
+    # Events arrive before the voice is open; until then there is no mouth.
+    held: dict = {}
+
+    def on_event(event: dict) -> None:
+        speaker = held.get("speaker")
+        if speaker is not None:
+            speaker.feed(event)
+
+    async def work(wire: part.Wire) -> int:
+        # The voice reports from its own loop without awaiting, so its port
+        # speaks through a synchronous client holding the part's key.
+        with httpx.Client(headers={"X-Heare-Token": wire.secret},
+                          timeout=None) as sync:
+            return await _live(settings, wire, sync, held)
+
+    return await part.live(
+        {"channel": CHANNEL, "forms": ["input", "output"],
+         "about": "мікрофон і динамік", "key": f"voice@{host}", "host": host,
+         "ui": UI},
+        work, on_event=on_event, settings=settings, client=client)
 
 
 def main() -> int:

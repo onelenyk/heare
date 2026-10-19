@@ -1,4 +1,11 @@
-"""The wire every body uses: the brain's stream, and one report of itself."""
+"""How a part lives: it knocks, listens, reports, and outlives the brain.
+
+Every part had its own copy of this life — knock, take the key, report,
+follow the stream, knock again when it comes back — and the copies drifted:
+one did not reconnect, one fell on a call the brain dropped while it
+restarted. ``live`` is that life once; a part brings what it is and the
+work it does.
+"""
 
 from __future__ import annotations
 
@@ -6,10 +13,12 @@ import asyncio
 import json
 import logging
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from urllib.parse import quote
 
 import httpx
+
+from heare.config import Settings
 
 logger = logging.getLogger("heare.part")
 
@@ -17,6 +26,9 @@ RETRY_S = 1.0
 # A knock answered later than this is waiting for the person; only then is
 # that worth a line.
 ASKING_S = 2.0
+# The wire's own version, sent with every knock. A brain of another version
+# says so instead of half understanding.
+PROTOCOL = 1
 
 
 async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
@@ -50,10 +62,11 @@ async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
         return answer.json()
 
 
-async def follow(base: str, secret: str, channel: str,
+async def follow(base: str, secret: str, channel: str | None,
                  on_event: Callable[[dict], None],
                  on_open: Callable[[], None] | None = None) -> None:
-    """Read the brain's stream forever, handing this channel's events over.
+    """Read the brain's stream forever, handing this channel's events over
+    (every event, when *channel* is None).
 
     A brain that restarts is not a reason to die: the stream is opened
     again a second later, which is what makes a body a beacon.
@@ -76,7 +89,7 @@ async def follow(base: str, secret: str, channel: str,
                             event = json.loads(line[6:])
                         except ValueError:
                             continue
-                        if event.get("channel") == channel:
+                        if channel is None or event.get("channel") == channel:
                             on_event(event)
         except (httpx.HTTPError, OSError) as exc:
             logger.warning("the stream broke: %s", exc)
@@ -92,3 +105,115 @@ async def report(client: httpx.AsyncClient, base: str, channel: str,
         answer.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("could not report the state: %s", exc)
+
+
+class Wire:
+    """A part's line to the brain, once the part is let in."""
+
+    def __init__(self, client: httpx.AsyncClient, base: str, channel: str,
+                 pid: str, secret: str, name: str = "") -> None:
+        self.client, self.base = client, base
+        self.channel, self.pid, self.secret = channel, pid, secret
+        # What the assistant is called, as the brain said when it let us in.
+        self.name = name
+        self.values: dict = {}
+        self._sending: set[asyncio.Task] = set()
+
+    async def post(self, path: str, body: dict | None = None) -> httpx.Response:
+        """A call that outlives a brain restart: while the brain is away the
+        call waits and is made again, instead of ending the part."""
+        said = False
+        while True:
+            try:
+                return await self.client.post(f"{self.base}{path}", json=body)
+            except httpx.TransportError as exc:
+                if not said:
+                    logger.warning("the brain is away (%s); waiting", exc)
+                    said = True
+                await asyncio.sleep(RETRY_S)
+
+    def report(self, values: dict | None = None) -> None:
+        """Tell the brain what the controls are worth, without waiting.
+        The last values are kept: a brain that restarts is told them again."""
+        if values is not None:
+            self.values.update(values)
+        task = asyncio.create_task(
+            report(self.client, self.base, self.channel, self.values))
+        self._sending.add(task)
+        task.add_done_callback(self._sending.discard)
+
+    async def settle(self) -> None:
+        await asyncio.gather(*self._sending, return_exceptions=True)
+
+
+async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
+               on_event: Callable[[dict], None] | None = None,
+               hello: str = "", settings: Settings | None = None,
+               client: httpx.AsyncClient | None = None) -> int:
+    """Let a part in and keep it in while *work* runs; the part's exit code.
+
+    *about* is the knock: channel, forms, about, key, host, ui, and
+    ``"hears": "all"`` for a part that shows the whole conversation. Events
+    of the part's channel go to *on_event*. Each time the stream comes back
+    the part knocks again and repeats its last report, so a brain that
+    restarted knows it — without the part noticing anything.
+    """
+    settings = settings or Settings()
+    base = settings.base
+    try:
+        secret = settings.secret
+    except OSError:
+        print(f"немає ключа ({settings.api_token_file}) — мозок запущений?",
+              file=sys.stderr)
+        return 1
+    about = {"v": PROTOCOL, **about}
+    owned = client is None
+    client = client or httpx.AsyncClient(timeout=None)
+    client.headers["X-Heare-Token"] = secret
+    try:
+        try:
+            answer = await knock(client, base, about)
+        except httpx.HTTPError as exc:
+            print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
+            return 1
+        if not answer.get("approved"):
+            print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
+                  file=sys.stderr)
+            return 1
+        if answer.get("token"):
+            secret = answer["token"]
+            client.headers["X-Heare-Token"] = secret
+        if hello:
+            print(hello, file=sys.stderr)
+        wire = Wire(client, base, about["channel"],
+                    str(answer.get("pid") or about.get("key") or ""), secret,
+                    str(answer.get("name") or ""))
+        opened = False
+
+        async def again() -> None:
+            try:
+                await client.post(f"{base}/api/bodies", json=about)
+            except httpx.HTTPError as exc:
+                logger.warning("could not knock again: %s", exc)
+                return
+            if wire.values:
+                wire.report()
+
+        def on_open() -> None:
+            nonlocal opened
+            if opened:
+                asyncio.create_task(again())
+            opened = True
+
+        channel = None if about.get("hears") == "all" else about["channel"]
+        following = asyncio.create_task(follow(
+            base, secret, channel, on_event or (lambda event: None), on_open))
+        try:
+            return int(await work(wire) or 0)
+        finally:
+            following.cancel()
+            await asyncio.gather(following, return_exceptions=True)
+            await wire.settle()
+    finally:
+        if owned:
+            await client.aclose()

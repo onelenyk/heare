@@ -31,10 +31,6 @@ UI = [
 ]
 
 
-def _token(settings: Settings) -> str:
-    return settings.secret
-
-
 class Door:
     """The brain's door as the surroundings see it.
 
@@ -47,6 +43,9 @@ class Door:
     def __init__(self, client: httpx.AsyncClient, base: str) -> None:
         self._client, self._base = client, base
         self._sending: set[asyncio.Task] = set()
+        # Once the part is let in, reports go through its wire, which keeps
+        # them to tell a brain that restarted.
+        self.wire: part.Wire | None = None
         self.looking = True
         self.sees = "тихо"
 
@@ -59,6 +58,9 @@ class Door:
             self.tell()
 
     def tell(self) -> None:
+        if self.wire is not None:
+            self.wire.report(self.values())
+            return
         task = asyncio.create_task(
             part.report(self._client, self._base, self.name, self.values()))
         self._sending.add(task)
@@ -105,47 +107,23 @@ class Door:
 
 async def run() -> int:
     settings = Settings()
-    base = settings.base
-    try:
-        secret = _token(settings)
-    except OSError:
-        print(f"немає ключа ({settings.api_token_file}) — мозок запущений?",
-              file=sys.stderr)
-        return 1
-    headers = {"X-Heare-Token": secret}
-    async with httpx.AsyncClient(headers=headers, timeout=None) as client:
-        host = socket.gethostname()
-        about = {"channel": "eyes", "forms": ["input"], "about": ABOUT,
-                 "key": f"eyes@{host}", "host": host, "ui": UI}
+    host = socket.gethostname()
+    async with httpx.AsyncClient(timeout=None) as client:
+        door = Door(client, settings.base)
 
-        def knock():
-            return client.post(f"{base}/api/bodies", json=about)
+        async def work(wire: part.Wire) -> None:
+            door.wire = wire
+            door.tell()
+            try:
+                await Surroundings().run(door, gate=lambda: door.looking)
+            finally:
+                await door.settle()
 
-        try:
-            answer = await part.knock(client, base, about)
-        except httpx.HTTPError as exc:
-            print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
-            return 1
-        if not answer.get("approved"):
-            print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
-                  file=sys.stderr)
-            return 1
-        if answer.get("token"):
-            secret = answer["token"]
-            client.headers["X-Heare-Token"] = secret
-        print("очі: дивлюсь навколо", file=sys.stderr)
-        door = Door(client, base)
-        await part.report(client, base, "eyes", door.values())
-        following = asyncio.create_task(part.follow(
-            base, secret, "eyes", door.event,
-            on_open=lambda: asyncio.create_task(knock())))
-        try:
-            await Surroundings().run(door, gate=lambda: door.looking)
-        finally:
-            following.cancel()
-            await asyncio.gather(following, return_exceptions=True)
-            await door.settle()
-    return 0
+        return await part.live(
+            {"channel": "eyes", "forms": ["input"], "about": ABOUT,
+             "key": f"eyes@{host}", "host": host, "ui": UI},
+            work, on_event=door.event, hello="очі: дивлюсь навколо",
+            settings=settings, client=client)
 
 
 def main() -> int:

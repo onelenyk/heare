@@ -269,19 +269,13 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
 
 async def run() -> int:
     settings = Settings()
-    base = settings.base
-    try:
-        secret = settings.secret
-    except OSError:
-        print("немає ключа — мозок запущений?", file=sys.stderr)
-        return 1
     session_file = Path(settings.parts_file).parent / "agent-session.json"
     try:
         resume = session_file.read_text(encoding="utf-8").strip()
     except OSError:
         resume = ""
 
-    wire: collections.deque[str] = collections.deque(maxlen=40)
+    acp: collections.deque[str] = collections.deque(maxlen=40)
     usage = {"cost": 0.0, "used": 0, "size": 0}
     told = 0
 
@@ -297,7 +291,7 @@ async def run() -> int:
             told += 1
         line = _line(direction, message)
         if line:
-            wire.append(line)
+            acp.append(line)
             told += 1
 
     socket_path = Path(settings.parts_file).parent / f"hands-{os.getpid()}.sock"
@@ -347,72 +341,47 @@ async def run() -> int:
     ] + await asyncio.to_thread(_settings_ui, settings)
     values = {c["name"]: c["value"] for c in ui if "value" in c}
     restart = asyncio.Event()
-    headers = {"X-Heare-Token": secret}
-    async with httpx.AsyncClient(headers=headers, timeout=None) as client:
-        host = socket.gethostname()
-        # The channel is the agent's name. Switching the runner type
-        # therefore changes the channel, while the away card in the
-        # manifest still says "opencode"; the manifest is the lead's
-        # decision, not this part's.
-        knocking = {"channel": name, "forms": forms, "about": about,
-                    "key": f"{name}@{host}", "host": host, "ui": ui}
+    held: dict = {}
 
-        def knock():
-            return client.post(f"{base}/api/bodies", json=knocking)
+    async def check() -> None:
+        values["checks"] = await asyncio.to_thread(_checks, Settings())
+        held["wire"].report(values)
 
-        try:
-            answer = await part.knock(client, base, knocking)
-        except httpx.HTTPError as exc:
-            print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
-            return 1
-        if not answer.get("approved"):
-            print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
-                  file=sys.stderr)
-            return 1
-        if answer.get("token"):
-            secret = answer["token"]
-            client.headers["X-Heare-Token"] = secret
-        print(f"руки: {name}", file=sys.stderr)
+    def on_control(event: dict) -> None:
+        if event.get("kind") != "control" or "wire" not in held:
+            return
+        control, value = event.get("name"), event.get("value")
+        if control == "taking":
+            values["taking"] = bool(value)
+        elif control == "check":
+            asyncio.create_task(check())
+            return
+        elif (change := _setting(str(control), value)) is not None:
+            settings.set(*change)
+            values[str(control)] = change[1]
+            values["work"] = "застосую налаштування, щойно звільнюсь"
+            restart.set()
+        else:
+            return
+        held["wire"].report(values)
 
-        async def check() -> None:
-            values["checks"] = await asyncio.to_thread(_checks, Settings())
-            await part.report(client, base, name, values)
-
-        def on_control(event: dict) -> None:
-            if event.get("kind") != "control":
-                return
-            control, value = event.get("name"), event.get("value")
-            if control == "taking":
-                values["taking"] = bool(value)
-            elif control == "check":
-                asyncio.create_task(check())
-                return
-            elif (change := _setting(str(control), value)) is not None:
-                settings.set(*change)
-                values[str(control)] = change[1]
-                values["work"] = "застосую налаштування, щойно звільнюсь"
-                restart.set()
-            else:
-                return
-            asyncio.create_task(part.report(client, base, name, values))
-
-        await part.report(client, base, name, values)
-        following = asyncio.create_task(
-            part.follow(base, secret, name, on_control,
-                        on_open=lambda: asyncio.create_task(knock())))
+    async def work(wire: part.Wire) -> int:
+        nonlocal resume
+        held["wire"] = wire
+        wire.report(values)
         sent = 0
 
-        async def report_wire() -> None:
+        async def report_acp() -> None:
             nonlocal sent
             while True:
                 await asyncio.sleep(0.4)
                 if told != sent:
                     sent = told
-                    values["acp"] = "\n".join(wire)
+                    values["acp"] = "\n".join(acp)
                     values["usage"] = _price(**usage) or values["usage"]
-                    await part.report(client, base, name, values)
+                    wire.report(values)
 
-        wiring = asyncio.create_task(report_wire())
+        wiring = asyncio.create_task(report_acp())
         try:
             while True:
                 # A claim already in flight is let finish, so work the brain
@@ -425,16 +394,15 @@ async def run() -> int:
                     except TimeoutError:
                         pass
                     continue
-                claim = await client.post(f"{base}/api/executor/claim",
-                                          json={"name": name})
+                claim = await wire.post("/api/executor/claim", {"name": name})
                 task = claim.json() if claim.status_code == 200 else {}
                 if not task or "id" not in task:
                     continue
                 print(f"взято {task['id']}: {task['request'][:60]}",
                       file=sys.stderr)
                 values["work"] = f"роблю: {task['request'][:50]}"
-                await part.report(client, base, name, values)
-                desk = RemoteDesk(client, base, task["id"], name)
+                wire.report(values)
+                desk = RemoteDesk(wire.client, wire.base, task["id"], name)
                 status, result = "done", ""
                 current["desk"] = desk
                 try:
@@ -446,9 +414,9 @@ async def run() -> int:
                 resume = ""
                 print(f"готово {task['id']}: {status} {result[:60]}",
                       file=sys.stderr)
-                await client.post(
-                    f"{base}/api/executor/{task['id']}/result?name={name}",
-                    json={"status": status, "result": result})
+                await wire.post(
+                    f"/api/executor/{task['id']}/result?name={name}",
+                    {"status": status, "result": result})
                 current["desk"] = None
                 if agent.last_session:
                     try:
@@ -457,16 +425,27 @@ async def run() -> int:
                         pass
                 if not restart.is_set():
                     values["work"] = "чекає"
-                await part.report(client, base, name, values)
+                wire.report(values)
         finally:
-            following.cancel()
             wiring.cancel()
-            asks.close()
-            await asyncio.gather(following, wiring, return_exceptions=True)
-            if agent is not None:
-                # A restart stays in this process; the old agent must not.
-                await agent.close()
-            socket_path.unlink(missing_ok=True)
+            await asyncio.gather(wiring, return_exceptions=True)
+
+    host = socket.gethostname()
+    try:
+        # The channel is the agent's name. Switching the runner type
+        # therefore changes the channel, while the away card in the
+        # manifest still says "opencode"; the manifest is the lead's
+        # decision, not this part's.
+        return await part.live(
+            {"channel": name, "forms": forms, "about": about,
+             "key": f"{name}@{host}", "host": host, "ui": ui},
+            work, on_event=on_control, hello=f"руки: {name}", settings=settings)
+    finally:
+        asks.close()
+        if agent is not None:
+            # A restart stays in this process; the old agent must not.
+            await agent.close()
+        socket_path.unlink(missing_ok=True)
 
 
 def _store_key(name: str) -> int:

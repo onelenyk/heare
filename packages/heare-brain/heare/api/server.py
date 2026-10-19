@@ -430,6 +430,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
                str(manifest.get("about") or ""), host, "away",
                list(manifest.get("ui") or []))
 
+    def named() -> dict:
+        """The assistant's name, for a part that shows what it says: a part
+        may not read the state, so the knock's answer carries it."""
+        try:
+            name = (vitals() or {}).get("name") if vitals is not None else None
+        except Exception:  # noqa: BLE001 — a name is a nicety, never a failed knock
+            name = None
+        return {"name": name} if name else {}
+
     def granted(request: web.Request, pid: str) -> dict:
         """A key of its own for a part that knocked with the master or a machine key.
 
@@ -465,7 +474,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if (pid in trusted()
                 or str(who or "").startswith(("window@", "machine@"))):
             attach(pid, channel, forms, about, host, "approved", ui)
-            return web.json_response({"approved": True, "pid": pid,
+            return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
         attach(pid, channel, forms, about, host, "pending", ui)
         event = waiting.setdefault(pid, asyncio.Event())
@@ -480,7 +489,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if bodies[pid]["state"] != "approved":
             return web.json_response({"approved": False, "why": bodies[pid]["state"]})
         attach(pid, channel, forms, about, host, "approved", ui)
-        return web.json_response({"approved": True, "pid": pid,
+        return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 
     async def approve(request: web.Request) -> web.Response:

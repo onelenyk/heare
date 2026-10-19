@@ -10,7 +10,7 @@ import httpx
 
 from heare.config import Settings
 from heare.core import Message
-from heare.voice import HttpPort, _events, _follow, _Speaker, run
+from heare.voice import HttpPort, _follow, _Speaker, run
 
 
 class Ears:
@@ -271,25 +271,6 @@ async def test_events_for_another_channel_never_reach_the_mouth():
     assert ears.paused == 0
 
 
-async def test_the_event_stream_is_read_with_the_token():
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/events"
-        assert request.url.params.get("token") == "secret"
-        return httpx.Response(
-            200, text=_event("voice_paused") + "\n\n",
-            headers={"content-type": "text/event-stream"},
-        )
-
-    ears = Ears()
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler)
-    ) as client:
-        await _follow(_events(client, "http://brain", "secret"),
-                      _Speaker(ears))
-
-    assert ears.paused == 1
-
-
 async def test_a_refused_registration_exits_one_with_the_reason(
     tmp_path, capsys,
 ):
@@ -303,8 +284,9 @@ async def test_a_refused_registration_exits_one_with_the_reason(
         assert request.url.path == "/api/bodies"
         return httpx.Response(200, json={"approved": False, "why": "rejected"})
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     code = await run(settings, client=client)
+    await client.aclose()
 
     assert code == 1
     assert "мозок не одобрив: rejected" in capsys.readouterr().err
