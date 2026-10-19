@@ -815,6 +815,15 @@ function partChip(pid, b) {
   return chip;
 }
 
+/* Whether the person is in a field inside *node*: a list open, a value
+   half typed, a slider held. Only then is a redraw put off. A switch or a
+   button keeps the focus after a click too, and a card that waited for that
+   focus to go showed the old value until the page was reloaded. */
+const typingIn = node => {
+  const now = document.activeElement;
+  return Boolean(now && node.contains(now) && /^(INPUT|SELECT|TEXTAREA)$/.test(now.tagName));
+};
+
 function parts(map) {
   const box = $("bodies"), grid = $("partwidgets"), all = Object.entries(map || {});
   if (!all.length) {
@@ -845,7 +854,7 @@ function parts(map) {
   // replacing it would close an open list or take the field being typed in.
   const fresh = big.map(([pid, b]) => {
     const kept = cards.get(pid);
-    const card = kept && kept.isConnected && kept.contains(document.activeElement) ? kept : partWidget(pid, b);
+    const card = kept && kept.isConnected && typingIn(kept) ? kept : partWidget(pid, b);
     cards.set(pid, card);
     return card;
   });
@@ -854,7 +863,7 @@ function parts(map) {
     fresh.forEach((card, i) => { if (now[i] !== card) now[i].replaceWith(card); });
   } else grid.replaceChildren(...(fresh.length ? fresh : [el("p", "empty", "жодна частина не на зв'язку")]));
   const chips = $("partchips");
-  if (!chips.contains(document.activeElement))
+  if (!typingIn(chips))
     chips.replaceChildren(...ordered.filter(([pid, b]) => isChip(pid, b)).map(([pid, b]) => partChip(pid, b)));
   $("partfold").replaceChildren(...ordered.map(([pid, b]) => {
     const head = (b.ui || []).find(c => c.head && c.kind === "label");
@@ -897,13 +906,13 @@ function placeDrawer() {
     drawer.replaceChildren(top);
   }
   const node = settingsFor(drawerPid, b);
-  if (drawer.children[1] !== node && !(drawer.children[1] && drawer.children[1].contains(document.activeElement))) {
+  if (drawer.children[1] !== node && !(drawer.children[1] && typingIn(drawer.children[1]))) {
     if (drawer.children[1]) drawer.children[1].replaceWith(node); else drawer.append(node);
   }
   // The rows are measured without the drawer, which is a row itself and
   // would push the rest of its card's row down. Hiding it would take the
   // field being typed in, so then it stays where it is.
-  if (!drawer.contains(document.activeElement)) {
+  if (!typingIn(drawer)) {
     drawer.hidden = true;
     let last = card;
     for (let n = card.nextElementSibling; n; n = n.nextElementSibling) {
