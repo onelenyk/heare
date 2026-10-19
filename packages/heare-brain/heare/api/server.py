@@ -32,6 +32,7 @@ from heare import keys
 from heare.core import PROTOCOL, Core, Message
 from heare.api import auth
 from heare.api import pair as codes
+from heare.api.registry import Registry
 from heare.model.providers import PROVIDERS, list_models
 
 logger = logging.getLogger("heare.api.server")
@@ -39,14 +40,9 @@ logger = logging.getLogger("heare.api.server")
 PAGE = Path(__file__).with_name("page.html")
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
-# How long a part waits for the person's answer before it leaves.
-APPROVAL_WAIT_S = 120.0
 # How often a quiet stream is written to. A closed page is only noticed when
 # a write to it fails, so this is also how long it takes to show it left.
 HEARTBEAT_S = 5.0
-# How long a closed page stays on the list as away. A window is not a part
-# anyone installed: every tab ever opened would otherwise stay there.
-WINDOW_GONE_S = 300.0
 SESSION = "heare_session"
 
 
@@ -305,17 +301,17 @@ def build(core: Core, settings: Any, vitals: Any = None,
         core.hear(Message(text=text, channel="screen"))
         return web.json_response({"ok": True})
 
-    bodies: dict[str, dict] = {}
-    waiting: dict[str, asyncio.Event] = {}
-
-    def channel_of(pid: str) -> str:
-        entry = bodies.get(pid) or {}
-        return str(entry.get("channel") or pid.split("@")[0])
+    registry = Registry(
+        Path(settings.parts_file), core.state.emit,
+        (lambda channel, about: core.add_executor(make_executor(channel, about)))
+        if make_executor is not None else None)
+    registry.load(Path(settings.parts_dir))
+    bodies = registry.bodies
 
     def own_channel(request: web.Request, channel: str) -> None:
         """A part may speak for its own channel and no other."""
         pid = request.get("part")
-        if pid is not None and channel and channel != channel_of(pid):
+        if pid is not None and channel and channel != registry.channel_of(pid):
             raise web.HTTPForbidden(text="not your channel")
 
     async def claim(request: web.Request) -> web.Response:
@@ -365,75 +361,6 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPNotFound(text="no such body")
         return found
 
-    trusted_file = Path(settings.parts_file)
-
-    def trusted() -> set[str]:
-        try:
-            remembered = set(json.loads(trusted_file.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            remembered = set()
-        # A folder the person put in the parts directory is a yes already:
-        # nothing knocks its way in, it had to be carried there by hand.
-        return remembered | {pid for pid, b in bodies.items()
-                             if b.get("state") == "away"}
-
-    def remember(pid: str) -> None:
-        trusted_file.parent.mkdir(parents=True, exist_ok=True)
-        trusted_file.write_text(
-            json.dumps(sorted(trusted() | {pid}), ensure_ascii=False),
-            encoding="utf-8",
-        )
-
-    def attach(pid: str, channel: str, forms: list, about: str,
-               host: str, state: str, ui: list | None = None,
-               hears: str | None = None) -> None:
-        old = bodies.get(pid) or {}
-        bodies[pid] = {
-            "channel": channel, "forms": forms, "about": about,
-            "host": host, "state": state,
-            # "all" for a part that shows the whole conversation (a chat);
-            # any other part hears only its own channel.
-            "hears": hears or old.get("hears") or "own",
-            # What the part offers to the person, and what it last reported
-            # those controls are worth. Both travel to the page untouched.
-            "ui": list(ui if ui is not None else old.get("ui") or []),
-            "values": dict(old.get("values") or {}),
-        }
-        if state == "approved" and "executor" in forms and make_executor is not None:
-            core.add_executor(make_executor(channel, about))
-        core.state.emit("part", channel=channel, forms=forms, about=about,
-                        host=host, state=state)
-
-    def part_by_channel(channel: str) -> dict | None:
-        found = [b for b in bodies.values() if b.get("channel") == channel]
-        approved = [b for b in found if b.get("state") == "approved"]
-        chosen = (approved or found)[-1:] if found else []
-        return chosen[0] if chosen else None
-
-    def manifests() -> list[dict]:
-        try:
-            files = sorted(Path(settings.parts_dir).glob("*/heare.json"))
-        except OSError:
-            return []
-        found = []
-        for path in files:
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                logger.warning("not a manifest: %s", path)
-                continue
-            if isinstance(data, dict) and data.get("channel"):
-                found.append(data)
-        return found
-
-    for manifest in manifests():
-        channel = str(manifest["channel"])
-        host = str(manifest.get("host") or socket.gethostname())
-        attach(str(manifest.get("key") or f"{channel}@{host}"), channel,
-               list(manifest.get("forms") or []),
-               str(manifest.get("about") or ""), host, "away",
-               list(manifest.get("ui") or []))
-
     def named() -> dict:
         """The assistant's name, for a part that shows what it says: a part
         may not read the state, so the knock's answer carries it."""
@@ -482,24 +409,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
         about = str(data.get("about") or "")
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
-        if (pid in trusted()
+        if (pid in registry.trusted()
                 or str(who or "").startswith(("window@", "machine@"))):
-            attach(pid, channel, forms, about, host, "approved", ui, hears)
+            registry.attach(pid, channel, forms, about, host, "approved", ui, hears)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
-        attach(pid, channel, forms, about, host, "pending", ui, hears)
-        event = waiting.setdefault(pid, asyncio.Event())
-        try:
-            await asyncio.wait_for(event.wait(), APPROVAL_WAIT_S)
-        except TimeoutError:
-            bodies[pid]["state"] = "expired"
+        registry.attach(pid, channel, forms, about, host, "pending", ui, hears)
+        decided = await registry.answer(pid)
+        if decided == "expired":
             return web.json_response({"approved": False, "why": "ніхто не відповів"})
-        finally:
-            if waiting.get(pid) is event:
-                waiting.pop(pid, None)
-        if bodies[pid]["state"] != "approved":
-            return web.json_response({"approved": False, "why": bodies[pid]["state"]})
-        attach(pid, channel, forms, about, host, "approved", ui, hears)
+        if decided != "approved":
+            return web.json_response({"approved": False, "why": decided})
+        registry.attach(pid, channel, forms, about, host, "approved", ui, hears)
         return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 
@@ -516,34 +437,16 @@ def build(core: Core, settings: Any, vitals: Any = None,
         pretend to: the part keeps running, but is no longer known — the
         next knock is a question again."""
         pid = request.match_info["id"]
-        entry = bodies.pop(pid, None)
+        entry = registry.forget(pid)
         if entry is None:
             raise web.HTTPNotFound(text="no such part")
-        try:
-            remembered = set(json.loads(trusted_file.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            remembered = set()
-        remembered.discard(pid)
-        trusted_file.write_text(json.dumps(sorted(remembered), ensure_ascii=False),
-                                encoding="utf-8")
         auth.revoke(part_tokens, pid)
         core.executors.pop(str(entry.get("channel", "")), None)
-        core.state.emit("part", channel=entry.get("channel", ""),
-                        forms=entry.get("forms", []), about=entry.get("about", ""),
-                        host=entry.get("host", ""), state="forgotten")
         return web.json_response({"ok": True})
 
     def _decide(request: web.Request, state: str) -> web.Response:
-        pid = request.match_info["id"]
-        entry = bodies.get(pid)
-        if entry is None or entry.get("state") != "pending":
+        if not registry.decide(request.match_info["id"], state):
             raise web.HTTPNotFound(text="no such part is waiting")
-        entry["state"] = state
-        if state == "approved":
-            remember(pid)
-        event = waiting.get(pid)
-        if event is not None:
-            event.set()
         return web.json_response({"ok": True})
 
     async def input_event(request: web.Request) -> web.Response:
@@ -566,7 +469,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 raise web.HTTPBadRequest(text="values must be an object")
             # A window reports for itself: several pages share the channel
             # "web", and one page's switch is not another's.
-            entry = bodies.get(request.get("window") or "") or part_by_channel(channel)
+            entry = bodies.get(request.get("window") or "") or registry.by_channel(channel)
             if entry is None:
                 raise web.HTTPNotFound(text="no such part")
             entry["values"].update(values)
@@ -605,67 +508,6 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     # -- events and state -------------------------------------------------
 
-    # How many event streams each part holds open. A part is there while it
-    # listens: a closed page or a stopped body ends its stream, and the last
-    # stream to end makes it "away" — nothing else would ever say it left.
-    listening: dict[str, int] = {}
-    fading: dict[str, asyncio.TimerHandle] = {}
-
-    def drop(pid: str) -> None:
-        """A window away long enough leaves the list; its key stays, so the
-        page comes back by knocking."""
-        fading.pop(pid, None)
-        entry = bodies.get(pid)
-        if entry is None or entry.get("state") != "away":
-            return
-        del bodies[pid]
-        core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
-                        about=entry["about"], host=entry["host"], state="forgotten")
-
-    def back(pid: str) -> None:
-        """A part that listens again is there again, whatever its knock is
-        doing: a page reloaded after a brain restart knocks before the brain
-        notices its old stream ended, and that end must not have the last word."""
-        entry = bodies.get(pid)
-        if entry is None or entry.get("state") != "away":
-            return
-        entry["state"] = "approved"
-        core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
-                        about=entry["about"], host=entry["host"], state="approved")
-
-    def left(pid: str) -> None:
-        listening[pid] -= 1
-        if listening[pid]:
-            return
-        del listening[pid]
-        entry = bodies.get(pid)
-        if entry is None or entry.get("state") != "approved":
-            return
-        entry["state"] = "away"
-        core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
-                        about=entry["about"], host=entry["host"], state="away")
-        if pid.startswith("window@"):
-            fading[pid] = asyncio.get_running_loop().call_later(
-                WINDOW_GONE_S, drop, pid)
-
-    def hears(request: web.Request, event) -> bool:
-        """Whether this listener may hear *event*.
-
-        The person — the master key, a window — hears everything. A part
-        hears its own channel and what is addressed to it, unless it was let
-        in as one that shows the whole conversation: the conversation is the
-        person's, not every part's that happens to be trusted."""
-        pid = request.get("part")
-        if pid is None:
-            return True
-        entry = bodies.get(pid)
-        if entry is None:
-            return False
-        if entry.get("hears") == "all":
-            return True
-        data = event.data
-        return data.get("channel") == entry["channel"] or data.get("part") == pid
-
     async def events(request: web.Request) -> web.StreamResponse:
         response = web.StreamResponse(headers={
             "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
@@ -674,21 +516,20 @@ def build(core: Core, settings: Any, vitals: Any = None,
         reader = core.state.subscribe()
         who = request.get("part") or request.get("window")
         if who is not None:
-            listening[who] = listening.get(who, 0) + 1
-            if who in fading:
-                fading.pop(who).cancel()
-            back(who)
+            registry.listens(who)
+        # A window is the person and hears all; a part, what is its own.
+        listener = request.get("part")
         try:
             # The past only when asked for: a page that also loads the
             # history would otherwise show the last exchange twice.
             replay = max(0, min(int(request.query.get("replay", "0")), 200))
             for past in list(core.state.journal)[-replay:] if replay else ():
-                if hears(request, past):
+                if registry.hears(listener, past.data):
                     await response.write(_sse(past.view()))
             while True:
                 try:
                     event = await asyncio.wait_for(reader.get(), HEARTBEAT_S)
-                    if hears(request, event):
+                    if registry.hears(listener, event.data):
                         await response.write(_sse(event.view()))
                 except TimeoutError:
                     await response.write(b": still here\n\n")
@@ -697,7 +538,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         finally:
             core.state.unsubscribe(reader)
             if who is not None:
-                left(who)
+                registry.left(who)
         return response
 
     async def state(request: web.Request) -> web.Response:
@@ -730,15 +571,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
         part = str(data.get("part", ""))
         name = str(data.get("name", ""))
         value = data.get("value")
-        target = bodies.get(part) or part_by_channel(part)
+        target = bodies.get(part) or registry.by_channel(part)
         if target is not None:
             names = {str(c.get("name", "")) for c in target.get("ui") or []}
             if target.get("state") != "approved" or name not in names:
                 raise web.HTTPNotFound(text="no such control")
             # Addressed to the part as well as the channel: pages share the
             # channel "web", and a switch on one page's card is that page's.
-            pid = part if part in bodies else next(
-                p for p, b in bodies.items() if b is target)
+            pid = part if part in bodies else registry.pid_of(target)
             core.state.emit("control", channel=target["channel"], name=name,
                             value=value, part=pid)
             return web.json_response({"ok": True})

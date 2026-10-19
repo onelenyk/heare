@@ -11,6 +11,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from heare import pairing
 from heare.api import auth as authlib, pair
+from heare.api import registry as registry_mod
 from heare.api import server as api_server
 from heare.api.server import Screen, VoiceOut, build
 from heare.config import Settings
@@ -982,7 +983,7 @@ async def test_one_page_s_switch_is_not_another_s(tmp_path):
 
 async def test_a_closed_page_leaves_the_list_after_a_while(tmp_path, monkeypatch):
     monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.02)
-    monkeypatch.setattr(api_server, "WINDOW_GONE_S", 0.1)
+    monkeypatch.setattr(registry_mod, "WINDOW_GONE_S", 0.1)
     room, client, headers, settings = await _open(tmp_path)
     paired = await client.post("/api/pair", json={
         "code": pair.make(Path(settings.pair_codes_file)),
