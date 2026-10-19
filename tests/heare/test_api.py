@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+from importlib import metadata
 from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
@@ -1104,3 +1105,23 @@ async def test_a_part_of_another_wire_is_told_why(tmp_path):
         "v": 99, "channel": "eyes", "key": "eyes@mac"})).json()
     assert answer["approved"] is False and "v99" in answer["why"]
     await _close(room, client)
+
+
+async def test_the_brain_says_its_version_and_a_part_s_is_kept(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, auth, _ = await _open(tmp_path)
+    await client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "мікрофон",
+        "key": "voice@mac", "host": "mac", "version": "0.0.9"}, headers=auth)
+
+    state = await (await client.get("/api/state", headers=auth)).json()
+    assert state["running"]["version"] == metadata.version("heare-brain")
+    assert "commit" in state["running"]
+    assert state["bodies"]["voice@mac"]["version"] == "0.0.9"
+    await _close(room, client)
+
+
+def test_an_installed_brain_does_not_invent_a_commit(monkeypatch):
+    monkeypatch.setattr(api_server, "__file__",
+                        "/opt/venv/lib/python3.12/site-packages/heare/api/server.py")
+    assert api_server.running()["commit"] is None

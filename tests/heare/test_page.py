@@ -51,3 +51,11 @@ def test_the_installer_s_script_parses(tmp_path):
                       encoding="utf-8")
     checked = subprocess.run(["node", "--check", str(script)], capture_output=True, text=True)
     assert checked.returncode == 0, checked.stderr
+
+
+def test_the_page_shows_versions_and_marks_a_part_of_another():
+    # The brain's version beside its uptime; a part's in its name's tooltip,
+    # and a mark when the two differ.
+    assert "s.running" in SCRIPT
+    assert '"v" + b.version' in SCRIPT
+    assert "b.version !== brain" in SCRIPT

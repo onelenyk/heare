@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from importlib import metadata
 
 import httpx
 
@@ -137,3 +138,24 @@ async def test_the_stream_is_read_with_the_key_and_only_this_channel_passes(monk
 
     assert seen[0].url.params["token"] == "secret"
     assert got == [{"kind": "said", "channel": "voice"}]
+
+
+async def test_a_part_knocks_with_its_version_and_may_name_its_own(tmp_path):
+    knocks: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        knocks.append(json.loads(request.content))
+        return httpx.Response(200, json={"approved": True, "pid": "eyes@mac"})
+
+    async def work(wire: part.Wire) -> int:
+        return 0
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    settings = _settings(tmp_path)
+    await part.live({"channel": "eyes"}, work, settings=settings, client=client)
+    await part.live({"channel": "eyes", "version": "9.9.9"}, work,
+                    settings=settings, client=client)
+    await client.aclose()
+
+    assert knocks[0]["version"] == metadata.version("heare-core")
+    assert knocks[1]["version"] == "9.9.9"

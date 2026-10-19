@@ -73,11 +73,14 @@ class Registry:
 
     def attach(self, pid: str, channel: str, forms: list, about: str,
                host: str, state: str, ui: list | None = None,
-               hears: str | None = None) -> None:
+               hears: str | None = None, version: str | None = None) -> None:
         old = self.bodies.get(pid) or {}
         self.bodies[pid] = {
             "channel": channel, "forms": forms, "about": about,
             "host": host, "state": state,
+            # What the part last said it is; a manifest says nothing, so the
+            # version from its last knock stays until it knocks again.
+            "version": version or old.get("version"),
             # "all" for a part that shows the whole conversation (a chat);
             # any other part hears only its own channel.
             "hears": hears or old.get("hears") or "own",

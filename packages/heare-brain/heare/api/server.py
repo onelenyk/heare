@@ -22,7 +22,9 @@ import logging
 import re
 import secrets
 import socket
+import subprocess
 import time
+from importlib import metadata
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -113,6 +115,31 @@ def token(path: Path) -> str:
     return made
 
 
+def running() -> dict:
+    """Which heare this is: the version, and the commit when it is a checkout.
+
+    An installed wheel does not know the commit it was built from, and a
+    guess is worse than nothing — so the commit is read only from a git
+    tree the code itself lives in, never one a virtualenv happens to sit in.
+    """
+    try:
+        version: str | None = metadata.version("heare-brain")
+    except metadata.PackageNotFoundError:
+        version = None
+    here = Path(__file__).resolve()
+    commit = None
+    if "site-packages" not in here.parts:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(here.parent), "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True, timeout=2)
+            if done.returncode == 0:
+                commit = done.stdout.strip() or None
+        except (OSError, subprocess.SubprocessError):
+            commit = None
+    return {"version": version, "commit": commit}
+
+
 class Tally:
     """What this run has added up to: turns, work, money. Counted from
     the core's events, so it is the same account every screen reads."""
@@ -193,6 +220,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
     part_tokens = Path(settings.part_tokens_file)
     screens = Path(settings.screens_dir)
     tally = Tally(core)
+    # Read once: the version cannot change under a running process.
+    build_info = running()
 
     PART_CALLS = (
         ("POST", re.compile(r"^/api/bodies$")),
@@ -405,22 +434,27 @@ def build(core: Core, settings: Any, vitals: Any = None,
             return web.json_response({"approved": False, "why": (
                 f"мозок говорить протоколом v{PROTOCOL}, частина — v{version}")})
         hears = "all" if data.get("hears") == "all" else "own"
+        # The part's own version: shown on its card, never a reason to trust.
+        part_version = str(data["version"]) if data.get("version") else None
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
         if (pid in registry.trusted()
                 or str(who or "").startswith(("window@", "machine@"))):
-            registry.attach(pid, channel, forms, about, host, "approved", ui, hears)
+            registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
+                            version=part_version)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
-        registry.attach(pid, channel, forms, about, host, "pending", ui, hears)
+        registry.attach(pid, channel, forms, about, host, "pending", ui, hears,
+                        version=part_version)
         decided = await registry.answer(pid)
         if decided == "expired":
             return web.json_response({"approved": False, "why": "ніхто не відповів"})
         if decided != "approved":
             return web.json_response({"approved": False, "why": decided})
-        registry.attach(pid, channel, forms, about, host, "approved", ui, hears)
+        registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
+                        version=part_version)
         return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 
@@ -551,6 +585,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.json_response({
             **core.state.snapshot(), "controls": core.controls(),
             "model": about, "session": tally.read(), "bodies": bodies,
+            "running": build_info,
         })
 
     async def history(request: web.Request) -> web.Response:

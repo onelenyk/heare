@@ -92,3 +92,12 @@ def test_a_manifest_makes_a_part_known_and_trusted(tmp_path):
 
     assert registry.bodies["eyes@mac"]["state"] == "away"
     assert "eyes@mac" in registry.trusted()
+
+
+def test_a_version_is_kept_until_the_part_says_another(tmp_path):
+    registry, _, _ = _registry(tmp_path)
+    registry.attach("eyes@mac", "eyes", [], "", "mac", "approved", version="1.2.0")
+    registry.attach("eyes@mac", "eyes", [], "", "mac", "away")
+    assert registry.bodies["eyes@mac"]["version"] == "1.2.0"
+    registry.attach("eyes@mac", "eyes", [], "", "mac", "approved", version="1.3.0")
+    assert registry.bodies["eyes@mac"]["version"] == "1.3.0"

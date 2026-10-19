@@ -14,6 +14,7 @@ import json
 import logging
 import sys
 from collections.abc import Awaitable, Callable
+from importlib import metadata
 from urllib.parse import quote
 
 import httpx
@@ -27,6 +28,19 @@ RETRY_S = 1.0
 # A knock answered later than this is waiting for the person; only then is
 # that worth a line.
 ASKING_S = 2.0
+
+
+def installed() -> str | None:
+    """The version a part knocks with: that of the core it lives by.
+
+    Every distribution is released at one version, and the core cannot tell
+    which part called it; a part that knows better says ``"version"`` in
+    its about, and that wins.
+    """
+    try:
+        return metadata.version("heare-core")
+    except metadata.PackageNotFoundError:
+        return None
 
 
 async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
@@ -164,7 +178,7 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         print(f"немає ключа ({settings.api_token_file}) — мозок запущений?",
               file=sys.stderr)
         return 1
-    about = {"v": PROTOCOL, **about}
+    about = {"v": PROTOCOL, "version": installed(), **about}
     owned = client is None
     client = client or httpx.AsyncClient(timeout=None)
     client.headers["X-Heare-Token"] = secret

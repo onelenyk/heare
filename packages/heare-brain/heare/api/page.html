@@ -46,6 +46,8 @@
   #open-settings:hover { color:var(--ink); }
   #name { font:800 22px/1 var(--sans); letter-spacing:-.4px; }
   #up { color:var(--soft); font:11px var(--mono); margin-left:auto; }
+  /* A part not of the brain's version: a quiet mark, the details on hover. */
+  .part-ver { flex:none; color:var(--warn); font-size:11px; cursor:help; }
   #now { display:flex; align-items:center; gap:14px; margin-top:12px; font:600 17px/1.2 var(--sans); }
   #dot { width:12px; height:12px; border-radius:50%; background:var(--soft); flex:none; }
   #dot.hearing { background:var(--info); box-shadow:0 0 10px var(--info); }
@@ -564,7 +566,10 @@ function vitals(s) {
   near.push(around.present === false ? "не тут" : "ти тут");
   $("around").replaceChildren(el("span", playing.length ? "warn" : "", near.join(" · ")));
   const t = s.session, mins = Math.round((Date.now() / 1000 - t.started) / 60);
-  $("up").textContent = mins < 1 ? "щойно запущено" : mins < 60 ? `${mins} хв` : `${Math.floor(mins / 60)} год ${mins % 60} хв`;
+  const up = mins < 1 ? "щойно запущено" : mins < 60 ? `${mins} хв` : `${Math.floor(mins / 60)} год ${mins % 60} хв`;
+  const run = s.running || {};
+  $("up").textContent = run.version ? `${up} · v${run.version}` : up;
+  $("up").title = run.commit ? `коміт ${run.commit}` : "";
   $("session").textContent = `відповідей: ${t.turns}`;
 }
 
@@ -758,10 +763,18 @@ function lit(pid, on) {
 // what it is doing now.
 function partHead(pid, b) {
   const top = el("div", "part-top"), name = el("b", "part-name", nameOf(pid, b));
-  name.title = [b.channel, ...(b.forms || []).map(f => FORM[f] || f), b.host].filter(Boolean).join(" · ");
+  name.title = [b.channel, ...(b.forms || []).map(f => FORM[f] || f), b.host,
+    b.version && "v" + b.version].filter(Boolean).join(" · ");
   const head = (b.ui || []).find(c => c.head && c.kind === "label");
   const now = b.state === "approved" && head ? String(truth(b, head) ?? "") : PART_STATE[b.state] || b.state;
-  top.append(el("span", "pdot " + b.state), name, el("span", "part-state", now));
+  top.append(el("span", "pdot " + b.state), name);
+  const brain = state && state.running && state.running.version;
+  if (b.version && brain && b.version !== brain) {
+    const odd = el("span", "part-ver", "≠");
+    odd.title = `версія частини v${b.version}, мозку — v${brain}`;
+    top.append(odd);
+  }
+  top.append(el("span", "part-state", now));
   if (b.state === "approved" && (b.ui || []).some(c => c.group === "settings")) {
     const open = drawerPid === pid;
     const gear = el("button", "part-gear" + (open ? " on" : ""), "⚙");
