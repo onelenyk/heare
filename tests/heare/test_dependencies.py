@@ -26,10 +26,6 @@ KNOW_EVERYTHING = {"app", "listener", "brain"}
 # Leaf modules any part may read: the key store, and the provider registry
 # the door and the model must agree on.
 LEAVES = {"heare.keys", "heare.model.providers"}
-# Known debts, each to be paid, never added to quietly. 19 Oct: the door
-# still configures the hands' runner itself; it goes when the hands declare
-# those settings as their own controls.
-OWED = {"heare-brain/heare/api/server.py: heare.reach"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part. Raised deliberately for the question
 # channel (an executor asking the person mid-work), not by drift.
@@ -107,7 +103,7 @@ def test_a_part_imports_only_the_core_and_itself():
             if module.startswith(f"heare.{part}"):
                 continue
             guilty.append(f"{path.relative_to(ROOT)}: {module}")
-    assert set(guilty) <= OWED, f"a part reaches into another part: {guilty}"
+    assert not guilty, f"a part reaches into another part: {guilty}"
 
 
 def test_the_core_stays_small():

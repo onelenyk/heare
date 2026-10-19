@@ -9,8 +9,7 @@ from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from heare import keys, pairing
-from heare.reach import runner
+from heare import pairing
 from heare.api import auth as authlib, pair
 from heare.api import server as api_server
 from heare.api.server import Screen, VoiceOut, build
@@ -874,103 +873,6 @@ async def test_the_pairing_client_speaks_to_the_door(tmp_path):
     base = str(client.make_url("/")).rstrip("/")
     given = await asyncio.to_thread(pairing.pair, base, code, "machine", "mac")
     assert given["pid"] == "machine@mac" and given["token"]
-    await _close(room, client)
-
-
-async def test_the_runner_is_read_without_any_key_value(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner, "login", lambda kind, binary: {
-        "ok": True, "summary": "1 provider signed in", "detail": "deepseek",
-    })
-    room, client, auth, settings = await _open(tmp_path)
-    settings.set("executor_auth", "key")
-    settings.set("executor_auth_env", "ANTHROPIC_API_KEY")
-    keys.store("ANTHROPIC_API_KEY", "stored-value")
-
-    response = await client.get("/api/runner", headers=auth)
-    text = await response.text()
-    body = json.loads(text)
-    assert body["type"] == "opencode"
-    assert body["auth"] == "key"
-    assert body["key"] == {"name": "ANTHROPIC_API_KEY", "present": True}
-    assert body["binary"]["setting"] == ""
-    assert body["login"]["ok"] is True
-    assert [known["type"] for known in body["known"]] == ["opencode", "claude"]
-    assert "stored-value" not in text
-    await _close(room, client)
-
-
-async def test_the_runner_settings_can_be_changed(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner, "login", lambda kind, binary: {
-        "ok": True, "summary": "signed in", "detail": "",
-    })
-    room, client, auth, settings = await _open(tmp_path)
-    events = room.core.state.subscribe()
-
-    response = await client.post("/api/runner", headers=auth, json={
-        "type": "claude",
-        "binary": "/opt/claude",
-        "model": "opus",
-        "auth": "login",
-        "base_url": "https://gateway.test",
-    })
-    assert response.status == 200
-    body = await response.json()
-    assert body["type"] == "claude"
-    assert settings.executor == "claude"
-    assert settings.executor_binary == "/opt/claude"
-    assert settings.executor_model == "opus"
-    assert settings.executor_auth == "login"
-    assert settings.executor_base_url == "https://gateway.test"
-    seen = []
-    while not events.empty():
-        seen.append(events.get_nowait())
-    assert any(e.kind == "runner" for e in seen)
-    await _close(room, client)
-
-
-async def test_the_runner_settings_are_validated(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner, "login", lambda kind, binary: {
-        "ok": False, "summary": "", "detail": "",
-    })
-    room, client, auth, settings = await _open(tmp_path)
-    for payload in (
-        {"type": "nope"},
-        {"auth": "env"},
-        {"auth": "key", "auth_env": "PATH"},
-    ):
-        response = await client.post("/api/runner", headers=auth, json=payload)
-        assert response.status == 400
-    assert settings.executor == "opencode"
-    assert settings.executor_auth == "login"
-    await _close(room, client)
-
-
-async def test_runner_health_and_models_are_proxied(tmp_path, monkeypatch):
-    seen: dict = {}
-
-    def fake_health(kind, binary, auth_mode, auth_env, base_url):
-        seen["health"] = (kind, binary, auth_mode, auth_env, base_url)
-        return {"ok": True, "checks": [
-            {"name": "binary", "ok": True, "detail": "/x/opencode"},
-        ]}
-
-    def fake_models(kind, binary):
-        seen["models"] = (kind, binary)
-        return [{"group": "g", "models": [{"id": "g/m", "name": "M"}]}]
-
-    monkeypatch.setattr(runner, "health", fake_health)
-    monkeypatch.setattr(runner, "models", fake_models)
-    room, client, auth, _ = await _open(tmp_path)
-
-    health = await (await client.post("/api/runner/health", headers=auth)).json()
-    models = await (await client.get("/api/runner/models", headers=auth)).json()
-    assert health["ok"] is True
-    assert health["checks"][0]["name"] == "binary"
-    assert models == {"groups": [
-        {"group": "g", "models": [{"id": "g/m", "name": "M"}]},
-    ]}
-    assert seen["health"][0] == "opencode"
-    assert seen["models"][0] == "opencode"
     await _close(room, client)
 
 

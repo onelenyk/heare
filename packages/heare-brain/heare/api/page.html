@@ -288,36 +288,18 @@
   .devicecode { display:flex; align-items:center; gap:8px; margin:12px 0 6px; flex-wrap:wrap; }
   .devicecode code { flex:1 1 150px; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:var(--bg); color:var(--ink); font:700 22px/1.2 var(--mono); letter-spacing:.14em; text-align:center; overflow-wrap:anywhere; }
   .devicecode .btn { flex:none; }
-  /* Hands: the executor — a CLI, a model, and one of two ways in. */
-  .choices { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
-  .choice { padding:9px 10px; border:1px solid var(--line); border-radius:9px; background:var(--card-2); color:var(--ink); cursor:pointer; text-align:left; transition:border-color .15s, background .15s; }
-  .choice:hover { border-color:var(--accent); }
-  .choice.on { border-color:var(--accent); background:rgba(157,124,255,.08); }
-  .choice b { display:block; font-weight:600; font-size:12.5px; }
-  .choice small { display:block; margin-top:2px; color:var(--soft); font-size:10.5px; line-height:1.4; }
-  .pathline { font:11.5px/1.45 var(--mono); color:var(--soft); overflow-wrap:anywhere; }
-  .pathline.bad { color:var(--bad); }
-  .probe { display:grid; grid-template-columns:14px 1fr; gap:8px; align-items:start; margin-bottom:4px; font-size:12px; color:var(--soft); }
-  .probe b { font-weight:700; }
-  .probe.ok b { color:var(--ok); }
-  .probe.bad b { color:var(--bad); }
-  .checks { display:grid; gap:6px; margin:8px 0 10px; }
-  .check { display:grid; grid-template-columns:14px 1fr; gap:8px; align-items:start; font:11.5px/1.45 var(--mono); color:var(--soft); }
-  .check b { font-weight:700; }
-  .check.ok b { color:var(--ok); }
-  .check.bad b { color:var(--bad); }
-  .more { margin-bottom:10px; }
-  .more summary { color:var(--soft); font-size:12px; cursor:pointer; }
-  .more[open] summary { margin-bottom:8px; }
-  .more .field { margin-bottom:8px; }
-  .runner-actions { display:flex; gap:8px; margin-bottom:8px; }
-  .runner-actions .btn { flex:1; }
+  /* A part's settings drawer: the controls it declared in its "settings" group. */
+  #part-controls .keys { grid-template-columns:1fr; gap:10px; }
+  #part-controls .vol { font-size:12px; }
+  #part-controls .vol b { color:var(--ink); font-weight:500; overflow-wrap:anywhere; }
+  #part-controls .actions { margin-top:12px; }
+  #part-controls .plog { white-space:pre-wrap; overflow-wrap:anywhere; }
+  #part-controls select, #part-controls input, .part .part-controls input { min-width:0; width:100%; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 7px; color:inherit; font:12px var(--mono); }
   .btn.quiet { background:var(--card-2); color:var(--ink); border:1px solid var(--line); }
   .btn.quiet:hover { border-color:var(--accent); }
   .btn:disabled { opacity:.5; cursor:progress; }
   #settings code, #partsettings code { font:11.5px var(--mono); }
   #settings select:disabled, #partsettings select:disabled { opacity:.55; }
-  @media (max-width:420px) { .choices { grid-template-columns:1fr; } }
   /* A narrow window stacks the regions in reading order: brain, its index,
      the parts' widgets, the canvas, then the conversation inline. */
   @media (max-width:900px) {
@@ -444,48 +426,7 @@
     <button type="button" class="drawer-close" id="close-part" title="закрити">✕</button>
     <span class="drawer-sub" id="part-channel"></span>
   </div>
-  <p class="note">Виконавець: CLI, модель і вхід.</p>
-  <div class="field"><label for="runner-type">тип</label><select id="runner-type"></select></div>
-  <div class="field">
-    <label>бінарник</label>
-    <div class="pathline" id="runner-binary">…</div>
-    <input id="runner-binary-path" placeholder="шлях вручну" autocomplete="off" spellcheck="false">
-    <p class="note">порожньо — шукати самому</p>
-  </div>
-  <div class="field">
-    <label>вхід</label>
-    <div class="choices" id="runner-auth">
-      <button type="button" class="choice" data-auth="login"><b>Логін CLI</b><small>свій вхід у терміналі</small></button>
-      <button type="button" class="choice" data-auth="key"><b>Свій токен</b><small>ключ на цій машині</small></button>
-    </div>
-  </div>
-  <div id="runner-login">
-    <div class="probe" id="runner-login-probe"><b>—</b><span>…</span></div>
-    <p class="note" id="runner-login-hint"></p>
-  </div>
-  <div id="runner-key" hidden>
-    <div class="field"><label for="runner-keyname">ключ</label><div class="pair"><select id="runner-keyname"></select><span class="kchip none" id="runner-keychip">немає</span></div></div>
-    <div class="field"><label for="runner-keyvalue">токен</label><div class="pair"><input id="runner-keyvalue" type="password" placeholder="встав токен" autocomplete="off"><button class="btn quiet" id="runner-save-key">Зберегти токен</button></div></div>
-    <p class="note" id="runner-keynote"></p>
-  </div>
-  <div class="field">
-    <label for="runner-model">модель</label>
-    <select id="runner-model"></select>
-    <input id="runner-model-id" placeholder="або id моделі" autocomplete="off" spellcheck="false">
-    <p class="note" id="runner-modelnote"></p>
-  </div>
-  <details class="more">
-    <summary>Додатково</summary>
-    <div class="field"><label for="runner-base">base URL</label><input id="runner-base" placeholder="https://…" autocomplete="off" spellcheck="false"></div>
-    <p class="note">порожньо — рідний endpoint; тільки для проксі.</p>
-  </details>
-  <div class="runner-actions">
-    <button class="btn quiet" id="runner-check">Перевірити</button>
-    <button class="btn" id="runner-save">Зберегти</button>
-  </div>
-  <div class="checks" id="runner-checks"></div>
-  <p class="note" id="runner-note"></p>
-  <p class="note">Токен лежить у Keychain і ніколи не показується назад.</p>
+  <div id="part-controls"></div>
 </aside>
 
 <div id="pairing" hidden>
@@ -652,8 +593,8 @@ const PART_ORDER = {pending: 0, approved: 1, away: 2, rejected: 3, expired: 4};
 
 const truth = (b, c) => (b.values && Object.prototype.hasOwnProperty.call(b.values, c.name)) ? b.values[c.name] : c.value;
 
-function controlsFor(pid, b) {
-  const list = Array.isArray(b.ui) ? b.ui : [];
+function controlsFor(pid, b, group = "") {
+  const list = (Array.isArray(b.ui) ? b.ui : []).filter(c => (c.group || "") === group);
   if (b.state !== "approved" || !list.length) return null;
   const grid = el("div", "keys"), extra = el("div", "actions");
   for (const c of list) {
@@ -681,6 +622,13 @@ function controlsFor(pid, b) {
       pick.value = value;
       pick.onchange = () => turn(pid, c.name, pick.value);
       row.append(el("span", "", c.label || c.name), pick, el("span", ""));
+      grid.append(row);
+    } else if (c.kind === "text") {
+      const row = el("div", "vol"), field = el("input");
+      field.value = value ?? ""; field.placeholder = c.hint || "";
+      field.autocomplete = "off"; field.spellcheck = false;
+      field.onchange = () => turn(pid, c.name, field.value.trim());
+      row.append(el("span", "", c.label || c.name), field, el("span", ""));
       grid.append(row);
     } else if (c.kind === "label") {
       const row = el("div", "vol");
@@ -733,11 +681,11 @@ function partWidget(pid, b) {
   const top = el("div", "part-top");
   top.append(el("b", "part-name", PART_LABEL[b.channel] || b.channel || pid),
              el("span", "pchan", b.channel || ""));
-  if ((b.forms || []).includes("executor")) {
+  if (b.state === "approved" && (b.ui || []).some(c => c.group === "settings")) {
     const gear = el("button", "part-gear", "⚙");
     gear.type = "button";
-    gear.title = "налаштування рук";
-    gear.setAttribute("aria-label", "налаштування рук");
+    gear.title = "налаштування";
+    gear.setAttribute("aria-label", "налаштування");
     gear.onclick = () => openPart(pid, b);
     top.append(gear);
   }
@@ -776,6 +724,7 @@ function parts(map) {
   box.replaceChildren(frag);
   const ordered = [...all].sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
   grid.replaceChildren(...ordered.map(([pid, b]) => partWidget(pid, b)));
+  paintPart();
 }
 
 let born = null;
@@ -1180,6 +1129,18 @@ else {
 /* ── settings ── */
 const shut = () => { for (const id of ["veil", "settings", "partsettings"]) $(id).classList.remove("on"); };
 $("veil").onclick = shut;
+let openPid = null, openDrawn = "";
+function paintPart(force) {
+  if (!openPid || !$("partsettings").classList.contains("on")) return;
+  const b = (state && state.bodies || {})[openPid];
+  const mine = b ? (b.ui || []).filter(c => c.group === "settings") : [];
+  const drawn = JSON.stringify([b && b.state, mine.map(c => [c, truth(b, c)])]);
+  if (!force && drawn === openDrawn) return;
+  const box = $("part-controls");
+  if (!force && box.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
+  openDrawn = drawn;
+  box.replaceChildren((b && controlsFor(openPid, b, "settings")) || el("p", "note", "частина не на зв'язку"));
+}
 function openPart(pid, b) {
   const name = PART_LABEL[b.channel] || b.channel || pid;
   $("part-title").textContent = name.charAt(0).toUpperCase() + name.slice(1);
@@ -1188,7 +1149,8 @@ function openPart(pid, b) {
   $("partsettings").scrollTop = 0;
   $("partsettings").classList.add("on");
   $("veil").classList.add("on");
-  runnerLoad();
+  openPid = pid;
+  paintPart(true);
 }
 $("close-part").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
@@ -1328,191 +1290,6 @@ $("pair-code-copy").onclick = () => {
     $("pair-code-copy").textContent = "Скопійовано";
     setTimeout(() => { $("pair-code-copy").textContent = "Копіювати"; }, 1500);
   }).catch(() => {});
-};
-
-/* ── hands: the runner the executor starts ── */
-let runnerReport = null, runnerSavedType = null, runnerKeyMap = {}, runnerAuth = "login";
-const RUNNER_LABEL = {binary: "бінарник", auth: "вхід", base_url: "base URL"};
-
-function runnerLoginHint(kind) {
-  const cmd = kind === "claude" ? "claude auth login" : "opencode auth login";
-  $("runner-login-hint").replaceChildren(document.createTextNode("увійти — у терміналі: "), el("code", "", cmd));
-}
-function runnerPaintLogin(login) {
-  const probe = $("runner-login-probe");
-  probe.className = "probe " + (login.ok ? "ok" : "bad");
-  probe.replaceChildren(
-    el("b", "", login.ok ? "✓" : "—"),
-    el("span", "", [login.summary, login.detail].filter(Boolean).join(" — ") || "вхід невідомий"),
-  );
-}
-function runnerKeyChip() {
-  const name = $("runner-keyname").value;
-  const from = (runnerKeyMap[name] || {}).source;
-  const chip = $("runner-keychip");
-  chip.className = "kchip " + (from === "stored" ? "stored" : from === "env" ? "env" : "none");
-  chip.textContent = from === "stored" ? "збережено" : from === "env" ? "в оточенні" : "немає";
-}
-function runnerAuthPaint() {
-  for (const choice of document.querySelectorAll("#runner-auth .choice")) {
-    choice.classList.toggle("on", choice.dataset.auth === runnerAuth);
-  }
-  $("runner-login").hidden = runnerAuth !== "login";
-  $("runner-key").hidden = runnerAuth !== "key";
-  if (runnerAuth === "key") runnerKeyChip();
-}
-function runnerPaint(r) {
-  runnerReport = r;
-  runnerSavedType = r.type;
-  const known = (r.known && r.known.length) ? r.known
-    : [{type: "opencode", label: "OpenCode"}, {type: "claude", label: "Claude Code"}];
-  $("runner-type").replaceChildren(...known.map(k => new Option(k.label || k.type, k.type)));
-  $("runner-type").value = r.type;
-
-  const binary = r.binary || {};
-  $("runner-binary").textContent = binary.resolved || "не знайдено";
-  $("runner-binary").className = "pathline" + (binary.resolved ? "" : " bad");
-  $("runner-binary-path").value = binary.setting || "";
-  $("runner-base").value = r.base_url || "";
-
-  runnerAuth = r.auth === "key" ? "key" : "login";
-  runnerAuthPaint();
-  runnerPaintLogin(r.login || {});
-  runnerLoginHint(r.type);
-
-  const keySel = $("runner-keyname");
-  const keyChosen = r.auth_env || "";
-  keySel.replaceChildren(...Object.keys(runnerKeyMap).map(n => new Option(n, n)));
-  if ([...keySel.options].some(o => o.value === keyChosen)) keySel.value = keyChosen;
-  runnerKeyChip();
-
-  $("runner-model-id").value = r.model || "";
-  runnerModels(r.model);
-}
-function runnerModels(model) {
-  const sel = $("runner-model"), note = $("runner-modelnote");
-  if (!runnerSavedType) return;
-  if ($("runner-type").value !== runnerSavedType) {
-    sel.replaceChildren(new Option("— як у CLI —", ""));
-    sel.disabled = false;
-    note.textContent = "список моделей — для збереженого типу; впиши id вручну.";
-    return;
-  }
-  const wanted = model != null ? model : $("runner-model-id").value.trim();
-  sel.disabled = true;
-  sel.replaceChildren(new Option("шукаю…", ""));
-  note.textContent = "шукаю…";
-  api("runner/models").then(answer => {
-    const groups = (answer && answer.groups) || [];
-    const frag = document.createDocumentFragment();
-    frag.append(new Option("— як у CLI —", ""));
-    let found = false;
-    for (const group of groups) {
-      const og = document.createElement("optgroup");
-      og.label = group.group || "моделі";
-      for (const m of group.models || []) {
-        const id = m.id || m.name;
-        og.append(new Option(m.name && id && m.name !== id ? `${m.name} · ${id}` : id, id));
-        if (id === wanted) found = true;
-      }
-      if (og.children.length) frag.append(og);
-    }
-    sel.replaceChildren(frag);
-    sel.disabled = false;
-    sel.value = found ? wanted : "";
-    $("runner-model-id").value = wanted || "";
-    note.textContent = groups.length ? "" : "CLI не назвав моделей — впиши id вручну.";
-  }).catch(() => {
-    sel.replaceChildren(new Option("— як у CLI —", ""));
-    sel.disabled = false;
-    note.textContent = "список не прийшов — впиши id вручну.";
-  });
-}
-function runnerLoad() {
-  $("runner-note").textContent = "";
-  Promise.all([api("runner"), api("keys").catch(() => ({}))])
-    .then(([report, have]) => { runnerKeyMap = have || {}; runnerPaint(report); })
-    .catch(why => { $("runner-note").textContent = "Не вдалося прочитати руки: " + why; });
-}
-for (const choice of document.querySelectorAll("#runner-auth .choice")) {
-  choice.onclick = () => { runnerAuth = choice.dataset.auth; runnerAuthPaint(); };
-}
-$("runner-keyname").onchange = runnerKeyChip;
-$("runner-type").onchange = () => {
-  const kind = $("runner-type").value;
-  if (kind === runnerSavedType) {
-    runnerPaintLogin((runnerReport && runnerReport.login) || {});
-    runnerLoginHint(kind);
-    runnerModels($("runner-model-id").value.trim());
-  } else {
-    const probe = $("runner-login-probe");
-    probe.className = "probe";
-    probe.replaceChildren(el("b", "", "—"), el("span", "", "ще не збережено — вхід перевіриться після збереження"));
-    runnerLoginHint(kind);
-    runnerModels();
-  }
-};
-$("runner-model").onchange = () => { $("runner-model-id").value = $("runner-model").value; };
-$("runner-save-key").onclick = () => {
-  const name = $("runner-keyname").value, value = $("runner-keyvalue").value.trim();
-  if (!name || !value) return;
-  $("runner-keyvalue").value = "";
-  const button = $("runner-save-key");
-  button.disabled = true;
-  api("keys", {method: "POST", body: {name, value}})
-    .then(() => api("keys").then(have => { runnerKeyMap = have || {}; runnerKeyChip(); }))
-    .then(() => { $("runner-keynote").textContent = `${name} збережено.`; })
-    .catch(why => { $("runner-keynote").textContent = "Не збережено: " + why; })
-    .finally(() => { button.disabled = false; });
-};
-$("runner-check").onclick = () => {
-  const button = $("runner-check");
-  button.disabled = true;
-  const waiting = el("div", "check");
-  waiting.append(el("b", "", "…"), el("span", "", "перевіряю…"));
-  $("runner-checks").replaceChildren(waiting);
-  $("runner-note").textContent = "";
-  api("runner/health", {method: "POST"})
-    .then(health => {
-      const checks = (health && health.checks) || [];
-      const frag = document.createDocumentFragment();
-      for (const check of checks) {
-        const line = el("div", "check " + (check.ok ? "ok" : "bad"));
-        line.append(
-          el("b", "", check.ok ? "✓" : "✗"),
-          el("span", "", `${RUNNER_LABEL[check.name] || check.name}: ${check.detail}`),
-        );
-        frag.append(line);
-      }
-      if (!checks.length) {
-        const empty = el("div", "check");
-        empty.append(el("b", "", "…"), el("span", "", "перевірка нічого не повернула"));
-        frag.append(empty);
-      }
-      $("runner-checks").replaceChildren(frag);
-    })
-    .catch(why => {
-      const failed = el("div", "check bad");
-      failed.append(el("b", "", "✗"), el("span", "", String(why)));
-      $("runner-checks").replaceChildren(failed);
-    })
-    .finally(() => { button.disabled = false; });
-};
-$("runner-save").onclick = () => {
-  const button = $("runner-save");
-  const body = {
-    type: $("runner-type").value,
-    binary: $("runner-binary-path").value.trim(),
-    model: $("runner-model-id").value.trim() || $("runner-model").value || "",
-    auth: runnerAuth,
-    auth_env: runnerAuth === "key" ? $("runner-keyname").value : ((runnerReport && runnerReport.auth_env) || ""),
-    base_url: $("runner-base").value.trim(),
-  };
-  button.disabled = true;
-  api("runner", {method: "POST", body})
-    .then(report => { runnerPaint(report); $("runner-note").textContent = "Збережено. Діє після перезапуску рук."; })
-    .catch(why => { $("runner-note").textContent = "Не збережено: " + why; })
-    .finally(() => { button.disabled = false; });
 };
 
 /* ── live ── */

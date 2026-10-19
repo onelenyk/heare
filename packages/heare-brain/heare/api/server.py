@@ -29,7 +29,6 @@ from typing import Any, AsyncIterator
 from aiohttp import web
 
 from heare import keys
-from heare.reach import runner
 from heare.core import Core, Message
 from heare.api import auth
 from heare.api import pair as codes
@@ -767,86 +766,6 @@ def build(core: Core, settings: Any, vitals: Any = None,
         core.state.emit("key", name=name)
         return web.json_response({"saved": name})
 
-    # -- runner -----------------------------------------------------------
-
-    def runner_kind() -> str:
-        kind = str(settings.executor or "opencode").strip()
-        return kind if kind in runner.KNOWN else "opencode"
-
-    def runner_report() -> dict:
-        kind = runner_kind()
-        entry = runner.KNOWN[kind]
-        setting = str(settings.executor_binary or "").strip()
-        resolved = runner.resolve(setting or entry["binary"])
-        auth_env = str(settings.executor_auth_env or "").strip()
-        return {
-            "type": kind,
-            "model": str(settings.executor_model or ""),
-            "auth": str(settings.executor_auth or "login"),
-            "auth_env": auth_env,
-            "base_url": str(settings.executor_base_url or ""),
-            "binary": {"setting": setting, "resolved": resolved},
-            "login": runner.login(kind, resolved),
-            "key": {"name": auth_env,
-                    "present": bool(auth_env and keys.get(auth_env))},
-            "known": [
-                {"type": name, "label": info["label"], "binary": info["binary"]}
-                for name, info in runner.KNOWN.items()
-            ],
-        }
-
-    async def get_runner(request: web.Request) -> web.Response:
-        return web.json_response(await asyncio.to_thread(runner_report))
-
-    async def set_runner(request: web.Request) -> web.Response:
-        data = await body(request)
-        kind = str(data.get("type", runner_kind())).strip()
-        if kind not in runner.KNOWN:
-            raise web.HTTPBadRequest(text=f"unknown runner type: {kind}")
-        auth = str(data.get("auth", settings.executor_auth or "login")).strip()
-        if auth not in ("login", "key"):
-            raise web.HTTPBadRequest(text="auth is login or key")
-        auth_env = str(data.get("auth_env", settings.executor_auth_env or "")).strip()
-        if auth == "key" and auth_env not in keys.NAMES:
-            raise web.HTTPBadRequest(text="not a key this assistant uses")
-
-        if "type" in data:
-            settings.set("executor", kind)
-        if "binary" in data:
-            settings.set("executor_binary", str(data["binary"]))
-        if "model" in data:
-            settings.set("executor_model", str(data["model"]))
-        if "auth" in data:
-            settings.set("executor_auth", auth)
-        if "auth_env" in data:
-            settings.set("executor_auth_env", auth_env)
-        if "base_url" in data:
-            settings.set("executor_base_url", str(data["base_url"]))
-        core.state.emit("runner")
-        return web.json_response(await asyncio.to_thread(runner_report))
-
-    async def runner_health(request: web.Request) -> web.Response:
-        kind = runner_kind()
-        entry = runner.KNOWN[kind]
-        binary = str(settings.executor_binary or entry["binary"]).strip()
-        result = await asyncio.to_thread(
-            runner.health, kind, binary,
-            str(settings.executor_auth or "login"),
-            str(settings.executor_auth_env or ""),
-            str(settings.executor_base_url or ""),
-        )
-        return web.json_response(result)
-
-    async def runner_models(request: web.Request) -> web.Response:
-        kind = runner_kind()
-        entry = runner.KNOWN[kind]
-        setting = str(settings.executor_binary or "").strip()
-        binary = runner.resolve(setting or entry["binary"])
-        groups = await asyncio.to_thread(
-            runner.models, kind, binary or setting or entry["binary"]
-        )
-        return web.json_response({"groups": groups})
-
     # -- memory -----------------------------------------------------------
 
     async def memory(request: web.Request) -> web.Response:
@@ -925,10 +844,6 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/keys", get_keys),
         web.post("/api/keys", set_key),
         web.post("/api/keys/adopt", adopt_key),
-        web.get("/api/runner", get_runner),
-        web.post("/api/runner", set_runner),
-        web.post("/api/runner/health", runner_health),
-        web.get("/api/runner/models", runner_models),
         web.get("/api/memory", memory),
         web.get("/api/screens", list_screens),
         web.put("/api/screens/{name}", save_screen),
