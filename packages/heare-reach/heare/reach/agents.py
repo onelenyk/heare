@@ -18,13 +18,13 @@ import asyncio
 import json
 import logging
 import os
-import shutil
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from heare import runner
 from heare.core import Desk
 from heare.reach import acp
 from heare.reach.life import guarded
@@ -67,18 +67,32 @@ class Known:
     about: str
 
 
-KNOWN: tuple[Known, ...] = (
-    Known("opencode", "opencode", ("opencode", "acp"),
-          "агент у терміналі: код, файли, команди, пошук в інтернеті"),
-    Known("claude", "claude",
-          ("npx", "-y", "@agentclientprotocol/claude-agent-acp@0.81.2"),
-          "Claude Code: код, файли, команди; сильніший у складних задачах"),
+_ABOUT = {
+    "opencode": "агент у терміналі: код, файли, команди, пошук в інтернеті",
+    "claude": "Claude Code: код, файли, команди; сильніший у складних задачах",
+}
+
+# The table lives in the core so the hands that spawn an agent and the brain
+# that configures one cannot disagree about its binary or command.
+KNOWN: tuple[Known, ...] = tuple(
+    Known(
+        name,
+        entry["binary"],
+        tuple(entry["command"]),
+        _ABOUT.get(name, entry["label"]),
+    )
+    for name, entry in runner.KNOWN.items()
 )
 
 
 def installed() -> list[Known]:
     """The known agents this machine actually has."""
-    return [k for k in KNOWN if shutil.which(k.binary) and shutil.which(k.command[0])]
+    by_name = {known.name: known for known in KNOWN}
+    return [
+        by_name[found["type"]]
+        for found in runner.detect()
+        if found["type"] in by_name
+    ]
 
 
 # Commands that only look. Everything else a shell can do is asked about.
@@ -96,18 +110,20 @@ _LOOKING = (
 MODEL = "deepseek/deepseek-flash"
 
 
-def _opencode_config() -> dict:
+def _opencode_config(patch: dict | None = None) -> dict:
     bash = {"*": "ask"}
     for command in _LOOKING:
         bash[command] = "allow"
         bash[f"{command} *"] = "allow"
-    return {
+    config = {
         "$schema": "https://opencode.ai/config.json",
         "permission": {"edit": "ask", "bash": bash, "webfetch": "allow"},
     }
+    config.update(patch or {})
+    return config
 
 
-def _opencode_env(home: Path) -> dict[str, str]:
+def _opencode_env(home: Path, patch: dict | None = None) -> dict[str, str]:
     """opencode with a configuration of the assistant's own, in which a
     write or a command that changes something is asked about. Measured on
     25 September: with its defaults it wrote a file after being told no,
@@ -116,7 +132,7 @@ def _opencode_env(home: Path) -> dict[str, str]:
     config = home / "opencode"
     config.mkdir(parents=True, exist_ok=True)
     path = config / "opencode.json"
-    wanted = json.dumps(_opencode_config(), indent=2)
+    wanted = json.dumps(_opencode_config(patch), indent=2)
     try:
         current = path.read_text(encoding="utf-8")
     except OSError:
@@ -133,6 +149,8 @@ class Agent:
     def __init__(self, known: Known, *, cwd: str | Path | None = None,
                  home: Path | None = None, command: list[str] | None = None,
                  env: dict[str, str] | None = None,
+                 model: str | None = None,
+                 config_patch: dict | None = None,
                  tap: Callable[[str, dict], None] | None = None,
                  mcp_servers: list[dict] | None = None) -> None:
         self.name = known.name
@@ -142,6 +160,8 @@ class Agent:
         self._home = home or Path.home() / ".heare"
         self._command = command or list(known.command)
         self._env = env
+        self._model = model
+        self._config_patch = config_patch or {}
         self._tap = tap
         self._mcp = mcp_servers or []
         self._agent: acp.Agent | None = None
@@ -155,8 +175,9 @@ class Agent:
         async with self._starting:
             if self._agent is None:
                 env = self._env
-                if env is None and self.name == "opencode":
-                    env = _opencode_env(self._home)
+                if self.name == "opencode":
+                    permission = _opencode_env(self._home, self._config_patch)
+                    env = permission if env is None else {**permission, **env}
                 logs = self._home / "logs"
                 logs.mkdir(parents=True, exist_ok=True)
                 agent = acp.Agent(
@@ -204,7 +225,7 @@ class Agent:
         self._last = session.id
         # Name the model on the session itself: its default is the provider
         # whose key has expired, and the session's own list has a working one.
-        await session.set("model", MODEL)
+        await session.set("model", self._model or MODEL)
         self._desks[session.id] = desk
         self._activity = time.monotonic()
         try:

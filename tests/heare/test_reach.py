@@ -3,9 +3,11 @@ does nothing. What is tested is everything between the core and the wire."""
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
+from heare.reach import agents
 from heare.reach.agents import Agent, Known, installed
 from tests.heare.fakes import open_room
 
@@ -95,3 +97,115 @@ async def test_two_tasks_run_side_by_side_on_one_agent(tmp_path):
 
 def test_only_agents_that_are_installed_are_offered():
     assert all(k.name in ("opencode", "claude") for k in installed())
+
+
+class _Desk:
+    def step(self, text: str) -> None:
+        pass
+
+    async def permit(self, what: str, kind: str = "change") -> bool:
+        return True
+
+
+class _Session:
+    id = "s1"
+    status = "done"
+    text = "Готово."
+
+    def __init__(self) -> None:
+        self.configured: list[tuple[str, str]] = []
+
+    async def set(self, option: str, value: str) -> bool:
+        self.configured.append((option, value))
+        return True
+
+    async def prompt(self, text: str) -> str:
+        return self.text
+
+    async def cancel(self) -> None:
+        pass
+
+
+class _Acp:
+    def __init__(self, session: _Session) -> None:
+        self._session = session
+
+    async def session(self, on_event) -> _Session:
+        return self._session
+
+
+async def test_the_model_is_named_on_the_session(monkeypatch, tmp_path):
+    session = _Session()
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None,
+                  model="deepseek/other")
+
+    async def started() -> _Acp:
+        return _Acp(session)
+
+    monkeypatch.setattr(agent, "_started", started)
+    await agent.run("зроби щось", _Desk())
+    assert session.configured == [("model", "deepseek/other")]
+
+
+async def test_without_a_model_the_default_is_still_named(monkeypatch, tmp_path):
+    session = _Session()
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None)
+
+    async def started() -> _Acp:
+        return _Acp(session)
+
+    monkeypatch.setattr(agent, "_started", started)
+    await agent.run("зроби щось", _Desk())
+    assert session.configured == [("model", agents.MODEL)]
+
+
+async def test_an_env_overlay_keeps_the_opencode_permission_config(
+    tmp_path, monkeypatch
+):
+    seen: dict = {}
+
+    class Captured:
+        def __init__(self, name, **kw):
+            seen.update(kw)
+
+        async def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(agents.acp, "Agent", Captured)
+    opencode = Known("opencode", "opencode", ("opencode", "acp"), "x")
+    patch = {"provider": {"deepseek": {"options": {"baseURL": "https://g"}}}}
+    agent = Agent(opencode, home=tmp_path, env={"CUSTOM": "1"},
+                  config_patch=patch)
+    await agent._started()
+
+    env = seen["env"]
+    assert env["CUSTOM"] == "1"
+    config = json.loads(Path(env["OPENCODE_CONFIG"]).read_text(encoding="utf-8"))
+    assert config["permission"]["edit"] == "ask"
+    assert config["provider"]["deepseek"]["options"]["baseURL"] == "https://g"
+
+
+async def test_a_claude_overlay_is_used_as_it_is(tmp_path, monkeypatch):
+    seen: dict = {}
+
+    class Captured:
+        def __init__(self, name, **kw):
+            seen.update(kw)
+
+        async def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(agents.acp, "Agent", Captured)
+    claude = Known("claude", "claude", ("npx", "-y", "adapter"), "x")
+    agent = Agent(claude, home=tmp_path, env={"ONLY": "1"})
+    await agent._started()
+    assert seen["env"] == {"ONLY": "1"}
+
+
+def test_installed_is_built_from_the_core_table(monkeypatch):
+    monkeypatch.setattr(agents.runner, "detect", lambda: [
+        {"type": "opencode", "binary": "opencode", "path": "/x/opencode"},
+    ])
+    found = installed()
+    assert [known.name for known in found] == ["opencode"]
+    assert found[0].command == ("opencode", "acp")

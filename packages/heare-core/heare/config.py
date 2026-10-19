@@ -45,6 +45,13 @@ DEFAULTS = {
     # One agent does the work unless the person names another; two at
     # once made three versions of one program in twenty minutes.
     "executor": "opencode",
+    # Which CLI and how it signs in. A blank binary means "find the known
+    # one"; a key is named by its variable, never kept here.
+    "executor_binary": "",
+    "executor_model": "",
+    "executor_auth": "login",
+    "executor_auth_env": "",
+    "executor_base_url": "",
     # Where agents work. Never the home folder: on 12 October an agent
     # left files in four places there.
     "executor_cwd": Path.home() / "heare-work",

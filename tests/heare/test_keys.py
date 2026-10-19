@@ -38,8 +38,8 @@ def test_the_environment_wins_over_the_store(monkeypatch):
 def test_sources_names_every_key():
     assert keys.sources() == {name: None for name in keys.NAMES}
     assert set(keys.NAMES) == {
-        "DEEPSEEK_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY",
-        "OPENCODE_API_KEY", "ZAI_API_KEY",
+        "DEEPSEEK_API_KEY", "GROQ_API_KEY", "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY", "OPENCODE_API_KEY", "ZAI_API_KEY",
     }
 
 

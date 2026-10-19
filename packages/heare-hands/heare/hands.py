@@ -21,9 +21,9 @@ from pathlib import Path
 
 import httpx
 
-from heare import part
+from heare import part, runner
 from heare.config import Settings
-from heare.reach.agents import Agent, installed
+from heare.reach.agents import KNOWN as AGENTS, Agent
 
 
 def _short(value: object, width: int = 70) -> str:
@@ -97,6 +97,56 @@ class RemoteDesk:
         return bool(answer.get("allow"))
 
 
+def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
+    kind = str(settings.executor or "opencode").strip()
+    entry = runner.KNOWN.get(kind)
+    if entry is None:
+        print(f"невідомий агент {kind}; відомі: {', '.join(runner.KNOWN)}",
+              file=sys.stderr)
+        return None
+
+    setting = str(settings.executor_binary or "").strip()
+    resolved = runner.resolve(setting or entry["binary"])
+    if resolved is None:
+        print(f"агента {kind} немає: {setting or entry['binary']} не знайдено "
+              "— задай шлях у налаштуваннях", file=sys.stderr)
+        return None
+
+    # opencode is its own ACP server. Claude speaks ACP through an adapter
+    # fetched by npx, so the binary named for detection and sign-in is not
+    # the process we start: npx is.
+    launch = resolved
+    if entry["command"][0] != entry["binary"]:
+        launch = runner.resolve(entry["command"][0])
+        if launch is None:
+            print(f"для {kind} не знайдено {entry['command'][0]}",
+                  file=sys.stderr)
+            return None
+    command = [launch] + list(entry["command"][1:])
+
+    model = str(settings.executor_model or "").strip()
+    auth = str(settings.executor_auth or "login").strip()
+    auth_env = str(settings.executor_auth_env or "").strip()
+    base_url = str(settings.executor_base_url or "").strip()
+    env = runner.env(kind, auth, auth_env, base_url, model)
+    patch = runner.opencode_config_patch(kind, base_url, model)
+
+    known = next((k for k in AGENTS if k.name == kind), None)
+    if known is None:
+        print(f"агента {kind} немає в таблиці", file=sys.stderr)
+        return None
+    return Agent(
+        known,
+        cwd=settings.executor_cwd or None,
+        command=command,
+        env=env,
+        model=model or None,
+        config_patch=patch or None,
+        tap=tap,
+        mcp_servers=mcp_servers,
+    )
+
+
 async def run() -> int:
     settings = Settings()
     base = settings.base
@@ -104,11 +154,6 @@ async def run() -> int:
         secret = settings.secret
     except OSError:
         print("немає ключа — мозок запущений?", file=sys.stderr)
-        return 1
-    wanted = str(settings.executor or "opencode")
-    known = next((k for k in installed() if k.name == wanted), None)
-    if known is None:
-        print(f"агента {wanted} немає на PATH", file=sys.stderr)
         return 1
     session_file = Path(settings.parts_file).parent / "agent-session.json"
     try:
@@ -160,14 +205,14 @@ async def run() -> int:
             writer.close()
             await writer.wait_closed()
 
+    mcp_servers = [{"name": "heare", "command": sys.executable,
+                    "args": ["-m", "heare.reach.bridge",
+                             "--socket", str(socket_path)],
+                    "env": []}]
+    agent = _agent(settings, tap, mcp_servers)
+    if agent is None:
+        return 1
     asks = await asyncio.start_unix_server(handle, path=str(socket_path))
-    agent = Agent(
-        known, cwd=settings.executor_cwd or None, tap=tap,
-        mcp_servers=[{"name": "heare", "command": sys.executable,
-                      "args": ["-m", "heare.reach.bridge",
-                               "--socket", str(socket_path)],
-                      "env": []}],
-    )
     ui = [
         {"name": "taking", "kind": "toggle", "label": "Брати справи",
          "value": True},
@@ -184,6 +229,10 @@ async def run() -> int:
         print("стучу в мозок… (нова частина чекає на одобрення на сторінці)",
               file=sys.stderr)
         def knock():
+            # The channel is the agent's name. Switching the runner type
+            # therefore changes the channel, while the away card in the
+            # manifest still says "opencode"; the manifest is the lead's
+            # decision, not this part's.
             return client.post(f"{base}/api/bodies", json={
                 "channel": agent.name, "forms": ["executor"],
                 "about": agent.about, "key": f"{agent.name}@{host}",

@@ -1,6 +1,6 @@
 """The file is the one place every distribution agrees on a setting."""
 
-from heare.config import Settings
+from heare.config import DEFAULTS, Settings
 
 
 def test_the_port_is_a_setting(tmp_path):
@@ -11,6 +11,20 @@ def test_the_port_is_a_setting(tmp_path):
 
 def test_without_a_file_the_port_is_the_default(tmp_path):
     assert Settings(tmp_path / "none.toml").api_port == 9790
+
+
+def test_the_runner_defaults_are_a_login_and_no_binary(tmp_path):
+    settings = Settings(tmp_path / "none.toml")
+    assert settings.executor == "opencode"
+    assert settings.executor_binary == ""
+    assert settings.executor_model == ""
+    assert settings.executor_auth == "login"
+    assert settings.executor_auth_env == ""
+    assert settings.executor_base_url == ""
+
+
+def test_no_default_is_named_like_a_key():
+    assert all("key" not in name for name in DEFAULTS)
 
 
 def test_set_writes_the_port(tmp_path):
