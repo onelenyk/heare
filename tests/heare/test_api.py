@@ -722,7 +722,8 @@ async def test_turning_a_parts_control_is_a_wish_the_part_answers(tmp_path):
     while not events.empty():
         seen.append(events.get_nowait())
     wish = [e for e in seen if e.kind == "control"][-1]
-    assert wish.data == {"channel": "voice", "name": "mic", "value": False}
+    assert wish.data == {"channel": "voice", "name": "mic", "value": False,
+                         "part": "voice@mac"}
 
     reported = await client.post("/api/input", json={
         "kind": "state", "channel": "voice", "values": {"mic": False}},
@@ -945,4 +946,35 @@ async def test_a_closed_page_is_away_and_comes_back_by_knocking(tmp_path, monkey
 
     await client.post("/api/bodies", headers=window, json=knock)
     assert await state() == "approved"
+    await _close(room, client)
+
+
+async def test_one_page_s_switch_is_not_another_s(tmp_path):
+    room, client, headers, settings = await _open(tmp_path)
+    knock = {"channel": "web", "forms": ["input", "output"],
+             "ui": [{"name": "aloud", "kind": "toggle", "value": False}]}
+    windows, pids = [], []
+    for name in ("laptop", "phone"):
+        paired = await client.post("/api/pair", json={
+            "code": pair.make(Path(settings.pair_codes_file)),
+            "kind": "window", "name": name})
+        window = {"X-Heare-Token": paired.cookies["heare_session"].value}
+        answer = await (await client.post("/api/bodies", headers=window,
+                                          json=knock)).json()
+        windows.append(window)
+        pids.append(answer["pid"])
+
+    await client.post("/api/input", headers=windows[0], json={
+        "kind": "state", "channel": "web", "values": {"aloud": True}})
+    await client.post("/api/input", headers=windows[1], json={
+        "kind": "state", "channel": "web", "values": {"aloud": False}})
+    bodies = (await (await client.get("/api/state", headers=headers)).json())["bodies"]
+    assert bodies[pids[0]]["values"]["aloud"] is True
+    assert bodies[pids[1]]["values"]["aloud"] is False
+
+    seen = room.core.state.subscribe()
+    await client.post("/api/controls", headers=headers, json={
+        "part": pids[1], "name": "aloud", "value": True})
+    wish = await asyncio.wait_for(seen.get(), 1)
+    assert wish.kind == "control" and wish.data["part"] == pids[1]
     await _close(room, client)

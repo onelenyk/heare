@@ -541,7 +541,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
             values = data.get("values")
             if not isinstance(values, dict):
                 raise web.HTTPBadRequest(text="values must be an object")
-            entry = part_by_channel(channel)
+            # A window reports for itself: several pages share the channel
+            # "web", and one page's switch is not another's.
+            entry = bodies.get(request.get("window") or "") or part_by_channel(channel)
             if entry is None:
                 raise web.HTTPNotFound(text="no such part")
             entry["values"].update(values)
@@ -661,8 +663,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
             names = {str(c.get("name", "")) for c in target.get("ui") or []}
             if target.get("state") != "approved" or name not in names:
                 raise web.HTTPNotFound(text="no such control")
+            # Addressed to the part as well as the channel: pages share the
+            # channel "web", and a switch on one page's card is that page's.
+            pid = part if part in bodies else next(
+                p for p, b in bodies.items() if b is target)
             core.state.emit("control", channel=target["channel"], name=name,
-                            value=value)
+                            value=value, part=pid)
             return web.json_response({"ok": True})
         try:
             now = core.control(part, name, value)

@@ -1302,7 +1302,7 @@ stream.onmessage = m => {
   }
   else if (e.kind === "around") refresh();
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
-  else if (e.kind === "control" && e.channel === "web" && e.name === "aloud") setAloud(e.value);
+  else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
 
   if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
