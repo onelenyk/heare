@@ -636,10 +636,14 @@ function controlsFor(pid, b, group = "") {
   return box;
 }
 
+/* Forgetting a window takes its key: that page goes back to pairing, and if
+   it is this very page, so does the person. So it is asked once, and the
+   question survives the redraws that every report causes. */
+let unpairing = null;
 function partRow(pid, b) {
   const row = el("div", "partrow");
   row.append(el("span", "pdot " + b.state));
-  row.append(el("b", "pname", PART_LABEL[b.channel] || b.channel || pid));
+  row.append(el("b", "pname", (PART_LABEL[b.channel] || b.channel || pid) + (pid === webPid ? " · ця" : "")));
   row.append(el("span", "pstate " + b.state, PART_STATE[b.state] || b.state));
   const acts = el("div", "pactions");
   const decide = (what, btn) => {
@@ -655,6 +659,16 @@ function partRow(pid, b) {
     yes.onclick = () => decide("approve", yes);
     no.onclick = () => decide("reject", no);
     acts.append(yes, no);
+  } else if (pid.startsWith("window@") && unpairing === pid) {
+    const yes = el("button", "mini yes", "Відключити"), no = el("button", "mini", "Ні");
+    yes.onclick = () => { unpairing = null; forget(yes); };
+    no.onclick = () => { unpairing = null; parts(state && state.bodies); };
+    acts.append(el("span", "pstate", pid === webPid ? "ця сторінка попросить код" : "вікно попросить код"), yes, no);
+  } else if (pid.startsWith("window@")) {
+    const gone = el("button", "mini", "Відключити");
+    gone.title = "забрати ключ цього вікна";
+    gone.onclick = () => { unpairing = pid; parts(state && state.bodies); };
+    acts.append(gone);
   } else {
     const gone = el("button", "mini", "Забути");
     gone.onclick = () => forget(gone);
