@@ -1076,13 +1076,13 @@ const knock = () => api("bodies", {method: "POST", body: {
 knock();
 $("live").addEventListener("click", ev => {
   const say = ev.target.closest("[data-say]");
-  if (say) api("message", {method: "POST", body: {text: say.dataset.say}});
+  if (say) ask(say.dataset.say);
 });
 addEventListener("message", ev => {
   const m = ev.data, frame = [...document.querySelectorAll("#live iframe")].find(f => f.contentWindow === ev.source);
   if (!m || !m.heare || !frame) return;
   if (m.heare === "size") frame.style.height = Math.min(Math.max(m.h, 40), 900) + "px";
-  else if (m.heare === "say" && typeof m.text === "string") api("message", {method: "POST", body: {text: m.text.slice(0, 500)}});
+  else if (m.heare === "say" && typeof m.text === "string") ask(m.text.slice(0, 500));
   else if (m.heare === "get") {
     if (!MAY_GET.test(String(m.path))) return ev.source.postMessage({id: m.id, error: "not allowed"}, "*");
     api(m.path).then(data => ev.source.postMessage({id: m.id, data}, "*"), err => ev.source.postMessage({id: m.id, error: String(err)}, "*"));
@@ -1108,6 +1108,10 @@ $("text").addEventListener("focus", () => talkOn(true));
 
 /* ── talking to it, and hearing it back ── */
 const speech = window.speechSynthesis;
+/* Every open page sees every reply, but only the page that asked says it
+   aloud: two pages with "Чути" on were two voices reading one answer. */
+let askedHere = false;
+const ask = text => { askedHere = true; return api("message", {method: "POST", body: {text}}); };
 const speak = (text, channel) => {
   if (!aloud || !text || !speech || (channel !== "screen" && channel !== "web")) return;
   speech.cancel();
@@ -1136,7 +1140,7 @@ else {
   let listening = false;
   rec.onresult = e => {
     const text = [...e.results].map(r => r[0].transcript).join(" ").trim();
-    if (text) api("input", {method: "POST", body: {kind: "heard", channel: "screen", text, addressed: true}});
+    if (text) { askedHere = true; api("input", {method: "POST", body: {kind: "heard", channel: "screen", text, addressed: true}}); }
   };
   rec.onend = rec.onerror = () => { listening = false; hear.classList.remove("on"); };
   hear.onclick = () => {
@@ -1294,7 +1298,7 @@ stream.onmessage = m => {
   const e = JSON.parse(m.data);
   if (e.kind === "heard") { writing = null; askedAt = e.at; line(e.text, "me", e.channel); }
   else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); $("talk").scrollTop = $("talk").scrollHeight; }
-  else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; if (e.failed) aside("збій: " + e.failed); else speak(e.text, e.channel); }
+  else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside("збій: " + e.failed); else if (mine) speak(e.text, e.channel); }
   else if (e.kind === "overheard") aside(`почув «${e.text}» — ${WHY[e.why] || "без імені, не відповідаю"}`);
   else if (e.kind === "phase") {
     phase = e.phase; show();
@@ -1310,7 +1314,7 @@ stream.onmessage = m => {
 stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = "немає зв'язку з heare"; };
 stream.onopen = () => refresh();
 
-$("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; api("message", {method: "POST", body: {text}}); };
+$("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; ask(text); };
 refresh(); setInterval(refresh, 15000);
 </script>
 </html>
