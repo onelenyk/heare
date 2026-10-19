@@ -1008,3 +1008,35 @@ async def test_a_closed_page_leaves_the_list_after_a_while(tmp_path, monkeypatch
     assert (await client.post("/api/bodies", headers=window, json=knock)).status == 200
     assert await listed()
     await _close(room, client)
+
+
+async def test_a_page_that_listens_again_is_back_without_a_knock(tmp_path, monkeypatch):
+    # After a brain restart the page reloads: its knock comes first, and the
+    # end of its old stream is noticed after. The new stream must win.
+    monkeypatch.setattr(api_server, "HEARTBEAT_S", 0.02)
+    room, client, headers, settings = await _open(tmp_path)
+    paired = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "laptop"})
+    window = {"X-Heare-Token": paired.cookies["heare_session"].value}
+    pid = (await (await client.post("/api/bodies", headers=window, json={
+        "channel": "web", "forms": ["input", "output"]})).json())["pid"]
+
+    async def state() -> str:
+        bodies = (await (await client.get("/api/state", headers=headers)).json())["bodies"]
+        return bodies[pid]["state"]
+
+    old = await client.get("/api/events", headers=window)
+    await old.content.readany()
+    old.close()
+    for _ in range(50):
+        if await state() == "away":
+            break
+        await asyncio.sleep(0.02)
+    assert await state() == "away"
+
+    new = await client.get("/api/events", headers=window)
+    await new.content.readany()
+    assert await state() == "approved"
+    new.close()
+    await _close(room, client)

@@ -117,6 +117,10 @@
   .partrow .pstate { color:var(--soft); font-size:10.5px; white-space:nowrap; }
   .partrow .pstate.pending { color:var(--warn); }
   .partrow .pactions { margin-left:auto; display:flex; gap:4px; }
+  .partrow .pname { white-space:nowrap; }
+  /* Asking before unpairing: the question takes a line of its own. */
+  .partrow.asking { flex-wrap:wrap; height:auto; padding:6px 2px; row-gap:6px; }
+  .partrow.asking .pactions { flex-basis:100%; justify-content:flex-end; align-items:center; gap:6px; }
   .partrow .mini { padding:1px 6px; font-size:10px; line-height:1.35; }
   .pchan { padding:1px 6px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font-size:9.5px; letter-spacing:.04em; }
   .part .plog { grid-column:1 / -1; max-height:120px; overflow:auto; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--soft); font:10.5px/1.45 var(--mono); white-space:pre-wrap; }
@@ -660,6 +664,7 @@ function partRow(pid, b) {
     no.onclick = () => decide("reject", no);
     acts.append(yes, no);
   } else if (pid.startsWith("window@") && unpairing === pid) {
+    row.classList.add("asking");
     const yes = el("button", "mini yes", "Відключити"), no = el("button", "mini", "Ні");
     yes.onclick = () => { unpairing = null; forget(yes); };
     no.onclick = () => { unpairing = null; parts(state && state.bodies); };

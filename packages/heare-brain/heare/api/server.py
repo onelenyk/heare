@@ -602,6 +602,17 @@ def build(core: Core, settings: Any, vitals: Any = None,
         core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
                         about=entry["about"], host=entry["host"], state="forgotten")
 
+    def back(pid: str) -> None:
+        """A part that listens again is there again, whatever its knock is
+        doing: a page reloaded after a brain restart knocks before the brain
+        notices its old stream ended, and that end must not have the last word."""
+        entry = bodies.get(pid)
+        if entry is None or entry.get("state") != "away":
+            return
+        entry["state"] = "approved"
+        core.state.emit("part", channel=entry["channel"], forms=entry["forms"],
+                        about=entry["about"], host=entry["host"], state="approved")
+
     def left(pid: str) -> None:
         listening[pid] -= 1
         if listening[pid]:
@@ -628,6 +639,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
             listening[who] = listening.get(who, 0) + 1
             if who in fading:
                 fading.pop(who).cancel()
+            back(who)
         try:
             # The past only when asked for: a page that also loads the
             # history would otherwise show the last exchange twice.
