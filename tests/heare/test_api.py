@@ -891,3 +891,28 @@ async def test_two_windows_of_one_browser_do_not_revoke_each_other(tmp_path):
     assert authlib.owner(tokens, first.cookies["heare_session"].value)
     assert authlib.owner(tokens, second.cookies["heare_session"].value)
     await _close(room, client)
+
+
+async def test_two_open_pages_are_two_parts_named_after_themselves(tmp_path):
+    room, client, headers, settings = await _open(tmp_path)
+    knock = {"channel": "web", "forms": ["input", "output"],
+             "about": "сторінка в браузері"}
+    pids = []
+    for name in ("laptop", "phone"):
+        paired = await client.post("/api/pair", json={
+            "code": pair.make(Path(settings.pair_codes_file)),
+            "kind": "window", "name": name})
+        window = {"X-Heare-Token": paired.cookies["heare_session"].value}
+        answer = await (await client.post("/api/bodies", headers=window,
+                                          json=knock)).json()
+        # Approved without a question (the pairing was the question), and
+        # without a new key: one would replace the window's cookie.
+        assert answer["approved"] is True and "token" not in answer
+        pids.append(answer["pid"])
+        assert (await client.get("/api/state", headers=window)).status == 200
+
+    bodies = (await (await client.get("/api/state", headers=headers)).json())["bodies"]
+    assert pids[0] != pids[1] and set(pids) <= set(bodies)
+    assert {bodies[pid]["host"] for pid in pids} == {
+        pid.split("@", 1)[1] for pid in pids}
+    await _close(room, client)

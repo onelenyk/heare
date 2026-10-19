@@ -221,6 +221,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if pid is None:
             raise web.HTTPUnauthorized(text="no token")
         if pid.startswith("window@"):
+            # A window has the person's powers, but is still one window: its
+            # knock is its own, so two open pages are two parts, not one.
+            request["window"] = pid
             return await handler(request)
         if pid.startswith("machine@"):
             if request.method == "POST" and request.path == "/api/bodies":
@@ -422,8 +425,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
                list(manifest.get("ui") or []))
 
     def granted(request: web.Request, pid: str) -> dict:
-        """A key of its own for a part that knocked with the master or a machine key."""
-        who = request.get("part")
+        """A key of its own for a part that knocked with the master or a machine key.
+
+        Never for a window: it already holds its key in a cookie, and a new
+        one would replace it and send the page back to pairing."""
+        who = request.get("part") or request.get("window")
         if who is not None and not who.startswith("machine@"):
             return {}
         return {"token": auth.issue(part_tokens, pid)}
@@ -437,11 +443,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
         channel = str(data.get("channel") or "").strip()
         if not channel:
             raise web.HTTPBadRequest(text="a part needs a channel")
-        host = str(data.get("host") or socket.gethostname())
-        pid = str(data.get("key") or f"{channel}@{host}")
-        who = request.get("part")
-        if who is not None and who.startswith("window@"):
-            pid = who
+        who = request.get("part") or request.get("window")
+        window = who is not None and who.startswith("window@")
+        # A browser cannot name its machine; a window is called what it was
+        # paired as, never after the brain's host.
+        host = str(data.get("host") or (who.split("@", 1)[1] if window
+                                        else socket.gethostname()))
+        pid = who if window else str(data.get("key") or f"{channel}@{host}")
         if who is not None and who != pid and not who.startswith("machine@"):
             raise web.HTTPForbidden(text="not your name")
         forms = list(data.get("forms") or [])
@@ -451,7 +459,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if (pid in trusted()
                 or str(who or "").startswith(("window@", "machine@"))):
             attach(pid, channel, forms, about, host, "approved", ui)
-            return web.json_response({"approved": True, **granted(request, pid)})
+            return web.json_response({"approved": True, "pid": pid,
+                                      **granted(request, pid)})
         attach(pid, channel, forms, about, host, "pending", ui)
         event = waiting.setdefault(pid, asyncio.Event())
         try:
@@ -465,7 +474,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if bodies[pid]["state"] != "approved":
             return web.json_response({"approved": False, "why": bodies[pid]["state"]})
         attach(pid, channel, forms, about, host, "approved", ui)
-        return web.json_response({"approved": True, **granted(request, pid)})
+        return web.json_response({"approved": True, "pid": pid,
+                                  **granted(request, pid)})
 
     async def approve(request: web.Request) -> web.Response:
         return _decide(request, "approved")

@@ -761,8 +761,6 @@ const refresh = () => api("state").then(s => {
   if (born && s.session.started !== born) return location.reload();
   born = s.session.started;
   state = s; phase = s.phase; voice = voiceOf(s);
-  const web = Object.entries(s.bodies || {}).find(([, b]) => b.channel === "web");
-  webPid = web ? web[0] : null;
   show(); vitals(s); tasks(s.tasks, s.permission, s.question); parts(s.bodies);
 });
 
@@ -1072,7 +1070,7 @@ const knock = () => api("bodies", {method: "POST", body: {
   ui: [
     {name: "aloud", kind: "toggle", label: "Чути відповідь", value: aloud},
     {name: "state", kind: "label", label: "Стан", value: "на зв'язку"},
-  ]}}).then(() => api("input", {method: "POST", body: {
+  ]}}).then(answer => { webPid = (answer && answer.pid) || webPid; }).then(() => api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}})).catch(() => {});
 knock();
 $("live").addEventListener("click", ev => {
