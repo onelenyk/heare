@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 
 from heare.config import Settings
-from heare.setup import serve, want_setup
+from heare.setup import serve
 
 logger = logging.getLogger("heare.keeper")
 
@@ -142,10 +142,8 @@ def main() -> int:
         serve()
         return 0
 
-    if want_setup(settings):
-        threading.Thread(
-            target=_serve_form, name="heare-setup", daemon=True,
-        ).start()
+    # The installer's page stays up after the first run: it is the settings.
+    threading.Thread(target=_serve_form, name="heare-setup", daemon=True).start()
 
     asyncio.run(kept(Path(settings.parts_dir)))
     return 0

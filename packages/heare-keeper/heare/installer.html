@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>heare</title>
+<style>
+  /* The page's palette, so the installer and the assistant look like one thing. */
+  :root {
+    --bg:#131217; --card:#1c1a21; --card-2:#242029; --line:#302c37;
+    --ink:#ece8e2; --soft:#96909e; --accent:#9d7cff; --accent-ink:#17141d;
+    --ok:#5fbf8f; --warn:#dbb64f; --bad:#ef7a6b;
+    --sans:-apple-system,'Segoe UI',system-ui,sans-serif;
+    --mono:'SF Mono','Fira Code',ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; margin:0; }
+  [hidden] { display:none !important; }
+  html { color-scheme:dark; }
+  body { min-height:100vh; background:radial-gradient(900px 480px at 50% -200px, rgba(157,124,255,.12), transparent 70%), var(--bg); color:var(--ink); font:14px/1.55 var(--sans); -webkit-font-smoothing:antialiased; display:flex; justify-content:center; padding:40px 16px 56px; }
+  button, input { font:inherit; color:inherit; }
+  a { color:var(--accent); }
+  .shell { width:100%; max-width:560px; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:18px; }
+  header b { font:800 24px/1 var(--sans); letter-spacing:-.4px; }
+  header span { color:var(--soft); font-size:12px; }
+  /* The steps: in the first run they lead one to the next; once done they
+     are the settings, and any of them can be opened directly. */
+  nav { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  nav button { border:1px solid var(--line); background:transparent; border-radius:999px; padding:3px 11px; font-size:11.5px; color:var(--soft); cursor:pointer; }
+  nav button.on { border-color:var(--accent); color:var(--accent); }
+  nav button:disabled { opacity:.45; cursor:default; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px 22px 18px; }
+  h2 { font-size:17px; margin-bottom:4px; }
+  .lead { color:var(--soft); font-size:12.5px; margin-bottom:16px; }
+  .choice { display:flex; gap:12px; align-items:flex-start; padding:11px 12px; border:1px solid var(--line); border-radius:12px; margin-bottom:8px; cursor:pointer; }
+  .choice:hover { border-color:var(--accent); }
+  .choice.on { border-color:var(--accent); background:rgba(157,124,255,.06); }
+  .choice input { margin-top:3px; accent-color:var(--accent); }
+  .choice b { display:block; }
+  .choice small { color:var(--soft); }
+  .field { display:grid; gap:4px; margin:10px 0; }
+  .field label { color:var(--soft); font-size:12px; }
+  .field input { background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:8px 11px; min-width:0; font:13px var(--mono); }
+  .field input:focus { outline:none; border-color:var(--accent); }
+  /* A switch is a row, as on the parts' cards. */
+  .row { display:flex; align-items:center; gap:12px; padding:11px 2px; border-top:1px solid var(--line); }
+  .row:first-of-type { border-top:0; }
+  .row .what { flex:1; min-width:0; }
+  .row .what small { display:block; color:var(--soft); font-size:12px; }
+  .sw { flex:none; position:relative; width:34px; height:19px; border-radius:999px; border:0; background:var(--line); cursor:pointer; transition:background .15s; }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%; background:var(--soft); transition:left .15s, background .15s; }
+  .sw.on { background:var(--accent); }
+  .sw.on::after { left:17px; background:var(--accent-ink); }
+  .sw:disabled { opacity:.4; cursor:default; }
+  .key { padding:12px 0; border-top:1px solid var(--line); }
+  .key:first-of-type { border-top:0; }
+  .key .top { display:flex; align-items:baseline; gap:8px; }
+  .key .top small { color:var(--soft); }
+  .key .state { margin-left:auto; font-size:12px; white-space:nowrap; }
+  .key .pair { display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:7px; }
+  .key input { background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:7px 10px; min-width:0; font:12.5px var(--mono); }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); } .soft { color:var(--soft); }
+  .btn { border:1px solid var(--line); background:var(--card-2); border-radius:9px; padding:7px 14px; cursor:pointer; }
+  .btn:hover { border-color:var(--accent); }
+  .btn.go { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .foot { display:flex; align-items:center; gap:8px; margin-top:18px; }
+  .foot .say { flex:1; font-size:12px; }
+  .soon { opacity:.55; }
+  .note { color:var(--soft); font-size:12px; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header><b>heare</b><span id="mode">перший запуск</span></header>
+  <nav id="nav"></nav>
+  <main class="card" id="card"></main>
+</div>
+<script>
+/* The installer and the settings are one page: every answer is applied the
+   moment it is given — a part starts within seconds, a key is checked and
+   kept — so finishing only says the first run is over. */
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const post = (path, body) => fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
+  .then(async r => { const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error((data.errors || [r.statusText]).join("; ")); return data; });
+
+const STEPS = [["role", "Цей Mac"], ["parts", "Частини"], ["keys", "Ключі"], ["ready", "Готово"]];
+const ROLES = [
+  ["all", "Усе тут", "мозок і частини на цьому комп'ютері"],
+  ["body", "Тіло", "мозок деінде; тут — голос, очі, руки"],
+  ["brain", "Лише мозок", "частини підключаться з інших машин"],
+];
+const KEYS = {
+  DEEPSEEK_API_KEY: {label: "DeepSeek", why: "думати — ним відповідає мозок", get: "https://platform.deepseek.com/api_keys"},
+  GROQ_API_KEY: {label: "Groq", why: "чути — розпізнає мовлення голосу", get: "https://console.groq.com/keys"},
+};
+// The shell around the page, when there is one: the Mac app answers what a
+// page cannot — the microphone, starting at login.
+const shell = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heare;
+
+let machine = null, step = "role", busy = false;
+const load = () => fetch("machine").then(r => r.json()).then(m => { machine = m; draw(); });
+
+function needs() {
+  // Which keys this machine needs: the brain's where the brain is, the
+  // voice's where the voice is.
+  const role = machine.role || "all";
+  const voice = machine.parts.some(p => p.name === "voice" && p.on);
+  return Object.keys(KEYS).filter(k => k === "DEEPSEEK_API_KEY" ? role !== "body" : voice);
+}
+
+function draw() {
+  const done = machine.done;
+  $("mode").textContent = done ? "налаштування" : "перший запуск";
+  const nav = $("nav"); nav.replaceChildren();
+  const at = STEPS.findIndex(([name]) => name === step);
+  STEPS.forEach(([name, label], i) => {
+    const b = el("button", name === step ? "on" : "", `${i + 1}. ${label}`);
+    b.disabled = !done && i > at;
+    b.onclick = () => { step = name; draw(); };
+    nav.append(b);
+  });
+  $("card").replaceChildren(...({role, parts, keys, ready})[step]());
+}
+
+function foot(next, label = "Далі →", say = "") {
+  const box = el("div", "foot"), note = el("span", "say", say), go = el("button", "btn go", label);
+  go.onclick = () => next(go, note);
+  box.append(note, go);
+  return box;
+}
+const forward = () => { step = STEPS[STEPS.findIndex(([n]) => n === step) + 1][0]; draw(); };
+
+function role() {
+  const chosen = machine.role || "all";
+  const out = [el("h2", "", "Цей комп'ютер — це…"), el("p", "lead", "Мозок — це пам'ять і розмова. Він один; частини можуть бути на різних машинах.")];
+  let pick = chosen;
+  const url = el("input"), code = el("input");
+  const body = el("div"); body.hidden = pick !== "body";
+  for (const [name, title, what] of ROLES) {
+    const row = el("label", "choice" + (name === pick ? " on" : "")), radio = el("input");
+    radio.type = "radio"; radio.name = "role"; radio.checked = name === pick;
+    radio.onchange = () => { pick = name; body.hidden = name !== "body"; out.forEach(n => n.classList && n.classList.contains("choice") && n.classList.toggle("on", n.contains(radio))); };
+    const text = el("span"); text.append(el("b", "", title), el("small", "", what));
+    row.append(radio, text); out.push(row);
+  }
+  url.placeholder = "https://мій-мозок.example"; url.value = machine.url || "";
+  code.placeholder = "8 символів зі сторінки мозку"; code.maxLength = 8; code.autocomplete = "off";
+  const f1 = el("div", "field"), f2 = el("div", "field");
+  f1.append(el("label", "", "Адреса мозку"), url);
+  f2.append(el("label", "", "Код підключення — на сторінці мозку: ⚙ → Пристрої"), code);
+  body.append(f1, f2);
+  out.push(body, foot(async (go, note) => {
+    go.disabled = true; note.className = "say soft"; note.textContent = pick === "body" ? "підключаюсь…" : "";
+    try {
+      machine = await post("role", {role: pick, url: url.value.trim(), code: code.value.trim()});
+      forward();
+    } catch (error) { note.className = "say bad"; note.textContent = error.message; go.disabled = false; }
+  }));
+  return out;
+}
+
+function parts() {
+  const out = [el("h2", "", "Частини"), el("p", "lead", "Те, чим heare чує, бачить і діє на цьому комп'ютері. Вмикаються й вимикаються одразу — будь-коли потім теж.")];
+  if (machine.role === "brain") out.push(el("p", "note", "Цей комп'ютер — лише мозок: частини тут зазвичай не потрібні, але можна."));
+  const list = el("div");
+  for (const p of machine.parts) {
+    const row = el("div", "row"), what = el("div", "what"), sw = el("button", "sw" + (p.on ? " on" : ""));
+    what.append(el("b", "", p.label), el("small", "", p.why_not ? p.why_not : p.what));
+    if (p.name === "hands" && !p.why_not) what.append(el("small", "", "Агент — opencode або Claude Code; руки знайдуть його самі, або скажуть на своїй картці, чого бракує."));
+    sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(p.on));
+    sw.setAttribute("aria-label", p.label);
+    sw.disabled = Boolean(p.why_not) && !p.on;
+    sw.onclick = async () => {
+      if (busy) return; busy = true; sw.disabled = true;
+      partSaid = "";
+      try { machine = await post("part", {name: p.name, on: !p.on}); } catch (error) { partSaid = error.message; }
+      busy = false; draw();
+    };
+    row.append(what, sw); list.append(row);
+  }
+  out.push(list);
+  if (partSaid) out.push(el("p", "note bad", partSaid));
+  out.push(foot(forward));
+  return out;
+}
+let partSaid = "";
+
+function keys() {
+  const out = [el("h2", "", "Ключі"), el("p", "lead", "Розум і слух heare — у хмарних моделях. Ключ лягає в Keychain цього комп'ютера; зберігаю лише той, що провайдер прийняв.")];
+  const wanted = needs();
+  if (!wanted.length) out.push(el("p", "note", "Цьому комп'ютеру ключі не потрібні: мозок деінде, а голос вимкнено."));
+  for (const name of wanted) {
+    const info = KEYS[name], held = machine.keys[name] || {};
+    const box = el("div", "key"), top = el("div", "top"), state = el("span", "state");
+    state.textContent = held.source === "env" ? "✓ є (з оточення)" : held.source === "stored" ? "✓ є (у Keychain)" : "немає";
+    state.className = "state " + (held.source ? "ok" : "warn");
+    const where = el("a", "", "де взяти"); where.href = info.get; where.target = "_blank"; where.rel = "noopener";
+    top.append(el("b", "", info.label), el("small", "", info.why), state);
+    const pair = el("div", "pair"), input = el("input"), check = el("button", "btn", held.source ? "Замінити" : "Перевірити");
+    input.type = "password"; input.placeholder = held.source ? "новий ключ, якщо треба" : "вставити ключ"; input.autocomplete = "off";
+    const said = el("small", "soft");
+    check.onclick = async () => {
+      if (!input.value.trim()) return;
+      check.disabled = true; said.className = "soft"; said.textContent = "питаю провайдера…";
+      try {
+        const answer = await post("key", {name, value: input.value});
+        machine.keys = answer.keys;
+        said.className = answer.ok ? "ok" : "bad"; said.textContent = answer.said;
+        if (answer.ok) { input.value = ""; setTimeout(draw, 700); }
+      } catch (error) { said.className = "bad"; said.textContent = error.message; }
+      check.disabled = false;
+    };
+    input.onkeydown = ev => { if (ev.key === "Enter") check.click(); };
+    pair.append(input, check);
+    const links = el("small", "soft"); links.append(where);
+    box.append(top, pair, said, el("br"), links);
+    out.push(box);
+  }
+  const missing = wanted.filter(name => !(machine.keys[name] || {}).source);
+  out.push(foot(forward, "Далі →", missing.length ? "можна й пізніше — без ключа ця частина мовчатиме" : ""));
+  return out;
+}
+
+function ready() {
+  const out = [el("h2", "", machine.done ? "Що ще" : "Майже все")];
+  const list = el("div");
+  const line = (title, what, right) => { const row = el("div", "row"), w = el("div", "what"); w.append(el("b", "", title), el("small", "", what)); row.append(w); if (right) row.append(right); list.append(row); };
+  if (shell) {
+    const mic = el("button", "btn", "Дозволити"); mic.onclick = () => shell.postMessage({ask: "microphone"});
+    line("Мікрофон", "голос слухає тебе", mic);
+    const login = el("button", "sw on"); login.onclick = () => { login.classList.toggle("on"); shell.postMessage({login: login.classList.contains("on")}); };
+    line("Запускати при вході", "heare піднімається разом з комп'ютером", login);
+  } else {
+    line("Дозволи", "мікрофон macOS попросить сам, коли голос уперше почне слухати");
+  }
+  const soon = el("div", "soon"); soon.append(el("b", "", "Доступ ззовні"), el("small", "", " — свій домен, телефон звідусіль: скоро"));
+  list.append(soon);
+  out.push(list);
+  const role = machine.role || "all";
+  out.push(foot(async (go, note) => {
+    go.disabled = true;
+    try {
+      await post("done", {});
+      if (shell) shell.postMessage({done: true});
+      else if (role !== "body") location.href = `http://127.0.0.1:${machine.api_port}/`;
+      else { note.className = "say ok"; note.textContent = "готово — частини підключаються до мозку"; machine.done = true; draw(); }
+    } catch (error) { note.className = "say bad"; note.textContent = error.message; go.disabled = false; }
+  }, machine.done ? "Відкрити heare" : "Почати користуватись"));
+  return out;
+}
+
+load();
+</script>
+</body>
+</html>

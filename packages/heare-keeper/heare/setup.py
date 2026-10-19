@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -18,8 +19,11 @@ from pathlib import Path
 
 from heare import keys, machine
 from heare.config import Settings
+from heare.pairing import pair
 
 PARTS = ("eyes", "voice", "hands")
+ROLES = ("all", "body", "brain")
+INSTALLER = Path(__file__).with_name("installer.html")
 DEFAULT_PORT = 9791
 PORT_TRIES = 20
 LOG_TAIL = 4000
@@ -215,7 +219,8 @@ class _Handler(BaseHTTPRequestHandler):
         if path != "/":
             self._send(404, {"errors": ["не знаю такої сторінки"]})
             return
-        self._send(200, FORM_HTML, content_type="text/html; charset=utf-8")
+        self._send(200, INSTALLER.read_text(encoding="utf-8"),
+                   content_type="text/html; charset=utf-8")
 
     def _same_origin(self) -> bool:
         """The form is a local page: no other origin may drive it."""
@@ -238,7 +243,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
-        if path not in ("/setup", "/keys", "/part", "/key"):
+        if path not in ("/setup", "/keys", "/part", "/key", "/role", "/done"):
             self._send(404, {"errors": ["не знаю такої дії"]})
             return
 
@@ -261,7 +266,17 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/key":
             self._key(data)
             return
+        if path == "/role":
+            self._role(data)
+            return
+        if path == "/done":
+            Settings().set("setup_done", True)
+            self._send(200, _machine())
+            return
 
+        if not self.server.installer:
+            self._send(400, {"errors": ["тут немає встановлювача — частини вмикаються перемикачами"]})
+            return
         errors = validate(data)
         if errors:
             self._send(400, {"errors": errors})
@@ -289,6 +304,45 @@ class _Handler(BaseHTTPRequestHandler):
         except (ValueError, OSError) as error:
             self._send(400, {"errors": [str(error)]})
             return
+        self._send(200, _machine())
+
+    def _role(self, data: dict) -> None:
+        """Where the brain is. A body is paired with a brain elsewhere by its
+        code; who starts the brain itself is the shell's business (the app,
+        or the service on a server), and it reads this answer."""
+        role = data.get("role")
+        if role not in ROLES:
+            self._send(400, {"errors": ["невідома роль"]})
+            return
+        settings = Settings()
+        if role == "body":
+            url, code = _text(data, "url").rstrip("/"), _text(data, "code")
+            if not url.startswith(("http://", "https://")):
+                self._send(400, {"errors": ["адреса має починатися з http:// або https://"]})
+                return
+            if len(code) != 8:
+                self._send(400, {"errors": ["код має бути 8 символів"]})
+                return
+            try:
+                answer = pair(url, code, "machine", socket.gethostname())
+            except OSError as error:
+                self._send(400, {"errors": [f"мозок не підключив: {error}"]})
+                return
+            token = Path(settings.machine_token_file)
+            token.parent.mkdir(parents=True, exist_ok=True)
+            token.write_text(answer["token"], encoding="utf-8")
+            token.chmod(0o600)
+            settings.set("url", url)
+        else:
+            settings.set("url", "")
+        settings.set("role", role)
+        # A first run starts with every part this machine can have: one
+        # asked to turn each on by itself had to guess that it must.
+        folder = Path(settings.parts_dir)
+        if role != "brain" and want_setup(settings) and not machine.running(folder):
+            for part in machine.parts(folder):
+                if not part["why_not"]:
+                    machine.turn(folder, part["name"], True)
         self._send(200, _machine())
 
     def _key(self, data: dict) -> None:
@@ -325,20 +379,23 @@ def _machine() -> dict:
     """What the installer shows: the parts here, and which keys are held."""
     settings = Settings()
     return {"platform": sys.platform,
+            "role": settings.role or "",
+            "done": settings.setup_done is True,
             "parts": machine.parts(Path(settings.parts_dir)),
             "keys": keys.view(),
-            "url": settings.url or ""}
+            "url": settings.url or "",
+            "api_port": settings.api_port}
 
 
 def _install_info() -> tuple[str, str]:
+    """The installer and its wheels, when install.sh --setup left them;
+    empty in an app, which has every part in it and installs nothing."""
     path = Path.home() / ".heare" / "install.json"
     try:
         info = json.loads(path.read_text(encoding="utf-8"))
         return str(info["installer"]), str(info["wheels"])
     except (OSError, ValueError, KeyError, TypeError):
-        raise SystemExit(
-            "немає ~/.heare/install.json — постав: install.sh --setup"
-        ) from None
+        return "", ""
 
 
 def _open(address: str) -> None:
@@ -372,636 +429,11 @@ def serve(installer: str | None = None, wheels: str | None = None,
 
     address = f"http://127.0.0.1:{httpd.server_address[1]}/"
     print(f"форма: {address}", file=sys.stderr, flush=True)
-    if not os.environ.get("HEARE_NO_BROWSER"):
+    # The page opens by itself only for the first run; after that it is the
+    # settings, there when asked for.
+    if not os.environ.get("HEARE_NO_BROWSER") and want_setup(Settings()):
         _open(address)
     try:
         httpd.serve_forever()
     finally:
         httpd.server_close()
-
-
-FORM_HTML = """<!doctype html>
-<html lang="uk">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>heare — налаштування</title>
-<style>
-  :root {
-    --bg: #131217;
-    --card: #1c1a21;
-    --line: #302c37;
-    --ink: #ece8e2;
-    --soft: #96909e;
-    --accent: #9d7cff;
-    --ok: #5fbf8f;
-    --bad: #ef7a6b;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  }
-  * { box-sizing: border-box; }
-  html, body { min-height: 100%; }
-  body {
-    margin: 0;
-    padding: 48px 20px 64px;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    background:
-      radial-gradient(900px 520px at 18% -12%, rgba(157, 124, 255, .18), transparent 62%),
-      radial-gradient(700px 460px at 112% 112%, rgba(157, 124, 255, .09), transparent 62%),
-      var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
-    -webkit-font-smoothing: antialiased;
-  }
-  .card {
-    width: 100%;
-    max-width: 620px;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    padding: 34px 34px 30px;
-    box-shadow: 0 28px 80px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .03);
-    animation: rise .55s cubic-bezier(.22, .8, .3, 1) both;
-  }
-  @keyframes rise {
-    from { opacity: 0; transform: translateY(14px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .card { animation: none; }
-  }
-  .mark {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 18px;
-  }
-  .mark::before {
-    content: "";
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    margin-right: 9px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 14px rgba(157, 124, 255, .9);
-    vertical-align: 1px;
-  }
-  h1 {
-    margin: 0 0 8px;
-    font-size: clamp(26px, 5vw, 34px);
-    font-weight: 650;
-    letter-spacing: -.02em;
-    line-height: 1.1;
-  }
-  .lede {
-    margin: 0 0 30px;
-    color: var(--soft);
-    font-size: 15px;
-    line-height: 1.55;
-  }
-  fieldset {
-    margin: 0 0 22px;
-    padding: 0;
-    border: 0;
-  }
-  legend, .label {
-    display: block;
-    margin-bottom: 10px;
-    color: var(--soft);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-  }
-  .segmented {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .segmented label {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 46px;
-    padding: 0 14px;
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    color: var(--soft);
-    font-size: 15px;
-    cursor: pointer;
-    transition: border-color .18s ease, color .18s ease, background .18s ease;
-  }
-  .segmented label:hover { border-color: #443e50; color: var(--ink); }
-  .segmented input { position: absolute; opacity: 0; pointer-events: none; }
-  .segmented input:checked + span {
-    color: var(--ink);
-  }
-  .segmented label:has(input:checked) {
-    border-color: rgba(157, 124, 255, .75);
-    background: rgba(157, 124, 255, .1);
-    color: var(--ink);
-  }
-  .segmented label:has(input:focus-visible) {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-  .parts {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-  .parts label {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    min-height: 44px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    color: var(--soft);
-    font-size: 14px;
-    cursor: pointer;
-    transition: border-color .18s ease, color .18s ease, background .18s ease;
-  }
-  .parts label:hover { border-color: #443e50; color: var(--ink); }
-  .parts input {
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    margin: 0;
-    border: 1px solid #4b4558;
-    border-radius: 5px;
-    background: transparent;
-    display: grid;
-    place-content: center;
-    flex: none;
-  }
-  .parts input::after {
-    content: "";
-    width: 8px;
-    height: 5px;
-    border-left: 1.6px solid var(--bg);
-    border-bottom: 1.6px solid var(--bg);
-    transform: rotate(-45deg) translateY(-1px);
-    opacity: 0;
-  }
-  .parts input:checked { background: var(--accent); border-color: var(--accent); }
-  .parts input:checked::after { opacity: 1; }
-  .parts label:has(input:checked) {
-    border-color: rgba(157, 124, 255, .55);
-    color: var(--ink);
-    background: rgba(157, 124, 255, .06);
-  }
-  .parts input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .keys-sect { margin: 0 0 20px; }
-  .keys-lede {
-    margin: -2px 2px 14px;
-    color: var(--soft);
-    font-size: 12.5px;
-    line-height: 1.5;
-  }
-  .keybox {
-    padding: 14px;
-    margin-bottom: 10px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: #17151c;
-  }
-  .keyhead { display: flex; align-items: flex-start; gap: 10px; }
-  .keyid { min-width: 0; }
-  .keyid b { display: block; font-size: 14.5px; font-weight: 600; line-height: 1.3; }
-  .keydim { color: var(--soft); font-weight: 400; }
-  .keymono {
-    display: block;
-    margin-top: 3px;
-    color: var(--soft);
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: .02em;
-    overflow-wrap: anywhere;
-  }
-  .keychip {
-    flex: none;
-    margin-left: auto;
-    padding: 3px 9px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    color: var(--soft);
-    font-size: 11.5px;
-    white-space: nowrap;
-  }
-  .keychip.env {
-    color: var(--accent);
-    border-color: rgba(157, 124, 255, .55);
-    background: rgba(157, 124, 255, .1);
-  }
-  .keychip.stored {
-    color: var(--ok);
-    border-color: rgba(95, 191, 143, .42);
-    background: rgba(95, 191, 143, .08);
-  }
-  .keychip.none {
-    color: var(--bad);
-    border-color: rgba(239, 122, 107, .34);
-    background: rgba(239, 122, 107, .06);
-  }
-  .keyenv { margin-top: 11px; }
-  button.adopt {
-    width: auto;
-    min-height: 36px;
-    margin: 0;
-    padding: 0 13px;
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    background: transparent;
-    color: var(--ink);
-    font-size: 13px;
-    font-weight: 550;
-  }
-  button.adopt:hover { border-color: rgba(157, 124, 255, .55); color: var(--accent); filter: none; }
-  button.adopt:disabled { color: var(--soft); border-color: var(--line); filter: none; }
-  .keymsg { margin: 9px 2px 0; color: var(--soft); font-size: 12.5px; line-height: 1.45; }
-  .keymsg.err { color: var(--bad); }
-  .keyown { margin-top: 12px; }
-  .key-or { display: block; margin-bottom: 7px; color: var(--soft); font-size: 12px; }
-  .keys-note { margin-top: 12px; }
-  .field { margin-bottom: 18px; }
-  .field input, .keyown input {
-    width: 100%;
-    min-height: 46px;
-    padding: 0 14px;
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    background: #17151c;
-    color: var(--ink);
-    font-family: var(--sans);
-    font-size: 15px;
-    transition: border-color .18s ease, box-shadow .18s ease;
-  }
-  .field input::placeholder, .keyown input::placeholder { color: #625c6c; }
-  .field input:focus, .keyown input:focus {
-    outline: none;
-    border-color: rgba(157, 124, 255, .75);
-    box-shadow: 0 0 0 3px rgba(157, 124, 255, .13);
-  }
-  .field code, .help code {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--ink);
-    background: #262230;
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    padding: 2px 6px;
-  }
-  .help {
-    margin: 8px 2px 0;
-    color: var(--soft);
-    font-size: 12.5px;
-    line-height: 1.5;
-  }
-  button {
-    width: 100%;
-    min-height: 50px;
-    margin-top: 8px;
-    padding: 0 20px;
-    border: 1px solid rgba(157, 124, 255, .55);
-    border-radius: 12px;
-    background: linear-gradient(180deg, #a98cff, #8f6bff);
-    color: #15121c;
-    font-family: var(--sans);
-    font-size: 15px;
-    font-weight: 650;
-    letter-spacing: .01em;
-    cursor: pointer;
-    transition: filter .18s ease, transform .12s ease;
-  }
-  button:hover { filter: brightness(1.06); }
-  button:active { transform: translateY(1px); }
-  button:disabled { filter: grayscale(.35) brightness(.8); cursor: progress; }
-  button.quiet {
-    margin-top: 18px;
-    background: transparent;
-    border-color: var(--line);
-    color: var(--ink);
-    font-weight: 550;
-  }
-  button.quiet:hover { border-color: #4b4558; }
-  .bad { color: var(--bad); font-size: 13.5px; line-height: 1.5; margin: 12px 2px 0; }
-  .tick {
-    width: 52px;
-    height: 52px;
-    display: grid;
-    place-items: center;
-    margin-bottom: 20px;
-    border-radius: 50%;
-    border: 1px solid rgba(157, 124, 255, .55);
-    background: rgba(157, 124, 255, .12);
-    color: var(--accent);
-    font-size: 24px;
-  }
-  pre {
-    max-height: 260px;
-    overflow: auto;
-    margin: 16px 0 0;
-    padding: 14px 16px;
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    background: #141218;
-    color: #c5becd;
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .hint { margin: 14px 2px 0; color: var(--soft); font-size: 12.5px; }
-  @media (max-width: 480px) {
-    body { padding: 20px 12px 40px; }
-    .card { padding: 26px 20px 22px; border-radius: 16px; }
-    .parts { grid-template-columns: 1fr; }
-  }
-</style>
-</head>
-<body>
-<main class="card" id="form-screen">
-  <div class="mark">heare</div>
-  <h1>Налаштування машини</h1>
-  <p class="lede">Кілька питань — і форма більше не потрібна. Усе зберігається лише на цій машині.</p>
-  <form id="setup" autocomplete="off">
-    <fieldset>
-      <legend>Ця машина — мозок?</legend>
-      <div class="segmented">
-        <label><input type="radio" name="brain_here" id="brain-yes" value="yes" checked><span>Так, це мозок</span></label>
-        <label><input type="radio" name="brain_here" id="brain-no" value="no"><span>Ні, це тіло</span></label>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Частини на цій машині</legend>
-      <div class="parts">
-        <label><input type="checkbox" name="parts" value="eyes" checked><span>Очі</span></label>
-        <label><input type="checkbox" name="parts" value="voice" checked><span>Голос</span></label>
-        <label><input type="checkbox" name="parts" value="hands" checked><span>Руки</span></label>
-      </div>
-    </fieldset>
-
-    <div id="remote-fields" hidden>
-      <div class="field">
-        <label class="label" for="url">Адреса мозку</label>
-        <input id="url" name="url" type="text" inputmode="url"
-               placeholder="https://heare.example.dev" spellcheck="false">
-        <p class="help">Там, де живе мозок. Можна з портом: <code>http://127.0.0.1:9790</code></p>
-      </div>
-      <div class="field">
-        <label class="label" for="code">Код підключення</label>
-        <input id="code" name="code" type="text" maxlength="8"
-               placeholder="8 символів" autocapitalize="characters" spellcheck="false">
-        <p class="help">На машині мозку виконай <code>heare-brain code</code> — код живе 5 хвилин.</p>
-      </div>
-    </div>
-
-    <div id="brain-fields">
-      <div class="keys-sect">
-        <div class="label">Ключі</div>
-        <p class="keys-lede">Два джерела: оточення цього запуску або сховище.</p>
-
-        <div class="keybox">
-          <div class="keyhead">
-            <div class="keyid">
-              <b>Модель <span class="keydim">(розмова)</span></b>
-              <span class="keymono">DEEPSEEK_API_KEY</span>
-            </div>
-            <span class="keychip" data-chip="DEEPSEEK_API_KEY">невідомо</span>
-          </div>
-          <div class="keyenv" data-env="DEEPSEEK_API_KEY" hidden>
-            <button type="button" class="adopt" data-name="DEEPSEEK_API_KEY">Використати з оточення</button>
-          </div>
-          <p class="keymsg" data-msg="DEEPSEEK_API_KEY" hidden></p>
-          <div class="keyown">
-            <label class="key-or" for="deepseek_key">або введи свій</label>
-            <input id="deepseek_key" name="deepseek_key" type="password"
-                   placeholder="можна пропустити" autocomplete="off">
-          </div>
-        </div>
-
-        <div class="keybox">
-          <div class="keyhead">
-            <div class="keyid">
-              <b>Слух</b>
-              <span class="keymono">GROQ_API_KEY</span>
-            </div>
-            <span class="keychip" data-chip="GROQ_API_KEY">невідомо</span>
-          </div>
-          <div class="keyenv" data-env="GROQ_API_KEY" hidden>
-            <button type="button" class="adopt" data-name="GROQ_API_KEY">Використати з оточення</button>
-          </div>
-          <p class="keymsg" data-msg="GROQ_API_KEY" hidden></p>
-          <div class="keyown">
-            <label class="key-or" for="groq_key">або введи свій</label>
-            <input id="groq_key" name="groq_key" type="password"
-                   placeholder="можна пропустити" autocomplete="off">
-          </div>
-        </div>
-
-        <p class="hint keys-note">Ключ зберігається в Keychain. Прочитати його назад не можна.</p>
-      </div>
-
-      <div class="field">
-        <label class="label" for="port">Порт мозку</label>
-        <input id="port" name="port" type="number" min="1" max="65535" value="9790">
-      </div>
-    </div>
-
-    <button type="submit" id="go">Підключити</button>
-    <p class="bad" id="form-error" hidden></p>
-  </form>
-</main>
-
-<main class="card" id="done-screen" hidden>
-  <div class="tick">✓</div>
-  <h1>Готово</h1>
-  <p class="lede" id="done-what"></p>
-  <p class="hint">Форма більше не потрібна: закрий її, і далі все тихо стежить наглядач.</p>
-  <button class="quiet" id="close">Закрити</button>
-</main>
-
-<main class="card" id="fail-screen" hidden>
-  <div class="mark">heare</div>
-  <h1>Не вийшло</h1>
-  <p class="bad" id="fail-why"></p>
-  <pre id="fail-log"></pre>
-  <button class="quiet" id="back">Спробувати ще</button>
-</main>
-
-<script>
-  const form = document.getElementById('setup');
-  const brainYes = document.getElementById('brain-yes');
-  const brainNo = document.getElementById('brain-no');
-  const remoteFields = document.getElementById('remote-fields');
-  const brainFields = document.getElementById('brain-fields');
-  const formScreen = document.getElementById('form-screen');
-  const doneScreen = document.getElementById('done-screen');
-  const failScreen = document.getElementById('fail-screen');
-  const note = document.getElementById('form-error');
-  const go = document.getElementById('go');
-
-  function sync() {
-    const here = brainYes.checked;
-    remoteFields.hidden = here;
-    brainFields.hidden = !here;
-  }
-  brainYes.addEventListener('change', sync);
-  brainNo.addEventListener('change', sync);
-  sync();
-
-  const KEY_NAMES = ['DEEPSEEK_API_KEY', 'GROQ_API_KEY'];
-  const chipFor = (name) => document.querySelector('[data-chip="' + name + '"]');
-  const envFor = (name) => document.querySelector('[data-env="' + name + '"]');
-  const msgFor = (name) => document.querySelector('[data-msg="' + name + '"]');
-
-  function paintKey(name, info) {
-    const chip = chipFor(name);
-    if (!chip) return;
-    const state = !info ? 'unknown' : info.env ? 'env' : info.stored ? 'stored' : 'none';
-    const text = { env: 'в оточенні', stored: 'збережено', none: 'немає', unknown: 'невідомо' };
-    chip.className = state === 'unknown' ? 'keychip' : 'keychip ' + state;
-    chip.textContent = text[state];
-    const env = envFor(name);
-    if (env) env.hidden = state !== 'env';
-  }
-
-  function loadKeys() {
-    fetch('/keys')
-      .then((answer) => {
-        if (!answer.ok) throw new Error('keys');
-        return answer.json();
-      })
-      .then((have) => {
-        for (const name of KEY_NAMES) paintKey(name, have[name]);
-      })
-      .catch(() => {
-        for (const name of KEY_NAMES) paintKey(name, null);
-      });
-  }
-  loadKeys();
-
-  document.querySelectorAll('button.adopt[data-name]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const name = button.dataset.name;
-      const msg = msgFor(name);
-      button.disabled = true;
-      msg.hidden = true;
-      msg.classList.remove('err');
-      try {
-        const answer = await fetch('/keys', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
-        });
-        const result = await answer.json();
-        if (!answer.ok) throw new Error((result.errors || ['не вийшло']).join(' · '));
-        const chip = chipFor(name);
-        chip.className = 'keychip stored';
-        chip.textContent = 'збережено';
-        envFor(name).hidden = true;
-        msg.textContent = 'Ключ узято з оточення.';
-        msg.hidden = false;
-      } catch (error) {
-        msg.textContent = error.message || String(error);
-        msg.classList.add('err');
-        msg.hidden = false;
-      } finally {
-        button.disabled = false;
-      }
-    });
-  });
-
-  function showFail(why, log) {
-    formScreen.hidden = true;
-    doneScreen.hidden = true;
-    failScreen.hidden = false;
-    document.getElementById('fail-why').textContent = why;
-    document.getElementById('fail-log').textContent = log || '';
-  }
-
-  function showDone(here, parts) {
-    const names = { eyes: 'очі', voice: 'голос', hands: 'руки' };
-    const list = parts.map((part) => names[part] || part).join(', ');
-    document.getElementById('done-what').textContent = here
-      ? 'Мозок на цій машині' + (list ? ', частини: ' + list : '') + '.'
-      : 'Частини: ' + list + '. Машина підключена до мозку.';
-    formScreen.hidden = true;
-    doneScreen.hidden = false;
-  }
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const here = brainYes.checked;
-    const parts = Array.from(form.querySelectorAll('input[name="parts"]:checked'))
-      .map((input) => input.value);
-    const payload = {
-      brain_here: here,
-      parts,
-      url: here ? '' : form.url.value.trim(),
-      code: here ? '' : form.code.value.trim(),
-      deepseek_key: here ? form.deepseek_key.value : '',
-      groq_key: here ? form.groq_key.value : '',
-    };
-    if (here) {
-      const raw = form.port.value.trim();
-      payload.port = raw ? Number(raw) : 9790;
-    }
-
-    note.hidden = true;
-    go.disabled = true;
-    go.textContent = 'Перевіряю…';
-    try {
-      const answer = await fetch('/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const result = await answer.json();
-      if (!answer.ok) {
-        note.textContent = (result.errors || ['не розібрав відповідь']).join(' · ');
-        note.hidden = false;
-        return;
-      }
-      if (result.ok) {
-        showDone(here, parts);
-      } else {
-        showFail('Встановлення не завершилось.', result.log || '');
-      }
-    } catch (error) {
-      showFail('Не достукався до наглядача.', String(error));
-    } finally {
-      go.disabled = false;
-      go.textContent = 'Підключити';
-    }
-  });
-
-  document.getElementById('back').addEventListener('click', () => {
-    failScreen.hidden = true;
-    formScreen.hidden = false;
-  });
-
-  document.getElementById('close').addEventListener('click', async () => {
-    try {
-      await fetch('/close', { method: 'POST' });
-    } catch (error) {
-      // The form is already gone; nothing left to close.
-    }
-    document.querySelector('#done-screen .hint').textContent =
-      'Форму закрито. Це вікно можна закрити.';
-    document.getElementById('close').disabled = true;
-  });
-</script>
-</body>
-</html>
-"""

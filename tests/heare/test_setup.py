@@ -345,3 +345,58 @@ def test_the_form_keeps_a_key_only_if_its_provider_takes_it(form, monkeypatch):
 
     _, good = _post(base + "/key", {"name": "GROQ_API_KEY", "value": "good"})
     assert good["ok"] is True and keys.get("GROQ_API_KEY") == "good"
+
+
+def test_the_form_is_the_installer_page(form):
+    base, _ = form
+    with urllib.request.urlopen(base + "/", timeout=2) as answer:
+        page = answer.read().decode()
+    assert 'fetch("machine")' in page and "Цей комп'ютер — це…" in page
+
+
+def test_a_body_is_paired_with_the_brain_it_names(form, tmp_path, monkeypatch):
+    base, config = form
+    asked = {}
+
+    def paired(url, code, kind, name):
+        asked.update(url=url, code=code, kind=kind)
+        return {"token": "machine-token"}
+
+    monkeypatch.setattr(setup, "pair", paired)
+    with pytest.raises(urllib.error.HTTPError) as short:
+        _post(base + "/role", {"role": "body", "url": "https://brain.example", "code": "123"})
+    assert short.value.code == 400
+
+    status, state = _post(base + "/role", {"role": "body", "url": "https://brain.example/",
+                                           "code": "ABCD1234"})
+    assert status == 200 and state["role"] == "body" and state["url"] == "https://brain.example"
+    assert asked == {"url": "https://brain.example", "code": "ABCD1234", "kind": "machine"}
+    assert (tmp_path / "machine_token").read_text() == "machine-token"
+
+
+def test_the_brain_here_forgets_a_brain_elsewhere(form):
+    base, config = form
+    Settings(config).set("url", "https://elsewhere.example")
+    _, state = _post(base + "/role", {"role": "all"})
+    assert state["role"] == "all" and state["url"] == ""
+
+
+def test_finishing_ends_the_first_run(form):
+    base, config = form
+    _, state = _post(base + "/done", {})
+    assert state["done"] is True
+    assert Settings(config).setup_done is True
+
+
+def test_a_first_run_starts_with_every_part_this_machine_can_have(form, tmp_path, monkeypatch):
+    base, config = form
+    monkeypatch.setattr(setup.machine, "why_not", lambda name, bin_dir=None: None)
+    monkeypatch.setattr(setup.machine, "command", lambda name, bin_dir=None: [f"heare-{name}"])
+    _, state = _post(base + "/role", {"role": "all"})
+    assert all(p["on"] for p in state["parts"])
+
+    # Once set up, choosing again changes nothing the person turned off.
+    _post(base + "/part", {"name": "eyes", "on": False})
+    Settings(config).set("setup_done", True)
+    _, again = _post(base + "/role", {"role": "all"})
+    assert next(p for p in again["parts"] if p["name"] == "eyes")["on"] is False

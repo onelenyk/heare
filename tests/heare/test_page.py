@@ -38,3 +38,16 @@ def test_every_element_the_script_reaches_for_is_in_the_page():
 @pytest.mark.parametrize("kind", KINDS)
 def test_the_page_draws_every_kind_of_control(kind):
     assert f'c.kind === "{kind}"' in SCRIPT
+
+
+INSTALLER = (Path(__file__).resolve().parents[2]
+             / "packages/heare-keeper/heare/installer.html").read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_installer_s_script_parses(tmp_path):
+    script = tmp_path / "installer.js"
+    script.write_text("\n".join(re.findall(r"<script>(.*?)</script>", INSTALLER, re.S)),
+                      encoding="utf-8")
+    checked = subprocess.run(["node", "--check", str(script)], capture_output=True, text=True)
+    assert checked.returncode == 0, checked.stderr
