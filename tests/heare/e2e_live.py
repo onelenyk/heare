@@ -60,6 +60,24 @@ async def chat(client):
     return bool(text), (text or "no reply")[:70]
 
 
+async def reminder(client):
+    said = "Нагадай через 8 секунд сказати слово «е2е-нагадування»."
+    await client.post(f"{BASE}/api/message", json={"text": said}, headers=HEAD)
+
+    async def delivered():
+        # The engine ticks every 30 s, so 8 s can take up to ~40 s — and
+        # the reminder is spoken in its own turn, so look at every recent
+        # exchange, last first.
+        past = (await client.get(f"{BASE}/api/history?n=5", headers=HEAD)).json()
+        for exchange in reversed(past):
+            agent = exchange.get("agent") or ""
+            if "Нагадування:" in agent and "е2е-нагадування" in agent:
+                return agent
+
+    text = await wait_for(delivered, 90)
+    return bool(text), (text or "no reminder")
+
+
 async def control(client):
     s = await state(client)
     pid = next((k for k, b in s["bodies"].items()
@@ -154,7 +172,8 @@ async def allow_permissions(client, stop: asyncio.Event, seen: dict):
 async def main() -> int:
     parser = argparse.ArgumentParser(description="live e2e against a running heare")
     parser.add_argument("--only", default="",
-                        help="comma-separated: health,chat,control,forget,task,ask")
+                        help="comma-separated: "
+                             "health,chat,reminder,control,forget,task,ask")
     args = parser.parse_args()
     allow = {"n": 0}
     results: list[tuple[str, bool, str]] = []
@@ -164,6 +183,7 @@ async def main() -> int:
         scenarios = {
             "health": lambda: health(client),
             "chat": lambda: chat(client),
+            "reminder": lambda: reminder(client),
             "control": lambda: control(client),
             "forget": lambda: forget(client),
             "task": lambda: task(client, allow),
