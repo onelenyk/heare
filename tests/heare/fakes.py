@@ -216,6 +216,12 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
                 names=frozenset({"дока"}), words=uk, **core_kw)
     core.add_input(line)
     core.add_output(page)
+    from heare.tools import Toolbox
+    core.attach_tools(Toolbox(
+        memory=notebook if memory else None, state=core.state,
+        delegate=core.delegate, stop=core.stop_all, words=uk,
+        has_executors=lambda: bool(core.executors),
+    ))
     room = Room(core, model, line, page, notebook)
     # Delivery is the engine's now: a scenario that expects a result to come
     # back needs the engine running, exactly as the app runs it.

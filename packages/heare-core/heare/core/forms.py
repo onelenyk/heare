@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Protocol
+from typing import AsyncIterator, Awaitable, Callable, Protocol
 
 # The version of the wire a part and the brain speak. Both ends read it from
 # here, so they cannot disagree about which number is theirs.
@@ -121,6 +121,14 @@ class Surface(Protocol):
 
     def context(self) -> str:
         """What is on the surface now, short enough for every prompt."""
+
+
+class Tools(Protocol):
+    """The catalog of abilities the model may call, kept outside the core."""
+
+    def verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]: ...
+
+    def acknowledging(self) -> set[str]: ...
 
 
 class Model(Protocol):

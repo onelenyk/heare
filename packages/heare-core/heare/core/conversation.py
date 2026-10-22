@@ -23,7 +23,7 @@ from typing import AsyncIterator, Awaitable, Callable
 
 from heare.core.forms import (
     Delegator, Executor, Input, Memory, Message, Model, Output, Permission,
-    Question, Task,
+    Question, Task, Tools,
 )
 from heare.core.state import State
 
@@ -205,6 +205,7 @@ class Core:
         self._spoken: asyncio.Future | None = None
         self._asking = asyncio.Lock()
         self._taking = False
+        self._tools: Tools | None = None
 
     # -- attaching parts --------------------------------------------------
 
@@ -219,6 +220,9 @@ class Core:
     def add_executor(self, part: Executor) -> None:
         self.executors[part.name] = part
         self.state.parts["executors"] = sorted(self.executors)
+
+    def attach_tools(self, tools: Tools) -> None:
+        self._tools = tools
 
     # -- controls ---------------------------------------------------------
 
@@ -741,13 +745,7 @@ class Core:
     def _verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]:
         """What the model may call. A verb that cannot do anything here is
         not offered: a tool the model can see is a promise."""
-        verbs: dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]] = {}
-        if self.memory is not None:
-            verbs["recall"] = (_RECALL, self._recall)
-        if self.executors:
-            verbs["delegate"] = (_DELEGATE, self._delegate)
-        if self._jobs:
-            verbs["stop_work"] = (_STOP, self._stop_work)
+        verbs = dict(self._tools.verbs()) if self._tools is not None else {}
         # What an output lets the model write on directly (a canvas).
         for output in self.outputs.values():
             for schema, run in getattr(output, "verbs", lambda: ())():
@@ -756,7 +754,7 @@ class Core:
 
     def _acknowledging(self) -> set[str]:
         """Verbs whose answer is only «done»: said when nothing else was."""
-        names = {"delegate", "stop_work"}
+        names = set(self._tools.acknowledging()) if self._tools is not None else set()
         for output in self.outputs.values():
             for schema, _ in getattr(output, "verbs", lambda: ())():
                 names.add(schema["function"]["name"])
@@ -785,38 +783,6 @@ class Core:
         except Exception:
             logger.exception("verb %s failed: %.200s", name, arguments)
             return "Не вийшло. Спробуй ще раз."
-
-    async def _recall(self, arguments: dict) -> str:
-        query = str(arguments.get("query", "")).strip()
-        if not query:
-            return "Що саме згадати?"
-        return await self.memory.recall(query, str(arguments.get("when", "") or ""))
-
-    async def _delegate(self, arguments: dict) -> str:
-        request = str(arguments.get("task", "")).strip()
-        if not request:
-            return "Скажи, що саме зробити."
-        if self._same(request) is not None:
-            return "Це вже в роботі."
-        self.delegate(request)
-        return "Беру."
-
-    async def _stop_work(self, arguments: dict) -> str:
-        return "Зупинив." if self.stop_all() else "Нічого не було запущено."
-
-    def _same(self, request: str) -> Task | None:
-        """A piece of work already running that this request repeats. One
-        request is one job: asked again before it is done, it is the same
-        job, not a second one."""
-        asked = set(self.words.tokens(request))
-        for task in self.state.tasks.values():
-            if task.status != "running":
-                continue
-            running = set(self.words.tokens(task.request))
-            common = len(asked & running)
-            if common and common >= 0.5 * min(len(asked), len(running)):
-                return task
-        return None
 
     # -- work -------------------------------------------------------------
 
@@ -956,70 +922,3 @@ class Core:
             spoken.set_result(str(text))
         return True
 
-
-_RECALL = {
-    "type": "function",
-    "function": {
-        "name": "recall",
-        "description": (
-            "Search what was actually said in your past conversations with "
-            "this person — whenever they ask what they told you, what you "
-            "agreed, or when something came up."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The words to look for — the subject, "
-                                   "not the whole question.",
-                },
-                "when": {
-                    "type": "string",
-                    "description": "Their own words about when, if they said "
-                                   "any: «вчора», «минулого тижня». Leave out "
-                                   "if they did not.",
-                },
-            },
-            "required": ["query"],
-        },
-    },
-}
-
-_STOP = {
-    "type": "function",
-    "function": {
-        "name": "stop_work",
-        "description": (
-            "Stop all the work that is running now. Whenever the person asks "
-            "to stop, cancel or call off what the agents are doing, in any "
-            "words. Never say it is stopped without calling this."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
-    },
-}
-
-_DELEGATE = {
-    "type": "function",
-    "function": {
-        "name": "delegate",
-        "description": (
-            "Hand work to an agent. Everything outside this conversation "
-            "goes through here: files, code, the shell, the web, other "
-            "programs. You cannot see or touch any of it yourself, so never "
-            "say you cannot before you have asked. Returns at once: say in "
-            "one short sentence that you are on it, then stop. The answer "
-            "arrives later as its own message."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "task": {
-                    "type": "string",
-                    "description": "What the person asked for, as they said it.",
-                },
-            },
-            "required": ["task"],
-        },
-    },
-}

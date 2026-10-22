@@ -59,6 +59,7 @@ class Brain:
         from heare.memory.journal import Journal
         from heare.model.chat import Chat
         from heare.model.delegate import Dispatcher
+        from heare.tools import Toolbox
 
         self.settings = settings or Settings()
         names = persona.names()
@@ -73,6 +74,12 @@ class Brain:
             names=names, judge=persona.JUDGE, words=uk,
             fit=partial(context.fit, limit=int(self.settings.context_tokens)),
         )
+        self.core.attach_tools(Toolbox(
+            memory=self.core.memory, state=self.core.state,
+            delegate=self.core.delegate, stop=self.core.stop_all,
+            words=self.core.words,
+            has_executors=lambda: bool(self.core.executors),
+        ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.
         self.engine = Engine(Intents(self.settings.intents_path),
