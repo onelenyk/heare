@@ -51,6 +51,12 @@ def test_acknowledging_names_the_verbs_that_only_acknowledge():
     assert _toolbox().acknowledging() == {"delegate", "stop_work"}
 
 
+def test_only_recall_is_read_only():
+    box = _toolbox(memory=Notebook())
+    assert box.read_only("recall") is True
+    assert box.read_only("delegate") is False
+
+
 async def test_recall_returns_the_memorys_answer():
     notebook = Notebook(found="Ти казав про це вчора.")
 

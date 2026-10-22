@@ -130,6 +130,11 @@ class Tools(Protocol):
 
     def acknowledging(self) -> set[str]: ...
 
+    def read_only(self, name: str) -> bool:
+        """Whether a call changes nothing, so its result can go back to
+        the model as a native tool result instead of being spoken."""
+        ...
+
 
 class Model(Protocol):
     def reply(self, messages: list[dict], verbs: list[dict]) -> AsyncIterator[dict]:

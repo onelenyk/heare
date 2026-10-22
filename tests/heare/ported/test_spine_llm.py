@@ -219,6 +219,37 @@ async def test_tools_passed_adds_tools_to_body_none_omits_it():
 
 
 @pytest.mark.asyncio
+async def test_tool_turns_are_passed_through_unchanged():
+    captured: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(200, content=_sse(_delta_line(content="ok"), "[DONE]"))
+
+    messages = [
+        {"role": "user", "content": "що ти знаєш?"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "recall", "arguments": '{"query": "x"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "знайшов"},
+    ]
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        await _collect_events(stream_chat_events(messages, CFG, client=client))
+
+    assert captured[0]["messages"] == messages
+
+
+@pytest.mark.asyncio
 async def test_content_only_stream_yields_only_deltas():
     body = _sse(
         _delta_line(role="assistant"),

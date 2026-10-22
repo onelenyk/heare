@@ -44,6 +44,9 @@ class Toolbox:
     def acknowledging(self) -> set[str]:
         return {"delegate", "stop_work"}
 
+    def read_only(self, name: str) -> bool:
+        return name == "recall"
+
     async def _run_recall(self, arguments: dict) -> str:
         query = str(arguments.get("query", "")).strip()
         if not query:

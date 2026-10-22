@@ -167,25 +167,47 @@ async def test_a_silent_recall_gets_a_follow_up_answer():
     await room.settled()
     assert len(room.model.asked) == 2
     follow_up = room.model.asked[1]
-    assert any("Ти казав про це вчора." in m["content"] for m in follow_up)
-    assert any("[знайдене в памʼяті" in m["content"] for m in follow_up)
+    assistant = next(
+        m for m in follow_up if m["role"] == "assistant" and m.get("tool_calls")
+    )
+    tool = next(m for m in follow_up if m["role"] == "tool")
+    assert tool["tool_call_id"] == assistant["tool_calls"][0]["id"]
+    assert tool["content"] == "Ти казав про це вчора."
     assert room.page.said == ["Ти казав про це вчора. "]
     assert ("проект", "") in room.memory.recalled
     await room.close()
 
 
-async def test_text_plus_recall_keeps_the_old_path():
+async def test_text_plus_recall_gets_a_native_follow_up():
     room = await open_room()
     room.memory.found = "Ти казав про це вчора."
     room.model.will_say(
-        Says(text="Зараз гляну.", calls=(("recall", {"query": "проект"}),))
+        Says(text="Зараз гляну.", calls=(("recall", {"query": "проект"}),)),
+        Says("Ти казав про це вчора."),
     )
     room.says("Що було з проектом?")
     await room.settled()
+    assert len(room.model.asked) == 2
+    assert room.page.said == ["Зараз гляну. ", "Ти казав про це вчора. "]
+    follow_up = room.model.asked[1]
+    assistant = next(
+        m for m in follow_up if m["role"] == "assistant" and m.get("tool_calls")
+    )
+    tool = next(m for m in follow_up if m["role"] == "tool")
+    assert tool["tool_call_id"] == assistant["tool_calls"][0]["id"]
+    await room.close()
+
+
+async def test_text_plus_delegate_keeps_one_call():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.model.will_say(Says(text="Беру.", calls=(("delegate", {"task": "зроби"}),)))
+    room.says("Зроби")
+    await room.until(lambda: worker.tasks)
+    await room.settled()
     assert len(room.model.asked) == 1
-    said = "".join(room.page.said)
-    assert "Зараз гляну." in said
-    assert "Ти казав про це вчора." in said
+    assert "зроби" in worker.tasks[0]
     await room.close()
 
 

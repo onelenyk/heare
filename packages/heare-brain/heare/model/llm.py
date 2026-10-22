@@ -247,19 +247,34 @@ async def _openai_events(
             await http_client.aclose()
 
 
+def _tool_input(arguments: object) -> dict:
+    """A call's arguments as Anthropic wants them: a mapping, not the JSON
+    string OpenAI carries on the wire."""
+    if isinstance(arguments, dict):
+        return arguments
+    try:
+        parsed = json.loads(arguments or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _to_anthropic(
     messages: list[dict], tools: list[dict] | None
 ) -> tuple[str, list[dict], list[dict] | None]:
     """Translate an OpenAI-shaped conversation into Anthropic's.
 
-    Three differences, and only three, because of what this engine does
-    not do: it never feeds a tool result back to the model. Tools are run
-    after the reply and their acknowledgement is spoken, so there are no
-    ``tool_result`` blocks to carry across — only plain turns.
+    Three differences:
 
     * the system prompt is a top-level field, not a message;
-    * consecutive same-role turns are illegal, so they are joined;
-    * a tool's JSON Schema is ``input_schema``, not ``function.parameters``.
+    * consecutive same-role turns are illegal, so they are joined — text
+      into text, and tool results into the user turn that answers them;
+    * a tool's JSON Schema is ``input_schema``, not ``function.parameters``,
+      and a call's arguments arrive as ``input``, not a JSON string.
+
+    Tool results are carried across: a read-only call becomes an assistant
+    ``tool_use`` block and a user ``tool_result``, so the model sees what
+    it found on its follow-up turn.
     """
     system_parts: list[str] = []
     turns: list[dict] = []
@@ -269,10 +284,44 @@ def _to_anthropic(
         if role == "system":
             system_parts.append(str(content))
             continue
+        if role == "tool":
+            block = {
+                "type": "tool_result",
+                "tool_use_id": message.get("tool_call_id", ""),
+                "content": str(content),
+            }
+            last = turns[-1] if turns else None
+            if last is not None and last["role"] == "user" and isinstance(
+                last["content"], list
+            ):
+                last["content"].append(block)
+            else:
+                turns.append({"role": "user", "content": [block]})
+            continue
+        if role == "assistant" and message.get("tool_calls"):
+            blocks: list[dict] = []
+            if content:
+                blocks.append({"type": "text", "text": str(content)})
+            for call in message["tool_calls"]:
+                function = call.get("function") or {}
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": call.get("id", ""),
+                        "name": function.get("name", ""),
+                        "input": _tool_input(function.get("arguments")),
+                    }
+                )
+            turns.append({"role": "assistant", "content": blocks})
+            continue
         if role not in ("user", "assistant") or not content:
             continue
-        if turns and turns[-1]["role"] == role:
-            turns[-1]["content"] += "\n\n" + str(content)
+        last = turns[-1] if turns else None
+        if last is not None and last["role"] == role:
+            if isinstance(last["content"], list):
+                last["content"].append({"type": "text", "text": str(content)})
+            else:
+                last["content"] += "\n\n" + str(content)
         else:
             turns.append({"role": role, "content": str(content)})
 

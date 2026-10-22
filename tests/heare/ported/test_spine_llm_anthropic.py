@@ -89,6 +89,44 @@ def test_two_turns_in_a_row_from_the_same_side_are_joined() -> None:
     assert turns[0]["content"] == "перевірка скінчилась\n\nвсе гаразд"
 
 
+def test_a_tool_result_survives_the_crossing() -> None:
+    """A read-only call and its answer become the protocol's own blocks:
+    an assistant tool_use, then a user tool_result. The next user text
+    joins that same user turn — Anthropic rejects two in a row."""
+    _, turns, _ = _to_anthropic(
+        [
+            {"role": "user", "content": "що ти знаєш?"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "recall",
+                            "arguments": json.dumps({"query": "x"}),
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "знайшов"},
+            {"role": "user", "content": "дякую"},
+        ],
+        None,
+    )
+
+    assert [turn["role"] for turn in turns] == ["user", "assistant", "user"]
+    assistant = turns[1]["content"]
+    assert assistant[0]["type"] == "tool_use"
+    assert assistant[0]["input"] == {"query": "x"}
+    result_blocks = turns[2]["content"]
+    assert [block["type"] for block in result_blocks] == ["tool_result", "text"]
+    assert result_blocks[0]["tool_use_id"] == "call_1"
+    assert result_blocks[0]["content"] == "знайшов"
+    assert result_blocks[1]["text"] == "дякую"
+
+
 def test_a_tool_keeps_its_schema_under_the_other_name() -> None:
     _, _, declared = _to_anthropic(
         [],
