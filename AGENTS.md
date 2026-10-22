@@ -78,8 +78,11 @@ model — and are excluded by default.
 | Which parts the brain knows, trust, presence, who hears what | `packages/heare-brain/heare/api/registry.py` |
 | Voice: hearing and speech | `packages/heare-voice/heare/voice.py`, `packages/heare-voice/heare/channels/voice/` |
 | Eyes: what is around | `packages/heare-eyes/heare/eyes.py`, `packages/heare-eyes/heare/surroundings/` |
-| Intents, moments, delivery | `packages/heare-brain/heare/engine/` |
-| The plan | `docs/product/README.md`; what we do now: `docs/product/clock.md` |
+| Intents, reminders, moments, delivery | `packages/heare-brain/heare/engine/` |
+| What the model sees: persona, laws, turn budget | `packages/heare-brain/heare/prompt/` |
+| What the model can call: recall, delegate, remind | `packages/heare-brain/heare/tools/` |
+| Profile, journal, recall, memory CLI | `packages/heare-brain/heare/memory/` |
+| The plan | `docs/product/README.md`; what we do now: `docs/product/clock.md`; memory and activity: `docs/product/memory.md` |
 | The laws | `packages/heare-core/heare/laws.py`, `docs/laws.md` |
 
 ## WRITING CODE
