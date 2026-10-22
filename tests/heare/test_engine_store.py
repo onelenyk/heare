@@ -75,3 +75,49 @@ def test_a_reminder_keeps_its_due_time_after_a_restart(tmp_path):
     [held] = again.alive(now=150.0)
     assert held.not_before == 150.0
     assert again.alive(now=149.0) == []
+
+
+def test_reminders_lists_only_held_reminders_in_due_order(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    later = notes.hold("пізніше", "reminder", 3,
+                       not_before=300.0, until=400.0)
+    sooner = notes.hold("раніше", "reminder", 3,
+                        not_before=100.0, until=400.0)
+    untimed = notes.hold("без часу", "reminder", 3)
+    delivered = notes.hold("доставлене", "reminder", 3,
+                           not_before=100.0, until=400.0)
+    notes.done(delivered)
+    notes.hold("старе", "reminder", 3, not_before=50.0, until=150.0)
+    notes.hold("справа", "task_done", 2, not_before=100.0)
+
+    assert [i.id for i in notes.reminders(now=200.0)] == [
+        untimed.id, sooner.id, later.id,
+    ]
+
+
+def test_cancel_drops_a_held_reminder_for_good(tmp_path):
+    path = tmp_path / "intents.json"
+    notes = Intents(path)
+    held = notes.hold("подзвонити мамі", "reminder", 3, not_before=150.0)
+
+    assert notes.cancel(held.id) is True
+    assert notes.reminders(now=150.0) == []
+    assert notes.alive(now=150.0) == []
+
+    again = Intents(path)
+    assert again.reminders(now=150.0) == []
+    assert again.alive(now=150.0) == []
+
+
+def test_cancel_refuses_unknown_non_reminder_and_done(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    work = notes.hold("зроби", "task_done", 2)
+    reminder = notes.hold("подзвонити", "reminder", 3, not_before=150.0)
+    delivered = notes.hold("доставлене", "reminder", 3, not_before=150.0)
+    notes.done(delivered)
+
+    assert notes.cancel(999) is False
+    assert notes.cancel(work.id) is False
+    assert notes.cancel(work.id, why="reminder") is False
+    assert notes.cancel(delivered.id) is False
+    assert notes.cancel(reminder.id) is True

@@ -52,13 +52,15 @@ class Toolbox:
             verbs["stop_work"] = (_STOP, self._run_stop)
         if self._intents is not None:
             verbs["remind"] = (_REMIND, self._run_remind)
+            verbs["list_reminders"] = (_LIST_REMINDERS, self._run_list_reminders)
+            verbs["cancel_reminder"] = (_CANCEL_REMINDER, self._run_cancel_reminder)
         return verbs
 
     def acknowledging(self) -> set[str]:
-        return {"delegate", "stop_work", "remind"}
+        return {"delegate", "stop_work", "remind", "cancel_reminder"}
 
     def read_only(self, name: str) -> bool:
-        return name == "recall"
+        return name in {"recall", "list_reminders"}
 
     async def _run_recall(self, arguments: dict) -> str:
         query = str(arguments.get("query", "")).strip()
@@ -98,6 +100,37 @@ class Toolbox:
             not_before=due, until=due + REMIND_GRACE_S,
         )
         return "Добре, нагадаю."
+
+    async def _run_list_reminders(self, arguments: dict) -> str:
+        now = self._now()
+        items = self._intents.reminders(now)
+        if not items:
+            return "Нагадувань немає."
+        lines = []
+        for intent in items:
+            if intent.not_before is None:
+                when = "без часу"
+            else:
+                delta = int(intent.not_before - now)
+                if delta <= 0:
+                    when = "вже час"
+                elif delta < 3600:
+                    when = f"через {max(1, delta // 60)} хв"
+                elif delta < 86400:
+                    when = f"через {delta // 3600} год"
+                else:
+                    when = f"через {delta // 86400} дн"
+            lines.append(f"{intent.id}. {intent.what} — {when}")
+        return "Нагадування:\n" + "\n".join(lines)
+
+    async def _run_cancel_reminder(self, arguments: dict) -> str:
+        try:
+            intent_id = int(arguments.get("id"))
+        except (TypeError, ValueError):
+            return "Скажи, яке нагадування скасувати."
+        if self._intents.cancel(intent_id):
+            return "Скасував."
+        return "Не знайшов такого нагадування."
 
     def _same(self, request: str) -> Task | None:
         """A piece of work already running that this request repeats. One
@@ -202,6 +235,37 @@ _REMIND = {
                 },
             },
             "required": ["text", "in_seconds"],
+        },
+    },
+}
+
+_LIST_REMINDERS = {
+    "type": "function",
+    "function": {
+        "name": "list_reminders",
+        "description": (
+            "List the reminders the person has set, with their ids and how "
+            "soon they are due. Use it when they ask what is planned or what "
+            "you are holding."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
+
+_CANCEL_REMINDER = {
+    "type": "function",
+    "function": {
+        "name": "cancel_reminder",
+        "description": "Cancel a reminder by its id from list_reminders.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "description": "The id shown by list_reminders.",
+                },
+            },
+            "required": ["id"],
         },
     },
 }

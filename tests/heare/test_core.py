@@ -251,12 +251,14 @@ async def test_a_verb_is_offered_only_when_it_can_work():
     room.model.will_say("Привіт.")
     room.says("Привіт")
     await room.settled()
-    assert room.model.offered == [["remind"]]
+    assert room.model.offered == [["remind", "list_reminders", "cancel_reminder"]]
     room.core.add_executor(Worker())
     room.model.will_say("Привіт ще раз.")
     room.says("Привіт")
     await room.settled()
-    assert room.model.offered[-1] == ["delegate", "remind"]
+    assert room.model.offered[-1] == [
+        "delegate", "remind", "list_reminders", "cancel_reminder",
+    ]
     await room.close()
 
 
@@ -273,6 +275,42 @@ async def test_the_model_can_set_a_one_off_reminder():
     [held] = room.extra["intents"].alive(now=time.time() + 601)
     assert held.why == "reminder"
     assert held.not_before > time.time()
+    await room.close()
+
+
+async def test_listing_reminders_is_a_read_only_follow_up():
+    room = await open_room()
+    held = room.extra["intents"].hold(
+        "подзвонити мамі", "reminder", 3, not_before=time.time() + 600,
+    )
+    room.model.will_say(
+        Says(calls=(("list_reminders", {}),)),
+        Says("У тебе одне нагадування."),
+    )
+    room.says("Що я просив нагадати?")
+    await room.settled()
+
+    assert len(room.model.asked) == 2
+    follow_up = room.model.asked[1]
+    tool = next(m for m in follow_up if m["role"] == "tool")
+    assert "подзвонити мамі" in tool["content"]
+    assert str(held.id) in tool["content"]
+    assert room.page.said[-1] == "У тебе одне нагадування. "
+    await room.close()
+
+
+async def test_cancelling_a_reminder_is_a_side_effect():
+    room = await open_room()
+    held = room.extra["intents"].hold(
+        "подзвонити мамі", "reminder", 3, not_before=time.time() + 600,
+    )
+    room.model.will_say(Says(calls=(("cancel_reminder", {"id": held.id}),)))
+    room.says("Скасуй нагадування про дзвінок")
+    await room.settled()
+
+    assert room.page.said[-1] == "Скасував."
+    assert held.status == "dropped"
+    assert len(room.model.asked) == 1
     await room.close()
 
 

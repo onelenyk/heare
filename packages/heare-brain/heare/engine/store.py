@@ -63,6 +63,24 @@ class Intents:
         """What is still worth saying — the «Тримаю в голові» list."""
         return [i for i in self._by_id.values() if i.alive(now)]
 
+    def reminders(self, now: float) -> list[Intent]:
+        """Held reminders, due or still ahead, soonest first."""
+        held = [
+            i for i in self._by_id.values()
+            if i.why == "reminder" and i.status == "held"
+            and (i.until is None or now < i.until)
+        ]
+        return sorted(held, key=lambda i: i.not_before or 0)
+
+    def cancel(self, intent_id: int, *, why: str = "reminder") -> bool:
+        """Drop a held note of this kind; False if it is not there to drop."""
+        intent = self._by_id.get(intent_id)
+        if intent is None or intent.why != why or intent.status != "held":
+            return False
+        intent.status = "dropped"
+        self._save()
+        return True
+
     def done(self, intent: Intent, status: str = "delivered") -> None:
         intent.status = status
         self._save()
