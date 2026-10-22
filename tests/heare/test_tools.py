@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from heare.core.forms import Task
 from heare.core.state import State
+from heare.engine.store import Intents
 from heare.language import uk
-from heare.tools import Toolbox
+from heare.tools import REMIND_GRACE_S, Toolbox
 from tests.heare.fakes import Notebook
 
 
@@ -16,6 +19,8 @@ def _toolbox(
     has_executors: bool = True,
     stop=lambda: 0,
     delegate=None,
+    intents: Intents | None = None,
+    now=lambda: 100.0,
 ) -> Toolbox:
     return Toolbox(
         memory=memory,
@@ -24,6 +29,8 @@ def _toolbox(
         stop=stop,
         words=uk,
         has_executors=lambda: has_executors,
+        intents=intents,
+        now=now,
     )
 
 
@@ -48,13 +55,20 @@ def test_stop_work_is_offered_only_with_a_running_task():
 
 
 def test_acknowledging_names_the_verbs_that_only_acknowledge():
-    assert _toolbox().acknowledging() == {"delegate", "stop_work"}
+    assert _toolbox().acknowledging() == {"delegate", "stop_work", "remind"}
 
 
 def test_only_recall_is_read_only():
     box = _toolbox(memory=Notebook())
     assert box.read_only("recall") is True
     assert box.read_only("delegate") is False
+    assert box.read_only("remind") is False
+
+
+def test_remind_is_offered_only_with_intents(tmp_path):
+    assert "remind" not in _toolbox().verbs()
+    notes = Intents(tmp_path / "intents.json")
+    assert "remind" in _toolbox(intents=notes).verbs()
 
 
 async def test_recall_returns_the_memorys_answer():
@@ -97,3 +111,37 @@ async def test_a_duplicate_running_request_is_not_started_again():
 async def test_stop_work_reports_what_it_stopped():
     assert await _toolbox(stop=lambda: 2)._run_stop({}) == "Зупинив."
     assert await _toolbox(stop=lambda: 0)._run_stop({}) == "Нічого не було запущено."
+
+
+async def test_remind_stores_a_one_off_due_later(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    box = _toolbox(intents=notes, now=lambda: 100.0)
+
+    spoken = await box._run_remind(
+        {"text": "подзвонити мамі", "in_seconds": 600}
+    )
+
+    assert spoken == "Добре, нагадаю."
+    [held] = notes.alive(now=700.0)
+    assert held.why == "reminder"
+    assert held.not_before == 700.0
+    assert held.until == 700.0 + REMIND_GRACE_S
+
+
+@pytest.mark.parametrize(
+    ("arguments", "spoken"),
+    [
+        ({"text": "", "in_seconds": 600}, "Що саме нагадати?"),
+        ({"text": "подзвонити", "in_seconds": "soon"}, "Скажи, коли нагадати."),
+        ({"text": "подзвонити", "in_seconds": 0}, "Це вже минуло."),
+        ({"text": "подзвонити", "in_seconds": -5}, "Це вже минуло."),
+        ({"text": "подзвонити", "in_seconds": 30 * 24 * 3600 + 1},
+         "Так далеко я не нагадую."),
+    ],
+)
+async def test_a_bad_reminder_stores_nothing(tmp_path, arguments, spoken):
+    notes = Intents(tmp_path / "intents.json")
+    box = _toolbox(intents=notes)
+
+    assert await box._run_remind(arguments) == spoken
+    assert notes.alive(now=10**12) == []

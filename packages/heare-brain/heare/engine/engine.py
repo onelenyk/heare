@@ -8,6 +8,7 @@ such event is a piece of work ending.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -15,6 +16,10 @@ from heare.core import Message
 from heare.core.conversation import RESULT_PREFIX
 from heare.engine.intent import Intent
 from heare.engine.store import Intents
+
+# How often the engine looks at the clock when nothing happens; a reminder
+# due while idle should not wait for the next event to be told.
+TICK_S = 30.0
 
 # A finished piece of work is worth telling for this long, then it is stale.
 WORK_NEWS_S = 2 * 3600
@@ -39,11 +44,12 @@ class Engine:
 
     def __init__(self, intents: Intents, *, state: Any = None,
                  speak: Any = None, gap: float = BASE_GAP_S,
-                 now=time.time) -> None:
+                 tick: float = TICK_S, now=time.time) -> None:
         self._intents = intents
         self._state = state
         self._speak = speak
         self._now = now
+        self._tick = tick
         self._gap_s = gap
         self._ready_at: float | None = None
         self._last_spoke: float | None = None
@@ -103,14 +109,23 @@ class Engine:
         return getattr(self._state, "phase", "idle") == "idle"
 
     def _deliver(self, intents: list[Intent]) -> None:
-        """One message for all of them; the core says it at a quiet moment.
+        """Reminders as written; work news as the model's own rephrase.
 
         Three pieces of work finished while you were away are one remark,
-        not three — told apart in one breath instead of minutes apart.
+        not three — told apart in one breath instead of minutes apart. A
+        reminder is exact words and costs no model call at all.
         """
-        news = "\n".join(f"— {i.what}" for i in intents)
-        self._speak(Message(text=f"{RESULT_PREFIX}\n{news}",
-                            channel="engine", person=False))
+        reminders = [i for i in intents if i.why == "reminder"]
+        news = [i for i in intents if i.why != "reminder"]
+        if reminders:
+            self._speak(Message(
+                text="Нагадування: " + "; ".join(i.what for i in reminders),
+                channel="engine", person=False, verbatim=True,
+            ))
+        if news:
+            lines = "\n".join(f"— {i.what}" for i in news)
+            self._speak(Message(text=f"{RESULT_PREFIX}\n{lines}",
+                                channel="engine", person=False))
         now = self._now()
         if (self._last_spoke is not None and not self._answered
                 and now - self._last_spoke > ANSWERED_S):
@@ -123,9 +138,15 @@ class Engine:
         self._answered = False
 
     async def run(self) -> None:
-        """Read the core's events until cancelled."""
+        """Read the core's events until cancelled, and look at the clock
+        even when no event comes."""
         if self._state is None:
             return
         reader = self._state.subscribe()
         while True:
-            self.note(await reader.get())
+            try:
+                event = await asyncio.wait_for(reader.get(), timeout=self._tick)
+            except TimeoutError:
+                self._deliver_due()
+                continue
+            self.note(event)

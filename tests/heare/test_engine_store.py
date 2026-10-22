@@ -54,3 +54,24 @@ def test_an_expired_intent_is_not_in_the_list(tmp_path):
     notes = Intents(tmp_path / "intents.json")
     notes.hold("щось", "task_done", 2, until=50.0)
     assert notes.alive(now=100.0) == []
+
+
+def test_a_reminder_is_alive_only_between_its_times(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    notes.hold("подзвонити мамі", "reminder", 3,
+               not_before=150.0, until=200.0)
+
+    assert notes.alive(now=149.0) == []
+    assert [i.what for i in notes.alive(now=150.0)] == ["подзвонити мамі"]
+    assert notes.alive(now=201.0) == []
+
+
+def test_a_reminder_keeps_its_due_time_after_a_restart(tmp_path):
+    path = tmp_path / "intents.json"
+    Intents(path).hold("подзвонити мамі", "reminder", 3,
+                       not_before=150.0, until=200.0)
+
+    again = Intents(path)
+    [held] = again.alive(now=150.0)
+    assert held.not_before == 150.0
+    assert again.alive(now=149.0) == []

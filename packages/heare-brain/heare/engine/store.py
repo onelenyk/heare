@@ -50,9 +50,10 @@ class Intents:
         os.replace(tmp, self._path)  # atomic: a crash never leaves half a file
 
     def hold(self, what: str, why: str, weight: int,
-             about: str = "", until: float | None = None) -> Intent:
+             about: str = "", until: float | None = None,
+             not_before: float | None = None) -> Intent:
         intent = Intent(id=self._next, what=what, why=why, weight=weight,
-                        about=about, until=until)
+                        about=about, until=until, not_before=not_before)
         self._next += 1
         self._by_id[intent.id] = intent
         self._save()

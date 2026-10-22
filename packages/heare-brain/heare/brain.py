@@ -64,6 +64,7 @@ class Brain:
         self.settings = settings or Settings()
         names = persona.names()
         self.journal = Journal(self.settings.events_dir)
+        self.intents = Intents(self.settings.intents_path)
         self.core = Core(
             Chat(self.settings),
             memory=Book(
@@ -79,10 +80,11 @@ class Brain:
             delegate=self.core.delegate, stop=self.core.stop_all,
             words=self.core.words,
             has_executors=lambda: bool(self.core.executors),
+            intents=self.intents,
         ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.
-        self.engine = Engine(Intents(self.settings.intents_path),
+        self.engine = Engine(self.intents,
                              state=self.core.state, speak=self.core.hear)
         self._runner: Any = None
 

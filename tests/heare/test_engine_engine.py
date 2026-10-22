@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
+from heare.core.conversation import RESULT_PREFIX
 from heare.engine import Engine, Intents
 
 
@@ -136,3 +138,59 @@ def test_an_answered_remark_makes_the_next_one_sooner(tmp_path):
     clock["t"] = 200.0
     motor.note(Ev("phase", {}))
     assert len(said) == 2  # sooner than the base gap of four minutes
+
+
+def test_a_due_reminder_is_said_as_written(tmp_path):
+    store, said, motor = engine(tmp_path)
+    store.hold("подзвонити мамі", "reminder", 3, not_before=100.0)
+
+    motor.note(Ev("phase", {}))
+
+    assert len(said) == 1
+    assert said[0].verbatim is True
+    assert said[0].person is False
+    assert said[0].text.startswith("Нагадування: подзвонити мамі")
+    assert store.alive(now=100.0) == []
+
+
+def test_a_future_reminder_is_not_said_yet(tmp_path):
+    store, said, motor = engine(tmp_path)
+    store.hold("подзвонити мамі", "reminder", 3, not_before=101.0)
+
+    motor.note(Ev("phase", {}))
+
+    assert said == []
+    assert store.alive(now=100.0) == []
+    assert store.alive(now=101.0)[0].status == "held"
+
+
+def test_a_reminder_and_task_news_are_told_apart(tmp_path):
+    store, said, motor = engine(tmp_path)
+    store.hold("подзвонити мамі", "reminder", 3, not_before=100.0)
+
+    motor.note(event("done"))
+
+    assert len(said) == 2
+    assert said[0].verbatim is True
+    assert said[0].text.startswith("Нагадування: подзвонити мамі")
+    assert said[1].verbatim is False
+    assert said[1].text.startswith(RESULT_PREFIX)
+    assert "Сайт готовий." in said[1].text
+
+
+async def test_the_engine_wakes_on_its_own_timer(tmp_path):
+    from heare.core.state import State
+
+    store = Intents(tmp_path / "intents.json")
+    store.hold("подзвонити мамі", "reminder", 3, not_before=0.0)
+    said: list = []
+    motor = Engine(store, state=State(), speak=said.append, tick=0.01)
+
+    task = asyncio.create_task(motor.run())
+    try:
+        await asyncio.sleep(0.05)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert [m.text for m in said] == ["Нагадування: подзвонити мамі"]

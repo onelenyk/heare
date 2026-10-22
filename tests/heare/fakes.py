@@ -212,6 +212,7 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
 
     model, line, page = Script(), Line(), Page(slow=slow)
     notebook = Notebook()
+    intents = Intents(Path(tempfile.mkdtemp()) / "intents.json")
     core = Core(model, memory=notebook if memory else None,
                 names=frozenset({"дока"}), words=uk, **core_kw)
     core.add_input(line)
@@ -220,13 +221,13 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
     core.attach_tools(Toolbox(
         memory=notebook if memory else None, state=core.state,
         delegate=core.delegate, stop=core.stop_all, words=uk,
-        has_executors=lambda: bool(core.executors),
+        has_executors=lambda: bool(core.executors), intents=intents,
     ))
     room = Room(core, model, line, page, notebook)
+    room.extra["intents"] = intents
     # Delivery is the engine's now: a scenario that expects a result to come
     # back needs the engine running, exactly as the app runs it.
-    motor = Engine(Intents(Path(tempfile.mkdtemp()) / "intents.json"),
-                   state=core.state, speak=core.hear, gap=0.0)
+    motor = Engine(intents, state=core.state, speak=core.hear, gap=0.0)
     room._run = asyncio.create_task(core.run())
     room._motor = asyncio.create_task(motor.run())
     await asyncio.sleep(0.01)

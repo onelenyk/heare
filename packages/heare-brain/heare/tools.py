@@ -7,10 +7,17 @@ offered, lives here.
 
 from __future__ import annotations
 
+import time
 from typing import Any, Awaitable, Callable
 
 from heare.core.forms import Memory, Task
 from heare.core.state import State
+from heare.engine.store import Intents
+
+# A reminder is a one-off, not a schedule: it waits at most a month, and
+# after it is due it is still worth saying for a week.
+REMIND_MAX_S = 30 * 24 * 3600
+REMIND_GRACE_S = 7 * 24 * 3600
 
 
 class Toolbox:
@@ -23,6 +30,8 @@ class Toolbox:
         stop: Callable[[], int],
         words: Any,
         has_executors: Callable[[], bool],
+        intents: Intents | None = None,
+        now: Callable[[], float] = time.time,
     ) -> None:
         self._memory = memory
         self._state = state
@@ -30,6 +39,8 @@ class Toolbox:
         self._stop = stop
         self._words = words
         self._has_executors = has_executors
+        self._intents = intents
+        self._now = now
 
     def verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]:
         verbs: dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]] = {}
@@ -39,10 +50,12 @@ class Toolbox:
             verbs["delegate"] = (_DELEGATE, self._run_delegate)
         if any(task.status == "running" for task in self._state.tasks.values()):
             verbs["stop_work"] = (_STOP, self._run_stop)
+        if self._intents is not None:
+            verbs["remind"] = (_REMIND, self._run_remind)
         return verbs
 
     def acknowledging(self) -> set[str]:
-        return {"delegate", "stop_work"}
+        return {"delegate", "stop_work", "remind"}
 
     def read_only(self, name: str) -> bool:
         return name == "recall"
@@ -66,6 +79,25 @@ class Toolbox:
 
     async def _run_stop(self, arguments: dict) -> str:
         return "Зупинив." if self._stop() else "Нічого не було запущено."
+
+    async def _run_remind(self, arguments: dict) -> str:
+        text = str(arguments.get("text", "")).strip()
+        if not text:
+            return "Що саме нагадати?"
+        try:
+            seconds = int(arguments.get("in_seconds"))
+        except (TypeError, ValueError):
+            return "Скажи, коли нагадати."
+        if seconds <= 0:
+            return "Це вже минуло."
+        if seconds > REMIND_MAX_S:
+            return "Так далеко я не нагадую."
+        due = self._now() + seconds
+        self._intents.hold(
+            what=text[:200], why="reminder", weight=3, about="reminder",
+            not_before=due, until=due + REMIND_GRACE_S,
+        )
+        return "Добре, нагадаю."
 
     def _same(self, request: str) -> Task | None:
         """A piece of work already running that this request repeats. One
@@ -145,6 +177,31 @@ _DELEGATE = {
                 },
             },
             "required": ["task"],
+        },
+    },
+}
+
+_REMIND = {
+    "type": "function",
+    "function": {
+        "name": "remind",
+        "description": (
+            "Set a one-off reminder. Use the current date and time already in "
+            "your prompt to turn the person's words into seconds from now."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "What to remind about, as the person said it.",
+                },
+                "in_seconds": {
+                    "type": "integer",
+                    "description": "Seconds from now, 1..2592000.",
+                },
+            },
+            "required": ["text", "in_seconds"],
         },
     },
 }

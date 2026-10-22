@@ -8,6 +8,7 @@ that has the form.
 from __future__ import annotations
 
 import asyncio
+import time
 
 from heare.core import FAILURE_LINE, RESULT_PREFIX, Core, Message
 from heare.core.conversation import HISTORY_TURNS
@@ -250,12 +251,28 @@ async def test_a_verb_is_offered_only_when_it_can_work():
     room.model.will_say("Привіт.")
     room.says("Привіт")
     await room.settled()
-    assert room.model.offered == [[]]
+    assert room.model.offered == [["remind"]]
     room.core.add_executor(Worker())
     room.model.will_say("Привіт ще раз.")
     room.says("Привіт")
     await room.settled()
-    assert room.model.offered[-1] == ["delegate"]
+    assert room.model.offered[-1] == ["delegate", "remind"]
+    await room.close()
+
+
+async def test_the_model_can_set_a_one_off_reminder():
+    room = await open_room()
+    room.model.will_say(Says(calls=(
+        ("remind", {"text": "подзвонити мамі", "in_seconds": 600}),
+    )))
+    room.says("Нагадай мені за десять хвилин подзвонити мамі")
+    await room.settled()
+
+    assert room.page.said[-1] == "Добре, нагадаю."
+    assert "remind" in room.model.offered[-1]
+    [held] = room.extra["intents"].alive(now=time.time() + 601)
+    assert held.why == "reminder"
+    assert held.not_before > time.time()
     await room.close()
 
 
