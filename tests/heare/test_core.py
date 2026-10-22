@@ -146,10 +146,58 @@ async def test_stop_with_nothing_running_just_agrees():
 
 async def test_recall_is_said_as_found():
     room = await open_room()
-    room.model.will_say(Says(calls=(("recall", {"query": "відпустка"}),)))
+    room.model.will_say(
+        Says(calls=(("recall", {"query": "відпустка"}),)),
+        "Ти казав про це вчора.",
+    )
     room.says("Що я казав про відпустку?")
     await room.settled()
-    assert room.page.said == ["Ти казав про це вчора."]
+    assert room.page.said == ["Ти казав про це вчора. "]
+    await room.close()
+
+
+async def test_a_silent_recall_gets_a_follow_up_answer():
+    room = await open_room()
+    room.memory.found = "Ти казав про це вчора."
+    room.model.will_say(
+        Says(text="", calls=(("recall", {"query": "проект"}),)),
+        Says("Ти казав про це вчора."),
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+    assert len(room.model.asked) == 2
+    follow_up = room.model.asked[1]
+    assert any("Ти казав про це вчора." in m["content"] for m in follow_up)
+    assert any("[знайдене в памʼяті" in m["content"] for m in follow_up)
+    assert room.page.said == ["Ти казав про це вчора. "]
+    assert ("проект", "") in room.memory.recalled
+    await room.close()
+
+
+async def test_text_plus_recall_keeps_the_old_path():
+    room = await open_room()
+    room.memory.found = "Ти казав про це вчора."
+    room.model.will_say(
+        Says(text="Зараз гляну.", calls=(("recall", {"query": "проект"}),))
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+    assert len(room.model.asked) == 1
+    said = "".join(room.page.said)
+    assert "Зараз гляну." in said
+    assert "Ти казав про це вчора." in said
+    await room.close()
+
+
+async def test_a_silent_recall_follow_up_that_breaks_still_reports_failure():
+    room = await open_room()
+    room.model.will_say(
+        Says(text="", calls=(("recall", {"query": "проект"}),)),
+        Says(text="", fails=True),
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+    assert room.page.said[-1] == FAILURE_LINE
     await room.close()
 
 
