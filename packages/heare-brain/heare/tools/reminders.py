@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from datetime import datetime
+
 from heare.tools.ports import Reminders
 
 # A reminder is a one-off, not a schedule: it waits at most a month, and
@@ -14,15 +17,33 @@ async def remind(store: Reminders, now: float, arguments: dict) -> str:
     text = str(arguments.get("text", "")).strip()
     if not text:
         return "Що саме нагадати?"
-    try:
-        seconds = int(arguments.get("in_seconds"))
-    except (TypeError, ValueError):
-        return "Скажи, коли нагадати."
-    if seconds <= 0:
-        return "Це вже минуло."
-    if seconds > REMIND_MAX_S:
-        return "Так далеко я не нагадую."
-    due = now + seconds
+    at = str(arguments.get("at") or "").strip()
+    if at:
+        try:
+            moment = datetime.fromisoformat(at)
+        except ValueError:
+            return "Скажи, коли нагадати."
+        if moment.tzinfo is None:
+            # A naive time is local wall time: mktime reads the zone rules for
+            # that date, so a reminder still lands where the clock says after
+            # the clocks change — a fixed offset would drift by an hour.
+            due = time.mktime(moment.timetuple()) + moment.microsecond / 1_000_000
+        else:
+            due = moment.timestamp()
+        if due <= now:
+            return "Це вже минуло."
+        if due - now > REMIND_MAX_S:
+            return "Так далеко я не нагадую."
+    else:
+        try:
+            seconds = int(arguments.get("in_seconds"))
+        except (TypeError, ValueError):
+            return "Скажи, коли нагадати."
+        if seconds <= 0:
+            return "Це вже минуло."
+        if seconds > REMIND_MAX_S:
+            return "Так далеко я не нагадую."
+        due = now + seconds
     store.hold(
         what=text[:200], why="reminder", weight=3, about="reminder",
         not_before=due, until=due + REMIND_GRACE_S,

@@ -75,7 +75,8 @@ _REMIND = {
         "name": "remind",
         "description": (
             "Set a one-off reminder. Use the current date and time already in "
-            "your prompt to turn the person's words into seconds from now."
+            "your prompt, and say when either as an absolute local time in "
+            "`at` or as seconds from now in `in_seconds`."
         ),
         "parameters": {
             "type": "object",
@@ -84,12 +85,21 @@ _REMIND = {
                     "type": "string",
                     "description": "What to remind about, as the person said it.",
                 },
+                "at": {
+                    "type": "string",
+                    "description": (
+                        "When to remind: local ISO 8601 date-time, e.g. "
+                        "«2026-10-23T15:00:00+03:00»; without an offset, "
+                        "«2026-10-23T15:00:00» is local time. Use either this "
+                        "or in_seconds; if both are given, at wins."
+                    ),
+                },
                 "in_seconds": {
                     "type": "integer",
                     "description": "Seconds from now, 1..2592000.",
                 },
             },
-            "required": ["text", "in_seconds"],
+            "required": ["text"],
         },
     },
 }

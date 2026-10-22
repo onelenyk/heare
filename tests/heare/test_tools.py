@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from datetime import datetime, timedelta
+
 import pytest
 
 from heare.core.forms import Task
@@ -142,6 +145,75 @@ async def test_remind_stores_a_one_off_due_later(tmp_path):
     assert held.until == 700.0 + REMIND_GRACE_S
 
 
+async def test_remind_uses_an_absolute_time_with_an_offset(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    at = "2026-10-23T15:00:00+03:00"
+    due = datetime.fromisoformat(at).timestamp()
+    box = _toolbox(reminders=notes, now=lambda: due - 600)
+
+    spoken = await box._run_remind({"text": "подзвонити мамі", "at": at})
+
+    assert spoken == "Добре, нагадаю."
+    [held] = notes.alive(now=due)
+    assert held.not_before == due
+    assert held.until == due + REMIND_GRACE_S
+
+
+async def test_remind_reads_a_naive_time_as_local(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    now = time.time()
+    at = (datetime.now() + timedelta(hours=1)).replace(
+        microsecond=0
+    ).isoformat(timespec="seconds")
+    parsed = datetime.fromisoformat(at)
+    expected = time.mktime(parsed.timetuple()) + parsed.microsecond / 1_000_000
+    box = _toolbox(reminders=notes, now=lambda: now)
+
+    spoken = await box._run_remind({"text": "подзвонити мамі", "at": at})
+
+    assert spoken == "Добре, нагадаю."
+    [held] = notes.reminders(now=now)
+    assert held.not_before == expected
+    assert held.not_before > now
+
+
+async def test_remind_prefers_at_over_in_seconds(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    at = "2026-12-01T09:00:00+02:00"
+    due = datetime.fromisoformat(at).timestamp()
+    box = _toolbox(reminders=notes, now=lambda: due - 60)
+
+    spoken = await box._run_remind(
+        {"text": "подзвонити мамі", "at": at, "in_seconds": 600}
+    )
+
+    assert spoken == "Добре, нагадаю."
+    [held] = notes.alive(now=due)
+    assert held.not_before == due
+
+
+async def test_a_past_at_stores_nothing(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    box = _toolbox(reminders=notes, now=lambda: 1_600_000_000.0)
+
+    spoken = await box._run_remind(
+        {"text": "подзвонити мамі", "at": "2020-01-01T00:00:00+00:00"}
+    )
+
+    assert spoken == "Це вже минуло."
+    assert notes.reminders(now=0.0) == []
+
+
+async def test_an_invalid_at_stores_nothing(tmp_path):
+    notes = Intents(tmp_path / "intents.json")
+    box = _toolbox(reminders=notes, now=lambda: 100.0)
+
+    spoken = await box._run_remind({"text": "подзвонити мамі", "at": "завтра"})
+
+    assert spoken == "Скажи, коли нагадати."
+    assert notes.reminders(now=0.0) == []
+
+
 async def test_list_reminders_is_empty_when_nothing_is_held(tmp_path):
     box = _toolbox(reminders=Intents(tmp_path / "intents.json"))
 
@@ -184,6 +256,9 @@ async def test_cancel_reminder_removes_it_and_reports_missing(tmp_path):
     [
         ({"text": "", "in_seconds": 600}, "Що саме нагадати?"),
         ({"text": "подзвонити", "in_seconds": "soon"}, "Скажи, коли нагадати."),
+        ({"text": "подзвонити"}, "Скажи, коли нагадати."),
+        ({"text": "подзвонити", "at": "2030-01-01T00:00:00+00:00"},
+         "Так далеко я не нагадую."),
         ({"text": "подзвонити", "in_seconds": 0}, "Це вже минуло."),
         ({"text": "подзвонити", "in_seconds": -5}, "Це вже минуло."),
         ({"text": "подзвонити", "in_seconds": 30 * 24 * 3600 + 1},
