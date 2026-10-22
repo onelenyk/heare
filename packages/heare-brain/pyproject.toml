@@ -6,6 +6,7 @@ dependencies = ["heare-core", "heare-reach", "aiohttp>=3.13.5", "aiosqlite>=0.20
 
 [project.scripts]
 heare-brain = "heare.brain:main"
+heare-memory = "heare.memory.cli:main"
 
 [build-system]
 requires = ["hatchling"]
