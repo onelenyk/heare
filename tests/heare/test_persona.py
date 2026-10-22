@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from heare import persona
+from heare.prompt import persona
 from heare.laws import TEXT
 
 

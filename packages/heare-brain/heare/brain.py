@@ -19,7 +19,8 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from heare import context, lifeline, persona
+from heare import lifeline
+from heare.prompt import budget, persona
 from heare.api import pair as codes
 from heare.config import Settings
 from heare.core import Core
@@ -73,14 +74,14 @@ class Brain:
             ),
             delegator=Dispatcher(self.settings), prompt=persona.prompt,
             names=names, judge=persona.JUDGE, words=uk,
-            fit=partial(context.fit, limit=int(self.settings.context_tokens)),
+            fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
         )
         self.core.attach_tools(Toolbox(
             memory=self.core.memory, state=self.core.state,
             delegate=self.core.delegate, stop=self.core.stop_all,
             words=self.core.words,
             has_executors=lambda: bool(self.core.executors),
-            intents=self.intents,
+            reminders=self.intents,
         ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.

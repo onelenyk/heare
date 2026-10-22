@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from heare.context import DEFAULT_TOKENS, fit
+from heare.prompt.budget import DEFAULT_TOKENS, fit
 
 
 def _text(tokens: int) -> str:

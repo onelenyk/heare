@@ -23,9 +23,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2] / "packages"
 KNOW_EVERYTHING = {"app", "listener", "brain"}
-# Leaf modules any part may read: the key store, and the provider registry
-# the door and the model must agree on.
-LEAVES = {"heare.keys", "heare.model.providers"}
+# Leaf modules any part may read: the key store, the provider registry the
+# door and the model must agree on, and the laws every prompt speaks under.
+LEAVES = {"heare.keys", "heare.laws", "heare.model.providers"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part. Raised deliberately for the question
 # channel (an executor asking the person mid-work), not by drift.

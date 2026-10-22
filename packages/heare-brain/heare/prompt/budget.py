@@ -14,7 +14,7 @@ from math import ceil
 CHARS_PER_TOKEN = 4
 DEFAULT_TOKENS = 6000
 
-logger = logging.getLogger("heare.context")
+logger = logging.getLogger("heare.prompt.budget")
 
 
 def _tokens(text: str) -> int:

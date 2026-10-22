@@ -19,7 +19,7 @@ def _toolbox(
     has_executors: bool = True,
     stop=lambda: 0,
     delegate=None,
-    intents: Intents | None = None,
+    reminders: Intents | None = None,
     now=lambda: 100.0,
 ) -> Toolbox:
     return Toolbox(
@@ -29,7 +29,7 @@ def _toolbox(
         stop=stop,
         words=uk,
         has_executors=lambda: has_executors,
-        intents=intents,
+        reminders=reminders,
         now=now,
     )
 
@@ -62,7 +62,7 @@ def test_acknowledging_names_the_verbs_that_only_acknowledge():
 
 def test_read_only_names_the_verbs_that_change_nothing(tmp_path):
     notes = Intents(tmp_path / "intents.json")
-    box = _toolbox(memory=Notebook(), intents=notes)
+    box = _toolbox(memory=Notebook(), reminders=notes)
     assert box.read_only("recall") is True
     assert box.read_only("list_reminders") is True
     assert box.read_only("cancel_reminder") is False
@@ -73,14 +73,14 @@ def test_read_only_names_the_verbs_that_change_nothing(tmp_path):
 def test_remind_is_offered_only_with_intents(tmp_path):
     assert "remind" not in _toolbox().verbs()
     notes = Intents(tmp_path / "intents.json")
-    assert "remind" in _toolbox(intents=notes).verbs()
+    assert "remind" in _toolbox(reminders=notes).verbs()
 
 
 def test_reminder_management_is_offered_only_with_intents(tmp_path):
     assert "list_reminders" not in _toolbox().verbs()
     assert "cancel_reminder" not in _toolbox().verbs()
     notes = Intents(tmp_path / "intents.json")
-    verbs = _toolbox(intents=notes).verbs()
+    verbs = _toolbox(reminders=notes).verbs()
     assert "list_reminders" in verbs
     assert "cancel_reminder" in verbs
 
@@ -129,7 +129,7 @@ async def test_stop_work_reports_what_it_stopped():
 
 async def test_remind_stores_a_one_off_due_later(tmp_path):
     notes = Intents(tmp_path / "intents.json")
-    box = _toolbox(intents=notes, now=lambda: 100.0)
+    box = _toolbox(reminders=notes, now=lambda: 100.0)
 
     spoken = await box._run_remind(
         {"text": "подзвонити мамі", "in_seconds": 600}
@@ -143,7 +143,7 @@ async def test_remind_stores_a_one_off_due_later(tmp_path):
 
 
 async def test_list_reminders_is_empty_when_nothing_is_held(tmp_path):
-    box = _toolbox(intents=Intents(tmp_path / "intents.json"))
+    box = _toolbox(reminders=Intents(tmp_path / "intents.json"))
 
     assert await box._run_list_reminders({}) == "Нагадувань немає."
 
@@ -153,7 +153,7 @@ async def test_list_reminders_shows_ids_text_and_when(tmp_path):
     untimed = notes.hold("згадати все", "reminder", 3)
     due = notes.hold("випити воду", "reminder", 3, not_before=50.0)
     future = notes.hold("подзвонити мамі", "reminder", 3, not_before=700.0)
-    box = _toolbox(intents=notes, now=lambda: 100.0)
+    box = _toolbox(reminders=notes, now=lambda: 100.0)
 
     assert await box._run_list_reminders({}) == (
         "Нагадування:\n"
@@ -166,7 +166,7 @@ async def test_list_reminders_shows_ids_text_and_when(tmp_path):
 async def test_cancel_reminder_removes_it_and_reports_missing(tmp_path):
     notes = Intents(tmp_path / "intents.json")
     held = notes.hold("подзвонити мамі", "reminder", 3, not_before=700.0)
-    box = _toolbox(intents=notes, now=lambda: 100.0)
+    box = _toolbox(reminders=notes, now=lambda: 100.0)
 
     assert await box._run_cancel_reminder({"id": held.id}) == "Скасував."
     assert notes.reminders(now=100.0) == []
@@ -192,7 +192,7 @@ async def test_cancel_reminder_removes_it_and_reports_missing(tmp_path):
 )
 async def test_a_bad_reminder_stores_nothing(tmp_path, arguments, spoken):
     notes = Intents(tmp_path / "intents.json")
-    box = _toolbox(intents=notes)
+    box = _toolbox(reminders=notes)
 
     assert await box._run_remind(arguments) == spoken
     assert notes.alive(now=10**12) == []

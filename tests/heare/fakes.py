@@ -221,7 +221,7 @@ async def open_room(*, memory: bool = True, slow: float = 0.0, **core_kw) -> Roo
     core.attach_tools(Toolbox(
         memory=notebook if memory else None, state=core.state,
         delegate=core.delegate, stop=core.stop_all, words=uk,
-        has_executors=lambda: bool(core.executors), intents=intents,
+        has_executors=lambda: bool(core.executors), reminders=intents,
     ))
     room = Room(core, model, line, page, notebook)
     room.extra["intents"] = intents
