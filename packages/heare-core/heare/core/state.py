@@ -10,12 +10,14 @@ add up to. A screen, a journal and `doctor` are all just readers of it.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections import deque
 from dataclasses import dataclass, field
 
 from heare.core.forms import Permission, Question, Task
 
+logger = logging.getLogger("heare.core.state")
 JOURNAL = 200
 
 
@@ -42,6 +44,7 @@ class State:
     # What is going on around it, as its inputs last reported.
     around: dict[str, object] = field(default_factory=dict)
     journal: deque = field(default_factory=lambda: deque(maxlen=JOURNAL))
+    dropped: int = 0
     _readers: list[asyncio.Queue] = field(default_factory=list)
 
     def emit(self, kind: str, **data) -> Event:
@@ -51,7 +54,8 @@ class State:
             try:
                 reader.put_nowait(event)
             except asyncio.QueueFull:
-                pass  # a reader that stopped reading does not stop the talk
+                self.dropped += 1
+                logger.warning("an event reader is full; %s dropped", kind)
         return event
 
     def set_phase(self, phase: str) -> None:

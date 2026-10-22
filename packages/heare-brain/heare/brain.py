@@ -15,10 +15,11 @@ import argparse
 import asyncio
 import logging
 import sys
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from heare import lifeline, persona
+from heare import context, lifeline, persona
 from heare.api import pair as codes
 from heare.config import Settings
 from heare.core import Core
@@ -55,16 +56,22 @@ class Brain:
 
     def __init__(self, settings: Settings | None = None) -> None:
         from heare.memory.book import Book
+        from heare.memory.journal import Journal
         from heare.model.chat import Chat
         from heare.model.delegate import Dispatcher
 
         self.settings = settings or Settings()
         names = persona.names()
+        self.journal = Journal(self.settings.events_dir)
         self.core = Core(
             Chat(self.settings),
-            memory=Book(self.settings.db_path, names=sorted(names)),
+            memory=Book(
+                self.settings.db_path, names=sorted(names),
+                profile_dir=self.settings.memory_dir, journal=self.journal,
+            ),
             delegator=Dispatcher(self.settings), prompt=persona.prompt,
             names=names, judge=persona.JUDGE, words=uk,
+            fit=partial(context.fit, limit=int(self.settings.context_tokens)),
         )
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.
@@ -77,13 +84,14 @@ class Brain:
         from heare.api.server import serve
         from heare.reach.remote import RemoteExecutor
 
+        self.core.hydrate(self.journal.tail_messages())
         self._runner = await serve(
             self.core, self.settings, lambda: model_info(self.settings),
             make_executor=lambda name, about: RemoteExecutor(name, about),
         )
         print(f"мозок на http://127.0.0.1:{self.settings.api_port}/", file=sys.stderr)
         await asyncio.gather(
-            self.core.run(), self.engine.run()
+            self.core.run(), self.engine.run(), self.journal.run(self.core.state)
         )
 
 

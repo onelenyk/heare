@@ -146,6 +146,19 @@ def is_stop_word(text: str) -> bool:
     return False
 
 
+_RECALL_CUES: tuple[str, ...] = (
+    "що я казав", "що я говорив", "що я тобі", "що ти пам", "ти пам",
+    "я вже казав", "я вже говорив", "нагадай", "згадай", "пригадай",
+    "минулого разу", "раніше", "вчора", "позавчора", "коли я",
+)
+
+
+def recall_cue(text: str) -> bool:
+    """Whether the person is asking to remember something said before."""
+    said = _normalise(text or "")
+    return any(cue in said for cue in _RECALL_CUES)
+
+
 def decide(text: str, *, speech_ms: float) -> str:
     """Decide what to do when the user speaks while the assistant speaks.
 
@@ -186,6 +199,7 @@ __all__ = [
     "is_backchannel",
     "is_halt",
     "is_stop_word",
+    "recall_cue",
 ]
 
 

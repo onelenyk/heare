@@ -26,6 +26,8 @@ HOME = Path.home() / ".heare"
 DEFAULTS = {
     "identity_file": HOME / "identity.json",
     "db_path": HOME / "heare.db",
+    "memory_dir": HOME / "memory",
+    "events_dir": HOME / "events",
     "screens_dir": HOME / "screens",
     "canvas_file": HOME / "canvas.json",
     "intents_path": HOME / "intents.json",
@@ -58,6 +60,7 @@ DEFAULTS = {
     # Where agents work. Never the home folder: on 12 October an agent
     # left files in four places there.
     "executor_cwd": Path.home() / "heare-work",
+    "context_tokens": 6000,
 }
 
 

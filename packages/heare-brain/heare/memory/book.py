@@ -7,33 +7,68 @@ from the question, word endings, freshness, no answering a question with
 the question), and comes back as one sentence ready to be said.
 
 The file is ``~/.heare/heare.db``, unchanged: everything said to the old
-app is remembered by the new one.
+app is remembered by the new one. When given a journal, the same turn is
+appended there too — the single write path for the conversation.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
 from heare.memory import search
+from heare.memory.journal import Journal
 from heare.memory.persist import SpinePersistence
+from heare.memory.profile import Profile
+
+logger = logging.getLogger("heare.memory.book")
 
 # How a channel is recorded. The old rows say «voice» and «typed».
 _SOURCES = {"voice": "voice", "text": "typed", "screen": "typed"}
 
 
 class Book:
-    def __init__(self, db_path: str | Path, names: Sequence[str] = ()) -> None:
+    def __init__(
+        self,
+        db_path: str | Path,
+        names: Sequence[str] = (),
+        profile_dir: str | Path | None = None,
+        journal: Journal | None = None,
+    ) -> None:
         """names: the assistant's own name in every spelling. A question
         usually keeps it, and it is the one word that matches every row."""
         self._store = SpinePersistence(db_path)
         self._names = tuple(names)
+        self._journal = journal
         self._turn: int | None = None
+        self._profile_dir = (
+            Path(profile_dir) if profile_dir is not None
+            else Path(db_path).parent / "memory"
+        )
 
     async def keep(self, role: str, text: str, channel: str) -> None:
         source = _SOURCES.get(channel, channel or "voice")
+        if self._journal is not None:
+            try:
+                if role == "user":
+                    self._journal.append(
+                        "heard",
+                        {"text": text, "channel": source},
+                        source=source or "voice",
+                        trust="user_said",
+                    )
+                else:
+                    self._journal.append(
+                        "said",
+                        {"text": text, "channel": source, "failed": None},
+                        source=source or "voice",
+                        trust="model_output",
+                    )
+            except (OSError, TypeError, ValueError):
+                logger.exception("journal write failed (non-fatal)")
         if role == "user":
             self._turn = await asyncio.to_thread(
                 self._store.log_user_turn, text, 1, source
@@ -57,7 +92,7 @@ class Book:
         return await asyncio.to_thread(self._store.recent_exchanges, n)
 
     async def always(self) -> str:
-        return ""
+        return Profile(self._profile_dir).render()
 
     def close(self) -> None:
         self._store.close()

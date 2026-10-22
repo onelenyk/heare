@@ -12,6 +12,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from heare.laws import TEXT
+
 RULES = Path(__file__).resolve().parent / "prompts" / "voice_rules.txt"
 IDENTITY = Path.home() / ".heare" / "identity.json"
 _DAYS = ("понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя")
@@ -38,6 +40,10 @@ async def prompt() -> str:
     parts = [rules] if rules else []
     if called := name():
         parts.append(f"Your name is {called}.")
+    # The laws are commands, so they stand in the prompt with the other
+    # commands — not inside the profile, which is framed as data.
+    if TEXT.strip():
+        parts.append("The laws you act under:\n" + TEXT.strip())
     # The register of speech follows the language the person speaks: the
     # prompt is English, the answer is not.
     parts.append("Speak of yourself, and address the person, the way their "

@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import asyncio
 
-from heare.core import FAILURE_LINE, RESULT_PREFIX
-from tests.heare.fakes import Page, Says, Worker, open_room
+from heare.core import FAILURE_LINE, RESULT_PREFIX, Core, Message
+from heare.core.conversation import HISTORY_TURNS
+from heare.language import uk
+from heare.memory.book import Book
+from heare.memory.journal import Journal
+from tests.heare.fakes import Line, Page, Says, Script, Worker, open_room
 
 
 async def test_a_message_is_answered_and_both_sides_are_kept():
@@ -149,6 +153,28 @@ async def test_recall_is_said_as_found():
     await room.close()
 
 
+async def test_a_recall_cue_puts_memory_in_the_system_prompt():
+    room = await open_room()
+    room.memory.found = "Ти казав про це вчора."
+    room.model.will_say("Так, казав.")
+    room.says("Що я казав про це?")
+    await room.settled()
+    system = room.model.asked[0][0]["content"]
+    assert "Ти казав про це вчора." in system
+    assert "[знайдене в памʼяті" in system
+    assert room.memory.recalled == [("Що я казав про це?", "")]
+    await room.close()
+
+
+async def test_an_ordinary_message_does_not_call_recall():
+    room = await open_room()
+    room.model.will_say("Привіт.")
+    room.says("Привіт")
+    await room.settled()
+    assert room.memory.recalled == []
+    await room.close()
+
+
 async def test_a_verb_is_offered_only_when_it_can_work():
     room = await open_room(memory=False)
     room.model.will_say("Привіт.")
@@ -237,6 +263,8 @@ async def test_a_change_waits_for_a_yes_said_by_the_person():
     assert worker.allowed == [True, True]
     assert room.model.asked == []  # the yes never reached the model
     assert room.core.state.permission is None
+    assert ("user", "Так", "text") in room.memory.kept
+    assert {"role": "user", "content": "Так"} in room.core.history
     await room.close()
 
 
@@ -493,6 +521,54 @@ async def test_a_short_answer_that_starts_like_the_word_for_silence_is_still_sai
     await room.close()
 
 
+async def test_hydrate_puts_the_journals_last_turns_before_the_new_question():
+    room = await open_room()
+    room.core.hydrate([
+        {"role": "user", "content": "старе питання"},
+        {"role": "assistant", "content": "стара відповідь"},
+    ])
+    room.model.will_say("нова відповідь")
+    room.says("нове")
+    await room.settled()
+
+    asked = room.model.asked[0]
+    old_question = {"role": "user", "content": "старе питання"}
+    old_answer = {"role": "assistant", "content": "стара відповідь"}
+    new_question = {"role": "user", "content": "нове"}
+    assert (
+        asked.index(old_question)
+        < asked.index(old_answer)
+        < asked.index(new_question)
+    )
+    await room.close()
+
+
+async def test_hydrate_ignores_malformed_entries_and_keeps_the_last_turns():
+    room = await open_room()
+    entries = [
+        {"role": "system", "content": "не розмова"},
+        {"role": "user", "content": ""},
+        {"role": "user"},
+        {"role": "tool", "content": "результат"},
+        "not a dict",
+        None,
+    ]
+    entries += [
+        {"role": "user" if index % 2 == 0 else "assistant",
+         "content": f"репліка {index}"}
+        for index in range(HISTORY_TURNS + 4)
+    ]
+    room.core.hydrate(entries)
+
+    assert len(room.core.history) == HISTORY_TURNS
+    assert room.core.history[-1] == {
+        "role": "user" if (HISTORY_TURNS + 3) % 2 == 0 else "assistant",
+        "content": f"репліка {HISTORY_TURNS + 3}",
+    }
+    assert all(m["role"] in {"user", "assistant"} for m in room.core.history)
+    await room.close()
+
+
 async def test_an_executor_can_ask_the_person_and_gets_their_words():
     from heare.core import Message, Task
 
@@ -513,4 +589,70 @@ async def test_an_executor_can_ask_the_person_and_gets_their_words():
     assert answer == "той, що в /tmp"
     assert room.core.state.question is None
     assert any(e.kind == "question_closed" for e in room.core.state.journal)
+    assert ("user", "той, що в /tmp", "text") in room.memory.kept
+    assert {"role": "user", "content": "той, що в /tmp"} in room.core.history
+    await room.close()
+
+
+async def test_the_journal_does_not_duplicate_a_turn_the_book_wrote(tmp_path):
+    journal = Journal(tmp_path / "events")
+    book = Book(
+        tmp_path / "heare.db", profile_dir=tmp_path / "memory", journal=journal
+    )
+    model, line, page = Script(), Line(), Page()
+    core = Core(model, memory=book, names=frozenset({"дока"}), words=uk)
+    core.add_input(line)
+    core.add_output(page)
+    model.will_say("вітаю")
+
+    running = [
+        asyncio.create_task(core.run()),
+        asyncio.create_task(journal.run(core.state)),
+    ]
+    try:
+        await asyncio.sleep(0)
+        core.hear(Message(text="привіт", channel="text"))
+        for _ in range(200):
+            if len(journal.tail_messages()) == 2:
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+        assert len(journal.tail_messages()) == 2
+    finally:
+        for task in running:
+            task.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
+        book.close()
+
+
+async def test_the_fit_can_trim_the_history_the_model_reads():
+    def fit(system, turns):
+        return system, turns[-1:]
+
+    room = await open_room(fit=fit)
+    room.core.hydrate([
+        {"role": "user", "content": "старе"},
+        {"role": "assistant", "content": "стара"},
+        {"role": "user", "content": "ще"},
+        {"role": "assistant", "content": "теж"},
+    ])
+    room.model.will_say("нова відповідь")
+    room.says("нове")
+    await room.settled()
+    assert len(room.model.asked[0]) == 2
+    assert room.model.asked[0][0]["role"] == "system"
+    assert room.model.asked[0][-1] == {"role": "user", "content": "нове"}
+    await room.close()
+
+
+async def test_a_broken_fit_does_not_break_the_turn():
+    def fit(system, turns):
+        raise RuntimeError("no budget today")
+
+    room = await open_room(fit=fit)
+    room.model.will_say("все одно")
+    room.says("привіт")
+    await room.settled()
+    assert room.page.said == ["все одно "]
+    assert room.model.asked[0][-1] == {"role": "user", "content": "привіт"}
     await room.close()

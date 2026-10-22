@@ -121,6 +121,7 @@ class Script:
 class Notebook:
     def __init__(self, found: str = "Ти казав про це вчора.") -> None:
         self.kept: list[tuple[str, str, str]] = []
+        self.recalled: list[tuple[str, str]] = []
         self.found = found
         self.known = ""
 
@@ -128,6 +129,7 @@ class Notebook:
         self.kept.append((role, text, channel))
 
     async def recall(self, query: str, when: str = "") -> str:
+        self.recalled.append((query, when))
         return self.found
 
     async def always(self) -> str:
