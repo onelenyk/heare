@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime, timedelta
 from typing import Any
 
 from heare.core import Message
@@ -39,12 +40,25 @@ BOLDER = 0.6
 SHYER = 1.5
 
 
+def _minutes(hhmm: str) -> int | None:
+    """A local ``HH:MM`` as minutes past midnight; None if it is not one."""
+    try:
+        hours, minutes = (int(part) for part in str(hhmm).split(":", 1))
+    except ValueError:
+        return None
+    if not (0 <= hours < 24 and 0 <= minutes < 60):
+        return None
+    return hours * 60 + minutes
+
+
 class Engine:
     """Watches the core's events; holds intents, and tells them at a good moment."""
 
     def __init__(self, intents: Intents, *, state: Any = None,
                  speak: Any = None, gap: float = BASE_GAP_S,
-                 tick: float = TICK_S, now=time.time) -> None:
+                 tick: float = TICK_S, now=time.time,
+                 quiet: tuple[str, str] = ("22:00", "08:00"),
+                 daily_limit: int = 1) -> None:
         self._intents = intents
         self._state = state
         self._speak = speak
@@ -54,6 +68,12 @@ class Engine:
         self._ready_at: float | None = None
         self._last_spoke: float | None = None
         self._answered = True
+        self._quiet_from = _minutes(quiet[0])
+        self._quiet_to = _minutes(quiet[1])
+        if self._quiet_from == self._quiet_to:
+            # Equal ends are not a window, not a day-long silence.
+            self._quiet_from = self._quiet_to = None
+        self._daily_limit = max(0, int(daily_limit))
 
     def note(self, event: Any) -> None:
         """One event from the core: hold what it means, then deliver what is due."""
@@ -72,7 +92,7 @@ class Engine:
             return
         self._intents.hold(
             what=news[:200], why=why, weight=2,
-            about=f"task:{data.get('id')}", until=self._now() + WORK_NEWS_S,
+            about=f"task:{data.get('id')}", until=self._fresh_until(self._now()),
         )
 
     def _the_person_spoke(self) -> None:
@@ -84,13 +104,60 @@ class Engine:
             self._gap_s = max(MIN_GAP_S, self._gap_s * BOLDER)
             self._ready_at = self._last_spoke + self._gap_s
 
+    def _fresh_until(self, now: float) -> float:
+        """How long work news stays worth telling.
+
+        Quiet hours must not quietly eat it, so news that would go stale while
+        the window is on keeps its full two hours after the window ends.
+        """
+        until = now + WORK_NEWS_S
+        if self._is_quiet(until):
+            until = self._quiet_ends(until) + WORK_NEWS_S
+        return until
+
+    def _is_quiet(self, when: float) -> bool:
+        if self._quiet_from is None or self._quiet_to is None:
+            return False
+        moment = datetime.fromtimestamp(when)
+        minute = moment.hour * 60 + moment.minute
+        if self._quiet_from < self._quiet_to:
+            return self._quiet_from <= minute < self._quiet_to
+        return minute >= self._quiet_from or minute < self._quiet_to
+
+    def _quiet_ends(self, when: float) -> float:
+        """The next close of the quiet window, for a moment inside it."""
+        if self._quiet_to is None:
+            return when
+        moment = datetime.fromtimestamp(when)
+        end = moment.replace(
+            hour=self._quiet_to // 60, minute=self._quiet_to % 60,
+            second=0, microsecond=0,
+        )
+        if end <= moment:
+            end += timedelta(days=1)
+        return end.timestamp()
+
+    def _news_left(self, now: float) -> int:
+        return max(0, self._daily_limit - self._intents.news_delivered(now))
+
     def _deliver_due(self) -> None:
         """Deliver what is held — all of it in one breath — at a moment that suits."""
         if self._speak is None or not self._good_moment():
             return
-        due = self._intents.alive(self._now())
-        if due:
-            self._deliver(due)
+        now = self._now()
+        due = self._intents.alive(now)
+        if not due:
+            return
+        reminders = [i for i in due if i.why == "reminder"]
+        news = [i for i in due if i.why != "reminder"]
+        if self._is_quiet(now):
+            news = []
+        elif news:
+            news = news[:self._news_left(now)]
+        chosen = reminders + news
+        if not chosen:
+            return
+        self._deliver(chosen)
 
     def _good_moment(self) -> bool:
         """Not too soon, present, and not mid-turn.
@@ -132,7 +199,7 @@ class Engine:
             # The last remark went unanswered: wait longer before the next.
             self._gap_s = min(MAX_GAP_S, self._gap_s * SHYER)
         for intent in intents:
-            self._intents.done(intent)
+            self._intents.done(intent, at=now)
         self._last_spoke = now
         self._ready_at = now + self._gap_s
         self._answered = False

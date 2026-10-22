@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, fields
+from datetime import datetime
 from pathlib import Path
 
 from heare.engine.intent import Intent
@@ -81,6 +82,19 @@ class Intents:
         self._save()
         return True
 
-    def done(self, intent: Intent, status: str = "delivered") -> None:
+    def done(self, intent: Intent, status: str = "delivered",
+             *, at: float | None = None) -> None:
         intent.status = status
+        if status == "delivered" and at is not None:
+            intent.delivered_at = at
         self._save()
+
+    def news_delivered(self, now: float) -> int:
+        """How many unsolicited news intents were told on this local day."""
+        day = datetime.fromtimestamp(now).date()
+        return sum(
+            1 for i in self._by_id.values()
+            if i.status == "delivered" and i.why != "reminder"
+            and i.delivered_at is not None
+            and datetime.fromtimestamp(i.delivered_at).date() == day
+        )

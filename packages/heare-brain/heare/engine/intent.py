@@ -24,6 +24,7 @@ class Intent:
     not_before: float | None = None  # before this it is not worth saying yet
     status: str = "held"         # held · delivered · stale · dropped
     made: float = field(default_factory=time.time)
+    delivered_at: float | None = None  # when it was told, for the daily budget
 
     def alive(self, now: float) -> bool:
         """Still worth saying: not yet told, due, and not too late."""

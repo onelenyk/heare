@@ -85,8 +85,11 @@ class Brain:
         ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.
-        self.engine = Engine(self.intents,
-                             state=self.core.state, speak=self.core.hear)
+        self.engine = Engine(
+            self.intents, state=self.core.state, speak=self.core.hear,
+            quiet=(self.settings.quiet_from, self.settings.quiet_to),
+            daily_limit=int(self.settings.unsolicited_per_day),
+        )
         self._runner: Any = None
 
     async def run(self) -> None:

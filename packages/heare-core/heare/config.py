@@ -61,6 +61,11 @@ DEFAULTS = {
     # left files in four places there.
     "executor_cwd": Path.home() / "heare-work",
     "context_tokens": 6000,
+    # Proactivity has brakes: no unsolicited news at night, and only this
+    # many news intents a day. Reminders the person asked for are exempt.
+    "quiet_from": "22:00",
+    "quiet_to": "08:00",
+    "unsolicited_per_day": 1,
 }
 
 
