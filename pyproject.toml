@@ -6,6 +6,7 @@ dependencies = [
     "heare-core",
     "heare-reach",
     "heare-eyes",
+    "heare-sources",
     "heare-voice",
     "heare-hands",
     "heare-chat",
@@ -30,6 +31,7 @@ members = ["packages/*"]
 heare-core = { workspace = true }
 heare-reach = { workspace = true }
 heare-eyes = { workspace = true }
+heare-sources = { workspace = true }
 heare-voice = { workspace = true }
 heare-hands = { workspace = true }
 heare-chat = { workspace = true }

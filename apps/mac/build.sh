@@ -81,7 +81,7 @@ find "$APP" -type d -name __pycache__ -prune -exec rm -rf {} +
 say "check"
 "$PY" -I -B -c '
 import importlib
-for name in ("heare.keeper", "heare.brain", "heare.eyes", "heare.voice",
+for name in ("heare.keeper", "heare.brain", "heare.eyes", "heare.sources", "heare.voice",
              "heare.hands", "heare.chat", "heare.machine"):
     importlib.import_module(name)
 print("every part imports")'
