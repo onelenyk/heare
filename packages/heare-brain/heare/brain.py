@@ -29,8 +29,8 @@ from heare.core import Core
 from heare.engine import Engine, Intents
 from heare.features import build_features
 from heare.language import uk
-from heare.memory.contracts import ConsolidationReport, ReviewReport
-from heare.memory.review import last_reviewed, mark_reviewed
+from heare.memory.contracts import ReviewReport
+from heare.memory.review import last_reviewed, mark_reviewed, notice
 from heare.mind import Mind
 
 logger = logging.getLogger("heare.brain")
@@ -150,18 +150,19 @@ class Brain:
         self.features = build_features(self)
         self._runner: Any = None
 
-    async def consolidate_once(self) -> ConsolidationReport:
-        """One consolidation pass, shared by the clock and the page."""
-        from heare.memory.consolidate import consolidate
-
+    async def consolidate_once(self) -> ReviewReport:
+        """One learning pass, shared by the clock and the page. It reuses
+        the consolidation cursor: the old regex pass is no longer run here,
+        and that cursor already sits at the end of the journal."""
         async with self._consolidate_lock:
-            report = await asyncio.to_thread(
-                consolidate, self.facts, self.journal,
-                state_path=Path(self.settings.memory_dir)
-                / "consolidate.json",
+            report = await notice(
+                self.facts, self.journal, self.core.model,
+                state_path=Path(self.settings.memory_dir) / "consolidate.json",
             )
+        if report.error:
+            raise RuntimeError(report.error)
         if report.added:
-            logger.info("consolidation added %d fact(s)", report.added)
+            logger.info("learned %d fact(s)", report.added)
         return report
 
     async def _consolidate(self) -> None:

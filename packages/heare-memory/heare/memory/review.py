@@ -1,10 +1,11 @@
-"""One day of conversation, read by the model, turned into proposed facts.
+"""Conversation read by the model, turned into facts about the owner.
 
-Consolidation recognises a few Ukrainian phrases. This reads a whole day
-and asks the model for the durable facts a phrase list would miss, then
-keeps every result pending: the owner still confirms what is true. A pass
-is safe to repeat because each proposal carries a source id derived from
-its predicate and value, and the store refuses a second fact from it.
+Consolidation recognises a few Ukrainian phrases. This reads what was said
+and asks the model for the durable facts a phrase list would miss. Nothing
+waits for the owner: facts are stored confirmed, and the owner sees them on
+the page and can forget them there. A pass is safe to repeat because each
+fact carries a source id derived from its predicate and value, and the store
+refuses a second fact from it.
 """
 
 from __future__ import annotations
@@ -21,9 +22,9 @@ from typing import Iterable
 
 from heare.core.forms import Model
 from heare.memory.contracts import (
+    CONFIRMED,
     CONSOLIDATED,
     MODEL_INFERRED,
-    PENDING,
     Fact,
     FactStore,
     ReviewReport,
@@ -88,10 +89,11 @@ def mark_reviewed(root: Path, day: date) -> None:
 _PREDICATE = re.compile(r"[a-z0-9_]{1,60}")
 
 _SYSTEM = (
-    "You review one day of conversations with the owner. Extract only "
+    "You review recent lines of conversation with the owner. Extract only "
     "durable, first-person facts about the owner: name, stable "
-    "preferences, ongoing projects, important relationships, commitments. "
-    "Only facts that are true now. If the owner describes a former state, "
+    "preferences, ongoing projects, commitments, and the people and pets "
+    "in the owner's life. «Груша мій кіт» → the owner has a cat named "
+    "Груша. Only facts that are true now. If the owner describes a former state, "
     "a change or a correction, do not propose the old one: "
     "«Я вчитель. З нового року я працюю програмістом» → only programmer. "
     "Do not include transient tasks, questions, or anything the assistant "
@@ -116,10 +118,44 @@ async def review_day(
 ) -> ReviewReport:
     moment = time.time() if now is None else now
     transcript = _transcript(journal, day)
-    considered = len(transcript)
     if not transcript:
         return ReviewReport()
+    return await _learn(store, model, transcript, moment=moment)
 
+
+async def notice(
+    store: FactStore,
+    journal: Journal,
+    model: Model,
+    *,
+    state_path: Path,
+    now: float | None = None,
+) -> ReviewReport:
+    """Learn from what was said since the last pass. This runs every few
+    minutes so heare knows a fact soon after it is spoken, without the
+    conversation being asked anything. The cursor moves only after a
+    successful read, so a failed model call is retried on the same lines.
+    """
+    moment = time.time() if now is None else now
+    events, state = journal.new_events(state_path)
+    transcript = _capped(_heard_texts(events, day=None))
+    if not transcript:
+        journal.save_state(state_path, state)
+        return ReviewReport()
+    report = await _learn(store, model, transcript, moment=moment)
+    if report.error is None:
+        journal.save_state(state_path, state)
+    return report
+
+
+async def _learn(
+    store: FactStore,
+    model: Model,
+    transcript: list[str],
+    *,
+    moment: float,
+) -> ReviewReport:
+    considered = len(transcript)
     added = skipped = 0
     try:
         known_facts = store.current()[:MAX_KNOWN]
@@ -153,19 +189,19 @@ async def review_day(
 
 
 def _transcript(journal: Journal, day: date) -> list[str]:
-    """The latest heard lines from one local day, capped so the prompt
-    stays small.
+    """The heard lines of one local day, capped for the prompt."""
+    return _capped(_heard_texts(journal.events(), day=day))
 
-    Reading the day from its end is deliberate: what was said late is
-    what the review has not seen, and a durable fact mentioned in the
-    evening must not lose its place to two hundred greetings from the
-    morning.
-    """
+
+def _heard_texts(events: Iterable[dict], *, day: date | None) -> list[str]:
+    """The non-empty text of each heard event, optionally only from one
+    local day. Other kinds, such as what the assistant said, never reach
+    the model."""
     texts: list[str] = []
-    for event in journal.events():
+    for event in events:
         if event.get("kind") != "heard":
             continue
-        if _local_date(event.get("at")) != day:
+        if day is not None and _local_date(event.get("at")) != day:
             continue
         payload = event.get("payload")
         text = payload.get("text") if isinstance(payload, dict) else None
@@ -174,7 +210,16 @@ def _transcript(journal: Journal, day: date) -> list[str]:
         text = text.strip()
         if text:
             texts.append(text)
+    return texts
 
+
+def _capped(texts: list[str]) -> list[str]:
+    """The latest lines, capped so the prompt stays small.
+
+    Reading from the end is deliberate: what was said late is what the
+    review has not seen, and a durable fact mentioned in the evening must
+    not lose its place to two hundred greetings from the morning.
+    """
     lines: list[str] = []
     used = 0
     for text in reversed(texts):
@@ -283,7 +328,7 @@ def _fact(
         text=text,
         source=CONSOLIDATED,
         trust=MODEL_INFERRED,
-        status=PENDING,
+        status=CONFIRMED,
         confidence=confidence,
         valid_from=moment,
         source_ids=(f"review:{digest}",),

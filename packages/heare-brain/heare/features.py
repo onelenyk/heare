@@ -234,7 +234,7 @@ def build_features(brain: Brain) -> Features:
 
     features.add(Feature(
         id="review", title="Щоденний огляд",
-        about="Читає вчорашню розмову і пропонує факти.",
+        about="Раз на добу перечитує вчорашню розмову і запамʼятовує пропущене.",
         group="memory", order=10, read=review_read, write=review_write,
     ))
 
@@ -249,7 +249,7 @@ def build_features(brain: Brain) -> Features:
             "state": "ready",
             "note": note,
             "controls": [
-                {"kind": "button", "name": "run", "label": "Зібрати зараз"},
+                {"kind": "button", "name": "run", "label": "Запамʼятати зараз"},
                 {
                     "kind": "label", "name": "last", "label": "останній",
                     "value": shown,
@@ -263,8 +263,8 @@ def build_features(brain: Brain) -> Features:
         features.start("consolidation", brain.consolidate_once)
 
     features.add(Feature(
-        id="consolidation", title="Згортка",
-        about="Збирає факти з того, що вже сказано.",
+        id="consolidation", title="Запамʼятовування",
+        about="Кожні 5 хвилин читає нове сказане і запамʼятовує факти про тебе.",
         group="memory", order=20,
         read=consolidation_read, write=consolidation_write,
     ))

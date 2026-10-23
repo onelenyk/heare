@@ -171,7 +171,7 @@ def test_the_first_slice_has_two_memory_features(tmp_path):
         "min": 0, "max": 23, "step": 1, "unit": "год",
     }
     consolidation = listed["features"][1]
-    assert consolidation["title"] == "Згортка"
+    assert consolidation["title"] == "Запамʼятовування"
     assert consolidation["note"] == "ще не було"
     assert [control["name"] for control in consolidation["controls"]] == [
         "run", "last"]
