@@ -62,6 +62,7 @@ Core — це **мова розмови**, а не місце для памʼя�
 | Щоденний AI-огляд памʼяті | `memory/review.py`, `brain.py` | є: 04:00 локально, лише `pending` |
 | UI памʼяті: факти, нагадування, профіль | `api/page.html`, `heare/mind.py` | є: `/api/mind`, drawer «Памʼять» |
 | UI памʼяті: журнал і пошук | `api/page.html`, `heare/mind.py`, `memory/journal.py` (`latest`), `memory/book.py` (`look_up`) | є: `/api/mind/journal`, `/api/mind/search`, вкладки в drawer «Памʼять» |
+| UI: забути запис журналу | `api/page.html`, `heare/mind.py` → `Book.forget` | є: `POST /api/mind/journal/forget`, кнопка «Забути» з підтвердженням |
 | Якість щоденного огляду (eval) | `scripts/review_eval.py`, `tests/heare/evals/review_cases.jsonl` | є: ручний, платний |
 | Справжня компакція | `prompt/` + `memory/` | немає |
 | Моменти присутності, бюджет переривань | `engine/` | немає |
@@ -98,7 +99,7 @@ Core — це **мова розмови**, а не місце для памʼя�
 ## Поточний стан
 
 - Гілка `refactor/design-v2`; live `8b25f8c`.
-- 1025 тестів, 2 живі виключені.
+- 1029 тестів, 2 живі виключені.
 - Core — 1288/1350.
 - Памʼять: профіль, журнал, відновлення, recall, бюджет, CLI, e2e; підтверджені факти в промпті; `heare-memory facts/confirm/reject/consolidate`.
 - Консолідація біжить у мозку кожні 5 хвилин і створює лише `pending` факти; підтвердження лишається ручним (`heare-memory confirm`), промпт не змінюється до нього.

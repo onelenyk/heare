@@ -131,8 +131,11 @@ POST /api/features/{id}/act
 кінця) і `GET /api/mind/search?q=&when=` (`said` + `items` з одного
 `Book.look_up`).
 
-1. **Forget/export** — destructive actions з підтвердженням; аж тоді
-   розмова про audit/risk engine стає реальною.
+Зроблено (23.10): **забути з журналу** — кнопка «Забути» біля почутого й
+сказаного у вкладці «Журнал», з підтвердженням; `POST /api/mind/journal/forget
+{"ids": [...]}` кличе `Book.forget`, тож запис зникає і з журналу, і з пошуку.
+
+1. **Export** — усе одним файлом; потім розмова про audit/risk engine.
 2. **Поведінка** — лише після живих `Engine`/`Core` налаштувань.
 
 Не робимо: плагіни, версіювання схеми фіч, окремий protocol package,
