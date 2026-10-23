@@ -20,7 +20,8 @@ from heare.model.providers import PROVIDERS
 from tests.heare.fakes import Says, Worker, open_room
 
 
-async def _open(tmp_path, **room_kw):
+async def _open(tmp_path, *, facts=None, intents=None, memory_dir=None,
+                features=None, journal=None, memory=None, **room_kw):
     room = await open_room(**room_kw)
     settings = Settings(
         path=tmp_path / "config.toml", api_token_file=tmp_path / "token",
@@ -28,9 +29,15 @@ async def _open(tmp_path, **room_kw):
         parts_dir=tmp_path / "parts",
         part_tokens_file=tmp_path / "part_tokens.json",
         pair_codes_file=tmp_path / "pair_codes.json",
+        memory_dir=memory_dir if memory_dir is not None else tmp_path / "memory",
     )
     room.core.add_output(Screen(room.core))
-    client = TestClient(TestServer(build(room.core, settings)))
+    mind = None
+    if facts is not None and intents is not None:
+        from heare.mind import Mind
+        mind = Mind(facts, intents, settings, journal=journal, memory=memory)
+    client = TestClient(TestServer(
+        build(room.core, settings, mind=mind, features=features)))
     await client.start_server()
     token = (tmp_path / "token").read_text()
     return room, client, {"X-Heare-Token": token}, settings
@@ -1125,3 +1132,421 @@ def test_an_installed_brain_does_not_invent_a_commit(monkeypatch):
     monkeypatch.setattr(api_server, "__file__",
                         "/opt/venv/lib/python3.12/site-packages/heare/api/server.py")
     assert api_server.running()["commit"] is None
+
+
+async def test_the_mind_snapshot_reads_facts_reminders_and_the_profile(tmp_path):
+    import os
+    import time
+    from datetime import datetime
+
+    from heare.engine import Intents
+    from heare.memory.contracts import CONFIRMED, Fact
+    from heare.memory.facts import SQLiteFacts
+    from heare.memory.profile import Profile
+
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    memory_dir = tmp_path / "memory"
+    facts.add(Fact(
+        subject="owner", predicate="name", value="Олена",
+        text="Тебе звати Олена.", source="legacy", trust="legacy",
+        confidence=0.9, valid_from=1690000000.0, created_at=1690000000.0,
+    ))
+    confirmed = facts.add(Fact(
+        subject="owner", predicate="city", value="Київ",
+        text="Живеш у Києві.", source="user_said", trust="user_confirmed",
+        status=CONFIRMED, confidence=1.0, valid_from=1680000000.0,
+        created_at=1680000000.0,
+    ))
+    newest = 0
+    for step in range(54):
+        newest = facts.add(Fact(
+            subject="owner", predicate="note", value=str(step),
+            text=f"Нотатка {step}.", source="user_said", trust="user_said",
+            confidence=0.5, valid_from=1690000001.0 + step,
+            created_at=1690000001.0 + step,
+        ))
+    soon = time.time() + 100.0
+    reminder = intents.hold(
+        "подзвонити мамі", "reminder", 3, about="reminder",
+        not_before=soon, until=soon + 86400.0)
+    Profile(memory_dir).write("user", "Олена.")
+    (memory_dir / "review.json").write_text(
+        '{"day": "2026-10-22"}', encoding="utf-8")
+    stamped = memory_dir / "consolidate.json"
+    stamped.write_text("{}", encoding="utf-8")
+    os.utime(stamped, (1690000000.0, 1690000000.0))
+
+    room, client, auth, _ = await _open(
+        tmp_path, facts=facts, intents=intents, memory_dir=memory_dir)
+    seen = await (await client.get("/api/mind", headers=auth)).json()
+
+    assert seen["counts"] == {"pending": 55, "confirmed": 1, "reminders": 1}
+    assert len(seen["facts"]["pending"]) == 50
+    assert seen["facts"]["pending"][0]["id"] == newest
+    assert seen["facts"]["pending"][0]["status"] == "pending"
+    assert [f["id"] for f in seen["facts"]["confirmed"]] == [confirmed]
+    assert seen["facts"]["confirmed"][0]["status"] == "confirmed"
+    assert seen["reminders"] == [{
+        "id": reminder.id, "what": "подзвонити мамі", "about": "reminder",
+        "not_before": soon, "until": soon + 86400.0,
+        "made": reminder.made, "weight": 3,
+    }]
+    assert seen["review"] == {"last": "2026-10-22", "hour": 4}
+    assert seen["consolidation"]["last"] == datetime.fromtimestamp(
+        1690000000.0).replace(microsecond=0).isoformat()
+    assert seen["profile"] == {
+        "blocks": {"user": "Олена.", "threads": "", "goals": ""},
+        "limits": {"user": 1200, "threads": 1000, "goals": 600},
+    }
+    await _close(room, client)
+
+
+async def test_a_fact_is_confirmed_or_rejected_through_the_mind(tmp_path):
+    from heare.engine import Intents
+    from heare.memory.contracts import CONFIRMED, REJECTED, Fact
+    from heare.memory.facts import SQLiteFacts
+
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    one = facts.add(Fact(
+        subject="owner", predicate="name", value="Олена",
+        text="Тебе звати Олена.", source="legacy", trust="legacy"))
+    two = facts.add(Fact(
+        subject="owner", predicate="city", value="Київ",
+        text="Живеш у Києві.", source="legacy", trust="legacy"))
+    room, client, auth, _ = await _open(
+        tmp_path, facts=facts, intents=intents)
+    events = room.core.state.subscribe()
+
+    answer = await client.post(
+        f"/api/mind/facts/{one}/confirm", headers=auth)
+    assert answer.status == 200 and await answer.json() == {"ok": True}
+    assert facts.get(one).status == CONFIRMED
+
+    answer = await client.post(
+        f"/api/mind/facts/{two}/reject", headers=auth)
+    assert answer.status == 200 and await answer.json() == {"ok": True}
+    assert facts.get(two).status == REJECTED
+    again = await client.post(
+        f"/api/mind/facts/{two}/confirm", headers=auth)
+    assert again.status == 404
+
+    assert (await client.post(
+        "/api/mind/facts/9999/confirm", headers=auth)).status == 404
+    assert (await client.post(
+        "/api/mind/facts/9999/reject", headers=auth)).status == 404
+
+    seen = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "mind":
+            seen.append(event.data)
+    assert seen == [
+        {"what": "fact", "action": "confirmed", "id": one},
+        {"what": "fact", "action": "rejected", "id": two},
+    ]
+    await _close(room, client)
+
+
+async def test_a_reminder_is_cancelled_through_the_mind(tmp_path):
+    from heare.engine import Intents
+    from heare.memory.facts import SQLiteFacts
+
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    reminder = intents.hold("подзвонити мамі", "reminder", 3,
+                            about="reminder", not_before=1690000000.0)
+    room, client, auth, _ = await _open(
+        tmp_path, facts=facts, intents=intents)
+    events = room.core.state.subscribe()
+
+    answer = await client.post(
+        f"/api/mind/reminders/{reminder.id}/cancel", headers=auth)
+    assert answer.status == 200 and await answer.json() == {"ok": True}
+    assert intents.reminders(1690000000.0) == []
+    assert (await client.post(
+        f"/api/mind/reminders/{reminder.id}/cancel", headers=auth)).status == 404
+    assert (await client.post(
+        "/api/mind/reminders/9999/cancel", headers=auth)).status == 404
+
+    seen = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "mind":
+            seen.append(event.data)
+    assert seen == [{"what": "reminder", "action": "cancelled",
+                     "id": reminder.id}]
+    await _close(room, client)
+
+
+async def test_the_profile_is_saved_through_the_mind(tmp_path):
+    from heare.engine import Intents
+    from heare.memory.facts import SQLiteFacts
+
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    room, client, auth, settings = await _open(
+        tmp_path, facts=facts, intents=intents)
+    memory_dir = Path(settings.memory_dir)
+
+    answer = await client.put("/api/mind/profile", headers=auth,
+                              json={"key": "goals", "text": "  Вивчити SQL.  "})
+    assert answer.status == 200 and await answer.json() == {"ok": True}
+    assert (memory_dir / "goals.md").read_text(encoding="utf-8") == "Вивчити SQL."
+    seen = await (await client.get("/api/mind", headers=auth)).json()
+    assert seen["profile"]["blocks"]["goals"] == "Вивчити SQL."
+
+    assert (await client.put("/api/mind/profile", headers=auth,
+                             json={"key": "secrets", "text": "x"})).status == 400
+    assert (await client.put("/api/mind/profile", headers=auth,
+                             json={"key": "user", "text": 5})).status == 400
+    assert (await client.put("/api/mind/profile", headers=auth,
+                             json={"key": "user", "text": "x" * 1201})).status == 400
+    await _close(room, client)
+
+
+async def test_the_mind_says_the_store_is_missing_instead_of_failing(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    answer = await client.get("/api/mind", headers=auth)
+    assert answer.status == 503 and "memory" in await answer.text()
+    for path in ("/api/mind/journal", "/api/mind/search?q=щось"):
+        refused = await client.get(path, headers=auth)
+        assert refused.status == 503 and "memory" in await refused.text()
+    for path in ("/api/mind/facts/1/confirm", "/api/mind/facts/1/reject",
+                 "/api/mind/reminders/1/cancel"):
+        refused = await client.post(path, headers=auth)
+        assert refused.status == 503 and "memory" in await refused.text()
+    await _close(room, client)
+
+
+async def test_the_journal_lists_events_newest_first_with_ukrainian_titles(
+        tmp_path):
+    from datetime import datetime
+
+    from heare.engine import Intents
+    from heare.memory.facts import SQLiteFacts
+    from heare.memory.journal import Journal
+
+    journal = Journal(tmp_path / "events")
+    base = 1_690_000_000.0
+    heard = journal.append(
+        "heard", {"text": "привіт", "channel": "voice"},
+        source="voice", trust="user_said", at=base)
+    task = journal.append(
+        "task", {"id": 1, "request": "зроби", "status": "running"},
+        source="hands", trust="tool_output", at=base + 1)
+    permission = journal.append(
+        "permission", {"id": 2, "what": "записати"},
+        source="brain", trust="system", at=base + 2)
+    unknown = journal.append(
+        "mystery", {"name": "таємниця"},
+        source="core", trust="system", at=base + 3)
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    room, client, auth, _ = await _open(
+        tmp_path, facts=facts, intents=intents, journal=journal)
+
+    items = (await (await client.get(
+        "/api/mind/journal", headers=auth)).json())["items"]
+
+    assert [item["id"] for item in items] == [
+        unknown["id"], permission["id"], task["id"], heard["id"],
+    ]
+    assert [item["title"] for item in items] == [
+        "mystery", "дозвіл", "справа", "почуто",
+    ]
+    assert items[0]["kind"] == "mystery"
+    assert items[0]["text"] == "таємниця"
+    assert items[1]["text"] == "записати"
+    assert items[2]["text"] == "running"
+    assert items[3]["text"] == "привіт"
+    assert "voice" in items[3]["meta"] and "user_said" in items[3]["meta"]
+    assert "hands" in items[2]["meta"] and "tool_output" in items[2]["meta"]
+    assert "running" in items[2]["meta"]
+    assert datetime.fromisoformat(items[0]["at"]).tzinfo is not None
+    await _close(room, client)
+
+
+async def test_the_journal_limit_is_clamped_and_must_be_an_integer(tmp_path):
+    from heare.engine import Intents
+    from heare.memory.facts import SQLiteFacts
+    from heare.memory.journal import Journal
+
+    journal = Journal(tmp_path / "events")
+    for step in range(3):
+        journal.append(
+            "heard", {"text": f"рядок {step}"},
+            source="voice", trust="user_said", at=1_690_000_000.0 + step)
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    room, client, auth, _ = await _open(
+        tmp_path, facts=facts, intents=intents, journal=journal)
+
+    async def ids(query: str) -> list[str]:
+        found = await (await client.get(
+            f"/api/mind/journal?{query}", headers=auth)).json()
+        return [item["text"] for item in found["items"]]
+
+    assert await ids("limit=2") == ["рядок 2", "рядок 1"]
+    assert await ids("limit=0") == ["рядок 2"]
+    assert await ids("limit=999") == ["рядок 2", "рядок 1", "рядок 0"]
+    assert (await client.get(
+        "/api/mind/journal?limit=two", headers=auth)).status == 400
+    await _close(room, client)
+
+
+async def test_the_journal_and_search_need_their_stores(tmp_path):
+    from heare.engine import Intents
+    from heare.memory.facts import SQLiteFacts
+
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    room, client, auth, _ = await _open(tmp_path, facts=facts, intents=intents)
+
+    journal = await client.get("/api/mind/journal", headers=auth)
+    assert journal.status == 503 and "memory" in await journal.text()
+    found = await client.get(
+        "/api/mind/search", params={"q": "щось"}, headers=auth)
+    assert found.status == 503 and "memory" in await found.text()
+    await _close(room, client)
+
+
+async def test_search_returns_the_spoken_answer_and_the_same_fragments(
+        tmp_path, monkeypatch):
+    from datetime import datetime as real_datetime
+
+    from heare.engine import Intents
+    from heare.memory import persist
+    from heare.memory import book as book_module
+    from heare.memory.book import Book
+    from heare.memory.facts import SQLiteFacts
+
+    old = real_datetime(2026, 10, 20, 9, 0, 0).timestamp()
+
+    class Clock:
+        @staticmethod
+        def time() -> float:
+            return old
+
+    monkeypatch.setattr(persist, "time", Clock)
+
+    class Fixed(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 20, 12, 0, 0)
+
+    monkeypatch.setattr(book_module, "datetime", Fixed)
+
+    book = Book(
+        tmp_path / "heare.db", names=("дока",),
+        profile_dir=tmp_path / "memory")
+    try:
+        await book.keep("user", "Мій план на відпустку — Карпати.", "text")
+        await book.keep("assistant", "Відпустка в Карпатах — це добре.", "text")
+        facts = SQLiteFacts(tmp_path / "facts.db")
+        intents = Intents(tmp_path / "intents.json")
+        room, client, auth, _ = await _open(
+            tmp_path, facts=facts, intents=intents, memory=book)
+
+        found = await (await client.get(
+            "/api/mind/search", params={"q": "відпустка"},
+            headers=auth)).json()
+        said, expected = await book.look_up("відпустка")
+
+        assert found == {"said": said, "items": expected}
+        assert found["said"] == (
+            "Сьогодні прозвучало: Відпустка в Карпатах — це добре.")
+        assert [item["id"] for item in found["items"]] == [
+            f"search-{index}" for index in range(len(found["items"]))
+        ]
+        assert len(found["items"]) == 2
+        assert {item["title"] for item in found["items"]} == {
+            "ти казав", "heare",
+        }
+        assert {item["text"] for item in found["items"]} == {
+            "Мій план на відпустку — Карпати.",
+            "Відпустка в Карпатах — це добре.",
+        }
+        assert all(item["meta"] == [] for item in found["items"])
+        assert all(
+            Fixed.fromisoformat(item["at"]).tzinfo is not None
+            for item in found["items"])
+
+        assert (await client.get(
+            "/api/mind/search", headers=auth)).status == 400
+        assert (await client.get(
+            "/api/mind/search", params={"q": "   "},
+            headers=auth)).status == 400
+        assert (await client.get(
+            "/api/mind/search", params={"q": "x" * 501},
+            headers=auth)).status == 400
+    finally:
+        book.close()
+    await _close(room, client)
+
+
+async def test_features_are_listed_and_acted_on_through_the_door(tmp_path):
+    from heare.features import Feature, Features
+
+    events: list[dict] = []
+
+    def emit(kind: str, **data: object) -> None:
+        events.append({"kind": kind, **data})
+
+    registry = Features(emit)
+    number = {"value": 1}
+
+    def read() -> dict[str, object]:
+        return {"state": "ready", "note": str(number["value"]),
+                "controls": [{"kind": "button", "name": "run", "label": "Бігти"}]}
+
+    async def write(name: str, value: object) -> None:
+        if name != "bump":
+            raise ValueError(f"unknown action: {name}")
+        number["value"] += int(value)
+
+    registry.add(Feature(
+        id="demo", title="Демо", about="Тестова фіча.", group="memory",
+        order=10, read=read, write=write))
+
+    room, client, auth, _ = await _open(tmp_path, features=registry)
+
+    listed = await (await client.get("/api/features", headers=auth)).json()
+    assert listed["groups"] == [{"id": "memory", "title": "Памʼять",
+                                 "order": 10}]
+    assert listed["features"][0]["id"] == "demo"
+    assert listed["features"][0]["controls"][0]["name"] == "run"
+
+    answer = await client.post(
+        "/api/features/demo/act", headers=auth,
+        json={"name": "bump", "value": 1})
+    assert answer.status == 200
+    called = await answer.json()
+    assert called["ok"] is True
+    assert called["feature"]["note"] == "2"
+    assert {"kind": "feature", "id": "demo", "state": "changed"} in events
+
+    assert (await client.post(
+        "/api/features/nope/act", headers=auth,
+        json={"name": "bump", "value": 1})).status == 404
+    bad = await client.post(
+        "/api/features/demo/act", headers=auth,
+        json={"name": "nope", "value": 1})
+    assert bad.status == 400 and "unknown" in await bad.text()
+    assert (await client.post(
+        "/api/features/demo/act", headers=auth,
+        json={"name": "", "value": 1})).status == 400
+    await _close(room, client)
+
+
+async def test_features_are_empty_without_a_registry(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+
+    assert await (await client.get(
+        "/api/features", headers=auth)).json() == {
+            "groups": [], "features": []}
+    assert (await client.post(
+        "/api/features/demo/act", headers=auth,
+        json={"name": "run", "value": True})).status == 404
+    await _close(room, client)

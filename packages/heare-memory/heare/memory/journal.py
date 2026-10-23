@@ -104,6 +104,42 @@ class Journal:
             except OSError:
                 continue
 
+    def latest(self, limit: int = 50) -> list[dict]:
+        """The newest events, newest first, without what was forgotten.
+
+        Read from the end so a page asking every few seconds does not walk
+        the whole history. A tombstone is always newer than what it buries,
+        so it is met first and the buried event is skipped on the way.
+        """
+        if limit <= 0:
+            return []
+        try:
+            paths = sorted(
+                (p for p in self._root.glob("*.jsonl") if p.is_file()),
+                reverse=True,
+            )
+        except OSError:
+            return []
+        forgotten: set[str] = set()
+        found: list[dict] = []
+        for path in paths:
+            try:
+                lines = path.read_bytes().splitlines()
+            except OSError:
+                continue
+            for line in reversed(lines):
+                row = _parse(line)
+                if row is None:
+                    continue
+                if row.get("kind") == "forget":
+                    forgotten.update(_payload(row).get("ids", ()))
+                if row.get("id") in forgotten:
+                    continue
+                found.append(row)
+                if len(found) == limit:
+                    return found
+        return found
+
     def new_events(self, state_path: str | Path) -> tuple[list[dict], dict]:
         """The events this reader has not consumed yet, and the state that
         records how far it got. Only whole lines are consumed, so a line

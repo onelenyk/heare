@@ -4,8 +4,9 @@ The built-in page uses exactly this and nothing else — no private door.
 If the page that ships can be built on it, so can the ones a person
 makes for themselves.
 
-Nine groups: messages, events, state, controls, tasks, settings, keys,
-memory, screens. Each is the core's own surface and holds no logic of its own.
+Eleven groups: messages, events, state, controls, tasks, settings, keys,
+memory, mind, screens, features. Each is the core's own surface and holds
+no logic of its own.
 
 A key can be written here and can never be read back: a screen a model
 drew may save a token, and cannot fetch one.
@@ -213,9 +214,13 @@ class VoiceOut:
 
 
 def build(core: Core, settings: Any, vitals: Any = None,
-          make_executor: Any = None) -> web.Application:
+          make_executor: Any = None, *, mind: Any = None,
+          features: Any = None) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
-    which model is answering, and whether it is the one that was chosen."""
+    which model is answering, and whether it is the one that was chosen.
+
+    mind and features are handed over by the brain. The app is still built
+    without them: each surface then says so instead of failing."""
     secret = token(Path(settings.api_token_file))
     part_tokens = Path(settings.part_tokens_file)
     screens = Path(settings.screens_dir)
@@ -763,6 +768,92 @@ def build(core: Core, settings: Any, vitals: Any = None,
         found = await core.memory.recall(query, request.query.get("when", ""))
         return web.json_response({"said": found})
 
+    # -- features ---------------------------------------------------------
+
+    async def list_features(request: web.Request) -> web.Response:
+        if features is None:
+            return web.json_response({"groups": [], "features": []})
+        return web.json_response(await asyncio.to_thread(features.list))
+
+    async def act_feature(request: web.Request) -> web.Response:
+        if features is None or not features.has(request.match_info["id"]):
+            raise web.HTTPNotFound(text="no such feature")
+        data = await body(request)
+        try:
+            answer = await features.act(
+                request.match_info["id"], data.get("name"), data.get("value"))
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from None
+        return web.json_response(answer)
+
+    # -- mind -------------------------------------------------------------
+
+    def hand() -> Any:
+        if mind is None:
+            raise web.HTTPServiceUnavailable(text="memory is not open here")
+        return mind
+
+    async def mind_snapshot(request: web.Request) -> web.Response:
+        return web.json_response(await asyncio.to_thread(hand().snapshot))
+
+    async def confirm_fact(request: web.Request) -> web.Response:
+        fact_id = int(request.match_info["id"])
+        if not await asyncio.to_thread(hand().confirm, fact_id):
+            raise web.HTTPNotFound(text="no such fact")
+        core.state.emit("mind", what="fact", action="confirmed", id=fact_id)
+        return web.json_response({"ok": True})
+
+    async def reject_fact(request: web.Request) -> web.Response:
+        fact_id = int(request.match_info["id"])
+        if not await asyncio.to_thread(hand().reject, fact_id):
+            raise web.HTTPNotFound(text="no such fact")
+        core.state.emit("mind", what="fact", action="rejected", id=fact_id)
+        return web.json_response({"ok": True})
+
+    async def cancel_reminder(request: web.Request) -> web.Response:
+        intent_id = int(request.match_info["id"])
+        if not await asyncio.to_thread(hand().cancel, intent_id):
+            raise web.HTTPNotFound(text="no such reminder")
+        core.state.emit("mind", what="reminder", action="cancelled",
+                        id=intent_id)
+        return web.json_response({"ok": True})
+
+    async def save_profile(request: web.Request) -> web.Response:
+        data = await body(request)
+        try:
+            await asyncio.to_thread(
+                hand().save_profile, data.get("key"), data.get("text"))
+        except ValueError as why:
+            raise web.HTTPBadRequest(text=str(why)) from None
+        core.state.emit("mind", what="profile", action="saved",
+                        id=data.get("key"))
+        return web.json_response({"ok": True})
+
+    async def mind_journal(request: web.Request) -> web.Response:
+        raw = request.query.get("limit", "50")
+        try:
+            limit = int(raw)
+        except ValueError:
+            raise web.HTTPBadRequest(text="limit must be an integer") from None
+        limit = min(100, max(1, limit))
+        try:
+            answer = await asyncio.to_thread(hand().journal, limit)
+        except RuntimeError as exc:
+            raise web.HTTPServiceUnavailable(text=str(exc)) from None
+        return web.json_response(answer)
+
+    async def mind_search(request: web.Request) -> web.Response:
+        query = request.query.get("q", "").strip()
+        if not query:
+            raise web.HTTPBadRequest(text="nothing to look for")
+        if len(query) > 500:
+            raise web.HTTPBadRequest(text="query is too long")
+        try:
+            answer = await hand().search(query, request.query.get("when", ""))
+        except RuntimeError as exc:
+            raise web.HTTPServiceUnavailable(text=str(exc)) from None
+        return web.json_response(answer)
+
     # -- screens ----------------------------------------------------------
 
     def screen_path(request: web.Request) -> Path:
@@ -833,6 +924,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/keys", set_key),
         web.post("/api/keys/adopt", adopt_key),
         web.get("/api/memory", memory),
+        web.get("/api/features", list_features),
+        web.post("/api/features/{id:[a-z][a-z0-9_-]*}/act", act_feature),
+        web.get("/api/mind", mind_snapshot),
+        web.get("/api/mind/journal", mind_journal),
+        web.get("/api/mind/search", mind_search),
+        web.post("/api/mind/facts/{id:\\d+}/confirm", confirm_fact),
+        web.post("/api/mind/facts/{id:\\d+}/reject", reject_fact),
+        web.post("/api/mind/reminders/{id:\\d+}/cancel", cancel_reminder),
+        web.put("/api/mind/profile", save_profile),
         web.get("/api/screens", list_screens),
         web.put("/api/screens/{name}", save_screen),
         web.get("/screens/{name}", show_screen),
@@ -845,7 +945,8 @@ def _sse(data: dict) -> bytes:
 
 
 async def serve(core: Core, settings: Any, vitals: Any = None,
-                make_executor: Any = None) -> web.AppRunner:
+                make_executor: Any = None, *, mind: Any = None,
+                features: Any = None) -> web.AppRunner:
     """Start the API, on this machine only unless ``api_host`` says else.
     Returns the runner to stop it.
 
@@ -858,7 +959,8 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     core.add_output(VoiceOut(core))
     core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
     runner = web.AppRunner(build(core, settings, vitals,
-                                 make_executor=make_executor))
+                                 make_executor=make_executor, mind=mind,
+                                 features=features))
     await runner.setup()
     host = str(settings.api_host or "127.0.0.1")
     await web.TCPSite(runner, host, int(settings.api_port)).start()

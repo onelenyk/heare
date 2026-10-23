@@ -27,8 +27,11 @@ from heare.api import pair as codes
 from heare.config import Settings
 from heare.core import Core
 from heare.engine import Engine, Intents
+from heare.features import build_features
 from heare.language import uk
-from heare.memory.contracts import ReviewReport
+from heare.memory.contracts import ConsolidationReport, ReviewReport
+from heare.memory.review import last_reviewed, mark_reviewed
+from heare.mind import Mind
 
 logger = logging.getLogger("heare.brain")
 
@@ -53,6 +56,23 @@ def next_review_at(now: float, hour: int) -> float:
     if when.timestamp() <= now:
         when += timedelta(days=1)
     return when.timestamp()
+
+
+def next_review_day(last: date | None, today: date) -> date | None:
+    """The day a review owes next, or None when there is nothing due.
+
+    A missing marker means yesterday: the first review is the last whole
+    day. A marker older than the catch-up window moves forward a week at a
+    time rather than replaying a month, and a marker that already covers
+    yesterday means the next review is tomorrow's.
+    """
+    yesterday = today - timedelta(days=1)
+    if last is None:
+        return yesterday
+    if (yesterday - last).days > REVIEW_CATCH_UP_DAYS:
+        last = yesterday - timedelta(days=REVIEW_CATCH_UP_DAYS)
+    target = last + timedelta(days=1)
+    return None if target > yesterday else target
 
 
 def model_info(settings: Settings) -> dict:
@@ -95,13 +115,18 @@ class Brain:
         self.journal = Journal(self.settings.events_dir)
         self.facts = SQLiteFacts(self.settings.db_path)
         self.intents = Intents(self.settings.intents_path)
+        self.memory = Book(
+            self.settings.db_path, names=sorted(names),
+            profile_dir=self.settings.memory_dir, journal=self.journal,
+            facts=self.facts,
+        )
+        self.mind = Mind(
+            self.facts, self.intents, self.settings,
+            journal=self.journal, memory=self.memory,
+        )
         self.core = Core(
             Chat(self.settings),
-            memory=Book(
-                self.settings.db_path, names=sorted(names),
-                profile_dir=self.settings.memory_dir, journal=self.journal,
-                facts=self.facts,
-            ),
+            memory=self.memory,
             delegator=Dispatcher(self.settings), prompt=persona.prompt,
             names=names, judge=persona.JUDGE, words=uk,
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
@@ -120,23 +145,52 @@ class Brain:
             quiet=(self.settings.quiet_from, self.settings.quiet_to),
             daily_limit=int(self.settings.unsolicited_per_day),
         )
+        self._review_lock = asyncio.Lock()
+        self._consolidate_lock = asyncio.Lock()
+        self.features = build_features(self)
         self._runner: Any = None
 
-    async def _consolidate(self) -> None:
+    async def consolidate_once(self) -> ConsolidationReport:
+        """One consolidation pass, shared by the clock and the page."""
         from heare.memory.consolidate import consolidate
 
+        async with self._consolidate_lock:
+            report = await asyncio.to_thread(
+                consolidate, self.facts, self.journal,
+                state_path=Path(self.settings.memory_dir)
+                / "consolidate.json",
+            )
+        if report.added:
+            logger.info("consolidation added %d fact(s)", report.added)
+        return report
+
+    async def _consolidate(self) -> None:
         while True:
             await asyncio.sleep(CONSOLIDATE_EVERY_S)
             try:
-                report = await asyncio.to_thread(
-                    consolidate, self.facts, self.journal,
-                    state_path=Path(self.settings.memory_dir)
-                    / "consolidate.json",
-                )
-                if report.added:
-                    logger.info("consolidation added %d fact(s)", report.added)
+                await self.consolidate_once()
             except Exception:
                 logger.exception("consolidation failed (non-fatal)")
+
+    async def review_once(self) -> ReviewReport | None:
+        """Review the day that is due, and mark it only when it succeeded."""
+        async with self._review_lock:
+            root = Path(self.settings.memory_dir)
+            due = next_review_day(last_reviewed(root), date.today())
+            if due is None:
+                return None
+            report = await self.review_now(due)
+            if report.error is None:
+                mark_reviewed(root, due)
+                if report.added:
+                    logger.info(
+                        "daily review for %s added %d fact(s)",
+                        due, report.added,
+                    )
+            else:
+                logger.warning(
+                    "daily review for %s failed: %s", due, report.error)
+            return report
 
     async def review_now(self, day: date | None = None) -> ReviewReport:
         from heare.memory.review import review_day
@@ -148,39 +202,39 @@ class Brain:
         )
 
     async def _review(self) -> None:
-        from heare.memory.review import last_reviewed, mark_reviewed
+        """Wait for the hour, then catch up one day at a time.
 
+        Settings are read again every minute, so turning the review off or
+        moving its hour does not need a restart. The loop never returns on a
+        disabled review: it waits and looks again.
+        """
         while True:
             if not bool(self.settings.review_enabled):
-                return
-            memory_dir = Path(self.settings.memory_dir)
-            last = last_reviewed(memory_dir)
-            yesterday = date.today() - timedelta(days=1)
-            if last is None:
-                target = yesterday
-            else:
-                if (yesterday - last).days > REVIEW_CATCH_UP_DAYS:
-                    last = yesterday - timedelta(days=REVIEW_CATCH_UP_DAYS)
-                target = last + timedelta(days=1)
-            if target > yesterday:
-                when = next_review_at(
-                    clock.time(), int(self.settings.review_hour)
-                )
-                await asyncio.sleep(max(1.0, when - clock.time()))
+                await asyncio.sleep(60.0)
                 continue
-            report = await self.review_now(target)
-            if report.error:
-                logger.warning(
-                    "daily review for %s failed: %s", target, report.error
-                )
+            now = clock.time()
+            hour = int(self.settings.review_hour)
+            gate = datetime.combine(date.today(), time(hour=hour)).timestamp()
+            if now < gate:
+                await asyncio.sleep(min(60.0, gate - now))
+                continue
+            root = Path(self.settings.memory_dir)
+            if next_review_day(last_reviewed(root), date.today()) is None:
+                when = next_review_at(now, hour)
+                await asyncio.sleep(min(60.0, max(1.0, when - now)))
+                continue
+            try:
+                report = await self.review_once()
+            except Exception:
+                logger.exception("daily review failed (non-fatal)")
                 await asyncio.sleep(REVIEW_RETRY_S)
                 continue
-            if report.added:
-                logger.info(
-                    "daily review for %s added %d fact(s)",
-                    target, report.added,
-                )
-            mark_reviewed(memory_dir, target)
+            if report is None:
+                when = next_review_at(now, hour)
+                await asyncio.sleep(min(60.0, max(1.0, when - now)))
+                continue
+            if report.error:
+                await asyncio.sleep(REVIEW_RETRY_S)
 
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""
@@ -191,6 +245,7 @@ class Brain:
         self._runner = await serve(
             self.core, self.settings, lambda: model_info(self.settings),
             make_executor=lambda name, about: RemoteExecutor(name, about),
+            mind=self.mind, features=self.features,
         )
         print(f"мозок на http://127.0.0.1:{self.settings.api_port}/", file=sys.stderr)
         await asyncio.gather(

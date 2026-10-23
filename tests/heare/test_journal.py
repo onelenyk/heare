@@ -113,6 +113,39 @@ def test_forget_hides_events_and_leaves_the_originals_on_disk(tmp_path):
     assert journal.tail_messages() == []
 
 
+def test_latest_reads_from_the_newest_day_and_stops_at_the_limit(tmp_path):
+    journal = Journal(tmp_path)
+    days = [datetime(2026, 10, d, 12).timestamp() for d in (20, 21, 22)]
+    for day, at in enumerate(days):
+        for n in range(2):
+            journal.append(
+                "heard", {"text": f"{day}-{n}"}, source="voice",
+                trust="user_said", at=at + n,
+            )
+    newest = sorted(tmp_path.glob("*.jsonl"))[-1]
+    with newest.open("a", encoding="utf-8") as file:
+        file.write("{not json\n")
+
+    rows = journal.latest(3)
+    assert [row["payload"]["text"] for row in rows] == ["2-1", "2-0", "1-1"]
+    assert journal.latest(0) == []
+
+
+def test_latest_hides_what_was_forgotten(tmp_path):
+    journal = Journal(tmp_path)
+    kept = journal.append(
+        "heard", {"text": "лишається"}, source="voice", trust="user_said",
+    )
+    gone = journal.append(
+        "heard", {"text": "забути"}, source="voice", trust="user_said",
+    )
+    tombstone = journal.forget([gone["id"]])
+
+    assert [row["id"] for row in journal.latest()] == [
+        tombstone["id"], kept["id"],
+    ]
+
+
 def test_new_events_returns_only_what_the_cursor_has_not_seen(tmp_path):
     journal = Journal(tmp_path / "events")
     state_path = tmp_path / "memory" / "consolidate.json"

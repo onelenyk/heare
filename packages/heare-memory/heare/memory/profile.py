@@ -43,6 +43,19 @@ class Profile:
     def __init__(self, root: Path) -> None:
         self._root = Path(root)
 
+    @property
+    def blocks(self) -> dict[str, str]:
+        """Each block as the prompt would read it, keyed the way the API names it."""
+        return {key: self.read(key) for key in FILES}
+
+    def read(self, key: str) -> str:
+        """One block, or a ValueError for a key the profile does not keep."""
+        try:
+            name = FILES[key]
+        except KeyError:
+            raise ValueError(f"not a profile block: {key}") from None
+        return self._read(name)
+
     def render(self) -> str:
         blocks = (
             ("### Власник", _clip(self._read("user.md"), USER_LIMIT)),

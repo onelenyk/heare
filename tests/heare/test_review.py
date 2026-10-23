@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import stat
@@ -9,7 +10,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from heare.brain import next_review_at
+from heare.brain import next_review_at, next_review_day
 from heare.memory.contracts import (
     CONSOLIDATED,
     MODEL_INFERRED,
@@ -281,3 +282,83 @@ async def test_a_late_fact_survives_the_character_cap(tmp_path):
     prompt = model.asked[0][1]["content"]
     assert "user: Мій улюблений колір — синій." in prompt
     assert prompt.rstrip().endswith("user: Мій улюблений колір — синій.")
+
+
+def test_next_review_day_without_a_marker_is_yesterday():
+    today = date(2026, 5, 10)
+
+    assert next_review_day(None, today) == date(2026, 5, 9)
+
+
+def test_next_review_day_moves_one_day_forward():
+    today = date(2026, 5, 10)
+
+    assert next_review_day(date(2026, 5, 7), today) == date(2026, 5, 8)
+
+
+def test_next_review_day_after_yesterday_is_none():
+    today = date(2026, 5, 10)
+
+    assert next_review_day(date(2026, 5, 9), today) is None
+
+
+def test_next_review_day_caps_the_catch_up():
+    today = date(2026, 5, 10)
+
+    assert next_review_day(date(2026, 4, 1), today) == date(2026, 5, 3)
+
+
+def test_next_review_day_with_a_future_marker_is_none():
+    today = date(2026, 5, 10)
+
+    assert next_review_day(date(2026, 5, 11), today) is None
+
+
+async def test_review_once_reviews_yesterday_and_marks_it(tmp_path, monkeypatch):
+    from heare.brain import Brain
+    from heare.config import Settings
+
+    brain = object.__new__(Brain)
+    brain.settings = Settings(memory_dir=tmp_path, review_hour=4)
+    brain._review_lock = asyncio.Lock()
+    asked: list[date | None] = []
+
+    async def fake(day: date | None = None) -> ReviewReport:
+        asked.append(day)
+        return ReviewReport(considered=1, added=1)
+
+    monkeypatch.setattr(brain, "review_now", fake)
+
+    report = await brain.review_once()
+
+    yesterday = date.today() - timedelta(days=1)
+    assert report == ReviewReport(considered=1, added=1)
+    assert asked == [yesterday]
+    assert last_reviewed(tmp_path) == yesterday
+    assert await brain.review_once() is None
+    assert asked == [yesterday]
+
+
+async def test_a_failed_review_is_retried_and_not_marked(tmp_path, monkeypatch):
+    from heare.brain import Brain
+    from heare.config import Settings
+
+    brain = object.__new__(Brain)
+    brain.settings = Settings(memory_dir=tmp_path, review_hour=4)
+    brain._review_lock = asyncio.Lock()
+    asked: list[date | None] = []
+
+    async def fake(day: date | None = None) -> ReviewReport:
+        asked.append(day)
+        return ReviewReport(error="boom")
+
+    monkeypatch.setattr(brain, "review_now", fake)
+
+    first = await brain.review_once()
+    second = await brain.review_once()
+
+    yesterday = date.today() - timedelta(days=1)
+    assert first is not None and first.error == "boom"
+    assert second is not None and second.error == "boom"
+    assert asked == [yesterday, yesterday]
+    assert last_reviewed(tmp_path) is None

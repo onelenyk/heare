@@ -96,11 +96,34 @@ class Book:
 
     async def recall(self, query: str, when: str = "") -> str:
         """Off the event loop: synchronous SQLite over thousands of rows."""
+        said, _ = await self.look_up(query, when)
+        return said
+
+    async def look_up(
+        self, query: str, when: str = ""
+    ) -> tuple[str, list[dict]]:
+        """The answer and the fragments it was made from, found once.
+
+        ``recall`` says the sentence; the page also shows what it quoted.
+        Both come from one search so the list cannot disagree with the
+        words above it.
+        """
         now = datetime.now()
         fragments = await asyncio.to_thread(
             search.find, self._store, query, now=now, when=when, names=self._names,
         )
-        return search.spoken(fragments, now=now)
+        said = search.spoken(fragments, now=now)
+        items = [
+            {
+                "id": f"search-{index}",
+                "at": datetime.fromtimestamp(fragment.ts).astimezone().isoformat(),
+                "title": "heare" if fragment.agent_spoken else "ти казав",
+                "text": search.shorten(fragment.text),
+                "meta": [],
+            }
+            for index, fragment in enumerate(fragments)
+        ]
+        return said, items
 
     async def recent(self, n: int = 20) -> list[dict]:
         """The last exchanges, oldest first, for a screen that has just

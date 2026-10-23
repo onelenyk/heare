@@ -341,6 +341,92 @@
   .btn:disabled { opacity:.5; cursor:progress; }
   #settings code { font:11.5px var(--mono); }
   #settings select:disabled { opacity:.55; }
+  /* Features: one compact card per capability, in the same cockpit as the
+     parts' cards — title and state on top, then what it does, then its controls. */
+  .features { display:grid; gap:8px; min-width:0; }
+  .features:empty { display:none; }
+  .feature { min-width:0; padding:11px 12px; border:1px solid var(--line); border-radius:12px; background:var(--card-2); }
+  .feat-top { display:flex; align-items:center; gap:8px; min-width:0; }
+  .feat-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:600 12.5px var(--sans); color:var(--ink); }
+  .fstate { flex:none; margin-left:auto; padding:1px 7px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font:10px var(--mono); white-space:nowrap; }
+  .fstate.ready { color:var(--accent); border-color:rgba(157,124,255,.45); background:rgba(157,124,255,.08); }
+  .fstate.running { color:var(--ok); border-color:rgba(95,191,143,.42); background:rgba(95,191,143,.08); }
+  .fstate.off { color:var(--soft); }
+  .fstate.error { color:var(--bad); border-color:rgba(239,122,107,.34); background:rgba(239,122,107,.06); }
+  .feat-about { margin-top:4px; color:var(--soft); font:11.5px/1.45 var(--sans); overflow-wrap:anywhere; }
+  .feat-note { margin-top:3px; color:var(--soft); font:10.5px var(--mono); overflow-wrap:anywhere; }
+  .feature .part-controls { margin-top:8px; }
+  .feature .part-controls .keys { grid-template-columns:1fr; gap:6px; }
+  .feature .part-controls .vol { grid-template-columns:76px minmax(0,1fr) auto; font-size:11.5px; gap:8px; }
+  .feature .part-controls .vol b { color:var(--ink); font-weight:500; overflow-wrap:anywhere; }
+  .feature .part-controls select,
+  .feature .part-controls input { width:100%; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 7px; color:inherit; font:11px var(--mono); }
+  .feature .pfacts { margin-top:7px; color:var(--soft); font-size:11px; overflow-wrap:anywhere; }
+  .feature .pfacts b { color:var(--ink); font-weight:500; }
+  .feature .swrow { font-size:12px; }
+  .featurefail { margin-top:0; }
+  /* ── memory: a quiet summary in the pult, the whole of it in a drawer ── */
+  #mind-widget .keys { margin-top:10px; }
+  #mind-widget #mind-pending.warn { color:var(--warn); }
+  #mind { position:fixed; top:0; right:0; bottom:0; width:min(560px, 100%); background:var(--card); border-left:1px solid var(--line); padding:22px; overflow-y:auto; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; z-index:11; }
+  #mind.on { transform:none; visibility:visible; }
+  .mind-head { display:flex; align-items:baseline; gap:10px; }
+  .mind-head h2 { font-size:18px; margin:0 0 6px; }
+  .mind-x { margin-left:auto; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:20px; line-height:1; padding:0 2px; }
+  .mind-x:hover { color:var(--ink); }
+  .mind-status { color:var(--soft); font-size:12px; min-height:18px; margin-bottom:10px; }
+  .mind-status.bad { color:var(--bad); }
+  .mind-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .mind-chip { padding:4px 10px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font:11px var(--mono); }
+  .mind-chip b { color:var(--ink); font-weight:600; }
+  .mind-tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:14px; }
+  .mind-tab { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--soft); padding:8px 11px; margin-bottom:-1px; cursor:pointer; font-size:12.5px; }
+  .mind-tab:hover { color:var(--ink); }
+  .mind-tab.on { color:var(--ink); border-bottom-color:var(--accent); }
+  .mind-tab:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  .mind-panel { min-width:0; }
+  .mind-sec { display:flex; align-items:baseline; gap:8px; margin:16px 0 8px; font:10px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--soft); }
+  .mind-sec:first-child { margin-top:0; }
+  .mind-sec b { color:var(--ink); font-weight:600; letter-spacing:0; }
+  .mind-sec span { margin-left:auto; }
+  .mind-fact, .mind-reminder { border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:8px; background:var(--card-2); min-width:0; }
+  .mind-fact.pending { border-color:rgba(219,182,79,.45); background:linear-gradient(rgba(219,182,79,.07), rgba(219,182,79,.07)), var(--card-2); }
+  .mind-fact p, .mind-reminder p { font-family:var(--sans); font-size:13.5px; line-height:1.5; margin-bottom:6px; overflow-wrap:anywhere; }
+  .mind-meta { display:flex; flex-wrap:wrap; gap:3px 10px; color:var(--soft); font:10.5px/1.5 var(--mono); margin-bottom:8px; }
+  .mind-actions { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+  .mind-err { color:var(--bad); font:10.5px var(--mono); }
+  .mind-err.ok { color:var(--ok); }
+  .mind-empty { color:var(--soft); font-size:12.5px; padding:2px 0 6px; }
+  .mind-empty p { margin:0 0 3px; }
+  .mind-block { margin-bottom:18px; min-width:0; }
+  .mind-block h3 { font:10px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--soft); margin:0 0 7px; }
+  .mind-block textarea { width:100%; min-height:96px; resize:vertical; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:10px 11px; color:var(--ink); font:13px/1.55 var(--sans); }
+  .mind-block textarea:focus { outline:none; border-color:var(--accent); }
+  .mind-block textarea::placeholder { color:var(--soft); }
+  .mind-foot { display:flex; align-items:center; gap:10px; margin-top:6px; flex-wrap:wrap; }
+  .mind-count { color:var(--soft); font:10.5px var(--mono); }
+  .mind-count.over { color:var(--bad); }
+  .mind-foot .btn { margin-left:auto; padding:6px 11px; font-size:12px; }
+  /* journal and search: one quiet row per remembered thing, drawn by the
+     same renderer whether it came from the journal or from a search. */
+  .mind-item { border:1px solid var(--line); border-radius:12px; padding:11px 12px; margin-bottom:8px; background:var(--card-2); min-width:0; }
+  .mind-item-top { display:flex; align-items:baseline; gap:7px; min-width:0; margin-bottom:4px; }
+  .mind-item-title { color:var(--ink); font:600 12.5px var(--sans); min-width:0; overflow-wrap:anywhere; }
+  .mind-item-kind { flex:none; padding:1px 6px; border:1px solid var(--line); border-radius:999px; color:var(--soft); font:9.5px var(--mono); letter-spacing:.06em; text-transform:uppercase; }
+  .mind-item-time { flex:none; margin-left:auto; color:var(--soft); font:10px var(--mono); white-space:nowrap; }
+  .mind-item-text { font-family:var(--sans); font-size:13.5px; line-height:1.5; margin:0 0 5px; overflow-wrap:anywhere; }
+  .mind-item-meta { color:var(--soft); font:10.5px/1.5 var(--mono); overflow-wrap:anywhere; }
+  .mind-search { display:flex; align-items:stretch; gap:6px; margin-bottom:10px; }
+  .mind-search input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:9px 11px; color:var(--ink); font:13px var(--sans); }
+  .mind-search input:focus { outline:none; border-color:var(--accent); }
+  .mind-search input::placeholder { color:var(--soft); }
+  .mind-search .btn { flex:none; padding:7px 13px; font-size:12.5px; }
+  .mind-search-status { color:var(--soft); font:11px var(--mono); min-height:16px; margin-bottom:8px; }
+  .mind-search-status.bad { color:var(--bad); }
+  .mind-said { border-left:2px solid var(--accent); padding:2px 0 2px 10px; margin:0 0 10px; color:var(--ink); font:13px/1.5 var(--sans); overflow-wrap:anywhere; }
+  @media (max-width:900px) {
+    #mind { width:100%; border-left:0; }
+  }
   /* A narrow window stacks the regions in reading order: brain, its index,
      the parts' widgets, the canvas, then the conversation inline. */
   @media (max-width:900px) {
@@ -392,6 +478,17 @@
             <div class="row"><span>відповідь</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
             <div class="row"><span>цей запуск</span><span id="session">…</span></div>
           </div>
+        </section>
+
+        <section class="widget" id="mind-widget">
+          <div class="label">Памʼять</div>
+          <div class="rows">
+            <div class="row"><span>чекають рішення</span><span id="mind-pending">—</span></div>
+            <div class="row"><span>сталі факти</span><span id="mind-confirmed">—</span></div>
+            <div class="row"><span>нагадування</span><span id="mind-reminders">—</span></div>
+            <div class="row"><span>останній огляд</span><span id="mind-review">—</span></div>
+          </div>
+          <div class="keys"><button type="button" class="key wide" id="open-mind" aria-expanded="false">Відкрити памʼять</button></div>
         </section>
 
         <section class="widget" id="hold" hidden>
@@ -460,6 +557,52 @@
     <p class="note">одноразовий, живе 5 хвилин</p>
   </div>
   <p class="note" id="pair-code-note"></p>
+  <div id="features" class="features"></div>
+</aside>
+
+<aside id="mind" aria-hidden="true" aria-labelledby="mind-title">
+  <div class="mind-head">
+    <h2 id="mind-title">Памʼять</h2>
+    <button type="button" class="mind-x" id="mind-close" aria-label="закрити">×</button>
+  </div>
+  <p class="mind-status" id="mind-status" role="status"></p>
+  <div class="mind-chips" id="mind-chips"></div>
+  <div class="mind-tabs" role="tablist" aria-label="Памʼять">
+    <button type="button" class="mind-tab on" id="mind-tab-facts" role="tab" aria-selected="true" aria-controls="mind-panel-facts">Факти</button>
+    <button type="button" class="mind-tab" id="mind-tab-reminders" role="tab" aria-selected="false" aria-controls="mind-panel-reminders" tabindex="-1">Нагадування</button>
+    <button type="button" class="mind-tab" id="mind-tab-journal" role="tab" aria-selected="false" aria-controls="mind-panel-journal" tabindex="-1">Журнал</button>
+    <button type="button" class="mind-tab" id="mind-tab-search" role="tab" aria-selected="false" aria-controls="mind-panel-search" tabindex="-1">Пошук</button>
+    <button type="button" class="mind-tab" id="mind-tab-profile" role="tab" aria-selected="false" aria-controls="mind-panel-profile" tabindex="-1">Профіль</button>
+  </div>
+  <div class="mind-panel" id="mind-panel-facts" role="tabpanel" aria-labelledby="mind-tab-facts"></div>
+  <div class="mind-panel" id="mind-panel-reminders" role="tabpanel" aria-labelledby="mind-tab-reminders" hidden></div>
+  <div class="mind-panel" id="mind-panel-journal" role="tabpanel" aria-labelledby="mind-tab-journal" hidden></div>
+  <div class="mind-panel" id="mind-panel-search" role="tabpanel" aria-labelledby="mind-tab-search" hidden>
+    <form class="mind-search" id="mind-search-form" autocomplete="off">
+      <input id="mind-search-q" type="search" placeholder="що пригадати?" spellcheck="false" autocomplete="off" aria-label="що пригадати">
+      <button type="submit" class="btn">Шукати</button>
+    </form>
+    <p class="mind-search-status" id="mind-search-status" role="status"></p>
+    <p class="mind-said" id="mind-search-said" hidden></p>
+    <div id="mind-search-results"></div>
+  </div>
+  <div class="mind-panel" id="mind-panel-profile" role="tabpanel" aria-labelledby="mind-tab-profile" hidden>
+    <section class="mind-block">
+      <h3>Власник</h3>
+      <textarea id="mind-profile-user" placeholder="напр. Олена, звертайся на «ти»" spellcheck="false"></textarea>
+      <div class="mind-foot"><span class="mind-count" id="mind-count-user">0 / —</span><span class="mind-err" id="mind-err-user"></span><button type="button" class="btn" id="mind-save-user">Зберегти</button></div>
+    </section>
+    <section class="mind-block">
+      <h3>Відкриті нитки</h3>
+      <textarea id="mind-profile-threads" placeholder="що зараз у роботі" spellcheck="false"></textarea>
+      <div class="mind-foot"><span class="mind-count" id="mind-count-threads">0 / —</span><span class="mind-err" id="mind-err-threads"></span><button type="button" class="btn" id="mind-save-threads">Зберегти</button></div>
+    </section>
+    <section class="mind-block">
+      <h3>Цілі</h3>
+      <textarea id="mind-profile-goals" placeholder="чого хочеш цього місяця" spellcheck="false"></textarea>
+      <div class="mind-foot"><span class="mind-count" id="mind-count-goals">0 / —</span><span class="mind-err" id="mind-err-goals"></span><button type="button" class="btn" id="mind-save-goals">Зберегти</button></div>
+    </section>
+  </div>
 </aside>
 
 <div id="pairing" hidden>
@@ -641,10 +784,12 @@ const nameOf = (pid, b) => pid === webPid ? "ця сторінка"
 
 const truth = (b, c) => (b.values && Object.prototype.hasOwnProperty.call(b.values, c.name)) ? b.values[c.name] : c.value;
 
-function controlsFor(pid, b, group = "") {
+function controlsFor(pid, b, group = "", act = null) {
   const list = (Array.isArray(b.ui) ? b.ui : []).filter(c => (c.group || "") === group);
   if (b.state !== "approved" || !list.length) return null;
   const grid = el("div", "keys"), extra = el("div", "actions"), facts = el("p", "pfacts");
+  const send = act || ((name, value) => turn(pid, name, value));
+  const shown = (c, value) => c.unit != null ? `${value} ${c.unit}` : Math.round(Number(value) * 100) + "%";
   for (const c of list) {
     const value = truth(b, c);
     if (c.kind === "toggle") {
@@ -654,15 +799,15 @@ function controlsFor(pid, b, group = "") {
       row.setAttribute("aria-checked", String(Boolean(value)));
       row.title = value ? "увімкнено" : "вимкнено";
       row.append(el("span", "", c.label || c.name), el("i", "sw"));
-      row.onclick = () => turn(pid, c.name, !value);
+      row.onclick = () => send(c.name, !value);
       grid.append(row);
     } else if (c.kind === "slider") {
       const row = el("div", "vol"), range = el("input");
       range.type = "range"; range.min = c.min ?? 0; range.max = c.max ?? 1;
       range.step = c.step ?? 0.05; range.value = value;
-      const pct = el("span", "", Math.round(Number(value) * 100) + "%");
-      range.oninput = () => { pct.textContent = Math.round(Number(range.value) * 100) + "%"; };
-      range.onchange = () => turn(pid, c.name, Number(range.value));
+      const pct = el("span", "", shown(c, value));
+      range.oninput = () => { pct.textContent = shown(c, range.value); };
+      range.onchange = () => send(c.name, Number(range.value));
       row.append(el("span", "", c.label || c.name), range, pct);
       grid.append(row);
     } else if (c.kind === "choice") {
@@ -671,14 +816,14 @@ function controlsFor(pid, b, group = "") {
         const option = el("option", "", o.label || o.value); option.value = o.value; pick.append(option);
       }
       pick.value = value;
-      pick.onchange = () => turn(pid, c.name, pick.value);
+      pick.onchange = () => send(c.name, pick.value);
       row.append(el("span", "", c.label || c.name), pick, el("span", ""));
       grid.append(row);
     } else if (c.kind === "text") {
       const row = el("div", "vol"), field = el("input");
       field.value = value ?? ""; field.placeholder = c.hint || "";
       field.autocomplete = "off"; field.spellcheck = false;
-      field.onchange = () => turn(pid, c.name, field.value.trim());
+      field.onchange = () => send(c.name, field.value.trim());
       row.append(el("span", "", c.label || c.name), field, el("span", ""));
       grid.append(row);
     } else if (c.kind === "label") {
@@ -696,7 +841,7 @@ function controlsFor(pid, b, group = "") {
       }
     } else if (c.kind === "button") {
       const push = el("button", "mini" + (c.action === "stop" ? " yes" : ""), c.label || c.name);
-      push.onclick = () => turn(pid, c.name, true);
+      push.onclick = () => send(c.name, true);
       extra.append(push);
     } else if (c.kind === "log") {
       if (value) grid.append(el("pre", "plog", String(value)));
@@ -837,6 +982,86 @@ const typingIn = node => {
   return Boolean(now && node.contains(now) && /^(INPUT|SELECT|TEXTAREA)$/.test(now.tagName));
 };
 
+/* ── features: the brain's own capabilities, in the settings drawer ── */
+let featureGroups = [], featureList = [];
+const FEATURE_STATE = {running: "працює", off: "вимкнено", error: "збій", ready: "готово"};
+
+function featureCard(f) {
+  const card = el("article", "feature"), top = el("div", "feat-top");
+  top.append(el("b", "feat-name", f.title || f.id));
+  const state = f.state || "off", stateText = FEATURE_STATE[state] || state;
+  if (state !== "ready") top.append(el("span", "fstate " + state, stateText));
+  card.append(top);
+  if (f.about) card.append(el("p", "feat-about", f.about));
+  if (f.note && f.note !== stateText) card.append(el("p", "feat-note", f.note));
+  // The note already states the last run; a label would say it twice.
+  const visible = (f.controls || []).filter(c => c.kind !== "label" || !f.note
+    || !String(f.note).includes(String(c.value ?? "")));
+  const controls = controlsFor("feature:" + f.id,
+    {state: "approved", ui: visible, values: {}}, "",
+    (name, value) => featureTurn(f.id, name, value));
+  if (controls) card.append(controls);
+  return card;
+}
+
+function featureDraw() {
+  const box = $("features");
+  if (!box) return;
+  if (!featureList.length) {
+    box.replaceChildren();
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const frag = document.createDocumentFragment();
+  const seen = new Set();
+  const groups = [...featureGroups].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  for (const g of groups) {
+    const items = featureList
+      .filter(f => f.group === g.id)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (!items.length) continue;
+    seen.add(g.id);
+    frag.append(el("h3", "", g.title || g.id));
+    for (const f of items) frag.append(featureCard(f));
+  }
+  const rest = featureList
+    .filter(f => !seen.has(f.group))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (rest.length) {
+    frag.append(el("h3", "", "Інше"));
+    for (const f of rest) frag.append(featureCard(f));
+  }
+  box.replaceChildren(frag);
+}
+
+function featureLoad() {
+  return api("features").then(answer => {
+    featureGroups = Array.isArray(answer && answer.groups) ? answer.groups : [];
+    featureList = Array.isArray(answer && answer.features) ? answer.features : [];
+    featureDraw();
+  }).catch(() => {
+    featureGroups = [];
+    featureList = [];
+    const box = $("features");
+    if (!box) return;
+    box.hidden = false;
+    box.replaceChildren(el("p", "note featurefail", "не вдалося прочитати"));
+  });
+}
+
+function featureTurn(id, name, value) {
+  return api(`features/${encodeURIComponent(id)}/act`, {method: "POST", body: {name, value}})
+    .then(answer => {
+      if (!answer || !answer.ok || !answer.feature) { featureLoad(); return; }
+      const at = featureList.findIndex(f => f.id === id);
+      if (at < 0) { featureLoad(); return; }
+      featureList[at] = answer.feature;
+      featureDraw();
+    })
+    .catch(() => { featureLoad(); });
+}
+
 function parts(map) {
   const box = $("bodies"), grid = $("partwidgets"), all = Object.entries(map || {});
   if (!all.length) {
@@ -970,6 +1195,7 @@ const refresh = () => api("state").then(s => {
   born = s.session.started;
   state = s; phase = s.phase; voice = voiceOf(s);
   show(); vitals(s); tasks(s.tasks, s.permission, s.question); parts(s.bodies);
+  mindSummary();
 });
 
 /* the canvas: one screen of widgets, changed in place */
@@ -1357,8 +1583,363 @@ else {
   };
 }
 
+/* ── memory: a summary in the pult, the whole of it in a drawer ── */
+let mind = null, mindOpen = false, mindTimer = null, mindSeq = 0;
+let mindTab = "facts", mindJournalSeq = 0, mindSearchSeq = 0;
+const mindDirty = {user: false, threads: false, goals: false};
+const MIND_PROFILE = ["user", "threads", "goals"];
+const MIND_TABS = ["facts", "reminders", "journal", "search", "profile"];
+const MIND_SOURCE = {
+  legacy: "зі старої памʼяті",
+  consolidated: "зі слів",
+  user_confirmed: "ти підтвердив",
+  user_said: "ти сказав",
+  model_inferred: "висновок огляду",
+  tool_output: "з інструмента",
+};
+
+const mindSource = v => MIND_SOURCE[v] || (v ? String(v) : "—");
+const mindDate = sec => {
+  const d = new Date(Number(sec) * 1000);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleDateString("uk-UA", {day: "2-digit", month: "2-digit", year: "numeric"})
+    : "—";
+};
+const mindTime = sec => {
+  const d = new Date(Number(sec) * 1000);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleString("uk-UA", {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"})
+    : "—";
+};
+const mindIn = sec => {
+  const diff = Number(sec) - Date.now() / 1000;
+  if (!Number.isFinite(diff)) return "";
+  if (diff <= 0) return "прострочено";
+  if (diff < 60) return "менш ніж за хвилину";
+  if (diff < 3600) return "через " + Math.round(diff / 60) + " хв";
+  if (diff < 86400) return "через " + Math.round(diff / 3600) + " год";
+  return "через " + Math.round(diff / 86400) + " дн";
+};
+const mindReview = v => {
+  if (!v) return "ще не було";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+  return m ? m[3] + "." + m[2] : String(v);
+};
+const mindStamp = v => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleString("uk-UA", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})
+    : "—";
+};
+
+function mindPaintSummary(d) {
+  const c = (d && d.counts) || {};
+  $("mind-pending").textContent = c.pending != null ? c.pending : "—";
+  $("mind-pending").className = c.pending ? "warn" : "";
+  $("mind-confirmed").textContent = c.confirmed != null ? c.confirmed : "—";
+  $("mind-reminders").textContent = c.reminders != null ? c.reminders : "—";
+  $("mind-review").textContent = d ? mindReview(d.review && d.review.last) : "—";
+}
+function mindSummary() {
+  return api("mind").then(d => { mind = d; mindPaintSummary(d); }).catch(() => {});
+}
+function mindChips(d) {
+  const c = (d && d.counts) || {};
+  const chip = (label, value) => {
+    const e = el("span", "mind-chip");
+    e.append(document.createTextNode(label + " "), el("b", "", value == null ? "—" : String(value)));
+    return e;
+  };
+  $("mind-chips").replaceChildren(
+    chip("чекають рішення", c.pending),
+    chip("сталі факти", c.confirmed),
+    chip("нагадування", c.reminders),
+    chip("огляд", mindReview(d && d.review && d.review.last)),
+    chip("зведено", mindStamp(d && d.consolidation && d.consolidation.last)),
+  );
+}
+
+function mindSec(title, count) {
+  const e = el("div", "mind-sec");
+  e.append(el("b", "", title));
+  if (count != null) e.append(el("span", "", String(count)));
+  return e;
+}
+function mindAction(button, path, opts, err) {
+  button.disabled = true;
+  err.textContent = "";
+  api(path, opts)
+    .then(() => { mindLoad(true); mindSummary(); })
+    .catch(() => { button.disabled = false; err.textContent = "не вийшло — спробуй ще"; });
+}
+function mindFact(f, pending) {
+  const card = el("div", "mind-fact" + (pending ? " pending" : ""));
+  card.append(el("p", "", f.text || ""));
+  const meta = el("div", "mind-meta");
+  meta.append(el("span", "", mindSource(f.source)));
+  if (typeof f.confidence === "number") meta.append(el("span", "", "впевненість " + Math.round(f.confidence * 100) + "%"));
+  const at = f.valid_from || f.created_at;
+  if (at) meta.append(el("span", "", mindDate(at)));
+  card.append(meta);
+  const actions = el("div", "mind-actions");
+  const err = el("span", "mind-err", "");
+  if (pending) {
+    const yes = el("button", "mini yes", "Підтвердити");
+    yes.type = "button";
+    yes.onclick = () => mindAction(yes, "mind/facts/" + f.id + "/confirm", {method: "POST"}, err);
+    const no = el("button", "mini", "Відхилити");
+    no.type = "button";
+    no.onclick = () => mindAction(no, "mind/facts/" + f.id + "/reject", {method: "POST"}, err);
+    actions.append(yes, no, err);
+  } else {
+    const forget = el("button", "mini", "Забути");
+    forget.type = "button";
+    forget.onclick = () => {
+      if (!window.confirm("Забути цей факт?")) return;
+      mindAction(forget, "mind/facts/" + f.id + "/reject", {method: "POST"}, err);
+    };
+    actions.append(forget, err);
+  }
+  card.append(actions);
+  return card;
+}
+function mindFacts(d) {
+  const facts = (d && d.facts) || {};
+  const pending = facts.pending || [], confirmed = facts.confirmed || [];
+  const box = $("mind-panel-facts");
+  box.replaceChildren(mindSec("Чекають рішення", pending.length));
+  if (!pending.length) box.append(el("p", "mind-empty", "нічого не чекає рішення."));
+  else for (const f of pending) box.append(mindFact(f, true));
+  box.append(mindSec("Сталі факти", confirmed.length));
+  if (!confirmed.length) box.append(el("p", "mind-empty", "сталих фактів ще немає."));
+  else for (const f of confirmed) box.append(mindFact(f, false));
+}
+function mindReminder(r) {
+  const card = el("div", "mind-reminder");
+  card.append(el("p", "", r.what || ""));
+  const meta = el("div", "mind-meta");
+  if (r.not_before) {
+    meta.append(el("span", "", mindTime(r.not_before)));
+    meta.append(el("span", "", mindIn(r.not_before)));
+  }
+  card.append(meta);
+  const actions = el("div", "mind-actions");
+  const err = el("span", "mind-err", "");
+  const cancel = el("button", "mini", "Скасувати");
+  cancel.type = "button";
+  cancel.onclick = () => mindAction(cancel, "mind/reminders/" + r.id + "/cancel", {method: "POST"}, err);
+  actions.append(cancel, err);
+  card.append(actions);
+  return card;
+}
+function mindReminders(d) {
+  const list = (d && d.reminders) || [];
+  const box = $("mind-panel-reminders");
+  box.replaceChildren(mindSec("Нагадування", list.length));
+  if (!list.length) {
+    const empty = el("div", "mind-empty");
+    empty.append(el("p", "", "нічого не нагадувати."));
+    empty.append(el("p", "", "скажи «нагадай…», і воно з'явиться тут."));
+    box.append(empty);
+    return;
+  }
+  for (const r of list) box.append(mindReminder(r));
+}
+function mindCount(key, limit) {
+  const ta = $("mind-profile-" + key), out = $("mind-count-" + key);
+  if (!ta || !out) return;
+  const n = ta.value.length;
+  out.textContent = n + " / " + (limit == null ? "—" : limit);
+  out.classList.toggle("over", limit != null && n > limit);
+}
+function mindProfile(d) {
+  const p = (d && d.profile) || {};
+  const blocks = p.blocks || {}, limits = p.limits || {};
+  for (const key of MIND_PROFILE) {
+    const ta = $("mind-profile-" + key);
+    if (!ta) continue;
+    const limit = limits[key];
+    if (limit != null) ta.maxLength = limit;
+    if (!mindDirty[key] && document.activeElement !== ta) ta.value = blocks[key] || "";
+    mindCount(key, limit);
+  }
+}
+/* One renderer for anything remembered: a journal entry, a search hit. It
+   knows nothing about where the item came from — only its title, when it
+   happened, what it says and the quiet tags beside it. */
+function mindItem(item) {
+  const row = el("div", "mind-item");
+  const top = el("div", "mind-item-top");
+  top.append(el("span", "mind-item-title", item.title || item.kind || "—"));
+  if (item.kind) top.append(el("span", "mind-item-kind", String(item.kind)));
+  top.append(el("span", "mind-item-time", mindStamp(item.at)));
+  row.append(top);
+  if (item.text) row.append(el("p", "mind-item-text", String(item.text)));
+  const meta = (Array.isArray(item.meta) ? item.meta : []).filter(Boolean).map(String);
+  if (meta.length) row.append(el("div", "mind-item-meta", meta.join(" · ")));
+  return row;
+}
+const mindWhen = v => {
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : -Infinity;
+};
+function mindJournalLoad() {
+  if (!mindOpen) return;
+  const box = $("mind-panel-journal");
+  const seq = ++mindJournalSeq;
+  if (!box.childElementCount) box.replaceChildren(el("p", "mind-empty", "читаю журнал…"));
+  api("mind/journal?limit=80").then(d => {
+    if (seq !== mindJournalSeq || mindTab !== "journal") return;
+    const items = ((d && d.items) || []).slice().sort((a, b) => mindWhen(b.at) - mindWhen(a.at));
+    box.replaceChildren(mindSec("Журнал", items.length));
+    if (!items.length) { box.append(el("p", "mind-empty", "журнал порожній.")); return; }
+    for (const item of items) box.append(mindItem(item));
+  }).catch(() => {
+    if (seq !== mindJournalSeq || mindTab !== "journal") return;
+    const fail = el("div", "mind-empty");
+    fail.append(el("p", "mind-err", "не вдалося прочитати журнал."));
+    const retry = el("button", "mini", "Спробувати ще");
+    retry.type = "button";
+    retry.onclick = () => mindJournalLoad();
+    fail.append(retry);
+    box.replaceChildren(mindSec("Журнал"), fail);
+  });
+}
+function mindSearchSubmit(ev) {
+  ev.preventDefault();
+  const q = $("mind-search-q").value.trim();
+  const status = $("mind-search-status"), said = $("mind-search-said");
+  const list = $("mind-search-results");
+  if (!q) {
+    status.className = "mind-search-status bad";
+    status.textContent = "напиши, що пригадати.";
+    return;
+  }
+  const seq = ++mindSearchSeq;
+  status.className = "mind-search-status";
+  status.textContent = "шукаю…";
+  said.hidden = true;
+  said.textContent = "";
+  api("mind/search?q=" + encodeURIComponent(q)).then(d => {
+    if (seq !== mindSearchSeq) return;
+    status.className = "mind-search-status";
+    status.textContent = "";
+    const text = (d && d.said) || "";
+    said.hidden = !text;
+    said.textContent = text;
+    const items = (d && d.items) || [];
+    if (!items.length) { list.replaceChildren(el("p", "mind-empty", "нічого не пригадую.")); return; }
+    list.replaceChildren(...items.map(mindItem));
+  }).catch(() => {
+    if (seq !== mindSearchSeq) return;
+    status.className = "mind-search-status bad";
+    status.textContent = "не вдалося пошукати";
+  });
+}
+function mindShow(tab) {
+  mindTab = tab;
+  for (const t of MIND_TABS) {
+    const on = t === tab;
+    $("mind-tab-" + t).classList.toggle("on", on);
+    $("mind-tab-" + t).setAttribute("aria-selected", on ? "true" : "false");
+    $("mind-tab-" + t).tabIndex = on ? 0 : -1;
+    $("mind-panel-" + t).hidden = !on;
+  }
+  if (tab === "profile" && mind) mindProfile(mind);
+  if (tab === "journal") mindJournalLoad();
+}
+function mindLoad(force) {
+  if (!force && !mindOpen) return Promise.resolve();
+  const seq = ++mindSeq;
+  return api("mind").then(d => {
+    if (seq !== mindSeq) return;
+    mind = d;
+    $("mind-status").textContent = "";
+    $("mind-status").className = "mind-status";
+    mindPaintSummary(d);
+    mindChips(d);
+    mindFacts(d);
+    mindReminders(d);
+    mindProfile(d);
+    if (mindTab === "journal") mindJournalLoad();
+  }).catch(() => {
+    if (seq !== mindSeq) return;
+    $("mind-status").textContent = "памʼять зараз недоступна";
+    $("mind-status").className = "mind-status bad";
+  });
+}
+function mindClose() {
+  const was = mindOpen;
+  mindOpen = false;
+  clearInterval(mindTimer);
+  mindTimer = null;
+  if (was) $("open-mind").focus();
+  $("mind").classList.remove("on");
+  $("mind").setAttribute("aria-hidden", "true");
+  $("open-mind").setAttribute("aria-expanded", "false");
+}
+function mindOpenDrawer() {
+  shut();
+  mindOpen = true;
+  $("mind").classList.add("on");
+  $("mind").setAttribute("aria-hidden", "false");
+  $("veil").classList.add("on");
+  $("open-mind").setAttribute("aria-expanded", "true");
+  mindLoad();
+  clearInterval(mindTimer);
+  mindTimer = setInterval(() => { if (mindOpen) mindLoad(); }, 15000);
+  setTimeout(() => $("mind-close").focus(), 30);
+}
+$("open-mind").onclick = mindOpenDrawer;
+$("mind-close").onclick = () => shut();
+$("mind-search-form").onsubmit = mindSearchSubmit;
+for (const t of MIND_TABS) {
+  $("mind-tab-" + t).onclick = () => mindShow(t);
+  $("mind-tab-" + t).addEventListener("keydown", ev => {
+    if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+    ev.preventDefault();
+    const i = MIND_TABS.indexOf(t);
+    const next = MIND_TABS[(i + (ev.key === "ArrowRight" ? 1 : MIND_TABS.length - 1)) % MIND_TABS.length];
+    mindShow(next);
+    $("mind-tab-" + next).focus();
+  });
+}
+for (const key of MIND_PROFILE) {
+  const ta = $("mind-profile-" + key), save = $("mind-save-" + key), err = $("mind-err-" + key);
+  ta.addEventListener("input", () => {
+    mindDirty[key] = true;
+    err.className = "mind-err";
+    err.textContent = "";
+    const limits = (mind && mind.profile && mind.profile.limits) || {};
+    mindCount(key, limits[key]);
+  });
+  save.onclick = () => {
+    save.disabled = true;
+    err.className = "mind-err";
+    err.textContent = "";
+    api("mind/profile", {method: "PUT", body: {key, text: ta.value}})
+      .then(() => {
+        mindDirty[key] = false;
+        save.disabled = false;
+        err.className = "mind-err ok";
+        err.textContent = "збережено";
+        mindLoad();
+        mindSummary();
+      })
+      .catch(() => {
+        save.disabled = false;
+        err.className = "mind-err";
+        err.textContent = "не вийшло — спробуй ще";
+      });
+  };
+}
+
 /* ── settings ── */
-const shut = () => { for (const id of ["veil", "settings"]) $(id).classList.remove("on"); };
+const shut = () => {
+  mindClose();
+  for (const id of ["veil", "settings"]) $(id).classList.remove("on");
+};
 $("veil").onclick = shut;
 document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); talkOn(false); } });
 function keyRows(have) {
@@ -1441,6 +2022,7 @@ function loadModels(saved) {
   });
 }
 $("open-settings").onclick = () => {
+  shut();
   const m = (state && state.model) || {};
   $("provider").replaceChildren(...(m.providers || []).map(p => new Option(p, p)));
   $("provider").value = m.wanted || m.provider || "";
@@ -1454,7 +2036,7 @@ $("open-settings").onclick = () => {
   };
   $("pair-code-box").hidden = true;
   $("pair-code-note").textContent = "";
-  keys(); $("settings").classList.add("on"); $("veil").classList.add("on");
+  keys(); featureLoad(); $("settings").classList.add("on"); $("veil").classList.add("on");
 };
 $("save-model").onclick = () => {
   const provider = $("provider").value;
@@ -1515,6 +2097,8 @@ stream.onmessage = m => {
   else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
   else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
+  else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
+  else if (e.kind === "feature") { if ($("settings").classList.contains("on")) featureLoad(); }
 
   if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
 };
