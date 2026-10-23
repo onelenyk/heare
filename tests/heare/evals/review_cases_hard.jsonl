@@ -16,5 +16,5 @@
 {"id":"one_word_day","day":"2026-05-01","heard":["Так."],"expect":[],"forbid":[]}
 {"id":"height_number","day":"2026-05-01","heard":["Мій зріст 182 сантиметри."],"expect":[["182"]],"forbid":[]}
 {"id":"morning_routine","day":"2026-05-01","heard":["Я щоранку бігаю п'ять кілометрів."],"expect":[["біга"]],"forbid":[]}
-{"id":"mixed_language_work","day":"2026-05-01","heard":["Я працюю в IT, пишу на Python."],"expect":[["python"]],"forbid":[]}
+{"id":"mixed_language_work","day":"2026-05-01","heard":["Я працюю в IT, пишу на Python."],"expect":[["it"],["python"]],"forbid":[]}
 {"id":"filler_no_fact","day":"2026-05-01","heard":["Е-е... ну... так... не знаю."],"expect":[],"forbid":[]}
