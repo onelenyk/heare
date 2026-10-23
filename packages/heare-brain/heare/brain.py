@@ -127,7 +127,8 @@ class Brain:
         self.core = Core(
             Chat(self.settings),
             memory=self.memory,
-            delegator=Dispatcher(self.settings), prompt=persona.prompt,
+            delegator=Dispatcher(self.settings),
+            prompt=lambda: persona.prompt(self.core.state.around),
             names=names, judge=persona.JUDGE, words=uk,
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
         )

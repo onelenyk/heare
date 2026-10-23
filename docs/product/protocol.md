@@ -21,7 +21,7 @@
 | `heard` | `text`, `addressed` (типово true), `speech_ms` | хід людини |
 | `nothing` | — | це було ніщо (кашель, подих) |
 | `overheard` | `text` | сказано не до мене |
-| `note` | `key`, `value` | факт про обстановку |
+| `note` | `key`, `value` | факт про обстановку. Якщо `value` — `{text, until, label}`, його бачить модель у блоці «Зараз» до `until` (епоха, сек); інші значення лишаються лише для машини |
 | `state` | `values` | тіло звітує, що з його важелів вийшло |
 
 `POST /api/input/said_over  {v, channel, text, speech_ms, long}` →
