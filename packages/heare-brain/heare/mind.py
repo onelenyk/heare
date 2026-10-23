@@ -8,6 +8,7 @@ write is malformed.
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,9 @@ if TYPE_CHECKING:
 LIMITS = {"user": USER_LIMIT, "threads": THREADS_LIMIT, "goals": GOALS_LIMIT}
 # The page shows a living sample, not an archive. Counts stay full.
 RECENT = 50
+# An event id is what Journal.append mints: ev_ and 32 hex digits.
+_EVENT_ID = re.compile(r"ev_[0-9a-f]{32}")
+FORGET_LIMIT = 50
 
 _JOURNAL_TITLES = {
     "heard": "почуто",
@@ -176,6 +180,18 @@ class Mind:
             raise RuntimeError("memory is not open here")
         said, items = await self._memory.look_up(query, when)
         return {"said": said, "items": items}
+
+    async def forget(self, ids: object) -> int:
+        if self._memory is None:
+            raise RuntimeError("memory is not open here")
+        if not isinstance(ids, list) or not ids:
+            raise ValueError("ids must be a list of journal event ids")
+        if len(ids) > FORGET_LIMIT:
+            raise ValueError("too many ids at once")
+        checked = [i for i in ids if isinstance(i, str) and _EVENT_ID.fullmatch(i)]
+        if len(checked) != len(ids):
+            raise ValueError("ids must be a list of journal event ids")
+        return await self._memory.forget(checked)
 
     def confirm(self, fact_id: int) -> bool:
         return bool(self._facts.confirm(fact_id))

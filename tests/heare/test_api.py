@@ -1486,6 +1486,117 @@ async def test_search_returns_the_spoken_answer_and_the_same_fragments(
     await _close(room, client)
 
 
+async def test_a_forgotten_event_leaves_the_journal_and_the_search(
+        tmp_path, monkeypatch):
+    from datetime import datetime as real_datetime
+
+    from heare.engine import Intents
+    from heare.memory import persist
+    from heare.memory import book as book_module
+    from heare.memory.book import Book
+    from heare.memory.facts import SQLiteFacts
+    from heare.memory.journal import Journal
+
+    old = real_datetime(2026, 10, 20, 9, 0, 0).timestamp()
+
+    class Clock:
+        @staticmethod
+        def time() -> float:
+            return old
+
+    monkeypatch.setattr(persist, "time", Clock)
+
+    class Fixed(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 20, 12, 0, 0)
+
+    monkeypatch.setattr(book_module, "datetime", Fixed)
+
+    journal = Journal(tmp_path / "events")
+    book = Book(
+        tmp_path / "heare.db", names=("дока",),
+        profile_dir=tmp_path / "memory", journal=journal)
+    try:
+        await book.keep("user", "Мій план на відпустку — Карпати.", "text")
+        heard = next(e for e in journal.events() if e["kind"] == "heard")
+        facts = SQLiteFacts(tmp_path / "facts.db")
+        intents = Intents(tmp_path / "intents.json")
+        room, client, auth, _ = await _open(
+            tmp_path, facts=facts, intents=intents, journal=journal, memory=book)
+
+        found = await (await client.get(
+            "/api/mind/search", params={"q": "відпустка"}, headers=auth)).json()
+        assert found["items"]
+
+        answer = await client.post(
+            "/api/mind/journal/forget", json={"ids": [heard["id"]]},
+            headers=auth)
+        assert answer.status == 200
+        body = await answer.json()
+        assert body["ok"] is True and body["forgotten"] >= 1
+
+        items = (await (await client.get(
+            "/api/mind/journal", headers=auth)).json())["items"]
+        assert heard["id"] not in [item["id"] for item in items]
+        assert "forget" in [item["kind"] for item in items]
+
+        found = await (await client.get(
+            "/api/mind/search", params={"q": "відпустка"}, headers=auth)).json()
+        assert all("відпустка" not in item["text"] for item in found["items"])
+        await _close(room, client)
+    finally:
+        book.close()
+
+
+async def test_forget_refuses_bad_bodies(tmp_path):
+    from heare.engine import Intents
+    from heare.memory.book import Book
+    from heare.memory.facts import SQLiteFacts
+    from heare.memory.journal import Journal
+
+    journal = Journal(tmp_path / "events")
+    book = Book(
+        tmp_path / "heare.db", names=("дока",),
+        profile_dir=tmp_path / "memory", journal=journal)
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    room, client, auth, _ = await _open(
+        tmp_path, facts=facts, intents=intents, journal=journal, memory=book)
+    valid = "ev_" + "0" * 32
+
+    async def status(payload: object) -> int:
+        response = await client.post(
+            "/api/mind/journal/forget", json=payload, headers=auth)
+        return response.status
+
+    try:
+        assert await status({}) == 400
+        assert await status({"ids": []}) == 400
+        assert await status({"ids": valid}) == 400
+        assert await status({"ids": ["x"]}) == 400
+        assert await status({"ids": [valid] * 51}) == 400
+        assert await status({"ids": [valid]}) == 200
+    finally:
+        await _close(room, client)
+        book.close()
+
+
+async def test_forget_needs_the_memory_store(tmp_path):
+    from heare.engine import Intents
+    from heare.memory.facts import SQLiteFacts
+
+    facts = SQLiteFacts(tmp_path / "facts.db")
+    intents = Intents(tmp_path / "intents.json")
+    room, client, auth, _ = await _open(tmp_path, facts=facts, intents=intents)
+
+    answer = await client.post(
+        "/api/mind/journal/forget", json={"ids": ["ev_" + "0" * 32]},
+        headers=auth)
+    assert answer.status == 503 and "memory" in await answer.text()
+    await _close(room, client)
+
+
 async def test_features_are_listed_and_acted_on_through_the_door(tmp_path):
     from heare.features import Feature, Features
 

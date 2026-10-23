@@ -854,6 +854,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPServiceUnavailable(text=str(exc)) from None
         return web.json_response(answer)
 
+    async def mind_forget(request: web.Request) -> web.Response:
+        data = await body(request)
+        try:
+            forgotten = await hand().forget(data.get("ids"))
+        except ValueError as why:
+            raise web.HTTPBadRequest(text=str(why)) from None
+        except RuntimeError as exc:
+            raise web.HTTPServiceUnavailable(text=str(exc)) from None
+        core.state.emit("mind", what="journal", action="forgotten",
+                        count=len(data["ids"]))
+        return web.json_response({"ok": True, "forgotten": forgotten})
+
     # -- screens ----------------------------------------------------------
 
     def screen_path(request: web.Request) -> Path:
@@ -929,6 +941,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/mind", mind_snapshot),
         web.get("/api/mind/journal", mind_journal),
         web.get("/api/mind/search", mind_search),
+        web.post("/api/mind/journal/forget", mind_forget),
         web.post("/api/mind/facts/{id:\\d+}/confirm", confirm_fact),
         web.post("/api/mind/facts/{id:\\d+}/reject", reject_fact),
         web.post("/api/mind/reminders/{id:\\d+}/cancel", cancel_reminder),
