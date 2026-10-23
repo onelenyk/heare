@@ -1794,7 +1794,22 @@ function mindJournalLoad() {
     const items = ((d && d.items) || []).slice().sort((a, b) => mindWhen(b.at) - mindWhen(a.at));
     box.replaceChildren(mindSec("Журнал", items.length));
     if (!items.length) { box.append(el("p", "mind-empty", "журнал порожній.")); return; }
-    for (const item of items) box.append(mindItem(item));
+    for (const item of items) {
+      const row = mindItem(item);
+      if (item.kind === "heard" || item.kind === "said") {
+        const actions = el("div", "mind-actions");
+        const err = el("span", "mind-err", "");
+        const forget = el("button", "mini", "Забути");
+        forget.type = "button";
+        forget.onclick = () => {
+          if (!window.confirm("Забути цей запис? Його не буде ні в журналі, ні в пошуку.")) return;
+          mindAction(forget, "mind/journal/forget", {method: "POST", body: {ids: [item.id]}}, err);
+        };
+        actions.append(forget, err);
+        row.append(actions);
+      }
+      box.append(row);
+    }
   }).catch(() => {
     if (seq !== mindJournalSeq || mindTab !== "journal") return;
     const fail = el("div", "mind-empty");

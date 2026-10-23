@@ -63,6 +63,17 @@ def test_the_mind_drawer_asks_for_journal_and_search():
     assert 'api("mind/search?q=" + encodeURIComponent(q))' in SCRIPT
 
 
+def test_the_journal_can_forget_an_entry_with_a_confirm():
+    journal = SCRIPT.split("function mindJournalLoad")[1].split("function mindSearchSubmit")[0]
+    assert 'mindAction(forget, "mind/journal/forget"' in journal
+    assert 'window.confirm("Забути цей запис? Його не буде ні в журналі, ні в пошуку.")' in journal
+    assert 'item.kind === "heard" || item.kind === "said"' in journal
+    # The search tab shares mindItem, and its items carry no journal id to forget.
+    item = SCRIPT.split("function mindItem")[1].split("const mindWhen")[0]
+    assert "mind/journal/forget" not in item
+    assert "window.confirm" not in item
+
+
 def test_journal_and_search_say_what_happened():
     # Empty and failed states live in their panels, never in an alert.
     assert "журнал порожній." in SCRIPT
