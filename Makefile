@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test coverage typecheck lint format check quality eval-review clean app live rollback releases release
+.PHONY: help brain chat voice keeper test coverage typecheck lint format check quality eval-review fact-e2e clean app live rollback releases release
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -15,6 +15,7 @@ help:
 	@echo "  make check     - lint + test"
 	@echo "  make quality   - check + coverage + typecheck"
 	@echo "  make eval-review - live quality eval for the daily review (manual, paid)"
+	@echo "  make fact-e2e  - live fact loop end to end (manual, paid)"
 	@echo "  make clean     - caches and bytecode"
 	@echo "  make app       - dist/heare.app and dist/heare.dmg: the menubar app, Python inside"
 	@echo ""
@@ -58,6 +59,10 @@ quality: check coverage typecheck
 # for the daily review prompt.
 eval-review:
 	uv run python scripts/review_eval.py
+
+# Not part of check: two real model calls, real cost, a temporary state root.
+fact-e2e:
+	uv run python scripts/fact_e2e.py
 
 clean:
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
