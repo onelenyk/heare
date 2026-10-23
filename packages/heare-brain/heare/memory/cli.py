@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from heare.memory.journal import Journal
+from heare.memory.migrate import migrate
 from heare.memory.profile import FILES, Profile
 
 EMPTY = "(порожній профіль)"
@@ -40,6 +41,17 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--text", help="the block's text (default: stdin)")
     clear = commands.add_parser("clear", help="empty a block")
     clear.add_argument("key")
+    migration = commands.add_parser("migrate", help="import the old memories table")
+    migration.add_argument(
+        "--from", dest="legacy", required=True, type=Path,
+        help="the old heare.db holding memories",
+    )
+    migration.add_argument(
+        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        help="the fact store to fill",
+    )
+    migration.add_argument("--include-archived", action="store_true")
+    migration.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -51,6 +63,17 @@ def _text(args: argparse.Namespace) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "migrate":
+        from heare.memory.facts import SQLiteFacts
+
+        report = migrate(
+            args.legacy,
+            SQLiteFacts(args.db),
+            include_archived=args.include_archived,
+            dry_run=args.dry_run,
+        )
+        print(report)
+        return 0
     profile = Profile(args.root)
     if args.command == "show":
         print(profile.render() or EMPTY)
