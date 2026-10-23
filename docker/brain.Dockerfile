@@ -12,8 +12,9 @@ WORKDIR /src
 COPY packages/heare-core packages/heare-core
 COPY packages/heare-reach packages/heare-reach
 COPY packages/heare-brain packages/heare-brain
+COPY packages/heare-memory packages/heare-memory
 RUN pip wheel --no-cache-dir --no-deps -w /wheels \
-    packages/heare-core packages/heare-reach packages/heare-brain
+    packages/heare-core packages/heare-reach packages/heare-memory packages/heare-brain
 
 FROM python:3.12-slim
 RUN useradd --create-home --uid 1000 heare

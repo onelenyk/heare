@@ -17,6 +17,7 @@ members = [
     "heare-eyes",
     "heare-hands",
     "heare-keeper",
+    "heare-memory",
     "heare-reach",
     "heare-voice",
     "heare-workspace",
@@ -561,8 +562,8 @@ version = "0.1.0"
 source = { editable = "packages/heare-brain" }
 dependencies = [
     { name = "aiohttp" },
-    { name = "aiosqlite" },
     { name = "heare-core" },
+    { name = "heare-memory" },
     { name = "heare-reach" },
     { name = "httpx" },
     { name = "keyring" },
@@ -571,8 +572,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.5" },
-    { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "heare-core", editable = "packages/heare-core" },
+    { name = "heare-memory", editable = "packages/heare-memory" },
     { name = "heare-reach", editable = "packages/heare-reach" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "keyring", specifier = ">=25.7.0" },
@@ -656,6 +657,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "heare-memory"
+version = "0.1.0"
+source = { editable = "packages/heare-memory" }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "heare-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20.0" },
+    { name = "heare-core", editable = "packages/heare-core" },
+]
+
+[[package]]
 name = "heare-reach"
 version = "0.1.0"
 source = { editable = "packages/heare-reach" }
@@ -702,6 +718,7 @@ dependencies = [
     { name = "heare-eyes" },
     { name = "heare-hands" },
     { name = "heare-keeper" },
+    { name = "heare-memory" },
     { name = "heare-reach" },
     { name = "heare-voice" },
 ]
@@ -723,6 +740,7 @@ requires-dist = [
     { name = "heare-eyes", editable = "packages/heare-eyes" },
     { name = "heare-hands", editable = "packages/heare-hands" },
     { name = "heare-keeper", editable = "packages/heare-keeper" },
+    { name = "heare-memory", editable = "packages/heare-memory" },
     { name = "heare-reach", editable = "packages/heare-reach" },
     { name = "heare-voice", editable = "packages/heare-voice" },
 ]

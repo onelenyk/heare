@@ -42,7 +42,7 @@
 ## Стан сьогодні
 
 Мозок — **окремий процес** (`packages/heare-brain/heare/brain.py`): `packages/heare-core/heare/core/` +
-`packages/heare-brain/heare/memory/` + `packages/heare-brain/heare/model/` + `packages/heare-brain/heare/api/` + `packages/heare-brain/heare/engine/`; пам'ять —
+`packages/heare-memory/heare/memory/` + `packages/heare-brain/heare/model/` + `packages/heare-brain/heare/api/` + `packages/heare-brain/heare/engine/`; пам'ять —
 локальний SQLite. Тіла приходять через двері — руки, чат, сторінка, голос,
 очі — і мозок не тримає жодного чужого процесу.
 

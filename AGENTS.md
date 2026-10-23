@@ -2,11 +2,11 @@
 
 macOS voice assistant: it listens, decides when to answer, and acts
 through an agent (opencode over ACP) without blocking the conversation.
-The app is eight distributions under `packages/` sharing one `heare`
+The app is nine distributions under `packages/` sharing one `heare`
 namespace; the old app that lived in `src/` was removed on
 18 October 2026 and its last commit is tagged `legacy-app`.
 
-## THE APP (`packages/`, eight distributions)
+## THE APP (`packages/`, nine distributions)
 
 One core and five kinds of part: **input, output, model, memory,
 executor** (`packages/heare-core/heare/core/forms.py`). A channel (voice, text) is an input,
@@ -81,7 +81,7 @@ model — and are excluded by default.
 | Intents, reminders, moments, delivery | `packages/heare-brain/heare/engine/` |
 | What the model sees: persona, laws, turn budget | `packages/heare-brain/heare/prompt/` |
 | What the model can call: recall, delegate, remind | `packages/heare-brain/heare/tools/` |
-| Profile, journal, recall, memory CLI | `packages/heare-brain/heare/memory/` |
+| Profile, journal, recall, memory CLI | `packages/heare-memory/heare/memory/` |
 | The plan | `docs/product/README.md`; what we do now: `docs/product/clock.md`; memory and activity: `docs/product/memory.md` |
 | The laws | `packages/heare-core/heare/laws.py`, `docs/laws.md` |
 

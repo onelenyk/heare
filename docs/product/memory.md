@@ -28,7 +28,7 @@ Core — це **мова розмови**, а не місце для памʼя�
 | `heare-core/heare/` (листки) | `config`, `laws`, `keys`, `part`, `lifeline`, `pairing` | знати про частини |
 | `heare-brain/heare/api/` | двері, реєстр частин, сторінка, канвас | вирішувати розмову |
 | `heare-brain/heare/prompt/` | персона, `voice_rules.txt`, бюджет ходу | памʼять, інструменти, мережу |
-| `heare-brain/heare/memory/` | `Book`, журнал, профіль, пошук, `heare-memory` CLI | вирішувати, коли говорити |
+| `heare-memory/heare/memory/` | `Book`, журнал, профіль, пошук, `heare-memory` CLI | вирішувати, коли говорити |
 | `heare-brain/heare/engine/` | `Intent`, `Intents`, нагадування, моменти, доставка | модель, памʼять, HTTP |
 | `heare-brain/heare/tools/` | каталог здібностей, схеми, обробники, порти | імпортувати `engine`, `memory`, `api`, `model` |
 | `heare-brain/heare/model/` | `Chat`, провайдери, `Dispatcher` | памʼять, двигун |

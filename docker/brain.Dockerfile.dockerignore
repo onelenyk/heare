@@ -2,5 +2,6 @@
 *
 !packages/heare-core
 !packages/heare-reach
+!packages/heare-memory
 !packages/heare-brain
 **/__pycache__
