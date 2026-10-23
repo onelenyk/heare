@@ -66,6 +66,10 @@ DEFAULTS = {
     "quiet_from": "22:00",
     "quiet_to": "08:00",
     "unsolicited_per_day": 1,
+    # A daily pass over yesterday's conversation, in local time. It only
+    # proposes facts; the owner still confirms them.
+    "review_enabled": True,
+    "review_hour": 4,
 }
 
 

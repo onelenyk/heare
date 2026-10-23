@@ -15,6 +15,8 @@ import argparse
 import asyncio
 import logging
 import sys
+import time as clock
+from datetime import date, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -26,12 +28,23 @@ from heare.config import Settings
 from heare.core import Core
 from heare.engine import Engine, Intents
 from heare.language import uk
+from heare.memory.contracts import ReviewReport
 
 logger = logging.getLogger("heare.brain")
 
 # How often a pass turns heard words into proposed facts. The first one
 # comes after the interval, never during startup.
 CONSOLIDATE_EVERY_S = 5 * 60.0
+
+
+def next_review_at(now: float, hour: int) -> float:
+    """The next local ``hour:00``; today's if it is still ahead."""
+    hour = int(hour) % 24
+    moment = datetime.fromtimestamp(now)
+    when = datetime.combine(moment.date(), time(hour=hour))
+    if when.timestamp() <= now:
+        when += timedelta(days=1)
+    return when.timestamp()
 
 
 def model_info(settings: Settings) -> dict:
@@ -115,6 +128,27 @@ class Brain:
             except Exception:
                 logger.exception("consolidation failed (non-fatal)")
 
+    async def review_now(self, day: date | None = None) -> ReviewReport:
+        from heare.memory.review import review_day
+
+        if day is None:
+            day = date.today() - timedelta(days=1)
+        return await review_day(
+            self.facts, self.journal, self.core.model, day=day
+        )
+
+    async def _review(self) -> None:
+        while True:
+            if not bool(self.settings.review_enabled):
+                return
+            when = next_review_at(clock.time(), int(self.settings.review_hour))
+            await asyncio.sleep(max(1.0, when - clock.time()))
+            report = await self.review_now()
+            if report.error:
+                logger.warning("daily review failed: %s", report.error)
+            elif report.added:
+                logger.info("daily review added %d fact(s)", report.added)
+
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""
         from heare.api.server import serve
@@ -128,18 +162,24 @@ class Brain:
         print(f"мозок на http://127.0.0.1:{self.settings.api_port}/", file=sys.stderr)
         await asyncio.gather(
             self.core.run(), self.engine.run(), self.journal.run(self.core.state),
-            self._consolidate(),
+            self._consolidate(), self._review(),
         )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="heare-brain")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "code"])
+    parser.add_argument(
+        "command", nargs="?", default="run",
+        choices=["run", "code", "review"],
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     if args.command == "code":
         print(codes.make(Path(Settings().pair_codes_file)))
+        return 0
+    if args.command == "review":
+        print(asyncio.run(Brain().review_now()))
         return 0
     lifeline.watch()
     try:

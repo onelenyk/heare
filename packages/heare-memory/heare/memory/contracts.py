@@ -95,6 +95,16 @@ class ConsolidationReport:
 
 
 @dataclass(frozen=True)
+class ReviewReport:
+    """One day read by the model: what it saw, proposed, already knew."""
+
+    considered: int = 0
+    added: int = 0
+    skipped: int = 0
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class MigrationReport:
     """One pass over the old ``memories`` table."""
 
