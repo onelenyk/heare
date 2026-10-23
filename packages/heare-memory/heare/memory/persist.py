@@ -382,6 +382,35 @@ class SpinePersistence:
             )
             self._conn.commit()
 
+    def log_system_turn(self, text: str, source: str = "engine") -> int:
+        """A message the assistant sent on its own — a reminder, a permission
+        request — as a turn of its own, with no user side.
+
+        It must be visible in ``recent_exchanges`` (the page and the live
+        checks read that), but it must not be attached to the previous
+        user turn: a reminder is not the answer to what the person said
+        ten minutes ago.
+        """
+        with self._lock:
+            now = time.time()
+            conversation_id = self._active_conversation_id()
+            cur = self._conn.execute(
+                "INSERT INTO turns "
+                "(conversation_id, start_ts, end_ts, aggregated_text, "
+                "utterance_count) VALUES (?, ?, ?, ?, ?)",
+                (conversation_id, now, now, "", 0),
+            )
+            turn_id = cur.lastrowid
+            assert turn_id is not None
+            self._conn.execute(
+                "INSERT INTO transcripts "
+                "(ts, text, mode, agent_spoken, turn_id, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (now, text, "spine", 1, turn_id, _normalize_source(source)),
+            )
+            self._conn.commit()
+            return turn_id
+
     def last_turn_times(self) -> dict[str, float | None]:
         """When anything was last said, and when the user last said it.
 

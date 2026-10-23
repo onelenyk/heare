@@ -89,6 +89,10 @@ class Book:
             await asyncio.to_thread(
                 self._store.log_agent_reply, text, turn, source
             )
+        else:
+            await asyncio.to_thread(
+                self._store.log_system_turn, text, source
+            )
 
     async def recall(self, query: str, when: str = "") -> str:
         """Off the event loop: synchronous SQLite over thousands of rows."""

@@ -63,16 +63,18 @@ async def test_an_assistant_only_message_does_not_extend_a_previous_turn(tmp_pat
         await book.keep("assistant", "Нагадування: пити воду", "engine")
 
         exchanges = await book.recent(5)
-        assert len(exchanges) == 1
+        assert len(exchanges) == 2
         assert exchanges[0]["user"].strip() == "привіт"
         assert exchanges[0]["agent"].strip() == "вітаю"
+        assert exchanges[1]["user"] is None
+        assert exchanges[1]["agent"].strip() == "Нагадування: пити воду"
 
         await book.keep("user", "ще", "text")
         await book.keep("assistant", "звісно", "text")
 
         exchanges = await book.recent(5)
-        assert len(exchanges) == 2
-        assert exchanges[1]["user"].strip() == "ще"
-        assert exchanges[1]["agent"].strip() == "звісно"
+        assert len(exchanges) == 3
+        assert exchanges[2]["user"].strip() == "ще"
+        assert exchanges[2]["agent"].strip() == "звісно"
     finally:
         book.close()
