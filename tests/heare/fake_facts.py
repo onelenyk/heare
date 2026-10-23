@@ -23,6 +23,9 @@ class FakeFacts:
         self._next += 1
         return stored.id
 
+    def has_source(self, source_id: str) -> bool:
+        return source_id in self._by_source
+
     def get(self, fact_id: int) -> Fact | None:
         return self._by_id.get(fact_id)
 
