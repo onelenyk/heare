@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import stat
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
+from heare.memory.book import Book
 from heare.memory.contracts import CONFIRMED, PENDING, REJECTED, Fact
 from heare.memory.facts import SQLiteFacts
 
@@ -271,6 +275,42 @@ def test_a_new_database_is_private(tmp_path):
     SQLiteFacts(path)
 
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_a_database_created_by_the_book_is_private(tmp_path):
+    path = tmp_path / "heare.db"
+
+    book = Book(path, profile_dir=tmp_path / "memory")
+    book.close()
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_add_races_safely_on_the_same_source(tmp_path):
+    store = SQLiteFacts(tmp_path / "heare.db")
+    fact = _fact(source_ids=("event-1",))
+    start = threading.Barrier(2)
+
+    def add(_: int) -> int:
+        start.wait()
+        return store.add(fact)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ids = list(pool.map(add, range(2)))
+
+    assert ids[0] == ids[1]
+    assert [fact.id for fact in store.current(include_pending=True)] == [ids[0]]
+
+
+def test_add_accepts_repeated_source_ids_within_one_fact(tmp_path):
+    store = SQLiteFacts(tmp_path / "heare.db")
+
+    fact_id = store.add(_fact(source_ids=("same", "same")))
+
+    assert store.has_source("same")
+    stored = store.get(fact_id)
+    assert stored is not None
+    assert stored.source_ids == ("same", "same")
 
 
 def test_default_path_is_under_the_configured_home(tmp_path, monkeypatch):

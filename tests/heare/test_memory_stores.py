@@ -53,3 +53,26 @@ async def test_one_turn_reaches_both_stores(tmp_path):
             task.cancel()
         await asyncio.gather(*running, return_exceptions=True)
         book.close()
+
+
+async def test_an_assistant_only_message_does_not_extend_a_previous_turn(tmp_path):
+    book = Book(tmp_path / "heare.db", profile_dir=tmp_path / "memory")
+    try:
+        await book.keep("user", "привіт", "text")
+        await book.keep("assistant", "вітаю", "text")
+        await book.keep("assistant", "Нагадування: пити воду", "engine")
+
+        exchanges = await book.recent(5)
+        assert len(exchanges) == 1
+        assert exchanges[0]["user"].strip() == "привіт"
+        assert exchanges[0]["agent"].strip() == "вітаю"
+
+        await book.keep("user", "ще", "text")
+        await book.keep("assistant", "звісно", "text")
+
+        exchanges = await book.recent(5)
+        assert len(exchanges) == 2
+        assert exchanges[1]["user"].strip() == "ще"
+        assert exchanges[1]["agent"].strip() == "звісно"
+    finally:
+        book.close()

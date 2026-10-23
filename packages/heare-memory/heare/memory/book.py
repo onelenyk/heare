@@ -84,8 +84,10 @@ class Book:
                 self._store.log_user_turn, text, 1, source
             )
         elif self._turn is not None:
+            turn = self._turn
+            self._turn = None
             await asyncio.to_thread(
-                self._store.log_agent_reply, text, self._turn, source
+                self._store.log_agent_reply, text, turn, source
             )
 
     async def recall(self, query: str, when: str = "") -> str:

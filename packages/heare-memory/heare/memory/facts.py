@@ -148,20 +148,22 @@ class SQLiteFacts:
             db_path = Path.home() / ".heare" / "heare.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        created = not self.db_path.exists()
         with self._connect() as conn:
             had_fts = self._has_table(conn, "facts_fts")
             conn.executescript(SCHEMA)
             conn.commit()
             self.fts_ready = self._ensure_fts(conn, had_fts)
-        if created:
-            try:
-                self.db_path.chmod(0o600)
-            except OSError:
-                # A file we cannot chmod is still one we can use; the
-                # permission is a courtesy on a shared machine, not a
-                # reason to refuse to remember.
-                pass
+        # Not only when this instance created the file: Book's
+        # SpinePersistence usually makes it first, and an older app may
+        # have left it readable. Whatever wrote it, the memories are the
+        # owner's alone.
+        try:
+            self.db_path.chmod(0o600)
+        except OSError:
+            # A file we cannot chmod is still one we can use; the
+            # permission is a courtesy on a shared machine, not a
+            # reason to refuse to remember.
+            pass
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -228,20 +230,34 @@ class SQLiteFacts:
             ),
         )
         fact_id = int(cursor.lastrowid or 0)
-        for source_id in fact.source_ids:
+        for source_id in dict.fromkeys(fact.source_ids):
             conn.execute(
-                "INSERT OR IGNORE INTO fact_sources (source_id, fact_id)"
+                "INSERT INTO fact_sources (source_id, fact_id)"
                 " VALUES (?, ?)",
                 (source_id, fact_id),
             )
         return fact_id
 
     def add(self, fact: Fact) -> int:
-        with self._connect() as conn, conn:
-            existing = self._source_fact(conn, fact.source_ids)
-            if existing is not None:
-                return existing
-            return self._insert(conn, fact)
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                existing = self._source_fact(conn, fact.source_ids)
+                if existing is not None:
+                    conn.rollback()
+                    return existing
+                fact_id = self._insert(conn, fact)
+                conn.commit()
+                return fact_id
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                existing = self._source_fact(conn, fact.source_ids)
+                if existing is not None:
+                    return existing
+                raise
+            except Exception:
+                conn.rollback()
+                raise
 
     def has_source(self, source_id: str) -> bool:
         with self._connect() as conn:
