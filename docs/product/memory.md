@@ -108,11 +108,11 @@ Core — це **мова розмови**, а не місце для памʼя�
 
 ## Якість (Q3, 23.10.2026)
 
-- 985 тестів; coverage 80.29%, поріг 80; mypy — 15 файлів `heare-memory`, чисто.
-- Hard eval: 20 кейсів × 3 прогони, 18/20 ok, micro recall 1.00, precision 0.92, injection 100%; `sarcasm_server` після фіксів 3/3, `identity_change` лишається відомим.
+- 990 тестів; coverage 80.28%, поріг 80; mypy — 15 файлів `heare-memory`, чисто.
+- Hard eval: 20 кейсів × 3 прогони, 19/20 ok, micro recall 0.98, precision 1.00, injection 100%; `identity_change` після промпт-фіксу 3/3, `multi_speaker_home` 2/3 (стохастична межа).
 - Незалежне ревʼю знайшло 3 high; усі закриті: права БД, stale `_turn`, атомарний `FactStore.add`.
-- Закрито medium: `forget` чистить journal і recall (точний текст, `heare-memory forget ID`), `recent` не показує порожні ходи; review доганяє до 7 днів, ретраїть помилки й бере останні 6000 символів дня; consolidation дедуплікує `(predicate, value)`.
-- Відомі обмеження: `identity_change` пропонує і поточну, і колишню професію (review не ставить `valid_from`); consolidation досі перечитує весь журнал кожні 5 хв (потрібен watermark); частина тестів усе ще перевіряє механіку, не production-шлях.
+- Закрито medium: `forget` чистить journal і recall (точний текст, `heare-memory forget ID`), `recent` не показує порожні ходи; review доганяє до 7 днів, ретраїть помилки й бере останні 6000 символів дня; consolidation дедуплікує `(predicate, value)` і читає журнал інкрементально через durable cursor; `identity_change` закрито промптом «тільки поточний стан».
+- Відомі обмеження: `multi_speaker_home` іноді не робить факт (2/3) — стохастична межа інференсу; частина тестів усе ще перевіряє механіку, не production-шлях.
 
 ## Звʼязок з іншими планами
 
