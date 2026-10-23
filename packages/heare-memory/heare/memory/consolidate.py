@@ -4,8 +4,9 @@ The journal is the truth about what happened, but a sentence is not a fact
 yet. This reads only ``heard`` events, recognises a handful of plain
 statements about the owner, and proposes each as a pending fact. It never
 confirms — the owner does that elsewhere. A pass is safe to repeat because
-``FactStore.has_source`` remembers the event a fact came from, so there is
-no cursor to fall out of step with the journal.
+``FactStore.has_source`` remembers the event a fact came from, and the
+optional cursor only narrows the work: a failed pass leaves the cursor
+unmoved, so the next one reads the same lines again.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
+from pathlib import Path
 
 from heare.memory.contracts import (
     CONSOLIDATED,
@@ -67,7 +69,11 @@ _CONFIDENCE = 0.8
 
 
 def consolidate(
-    store: FactStore, journal: Journal, *, now: float | None = None
+    store: FactStore,
+    journal: Journal,
+    *,
+    now: float | None = None,
+    state_path: Path | None = None,
 ) -> ConsolidationReport:
     moment = time.time() if now is None else now
     considered = added = skipped = 0
@@ -75,7 +81,12 @@ def consolidate(
         (fact.predicate.casefold(), fact.value.casefold())
         for fact in store.current(include_pending=True)
     }
-    for event in journal.events():
+    if state_path is None:
+        events = list(journal.events())
+        state = None
+    else:
+        events, state = journal.new_events(state_path)
+    for event in events:
         if event.get("kind") != "heard":
             continue
         considered += 1
@@ -97,6 +108,8 @@ def consolidate(
         store.add(_fact(event, predicate, value, sentence, moment))
         known.add((predicate.casefold(), value.casefold()))
         added += 1
+    if state_path is not None and state is not None:
+        journal.save_state(state_path, state)
     return ConsolidationReport(
         considered=considered, added=added, skipped=skipped
     )

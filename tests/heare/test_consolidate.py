@@ -131,3 +131,26 @@ def test_the_same_phrase_on_two_days_becomes_one_fact(tmp_path):
 
     assert again.added == 0
     assert len(store.current(include_pending=True)) == 1
+
+
+def test_the_cursor_considers_only_new_heard_lines(tmp_path):
+    journal = Journal(tmp_path / "events")
+    state_path = tmp_path / "memory" / "consolidate.json"
+    _heard(journal, "Я люблю каву.")
+    store = FakeFacts()
+
+    first = consolidate(store, journal, now=1000.0, state_path=state_path)
+
+    assert first == ConsolidationReport(considered=1, added=1, skipped=0)
+
+    again = consolidate(store, journal, now=2000.0, state_path=state_path)
+
+    assert again == ConsolidationReport(considered=0, added=0, skipped=0)
+
+    _heard(journal, "Я живу в Києві.")
+    third = consolidate(store, journal, now=3000.0, state_path=state_path)
+
+    assert third == ConsolidationReport(considered=1, added=1, skipped=0)
+    facts = store.current(include_pending=True)
+    assert {fact.predicate for fact in facts} == {"prefers", "lives_in"}
+

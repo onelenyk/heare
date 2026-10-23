@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 import time
 import uuid
 from collections.abc import Callable, Iterable, Iterator
@@ -27,6 +28,7 @@ logger = logging.getLogger("heare.memory.journal")
 
 _DIR_MODE = 0o700
 _FILE_MODE = 0o600
+_STATE_VERSION = 1
 
 
 class Journal:
@@ -101,6 +103,62 @@ class Journal:
                             yield row
             except OSError:
                 continue
+
+    def new_events(self, state_path: str | Path) -> tuple[list[dict], dict]:
+        """The events this reader has not consumed yet, and the state that
+        records how far it got. Only whole lines are consumed, so a line
+        still being written is read next time rather than skipped."""
+        state = _read_state(Path(state_path))
+        offsets: dict[str, int] = state["files"]
+        events: list[dict] = []
+        files: dict[str, int] = {}
+        try:
+            paths = sorted(p for p in self._root.glob("*.jsonl") if p.is_file())
+        except OSError:
+            paths = []
+        for path in paths:
+            start = offsets.get(path.name, 0)
+            try:
+                size = path.stat().st_size
+                if start > size:
+                    start = 0
+                with path.open("rb") as handle:
+                    handle.seek(start)
+                    data = handle.read()
+            except OSError:
+                files[path.name] = start
+                continue
+            consumed = data.rfind(b"\n") + 1
+            for line in data[:consumed].splitlines():
+                row = _parse(line)
+                if row is not None:
+                    events.append(row)
+            files[path.name] = start + consumed
+        return events, {"version": _STATE_VERSION, "files": files}
+
+    def save_state(self, state_path: str | Path, state: dict) -> None:
+        """Write the cursor atomically and privately: a crash leaves the
+        old one, never a half-written file that reads as the start."""
+        path = Path(state_path)
+        parent = path.parent
+        parent.mkdir(parents=True, exist_ok=True, mode=_DIR_MODE)
+        os.chmod(parent, _DIR_MODE)
+        fd, tmp = tempfile.mkstemp(
+            dir=parent, prefix=".consolidate-", suffix=".json"
+        )
+        try:
+            os.fchmod(fd, _FILE_MODE)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(state, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def tail_messages(self, limit: int = 12) -> list[dict]:
         """The last turns as the core's model expects them. Read once, so
@@ -189,3 +247,38 @@ def _payload(row: dict) -> dict:
     have the shape this version writes."""
     found = row.get("payload")
     return found if isinstance(found, dict) else {}
+
+
+def _read_state(path: Path) -> dict:
+    """The saved offsets, or none. A missing, broken or future-version
+    state means "read everything", never a reason to fail a pass."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"version": _STATE_VERSION, "files": {}}
+    if not isinstance(raw, dict) or raw.get("version") != _STATE_VERSION:
+        return {"version": _STATE_VERSION, "files": {}}
+    saved = raw.get("files")
+    if not isinstance(saved, dict):
+        return {"version": _STATE_VERSION, "files": {}}
+    files = {
+        name: offset
+        for name, offset in saved.items()
+        if isinstance(name, str)
+        and isinstance(offset, int)
+        and not isinstance(offset, bool)
+        and offset >= 0
+    }
+    return {"version": _STATE_VERSION, "files": files}
+
+
+def _parse(line: bytes) -> dict | None:
+    """One line under the same forgiving rules as ``events``: a bad line
+    is skipped, not allowed to stop the history."""
+    try:
+        row = json.loads(line.decode("utf-8", errors="replace"))
+    except (TypeError, ValueError):
+        return None
+    if isinstance(row, dict) and "id" in row and "kind" in row:
+        return row
+    return None

@@ -129,7 +129,9 @@ class Brain:
             await asyncio.sleep(CONSOLIDATE_EVERY_S)
             try:
                 report = await asyncio.to_thread(
-                    consolidate, self.facts, self.journal
+                    consolidate, self.facts, self.journal,
+                    state_path=Path(self.settings.memory_dir)
+                    / "consolidate.json",
                 )
                 if report.added:
                     logger.info("consolidation added %d fact(s)", report.added)

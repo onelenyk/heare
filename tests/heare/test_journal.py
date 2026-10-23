@@ -113,6 +113,75 @@ def test_forget_hides_events_and_leaves_the_originals_on_disk(tmp_path):
     assert journal.tail_messages() == []
 
 
+def test_new_events_returns_only_what_the_cursor_has_not_seen(tmp_path):
+    journal = Journal(tmp_path / "events")
+    state_path = tmp_path / "memory" / "consolidate.json"
+    first = journal.append(
+        "heard", {"text": "привіт"}, source="voice", trust="user_said",
+    )
+    second = journal.append(
+        "said", {"text": "вітаю"}, source="engine", trust="system",
+    )
+
+    events, state = journal.new_events(state_path)
+    assert [event["id"] for event in events] == [first["id"], second["id"]]
+    assert not state_path.exists()
+    journal.save_state(state_path, state)
+
+    path = next((tmp_path / "events").glob("*.jsonl"))
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert saved == {"version": 1, "files": {path.name: path.stat().st_size}}
+
+    third = journal.append(
+        "heard", {"text": "ще"}, source="voice", trust="user_said",
+    )
+    events, state = journal.new_events(state_path)
+    assert [event["id"] for event in events] == [third["id"]]
+    journal.save_state(state_path, state)
+
+    events, state = journal.new_events(state_path)
+    assert events == []
+    assert state == {"version": 1, "files": {path.name: path.stat().st_size}}
+
+
+def test_new_events_restarts_a_truncated_file_from_zero(tmp_path):
+    journal = Journal(tmp_path / "events")
+    state_path = tmp_path / "memory" / "consolidate.json"
+    journal.append(
+        "heard", {"text": "перше"}, source="voice", trust="user_said",
+    )
+    _, state = journal.new_events(state_path)
+    journal.save_state(state_path, state)
+    path = next((tmp_path / "events").glob("*.jsonl"))
+
+    path.write_text("", encoding="utf-8")
+    events, state = journal.new_events(state_path)
+    assert events == []
+    assert state["files"][path.name] == 0
+    journal.save_state(state_path, state)
+
+    second = journal.append(
+        "heard", {"text": "друге"}, source="voice", trust="user_said",
+    )
+    events, _ = journal.new_events(state_path)
+    assert [event["id"] for event in events] == [second["id"]]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_the_consolidation_state_is_private(tmp_path):
+    journal = Journal(tmp_path / "events")
+    state_path = tmp_path / "memory" / "consolidate.json"
+    journal.append(
+        "heard", {"text": "привіт"}, source="voice", trust="user_said",
+    )
+
+    _, state = journal.new_events(state_path)
+    journal.save_state(state_path, state)
+
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(state_path.parent.stat().st_mode) == 0o700
+
+
 def test_export_writes_every_event_including_forget(tmp_path):
     journal = Journal(tmp_path)
     heard = journal.append(
