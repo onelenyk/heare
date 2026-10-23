@@ -16,6 +16,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from heare.memory.consolidate import consolidate
 from heare.memory.journal import Journal
 from heare.memory.migrate import migrate
 from heare.memory.profile import FILES, Profile
@@ -52,6 +53,34 @@ def _parser() -> argparse.ArgumentParser:
     )
     migration.add_argument("--include-archived", action="store_true")
     migration.add_argument("--dry-run", action="store_true")
+
+    facts = commands.add_parser("facts", help="list proposed facts")
+    facts.add_argument(
+        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        help="the fact store to read",
+    )
+    facts.add_argument("--all", action="store_true", help="show every status")
+    for name, help_text in (
+        ("confirm", "confirm a proposed fact"),
+        ("reject", "reject a proposed fact"),
+    ):
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument("id")
+        command.add_argument(
+            "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+            help="the fact store to change",
+        )
+    consolidation = commands.add_parser(
+        "consolidate", help="propose facts from the journal"
+    )
+    consolidation.add_argument(
+        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        help="the fact store to fill",
+    )
+    consolidation.add_argument(
+        "--events", type=Path, default=argparse.SUPPRESS,
+        help="where the journal lives (default: the global --events)",
+    )
     return parser
 
 
@@ -72,6 +101,34 @@ def main(argv: list[str] | None = None) -> int:
             include_archived=args.include_archived,
             dry_run=args.dry_run,
         )
+        print(report)
+        return 0
+    if args.command in ("facts", "confirm", "reject"):
+        from heare.memory.contracts import PENDING
+        from heare.memory.facts import SQLiteFacts
+
+        store = SQLiteFacts(args.db)
+        if args.command == "facts":
+            for fact in store.current(include_pending=True):
+                if args.all or fact.status == PENDING:
+                    print(f"{fact.id}. [{fact.status}] {fact.text}")
+            return 0
+        try:
+            fact_id = int(args.id)
+        except ValueError:
+            print("Скажи, який факт.")
+            return 2
+        if args.command == "confirm":
+            found = store.confirm(fact_id)
+            print("Підтверджено." if found else "Не знайдено.")
+        else:
+            found = store.reject(fact_id)
+            print("Відхилено." if found else "Не знайдено.")
+        return 0 if found else 2
+    if args.command == "consolidate":
+        from heare.memory.facts import SQLiteFacts
+
+        report = consolidate(SQLiteFacts(args.db), Journal(args.events))
         print(report)
         return 0
     profile = Profile(args.root)

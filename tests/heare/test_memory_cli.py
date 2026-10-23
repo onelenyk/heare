@@ -10,12 +10,29 @@ import sys
 import pytest
 
 from heare.memory.cli import main
+from heare.memory.contracts import CONFIRMED, PENDING, REJECTED, Fact
+from heare.memory.facts import SQLiteFacts
 from heare.memory.journal import Journal
 from heare.memory.profile import Profile
 
 
 def _mode(path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
+
+
+def _fact(text: str, status: str, source: str) -> Fact:
+    return Fact(
+        subject="owner",
+        predicate="prefers",
+        value=text,
+        text=text,
+        source="consolidated",
+        trust="user_said",
+        status=status,
+        valid_from=0.0,
+        source_ids=(source,),
+        created_at=1.0,
+    )
 
 
 def _run(root, events, *args: str) -> int:
@@ -104,3 +121,62 @@ def test_show_does_not_write_an_event(tmp_path):
     before = len(list(Journal(events).events()))
     _run(root, events, "show")
     assert len(list(Journal(events).events())) == before
+
+
+def test_the_cli_lists_pending_facts_and_confirms_them(tmp_path, capsys):
+    root, events = tmp_path / "memory", tmp_path / "events"
+    db = tmp_path / "heare.db"
+    store = SQLiteFacts(db)
+    pending = store.add(_fact("Ти любиш каву.", PENDING, "pending"))
+    confirmed = store.add(_fact("Тебе звати Назар.", CONFIRMED, "confirmed"))
+
+    assert _run(root, events, "facts", "--db", str(db)) == 0
+    shown = capsys.readouterr().out
+    assert "Ти любиш каву." in shown
+    assert "Тебе звати Назар." not in shown
+
+    assert _run(root, events, "confirm", str(pending), "--db", str(db)) == 0
+    assert "Підтверджено." in capsys.readouterr().out
+
+    assert _run(root, events, "facts", "--all", "--db", str(db)) == 0
+    everything = capsys.readouterr().out
+    assert f"{pending}. [{CONFIRMED}] Ти любиш каву." in everything
+    assert f"{confirmed}. [{CONFIRMED}] Тебе звати Назар." in everything
+
+
+def test_the_cli_rejects_a_fact_and_reports_missing_ids(tmp_path, capsys):
+    root, events = tmp_path / "memory", tmp_path / "events"
+    db = tmp_path / "heare.db"
+    store = SQLiteFacts(db)
+    fact_id = store.add(_fact("Ти любиш каву.", PENDING, "pending"))
+
+    assert _run(root, events, "reject", str(fact_id), "--db", str(db)) == 0
+    assert "Відхилено." in capsys.readouterr().out
+    assert store.get(fact_id).status == REJECTED
+
+    assert _run(root, events, "confirm", "9999", "--db", str(db)) == 2
+    assert "Не знайдено." in capsys.readouterr().out
+
+    assert _run(root, events, "reject", "nope", "--db", str(db)) == 2
+    assert "Скажи, який факт." in capsys.readouterr().out
+
+
+def test_the_cli_consolidates_the_journal_into_pending_facts(tmp_path, capsys):
+    events = tmp_path / "events"
+    db = tmp_path / "heare.db"
+    Journal(events).append(
+        "heard",
+        {"text": "Мене звати Назар.", "channel": "voice"},
+        source="voice",
+        trust="user_said",
+    )
+
+    assert main(
+        ["consolidate", "--db", str(db), "--events", str(events)]
+    ) == 0
+    assert "added=1" in capsys.readouterr().out
+
+    facts = SQLiteFacts(db).current(include_pending=True)
+    assert len(facts) == 1
+    assert facts[0].status == PENDING
+    assert facts[0].text == "Тебе звати Назар."
