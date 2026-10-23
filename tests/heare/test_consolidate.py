@@ -114,3 +114,20 @@ def test_non_matching_and_said_events_are_ignored(tmp_path):
 
     assert report == ConsolidationReport(considered=1, added=0, skipped=0)
     assert store.current(include_pending=True) == []
+
+
+def test_the_same_phrase_on_two_days_becomes_one_fact(tmp_path):
+    journal = Journal(tmp_path / "events")
+    _heard(journal, "Я люблю каву.", at=900.0)
+    _heard(journal, "Я люблю каву.", at=900.0 + 86400)
+    store = FakeFacts()
+
+    report = consolidate(store, journal, now=1000.0)
+
+    assert report == ConsolidationReport(considered=2, added=1, skipped=1)
+    assert len(store.current(include_pending=True)) == 1
+
+    again = consolidate(store, journal, now=2000.0)
+
+    assert again.added == 0
+    assert len(store.current(include_pending=True)) == 1

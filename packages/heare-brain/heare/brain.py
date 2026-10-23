@@ -36,6 +36,14 @@ logger = logging.getLogger("heare.brain")
 # comes after the interval, never during startup.
 CONSOLIDATE_EVERY_S = 5 * 60.0
 
+# A failed daily review is retried rather than skipped until tomorrow.
+REVIEW_RETRY_S = 15 * 60.0
+
+# How many missed days a single run will catch up on. A week is enough to
+# survive a holiday without turning one startup into a month of model
+# calls; older days stay unreviewed by choice.
+REVIEW_CATCH_UP_DAYS = 7
+
 
 def next_review_at(now: float, hour: int) -> float:
     """The next local ``hour:00``; today's if it is still ahead."""
@@ -138,16 +146,39 @@ class Brain:
         )
 
     async def _review(self) -> None:
+        from heare.memory.review import last_reviewed, mark_reviewed
+
         while True:
             if not bool(self.settings.review_enabled):
                 return
-            when = next_review_at(clock.time(), int(self.settings.review_hour))
-            await asyncio.sleep(max(1.0, when - clock.time()))
-            report = await self.review_now()
+            memory_dir = Path(self.settings.memory_dir)
+            last = last_reviewed(memory_dir)
+            yesterday = date.today() - timedelta(days=1)
+            if last is None:
+                target = yesterday
+            else:
+                if (yesterday - last).days > REVIEW_CATCH_UP_DAYS:
+                    last = yesterday - timedelta(days=REVIEW_CATCH_UP_DAYS)
+                target = last + timedelta(days=1)
+            if target > yesterday:
+                when = next_review_at(
+                    clock.time(), int(self.settings.review_hour)
+                )
+                await asyncio.sleep(max(1.0, when - clock.time()))
+                continue
+            report = await self.review_now(target)
             if report.error:
-                logger.warning("daily review failed: %s", report.error)
-            elif report.added:
-                logger.info("daily review added %d fact(s)", report.added)
+                logger.warning(
+                    "daily review for %s failed: %s", target, report.error
+                )
+                await asyncio.sleep(REVIEW_RETRY_S)
+                continue
+            if report.added:
+                logger.info(
+                    "daily review for %s added %d fact(s)",
+                    target, report.added,
+                )
+            mark_reviewed(memory_dir, target)
 
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""

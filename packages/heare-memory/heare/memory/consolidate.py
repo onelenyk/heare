@@ -71,6 +71,10 @@ def consolidate(
 ) -> ConsolidationReport:
     moment = time.time() if now is None else now
     considered = added = skipped = 0
+    known = {
+        (fact.predicate.casefold(), fact.value.casefold())
+        for fact in store.current(include_pending=True)
+    }
     for event in journal.events():
         if event.get("kind") != "heard":
             continue
@@ -84,10 +88,14 @@ def consolidate(
             continue
         predicate, value, sentence = extracted
         ident = event["id"]
+        if (predicate.casefold(), value.casefold()) in known:
+            skipped += 1
+            continue
         if store.has_source(ident):
             skipped += 1
             continue
         store.add(_fact(event, predicate, value, sentence, moment))
+        known.add((predicate.casefold(), value.casefold()))
         added += 1
     return ConsolidationReport(
         considered=considered, added=added, skipped=skipped

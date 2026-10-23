@@ -33,6 +33,7 @@ import logging
 import sqlite3
 import threading
 import time
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +95,10 @@ WORKER_RESULT_MARK = "[результат роботи]"
 # almost always means the most recent time.
 RECENCY_WINDOW_S = 30 * 24 * 3600.0
 RECENCY_WEIGHT = 0.5
+
+# SQLite's default limit is 999 bound parameters; a forget can name more
+# lines than that over a year of conversation, so delete in chunks.
+_FORGET_CHUNK = 500
 
 # The one table the spine owns alone. It is NOT in storage.py's SCHEMA and
 # does NOT bump SCHEMA_VERSION: storage.py's `_check_schema_version` refuses
@@ -466,6 +471,44 @@ class SpinePersistence:
             logger.exception("persist: forgetting failed (non-fatal)")
             return 0
 
+    def forget_texts(self, texts: Iterable[str]) -> int:
+        """Delete transcripts rows whose text is exactly one of `texts`.
+
+        Exact rather than a pattern or a fuzzy match: the caller is
+        removing specific events whose text it has read, and a forget
+        must not miss a row because of case folding or tokenisation.
+        The FTS triggers (see storage.py's TRANSCRIPTS_FTS_SCHEMA) keep
+        the search index in step; when FTS5 was unavailable there is no
+        index to maintain.
+
+        Returns how many rows were deleted. A failure is logged, rolled
+        back and reported as zero, never raised — forgetting is a repair,
+        not a reason to take the conversation down.
+        """
+        wanted = [text for text in texts if isinstance(text, str) and text]
+        if not wanted:
+            return 0
+        deleted = 0
+        try:
+            with self._lock:
+                for start in range(0, len(wanted), _FORGET_CHUNK):
+                    chunk = wanted[start : start + _FORGET_CHUNK]
+                    marks = ", ".join("?" for _ in chunk)
+                    cur = self._conn.execute(
+                        f"DELETE FROM transcripts WHERE text IN ({marks})",
+                        chunk,
+                    )
+                    deleted += cur.rowcount or 0
+                self._conn.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("persist: forgetting texts failed (non-fatal)")
+            try:
+                self._conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            return 0
+        return deleted
+
     # -- where one conversation ends and the next begins ---------------
     #
     # Nothing had closed a conversation since 13 August: the code that
@@ -597,6 +640,8 @@ class SpinePersistence:
                         agent_text = text
                     else:
                         user_text = text
+                if user_text is None and agent_text is None:
+                    continue
                 exchanges.append({"user": user_text, "agent": agent_text})
             return exchanges
 

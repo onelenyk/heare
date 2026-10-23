@@ -103,6 +103,30 @@ class Book:
         opened: ``[{"user": …, "agent": …}]``."""
         return await asyncio.to_thread(self._store.recent_exchanges, n)
 
+    async def forget(self, ids: Sequence[str]) -> int:
+        """Tombstone these events in the journal, then delete their exact
+        text from SQLite so recall cannot resurrect it.
+
+        Exact-text deletion is deliberate: the ids name journal events,
+        and the only bridge from an event to a transcripts row is the
+        words themselves. A looser match could miss the row (and leave
+        the forgotten words searchable), while an identical line spoken
+        elsewhere is indistinguishable — so it goes too. That is the
+        price of a forget that actually forgets.
+        """
+        if self._journal is None:
+            return 0
+        wanted = set(ids)
+        texts: list[str] = []
+        for event in self._journal.events():
+            if event.get("id") not in wanted:
+                continue
+            text = _payload_text(event)
+            if text:
+                texts.append(text)
+        self._journal.forget(ids)
+        return await asyncio.to_thread(self._store.forget_texts, texts)
+
     async def always(self) -> str:
         profile = Profile(self._profile_dir).render()
         facts = self._facts.current()[:FACT_LIMIT]
@@ -116,3 +140,11 @@ class Book:
 
     def close(self) -> None:
         self._store.close()
+
+
+def _payload_text(event: dict) -> str:
+    payload = event.get("payload")
+    if not isinstance(payload, dict):
+        return ""
+    text = payload.get("text")
+    return text if isinstance(text, str) else ""

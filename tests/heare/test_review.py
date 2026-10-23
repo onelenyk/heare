@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from datetime import date, datetime, timedelta
+
+import pytest
 
 from heare.brain import next_review_at
 from heare.memory.contracts import (
@@ -15,7 +19,12 @@ from heare.memory.contracts import (
     ReviewReport,
 )
 from heare.memory.journal import Journal
-from heare.memory.review import review_day
+from heare.memory.review import (
+    MAX_MESSAGES,
+    last_reviewed,
+    mark_reviewed,
+    review_day,
+)
 from tests.heare.fake_facts import FakeFacts
 from tests.heare.fakes import Script
 
@@ -196,3 +205,79 @@ def test_next_review_is_tomorrow_at_the_exact_hour():
     now = _stamp(DAY, 4)
 
     assert next_review_at(now, 4) == _stamp(DAY + timedelta(days=1), 4)
+
+
+def test_the_review_marker_round_trips_privately(tmp_path):
+    if os.name == "nt":
+        pytest.skip("POSIX modes")
+    root = tmp_path / "memory"
+
+    assert last_reviewed(root) is None
+    mark_reviewed(root, DAY)
+
+    assert last_reviewed(root) == DAY
+    assert json.loads((root / "review.json").read_text(encoding="utf-8")) == {
+        "day": DAY.isoformat()
+    }
+    assert stat.S_IMODE((root / "review.json").stat().st_mode) == 0o600
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
+
+
+def test_a_broken_review_marker_reads_as_never_reviewed(tmp_path):
+    root = tmp_path / "memory"
+    root.mkdir()
+    path = root / "review.json"
+
+    path.write_text("{not json", encoding="utf-8")
+    assert last_reviewed(root) is None
+
+    path.write_text(json.dumps({"day": "not-a-date"}), encoding="utf-8")
+    assert last_reviewed(root) is None
+
+    path.write_text(json.dumps(["2026-05-01"]), encoding="utf-8")
+    assert last_reviewed(root) is None
+
+
+async def test_a_late_fact_survives_the_message_cap(tmp_path):
+    journal = Journal(tmp_path / "events")
+    for index in range(MAX_MESSAGES + 1):
+        _heard(journal, f"Ранок {index}.", at=_stamp(DAY, 9))
+    _heard(
+        journal, "Мій улюблений колір — синій.",
+        at=_stamp(DAY, 22),
+    )
+    model = Script()
+    model.will_say("[]")
+
+    report = await review_day(
+        FakeFacts(), journal, model, day=DAY, now=_stamp(DAY, 23)
+    )
+
+    assert report.considered == MAX_MESSAGES
+    prompt = model.asked[0][1]["content"]
+    assert "user: Мій улюблений колір — синій." in prompt
+    assert prompt.rstrip().endswith("user: Мій улюблений колір — синій.")
+    assert "user: Ранок 0." not in prompt
+
+
+async def test_a_late_fact_survives_the_character_cap(tmp_path):
+    journal = Journal(tmp_path / "events")
+    filler = "а" * 100
+    total = 65
+    for index in range(total):
+        _heard(journal, f"{index:03d} {filler}", at=_stamp(DAY, 9))
+    _heard(
+        journal, "Мій улюблений колір — синій.",
+        at=_stamp(DAY, 22),
+    )
+    model = Script()
+    model.will_say("[]")
+
+    report = await review_day(
+        FakeFacts(), journal, model, day=DAY, now=_stamp(DAY, 23)
+    )
+
+    assert 0 < report.considered < total
+    prompt = model.asked[0][1]["content"]
+    assert "user: Мій улюблений колір — синій." in prompt
+    assert prompt.rstrip().endswith("user: Мій улюблений колір — синій.")

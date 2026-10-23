@@ -13,6 +13,7 @@ the projection.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
@@ -81,6 +82,18 @@ def _parser() -> argparse.ArgumentParser:
         "--events", type=Path, default=argparse.SUPPRESS,
         help="where the journal lives (default: the global --events)",
     )
+    forget = commands.add_parser(
+        "forget", help="forget events in the journal and in recall"
+    )
+    forget.add_argument("ids", nargs="+", metavar="ID")
+    forget.add_argument(
+        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        help="the transcript store to clean",
+    )
+    forget.add_argument(
+        "--events", type=Path, default=argparse.SUPPRESS,
+        help="where the journal lives (default: the global --events)",
+    )
     return parser
 
 
@@ -130,6 +143,16 @@ def main(argv: list[str] | None = None) -> int:
 
         report = consolidate(SQLiteFacts(args.db), Journal(args.events))
         print(report)
+        return 0
+    if args.command == "forget":
+        from heare.memory.book import Book
+
+        book = Book(args.db, journal=Journal(args.events))
+        try:
+            forgotten = asyncio.run(book.forget(args.ids))
+        finally:
+            book.close()
+        print(f"Забув {forgotten}.")
         return 0
     profile = Profile(args.root)
     if args.command == "show":

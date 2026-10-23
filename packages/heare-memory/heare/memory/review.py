@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
 import time
 from datetime import date, datetime
+from pathlib import Path
 from typing import Iterable
 
 from heare.core.forms import Model
@@ -31,6 +34,56 @@ MAX_MESSAGES = 200
 MAX_CHARS = 6000
 MAX_KNOWN = 20
 DEFAULT_CONFIDENCE = 0.6
+
+_REVIEW_FILE = "review.json"
+
+
+def last_reviewed(root: Path) -> date | None:
+    """The day the last successful review covered, or None when the file
+    is missing or unreadable. A broken marker means "review again", never
+    a reason to stop reviewing."""
+    path = Path(root) / _REVIEW_FILE
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    day = raw.get("day")
+    if not isinstance(day, str):
+        return None
+    try:
+        return date.fromisoformat(day)
+    except ValueError:
+        return None
+
+
+def mark_reviewed(root: Path, day: date) -> None:
+    """Record `day` as reviewed, atomically and private to the owner.
+
+    A temp file plus ``os.replace`` means a crash leaves either the old
+    marker or the new one — never a half-written file that reads as
+    "never reviewed" and replays the day.
+    """
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(root, 0o700)
+    path = root / _REVIEW_FILE
+    fd, tmp = tempfile.mkstemp(dir=root, prefix=".review-", suffix=".json")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({"day": day.isoformat()}, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
 
 _PREDICATE = re.compile(r"[a-z0-9_]{1,60}")
 
@@ -97,9 +150,15 @@ async def review_day(
 
 
 def _transcript(journal: Journal, day: date) -> list[str]:
-    """Heard lines from one local day, capped so the prompt stays small."""
-    lines: list[str] = []
-    used = 0
+    """The latest heard lines from one local day, capped so the prompt
+    stays small.
+
+    Reading the day from its end is deliberate: what was said late is
+    what the review has not seen, and a durable fact mentioned in the
+    evening must not lose its place to two hundred greetings from the
+    morning.
+    """
+    texts: list[str] = []
     for event in journal.events():
         if event.get("kind") != "heard":
             continue
@@ -110,13 +169,18 @@ def _transcript(journal: Journal, day: date) -> list[str]:
         if not isinstance(text, str):
             continue
         text = text.strip()
-        if not text:
-            continue
+        if text:
+            texts.append(text)
+
+    lines: list[str] = []
+    used = 0
+    for text in reversed(texts):
         if len(lines) >= MAX_MESSAGES or used >= MAX_CHARS:
             break
         text = text[: MAX_CHARS - used]
         used += len(text)
         lines.append(f"user: {text}")
+    lines.reverse()
     return lines
 
 
