@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test lint format check eval-review clean app live rollback releases release
+.PHONY: help brain chat voice keeper test coverage typecheck lint format check quality eval-review clean app live rollback releases release
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -8,9 +8,12 @@ help:
 	@echo "  make voice     - speech in, speech out"
 	@echo "  make keeper    - the keeper: parts from ~/.heare/parts, kept alive"
 	@echo "  make test      - the core against stand-ins: no network, no keys"
+	@echo "  make coverage  - test, with the coverage floor at 80%"
+	@echo "  make typecheck - mypy over heare-memory"
 	@echo "  make lint      - ruff"
 	@echo "  make format    - ruff format"
 	@echo "  make check     - lint + test"
+	@echo "  make quality   - check + coverage + typecheck"
 	@echo "  make eval-review - live quality eval for the daily review (manual, paid)"
 	@echo "  make clean     - caches and bytecode"
 	@echo "  make app       - dist/heare.app and dist/heare.dmg: the menubar app, Python inside"
@@ -35,6 +38,12 @@ keeper:
 test:
 	uv run pytest tests/heare -q
 
+coverage:
+	uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80
+
+typecheck:
+	uv run mypy
+
 lint:
 	uv run ruff check packages/ tests/
 
@@ -42,6 +51,8 @@ format:
 	uv run ruff format packages/ tests/
 
 check: lint test
+
+quality: check coverage typecheck
 
 # Not part of check: a real model, real keys, real cost. The quality gate
 # for the daily review prompt.

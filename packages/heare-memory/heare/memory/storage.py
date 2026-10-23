@@ -407,7 +407,7 @@ class TranscriptStore:
             "ORDER BY ts DESC LIMIT ?",
             (n,),
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         return [
             {
                 "id": r[0],
@@ -469,7 +469,7 @@ class TranscriptStore:
             """,
             (conversation_id, n),
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         return [
             {
                 "id": r[0],

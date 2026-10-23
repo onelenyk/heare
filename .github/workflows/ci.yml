@@ -44,8 +44,11 @@ jobs:
         with:
           python-version-file: pyproject.toml
 
-      - name: Test
-        run: uv run pytest tests/heare -q
+      - name: Test with coverage
+        run: uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80
+
+      - name: Typecheck
+        run: uv run mypy
 
 
   build:

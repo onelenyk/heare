@@ -53,6 +53,12 @@ filterwarnings = [
     "ignore::RuntimeWarning",
 ]
 
+[tool.mypy]
+python_version = "3.11"
+files = ["packages/heare-memory/heare/memory"]
+ignore_missing_imports = true
+check_untyped_defs = true
+
 [tool.coverage.run]
 source = ["heare"]
 omit = ["*/test_*", "tests/*", ".venv/*"]
