@@ -45,11 +45,12 @@ class Book:
         names: Sequence[str] = (),
         profile_dir: str | Path | None = None,
         journal: Journal | None = None,
+        facts: SQLiteFacts | None = None,
     ) -> None:
         """names: the assistant's own name in every spelling. A question
         usually keeps it, and it is the one word that matches every row."""
         self._store = SpinePersistence(db_path)
-        self._facts = SQLiteFacts(db_path)
+        self._facts = facts if facts is not None else SQLiteFacts(db_path)
         self._names = tuple(names)
         self._journal = journal
         self._turn: int | None = None

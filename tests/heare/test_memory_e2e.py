@@ -17,6 +17,8 @@ from heare.core import Core, Message
 from heare.language import uk
 from heare.memory import search
 from heare.memory.book import Book
+from heare.memory.contracts import CONFIRMED, Fact
+from heare.memory.facts import SQLiteFacts
 from heare.memory.journal import Journal
 from heare.memory.profile import Profile
 from heare.tools import Toolbox
@@ -162,6 +164,24 @@ async def test_forgetting_removes_the_turn_and_clearing_the_profile_removes_the_
         assert "Запам'ятай це" not in system
     finally:
         await rig.close()
+
+
+async def test_the_book_and_the_shared_store_see_the_same_facts(tmp_path):
+    shared = SQLiteFacts(tmp_path / "heare.db")
+    fact_id = shared.add(Fact(
+        subject="owner", predicate="name", value="Назар",
+        text="Тебе звати Назар.", source="consolidated",
+        trust="user_confirmed", status=CONFIRMED,
+    ))
+    assert fact_id is not None
+
+    book = Book(
+        tmp_path / "heare.db", profile_dir=tmp_path / "memory", facts=shared
+    )
+    try:
+        assert "Тебе звати Назар." in await book.always()
+    finally:
+        book.close()
 
 
 async def test_the_journal_and_the_book_see_the_same_turn(tmp_path):

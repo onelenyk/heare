@@ -27,6 +27,12 @@ from heare.core import Core
 from heare.engine import Engine, Intents
 from heare.language import uk
 
+logger = logging.getLogger("heare.brain")
+
+# How often a pass turns heard words into proposed facts. The first one
+# comes after the interval, never during startup.
+CONSOLIDATE_EVERY_S = 5 * 60.0
+
 
 def model_info(settings: Settings) -> dict:
     """Which model is answering — and whether it is the one that was chosen.
@@ -57,6 +63,7 @@ class Brain:
 
     def __init__(self, settings: Settings | None = None) -> None:
         from heare.memory.book import Book
+        from heare.memory.facts import SQLiteFacts
         from heare.memory.journal import Journal
         from heare.model.chat import Chat
         from heare.model.delegate import Dispatcher
@@ -65,12 +72,14 @@ class Brain:
         self.settings = settings or Settings()
         names = persona.names()
         self.journal = Journal(self.settings.events_dir)
+        self.facts = SQLiteFacts(self.settings.db_path)
         self.intents = Intents(self.settings.intents_path)
         self.core = Core(
             Chat(self.settings),
             memory=Book(
                 self.settings.db_path, names=sorted(names),
                 profile_dir=self.settings.memory_dir, journal=self.journal,
+                facts=self.facts,
             ),
             delegator=Dispatcher(self.settings), prompt=persona.prompt,
             names=names, judge=persona.JUDGE, words=uk,
@@ -92,6 +101,20 @@ class Brain:
         )
         self._runner: Any = None
 
+    async def _consolidate(self) -> None:
+        from heare.memory.consolidate import consolidate
+
+        while True:
+            await asyncio.sleep(CONSOLIDATE_EVERY_S)
+            try:
+                report = await asyncio.to_thread(
+                    consolidate, self.facts, self.journal
+                )
+                if report.added:
+                    logger.info("consolidation added %d fact(s)", report.added)
+            except Exception:
+                logger.exception("consolidation failed (non-fatal)")
+
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""
         from heare.api.server import serve
@@ -104,7 +127,8 @@ class Brain:
         )
         print(f"мозок на http://127.0.0.1:{self.settings.api_port}/", file=sys.stderr)
         await asyncio.gather(
-            self.core.run(), self.engine.run(), self.journal.run(self.core.state)
+            self.core.run(), self.engine.run(), self.journal.run(self.core.state),
+            self._consolidate(),
         )
 
 
