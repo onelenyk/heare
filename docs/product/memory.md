@@ -77,6 +77,19 @@ Core — це **мова розмови**, а не місце для памʼя�
 
 Якщо фіча перетинає зони — спершу протокол у `core/forms.py` або в `tools/ports.py`, потім реалізація. Правило 2: один виклик — прямо; три учасники — межа.
 
+## Контракт фактів (Wave 2)
+
+`Fact` — одне твердження з провенансом: `subject`, `predicate`, `value`,
+`text`, `source`, `trust`, `status`, `confidence`, `valid_from/valid_to`,
+`source_ids`, `supersedes`, `created_at`.
+
+- `status`: `pending` · `confirmed` · `rejected`; у промпт потрапляють лише `confirmed`.
+- `trust`: `user_said` · `user_confirmed` · `model_inferred` · `tool_output` · `legacy`.
+- `FactStore.add` **ідемпотентний за `source_ids`**: та сама подія, легасі-рядок або прохід консолідації не створює другий факт.
+- Три роботи Wave 2 мають спільний контракт у `memory/contracts.py`:
+  **факти** (`facts.py`), **консолідація** (`consolidate.py`), **міграція** (`migrate.py`).
+  Вони не редагують контракт; якщо контракту не вистачає — це окреме рішення, не тиха зміна.
+
 ## Поточний стан
 
 - Гілка `feat/memory-foundation`, 13 комітів коду плюс цей документ.
