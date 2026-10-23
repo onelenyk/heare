@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test lint format check clean app live rollback releases release
+.PHONY: help brain chat voice keeper test lint format check eval-review clean app live rollback releases release
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -11,6 +11,7 @@ help:
 	@echo "  make lint      - ruff"
 	@echo "  make format    - ruff format"
 	@echo "  make check     - lint + test"
+	@echo "  make eval-review - live quality eval for the daily review (manual, paid)"
 	@echo "  make clean     - caches and bytecode"
 	@echo "  make app       - dist/heare.app and dist/heare.dmg: the menubar app, Python inside"
 	@echo ""
@@ -41,6 +42,11 @@ format:
 	uv run ruff format packages/ tests/
 
 check: lint test
+
+# Not part of check: a real model, real keys, real cost. The quality gate
+# for the daily review prompt.
+eval-review:
+	uv run python scripts/review_eval.py
 
 clean:
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
