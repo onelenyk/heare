@@ -164,6 +164,9 @@
   .part-gear { flex:none; border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
   .part-gear:hover, .part-gear.on { color:var(--accent); }
   .part.wait .part-state { color:var(--warn); }
+  .part .health { margin-top:3px; color:var(--soft); font-size:11px; }
+  .part .health .fell { color:var(--warn); }
+  .part .trouble { margin-top:3px; color:var(--warn); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
   .part .about { margin-top:3px; color:var(--soft); font-family:var(--sans); font-size:11.5px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .part .phost { margin-top:2px; color:var(--soft); font:10.5px var(--mono); }
   .badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
@@ -978,11 +981,42 @@ function partHead(pid, b) {
   return top;
 }
 
+// How long a part has run and how often it started again since this brain
+// did; its last error, if it had one. Seen without opening a log.
+function lasted(seconds) {
+  if (seconds < 90) return "щойно";
+  if (seconds < 5400) return Math.round(seconds / 60) + " хв";
+  if (seconds < 172800) return Math.round(seconds / 3600) + " год";
+  return Math.round(seconds / 86400) + " дн";
+}
+function partHealth(b) {
+  const out = [], bits = [];
+  if (b.version) bits.push(el("span", "", "v" + b.version));
+  if (b.started) bits.push(el("span", "", "працює " + lasted(Date.now() / 1000 - b.started)));
+  if (b.started) {
+    const n = b.restarts || 0;
+    bits.push(el("span", n ? "fell" : "", n ? `перезапусків: ${n}` : "без перезапусків"));
+  }
+  if (bits.length) {
+    const line = el("div", "health");
+    bits.forEach((bit, i) => { if (i) line.append(" · "); line.append(bit); });
+    out.push(line);
+  }
+  const trouble = b.values && b.values.trouble;
+  if (trouble) {
+    const t = el("div", "trouble", "! " + trouble);
+    t.title = trouble;
+    out.push(t);
+  }
+  return out;
+}
+
 function partWidget(pid, b) {
   const card = el("div", "part" + (b.state === "pending" ? " wait" : "") + (drawerPid === pid ? " open" : ""));
   card.dataset.pid = pid;
   card.append(partHead(pid, b));
   if (b.about) card.append(el("p", "about", b.about));
+  if (b.state === "approved") card.append(...partHealth(b));
   // Shown, because it is a wider trust than the rest: this part hears
   // the whole conversation, not only its own channel.
   if (b.hears === "all") {

@@ -444,6 +444,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
         hears = "all" if data.get("hears") == "all" else "own"
         # The part's own version: shown on its card, never a reason to trust.
         part_version = str(data["version"]) if data.get("version") else None
+        try:
+            started = float(data["started"]) if data.get("started") else None
+        except (TypeError, ValueError):
+            started = None
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         ui = list(data.get("ui") or []) or list(
@@ -451,18 +455,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if (pid in registry.trusted()
                 or str(who or "").startswith(("window@", "machine@"))):
             registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
-                            version=part_version)
+                            version=part_version, started=started)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
         registry.attach(pid, channel, forms, about, host, "pending", ui, hears,
-                        version=part_version)
+                        version=part_version, started=started)
         decided = await registry.answer(pid)
         if decided == "expired":
             return web.json_response({"approved": False, "why": "ніхто не відповів"})
         if decided != "approved":
             return web.json_response({"approved": False, "why": decided})
         registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
-                        version=part_version)
+                        version=part_version, started=started)
         return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 

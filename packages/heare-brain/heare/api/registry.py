@@ -73,14 +73,23 @@ class Registry:
 
     def attach(self, pid: str, channel: str, forms: list, about: str,
                host: str, state: str, ui: list | None = None,
-               hears: str | None = None, version: str | None = None) -> None:
+               hears: str | None = None, version: str | None = None,
+               started: float | None = None) -> None:
         old = self.bodies.get(pid) or {}
+        # A knock from a process that began at another time is the part
+        # started again: counted while this brain runs, so after an update
+        # it reads how often a part fell since.
+        restarts = int(old.get("restarts") or 0)
+        if started and old.get("started") and started != old["started"]:
+            restarts += 1
         self.bodies[pid] = {
             "channel": channel, "forms": forms, "about": about,
             "host": host, "state": state,
             # What the part last said it is; a manifest says nothing, so the
             # version from its last knock stays until it knocks again.
             "version": version or old.get("version"),
+            "started": started or old.get("started"),
+            "restarts": restarts,
             # "all" for a part that shows the whole conversation (a chat);
             # any other part hears only its own channel.
             "hears": hears or old.get("hears") or "own",

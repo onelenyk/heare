@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from importlib import metadata
 
 import httpx
@@ -159,3 +160,29 @@ async def test_a_part_knocks_with_its_version_and_may_name_its_own(tmp_path):
 
     assert knocks[0]["version"] == metadata.version("heare-core")
     assert knocks[1]["version"] == "9.9.9"
+
+
+async def test_a_part_says_when_it_began_and_its_errors_reach_its_card(tmp_path):
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"approved": True, "pid": "eyes@mac"})
+
+    async def work(wire: part.Wire) -> int:
+        logging.getLogger("heare.eyes").error("the camera is gone")
+        await asyncio.sleep(0.01)
+        await wire.settle()
+        return 0
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await part.live({"channel": "eyes"}, work, settings=_settings(tmp_path),
+                    client=client)
+    await client.aclose()
+
+    knock, reported = seen
+    assert knock["started"] == part.STARTED
+    assert reported["kind"] == "state"
+    assert reported["values"]["trouble"].endswith(" the camera is gone")
+    # Gone with the part: a later error in this process is no one's card.
+    assert not any(isinstance(h, part._Trouble) for h in logging.getLogger().handlers)

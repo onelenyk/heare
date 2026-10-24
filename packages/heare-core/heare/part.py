@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from importlib import metadata
 from urllib.parse import quote
@@ -26,6 +27,9 @@ from heare.core import PROTOCOL
 logger = logging.getLogger("heare.part")
 
 RETRY_S = 1.0
+# When this process began: the same on every knock it makes, so a knock with
+# another is a part that started again.
+STARTED = time.time()
 # A knock answered later than this is waiting for the person; only then is
 # that worth a line.
 ASKING_S = 2.0
@@ -120,6 +124,22 @@ async def report(client: httpx.AsyncClient, base: str, channel: str,
         logger.warning("could not report the state: %s", exc)
 
 
+class _Trouble(logging.Handler):
+    """The part's last error, put on its card: a person sees that it is
+    unwell without opening a log."""
+
+    def __init__(self, wire: Wire) -> None:
+        super().__init__(logging.ERROR)
+        self._wire = wire
+        self._loop = asyncio.get_running_loop()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        text = " ".join(record.getMessage().split())[:160]
+        trouble = f"{time.strftime('%d.%m %H:%M', time.localtime(record.created))} {text}"
+        # Errors are logged from worker threads too; the wire is the loop's.
+        self._loop.call_soon_threadsafe(self._wire.report, {"trouble": trouble})
+
+
 class Wire:
     """A part's line to the brain, once the part is let in."""
 
@@ -179,7 +199,7 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         print(f"немає ключа ({settings.api_token_file}) — мозок запущений?",
               file=sys.stderr)
         return 1
-    about = {"v": PROTOCOL, "version": installed(), **about}
+    about = {"v": PROTOCOL, "version": installed(), "started": STARTED, **about}
     owned = client is None
     client = client or httpx.AsyncClient(timeout=None)
     client.headers["X-Heare-Token"] = secret
@@ -201,6 +221,8 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
                     str(answer.get("pid") or about.get("key") or ""), secret,
                     str(answer.get("name") or ""))
         opened = False
+        trouble = _Trouble(wire)
+        logging.getLogger().addHandler(trouble)
 
         async def again() -> None:
             try:
@@ -223,6 +245,7 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         try:
             return int(await work(wire) or 0)
         finally:
+            logging.getLogger().removeHandler(trouble)
             following.cancel()
             await asyncio.gather(following, return_exceptions=True)
             await wire.settle()

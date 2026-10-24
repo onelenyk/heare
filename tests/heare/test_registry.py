@@ -101,3 +101,18 @@ def test_a_version_is_kept_until_the_part_says_another(tmp_path):
     assert registry.bodies["eyes@mac"]["version"] == "1.2.0"
     registry.attach("eyes@mac", "eyes", [], "", "mac", "approved", version="1.3.0")
     assert registry.bodies["eyes@mac"]["version"] == "1.3.0"
+
+
+def test_a_part_that_began_again_is_counted(tmp_path):
+    registry, _, _ = _registry(tmp_path)
+    attach = lambda started: registry.attach(  # noqa: E731
+        "eyes@mac", "eyes", ["input"], "", "mac", "approved", started=started)
+    attach(100.0)
+    attach(100.0)  # the same process knocking again after the stream broke
+    assert registry.bodies["eyes@mac"]["restarts"] == 0
+    attach(200.0)
+    attach(300.0)
+    assert registry.bodies["eyes@mac"]["restarts"] == 2
+    assert registry.bodies["eyes@mac"]["started"] == 300.0
+    registry.attach("eyes@mac", "eyes", ["input"], "", "mac", "approved")
+    assert registry.bodies["eyes@mac"]["started"] == 300.0  # a manifest says nothing
