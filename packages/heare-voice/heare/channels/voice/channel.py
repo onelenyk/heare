@@ -24,7 +24,7 @@ from typing import Any, AsyncIterator
 
 from heare import keys
 from heare.channels.voice.hallucinations import is_junk
-from heare.channels.voice.heard import Heard
+from heare.channels.voice.heard import Heard, levels
 from heare.channels.voice.sentences import sentences, speakable
 from heare.channels.voice.stt import transcribe
 from heare.channels.voice.tts import synthesise
@@ -83,6 +83,10 @@ class Voice:
         self._over: _Over | None = None
         self._jobs: asyncio.Queue = asyncio.Queue()
         self._starts = 0
+        # Which reply a phrase belongs to: the pieces of one share it, so a
+        # recording can later be heard whole. Counted from the start time,
+        # so a restart does not number replies over the old ones.
+        self._turn = int(time.time() * 1000)
         self._reported = False
         self._spoke_at = 0.0
         self._port: Port | None = None
@@ -171,14 +175,14 @@ class Voice:
                     over.speech_ms = over.heard_ms
                 # One worker, in order: two phrases of one turn must reach
                 # the assembler as they were said, whatever the network does.
-                self._jobs.put_nowait((event.utterance, self._starts, over))
+                self._jobs.put_nowait((event.utterance, self._starts, over, self._turn))
 
     async def _recognise(self) -> None:
         while True:
-            pcm, starts_then, over = await self._jobs.get()
+            pcm, starts_then, over, turn = await self._jobs.get()
             text = ""
             try:
-                text = await self._text_of(pcm, over=over is not None)
+                text = await self._text_of(pcm, over=over is not None, turn=turn)
             except Exception:
                 logger.exception("recognition failed")
             logger.info("heard: %r", text)
@@ -194,11 +198,11 @@ class Voice:
                     text = ""
             self.assembler.transcript(text, speech_resumed=self._starts > starts_then)
 
-    async def _text_of(self, pcm: bytes, *, over: bool = False) -> str:
+    async def _text_of(self, pcm: bytes, *, over: bool = False, turn: int = 0) -> str:
         loud = loud_ms(pcm)
         if loud < MIN_SPEECH_MS:
             return ""
-        about = {"loud_ms": round(loud), "over": over,
+        about = {"loud_ms": round(loud), "over": over, "turn": turn, **levels(pcm),
                  "language": _or(self.settings, "groq_language", "uk")}
         try:
             result = await transcribe(
@@ -228,6 +232,7 @@ class Voice:
             await asyncio.sleep(POLL_S)
             turn = self.assembler.poll()
             if turn:
+                self._turn += 1
                 self._reported = False
                 if self.wake is not None and not self.wake.accepts(turn):
                     logger.info("not addressed to me: %r", turn[:60])
@@ -243,6 +248,7 @@ class Voice:
                 self._port.heard(Message(text=turn, channel=self.name))
             elif self._reported and not self.assembler.open:
                 # It began and came to nothing: silence, a cough, a nod.
+                self._turn += 1
                 self._reported = False
                 self._port.nothing(self.name)
 

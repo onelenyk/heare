@@ -9,8 +9,10 @@ the oldest going as new ones come.
 
 from __future__ import annotations
 
+import array
 import json
 import logging
+import math
 import time
 import wave
 from pathlib import Path
@@ -21,6 +23,21 @@ logger = logging.getLogger("heare.voice.heard")
 # and enough of a person's speech to measure anything on.
 KEEP = 500
 RATE = 16000
+
+
+def levels(pcm: bytes) -> dict:
+    """How loud a phrase was, in dBFS: its peak and its mean. A voice close
+    to the microphone and a television across the room differ here."""
+    samples = array.array("h", pcm[: len(pcm) // 2 * 2])
+    if not samples:
+        return {"peak_db": -120.0, "mean_db": -120.0}
+    peak = max(abs(v) for v in samples)
+    rms = math.sqrt(sum(v * v for v in samples) / len(samples))
+
+    def db(value: float) -> float:
+        return round(20 * math.log10(value / 32768.0), 1) if value else -120.0
+
+    return {"peak_db": db(peak), "mean_db": db(rms)}
 
 
 class Heard:

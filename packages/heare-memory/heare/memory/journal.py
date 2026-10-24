@@ -268,6 +268,10 @@ class Journal:
             self.append("verb", dict(data), source="core", trust="system")
         elif kind in ("permission", "permission_closed", "judged"):
             self.append(kind, dict(data), source="brain", trust="system")
+        elif kind == "around" and data.get("key") == "playing":
+            # What played nearby, when it changed: the ear's recordings are
+            # weighed against it (was that the television?).
+            self.append("around", dict(data), source="eyes", trust="tool_output")
 
 
 def _write_all(fd: int, data: bytes) -> None:

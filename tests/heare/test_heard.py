@@ -82,3 +82,20 @@ async def test_too_short_to_be_a_word_is_neither_sent_nor_kept(tmp_path, monkeyp
     voice = Voice(object(), _Settings(), heard=Heard(tmp_path))
     assert await voice._text_of(LOUD[:3200]) == ""
     assert not list(tmp_path.glob("*"))
+
+
+def test_a_phrase_says_how_loud_it_was():
+    from heare.channels.voice.heard import levels
+
+    assert levels(LOUD) == {"peak_db": -12.2, "mean_db": -12.2}  # 8000 of 32768
+    assert levels(b"") == {"peak_db": -120.0, "mean_db": -120.0}
+    assert levels(b"\x00\x00" * 10)["peak_db"] == -120.0
+
+
+async def test_the_pieces_of_one_reply_are_kept_with_its_number(tmp_path, monkeypatch):
+    await _recognised(monkeypatch, "та можна")
+    voice = Voice(object(), _Settings(), heard=Heard(tmp_path))
+    await voice._text_of(LOUD, turn=41)
+    await voice._text_of(LOUD, turn=41)
+    turns = {json.loads(p.read_text(encoding="utf-8"))["turn"] for p in tmp_path.glob("*.json")}
+    assert turns == {41}
