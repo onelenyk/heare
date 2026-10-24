@@ -22,7 +22,7 @@ import time
 from typing import AsyncIterator, Awaitable, Callable
 
 from heare.core.forms import (
-    Delegator, Executor, Input, Memory, Message, Model, Output, Permission,
+    Delegator, Executor, Gate, Input, Memory, Message, Model, Output, Permission,
     Question, Task, Tools,
 )
 from heare.core.state import State
@@ -150,13 +150,15 @@ class _Desk:
     def __init__(self, core: Core, task: Task) -> None:
         self._core, self._task = core, task
         self.follows, self.asked = task.follows, task.request
+        self.verdict: tuple[str, str] = ("person", "")  # who allowed the last, why
 
     def step(self, text: str) -> None:
         self._task.step = text
         self._core.state.emit("task", **self._task.view())
 
-    async def permit(self, what: str, kind: str = "change") -> bool:
-        return await self._core._ask(self._task, what, kind)
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
+        allowed, *self.verdict = await self._core._ask(self._task, what, kind, detail)
+        return allowed
 
     async def question(self, text: str) -> str:
         return await self._core._question_of(self._task, text)
@@ -169,6 +171,7 @@ class Core:
         *,
         memory: Memory | None = None,
         delegator: Delegator | None = None,
+        gate: Gate | None = None,
         prompt: Callable[[], Awaitable[str]] | None = None,
         names: frozenset[str] = frozenset(),
         permission_reminder: float = PERMISSION_REMINDER_S,
@@ -181,6 +184,7 @@ class Core:
         self.model = model
         self.memory = memory
         self.delegator = delegator or Plain()
+        self.gate = gate
         self.names = names
         self.permission_reminder = permission_reminder
         self.judge = judge
@@ -737,8 +741,7 @@ class Core:
             status = {"running": "У РОБОТІ", "done": "готово", "failed": "не вийшло",
                       "stopped": "зупинено"}.get(task.status, task.status)
             line = f"- {status}: {task.request[:90]}"
-            # What it is at, and what came of it: asked «що ти знайшов?»
-            # it answered that it had no file names before it (24 October).
+            # What it is at and what came of it: without, «що ти знайшов?» had no answer.
             if task.status == "running" and task.step:
                 line += f" — зараз: {task.step[:80]}"
             elif task.result:
@@ -894,30 +897,43 @@ class Core:
 
     # -- permission -------------------------------------------------------
 
-    async def _ask(self, task: Task, what: str, kind: str) -> bool:
-        """Reading is free; a change waits for the person's yes. The yes
-        is caught by code from the person's own lane, never read out of a
-        model's reply or an executor's result."""
+    async def _ask(self, task: Task, what: str, kind: str,
+                   detail: str = "") -> tuple[bool, str, str]:
+        """Reading is free; a change waits for the person's yes, unless the
+        gate finds it plainly what they asked for. The yes is caught by code
+        from the person's own lane, never read out of a model's reply.
+        Returns (allowed, by whom, why)."""
         if kind == "read":
-            return True
+            return True, "person", ""
+        why = ""
+        if kind == "judge" and self.gate is not None:
+            try:  # a gate that fails has said: ask
+                allowed, why = await self.gate.decide(
+                    task, self.history[-CONTEXT_TURNS:], what, detail)
+            except Exception:
+                logger.exception("the gate failed on %.80s — asking", what)
+                allowed, why = False, "суддя не відповів"
+            self.state.emit("judged", task=task.id, what=what, allowed=allowed, why=why)
+            if allowed:
+                return True, "judge", why
         async with self._asking:
-            # Asked once for the whole piece of work. Thirty questions in
-            # ten minutes, one per command, made talking impossible.
-            if task.allowed is not None:
-                return task.allowed
-            permission = Permission(next(self._ids), task.id, task.executor, what)
+            # Asked once for the whole piece of work: thirty questions in ten
+            # minutes made talking impossible. What the gate brings is asked
+            # one action at a time: one yes must not open all the rest.
+            if kind != "judge" and task.allowed is not None:
+                return task.allowed, "person", ""
+            permission = Permission(next(self._ids), task.id, task.executor, what, why)
             self._answered = asyncio.get_running_loop().create_future()
             self._permission = self.state.permission = permission
             self.state.emit("permission", **permission.view())
-            # Said short: a shell command read out in full is noise. The
-            # whole of it is in the event, for a screen to show.
+            # Said short: a command read out in full is noise; the screen has it.
             flat = " ".join(what.split())
             short = flat if len(flat) <= SAY_CHARS else flat[:SAY_CHARS].rstrip() + "…"
-            self.hear(Message(
-                text=(f"{task.executor} просить дозволу на зміни для цієї справи. "
-                      f"Почне з: {short}. Дозволяєш?"),
-                channel=task.executor, person=False, verbatim=True,
-            ))
+            text = (f"{task.executor} хоче: {short}. Питаю, бо {why}. Дозволяєш?" if why
+                    else f"{task.executor} просить дозволу на зміни для цієї справи. "
+                         f"Почне з: {short}. Дозволяєш?")
+            self.hear(Message(text=text, channel=task.executor, person=False,
+                              verbatim=True))
             allowed = False
             try:
                 try:
@@ -930,10 +946,11 @@ class Core:
                     ))
                     allowed = await self._answered
             finally:
-                task.allowed = allowed
+                if kind != "judge":
+                    task.allowed = allowed
                 self._permission = self.state.permission = None
                 self.state.emit("permission_closed", id=permission.id, allowed=allowed)
-            return allowed
+            return allowed, "person", why
 
     def permit(self, permission_id: int, allowed: bool) -> bool:
         """Answer the open question — by voice, by text, or by a button."""

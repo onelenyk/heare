@@ -144,3 +144,19 @@ def test_a_question_waiting_for_the_person_shows_until_it_is_answered():
     assert screen.text().splitlines()[-1] == "  ? чекає дозволу: git push"
     screen.permit("git push", True)
     assert screen.text().splitlines()[-2:] == ["  ? дозволити: git push → так", "⋯ працює"]
+
+
+
+def test_what_the_gate_lets_through_reads_as_done_on_its_own_and_why():
+    screen = Terminal()
+    screen.begin("прибери дублікати", new=True, at=AT)
+    screen.permit("trash a.pdf", None, "judge")
+    assert screen.text().splitlines()[-1] == "  ? суддя зважує: trash a.pdf"
+    screen.permit("trash a.pdf", True, "judge", "прибирає дублікат, як просив")
+    screen.permit("git push", False, "person", "це побачать інші")
+    screen.end("done", "")
+
+    assert screen.text().splitlines()[1:] == [
+        "  ✓ сам: прибирає дублікат, як просив",
+        "  ? дозволити: git push (питаю, бо це побачать інші) → ні",
+    ]

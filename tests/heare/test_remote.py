@@ -16,7 +16,7 @@ class Desk:
     def step(self, text: str) -> None:
         self.steps.append(text)
 
-    async def permit(self, what: str, kind: str = "change") -> bool:
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
         return True
 
 
@@ -65,3 +65,25 @@ async def test_after_a_stop_the_next_step_reads_as_stopped():
 async def test_claim_returns_nothing_when_there_is_no_work():
     hands = RemoteExecutor("opencode", "код", claim_wait_s=0.05)
     assert await hands.claim() is None
+
+
+async def test_the_action_in_full_goes_to_the_desk_and_who_allowed_it_comes_back():
+    hands = RemoteExecutor("opencode", "код")
+    seen: list = []
+
+    class Weighing(Desk):
+        async def permit(self, what, kind="change", detail=""):
+            seen.append((what, kind, detail))
+            self.verdict = ("judge", "як просили")
+            return True
+
+    running = asyncio.create_task(hands.run("прибери", Weighing()))
+    task = await hands.claim()
+
+    allow, stopped = await hands.permit(task["id"], "trash a", "judge", '{"command": "trash a"}')
+    assert (allow, stopped) == (True, False)
+    assert seen == [("trash a", "judge", '{"command": "trash a"}')]
+    assert hands.verdict(task["id"]) == ("judge", "як просили")
+    assert hands.verdict(999) == ("person", "")
+    hands.result(task["id"], "done", "Так.")
+    await asyncio.wait_for(running, 1.0)

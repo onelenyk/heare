@@ -365,11 +365,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def executor_permit(request: web.Request) -> web.Response:
         data = await body(request)
         found = _executor_for(request)
+        job = int(request.match_info["id"])
         allow, stopped = await found.permit(
-            int(request.match_info["id"]),
-            str(data.get("what", "")), str(data.get("kind", "change")),
+            job, str(data.get("what", "")), str(data.get("kind", "change")),
+            str(data.get("detail", ""))[:4000],
         )
-        return web.json_response({"allow": bool(allow), "stopped": bool(stopped)})
+        by, why = found.verdict(job) if hasattr(found, "verdict") else ("person", "")
+        return web.json_response({"allow": bool(allow), "stopped": bool(stopped),
+                                  "by": by, "why": why})
 
     async def executor_ask(request: web.Request) -> web.Response:
         """The agent's question mid-work: the person's answer comes back."""

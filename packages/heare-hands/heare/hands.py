@@ -88,7 +88,8 @@ class RemoteDesk:
 
     def __init__(self, client: httpx.AsyncClient, base: str, job_id: int,
                  name: str,
-                 on_permit: Callable[[str, bool | None], None] | None = None) -> None:
+                 on_permit: Callable[[str, bool | None, str, str], None] | None = None,
+                 ) -> None:
         self._client, self._base = client, base
         self._id, self._name = job_id, name
         self._on_permit = on_permit
@@ -109,18 +110,20 @@ class RemoteDesk:
             raise asyncio.CancelledError
         return str(answer.get("answer") or "")
 
-    async def permit(self, what: str, kind: str = "change") -> bool:
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
+        weighing = "judge" if kind == "judge" else "person"
         if self._on_permit is not None:
-            self._on_permit(what, None)  # asked; the answer may take a while
+            self._on_permit(what, None, weighing, "")  # the answer may take a while
         response = await self._client.post(
             f"{self._base}/api/executor/{self._id}/permit?name={self._name}",
-            json={"what": what, "kind": kind})
+            json={"what": what, "kind": kind, "detail": detail})
         answer = response.json()
         if answer.get("stopped"):
             raise asyncio.CancelledError
         allowed = bool(answer.get("allow"))
         if self._on_permit is not None:
-            self._on_permit(what, allowed)
+            self._on_permit(what, allowed, str(answer.get("by") or "person"),
+                            str(answer.get("why") or ""))
         return allowed
 
 

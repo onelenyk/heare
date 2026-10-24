@@ -103,7 +103,7 @@ class _Desk:
     def step(self, text: str) -> None:
         pass
 
-    async def permit(self, what: str, kind: str = "change") -> bool:
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
         return True
 
 
@@ -217,7 +217,7 @@ class _Desk:
     def step(self, text: str) -> None:
         pass
 
-    async def permit(self, what: str, kind: str = "change") -> bool:
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
         return True
 
 
@@ -278,7 +278,7 @@ async def test_in_auto_the_agent_is_never_stopped_to_ask(tmp_path):
     asked: list[str] = []
 
     class Desk(_Desk):
-        async def permit(self, what: str, kind: str = "change") -> bool:
+        async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
             asked.append(what)
             return False
 

@@ -164,8 +164,9 @@ class Desk(Protocol):
     def step(self, text: str) -> None:
         """What it is doing now, in a few words. This is what makes work visible."""
 
-    async def permit(self, what: str, kind: str = "change") -> bool:
-        """Ask before acting. ``kind`` is ``"read"`` or ``"change"``."""
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
+        """Ask before acting: ``"read"`` is free, ``"change"`` the person's to
+        allow, ``"judge"`` weighed by the gate first; ``detail``: in full."""
 
 
 class Executor(Protocol):
@@ -176,6 +177,13 @@ class Executor(Protocol):
     async def run(self, task: str, desk: Desk) -> str:
         """Do the task and return what came of it. Being cancelled is how
         it is told to stop, and it must stop."""
+
+
+class Gate(Protocol):
+    """Weighs one action against what the person asked: (allowed, why)."""
+
+    async def decide(self, task: Task, talk: list[dict], what: str,
+                     detail: str) -> tuple[bool, str]: ...
 
 
 class Delegator(Protocol):
@@ -224,10 +232,11 @@ class Permission:
     task: int
     executor: str
     what: str
+    why: str = ""  # the gate's reason for asking, when it was the gate
 
     def view(self) -> dict:
         return {"id": self.id, "task": self.task, "executor": self.executor,
-                "what": self.what}
+                "what": self.what, "why": self.why}
 
 
 @dataclass

@@ -867,3 +867,85 @@ async def test_a_broken_fit_does_not_break_the_turn():
     assert room.page.said == ["все одно "]
     assert room.model.asked[0][-1] == {"role": "user", "content": "привіт"}
     await room.close()
+
+
+class Gate:
+    """Lets through what it is told to; remembers what it was shown."""
+
+    def __init__(self, *verdicts, fails: bool = False) -> None:
+        self.verdicts = list(verdicts)
+        self.fails = fails
+        self.shown: list[tuple[str, str, str]] = []
+
+    async def decide(self, task, talk, what, detail):
+        self.shown.append((task.request, what, detail))
+        if self.fails:
+            raise RuntimeError("no model")
+        return self.verdicts.pop(0)
+
+
+async def test_what_the_gate_finds_plainly_asked_for_is_done_without_a_question():
+    gate = Gate((True, "прибирає дублікат, як просив"))
+    room = await open_room(gate=gate)
+    events = room.core.state.subscribe()
+    worker = Worker(asks=(("trash a.pdf", "judge"),))
+    room.core.add_executor(worker)
+    task = room.core.delegate("прибери дублікати")
+    await room.until(lambda: worker.allowed == [True])
+
+    assert room.core.state.permission is None and room.page.said == []
+    assert task.allowed is None  # the gate's yes is for that action only
+    assert gate.shown == [("прибери дублікати", "trash a.pdf", "")]
+    seen = [events.get_nowait() for _ in range(events.qsize())]
+    judged = [e.data for e in seen if e.kind == "judged"]
+    assert judged == [{"task": task.id, "what": "trash a.pdf", "allowed": True,
+                       "why": "прибирає дублікат, як просив"}]
+    worker.release.set()
+    await room.close()
+
+
+async def test_what_the_gate_brings_is_asked_with_its_reason_one_action_at_a_time():
+    gate = Gate((False, "це побачать інші"), (False, "це не повернеш"))
+    room = await open_room(gate=gate)
+    worker = Worker(asks=(("git push", "judge"), ("rm -rf build", "judge")))
+    room.core.add_executor(worker)
+    room.core.delegate("опублікуй")
+    await room.until(lambda: room.core.state.permission is not None)
+    await room.until(lambda: room.page.said)
+    assert room.page.said[0] == "worker хоче: git push. Питаю, бо це побачать інші. Дозволяєш?"
+    assert room.core.state.permission.why == "це побачать інші"
+    room.says("Так")
+    await room.until(lambda: len(room.page.said) >= 3)  # «Добре.» and the next question
+    assert room.page.said[-1] == "worker хоче: rm -rf build. Питаю, бо це не повернеш. Дозволяєш?"
+    room.says("Ні")
+    await room.until(lambda: len(worker.allowed) == 2)
+    assert worker.allowed == [True, False]
+    worker.release.set()
+    await room.close()
+
+
+async def test_a_gate_that_fails_brings_the_action_to_the_person():
+    room = await open_room(gate=Gate(fails=True))
+    worker = Worker(asks=(("trash a.pdf", "judge"),))
+    room.core.add_executor(worker)
+    room.core.delegate("прибери")
+    await room.until(lambda: room.core.state.permission is not None)
+    assert room.core.state.permission.why == "суддя не відповів"
+    room.says("Так")
+    await room.until(lambda: worker.allowed == [True])
+    worker.release.set()
+    await room.close()
+
+
+async def test_a_change_the_person_must_allow_never_reaches_the_gate():
+    gate = Gate((True, "так"))
+    room = await open_room(gate=gate)
+    worker = Worker(asks=(("записати", "change"),))
+    room.core.add_executor(worker)
+    room.core.delegate("запиши")
+    await room.until(lambda: room.core.state.permission is not None)
+    assert gate.shown == []
+    room.says("Так")
+    await room.until(lambda: worker.allowed == [True])
+    worker.release.set()
+    await room.close()

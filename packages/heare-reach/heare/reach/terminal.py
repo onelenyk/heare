@@ -71,8 +71,7 @@ class Terminal:
             said = self._spoken()
             if said:
                 tail.append(f"агент: {_cut(said, 400)}")
-            tail.append(f"  ? чекає дозволу: {self._waiting}" if self._waiting
-                        else "⋯ працює")
+            tail.append(f"  ? {self._waiting}" if self._waiting else "⋯ працює")
         return "\n".join([*self.lines, *tail])
 
     def begin(self, request: str, *, new: bool, asked: str = "",
@@ -86,14 +85,22 @@ class Terminal:
         self._add(f"{stamp} › {_cut(' '.join((asked or request).split()))}")
         self._running = True
 
-    def permit(self, what: str, allowed: bool | None) -> None:
-        """The person is asked before the agent acts (None: no answer yet),
-        and answers."""
-        self._waiting = _command(what) if allowed is None else ""
+    def permit(self, what: str, allowed: bool | None, by: str = "person",
+               why: str = "") -> None:
+        """An action weighed before the agent takes it: by the gate, which
+        lets it through or brings it to the person, or by the person.
+        ``allowed`` is None while the answer is awaited."""
         if allowed is None:
+            self._waiting = ("суддя зважує: " if by == "judge" else "чекає дозволу: ") \
+                + _command(what)
             return
+        self._waiting = ""
         self._flush()
-        self._add(f"  ? дозволити: {_command(what)} → {'так' if allowed else 'ні'}")
+        if by == "judge":
+            self._add(f"  ✓ сам: {_cut(why or _command(what))}")
+            return
+        reason = f" (питаю, бо {_cut(why, 100)})" if why else ""
+        self._add(f"  ? дозволити: {_command(what)}{reason} → {'так' if allowed else 'ні'}")
 
     def end(self, status: str, result: str) -> None:
         self._running = False

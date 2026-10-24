@@ -70,12 +70,19 @@ class RemoteExecutor:
             return ""
         return await job.desk.question(text)
 
-    async def permit(self, job_id: int, what: str, kind: str) -> tuple[bool, bool]:
+    async def permit(self, job_id: int, what: str, kind: str,
+                     detail: str = "") -> tuple[bool, bool]:
         job = self._jobs.get(job_id)
         if job is None:
             return False, True  # stopped
-        allowed = await job.desk.permit(what, kind)
+        allowed = await job.desk.permit(what, kind, detail)
         return allowed, False
+
+    def verdict(self, job_id: int) -> tuple[str, str]:
+        """Who allowed the job's last action, and why: the gate or the person."""
+        job = self._jobs.get(job_id)
+        found = getattr(job.desk, "verdict", None) if job is not None else None
+        return tuple(found) if found else ("person", "")  # type: ignore[return-value] — a desk keeps two strings
 
     def result(self, job_id: int, status: str, result: str) -> bool:
         job = self._jobs.get(job_id)
