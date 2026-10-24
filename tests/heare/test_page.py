@@ -17,7 +17,7 @@ PAGE = (Path(__file__).resolve().parents[2]
         / "packages/heare-brain/heare/api/page.html").read_text(encoding="utf-8")
 SCRIPT = "\n".join(re.findall(r"<script>(.*?)</script>", PAGE, re.S))
 # The kinds of control protocol.md §5 promises a part can declare.
-KINDS = ("toggle", "slider", "choice", "label", "button", "log", "text")
+KINDS = ("toggle", "slider", "choice", "label", "button", "log", "text", "terminal")
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")

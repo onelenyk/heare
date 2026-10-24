@@ -226,3 +226,20 @@ def test_an_unknown_key_or_nothing_typed_is_not_kept(monkeypatch):
     monkeypatch.setattr(hands.getpass, "getpass", lambda prompt: "")
     assert hands._store_key("HOME") == 1
     assert hands._store_key("ZAI_API_KEY") == 1
+
+
+def test_hands_sweep_away_sockets_of_hands_that_are_gone(tmp_path):
+    import os
+
+    from heare.hands import _sweep
+
+    gone = tmp_path / "hands-999999.sock"
+    mine = tmp_path / f"hands-{os.getpid()}.sock"
+    odd = tmp_path / "hands-x.sock"
+    for path in (gone, mine, odd):
+        path.write_text("")
+
+    _sweep(tmp_path)
+
+    assert not gone.exists()
+    assert mine.exists() and odd.exists()

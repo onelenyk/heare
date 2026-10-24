@@ -139,6 +139,7 @@
   .partrow.asking { flex-wrap:wrap; height:auto; padding:6px 2px; row-gap:6px; }
   .partrow.asking .pactions { flex-basis:100%; justify-content:flex-end; align-items:center; gap:6px; }
   .partrow .mini { padding:1px 6px; font-size:10px; line-height:1.35; }
+  .part .pterm { grid-column:1 / -1; min-height:60px; max-height:320px; overflow:auto; margin:0; padding:8px 10px; border-radius:8px; background:#101014; color:#d9d9e0; font:11px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
   .part .plog { grid-column:1 / -1; max-height:120px; overflow:auto; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--soft); font:10.5px/1.45 var(--mono); white-space:pre-wrap; }
 
   /* A card: who and what it does now on top, its controls as rows. */
@@ -845,6 +846,8 @@ function controlsFor(pid, b, group = "", act = null) {
       extra.append(push);
     } else if (c.kind === "log") {
       if (value) grid.append(el("pre", "plog", String(value)));
+    } else if (c.kind === "terminal") {
+      if (value) grid.append(terminalView(pid, String(value)));
     }
   }
   const box = el("div", "part-controls");
@@ -852,6 +855,22 @@ function controlsFor(pid, b, group = "", act = null) {
   if (facts.childNodes.length) box.append(facts);
   if (extra.childElementCount) box.append(extra);
   return box.childElementCount ? box : null;
+}
+
+// A part's terminal is redrawn on every report: where the person scrolled
+// to is kept, and the newest line is followed while they are at the bottom.
+const termScroll = {};
+function terminalView(pid, text) {
+  const pre = el("pre", "pterm", text);
+  const was = termScroll[pid];
+  pre.onscroll = () => {
+    termScroll[pid] = {top: pre.scrollTop,
+                       bottom: pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4};
+  };
+  requestAnimationFrame(() => {
+    pre.scrollTop = !was || was.bottom ? pre.scrollHeight : was.top;
+  });
+  return pre;
 }
 
 // The person's answer to a part, and forgetting one.

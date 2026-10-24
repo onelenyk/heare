@@ -26,6 +26,7 @@ from heare import keys, part
 from heare.config import Settings
 from heare.reach import runner
 from heare.reach.agents import KNOWN as AGENTS, Agent
+from heare.reach.terminal import Terminal
 
 # run() returns this when the person changed the runner: main() starts the
 # hands again, so the agent is built once from settings, never patched live.
@@ -267,6 +268,21 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
     )
 
 
+def _sweep(folder: Path) -> None:
+    """Sockets left by hands that were killed rather than let go: a hands'
+    socket is removed on the way out, and a kill gives it none."""
+    for path in folder.glob("hands-*.sock"):
+        try:
+            pid = int(path.stem.removeprefix("hands-"))
+            os.kill(pid, 0)
+        except ValueError:
+            continue
+        except ProcessLookupError:
+            path.unlink(missing_ok=True)
+        except PermissionError:
+            continue
+
+
 async def run() -> int:
     settings = Settings()
     session_file = Path(settings.parts_file).parent / "agent-session.json"
@@ -276,6 +292,7 @@ async def run() -> int:
         resume = ""
 
     acp: collections.deque[str] = collections.deque(maxlen=40)
+    screen = Terminal()
     usage = {"cost": 0.0, "used": 0, "size": 0}
     told = 0
 
@@ -289,12 +306,18 @@ async def run() -> int:
             usage["used"] = int(update.get("used") or 0)
             usage["size"] = int(update.get("size") or 0)
             told += 1
+        written = screen.written
+        screen.feed(direction, message)
+        if screen.written != written:
+            told += 1
         line = _line(direction, message)
         if line:
             acp.append(line)
             told += 1
 
-    socket_path = Path(settings.parts_file).parent / f"hands-{os.getpid()}.sock"
+    folder = Path(settings.parts_file).parent
+    _sweep(folder)
+    socket_path = folder / f"hands-{os.getpid()}.sock"
     try:
         socket_path.unlink()
     except OSError:
@@ -337,6 +360,7 @@ async def run() -> int:
         {"name": "work", "kind": "label", "label": "Стан", "head": True,
          "value": "чекає" if agent is not None else "не готові"},
         {"name": "usage", "kind": "label", "label": "Ціна", "value": "—"},
+        {"name": "terminal", "kind": "terminal", "label": "Термінал", "value": ""},
         {"name": "acp", "kind": "log", "label": "ACP", "value": "",
          "group": "settings"},
     ] + await asyncio.to_thread(_settings_ui, settings)
@@ -367,7 +391,7 @@ async def run() -> int:
         held["wire"].report(values)
 
     async def work(wire: part.Wire) -> int:
-        nonlocal resume
+        nonlocal resume, told
         held["wire"] = wire
         wire.report(values)
         sent = 0
@@ -379,6 +403,7 @@ async def run() -> int:
                 if told != sent:
                     sent = told
                     values["acp"] = "\n".join(acp)
+                    values["terminal"] = screen.text()
                     values["usage"] = _price(**usage) or values["usage"]
                     wire.report(values)
 
@@ -404,6 +429,7 @@ async def run() -> int:
                 values["work"] = f"роблю: {task['request'][:50]}"
                 wire.report(values)
                 desk = RemoteDesk(wire.client, wire.base, task["id"], name)
+                screen.begin(task["request"], new=not task.get("continues"))
                 status, result = "done", ""
                 current["desk"] = desk
                 try:
@@ -416,6 +442,8 @@ async def run() -> int:
                     status, result = "stopped", "Зупинено."
                 except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
                     status, result = "failed", str(exc)
+                screen.end(status, result)
+                told += 1
                 print(f"готово {task['id']}: {status} {result[:60]}",
                       file=sys.stderr)
                 await wire.post(
