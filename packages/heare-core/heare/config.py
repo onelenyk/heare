@@ -57,6 +57,8 @@ DEFAULTS = {
     "executor_auth": "login",
     "executor_auth_env": "",
     "executor_base_url": "",
+    # How much the agent does without asking: careful · normal · auto.
+    "executor_mode": "normal",
     # Where agents work. Never the home folder: on 12 October an agent
     # left files in four places there.
     "executor_cwd": Path.home() / "heare-work",

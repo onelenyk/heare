@@ -57,6 +57,7 @@ class Terminal:
         # Counts every line written, so a full screen still reads as changed.
         self.written = 0
         self._running = False
+        self._waiting = ""
 
     def _add(self, line: str) -> None:
         self.lines.append(line)
@@ -70,7 +71,8 @@ class Terminal:
             said = self._spoken()
             if said:
                 tail.append(f"агент: {_cut(said, 400)}")
-            tail.append("⋯ працює")
+            tail.append(f"  ? чекає дозволу: {self._waiting}" if self._waiting
+                        else "⋯ працює")
         return "\n".join([*self.lines, *tail])
 
     def begin(self, request: str, *, new: bool, asked: str = "",
@@ -84,8 +86,12 @@ class Terminal:
         self._add(f"{stamp} › {_cut(' '.join((asked or request).split()))}")
         self._running = True
 
-    def permit(self, what: str, allowed: bool) -> None:
-        """The person was asked before the agent acted, and answered."""
+    def permit(self, what: str, allowed: bool | None) -> None:
+        """The person is asked before the agent acts (None: no answer yet),
+        and answers."""
+        self._waiting = _command(what) if allowed is None else ""
+        if allowed is None:
+            return
         self._flush()
         self._add(f"  ? дозволити: {_command(what)} → {'так' if allowed else 'ні'}")
 

@@ -65,7 +65,10 @@ HISTORY_TURNS = 12
 # How many recent turns an executor is shown: «відкрий той файл» names
 # nothing without them.
 CONTEXT_TURNS = 6
-PERMISSION_TIMEOUT_S = 60.0
+# An unanswered question about a change is said once more after this long,
+# and then waits as long as it takes: silence is not a no. Taken as one, it
+# refused work the person was busy saying yes to (24 October).
+PERMISSION_REMINDER_S = 60.0
 # An executor's question waits this long; the agent's own idle guard is 5 min.
 QUESTION_TIMEOUT_S = 240.0
 SAY_CHARS = 70
@@ -168,7 +171,7 @@ class Core:
         delegator: Delegator | None = None,
         prompt: Callable[[], Awaitable[str]] | None = None,
         names: frozenset[str] = frozenset(),
-        permission_timeout: float = PERMISSION_TIMEOUT_S,
+        permission_reminder: float = PERMISSION_REMINDER_S,
         judge: str = JUDGE,
         words: object = None,
         fit: Callable[[str, list[dict]], tuple[str, list[dict]]] | None = None,
@@ -179,7 +182,7 @@ class Core:
         self.memory = memory
         self.delegator = delegator or Plain()
         self.names = names
-        self.permission_timeout = permission_timeout
+        self.permission_reminder = permission_reminder
         self.judge = judge
         self.words = words or NoWords()
         self._fit = fit
@@ -829,6 +832,11 @@ class Core:
         """Hand a piece of work off. Returns at once; the result arrives
         later as a message of its own, in the quiet lane."""
         task = Task(next(self._ids), request, executor="", follows=follows)
+        # Work that goes on from the last keeps the person's yes to it:
+        # working together, being asked again at every step is no help.
+        last = next(reversed(self.state.tasks.values()), None)
+        if follows and last is not None and last.allowed:
+            task.allowed = True
         self.state.tasks[task.id] = task
         job = asyncio.create_task(self._work(task), name=f"task-{task.id}")
         self._jobs[task.id] = job
@@ -873,6 +881,11 @@ class Core:
         if job is None or job.done():
             return False
         job.cancel()
+        # A question still waiting for this work is answered for it: no.
+        # Hands across the door wait on it outside the job, and a question
+        # that never times out would hold them for good.
+        if self._permission is not None and self._permission.task == task_id:
+            self.permit(self._permission.id, False)
         return True
 
     def stop_all(self) -> int:
@@ -898,7 +911,8 @@ class Core:
             self.state.emit("permission", **permission.view())
             # Said short: a shell command read out in full is noise. The
             # whole of it is in the event, for a screen to show.
-            short = what if len(what) <= SAY_CHARS else what[:SAY_CHARS].rstrip() + "…"
+            flat = " ".join(what.split())
+            short = flat if len(flat) <= SAY_CHARS else flat[:SAY_CHARS].rstrip() + "…"
             self.hear(Message(
                 text=(f"{task.executor} просить дозволу на зміни для цієї справи. "
                       f"Почне з: {short}. Дозволяєш?"),
@@ -906,11 +920,15 @@ class Core:
             ))
             allowed = False
             try:
-                allowed = await asyncio.wait_for(
-                    self._answered, self.permission_timeout
-                )
-            except TimeoutError:
-                logger.info("permission %d: no answer — refused", permission.id)
+                try:
+                    allowed = await asyncio.wait_for(
+                        asyncio.shield(self._answered), self.permission_reminder)
+                except TimeoutError:
+                    self.hear(Message(
+                        text=f"Ще чекаю: {task.executor} просить дозволу. Дозволяєш?",
+                        channel=task.executor, person=False, verbatim=True,
+                    ))
+                    allowed = await self._answered
             finally:
                 task.allowed = allowed
                 self._permission = self.state.permission = None

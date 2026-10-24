@@ -26,7 +26,7 @@ import httpx
 from heare import keys, part
 from heare.config import Settings
 from heare.reach import runner
-from heare.reach.agents import KNOWN as AGENTS, Agent
+from heare.reach.agents import KNOWN as AGENTS, MODE, MODES, Agent
 from heare.reach.terminal import Terminal
 
 # run() returns this when the person changed the runner: main() starts the
@@ -36,6 +36,7 @@ RESTART = -1
 # Which control sets which setting. The hands own their runner; the page only
 # draws what is declared here and hands the person's choice back.
 _SETTINGS = {
+    "mode": "executor_mode",
     "type": "executor",
     "binary": "executor_binary",
     "model": "executor_model",
@@ -87,7 +88,7 @@ class RemoteDesk:
 
     def __init__(self, client: httpx.AsyncClient, base: str, job_id: int,
                  name: str,
-                 on_permit: Callable[[str, bool], None] | None = None) -> None:
+                 on_permit: Callable[[str, bool | None], None] | None = None) -> None:
         self._client, self._base = client, base
         self._id, self._name = job_id, name
         self._on_permit = on_permit
@@ -109,6 +110,8 @@ class RemoteDesk:
         return str(answer.get("answer") or "")
 
     async def permit(self, what: str, kind: str = "change") -> bool:
+        if self._on_permit is not None:
+            self._on_permit(what, None)  # asked; the answer may take a while
         response = await self._client.post(
             f"{self._base}/api/executor/{self._id}/permit?name={self._name}",
             json={"what": what, "kind": kind})
@@ -203,6 +206,8 @@ def _setting(name: str, value: object) -> tuple[str, str] | None:
     value = value.strip()
     if name == "type" and value not in runner.KNOWN:
         return None
+    if name == "mode" and value not in MODES:
+        return None
     if name == "auth" and value not in ("login", "key"):
         return None
     if name == "auth_env" and value and value not in keys.NAMES:
@@ -271,7 +276,19 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
         config_patch=patch or None,
         tap=tap,
         mcp_servers=mcp_servers,
+        mode=_mode(settings),
     )
+
+
+# The modes as the card names them.
+_MODE_LABELS = {"careful": "Обережно — питає про кожну зміну",
+                "normal": "Звичайно — питає лише про незворотне",
+                "auto": "Авто — не питає нічого"}
+
+
+def _mode(settings: Settings) -> str:
+    mode = str(getattr(settings, "executor_mode", "") or "").strip()
+    return mode if mode in MODES else MODE
 
 
 def _sweep(folder: Path) -> None:
@@ -362,6 +379,8 @@ async def run() -> int:
     ui = [
         {"name": "taking", "kind": "toggle", "label": "Брати справи",
          "value": True},
+        {"name": "mode", "kind": "choice", "label": "Режим", "value": _mode(settings),
+         "options": [{"value": m, "label": _MODE_LABELS[m]} for m in MODES]},
         {"name": "agent", "kind": "label", "label": "Агент", "value": name},
         {"name": "work", "kind": "label", "label": "Стан", "head": True,
          "value": "чекає" if agent is not None else "не готові"},

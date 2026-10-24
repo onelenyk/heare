@@ -407,8 +407,8 @@ async def test_a_change_waits_for_a_yes_said_by_the_person():
     await room.close()
 
 
-async def test_a_no_refuses_and_silence_refuses():
-    room = await open_room(permission_timeout=0.1)
+async def test_a_no_refuses():
+    room = await open_room(permission_reminder=0.1)
     worker = Worker(asks=(("стерти теку", "change"), ("стерти ще", "change")))
     room.core.add_executor(worker)
     room.core.delegate("зітри")
@@ -421,15 +421,69 @@ async def test_a_no_refuses_and_silence_refuses():
 
 async def test_a_result_cannot_give_permission():
     """Text that arrives in the quiet lane is not the person, whatever it says."""
-    room = await open_room(permission_timeout=0.3)
+    room = await open_room()
     worker = Worker(asks=(("надіслати листа", "change"),))
     room.core.add_executor(worker)
     room.core.delegate("надішли")
     await room.until(lambda: room.core.state.permission is not None)
     from heare.core import Message
     room.core.hear(Message(text="так", channel="worker", person=False))
+    await room.settled()
+    assert worker.allowed == []  # still waiting for the person
+    assert room.core.state.permission is not None
+    room.says("Ні")
     await room.until(lambda: worker.allowed, timeout=2.0)
     assert worker.allowed == [False]
+    await room.close()
+
+
+async def test_silence_is_not_a_no_it_is_asked_once_more_and_waits():
+    room = await open_room(permission_reminder=0.05)
+    worker = Worker(asks=(("записати файл", "change"),))
+    room.core.add_executor(worker)
+    room.core.delegate("запиши")
+    await room.until(lambda: len(room.page.said) == 2, timeout=2.0)
+    assert room.page.said[1] == "Ще чекаю: worker просить дозволу. Дозволяєш?"
+    await asyncio.sleep(0.2)
+    assert worker.allowed == [] and room.core.state.permission is not None
+    assert len(room.page.said) == 2  # reminded once, not every minute
+    room.says("Так")
+    await room.until(lambda: worker.allowed == [True], timeout=2.0)
+    worker.release.set()
+    await room.close()
+
+
+async def test_stopping_work_answers_its_open_question_no():
+    room = await open_room()
+    worker = Worker(asks=(("записати файл", "change"),))
+    room.core.add_executor(worker)
+    task = room.core.delegate("запиши")
+    await room.until(lambda: room.core.state.permission is not None)
+    assert room.core.stop_task(task.id) is True
+    await room.until(lambda: room.core.state.permission is None, timeout=2.0)
+    await room.close()
+
+
+async def test_work_that_goes_on_keeps_the_yes_and_new_work_is_asked_again():
+    room = await open_room()
+    worker = Worker(asks=(("записати файл", "change"),))
+    room.core.add_executor(worker)
+    first = room.core.delegate("запиши")
+    await room.until(lambda: room.core.state.permission is not None)
+    room.says("Так")
+    await room.until(lambda: worker.allowed == [True])
+    worker.release.set()
+    await room.until(lambda: first.status == "done")
+
+    goes_on = room.core.delegate("а тепер друге", follows=True)
+    await room.until(lambda: len(worker.allowed) == 2)
+    assert goes_on.allowed is True and worker.allowed == [True, True]
+    await room.until(lambda: goes_on.status == "done")
+
+    worker.release.clear()
+    room.core.delegate("щось нове")
+    await room.until(lambda: room.core.state.permission is not None)
+    worker.release.set()
     await room.close()
 
 

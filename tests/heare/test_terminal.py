@@ -135,3 +135,12 @@ def test_a_refusal_reads_as_the_persons_no_and_not_as_an_error():
             "text": "The user rejected permission to use this specific tool call."}}]))
 
     assert screen.text().splitlines() == ["  ? дозволити: bash python3 - <<'EOF' … → ні"]
+
+
+def test_a_question_waiting_for_the_person_shows_until_it_is_answered():
+    screen = Terminal()
+    screen.begin("опублікуй", new=True, at=AT)
+    screen.permit("git push", None)
+    assert screen.text().splitlines()[-1] == "  ? чекає дозволу: git push"
+    screen.permit("git push", True)
+    assert screen.text().splitlines()[-2:] == ["  ? дозволити: git push → так", "⋯ працює"]

@@ -175,7 +175,7 @@ async def test_an_env_overlay_keeps_the_opencode_permission_config(
     opencode = Known("opencode", "opencode", ("opencode", "acp"), "x")
     patch = {"provider": {"deepseek": {"options": {"baseURL": "https://g"}}}}
     agent = Agent(opencode, home=tmp_path, env={"CUSTOM": "1"},
-                  config_patch=patch)
+                  config_patch=patch, mode="careful")
     await agent._started()
 
     env = seen["env"]
@@ -232,3 +232,60 @@ async def test_work_that_goes_on_keeps_its_session_and_new_work_starts_clean(tmp
     await agent.run("список покупок", _Desk())
     assert agent.last_session != first
     await agent.close()
+
+
+
+def _rule(config: dict, command: str) -> str:
+    """What opencode would do with a command: the last matching pattern wins."""
+    import fnmatch
+
+    found = "ask"
+    for pattern, rule in config["permission"]["bash"].items():
+        if fnmatch.fnmatchcase(command, pattern):
+            found = rule
+    return found
+
+
+def test_each_mode_lets_the_agent_do_what_the_owner_chose():
+    careful = agents._opencode_config(mode="careful")
+    normal = agents._opencode_config(mode="normal")
+    auto = agents._opencode_config(mode="auto")
+
+    assert _rule(careful, "ls -la") == "allow"
+    assert _rule(careful, "python3 script.py") == "ask"
+    assert careful["permission"]["edit"] == "ask"
+
+    assert _rule(normal, "python3 script.py") == "allow"
+    assert _rule(normal, "brew install pdftotext") == "allow"
+    assert _rule(normal, "trash old.pdf") == "allow"
+    assert _rule(normal, "rm old.pdf") == "deny"
+    assert _rule(normal, "git push origin main") == "ask"
+    assert _rule(normal, "osascript -e 'tell app \"Mail\"'") == "ask"
+    assert normal["permission"]["edit"] == "allow"
+
+    assert _rule(auto, "rm old.pdf") == "allow"
+    assert _rule(auto, "git push") == "allow"
+
+    for config in (careful, normal, auto):
+        assert _rule(config, "sudo rm -rf /") == "deny"
+        assert _rule(config, "security find-generic-password -s heare") == "deny"
+        assert _rule(config, "defaults write com.apple.dock x") == "deny"
+
+
+async def test_in_auto_the_agent_is_never_stopped_to_ask(tmp_path):
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None,
+                  mode="auto")
+    asked: list[str] = []
+
+    class Desk(_Desk):
+        async def permit(self, what: str, kind: str = "change") -> bool:
+            asked.append(what)
+            return False
+
+    result = await agent.run("WRITE the note", Desk())
+    assert asked == [] and "НЕ зроблено" not in result
+    await agent.close()
+
+
+def test_an_unknown_mode_falls_back_to_normal(tmp_path):
+    assert Agent(KNOWN, home=tmp_path, mode="reckless").mode == "normal"

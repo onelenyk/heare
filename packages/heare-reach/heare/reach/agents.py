@@ -110,20 +110,68 @@ _LOOKING = (
 MODEL = "deepseek/deepseek-flash"
 
 
-def _opencode_config(patch: dict | None = None) -> dict:
-    bash = {"*": "ask"}
-    for command in _LOOKING:
-        bash[command] = "allow"
-        bash[f"{command} *"] = "allow"
-    config = {
-        "$schema": "https://opencode.ai/config.json",
-        "permission": {"edit": "ask", "bash": bash, "webfetch": "allow"},
-    }
+# How much the agent does on its own (the owner's choice, 24 October):
+# «careful» asks before any change; «normal» changes, runs and installs on
+# its own, deletes only into the Trash, and asks before what cannot be taken
+# back or is seen by others; «auto» asks about nothing. In every mode the
+# machine's admin rights, settings and secrets stay out of reach.
+MODES = ("careful", "normal", "auto")
+MODE = "normal"
+
+# Never, in any mode.
+_NEVER = (
+    "sudo", "su", "security", "defaults write", "defaults delete", "systemsetup",
+    "networksetup", "pmset", "spctl", "csrutil", "nvram", "diskutil", "launchctl",
+    "dscl", "passwd", "chsh", "fdesetup", "tccutil",
+)
+# What cannot be taken back, or is seen by others: asked about in «normal».
+_OUTWARD = (
+    "git push", "gh", "osascript", "mail", "sendmail", "npm publish", "twine",
+    "scp", "ssh", "rsync", "curl -X", "curl --request", "curl -d", "curl --data",
+    "curl -F", "curl --form",
+)
+# Gone for good; in «normal» the Trash takes their place (`trash`, macOS 15+).
+_DELETING = ("rm", "rmdir", "srm", "shred", "unlink")
+
+# Told to the agent with every task: a rule it cannot see is a rule it
+# walks into, and a denied `rm` with no word why ends the work.
+_RULES = {
+    "careful": "",
+    "normal": ("[Правила heare] Видаляй файли лише в Кошик: `trash <шлях>`; "
+               "`rm` заборонено. Перед тим, що не можна повернути або що "
+               "побачать інші (надіслати, опублікувати, git push), тебе "
+               "спитають.\n\n"),
+    "auto": "[Правила heare] Видаляючи файли, бери `trash <шлях>`, не `rm`.\n\n",
+}
+
+
+def _commands(rule: str, names: tuple[str, ...]) -> dict[str, str]:
+    return {pattern: rule for name in names for pattern in (name, f"{name} *")}
+
+
+def _opencode_config(patch: dict | None = None, mode: str = MODE) -> dict:
+    # The last pattern that matches wins: the catch-all goes first.
+    if mode == "careful":
+        bash = {"*": "ask", **_commands("allow", _LOOKING)}
+        edit = "ask"
+    elif mode == "auto":
+        bash = {"*": "allow"}
+        edit = "allow"
+    else:
+        bash = {"*": "allow", **_commands("ask", _OUTWARD),
+                **_commands("deny", _DELETING)}
+        edit = "allow"
+    bash.update(_commands("deny", _NEVER))
+    permission: dict = {"edit": edit, "bash": bash, "webfetch": "allow"}
+    if mode != "careful":
+        permission["external_directory"] = "allow"
+    config = {"$schema": "https://opencode.ai/config.json", "permission": permission}
     config.update(patch or {})
     return config
 
 
-def _opencode_env(home: Path, patch: dict | None = None) -> dict[str, str]:
+def _opencode_env(home: Path, patch: dict | None = None,
+                  mode: str = MODE) -> dict[str, str]:
     """opencode with a configuration of the assistant's own, in which a
     write or a command that changes something is asked about. Measured on
     25 September: with its defaults it wrote a file after being told no,
@@ -132,7 +180,7 @@ def _opencode_env(home: Path, patch: dict | None = None) -> dict[str, str]:
     config = home / "opencode"
     config.mkdir(parents=True, exist_ok=True)
     path = config / "opencode.json"
-    wanted = json.dumps(_opencode_config(patch), indent=2)
+    wanted = json.dumps(_opencode_config(patch, mode), indent=2)
     try:
         current = path.read_text(encoding="utf-8")
     except OSError:
@@ -152,8 +200,10 @@ class Agent:
                  model: str | None = None,
                  config_patch: dict | None = None,
                  tap: Callable[[str, dict], None] | None = None,
-                 mcp_servers: list[dict] | None = None) -> None:
+                 mcp_servers: list[dict] | None = None,
+                 mode: str = MODE) -> None:
         self.name = known.name
+        self.mode = mode if mode in MODES else MODE
         self.about = known.about
         self._known = known
         self._cwd = cwd
@@ -168,6 +218,9 @@ class Agent:
         self._last: str = ""
         self._desks: dict[str, Desk] = {}
         self._refused: dict[str, list[str]] = {}
+        # Questions waiting for the person: the agent is not idle meanwhile,
+        # however long they take.
+        self._waiting = 0
         self._starting = asyncio.Lock()
 
     async def _started(self) -> acp.Agent:
@@ -176,7 +229,8 @@ class Agent:
             if self._agent is None:
                 env = self._env
                 if self.name == "opencode":
-                    permission = _opencode_env(self._home, self._config_patch)
+                    permission = _opencode_env(self._home, self._config_patch,
+                                               self.mode)
                     env = permission if env is None else {**permission, **env}
                 logs = self._home / "logs"
                 logs.mkdir(parents=True, exist_ok=True)
@@ -194,10 +248,17 @@ class Agent:
         desk = self._desks.get(session.id)
         if desk is None:
             return "reject"
+        if self.mode == "auto":
+            return "allow"
         call = request.get("toolCall") or {}
         kind = "read" if call.get("kind") in _READING else "change"
         what = _what(request)
-        allowed = await desk.permit(what, kind)
+        self._waiting += 1
+        try:
+            allowed = await desk.permit(what, kind)
+        finally:
+            self._waiting -= 1
+            self._activity = time.monotonic()
         if not allowed:
             self._refused.setdefault(session.id, []).append(what)
         return "allow" if allowed else "reject"
@@ -229,7 +290,8 @@ class Agent:
         self._desks[session.id] = desk
         self._activity = time.monotonic()
         try:
-            await guarded(session.prompt(task), lambda: self._activity,
+            await guarded(session.prompt(_RULES[self.mode] + task),
+                          lambda: time.monotonic() if self._waiting else self._activity,
                           idle_s=IDLE_S, total_s=TOTAL_S, stop=session.cancel)
         except asyncio.CancelledError:
             # Being cancelled is how it is told to stop — and it must.

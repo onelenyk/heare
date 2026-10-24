@@ -193,6 +193,8 @@ def test_a_control_becomes_a_setting_only_when_the_value_is_one_it_takes():
     assert hands._setting("auth_env", "HOME") is None
     assert hands._setting("taking", "yes") is None
     assert hands._setting("binary", 3) is None
+    assert hands._setting("mode", "auto") == ("executor_mode", "auto")
+    assert hands._setting("mode", "reckless") is None
 
 
 def test_the_check_is_one_line_per_need(tmp_path, monkeypatch):
