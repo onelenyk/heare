@@ -378,3 +378,21 @@ def test_the_result_of_asked_for_work_is_told_whatever_the_budget_hour_or_gap(tm
     assert [m.text.splitlines()[-1] for m in said] == [
         "— Перше готове.", "— Друге не вийшло."]
     assert store.news_delivered(clock["t"]) == 0  # answers spend no budget
+
+
+
+def test_who_just_spoke_is_there_whatever_the_eyes_say(tmp_path):
+    store = Intents(tmp_path / "intents.json")
+    said: list = []
+    clock = {"t": 100.0}
+    state = State(around={"present": False})
+    motor = Engine(store, state=state, speak=said.append, now=lambda: clock["t"],
+                   quiet=("00:00", "00:00"), daily_limit=99)
+
+    motor.note(Ev("heard", {"text": "прибери дублікати"}))
+    motor.note(event("done"))
+    assert len(said) == 1  # typed to it a moment ago: there
+
+    clock["t"] += 3600
+    motor.note(event("done", id=8, news="Інше готове."))
+    assert len(said) == 1  # an hour of silence, and the eyes see nobody: away

@@ -41,6 +41,9 @@ MIN_GAP_S = 60.0
 MAX_GAP_S = 30 * 60.0
 # A reply within this long of a remark counts as the person listening to it.
 ANSWERED_S = 90.0
+# Who spoke or typed this recently is there, whatever the eyes say: a result
+# held «away» while the person was typing to it was never said (24 October).
+SPOKE_S = 10 * 60.0
 BOLDER = 0.6
 SHYER = 1.5
 
@@ -72,6 +75,7 @@ class Engine:
         self._gap_s = gap
         self._ready_at: float | None = None
         self._last_spoke: float | None = None
+        self._heard_at: float | None = None
         self._answered = True
         self._quiet_from = _minutes(quiet[0])
         self._quiet_to = _minutes(quiet[1])
@@ -84,6 +88,7 @@ class Engine:
         """One event from the core: hold what it means, then deliver what is due."""
         kind = getattr(event, "kind", "")
         if kind == "heard":
+            self._heard_at = self._now()
             self._the_person_spoke()
         elif kind == "task":
             self._hold(event)
@@ -175,7 +180,8 @@ class Engine:
         instead of saying — need a second body, and come later."""
         if self._state is None:
             return True
-        if not getattr(self._state, "around", {}).get("present", True):
+        spoke = self._heard_at is not None and self._now() - self._heard_at <= SPOKE_S
+        if not spoke and not getattr(self._state, "around", {}).get("present", True):
             return False
         return getattr(self._state, "phase", "idle") == "idle"
 
