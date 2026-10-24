@@ -24,6 +24,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import live  # noqa: E402 — the live app's own helpers
 
 BACK_S = 45.0
+# The app starts a child that fell again at once only if it had lived this
+# long; one that falls sooner waits longer each time, up to a minute
+# (Child.swift). Falls every half minute are a crash loop, not life, so the
+# app's own children are let live this long before they are killed again.
+HEALTHY_S = 31.0
 
 
 def pids(module: str) -> list[int]:
@@ -79,12 +84,25 @@ def back(after: float, parts: dict[str, str], fresh: list[str],
     return wrong
 
 
+def lived(pid: int) -> float:
+    """Seconds since the process began; macOS's ps has only [[dd-]hh:]mm:ss."""
+    out = subprocess.run(["ps", "-o", "etime=", "-p", str(pid)],
+                         capture_output=True, text=True).stdout.strip()
+    days, _, clock = out.rpartition("-")
+    seconds = 0.0
+    for piece in clock.split(":") if clock else []:
+        seconds = seconds * 60 + float(piece)
+    return seconds + float(days or 0) * 86400
+
+
 def step(name: str, module: str, sig: int, parts: dict[str, str],
          fresh: list[str], changes_brain: bool = False) -> bool:
     victims = pids(module)
     if not victims:
         live.say(f"  {name}: не запущений")
         return False
+    if module in ("heare.brain", "heare.keeper"):
+        time.sleep(max(0.0, HEALTHY_S - min(lived(p) for p in victims)))
     session = (live.state() or {}).get("session", {}).get("started") if changes_brain else None
     after = time.time()
     started = time.monotonic()
