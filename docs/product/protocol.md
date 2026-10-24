@@ -51,9 +51,10 @@
    `{task: {id, request}}` або `{}` (нічого немає).
 2. `POST /api/executor/{id}/step?name=…  {text}` — що роблю зараз. Повертає
    `{stopped: bool}`.
-3. `POST /api/executor/{id}/permit?name=…  {what, kind}` — довгий запит до
-   людини; повертає `{allow: bool, stopped: bool}`. `kind` — `read` або
-   `change`.
+3. `POST /api/executor/{id}/permit?name=…  {what, kind, detail}` — довгий
+   запит; повертає `{allow, stopped, by, why}`. `kind`: `read` — вільно,
+   `change` — вирішує людина, `judge` — спершу суддя мозку (`by: "judge"`),
+   людина лише коли він так скаже. `detail` — дія повністю (JSON інструмента).
 4. `POST /api/executor/{id}/result?name=…  {status, result}` — чим скінчилось
    (`done` · `failed` · `stopped`).
 
