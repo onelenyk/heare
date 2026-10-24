@@ -24,6 +24,7 @@ from typing import Any, AsyncIterator
 
 from heare import keys
 from heare.channels.voice.hallucinations import is_junk
+from heare.channels.voice.heard import Heard
 from heare.channels.voice.sentences import sentences, speakable
 from heare.channels.voice.stt import transcribe
 from heare.channels.voice.tts import synthesise
@@ -62,8 +63,10 @@ class Voice:
     abilities = frozenset({"pause"})
 
     def __init__(self, device: Any, settings: Any, *, aec: Any = None,
-                 wake: WakeGate | None = None, voice: str = "") -> None:
+                 wake: WakeGate | None = None, voice: str = "",
+                 heard: Heard | None = None) -> None:
         self.device = device
+        self.heard = heard
         self.settings = settings
         self.aec = aec
         self.wake = wake
@@ -102,7 +105,12 @@ class Voice:
             # "judge": decides for itself about speech without the name;
             # "name": answers only when called.
             "listen": _or(self.settings, "listen", "judge"),
+            "keep_heard": self._keeping,
         }
+
+    @property
+    def _keeping(self) -> bool:
+        return self.heard is not None and _or(self.settings, "keep_heard", True) is not False
 
     def set_control(self, name: str, value) -> None:
         device = self.device
@@ -118,6 +126,8 @@ class Voice:
             if value not in ("judge", "name"):
                 raise ValueError("listen is «judge» or «name»")
             self.settings.set("listen", value)
+        elif name == "keep_heard":
+            self.settings.set("keep_heard", bool(value))
         else:
             raise KeyError(name)
 
@@ -168,7 +178,7 @@ class Voice:
             pcm, starts_then, over = await self._jobs.get()
             text = ""
             try:
-                text = await self._text_of(pcm)
+                text = await self._text_of(pcm, over=over is not None)
             except Exception:
                 logger.exception("recognition failed")
             logger.info("heard: %r", text)
@@ -184,19 +194,34 @@ class Voice:
                     text = ""
             self.assembler.transcript(text, speech_resumed=self._starts > starts_then)
 
-    async def _text_of(self, pcm: bytes) -> str:
-        if loud_ms(pcm) < MIN_SPEECH_MS:
+    async def _text_of(self, pcm: bytes, *, over: bool = False) -> str:
+        loud = loud_ms(pcm)
+        if loud < MIN_SPEECH_MS:
             return ""
-        result = await transcribe(
-            pcm, api_key=keys.get("GROQ_API_KEY") or "",
-            language=_or(self.settings, "groq_language", "uk"),
-        )
+        about = {"loud_ms": round(loud), "over": over,
+                 "language": _or(self.settings, "groq_language", "uk")}
+        try:
+            result = await transcribe(
+                pcm, api_key=keys.get("GROQ_API_KEY") or "",
+                language=about["language"],
+            )
+        except Exception:
+            self._keep(pcm, {**about, "text": "", "dropped": "failed"})
+            raise
         text = (result.text or "").strip()
         recently = time.time() - self._spoke_at < COURTESY_WINDOW_S
-        if is_junk(text, agent_spoke_recently=recently):
+        junk = is_junk(text, agent_spoke_recently=recently)
+        self._keep(pcm, {**about, "text": text, "detected": result.language,
+                         "dropped": "invented" if junk else None})
+        if junk:
             logger.info("dropped an invented phrase: %r", text[:60])
             return ""
         return text
+
+    def _keep(self, pcm: bytes, about: dict) -> None:
+        # A file or two of a hundred kilobytes: not worth a thread.
+        if self.heard is not None and self._keeping:
+            self.heard.add(pcm, about)
 
     async def _turns(self) -> None:
         while True:
@@ -344,6 +369,10 @@ async def open_voice(settings: Any) -> Voice:
     """The voice on this machine's microphone and speaker."""
     from heare.channels.voice.device import AudioIO
 
+    from pathlib import Path
+
     device = AudioIO()
     await device.start()
-    return build(device, settings)
+    voice = build(device, settings)
+    voice.heard = Heard(Path.home() / ".heare" / "heard")
+    return voice
