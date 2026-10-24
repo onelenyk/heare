@@ -140,11 +140,13 @@
   .partrow.asking .pactions { flex-basis:100%; justify-content:flex-end; align-items:center; gap:6px; }
   .partrow .mini { padding:1px 6px; font-size:10px; line-height:1.35; }
   .part .pterm { grid-column:1 / -1; min-height:60px; max-height:320px; overflow:auto; margin:0; padding:8px 10px; border-radius:8px; background:#101014; color:#d9d9e0; font:11px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+  .ask .why { color:var(--soft); font-size:12px; margin:2px 0 6px; }
   .pterm .t-ask { color:#ffffff; font-weight:600; }
   .pterm .t-cmd { color:#7ee2a8; }
   .pterm .t-out { color:#8b8b97; }
   .pterm .t-said { color:#c9b8ff; }
   .pterm .t-q { color:#f0c869; }
+  .pterm .t-auto { color:#5f9e7a; }
   .pterm .t-bad { color:#ff8a8a; }
   .pterm .t-sep { color:#5c5c68; }
   .pterm .t-run { color:#8b8b97; font-style:italic; animation:tpulse 1.4s ease-in-out infinite; }
@@ -767,6 +769,7 @@ function tasks(list, permission, question) {
   if (permission) {
     const box = el("div", "ask");
     box.append(el("p", "", `${permission.executor} хоче: ${permission.what}`));
+    if (permission.why) box.append(el("p", "why", `питаю, бо ${permission.why}`));
     const yes = el("button", "mini yes", "Так"), no = el("button", "mini", "Ні");
     yes.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: true}});
     no.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: false}});
@@ -872,7 +875,7 @@ const termScroll = {};
 // Each line is coloured by how it starts, which is all the hands say of it.
 const TERM_LINES = [
   [/^\d\d:\d\d › /, "t-ask"], [/^\$ |^• /, "t-cmd"], [/^агент: /, "t-said"],
-  [/^──/, "t-sep"], [/^\s*\? /, "t-q"], [/^\s*(✗|■)/, "t-bad"], [/^⋯/, "t-run"],
+  [/^──/, "t-sep"], [/^\s*✓ /, "t-auto"], [/^\s*\? /, "t-q"], [/^\s*(✗|■)/, "t-bad"], [/^⋯/, "t-run"],
   [/^\s/, "t-out"],
 ];
 function terminalView(pid, text) {
