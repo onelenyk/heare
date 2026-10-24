@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release
+.PHONY: help brain chat voice keeper test coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -79,6 +79,9 @@ app:
 # The daily update on this Mac: never a red tree, and always a way back.
 live: check
 	uv run --no-project python scripts/live.py live
+
+soak:
+	uv run --no-project python scripts/soak.py $(or $(N),1)
 
 rollback:
 	uv run --no-project python scripts/live.py rollback $(TO)

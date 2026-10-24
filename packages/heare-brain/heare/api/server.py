@@ -454,6 +454,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
             (bodies.get(pid) or {}).get("ui") or [])
         if (pid in registry.trusted()
                 or str(who or "").startswith(("window@", "machine@"))):
+            if str(who or "").startswith("machine@"):
+                # A paired machine vouches for its parts once: the part comes
+                # back with a key of its own, and after the brain restarts it
+                # must not wait for a yes it was never asked for (24 October:
+                # the sources stood pending after every brain restart).
+                registry.remember(pid)
             registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                             version=part_version, started=started)
             return web.json_response({"approved": True, "pid": pid, **named(),

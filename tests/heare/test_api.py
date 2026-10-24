@@ -874,6 +874,12 @@ async def test_a_machine_key_knocks_without_a_second_card(tmp_path):
     assert knock.status == 200
     answer = await knock.json()
     assert answer["approved"] is True and answer["token"]
+    # Back with its own key, as after the brain restarted: still trusted,
+    # no question waits on the page.
+    again = await (await client.post("/api/bodies", headers={
+        "X-Heare-Token": answer["token"]},
+        json={"channel": "voice", "host": "mac", "forms": ["input"]})).json()
+    assert again["approved"] is True
     await _close(room, client)
 
 
