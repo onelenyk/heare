@@ -35,6 +35,7 @@ from heare import keys
 from heare.core import PROTOCOL, Core, Message
 from heare.api import auth
 from heare.api import pair as codes
+from heare.api.heard import Recordings
 from heare.api.registry import Registry
 from heare.model.providers import PROVIDERS, list_models
 
@@ -224,6 +225,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     secret = token(Path(settings.api_token_file))
     part_tokens = Path(settings.part_tokens_file)
     screens = Path(settings.screens_dir)
+    recordings = Recordings(Path(settings.heard_dir))
     tally = Tally(core)
     # Read once: the version cannot change under a running process.
     build_info = running()
@@ -867,6 +869,32 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPServiceUnavailable(text=str(exc)) from None
         return web.json_response(answer)
 
+    # -- what the ear heard, to hear again and mark ------------------------
+
+    async def heard_list(request: web.Request) -> web.Response:
+        try:
+            limit = max(1, min(200, int(request.query.get("limit", "60"))))
+        except ValueError:
+            raise web.HTTPBadRequest(text="limit is a number") from None
+        return web.json_response(await asyncio.to_thread(recordings.replies, limit))
+
+    async def heard_sound(request: web.Request) -> web.StreamResponse:
+        path = recordings.sound(request.match_info["name"])
+        if path is None:
+            raise web.HTTPNotFound(text="no such recording")
+        return web.FileResponse(path, headers={"Content-Type": "audio/wav"})
+
+    async def heard_mark(request: web.Request) -> web.Response:
+        data = await body(request)
+        try:
+            marked = await asyncio.to_thread(recordings.mark, request.match_info["turn"],
+                                             data.get("label"), data.get("truth"))
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from None
+        if not marked:
+            raise web.HTTPNotFound(text="no such reply")
+        return web.json_response({"ok": True, "marked": marked})
+
     async def mind_forget(request: web.Request) -> web.Response:
         data = await body(request)
         try:
@@ -954,6 +982,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/mind", mind_snapshot),
         web.get("/api/mind/journal", mind_journal),
         web.get("/api/mind/search", mind_search),
+        web.get("/api/heard", heard_list),
+        web.get("/api/heard/{name}.wav", heard_sound),
+        web.post("/api/heard/{turn}", heard_mark),
         web.post("/api/mind/journal/forget", mind_forget),
         web.post("/api/mind/facts/{id:\\d+}/confirm", confirm_fact),
         web.post("/api/mind/facts/{id:\\d+}/reject", reject_fact),

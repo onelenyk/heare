@@ -431,6 +431,14 @@
   .mind-item-time { flex:none; margin-left:auto; color:var(--soft); font:10px var(--mono); white-space:nowrap; }
   .mind-item-text { font-family:var(--sans); font-size:13.5px; line-height:1.5; margin:0 0 5px; overflow-wrap:anywhere; }
   .mind-item-meta { color:var(--soft); font:10.5px/1.5 var(--mono); overflow-wrap:anywhere; }
+  .hear-row .mind-item-text.none { color:var(--soft); font-style:italic; }
+  .hear-row .was { color:var(--soft); font:10.5px/1.5 var(--mono); text-decoration:line-through; overflow-wrap:anywhere; margin:0 0 5px; }
+  .hear-row.me { border-color:color-mix(in srgb, var(--ok) 45%, var(--line)); }
+  .hear-row.background { opacity:.62; }
+  .hear-row .play { min-width:30px; }
+  .hear-row .fix { display:flex; gap:6px; margin:0 0 6px; }
+  .hear-row .fix input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 9px; color:var(--ink); font:13px var(--sans); }
+  .hear-row .fix input:focus { outline:none; border-color:var(--accent); }
   .mind-search { display:flex; align-items:stretch; gap:6px; margin-bottom:10px; }
   .mind-search input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:9px 11px; color:var(--ink); font:13px var(--sans); }
   .mind-search input:focus { outline:none; border-color:var(--accent); }
@@ -587,6 +595,7 @@
     <button type="button" class="mind-tab" id="mind-tab-reminders" role="tab" aria-selected="false" aria-controls="mind-panel-reminders" tabindex="-1">Нагадування</button>
     <button type="button" class="mind-tab" id="mind-tab-journal" role="tab" aria-selected="false" aria-controls="mind-panel-journal" tabindex="-1">Журнал</button>
     <button type="button" class="mind-tab" id="mind-tab-search" role="tab" aria-selected="false" aria-controls="mind-panel-search" tabindex="-1">Пошук</button>
+    <button type="button" class="mind-tab" id="mind-tab-hearing" role="tab" aria-selected="false" aria-controls="mind-panel-hearing" tabindex="-1">Слух</button>
     <button type="button" class="mind-tab" id="mind-tab-profile" role="tab" aria-selected="false" aria-controls="mind-panel-profile" tabindex="-1">Профіль</button>
   </div>
   <div class="mind-panel" id="mind-panel-facts" role="tabpanel" aria-labelledby="mind-tab-facts"></div>
@@ -601,6 +610,7 @@
     <p class="mind-said" id="mind-search-said" hidden></p>
     <div id="mind-search-results"></div>
   </div>
+  <div class="mind-panel" id="mind-panel-hearing" role="tabpanel" aria-labelledby="mind-tab-hearing" hidden></div>
   <div class="mind-panel" id="mind-panel-profile" role="tabpanel" aria-labelledby="mind-tab-profile" hidden>
     <section class="mind-block">
       <h3>Власник</h3>
@@ -1663,7 +1673,7 @@ let mind = null, mindOpen = false, mindTimer = null, mindSeq = 0;
 let mindTab = "facts", mindJournalSeq = 0, mindSearchSeq = 0;
 const mindDirty = {user: false, threads: false, goals: false};
 const MIND_PROFILE = ["user", "threads", "goals"];
-const MIND_TABS = ["facts", "reminders", "journal", "search", "profile"];
+const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", "profile"];
 const MIND_SOURCE = {
   legacy: "зі старої памʼяті",
   consolidated: "зі слів",
@@ -1905,6 +1915,100 @@ function mindJournalLoad() {
     box.replaceChildren(mindSec("Журнал"), fail);
   });
 }
+/* ── «Слух»: what the ear heard, to hear again and mark ── */
+let hearingSeq = 0, hearingAudio = null;
+const HEAR_LABEL = {me: "до Доки", background: "фон"};
+function hearingPlay(button, pieces) {
+  if (hearingAudio) { hearingAudio.pause(); const was = hearingAudio.button; hearingAudio = null;
+    if (was) was.textContent = "▶"; if (was === button) return; }
+  const queue = pieces.map(p => "/api/heard/" + p.name + ".wav");
+  const audio = new Audio();
+  hearingAudio = audio; audio.button = button;
+  button.textContent = "■";
+  const next = () => {
+    if (hearingAudio !== audio || !queue.length) { if (hearingAudio === audio) { hearingAudio = null; button.textContent = "▶"; } return; }
+    audio.src = queue.shift();
+    audio.play().catch(() => { hearingAudio = null; button.textContent = "▶"; });
+  };
+  audio.onended = next;
+  next();
+}
+function hearingMark(r, label, truth, err) {
+  return api("heard/" + encodeURIComponent(r.turn), {method: "POST", body: {label, truth}})
+    .then(() => hearingLoad())
+    .catch(() => { err.textContent = "не вийшло — спробуй ще"; });
+}
+function hearingRow(r) {
+  const row = el("div", "mind-item hear-row" + (r.label ? " " + r.label : ""));
+  const top = el("div", "mind-item-top");
+  const play = el("button", "mini play", "▶");
+  play.type = "button"; play.title = "прослухати"; play.setAttribute("aria-label", "прослухати");
+  play.onclick = () => hearingPlay(play, r.pieces);
+  top.append(play);
+  if (r.label) top.append(el("span", "mind-item-kind", HEAR_LABEL[r.label] || r.label));
+  else if (r.dropped) top.append(el("span", "mind-item-kind", "відкинуто як вигадка"));
+  top.append(el("span", "mind-item-time",
+    mindTime(r.at) + " · " + (r.ms / 1000).toFixed(1) + " с" + (r.pieces.length > 1 ? " · " + r.pieces.length + " шматки" : "")));
+  row.append(top);
+  const heard = r.dropped ? r.pieces.map(p => p.text).join(" ") : r.text;
+  if (r.truth && r.truth !== heard) {
+    row.append(el("p", "was", heard || "—"));
+    row.append(el("p", "mind-item-text", r.truth));
+  } else {
+    row.append(el("p", "mind-item-text" + (heard ? "" : " none"), heard || "нічого не розпізнано"));
+  }
+  const actions = el("div", "mind-actions");
+  const err = el("span", "mind-err", "");
+  const right = el("button", "mini yes", r.dropped ? "Це був я" : "Правильно");
+  right.type = "button";
+  right.title = "сказано Доці, і розпізнано так";
+  right.onclick = () => { right.disabled = true; hearingMark(r, "me", heard, err); };
+  const fix = el("button", "mini", "Виправити");
+  fix.type = "button";
+  fix.onclick = () => {
+    const form = el("form", "fix");
+    const input = el("input");
+    input.value = r.truth || heard || ""; input.setAttribute("aria-label", "що сказано насправді");
+    input.placeholder = "що ти насправді сказав";
+    const save = el("button", "mini yes", "Зберегти"); save.type = "submit";
+    form.append(input, save);
+    form.onsubmit = ev => { ev.preventDefault(); const t = input.value.trim();
+      if (!t) { err.textContent = "напиши, що було сказано"; return; }
+      save.disabled = true; hearingMark(r, "me", t, err); };
+    actions.replaceWith(form, actions);
+    fix.disabled = true;
+    input.focus();
+  };
+  const noise = el("button", "mini", "Фон");
+  noise.type = "button";
+  noise.title = "не до Доки: телевізор, інші люди, тиша";
+  noise.onclick = () => { noise.disabled = true; hearingMark(r, "background", null, err); };
+  actions.append(right, fix, noise, err);
+  row.append(actions);
+  return row;
+}
+function hearingLoad() {
+  if (!mindOpen) return;
+  const box = $("mind-panel-hearing");
+  const seq = ++hearingSeq;
+  if (!box.childElementCount) box.replaceChildren(el("p", "mind-empty", "читаю записи…"));
+  api("heard?limit=80").then(d => {
+    if (seq !== hearingSeq || mindTab !== "hearing") return;
+    const replies = (d && d.replies) || [];
+    box.replaceChildren(mindSec("Що я почув", `розмічено ${d.marked || 0} з ${d.total || 0}`));
+    box.append(el("p", "mind-empty", "Послухай і познач: «Правильно» — сказано мені й почуто так; «Виправити» — що було насправді; «Фон» — не до мене. З цього ми міряємо, як я тебе чую."));
+    if (!replies.length) { box.append(el("p", "mind-empty", "записів ще немає — вони зʼявляться, щойно я щось почую.")); return; }
+    for (const r of replies) box.append(hearingRow(r));
+  }).catch(() => {
+    if (seq !== hearingSeq || mindTab !== "hearing") return;
+    const fail = el("div", "mind-empty");
+    fail.append(el("p", "mind-err", "не вдалося прочитати записи."));
+    const retry = el("button", "mini", "Спробувати ще");
+    retry.type = "button"; retry.onclick = () => hearingLoad();
+    fail.append(retry);
+    box.replaceChildren(mindSec("Що я почув"), fail);
+  });
+}
 function mindSearchSubmit(ev) {
   ev.preventDefault();
   const q = $("mind-search-q").value.trim();
@@ -1947,6 +2051,7 @@ function mindShow(tab) {
   }
   if (tab === "profile" && mind) mindProfile(mind);
   if (tab === "journal") mindJournalLoad();
+  if (tab === "hearing") hearingLoad();
 }
 function mindLoad(force) {
   if (!force && !mindOpen) return Promise.resolve();

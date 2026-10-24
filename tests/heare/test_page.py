@@ -37,10 +37,10 @@ def test_every_element_the_script_reaches_for_is_in_the_page():
 
 def test_the_mind_drawer_has_journal_and_search_before_profile():
     tabs = re.findall(r'id="mind-tab-(\w+)"', PAGE)
-    assert tabs == ["facts", "reminders", "journal", "search", "profile"]
-    assert ('const MIND_TABS = ["facts", "reminders", "journal", "search", "profile"]'
-            in SCRIPT)
-    for tab in ("journal", "search"):
+    assert tabs == ["facts", "reminders", "journal", "search", "hearing", "profile"]
+    assert ('const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", '
+            '"profile"]' in SCRIPT)
+    for tab in ("journal", "search", "hearing"):
         assert f'id="mind-panel-{tab}"' in PAGE
         assert f'aria-controls="mind-panel-{tab}"' in PAGE
         assert (f'id="mind-panel-{tab}" role="tabpanel" '

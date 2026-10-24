@@ -380,5 +380,5 @@ async def open_voice(settings: Any) -> Voice:
     device = AudioIO()
     await device.start()
     voice = build(device, settings)
-    voice.heard = Heard(Path.home() / ".heare" / "heard")
+    voice.heard = Heard(Path(settings.heard_dir))
     return voice

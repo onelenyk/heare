@@ -29,6 +29,8 @@ DEFAULTS = {
     "memory_dir": HOME / "memory",
     "events_dir": HOME / "events",
     "screens_dir": HOME / "screens",
+    # What the ear heard, kept beside what it was taken for.
+    "heard_dir": HOME / "heard",
     "canvas_file": HOME / "canvas.json",
     "intents_path": HOME / "intents.json",
     "parts_file": HOME / "parts.json",

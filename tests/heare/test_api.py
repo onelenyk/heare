@@ -30,6 +30,7 @@ async def _open(tmp_path, *, facts=None, intents=None, memory_dir=None,
         part_tokens_file=tmp_path / "part_tokens.json",
         pair_codes_file=tmp_path / "pair_codes.json",
         memory_dir=memory_dir if memory_dir is not None else tmp_path / "memory",
+        heard_dir=tmp_path / "heard",
     )
     room.core.add_output(Screen(room.core))
     mind = None
@@ -1666,4 +1667,41 @@ async def test_features_are_empty_without_a_registry(tmp_path):
     assert (await client.post(
         "/api/features/demo/act", headers=auth,
         json={"name": "run", "value": True})).status == 404
+    await _close(room, client)
+
+
+async def test_what_the_ear_heard_is_listed_heard_and_marked(tmp_path):
+    from heare.channels.voice.heard import Heard
+
+    room, client, headers, settings = await _open(tmp_path)
+    ear = Heard(Path(settings.heard_dir))
+    ear.add(b"\x00\x10" * 800, {"text": "Та", "turn": 7, "dropped": None})
+    ear.add(b"\x00\x10" * 800, {"text": "можню.", "turn": 7, "dropped": None})
+    ear.add(b"\x00\x10" * 800, {"text": "Дякую за перегляд!", "turn": 8, "dropped": "invented"})
+
+    listed = await (await client.get("/api/heard", headers=headers)).json()
+    assert listed["total"] == 2 and listed["marked"] == 0
+    newest, older = listed["replies"]
+    assert newest["dropped"] and newest["text"] == ""
+    assert older["text"] == "Та можню." and len(older["pieces"]) == 2
+
+    sound = await client.get(f"/api/heard/{older['pieces'][0]['name']}.wav", headers=headers)
+    assert sound.status == 200 and (await sound.read())[:4] == b"RIFF"
+    assert (await client.get("/api/heard/..%2Fconfig.wav", headers=headers)).status == 404
+
+    fixed = await client.post("/api/heard/7", headers=headers,
+                              json={"label": "me", "truth": "Та можна."})
+    assert (await fixed.json())["marked"] == 2
+    noise = await client.post("/api/heard/8", headers=headers, json={"label": "background"})
+    assert noise.status == 200
+    assert (await client.post("/api/heard/8", headers=headers,
+                              json={"label": "maybe"})).status == 400
+    assert (await client.post("/api/heard/99", headers=headers,
+                              json={"label": "me"})).status == 404
+
+    listed = await (await client.get("/api/heard", headers=headers)).json()
+    assert listed["marked"] == 2
+    assert [r["label"] for r in listed["replies"]] == ["background", "me"]
+    assert listed["replies"][1]["truth"] == "Та можна."
+    assert (await client.get("/api/heard")).status == 401
     await _close(room, client)
