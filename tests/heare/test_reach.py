@@ -253,6 +253,7 @@ def test_in_careful_and_normal_everything_but_looking_comes_to_be_weighed():
         assert permission["*"] == "ask"  # MCP tools too: macos-use, any other
         assert permission["edit"] == "ask"
         assert permission["read"] == permission["grep"] == permission["webfetch"] == "allow"
+        assert permission["heare_ask"] == "allow"  # a question to the person already
         assert _rule(config, "ls -la") == "allow"
         assert _rule(config, "python3 script.py") == "ask"
         assert _rule(config, "trash old.pdf") == "ask"

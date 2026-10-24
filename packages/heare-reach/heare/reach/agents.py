@@ -125,8 +125,11 @@ _NEVER = (
     "dscl", "passwd", "chsh", "fdesetup", "tccutil",
 )
 # opencode's own tools that only look: never worth a question, nor a judge.
+# Our own ask is a question to the person already; weighing it first asked
+# twice (24 October).
 _LOOKING_TOOLS = ("read", "glob", "grep", "list", "lsp", "todowrite", "todoread",
-                  "webfetch", "websearch", "codesearch", "external_directory")
+                  "webfetch", "websearch", "codesearch", "external_directory",
+                  acp.ask_tool("opencode"))
 
 # Told to the agent with every task: a rule it cannot see is a rule it
 # walks into.
