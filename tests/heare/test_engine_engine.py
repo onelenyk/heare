@@ -143,8 +143,10 @@ def test_an_answered_remark_makes_the_next_one_sooner(tmp_path):
     motor = Engine(store, speak=said.append, now=lambda: clock["t"],
                    quiet=("00:00", "00:00"), daily_limit=99)
 
-    motor.note(event("done", id=1, news="Перше"))  # told at t=0
-    motor.note(event("done", id=2, news="Друге"))
+    store.hold("Перше", "news", 2)
+    motor.note(Ev("phase", {}))  # told at t=0
+    store.hold("Друге", "news", 2)
+    motor.note(Ev("phase", {}))
     assert len(said) == 1  # too soon: held
 
     clock["t"] = 10.0
@@ -192,13 +194,14 @@ def test_a_reminder_and_task_news_are_told_apart(tmp_path):
     assert "Сайт готовий." in said[1].text
 
 
-def test_quiet_hours_hold_task_news_but_not_reminders(tmp_path):
+def test_quiet_hours_hold_news_but_not_reminders(tmp_path):
     clock = {"t": at(1, 23, 0)}
     store, said, motor = engine(tmp_path, now=lambda: clock["t"],
                                 quiet=("22:00", "08:00"), daily_limit=5)
     store.hold("подзвонити мамі", "reminder", 3, not_before=clock["t"])
+    store.hold("Сайт готовий.", "news", 2)
 
-    motor.note(event("done"))
+    motor.note(Ev("phase", {}))
 
     assert len(said) == 1
     assert said[0].verbatim is True
@@ -216,10 +219,11 @@ def test_quiet_hours_hold_task_news_but_not_reminders(tmp_path):
 
 def test_a_quiet_window_wraps_midnight(tmp_path):
     clock = {"t": at(1, 2, 0)}
-    _store, said, motor = engine(tmp_path, now=lambda: clock["t"],
+    store, said, motor = engine(tmp_path, now=lambda: clock["t"],
                                  quiet=("22:00", "08:00"), daily_limit=5)
 
-    motor.note(event("done"))
+    store.hold("Сайт готовий.", "news", 2)
+    motor.note(Ev("phase", {}))
     assert said == []  # 02:00 is inside the window that began yesterday
 
     clock["t"] = at(1, 7, 59)
@@ -233,10 +237,11 @@ def test_a_quiet_window_wraps_midnight(tmp_path):
 
 def test_a_quiet_window_may_lie_inside_one_day(tmp_path):
     clock = {"t": at(1, 13, 30)}
-    _store, said, motor = engine(tmp_path, now=lambda: clock["t"],
+    store, said, motor = engine(tmp_path, now=lambda: clock["t"],
                                  quiet=("13:00", "14:00"))
 
-    motor.note(event("done"))
+    store.hold("Сайт готовий.", "news", 2)
+    motor.note(Ev("phase", {}))
     assert said == []
 
     clock["t"] = at(1, 14, 0)
@@ -256,9 +261,9 @@ def test_equal_quiet_ends_mean_no_quiet_window(tmp_path):
 def test_the_daily_budget_counts_news_intents_not_messages(tmp_path):
     clock = {"t": at(1, 10, 0)}
     store, said, motor = engine(tmp_path, now=lambda: clock["t"], daily_limit=1)
-    store.hold("Перше готове.", "task_done", 2)
-    store.hold("Друге готове.", "task_done", 2)
-    store.hold("Третє готове.", "task_done", 2)
+    store.hold("Перше готове.", "news", 2)
+    store.hold("Друге готове.", "news", 2)
+    store.hold("Третє готове.", "news", 2)
 
     motor.note(Ev("phase", {}))
 
@@ -291,9 +296,9 @@ def test_delivered_at_is_persisted_and_scopes_the_budget(tmp_path):
     notes = Intents(path)
     today, yesterday = at(2, 10, 0), at(1, 10, 0)
 
-    news = notes.hold("сьогоднішня новина", "task_done", 2)
+    news = notes.hold("сьогоднішня новина", "news", 2)
     notes.done(news, at=today)
-    older = notes.hold("вчорашня новина", "task_done", 2)
+    older = notes.hold("вчорашня новина", "news", 2)
     notes.done(older, at=yesterday)
     reminder = notes.hold("подзвонити мамі", "reminder", 3, not_before=today)
     notes.done(reminder, at=today)
@@ -330,7 +335,8 @@ def test_a_zero_budget_silences_news_but_not_reminders(tmp_path):
     clock = {"t": at(1, 10, 0)}
     store, said, motor = engine(tmp_path, now=lambda: clock["t"], daily_limit=0)
 
-    motor.note(event("done"))
+    store.hold("Сайт готовий.", "news", 2)
+    motor.note(Ev("phase", {}))
     assert said == []
     assert [i.what for i in store.alive(clock["t"])] == ["Сайт готовий."]
 
@@ -358,3 +364,17 @@ async def test_the_engine_wakes_on_its_own_timer(tmp_path):
         await asyncio.gather(task, return_exceptions=True)
 
     assert [m.text for m in said] == ["Нагадування: подзвонити мамі"]
+
+
+def test_the_result_of_asked_for_work_is_told_whatever_the_budget_hour_or_gap(tmp_path):
+    clock = {"t": at(1, 23, 0)}
+    store, said, motor = engine(tmp_path, now=lambda: clock["t"],
+                                quiet=("22:00", "08:00"), daily_limit=0)
+
+    motor.note(event("done", id=1, news="Перше готове."))
+    clock["t"] = at(1, 23, 1)  # well inside the gap after the first
+    motor.note(event("failed", id=2, news="Друге не вийшло."))
+
+    assert [m.text.splitlines()[-1] for m in said] == [
+        "— Перше готове.", "— Друге не вийшло."]
+    assert store.news_delivered(clock["t"]) == 0  # answers spend no budget

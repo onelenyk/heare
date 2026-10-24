@@ -20,3 +20,11 @@ def test_a_past_time_word_is_a_deliberate_broad_cue():
     # «Вчора був дощ» is a statement, but the time word is a cue by design:
     # it is cheap and gives the model what it remembers about yesterday.
     assert uk.recall_cue("Вчора був дощ")
+
+
+def test_a_yes_said_with_a_particle_on_the_way_is_still_a_yes():
+    assert uk.consent("Та можна, можна.") is True
+    assert uk.consent("Ну так") is True
+    assert uk.consent("Та ні") is False
+    assert uk.consent("ну") is None
+    assert uk.consent("Ну давай, глянь ще пошту і календар") is None

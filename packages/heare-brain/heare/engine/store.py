@@ -94,7 +94,8 @@ class Intents:
         day = datetime.fromtimestamp(now).date()
         return sum(
             1 for i in self._by_id.values()
-            if i.status == "delivered" and i.why != "reminder"
+            if i.status == "delivered"
+            and i.why not in ("reminder", "task_done", "task_failed")
             and i.delivered_at is not None
             and datetime.fromtimestamp(i.delivered_at).date() == day
         )

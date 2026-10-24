@@ -733,7 +733,14 @@ class Core:
         for task in list(self.state.tasks.values())[-5:]:
             status = {"running": "У РОБОТІ", "done": "готово", "failed": "не вийшло",
                       "stopped": "зупинено"}.get(task.status, task.status)
-            lines.append(f"- {status}: {task.request[:90]}")
+            line = f"- {status}: {task.request[:90]}"
+            # What it is at, and what came of it: asked «що ти знайшов?»
+            # it answered that it had no file names before it (24 October).
+            if task.status == "running" and task.step:
+                line += f" — зараз: {task.step[:80]}"
+            elif task.result:
+                line += f"\n  результат: {' '.join(task.result.split())[:400]}"
+            lines.append(line)
         busy = sum(t.status == "running" for t in self.state.tasks.values())
         known = ("\n\nЗапис системи про справи (не твої слова). Зараз у роботі: "
                  f"{busy}" + ("" if busy else " — тобто зараз ти нічого не робиш")
@@ -741,6 +748,10 @@ class Core:
                  + "\nСправа існує лише тоді, коли вона є в цьому записі. Нове прохання "
                  "про роботу — це завжди новий виклик delegate; сказати «доручив» без "
                  "виклику означає нічого не зробити.") if self.executors else ""
+        if self._permission is not None:
+            known += ("\n\nЧекає відповіді питання дозволу: «"
+                      f"{self._permission.what[:120]}». Дозволяє лише людина — словом "
+                      "або кнопкою; ти сам не дозволяєш і не кажи, що дозволив.")
         playing = self.state.around.get("playing")
         if playing:
             known += ("\n\nЗараз поруч грає звук (" + ", ".join(map(str, playing)) + "). "

@@ -576,6 +576,24 @@ async def test_what_is_always_known_is_in_every_prompt():
     await room.close()
 
 
+async def test_the_model_knows_what_work_is_at_and_what_came_of_it():
+    from heare.core.forms import Task
+
+    room = await open_room()
+    room.core.add_executor(Worker())
+    room.core.state.tasks[1] = Task(1, "знайди резюме", "worker", status="done",
+                                    result="Знайшов 17 PDF;\nнайновіше resume-current.pdf.")
+    room.core.state.tasks[2] = Task(2, "скільки місця", "worker", step="du -sh ~")
+    room.model.will_say("Сімнадцять.")
+    room.says("Що ти знайшов?")
+    await room.settled()
+
+    prompt = room.model.asked[0][0]["content"]
+    assert "результат: Знайшов 17 PDF; найновіше resume-current.pdf." in prompt
+    assert "У РОБОТІ: скільки місця — зараз: du -sh ~" in prompt
+    await room.close()
+
+
 async def test_speech_not_meant_for_it_is_shown_and_not_answered():
     room = await open_room()
     events = room.core.state.subscribe()

@@ -28,6 +28,11 @@ WORK_NEWS_S = 2 * 3600
 # What a task's end means: done is news, failed is news, stopped is your own
 # doing and is not.
 _WORTH_TELLING = {"done": "task_done", "failed": "task_failed"}
+# The result of work the person asked for is the answer to them, not news
+# they did not ask for: no daily budget, no quiet hours, no gap since the
+# last remark holds it back. With a budget of one a day, every result after
+# the first was never said (24 October).
+_ANSWERS = frozenset(_WORTH_TELLING.values())
 
 # The least it says two things in a row. It grows bolder when the person
 # answers and waits longer when nobody does — trust, earned and lost.
@@ -91,7 +96,7 @@ class Engine:
         if why is None or not news:
             return
         self._intents.hold(
-            what=news[:200], why=why, weight=2,
+            what=news[:1000], why=why, weight=2,
             about=f"task:{data.get('id')}", until=self._fresh_until(self._now()),
         )
 
@@ -142,33 +147,32 @@ class Engine:
 
     def _deliver_due(self) -> None:
         """Deliver what is held — all of it in one breath — at a moment that suits."""
-        if self._speak is None or not self._good_moment():
+        if self._speak is None or not self._present_and_idle():
             return
         now = self._now()
         due = self._intents.alive(now)
-        if not due:
-            return
+        answers = [i for i in due if i.why in _ANSWERS]
+        if not self._waited():
+            due = []
         reminders = [i for i in due if i.why == "reminder"]
-        news = [i for i in due if i.why != "reminder"]
+        news = [i for i in due if i.why not in _ANSWERS and i.why != "reminder"]
         if self._is_quiet(now):
             news = []
         elif news:
             news = news[:self._news_left(now)]
-        chosen = reminders + news
+        chosen = reminders + answers + news
         if not chosen:
             return
         self._deliver(chosen)
 
-    def _good_moment(self) -> bool:
-        """Not too soon, present, and not mid-turn.
+    def _waited(self) -> bool:
+        """Not too soon since the last remark: the gap widens when remarks
+        go unanswered (docs/engine.md §3.5). Answers do not wait for it."""
+        return self._ready_at is None or self._now() >= self._ready_at
 
-        This is the decision table of docs/engine.md §3.5 as far as it goes:
-        away means it waits, mid-turn means it waits, and the gap since the
-        last remark widens when remarks go unanswered. The ways — writing
-        instead of saying — need a second body, and come later.
-        """
-        if self._ready_at is not None and self._now() < self._ready_at:
-            return False
+    def _present_and_idle(self) -> bool:
+        """Away means it waits, mid-turn means it waits. The ways — writing
+        instead of saying — need a second body, and come later."""
         if self._state is None:
             return True
         if not getattr(self._state, "around", {}).get("present", True):

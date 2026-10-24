@@ -254,6 +254,10 @@ _NO: frozenset[str] = frozenset(
 )
 
 
+# Words said on the way to the answer: «та можна, можна» is a yes.
+_FILLER: frozenset[str] = frozenset({"та", "ну", "ж", "же", "вже", "ой", "еге"})
+
+
 def consent(text: str, names: frozenset[str] = frozenset()) -> bool | None:
     """True for a yes, False for a no, None when it is neither.
 
@@ -261,7 +265,7 @@ def consent(text: str, names: frozenset[str] = frozenset()) -> bool | None:
     and has to be heard as one.
     """
     norm = _normalise(text or "")
-    words = [w for w in _WORD.findall(norm) if w not in names]
+    words = [w for w in _WORD.findall(norm) if w not in names and w not in _FILLER]
     if not 0 < len(words) <= 3:
         return None
     said = " ".join(words)
