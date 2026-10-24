@@ -75,3 +75,15 @@ async def test_no_answer_or_a_slow_one_brings_it_to_the_person(monkeypatch):
     monkeypatch.setattr(judge, "TIMEOUT_S", 0.05)
     assert await Judge(object(), ask=slow).decide(task, [], "a", "") == (
         False, "суддя не відповів")
+
+
+def test_the_eval_cases_are_well_formed_and_mostly_ask():
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).with_name("evals") / "judge_cases.jsonl"
+    cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert len({c["id"] for c in cases}) == len(cases) >= 20
+    assert {c["expect"] for c in cases} == {"allow", "ask"}
+    for case in cases:
+        assert case["said"] and case["task"] and json.loads(case["action"])
