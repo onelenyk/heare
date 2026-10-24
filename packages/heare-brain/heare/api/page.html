@@ -1741,6 +1741,18 @@ function mindSec(title, count) {
   if (count != null) e.append(el("span", "", String(count)));
   return e;
 }
+// A step that cannot be undone asks on the button itself: the second click
+// does it. window.confirm is not shown in the app's window — it answers «no»
+// in silence, and «Забути» did nothing there (24 October).
+function twice(button, asking, run) {
+  const label = button.textContent;
+  let armed = null;
+  button.onclick = () => {
+    if (armed) { clearTimeout(armed); armed = null; button.textContent = label; run(); return; }
+    button.textContent = asking;
+    armed = setTimeout(() => { armed = null; button.textContent = label; }, 4000);
+  };
+}
 function mindAction(button, path, opts, err) {
   button.disabled = true;
   err.textContent = "";
@@ -1770,10 +1782,8 @@ function mindFact(f, pending) {
   } else {
     const forget = el("button", "mini", "Забути");
     forget.type = "button";
-    forget.onclick = () => {
-      if (!window.confirm("Забути цей факт?")) return;
-      mindAction(forget, "mind/facts/" + f.id + "/reject", {method: "POST"}, err);
-    };
+    twice(forget, "Точно забути?",
+          () => mindAction(forget, "mind/facts/" + f.id + "/reject", {method: "POST"}, err));
     actions.append(forget, err);
   }
   card.append(actions);
@@ -1876,10 +1886,9 @@ function mindJournalLoad() {
         const err = el("span", "mind-err", "");
         const forget = el("button", "mini", "Забути");
         forget.type = "button";
-        forget.onclick = () => {
-          if (!window.confirm("Забути цей запис? Його не буде ні в журналі, ні в пошуку.")) return;
-          mindAction(forget, "mind/journal/forget", {method: "POST", body: {ids: [item.id]}}, err);
-        };
+        forget.title = "Його не буде ні в журналі, ні в пошуку";
+        twice(forget, "Точно забути?",
+              () => mindAction(forget, "mind/journal/forget", {method: "POST", body: {ids: [item.id]}}, err));
         actions.append(forget, err);
         row.append(actions);
       }
