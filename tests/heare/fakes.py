@@ -144,12 +144,14 @@ class Worker:
         self.name, self.about = name, "робить усе"
         self.result, self.asks = result, asks
         self.tasks: list[str] = []
+        self.follows: list[bool] = []
         self.allowed: list[bool] = []
         self.release = asyncio.Event()
         self.stopped = 0
 
     async def run(self, task: str, desk) -> str:
         self.tasks.append(task)
+        self.follows.append(desk.follows)
         try:
             for what, kind in self.asks:
                 self.allowed.append(await desk.permit(what, kind))

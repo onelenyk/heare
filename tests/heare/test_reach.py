@@ -209,3 +209,26 @@ def test_installed_is_built_from_the_core_table(monkeypatch):
     found = installed()
     assert [known.name for known in found] == ["opencode"]
     assert found[0].command == ("opencode", "acp")
+
+
+class _Desk:
+    follows = False
+
+    def step(self, text: str) -> None:
+        pass
+
+    async def permit(self, what: str, kind: str = "change") -> bool:
+        return True
+
+
+async def test_work_that_goes_on_keeps_its_session_and_new_work_starts_clean(tmp_path):
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None)
+    await agent.run("знайди найбільший файл", _Desk())
+    first = agent.last_session
+
+    await agent.run("видали його", _Desk(), resume=first)
+    assert agent.last_session == first
+
+    await agent.run("список покупок", _Desk())
+    assert agent.last_session != first
+    await agent.close()

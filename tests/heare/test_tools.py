@@ -103,11 +103,24 @@ async def test_delegate_calls_the_callback_and_acknowledges():
     asked: list[str] = []
 
     spoken = await _toolbox(
-        delegate=lambda request: asked.append(request) or Task(1, request, "")
+        delegate=lambda request, follows: asked.append(request) or Task(1, request, "")
     )._run_delegate({"task": "перевір пошту"})
 
     assert spoken == "Беру."
     assert asked == ["перевір пошту"]
+
+
+async def test_delegate_passes_on_whether_the_work_goes_on_from_the_last():
+    asked: list[tuple[str, bool]] = []
+    box = _toolbox(delegate=lambda request, follows: asked.append((request, follows))
+                   or Task(1, request, ""))
+
+    await box._run_delegate({"task": "видали його", "continues": True})
+    await box._run_delegate({"task": "список покупок"})
+    await box._run_delegate({"task": "ще щось", "continues": "так"})
+
+    assert asked == [("видали його", True), ("список покупок", False),
+                     ("ще щось", False)]
 
 
 async def test_a_duplicate_running_request_is_not_started_again():
@@ -116,7 +129,7 @@ async def test_a_duplicate_running_request_is_not_started_again():
     state.tasks[1] = Task(1, "відкрий файл", "worker")
     box = _toolbox(
         state=state,
-        delegate=lambda request: asked.append(request) or Task(2, request, ""),
+        delegate=lambda request, follows: asked.append(request) or Task(2, request, ""),
     )
 
     spoken = await box._run_delegate({"task": "Відкрий файл"})

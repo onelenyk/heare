@@ -17,6 +17,7 @@ from typing import Any
 class _Job:
     id: int
     request: str
+    follows: bool = False
     desk: Any = None
     future: Any = None
 
@@ -33,7 +34,7 @@ class RemoteExecutor:
         self._ids = itertools.count(1)
 
     async def run(self, task: str, desk: Any) -> str:
-        job = _Job(next(self._ids), task, desk,
+        job = _Job(next(self._ids), task, getattr(desk, "follows", False), desk,
                    asyncio.get_running_loop().create_future())
         self._jobs[job.id] = job
         self._queue.put_nowait(job)
@@ -50,7 +51,7 @@ class RemoteExecutor:
             job = await asyncio.wait_for(self._queue.get(), self._wait_s)
         except TimeoutError:
             return None
-        return {"id": job.id, "request": job.request}
+        return {"id": job.id, "request": job.request, "continues": job.follows}
 
     def step(self, job_id: int, text: str) -> bool:
         job = self._jobs.get(job_id)

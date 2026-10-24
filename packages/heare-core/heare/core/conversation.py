@@ -146,6 +146,7 @@ class _Port:
 class _Desk:
     def __init__(self, core: Core, task: Task) -> None:
         self._core, self._task = core, task
+        self.follows = task.follows
 
     def step(self, text: str) -> None:
         self._task.step = text
@@ -813,10 +814,10 @@ class Core:
 
     # -- work -------------------------------------------------------------
 
-    def delegate(self, request: str) -> Task:
+    def delegate(self, request: str, follows: bool = False) -> Task:
         """Hand a piece of work off. Returns at once; the result arrives
         later as a message of its own, in the quiet lane."""
-        task = Task(next(self._ids), request, executor="")
+        task = Task(next(self._ids), request, executor="", follows=follows)
         self.state.tasks[task.id] = task
         job = asyncio.create_task(self._work(task), name=f"task-{task.id}")
         self._jobs[task.id] = job

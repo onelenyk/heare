@@ -54,7 +54,9 @@ _DELEGATE = {
             "programs. You cannot see or touch any of it yourself, so never "
             "say you cannot before you have asked. Returns at once: say in "
             "one short sentence that you are on it, then stop. The answer "
-            "arrives later as its own message."
+            "arrives later as its own message. If you cannot tell whether "
+            "it goes on from the last piece of work or is something new, "
+            "ask the person in a few words first."
         ),
         "parameters": {
             "type": "object",
@@ -62,6 +64,15 @@ _DELEGATE = {
                 "task": {
                     "type": "string",
                     "description": "What the person asked for, as they said it.",
+                },
+                "continues": {
+                    "type": "boolean",
+                    "description": (
+                        "True when it goes on from the last piece of work: "
+                        "«видали його», «а тепер тести», «давай далі». The "
+                        "agent then remembers what it did. False for "
+                        "something new."
+                    ),
                 },
             },
             "required": ["task"],

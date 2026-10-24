@@ -9,14 +9,14 @@ from heare.core.state import State
 
 
 async def run(
-    start: Callable[[str], Task], state: State, words: Any, arguments: dict
+    start: Callable[[str, bool], Task], state: State, words: Any, arguments: dict
 ) -> str:
     request = str(arguments.get("task", "")).strip()
     if not request:
         return "Скажи, що саме зробити."
     if same(state, words, request) is not None:
         return "Це вже в роботі."
-    start(request)
+    start(request, arguments.get("continues") is True)
     return "Беру."
 
 

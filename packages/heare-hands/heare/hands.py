@@ -407,12 +407,15 @@ async def run() -> int:
                 status, result = "done", ""
                 current["desk"] = desk
                 try:
-                    result = await agent.run(task["request"], desk, resume=resume)
+                    # Only work that goes on from the last keeps its session;
+                    # anything new starts clean.
+                    result = await agent.run(
+                        task["request"], desk,
+                        resume=resume if task.get("continues") else "")
                 except asyncio.CancelledError:
                     status, result = "stopped", "Зупинено."
                 except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
                     status, result = "failed", str(exc)
-                resume = ""
                 print(f"готово {task['id']}: {status} {result[:60]}",
                       file=sys.stderr)
                 await wire.post(
@@ -420,6 +423,7 @@ async def run() -> int:
                     {"status": status, "result": result})
                 current["desk"] = None
                 if agent.last_session:
+                    resume = agent.last_session
                     try:
                         session_file.write_text(agent.last_session, encoding="utf-8")
                     except OSError:

@@ -156,6 +156,9 @@ class Memory(Protocol):
 class Desk(Protocol):
     """What the core hands an executor for the length of one task."""
 
+    # The task goes on from the last one: the executor keeps its context.
+    follows: bool
+
     def step(self, text: str) -> None:
         """What it is doing now, in a few words. This is what makes work visible."""
 
@@ -198,6 +201,7 @@ class Task:
     # The person's answer for this piece of work: asked once, and it
     # holds for everything the work needs after that. None: not asked yet.
     allowed: bool | None = None
+    follows: bool = False
     started: float = field(default_factory=time.time)
     ended: float | None = None
 
@@ -205,7 +209,7 @@ class Task:
         return {
             "id": self.id, "request": self.request, "executor": self.executor,
             "status": self.status, "step": self.step, "result": self.result,
-            "allowed": self.allowed,
+            "allowed": self.allowed, "follows": self.follows,
             "started": self.started, "ended": self.ended,
         }
 

@@ -31,7 +31,7 @@ class Toolbox:
         *,
         memory: Memory | None,
         state: State,
-        delegate: Callable[[str], Task],
+        delegate: Callable[[str, bool], Task],
         stop: Callable[[], int],
         words: Any,
         has_executors: Callable[[], bool],

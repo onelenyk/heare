@@ -271,7 +271,12 @@ class Agent:
         self, session_id: str,
         on_event: Callable[[Event], None] | None = None,
     ) -> Session:
-        """A session from an earlier process, continued where it stopped."""
+        """A session from an earlier process, continued where it stopped.
+        One this process still holds is simply used again."""
+        if session_id in self._sessions:
+            held = self._sessions[session_id]
+            held.on_event = on_event
+            return held
         result = await self._call("session/resume", {
             "sessionId": session_id, "cwd": self.cwd,
             "mcpServers": self.mcp_servers,

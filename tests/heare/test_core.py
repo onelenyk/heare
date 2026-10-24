@@ -136,6 +136,20 @@ async def test_stop_halts_the_reply_and_the_work_without_the_model():
     await room.close()
 
 
+async def test_work_said_to_go_on_from_the_last_reaches_the_executor_so():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.model.will_say(Says("Беру.", calls=(
+        ("delegate", {"task": "видали його", "continues": True}),)))
+    room.says("Видали його")
+    await room.until(lambda: worker.tasks)
+    assert worker.follows == [True]
+    assert room.core.state.tasks[1].follows is True
+    worker.release.set()
+    await room.close()
+
+
 async def test_stop_with_nothing_running_just_agrees():
     room = await open_room()
     room.says("стоп")
