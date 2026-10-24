@@ -246,30 +246,44 @@ def _rule(config: dict, command: str) -> str:
     return found
 
 
-def test_each_mode_lets_the_agent_do_what_the_owner_chose():
-    careful = agents._opencode_config(mode="careful")
-    normal = agents._opencode_config(mode="normal")
+def test_in_careful_and_normal_everything_but_looking_comes_to_be_weighed():
+    for mode in ("careful", "normal"):
+        config = agents._opencode_config(mode=mode)
+        permission = config["permission"]
+        assert permission["*"] == "ask"  # MCP tools too: macos-use, any other
+        assert permission["edit"] == "ask"
+        assert permission["read"] == permission["grep"] == permission["webfetch"] == "allow"
+        assert _rule(config, "ls -la") == "allow"
+        assert _rule(config, "python3 script.py") == "ask"
+        assert _rule(config, "trash old.pdf") == "ask"
+        assert _rule(config, "git push origin main") == "ask"
+
     auto = agents._opencode_config(mode="auto")
-
-    assert _rule(careful, "ls -la") == "allow"
-    assert _rule(careful, "python3 script.py") == "ask"
-    assert careful["permission"]["edit"] == "ask"
-
-    assert _rule(normal, "python3 script.py") == "allow"
-    assert _rule(normal, "brew install pdftotext") == "allow"
-    assert _rule(normal, "trash old.pdf") == "allow"
-    assert _rule(normal, "rm old.pdf") == "deny"
-    assert _rule(normal, "git push origin main") == "ask"
-    assert _rule(normal, "osascript -e 'tell app \"Mail\"'") == "ask"
-    assert normal["permission"]["edit"] == "allow"
-
+    assert auto["permission"]["*"] == "allow"
     assert _rule(auto, "rm old.pdf") == "allow"
-    assert _rule(auto, "git push") == "allow"
 
-    for config in (careful, normal, auto):
+    for mode in agents.MODES:
+        config = agents._opencode_config(mode=mode)
         assert _rule(config, "sudo rm -rf /") == "deny"
         assert _rule(config, "security find-generic-password -s heare") == "deny"
         assert _rule(config, "defaults write com.apple.dock x") == "deny"
+
+
+async def test_who_weighs_an_action_follows_the_mode_and_sees_it_whole(tmp_path):
+    for mode, kind in (("normal", "judge"), ("careful", "change")):
+        agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None,
+                      mode=mode)
+        seen: list = []
+
+        class Desk(_Desk):
+            async def permit(self, what, kind="change", detail=""):
+                seen.append((kind, json.loads(detail)))
+                return True
+
+        await agent.run("WRITE the note", Desk())
+        assert seen == [(kind, {"kind": "edit", "title": "Записати файл",
+                                "rawInput": {"file_path": "note.txt"}})]
+        await agent.close()
 
 
 async def test_in_auto_the_agent_is_never_stopped_to_ask(tmp_path):

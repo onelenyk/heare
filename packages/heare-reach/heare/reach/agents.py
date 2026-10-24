@@ -111,10 +111,10 @@ MODEL = "deepseek/deepseek-flash"
 
 
 # How much the agent does on its own (the owner's choice, 24 October):
-# «careful» asks before any change; «normal» changes, runs and installs on
-# its own, deletes only into the Trash, and asks before what cannot be taken
-# back or is seen by others; «auto» asks about nothing. In every mode the
-# machine's admin rights, settings and secrets stay out of reach.
+# «careful» brings every change to the person; «normal» lets the judge in
+# the brain weigh each one against what the person asked; «auto» asks about
+# nothing. In every mode the machine's admin rights, settings and secrets
+# stay out of reach — a floor no judge is asked about.
 MODES = ("careful", "normal", "auto")
 MODE = "normal"
 
@@ -124,23 +124,17 @@ _NEVER = (
     "networksetup", "pmset", "spctl", "csrutil", "nvram", "diskutil", "launchctl",
     "dscl", "passwd", "chsh", "fdesetup", "tccutil",
 )
-# What cannot be taken back, or is seen by others: asked about in «normal».
-_OUTWARD = (
-    "git push", "gh", "osascript", "mail", "sendmail", "npm publish", "twine",
-    "scp", "ssh", "rsync", "curl -X", "curl --request", "curl -d", "curl --data",
-    "curl -F", "curl --form",
-)
-# Gone for good; in «normal» the Trash takes their place (`trash`, macOS 15+).
-_DELETING = ("rm", "rmdir", "srm", "shred", "unlink")
+# opencode's own tools that only look: never worth a question, nor a judge.
+_LOOKING_TOOLS = ("read", "glob", "grep", "list", "lsp", "todowrite", "todoread",
+                  "webfetch", "websearch", "codesearch", "external_directory")
 
 # Told to the agent with every task: a rule it cannot see is a rule it
-# walks into, and a denied `rm` with no word why ends the work.
+# walks into.
 _RULES = {
     "careful": "",
-    "normal": ("[Правила heare] Видаляй файли лише в Кошик: `trash <шлях>`; "
-               "`rm` заборонено. Перед тим, що не можна повернути або що "
-               "побачать інші (надіслати, опублікувати, git push), тебе "
-               "спитають.\n\n"),
+    "normal": ("[Правила heare] Видаляй файли в Кошик: `trash <шлях>`, не `rm`. "
+               "Що не можна повернути або що побачать інші, спершу зважать і, "
+               "можливо, спитають власника.\n\n"),
     "auto": "[Правила heare] Видаляючи файли, бери `trash <шлях>`, не `rm`.\n\n",
 }
 
@@ -150,21 +144,15 @@ def _commands(rule: str, names: tuple[str, ...]) -> dict[str, str]:
 
 
 def _opencode_config(patch: dict | None = None, mode: str = MODE) -> dict:
-    # The last pattern that matches wins: the catch-all goes first.
-    if mode == "careful":
-        bash = {"*": "ask", **_commands("allow", _LOOKING)}
-        edit = "ask"
-    elif mode == "auto":
-        bash = {"*": "allow"}
-        edit = "allow"
+    """Everything that is not plainly looking comes to `_decide`, MCP tools
+    too (the catch-all `*`); there the mode decides who weighs it. The last
+    pattern that matches wins, so each catch-all goes first."""
+    if mode == "auto":
+        permission: dict = {"*": "allow", "bash": {"*": "allow"}}
     else:
-        bash = {"*": "allow", **_commands("ask", _OUTWARD),
-                **_commands("deny", _DELETING)}
-        edit = "allow"
-    bash.update(_commands("deny", _NEVER))
-    permission: dict = {"edit": edit, "bash": bash, "webfetch": "allow"}
-    if mode != "careful":
-        permission["external_directory"] = "allow"
+        permission = {"*": "ask", **{tool: "allow" for tool in _LOOKING_TOOLS},
+                      "edit": "ask", "bash": {"*": "ask", **_commands("allow", _LOOKING)}}
+    permission["bash"].update(_commands("deny", _NEVER))
     config = {"$schema": "https://opencode.ai/config.json", "permission": permission}
     config.update(patch or {})
     return config
@@ -251,11 +239,17 @@ class Agent:
         if self.mode == "auto":
             return "allow"
         call = request.get("toolCall") or {}
-        kind = "read" if call.get("kind") in _READING else "change"
+        if call.get("kind") in _READING:
+            kind = "read"
+        else:
+            kind = "judge" if self.mode == "normal" else "change"
         what = _what(request)
+        # The judge is shown the action whole: which tool, and with what.
+        detail = json.dumps({k: call.get(k) for k in ("kind", "title", "rawInput")
+                             if call.get(k)}, ensure_ascii=False)
         self._waiting += 1
         try:
-            allowed = await desk.permit(what, kind)
+            allowed = await desk.permit(what, kind, detail)
         finally:
             self._waiting -= 1
             self._activity = time.monotonic()

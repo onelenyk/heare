@@ -285,7 +285,7 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
 
 # The modes as the card names them.
 _MODE_LABELS = {"careful": "Обережно — питає про кожну зміну",
-                "normal": "Звичайно — питає лише про незворотне",
+                "normal": "Звичайно — сам зважує, чи питати",
                 "auto": "Авто — не питає нічого"}
 
 
