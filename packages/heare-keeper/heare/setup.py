@@ -18,6 +18,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from heare import logs
 from heare import keys, machine
 from heare.config import Settings
 from heare.pairing import pair
@@ -244,7 +245,7 @@ def serve(port: int | None = None) -> None:
         raise OSError(f"порт {port} зайнятий — сторінка налаштувань недоступна: {error}") from error
 
     address = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"форма: {address}", file=sys.stderr, flush=True)
+    logs.say(f"форма: {address}")
     # The page opens by itself only for the first run; after that it is the
     # settings, there when asked for.
     if not os.environ.get("HEARE_NO_BROWSER") and want_setup(Settings()):

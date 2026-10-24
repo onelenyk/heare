@@ -21,6 +21,7 @@ from pathlib import Path
 
 import httpx
 
+from heare import logs
 from heare import part
 from heare.config import HOME, Settings
 from heare.feeds import weather
@@ -181,7 +182,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="heare.sources")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    logs.setup(args.verbose)
     try:
         return asyncio.run(run())
     except KeyboardInterrupt:

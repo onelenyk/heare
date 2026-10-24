@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 import socket
 import sys
 
+from heare import logs
 from heare import part
 
 UI = [
@@ -104,7 +104,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="heare.chat")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    logs.setup(args.verbose)
     try:
         return asyncio.run(run())
     except KeyboardInterrupt:

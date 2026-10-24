@@ -21,6 +21,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from heare import logs
 from heare import lifeline
 from heare.prompt import budget, persona
 from heare.api import pair as codes
@@ -251,7 +252,7 @@ class Brain:
             make_executor=lambda name, about: RemoteExecutor(name, about),
             mind=self.mind, features=self.features,
         )
-        print(f"мозок на http://127.0.0.1:{self.settings.api_port}/", file=sys.stderr)
+        logs.say(f"мозок на http://127.0.0.1:{self.settings.api_port}/")
         await asyncio.gather(
             self.core.run(), self.engine.run(), self.journal.run(self.core.state),
             self._consolidate(), self._review(),
@@ -266,7 +267,7 @@ def main() -> int:
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    logs.setup(args.verbose)
     if args.command == "code":
         print(codes.make(Path(Settings().pair_codes_file)))
         return 0

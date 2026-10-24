@@ -14,7 +14,6 @@ import asyncio
 import collections
 import getpass
 import json
-import logging
 import os
 import socket
 import sys
@@ -23,6 +22,7 @@ from pathlib import Path
 
 import httpx
 
+from heare import logs
 from heare import keys, part
 from heare.config import Settings
 from heare.reach import runner
@@ -452,8 +452,7 @@ async def run() -> int:
                 task = claim.json() if claim.status_code == 200 else {}
                 if not task or "id" not in task:
                     continue
-                print(f"взято {task['id']}: {task['request'][:60]}",
-                      file=sys.stderr)
+                logs.say(f"взято {task['id']}: {task['request'][:60]}")
                 values["work"] = f"роблю: {task['request'][:50]}"
                 wire.report(values)
                 desk = RemoteDesk(wire.client, wire.base, task["id"], name,
@@ -474,8 +473,7 @@ async def run() -> int:
                     status, result = "failed", str(exc)
                 screen.end(status, result)
                 told += 1
-                print(f"готово {task['id']}: {status} {result[:60]}",
-                      file=sys.stderr)
+                logs.say(f"готово {task['id']}: {status} {result[:60]}")
                 await wire.post(
                     f"/api/executor/{task['id']}/result?name={name}",
                     {"status": status, "result": result})
@@ -536,10 +534,10 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "key":
         return _store_key(args.name)
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    logs.setup(args.verbose)
     try:
         while (code := asyncio.run(run())) == RESTART:
-            print("руки: нові налаштування, починаю знову", file=sys.stderr)
+            logs.say("руки: нові налаштування, починаю знову")
         return code
     except KeyboardInterrupt:
         return 0

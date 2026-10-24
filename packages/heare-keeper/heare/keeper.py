@@ -19,6 +19,7 @@ import sys
 import threading
 from pathlib import Path
 
+from heare import logs
 from heare import lifeline
 from heare.config import Settings
 from heare.setup import serve
@@ -136,7 +137,7 @@ def main() -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("command", nargs="?", choices=["setup"])
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    logs.setup(args.verbose)
     settings = Settings()
 
     if args.command == "setup":

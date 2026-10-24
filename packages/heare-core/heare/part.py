@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 import httpx
 
+from heare import logs
 from heare.config import Settings
 from heare.core import PROTOCOL
 
@@ -62,11 +63,11 @@ async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
         try:
             done, _ = await asyncio.wait({asking}, timeout=ASKING_S)
             if not done:
-                print("чекаю, доки мене одобрять на сторінці…", file=sys.stderr)
+                logs.say("чекаю, доки мене одобрять на сторінці…")
             answer = await asking
         except (httpx.ConnectError, httpx.ConnectTimeout):
             if not said_down:
-                print(f"мозок ще не відповідає на {base} — чекаю", file=sys.stderr)
+                logs.say(f"мозок ще не відповідає на {base} — чекаю")
                 said_down = True
             await asyncio.sleep(RETRY_S)
             continue
@@ -186,17 +187,16 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         try:
             answer = await knock(client, base, about)
         except httpx.HTTPError as exc:
-            print(f"мозок не відповідає на {base}: {exc}", file=sys.stderr)
+            logs.say(f"мозок не відповідає на {base}: {exc}")
             return 1
         if not answer.get("approved"):
-            print(f"мозок не одобрив: {answer.get('why') or 'відхилено'}",
-                  file=sys.stderr)
+            logs.say(f"мозок не одобрив: {answer.get('why') or 'відхилено'}")
             return 1
         if answer.get("token"):
             secret = answer["token"]
             client.headers["X-Heare-Token"] = secret
         if hello:
-            print(hello, file=sys.stderr)
+            logs.say(hello)
         wire = Wire(client, base, about["channel"],
                     str(answer.get("pid") or about.get("key") or ""), secret,
                     str(answer.get("name") or ""))
