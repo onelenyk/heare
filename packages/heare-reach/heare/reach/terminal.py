@@ -5,6 +5,8 @@ own log, so it is the same for every agent CLI."""
 from __future__ import annotations
 
 import collections
+import re
+import time
 
 # Enough to scroll back through one piece of work; the page gets all of it
 # on every report, so not more.
@@ -16,6 +18,18 @@ WIDTH = 160
 
 def _cut(text: str, width: int = WIDTH) -> str:
     return text[:width] + "…" if len(text) > width else text
+
+
+# What agents put before every command to keep pagers and prompts away:
+# it says nothing about the command.
+_QUIET = re.compile(r"^(?:export\s+(?:\w+=\S*\s*)+;\s*)+")
+
+
+def _command(text: str) -> str:
+    """A command on one line: its first line, without the agent's own noise."""
+    first, _, more = text.strip().partition("\n")
+    first = _QUIET.sub("", first.strip())
+    return _cut(first + (" …" if more.strip() else ""), 120)
 
 
 def _output(update: dict) -> str:
@@ -42,22 +56,41 @@ class Terminal:
         self._titles: dict[str, str] = {}
         # Counts every line written, so a full screen still reads as changed.
         self.written = 0
+        self._running = False
 
     def _add(self, line: str) -> None:
         self.lines.append(line)
         self.written += 1
 
     def text(self) -> str:
-        return "\n".join(self.lines)
+        """What is on screen, and while work runs, what the agent is saying
+        so far and that it is still at it."""
+        tail = []
+        if self._running:
+            said = self._spoken()
+            if said:
+                tail.append(f"агент: {_cut(said, 400)}")
+            tail.append("⋯ працює")
+        return "\n".join([*self.lines, *tail])
 
-    def begin(self, request: str, *, new: bool) -> None:
-        """A piece of work is taken. New work is set apart from the last."""
+    def begin(self, request: str, *, new: bool, asked: str = "",
+              at: float | None = None) -> None:
+        """A piece of work is taken: when, and in the person's own words if
+        they are known. New work is set apart from the last."""
         if new and self.lines:
             self._add("")
             self._add("──── нова справа ────")
-        self._add(f"› {_cut(' '.join(request.split()))}")
+        stamp = time.strftime("%H:%M", time.localtime(at))
+        self._add(f"{stamp} › {_cut(' '.join((asked or request).split()))}")
+        self._running = True
+
+    def permit(self, what: str, allowed: bool) -> None:
+        """The person was asked before the agent acted, and answered."""
+        self._flush()
+        self._add(f"  ? дозволити: {_command(what)} → {'так' if allowed else 'ні'}")
 
     def end(self, status: str, result: str) -> None:
+        self._running = False
         self._flush()
         if status == "stopped":
             self._add("■ зупинено")
@@ -77,7 +110,10 @@ class Terminal:
             if update.get("status") == "completed":
                 self._done(update)
             elif update.get("status") == "failed":
-                self._add(f"  ✗ {_cut(_output(update) or 'не вийшло')}")
+                out = _output(update)
+                # A refusal is already on screen as the person's «ні».
+                if "rejected permission" not in out:
+                    self._add(f"  ✗ {_cut(out or 'не вийшло')}")
 
     def _call(self, update: dict) -> None:
         """A call is shown once: as soon as it says what it runs, or, if it
@@ -93,7 +129,7 @@ class Terminal:
         path = raw.get("file_path") or raw.get("path")
         title = self._titles.get(call_id) or str(update.get("kind") or "")
         if command:
-            line = f"$ {_cut(str(command))}"
+            line = f"$ {_command(str(command))}"
         elif path:
             line = f"• {_cut(f'{title} {path}'.strip())}"
         elif update.get("status") in ("completed", "failed") and title:
@@ -114,8 +150,11 @@ class Terminal:
         if len(lines) > OUTPUT_LINES:
             self._add(f"  … ще {len(lines) - OUTPUT_LINES} рядків")
 
+    def _spoken(self) -> str:
+        return " ".join(self._said.rpartition("</think>")[2].split())
+
     def _flush(self) -> None:
-        said = " ".join(self._said.rpartition("</think>")[2].split())
+        said = self._spoken()
         self._said = ""
         if said:
             self._add(f"агент: {said}")

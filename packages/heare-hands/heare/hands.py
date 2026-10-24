@@ -18,6 +18,7 @@ import logging
 import os
 import socket
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -85,9 +86,11 @@ class RemoteDesk:
     """What the agent asks the brain for, over the door."""
 
     def __init__(self, client: httpx.AsyncClient, base: str, job_id: int,
-                 name: str) -> None:
+                 name: str,
+                 on_permit: Callable[[str, bool], None] | None = None) -> None:
         self._client, self._base = client, base
         self._id, self._name = job_id, name
+        self._on_permit = on_permit
 
     def step(self, text: str) -> None:
         """What it is doing — said without waiting: a step is not an answer."""
@@ -112,7 +115,10 @@ class RemoteDesk:
         answer = response.json()
         if answer.get("stopped"):
             raise asyncio.CancelledError
-        return bool(answer.get("allow"))
+        allowed = bool(answer.get("allow"))
+        if self._on_permit is not None:
+            self._on_permit(what, allowed)
+        return allowed
 
 
 def _kind(settings: Settings) -> str:
@@ -428,8 +434,10 @@ async def run() -> int:
                       file=sys.stderr)
                 values["work"] = f"роблю: {task['request'][:50]}"
                 wire.report(values)
-                desk = RemoteDesk(wire.client, wire.base, task["id"], name)
-                screen.begin(task["request"], new=not task.get("continues"))
+                desk = RemoteDesk(wire.client, wire.base, task["id"], name,
+                                  on_permit=screen.permit)
+                screen.begin(task["request"], new=not task.get("continues"),
+                             asked=str(task.get("asked") or ""))
                 status, result = "done", ""
                 current["desk"] = desk
                 try:

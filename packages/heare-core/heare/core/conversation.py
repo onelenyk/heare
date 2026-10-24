@@ -146,7 +146,7 @@ class _Port:
 class _Desk:
     def __init__(self, core: Core, task: Task) -> None:
         self._core, self._task = core, task
-        self.follows = task.follows
+        self.follows, self.asked = task.follows, task.request
 
     def step(self, text: str) -> None:
         self._task.step = text

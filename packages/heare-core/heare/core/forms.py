@@ -158,6 +158,8 @@ class Desk(Protocol):
 
     # The task goes on from the last one: the executor keeps its context.
     follows: bool
+    # The person's own words, before the task was written out for an executor.
+    asked: str
 
     def step(self, text: str) -> None:
         """What it is doing now, in a few words. This is what makes work visible."""

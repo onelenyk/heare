@@ -11,6 +11,7 @@ class Desk:
     def __init__(self) -> None:
         self.steps: list[str] = []
         self.follows = False
+        self.asked = ""
 
     def step(self, text: str) -> None:
         self.steps.append(text)
@@ -25,7 +26,8 @@ async def test_a_task_goes_out_and_a_result_comes_back():
     running = asyncio.create_task(hands.run("зроби сайт", desk))
 
     task = await hands.claim()
-    assert task == {"id": task["id"], "request": "зроби сайт", "continues": False}
+    assert task == {"id": task["id"], "request": "зроби сайт", "continues": False,
+                    "asked": ""}
     assert hands.step(task["id"], "працюю") is False
     assert desk.steps == ["працюю"]
     allow, stopped = await hands.permit(task["id"], "змінити файл", "change")

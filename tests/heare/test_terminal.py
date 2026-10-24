@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import time
+
 from heare.reach.terminal import OUTPUT_LINES, Terminal
+
+AT = time.mktime((2026, 10, 24, 14, 32, 0, 0, 0, -1))
 
 
 def _update(**update) -> dict:
@@ -11,7 +15,8 @@ def _update(**update) -> dict:
 
 def test_a_piece_of_work_reads_as_asked_ran_saw_said():
     screen = Terminal()
-    screen.begin("запусти тести", new=True)
+    screen.begin("Завдання: запусти всі тести проєкту…", new=True,
+                 asked="запусти тести", at=AT)
     screen.feed("in", _update(sessionUpdate="agent_message_chunk",
                               content={"text": "Запускаю."}))
     screen.feed("in", _update(sessionUpdate="tool_call", toolCallId="1", title="bash"))
@@ -26,7 +31,7 @@ def test_a_piece_of_work_reads_as_asked_ran_saw_said():
     screen.end("done", "Усе пройшло.")
 
     assert screen.text().splitlines() == [
-        "› запусти тести",
+        "14:32 › запусти тести",
         "агент: Запускаю.",
         "$ make test",
         "  1073 passed",
@@ -36,13 +41,16 @@ def test_a_piece_of_work_reads_as_asked_ran_saw_said():
 
 def test_new_work_is_set_apart_and_work_that_goes_on_is_not():
     screen = Terminal()
-    screen.begin("знайди файл", new=True)
-    screen.begin("видали його", new=False)
-    screen.begin("список покупок", new=True)
+    screen.begin("знайди файл", new=True, at=AT)
+    screen.end("done", "")
+    screen.begin("видали його", new=False, at=AT)
+    screen.end("done", "")
+    screen.begin("список покупок", new=True, at=AT)
+    screen.end("done", "")
 
     assert screen.text().splitlines() == [
-        "› знайди файл", "› видали його", "", "──── нова справа ────",
-        "› список покупок",
+        "14:32 › знайди файл", "14:32 › видали його", "", "──── нова справа ────",
+        "14:32 › список покупок",
     ]
 
 
@@ -87,6 +95,43 @@ def test_every_line_written_counts_even_when_the_screen_is_full():
     screen = Terminal()
     for i in range(400):
         screen.begin(f"справа {i}", new=False)
+        screen.end("done", "")
     assert screen.written == 400
     assert len(screen.lines) < 400
 
+
+
+def test_while_work_runs_what_the_agent_says_so_far_shows_and_that_it_works():
+    screen = Terminal()
+    screen.begin("скільки місця", new=True, at=AT)
+    screen.feed("in", _update(sessionUpdate="agent_message_chunk",
+                              content={"text": "Дивлюсь"}))
+
+    assert screen.text().splitlines()[-2:] == ["агент: Дивлюсь", "⋯ працює"]
+    screen.end("done", "")
+    assert screen.text().splitlines()[-1] == "агент: Дивлюсь"
+
+
+def test_a_command_shows_one_line_without_the_agents_noise():
+    screen = Terminal()
+    screen.feed("in", _update(
+        sessionUpdate="tool_call", toolCallId="1",
+        rawInput={"command": "export CI=true PAGER=cat; GIT_PAGER=cat; cd ~/x && ls"}))
+    screen.feed("in", _update(
+        sessionUpdate="tool_call", toolCallId="2",
+        rawInput={"command": "export CI=true PAGER=cat; python3 - <<'EOF'\nimport os\nEOF"}))
+
+    assert screen.text().splitlines() == [
+        "$ cd ~/x && ls", "$ python3 - <<'EOF' …"]
+
+
+def test_a_refusal_reads_as_the_persons_no_and_not_as_an_error():
+    screen = Terminal()
+    screen.permit("bash python3 - <<'EOF'\nimport os", allowed=False)
+    screen.feed("in", _update(
+        sessionUpdate="tool_call_update", toolCallId="1", status="failed",
+        content=[{"type": "content", "content": {
+            "type": "text",
+            "text": "The user rejected permission to use this specific tool call."}}]))
+
+    assert screen.text().splitlines() == ["  ? дозволити: bash python3 - <<'EOF' … → ні"]
