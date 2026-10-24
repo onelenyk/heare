@@ -87,3 +87,21 @@ def test_the_eval_cases_are_well_formed_and_mostly_ask():
     assert {c["expect"] for c in cases} == {"allow", "ask"}
     for case in cases:
         assert case["said"] and case["task"] and json.loads(case["action"])
+
+
+
+async def test_one_stalled_answer_is_tried_again_before_the_person_is_asked(monkeypatch):
+    tries = 0
+
+    async def stalls_once(system: str, user: str) -> str:
+        nonlocal tries
+        tries += 1
+        if tries == 1:
+            await asyncio.sleep(1)
+        return '{"verdict": "allow", "why": "як просив"}'
+
+    monkeypatch.setattr(judge, "TIMEOUT_S", 0.05)
+    task = Task(1, "x", "opencode")
+    assert await Judge(object(), ask=stalls_once).decide(task, [], "a", "") == (
+        True, "як просив")
+    assert tries == 2

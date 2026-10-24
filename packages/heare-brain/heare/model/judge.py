@@ -20,9 +20,12 @@ from heare.model.llm import resolve_llm, stream_chat_events
 
 logger = logging.getLogger("heare.judge")
 
-# Past this the person is asked: a gate that keeps work waiting is worse
-# than a question.
-TIMEOUT_S = 8.0
+# An answer takes a second or so; past this one try is given up, and a second
+# is made — a stalled stream once sent a plain question to the person
+# (24 October). Past both, the person is asked: a gate that keeps work
+# waiting is worse than a question.
+TIMEOUT_S = 6.0
+TRIES = 2
 # The same action twice in one piece of work is weighed once.
 REMEMBERED = 200
 
@@ -109,10 +112,15 @@ class Judge:
         action = (detail or what).replace("</дія>", "")[:3000]
         user = (f"Що власник казав:\n{said or '(нічого)'}\n\n"
                 f"Завдання: {task.request[:600]}\n\n<дія>\n{action}\n</дія>")
-        try:
-            answer = await asyncio.wait_for(self._ask(_SYSTEM, user), TIMEOUT_S)
-        except Exception:
-            logger.exception("the judge did not answer on %.80s — asking", what)
+        answer = None
+        for attempt in range(1, TRIES + 1):
+            try:
+                answer = await asyncio.wait_for(self._ask(_SYSTEM, user), TIMEOUT_S)
+                break
+            except Exception as exc:  # noqa: BLE001 — any failure is a question
+                logger.warning("the judge did not answer on %.80s (try %d): %r",
+                               what, attempt, exc)
+        if answer is None:
             return False, "суддя не відповів"
         found = verdict(answer)
         if len(self._seen) >= REMEMBERED:
