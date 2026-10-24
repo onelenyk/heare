@@ -59,6 +59,8 @@ DEFAULTS = {
     "executor_base_url": "",
     # How much the agent does without asking: careful · normal · auto.
     "executor_mode": "normal",
+    # Who weighs an action in «normal»; blank: the one that writes tasks.
+    "judge_provider": "",
     # Where agents work. Never the home folder: on 12 October an agent
     # left files in four places there.
     "executor_cwd": Path.home() / "heare-work",

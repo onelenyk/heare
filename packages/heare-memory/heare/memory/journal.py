@@ -266,7 +266,7 @@ class Journal:
             self.append("task", dict(data), source="hands", trust="tool_output")
         elif kind == "verb":
             self.append("verb", dict(data), source="core", trust="system")
-        elif kind in ("permission", "permission_closed"):
+        elif kind in ("permission", "permission_closed", "judged"):
             self.append(kind, dict(data), source="brain", trust="system")
 
 
