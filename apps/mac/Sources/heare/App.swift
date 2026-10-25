@@ -28,7 +28,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.cleanUp()
-        NSApp.mainMenu = editMenu()
+        NSApp.mainMenu = mainMenu()
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "heare")
         menu.delegate = self
@@ -239,23 +239,99 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.reply(toApplicationShouldTerminate: true)
     }
 
-    /// An app without a Dock icon has no menu bar, and without an Edit menu
-    /// ⌘V does nothing in a web view — a key could not be pasted.
-    private func editMenu() -> NSMenu {
+    /// The menu at the top while a window is open (Presence). Without an Edit
+    /// menu ⌘V does nothing in a web view — a key could not be pasted.
+    private func mainMenu() -> NSMenu {
         let main = NSMenu()
-        let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
-        edit.addItem(.separator())
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        edit.addItem(.separator())
-        edit.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        let holder = NSMenuItem()
-        holder.submenu = edit
-        main.addItem(holder)
+        func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenu {
+            let menu = NSMenu(title: title)
+            items.forEach(menu.addItem)
+            let holder = NSMenuItem()
+            holder.submenu = menu
+            main.addItem(holder)
+            return menu
+        }
+        func plain(_ title: String, _ selector: Selector, _ key: String,
+                   _ modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+            let entry = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+            entry.keyEquivalentModifierMask = modifiers
+            return entry
+        }
+
+        _ = submenu("heare", [
+            action("Про heare", #selector(about), key: ""),
+            action("Перевірити оновлення…", #selector(checkForUpdates), key: ""),
+            .separator(),
+            action("Налаштування…", #selector(openSettings), key: ","),
+            .separator(),
+            plain("Сховати heare", #selector(NSApplication.hide(_:)), "h"),
+            plain("Сховати інші", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+            plain("Показати всі", #selector(NSApplication.unhideAllApplications(_:)), ""),
+            .separator(),
+            action("Вийти з heare", #selector(quit), key: "q"),
+        ])
+        _ = submenu("Правка", [
+            plain("Скасувати", Selector(("undo:")), "z"),
+            plain("Повторити", Selector(("redo:")), "Z"),
+            .separator(),
+            plain("Вирізати", #selector(NSText.cut(_:)), "x"),
+            plain("Копіювати", #selector(NSText.copy(_:)), "c"),
+            plain("Вставити", #selector(NSText.paste(_:)), "v"),
+            plain("Виділити все", #selector(NSText.selectAll(_:)), "a"),
+        ])
+        let window = submenu("Вікно", [
+            plain("Згорнути", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            plain("Закрити", #selector(NSWindow.performClose(_:)), "w"),
+            .separator(),
+            action("Пульт heare", #selector(openHeare), key: "0"),
+        ])
+        NSApp.windowsMenu = window
+        let help = submenu("Довідка", [
+            action("Посібник", #selector(openGuide), key: ""),
+            action("Повідомити про проблему…", #selector(reportProblem), key: ""),
+            .separator(),
+            action("Відкрити теку даних", #selector(openData), key: ""),
+            action("Відкрити журнали", #selector(openLogs), key: ""),
+        ])
+        NSApp.helpMenu = help
         return main
     }
+
+    // MARK: - about, help, updates
+
+    private static let repository = URL(string: "https://github.com/onelenyk/heare")!
+
+    @objc private func about() {
+        NSApp.activate(ignoringOtherApps: true)
+        let text = NSMutableAttributedString(
+            string: "Голосова помічниця для мака.\n\nPolyForm Shield 1.0.0\n",
+            attributes: [.font: NSFont.systemFont(ofSize: 11),
+                         .foregroundColor: NSColor.secondaryLabelColor])
+        text.append(NSAttributedString(string: "github.com/onelenyk/heare", attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .link: Self.repository]))
+        let centre = NSMutableParagraphStyle()
+        centre.alignment = .center
+        text.addAttribute(.paragraphStyle, value: centre, range: NSRange(location: 0, length: text.length))
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: text])
+    }
+
+    @objc private func checkForUpdates() {
+        openHeare()
+        guard config.brainHere, let token = config.masterToken else { return }
+        // The page shows what was found: the banner above the conversation.
+        Local.call(config.brainBase.appendingPathComponent("api/update/check"), method: "POST",
+                   body: [:], headers: ["X-Heare-Token": token]) { [weak self] _ in self?.look() }
+    }
+
+    @objc private func openGuide() {
+        NSWorkspace.shared.open(Self.repository.appendingPathComponent("blob/main/README.md"))
+    }
+
+    @objc private func reportProblem() {
+        NSWorkspace.shared.open(Self.repository.appendingPathComponent("issues/new"))
+    }
+
+    @objc private func openData() { NSWorkspace.shared.open(Config.heare) }
+
+    @objc private func openLogs() { NSWorkspace.shared.open(Config.heare.appendingPathComponent("logs")) }
 }
