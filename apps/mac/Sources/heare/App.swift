@@ -11,6 +11,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let keeper = Child(name: "keeper", arguments: ["-m", "heare.keeper"])
     private let brain = Child(name: "brain", arguments: ["-m", "heare.brain"])
     private var item: NSStatusItem!
+    private var face: MenuBarFace!
+    private let phases = PhaseStream()
     private let menu = NSMenu()
     private var timer: Timer?
     private lazy var installer: InstallerWindow = {
@@ -35,7 +37,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self, selector: #selector(openHeare), name: Self.showPage, object: nil)
         NSApp.mainMenu = mainMenu()
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "heare")
+        face = MenuBarFace(button: item.button)
+        phases.start(config: { [weak self] in self?.config ?? Config.read() }) { [weak self] phase in
+            self?.face.show(phase: phase)
+        }
         menu.delegate = self
         item.menu = menu
         draw()
@@ -66,12 +71,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard config.brainHere, let token = config.masterToken else {
             state = nil
+            // A body's brain is elsewhere: nothing here is off.
+            face.show(config.brainHere ? .off : .idle)
             draw()
             return
         }
         Local.call(config.brainBase.appendingPathComponent("api/state"),
                    headers: ["X-Heare-Token": token]) { [weak self] answer in
             self?.state = answer.status == 200 ? answer.json as? [String: Any] : nil
+            // The events say a phase the moment it changes; this keeps the
+            // face right when they are not coming (the brain away: «off»).
+            if let state = self?.state {
+                self?.face.show(phase: state["phase"] as? String ?? "idle")
+            } else {
+                self?.face.show(.off)
+            }
             self?.draw()
             self?.updateIfAsked()
         }
