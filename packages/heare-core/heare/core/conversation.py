@@ -145,6 +145,11 @@ class _Port:
     def said_over(self, channel: str, text: str, speech_ms: float, long: bool) -> bool:
         return self._core._said_over(text, speech_ms, long)
 
+    def sounded(self) -> None:
+        """An output's sound has ended: say so in the phase, and wake what waits for quiet."""
+        self._core._refresh()
+        self._core._wake.set()
+
 
 class _Desk:
     def __init__(self, core: Core, task: Task) -> None:
@@ -239,8 +244,7 @@ class Core:
         core does not know what a microphone is; a part that has controls
         says so, and the core only passes them along."""
         found: dict[str, dict] = {}
-        for part in (*self.inputs.values(), *self.outputs.values(),
-                     *self.executors.values()):
+        for part in (*self.inputs.values(), *self.outputs.values(), *self.executors.values()):
             own = getattr(part, "controls", None)
             if own is not None:
                 found[part.name] = dict(own)
@@ -255,8 +259,7 @@ class Core:
                 if name not in target.controls:
                     raise KeyError(name)
                 target.set_control(name, value)
-                self.state.emit("control", part=part, name=name,
-                                value=target.controls[name])
+                self.state.emit("control", part=part, name=name, value=target.controls[name])
                 return dict(target.controls)
         raise KeyError(part)
 
@@ -412,8 +415,7 @@ class Core:
             why = ("busy" if self._turn is not None and not self._turn.done()
                    else "playing" if self.state.around.get("playing") else "")
             if why:
-                self.state.emit("overheard", text=message.text,
-                                channel=message.channel, why=why)
+                self.state.emit("overheard", text=message.text, channel=message.channel, why=why)
                 return
         self._last_channel = message.reply_on or message.channel
         if message.addressed:
@@ -591,8 +593,7 @@ class Core:
         recorded = reply or (FAILURE_LINE if failure else "")
         if recorded:
             await self._keep("assistant", recorded, out.name if out else "")
-        self.state.emit("said", text=recorded, channel=out.name if out else "",
-                        failed=failure)
+        self.state.emit("said", text=recorded, channel=out.name if out else "", failed=failure)
 
         if (
             failure is None and not calls and message.person
@@ -932,8 +933,7 @@ class Core:
             text = (f"{task.executor} хоче: {short}. Питаю, бо {why}. Дозволяєш?" if why
                     else f"{task.executor} просить дозволу на зміни для цієї справи. "
                          f"Почне з: {short}. Дозволяєш?")
-            self.hear(Message(text=text, channel=task.executor, person=False,
-                              verbatim=True))
+            self.hear(Message(text=text, channel=task.executor, person=False, verbatim=True))
             allowed = False
             try:
                 try:

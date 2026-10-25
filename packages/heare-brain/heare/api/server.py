@@ -542,6 +542,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 out = core.outputs.get("voice")
                 if isinstance(out, VoiceOut):
                     out.sounding(bool(values["speaking"]))
+                    if not values["speaking"]:
+                        # Without this the phase stayed «speaking» until the
+                        # next event — a minute and more (25 October, seen
+                        # as the menu bar's face that never stopped talking).
+                        core.port.sounded()
             core.state.emit("part", channel=entry["channel"],
                             forms=entry["forms"], about=entry["about"],
                             host=entry["host"], state=entry["state"])

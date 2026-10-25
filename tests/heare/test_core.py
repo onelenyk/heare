@@ -952,3 +952,30 @@ async def test_a_change_the_person_must_allow_never_reaches_the_gate():
     await room.until(lambda: worker.allowed == [True])
     worker.release.set()
     await room.close()
+
+
+async def test_the_phase_follows_the_sound_to_its_end():
+    """The text ends long before the room stops hearing it; when the body
+    says the sound ended, the phase is idle at once — not at the next event
+    (25 October: «speaking» for a minute and more after she fell silent)."""
+
+    class Speaker(Page):
+        sounding = False
+
+        @property
+        def speaking(self) -> bool:
+            return self._busy or self.sounding
+
+    room = await open_room()
+    speaker = Speaker("voice")
+    room.core.add_output(speaker)
+    room.model.will_say("Привіт.")
+    speaker.sounding = True
+    room.says("Привіт", channel="voice")
+    await room.until(lambda: speaker.said and room.core._turn is None)
+    assert room.core.state.phase == "speaking"
+
+    speaker.sounding = False
+    room.core.port.sounded()
+    assert room.core.state.phase == "idle"
+    await room.close()
