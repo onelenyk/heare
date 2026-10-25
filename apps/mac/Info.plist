@@ -16,6 +16,8 @@
 	<string>@VERSION@</string>
 	<key>CFBundleVersion</key>
 	<string>@VERSION@</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 onelenyk</string>
 	<key>CFBundleInfoDictionaryVersion</key>

@@ -54,6 +54,7 @@ cp "$BIN" "$APP/Contents/MacOS/heare"
 sed -e "s/@VERSION@/$VERSION/g" \
     -e "s/<string>$DEFAULT_ID<\/string>/<string>${HEARE_BUNDLE_ID:-$DEFAULT_ID}<\/string>/" \
     "$HERE/Info.plist" > "$APP/Contents/Info.plist"
+cp "$HERE/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 tar -xzf "$CACHE/$PY_FILE" -C "$APP/Contents/Resources"
 PY="$APP/Contents/Resources/python/bin/python3"
 
