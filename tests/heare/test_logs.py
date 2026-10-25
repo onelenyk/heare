@@ -32,3 +32,14 @@ def test_other_warnings_and_plain_info_are_not_held():
     assert once.filter(_record("one", name="heare.y"))
     assert once.filter(_record("said", level=logging.INFO))
     assert once.filter(_record("said", level=logging.INFO))
+
+
+def test_usr1_writes_where_every_thread_stands():
+    import subprocess
+    import sys
+
+    code = ("from heare import logs; import os, signal, time; logs.setup(); "
+            "os.kill(os.getpid(), signal.SIGUSR1); time.sleep(0.2)")
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=20)
+    assert done.returncode == 0
+    assert "Current thread" in done.stderr or "Thread 0x" in done.stderr

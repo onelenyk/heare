@@ -28,6 +28,8 @@ from heare.core import Message
 logger = logging.getLogger("heare.voice.body")
 
 CHANNEL = "voice"
+# The longest a report to the brain may hold the voice's loop.
+REPORT_TIMEOUT = httpx.Timeout(3.0)
 _END = object()
 
 # What the person can touch on this body. The values here are the defaults
@@ -267,9 +269,11 @@ async def run(settings: Settings | None = None, *,
 
     async def work(wire: part.Wire) -> int:
         # The voice reports from its own loop without awaiting, so its port
-        # speaks through a synchronous client holding the part's key.
+        # speaks through a synchronous client holding the part's key. A call
+        # that hangs holds the whole loop — the stream unread, the brain not
+        # knocked on again — so none may hang for long.
         with httpx.Client(headers={"X-Heare-Token": wire.secret},
-                          timeout=None) as sync:
+                          timeout=REPORT_TIMEOUT) as sync:
             return await _live(settings, wire, sync, held)
 
     return await part.live(

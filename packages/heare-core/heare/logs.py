@@ -7,7 +7,9 @@ on a line: a log read the morning after could not say when the voice fell.
 
 from __future__ import annotations
 
+import faulthandler
 import logging
+import signal
 import sys
 import time
 
@@ -49,6 +51,11 @@ def setup(verbose: bool = False) -> None:
                         format=FORMAT, datefmt=DATE)
     for handler in logging.getLogger().handlers:
         handler.addFilter(Once())
+    # `kill -USR1 <pid>` writes where every thread of a stuck process is,
+    # into its log. 25 October: the voice hung after a brain restart and
+    # nothing could say where.
+    if hasattr(signal, "SIGUSR1"):
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
 
 
 def say(text: str) -> None:

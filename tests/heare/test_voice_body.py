@@ -290,3 +290,24 @@ async def test_a_refused_registration_exits_one_with_the_reason(
 
     assert code == 1
     assert "мозок не одобрив: rejected" in capsys.readouterr().err
+
+
+def test_a_report_the_brain_never_answers_does_not_hold_the_voice():
+    """25 October: the voice's loop reports synchronously; one call left
+    waiting forever held it all, and the voice never knocked again."""
+    import socket
+    import time
+
+    from heare import voice
+
+    quiet = socket.socket()
+    quiet.bind(("127.0.0.1", 0))
+    quiet.listen(1)  # takes the connection, never answers
+    try:
+        port = HttpPort(httpx.Client(timeout=0.3), f"http://127.0.0.1:{quiet.getsockname()[1]}")
+        began = time.monotonic()
+        port.state({"mic": True})
+        assert time.monotonic() - began < 2.0
+    finally:
+        quiet.close()
+    assert voice.REPORT_TIMEOUT.read is not None and voice.REPORT_TIMEOUT.read <= 5.0

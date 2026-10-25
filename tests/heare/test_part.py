@@ -186,3 +186,37 @@ async def test_a_part_says_when_it_began_and_its_errors_reach_its_card(tmp_path)
     assert reported["values"]["trouble"].endswith(" the camera is gone")
     # Gone with the part: a later error in this process is no one's card.
     assert not any(isinstance(h, part._Trouble) for h in logging.getLogger().handlers)
+
+
+async def test_a_stream_gone_silent_is_opened_again(monkeypatch):
+    """The brain beats every 5 s; a stream that says nothing for longer is
+    dead, even when no socket says so, and the part knocks again."""
+    from aiohttp import web
+    from aiohttp.test_utils import TestServer
+
+    async def mute(request):
+        response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
+        await response.prepare(request)
+        await asyncio.sleep(30)
+        return response
+
+    app = web.Application()
+    app.router.add_get("/api/events", mute)
+    server = TestServer(app)
+    await server.start_server()
+    monkeypatch.setattr(part, "SILENT_S", 0.3)
+    monkeypatch.setattr(part, "RETRY_S", 0.05)
+    opened: list[int] = []
+    following = asyncio.create_task(part.follow(
+        str(server.make_url("")).rstrip("/"), "secret", "voice", lambda e: None,
+        on_open=lambda: opened.append(1)))
+    try:
+        for _ in range(100):
+            if len(opened) >= 2:
+                break
+            await asyncio.sleep(0.05)
+    finally:
+        following.cancel()
+        await asyncio.gather(following, return_exceptions=True)
+        await server.close()
+    assert len(opened) >= 2

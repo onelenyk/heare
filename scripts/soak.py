@@ -111,6 +111,13 @@ def step(name: str, module: str, sig: int, parts: dict[str, str],
     wrong = back(after, parts, fresh, session)
     took = time.monotonic() - started
     live.say(f"  {name}: {'✗ ' + wrong if wrong else 'повернулось'} за {took:.0f} с")
+    if wrong and wrong.startswith("не повернулись: "):
+        stuck = wrong.removeprefix("не повернулись: ").split(", ")
+        for module in (parts[c] for c in stuck if c in parts):
+            for pid in pids(module):
+                # Every part writes its threads' stacks on USR1 (heare.logs).
+                os.kill(pid, signal.SIGUSR1)
+        live.say(f"    де вони стоять — у {live.HOME / 'logs' / 'app-keeper.log'}")
     return wrong is None
 
 

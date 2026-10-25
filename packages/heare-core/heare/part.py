@@ -27,6 +27,9 @@ from heare.core import PROTOCOL
 logger = logging.getLogger("heare.part")
 
 RETRY_S = 1.0
+# The brain writes to a quiet stream every 5 s (HEARTBEAT_S in the door);
+# three missed beats and the stream is taken for dead and opened again.
+SILENT_S = 15.0
 # When this process began: the same on every knock it makes, so a knock with
 # another is a part that started again.
 STARTED = time.time()
@@ -90,7 +93,8 @@ async def follow(base: str, secret: str, channel: str | None,
     """
     while True:
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            timeout = httpx.Timeout(None, connect=5.0, read=SILENT_S)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
                     "GET", f"{base}/api/events?token={quote(secret, safe='')}"
                 ) as response:
