@@ -124,6 +124,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let line = NSMenuItem(title: status(), action: nil, keyEquivalent: "")
         line.isEnabled = false
         menu.addItem(line)
+        if let update = state?["update"] as? [String: Any], update["state"] as? String == "available",
+           let latest = update["latest"] as? String {
+            menu.addItem(action("Є heare \(latest) — оновити…", #selector(openHeare), key: ""))
+        }
         menu.addItem(.separator())
         menu.addItem(action("Відкрити heare", #selector(openHeare), key: "o"))
 
@@ -150,11 +154,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         parts.submenu = list
         menu.addItem(parts)
+        menu.addItem(.separator())
         menu.addItem(action("Налаштування…", #selector(openSettings), key: ","))
         let login = action("Запускати при вході", #selector(toggleLogin), key: "")
         login.state = Login.on ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
+        menu.addItem(action("Про heare", #selector(about), key: ""))
         menu.addItem(action("Видалити heare…", #selector(uninstall), key: ""))
         menu.addItem(action("Вийти", #selector(quit), key: "q"))
     }
