@@ -1,5 +1,6 @@
-// The app's icon until the real logo is chosen: the menu bar's waveform on
-// a rounded square. Writes AppIcon.icns beside the app's Info.plist.
+// The app's icon: the face from the page — a rounded head, two pill eyes,
+// a mouth of sound bars — white on the violet of «Нічний фіолет». Chosen on
+// the brand canvas, 25 October. Writes AppIcon.icns beside Info.plist.
 //
 //     swift apps/mac/icon/make_icon.swift
 import AppKit
@@ -16,16 +17,22 @@ func draw(_ side: CGFloat) -> Data {
         let inset = rect.width * 100 / 1024
         let body = rect.insetBy(dx: inset, dy: inset)
         let shape = NSBezierPath(roundedRect: body, xRadius: body.width * 0.225, yRadius: body.width * 0.225)
-        NSGradient(starting: NSColor(calibratedRed: 0.45, green: 0.36, blue: 0.95, alpha: 1),
-                   ending: NSColor(calibratedRed: 0.22, green: 0.16, blue: 0.52, alpha: 1))!
-            .draw(in: shape, angle: -90)
-        let config = NSImage.SymbolConfiguration(pointSize: body.width * 0.5, weight: .semibold)
-            .applying(.init(paletteColors: [.white]))
-        if let wave = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) {
-            let size = wave.size
-            wave.draw(in: NSRect(x: body.midX - size.width / 2, y: body.midY - size.height / 2,
-                                 width: size.width, height: size.height))
+        NSColor(srgbRed: 0x6d / 255, green: 0x58 / 255, blue: 0xc4 / 255, alpha: 1).setFill()
+        shape.fill()
+        // The face is drawn on a 120-unit square, as on the canvas.
+        let unit = body.width / 112
+        func at(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
+            NSRect(x: body.minX + (x - 4) * unit, y: body.maxY - (y - 4 + h) * unit,
+                   width: w * unit, height: h * unit)
+        }
+        NSColor.white.set()
+        let head = NSBezierPath(roundedRect: at(22, 24, 76, 72), xRadius: 26 * unit, yRadius: 26 * unit)
+        head.lineWidth = 6 * unit
+        head.stroke()
+        // The mouth is a sound, not teeth: bars of the heights it speaks in.
+        for (x, y, w, h) in [(42.0, 44.0, 9.0, 17.0), (69, 44, 9, 17),
+                             (46, 74, 5, 7), (54, 70.5, 5, 14), (62, 72.5, 5, 10), (70, 75, 5, 5)] {
+            NSBezierPath(roundedRect: at(x, y, w, h), xRadius: w / 2 * unit, yRadius: w / 2 * unit).fill()
         }
         return true
     }
