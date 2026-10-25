@@ -362,6 +362,9 @@ async def test_a_result_waits_until_the_reply_in_progress_is_over():
     room.says("Порахуй")
     await room.until(lambda: room.page.speaking and len(room.model.asked) == 2)
     worker.release.set()
+    # The result reaches the core after the release; on a slow machine the
+    # core can be idle for a moment before it does (CI, 25 October).
+    await room.until(lambda: len(room.page.said) == 3)
     await room.settled()
     assert "stopped" not in room.page.outcomes
     assert room.page.said[1:] == ["Раз два три чотири п'ять. ", "Зроблено. "]
