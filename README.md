@@ -28,7 +28,7 @@ conversation goes on. It runs on your own machine, with your own keys.
 The brain alone — no microphone needed — on a Linux machine you keep on:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.1.0/install.sh | sh -s -- --role server --from https://github.com/onelenyk/heare/releases/download/v0.1.0 --version 0.1.0
+curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.2.0/install.sh | sh -s -- --role server --from https://github.com/onelenyk/heare/releases/download/v0.2.0 --version 0.2.0
 ```
 
 It installs [uv](https://docs.astral.sh/uv/) if it is missing, puts every
