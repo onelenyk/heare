@@ -27,6 +27,7 @@ esac
 PY_FILE="cpython-3.12.11+${PY_RELEASE}-${PY_ARCH}-apple-darwin-install_only.tar.gz"
 PY_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PY_RELEASE}/${PY_FILE}"
 
+DEFAULT_ID=$(sed -n '/CFBundleIdentifier/{n;s/.*<string>\(.*\)<\/string>.*/\1/p;}' "$HERE/Info.plist")
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/packages/heare-core/pyproject.toml" | head -1)
 [ -n "$VERSION" ] || { echo "no version in heare-core" >&2; exit 1; }
 
@@ -48,7 +49,11 @@ say "bundle $APP ($VERSION)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/heare"
-sed "s/@VERSION@/$VERSION/g" "$HERE/Info.plist" > "$APP/Contents/Info.plist"
+# The e2e sandbox builds its own identity (HEARE_BUNDLE_ID): its own login
+# item and permissions, never mistaken for the heare this Mac lives with.
+sed -e "s/@VERSION@/$VERSION/g" \
+    -e "s/<string>$DEFAULT_ID<\/string>/<string>${HEARE_BUNDLE_ID:-$DEFAULT_ID}<\/string>/" \
+    "$HERE/Info.plist" > "$APP/Contents/Info.plist"
 tar -xzf "$CACHE/$PY_FILE" -C "$APP/Contents/Resources"
 PY="$APP/Contents/Resources/python/bin/python3"
 
