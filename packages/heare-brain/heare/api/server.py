@@ -35,6 +35,7 @@ from aiohttp import web
 
 from heare import keys
 from heare.api import backup
+from heare.api.update import UpdateError, Updates
 from heare.core import PROTOCOL, Core, Message
 from heare.api import auth
 from heare.api import pair as codes
@@ -53,6 +54,9 @@ HEARTBEAT_S = 5.0
 SESSION = "heare_session"
 # A backup brought from another Mac: a year of recordings fits well under it.
 BACKUP_LIMIT = 2 * 1024 ** 3
+# A newer heare is asked about a minute after the start, then once a day.
+UPDATE_FIRST_S = 60.0
+UPDATE_EVERY_S = 24 * 3600.0
 
 
 class Slow:
@@ -235,6 +239,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     tally = Tally(core)
     # Read once: the version cannot change under a running process.
     build_info = running()
+    updates = Updates(settings, build_info["version"], home, core.state.emit)
 
     PART_CALLS = (
         ("POST", re.compile(r"^/api/bodies$")),
@@ -611,7 +616,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.json_response({
             **core.state.snapshot(), "controls": core.controls(),
             "model": about, "session": tally.read(), "bodies": bodies,
-            "running": build_info,
+            "running": build_info, "update": updates.state,
         })
 
     async def history(request: web.Request) -> web.Response:
@@ -964,6 +969,38 @@ def build(core: Core, settings: Any, vitals: Any = None,
         asyncio.get_running_loop().call_later(0.5, os.kill, os.getpid(), signal.SIGTERM)
         return web.json_response({"ok": True, "made": manifest.get("made")})
 
+    # -- a newer heare --------------------------------------------------------
+
+    async def update_get(request: web.Request) -> web.Response:
+        return web.json_response(updates.state)
+
+    async def update_check(request: web.Request) -> web.Response:
+        return web.json_response(await updates.check())
+
+    async def update_install(request: web.Request) -> web.Response:
+        try:
+            return web.json_response(await updates.install())
+        except UpdateError as exc:
+            raise web.HTTPConflict(text=str(exc)) from None
+
+    async def update_failed(request: web.Request) -> web.Response:
+        """The app's word that it could not put the new version in."""
+        data = await body(request)
+        return web.json_response(updates.failed(str(data.get("why") or "")))
+
+    async def asking_for_updates(app: web.Application):
+        async def every_day() -> None:
+            await asyncio.sleep(UPDATE_FIRST_S)
+            while True:
+                if settings.update_check is not False:
+                    await updates.check()
+                await asyncio.sleep(UPDATE_EVERY_S)
+
+        task = asyncio.create_task(every_day())
+        yield
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
     async def mind_forget(request: web.Request) -> web.Response:
         data = await body(request)
         try:
@@ -1008,6 +1045,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return handed(PAGE.read_text(encoding="utf-8"))
 
     app = web.Application(middlewares=[guard])
+    app.cleanup_ctx.append(asking_for_updates)
     app.add_routes([
         web.get("/", page),
         web.post("/api/pair", pair),
@@ -1055,6 +1093,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/heard/{name}.wav", heard_sound),
         web.post("/api/heard/{turn}", heard_mark),
         web.post("/api/mind/journal/forget", mind_forget),
+        web.get("/api/update", update_get),
+        web.post("/api/update/check", update_check),
+        web.post("/api/update/install", update_install),
+        web.post("/api/update/failed", update_failed),
         web.get("/api/backups", backups_list),
         web.post("/api/backups", backups_make),
         web.post("/api/backups/bring", backups_bring),

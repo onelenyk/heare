@@ -1759,3 +1759,20 @@ async def test_a_backup_is_made_listed_taken_brought_and_restored(tmp_path, monk
     assert (await client.get("/api/backups")).status == 401
     assert (await client.post("/api/backups/bring", data=data)).status == 401
     await _close(room, client)
+
+
+async def test_the_update_door_checks_and_refuses_what_it_cannot_do(tmp_path, monkeypatch):
+    monkeypatch.delenv("HEARE_PARENT_PID", raising=False)
+    room, client, headers, settings = await _open(tmp_path)
+    settings.set("update_feed", "http://127.0.0.1:9/latest")
+
+    state = await (await client.get("/api/state", headers=headers)).json()
+    assert state["update"]["state"] == "idle" and state["update"]["can_install"] is False
+    checked = await (await client.post("/api/update/check", headers=headers)).json()
+    assert checked["error"]
+    refused = await client.post("/api/update/install", headers=headers)
+    assert refused.status == 409 and "нової версії немає" in await refused.text()
+    failed = await client.post("/api/update/failed", headers=headers, json={"why": "не записувана"})
+    assert (await failed.json())["state"] == "failed"
+    assert (await client.get("/api/update")).status == 401
+    await _close(room, client)

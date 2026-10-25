@@ -42,6 +42,11 @@
   .band span { margin-left:auto; color:var(--soft); font-size:10px; }
   #pult .band { padding:2px 2px 0; }
   #who { display:flex; align-items:baseline; gap:10px; }
+  .update { margin:8px 0 2px; padding:9px 11px; border:1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius:10px; font-size:12.5px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .update b { font-weight:600; }
+  .update .notes { flex-basis:100%; color:var(--soft); font-size:11.5px; white-space:pre-line; max-height:5.5em; overflow:auto; margin:0; }
+  .update.bad { border-color:color-mix(in srgb, var(--bad) 50%, var(--line)); }
+  .update a { color:inherit; }
   #open-settings { border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:15px; padding:0 2px; }
   #open-settings:hover { color:var(--ink); }
   #name { font:800 22px/1 var(--sans); letter-spacing:-.4px; }
@@ -490,6 +495,7 @@
       <div class="widgets">
         <section class="widget hero">
           <div id="who"><span id="name">heare</span><span id="up"></span><button id="open-settings" title="налаштування: ключі, модель">⚙</button></div>
+          <div id="update" class="update" role="status" hidden></div>
           <div id="now"><svg class="face" id="face" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><span><span id="nowtext">…</span></span><span id="dot" hidden></span></div>
           <div class="lanes">
             <div class="lane"><span>ти</span><div class="bar" id="you"><i></i></div></div>
@@ -758,8 +764,53 @@ function vitals(s) {
   const up = mins < 1 ? "щойно запущено" : mins < 60 ? `${mins} хв` : `${Math.floor(mins / 60)} год ${mins % 60} хв`;
   const run = s.running || {};
   $("up").textContent = run.version ? `${up} · v${run.version}` : up;
+  drawUpdate(s.update);
   $("up").title = run.commit ? `коміт ${run.commit}` : "";
   $("session").textContent = `відповідей: ${t.turns}`;
+}
+
+/* ── a newer heare ── */
+const UPDATE_SAYS = {
+  downloading: u => `завантажую heare ${u.latest || ""}…`,
+  backing_up: () => "роблю копію памʼяті перед оновленням…",
+  installing: u => `ставлю heare ${u.version || u.latest || ""} — він зараз перезапуститься`,
+  updated: u => `оновлено${u.previous ? " з " + u.previous : ""} до ${u.current}`,
+};
+function drawUpdate(u) {
+  const box = $("update");
+  if (!u || !["available", "downloading", "backing_up", "installing", "updated", "failed"].includes(u.state)) {
+    box.hidden = true; return;
+  }
+  box.hidden = false;
+  box.classList.toggle("bad", u.state === "failed");
+  const parts = [];
+  if (u.state === "available") {
+    parts.push(el("b", "", `Є heare ${u.latest}`), el("span", "", `у тебе ${u.current}`));
+    if (u.can_install) {
+      const go = el("button", "mini yes", "Оновити");
+      go.type = "button";
+      go.onclick = () => {
+        go.disabled = true;
+        api("update/install", {method: "POST"}).then(drawUpdate)
+          .catch(why => drawUpdate({...u, state: "failed", error: typeof why === "string" && why ? why : "не вийшло почати оновлення"}));
+      };
+      parts.push(go);
+    } else if (u.page) {
+      const link = el("a", "", "сторінка релізу");
+      link.href = u.page; link.target = "_blank"; link.rel = "noopener";
+      parts.push(link);
+    }
+    if (u.notes) parts.push(el("p", "notes", u.notes));
+  } else if (u.state === "failed") {
+    parts.push(el("b", "", "Оновлення не вийшло"), el("span", "", u.error || ""));
+    const again = el("button", "mini", "Перевірити ще");
+    again.type = "button";
+    again.onclick = () => { again.disabled = true; api("update/check", {method: "POST"}).then(drawUpdate).catch(() => { again.disabled = false; }); };
+    parts.push(again);
+  } else {
+    parts.push(el("span", "", UPDATE_SAYS[u.state](u)));
+  }
+  box.replaceChildren(...parts);
 }
 
 function spark() {
@@ -2439,6 +2490,7 @@ stream.onmessage = m => {
   else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
   else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
+  else if (e.kind === "update") drawUpdate(e);
   else if (e.kind === "feature") { if ($("settings").classList.contains("on")) featureLoad(); }
 
   if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();

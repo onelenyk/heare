@@ -22,8 +22,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var state: [String: Any]?
     // Chosen in «Видалити heare…»; done once the children have stopped.
     private var removing: Uninstall.Keep?
+    // A newer heare, unpacked beside this one; swapped in once they have.
+    private var updating = false
+    private var replacing: Updater.Ready?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Updater.cleanUp()
         NSApp.mainMenu = editMenu()
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "heare")
@@ -64,7 +68,37 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                    headers: ["X-Heare-Token": token]) { [weak self] answer in
             self?.state = answer.status == 200 ? answer.json as? [String: Any] : nil
             self?.draw()
+            self?.updateIfAsked()
         }
+    }
+
+    /// The brain has a newer heare downloaded, checked and backed up for: put
+    /// it in. Unpacking is slow, so it happens off the main thread first.
+    private func updateIfAsked() {
+        guard !updating, let update = state?["update"] as? [String: Any],
+              update["state"] as? String == "installing",
+              let dmg = update["dmg"] as? String, let version = update["version"] as? String else { return }
+        updating = true
+        DispatchQueue.global().async {
+            let prepared = Updater.prepare(dmg: dmg, version: version)
+            DispatchQueue.main.async { [weak self] in
+                switch prepared {
+                case .success(let ready):
+                    self?.replacing = ready
+                    NSApp.terminate(nil)
+                case .failure(let failure):
+                    self?.updateFailed(failure.why)
+                }
+            }
+        }
+    }
+
+    private func updateFailed(_ why: String) {
+        NSLog("heare: update: %@", why)
+        updating = false
+        guard let token = config.masterToken else { return }
+        Local.call(config.brainBase.appendingPathComponent("api/update/failed"), method: "POST",
+                   body: ["why": why], headers: ["X-Heare-Token": token]) { _ in }
     }
 
     private static let phases = ["idle": "чекає", "hearing": "слухає",
@@ -190,6 +224,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func leave() {
         if let keep = removing {
             for line in Uninstall.run(keep: keep) { NSLog("heare: %@", line) }
+        }
+        if let ready = replacing, !Updater.swap(ready) {
+            // This app is back in its place; the brain will say it failed
+            // when it is asked again. Starting over is the simplest truth.
+            NSLog("heare: update: the new version could not be put in; the old one stays")
         }
         NSApp.reply(toApplicationShouldTerminate: true)
     }

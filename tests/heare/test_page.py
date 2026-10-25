@@ -151,3 +151,11 @@ def test_after_a_restore_the_reloaded_page_opens_on_the_backups():
     assert 'if (restoring) { mindOpenDrawer(); mindShow("backups"); }' in SCRIPT
     # 25 October: run before `const shut` was defined, it threw in silence.
     assert SCRIPT.index("const shut = ") < SCRIPT.index("if (restoring)")
+
+
+def test_the_page_offers_a_newer_heare_and_says_how_it_goes():
+    draw = SCRIPT.split("function drawUpdate(u)")[1].split("function spark()")[0]
+    assert 'api("update/install", {method: "POST"})' in draw
+    assert "u.can_install" in draw and "сторінка релізу" in draw
+    assert "drawUpdate(s.update);" in SCRIPT
+    assert 'else if (e.kind === "update") drawUpdate(e);' in SCRIPT

@@ -85,6 +85,9 @@ DEFAULTS = {
     # proposes facts; the owner still confirms them.
     "review_enabled": True,
     "review_hour": 4,
+    # Whether the brain asks once a day for a newer heare, and where.
+    "update_check": True,
+    "update_feed": "https://api.github.com/repos/onelenyk/heare/releases/latest",
 }
 
 
