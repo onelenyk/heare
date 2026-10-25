@@ -2240,14 +2240,6 @@ for (const t of MIND_TABS) {
     $("mind-tab-" + next).focus();
   });
 }
-// Back from a restore: the brain restarted and the page with it.
-try {
-  if (sessionStorage.getItem("heare-restoring")) {
-    sessionStorage.removeItem("heare-restoring");
-    mindOpenDrawer();
-    mindShow("backups");
-  }
-} catch (_) {}
 for (const key of MIND_PROFILE) {
   const ta = $("mind-profile-" + key), save = $("mind-save-" + key), err = $("mind-err-" + key);
   ta.addEventListener("input", () => {
@@ -2422,6 +2414,12 @@ $("pair-code-copy").onclick = () => {
     setTimeout(() => { $("pair-code-copy").textContent = "Копіювати"; }, 1500);
   }).catch(() => {});
 };
+
+// Back from a restore: the brain restarted and the page with it. Here, at
+// the end, because the drawer needs everything above it defined.
+let restoring = null;
+try { restoring = sessionStorage.getItem("heare-restoring"); sessionStorage.removeItem("heare-restoring"); } catch (_) {}
+if (restoring) { mindOpenDrawer(); mindShow("backups"); }
 
 /* ── live ── */
 const stream = new EventSource("/api/events");
