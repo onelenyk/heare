@@ -84,6 +84,11 @@ class _Ring:
             raise RuntimeError("no secret service")
         return self.kept.get(name)
 
+    def delete_password(self, service: str, name: str) -> None:
+        if name not in self.kept:
+            raise KeyError(name)  # keyring raises PasswordDeleteError
+        del self.kept[name]
+
 
 @pytest.fixture
 def on_disk(tmp_path, monkeypatch):
@@ -154,3 +159,29 @@ def test_a_backend_that_always_fails_is_no_keyring(monkeypatch):
 
     monkeypatch.setattr(keyring, "get_keyring", lambda: fail.Keyring())
     assert keys._keyring() is None
+
+
+def test_an_uninstall_forgets_every_key_in_the_keyring_and_the_file(on_disk, monkeypatch):
+    ring = _Ring()
+    monkeypatch.setattr(keys, "_keyring", lambda: ring)
+    keys.store("GROQ_API_KEY", "in-the-ring")
+    monkeypatch.setattr(keys, "_keyring", lambda: _Ring(works=False))
+    keys.store("DEEPSEEK_API_KEY", "in-the-file")
+    monkeypatch.setattr(keys, "_keyring", lambda: ring)
+    monkeypatch.setenv("ZAI_API_KEY", "the-shell-s")
+
+    keys.forget_all()
+
+    assert ring.kept == {}
+    assert not on_disk.exists()
+    assert keys.get("GROQ_API_KEY") is None and keys.get("DEEPSEEK_API_KEY") is None
+    assert keys.get("ZAI_API_KEY") == "the-shell-s"
+
+
+def test_forgetting_with_the_test_switch_never_reaches_the_keyring(monkeypatch):
+    def no(*_):
+        raise AssertionError("the keyring was asked")
+    monkeypatch.setattr(keys, "_keyring", no)
+    keys.store("GROQ_API_KEY", "x")
+    keys.forget_all()
+    assert keys.get("GROQ_API_KEY") is None

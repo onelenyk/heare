@@ -95,6 +95,23 @@ def adopt(name: str) -> bool:
     return True
 
 
+def forget_all() -> None:
+    """Take every key this assistant knows out of the store — the keyring
+    and the keys file — for an uninstall. The environment is the person's
+    shell and stays theirs."""
+    if _in_process():
+        _STORED.clear()
+        return
+    ring = _keyring()
+    if ring is not None:
+        for name in NAMES:
+            try:
+                ring.delete_password(SERVICE, name)
+            except Exception:  # noqa: BLE001 — a key that was never there is gone already
+                pass
+    keys_file().unlink(missing_ok=True)
+
+
 def keys_file() -> Path:
     # Not from heare.config: the config reads its keys from here.
     return Path.home() / ".heare" / "machine" / "keys.json"
@@ -166,3 +183,14 @@ def _in_process() -> bool:
     # Named "file" for history: it was the test switch before there was a
     # real file, and it still means "this process only, never the disk".
     return os.environ.get("HEARE_KEYS_BACKEND", "").strip().lower() == "file"
+
+
+if __name__ == "__main__":
+    import sys
+
+    # The app's uninstall asks here, so the Keychain is touched by the one
+    # module that knows which store holds the keys.
+    if sys.argv[1:] != ["forget-all"]:
+        print("usage: python -m heare.keys forget-all", file=sys.stderr)
+        raise SystemExit(2)
+    forget_all()
