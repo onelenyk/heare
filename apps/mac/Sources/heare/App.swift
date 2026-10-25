@@ -193,6 +193,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettings() { installer.show(config) }
 
+    // A click on the Dock icon with no window open: the page.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { openHeare() }
+        return true
+    }
+
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func uninstall() {

@@ -12,7 +12,8 @@ class PageWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelega
     private var saving: [ObjectIdentifier: URL] = [:]
     private var tries = 0
 
-    init(title: String, size: NSSize, configuration: WKWebViewConfiguration = WKWebViewConfiguration()) {
+    init(title: String, size: NSSize, remembered: String,
+         configuration: WKWebViewConfiguration = WKWebViewConfiguration()) {
         web = WKWebView(frame: NSRect(origin: .zero, size: size), configuration: configuration)
         window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -21,15 +22,23 @@ class PageWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelega
         window.title = title
         window.isReleasedWhenClosed = false
         window.contentView = web
+        window.minSize = NSSize(width: 480, height: 420)
         window.center()
+        // Where the person left it, the next time it opens.
+        window.setFrameAutosaveName(remembered)
         window.delegate = self
         web.navigationDelegate = self
         web.uiDelegate = self
     }
 
     func front() {
+        Presence.shown(window)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        Presence.closed(window)
     }
 
     /// Load a page that may not be up yet: the keeper and the brain take a
@@ -148,7 +157,7 @@ final class InstallerWindow: PageWindow, WKScriptMessageHandler {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = controller
         super.init(title: "heare — налаштування", size: NSSize(width: 640, height: 760),
-                   configuration: configuration)
+                   remembered: "heare.settings", configuration: configuration)
         controller.add(self, name: "heare")
     }
 
@@ -204,7 +213,7 @@ final class HeareWindow: PageWindow {
     private var pairing = false
 
     init() {
-        super.init(title: "heare", size: NSSize(width: 1100, height: 780))
+        super.init(title: "heare", size: NSSize(width: 1100, height: 780), remembered: "heare.page")
     }
 
     func show(_ config: Config) {
