@@ -2,7 +2,7 @@
 #
 #   DEEPSEEK_API_KEY=… GROQ_API_KEY=… docker compose -f docker/compose.yaml up -d --build
 #   docker compose -f docker/compose.yaml exec brain heare-brain code   # a code to pair a browser or a body
-#   docker compose -f docker/compose.yaml exec brain cat .heare/api_token  # the master token
+#   docker compose -f docker/compose.yaml exec brain cat .heare/machine/api_token  # the master token
 #
 # The port is published on this machine's loopback only: reach it over
 # `ssh -L 9790:127.0.0.1:9790 user@server`, or put a TLS proxy in front.

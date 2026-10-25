@@ -44,7 +44,7 @@ Core — це **мова розмови**, а не місце для памʼя�
 
 | Фіча | Зона | Стан |
 |---|---|---|
-| Профіль власника | `memory/profile.py`, `~/.heare/memory/*.md` | є |
+| Профіль власника | `memory/profile.py`, `~/.heare/memory/profile/*.md` | є |
 | Закони в промпті | `prompt/persona.py` | є |
 | Журнал подій, `hydrate`, `forget`, `export` | `memory/journal.py`, `memory/book.py` | є |
 | Один write-path розмови | `memory/book.py` (`Book.keep`) | є |
@@ -72,6 +72,23 @@ Core — це **мова розмови**, а не місце для памʼя�
 | MCP-конектори | `tools/` | немає |
 | Risk engine, per-action approvals | `core/` або `tools/` + `engine/` | немає |
 | Контракт рук v2 | `hands/`, `reach/` | немає |
+
+## Де лежать дані на диску (з 25.10.2026)
+
+Одна папка `~/.heare`, у розділах. Розклад тримає `heare-core/heare/layout.py`:
+кожна точка входу кличе `settle()`, старе переїжджає раз і лишає symlink на
+старому місці, щоб `make rollback` знаходив його.
+
+| Розділ | Що там | У копії |
+|---|---|---|
+| `memory/` | `heare.db` (розмови, факти, пошук), `journal/`, `profile/`, `heard/`, `reminders.json`, `canvas.json`, `screens/` | так (`heard/` — перемикачем) |
+| `settings/` | `config.toml`, `identity.json`, `sources.json` | так |
+| `machine/` | токени, `parts.json`, `parts/`, сесія рук, конфіг opencode, сокети, `keys.json` (Linux) | ні: звʼязки цього мака |
+| `backups/` | копії | — |
+| `cache/`, `logs/`, `releases/` | кеш, журнали процесів, релізи `make live` | ні |
+| `old/` | залишки старої апки і відкладені копії при переїзді | ні |
+
+Ключі моделей на маку — у Keychain, у копію не йдуть.
 
 ## Куди додавати нову фічу
 

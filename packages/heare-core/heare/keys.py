@@ -97,7 +97,7 @@ def adopt(name: str) -> bool:
 
 def keys_file() -> Path:
     # Not from heare.config: the config reads its keys from here.
-    return Path.home() / ".heare" / "keys.json"
+    return Path.home() / ".heare" / "machine" / "keys.json"
 
 
 def _from_env(name: str) -> str | None:

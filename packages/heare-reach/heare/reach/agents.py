@@ -220,7 +220,7 @@ class Agent:
             if self._agent is None:
                 env = self._env
                 if self.name == "opencode":
-                    permission = _opencode_env(self._home, self._config_patch,
+                    permission = _opencode_env(self._home / "machine", self._config_patch,
                                                self.mode)
                     env = permission if env is None else {**permission, **env}
                 logs = self._home / "logs"

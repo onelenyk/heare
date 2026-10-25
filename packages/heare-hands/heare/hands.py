@@ -22,7 +22,7 @@ from pathlib import Path
 
 import httpx
 
-from heare import logs
+from heare import layout, logs
 from heare import keys, part
 from heare.config import Settings
 from heare.reach import runner
@@ -535,6 +535,7 @@ def main() -> int:
     if args.command == "key":
         return _store_key(args.name)
     logs.setup(args.verbose)
+    layout.settle()
     try:
         while (code := asyncio.run(run())) == RESTART:
             logs.say("руки: нові налаштування, починаю знову")

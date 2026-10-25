@@ -145,7 +145,7 @@ class SQLiteFacts:
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         if db_path is None:
-            db_path = Path.home() / ".heare" / "heare.db"
+            db_path = Path.home() / ".heare" / "memory" / "heare.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:

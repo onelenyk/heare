@@ -25,6 +25,9 @@ from datetime import datetime
 from pathlib import Path
 
 HOME = Path.home() / ".heare"
+# This Mac's tokens and parts. Before 25 October they lay at the top; a
+# release from then, put back by rollback, still keeps them there.
+MACHINE = HOME / "machine" if (HOME / "machine").is_dir() else HOME
 RELEASES = HOME / "releases"
 LIVE = RELEASES / "live"
 KEEP = 5
@@ -158,7 +161,7 @@ def start() -> None:
 
 def state() -> dict | None:
     try:
-        token = (HOME / "api_token").read_text(encoding="utf-8").strip()
+        token = (MACHINE / "api_token").read_text(encoding="utf-8").strip()
         ask = urllib.request.Request(f"{BASE}/api/state",
                                      headers={"X-Heare-Token": token})
         with urllib.request.urlopen(ask, timeout=2) as answer:
@@ -170,7 +173,7 @@ def state() -> dict | None:
 def wanted_parts() -> dict[str, str]:
     """The parts the keeper runs here: their channel, by folder name."""
     found = {}
-    for manifest in sorted((HOME / "parts").glob("*/heare.json")):
+    for manifest in sorted((MACHINE / "parts").glob("*/heare.json")):
         try:
             found[manifest.parent.name] = json.loads(manifest.read_text(encoding="utf-8"))["channel"]
         except (OSError, ValueError, KeyError):

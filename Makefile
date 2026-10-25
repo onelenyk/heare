@@ -6,7 +6,7 @@ help:
 	@echo "  make brain     - the brain, and the page on 127.0.0.1:9790"
 	@echo "  make chat      - the conversation in a terminal"
 	@echo "  make voice     - speech in, speech out"
-	@echo "  make keeper    - the keeper: parts from ~/.heare/parts, kept alive"
+	@echo "  make keeper    - the keeper: parts from ~/.heare/machine/parts, kept alive"
 	@echo "  make test      - the core against stand-ins: no network, no keys"
 	@echo "  make coverage  - test, with the coverage floor at 80%"
 	@echo "  make typecheck - mypy over heare-memory"

@@ -39,7 +39,7 @@ http://127.0.0.1:9791 — on a server, reach it with
 `--role body --url URL --code CODE` makes this machine parts only, paired
 with a brain elsewhere; `--parts voice,hands` turns parts on at install;
 `--no-service` starts nothing. Without a system keyring (a server) keys live
-in `~/.heare/keys.json`, mode 0600; the environment wins.
+in `~/.heare/machine/keys.json`, mode 0600; the environment wins.
 
 The brain alone in Docker, state in a volume, keys from the environment:
 

@@ -22,17 +22,19 @@ from heare.memory.journal import Journal
 from heare.memory.migrate import migrate
 from heare.memory.profile import FILES, Profile
 
+_MEMORY = Path.home() / ".heare" / "memory"
+
 EMPTY = "(порожній профіль)"
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="heare-memory")
     parser.add_argument(
-        "--root", type=Path, default=Path.home() / ".heare" / "memory",
+        "--root", type=Path, default=_MEMORY / "profile",
         help="where the profile blocks live",
     )
     parser.add_argument(
-        "--events", type=Path, default=Path.home() / ".heare" / "events",
+        "--events", type=Path, default=_MEMORY / "journal",
         help="where the journal writes profile_edited",
     )
     commands = parser.add_subparsers(dest="command", required=True)
@@ -49,7 +51,7 @@ def _parser() -> argparse.ArgumentParser:
         help="the old heare.db holding memories",
     )
     migration.add_argument(
-        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        "--db", type=Path, default=_MEMORY / "heare.db",
         help="the fact store to fill",
     )
     migration.add_argument("--include-archived", action="store_true")
@@ -57,7 +59,7 @@ def _parser() -> argparse.ArgumentParser:
 
     facts = commands.add_parser("facts", help="list proposed facts")
     facts.add_argument(
-        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        "--db", type=Path, default=_MEMORY / "heare.db",
         help="the fact store to read",
     )
     facts.add_argument("--all", action="store_true", help="show every status")
@@ -68,14 +70,14 @@ def _parser() -> argparse.ArgumentParser:
         command = commands.add_parser(name, help=help_text)
         command.add_argument("id")
         command.add_argument(
-            "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+            "--db", type=Path, default=_MEMORY / "heare.db",
             help="the fact store to change",
         )
     consolidation = commands.add_parser(
         "consolidate", help="propose facts from the journal"
     )
     consolidation.add_argument(
-        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        "--db", type=Path, default=_MEMORY / "heare.db",
         help="the fact store to fill",
     )
     consolidation.add_argument(
@@ -87,7 +89,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     forget.add_argument("ids", nargs="+", metavar="ID")
     forget.add_argument(
-        "--db", type=Path, default=Path.home() / ".heare" / "heare.db",
+        "--db", type=Path, default=_MEMORY / "heare.db",
         help="the transcript store to clean",
     )
     forget.add_argument(

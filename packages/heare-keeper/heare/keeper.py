@@ -19,7 +19,7 @@ import sys
 import threading
 from pathlib import Path
 
-from heare import logs
+from heare import layout, logs
 from heare import lifeline
 from heare.config import Settings
 from heare.setup import serve
@@ -138,6 +138,7 @@ def main() -> int:
     parser.add_argument("command", nargs="?", choices=["setup"])
     args = parser.parse_args()
     logs.setup(args.verbose)
+    layout.settle()
     settings = Settings()
 
     if args.command == "setup":

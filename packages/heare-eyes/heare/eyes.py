@@ -17,7 +17,7 @@ import sys
 
 import httpx
 
-from heare import logs
+from heare import layout, logs
 from heare import part
 from heare.config import Settings
 from heare.core import Message
@@ -133,6 +133,7 @@ def main() -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)
+    layout.settle()
     try:
         return asyncio.run(run())
     except KeyboardInterrupt:

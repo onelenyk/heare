@@ -40,7 +40,7 @@ def pids(module: str) -> list[int]:
 def modules() -> dict[str, str]:
     """Each part the keeper runs: its channel → the module it runs."""
     found = {}
-    for manifest in sorted((live.HOME / "parts").glob("*/heare.json")):
+    for manifest in sorted((live.MACHINE / "parts").glob("*/heare.json")):
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
             run = data["run"]

@@ -16,7 +16,7 @@ from pathlib import Path
 from heare.laws import TEXT
 
 RULES = Path(__file__).resolve().parent / "prompts" / "voice_rules.txt"
-IDENTITY = Path.home() / ".heare" / "identity.json"
+IDENTITY = Path.home() / ".heare" / "settings" / "identity.json"
 _DAYS = ("понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя")
 
 

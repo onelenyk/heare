@@ -319,5 +319,5 @@ def test_default_path_is_under_the_configured_home(tmp_path, monkeypatch):
     store = SQLiteFacts()
     store.add(_fact(source_ids=("home",)))
 
-    assert store.db_path == tmp_path / ".heare" / "heare.db"
+    assert store.db_path == tmp_path / ".heare" / "memory" / "heare.db"
     assert store.db_path.is_relative_to(tmp_path)

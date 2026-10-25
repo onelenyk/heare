@@ -21,9 +21,9 @@ from pathlib import Path
 
 import httpx
 
-from heare import logs
+from heare import layout, logs
 from heare import part
-from heare.config import HOME, Settings
+from heare.config import SETTINGS, Settings
 from heare.feeds import weather
 
 logger = logging.getLogger("heare.sources")
@@ -35,7 +35,7 @@ ROUND_S = 30 * 60
 # A fact from Open-Meteo is true for this long after it was fetched.
 TRUE_FOR_S = 90 * 60
 WEATHER_TIMEOUT_S = 15.0
-SETTINGS_FILE = HOME / "sources.json"
+SETTINGS_FILE = SETTINGS / "sources.json"
 DEFAULTS = {"weather": True, "city": "Київ"}
 UI = [
     {"name": "weather", "kind": "toggle", "label": "Погода", "value": True},
@@ -183,6 +183,7 @@ def main() -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)
+    layout.settle()
     try:
         return asyncio.run(run())
     except KeyboardInterrupt:

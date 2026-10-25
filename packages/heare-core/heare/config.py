@@ -19,26 +19,35 @@ from pathlib import Path
 from heare import keys
 
 HOME = Path.home() / ".heare"
+# The owner's: what a backup carries and a restore puts back.
+MEMORY = HOME / "memory"
+SETTINGS = HOME / "settings"
+# This machine's bonds — tokens, the parts it runs, sockets. Never in a
+# backup: a restored memory on a new Mac pairs its own parts.
+MACHINE = HOME / "machine"
+BACKUPS = HOME / "backups"
+OLD = HOME / "old"
 
 
 # What a setting is when the file does not say. Only what a part cannot
 # sensibly default by itself belongs here.
 DEFAULTS = {
-    "identity_file": HOME / "identity.json",
-    "db_path": HOME / "heare.db",
-    "memory_dir": HOME / "memory",
-    "events_dir": HOME / "events",
-    "screens_dir": HOME / "screens",
+    "identity_file": SETTINGS / "identity.json",
+    "db_path": MEMORY / "heare.db",
+    "memory_dir": MEMORY / "profile",
+    "events_dir": MEMORY / "journal",
+    "screens_dir": MEMORY / "screens",
     # What the ear heard, kept beside what it was taken for.
-    "heard_dir": HOME / "heard",
-    "canvas_file": HOME / "canvas.json",
-    "intents_path": HOME / "intents.json",
-    "parts_file": HOME / "parts.json",
-    "part_tokens_file": HOME / "part_tokens.json",
-    "pair_codes_file": HOME / "pair_codes.json",
-    "parts_dir": HOME / "parts",
-    "api_token_file": HOME / "api_token",
-    "machine_token_file": HOME / "machine_token",
+    "heard_dir": MEMORY / "heard",
+    "canvas_file": MEMORY / "canvas.json",
+    "intents_path": MEMORY / "reminders.json",
+    "backups_dir": BACKUPS,
+    "parts_file": MACHINE / "parts.json",
+    "part_tokens_file": MACHINE / "part_tokens.json",
+    "pair_codes_file": MACHINE / "pair_codes.json",
+    "parts_dir": MACHINE / "parts",
+    "api_token_file": MACHINE / "api_token",
+    "machine_token_file": MACHINE / "machine_token",
     # Where the brain is. Empty means this machine — a body on another one
     # is told once, by the setup form.
     "url": "",
@@ -81,7 +90,7 @@ DEFAULTS = {
 
 class Settings:
     def __init__(self, path: Path | None = None, **overrides) -> None:
-        self._path = path or HOME / "config.toml"
+        self._path = path or SETTINGS / "config.toml"
         self._overrides = overrides
         self._seen: float | None = None
         self._data: dict = {}

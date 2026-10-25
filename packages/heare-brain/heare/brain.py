@@ -21,7 +21,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from heare import logs
+from heare import layout, logs
 from heare import lifeline
 from heare.prompt import budget, persona
 from heare.api import pair as codes
@@ -268,6 +268,7 @@ def main() -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)
+    layout.settle()
     if args.command == "code":
         print(codes.make(Path(Settings().pair_codes_file)))
         return 0

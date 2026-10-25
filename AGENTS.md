@@ -59,7 +59,7 @@ uv run heare-hands
 uv run heare-eyes
 uv run heare-voice
 uv run heare-chat
-uv run heare-keeper     # наглядач: піднімає частини з ~/.heare/parts
+uv run heare-keeper     # наглядач: піднімає частини з ~/.heare/machine/parts
 ```
 
 Tests marked `spine_live` leave the machine — the real recogniser, the real

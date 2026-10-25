@@ -57,7 +57,7 @@ install.sh → форма
   Частини: ☑голос ☑руки
   [ Підключити ]
      ↓
-  обмін коду → токен машини (~/.heare/machine_token, 0600)
+  обмін коду → токен машини (~/.heare/machine/machine_token, 0600)
   ставить частини; кожна стукає токеном машини → свій токен
      ↓ ✅ форма гасне
 ```
@@ -126,11 +126,11 @@ heare-keeper setup   → форма з поточними значеннями (
 ```
 heare-brain code
   → код 8 символів, 5 хвилин, одноразовий; 10 спроб за хвилину з однієї адреси
-  → мозок зберігає лише SHA-256 + TTL (~/.heare/pair_codes.json)
+  → мозок зберігає лише SHA-256 + TTL (~/.heare/machine/pair_codes.json)
 
 POST /api/pair {code, kind: machine|window}
   → 256-бітний токен; мозок зберігає лише SHA-256
-  → machine: ~/.heare/machine_token (0600)
+  → machine: ~/.heare/machine/machine_token (0600)
   → window: HttpOnly cookie
 ```
 
@@ -140,7 +140,7 @@ POST /api/pair {code, kind: machine|window}
 ## 8. Конфіг
 
 ```toml
-# ~/.heare/config.toml
+# ~/.heare/settings/config.toml
 url        = "https://heare.onelenyk.dev"  # немає = 127.0.0.1:api_port
 api_port   = 9790                          # двері НА ЦІЙ машині (мозок)
 setup_port = 9791                          # форма (можна не вказувати)

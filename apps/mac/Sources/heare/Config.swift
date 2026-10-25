@@ -1,6 +1,6 @@
 import Foundation
 
-/// The few settings the shell reads from ~/.heare/config.toml.
+/// The few settings the shell reads from ~/.heare/settings/config.toml.
 ///
 /// Not a TOML parser: the Python side writes this file (Settings.set), and
 /// it writes top-level `name = value` lines with JSON-quoted strings. The
@@ -23,10 +23,17 @@ struct Config {
         return URL(fileURLWithPath: NSHomeDirectory())
     }()
     static let heare = home.appendingPathComponent(".heare")
-    static let file = heare.appendingPathComponent("config.toml")
+    /// In its section since 25 October; at the top before the first child
+    /// has moved it (heare.layout), and a link is left there after.
+    static var file: URL { inSection("settings", "config.toml") }
 
     init() {
-        apiTokenFile = Config.heare.appendingPathComponent("api_token").path
+        apiTokenFile = Config.inSection("machine", "api_token").path
+    }
+
+    static func inSection(_ section: String, _ name: String) -> URL {
+        let now = heare.appendingPathComponent(section).appendingPathComponent(name)
+        return FileManager.default.fileExists(atPath: now.path) ? now : heare.appendingPathComponent(name)
     }
 
     static func read() -> Config {
