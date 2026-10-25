@@ -2,6 +2,7 @@
 name = "heare-eyes"
 version = "0.1.0"
 requires-python = ">=3.11"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = ["heare-core", "numpy>=1.26"]
 
 [project.scripts]

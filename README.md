@@ -135,3 +135,9 @@ Pushing a `v*` tag makes CI build the wheels and publish the release.
 - [AGENTS.md](AGENTS.md) — the shape of the code and its rules
 - [docs/product/README.md](docs/product/README.md) — the plan
 - [docs/laws.md](docs/laws.md) — the laws it works under
+
+## License
+
+heare is source-available under the
+[PolyForm Shield License 1.0.0](LICENSE): you may read, run, change and
+share it for any purpose except providing a product that competes with it.
