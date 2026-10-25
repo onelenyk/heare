@@ -142,3 +142,11 @@ def test_the_backups_tab_makes_brings_takes_and_restores_on_a_second_click():
     assert 'twice(back, "Точно? Поточне відкладу"' in tab
     assert '"/restore", {method: "POST"}' in tab
     assert 'if (tab === "backups") backupsLoad();' in SCRIPT
+
+
+def test_after_a_restore_the_reloaded_page_opens_on_the_backups():
+    """The brain restarts on a restore and the page reloads with it; the
+    owner should land where they were, seeing what happened."""
+    assert 'sessionStorage.setItem("heare-restoring", "1")' in SCRIPT
+    back = SCRIPT.split('if (sessionStorage.getItem("heare-restoring"))')[1].split("} catch")[0]
+    assert "mindOpenDrawer();" in back and 'mindShow("backups");' in back
