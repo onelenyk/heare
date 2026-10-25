@@ -20,6 +20,24 @@ if let at = arguments.firstIndex(of: "--uninstall") {
     exit(0)
 }
 
+// One heare on this Mac: a second would fight the first for its ports. A
+// second launch — a double-click in Applications — asks the running one to
+// show its page, and goes. The exception is an update: the new app starts
+// while the old one is still leaving, and waits for it (HEARE_REPLACING).
+if let id = Bundle.main.bundleIdentifier {
+    if let leaving = Int32(ProcessInfo.processInfo.environment["HEARE_REPLACING"] ?? "") {
+        let until = Date().addingTimeInterval(15)
+        while kill(leaving, 0) == 0 && Date() < until { usleep(200_000) }
+    }
+    let me = ProcessInfo.processInfo.processIdentifier
+    if NSRunningApplication.runningApplications(withBundleIdentifier: id)
+        .contains(where: { $0.processIdentifier != me && !$0.isTerminated }) {
+        DistributedNotificationCenter.default().postNotificationName(
+            App.showPage, object: nil, userInfo: nil, deliverImmediately: true)
+        exit(0)
+    }
+}
+
 let app = NSApplication.shared
 let delegate = App()
 app.delegate = delegate

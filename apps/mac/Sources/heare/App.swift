@@ -4,6 +4,9 @@ import AppKit
 /// shows what they say. It holds no logic of heare's own — what a part is,
 /// whether it may run, which keys work: all of that is the keeper's answer.
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    /// What a second launch says to the heare already running.
+    static let showPage = Notification.Name((Bundle.main.bundleIdentifier ?? "heare") + ".show-page")
+
     private var config = Config.read()
     private let keeper = Child(name: "keeper", arguments: ["-m", "heare.keeper"])
     private let brain = Child(name: "brain", arguments: ["-m", "heare.brain"])
@@ -28,6 +31,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.cleanUp()
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(openHeare), name: Self.showPage, object: nil)
         NSApp.mainMenu = mainMenu()
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "heare")

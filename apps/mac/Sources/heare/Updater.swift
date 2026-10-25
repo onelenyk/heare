@@ -96,9 +96,12 @@ enum Updater {
     /// an e2e sandbox stays a sandbox.
     @discardableResult
     private static func start() -> Bool {
-        var arguments = ["-n", "-a", bundle.path]
+        // The new app waits for this one to leave instead of taking it for
+        // a second heare (main.swift).
+        var arguments = ["-n", "-a", bundle.path, "--env", "HEARE_REPLACING=\(getpid())"]
         for (name, value) in ProcessInfo.processInfo.environment
-        where name == "HOME" || name.hasPrefix("HEARE_") && name != "HEARE_PARENT_PID" {
+        where name == "HOME" || name.hasPrefix("HEARE_")
+            && !["HEARE_PARENT_PID", "HEARE_REPLACING"].contains(name) {
             arguments += ["--env", "\(name)=\(value)"]
         }
         return run("/usr/bin/open", arguments) == 0
