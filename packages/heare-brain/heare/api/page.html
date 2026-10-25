@@ -436,6 +436,11 @@
   .hear-row.me { border-color:color-mix(in srgb, var(--ok) 45%, var(--line)); }
   .hear-row.background { opacity:.62; }
   .hear-row .play { min-width:30px; }
+  .backup-make { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0 0 10px; }
+  .backup-sound { font-size:12.5px; color:var(--soft); display:flex; align-items:center; gap:6px; }
+  .backup-bring { display:inline-block; }
+  .backup-row a.mini { color:inherit; text-decoration:none; }
+  .backup-folder { font:10.5px var(--mono); overflow-wrap:anywhere; }
   .hear-row .fix { display:flex; gap:6px; margin:0 0 6px; }
   .hear-row .fix input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 9px; color:var(--ink); font:13px var(--sans); }
   .hear-row .fix input:focus { outline:none; border-color:var(--accent); }
@@ -597,6 +602,7 @@
     <button type="button" class="mind-tab" id="mind-tab-search" role="tab" aria-selected="false" aria-controls="mind-panel-search" tabindex="-1">Пошук</button>
     <button type="button" class="mind-tab" id="mind-tab-hearing" role="tab" aria-selected="false" aria-controls="mind-panel-hearing" tabindex="-1">Слух</button>
     <button type="button" class="mind-tab" id="mind-tab-profile" role="tab" aria-selected="false" aria-controls="mind-panel-profile" tabindex="-1">Профіль</button>
+    <button type="button" class="mind-tab" id="mind-tab-backups" role="tab" aria-selected="false" aria-controls="mind-panel-backups" tabindex="-1">Копії</button>
   </div>
   <div class="mind-panel" id="mind-panel-facts" role="tabpanel" aria-labelledby="mind-tab-facts"></div>
   <div class="mind-panel" id="mind-panel-reminders" role="tabpanel" aria-labelledby="mind-tab-reminders" hidden></div>
@@ -627,6 +633,21 @@
       <textarea id="mind-profile-goals" placeholder="чого хочеш цього місяця" spellcheck="false"></textarea>
       <div class="mind-foot"><span class="mind-count" id="mind-count-goals">0 / —</span><span class="mind-err" id="mind-err-goals"></span><button type="button" class="btn" id="mind-save-goals">Зберегти</button></div>
     </section>
+  </div>
+  <div class="mind-panel" id="mind-panel-backups" role="tabpanel" aria-labelledby="mind-tab-backups" hidden>
+    <p class="mind-empty">Копія — один файл: розмови, журнал, факти, профіль, нагадування, налаштування. Ключів моделей і звʼязків цього мака в ній немає: на новому маку їх вводиш знову.</p>
+    <div class="backup-make">
+      <label class="backup-sound"><input type="checkbox" id="backup-sound" checked> зі звуком (записи «Слуху»)</label>
+      <button type="button" class="btn" id="backup-make">Зробити копію</button>
+    </div>
+    <div class="backup-make">
+      <label class="mini backup-bring" for="backup-file">Принести копію…</label>
+      <input type="file" id="backup-file" accept=".zip,application/zip" hidden>
+      <span class="mind-err" id="backup-status" role="status"></span>
+    </div>
+    <p class="mind-said" id="backup-restored" hidden></p>
+    <div id="backup-list"></div>
+    <p class="mind-empty backup-folder" id="backup-folder"></p>
   </div>
 </aside>
 
@@ -1673,7 +1694,7 @@ let mind = null, mindOpen = false, mindTimer = null, mindSeq = 0;
 let mindTab = "facts", mindJournalSeq = 0, mindSearchSeq = 0;
 const mindDirty = {user: false, threads: false, goals: false};
 const MIND_PROFILE = ["user", "threads", "goals"];
-const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", "profile"];
+const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", "profile", "backups"];
 const MIND_SOURCE = {
   legacy: "зі старої памʼяті",
   consolidated: "зі слів",
@@ -2009,6 +2030,113 @@ function hearingLoad() {
     box.replaceChildren(mindSec("Що я почув"), fail);
   });
 }
+/* ── «Копії»: the owner's memory in one file, and back ── */
+let backupsSeq = 0;
+const many = (n, one, few, lots) => {
+  const t = n % 10, h = n % 100;
+  return n + " " + (t === 1 && h !== 11 ? one : t >= 2 && t <= 4 && (h < 12 || h > 14) ? few : lots);
+};
+const backupWhen = iso => {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleString("uk-UA", {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"})
+    : "—";
+};
+function backupStatus(text, ok) {
+  const s = $("backup-status");
+  s.className = "mind-err" + (ok ? " ok" : "");
+  s.textContent = text;
+}
+function backupRow(b) {
+  const row = el("div", "mind-item backup-row");
+  const top = el("div", "mind-item-top");
+  top.append(el("span", "mind-item-time", b.made ? backupWhen(b.made) : b.name));
+  if (b.broken) top.append(el("span", "mind-item-kind", "пошкоджена"));
+  else if (!b.sound) top.append(el("span", "mind-item-kind", "без звуку"));
+  top.append(el("span", "mind-item-time", (b.size / 1048576).toFixed(1) + " МБ"));
+  row.append(top);
+  if (!b.broken) {
+    const c = b.counts || {};
+    row.append(el("p", "mind-item-text", [many(c.facts || 0, "факт", "факти", "фактів"),
+      many(c.days || 0, "день журналу", "дні журналу", "днів журналу"),
+      many(c.recordings || 0, "запис", "записи", "записів"),
+      many(c.reminders || 0, "нагадування", "нагадування", "нагадувань")].join(" · ")));
+  }
+  const actions = el("div", "mind-actions");
+  const take = el("a", "mini", "Завантажити");
+  take.href = "/api/backups/" + encodeURIComponent(b.name);
+  take.setAttribute("download", b.name);
+  actions.append(take);
+  if (!b.broken) {
+    const back = el("button", "mini", "Відновити");
+    back.type = "button";
+    back.title = "поточна памʼять відкладеться в backups/before-restore-…";
+    twice(back, "Точно? Поточне відкладу", () => backupRestore(b, back));
+    actions.append(back);
+  }
+  row.append(actions);
+  return row;
+}
+function backupsLoad() {
+  if (!mindOpen) return;
+  const seq = ++backupsSeq;
+  const list = $("backup-list");
+  if (!list.childElementCount) list.replaceChildren(el("p", "mind-empty", "читаю копії…"));
+  api("backups").then(d => {
+    if (seq !== backupsSeq) return;
+    const items = (d && d.backups) || [];
+    list.replaceChildren(mindSec("Копії", items.length));
+    if (!items.length) list.append(el("p", "mind-empty", "копій ще немає — зроби першу кнопкою вище."));
+    for (const b of items) list.append(backupRow(b));
+    $("backup-folder").textContent = d && d.folder ? "лежать у " + d.folder : "";
+    const r = d && d.restored, note = $("backup-restored");
+    note.hidden = !r;
+    note.textContent = r ? `Відновлено ${backupWhen(r.at)} з копії від ${backupWhen(r.made)}. Що було до того — у backups/${r.aside}.` : "";
+  }).catch(() => {
+    if (seq !== backupsSeq) return;
+    list.replaceChildren(el("p", "mind-err", "не вдалося прочитати копії."));
+  });
+}
+function backupMake() {
+  const button = $("backup-make");
+  button.disabled = true;
+  backupStatus("роблю копію…", true);
+  api("backups", {method: "POST", body: {sound: $("backup-sound").checked}})
+    .then(b => { backupStatus("готово: " + (b.size / 1048576).toFixed(1) + " МБ", true); backupsLoad(); })
+    .catch(() => backupStatus("не вийшло зробити копію"))
+    .finally(() => { button.disabled = false; });
+}
+function backupBring(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
+  if (!file) return;
+  backupStatus("перевіряю " + file.name + "…", true);
+  fetch("/api/backups/bring", {method: "POST", body: file, credentials: "same-origin",
+                               headers: {"Content-Type": "application/zip"}})
+    .then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)))
+    .then(() => { backupStatus("копію принесено — її видно в списку", true); backupsLoad(); })
+    .catch(why => backupStatus("не прийняв: " + (typeof why === "string" && why ? why : "файл не підходить")));
+}
+function backupRestore(b, button) {
+  button.disabled = true;
+  backupStatus("ставлю копію на місце — мозок перезапускається…", true);
+  const asked = Date.now();
+  api("backups/" + encodeURIComponent(b.name) + "/restore", {method: "POST"}).then(() => {
+    let tries = 0;
+    const wait = () => {
+      if (++tries > 60) { backupStatus("мозок не повернувся за хвилину — глянь на застосунок"); return; }
+      setTimeout(() => api("backups").then(d => {
+        const r = d && d.restored;
+        if (!r || r.name !== b.name || new Date(r.at).getTime() < asked - 1000) return wait();
+        backupStatus("відновлено", true);
+        backupsLoad(); mindLoad(true); mindSummary();
+      }).catch(wait), 1000);
+    };
+    wait();
+  }).catch(why => { button.disabled = false; backupStatus("не відновив: " + (typeof why === "string" ? why : "")); });
+}
+$("backup-make").onclick = backupMake;
+$("backup-file").onchange = backupBring;
 function mindSearchSubmit(ev) {
   ev.preventDefault();
   const q = $("mind-search-q").value.trim();
@@ -2052,6 +2180,7 @@ function mindShow(tab) {
   if (tab === "profile" && mind) mindProfile(mind);
   if (tab === "journal") mindJournalLoad();
   if (tab === "hearing") hearingLoad();
+  if (tab === "backups") backupsLoad();
 }
 function mindLoad(force) {
   if (!force && !mindOpen) return Promise.resolve();

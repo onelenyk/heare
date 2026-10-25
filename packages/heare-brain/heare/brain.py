@@ -24,8 +24,9 @@ from typing import Any
 from heare import layout, logs
 from heare import lifeline
 from heare.prompt import budget, persona
+from heare.api import backup
 from heare.api import pair as codes
-from heare.config import Settings
+from heare.config import HOME, Settings
 from heare.core import Core
 from heare.engine import Engine, Intents
 from heare.features import build_features
@@ -263,12 +264,30 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="heare-brain")
     parser.add_argument(
         "command", nargs="?", default="run",
-        choices=["run", "code", "review"],
+        choices=["run", "code", "review", "backup", "restore"],
     )
+    parser.add_argument("file", nargs="?", help="restore: the backup to put back")
+    parser.add_argument("--no-sound", action="store_true",
+                        help="backup: without the recordings")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)
     layout.settle()
+    if args.command == "backup":
+        from heare.api.server import running
+        print(backup.make(HOME, sound=not args.no_sound, version=running()["version"]))
+        return 0
+    if args.command == "restore":
+        if not args.file:
+            parser.error("restore: назви файл копії")
+        try:
+            made = backup.stage(HOME, Path(args.file)).get("made")
+        except backup.BackupError as exc:
+            print(f"не відновлю: {exc}", file=sys.stderr)
+            return 1
+        print(f"копію від {made} підготовлено; вона стане на місце, коли мозок "
+              "запуститься наступного разу — перезапусти heare")
+        return 0
     if args.command == "code":
         print(codes.make(Path(Settings().pair_codes_file)))
         return 0
@@ -276,6 +295,8 @@ def main() -> int:
         print(asyncio.run(Brain().review_now()))
         return 0
     lifeline.watch()
+    if (done := backup.apply(HOME)) is not None:
+        logs.say(f"відновлено з копії {done['name']}; що було — у backups/{done['aside']}")
     try:
         asyncio.run(Brain().run())
     except KeyboardInterrupt:

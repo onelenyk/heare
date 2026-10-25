@@ -20,8 +20,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import secrets
+import signal
 import socket
 import subprocess
 import time
@@ -32,6 +34,7 @@ from typing import Any, AsyncIterator
 from aiohttp import web
 
 from heare import keys
+from heare.api import backup
 from heare.core import PROTOCOL, Core, Message
 from heare.api import auth
 from heare.api import pair as codes
@@ -48,6 +51,8 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 # a write to it fails, so this is also how long it takes to show it left.
 HEARTBEAT_S = 5.0
 SESSION = "heare_session"
+# A backup brought from another Mac: a year of recordings fits well under it.
+BACKUP_LIMIT = 2 * 1024 ** 3
 
 
 class Slow:
@@ -226,6 +231,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     part_tokens = Path(settings.part_tokens_file)
     screens = Path(settings.screens_dir)
     recordings = Recordings(Path(settings.heard_dir))
+    home = Path(settings.backups_dir).parent
     tally = Tally(core)
     # Read once: the version cannot change under a running process.
     build_info = running()
@@ -895,6 +901,69 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPNotFound(text="no such reply")
         return web.json_response({"ok": True, "marked": marked})
 
+    # -- backups of the owner's memory ---------------------------------------
+
+    async def backups_list(request: web.Request) -> web.Response:
+        listed = await asyncio.to_thread(backup.listing, home)
+        return web.json_response({"backups": listed, "restored": backup.restored(home),
+                                  "folder": str(home / "backups")})
+
+    async def backups_make(request: web.Request) -> web.Response:
+        data = await body(request)
+        made = await asyncio.to_thread(backup.make, home, sound=data.get("sound") is not False,
+                                       version=build_info["version"])
+        listed = await asyncio.to_thread(backup.listing, home)
+        return web.json_response(next(b for b in listed if b["name"] == made.name))
+
+    async def backups_get(request: web.Request) -> web.StreamResponse:
+        path = home / "backups" / request.match_info["name"]
+        if not path.is_file():
+            raise web.HTTPNotFound(text="no such backup")
+        return web.FileResponse(path, headers={
+            "Content-Type": "application/zip",
+            "Content-Disposition": f'attachment; filename="{path.name}"'})
+
+    async def backups_bring(request: web.Request) -> web.Response:
+        """A backup from another Mac, taken as it comes and checked before
+        it is listed."""
+        folder = home / "backups"
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        partial = folder / f".brought-{secrets.token_hex(4)}.zip"
+        size = 0
+        try:
+            with partial.open("wb") as out:
+                async for chunk in request.content.iter_chunked(1 << 20):
+                    size += len(chunk)
+                    if size > BACKUP_LIMIT:
+                        raise web.HTTPRequestEntityTooLarge(max_size=BACKUP_LIMIT,
+                                                            actual_size=size)
+                    out.write(chunk)
+            try:
+                await asyncio.to_thread(backup.check, partial)
+            except backup.BackupError as exc:
+                raise web.HTTPBadRequest(text=str(exc)) from None
+            partial.chmod(0o600)
+            target = backup.free_name(folder)
+            os.replace(partial, target)
+        finally:
+            partial.unlink(missing_ok=True)
+        listed = await asyncio.to_thread(backup.listing, home)
+        return web.json_response(next(b for b in listed if b["name"] == target.name))
+
+    async def backups_restore(request: web.Request) -> web.Response:
+        path = home / "backups" / request.match_info["name"]
+        if not path.is_file():
+            raise web.HTTPNotFound(text="no such backup")
+        try:
+            manifest = await asyncio.to_thread(backup.stage, home, path)
+        except backup.BackupError as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from None
+        # The database is open here; the next start puts the backup in place
+        # before anything opens it. The app (or Docker) starts the brain again.
+        logger.warning("відновлюю з %s: мозок виходить, щоб стати на неї", path.name)
+        asyncio.get_running_loop().call_later(0.5, os.kill, os.getpid(), signal.SIGTERM)
+        return web.json_response({"ok": True, "made": manifest.get("made")})
+
     async def mind_forget(request: web.Request) -> web.Response:
         data = await body(request)
         try:
@@ -986,6 +1055,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/heard/{name}.wav", heard_sound),
         web.post("/api/heard/{turn}", heard_mark),
         web.post("/api/mind/journal/forget", mind_forget),
+        web.get("/api/backups", backups_list),
+        web.post("/api/backups", backups_make),
+        web.post("/api/backups/bring", backups_bring),
+        web.get(f"/api/backups/{{name:{backup.NAME}}}", backups_get),
+        web.post(f"/api/backups/{{name:{backup.NAME}}}/restore", backups_restore),
         web.post("/api/mind/facts/{id:\\d+}/confirm", confirm_fact),
         web.post("/api/mind/facts/{id:\\d+}/reject", reject_fact),
         web.post("/api/mind/reminders/{id:\\d+}/cancel", cancel_reminder),

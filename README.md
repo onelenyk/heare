@@ -91,6 +91,23 @@ Your conversations, keys and settings stay where they are. The page shows
 which version is running beside the uptime, and marks any part that is on
 a different version from the brain.
 
+## Back up and move to another Mac
+
+On the page: **Памʼять → Копії → Зробити копію**. A backup is one file
+holding your conversations, journal, facts, profile, reminders and
+settings, and, if you leave the switch on, the recordings. It does not
+hold the model keys or this Mac's pairings. Backups are kept in
+`~/.heare/backups`; **Завантажити** saves one wherever you like.
+
+On the new Mac: install heare, enter the keys, then **Принести копію…**
+and **Відновити**. The brain restarts on the backup. What it replaced is
+kept in `~/.heare/backups/before-restore-…`.
+
+On a server: `heare-brain backup` and `heare-brain restore FILE`.
+
+Inside `~/.heare`, `memory/` and `settings/` are yours; `machine/` is this
+Mac's tokens and parts.
+
 ## Uninstall
 
 **Mac:** choose **Вийти** in heare's menu, then move `/Applications/heare.app`

@@ -5,10 +5,11 @@ import WebKit
 
 /// A window around one local page. Links that lead off this machine open
 /// in the person's browser; the window itself only shows heare.
-class PageWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
+class PageWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSWindowDelegate {
     let window: NSWindow
     let web: WKWebView
     private var target: URL?
+    private var saving: [ObjectIdentifier: URL] = [:]
     private var tries = 0
 
     init(title: String, size: NSSize, configuration: WKWebViewConfiguration = WKWebViewConfiguration()) {
@@ -64,7 +65,61 @@ class PageWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate
             decisionHandler(.cancel)
             return
         }
-        decisionHandler(.allow)
+        decisionHandler(action.shouldPerformDownload ? .download : .allow)
+    }
+
+    // A file the page hands over (a backup) is saved, not shown.
+    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        let disposition = (response.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition") ?? ""
+        decisionHandler(disposition.hasPrefix("attachment") || !response.canShowMIMEType ? .download : .allow)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
+                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedFilename
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.beginSheetModal(for: window) { [weak self] answer in
+            let url = answer == .OK ? panel.url : nil
+            if let url {
+                try? FileManager.default.removeItem(at: url)  // the panel already asked to replace
+                self?.saving[ObjectIdentifier(download)] = url
+            }
+            completionHandler(url)
+        }
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        if let url = saving.removeValue(forKey: ObjectIdentifier(download)) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        saving.removeValue(forKey: ObjectIdentifier(download))
+        NSLog("heare: download failed: %@", error.localizedDescription)
+    }
+
+    // <input type=file>: the window has no picker of its own.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.canChooseFiles = true
+        panel.beginSheetModal(for: window) { answer in
+            completionHandler(answer == .OK ? panel.urls : nil)
+        }
     }
 
     // target=_blank and window.open: the person's browser, not a bare window.

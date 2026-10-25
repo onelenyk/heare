@@ -37,10 +37,10 @@ def test_every_element_the_script_reaches_for_is_in_the_page():
 
 def test_the_mind_drawer_has_journal_and_search_before_profile():
     tabs = re.findall(r'id="mind-tab-(\w+)"', PAGE)
-    assert tabs == ["facts", "reminders", "journal", "search", "hearing", "profile"]
+    assert tabs == ["facts", "reminders", "journal", "search", "hearing", "profile", "backups"]
     assert ('const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", '
-            '"profile"]' in SCRIPT)
-    for tab in ("journal", "search", "hearing"):
+            '"profile", "backups"]' in SCRIPT)
+    for tab in ("journal", "search", "hearing", "backups"):
         assert f'id="mind-panel-{tab}"' in PAGE
         assert f'aria-controls="mind-panel-{tab}"' in PAGE
         assert (f'id="mind-panel-{tab}" role="tabpanel" '
@@ -132,3 +132,13 @@ def test_no_browser_dialogs_the_apps_window_would_swallow():
     answers «no» in silence, so «Забути» did nothing there (24 October)."""
     found = re.findall(r"\b(?:window\.)?(confirm|alert|prompt)\s*\(", SCRIPT)
     assert not found, found
+
+
+def test_the_backups_tab_makes_brings_takes_and_restores_on_a_second_click():
+    tab = SCRIPT.split("/* ── «Копії»")[1].split("function mindSearchSubmit")[0]
+    assert 'api("backups", {method: "POST", body: {sound: $("backup-sound").checked}})' in tab
+    assert 'fetch("/api/backups/bring", {method: "POST", body: file' in tab
+    assert 'take.href = "/api/backups/" + encodeURIComponent(b.name)' in tab
+    assert 'twice(back, "Точно? Поточне відкладу"' in tab
+    assert '"/restore", {method: "POST"}' in tab
+    assert 'if (tab === "backups") backupsLoad();' in SCRIPT

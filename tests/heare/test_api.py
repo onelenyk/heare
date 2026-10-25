@@ -31,6 +31,8 @@ async def _open(tmp_path, *, facts=None, intents=None, memory_dir=None,
         pair_codes_file=tmp_path / "pair_codes.json",
         memory_dir=memory_dir if memory_dir is not None else tmp_path / "memory",
         heard_dir=tmp_path / "heard",
+        # Never the developer's own ~/.heare: the backup door works on it.
+        backups_dir=tmp_path / "home" / "backups",
     )
     room.core.add_output(Screen(room.core))
     mind = None
@@ -1704,4 +1706,56 @@ async def test_what_the_ear_heard_is_listed_heard_and_marked(tmp_path):
     assert [r["label"] for r in listed["replies"]] == ["background", "me"]
     assert listed["replies"][1]["truth"] == "Та можна."
     assert (await client.get("/api/heard")).status == 401
+    await _close(room, client)
+
+
+async def test_a_backup_is_made_listed_taken_brought_and_restored(tmp_path, monkeypatch):
+    import os
+    import signal
+
+    from heare.api import server
+
+    room, client, headers, settings = await _open(tmp_path)
+    home = tmp_path / "home"
+    (home / "memory" / "journal").mkdir(parents=True)
+    (home / "memory" / "journal" / "2026-10-25.jsonl").write_text("{}\n", encoding="utf-8")
+    (home / "settings").mkdir()
+    (home / "settings" / "config.toml").write_text("", encoding="utf-8")
+
+    made = await client.post("/api/backups", headers=headers, json={"sound": False})
+    assert made.status == 200
+    entry = await made.json()
+    assert entry["sound"] is False and entry["counts"]["days"] == 1
+    listed = await (await client.get("/api/backups", headers=headers)).json()
+    assert [b["name"] for b in listed["backups"]] == [entry["name"]]
+    assert listed["restored"] is None
+
+    taken = await client.get(f"/api/backups/{entry['name']}", headers=headers)
+    assert taken.status == 200
+    assert "attachment" in taken.headers["Content-Disposition"]
+    data = await taken.read()
+    assert data[:2] == b"PK"
+    assert (await client.get("/api/backups/..%2Fmachine%2Fapi_token",
+                             headers=headers)).status == 404
+    assert (await client.get("/api/backups/heare-20990101-000000.zip",
+                             headers=headers)).status == 404
+
+    brought = await client.post("/api/backups/bring", headers=headers, data=data)
+    assert brought.status == 200
+    assert (await brought.json())["name"] != entry["name"]
+    junk = await client.post("/api/backups/bring", headers=headers, data=b"not a zip")
+    assert junk.status == 400
+    assert len((await (await client.get("/api/backups", headers=headers)).json())["backups"]) == 2
+    assert not list((home / "backups").glob(".brought-*"))
+
+    killed = []
+    monkeypatch.setattr(server.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    restore = await client.post(f"/api/backups/{entry['name']}/restore", headers=headers)
+    assert restore.status == 200
+    assert (home / "restore-pending" / "memory" / "journal" / "2026-10-25.jsonl").exists()
+    await asyncio.sleep(0.7)
+    assert killed == [(os.getpid(), signal.SIGTERM)]
+
+    assert (await client.get("/api/backups")).status == 401
+    assert (await client.post("/api/backups/bring", data=data)).status == 401
     await _close(room, client)
