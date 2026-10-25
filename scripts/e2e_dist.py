@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -244,6 +245,14 @@ def first_run(feed: str) -> None:
     for part in ("eyes", "sources"):
         form("/part", {"name": part, "on": True})
     form("/done", {})
+    # A fresh Mac's parts wait for the person on the page: approve them as
+    # the person would.
+    waiting = wait("органи стукають", lambda: (b := bodies()) and all(
+        c in b for c in ("eyes", "sources")) and b)
+    for channel in ("eyes", "sources"):
+        pid = next(k for k, v in brain("/api/state")["bodies"].items() if v["channel"] == channel)
+        if waiting[channel]["state"] == "pending":
+            brain(f"/api/bodies/{urllib.parse.quote(pid)}/approve", "POST", {})
     seen = wait("мозок і органи", lambda: (b := bodies()) and all(
         b.get(c, {}).get("state") == "approved" for c in ("eyes", "sources")) and b)
     if "voice" in seen or "opencode" in seen:
