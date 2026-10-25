@@ -20,6 +20,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // What the keeper and the brain last said; the menu is drawn from these.
     private var machine: [String: Any]?
     private var state: [String: Any]?
+    // Chosen in «Видалити heare…»; done once the children have stopped.
+    private var removing: Uninstall.Keep?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = editMenu()
@@ -119,6 +121,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         login.state = Login.on ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
+        menu.addItem(action("Видалити heare…", #selector(uninstall), key: ""))
         menu.addItem(action("Вийти", #selector(quit), key: "q"))
     }
 
@@ -158,6 +161,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quit() { NSApp.terminate(nil) }
 
+    @objc private func uninstall() {
+        guard let keep = Uninstall.ask() else { return }
+        removing = keep
+        NSApp.terminate(nil)
+    }
+
     // MARK: - leaving
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -178,7 +187,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return .terminateLater
     }
 
-    @objc private func leave() { NSApp.reply(toApplicationShouldTerminate: true) }
+    @objc private func leave() {
+        if let keep = removing {
+            for line in Uninstall.run(keep: keep) { NSLog("heare: %@", line) }
+        }
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
 
     /// An app without a Dock icon has no menu bar, and without an Edit menu
     /// ⌘V does nothing in a web view — a key could not be pasted.
