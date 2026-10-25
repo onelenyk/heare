@@ -102,7 +102,15 @@ rm -rf "$STAGE" "$DIST/heare.dmg"
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -quiet -volname heare -srcfolder "$STAGE" -format UDZO -ov "$DIST/heare.dmg"
+# GitHub's Intel Macs fail hdiutil now and then with "Resource busy" (the
+# first dry run of the app build, 25 October); a few tries get through, and
+# a failure that stays says why.
+tries=1
+until hdiutil create -volname heare -srcfolder "$STAGE" -format UDZO -ov "$DIST/heare.dmg"; do
+    [ "$tries" -ge 5 ] && { echo "hdiutil create failed $tries times" >&2; exit 1; }
+    tries=$((tries + 1))
+    sleep $((tries * 3))
+done
 rm -rf "$STAGE"
 
 say "done"
