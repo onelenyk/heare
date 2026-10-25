@@ -745,3 +745,46 @@ class TestFarEndSink:
         pcm = _pcm([1000, -1000])
         io.play(pcm)
         assert sink.pushed == [pcm]
+
+
+async def test_a_device_slow_to_open_does_not_hold_the_loop(monkeypatch, caplog) -> None:
+    """25 October: CoreAudio took over 45 s to open a stream, on the loop,
+    and the voice could not even see the brain restart meanwhile."""
+    import asyncio
+    import sys
+    import threading
+    from unittest.mock import MagicMock, patch
+
+    from heare.channels.voice import device as device_module
+    from heare.channels.voice.device import AudioIO
+
+    monkeypatch.setattr(device_module, "OPEN_SLOW_S", 0.05)
+    release = threading.Event()
+    slow = MagicMock()
+
+    def opening(**kwargs):
+        release.wait(5)
+        return MagicMock()
+
+    slow.RawInputStream.side_effect = opening
+    slow.RawOutputStream.return_value = MagicMock()
+    audio = AudioIO()
+    ticks = 0
+
+    async def beat() -> None:
+        nonlocal ticks
+        while True:
+            ticks += 1
+            await asyncio.sleep(0.01)
+
+    beating = asyncio.create_task(beat())
+    with patch.dict(sys.modules, {"sounddevice": slow}):
+        starting = asyncio.create_task(audio.start())
+        await asyncio.sleep(0.3)
+        assert ticks > 10, "the loop stood while the device opened"
+        assert not starting.done()
+        release.set()
+        await starting
+    beating.cancel()
+    assert "has not opened" in caplog.text
+    await audio.stop()

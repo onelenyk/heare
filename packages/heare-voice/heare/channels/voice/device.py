@@ -12,6 +12,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# How long a device may take to open before it is said on the part's card.
+OPEN_SLOW_S = 10
+
 _INT16_MIN = -32768
 _INT16_MAX = 32767
 
@@ -250,11 +253,31 @@ class AudioIO:
             logger.debug("far-end clear failed (non-fatal)", exc_info=True)
 
     async def start(self) -> None:
-        """Open sounddevice streams and capture running event loop."""
+        """Open sounddevice streams and capture running event loop.
+
+        Opened off the event loop. On 25 October CoreAudio took more than
+        45 s to open a stream for a voice started right after one was
+        killed; opened on the loop, that held the whole part — its stream
+        to the brain unread, the brain restarting unnoticed, the voice
+        «away» until it was killed again. Now the loop lives while the
+        device opens, and a device slow to open is said on the part's card.
+        """
         import sounddevice
 
         self._loop = asyncio.get_running_loop()
+        opening = asyncio.ensure_future(asyncio.to_thread(self._open, sounddevice))
+        done, _ = await asyncio.wait({opening}, timeout=OPEN_SLOW_S)
+        if not done:
+            logger.error("audio: the device has not opened in %d s; still waiting for it",
+                         OPEN_SLOW_S)
+        await opening
+        # A stream that opens and never calls back is exactly the failure
+        # worth catching, so the clock starts here rather than on the
+        # first frame — otherwise the gap would be measured from zero and
+        # read as decades of silence before anything had a chance.
+        self._last_frame_ts = time.monotonic()
 
+    def _open(self, sounddevice) -> None:
         self._input_stream = sounddevice.RawInputStream(
             channels=1,
             samplerate=self.input_rate,
@@ -275,11 +298,6 @@ class AudioIO:
 
         self._input_stream.start()
         self._output_stream.start()
-        # A stream that opens and never calls back is exactly the failure
-        # worth catching, so the clock starts here rather than on the
-        # first frame — otherwise the gap would be measured from zero and
-        # read as decades of silence before anything had a chance.
-        self._last_frame_ts = time.monotonic()
 
     async def restart_input(self) -> bool:
         """Reopen the microphone stream. True when it came back.
@@ -314,7 +332,7 @@ class AudioIO:
                 old.close()
             except Exception:  # noqa: BLE001
                 logger.warning("audio: the dead input stream did not close cleanly")
-        try:
+        def reopen():
             stream = sounddevice.RawInputStream(
                 channels=1,
                 samplerate=self.input_rate,
@@ -324,6 +342,11 @@ class AudioIO:
                 device=self.input_device,
             )
             stream.start()
+            return stream
+
+        try:
+            # Off the loop, as in start(): CoreAudio can take its time.
+            stream = await asyncio.to_thread(reopen)
         except Exception:  # noqa: BLE001
             logger.exception("audio: could not reopen the microphone")
             return False
@@ -335,17 +358,16 @@ class AudioIO:
         return True
 
     async def stop(self) -> None:
-        """Stop and close sounddevice streams."""
-        if self._input_stream is not None:
-            self._input_stream.stop()
-            self._input_stream.close()
-            self._input_stream = None
+        """Stop and close sounddevice streams — off the loop, like opening."""
+        streams = [s for s in (self._input_stream, self._output_stream) if s is not None]
+        self._input_stream = self._output_stream = None
 
-        if self._output_stream is not None:
-            self._output_stream.stop()
-            self._output_stream.close()
-            self._output_stream = None
+        def close() -> None:
+            for stream in streams:
+                stream.stop()
+                stream.close()
 
+        await asyncio.to_thread(close)
         self._loop = None
 
     def _on_input(
