@@ -82,9 +82,12 @@ from other machines appear there and wait until you approve them.
 
 ## Update
 
-- **Mac:** download the new `.dmg` from
-  [Releases](https://github.com/onelenyk/heare/releases/latest) and replace
-  the app.
+- **Mac:** when a new version is out, the page says **Є heare 0.x.y ·
+  Оновити** beside the version. Click it: heare downloads the release,
+  checks it against the release's sums, backs up your memory, puts the new
+  app in place of the old one and starts again. You can also download the
+  new `.dmg` from [Releases](https://github.com/onelenyk/heare/releases/latest)
+  and replace the app by hand.
 - **Linux:** run the install command again with the new version number.
 
 Your conversations, keys and settings stay where they are. The page shows
@@ -110,8 +113,13 @@ Mac's tokens and parts.
 
 ## Uninstall
 
-**Mac:** choose **Вийти** in heare's menu, then move `/Applications/heare.app`
-to the Trash. The app runs everything itself — there are no services to stop.
+**Mac:** choose **Видалити heare…** in heare's menu. It asks whether to
+keep your memory (conversations, facts, settings and backups stay in
+`~/.heare`, and installing heare again picks them up) or to remove it all.
+Either way heare stops, its keys leave the Keychain, the start at login is
+turned off, and the app goes to the Trash — nothing is deleted outright.
+Files the agent made in `~/heare-work` stay. From a terminal:
+`/Applications/heare.app/Contents/MacOS/heare --uninstall keep-memory` (or `all`).
 
 (If you installed heare the developer way, with `install.sh`, also run
 `launchctl bootout gui/$(id -u)/com.heare.brain` and `…/com.heare.keeper`,
