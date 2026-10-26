@@ -319,6 +319,15 @@ def show_pair(panel, code, framebuf_module=None):
     )
 
 
+def _memory():
+    """Free memory, after a collection: what the screen has to work with."""
+    import gc
+
+    gc.collect()
+    # CPython's gc has no mem_free; a host test reads -1.
+    return gc.mem_free() if hasattr(gc, "mem_free") else -1
+
+
 def show_text(panel, lines, framebuf_module=None):
     """What the agent asked to show, a line every ten pixels."""
     return _draw_lines(
@@ -519,6 +528,7 @@ def run_normal(
     last_word = None
     online_since = None
     boot_cleared = False
+    slowest = 0
     count = 0
     while ticks is None or count < ticks:
         count += 1
@@ -547,12 +557,14 @@ def run_normal(
         else:
             key = frame_key(word, panel, now)
         if key != last_key:
+            drawn_at = clock.now_ms()
             if picture:
                 show_picture(panel, picture)
             elif text:
                 show_text(panel, text)
             else:
                 show_state(panel, word, now)
+            slowest = max(slowest, clock.elapsed(drawn_at, clock.now_ms()))
             last_key = key
         if word != last_word:
             _report(link, word, outcome)
@@ -563,11 +575,12 @@ def run_normal(
         if online:
             if online_since is None:
                 online_since = now
-                out("link=online")
+                out("link=online mem free=" + str(_memory()))
             elif not boot_cleared and clock.elapsed(online_since, now) >= HEALTHY_MS:
                 clear_boot(store)
                 boot_cleared = True
-                out("healthy=60s")
+                out("healthy=60s slowest frame ms=" + str(slowest)
+                    + " mem free=" + str(_memory()))
         else:
             online_since = None
 
