@@ -44,6 +44,20 @@ SHOW_S = 10
 SHOW_MAX_S = 60
 SHOW_CHARS = 40
 MODEL_TIMEOUT_S = 20.0
+# After a claim that brought nothing at once (a brain that just restarted,
+# a hand not let in yet), before the next: never a loop of requests.
+IDLE_S = 1.0
+FAILED = "Не вийшло: модель не відповіла."
+# The OLED's font has Latin letters only; Ukrainian is written out in them
+# rather than drawn as noise.
+_LATIN = str.maketrans({
+    "а": "a", "б": "b", "в": "v", "г": "h", "ґ": "g", "д": "d", "е": "e",
+    "є": "ie", "ж": "zh", "з": "z", "и": "y", "і": "i", "ї": "i", "й": "i",
+    "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
+    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch",
+    "ш": "sh", "щ": "shch", "ь": "", "ю": "iu", "я": "ia", "ы": "y", "э": "e",
+    "ё": "io", "ъ": "", "’": "", "'": "",
+})
 
 _SYSTEM = (
     "Ти — швидкі руки heare. Зроби прохання інструментами й відповідай одним "
@@ -81,6 +95,8 @@ class NativeHand:
         for _ in range(STEPS):
             desk.step("думаю")
             text, calls = await self._turn(messages, tools)
+            if getattr(desk, "stopped", False):
+                raise asyncio.CancelledError
             if not calls:
                 return text or "Готово."
             results = [(call, await self._call(call, desk)) for call in calls]
@@ -131,7 +147,7 @@ def _named(entry: dict, kind: str) -> list[str]:
 
 
 async def _show(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
-    text = str(arguments.get("text") or "").strip()[:SHOW_CHARS]
+    text = latin(str(arguments.get("text") or "")).strip()[:SHOW_CHARS]
     if not _named(entry, "show") or not text:
         return "Нема що показати."
     try:
@@ -291,14 +307,30 @@ class Chat:
 
 
 class RemoteDesk:
-    """What the work asks the brain for, over the door."""
+    """What the work asks the brain for, over the door.
+
+    A step's answer says whether the work was called off: that is how
+    «стоп» reaches a hand with no server of its own. It is read before the
+    next act, so nothing is switched after a stop."""
 
     def __init__(self, wire: part.Wire, job_id: int) -> None:
         self._wire, self._id = wire, job_id
+        self.stopped = False
+        self._steps: set[asyncio.Task] = set()
 
     def step(self, text: str) -> None:
-        asyncio.create_task(self._wire.post(
-            f"/api/executor/{self._id}/step?name={CHANNEL}", {"text": text}))
+        job = asyncio.create_task(self._step(text))
+        self._steps.add(job)
+        job.add_done_callback(self._steps.discard)
+
+    async def _step(self, text: str) -> None:
+        answer = await self._wire.post(
+            f"/api/executor/{self._id}/step?name={CHANNEL}", {"text": text})
+        try:
+            if answer.json().get("stopped"):
+                self.stopped = True
+        except ValueError:
+            pass
 
     async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
         answer = (await self._wire.post(
@@ -307,6 +339,41 @@ class RemoteDesk:
         if answer.get("stopped"):
             raise asyncio.CancelledError
         return bool(answer.get("allow"))
+
+
+async def take(wire: part.Wire, hand: NativeHand) -> bool:
+    """Claim one piece of work and do it; False when none came."""
+    claim = await wire.post("/api/executor/claim", {"name": CHANNEL})
+    try:
+        task = claim.json() if claim.status_code == 200 else {}
+    except ValueError:
+        task = {}
+    if not isinstance(task, dict) or "id" not in task:
+        return False
+    wire.report({"work": f"роблю: {str(task.get('request', ''))[:50]}"})
+    status, result = "done", ""
+    try:
+        result = await hand.run(str(task.get("request", "")), RemoteDesk(wire, task["id"]))
+    except asyncio.CancelledError:
+        status, result = "stopped", "Зупинено."
+    except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
+        # The person hears a sentence; the reason goes to the log.
+        logger.warning("the work failed: %r", exc)
+        status, result = "failed", FAILED
+    await wire.post(f"/api/executor/{task['id']}/result?name={CHANNEL}",
+                    {"status": status, "result": result})
+    wire.report({"work": "чекає"})
+    return True
+
+
+def latin(text: str) -> str:
+    """Ukrainian written in Latin letters, case kept, for the OLED's font."""
+    out = []
+    for char in text:
+        low = char.lower()
+        spelled = low.translate(_LATIN)
+        out.append(spelled.capitalize() if char != low and spelled else spelled)
+    return "".join(out)
 
 
 async def run() -> int:
@@ -318,22 +385,8 @@ async def run() -> int:
             hand = NativeHand(Chat(settings, client), Parts(wire))
             wire.report({"work": "чекає"})
             while True:
-                claim = await wire.post("/api/executor/claim", {"name": CHANNEL})
-                task = claim.json() if claim.status_code == 200 else {}
-                if not task or "id" not in task:
-                    continue
-                wire.report({"work": f"роблю: {task['request'][:50]}"})
-                status, result = "done", ""
-                try:
-                    result = await hand.run(task["request"], RemoteDesk(wire, task["id"]))
-                except asyncio.CancelledError:
-                    status, result = "stopped", "Зупинено."
-                except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
-                    logger.warning("the work failed: %s", exc)
-                    status, result = "failed", str(exc)
-                await wire.post(f"/api/executor/{task['id']}/result?name={CHANNEL}",
-                                {"status": status, "result": result})
-                wire.report({"work": "чекає"})
+                if not await take(wire, hand):
+                    await asyncio.sleep(IDLE_S)
 
         return await part.live(
             {"channel": CHANNEL, "forms": ["executor"], "about": ABOUT,
