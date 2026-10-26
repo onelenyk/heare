@@ -105,8 +105,21 @@ def wrap(text, per_line, at_most):
     return lines[:at_most]
 
 
+def _fits(text, size, width, height):
+    """Whether every word stands whole on its line and the lines fit."""
+    per_line = max(width // (font.CELL * size), 1)
+    rows = max((height + 2 * size) // (10 * size), 1)
+    words = font.plain(text).split()
+    if any(len(word) > per_line for word in words):
+        return False
+    return len(wrap(text, per_line, rows + 1)) <= rows
+
+
 def _words(canvas, box, text, size, align):
     x, y, width, height = box
+    # Big only when it fits whole: a word is never broken to stay big.
+    if size == 2 and not _fits(text, 2, width, height):
+        size = 1
     step = font.CELL * size
     lines = wrap(text, max(width // step, 1), max((height + 2 * size) // (10 * size), 1))
     top = y + max((height - len(lines) * 10 * size + 2 * size) // 2, 0)
@@ -128,7 +141,8 @@ def _icon(canvas, box, name, bits):
     data = glyphs.ICONS.get(name) if bits is None else bits
     if not data:
         return
-    side = ICON if bits is None else min(width, height)
+    # Named or drawn from an SVG, an icon is 16×16: the hands draw it so.
+    side = ICON
     left, top = x + max((width - side) // 2, 0), y + max((height - side) // 2, 0)
     stride = (side + 7) // 8
     for row in range(side):

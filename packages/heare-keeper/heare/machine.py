@@ -46,7 +46,7 @@ PARTS = {part.name: part for part in (
          module="cli_hands"),
     Part("native-hands", "Native hands", "швидкі дії з тілами: OLED, світло, піни",
          "native-hands", ("executor",),
-         "плата heare на столі з OLED-екраном: слова на OLED, світло, піни",
+         "плата heare на столі з OLED-екраном: слова, картинки, іконки, сцени, світло",
          module="native_hands"),
 )}
 

@@ -64,7 +64,9 @@ def main() -> int:
     out = Path(sys.argv[2] if len(sys.argv) > 2 else "scene.png")
     font.ascii_rows = latin
     raster = Raster(letters=latin)
-    scene = screen.Scene("preview", spec.get("layout", spec), spec.get("fields"))
+    # Checked as the board checks it: shapes tidied, pictures decoded.
+    scene = screen.check({"id": "preview", "layout": spec.get("layout", spec),
+                          "fields": spec.get("fields") or {}})
     scene.draw(raster, 72, 40, 0)
     png(raster, out)
     print(raster.ascii())

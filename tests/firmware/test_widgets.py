@@ -84,3 +84,24 @@ def test_the_clock_and_the_spinner_ask_for_frames_and_still_widgets_do_not():
     assert len(widgets.key({"widget": "clock"}, {}, 0, box)) == 3
     assert _draw({"widget": "spinner"}).count() > 8
     assert _draw({"widget": "clock"}).count() > 20
+
+
+def test_big_text_that_would_break_a_word_is_drawn_at_size_one():
+    rows = lambda r: [y for y, line in enumerate(r.lit) if any(line)]  # noqa: E731
+    copying = _draw({"rows": [{"h": 2, "widget": "text", "text": "Копіюю", "size": 2},
+                              {"widget": "bar", "value": 40}]})
+    first = [y for y in rows(copying) if y < 20]
+    assert max(first) - min(first) <= 8  # one line of the small letters, «Копіюю» whole
+    start = _draw({"cols": [{"widget": "icon", "name": "sun"},
+                            {"w": 2, "widget": "text", "text": "Старт", "size": 2}]})
+    assert max(rows(start)) - min(y for y in rows(start) if any(start.lit[y][24:])) <= 16
+
+
+def test_an_icon_drawn_from_svg_is_sixteen_square_in_any_box():
+    import base64
+
+    bits = base64.b64decode(base64.b64encode(bytes([0xFF, 0xFF] * 16)))
+    drawn = _draw({"cols": [{"widget": "icon", "bits": bits}, {"w": 2, "widget": "text", "text": ""}]})
+    lit = [(x, y) for y in range(40) for x in range(72) if drawn.lit[y][x]]
+    xs, ys = {x for x, _ in lit}, {y for _, y in lit}
+    assert len(lit) == 256 and max(xs) - min(xs) == 15 and max(ys) - min(ys) == 15
