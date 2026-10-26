@@ -1,0 +1,709 @@
+"""Boot the panel: BLE setup when it must be provisioned, the link otherwise.
+
+Setup is BLE only: the panel advertises ``heare-panel-XXXX`` for ten minutes
+with a four-digit code on the screen and on the serial line, and a save that
+succeeds stops BLE, shows ``IDLE`` and resets into normal operation.
+
+A display that is missing or dies later never stops the network side: every
+draw is best effort. The module is import-safe on a laptop, so ``machine``,
+``framebuf`` and ``_thread`` are imported only inside the functions that need
+them and ``run`` accepts every dependency for the host tests.
+
+The import order is not cosmetic. On this build BLE needs a large contiguous
+block, and loading ``link``/``state``/``provision`` before ``BleSetup.start``
+leaves too little for the controller (``OSError EIO``). The setup path starts
+BLE with only the radio and display modules loaded, then imports the
+provisioning transaction once advertising is up and the heap has settled.
+"""
+
+import gc
+import time
+
+from heare_panel import ble_setup, clock, display as panel_display, net
+
+# Mirrors of store.py's persisted names, used only for the pre-BLE check.
+# Importing store/config here costs ~10 KB and makes BleSetup.start fail with
+# EIO on this board, so the real Store is created after BLE is advertising.
+NVS_NAMESPACE = "heare"
+KEY_PART_TOKEN = "part_token"
+KEY_BOOT_COUNT = "boot_count"
+CONFIG_PATH = "/config.json"
+
+BOOT_LIMIT = 3
+WDT_MS = 30_000
+HEALTHY_MS = 60_000
+TICK_MS = 200
+BLE_WINDOW_MS = 600_000
+WIFI_ATTEMPTS = 3
+SETUP_NAME = "heare-panel-"
+SETUP_TITLE = "SETUP"
+BLINK_MS = 500
+
+
+def _nvs():
+    try:
+        import esp32
+
+        return esp32.NVS(NVS_NAMESPACE)
+    except Exception:  # noqa: BLE001 - no NVS means no provisioning state
+        return None
+
+
+def _blob(nvs, key):
+    try:
+        return nvs.get_blob(key)
+    except TypeError:
+        buffer = bytearray(64)
+        try:
+            length = nvs.get_blob(key, buffer)
+        except OSError:
+            return None
+        if length is None:
+            return bytes(buffer)
+        return bytes(buffer[:length])
+    except OSError:
+        return None
+
+
+def _text(nvs, key):
+    data = _blob(nvs, key)
+    if data is None:
+        return None
+    try:
+        return bytes(data).decode()
+    except (TypeError, ValueError):
+        return None
+
+
+def _number(nvs, key):
+    value = _text(nvs, key)
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except ValueError:
+        return 0
+
+
+def _has_config(path=CONFIG_PATH):
+    try:
+        with open(path) as handle:
+            handle.read(1)
+    except OSError:
+        return False
+    return True
+
+
+def _record_boot_nvs():
+    nvs = _nvs()
+    if nvs is None:
+        return
+    try:
+        nvs.set_blob(KEY_BOOT_COUNT, str(_number(nvs, KEY_BOOT_COUNT) + 1).encode())
+        nvs.commit()
+    except OSError:
+        pass
+
+
+def _setup_required_nvs():
+    if not _has_config():
+        return True
+    nvs = _nvs()
+    if nvs is None:
+        return True
+    if _text(nvs, KEY_PART_TOKEN) is None:
+        return True
+    return _number(nvs, KEY_BOOT_COUNT) >= BOOT_LIMIT
+
+
+def _open_store():
+    from heare_panel import store as storage
+
+    return storage.Store()
+
+
+def setup_required(store):
+    """Whether this boot must offer BLE setup.
+
+    Three failures to get online leave the boot counter high on purpose: a
+    panel that cannot reach its brain after three resets is easier to fix
+    through the setup page than through another silent reboot.
+    """
+    try:
+        if store.load_config() is None:
+            return True
+        if store.get_part_token() is None:
+            return True
+        return store.boot_count() >= BOOT_LIMIT
+    except Exception:  # noqa: BLE001 - a broken store must still offer setup
+        return True
+
+
+def record_boot(store):
+    try:
+        store.set_boot_count(store.boot_count() + 1)
+    except (OSError, AttributeError, ValueError):
+        pass
+
+
+def clear_boot(store):
+    try:
+        store.set_boot_count(0)
+    except (OSError, AttributeError, ValueError):
+        pass
+
+
+def board_tag():
+    try:
+        import machine
+
+        mac = machine.unique_id()
+    except Exception:  # noqa: BLE001 - identity is never a boot gate
+        mac = None
+    if not mac:
+        try:
+            import network
+
+            mac = network.WLAN(network.STA_IF).config("mac")
+        except Exception:  # noqa: BLE001 - identity is never a boot gate
+            mac = None
+    if not mac:
+        return "0000"
+    try:
+        return "".join("{:02x}".format(byte) for byte in mac)[-4:]
+    except (TypeError, ValueError):
+        return "0000"
+
+
+def setup_name(tag=None):
+    return SETUP_NAME + (tag or board_tag())
+
+
+def _sleep(ms):
+    if hasattr(time, "sleep_ms"):
+        time.sleep_ms(ms)
+    else:
+        time.sleep(ms / 1000)
+
+
+def _make_wdt(timeout=WDT_MS):
+    try:
+        import machine
+
+        return machine.WDT(timeout=timeout)
+    except Exception:  # noqa: BLE001 - the host has no watchdog
+        return None
+
+
+def _reboot(reset=None):
+    if reset is not None:
+        try:
+            reset()
+        except Exception:  # noqa: BLE001 - a reset callback is untrusted
+            pass
+        return
+    try:
+        import machine
+
+        machine.reset()
+    except Exception:  # noqa: BLE001 - the host cannot reset
+        pass
+
+
+def _feed(wdt):
+    if wdt is None:
+        return
+    try:
+        wdt.feed()
+    except Exception:  # noqa: BLE001 - a watchdog must never stop the loop
+        pass
+
+
+def _canvas(panel, framebuf_module=None):
+    try:
+        if framebuf_module is None:
+            import framebuf as framebuf_module
+        data = bytearray(panel.width * panel.height // 8)
+        buffer = framebuf_module.FrameBuffer(
+            data, panel.width, panel.height, framebuf_module.MONO_VLSB
+        )
+        canvas = panel.viewport(buffer)
+        if canvas is None:
+            return None, None
+        return data, canvas
+    except Exception:  # noqa: BLE001 - drawing is never a boot gate
+        return None, None
+
+
+def _flush(panel, data):
+    try:
+        return bool(panel.flush(data))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def _draw_lines(panel, lines, framebuf_module=None):
+    if panel is None or not getattr(panel, "available", False):
+        return False
+    data, canvas = _canvas(panel, framebuf_module)
+    if canvas is None:
+        return False
+    width = panel.view_width
+    try:
+        canvas.fill(0)
+        for text, y in lines:
+            canvas.text(text, max((width - len(text) * 8) // 2, 0), y, 1)
+    except (ValueError, AttributeError):
+        return False
+    return _flush(panel, data)
+
+
+def show_boot(panel, framebuf_module=None):
+    return _draw_lines(panel, [("BOOT", 8)], framebuf_module)
+
+
+def show_setup(panel, code, framebuf_module=None):
+    return _draw_lines(
+        panel, [(SETUP_TITLE, 4), (code, 20)], framebuf_module
+    )
+
+
+def show_state(panel, word, now_ms=0, framebuf_module=None):
+    from heare_panel import render
+
+    if panel is None or not getattr(panel, "available", False):
+        return False
+    data, canvas = _canvas(panel, framebuf_module)
+    if canvas is None:
+        return False
+    try:
+        render.render(
+            word, canvas, panel.view_width, panel.view_height, now_ms
+        )
+    except (ValueError, AttributeError):
+        return False
+    return _flush(panel, data)
+
+
+def connect_wifi(sta, config, attempts=WIFI_ATTEMPTS, wdt=None, out=print):
+    """Join the stored network, retrying a bounded number of times.
+
+    Each association is at most the adapter's timeout (15 s by default), so
+    the main thread never blocks a watchdog interval; the watchdog is fed
+    between attempts anyway because the display task owns it.
+    """
+    if sta is None:
+        out("wifi=failed")
+        return None
+    wifi = config.get("wifi") or {}
+    ssid = wifi.get("ssid", "")
+    password = wifi.get("password", "")
+    for _attempt in range(attempts):
+        _feed(wdt)
+        try:
+            ip = sta.connect(ssid, password)
+        except (net.WifiError, OSError, ValueError):
+            ip = None
+        if ip:
+            out("wifi=up ip=" + str(ip))
+            return ip
+        _feed(wdt)
+    out("wifi=failed")
+    return None
+
+
+def supervise(link, outcome, out=print):
+    from heare_panel import link as link_module
+
+    try:
+        link.supervise()
+        outcome.append("stopped")
+    except link_module.NeedsProvisioning:
+        outcome.append("provision")
+    except Exception:  # noqa: BLE001 - the reason is reported, not raised
+        outcome.append("error")
+        out("link=error")
+
+
+def _start_thread(target, args):
+    import _thread
+
+    _thread.start_new_thread(target, args)
+
+
+def _report(link, word, outcome):
+    from heare_panel import link as link_module
+
+    try:
+        link.report({"now": word})
+    except link_module.NeedsProvisioning:
+        outcome.append("provision")
+    except Exception:  # noqa: BLE001 - a report failure is not fatal
+        return
+
+
+def _close(link):
+    try:
+        link.close()
+    except Exception:  # noqa: BLE001 - closing is best effort
+        pass
+
+
+def run_normal(
+    store,
+    sta,
+    panel,
+    config,
+    wdt=None,
+    reset=None,
+    thread_start=None,
+    link_factory=None,
+    clock=clock,
+    out=print,
+    sleep=None,
+    ticks=None,
+    attempts=WIFI_ATTEMPTS,
+):
+    """Join Wi-Fi, start one ``Link`` thread, and render what it shows.
+
+    Returns ``wifi`` when three associations failed, ``provision`` when the
+    brain no longer knows the key, ``error`` for another link failure, and
+    ``ticks`` when a test asked for a bounded number of iterations.
+    """
+    from heare_panel import link as link_module
+    from heare_panel import render, state
+
+    sleep = sleep or _sleep
+    show_state(panel, render.WIFI, clock.now_ms())
+    out("screen=WIFI")
+
+    if connect_wifi(sta, config, attempts, wdt, out) is None:
+        return "wifi"
+
+    factory = link_factory or link_module.Link
+    try:
+        link = factory(config, store, clock=clock, on_state=None)
+    except Exception:  # noqa: BLE001 - a failed link is a recoverable boot
+        out("link=failed")
+        return "error"
+
+    initial = getattr(getattr(link, "display", None), "state", render.BRAIN)
+    show_state(panel, initial, clock.now_ms())
+    out("screen=" + initial)
+
+    outcome = []
+    starter = thread_start or _start_thread
+    starter(supervise, (link, outcome, out))
+
+    last_key = None
+    last_word = None
+    online_since = None
+    boot_cleared = False
+    count = 0
+    while ticks is None or count < ticks:
+        count += 1
+        _feed(wdt)
+        now = clock.now_ms()
+        try:
+            link.display = state.reduce(link.display, {}, now)
+        except (AttributeError, ValueError):
+            _close(link)
+            return "error"
+        word = link.display.state
+
+        blink = now // BLINK_MS if word == render.ALLOW else -1
+        key = (word, blink)
+        if key != last_key:
+            show_state(panel, word, now)
+            last_key = key
+        if word != last_word:
+            _report(link, word, outcome)
+            out("screen=" + word)
+            last_word = word
+
+        online = getattr(link.display, "link", "") == "online"
+        if online:
+            if online_since is None:
+                online_since = now
+                out("link=online")
+            elif not boot_cleared and clock.elapsed(online_since, now) >= HEALTHY_MS:
+                clear_boot(store)
+                boot_cleared = True
+                out("healthy=60s")
+        else:
+            online_since = None
+
+        if outcome:
+            reason = outcome[0]
+            _close(link)
+            if reason == "stopped":
+                return "stopped"
+            if reason == "provision":
+                out("needs provisioning")
+                return "provision"
+            return "error"
+
+        sleep(TICK_MS)
+
+    _close(link)
+    return "ticks"
+
+
+def _token(store):
+    try:
+        return store.get_part_token()
+    except (OSError, AttributeError, ValueError):
+        return None
+
+
+def _saved(provisioner, store, before_token):
+    if getattr(provisioner, "ip", "") and not getattr(provisioner, "error", ""):
+        return True
+    token = _token(store)
+    return bool(token) and token != before_token
+
+
+def _not_ready(command):
+    return {"ok": False, "error": "setup"}
+
+
+def _placeholder_status(name):
+    return {"state": "setup", "name": name}
+
+
+def run_setup(
+    store,
+    sta,
+    panel,
+    tag=None,
+    code=None,
+    ble_factory=None,
+    provisioner=None,
+    wdt=None,
+    reset=None,
+    clock=clock,
+    out=print,
+    sleep=None,
+    framebuf_module=None,
+    max_ticks=None,
+    window_ms=BLE_WINDOW_MS,
+):
+    """Advertise the BLE setup service until a save succeeds or the window ends.
+
+    The handler becomes exactly ``Provisioner.handle``; status and scan are
+    the two providers ``BleSetup`` reads. Success stops BLE, clears the failed
+    boot counter, shows ``IDLE`` and resets into normal operation.
+
+    With no injected provisioner the transaction module is imported only
+    after ``start()``. That is what keeps the BLE controller's allocation
+    contiguous on this board; the placeholder handler and status answer the
+    one publish that ``start()`` performs.
+    """
+    sleep = sleep or _sleep
+    name = setup_name(tag)
+    code = code or ble_setup.make_code()
+
+    if provisioner is None:
+        handler = _not_ready
+
+        def status_provider():
+            return _placeholder_status(name)
+
+        def scan_provider():
+            return []
+    else:
+        handler = provisioner.handle
+
+        def status_provider():
+            return provisioner.handle({"cmd": "status"})
+
+        def scan_provider():
+            return sta.scan() if sta is not None else []
+
+    factory = ble_factory or ble_setup.BleSetup
+    setup = factory(
+        name,
+        handler,
+        code,
+        window_ms=window_ms,
+        status_provider=status_provider,
+        scan_provider=scan_provider,
+        out=out,
+    )
+
+    gc.collect()
+    try:
+        setup.start()
+    except Exception as error:  # noqa: BLE001 - no radio is reported
+        out("ble=failed " + type(error).__name__)
+        out("ble=failed detail=" + str(error)[:80])
+        return "ble-failed"
+
+    shown = show_setup(panel, code, framebuf_module)
+    out("screen=" + SETUP_TITLE if shown else "screen=none")
+    gc.collect()
+
+    if provisioner is None:
+        try:
+            if store is None:
+                store = _open_store()
+            from heare_panel import link as link_module
+            from heare_panel.provision import Provisioner
+
+            provisioner = Provisioner(
+                store, sta, link_module.Link, clock=clock, out=out
+            )
+        except Exception as error:  # noqa: BLE001 - no transaction, no setup
+            out("setup failed " + type(error).__name__)
+            setup.stop()
+            return "setup-failed"
+        setup.handler = provisioner.handle
+        setup.status_provider = lambda: provisioner.handle({"cmd": "status"})
+        setup.scan_provider = lambda: sta.scan() if sta is not None else []
+
+    before_token = _token(store)
+    count = 0
+    while getattr(setup, "running", False):
+        _feed(wdt)
+        setup.poll()
+        if not getattr(setup, "running", False):
+            break
+        count += 1
+        if max_ticks is not None and count >= max_ticks:
+            break
+        sleep(TICK_MS)
+
+    setup.stop()
+    if _saved(provisioner, store, before_token):
+        clear_boot(store)
+        show_state(panel, "IDLE", clock.now_ms(), framebuf_module)
+        out("provisioned")
+        out("screen=IDLE")
+        gc.collect()
+        _reboot(reset)
+        return "provisioned"
+
+    out("ble window closed")
+    if max_ticks is not None:
+        return "ticks"
+    _reboot(reset)
+    return "timeout"
+
+
+def run(
+    store=None,
+    sta=None,
+    panel=None,
+    wdt=None,
+    reset=None,
+    thread_start=None,
+    ble_factory=None,
+    link_factory=None,
+    clock=clock,
+    out=print,
+    sleep=None,
+    framebuf_module=None,
+    ticks_setup=None,
+    ticks_normal=None,
+    tag=None,
+    code=None,
+):
+    if store is not None:
+        record_boot(store)
+        needed = setup_required(store)
+    else:
+        _record_boot_nvs()
+        needed = _setup_required_nvs()
+
+    if sta is None:
+        try:
+            sta = net.Sta()
+        except Exception:  # noqa: BLE001 - no radio is still a setup boot
+            sta = None
+    if panel is None:
+        panel = panel_display.open()
+    if wdt is None:
+        wdt = _make_wdt()
+
+    show_boot(panel, framebuf_module)
+    out("BOOT")
+
+    if needed:
+        return run_setup(
+            store,
+            sta,
+            panel,
+            tag=tag,
+            code=code,
+            ble_factory=ble_factory,
+            wdt=wdt,
+            reset=reset,
+            clock=clock,
+            out=out,
+            sleep=sleep,
+            framebuf_module=framebuf_module,
+            max_ticks=ticks_setup,
+        )
+
+    if store is None:
+        try:
+            store = _open_store()
+        except Exception:  # noqa: BLE001 - no store means setup
+            store = None
+    try:
+        config = store.load_config() if store is not None else None
+    except Exception:  # noqa: BLE001 - an unreadable config means setup
+        config = None
+    if config is None:
+        return run_setup(
+            store,
+            sta,
+            panel,
+            tag=tag,
+            code=code,
+            ble_factory=ble_factory,
+            wdt=wdt,
+            reset=reset,
+            clock=clock,
+            out=out,
+            sleep=sleep,
+            framebuf_module=framebuf_module,
+            max_ticks=ticks_setup,
+        )
+
+    result = run_normal(
+        store,
+        sta,
+        panel,
+        config,
+        wdt=wdt,
+        reset=reset,
+        thread_start=thread_start,
+        link_factory=link_factory,
+        clock=clock,
+        out=out,
+        sleep=sleep,
+        ticks=ticks_normal,
+    )
+    if result == "wifi":
+        out("wifi failed 3x; ble setup")
+        return run_setup(
+            store,
+            sta,
+            panel,
+            tag=tag,
+            code=code,
+            ble_factory=ble_factory,
+            clock=clock,
+            out=out,
+            sleep=sleep,
+            framebuf_module=framebuf_module,
+            max_ticks=ticks_setup,
+        )
+    if result in ("provision", "error"):
+        _reboot(reset)
+    return result
+
+
+if __name__ == "__main__":
+    run()

@@ -28,7 +28,7 @@ jobs:
           enable-cache: true
 
       - name: Ruff
-        run: uvx ruff@0.6 check packages/ tests/
+        run: uvx ruff@0.6 check packages/ tests/ firmware/
 
   test:
     name: Test (macOS)
@@ -48,7 +48,7 @@ jobs:
           python-version-file: pyproject.toml
 
       - name: Test with coverage
-        run: uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80
+        run: uv run pytest tests/heare tests/firmware -q --cov=heare --cov-report=term-missing --cov-fail-under=80
 
       - name: Typecheck
         run: uv run mypy

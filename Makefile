@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist
+.PHONY: help brain chat voice keeper test panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -8,11 +8,14 @@ help:
 	@echo "  make voice     - speech in, speech out"
 	@echo "  make keeper    - the keeper: parts from ~/.heare/machine/parts, kept alive"
 	@echo "  make test      - the core against stand-ins: no network, no keys"
+	@echo "  make panel-test - the panel's pure modules on the host: no board"
+	@echo "  make panel-smoke - run the device smoke script over USB"
+	@echo "  make panel-deploy - copy firmware/esp32-c3 to the board"
 	@echo "  make coverage  - test, with the coverage floor at 80%"
 	@echo "  make typecheck - mypy over heare-memory"
 	@echo "  make lint      - ruff"
 	@echo "  make format    - ruff format"
-	@echo "  make check     - lint + test"
+	@echo "  make check     - lint + test + panel-test"
 	@echo "  make quality   - check + coverage + typecheck"
 	@echo "  make eval-review - live quality eval for the daily review (manual, paid)"
 	@echo "  make eval-judge - live quality eval for the judge of actions (manual, paid)"
@@ -40,6 +43,15 @@ keeper:
 test:
 	uv run pytest tests/heare -q
 
+panel-test:
+	uv run pytest tests/firmware -q
+
+panel-smoke:
+	uvx mpremote run firmware/tools/smoke.py
+
+panel-deploy:
+	uvx mpremote fs cp -r firmware/esp32-c3/. :
+
 coverage:
 	uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80
 
@@ -47,12 +59,12 @@ typecheck:
 	uv run mypy
 
 lint:
-	uv run ruff check packages/ tests/
+	uv run ruff check packages/ tests/ firmware/
 
 format:
-	uv run ruff format packages/ tests/
+	uv run ruff format packages/ tests/ firmware/
 
-check: lint test
+check: lint test panel-test
 
 quality: check coverage typecheck
 
