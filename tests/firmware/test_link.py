@@ -568,3 +568,13 @@ def test_a_skill_that_runs_out_of_memory_is_answered_not_dropped():
     link.events()
 
     assert json.loads(server.requests[1]["body"]) == {"ok": False, "result": "панелі забракло пам'яті"}
+
+
+def test_the_knock_s_answer_gives_the_panel_the_brain_s_time_zone():
+    server = FakeServer([_json({"approved": True, "pid": PID, "utc_offset": 7200})])
+    store = _store()
+    store.set_part_token("part-secret")
+    store.set_pid(PID)
+    link = _link(server, store)
+    link.knock("part-secret", part=True)
+    assert link.utc_offset == 7200

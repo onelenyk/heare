@@ -19,6 +19,7 @@ The pin factory is injected (``machine.Pin`` on the board, a fake in
 """
 
 LED_PIN = 8
+IDLE_PATH = "/idle.json"
 VIEW_W = 72
 VIEW_H = 40
 PICTURE_BYTES = VIEW_W * VIEW_H // 8
@@ -117,6 +118,7 @@ class Device:
 
         self._make = pin_factory
         self.screen = screen if screen is not None else screen_module.Screen()
+        self.idle_path = IDLE_PATH
         self._pins = {}
         self._outputs = {}
         self._led = None
@@ -196,10 +198,16 @@ class Device:
         layer = screen.AGENT_LAYERS.get(args.get("layer") or "flash")
         if layer is None:
             return False, "layer: flash, pin або idle"
+        # Kept as it came, before the check decodes its pictures in place.
+        given = _copy(args.get("scene"))
         try:
             scene = screen.check(args.get("scene"), self.screen.width, self.screen.height)
         except screen.SceneError as error:
             return False, str(error)
+        args = dict(args)
+        args["scene"] = given
+        if layer == "idle":
+            self._keep_idle(args.get("scene"))
         until = None
         if layer == "flash":
             try:
@@ -217,13 +225,46 @@ class Device:
             for layer, name in self.screen.layers().items():
                 if name == args["id"] and layer in screen.AGENT_LAYERS.values():
                     self.screen.clear(layer)
+                    if layer == "idle":
+                        self._keep_idle(None)
                     return True, "прибрано: " + name
             return False, "такої сцени на екрані немає"
         layer = screen.AGENT_LAYERS.get(args.get("layer") or "")
         if layer is None:
             return False, "назви id або layer"
         self.screen.clear(layer)
+        if layer == "idle":
+            self._keep_idle(None)
         return True, "шар прибрано"
+
+    def _keep_idle(self, scene):
+        """The idle screen outlives a restart: kept on the flash, or removed."""
+        import os
+
+        try:
+            if scene is None:
+                os.remove(self.idle_path)
+            else:
+                import json
+
+                with open(self.idle_path, "w") as handle:
+                    handle.write(json.dumps(scene))
+        except OSError:
+            pass
+
+    def restore(self):
+        """The idle screen as it was before the restart, if there was one."""
+        from heare_panel import screen
+
+        try:
+            import json
+
+            with open(self.idle_path) as handle:
+                spec = json.loads(handle.read())
+            self.screen.put("idle", screen.check(spec, self.screen.width, self.screen.height))
+        except (OSError, ValueError, screen.SceneError):
+            return False
+        return True
 
     def _info(self):
         from heare_panel import glyphs, screen, widgets
@@ -311,6 +352,15 @@ class Device:
             return self._make(number, mode)
         except Exception:  # noqa: BLE001 - a pin that cannot be had is not offered
             return None
+
+
+def _copy(value):
+    import json
+
+    try:
+        return json.loads(json.dumps(value))
+    except (TypeError, ValueError):
+        return value
 
 
 def _scenes():

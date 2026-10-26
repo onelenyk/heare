@@ -350,6 +350,33 @@ def show_pair(panel, code, framebuf_module=None):
     )
 
 
+SYNC_MS = 6 * 3600 * 1000
+RETRY_SYNC_MS = 300_000
+_tried = [None]
+
+
+def _due(now, clock=clock):
+    """Whether a failed sync may be tried again: not every tick."""
+    last = _tried[0]
+    if last is None or clock.elapsed(last, now) >= RETRY_SYNC_MS:
+        _tried[0] = now
+        return True
+    return False
+
+
+def _sync_time(out=print):
+    """The board's clock set from the network; False when it could not be."""
+    try:
+        import ntptime
+
+        ntptime.settime()
+    except Exception as error:  # noqa: BLE001 - a clock is never a boot gate
+        out("time=unsynced " + type(error).__name__)
+        return False
+    out("time=synced")
+    return True
+
+
 def _memory():
     """Free memory, after a collection: what the screen has to work with."""
     import gc
@@ -483,6 +510,7 @@ def run_normal(
 
     if connect_wifi(sta, config, attempts, wdt, out) is None:
         return "wifi"
+    synced_at = clock.now_ms() if _sync_time(out) else None
 
     factory = link_factory or link_module.Link
     try:
@@ -492,11 +520,14 @@ def run_normal(
         return "error"
 
     from heare_panel import device as device_module
+    from heare_panel import widgets
 
     board = device if device is not None else device_module.Device(
         device_module.board_pin
     )
     link.on_call = lambda name, args: board.call(name, args, clock.now_ms())
+    if board.restore():
+        out("idle screen restored")
 
     initial = getattr(getattr(link, "display", None), "state", render.BRAIN)
     show_state(panel, initial, clock.now_ms())
@@ -531,6 +562,18 @@ def run_normal(
         was_pressed = down
 
         board.tick(now)
+        offset = getattr(link, "utc_offset", None)
+        if isinstance(offset, int):
+            widgets.UTC_OFFSET_S = offset
+        if synced_at is None or clock.elapsed(synced_at, now) >= SYNC_MS:
+            # A clock that drifts is set again from the network now and then;
+            # one that never was is tried every few minutes until it is.
+            if synced_at is None and not _due(now, clock):
+                pass
+            elif _sync_time(out):
+                synced_at = now
+            else:
+                synced_at = None
         # The screen knows what is seen; the loop only draws when it changed.
         board.screen.word(word)
         key = board.screen.key(now)

@@ -1924,3 +1924,15 @@ async def test_a_part_with_a_new_switch_is_asked_about_again(tmp_path):
     assert (await (await knocking).json())["approved"] is True
     await _close(room, client)
 
+
+
+async def test_a_knock_is_told_the_brain_s_offset_from_utc(tmp_path):
+    import time as clock
+
+    (tmp_path / "parts.json").write_text('["oled@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    answer = await (await client.post("/api/bodies", json={
+        "channel": "oled", "forms": ["output"], "about": "", "key": "oled@desk",
+        "host": "desk"}, headers=master)).json()
+    assert answer["utc_offset"] == clock.localtime().tm_gmtoff
+    await _close(room, client)

@@ -96,6 +96,7 @@ class Link:
         self.needs_provisioning = store.get_part_token() is None
         self.waits: list[float] = []
         self._knock = None
+        self.utc_offset = None
         # Called with (name, args) for a skill called on this panel; returns
         # (ok, result), which goes back to the brain as the call's answer.
         self.on_call = None
@@ -174,6 +175,10 @@ class Link:
             raise LinkError(f"the brain refused the knock with status {status}",
                             status)
 
+        offset = answer.get("utc_offset")
+        if isinstance(offset, int) and -50400 <= offset <= 50400:
+            # The brain's local time is the panel's: its clock has no zone.
+            self.utc_offset = offset
         named = answer.get("pid")
         if named is not None and named != self.pid:
             raise LinkError("the brain knows this panel by another name")

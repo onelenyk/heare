@@ -64,6 +64,8 @@ MICROPYTHON = {
     "machine",
     "micropython",
     "network",
+    # Frozen into the ESP32 port: sets the RTC from an NTP server.
+    "ntptime",
     "esp",
     "esp32",
     "framebuf",

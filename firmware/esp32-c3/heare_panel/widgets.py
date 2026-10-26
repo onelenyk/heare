@@ -60,7 +60,7 @@ def draw(widget, canvas, box, fields, now_ms):
     elif kind == "bar":
         _bar(canvas, box, value(widget, fields, "value", 0))
     elif kind == "clock":
-        _clock(canvas, box, now_ms, value(widget, fields, "tz", 0))
+        _clock(canvas, box, now_ms, value(widget, fields, "tz", None))
     elif kind == "spinner":
         _spinner(canvas, box, now_ms)
 
@@ -75,7 +75,7 @@ def key(widget, fields, now_ms, box):
             return (word, now_ms // BLINK_MS)
         return (word,)
     if kind == "clock":
-        stamp = _local(value(widget, fields, "tz", 0))
+        stamp = _local(value(widget, fields, "tz", None))
         return (stamp[3], stamp[4], stamp[5] % 2)
     if kind == "spinner":
         return now_ms // SPIN_MS
@@ -166,13 +166,18 @@ def _bar(canvas, box, percent):
         canvas.fill_rect(x + 2, top + 2, inner, tall - 4, 1)
 
 
+# Seconds from UTC to the time a clock shows: the brain's own, set by the
+# main loop from the knock's answer. A widget's ``tz`` (minutes) overrides it.
+UTC_OFFSET_S = 0
+
+
 def _local(tz_minutes):
     import time
 
     try:
-        shift = int(tz_minutes) * 60
+        shift = int(tz_minutes) * 60 if tz_minutes is not None else UTC_OFFSET_S
     except (TypeError, ValueError):
-        shift = 0
+        shift = UTC_OFFSET_S
     return time.localtime(time.time() + shift)
 
 

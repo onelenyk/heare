@@ -467,7 +467,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
             name = (vitals() or {}).get("name") if vitals is not None else None
         except Exception:  # noqa: BLE001 — a name is a nicety, never a failed knock
             name = None
-        return {"name": name} if name else {}
+        # Where the brain is in time: a part with a clock and no zone of its
+        # own (the panel) shows the brain's local time, summer time included.
+        offset = {"utc_offset": int(time.localtime().tm_gmtoff or 0)}
+        return {"name": name, **offset} if name else offset
 
     def granted(request: web.Request, pid: str) -> dict:
         """A key of its own for a part that knocked with the master or a machine key.

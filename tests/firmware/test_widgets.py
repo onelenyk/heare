@@ -105,3 +105,13 @@ def test_an_icon_drawn_from_svg_is_sixteen_square_in_any_box():
     lit = [(x, y) for y in range(40) for x in range(72) if drawn.lit[y][x]]
     xs, ys = {x for x, _ in lit}, {y for _, y in lit}
     assert len(lit) == 256 and max(xs) - min(xs) == 15 and max(ys) - min(ys) == 15
+
+
+def test_the_clock_shows_the_brain_s_local_time(monkeypatch):
+    import time
+
+    monkeypatch.setattr(time, "time", lambda: 12 * 3600 + 34 * 60)  # 12:34 UTC
+    monkeypatch.setattr(time, "localtime", time.gmtime)
+    monkeypatch.setattr(widgets, "UTC_OFFSET_S", 2 * 3600)
+    assert widgets.key({"widget": "clock"}, {}, 0, (0, 0, 72, 40))[:2] == (14, 34)
+    assert widgets.key({"widget": "clock", "tz": 60}, {}, 0, (0, 0, 72, 40))[:2] == (13, 34)

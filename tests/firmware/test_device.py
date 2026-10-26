@@ -214,3 +214,24 @@ def test_a_shape_that_cannot_be_read_says_the_right_one():
     board, _ = _device()
     ok, said = board.call("screen", {"scene": {"id": "x", "layout": {"cols": [{"what": 1}]}}}, 0)
     assert ok is False and '{"widget": "icon", "name": "sun"}' in said
+
+
+def test_the_idle_screen_outlives_a_restart_and_clearing_forgets_it(tmp_path):
+    import base64
+
+    board, _ = _device()
+    board.idle_path = str(tmp_path / "idle.json")
+    rest = {"id": "rest", "layout": {"cols": [
+        {"widget": "clock"},
+        {"widget": "picture", "bits": base64.b64encode(bytes(360)).decode()}]}}
+    assert board.call("screen", {"scene": rest, "layer": "idle"}, 0)[0] is True
+
+    again, _ = _device()
+    again.idle_path = board.idle_path
+    assert again.restore() is True
+    assert again.screen.seen(0)[1].name == "rest"
+
+    board.call("clear", {"id": "rest"}, 0)
+    fresh, _ = _device()
+    fresh.idle_path = board.idle_path
+    assert fresh.restore() is False and fresh.screen.seen(0)[0] == "face"
