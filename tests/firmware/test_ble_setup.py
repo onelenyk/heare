@@ -273,10 +273,9 @@ def test_a_command_runs_only_after_auth_and_echoes_the_id(bluetooth):
         {"id": 42, "cmd": "save", "ssid": "home", "password": "hunter2"},
     )
 
+    # A successful save ends setup with BLE already off for the WiFi join:
+    # there is no link left to publish on, the panel reboots instead.
     assert calls[-1]["cmd"] == "save"
-    assert _result(bluetooth, setup) == {
-        "id": 42, "ok": True, "error": ""
-    }
     assert setup.running is False
 
 
@@ -623,3 +622,27 @@ def test_clock_is_used_for_the_window(bluetooth, fake_clock):
     assert setup.poll() is True
     fake_clock.advance(1)
     assert setup.poll() is False
+
+
+def test_a_repeated_auth_after_success_is_answered_not_dispatched(bluetooth):
+    setup, calls, _logs = _start(bluetooth)
+    _auth(bluetooth, setup)
+
+    _frame(bluetooth, setup, {"id": 2, "cmd": "auth", "code": "1234"})
+
+    assert _result(bluetooth, setup) == {"id": 2, "ok": True, "error": ""}
+    assert calls == []
+
+
+def test_a_failed_save_brings_ble_back_with_the_result(bluetooth):
+    def handler(command):
+        return {"id": command.get("id"), "ok": False, "error": "wifi"}
+
+    setup, _calls, _logs = _start(bluetooth, handler=handler)
+    _auth(bluetooth, setup)
+
+    _frame(bluetooth, setup, {"id": 7, "cmd": "save", "ssid": "home"})
+
+    assert setup.running is True
+    assert setup.connected is False
+    assert _result(bluetooth, setup) == {"id": 7, "ok": False, "error": "wifi"}

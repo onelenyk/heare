@@ -283,3 +283,57 @@ def test_ap_refuses_a_password_outside_the_wpa2_window(password):
 def test_ap_refuses_a_tag_that_is_not_hex(tag):
     with pytest.raises(ValueError):
         net.Ap(FakeWLAN(), "secret123", tag=tag)
+
+
+class MissesTheApOnce(FakeWLAN):
+    """The first association scan misses the AP; the second one joins."""
+
+    def __init__(self):
+        super().__init__()
+        self.joins = 0
+
+    def connect(self, ssid=None, password=None):
+        self.calls.append(("connect", ssid, password))
+        self.joins += 1
+
+    def isconnected(self):
+        return self.joins >= 2
+
+    def status(self):
+        return 201 if self.joins < 2 else 1010
+
+
+def test_sta_starts_the_join_over_when_the_ap_was_not_found():
+    radio = MissesTheApOnce()
+
+    assert net.Sta(radio, sleep=lambda ms: None).connect("home", "secret123")
+
+    assert radio.joins == 2
+    assert ("disconnect",) in radio.calls
+
+
+def test_sta_does_not_retry_a_wrong_password():
+    radio = NeverConnects()
+    radio.status = lambda: 202
+
+    with pytest.raises(net.WifiError):
+        net.Sta(radio, sleep=lambda ms: None).connect("home", "x", timeout_ms=500)
+
+    assert [c for c in radio.calls if c[0] == "connect"] == [("connect", "home", "x")]
+
+
+def test_sta_names_the_board_for_mdns_before_the_radio_comes_up(monkeypatch):
+    order = []
+
+    class Radio(FakeWLAN):
+        def active(self, value=None):
+            order.append(("active", value))
+            return super().active(value)
+
+    monkeypatch.setattr(
+        net, "network", SimpleNamespace(hostname=lambda n: order.append(("host", n)))
+    )
+
+    net.Sta(Radio())
+
+    assert order[:2] == [("host", "heare-panel"), ("active", True)]

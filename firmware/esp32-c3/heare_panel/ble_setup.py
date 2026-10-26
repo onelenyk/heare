@@ -30,6 +30,11 @@ try:
 except ImportError:
     bluetooth = None
 
+try:
+    import time
+except ImportError:
+    time = None
+
 SERVICE_UUID = "8f2a0001-7d3b-4f6e-9a1c-2b5e7c9d0a11"
 STATUS_UUID = "8f2a0002-7d3b-4f6e-9a1c-2b5e7c9d0a11"
 SCAN_UUID = "8f2a0003-7d3b-4f6e-9a1c-2b5e7c9d0a11"
@@ -46,6 +51,10 @@ SERVICE_BYTES_LE = (
 
 ADVERTISE_US = 100_000
 DEFAULT_WINDOW_MS = 600_000
+# gap_disconnect() is async; the radio needs a moment to actually release
+# before a WiFi connect() attempt, or it starts in the same bad state as
+# an active BLE link (see the "save" branch in _command()).
+RADIO_SETTLE_MS = 300
 MAX_CHUNK = 18
 MAX_MESSAGE = 512
 MAX_JSON = 500
@@ -159,6 +168,24 @@ class BleSetup:
             raise RuntimeError("bluetooth is unavailable")
         if self.ble is None:
             self.ble = bluetooth.BLE()
+        self._bring_up()
+
+        self.running = True
+        self.connected = False
+        self._conn = None
+        self._authed = False
+        self._failures = 0
+        self._scan_seq = 0
+        self._events = []
+        self._reset_chunk()
+        self._start_ms = clock.now_ms()
+        self._publish_status()
+        self._advertise()
+        self.out("ble up name=" + self.name)
+        self.out("code=" + self.code)
+        return True
+
+    def _bring_up(self):
         self.ble.active(True)
         self.ble.config(gap_name=self.name)
         # Advertising must be stopped before services are (re)registered.
@@ -180,19 +207,48 @@ class BleSetup:
         self.ble.gatts_set_buffer(self.handles[2], MAX_MESSAGE, True)
         self.ble.irq(self._irq)
 
-        self.running = True
-        self.connected = False
+    def _radio_off(self):
+        """Hand the whole radio and the BLE stack's memory to the WiFi join.
+
+        Measured on the board: with BLE up during provisioning the IDF heap
+        has under 1 KB left and every WPA2 handshake fails (status 202);
+        the same join with BLE off takes about a second.
+        """
+        try:
+            self.ble.gap_advertise(None)
+        except (OSError, ValueError):
+            pass
+        if self._conn is not None:
+            try:
+                self.ble.gap_disconnect(self._conn)
+            except (OSError, ValueError):
+                pass
+            if time is not None and hasattr(time, "sleep_ms"):
+                time.sleep_ms(RADIO_SETTLE_MS)
+        try:
+            self.ble.active(False)
+        except (OSError, ValueError):
+            pass
         self._conn = None
+        self.connected = False
         self._authed = False
-        self._failures = 0
-        self._scan_seq = 0
         self._events = []
         self._reset_chunk()
-        self._start_ms = clock.now_ms()
+
+    def _radio_on(self):
+        """Come back after a failed save, same code and window, to report it.
+
+        If the stack cannot come back, setup ends and the panel reboots
+        into a fresh window instead of advertising nothing.
+        """
+        try:
+            self._bring_up()
+        except (OSError, ValueError, MemoryError) as error:
+            self.out("ble=failed " + type(error).__name__)
+            self.stop()
+            return False
         self._publish_status()
         self._advertise()
-        self.out("ble up name=" + self.name)
-        self.out("code=" + self.code)
         return True
 
     def stop(self):
@@ -370,13 +426,28 @@ class BleSetup:
                 self.stop()
             return
 
+        if command.get("cmd") != "save":
+            return self._publish_result(self._dispatch(command, identifier))
+
+        # The ATT write response for this very command was already sent
+        # before this callback ran, so dropping the link loses nothing: the
+        # page reconnects and re-reads the result by id.
+        self._radio_off()
         result = self._dispatch(command, identifier)
-        self._publish_result(result)
-        if result["ok"] and command.get("cmd") == "save":
+        if result["ok"]:
             self.stop()
+            return
+        if self._radio_on():
+            self._publish_result(result)
 
     def _dispatch(self, command, identifier):
         cmd = command.get("cmd")
+        if cmd == "auth":
+            # A repeated auth (the page timed out on the first answer and the
+            # person clicked again) must not read as an unknown command.
+            ok = _text(command.get("code")) == self.code
+            return {"id": identifier, "ok": ok, "error": "" if ok else "auth"}
+
         if cmd == "status":
             if self.status_provider is not None:
                 try:
@@ -403,7 +474,9 @@ class BleSetup:
     def _call_handler(self, command, identifier):
         try:
             answer = self.handler(command)
-        except Exception:  # noqa: BLE001 - an integrator callback is untrusted
+        except Exception as error:  # noqa: BLE001 - an integrator callback is untrusted
+            # The type only: a message could carry what the form carried.
+            self.out("ble handler failed " + type(error).__name__)
             return {"id": identifier, "ok": False, "error": "handler"}
         return self._result(answer, identifier)
 
