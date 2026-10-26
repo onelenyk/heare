@@ -9,8 +9,8 @@ help:
 	@echo "  make keeper    - the keeper: parts from ~/.heare/machine/parts, kept alive"
 	@echo "  make test      - the core against stand-ins: no network, no keys"
 	@echo "  make panel-test - the panel's pure modules on the host: no board"
-	@echo "  make panel-smoke - run the device smoke script over USB"
-	@echo "  make panel-deploy - copy firmware/esp32-c3 to the board"
+	@echo "  make panel-smoke - identify the board and its OLED over USB"
+	@echo "  make panel-deploy - firmware/esp32-c3 onto the board as .mpy, settings kept (PORT=...)"
 	@echo "  make coverage  - test, with the coverage floor at 80%"
 	@echo "  make typecheck - mypy over heare-memory"
 	@echo "  make lint      - ruff"
@@ -47,10 +47,13 @@ panel-test:
 	uv run pytest tests/firmware -q
 
 panel-smoke:
-	uvx mpremote run firmware/tools/smoke.py
+	uvx mpremote run firmware/tools/probe.py
+
+PORT ?= /dev/cu.usbmodem214201
 
 panel-deploy:
-	uvx mpremote fs cp -r firmware/esp32-c3/. :
+	uv run --no-project --with esptool --with littlefs-python --with 'mpy-cross>=1.29,<1.30' \
+		python scripts/panel_deploy.py --port $(PORT)
 
 coverage:
 	uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80
