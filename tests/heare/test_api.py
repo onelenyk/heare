@@ -1848,3 +1848,27 @@ async def test_the_update_door_checks_and_refuses_what_it_cannot_do(tmp_path, mo
     assert (await failed.json())["state"] == "failed"
     assert (await client.get("/api/update")).status == 401
     await _close(room, client)
+
+
+async def test_only_a_let_in_executor_may_use_the_parts_acts(tmp_path):
+    (tmp_path / "parts.json").write_text('["native@desk", "oled@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    panel = await client.post("/api/bodies", json={
+        "channel": "oled", "forms": ["output"], "about": "", "key": "oled@desk",
+        "host": "desk", "acts": [{"name": "led", "kind": "light"}]}, headers=master)
+    panel = {"X-Heare-Token": (await panel.json())["token"]}
+    hand = await client.post("/api/bodies", json={
+        "channel": "native", "forms": ["executor"], "about": "", "key": "native@desk",
+        "host": "desk"}, headers=master)
+    hand = {"X-Heare-Token": (await hand.json())["token"]}
+
+    offered = await (await client.get("/api/acts", headers=hand)).json()
+    done = await client.post("/api/acts", json={"part": "oled@desk", "name": "led",
+                                                "value": "on"}, headers=hand)
+    unknown = await client.post("/api/acts", json={"part": "oled@desk", "name": "pin9",
+                                                   "value": True}, headers=hand)
+
+    assert offered["oled@desk"]["acts"] == [{"name": "led", "kind": "light"}]
+    assert done.status == 200 and unknown.status == 404
+    assert (await client.get("/api/acts", headers=panel)).status == 403
+    await _close(room, client)

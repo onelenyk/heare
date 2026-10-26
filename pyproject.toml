@@ -10,6 +10,7 @@ dependencies = [
     "heare-sources",
     "heare-voice",
     "heare-hands",
+    "heare-native",
     "heare-chat",
     "heare-brain",
     "heare-memory",
@@ -35,6 +36,7 @@ heare-eyes = { workspace = true }
 heare-sources = { workspace = true }
 heare-voice = { workspace = true }
 heare-hands = { workspace = true }
+heare-native = { workspace = true }
 heare-chat = { workspace = true }
 heare-brain = { workspace = true }
 heare-memory = { workspace = true }

@@ -259,8 +259,7 @@ class VoiceOut:
 
 def build(core: Core, settings: Any, vitals: Any = None,
           make_executor: Any = None, *, mind: Any = None,
-          features: Any = None, registry: Registry | None = None,
-          ) -> web.Application:
+          features: Any = None) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen.
 
@@ -286,12 +285,16 @@ def build(core: Core, settings: Any, vitals: Any = None,
     )
 
     PERMISSION = re.compile(r"^/api/permission/\d+$")
+    ACTS = re.compile(r"^/api/acts$")
 
     def part_may(request: web.Request, pid: str) -> bool:
         if request.method == "POST" and PERMISSION.match(request.path):
             # The person's answer, given by a part only with their leave: a
             # trusted part that said it has a yes (the panel's button).
             return registry.approves(pid)
+        if ACTS.match(request.path):
+            # What the parts can do, and doing it: for the hands only.
+            return registry.works(pid)
         return any(request.method == method and rx.match(request.path)
                    for method, rx in PART_CALLS)
 
@@ -389,12 +392,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
         core.hear(Message(text=text, channel="screen"))
         return web.json_response({"ok": True})
 
-    if registry is None:
-        registry = Registry(
-            Path(settings.parts_file), core.state.emit,
-            (lambda channel, about: core.add_executor(make_executor(channel, about)))
-            if make_executor is not None else None)
-        registry.load(Path(settings.parts_dir))
+    registry = Registry(
+        Path(settings.parts_file), core.state.emit,
+        (lambda channel, about: core.add_executor(make_executor(channel, about)))
+        if make_executor is not None else None)
+    registry.load(Path(settings.parts_dir))
     bodies = registry.bodies
 
     def own_channel(request: web.Request, channel: str) -> None:
@@ -736,6 +738,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
         except (ValueError, TypeError) as exc:
             raise web.HTTPBadRequest(text=str(exc)) from None
         return web.json_response(now)
+
+    # -- acts: what the hands may do with the parts -------------------------
+
+    async def acts(request: web.Request) -> web.Response:
+        return web.json_response(registry.acting())
+
+    async def act(request: web.Request) -> web.Response:
+        data = await body(request)
+        if not registry.act(str(data.get("part", "")), str(data.get("name", "")),
+                            data.get("value")):
+            raise web.HTTPNotFound(text="no such act")
+        return web.json_response({"ok": True})
 
     async def stop(request: web.Request) -> web.Response:
         return web.json_response({"tasks_stopped": await core.halt()})
@@ -1163,6 +1177,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/system", machine),
         web.get("/api/controls", controls),
         web.post("/api/controls", control),
+        web.get("/api/acts", acts),
+        web.post("/api/acts", act),
         web.post("/api/stop", stop),
         web.get("/api/tasks", tasks),
         web.post("/api/tasks", start_task),
@@ -1243,8 +1259,7 @@ def _status_view(event: Event) -> dict:
 
 async def serve(core: Core, settings: Any, vitals: Any = None,
                 make_executor: Any = None, *, mind: Any = None,
-                features: Any = None, registry: Registry | None = None,
-                ) -> web.AppRunner:
+                features: Any = None) -> web.AppRunner:
     """Start the API, on this machine only unless ``api_host`` says else.
     Returns the runner to stop it.
 
@@ -1258,7 +1273,7 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
     runner = web.AppRunner(build(core, settings, vitals,
                                  make_executor=make_executor, mind=mind,
-                                 features=features, registry=registry))
+                                 features=features))
     await runner.setup()
     host = str(settings.api_host or "127.0.0.1")
     await web.TCPSite(runner, host, int(settings.api_port)).start()

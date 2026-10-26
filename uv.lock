@@ -18,6 +18,7 @@ members = [
     "heare-hands",
     "heare-keeper",
     "heare-memory",
+    "heare-native",
     "heare-reach",
     "heare-sources",
     "heare-voice",
@@ -673,6 +674,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "heare-native"
+version = "0.2.0"
+source = { editable = "packages/heare-native" }
+dependencies = [
+    { name = "heare-core" },
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "heare-core", editable = "packages/heare-core" },
+    { name = "httpx", specifier = ">=0.27.0" },
+]
+
+[[package]]
 name = "heare-reach"
 version = "0.2.0"
 source = { editable = "packages/heare-reach" }
@@ -735,6 +751,7 @@ dependencies = [
     { name = "heare-hands" },
     { name = "heare-keeper" },
     { name = "heare-memory" },
+    { name = "heare-native" },
     { name = "heare-reach" },
     { name = "heare-sources" },
     { name = "heare-voice" },
@@ -758,6 +775,7 @@ requires-dist = [
     { name = "heare-hands", editable = "packages/heare-hands" },
     { name = "heare-keeper", editable = "packages/heare-keeper" },
     { name = "heare-memory", editable = "packages/heare-memory" },
+    { name = "heare-native", editable = "packages/heare-native" },
     { name = "heare-reach", editable = "packages/heare-reach" },
     { name = "heare-sources", editable = "packages/heare-sources" },
     { name = "heare-voice", editable = "packages/heare-voice" },

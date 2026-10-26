@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from heare.api.registry import Registry
 from heare.api.server import _acts
-from heare.native_hand import NativeHand
+from heare.native import NativeHand
 from heare.tools import Toolbox
 from heare.core.forms import Task
 from heare.core.state import State
@@ -43,10 +43,23 @@ def _controls(sent):
     return [(d["name"], d["value"]) for kind, d in sent if kind == "control"]
 
 
+class Door:
+    """The brain's acts doors, without the HTTP."""
+
+    def __init__(self, registry: Registry) -> None:
+        self._registry = registry
+
+    async def acting(self) -> dict[str, dict]:
+        return self._registry.acting()
+
+    async def act(self, pid: str, name: str, value: object) -> bool:
+        return self._registry.act(pid, name, value)
+
+
 def _hand(registry, *answers):
     model = Script()
     model.will_say(*answers)
-    return NativeHand(model, lambda: registry), model
+    return NativeHand(model, Door(registry)), model
 
 
 async def test_showing_and_lighting_are_done_without_asking(tmp_path):

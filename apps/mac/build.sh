@@ -88,7 +88,7 @@ say "check"
 "$PY" -I -B -c '
 import importlib
 for name in ("heare.keeper", "heare.brain", "heare.eyes", "heare.sources", "heare.voice",
-             "heare.hands", "heare.chat", "heare.machine"):
+             "heare.hands", "heare.native", "heare.chat", "heare.machine"):
     importlib.import_module(name)
 print("every part imports")'
 

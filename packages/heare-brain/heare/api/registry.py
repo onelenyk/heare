@@ -152,6 +152,11 @@ class Registry:
                 for pid, b in self.bodies.items()
                 if b.get("state") == "approved" and b.get("acts")}
 
+    def works(self, pid: str) -> bool:
+        """Whether a part is a let-in executor: one that may act on the others."""
+        entry = self.bodies.get(pid) or {}
+        return entry.get("state") == "approved" and "executor" in entry.get("forms", [])
+
     def act(self, pid: str, name: str, value: object) -> bool:
         """Tell the part to do one of the acts it named; False for any other."""
         entry = self.acting().get(pid)

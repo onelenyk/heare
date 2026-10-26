@@ -1,10 +1,13 @@
 """The native hand: quick, simple acts on the bodies, with no agent and no session.
 
+    uv run python -m heare.native
+
 The opencode hand takes seconds to start and a long prompt to read; turning on
-a light needs neither. This hand is the voice's own model with the acts the
-parts named (``acts`` in their knock) as its tools, in a few calls at most.
-The dispatcher chooses between the hands by their ``about``; whatever needs a
-plan, files, code or questions belongs to the other hand.
+a light needs neither. This hand is a part like the others: it knocks as an
+executor, claims work, and does it with the voice's model and the acts the
+other parts named (``acts`` in their knock) as its tools, in a few calls at
+most. The dispatcher chooses between the hands by their ``about``; whatever
+needs a plan, files, code or questions belongs to the opencode hand.
 
 Showing and lighting change nothing that matters and are done at once. A pin
 may be wired to anything, so it goes through the desk's ``judge``: what the
@@ -13,15 +16,23 @@ person plainly asked for is done, anything else is asked.
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import json
 import logging
-from typing import Callable, Protocol
+import socket
+import sys
+from typing import AsyncIterator, Protocol
 
+import httpx
+
+from heare import layout, logs, part
+from heare.config import Settings
 from heare.core.forms import Desk, Model
 
-logger = logging.getLogger("heare.native_hand")
+logger = logging.getLogger("heare.native")
 
-NAME = "native hand"
+CHANNEL = "native"
 ABOUT = (
     "швидкі прості дії з тілами heare: панель на столі — показати кілька "
     "слів, світло, увімкнути чи вимкнути пін, прочитати пін. Одна-дві дії, "
@@ -31,6 +42,7 @@ STEPS = 4
 SHOW_S = 10
 SHOW_MAX_S = 60
 SHOW_CHARS = 40
+MODEL_TIMEOUT_S = 20.0
 
 _SYSTEM = (
     "Ти — швидкі руки heare. Зроби прохання інструментами й відповідай одним "
@@ -42,23 +54,24 @@ _SYSTEM = (
 
 
 class Devices(Protocol):
-    def acting(self) -> dict[str, dict]:
+    """The other parts' acts, as the brain tells them."""
+
+    async def acting(self) -> dict[str, dict]:
         """By pid: the part's channel, the acts it offers, its last values."""
         ...
 
-    def act(self, pid: str, name: str, value: object) -> bool: ...
+    async def act(self, pid: str, name: str, value: object) -> bool: ...
 
 
 class NativeHand:
-    name = NAME
     about = ABOUT
 
-    def __init__(self, model: Model, devices: Callable[[], Devices | None]) -> None:
+    def __init__(self, model: Model, devices: Devices) -> None:
         self._model = model
         self._devices = devices
 
     async def run(self, task: str, desk: Desk) -> str:
-        here = _found(self._devices())
+        here = await _found(self._devices)
         if here is None:
             return "Жодної частини з діями зараз немає."
         tools = _tools(here[1])
@@ -90,35 +103,33 @@ class NativeHand:
                 arguments = json.loads(arguments or "{}")
             except ValueError:
                 arguments = {}
-        devices = self._devices()
-        here = _found(devices)
-        if devices is None or here is None:
+        here = await _found(self._devices)
+        if here is None:
             return "Частина пішла."
         pid, entry = here
         name = call.get("name")
         desk.step(str(name))
         if name == "show":
-            return _show(devices, pid, entry, arguments)
+            return await _show(self._devices, pid, entry, arguments)
         if name == "light":
-            return _light(devices, pid, entry, arguments)
+            return await _light(self._devices, pid, entry, arguments)
         if name == "switch":
-            return await _switch(devices, pid, entry, arguments, desk)
+            return await _switch(self._devices, pid, entry, arguments, desk)
         if name == "read_pin":
             return _read(entry, arguments)
         return "Такого інструмента немає."
 
 
-def _found(devices: Devices | None) -> tuple[str, dict] | None:
+async def _found(devices: Devices) -> tuple[str, dict] | None:
     """The part to act through: the first, while there is one panel."""
-    acting = devices.acting() if devices is not None else {}
-    return next(iter(acting.items()), None)
+    return next(iter((await devices.acting()).items()), None)
 
 
 def _named(entry: dict, kind: str) -> list[str]:
     return [a["name"] for a in entry["acts"] if a["kind"] == kind]
 
 
-def _show(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
+async def _show(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
     text = str(arguments.get("text") or "").strip()[:SHOW_CHARS]
     if not _named(entry, "show") or not text:
         return "Нема що показати."
@@ -127,15 +138,15 @@ def _show(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
     except (TypeError, ValueError):
         seconds = SHOW_S
     seconds = max(1, min(seconds, SHOW_MAX_S))
-    devices.act(pid, _named(entry, "show")[0], {"text": text, "seconds": seconds})
+    await devices.act(pid, _named(entry, "show")[0], {"text": text, "seconds": seconds})
     return f"Показано на {seconds} с."
 
 
-def _light(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
+async def _light(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
     mode = arguments.get("mode")
     if not _named(entry, "light") or mode not in ("on", "off", "blink"):
         return "Світло не зрозуміло, що робити."
-    devices.act(pid, _named(entry, "light")[0], mode)
+    await devices.act(pid, _named(entry, "light")[0], mode)
     return f"Світло: {mode}."
 
 
@@ -148,7 +159,7 @@ async def _switch(devices: Devices, pid: str, entry: dict, arguments: dict,
     what = f"{'увімкнути' if on else 'вимкнути'} {pin} на панелі"
     if not await desk.permit(what, "judge", what):
         return f"{pin} не чіпаю: дозволу немає."
-    if not devices.act(pid, pin, on):
+    if not await devices.act(pid, pin, on):
         return "Панель пішла, не перемкнулось."
     return f"{pin} {'увімкнено' if on else 'вимкнено'}."
 
@@ -210,3 +221,138 @@ def _tool(name: str, description: str, properties: dict, required: list[str]) ->
         "name": name, "description": description,
         "parameters": {"type": "object", "properties": properties, "required": required},
     }}
+
+
+# -- the part: the brain's door, the model, the desk -------------------------
+
+
+class Parts:
+    """The other parts' acts, over the door."""
+
+    def __init__(self, wire: part.Wire) -> None:
+        self._wire = wire
+
+    async def acting(self) -> dict[str, dict]:
+        try:
+            answer = await self._wire.client.get(f"{self._wire.base}/api/acts")
+        except httpx.HTTPError:
+            return {}
+        return answer.json() if answer.status_code == 200 else {}
+
+    async def act(self, pid: str, name: str, value: object) -> bool:
+        answer = await self._wire.post("/api/acts", {"part": pid, "name": name, "value": value})
+        return answer.status_code == 200
+
+
+class Chat:
+    """The voice's model, asked once per turn, with tools.
+
+    Its own few lines rather than the brain's client: a part never imports
+    another part. Only providers that speak the OpenAI wire are used; the
+    rest of the choice — which provider, which model, which key — is the
+    same settings the voice reads.
+    """
+
+    def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
+        self._settings = settings
+        self._client = client
+
+    async def reply(self, messages: list[dict], verbs: list[dict]) -> AsyncIterator[dict]:
+        url, key, model = self._chosen()
+        body: dict = {"model": model, "messages": messages, "temperature": 0.2}
+        if verbs:
+            body["tools"] = verbs
+        answer = await self._client.post(
+            f"{url}/chat/completions", json=body, timeout=MODEL_TIMEOUT_S,
+            headers={"Authorization": f"Bearer {key}"})
+        answer.raise_for_status()
+        said = (answer.json().get("choices") or [{}])[0].get("message") or {}
+        if said.get("content"):
+            yield {"type": "delta", "text": said["content"]}
+        for call in said.get("tool_calls") or []:
+            yield {"type": "tool_call", "id": call.get("id"),
+                   "name": call["function"]["name"],
+                   "arguments": call["function"].get("arguments") or "{}"}
+
+    def _chosen(self) -> tuple[str, str, str]:
+        from heare.model.providers import PROVIDERS
+
+        wanted = str(self._settings.llm_provider or "deepseek").lower()
+        for name in [wanted] + [k for k in PROVIDERS if k != wanted]:
+            cfg = PROVIDERS.get(name)
+            key = getattr(self._settings, cfg.api_key_attr, None) if cfg else None
+            if cfg is None or not key or cfg.api_style != "openai":
+                continue
+            url = getattr(self._settings, f"{name}_base_url", "") or cfg.base_url
+            model = getattr(self._settings, f"{name}_model", "") or cfg.default_model
+            return url.rstrip("/"), key, model
+        raise RuntimeError("немає ключа до моделі з OpenAI-протоколом")
+
+
+class RemoteDesk:
+    """What the work asks the brain for, over the door."""
+
+    def __init__(self, wire: part.Wire, job_id: int) -> None:
+        self._wire, self._id = wire, job_id
+
+    def step(self, text: str) -> None:
+        asyncio.create_task(self._wire.post(
+            f"/api/executor/{self._id}/step?name={CHANNEL}", {"text": text}))
+
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
+        answer = (await self._wire.post(
+            f"/api/executor/{self._id}/permit?name={CHANNEL}",
+            {"what": what, "kind": kind, "detail": detail})).json()
+        if answer.get("stopped"):
+            raise asyncio.CancelledError
+        return bool(answer.get("allow"))
+
+
+async def run() -> int:
+    settings = Settings()
+    host = socket.gethostname()
+    async with httpx.AsyncClient(timeout=None) as client:
+
+        async def work(wire: part.Wire) -> None:
+            hand = NativeHand(Chat(settings, client), Parts(wire))
+            wire.report({"work": "чекає"})
+            while True:
+                claim = await wire.post("/api/executor/claim", {"name": CHANNEL})
+                task = claim.json() if claim.status_code == 200 else {}
+                if not task or "id" not in task:
+                    continue
+                wire.report({"work": f"роблю: {task['request'][:50]}"})
+                status, result = "done", ""
+                try:
+                    result = await hand.run(task["request"], RemoteDesk(wire, task["id"]))
+                except asyncio.CancelledError:
+                    status, result = "stopped", "Зупинено."
+                except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
+                    logger.warning("the work failed: %s", exc)
+                    status, result = "failed", str(exc)
+                await wire.post(f"/api/executor/{task['id']}/result?name={CHANNEL}",
+                                {"status": status, "result": result})
+                wire.report({"work": "чекає"})
+
+        return await part.live(
+            {"channel": CHANNEL, "forms": ["executor"], "about": ABOUT,
+             "key": f"{CHANNEL}@{host}", "host": host,
+             "ui": [{"name": "work", "kind": "label", "label": "Справа",
+                     "value": "чекає", "head": True}]},
+            work, hello="native hand", settings=settings, client=client)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="heare.native")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    args = parser.parse_args()
+    logs.setup(args.verbose)
+    layout.settle()
+    try:
+        return asyncio.run(run())
+    except KeyboardInterrupt:
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

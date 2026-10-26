@@ -40,6 +40,9 @@ PARTS = {part.name: part for part in (
          "джерела: погода — що зараз надворі"),
     Part("hands", "Руки", "агент діє в системі: код, файли, команди", "opencode",
          ("executor",), "агент у терміналі: код, файли, команди, пошук в інтернеті"),
+    Part("native", "Native hand", "швидкі дії з тілами: панель, світло, піни",
+         "native", ("executor",),
+         "швидкі прості дії з тілами heare: панель на столі, світло, піни"),
 )}
 
 # Where a key is checked: a list of models answers only to a key that works.
