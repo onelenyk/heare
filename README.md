@@ -1,172 +1,144 @@
-# heare
+<p align="center">
+  <img src="docs/assets/heare-face.svg" width="112" height="112" alt="">
+</p>
 
-heare is a voice assistant you talk to out loud. It listens, decides when
-it is being spoken to, answers in a voice, and can hand real work — files,
-commands, searches — to a coding agent on your computer while the
-conversation goes on. It runs on your own machine, with your own keys.
+<h1 align="center">heare</h1>
 
-## Install
+<p align="center">
+  Голосова помічниця для мака, з якою говорять уголос.<br>
+  Працює на твоєму комп'ютері, з твоїми ключами.
+</p>
 
-### Mac
+<p align="center">
+  <a href="https://github.com/onelenyk/heare/releases/latest">Завантажити</a> ·
+  <a href="docs/server.md">Сервер і Docker</a> ·
+  <a href="docs/develop.md">Розробка</a>
+</p>
 
-1. Download the app from the latest release:
-   <https://github.com/onelenyk/heare/releases/latest> —
-   `heare-arm64.dmg` for an Apple Silicon Mac (M1 and later),
-   `heare-x86_64.dmg` for an Intel one.
-2. Open it and drag heare to Applications.
-3. Open heare. The app is not signed by Apple, so the first time macOS
-   will refuse to open it. Either:
-   - right-click (or Control-click) heare in Applications → **Open** →
-     **Open**, or
-   - open **System Settings → Privacy & Security**, scroll down to the
-     message about heare and click **Open Anyway**.
+---
 
-   You only need to do this once.
+## Що вона вміє
 
-### Linux server
+- **Слухає й сама вирішує, чи звертаються до неї.** Не треба тиснути
+  кнопку чи казати «Гей, …». Хочеш суворіше — перемкни голос на «лише на
+  ім'я».
+- **Відповідає голосом** — коротко, українською, і замовкає, коли
+  перебиваєш.
+- **Робить справи, поки ви говорите.** Файли, команди, пошук в інтернеті
+  вона передає агентові на твоєму комп'ютері
+  ([opencode](https://opencode.ai) або
+  [Claude Code](https://docs.anthropic.com/en/docs/claude-code)) і розповідає,
+  що вийшло.
+- **Пам'ятає.** Розмови, факти про тебе, нагадування — у теці `~/.heare`
+  на твоєму маку, не в чужій хмарі.
 
-The brain alone — no microphone needed — on a Linux machine you keep on:
+Її звати **Дока**.
 
-```bash
-curl -sSL https://raw.githubusercontent.com/onelenyk/heare/v0.2.0/install.sh | sh -s -- --role server --from https://github.com/onelenyk/heare/releases/download/v0.2.0 --version 0.2.0
-```
+## Встановити
 
-It installs [uv](https://docs.astral.sh/uv/) if it is missing, puts every
-tool this system can run in its own environment, and keeps the brain and the
-keeper alive with systemd. Which parts run is a switch on the setup page,
-http://127.0.0.1:9791 — on a server, reach it with
-`ssh -L 9791:127.0.0.1:9791 user@server`. Other roles:
-`--role body --url URL --code CODE` makes this machine parts only, paired
-with a brain elsewhere; `--parts voice,hands` turns parts on at install;
-`--no-service` starts nothing. Without a system keyring (a server) keys live
-in `~/.heare/machine/keys.json`, mode 0600; the environment wins.
+1. Завантаж застосунок з
+   [останнього релізу](https://github.com/onelenyk/heare/releases/latest):
+   `heare-arm64.dmg` для мака на Apple Silicon (M1 і новіші),
+   `heare-x86_64.dmg` для мака на Intel.
+2. Відкрий його й перетягни heare в «Програми».
+3. Відкрий heare. Застосунок не підписаний Apple, тож першого разу macOS
+   відмовиться його відкрити. Зроби одне з двох:
+   - клацни heare у «Програмах» правою кнопкою → **Відкрити** → **Відкрити**;
+   - або **Системні параметри → Приватність і безпека**, прокрути до
+     повідомлення про heare і натисни **Усе одно відкрити**.
 
-The brain alone in Docker, state in a volume, keys from the environment:
+   Це треба лише раз.
 
-```bash
-DEEPSEEK_API_KEY=… docker compose -f docker/compose.yaml up -d --build
-docker compose -f docker/compose.yaml exec brain heare-brain code   # pair a browser
-```
+## Перший запуск
 
-More in [docker/](docker/).
+heare відкриє налаштування у власному вікні й попросить:
 
-## First run
+- **Частини** — що їй можна тут: *голос* (мікрофон і динамік), *очі* (яка
+  програма попереду, чи щось грає), *руки* (агент, що робить справи).
+- **Ключі** — два:
+  - **DeepSeek**, щоб думати: <https://platform.deepseek.com/api_keys>
+  - **Groq**, щоб чути (мову в текст): <https://console.groq.com/keys>
 
-The first time, heare opens its setup: on a Mac in the app's own window,
-on a server in the browser (<http://127.0.0.1:9791/>). It asks three things:
+  Ключ записується один раз у Keychain і більше не показується.
 
-- **Role** — this computer as the whole assistant, as the brain only
-  (memory and conversation), or as a body that connects to a brain
-  elsewhere with an address and a pairing code from that brain's page.
-- **Parts** — what heare may use here: *voice* (microphone and speaker),
-  *eyes* (which app is in front, whether something is playing),
-  *hands* (a coding agent that does the work).
-- **Keys** — heare needs two:
-  - **DeepSeek**, for thinking: create a key at
-    <https://platform.deepseek.com/api_keys>
-  - **Groq**, for hearing (speech to text): create a key at
-    <https://console.groq.com/keys>
+Для **рук** потрібен агент, уже встановлений і з входом:
+[opencode](https://opencode.ai) або
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code). Без нього
+heare все одно розмовляє, лише не робить справ за тебе.
 
-  A key is written once and never shown again. Thinking needs DeepSeek;
-  hearing needs Groq only where the voice part runs.
+## Як нею користуватись
 
-**Hands** need a coding agent already installed and signed in on this
-computer: [opencode](https://opencode.ai) or
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code). Without one,
-heare still talks; it just cannot do things for you.
+heare живе в рядку меню. Іконка-обличчя показує, що вона робить:
 
-On a Mac, heare lives in the menu bar: **Відкрити heare** opens the
-assistant's page, **Частини** turns parts on and off, **Налаштування…** is the
-same setup again. On a server the page is at <http://127.0.0.1:9790/>. Parts
-from other machines appear there and wait until you approve them.
+| Обличчя | Стан |
+| --- | --- |
+| голова й очі | чекає |
+| очі вищі | слухає |
+| очі вгору-вбік | думає |
+| рот рухається, як хвиля | говорить |
+| очі заплющені | вимкнено |
 
-## Update
+У меню:
+- **Відкрити heare** — пульт: стан, розмова, пам'ять, частини;
+- **Частини** — увімкнути чи вимкнути голос, очі, руки;
+- **Налаштування…** — ключі й модель.
 
-- **Mac:** when a new version is out, the page says **Є heare 0.x.y ·
-  Оновити** beside the version. Click it: heare downloads the release,
-  checks it against the release's sums, backs up your memory, puts the new
-  app in place of the old one and starts again. You can also download the
-  new `.dmg` from [Releases](https://github.com/onelenyk/heare/releases/latest)
-  and replace the app by hand.
-- **Linux:** run the install command again with the new version number.
+Частини з інших комп'ютерів з'являються на пульті й чекають, поки ти їх
+впустиш.
 
-Your conversations, keys and settings stay where they are. The page shows
-which version is running beside the uptime, and marks any part that is on
-a different version from the brain.
+## Оновити
 
-## Back up and move to another Mac
+Коли виходить нова версія, на пульті з'являється **Є heare 0.x.y · Оновити**,
+а в меню — **Перевірити оновлення…**. Натисни, і heare сама:
+1. завантажить реліз і звірить його контрольні суми;
+2. зробить копію пам'яті;
+3. поставить себе на місце старої й перезапуститься.
 
-On the page: **Памʼять → Копії → Зробити копію**. A backup is one file
-holding your conversations, journal, facts, profile, reminders and
-settings, and, if you leave the switch on, the recordings. It does not
-hold the model keys or this Mac's pairings. Backups are kept in
-`~/.heare/backups`; **Завантажити** saves one wherever you like.
+Розмови, ключі й налаштування лишаються на місці.
 
-On the new Mac: install heare, enter the keys, then **Принести копію…**
-and **Відновити**. The brain restarts on the backup. What it replaced is
-kept in `~/.heare/backups/before-restore-…`.
+macOS може знову спитати дозвіл на мікрофон: застосунок не підписаний, тож
+для системи кожна версія — нова програма.
 
-On a server: `heare-brain backup` and `heare-brain restore FILE`.
+## Копія й переїзд на інший мак
 
-Inside `~/.heare`, `memory/` and `settings/` are yours; `machine/` is this
-Mac's tokens and parts.
+На пульті: **Пам'ять → Копії → Зробити копію**. Копія — один файл: розмови,
+журнал, факти, профіль, нагадування, налаштування й, якщо лишиш перемикач,
+записи голосу. Ключів моделей і спарювань цього мака в ній немає. Копії
+лежать у `~/.heare/backups`; **Завантажити** збереже її куди скажеш.
 
-## Uninstall
+На новому маку: встанови heare, введи ключі, далі **Принести копію…** і
+**Відновити**. Те, що копія замінила, лишається в
+`~/.heare/backups/before-restore-…`.
 
-**Mac:** choose **Видалити heare…** in heare's menu. It asks whether to
-keep your memory (conversations, facts, settings and backups stay in
-`~/.heare`, and installing heare again picks them up) or to remove it all.
-Either way heare stops, its keys leave the Keychain, the start at login is
-turned off, and the app goes to the Trash — nothing is deleted outright.
-Files the agent made in `~/heare-work` stay. From a terminal:
-`/Applications/heare.app/Contents/MacOS/heare --uninstall keep-memory` (or `all`).
+## Видалити
 
-(If you installed heare the developer way, with `install.sh`, also run
-`launchctl bootout gui/$(id -u)/com.heare.brain` and `…/com.heare.keeper`,
-remove `~/Library/LaunchAgents/com.heare.*.plist`, and uninstall the
-`heare-*` uv tools.)
+У меню heare — **Видалити heare…**. Вона спитає, чи лишити пам'ять:
+- **лишити** — розмови, факти, налаштування й копії лишаються в `~/.heare`,
+  і нова установка їх підхопить;
+- **видалити все** — разом з пам'яттю.
 
-**Linux**
+В обох випадках heare зупиняється, її ключі виходять з Keychain, запуск
+при вході вимикається, а все прибране йде в Кошик — нічого не стирається
+одразу. Файли, які агент зробив у `~/heare-work`, лишаються.
 
-```bash
-systemctl --user disable --now heare-brain heare-keeper
-rm ~/.config/systemd/user/heare-*.service
-uv tool list | grep '^heare' | cut -d' ' -f1 | xargs -n1 uv tool uninstall
-```
+З терміналу:
+`/Applications/heare.app/Contents/MacOS/heare --uninstall keep-memory`
+(або `all`).
 
-Everything heare remembers — conversations, settings, logs — is in
-`~/.heare`. Delete that folder to forget it all. On a Mac, the keys are in
-Keychain Access under the name `heare`; delete those entries too.
+## Ще
 
-## Develop
+- [Сервер і Docker](docs/server.md) — мозок на Linux-машині, що завжди
+  ввімкнена, або в контейнері.
+- [Розробка](docs/develop.md) — зібрати з коду, тести, реліз.
+- [docs/laws.md](docs/laws.md) — закони, за якими вона працює.
 
-From a checkout, with Python 3.11+ and uv (`brew install portaudio` for
-the voice on a Mac):
+## Ліцензія
 
-```bash
-uv sync
-make brain        # the brain, and its page on 127.0.0.1:9790
-make chat         # the conversation in a terminal
-make voice        # speech in, speech out
+heare — відкритий код за
+[PolyForm Shield License 1.0.0](LICENSE): його можна читати, запускати,
+змінювати й поширювати з будь-якою метою, крім продукту, що конкурує з
+heare.
 
-make check        # lint + tests: no network, no keys
-make live         # check, then put this checkout live on this Mac
-make rollback     # back to the release before
-make release V=x.y.z   # one version everywhere, committed and tagged locally
-```
-
-Pushing a `v*` tag makes CI build the wheels and publish the release.
-
-- [AGENTS.md](AGENTS.md) — the shape of the code and its rules
-- [docs/product/README.md](docs/product/README.md) — the plan
-- [docs/laws.md](docs/laws.md) — the laws it works under
-
-## License
-
-heare is source-available under the
-[PolyForm Shield License 1.0.0](LICENSE): you may read, run, change and
-share it for any purpose except providing a product that competes with it.
-
-The pult's fonts, [Onest](https://github.com/simpals/onest) and
-[Unbounded](https://github.com/googlefonts/unbounded), ship with it under
-the SIL Open Font License 1.1 (`packages/heare-brain/heare/api/fonts/`).
+Шрифти пульта, [Onest](https://github.com/simpals/onest) і
+[Unbounded](https://github.com/googlefonts/unbounded), ідуть разом з ним за
+SIL Open Font License 1.1 (`packages/heare-brain/heare/api/fonts/`).
