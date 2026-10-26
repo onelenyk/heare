@@ -17,13 +17,11 @@ import json
 import os
 import socket
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
-import httpx
 
 from heare import layout, logs
-from heare import keys, part
+from heare import hand, keys, part
 from heare.config import Settings
 from heare.reach import runner
 from heare.reach.agents import KNOWN as AGENTS, MODE, MODES, Agent
@@ -81,50 +79,6 @@ def _line(direction: str, msg: dict) -> str:
         detail = error.get("message") if isinstance(error, dict) else error
         return f"{arrow} error · {_short(detail)}"
     return f"{arrow} ok #{msg.get('id')}"
-
-
-class RemoteDesk:
-    """What the agent asks the brain for, over the door."""
-
-    def __init__(self, client: httpx.AsyncClient, base: str, job_id: int,
-                 name: str,
-                 on_permit: Callable[[str, bool | None, str, str], None] | None = None,
-                 ) -> None:
-        self._client, self._base = client, base
-        self._id, self._name = job_id, name
-        self._on_permit = on_permit
-
-    def step(self, text: str) -> None:
-        """What it is doing — said without waiting: a step is not an answer."""
-        asyncio.create_task(self._client.post(
-            f"{self._base}/api/executor/{self._id}/step?name={self._name}",
-            json={"text": text}))
-
-    async def ask(self, text: str) -> str:
-        """The agent's question: the person's words come back as the answer."""
-        response = await self._client.post(
-            f"{self._base}/api/executor/{self._id}/ask?name={self._name}",
-            json={"question": text})
-        answer = response.json()
-        if answer.get("stopped"):
-            raise asyncio.CancelledError
-        return str(answer.get("answer") or "")
-
-    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
-        weighing = "judge" if kind == "judge" else "person"
-        if self._on_permit is not None:
-            self._on_permit(what, None, weighing, "")  # the answer may take a while
-        response = await self._client.post(
-            f"{self._base}/api/executor/{self._id}/permit?name={self._name}",
-            json={"what": what, "kind": kind, "detail": detail})
-        answer = response.json()
-        if answer.get("stopped"):
-            raise asyncio.CancelledError
-        allowed = bool(answer.get("allow"))
-        if self._on_permit is not None:
-            self._on_permit(what, allowed, str(answer.get("by") or "person"),
-                            str(answer.get("why") or ""))
-        return allowed
 
 
 def _kind(settings: Settings) -> str:
@@ -435,6 +389,35 @@ async def run() -> int:
                     values["usage"] = _price(**usage) or values["usage"]
                     wire.report(values)
 
+        def begin(job: hand.Job, desk: hand.Desk) -> None:
+            logs.say(f"взято {job.id}: {job.request[:60]}")
+            values["work"] = f"роблю: {job.request[:50]}"
+            wire.report(values)
+            screen.begin(job.request, new=not job.continues, asked=job.asked)
+            current["desk"] = desk
+
+        async def do(job: hand.Job, desk: hand.Desk) -> str:
+            # Only work that goes on from the last keeps its session;
+            # anything new starts clean.
+            return await agent.run(job.request, desk,
+                                   resume=resume if job.continues else "")
+
+        def end(job: hand.Job, status: str, result: str) -> None:
+            nonlocal resume, told
+            screen.end(status, result)
+            told += 1
+            logs.say(f"готово {job.id}: {status} {result[:60]}")
+            current["desk"] = None
+            if agent.last_session:
+                resume = agent.last_session
+                try:
+                    session_file.write_text(agent.last_session, encoding="utf-8")
+                except OSError:
+                    pass
+            if not restart.is_set():
+                values["work"] = "чекає"
+            wire.report(values)
+
         wiring = asyncio.create_task(report_acp())
         try:
             while True:
@@ -448,45 +431,9 @@ async def run() -> int:
                     except TimeoutError:
                         pass
                     continue
-                claim = await wire.post("/api/executor/claim", {"name": name})
-                task = claim.json() if claim.status_code == 200 else {}
-                if not task or "id" not in task:
-                    continue
-                logs.say(f"взято {task['id']}: {task['request'][:60]}")
-                values["work"] = f"роблю: {task['request'][:50]}"
-                wire.report(values)
-                desk = RemoteDesk(wire.client, wire.base, task["id"], name,
-                                  on_permit=screen.permit)
-                screen.begin(task["request"], new=not task.get("continues"),
-                             asked=str(task.get("asked") or ""))
-                status, result = "done", ""
-                current["desk"] = desk
-                try:
-                    # Only work that goes on from the last keeps its session;
-                    # anything new starts clean.
-                    result = await agent.run(
-                        task["request"], desk,
-                        resume=resume if task.get("continues") else "")
-                except asyncio.CancelledError:
-                    status, result = "stopped", "Зупинено."
-                except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
-                    status, result = "failed", str(exc)
-                screen.end(status, result)
-                told += 1
-                logs.say(f"готово {task['id']}: {status} {result[:60]}")
-                await wire.post(
-                    f"/api/executor/{task['id']}/result?name={name}",
-                    {"status": status, "result": result})
-                current["desk"] = None
-                if agent.last_session:
-                    resume = agent.last_session
-                    try:
-                        session_file.write_text(agent.last_session, encoding="utf-8")
-                    except OSError:
-                        pass
-                if not restart.is_set():
-                    values["work"] = "чекає"
-                wire.report(values)
+                if not await hand.take(wire, name, do, on_permit=screen.permit,
+                                       on_begin=begin, on_end=end):
+                    await asyncio.sleep(hand.IDLE_S)
         finally:
             wiring.cancel()
             await asyncio.gather(wiring, return_exceptions=True)

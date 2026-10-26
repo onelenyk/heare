@@ -26,6 +26,7 @@ from typing import AsyncIterator, Protocol
 
 import httpx
 
+from heare import hand as hand_life
 from heare import layout, logs, part
 from heare.config import Settings
 from heare.core.forms import Desk, Model
@@ -44,9 +45,6 @@ SHOW_S = 10
 SHOW_MAX_S = 60
 SHOW_CHARS = 40
 MODEL_TIMEOUT_S = 20.0
-# After a claim that brought nothing at once (a brain that just restarted,
-# a hand not let in yet), before the next: never a loop of requests.
-IDLE_S = 1.0
 FAILED = "Не вийшло: модель не відповіла."
 # The OLED's font has Latin letters only; Ukrainian is written out in them
 # rather than drawn as noise.
@@ -306,66 +304,6 @@ class Chat:
         raise RuntimeError("немає ключа до моделі з OpenAI-протоколом")
 
 
-class RemoteDesk:
-    """What the work asks the brain for, over the door.
-
-    A step's answer says whether the work was called off: that is how
-    «стоп» reaches a hand with no server of its own. It is read before the
-    next act, so nothing is switched after a stop."""
-
-    def __init__(self, wire: part.Wire, job_id: int) -> None:
-        self._wire, self._id = wire, job_id
-        self.stopped = False
-        self._steps: set[asyncio.Task] = set()
-
-    def step(self, text: str) -> None:
-        job = asyncio.create_task(self._step(text))
-        self._steps.add(job)
-        job.add_done_callback(self._steps.discard)
-
-    async def _step(self, text: str) -> None:
-        answer = await self._wire.post(
-            f"/api/executor/{self._id}/step?name={CHANNEL}", {"text": text})
-        try:
-            if answer.json().get("stopped"):
-                self.stopped = True
-        except ValueError:
-            pass
-
-    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
-        answer = (await self._wire.post(
-            f"/api/executor/{self._id}/permit?name={CHANNEL}",
-            {"what": what, "kind": kind, "detail": detail})).json()
-        if answer.get("stopped"):
-            raise asyncio.CancelledError
-        return bool(answer.get("allow"))
-
-
-async def take(wire: part.Wire, hand: NativeHand) -> bool:
-    """Claim one piece of work and do it; False when none came."""
-    claim = await wire.post("/api/executor/claim", {"name": CHANNEL})
-    try:
-        task = claim.json() if claim.status_code == 200 else {}
-    except ValueError:
-        task = {}
-    if not isinstance(task, dict) or "id" not in task:
-        return False
-    wire.report({"work": f"роблю: {str(task.get('request', ''))[:50]}"})
-    status, result = "done", ""
-    try:
-        result = await hand.run(str(task.get("request", "")), RemoteDesk(wire, task["id"]))
-    except asyncio.CancelledError:
-        status, result = "stopped", "Зупинено."
-    except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
-        # The person hears a sentence; the reason goes to the log.
-        logger.warning("the work failed: %r", exc)
-        status, result = "failed", FAILED
-    await wire.post(f"/api/executor/{task['id']}/result?name={CHANNEL}",
-                    {"status": status, "result": result})
-    wire.report({"work": "чекає"})
-    return True
-
-
 def latin(text: str) -> str:
     """Ukrainian written in Latin letters, case kept, for the OLED's font."""
     out = []
@@ -386,9 +324,16 @@ async def run(settings: Settings | None = None, model: Model | None = None,
         async def work(wire: part.Wire) -> None:
             hand = NativeHand(model or Chat(settings, client), Parts(wire))
             wire.report({"work": "чекає"})
-            while True:
-                if not await take(wire, hand):
-                    await asyncio.sleep(IDLE_S)
+
+            async def do(job: hand_life.Job, desk: hand_life.Desk) -> str:
+                return await hand.run(job.request, desk)
+
+            await hand_life.serve(
+                wire, CHANNEL, do,
+                on_begin=lambda job, desk: wire.report({"work": f"роблю: {job.request[:50]}"}),
+                on_end=lambda job, status, result: wire.report({"work": "чекає"}),
+                # The person hears a sentence; the reason goes to the log.
+                failed=lambda exc: FAILED)
 
         return await part.live(
             {"channel": CHANNEL, "forms": ["executor"], "about": ABOUT,

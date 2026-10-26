@@ -1,4 +1,4 @@
-"""The native hands as a part: claiming, stopping, failing, and the model's wire."""
+"""The hands' life (heare.hand) and the native hands: claiming, stopping, failing, the model."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import json
 import httpx
 import pytest
 
-from heare import native_hands
-from heare.native_hands import Chat, RemoteDesk, latin, take
+from heare import hand, native_hands
+from heare.native_hands import Chat, latin
 
 
 class Wire:
@@ -36,10 +36,13 @@ class Hand:
         self.does = does or (lambda task, desk: "Готово.")
         self.tasks: list[str] = []
 
-    async def run(self, task, desk):
-        self.tasks.append(task)
-        result = self.does(task, desk)
-        return await result if hasattr(result, "__await__") else result
+    async def __call__(self, job, desk):
+        self.tasks.append(job.request)
+        return self.does(job.request, desk)
+
+
+async def take(wire, work, **hooks):
+    return await hand.take(wire, "native-hands", work, **hooks)
 
 
 def _results(wire: Wire) -> list[dict]:
@@ -51,7 +54,7 @@ async def test_no_work_is_not_a_loop_of_requests():
     assert await take(wire, Hand()) is False
     assert await take(Wire({"/api/executor/claim": [httpx.Response(403, text="no")]}),
                       Hand()) is False
-    assert native_hands.IDLE_S >= 1.0
+    assert hand.IDLE_S >= 1.0
 
 
 async def test_work_is_done_and_its_result_sent():
@@ -62,7 +65,6 @@ async def test_work_is_done_and_its_result_sent():
 
     assert hand.tasks == ["блимни"]
     assert _results(wire) == [{"status": "done", "result": "Готово."}]
-    assert wire.reports[-1] == {"work": "чекає"}
 
 
 async def test_a_failing_model_is_a_sentence_not_a_traceback():
@@ -72,14 +74,14 @@ async def test_a_failing_model_is_a_sentence_not_a_traceback():
                                     response=httpx.Response(401))
 
     wire = Wire({"/api/executor/claim": [httpx.Response(200, json={"id": 1, "request": "x"})]})
-    await take(wire, Hand(broken))
+    await take(wire, Hand(broken), failed=lambda exc: native_hands.FAILED)
 
     assert _results(wire) == [{"status": "failed", "result": native_hands.FAILED}]
 
 
 async def test_a_stop_is_heard_through_the_step_and_nothing_more_is_done():
     wire = Wire({"/api/executor/7/step": [httpx.Response(200, json={"stopped": True})]})
-    desk = RemoteDesk(wire, 7)
+    desk = hand.Desk(wire, hand.Job(7, "x"), "native-hands")
 
     desk.step("думаю")
     await asyncio.gather(*desk._steps)
@@ -155,3 +157,23 @@ async def test_the_model_is_asked_with_tools_and_its_calls_come_back():
     assert events == [{"type": "delta", "text": "Блимаю."},
                       {"type": "tool_call", "id": "c1", "name": "light",
                        "arguments": '{"mode": "blink"}'}]
+
+
+async def test_a_stop_from_the_brain_is_a_result_but_a_shutdown_goes_on_out():
+    async def stopped(job, desk):
+        raise asyncio.CancelledError  # what the desk raises on a stop
+
+    wire = Wire({"/api/executor/claim": [httpx.Response(200, json={"id": 2, "request": "x"})]})
+    assert await take(wire, stopped) is True
+    assert _results(wire) == [{"status": "stopped", "result": "Зупинено."}]
+
+    async def forever(job, desk):
+        await asyncio.Event().wait()
+
+    wire = Wire({"/api/executor/claim": [httpx.Response(200, json={"id": 3, "request": "x"})]})
+    running = asyncio.create_task(take(wire, forever))
+    await asyncio.sleep(0.01)
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    assert _results(wire) == []
