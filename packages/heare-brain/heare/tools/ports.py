@@ -25,10 +25,3 @@ class Reminders(Protocol):
 
     def cancel(self, intent_id: int, *, why: str = "reminder") -> bool: ...
 
-
-class Devices(Protocol):
-    def acting(self) -> dict[str, dict]:
-        """By pid: the part's channel, the acts it offers, its last values."""
-        ...
-
-    def act(self, pid: str, name: str, value: object) -> bool: ...

@@ -29,13 +29,13 @@ from heare.api import pair as codes
 from heare.api.registry import Registry
 from heare.config import HOME, Settings
 from heare.core import Core
-from heare.core.forms import Message
 from heare.engine import Engine, Intents
 from heare.features import build_features
 from heare.language import uk
 from heare.memory.contracts import ReviewReport
 from heare.memory.review import last_reviewed, mark_reviewed, notice
 from heare.mind import Mind
+from heare.native_hand import NativeHand
 
 logger = logging.getLogger("heare.brain")
 
@@ -144,9 +144,11 @@ class Brain:
             words=self.core.words,
             has_executors=lambda: bool(self.core.executors),
             reminders=self.intents,
-            devices=lambda: self.registry, ask=self.core.ask, say=self._say,
         ))
-        # Hands are a body: they register over the door and are added then.
+        # The native hand is the brain's own: quick acts on the parts, with
+        # the voice's model. The opencode hand is a body: it registers over
+        # the door and is added then.
+        self.core.add_executor(NativeHand(Chat(self.settings), lambda: self.registry))
         # The brain itself holds no agent's process.
         self.engine = Engine(
             self.intents, state=self.core.state, speak=self.core.hear,
@@ -246,11 +248,6 @@ class Brain:
                 continue
             if report.error:
                 await asyncio.sleep(REVIEW_RETRY_S)
-
-    def _say(self, channel: str, text: str) -> None:
-        """What a part's act came to, said as it is."""
-        self.core.hear(Message(text=text, channel=channel, person=False,
-                               verbatim=True))
 
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""

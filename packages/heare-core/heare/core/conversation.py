@@ -898,10 +898,6 @@ class Core:
 
     # -- permission -------------------------------------------------------
 
-    async def ask(self, who: str, what: str) -> bool:
-        """A yes for one act outside any work (a part's pin), asked each time."""
-        return (await self._ask(Task(0, what, who), what, "change"))[0]
-
     async def _ask(self, task: Task, what: str, kind: str,
                    detail: str = "") -> tuple[bool, str, str]:
         """Reading is free; a change waits for the person's yes, unless the
