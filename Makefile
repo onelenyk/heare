@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test bench eval-route panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist
+.PHONY: help brain chat voice keeper test bench eval-route panel-preview panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -54,6 +54,11 @@ bench:
 # Which hands each phrase reaches, and how fast: the live heare, the real model.
 eval-route:
 	uv run python scripts/eval_route.py
+
+# A scene as the panel would draw it, as a PNG, before it goes to the board.
+OUT ?= scene.png
+panel-preview:
+	uv run python scripts/panel_preview.py '$(SCENE)' $(OUT)
 
 panel-smoke:
 	uvx mpremote run firmware/tools/probe.py

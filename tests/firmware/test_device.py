@@ -70,7 +70,7 @@ def test_every_skill_has_the_form_the_brain_keeps():
 
 def test_a_call_is_answered_with_what_came_of_it():
     board, made = _device()
-    assert board.call("show", {"text": "Привіт", "seconds": 5}, 0) == (True, "показано: Pryvit")
+    assert board.call("show", {"text": "Привіт", "seconds": 5}, 0) == (True, "показано: Привіт")
     assert board.call("light", {"mode": "blink"}, 0) == (True, "світло: blink")
     assert board.call("pin3", {"on": True}, 0) == (True, "pin3: 1")
     assert board.call("read_pins", {}, 0)[1]["pin3"] == 1
@@ -78,12 +78,6 @@ def test_a_call_is_answered_with_what_came_of_it():
     assert board.call("pin3", {"on": "yes"}, 0)[0] is False
     assert board.call("light", {"mode": "disco"}, 0)[0] is False
     assert (9, "out") not in made
-
-
-def test_ukrainian_is_written_out_for_the_font():
-    assert device.latin("Привіт, Назаре!") == "Pryvit, Nazare!"
-    assert device.latin("Щастя їжака") == "Shchastia izhaka"
-    assert device.latin("hello 42") == "hello 42"
 
 
 def test_the_image_skill_asks_for_the_window_s_own_pixels():

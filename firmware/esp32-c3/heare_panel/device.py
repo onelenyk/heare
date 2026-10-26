@@ -66,28 +66,6 @@ def skills():
     return found
 
 
-# The font has Latin letters only: Ukrainian is written out in them.
-_LATIN = {
-    "а": "a", "б": "b", "в": "v", "г": "h", "ґ": "g", "д": "d", "е": "e",
-    "є": "ie", "ж": "zh", "з": "z", "и": "y", "і": "i", "ї": "i", "й": "i",
-    "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
-    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch",
-    "ш": "sh", "щ": "shch", "ь": "", "ю": "iu", "я": "ia", "’": "", "'": "",
-}
-
-
-def latin(text):
-    """Ukrainian in Latin letters, the case of each letter kept."""
-    out = []
-    for char in str(text):
-        low = char.lower()
-        spelled = _LATIN.get(low, char if low == char else low)
-        if char != low and spelled:
-            spelled = spelled[0].upper() + spelled[1:]
-        out.append(spelled)
-    return "".join(out)
-
-
 def lines(text):
     """At most four lines of nine characters: what the 72x40 window holds."""
     found = []
@@ -158,7 +136,7 @@ class Device:
         if not isinstance(args, dict):
             return False, "аргументи не ті"
         if name == "show":
-            text = latin(args.get("text") or "")
+            text = str(args.get("text") or "")
             done = self.apply("show", {"text": text, "seconds": args.get("seconds") or 10}, now_ms)
             return (True, "показано: " + " ".join(lines(text))) if done else (False, "нема що показати")
         if name == "image":

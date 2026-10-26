@@ -13,13 +13,16 @@ them; it fills the whole window itself. Pure: imports only the panel's own
 drawing modules, the same on the board and on a laptop.
 """
 
-from heare_panel import face, render
+from heare_panel import face, font, glyphs, render
 
 BLINK_MS = 500
 FACE_STATES = ("IDLE", "HEAR", "THINK", "SPEAK")
 # Widgets that paint the whole window themselves; the others are drawn on
 # a cleared one.
 FILLS = ("state",)
+KINDS = ("state", "text", "picture", "number", "icon", "bar", "clock", "spinner")
+SPIN_MS = 125
+ICON = 16
 
 
 def value(widget, fields, name="value", default=None):
@@ -42,9 +45,24 @@ def draw(widget, canvas, box, fields, now_ms):
         else:
             render.render(word, canvas, box[2], box[3], now_ms)
     elif kind == "text":
-        _text(canvas, box, value(widget, fields, "lines", []), widget.get("at"))
+        lines = value(widget, fields, "lines", None)
+        if lines is not None:
+            _text(canvas, box, lines, widget.get("at"))
+        else:
+            _words(canvas, box, str(value(widget, fields, "text", "")),
+                   _size(widget), widget.get("align", "center"))
     elif kind == "picture":
         _picture(canvas, box, value(widget, fields, "bits", b""))
+    elif kind == "number":
+        _number(canvas, box, value(widget, fields, "value", ""), widget.get("unit", ""))
+    elif kind == "icon":
+        _icon(canvas, box, value(widget, fields, "name", ""), value(widget, fields, "bits", None))
+    elif kind == "bar":
+        _bar(canvas, box, value(widget, fields, "value", 0))
+    elif kind == "clock":
+        _clock(canvas, box, now_ms, value(widget, fields, "tz", 0))
+    elif kind == "spinner":
+        _spinner(canvas, box, now_ms)
 
 
 def key(widget, fields, now_ms, box):
@@ -56,7 +74,116 @@ def key(widget, fields, now_ms, box):
         if word == "ALLOW":
             return (word, now_ms // BLINK_MS)
         return (word,)
+    if kind == "clock":
+        stamp = _local(value(widget, fields, "tz", 0))
+        return (stamp[3], stamp[4], stamp[5] % 2)
+    if kind == "spinner":
+        return now_ms // SPIN_MS
     return None
+
+
+def _size(widget):
+    return 2 if widget.get("size") == 2 else 1
+
+
+def wrap(text, per_line, at_most):
+    """Words into lines of ``per_line`` letters; a word too long is cut."""
+    lines, line = [], ""
+    for word in font.plain(text).split():
+        while len(word) > per_line:
+            if line:
+                lines.append(line)
+                line = ""
+            lines.append(word[:per_line])
+            word = word[per_line:]
+        if line and len(line) + 1 + len(word) > per_line:
+            lines.append(line)
+            line = ""
+        line = line + " " + word if line else word
+    if line:
+        lines.append(line)
+    return lines[:at_most]
+
+
+def _words(canvas, box, text, size, align):
+    x, y, width, height = box
+    step = font.CELL * size
+    lines = wrap(text, max(width // step, 1), max((height + 2 * size) // (10 * size), 1))
+    top = y + max((height - len(lines) * 10 * size + 2 * size) // 2, 0)
+    for index, line in enumerate(lines):
+        left = x if align == "left" else x + max((width - len(line) * step) // 2, 0)
+        font.draw(canvas, line, left, top + index * 10 * size, size)
+
+
+def _number(canvas, box, number, unit):
+    x, y, width, height = box
+    text = str(number) + str(unit)
+    size = 2 if font.width(text, 2) <= width and height >= 16 else 1
+    font.draw(canvas, text, x + max((width - font.width(text, size)) // 2, 0),
+              y + max((height - font.CELL * size) // 2, 0), size)
+
+
+def _icon(canvas, box, name, bits):
+    x, y, width, height = box
+    data = glyphs.ICONS.get(name) if bits is None else bits
+    if not data:
+        return
+    side = ICON if bits is None else min(width, height)
+    left, top = x + max((width - side) // 2, 0), y + max((height - side) // 2, 0)
+    stride = (side + 7) // 8
+    for row in range(side):
+        for column in range(side):
+            byte = data[row * stride + column // 8] if row * stride + column // 8 < len(data) else 0
+            if byte & (0x80 >> (column % 8)):
+                canvas.pixel(left + column, top + row, 1)
+
+
+def _bar(canvas, box, percent):
+    x, y, width, height = box
+    try:
+        percent = max(0, min(int(percent), 100))
+    except (TypeError, ValueError):
+        percent = 0
+    tall = min(height, 8)
+    top = y + (height - tall) // 2
+    canvas.rect(x, top, width, tall, 1)
+    inner = (width - 4) * percent // 100
+    if inner > 0:
+        canvas.fill_rect(x + 2, top + 2, inner, tall - 4, 1)
+
+
+def _local(tz_minutes):
+    import time
+
+    try:
+        shift = int(tz_minutes) * 60
+    except (TypeError, ValueError):
+        shift = 0
+    return time.localtime(time.time() + shift)
+
+
+def _clock(canvas, box, now_ms, tz_minutes):
+    stamp = _local(tz_minutes)
+    colon = ":" if stamp[5] % 2 == 0 else " "
+    text = "%02d%s%02d" % (stamp[3], colon, stamp[4])
+    x, y, width, height = box
+    size = 2 if font.width(text, 2) <= width and height >= 16 else 1
+    font.draw(canvas, text, x + max((width - font.width(text, size)) // 2, 0),
+              y + max((height - font.CELL * size) // 2, 0), size)
+
+
+def _spinner(canvas, box, now_ms):
+    x, y, width, height = box
+    cx, cy = x + width // 2, y + height // 2
+    radius = max(min(width, height) // 2 - 3, 3)
+    lit = (now_ms // SPIN_MS) % 8
+    # Eight dots around a circle; the lit one and its tail are larger.
+    points = ((0, -10), (7, -7), (10, 0), (7, 7), (0, 10), (-7, 7), (-10, 0), (-7, -7))
+    for index, (dx, dy) in enumerate(points):
+        px, py = cx + dx * radius // 10, cy + dy * radius // 10
+        near = (lit - index) % 8
+        side = 3 if near == 0 else 2 if near == 1 else 1
+        canvas.fill_rect(px - side // 2, py - side // 2, side, side, 1)
 
 
 def _text(canvas, box, lines, at=None):
