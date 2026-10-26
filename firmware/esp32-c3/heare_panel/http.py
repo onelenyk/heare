@@ -64,7 +64,12 @@ def read_head(sock) -> tuple[int, dict[str, str]]:
         if raw.endswith(b"\r\n\r\n"):
             break
 
-    head = bytes(raw[: -len(b"\r\n\r\n")]).decode("latin-1")
+    # MicroPython knows only UTF-8 ("latin-1" raises LookupError on the
+    # board); header bytes are ASCII, so UTF-8 reads them the same.
+    try:
+        head = bytes(raw[: -len(b"\r\n\r\n")]).decode("utf-8")
+    except UnicodeError:
+        raise HttpError("response head is not ASCII")
     lines = head.split("\r\n")
     parts = lines[0].split(" ", 2)
     if len(parts) < 2 or not parts[0].startswith("HTTP/") or not parts[1].isdigit():

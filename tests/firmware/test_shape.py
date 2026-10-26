@@ -170,6 +170,62 @@ def test_the_import_guard_rejects_modules_micropython_lacks(tmp_path):
     assert not any("local" in line or "heare_panel" in line for line in failures)
 
 
+def _foreign_codecs(root: Path) -> list[str]:
+    """``.decode``/``.encode`` calls naming a codec other than UTF-8."""
+    found = []
+    for path in _files(root):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("decode", "encode")
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                continue
+            codec = node.args[0].value.lower().replace("-", "").replace("_", "")
+            if codec != "utf8":
+                found.append(f"{_relative(path, root)}:{node.lineno}: {node.args[0].value}")
+    return found
+
+
+def test_firmware_uses_only_the_codec_micropython_has():
+    """MicroPython 1.29 knows only UTF-8; any other codec is a LookupError
+    on the board that CPython tests never see (it broke every brain reply)."""
+    guilty = _foreign_codecs(_root())
+    assert not guilty, f"codecs MicroPython lacks: {guilty}"
+
+
+# Names CPython has and MicroPython 1.29 does not; each one broke the
+# panel on the board while every host test passed.
+MISSING_ON_BOARD = {"UnicodeDecodeError", "UnicodeEncodeError"}
+
+
+def _missing_names(root: Path) -> list[str]:
+    found = []
+    for path in _files(root):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Name) and node.id in MISSING_ON_BOARD:
+                found.append(f"{_relative(path, root)}:{node.lineno}: {node.id}")
+            # bytearray has no clear() on the board; lists and dicts do, so
+            # the guard looks only at the attribute buffers in this code use.
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "clear"
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr in ("_line", "_chunk", "_buffer", "_buf")
+            ):
+                found.append(f"{_relative(path, root)}:{node.lineno}: bytearray.clear")
+    return found
+
+
+def test_firmware_uses_no_names_micropython_lacks():
+    guilty = _missing_names(_root())
+    assert not guilty, f"MicroPython lacks: {guilty}"
+
+
 def test_every_firmware_file_compiles_with_cpython():
     root = _root()
     failures = []

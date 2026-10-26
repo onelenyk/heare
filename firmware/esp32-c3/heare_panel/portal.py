@@ -84,7 +84,7 @@ def parse_request(raw):
     if len(head) > MAX_HEAD:
         raise PortalError(f"request head is larger than {MAX_HEAD} bytes")
 
-    lines = head.decode("latin-1").split("\r\n")
+    lines = head.decode("utf-8").split("\r\n")
     parts = lines[0].split()
     if len(parts) != 3:
         raise PortalError("malformed request line")

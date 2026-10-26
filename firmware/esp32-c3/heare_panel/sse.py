@@ -53,23 +53,23 @@ class SSEParser:
             self._line.extend(piece)
             return
         # The line cannot be used, so stop keeping it and skip to its end.
-        self._line.clear()
+        self._line = bytearray()
         self._discarding = True
         self.dropped += 1
 
     def _end_line(self, events: list[dict]) -> None:
         if self._discarding:
             self._discarding = False
-            self._line.clear()
+            self._line = bytearray()
             self._data = []
             return
         raw = bytes(self._line)
-        self._line.clear()
+        self._line = bytearray()
         if raw.endswith(b"\r"):
             raw = raw[:-1]
         try:
             line = raw.decode("utf-8")
-        except UnicodeDecodeError:
+        except UnicodeError:  # MicroPython has no UnicodeDecodeError
             self.dropped += 1
             self._data = []
             return
