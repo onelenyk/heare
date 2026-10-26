@@ -327,6 +327,30 @@ def show_text(panel, lines, framebuf_module=None):
     )
 
 
+def show_picture(panel, bits, framebuf_module=None):
+    """What the hands drew: rows of the window, eight pixels a byte."""
+    if panel is None or not getattr(panel, "available", False):
+        return False
+    data, canvas = _canvas(panel, framebuf_module)
+    if canvas is None:
+        return False
+    width = panel.view_width
+    stride = width // 8
+    try:
+        canvas.fill(0)
+        for y in range(panel.view_height):
+            for column in range(stride):
+                byte = bits[y * stride + column]
+                if not byte:
+                    continue
+                for bit in range(8):
+                    if byte & (0x80 >> bit):
+                        canvas.pixel(column * 8 + bit, y, 1)
+    except (ValueError, AttributeError, IndexError):
+        return False
+    return _flush(panel, data)
+
+
 FACE_STATES = ("IDLE", "HEAR", "THINK", "SPEAK")
 
 
@@ -515,9 +539,17 @@ def run_normal(
         board.tick(now)
         # A permission always shows: the words the agent put up wait.
         text = board.text(now) if word != "ALLOW" else None
-        key = ("SHOW",) + tuple(text) if text else frame_key(word, panel, now)
+        picture = board.drawing(now) if word != "ALLOW" else None
+        if picture:
+            key = ("PICTURE", id(picture))
+        elif text:
+            key = ("SHOW",) + tuple(text)
+        else:
+            key = frame_key(word, panel, now)
         if key != last_key:
-            if text:
+            if picture:
+                show_picture(panel, picture)
+            elif text:
                 show_text(panel, text)
             else:
                 show_state(panel, word, now)

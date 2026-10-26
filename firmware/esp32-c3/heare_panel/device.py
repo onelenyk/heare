@@ -19,6 +19,9 @@ The pin factory is injected (``machine.Pin`` on the board, a fake in
 """
 
 LED_PIN = 8
+VIEW_W = 72
+VIEW_H = 40
+PICTURE_BYTES = VIEW_W * VIEW_H // 8
 FREE_PINS = (0, 1, 2, 3, 4, 7, 10, 20, 21)
 LINE_CHARS = 9
 MAX_LINES = 4
@@ -42,6 +45,15 @@ def skills():
          "about": "Світлодіод на платі: on, off або blink (блимає сам, доки не скажуть інакше)",
          "params": {"type": "object", "required": ["mode"], "properties": {
              "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
+        {"name": "image", "effect": "harmless",
+         "about": "Намалювати картинку на OLED 72×40, чорно-білу, на кілька секунд",
+         "params": {"type": "object", "required": ["svg"], "properties": {
+             "svg": {"type": "string", "description":
+                     "SVG з viewBox=\"0 0 72 40\": білим по чорному, товсті лінії (від 2), "
+                     "великі прості форми, без дрібного тексту й градієнтів"},
+             "seconds": {"type": "integer", "description": "1..60"}}},
+         # The board cannot draw an SVG: the hands turn it into its pixels.
+         "render": {"svg": {"to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bitmap"}}},
         {"name": "read_pins", "effect": "read",
          "about": "Рівні вільних пінів: 1 високий, 0 низький",
          "params": {"type": "object", "properties": {}}},
@@ -109,6 +121,7 @@ class Device:
         self._led = None
         self.led_mode = "off"
         self.shown = None  # (lines, until_ms)
+        self.picture = None  # (bits, until_ms): what the hands drew
 
     def apply(self, name, value, now_ms):
         """Do one act; False for a name or a value this panel does not know."""
@@ -124,6 +137,7 @@ class Device:
                 return False
             hold = max(1000, min(seconds * 1000, SHOW_MAX_MS))
             self.shown = (shown, now_ms + hold)
+            self.picture = None
             return True
         if name == "led":
             if value not in ("on", "off", "blink"):
@@ -147,6 +161,8 @@ class Device:
             text = latin(args.get("text") or "")
             done = self.apply("show", {"text": text, "seconds": args.get("seconds") or 10}, now_ms)
             return (True, "показано: " + " ".join(self.shown[0])) if done else (False, "нема що показати")
+        if name == "image":
+            return self._picture(args.get("bitmap"), args.get("seconds"), now_ms)
         if name == "light":
             done = self.apply("led", args.get("mode"), now_ms)
             return (True, "світло: " + self.led_mode) if done else (False, "on, off або blink")
@@ -160,6 +176,33 @@ class Device:
                 return False, "пін недоступний"
             return True, name + ": " + ("1" if on else "0")
         return False, "такого скіла немає"
+
+    def _picture(self, bitmap, seconds, now_ms):
+        import binascii
+
+        try:
+            bits = binascii.a2b_base64(bitmap or "")
+        except (ValueError, TypeError):
+            return False, "картинка не base64"
+        if len(bits) != PICTURE_BYTES:
+            return False, "картинка має бути " + str(VIEW_W) + "x" + str(VIEW_H)
+        try:
+            hold = int(seconds or 10) * 1000
+        except (TypeError, ValueError):
+            hold = 10_000
+        self.picture = (bits, now_ms + max(1000, min(hold, SHOW_MAX_MS)))
+        self.shown = None
+        return True, "картинку показано"
+
+    def drawing(self, now_ms):
+        """The picture to show now, or None once its time is up."""
+        picture = self.picture
+        if picture is None:
+            return None
+        if _after(now_ms, picture[1]):
+            self.picture = None
+            return None
+        return picture[0]
 
     def text(self, now_ms):
         """The lines to show now, or None once their time is up."""

@@ -30,6 +30,9 @@ MAX_ABOUT = 300
 MAX_PARAMS = 2048
 NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 CALL_S = 5.0
+# What the hands may be asked to turn a parameter into before a call.
+RENDER_FORMS = ("mono",)
+MAX_SIDE = 256
 
 
 def checked(raw: object) -> list[dict]:
@@ -54,8 +57,36 @@ def checked(raw: object) -> list[dict]:
             continue
         if name in {s["name"] for s in found}:
             continue
-        found.append({"name": name, "about": about.strip()[:MAX_ABOUT],
-                      "params": params, "effect": skill["effect"]})
+        kept = {"name": name, "about": about.strip()[:MAX_ABOUT],
+                "params": params, "effect": skill["effect"]}
+        render = _render(skill.get("render"), params)
+        if render is False:
+            continue
+        if render:
+            kept["render"] = render
+        found.append(kept)
+    return found
+
+
+def _render(raw: object, params: dict) -> dict | bool | None:
+    """What a skill asks the hands to turn its parameters into, checked for
+    form: a known form, a sane size, a parameter it has. False: refused."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return False
+    named = params.get("properties") or {}
+    found = {}
+    for param, spec in raw.items():
+        if param not in named or not isinstance(spec, dict) or spec.get("to") not in RENDER_FORMS:
+            return False
+        width, height = spec.get("width"), spec.get("height")
+        if not all(isinstance(n, int) and 1 <= n <= MAX_SIDE for n in (width, height)):
+            return False
+        target = spec.get("as") or param
+        if not isinstance(target, str) or not NAME.match(target):
+            return False
+        found[param] = {"to": spec["to"], "width": width, "height": height, "as": target}
     return found
 
 

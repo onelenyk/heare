@@ -36,6 +36,19 @@ def test_skills_of_a_wrong_form_are_dropped():
     assert skills.checked("show") == []
 
 
+def test_a_skill_may_ask_its_parameter_rendered_in_a_known_form_only():
+    image = {"name": "image", "about": "Картинка", "effect": "harmless",
+             "params": {"type": "object", "properties": {"svg": {"type": "string"}}}}
+    good = {**image, "render": {"svg": {"to": "mono", "width": 72, "height": 40, "as": "bitmap"}}}
+    assert skills.checked([good])[0]["render"]["svg"]["as"] == "bitmap"
+    for bad in ({"svg": {"to": "jpeg", "width": 72, "height": 40}},
+                {"svg": {"to": "mono", "width": 9999, "height": 40}},
+                {"photo": {"to": "mono", "width": 72, "height": 40}},
+                {"svg": {"to": "mono", "width": 72, "height": 40, "as": "Not A Name"}},
+                "mono"):
+        assert skills.checked([{**image, "render": bad}]) == []
+
+
 def test_a_new_world_changing_skill_is_a_new_trust(tmp_path):
     trust = skills.Trust(tmp_path / "part_skills.json")
     assert trust.same("oled@desk", [SHOW, PIN]) is True      # first time: kept

@@ -808,3 +808,50 @@ def test_the_light_and_the_pins_follow_the_brain(monkeypatch, tmp_path):
 
     assert made[(device.LED_PIN, "out")].level == 0  # lit: pulled low
     assert made[(3, "out")].level == 1
+
+
+def test_a_picture_is_drawn_and_a_permission_still_comes_first(monkeypatch, tmp_path):
+    import base64
+
+    drawn = []
+    monkeypatch.setattr(main, "show_picture", lambda panel, bits, fb=None: drawn.append(bits))
+    bits = base64.b64encode(bytes([0xFF]) + bytes(359)).decode()
+
+    _result, _link, _screens, _texts, _made = _acting(
+        monkeypatch, tmp_path, lambda link: link.on_call("image", {"bitmap": bits}))
+    assert drawn == [bytes([0xFF]) + bytes(359)]
+
+    drawn.clear()
+
+    def then(link):
+        link.on_call("image", {"bitmap": bits})
+        link.display = state.reduce(link.display, {"kind": "permission", "id": 3}, 0)
+
+    _result, _link, screens, _texts, _made = _acting(monkeypatch, tmp_path, then)
+    assert drawn == [] and screens[-1] == "ALLOW"
+
+
+class _Framebuf:
+    MONO_VLSB = 0
+
+    @staticmethod
+    def FrameBuffer(data, width, height, form):  # noqa: N802 - framebuf's own name
+        return object()
+
+
+def test_show_picture_lights_the_pixels_the_bits_say():
+    canvas = FakeCanvas(72, 40)
+
+    class Window(Panel):
+        def viewport(self, buffer):
+            return canvas
+
+        def flush(self, data):
+            return True
+
+    bits = bytearray(360)
+    bits[0] = 0x80          # (0, 0)
+    bits[9 * 39 + 8] = 0x01  # (71, 39)
+    assert main.show_picture(Window(), bytes(bits), framebuf_module=_Framebuf())
+    lit = [op for op in canvas.ops if op[0] == "pixel"]
+    assert [(op[1], op[2]) for op in lit] == [(0, 0), (71, 39)]

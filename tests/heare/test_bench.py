@@ -114,6 +114,21 @@ async def test_words_go_from_the_voice_through_the_hands_to_the_board(tmp_path):
         assert b.hand_model.asked[1][-1]["content"] == "показано: hello"
 
 
+async def test_an_svg_the_model_writes_reaches_the_board_as_its_pixels(tmp_path):
+    desk = sim.Board("desk")
+    heart = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 40">'
+             '<circle cx="36" cy="20" r="14" fill="white"/></svg>')
+    async with bench(tmp_path, desk) as b:
+        b.say("намалюй коло", Says(calls=(("desk__image", {"svg": heart}),)), "Намалював.")
+
+        await b.finished()
+
+        assert len(desk.picture) == 360
+        assert desk.picture[20 * 9 + 4] & 0x08          # (36, 20): lit
+        assert not desk.picture[0]                       # the corner: dark
+        assert b.hand_model.asked[1][-1]["content"] == "картинку показано"
+
+
 async def test_a_world_changing_skill_waits_for_a_yes(tmp_path):
     desk = sim.Board("desk")
     async with bench(tmp_path, desk) as b:

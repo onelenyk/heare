@@ -31,7 +31,7 @@ from typing import AsyncIterator, Protocol
 import httpx
 
 from heare import hand as hand_life
-from heare import layout, logs, part, talk
+from heare import layout, logs, part, pixels, talk
 from heare.config import Settings
 from heare.core.forms import Model
 
@@ -143,6 +143,11 @@ class NativeHand:
             what = f"{tool.skill['about']} — {tool.name} {json.dumps(args, ensure_ascii=False)}"
             if not await desk.permit(what, "judge", what):
                 return "Не роблю: дозволу немає."
+        try:
+            args = _rendered(tool.skill, args)
+        except pixels.Unfit as unfit:
+            # Said to the model, which may draw it again within its steps.
+            return f"Не вийшло: {unfit}"
         answer = await self._devices.call(pid, tool.skill["name"], args)
         result = answer.get("result")
         said = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
@@ -165,6 +170,15 @@ def _handed(call: dict) -> str:
         except ValueError:
             return ""
     return str(args.get("task") or "").strip() if isinstance(args, dict) else ""
+
+
+def _rendered(skill: dict, args: dict) -> dict:
+    """The arguments as the part takes them: what it asked rendered, rendered."""
+    found = dict(args)
+    for name, spec in (skill.get("render") or {}).items():
+        if name in found:
+            found[spec.get("as") or name] = pixels.render(str(found.pop(name)), spec)
+    return found
 
 
 def catalog(skilled: dict[str, dict]) -> dict[str, Tool]:

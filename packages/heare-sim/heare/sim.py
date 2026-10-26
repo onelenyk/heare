@@ -37,6 +37,10 @@ def panel_skills() -> list[dict]:
         {"name": "light", "about": "Світлодіод: on, off або blink (блимає сам)",
          "effect": "harmless", "params": {"type": "object", "required": ["mode"], "properties": {
              "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
+        {"name": "image", "about": "Намалювати картинку на OLED 72×40",
+         "effect": "harmless", "params": {"type": "object", "required": ["svg"], "properties": {
+             "svg": {"type": "string"}, "seconds": {"type": "integer"}}},
+         "render": {"svg": {"to": "mono", "width": 72, "height": 40, "as": "bitmap"}}},
         {"name": "read_pins", "about": "Рівні вільних пінів: 1 високий, 0 низький",
          "effect": "read", "params": {"type": "object", "properties": {}}},
     ]
@@ -65,6 +69,7 @@ class Board:
     temperature: float = 21.5
     done: list[tuple[str, object]] = field(default_factory=list)
     shown: str = ""
+    picture: bytes = b""
     led: str = "off"
     pins: dict[str, int] = field(default_factory=dict)
     let_in: asyncio.Event = field(default_factory=asyncio.Event)
@@ -97,6 +102,13 @@ class Board:
         elif name == "light" and args.get("mode") in ("on", "off", "blink"):
             self.led = str(args["mode"])
             result = f"світло: {self.led}"
+        elif name == "image" and args.get("bitmap"):
+            import base64
+
+            self.picture = base64.b64decode(str(args["bitmap"]))
+            if len(self.picture) != 360:
+                return False, "картинка має бути 72x40"
+            result = "картинку показано"
         elif name == "read_pins":
             return True, self.levels()
         elif name == "temperature":
