@@ -11,6 +11,7 @@ dependencies = [
     "heare-voice",
     "heare-cli-hands",
     "heare-native-hands",
+    "heare-sim",
     "heare-chat",
     "heare-brain",
     "heare-memory",
@@ -37,6 +38,7 @@ heare-sources = { workspace = true }
 heare-voice = { workspace = true }
 heare-cli-hands = { workspace = true }
 heare-native-hands = { workspace = true }
+heare-sim = { workspace = true }
 heare-chat = { workspace = true }
 heare-brain = { workspace = true }
 heare-memory = { workspace = true }

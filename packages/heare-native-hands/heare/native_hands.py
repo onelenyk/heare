@@ -376,13 +376,15 @@ def latin(text: str) -> str:
     return "".join(out)
 
 
-async def run() -> int:
-    settings = Settings()
-    host = socket.gethostname()
+async def run(settings: Settings | None = None, model: Model | None = None,
+              host: str | None = None) -> int:
+    """The part's life; a bench hands in its own brain, model and host."""
+    settings = settings or Settings()
+    host = host or socket.gethostname()
     async with httpx.AsyncClient(timeout=None) as client:
 
         async def work(wire: part.Wire) -> None:
-            hand = NativeHand(Chat(settings, client), Parts(wire))
+            hand = NativeHand(model or Chat(settings, client), Parts(wire))
             wire.report({"work": "чекає"})
             while True:
                 if not await take(wire, hand):

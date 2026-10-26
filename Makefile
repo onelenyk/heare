@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist
+.PHONY: help brain chat voice keeper test bench panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -45,6 +45,11 @@ test:
 
 panel-test:
 	uv run pytest tests/firmware -q
+
+# The hands and the bodies on a bench: a real brain on a temporary home,
+# native hands and virtual boards over 127.0.0.1, scripted models.
+bench:
+	uv run pytest tests/heare/test_bench.py -v
 
 panel-smoke:
 	uvx mpremote run firmware/tools/probe.py

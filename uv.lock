@@ -20,6 +20,7 @@ members = [
     "heare-memory",
     "heare-native-hands",
     "heare-reach",
+    "heare-sim",
     "heare-sources",
     "heare-voice",
     "heare-workspace",
@@ -704,6 +705,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "heare-sim"
+version = "0.2.0"
+source = { editable = "packages/heare-sim" }
+dependencies = [
+    { name = "heare-core" },
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "heare-core", editable = "packages/heare-core" },
+    { name = "httpx", specifier = ">=0.27.0" },
+]
+
+[[package]]
 name = "heare-sources"
 version = "0.2.0"
 source = { editable = "packages/heare-sources" }
@@ -753,6 +769,7 @@ dependencies = [
     { name = "heare-memory" },
     { name = "heare-native-hands" },
     { name = "heare-reach" },
+    { name = "heare-sim" },
     { name = "heare-sources" },
     { name = "heare-voice" },
 ]
@@ -777,6 +794,7 @@ requires-dist = [
     { name = "heare-memory", editable = "packages/heare-memory" },
     { name = "heare-native-hands", editable = "packages/heare-native-hands" },
     { name = "heare-reach", editable = "packages/heare-reach" },
+    { name = "heare-sim", editable = "packages/heare-sim" },
     { name = "heare-sources", editable = "packages/heare-sources" },
     { name = "heare-voice", editable = "packages/heare-voice" },
 ]
