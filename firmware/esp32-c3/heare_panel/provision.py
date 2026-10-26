@@ -21,6 +21,7 @@ the pair code or a token.
 import os
 
 from heare_panel import config as schema
+from heare_panel import journal
 from heare_panel import link as link_module
 from heare_panel import net, portal
 from heare_panel import store as storage
@@ -47,7 +48,7 @@ class Provisioner:
     with later steps; this transaction needs no time of its own.
     """
 
-    def __init__(self, store, sta, link_factory, clock=None, out=print) -> None:
+    def __init__(self, store, sta, link_factory, clock=None, out=journal.say) -> None:
         self.store = store
         self.sta = sta
         self.link_factory = link_factory

@@ -20,6 +20,7 @@ except ImportError:
     socket = None
 
 from heare_panel import portal
+from heare_panel import journal
 
 PORT = 80
 READ_TIMEOUT_S = 2
@@ -37,7 +38,7 @@ _MESSAGES = {
 class PairPage:
     """The form, its screen code and what a successful pairing returned."""
 
-    def __init__(self, handler, code, defaults=None, out=print):
+    def __init__(self, handler, code, defaults=None, out=journal.say):
         self.handler = handler
         self.code = code
         self.defaults = dict(defaults or {})

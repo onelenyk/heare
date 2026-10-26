@@ -24,6 +24,7 @@ import json
 import random
 
 from heare_panel import clock
+from heare_panel import journal
 
 try:
     import bluetooth
@@ -132,7 +133,7 @@ class BleSetup:
         window_ms=DEFAULT_WINDOW_MS,
         status_provider=None,
         scan_provider=None,
-        out=print,
+        out=journal.say,
         one_connection=True,
         release_wifi=None,
         after_failed_save=None,
