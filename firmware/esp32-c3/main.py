@@ -34,6 +34,9 @@ NVS_NAMESPACE = "heare"
 KEY_PART_TOKEN = "part_token"
 KEY_BOOT_COUNT = "boot_count"
 CONFIG_PATH = "/config.json"
+# A failed Bluetooth save reboots and comes back with the same code and its
+# result; this file carries both across the reset and is read once.
+RETRY_PATH = "/setup_retry.json"
 
 BOOT_LIMIT = 3
 WDT_MS = 30_000
@@ -179,6 +182,37 @@ def board_tag():
         return "".join("{:02x}".format(byte) for byte in mac)[-4:]
     except (TypeError, ValueError):
         return "0000"
+
+
+def _take_retry(path=RETRY_PATH):
+    """The code and result a failed save left for this boot, once."""
+    import json
+    import os
+
+    try:
+        with open(path) as handle:
+            data = json.loads(handle.read())
+    except (OSError, ValueError):
+        return None, None
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    code = data.get("code") if isinstance(data, dict) else None
+    result = data.get("result") if isinstance(data, dict) else None
+    if not (isinstance(code, str) and len(code) == 4 and code.isdigit()):
+        return None, None
+    return code, result if isinstance(result, dict) else None
+
+
+def _keep_retry(code, result, path=RETRY_PATH):
+    import json
+
+    try:
+        with open(path, "w") as handle:
+            handle.write(json.dumps({"code": code, "result": result}))
+    except OSError:
+        pass
 
 
 def setup_name(tag=None):
@@ -620,7 +654,15 @@ def run_setup(
     """
     sleep = sleep or _sleep
     name = setup_name(tag)
+    carried = None
+    if code is None:
+        code, carried = _take_retry()
     code = code or ble_setup.make_code()
+
+    def after_failed_save(result):
+        _keep_retry(code, result)
+        out("save failed; rebooting to report it")
+        _reboot(reset)
 
     if provisioner is None:
         handler = _not_ready
@@ -648,6 +690,9 @@ def run_setup(
         status_provider=status_provider,
         scan_provider=scan_provider,
         out=out,
+        release_wifi=getattr(sta, "release", None),
+        after_failed_save=after_failed_save,
+        carried_result=carried,
     )
 
     gc.collect()

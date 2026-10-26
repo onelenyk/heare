@@ -1,6 +1,6 @@
 """The provisioning transaction, independent of the transport that asks.
 
-BLE, a captive portal or a serial REPL all want the same sequence: merge the
+Bluetooth, the pairing page or a serial REPL all want the same sequence: merge the
 form into the stored config, join Wi-Fi, and only then write the config; pair
 with a one-time brain code and let ``link`` keep the part token. Keeping that
 order in one place is what makes a wrong Wi-Fi password harmless: nothing is
@@ -101,9 +101,11 @@ class Provisioner:
         if not isinstance(saved, dict):
             saved = candidate
         self.ip = str(ip)
-        if "brain" not in saved:
+        if "brain" not in saved or "pair_code" not in form:
             # Bluetooth setup stops at Wi-Fi; the brain comes from the page
-            # the panel serves once it is on the network.
+            # the panel serves once it is on the network. A code kept in the
+            # config from an earlier pairing is spent: only a code sent with
+            # this save is ever redeemed.
             self.error = ""
             self.out(f"save ok ip={self.ip}")
             return {"ok": True, "ip": self.ip, "pid": ""}

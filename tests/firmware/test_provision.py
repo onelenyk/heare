@@ -485,3 +485,17 @@ def test_a_wifi_only_save_joins_and_stops_before_pairing(tmp_path):
     assert fixture.sta.calls == [("connect", "home", "secret123")]
     assert fixture.factory.links == []
     assert set(fixture.store.load_config()) == {"version", "wifi"}
+
+
+def test_a_wifi_resave_never_redeems_the_code_left_in_the_config(tmp_path):
+    fixture = Fixture(tmp_path)
+    assert fixture.provisioner.handle(_save())["ok"] is True
+    links_before = len(fixture.factory.links)
+
+    result = fixture.provisioner.handle(
+        {"cmd": "save", "ssid_manual": "home", "password": "secret123"}
+    )
+
+    assert result["ok"] is True
+    assert len(fixture.factory.links) == links_before
+    assert "brain" in fixture.store.load_config()

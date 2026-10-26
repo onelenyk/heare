@@ -134,6 +134,9 @@ class BleSetup:
         scan_provider=None,
         out=print,
         one_connection=True,
+        release_wifi=None,
+        after_failed_save=None,
+        carried_result=None,
     ):
         self.name = _text(name)
         self.handler = handler
@@ -145,6 +148,15 @@ class BleSetup:
         self.scan_provider = scan_provider
         self.out = out or print
         self.one_connection = bool(one_connection)
+        # Called before BLE comes back after a failed save: the station that
+        # just tried to join holds the memory the BLE controller needs.
+        self.release_wifi = release_wifi
+        # Bringing BLE up a second time in one boot proved unreliable on the
+        # board (the next save's writes time out). With this hook the panel
+        # instead reboots, same code, and publishes the failed result from
+        # ``carried_result`` on the fresh stack, where the page re-reads it.
+        self.after_failed_save = after_failed_save
+        self.carried_result = carried_result
 
         self.ble = None
         self.handles = None
@@ -180,6 +192,8 @@ class BleSetup:
         self._reset_chunk()
         self._start_ms = clock.now_ms()
         self._publish_status()
+        if self.carried_result is not None:
+            self._publish_result(self.carried_result)
         self._advertise()
         self.out("ble up name=" + self.name)
         self.out("code=" + self.code)
@@ -241,6 +255,11 @@ class BleSetup:
         If the stack cannot come back, setup ends and the panel reboots
         into a fresh window instead of advertising nothing.
         """
+        if self.release_wifi is not None:
+            try:
+                self.release_wifi()
+            except Exception as error:  # noqa: BLE001 - BLE coming back matters more
+                self.out("wifi release failed " + type(error).__name__)
         try:
             self._bring_up()
         except (OSError, ValueError, MemoryError) as error:
@@ -436,6 +455,9 @@ class BleSetup:
         result = self._dispatch(command, identifier)
         if result["ok"]:
             self.stop()
+            return
+        if self.after_failed_save is not None:
+            self.after_failed_save(result)
             return
         if self._radio_on():
             self._publish_result(result)

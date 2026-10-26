@@ -62,27 +62,12 @@ def _wifi(storage):
     print(f"wifi up ip={ip}")
 
 
-def _ap():
-    ap = net.Ap(password="heare123")
-    try:
-        ssid = ap.start()
-        print(
-            f"ap up ssid={ssid} security=wpa2 channel=6 max_clients=2"
-            f" password_len={len(ap.password)}"
-        )
-        _ms(8000)
-    finally:
-        ap.stop()
-        print(f"ap down ssid={ap.ssid}")
-
-
 def main():
     uname = os.uname()
     print(f"task11 board={uname.sysname} mpy={uname.release} free={gc.mem_free()}")
     _clock()
     storage = _nvs()
     _wifi(storage)
-    _ap()
     print(f"task11 done free={gc.mem_free()}")
 
 

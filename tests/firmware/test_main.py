@@ -189,7 +189,13 @@ class BleFactory:
         scan_provider=None,
         out=print,
         one_connection=True,
+        release_wifi=None,
+        after_failed_save=None,
+        carried_result=None,
     ):
+        self.release_wifi = release_wifi
+        self.after_failed_save = after_failed_save
+        self.carried_result = carried_result
         self.calls.append(
             {
                 "name": name,
@@ -694,3 +700,11 @@ def test_the_face_redraws_only_when_its_frame_changes():
     assert main.frame_key("IDLE", panel, 0) != main.frame_key("IDLE", panel, 5100)
     assert main.frame_key("SPEAK", panel, 0) != main.frame_key("SPEAK", panel, 500)
     assert main.frame_key("WIFI", panel, 0) == main.frame_key("WIFI", panel, 9000)
+
+
+def test_a_failed_save_survives_the_reboot_once(tmp_path):
+    path = str(tmp_path / "retry.json")
+    main._keep_retry("4821", {"id": 7, "ok": False, "error": "wifi"}, path=path)
+
+    assert main._take_retry(path) == ("4821", {"id": 7, "ok": False, "error": "wifi"})
+    assert main._take_retry(path) == (None, None)

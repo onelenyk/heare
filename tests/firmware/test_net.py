@@ -28,13 +28,6 @@ class NeverConnects(FakeWLAN):
         return super().status()
 
 
-class MacWLAN(FakeWLAN):
-    def config(self, *args, **kwargs):
-        if args == ("mac",):
-            return b"\x14\x63\x93\x90\x23\x64"
-        return super().config(*args, **kwargs)
-
-
 def _configs(radio):
     return [call[1] for call in radio.calls if call[0] == "config"]
 
@@ -178,111 +171,6 @@ def test_sta_without_a_radio_or_network_raises(monkeypatch):
 
     with pytest.raises(net.WifiError):
         net.Sta()
-
-
-def test_ap_start_configures_wpa2_and_stops():
-    radio = FakeWLAN()
-    ap = net.Ap(radio, "secret123", tag="a1b2c3d4")
-
-    assert ap.ssid == "heare-panel-a1b2"
-    assert ap.authmode == 3
-    assert ap.start() == "heare-panel-a1b2"
-    assert ("active", True) in radio.calls
-    assert {
-        "essid": "heare-panel-a1b2",
-        "password": "secret123",
-        "authmode": 3,
-        "channel": 6,
-        "max_clients": 2,
-    } in _configs(radio)
-    assert ap.started is True
-
-    ap.stop()
-
-    assert ("active", False) in radio.calls
-    assert ap.started is False
-
-
-def test_ap_uses_the_board_authmode_constant_when_network_is_present(monkeypatch):
-    monkeypatch.setattr(net, "network", SimpleNamespace(AUTH_WPA2_PSK=9))
-    radio = FakeWLAN()
-
-    ap = net.Ap(radio, "secret123", tag="a1b2")
-    ap.start()
-
-    assert ap.authmode == 9
-    assert _configs(radio)[0]["authmode"] == 9
-
-
-def test_ap_takes_the_last_four_of_a_full_mac():
-    ap = net.Ap(FakeWLAN(), "secret123", tag="14:63:93:90:23:64")
-
-    assert ap.ssid == "heare-panel-2364"
-
-
-def test_ap_derives_the_tag_from_the_radio_mac():
-    ap = net.Ap(MacWLAN(), "secret123")
-
-    assert ap.ssid == "heare-panel-2364"
-
-
-def test_ap_prefers_the_station_mac_over_the_ap_mac(monkeypatch):
-    ap_radio = FakeWLAN()
-
-    class Network:
-        STA_IF = 0
-        AP_IF = 1
-        AUTH_WPA2_PSK = 3
-
-        def WLAN(self, flag):
-            return MacWLAN() if flag == 0 else ap_radio
-
-    monkeypatch.setattr(net, "network", Network())
-
-    ap = net.Ap(ap_radio, "secret123")
-
-    assert ap.ssid == "heare-panel-2364"
-
-
-def test_ap_falls_back_to_zeroes_when_the_radio_has_no_mac():
-    ap = net.Ap(FakeWLAN(), "secret123")
-
-    assert ap.ssid == "heare-panel-0000"
-
-
-def test_ap_creates_its_radio_from_the_network_module(monkeypatch):
-    radio = FakeWLAN()
-
-    class Network:
-        AP_IF = 1
-        AUTH_WPA2_PSK = 3
-
-        def __init__(self):
-            self.flags = []
-
-        def WLAN(self, flag):
-            self.flags.append(flag)
-            return radio
-
-    network = Network()
-    monkeypatch.setattr(net, "network", network)
-
-    ap = net.Ap(password="secret123", tag="a1b2")
-
-    assert network.flags == [1]
-    assert ap.radio is radio
-
-
-@pytest.mark.parametrize("password", ["", "short12", "1234567890123", None, 12345678])
-def test_ap_refuses_a_password_outside_the_wpa2_window(password):
-    with pytest.raises(ValueError):
-        net.Ap(FakeWLAN(), password, tag="a1b2")
-
-
-@pytest.mark.parametrize("tag", ["", "abc", "zzzz", "a1b2-"])
-def test_ap_refuses_a_tag_that_is_not_hex(tag):
-    with pytest.raises(ValueError):
-        net.Ap(FakeWLAN(), "secret123", tag=tag)
 
 
 class MissesTheApOnce(FakeWLAN):

@@ -1,7 +1,7 @@
 """The panel's configuration: how it joins a network and finds its brain.
 
 Pure and small enough for the board: one import (``json``), plain dicts,
-no dataclasses. Every value that arrives from the captive-portal form is
+no dataclasses. Every value that arrives from a setup form is
 untrusted text, so it passes through ``validate`` before it is stored or
 used. The Wi-Fi password and the one-time pair code are secrets: they never
 appear in an error message, in ``public_view``, or in ``repr``.
@@ -235,7 +235,7 @@ def dumps(config):
 
 
 def merge(base, form):
-    """Overlay the captive-portal form on a config and validate the result.
+    """Overlay a setup form on a config and validate the result.
 
     The form speaks flat names: ``ssid``, ``password``, ``brain_host``,
     ``brain_port``, ``name`` and ``pair_code``. Unknown form keys are

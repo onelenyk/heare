@@ -1,13 +1,9 @@
-"""The panel's radio: join a network, scan, and host the setup AP.
+"""The panel's radio: join a network and scan.
 
 ``network`` is optional and the radio is injected, so the same adapter runs
 against ``FakeWLAN`` on a laptop and the real WLAN on the board. The connect
 loop polls instead of blocking, which keeps the 15-second default inside the
 board's watchdog budget.
-
-The setup AP is never open: it always carries a WPA2 password of 8-12
-characters, a fixed channel and two client slots, because it exists only long
-enough for one phone to open the portal.
 """
 
 try:
@@ -30,12 +26,6 @@ TX_POWER_DBM = 8.5
 # The panel answers as heare-panel.local (MicroPython's built-in mDNS uses
 # this name); it must be set before the station interface comes up.
 HOSTNAME = "heare-panel"
-AP_PREFIX = "heare-panel-"
-AP_CHANNEL = 6
-AP_MAX_CLIENTS = 2
-AP_PASSWORD_MIN = 8
-AP_PASSWORD_MAX = 12
-HEX = "0123456789abcdef"
 
 
 class WifiError(Exception):
@@ -94,35 +84,6 @@ def _decode(value):
         return bytes(value).decode("utf-8", "replace")
     except (TypeError, ValueError):
         return ""
-
-
-def _mac_hex(radio):
-    mac = None
-    if network is not None:
-        try:
-            mac = network.WLAN(_constant("STA_IF", 0)).config("mac")
-        except (AttributeError, OSError, ValueError):
-            mac = None
-    if not mac:
-        try:
-            mac = radio.config("mac")
-        except (AttributeError, OSError, ValueError):
-            return "0000"
-    if not mac:
-        return "0000"
-    return "".join(f"{byte:02x}" for byte in mac)
-
-
-def _tag(tag, radio):
-    if tag is None:
-        tag = _mac_hex(radio)
-    compact = str(tag).lower().replace(":", "")
-    if len(compact) < 4:
-        raise ValueError("AP tag must contain at least 4 hex digits")
-    for char in compact:
-        if char not in HEX:
-            raise ValueError("AP tag must contain at least 4 hex digits")
-    return compact[:4] if len(compact) <= 8 else compact[-4:]
 
 
 class Sta:
@@ -208,6 +169,8 @@ class Sta:
         hidden network); both are decoded with replacement and kept, because
         dropping one would hide a network the person may need to pick.
         """
+        # A failed save turns the station off to give BLE its memory back.
+        _active(self.radio, True)
         found = []
         for entry in self.radio.scan():
             ssid, _bssid, _channel, rssi, auth, hidden = entry
@@ -224,32 +187,12 @@ class Sta:
     def disconnect(self):
         self.radio.disconnect()
 
-
-class Ap:
-    def __init__(self, radio=None, password="", tag=None):
-        if (
-            not isinstance(password, str)
-            or not AP_PASSWORD_MIN <= len(password) <= AP_PASSWORD_MAX
-        ):
-            raise ValueError("AP password must be 8-12 characters")
-        self.radio = radio if radio is not None else _interface("AP_IF", 1)
-        self.password = password
-        self.ssid = AP_PREFIX + _tag(tag, self.radio)
-        self.authmode = _constant("AUTH_WPA2_PSK", 3)
-        self.started = False
-
-    def start(self):
-        _active(self.radio, True)
-        self.radio.config(
-            essid=self.ssid,
-            password=self.password,
-            authmode=self.authmode,
-            channel=AP_CHANNEL,
-            max_clients=AP_MAX_CLIENTS,
-        )
-        self.started = True
-        return self.ssid
-
-    def stop(self):
+    def release(self):
+        """Stop the station: its buffers go back to the heap."""
+        try:
+            self.radio.disconnect()
+        except (AttributeError, OSError):
+            pass
         _active(self.radio, False)
-        self.started = False
+
+

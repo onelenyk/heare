@@ -646,3 +646,45 @@ def test_a_failed_save_brings_ble_back_with_the_result(bluetooth):
     assert setup.running is True
     assert setup.connected is False
     assert _result(bluetooth, setup) == {"id": 7, "ok": False, "error": "wifi"}
+
+
+def test_a_failed_save_releases_wifi_before_ble_comes_back(bluetooth):
+    order = []
+
+    def handler(command):
+        order.append("save")
+        return {"id": command.get("id"), "ok": False, "error": "wifi"}
+
+    setup, _calls, _logs = _start(
+        bluetooth, handler=handler, release_wifi=lambda: order.append("release")
+    )
+    _auth(bluetooth, setup)
+
+    _frame(bluetooth, setup, {"id": 7, "cmd": "save", "ssid": "home"})
+
+    assert order == ["save", "release"]
+    assert setup.running is True
+
+
+def test_a_failed_save_hands_off_to_a_reboot_instead_of_a_second_bring_up(bluetooth):
+    handed = []
+
+    def handler(command):
+        return {"id": command.get("id"), "ok": False, "error": "wifi"}
+
+    setup, _calls, _logs = _start(
+        bluetooth, handler=handler, after_failed_save=handed.append
+    )
+    _auth(bluetooth, setup)
+
+    _frame(bluetooth, setup, {"id": 7, "cmd": "save", "ssid": "home"})
+
+    assert handed == [{"id": 7, "ok": False, "error": "wifi"}]
+
+
+def test_the_carried_result_is_readable_as_soon_as_ble_is_up(bluetooth):
+    carried = {"id": 7, "ok": False, "error": "wifi"}
+
+    setup, _calls, _logs = _start(bluetooth, carried_result=carried)
+
+    assert _result(bluetooth, setup) == carried
