@@ -44,9 +44,9 @@ PARTS = {part.name: part for part in (
     Part("hands", "CLI hands", "агент діє в системі: код, файли, команди", "opencode",
          ("executor",), "агент у терміналі: код, файли, команди, пошук в інтернеті",
          module="cli_hands"),
-    Part("native-hands", "Native hands", "швидкі дії з тілами: панель, світло, піни",
+    Part("native-hands", "Native hands", "швидкі дії з тілами: OLED, світло, піни",
          "native-hands", ("executor",),
-         "швидкі прості дії з тілами heare: панель на столі, світло, піни",
+         "плата heare на столі з OLED-екраном: слова на OLED, світло, піни",
          module="native_hands"),
 )}
 
