@@ -25,6 +25,8 @@ AGENT_LAYERS = {"flash": "flash", "pin": "pinned", "idle": "idle"}
 MAX_WIDGETS = 8
 MAX_FIELDS = 16
 MAX_BITMAPS = 16
+MAX_FRAMES = 8
+COUNT_MS = 800
 _made = [0]
 
 
@@ -40,35 +42,59 @@ class Scene:
         self.spec = spec
         self.fields = dict(fields or {})
         self.version = 0
+        self.moving = {}
         # Two scenes of one name are still two pictures.
         _made[0] += 1
         self.serial = _made[0]
 
-    def update(self, fields):
+    def update(self, fields, now_ms=None):
         changed = False
         for name in fields:
-            if self.fields.get(name) != fields[name]:
+            old = self.fields.get(name)
+            if old != fields[name]:
+                if now_ms is not None and _number(old) and _number(fields[name]):
+                    # A number moves to its new value, it does not jump.
+                    self.moving[name] = (self.shown(now_ms).get(name, old), now_ms)
                 self.fields[name] = fields[name]
                 changed = True
         if changed:
             self.version += 1
         return changed
 
+    def shown(self, now_ms):
+        """The fields as seen now: a number that changed is on its way."""
+        if not self.moving:
+            return self.fields
+        found = dict(self.fields)
+        for name, (start, at) in list(self.moving.items()):
+            gone = _elapsed(at, now_ms)
+            if gone >= COUNT_MS or gone < 0:
+                del self.moving[name]
+                continue
+            end = self.fields[name]
+            value = start + (end - start) * gone / COUNT_MS
+            found[name] = int(round(value)) if isinstance(end, int) else round(value, 1)
+        return found
+
     def placed(self, width, height):
         return layout.boxes(self.spec, 0, 0, width, height)
 
     def key(self, width, height, now_ms):
+        fields = self.shown(now_ms)
         found = [self.name, self.serial, self.version]
+        if self.moving:
+            found.append(tuple(sorted((k, fields[k]) for k in self.moving)))
         for box, widget in self.placed(width, height):
-            found.append(widgets.key(widget, self.fields, now_ms, box))
+            found.append(widgets.key(widget, fields, now_ms, box))
         return tuple(found)
 
     def draw(self, canvas, width, height, now_ms):
         placed = self.placed(width, height)
+        fields = self.shown(now_ms)
         if not any(widget.get("widget") in widgets.FILLS for _box, widget in placed):
             canvas.fill(0)
         for box, widget in placed:
-            widgets.draw(widget, canvas, box, self.fields, now_ms)
+            widgets.draw(widget, canvas, box, fields, now_ms)
 
 
 def check(spec, width=72, height=40):
@@ -97,13 +123,23 @@ def check(spec, width=72, height=40):
         if kind not in widgets.KINDS or kind == "state":
             raise SceneError("невідомий віджет: " + str(kind) + "; є " + ", ".join(
                 k for k in widgets.KINDS if k != "state"))
+        wanted = width * height // 8 if kind == "picture" else 32
         if "bits" in widget:
             widget["bits"] = _bits(widget["bits"])
-            wanted = width * height // 8 if kind == "picture" else 32
             if len(widget["bits"]) != wanted:
                 raise SceneError("картинка не того розміру: " + kind + " — "
                                  + str(wanted) + " байт")
             pictures += 1
+        if "frames" in widget:
+            frames = widget["frames"]
+            if not isinstance(frames, list) or not 2 <= len(frames) <= MAX_FRAMES:
+                raise SceneError("frames — від 2 до " + str(MAX_FRAMES) + " кадрів")
+            widget["frames"] = [_bits(frame) for frame in frames]
+            if any(len(frame) != wanted for frame in widget["frames"]):
+                raise SceneError("кадр не того розміру: " + kind + " — " + str(wanted) + " байт")
+            pictures += len(frames)
+        if widget.get("anim") not in (None, "blink", "scroll", "bounce"):
+            raise SceneError("anim: blink, scroll або bounce")
     if pictures > MAX_BITMAPS:
         raise SceneError("забагато картинок: до " + str(MAX_BITMAPS))
     return Scene(name, tidy, fields)
@@ -202,6 +238,14 @@ class Screen:
         """Draw what is seen; a Screen paints like a Scene."""
         _layer, scene = self.seen(now_ms)
         scene.draw(canvas, width, height, now_ms)
+
+
+def _number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _elapsed(start, now):
+    return ((now - start + 0x20000000) & 0x3FFFFFFF) - 0x20000000
 
 
 def _after(now_ms, until_ms):

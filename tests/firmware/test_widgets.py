@@ -115,3 +115,61 @@ def test_the_clock_shows_the_brain_s_local_time(monkeypatch):
     monkeypatch.setattr(widgets, "UTC_OFFSET_S", 2 * 3600)
     assert widgets.key({"widget": "clock"}, {}, 0, (0, 0, 72, 40))[:2] == (14, 34)
     assert widgets.key({"widget": "clock", "tz": 60}, {}, 0, (0, 0, 72, 40))[:2] == (13, 34)
+
+
+def test_a_number_moves_to_its_new_value_and_stops_there():
+    scene = screen.Scene("w", {"widget": "number", "bind": "t"}, {"t": 20})
+    scene.update({"t": 30}, now_ms=1000)
+    assert scene.shown(1000)["t"] == 20
+    assert 20 < scene.shown(1400)["t"] < 30
+    keys = {scene.key(72, 40, t) for t in (1000, 1200, 1400, 1600)}
+    assert len(keys) == 4  # every step of the way is a frame of its own
+    assert scene.shown(1800)["t"] == 30 and not scene.moving
+
+
+def test_blink_hides_the_widget_every_other_half_second():
+    on = _draw({"widget": "icon", "name": "heart", "anim": "blink"}, now=0)
+    off = _draw({"widget": "icon", "name": "heart", "anim": "blink"}, now=widgets.BLINK_MS)
+    assert on.count() > 0 and off.count() == 0
+
+
+def test_bounce_moves_the_widget_a_pixel_up_and_back():
+    still = _draw({"widget": "icon", "name": "heart", "anim": "bounce"}, now=0)
+    up = _draw({"widget": "icon", "name": "heart", "anim": "bounce"}, now=widgets.BOUNCE_MS)
+    top = lambda r: min(y for y, line in enumerate(r.lit) if any(line))  # noqa: E731
+    assert top(up) == top(still) - 1
+
+
+def test_long_text_scrolls_and_short_text_stands():
+    long = {"widget": "text", "text": "дуже довгий напис, що не влазить", "anim": "scroll"}
+    first, later = _draw(long, now=0), _draw(long, now=widgets.SCROLL_MS * 3)
+    assert first.lit != later.lit
+    short = {"widget": "text", "text": "ок", "anim": "scroll"}
+    assert _draw(short, now=0).lit == _draw(short, now=widgets.SCROLL_MS * 3).lit
+
+
+def test_frames_are_played_in_turn():
+    import base64
+
+    one, two = bytes([0xFF] * 2 + [0] * 30), bytes([0] * 30 + [0xFF] * 2)
+    spec = {"id": "f", "layout": {"widget": "icon", "every": 200,
+                                  "frames": [base64.b64encode(one).decode(),
+                                             base64.b64encode(two).decode()]}}
+    scene = screen.check(spec)
+    a, b = Raster(), Raster()
+    scene.draw(a, 72, 40, 0)
+    scene.draw(b, 72, 40, 200)
+    assert a.lit != b.lit and scene.key(72, 40, 0) != scene.key(72, 40, 200)
+    assert scene.key(72, 40, 0) == scene.key(72, 40, 400)
+
+
+def test_animations_out_of_bounds_are_refused():
+    import base64
+
+    frame = base64.b64encode(bytes(32)).decode()
+    for layout_, why in (({"widget": "icon", "frames": [frame]}, "frames"),
+                         ({"widget": "icon", "frames": [frame] * 9}, "frames"),
+                         ({"widget": "icon", "frames": [frame, "AAAA"]}, "кадр"),
+                         ({"widget": "text", "text": "x", "anim": "spin"}, "anim")):
+        with pytest.raises(screen.SceneError, match=why):
+            screen.check({"id": "x", "layout": layout_})

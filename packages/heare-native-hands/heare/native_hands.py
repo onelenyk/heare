@@ -200,7 +200,12 @@ def _deep(value: object, rule: dict) -> None:
         return
     where = rule.get("where") or {}
     if rule["key"] in value and all(value.get(k) == v for k, v in where.items()):
-        value[rule["as"]] = pixels.render(str(value.pop(rule["key"])), rule)
+        found = value.pop(rule["key"])
+        if isinstance(found, list):
+            # Frames: every SVG drawn alike, in order.
+            value[rule["as"]] = [pixels.render(str(frame), rule) for frame in found]
+            return
+        value[rule["as"]] = pixels.render(str(found), rule)
     for item in list(value.values()):
         _deep(item, rule)
 

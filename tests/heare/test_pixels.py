@@ -77,3 +77,15 @@ def test_deep_rules_render_an_icon_small_and_a_picture_whole():
     assert len(base64.b64decode(picture["bits"])) == 360
     assert text == {"widget": "text", "text": "svg"}
     assert "svg" in args["scene"]["layout"]["cols"][0]  # the model's own arguments untouched
+
+
+def test_frames_are_drawn_one_by_one_in_order():
+    rule = {"deep": True, "key": "frames", "where": {"widget": "icon"}, "to": "mono",
+            "width": 16, "height": 16, "as": "frames"}
+    small = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+             '<circle cx="8" cy="8" r="{}" fill="white"/></svg>')
+    args = {"scene": {"layout": {"widget": "icon", "frames": [small.format(3), small.format(7)]}}}
+    done = _rendered({"render": {"scene": [rule]}}, args)
+    frames = [base64.b64decode(f) for f in done["scene"]["layout"]["frames"]]
+    assert len(frames) == 2 and all(len(f) == 32 for f in frames)
+    assert sum(bin(b).count("1") for b in frames[0]) < sum(bin(b).count("1") for b in frames[1])

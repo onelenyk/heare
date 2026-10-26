@@ -22,6 +22,9 @@ FACE_STATES = ("IDLE", "HEAR", "THINK", "SPEAK")
 FILLS = ("state",)
 KINDS = ("state", "text", "picture", "number", "icon", "bar", "clock", "spinner")
 SPIN_MS = 125
+BOUNCE_MS = 300
+SCROLL_MS = 120
+FRAME_MS = 300
 ICON = 16
 
 
@@ -37,6 +40,16 @@ def _shows_face(word, box):
 
 
 def draw(widget, canvas, box, fields, now_ms):
+    anim = widget.get("anim")
+    if anim == "blink" and (now_ms // BLINK_MS) % 2:
+        return
+    if anim == "bounce" and (now_ms // BOUNCE_MS) % 2:
+        box = (box[0], box[1] - 1, box[2], box[3])
+    frames = widget.get("frames")
+    if frames:
+        # The frame of this moment stands in for the widget's one picture.
+        widget = dict(widget)
+        widget["bits"] = frames[_frame(widget, now_ms, len(frames))]
     kind = widget.get("widget")
     if kind == "state":
         word = value(widget, fields, "word", "BOOT")
@@ -44,6 +57,8 @@ def draw(widget, canvas, box, fields, now_ms):
             face.draw(word, canvas, now_ms)
         else:
             render.render(word, canvas, box[2], box[3], now_ms)
+    elif kind == "text" and anim == "scroll":
+        _scroll(canvas, box, str(value(widget, fields, "text", "")), now_ms)
     elif kind == "text":
         lines = value(widget, fields, "lines", None)
         if lines is not None:
@@ -66,6 +81,28 @@ def draw(widget, canvas, box, fields, now_ms):
 
 
 def key(widget, fields, now_ms, box):
+    found = _still(widget, fields, now_ms, box)
+    anim = widget.get("anim")
+    if anim == "blink":
+        found = (found, (now_ms // BLINK_MS) % 2)
+    elif anim == "bounce":
+        found = (found, (now_ms // BOUNCE_MS) % 2)
+    elif anim == "scroll":
+        found = (found, now_ms // SCROLL_MS)
+    if widget.get("frames"):
+        found = (found, _frame(widget, now_ms, len(widget["frames"])))
+    return found
+
+
+def _frame(widget, now_ms, count):
+    try:
+        every = max(80, min(int(widget.get("every") or FRAME_MS), 5000))
+    except (TypeError, ValueError):
+        every = FRAME_MS
+    return (now_ms // every) % count
+
+
+def _still(widget, fields, now_ms, box):
     kind = widget.get("widget")
     if kind == "state":
         word = value(widget, fields, "word", "BOOT")
@@ -126,6 +163,24 @@ def _words(canvas, box, text, size, align):
     for index, line in enumerate(lines):
         left = x if align == "left" else x + max((width - len(line) * step) // 2, 0)
         font.draw(canvas, line, left, top + index * 10 * size, size)
+
+
+def _scroll(canvas, box, text, now_ms):
+    """One line that runs from right to left, letter by letter in its box."""
+    x, y, width, height = box
+    text = font.plain(text)
+    if len(text) * font.CELL <= width:
+        font.draw(canvas, text, x + (width - len(text) * font.CELL) // 2,
+                  y + max((height - font.CELL) // 2, 0))
+        return
+    loop = text + "   "
+    shift = (now_ms // SCROLL_MS) * 2 % (len(loop) * font.CELL)
+    top = y + max((height - font.CELL) // 2, 0)
+    for index in range(len(loop) * 2):
+        left = x + index * font.CELL - shift
+        if left < x or left + font.CELL > x + width:
+            continue
+        font.draw(canvas, loop[index % len(loop)], left, top)
 
 
 def _number(canvas, box, number, unit):

@@ -40,7 +40,9 @@ SCENE_HELP = (
     "rows:[..] stack, cols:[..] side by side, weights h/w 1-12, 8 widgets at most. "
     "KIND: text{text,size 1|2,align}, number{value,unit}, icon{name} or icon{svg 16x16}, "
     "picture{svg 72x40 white on black}, bar{value 0-100}, clock, spinner. "
-    "bind:'t' shows fields.t; update changes fields. Icons: sun cloud rain snow heart "
+    "bind:'t' shows fields.t; update changes fields, numbers move there smoothly. "
+    "Any widget: anim blink|scroll(text)|bounce. picture/icon: frames:[svg,..] 2-8, "
+    "every ms, plays them. Icons: sun cloud rain snow heart "
     "check cross bell clock lamp lock home battery wifi up down left right mic thermo "
     "drop star music."
 )
@@ -68,7 +70,11 @@ def skills():
              {"deep": True, "key": "svg", "where": {"widget": "icon"},
               "to": "mono", "width": 16, "height": 16, "as": "bits"},
              {"deep": True, "key": "svg", "where": {"widget": "picture"},
-              "to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bits"}]}},
+              "to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bits"},
+             {"deep": True, "key": "frames", "where": {"widget": "icon"},
+              "to": "mono", "width": 16, "height": 16, "as": "frames"},
+             {"deep": True, "key": "frames", "where": {"widget": "picture"},
+              "to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "frames"}]}},
         {"name": "update", "effect": "harmless", "about": "Change fields of a scene on the screen",
          "params": {"type": "object", "required": ["id", "fields"], "properties": {
              "id": {"type": "string"}, "fields": _OBJECT}}},
@@ -171,7 +177,7 @@ class Device:
                 return False, "такої сцени на екрані немає"
             if not isinstance(args.get("fields"), dict):
                 return False, "fields — об'єкт"
-            scene.update(args["fields"])
+            scene.update(args["fields"], now_ms)
             return True, "оновлено: " + scene.name
         if name == "clear":
             return self._clear(args)
