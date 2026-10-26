@@ -2,11 +2,11 @@
 
 macOS voice assistant: it listens, decides when to answer, and acts
 through an agent (opencode over ACP) without blocking the conversation.
-The app is eleven distributions under `packages/` sharing one `heare`
+The app is twelve distributions under `packages/` sharing one `heare`
 namespace; the old app that lived in `src/` was removed on
 18 October 2026 and its last commit is tagged `legacy-app`.
 
-## THE APP (`packages/`, eleven distributions)
+## THE APP (`packages/`, twelve distributions)
 
 One core and five kinds of part: **input, output, model, memory,
 executor** (`packages/heare-core/heare/core/forms.py`). A channel (voice, text) is an input,
@@ -74,7 +74,9 @@ model — and are excluded by default.
 | The door: HTTP, events, page, parts registry | `packages/heare-brain/heare/api/server.py`, `packages/heare-brain/heare/api/page.html` |
 | The canvas: what the model shows | `packages/heare-brain/heare/api/canvas.py` |
 | Hands: an agent over ACP | `packages/heare-cli-hands/heare/cli_hands.py`, `packages/heare-reach/heare/reach/` |
-| Native hands: quick acts on the parts, no agent | `packages/heare-native-hands/heare/native_hands.py`; the doors `/api/acts` in `server.py` |
+| Native hands: quick acts on the parts, no agent | `packages/heare-native-hands/heare/native_hands.py`; the hands' life `heare-core/heare/hand.py`; a model for parts `heare-core/heare/talk.py` |
+| Skills: what a part can do, calls with answers | `packages/heare-brain/heare/api/skills.py`; protocol §6; who gets the work `heare-brain/heare/model/route.py` |
+| A bench for hands and bodies | `make bench` (`tests/heare/test_bench.py`), virtual boards `packages/heare-sim/heare/sim.py`; live: `make eval-route` |
 | Hands' runner: which CLI, sign-in, models | `packages/heare-reach/heare/reach/runner.py` — the hands', never the brain's |
 | How a part lives: knock, key, stream, reports, outliving the brain | `packages/heare-core/heare/part.py` — `part.live(about, work)`; every part uses it |
 | Which parts the brain knows, trust, presence, who hears what | `packages/heare-brain/heare/api/registry.py` |
