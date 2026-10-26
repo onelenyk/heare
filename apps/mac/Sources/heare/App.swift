@@ -329,7 +329,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func about() {
         NSApp.activate(ignoringOtherApps: true)
         let text = NSMutableAttributedString(
-            string: "Голосова помічниця для мака.\n\nPolyForm Shield 1.0.0\n",
+            string: "Голосовий помічник для мака.\n\nPolyForm Shield 1.0.0\n",
             attributes: [.font: NSFont.systemFont(ofSize: 11),
                          .foregroundColor: NSColor.secondaryLabelColor])
         text.append(NSAttributedString(string: "github.com/onelenyk/heare", attributes: [
