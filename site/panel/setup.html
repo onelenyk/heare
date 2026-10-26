@@ -1,0 +1,1275 @@
+<!doctype html>
+<html lang="uk">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Налаштування панелі heare через Web Bluetooth: мережа, мозок, код пари.">
+<meta name="color-scheme" content="dark">
+<title>heare — панель · налаштування</title>
+<!--
+  Standalone Web Bluetooth setup page for the heare ESP32-C3 panel.
+  Hosted at https://onelenyk.github.io/heare/panel/setup.html (GitHub Pages).
+  It speaks only BLE: no brain route, no AP URL, no tokens, no storage.
+  The contract is in .sisyphus/plans/esp32-c3-panel.md (Task 20/21).
+-->
+<style>
+  :root {
+    --bg:#131217; --card:#1c1a21; --card-2:#242029; --line:#302c37;
+    --ink:#ece8e2; --soft:#96909e; --accent:#9d7cff; --accent-ink:#17141d;
+    --ok:#5fbf8f; --bad:#e58d8d; --warn:#e0b36a;
+    --sans:-apple-system,'Segoe UI',system-ui,sans-serif;
+    --mono:'SF Mono','Fira Code','Cascadia Code',ui-monospace,monospace;
+    --radius:16px;
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { color-scheme:dark; }
+  body {
+    min-height:100vh;
+    background:
+      radial-gradient(900px 460px at 52% -180px, rgba(157,124,255,.08), transparent 72%),
+      var(--bg);
+    color:var(--ink);
+    font:15px/1.6 var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection { background:rgba(157,124,255,.32); }
+  a { color:inherit; }
+  button, input, select { font:inherit; color:inherit; }
+  .wrap { max-width:820px; margin:0 auto; padding:64px 28px 48px; }
+
+  /* ── hero ── */
+
+  .hero { margin-bottom:48px; }
+  h1 {
+    font-size:clamp(48px, 9vw, 68px);
+    line-height:.95;
+    font-weight:640;
+    letter-spacing:-.05em;
+    margin:0 0 22px;
+  }
+  .brand-dot {
+    display:inline-block;
+    width:10px; height:10px;
+    margin-left:10px;
+    border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 0 5px rgba(157,124,255,.11);
+    vertical-align:super;
+  }
+  .lead {
+    max-width:640px;
+    font-size:clamp(19px, 2.7vw, 23px);
+    line-height:1.42;
+    letter-spacing:-.014em;
+    color:var(--ink);
+  }
+  .sub { margin-top:11px; max-width:620px; color:var(--soft); font-size:14.5px; }
+  .tag {
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    margin-top:18px;
+    padding:5px 10px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    color:var(--soft);
+    font:11px/1.4 var(--mono);
+    letter-spacing:.04em;
+  }
+  .tag::before {
+    content:"";
+    width:6px; height:6px;
+    border-radius:50%;
+    background:var(--accent);
+  }
+
+  /* ── sections ── */
+
+  .section { margin-top:38px; }
+  .sec-head { display:flex; align-items:baseline; gap:13px; margin-bottom:14px; }
+  .idx { font:11px/1 var(--mono); letter-spacing:.08em; color:var(--accent); }
+  h2 { font-size:18px; font-weight:600; letter-spacing:-.012em; }
+  .card {
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+  }
+
+  .hint { color:var(--soft); font:11.5px/1.55 var(--mono); }
+  .hint + .hint { margin-top:6px; }
+
+  /* ── connection ── */
+
+  .connect { padding:20px 22px; }
+  .connect-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:18px;
+    flex-wrap:wrap;
+  }
+  .connect-copy { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .device-name {
+    font:13px/1.4 var(--mono);
+    color:var(--ink);
+    overflow-wrap:anywhere;
+  }
+  .pill {
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font:11.5px/1.4 var(--mono);
+    color:var(--soft);
+  }
+  .pill .dot {
+    flex:none;
+    width:7px; height:7px;
+    border-radius:50%;
+    background:var(--soft);
+    transition:background .16s ease, box-shadow .16s ease;
+  }
+  .pill.ok { color:var(--ok); }
+  .pill.ok .dot { background:var(--ok); box-shadow:0 0 0 4px rgba(95,191,143,.1); }
+  .pill.bad { color:var(--bad); }
+  .pill.bad .dot { background:var(--bad); box-shadow:0 0 0 4px rgba(229,141,141,.1); }
+  .pill.busy { color:var(--accent); }
+  .pill.busy .dot { background:var(--accent); animation:pulse 1.1s ease-in-out infinite; }
+
+  .notice {
+    margin-top:14px;
+    padding:12px 14px;
+    border:1px solid rgba(224,179,106,.3);
+    border-radius:11px;
+    background:rgba(224,179,106,.055);
+    color:var(--warn);
+    font:12px/1.55 var(--mono);
+  }
+  .notice[hidden] { display:none; }
+  .connect .hint { margin-top:10px; }
+
+  /* ── forms ── */
+
+  .form { padding:22px; display:flex; flex-direction:column; gap:18px; }
+  .form-row { display:grid; grid-template-columns:minmax(0,1fr) 148px; gap:12px; }
+  .field { display:flex; flex-direction:column; gap:7px; min-width:0; }
+  .field > label {
+    font:11px/1.3 var(--mono);
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--soft);
+  }
+  input, select {
+    width:100%;
+    min-height:44px;
+    padding:10px 13px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--bg);
+    color:var(--ink);
+    transition:border-color .15s ease, background .15s ease;
+  }
+  input::placeholder { color:#6f6879; }
+  input:hover, select:hover { border-color:#443f4d; }
+  input:focus-visible, select:focus-visible {
+    outline:2px solid var(--accent);
+    outline-offset:2px;
+    border-color:transparent;
+  }
+  input:disabled, select:disabled { opacity:.5; cursor:not-allowed; }
+  select {
+    appearance:none;
+    padding-right:38px;
+    background-image:linear-gradient(45deg, transparent 50%, var(--soft) 50%),
+                     linear-gradient(135deg, var(--soft) 50%, transparent 50%);
+    background-position:calc(100% - 18px) 19px, calc(100% - 13px) 19px;
+    background-size:5px 5px, 5px 5px;
+    background-repeat:no-repeat;
+  }
+  .scan-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; }
+  .code-input {
+    font:20px/1.2 var(--mono);
+    letter-spacing:.38em;
+    text-indent:.38em;
+    max-width:180px;
+  }
+  .pair-input { font-family:var(--mono); letter-spacing:.14em; text-transform:uppercase; }
+  .name-prefix { color:var(--soft); font:11.5px/1.4 var(--mono); }
+  .inline-row { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+  .inline-row .field { flex:0 0 auto; }
+  .inline-row .hint { padding-bottom:12px; }
+
+  /* ── buttons ── */
+
+  .btn {
+    appearance:none;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:44px;
+    padding:0 18px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--card-2);
+    color:var(--ink);
+    font:12.5px/1 var(--mono);
+    cursor:pointer;
+    white-space:nowrap;
+    transition:filter .15s ease, transform .12s ease, border-color .15s ease, background .15s ease;
+  }
+  .btn:hover { border-color:var(--soft); }
+  .btn:active { transform:translateY(1px); }
+  .btn:focus-visible { outline:2px solid var(--ink); outline-offset:3px; }
+  .btn.primary {
+    border-color:transparent;
+    background:var(--accent);
+    color:var(--accent-ink);
+  }
+  .btn.primary:hover { filter:brightness(1.08); border-color:transparent; }
+  .btn.danger {
+    border-color:rgba(229,141,141,.34);
+    background:transparent;
+    color:var(--bad);
+  }
+  .btn.danger:hover { border-color:var(--bad); }
+  .btn.danger.armed {
+    border-color:transparent;
+    background:#7a2f2f;
+    color:#fff;
+  }
+  .btn.small { min-height:34px; padding:0 12px; font-size:11.5px; }
+  .btn.link {
+    min-height:auto;
+    padding:0;
+    border:0;
+    background:none;
+    color:var(--soft);
+    font:11.5px/1.4 var(--mono);
+    text-decoration:underline;
+    text-decoration-color:var(--line);
+    text-underline-offset:3px;
+  }
+  .btn.link:hover { color:var(--ink); text-decoration-color:var(--accent); }
+  .btn:disabled {
+    opacity:.42;
+    cursor:not-allowed;
+    filter:none;
+    transform:none;
+  }
+
+  /* ── actions ── */
+
+  .actions { padding:20px 22px; }
+  .action-row {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .action-row .hint { margin-left:auto; text-align:right; }
+  .message {
+    display:none;
+    margin-top:14px;
+    padding:11px 13px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    color:var(--soft);
+    background:var(--bg);
+    font:12.5px/1.55 var(--mono);
+    overflow-wrap:anywhere;
+  }
+  .message.show { display:block; }
+  .message.ok { border-color:rgba(95,191,143,.32); background:rgba(95,191,143,.06); color:var(--ok); }
+  .message.bad { border-color:rgba(229,141,141,.32); background:rgba(229,141,141,.06); color:var(--bad); }
+  .message.warn { border-color:rgba(224,179,106,.32); background:rgba(224,179,106,.06); color:var(--warn); }
+  .progress {
+    display:none;
+    align-items:center;
+    gap:9px;
+    margin-top:10px;
+    color:var(--soft);
+    font:11.5px/1.5 var(--mono);
+  }
+  .progress.show { display:flex; }
+  .progress::before {
+    content:"";
+    flex:none;
+    width:7px; height:7px;
+    border-radius:50%;
+    background:var(--accent);
+    animation:pulse 1.1s ease-in-out infinite;
+  }
+
+  /* ── status ── */
+
+  .sec-head .btn.link { margin-left:auto; }
+  .status { overflow:hidden; }
+  .status-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:0;
+  }
+  .status-cell {
+    padding:13px 21px;
+    border-top:1px solid var(--line);
+  }
+  .status-cell:nth-child(-n+2) { border-top:0; }
+  .status-cell:nth-child(odd) { border-right:1px solid var(--line); }
+  .status-cell.wide { grid-column:1 / -1; border-right:0; }
+  .status-cell dt {
+    font:10.5px/1.3 var(--mono);
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--soft);
+    margin-bottom:4px;
+  }
+  .status-cell dd {
+    margin:0;
+    font:12.5px/1.5 var(--mono);
+    color:var(--ink);
+    overflow-wrap:anywhere;
+  }
+  .status-cell dd.empty { color:var(--soft); }
+  .status-cell.bad dd { color:var(--bad); }
+
+  /* ── footer ── */
+
+  .footer {
+    display:flex;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+    margin-top:48px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    color:var(--soft);
+    font:11.5px/1.5 var(--mono);
+    letter-spacing:.02em;
+  }
+  .footer a { color:var(--soft); text-decoration:none; transition:color .15s ease; }
+  .footer a:hover { color:var(--ink); }
+  .footer .only-ble { color:var(--soft); }
+
+  .sr-only {
+    position:absolute;
+    width:1px; height:1px;
+    margin:-1px; padding:0; border:0;
+    clip:rect(0 0 0 0);
+    clip-path:inset(50%);
+    overflow:hidden;
+    white-space:nowrap;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity:1; }
+    50% { opacity:.35; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero, .section { animation:rise .58s cubic-bezier(.2,.7,.2,1) both; }
+    .hero { animation-delay:.04s; }
+    .section:nth-of-type(1) { animation-delay:.09s; }
+    .section:nth-of-type(2) { animation-delay:.13s; }
+    .section:nth-of-type(3) { animation-delay:.17s; }
+    .section:nth-of-type(4) { animation-delay:.21s; }
+    .section:nth-of-type(5) { animation-delay:.25s; }
+    .section:nth-of-type(6) { animation-delay:.29s; }
+    @keyframes rise {
+      from { opacity:0; transform:translateY(10px); }
+      to { opacity:1; transform:translateY(0); }
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pill.busy .dot, .progress::before { animation:none; }
+  }
+
+  @media (max-width:600px) {
+    .wrap { padding:44px 18px 36px; }
+    .hero { margin-bottom:38px; }
+    .section { margin-top:32px; }
+    .connect, .form, .actions { padding:18px; }
+    .connect-row { align-items:stretch; }
+    .connect-row .btn { width:100%; }
+    .form-row { grid-template-columns:1fr; }
+    .scan-row { grid-template-columns:1fr; }
+    .scan-row .btn { width:100%; }
+    .action-row .btn { flex:1 1 100%; }
+    .action-row .hint { margin-left:0; text-align:left; }
+    .status-grid { grid-template-columns:1fr; }
+    .status-cell:nth-child(odd) { border-right:0; }
+    .status-cell:nth-child(2) { border-top:1px solid var(--line); }
+    .footer { flex-direction:column; gap:7px; }
+  }
+</style>
+
+<main class="wrap">
+  <header class="hero">
+    <h1>heare<span class="brand-dot" aria-hidden="true"></span></h1>
+    <p class="lead">панель: налаштування через Bluetooth</p>
+    <p class="sub">З’єднайте панель, введіть код із OLED і збережіть мережу та мозок. Сторінка говорить лише Bluetooth — без точки доступу, без сервера й без токенів.</p>
+    <span class="tag">Chrome / Edge · HTTPS</span>
+  </header>
+
+  <section class="section" aria-labelledby="connect-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">01</span>
+      <h2 id="connect-title">З’єднання</h2>
+    </div>
+    <div class="card connect">
+      <div class="connect-row">
+        <div class="connect-copy">
+          <span class="device-name" id="device-name">панель не вибрана</span>
+          <span class="pill" id="conn-pill"><span class="dot" aria-hidden="true"></span><span id="conn-text">не підключено</span></span>
+        </div>
+        <button class="btn primary" id="connect" type="button">Підключити панель</button>
+      </div>
+      <p class="hint">Потрібен Chrome або Edge. Тримайте панель поруч: у списку буде <span data-panel-prefix>heare-panel-</span>.</p>
+      <p class="notice" id="support" role="status" hidden></p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="code-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">02</span>
+      <h2 id="code-title">Код із OLED</h2>
+    </div>
+    <div class="card form">
+      <div class="inline-row">
+        <div class="field">
+          <label for="setup-code">4 цифри на екрані панелі</label>
+          <input class="code-input" id="setup-code" type="text" inputmode="numeric" pattern="[0-9]{4}"
+                 maxlength="4" autocomplete="one-time-code" placeholder="0000" aria-describedby="code-hint">
+        </div>
+        <button class="btn" id="unlock" type="button">Увійти</button>
+        <p class="hint" id="code-hint">Код показується лише на самій панелі. Він не зберігається на сторінці.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="wifi-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">03</span>
+      <h2 id="wifi-title">Wi-Fi</h2>
+    </div>
+    <div class="card form">
+      <div class="field">
+        <label for="ssid-select">Мережа</label>
+        <div class="scan-row">
+          <select id="ssid-select">
+            <option value="">— просканувати —</option>
+          </select>
+          <button class="btn" id="scan" type="button">Сканувати</button>
+        </div>
+        <input id="ssid-manual" type="text" maxlength="32" autocomplete="off"
+               placeholder="або введіть назву вручну" aria-label="Назва Wi-Fi мережі вручну">
+        <p class="hint">Скан іде через панель. Введена вручну назва має приоритет над списком.</p>
+      </div>
+      <div class="field">
+        <label for="password">Пароль Wi-Fi</label>
+        <input id="password" type="password" minlength="8" maxlength="63"
+               autocomplete="new-password" placeholder="8–63 символи, або порожньо">
+        <p class="hint">Пароль передається панелі один раз і не пише нікуди, крім самої панелі.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="brain-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">04</span>
+      <h2 id="brain-title">Мозок і панель</h2>
+    </div>
+    <div class="card form">
+      <div class="form-row">
+        <div class="field">
+          <label for="brain-host">Адреса мозку</label>
+          <input id="brain-host" type="text" inputmode="decimal" maxlength="15"
+                 autocomplete="off" placeholder="192.168.1.10">
+        </div>
+        <div class="field">
+          <label for="brain-port">Порт</label>
+          <input id="brain-port" type="number" min="1" max="65535" value="9790"
+                 inputmode="numeric" autocomplete="off">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="panel-name">Назва панелі</label>
+          <input id="panel-name" type="text" maxlength="24" autocomplete="off"
+                 pattern="[a-z0-9-]+" value="kitchen" placeholder="kitchen">
+          <p class="hint">a–z, 0–9, дефіс.</p>
+        </div>
+        <div class="field">
+          <label for="pair-code">Код пари</label>
+          <input class="pair-input" id="pair-code" type="text" maxlength="8"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false"
+                 placeholder="ABCD2345">
+        </div>
+      </div>
+      <p class="hint">8 символів від <span data-command>heare-brain code</span> або зі сторінки мозку. Без 0, 1, I, L, O, U.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="save-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">05</span>
+      <h2 id="save-title">Збереження</h2>
+    </div>
+    <div class="card actions">
+      <div class="action-row">
+        <button class="btn primary" id="save" type="button">Зберегти</button>
+        <button class="btn danger" id="forget" type="button">Забути</button>
+        <p class="hint">Після збереження панель перезавантажиться й сама підключиться до мозку.</p>
+      </div>
+      <p class="message" id="message" role="status" aria-live="polite"></p>
+      <div class="progress" id="progress" aria-live="polite"></div>
+      <span class="sr-only" id="screen-status" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="status-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">06</span>
+      <h2 id="status-title">Стан панелі</h2>
+      <button class="btn link" id="refresh" type="button">Оновити</button>
+    </div>
+    <div class="card status">
+      <dl class="status-grid">
+        <div class="status-cell"><dt>стан</dt><dd class="empty" id="status-state">—</dd></div>
+        <div class="status-cell"><dt>назва</dt><dd class="empty" id="status-name">—</dd></div>
+        <div class="status-cell"><dt>IP</dt><dd class="empty" id="status-ip">—</dd></div>
+        <div class="status-cell"><dt>мережа</dt><dd class="empty" id="status-ssid">—</dd></div>
+        <div class="status-cell wide"><dt>id панелі</dt><dd class="empty" id="status-pid">—</dd></div>
+        <div class="status-cell wide" id="status-error-row"><dt>помилка</dt><dd class="empty" id="status-error">—</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <a href="https://onelenyk.github.io/heare/panel/setup.html">onelenyk.github.io/heare/panel/setup.html</a>
+    <span class="only-ble">лише Bluetooth · без токенів · без сервера</span>
+  </footer>
+</main>
+
+<noscript>
+  <p style="max-width:820px;margin:0 auto 40px;padding:0 28px;color:#e58d8d;font:13px/1.5 ui-monospace,monospace">
+    Для налаштування панелі потрібен JavaScript і Chrome або Edge.
+  </p>
+</noscript>
+
+<script>
+(() => {
+  "use strict";
+
+  // The whole contract: one service and four characteristics. The page never
+  // talks to the brain, never asks for a token, and never stores a secret.
+  const SERVICE = "8f2a0001-7d3b-4f6e-9a1c-2b5e7c9d0a11";
+  const CHAR = {
+    status: "8f2a0002-7d3b-4f6e-9a1c-2b5e7c9d0a11",
+    scan: "8f2a0003-7d3b-4f6e-9a1c-2b5e7c9d0a11",
+    cmd: "8f2a0004-7d3b-4f6e-9a1c-2b5e7c9d0a11",
+    result: "8f2a0005-7d3b-4f6e-9a1c-2b5e7c9d0a11",
+  };
+  const CHUNK = 18;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  const byId = (id) => document.getElementById(id);
+  const el = {
+    connect: byId("connect"),
+    deviceName: byId("device-name"),
+    pill: byId("conn-pill"),
+    pillText: byId("conn-text"),
+    support: byId("support"),
+    code: byId("setup-code"),
+    unlock: byId("unlock"),
+    ssidSelect: byId("ssid-select"),
+    ssidManual: byId("ssid-manual"),
+    password: byId("password"),
+    scan: byId("scan"),
+    host: byId("brain-host"),
+    port: byId("brain-port"),
+    name: byId("panel-name"),
+    pair: byId("pair-code"),
+    save: byId("save"),
+    forget: byId("forget"),
+    refresh: byId("refresh"),
+    message: byId("message"),
+    progress: byId("progress"),
+    screen: byId("screen-status"),
+    state: byId("status-state"),
+    statusName: byId("status-name"),
+    ip: byId("status-ip"),
+    ssid: byId("status-ssid"),
+    pid: byId("status-pid"),
+    error: byId("status-error"),
+    errorRow: byId("status-error-row"),
+  };
+
+  const state = {
+    device: null,
+    chars: null,
+    connected: false,
+    authed: false,
+    busy: false,
+    nextId: 0,
+    reconnecting: false,
+    listening: false,
+  };
+
+  class PanelError extends Error {}
+  class LinkLost extends PanelError {}
+  class ResultTimeout extends PanelError {}
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function log(line) {
+    console.info("[panel] " + line);
+  }
+
+  function logError(line) {
+    console.error("[panel] " + line);
+  }
+
+  function say(line) {
+    el.screen.textContent = line;
+  }
+
+  function setPill(tone, text) {
+    el.pill.className = "pill" + (tone ? " " + tone : "");
+    el.pillText.textContent = text;
+  }
+
+  function setMessage(text, tone) {
+    el.message.className = "message" + (text ? " show" : "") + (tone ? " " + tone : "");
+    el.message.textContent = text || "";
+  }
+
+  function setProgress(text) {
+    el.progress.textContent = text || "";
+    el.progress.classList.toggle("show", Boolean(text));
+  }
+
+  function setDeviceName(name) {
+    el.deviceName.textContent = name || "панель не вибрана";
+  }
+
+  function syncControls() {
+    const ready = state.connected && !state.busy;
+    el.connect.disabled = state.busy || state.connected;
+    el.connect.textContent = state.connected
+      ? "Підключено"
+      : state.device
+        ? "Перепідключити"
+        : "Підключити панель";
+    el.unlock.disabled = !ready || state.authed;
+    el.unlock.textContent = state.authed ? "Код прийнято" : "Увійти";
+    el.code.disabled = !ready || state.authed;
+    el.scan.disabled = !ready;
+    el.save.disabled = !ready;
+    el.forget.disabled = !ready;
+    el.refresh.disabled = !ready;
+  }
+
+  function setBusy(on) {
+    state.busy = on;
+    syncControls();
+  }
+
+  function resetStatus() {
+    for (const node of [el.state, el.statusName, el.ip, el.ssid, el.pid, el.error]) {
+      node.textContent = "—";
+      node.classList.add("empty");
+    }
+    el.errorRow.classList.remove("bad");
+  }
+
+  function renderStatus(status) {
+    if (!status || typeof status !== "object") return;
+    const fields = [
+      [el.state, status.state],
+      [el.statusName, status.name],
+      [el.ip, status.ip],
+      [el.ssid, status.ssid],
+      [el.pid, status.pid],
+      [el.error, status.error],
+    ];
+    for (const [node, value] of fields) {
+      const text = value === undefined || value === null || value === "" ? "—" : String(value);
+      node.textContent = text;
+      node.classList.toggle("empty", text === "—");
+    }
+    el.errorRow.classList.toggle("bad", Boolean(status.error));
+    if (!el.name.value && typeof status.name === "string" && status.name) {
+      el.name.value = status.name;
+    }
+  }
+
+  function isIPv4(text) {
+    const parts = text.split(".");
+    if (parts.length !== 4) return false;
+    return parts.every((part) => {
+      if (!/^\d{1,3}$/.test(part)) return false;
+      if (part.length > 1 && part[0] === "0") return false;
+      return Number(part) <= 255;
+    });
+  }
+
+  function nextId() {
+    state.nextId = (state.nextId % 255) + 1;
+    return state.nextId;
+  }
+
+  async function bindGatt() {
+    if (!state.device) throw new PanelError("Спочатку підключіть панель.");
+    if (!state.device.gatt.connected) {
+      state.connected = false;
+      await state.device.gatt.connect();
+    }
+    const server = await state.device.gatt.getPrimaryService(SERVICE);
+    const chars = {};
+    for (const [name, uuid] of Object.entries(CHAR)) {
+      chars[name] = await server.getCharacteristic(uuid);
+    }
+    state.chars = chars;
+    state.connected = true;
+    syncControls();
+    return true;
+  }
+
+  async function reopen(attempts, delayMs) {
+    if (!state.device) return false;
+    const wasReconnecting = state.reconnecting;
+    state.reconnecting = true;
+    try {
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          if (state.device.gatt.connected) {
+            await bindGatt();
+          } else {
+            await state.device.gatt.connect();
+            await bindGatt();
+          }
+          log("reconnected attempt=" + attempt);
+          setPill("ok", "підключено");
+          return true;
+        } catch (err) {
+          state.connected = false;
+          if (attempt < attempts) {
+            setPill("busy", "перепідключення " + attempt + "/" + attempts);
+            setProgress("чекаю панель… спроба " + attempt + " із " + attempts);
+            await sleep(delayMs);
+          }
+        }
+      }
+      return false;
+    } finally {
+      state.reconnecting = wasReconnecting;
+      syncControls();
+    }
+  }
+
+  async function ensureConnected() {
+    if (state.device && state.device.gatt.connected && state.chars) return;
+    if (!state.device) throw new PanelError("Спочатку підключіть панель.");
+    const back = await reopen(3, 500);
+    if (!back) throw new LinkLost("З’єднання з панеллю втрачено. Підключіть її знову.");
+  }
+
+  async function readJson(char, what) {
+    await ensureConnected();
+    let view;
+    try {
+      view = await char.readValue();
+    } catch (err) {
+      state.connected = false;
+      syncControls();
+      throw new LinkLost("Не вдалося прочитати " + what + " із панелі.");
+    }
+    const bytes = new Uint8Array(view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength));
+    if (bytes.length === 0) throw new PanelError("Панель повернула порожню відповідь (" + what + ").");
+    let text;
+    try {
+      text = decoder.decode(bytes);
+    } catch (err) {
+      throw new PanelError("Панель повернула нечитабельні дані (" + what + ").");
+    }
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      throw new PanelError("Панель повернула некоректний JSON (" + what + ").");
+    }
+  }
+
+  async function writeRaw(frame) {
+    const char = state.chars.cmd;
+    if (typeof char.writeValueWithResponse === "function") {
+      return char.writeValueWithResponse(frame);
+    }
+    return char.writeValue(frame);
+  }
+
+  async function writeFrame(frame) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await writeRaw(frame);
+        return;
+      } catch (err) {
+        state.connected = false;
+        log("write failed; attempting reconnect");
+        if (attempt === 0 && (await reopen(3, 500))) continue;
+        break;
+      }
+    }
+    throw new LinkLost("Запис у панель не вдався. З’єднання втрачено.");
+  }
+
+  async function waitForResult(id, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const result = await readJson(state.chars.result, "результат");
+      if (result && result.id === id) return result;
+      await sleep(350);
+    }
+    const error = new ResultTimeout("Панель не підтвердила команду за " + Math.round(timeoutMs / 1000) + " с.");
+    error.commandId = id;
+    throw error;
+  }
+
+  async function sendCommand(payload, timeoutMs) {
+    await ensureConnected();
+    const id = nextId();
+    payload.id = id;
+    const bytes = encoder.encode(JSON.stringify(payload));
+    const total = Math.max(1, Math.ceil(bytes.length / CHUNK));
+    if (total > 255) throw new PanelError("Команда занадто велика для панелі.");
+    log("cmd " + payload.cmd + " id=" + id + " chunks=" + total + " bytes=" + bytes.length);
+    try {
+      for (let index = 0; index < total; index += 1) {
+        const part = bytes.subarray(index * CHUNK, Math.min(bytes.length, (index + 1) * CHUNK));
+        const frame = new Uint8Array(2 + part.length);
+        frame[0] = index;
+        frame[1] = total;
+        frame.set(part, 2);
+        await writeFrame(frame);
+      }
+      return await waitForResult(id, timeoutMs || 8000);
+    } catch (err) {
+      if (err instanceof PanelError) err.commandId = id;
+      throw err;
+    }
+  }
+
+  async function restoreAuth() {
+    if (state.authed) return true;
+    const code = el.code.value.trim();
+    if (!/^\d{4}$/.test(code)) return false;
+    try {
+      const result = await sendCommand({ cmd: "auth", code }, 8000);
+      if (result && result.ok === true) {
+        state.authed = true;
+        syncControls();
+        log("auth restored after reconnect");
+        return true;
+      }
+    } catch (err) {
+      if (!(err instanceof PanelError)) throw err;
+    }
+    return false;
+  }
+
+  async function refreshStatus() {
+    if (!state.authed) return null;
+    const status = await readJson(state.chars.status, "стан");
+    renderStatus(status);
+    return status;
+  }
+
+  async function ensureAuth() {
+    if (state.authed) return true;
+    const code = el.code.value.trim();
+    if (!/^\d{4}$/.test(code)) {
+      setMessage("Введіть 4-цифровий код з OLED.", "bad");
+      el.code.focus();
+      return false;
+    }
+    setProgress("перевіряю код…");
+    const result = await sendCommand({ cmd: "auth", code }, 8000);
+    if (!result || result.ok !== true) {
+      state.authed = false;
+      const why = result && result.error ? " (" + result.error + ")" : "";
+      log("auth failed");
+      setMessage("Код не прийнято" + why + ". Подивіться на OLED і спробуйте ще раз.", "bad");
+      setPill("bad", "код не прийнято");
+      syncControls();
+      return false;
+    }
+    state.authed = true;
+    log("auth ok");
+    setPill("ok", "код прийнято");
+    syncControls();
+    setMessage("Код прийнято. Тепер оберіть мережу.", "ok");
+    try {
+      await refreshStatus();
+    } catch (err) {
+      if (!(err instanceof LinkLost)) throw err;
+    }
+    return true;
+  }
+
+  function fillNetworks(list) {
+    const previous = el.ssidSelect.value;
+    el.ssidSelect.replaceChildren(new Option("— оберіть мережу —", ""));
+    const seen = new Set();
+    const ordered = [...list].sort((a, b) => (Number(b.rssi) || -999) - (Number(a.rssi) || -999));
+    for (const network of ordered) {
+      if (!network || typeof network.ssid !== "string" || !network.ssid) continue;
+      if (seen.has(network.ssid)) continue;
+      seen.add(network.ssid);
+      const option = document.createElement("option");
+      option.value = network.ssid;
+      option.textContent = network.ssid +
+        (typeof network.rssi === "number" ? "  ·  " + network.rssi + " dBm" : "");
+      el.ssidSelect.append(option);
+    }
+    if (previous && seen.has(previous)) el.ssidSelect.value = previous;
+    return seen.size;
+  }
+
+  async function scanNetworks() {
+    if (!(await ensureAuth())) return;
+    setProgress("читаю стан сканування…");
+    const before = await readJson(state.chars.scan, "сканування");
+    const result = await sendCommand({ cmd: "scan" }, 10000);
+    if (result && result.ok === false) {
+      setMessage("Панель не почала скан: " + (result.error || "невідома помилка") + ".", "bad");
+      return;
+    }
+    setProgress("шукаю мережі…");
+    const startSeq = before && typeof before.seq === "number" ? before.seq : -1;
+    let found = null;
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      await sleep(1000);
+      const now = await readJson(state.chars.scan, "сканування");
+      if (now && now.seq !== startSeq) {
+        found = now;
+        break;
+      }
+    }
+    if (!found) {
+      setMessage("Мережі не з’явилися за 15 секунд. Спробуйте ще раз, ближче до панелі.", "bad");
+      return;
+    }
+    const list = Array.isArray(found.list) ? found.list : [];
+    const count = fillNetworks(list);
+    log("scan found=" + count);
+    if (count > 0) {
+      setMessage("Знайдено мереж: " + count + ". Оберіть свою зі списку.", "ok");
+    } else {
+      setMessage("Панель не бачить жодної мережі. Введіть назву вручну.", "warn");
+    }
+  }
+
+  function readForm() {
+    const ssid = (el.ssidManual.value.trim() || el.ssidSelect.value || "").trim();
+    if (ssid.length < 1 || ssid.length > 32) {
+      el.ssidManual.focus();
+      throw new PanelError("Вкажіть назву Wi-Fi мережі (1–32 символи).");
+    }
+    const pass = el.password.value;
+    if (pass && (pass.length < 8 || pass.length > 63)) {
+      el.password.focus();
+      throw new PanelError("Пароль Wi-Fi — 8–63 символи, або порожньо для відкритої мережі.");
+    }
+    const host = el.host.value.trim();
+    if (!isIPv4(host)) {
+      el.host.focus();
+      throw new PanelError("Адреса мозку має бути IPv4, наприклад 192.168.1.10.");
+    }
+    const port = Number(el.port.value);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      el.port.focus();
+      throw new PanelError("Порт — число від 1 до 65535.");
+    }
+    const name = el.name.value.trim();
+    if (!/^[a-z0-9-]{1,24}$/.test(name)) {
+      el.name.focus();
+      throw new PanelError("Назва панелі — 1–24 символи: a–z, 0–9, дефіс.");
+    }
+    const pair = el.pair.value.trim().toUpperCase();
+    if (!/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(pair)) {
+      el.pair.focus();
+      throw new PanelError("Код пари — 8 символів від heare-brain code (без 0, 1, I, L, O, U).");
+    }
+    return {
+      ssid,
+      pass,
+      brain_host: host,
+      brain_port: port,
+      name,
+      pair_code: pair,
+    };
+  }
+
+  function showSaveError(result) {
+    const why = result && result.error ? String(result.error) : "немає підтвердження від панелі";
+    logError("save error: " + why);
+    setPill("bad", "не збережено");
+    setMessage("Панель не зберегла налаштування: " + why + ".", "bad");
+  }
+
+  async function saveConfig() {
+    const form = readForm();
+    if (!(await ensureAuth())) return;
+    setProgress("передаю налаштування…");
+    setPill("busy", "зберігаю…");
+    let result = null;
+    let saveId = null;
+    try {
+      result = await sendCommand({ cmd: "save", ...form }, 30000);
+    } catch (err) {
+      if (err instanceof LinkLost) {
+        saveId = err.commandId || null;
+        log("save link lost while waiting for result");
+      } else if (err instanceof ResultTimeout) {
+        saveId = err.commandId || null;
+        log("save result timeout; will retry the link");
+      } else {
+        throw err;
+      }
+    }
+
+    if (result && result.ok === false) {
+      showSaveError(result);
+      return;
+    }
+    if (!result) {
+      setProgress("панель перезавантажується — перепідключаюся…");
+      const back = await reopen(30, 2000);
+      if (!back) {
+        setPill("bad", "немає підтвердження");
+        setMessage("Панель не відповіла після збереження. Перевірте OLED: якщо там нова мережа, налаштування могли застосуватися, але підтвердити це через Bluetooth не вдалося.", "bad");
+        logError("save unconfirmed: reconnect exhausted");
+        return;
+      }
+      result = await readJson(state.chars.result, "результат");
+      if (!result || result.id !== saveId) {
+        setPill("bad", "немає підтвердження");
+        setMessage("Не вдалося підтвердити, що панель зберегла налаштування: результат команди не збігається. Перевірте OLED.", "bad");
+        logError("save unconfirmed: result id mismatch");
+        return;
+      }
+    }
+    if (!result || result.ok !== true) {
+      showSaveError(result);
+      return;
+    }
+
+    log("save ok");
+    setPill("ok", "збережено");
+    setMessage("Налаштування збережено. Панель перезавантажується й підключається до мозку.", "ok");
+
+    // The device may reboot and drop the link right after the result. Keep the
+    // BluetoothDevice and give it 30 × 2 s to come back, then read the status.
+    await sleep(700);
+    if (state.device && !state.device.gatt.connected) {
+      setProgress("чекаю, доки панель підніме Bluetooth…");
+      const back = await reopen(30, 2000);
+      if (!back) {
+        log("post-save status unavailable");
+        return;
+      }
+    }
+    if (!(await restoreAuth())) {
+      log("post-save auth unavailable");
+      return;
+    }
+    try {
+      await refreshStatus();
+    } catch (err) {
+      if (!(err instanceof LinkLost)) throw err;
+    }
+    setPill("ok", "збережено");
+  }
+
+  let forgetArmed = false;
+  let forgetTimer = 0;
+
+  function resetForget() {
+    clearTimeout(forgetTimer);
+    forgetArmed = false;
+    el.forget.classList.remove("armed");
+    el.forget.textContent = "Забути";
+  }
+
+  async function doForget() {
+    if (!(await ensureAuth())) return;
+    setProgress("стираю налаштування…");
+    const result = await sendCommand({ cmd: "forget" }, 10000);
+    if (!result || result.ok !== true) {
+      const why = result && result.error ? result.error : "немає підтвердження";
+      setMessage("Не вдалося стерти налаштування: " + why + ".", "bad");
+      return;
+    }
+    log("forget ok");
+    setPill("ok", "налаштування стерто");
+    setMessage("Панель забула мережу й мозок.", "ok");
+    resetStatus();
+    try {
+      await refreshStatus();
+    } catch (err) {
+      if (!(err instanceof LinkLost)) throw err;
+    }
+  }
+
+  function processForget() {
+    if (state.busy) return;
+    if (!forgetArmed) {
+      forgetArmed = true;
+      el.forget.classList.add("armed");
+      el.forget.textContent = "Підтвердити";
+      setMessage("Натисніть «Підтвердити», щоб стерти мережу й мозок із панелі.", "warn");
+      forgetTimer = setTimeout(resetForget, 4000);
+      return;
+    }
+    resetForget();
+    run(doForget);
+  }
+
+  async function run(action) {
+    if (state.busy) return;
+    setBusy(true);
+    setProgress("");
+    try {
+      await action();
+    } catch (err) {
+      if (err instanceof LinkLost) {
+        setPill("bad", "з’єднання втрачено");
+        setMessage(err.message, "bad");
+      } else if (err instanceof PanelError) {
+        setMessage(err.message, "bad");
+      } else {
+        logError(String(err && err.stack ? err.stack : err));
+        setMessage("Помилка: " + (err && err.message ? err.message : String(err)), "bad");
+      }
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  }
+
+  async function connect() {
+    if (!navigator.bluetooth) {
+      showUnsupported();
+      return;
+    }
+    if (!state.device) {
+      try {
+        state.device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE] }],
+          optionalServices: [SERVICE],
+        });
+      } catch (err) {
+        if (err && (err.name === "NotFoundError" || err.name === "AbortError")) {
+          throw new PanelError("Панель не вибрано. Спробуйте ще раз і виберіть heare-panel-… у списку.");
+        }
+        throw err;
+      }
+      state.listening = false;
+    }
+    if (!state.listening) {
+      state.device.addEventListener("gattserverdisconnected", onDisconnected);
+      state.listening = true;
+    }
+    setDeviceName(state.device.name || "heare-panel");
+    setPill("busy", "підключення…");
+    setProgress("відкриваю GATT…");
+    await bindGatt();
+    state.authed = false;
+    log("connected name=" + (state.device.name || "?"));
+    setPill("ok", "підключено");
+    setMessage("Панель підключена. Введіть код із OLED.", "ok");
+    syncControls();
+  }
+
+  function onDisconnected() {
+    state.connected = false;
+    state.authed = false;
+    state.chars = null;
+    syncControls();
+    if (state.reconnecting) {
+      setPill("busy", "перепідключення…");
+      return;
+    }
+    if (state.busy) {
+      setPill("busy", "з’єднання втрачено");
+      return;
+    }
+    log("disconnected");
+    setPill("bad", "з’єднання втрачено");
+    setMessage("З’єднання з панеллю втрачено. Натисніть «Підключити панель» ще раз.", "bad");
+  }
+
+  function showUnsupported() {
+    el.support.hidden = false;
+    el.support.textContent = "Цей браузер не підтримує Web Bluetooth. Відкрийте сторінку в Chrome або Edge на macOS, Windows чи Android.";
+    el.connect.disabled = true;
+    setPill("bad", "браузер не підтримується");
+  }
+
+  function boot() {
+    if (!navigator.bluetooth) {
+      showUnsupported();
+      return;
+    }
+    if (!window.isSecureContext) {
+      el.support.hidden = false;
+      el.support.textContent = "Web Bluetooth потребує HTTPS (або localhost). Відкрийте https://onelenyk.github.io/heare/panel/setup.html — з http:// на IP-адресі браузер відмовить.";
+    }
+    resetStatus();
+    syncControls();
+  }
+
+  el.connect.addEventListener("click", () => run(connect));
+  el.unlock.addEventListener("click", () => run(async () => {
+    await ensureConnected();
+    await ensureAuth();
+  }));
+  el.scan.addEventListener("click", () => run(scanNetworks));
+  el.save.addEventListener("click", () => run(saveConfig));
+  el.forget.addEventListener("click", processForget);
+  el.refresh.addEventListener("click", () => run(async () => {
+    if (!(await ensureAuth())) return;
+    setProgress("оновлюю стан…");
+    await refreshStatus();
+    setMessage("Стан панелі оновлено.", "ok");
+  }));
+
+  el.ssidSelect.addEventListener("change", () => {
+    if (el.ssidSelect.value) el.ssidManual.value = "";
+  });
+
+  el.code.addEventListener("input", () => {
+    const clean = el.code.value.replace(/\D/g, "").slice(0, 4);
+    if (el.code.value !== clean) el.code.value = clean;
+  });
+
+  el.pair.addEventListener("input", () => {
+    const position = el.pair.selectionStart;
+    const upper = el.pair.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 8);
+    if (el.pair.value !== upper) {
+      el.pair.value = upper;
+      if (position !== null) {
+        el.pair.setSelectionRange(Math.min(position, upper.length), Math.min(position, upper.length));
+      }
+    }
+  });
+
+  for (const node of document.querySelectorAll("[data-panel-prefix]")) {
+    node.textContent = "heare-panel-";
+  }
+  for (const node of document.querySelectorAll("[data-command]")) {
+    node.textContent = "heare-brain code";
+  }
+
+  boot();
+})();
+</script>
+</html>
