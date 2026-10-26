@@ -29,6 +29,18 @@ SHOW_MAX_MS = 60_000
 BLINK_MS = 400
 
 
+SCENE_HELP = (
+    "{id, layout, fields}. layout — віджет або {rows:[...]} / {cols:[...]}; у рядах "
+    "вага h, у колонках w (1..12), до 3 рівнів і 8 віджетів. Віджети: "
+    "{widget:text, text, size:1|2, align:left|center}; {widget:number, value, unit}; "
+    "{widget:icon, name} або {widget:icon, svg} (16×16); {widget:picture, svg} "
+    "(SVG viewBox 0 0 72 40, білим по чорному, товсті лінії); {widget:bar, value 0..100}; "
+    "{widget:clock}; {widget:spinner}. bind:\"поле\" бере значення з fields — "
+    "update міняє лише його. Іконки: sun cloud rain snow heart check cross bell clock "
+    "lamp lock home battery wifi up down left right mic thermo drop star music. "
+    "Пиши українською: екран має свої літери."
+)
+
 _ON = {"type": "object", "required": ["on"],
        "properties": {"on": {"type": "boolean"}}}
 
@@ -54,6 +66,31 @@ def skills():
              "seconds": {"type": "integer", "description": "1..60"}}},
          # The board cannot draw an SVG: the hands turn it into its pixels.
          "render": {"svg": {"to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bitmap"}}},
+        {"name": "screen", "effect": "harmless",
+         "about": "Показати сцену на OLED 72×40: розкладка з віджетів і поля, які потім "
+                  "можна міняти (update). layer: flash — на seconds, pin — доки не clear, "
+                  "idle — екран спокою замість обличчя",
+         "params": {"type": "object", "required": ["scene"], "properties": {
+             "scene": {"type": "object", "description": SCENE_HELP},
+             "layer": {"type": "string", "enum": ["flash", "pin", "idle"]},
+             "seconds": {"type": "integer", "description": "для flash: 1..60"}}},
+         "render": {"scene": [
+             {"deep": True, "key": "svg", "where": {"widget": "icon"},
+              "to": "mono", "width": 16, "height": 16, "as": "bits"},
+             {"deep": True, "key": "svg", "where": {"widget": "picture"},
+              "to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bits"}]}},
+        {"name": "update", "effect": "harmless",
+         "about": "Змінити поля сцени, що вже на екрані, — перемалюється лише змінене",
+         "params": {"type": "object", "required": ["id", "fields"], "properties": {
+             "id": {"type": "string"}, "fields": {"type": "object"}}}},
+        {"name": "clear", "effect": "harmless",
+         "about": "Прибрати сцену (id) або шар (flash, pin, idle) — повернеться те, що нижче",
+         "params": {"type": "object", "properties": {
+             "id": {"type": "string"},
+             "layer": {"type": "string", "enum": ["flash", "pin", "idle"]}}}},
+        {"name": "screen_info", "effect": "read",
+         "about": "Що зараз на екрані по шарах, розмір, віджети, іконки, вільна пам'ять",
+         "params": {"type": "object", "properties": {}}},
         {"name": "read_pins", "effect": "read",
          "about": "Рівні вільних пінів: 1 високий, 0 низький",
          "params": {"type": "object", "properties": {}}},
@@ -141,6 +178,20 @@ class Device:
             return (True, "показано: " + " ".join(lines(text))) if done else (False, "нема що показати")
         if name == "image":
             return self._picture(args.get("bitmap"), args.get("seconds"), now_ms)
+        if name == "screen":
+            return self._screen(args, now_ms)
+        if name == "update":
+            scene = self.screen.find(str(args.get("id") or ""))
+            if scene is None:
+                return False, "такої сцени на екрані немає"
+            if not isinstance(args.get("fields"), dict):
+                return False, "fields — об'єкт"
+            scene.update(args["fields"])
+            return True, "оновлено: " + scene.name
+        if name == "clear":
+            return self._clear(args)
+        if name == "screen_info":
+            return True, self._info()
         if name == "light":
             done = self.apply("led", args.get("mode"), now_ms)
             return (True, "світло: " + self.led_mode) if done else (False, "on, off або blink")
@@ -154,6 +205,57 @@ class Device:
                 return False, "пін недоступний"
             return True, name + ": " + ("1" if on else "0")
         return False, "такого скіла немає"
+
+    def _screen(self, args, now_ms):
+        from heare_panel import screen
+
+        layer = screen.AGENT_LAYERS.get(args.get("layer") or "flash")
+        if layer is None:
+            return False, "layer: flash, pin або idle"
+        try:
+            scene = screen.check(args.get("scene"), self.screen.width, self.screen.height)
+        except screen.SceneError as error:
+            return False, str(error)
+        until = None
+        if layer == "flash":
+            try:
+                hold = int(args.get("seconds") or 10) * 1000
+            except (TypeError, ValueError):
+                hold = 10_000
+            until = now_ms + max(1000, min(hold, SHOW_MAX_MS))
+        self.screen.put(layer, scene, until)
+        return True, "сцену " + scene.name + " показано на " + (args.get("layer") or "flash")
+
+    def _clear(self, args):
+        from heare_panel import screen
+
+        if args.get("id"):
+            for layer, name in self.screen.layers().items():
+                if name == args["id"] and layer in screen.AGENT_LAYERS.values():
+                    self.screen.clear(layer)
+                    return True, "прибрано: " + name
+            return False, "такої сцени на екрані немає"
+        layer = screen.AGENT_LAYERS.get(args.get("layer") or "")
+        if layer is None:
+            return False, "назви id або layer"
+        self.screen.clear(layer)
+        return True, "шар прибрано"
+
+    def _info(self):
+        from heare_panel import glyphs, screen, widgets
+
+        try:
+            import gc
+
+            gc.collect()
+            free = gc.mem_free()
+        except (ImportError, AttributeError):
+            free = -1
+        return {"size": [self.screen.width, self.screen.height],
+                "layers": self.screen.layers(),
+                "widgets": [k for k in widgets.KINDS if k != "state"],
+                "icons": sorted(glyphs.ICONS), "free": free,
+                "max_widgets": screen.MAX_WIDGETS}
 
     def _picture(self, bitmap, seconds, now_ms):
         import binascii

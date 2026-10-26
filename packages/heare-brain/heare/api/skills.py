@@ -27,12 +27,13 @@ from pathlib import Path
 EFFECTS = ("read", "harmless", "change")
 MAX_SKILLS = 32
 MAX_ABOUT = 300
-MAX_PARAMS = 2048
+MAX_PARAMS = 4096
 NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 CALL_S = 5.0
 # What the hands may be asked to turn a parameter into before a call.
 RENDER_FORMS = ("mono",)
 MAX_SIDE = 256
+MAX_RULES = 4
 
 
 def checked(raw: object) -> list[dict]:
@@ -70,24 +71,51 @@ def checked(raw: object) -> list[dict]:
 
 def _render(raw: object, params: dict) -> dict | bool | None:
     """What a skill asks the hands to turn its parameters into, checked for
-    form: a known form, a sane size, a parameter it has. False: refused."""
+    form: a parameter it has, and for each either one rule (the parameter
+    itself) or a list of rules that find ``key`` deep inside it, in objects
+    that match ``where``. False: refused."""
     if raw is None:
         return None
     if not isinstance(raw, dict):
         return False
     named = params.get("properties") or {}
-    found = {}
+    found: dict = {}
     for param, spec in raw.items():
-        if param not in named or not isinstance(spec, dict) or spec.get("to") not in RENDER_FORMS:
+        if param not in named:
             return False
-        width, height = spec.get("width"), spec.get("height")
-        if not all(isinstance(n, int) and 1 <= n <= MAX_SIDE for n in (width, height)):
-            return False
-        target = spec.get("as") or param
-        if not isinstance(target, str) or not NAME.match(target):
-            return False
-        found[param] = {"to": spec["to"], "width": width, "height": height, "as": target}
+        if isinstance(spec, list):
+            rules = [_rule(rule, deep=True) for rule in spec]
+            if not spec or len(spec) > MAX_RULES or any(rule is None for rule in rules):
+                return False
+            found[param] = rules
+        else:
+            rule = _rule(spec, deep=False)
+            if rule is None:
+                return False
+            found[param] = rule
     return found
+
+
+def _rule(spec: object, deep: bool) -> dict | None:
+    if not isinstance(spec, dict) or spec.get("to") not in RENDER_FORMS:
+        return None
+    width, height = spec.get("width"), spec.get("height")
+    if not all(isinstance(n, int) and 1 <= n <= MAX_SIDE for n in (width, height)):
+        return None
+    rule = {"to": spec["to"], "width": width, "height": height}
+    if deep:
+        key, target, where = spec.get("key"), spec.get("as"), spec.get("where") or {}
+        if not (isinstance(key, str) and NAME.match(key) and isinstance(target, str)
+                and NAME.match(target) and isinstance(where, dict) and len(where) <= 3
+                and all(isinstance(k, str) and isinstance(v, str) for k, v in where.items())):
+            return None
+        rule.update(deep=True, key=key, where=dict(where), **{"as": target})
+    else:
+        target = spec.get("as") or ""
+        if target and not (isinstance(target, str) and NAME.match(target)):
+            return None
+        rule["as"] = target or None
+    return rule
 
 
 def fingerprint(skills: list[dict]) -> str:

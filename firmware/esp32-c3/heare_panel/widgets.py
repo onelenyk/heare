@@ -193,14 +193,30 @@ def _text(canvas, box, lines, at=None):
         canvas.text(line, x + max((width - len(line) * 8) // 2, 0), y + top, 1)
 
 
-def _picture(canvas, box, bits):
+def _picture(canvas, box, bits, source=(72, 40)):
     x, y, width, height = box
-    stride = width // 8
-    for row in range(height):
-        for column in range(stride):
-            byte = bits[row * stride + column] if row * stride + column < len(bits) else 0
-            if not byte:
-                continue
-            for bit in range(8):
-                if byte & (0x80 >> bit):
-                    canvas.pixel(x + column * 8 + bit, y + row, 1)
+    if (width, height) == source:
+        stride = width // 8
+        for row in range(height):
+            for column in range(stride):
+                byte = bits[row * stride + column] if row * stride + column < len(bits) else 0
+                if not byte:
+                    continue
+                for bit in range(8):
+                    if byte & (0x80 >> bit):
+                        canvas.pixel(x + column * 8 + bit, y + row, 1)
+        return
+    # A whole-window picture in a smaller box: every box pixel takes the
+    # source pixel under it, keeping the picture's proportions.
+    src_w, src_h = source
+    scale = max(src_w * 1000 // max(width, 1), src_h * 1000 // max(height, 1))
+    shown_w, shown_h = src_w * 1000 // scale, src_h * 1000 // scale
+    left, top = x + (width - shown_w) // 2, y + (height - shown_h) // 2
+    stride = src_w // 8
+    for row in range(shown_h):
+        sy = row * scale // 1000
+        for column in range(shown_w):
+            sx = column * scale // 1000
+            index = sy * stride + sx // 8
+            if index < len(bits) and bits[index] & (0x80 >> (sx % 8)):
+                canvas.pixel(left + column, top + row, 1)

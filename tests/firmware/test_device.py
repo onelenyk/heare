@@ -118,3 +118,69 @@ def test_a_picture_of_the_wrong_size_is_refused_and_words_replace_a_picture():
     board.call("image", {"bitmap": base64.b64encode(bytes(360)).decode()}, 0)
     board.call("show", {"text": "hi"}, 0)
     assert _seen(board, 1) == ("flash", "text", {"lines": ["hi"]})
+
+
+WEATHER = {"id": "weather", "fields": {"t": 21},
+           "layout": {"cols": [{"widget": "icon", "name": "sun"},
+                               {"w": 2, "widget": "number", "bind": "t", "unit": "°"}]}}
+
+
+def test_a_scene_is_shown_on_its_layer_and_its_fields_are_updated():
+    board, _ = _device()
+    assert board.call("screen", {"scene": WEATHER, "layer": "pin"}, 0) == (
+        True, "сцену weather показано на pin")
+    layer, scene = board.screen.seen(0)
+    assert (layer, scene.name, scene.fields) == ("pinned", "weather", {"t": 21})
+    version = scene.version
+    assert board.call("update", {"id": "weather", "fields": {"t": 22}}, 0)[0] is True
+    assert scene.fields["t"] == 22 and scene.version == version + 1
+    assert board.call("update", {"id": "nope", "fields": {}}, 0)[0] is False
+
+
+def test_a_flash_scene_leaves_and_a_pinned_one_is_there_again():
+    board, _ = _device()
+    board.call("screen", {"scene": WEATHER, "layer": "pin"}, 0)
+    board.call("screen", {"scene": {"id": "hi", "layout": {"widget": "text", "text": "Привіт"}},
+                          "seconds": 2}, 0)
+    assert board.screen.seen(1000)[1].name == "hi"
+    assert board.screen.seen(2001)[1].name == "weather"
+    assert board.call("clear", {"id": "weather"}, 0) == (True, "прибрано: weather")
+    assert board.screen.seen(2002)[0] == "face"
+
+
+def test_the_idle_screen_stands_in_for_the_face():
+    board, _ = _device()
+    board.call("screen", {"scene": {"id": "rest", "layout": {"widget": "clock"}}, "layer": "idle"}, 0)
+    assert board.screen.seen(0)[0] == "idle"
+    board.screen.word("ALLOW")
+    assert board.screen.seen(0)[0] == "system"
+    board.call("clear", {"layer": "idle"}, 0)
+    board.screen.word("IDLE")
+    assert board.screen.seen(0)[0] == "face"
+
+
+def test_a_scene_that_cannot_be_shown_says_why():
+    board, _ = _device()
+    cases = [
+        ({"id": "x", "layout": {"widget": "rocket"}}, "невідомий віджет"),
+        ({"id": "x", "layout": {"widget": "state"}}, "невідомий віджет"),
+        ({"id": "x", "layout": {"rows": [{"widget": "text"}] * 9}}, "забагато віджетів"),
+        ({"id": "x", "layout": {"rows": [{"h": 99, "widget": "text"}]}}, "вага"),
+        ({"id": "x", "layout": {"widget": "picture", "bits": "!!"}}, "розміру"),
+        ({"id": "x", "layout": {"widget": "icon", "bits": "AAAA"}}, "розміру"),
+        ("not a scene", "сцена"),
+    ]
+    for scene, why in cases:
+        ok, said = board.call("screen", {"scene": scene}, 0)
+        assert ok is False and why in said, (scene, said)
+    assert board.call("screen", {"scene": WEATHER, "layer": "top"}, 0)[0] is False
+    assert board.screen.seen(0)[0] == "face"
+
+
+def test_screen_info_tells_the_hands_what_there_is():
+    board, _ = _device()
+    board.call("screen", {"scene": WEATHER, "layer": "pin"}, 0)
+    ok, info = board.call("screen_info", {}, 0)
+    assert ok and info["size"] == [72, 40] and info["layers"]["pinned"] == "weather"
+    assert "number" in info["widgets"] and "state" not in info["widgets"]
+    assert "sun" in info["icons"]

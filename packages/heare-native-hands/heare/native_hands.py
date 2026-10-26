@@ -173,12 +173,35 @@ def _handed(call: dict) -> str:
 
 
 def _rendered(skill: dict, args: dict) -> dict:
-    """The arguments as the part takes them: what it asked rendered, rendered."""
-    found = dict(args)
+    """The arguments as the part takes them: what it asked rendered, rendered.
+
+    A rule names the parameter itself, or — ``deep`` — a key to find inside
+    it, in objects that match ``where`` (an icon's SVG at 16×16, a picture's
+    at the window's size)."""
+    found = json.loads(json.dumps(args))
     for name, spec in (skill.get("render") or {}).items():
-        if name in found:
+        if name not in found:
+            continue
+        if isinstance(spec, list):
+            for rule in spec:
+                _deep(found[name], rule)
+        else:
             found[spec.get("as") or name] = pixels.render(str(found.pop(name)), spec)
     return found
+
+
+def _deep(value: object, rule: dict) -> None:
+    if isinstance(value, list):
+        for item in value:
+            _deep(item, rule)
+        return
+    if not isinstance(value, dict):
+        return
+    where = rule.get("where") or {}
+    if rule["key"] in value and all(value.get(k) == v for k, v in where.items()):
+        value[rule["as"]] = pixels.render(str(value.pop(rule["key"])), rule)
+    for item in list(value.values()):
+        _deep(item, rule)
 
 
 def catalog(skilled: dict[str, dict]) -> dict[str, Tool]:

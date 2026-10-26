@@ -20,7 +20,16 @@ Pure: the same on the board and on a laptop.
 from heare_panel import layout, widgets
 
 LAYERS = ("system", "flash", "pinned", "idle", "face")
+# The layers the hands may put a scene on, by the names they use.
+AGENT_LAYERS = {"flash": "flash", "pin": "pinned", "idle": "idle"}
+MAX_WIDGETS = 8
+MAX_FIELDS = 16
+MAX_BITMAPS = 16
 _made = [0]
+
+
+class SceneError(ValueError):
+    """A scene that cannot be shown, in words a model can act on."""
 
 
 class Scene:
@@ -62,6 +71,54 @@ class Scene:
             widgets.draw(widget, canvas, box, self.fields, now_ms)
 
 
+def check(spec, width=72, height=40):
+    """A scene from the hands: laid out, of known widgets, within bounds.
+
+    The pictures in it come as base64 ``bits`` (the hands drew the SVG) and
+    are decoded here, once."""
+    if not isinstance(spec, dict):
+        raise SceneError("сцена — це об'єкт {id, layout, fields}")
+    name = spec.get("id") or "scene"
+    if not isinstance(name, str) or not name or len(name) > 32:
+        raise SceneError("id сцени — короткий рядок")
+    fields = spec.get("fields") or {}
+    if not isinstance(fields, dict) or len(fields) > MAX_FIELDS:
+        raise SceneError("fields — об'єкт, до " + str(MAX_FIELDS) + " полів")
+    try:
+        placed = layout.boxes(spec.get("layout"), 0, 0, width, height)
+    except layout.LayoutError as error:
+        raise SceneError(str(error)) from None
+    if len(placed) > MAX_WIDGETS:
+        raise SceneError("забагато віджетів: до " + str(MAX_WIDGETS))
+    pictures = 0
+    for _box, widget in placed:
+        kind = widget.get("widget")
+        if kind not in widgets.KINDS or kind == "state":
+            raise SceneError("невідомий віджет: " + str(kind) + "; є " + ", ".join(
+                k for k in widgets.KINDS if k != "state"))
+        if "bits" in widget:
+            widget["bits"] = _bits(widget["bits"])
+            wanted = width * height // 8 if kind == "picture" else 32
+            if len(widget["bits"]) != wanted:
+                raise SceneError("картинка не того розміру: " + kind + " — "
+                                 + str(wanted) + " байт")
+            pictures += 1
+    if pictures > MAX_BITMAPS:
+        raise SceneError("забагато картинок: до " + str(MAX_BITMAPS))
+    return Scene(name, spec["layout"], fields)
+
+
+def _bits(encoded):
+    import binascii
+
+    if isinstance(encoded, bytes):
+        return encoded
+    try:
+        return binascii.a2b_base64(encoded or "")
+    except (ValueError, TypeError):
+        raise SceneError("картинка не base64") from None
+
+
 def state_scene(word="BOOT"):
     return Scene("state", {"widget": "state", "bind": "word"}, {"word": word})
 
@@ -101,6 +158,18 @@ class Screen:
 
     def scene(self, layer):
         return self._scenes.get(layer)
+
+    def find(self, name):
+        """The hands' scene of that id, on whichever layer it is."""
+        for layer in ("flash", "pinned", "idle"):
+            scene = self._scenes.get(layer)
+            if scene is not None and scene.name == name:
+                return scene
+        return None
+
+    def layers(self):
+        """What is on each layer now, by scene id."""
+        return {layer: scene.name for layer, scene in self._scenes.items()}
 
     def word(self, word):
         """What heare is doing: the face's, and ALLOW above everything."""

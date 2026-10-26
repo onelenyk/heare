@@ -56,3 +56,24 @@ def test_the_hands_render_what_the_skill_asks_and_pass_the_rest():
     args = _rendered(skill, {"svg": DOT, "seconds": 5})
     assert set(args) == {"bitmap", "seconds"} and args["seconds"] == 5
     assert _rendered({}, {"svg": DOT}) == {"svg": DOT}
+
+
+def test_deep_rules_render_an_icon_small_and_a_picture_whole():
+    rules = [{"deep": True, "key": "svg", "where": {"widget": "icon"}, "to": "mono",
+              "width": 16, "height": 16, "as": "bits"},
+             {"deep": True, "key": "svg", "where": {"widget": "picture"}, "to": "mono",
+              "width": 72, "height": 40, "as": "bits"}]
+    icon_svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+                '<circle cx="8" cy="8" r="6" fill="white"/></svg>')
+    scene = {"id": "s", "layout": {"cols": [{"widget": "icon", "svg": icon_svg},
+                                            {"widget": "picture", "svg": DOT},
+                                            {"widget": "text", "text": "svg"}]}}
+    args = {"scene": scene, "layer": "pin"}
+
+    done = _rendered({"render": {"scene": rules}}, args)
+
+    icon, picture, text = done["scene"]["layout"]["cols"]
+    assert len(base64.b64decode(icon["bits"])) == 32 and "svg" not in icon
+    assert len(base64.b64decode(picture["bits"])) == 360
+    assert text == {"widget": "text", "text": "svg"}
+    assert "svg" in args["scene"]["layout"]["cols"][0]  # the model's own arguments untouched

@@ -28,7 +28,7 @@ def test_skills_of_a_wrong_form_are_dropped():
         {**SHOW, "name": "x", "about": " "},  # no words
         {**SHOW, "name": "y", "effect": "explode"},
         {**SHOW, "name": "z", "params": {"type": "string"}},
-        {**SHOW, "name": "w", "params": {"type": "object", "x": "a" * 3000}},
+        {**SHOW, "name": "w", "params": {"type": "object", "x": "a" * 5000}},
         SHOW, SHOW,                            # the second of one name
         "show", None,
     ]
@@ -47,6 +47,18 @@ def test_a_skill_may_ask_its_parameter_rendered_in_a_known_form_only():
                 {"svg": {"to": "mono", "width": 72, "height": 40, "as": "Not A Name"}},
                 "mono"):
         assert skills.checked([{**image, "render": bad}]) == []
+
+
+def test_deep_render_rules_are_checked_for_form():
+    scene = {"name": "screen", "about": "Сцена", "effect": "harmless",
+             "params": {"type": "object", "properties": {"scene": {"type": "object"}}}}
+    rule = {"deep": True, "key": "svg", "where": {"widget": "icon"}, "to": "mono",
+            "width": 16, "height": 16, "as": "bits"}
+    kept = skills.checked([{**scene, "render": {"scene": [rule]}}])
+    assert kept[0]["render"]["scene"][0]["where"] == {"widget": "icon"}
+    for bad in ([], [{**rule, "key": "Bad Key"}], [{**rule, "where": {"a": 1}}],
+                [rule] * 5 + [{**rule, "to": "jpeg"}]):
+        assert skills.checked([{**scene, "render": {"scene": bad}}]) == [], bad
 
 
 def test_a_new_world_changing_skill_is_a_new_trust(tmp_path):

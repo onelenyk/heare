@@ -12,6 +12,7 @@ desk.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 
@@ -127,6 +128,26 @@ async def test_an_svg_the_model_writes_reaches_the_board_as_its_pixels(tmp_path)
         assert desk.picture[20 * 9 + 4] & 0x08          # (36, 20): lit
         assert not desk.picture[0]                       # the corner: dark
         assert b.hand_model.asked[1][-1]["content"] == "картинку показано"
+
+
+async def test_a_scene_reaches_the_board_with_its_icons_drawn_and_updates_after(tmp_path):
+    desk = sim.Board("desk")
+    sun = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+           '<circle cx="8" cy="8" r="5" fill="white"/></svg>')
+    weather = {"id": "weather", "fields": {"t": 21},
+               "layout": {"cols": [{"widget": "icon", "svg": sun},
+                                   {"w": 2, "widget": "number", "bind": "t", "unit": "°"}]}}
+    async with bench(tmp_path, desk) as b:
+        b.say("покажи погоду", Says(calls=(("desk__screen", {"scene": weather, "layer": "pin"}),)),
+              "Показав.")
+        await b.finished()
+        b.say("тепер 22", Says(calls=(("desk__update", {"id": "weather", "fields": {"t": 22}}),)),
+              "Оновив.")
+        await b.until(lambda: desk.scenes.get("weather", {}).get("fields", {}).get("t") == 22,
+                      what="the field updated")
+
+        icon = desk.scenes["weather"]["layout"]["cols"][0]
+        assert "svg" not in icon and len(base64.b64decode(icon["bits"])) == 32
 
 
 async def test_a_world_changing_skill_waits_for_a_yes(tmp_path):
