@@ -57,9 +57,11 @@ class Router(Dispatcher):
 class FirstHand:
     """The native hands, and whoever takes what they hand on."""
 
-    def __init__(self, inner: Any, others: Callable[[], list[Executor]]) -> None:
+    def __init__(self, inner: Any, others: Callable[[], list[Executor]],
+                 tasks: Callable[[], dict[int, Task]] = dict) -> None:
         self._inner = inner
         self._others = others
+        self._tasks = tasks
 
     @property
     def name(self) -> str:
@@ -76,7 +78,12 @@ class FirstHand:
             other = next((e for e in self._others() if e.name != self.name), None)
             if other is None:
                 return "Це не для швидких рук, а інших рук зараз немає."
-            desk.step(f"передаю: {other.name}")
+            # The page shows who does the work: from here on, the other hands.
+            for found in self._tasks().values():
+                if (found.executor == self.name and found.status == "running"
+                        and found.request == getattr(desk, "asked", None)):
+                    found.executor = other.name
+            desk.step(f"передано від {self.name}")
             return await other.run(handoff.task, desk)
 
     def __getattr__(self, name: str) -> Any:
@@ -85,7 +92,8 @@ class FirstHand:
 
 
 def executor(name: str, about: str, make: Callable[[str, str], Any],
-             others: Callable[[], list[Executor]]) -> Any:
+             others: Callable[[], list[Executor]],
+             tasks: Callable[[], dict[int, Task]] = dict) -> Any:
     """The executor for a body that knocked: the native hands go first."""
     made = make(name, about)
-    return FirstHand(made, others) if name == NATIVE else made
+    return FirstHand(made, others, tasks) if name == NATIVE else made

@@ -253,7 +253,8 @@ class Brain:
         self._runner = await serve(
             self.core, self.settings, lambda: model_info(self.settings),
             make_executor=lambda name, about: route.executor(
-                name, about, RemoteExecutor, lambda: list(self.core.executors.values())),
+                name, about, RemoteExecutor, lambda: list(self.core.executors.values()),
+                lambda: self.core.state.tasks),
             mind=self.mind, features=self.features,
         )
         logs.say(f"мозок на http://127.0.0.1:{self.settings.api_port}/")

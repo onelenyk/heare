@@ -77,7 +77,7 @@ async def bench(tmp_path, *boards: sim.Board):
     )
     app = build(room.core, brain, make_executor=lambda name, about: route.executor(
         name, about, lambda n, a: RemoteExecutor(n, a, claim_wait_s=0.5),
-        lambda: list(room.core.executors.values())))
+        lambda: list(room.core.executors.values()), lambda: room.core.state.tasks))
     server = TestServer(app, host="127.0.0.1")
     await server.start_server()
     parts = Settings(path=tmp_path / "part.toml", api_token_file=tmp_path / "token",
@@ -195,7 +195,7 @@ async def test_what_is_not_for_the_bodies_goes_on_to_the_cli_hands(tmp_path):
         task = await b.finished()
 
         assert cli.tasks == ["Порахуй файли в ~/Downloads"]
-        assert (task.status, task.result) == ("done", "12 файлів.")
+        assert (task.executor, task.status, task.result) == ("opencode", "done", "12 файлів.")
 
 
 async def test_work_that_goes_on_stays_with_its_hands(tmp_path):
