@@ -166,3 +166,7 @@ Pushing a `v*` tag makes CI build the wheels and publish the release.
 heare is source-available under the
 [PolyForm Shield License 1.0.0](LICENSE): you may read, run, change and
 share it for any purpose except providing a product that competes with it.
+
+The pult's fonts, [Onest](https://github.com/simpals/onest) and
+[Unbounded](https://github.com/googlefonts/unbounded), ship with it under
+the SIL Open Font License 1.1 (`packages/heare-brain/heare/api/fonts/`).

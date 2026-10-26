@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import socket
 from importlib import metadata
 from pathlib import Path
@@ -359,6 +360,20 @@ async def test_the_built_in_page_is_served(tmp_path):
     assert "HEARE_TOKEN" not in page and "Керування" in page
     assert 'id="pairing"' in page  # a browser without a key asks for a code
     assert "Пристрої" in page and "Підключити пристрій" in page
+    await _close(room, client)
+
+
+async def test_the_page_brings_its_own_fonts(tmp_path):
+    room, client, _, _ = await _open(tmp_path)
+    page = await (await client.get("/")).text()
+    named = set(re.findall(r"url\(/fonts/([a-z-]+)\.woff2\)", page))
+    assert named == {"onest-cyrillic", "onest-latin", "unbounded-cyrillic", "unbounded-latin"}
+    for name in named:  # no key: a font is no secret, and the page loads it before pairing
+        got = await client.get(f"/fonts/{name}.woff2")
+        assert got.status == 200 and got.content_type == "font/woff2"
+        assert (await got.read())[:4] == b"wOF2"
+    assert (await client.get("/fonts/missing.woff2")).status == 404
+    assert (await client.get("/fonts/..%2Fpage.html")).status == 404
     await _close(room, client)
 
 

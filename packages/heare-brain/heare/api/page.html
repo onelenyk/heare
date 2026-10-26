@@ -4,13 +4,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>heare</title>
 <style>
-  /* The old dashboard's palette: warm near-black, one violet accent,
-     muted semantic hues kept apart from it. */
+  /* The brand's two faces, served by the brain itself: the page works with
+     no network, and a font never tells another host the pult was opened.
+     Variable weights, Cyrillic and Latin only — Ukrainian is all there. */
+  @font-face { font-family:'Onest'; font-weight:100 900; font-display:swap; src:url(/fonts/onest-cyrillic.woff2) format('woff2'); unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+  @font-face { font-family:'Onest'; font-weight:100 900; font-display:swap; src:url(/fonts/onest-latin.woff2) format('woff2'); unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+  @font-face { font-family:'Unbounded'; font-weight:200 900; font-display:swap; src:url(/fonts/unbounded-cyrillic.woff2) format('woff2'); unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+  @font-face { font-family:'Unbounded'; font-weight:200 900; font-display:swap; src:url(/fonts/unbounded-latin.woff2) format('woff2'); unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+  /* «Нічний фіолет»: warm near-black, one violet accent, muted semantic
+     hues kept apart from it. */
   :root {
     --bg:#131217; --card:#1c1a21; --card-2:#242029; --line:#302c37;
     --ink:#ece8e2; --soft:#96909e; --accent:#9d7cff; --accent-ink:#17141d;
     --ok:#5fbf8f; --warn:#dbb64f; --bad:#ef7a6b; --info:#6fb8d9;
-    --sans:-apple-system,'Segoe UI',system-ui,sans-serif;
+    --display:'Unbounded',-apple-system,system-ui,sans-serif;
+    --sans:'Onest',-apple-system,'Segoe UI',system-ui,sans-serif;
     --mono:'SF Mono','Fira Code','Cascadia Code',ui-monospace,monospace;
   }
   * { box-sizing:border-box; margin:0; }
@@ -49,7 +57,7 @@
   .update a { color:inherit; }
   #open-settings { border:0; background:transparent; color:var(--soft); cursor:pointer; font-size:15px; padding:0 2px; }
   #open-settings:hover { color:var(--ink); }
-  #name { font:800 22px/1 var(--sans); letter-spacing:-.4px; }
+  #name { font:700 22px/1 var(--display); letter-spacing:-.4px; }
   #up { color:var(--soft); font:11px var(--mono); margin-left:auto; }
   /* A part not of the brain's version: a quiet mark, the details on hover. */
   .part-ver { flex:none; color:var(--warn); font-size:11px; cursor:help; }
@@ -280,7 +288,7 @@
   .edbar .ederror { flex-basis:100%; color:var(--bad); }
   #empty { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:14px; text-align:center; color:var(--soft); pointer-events:none; }
   #empty .face { width:150px; height:150px; }
-  #empty b { font:700 26px var(--sans); color:var(--ink); letter-spacing:-.4px; }
+  #empty b { font:700 26px var(--display); color:var(--ink); letter-spacing:-.4px; }
   #empty span { font:12.5px var(--mono); max-width:340px; }
 
   /* ── the face: what it is doing, at a glance ── */
@@ -315,7 +323,7 @@
   .w code { font:12.5px var(--mono); background:var(--card-2); padding:1px 5px; border-radius:4px; }
   .w pre code { background:none; padding:0; }
   .w a { color:var(--accent); } .w strong { font-weight:650; }
-  .w .big { font:700 44px/1.05 var(--sans); letter-spacing:-1.5px; }
+  .w .big { font:700 44px/1.05 var(--display); letter-spacing:-1.5px; }
   .w .muted { color:var(--soft); font-size:12.5px; }
   .w .row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:13.5px; border-top:1px solid var(--line); }
   .w .row:first-of-type { border-top:0; } .w .row > :first-child { color:var(--soft); }

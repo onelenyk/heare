@@ -46,6 +46,7 @@ from heare.model.providers import PROVIDERS, list_models
 logger = logging.getLogger("heare.api.server")
 
 PAGE = Path(__file__).with_name("page.html")
+FONTS = Path(__file__).with_name("fonts")
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
 # How often a quiet stream is written to. A closed page is only noticed when
@@ -1104,10 +1105,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def page(request: web.Request) -> web.Response:
         return handed(PAGE.read_text(encoding="utf-8"))
 
+    async def font(request: web.Request) -> web.FileResponse:
+        path = FONTS / f"{request.match_info['name']}.woff2"
+        if not path.is_file():
+            raise web.HTTPNotFound(text="no such font")
+        return web.FileResponse(path, headers={
+            "Content-Type": "font/woff2", "Cache-Control": "max-age=604800"})
+
     app = web.Application(middlewares=[guard])
     app.cleanup_ctx.append(asking_for_updates)
     app.add_routes([
         web.get("/", page),
+        web.get("/fonts/{name:[a-z-]+}.woff2", font),
         web.post("/api/pair", pair),
         web.post("/api/pair-code", pair_code),
         web.post("/api/message", message),
