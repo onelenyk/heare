@@ -82,6 +82,7 @@ def skills():
          "params": {"type": "object", "properties": {"id": {"type": "string"}, "layer": _LAYER}}},
         {"name": "screen_info", "effect": "read", "about": "What is on the screen, its size, widgets, icons",
          "params": _OBJECT},
+        {"name": "log", "effect": "read", "about": "The board's last log lines", "params": _OBJECT},
         {"name": "light", "effect": "harmless", "about": "The board's LED: on, off or blink (blinks by itself)",
          "params": {"type": "object", "required": ["mode"], "properties": {
              "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
@@ -183,6 +184,10 @@ class Device:
             return self._clear(args)
         if name == "screen_info":
             return True, self._info()
+        if name == "log":
+            from heare_panel import journal
+
+            return True, journal.lines()
         if name == "light":
             done = self.apply("led", args.get("mode"), now_ms)
             return (True, "світло: " + self.led_mode) if done else (False, "on, off або blink")

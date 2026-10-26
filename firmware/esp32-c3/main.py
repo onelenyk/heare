@@ -26,6 +26,7 @@ import gc
 import time
 
 from heare_panel import ble_setup, clock, display as panel_display, net
+from heare_panel import journal
 
 # Mirrors of store.py's persisted names, used only for the pre-BLE check.
 # Importing store/config here costs ~10 KB and makes BleSetup.start fail with
@@ -364,7 +365,7 @@ def _due(now, clock=clock):
     return False
 
 
-def _sync_time(out=print):
+def _sync_time(out=journal.say):
     """The board's clock set from the network; False when it could not be."""
     try:
         import ntptime
@@ -414,7 +415,7 @@ def show_state(panel, word, now_ms=0, framebuf_module=None):
     return _paint(panel, screen.state_scene(word), now_ms, framebuf_module)
 
 
-def connect_wifi(sta, config, attempts=WIFI_ATTEMPTS, wdt=None, out=print):
+def connect_wifi(sta, config, attempts=WIFI_ATTEMPTS, wdt=None, out=journal.say):
     """Join the stored network, retrying a bounded number of times.
 
     Each association is at most the adapter's timeout (15 s by default), so
@@ -441,7 +442,7 @@ def connect_wifi(sta, config, attempts=WIFI_ATTEMPTS, wdt=None, out=print):
     return None
 
 
-def supervise(link, outcome, out=print):
+def supervise(link, outcome, out=journal.say):
     from heare_panel import link as link_module
 
     try:
@@ -488,7 +489,7 @@ def run_normal(
     thread_start=None,
     link_factory=None,
     clock=clock,
-    out=print,
+    out=journal.say,
     sleep=None,
     ticks=None,
     attempts=WIFI_ATTEMPTS,
@@ -627,7 +628,7 @@ def run_pair(
     wdt=None,
     reset=None,
     clock=clock,
-    out=print,
+    out=journal.say,
     sleep=None,
     framebuf_module=None,
     ticks=None,
@@ -752,7 +753,7 @@ def run_setup(
     wdt=None,
     reset=None,
     clock=clock,
-    out=print,
+    out=journal.say,
     sleep=None,
     framebuf_module=None,
     max_ticks=None,
@@ -881,7 +882,7 @@ def run(
     ble_factory=None,
     link_factory=None,
     clock=clock,
-    out=print,
+    out=journal.say,
     sleep=None,
     framebuf_module=None,
     ticks_setup=None,

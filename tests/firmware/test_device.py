@@ -235,3 +235,11 @@ def test_the_idle_screen_outlives_a_restart_and_clearing_forgets_it(tmp_path):
     fresh, _ = _device()
     fresh.idle_path = board.idle_path
     assert fresh.restore() is False and fresh.screen.seen(0)[0] == "face"
+
+
+def test_the_log_skill_reads_the_panel_s_journal(monkeypatch):
+    from heare_panel import journal
+
+    monkeypatch.setattr(journal, "_lines", ["link=online mem free=43000"])
+    board, _ = _device()
+    assert board.call("log", {}, 0) == (True, ["link=online mem free=43000"])

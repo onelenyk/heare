@@ -41,6 +41,7 @@ VFS_SIZE = 0x200000
 BLOCK = 4096
 PACKAGES = ("heare_panel", "lib")
 FRESH = "fresh_code"
+DEBUG = "debug"
 LAUNCHER = b"import panel_main\npanel_main.run()\n"
 
 
@@ -68,7 +69,7 @@ def _compile(source: Path, target: Path) -> bytes:
     return target.read_bytes()
 
 
-def build(fs: LittleFS, work: Path) -> list[str]:
+def build(fs: LittleFS, work: Path, debug: bool = False) -> list[str]:
     """Swap the code inside ``fs``; return what changed, for the log."""
     changed = []
     for package in PACKAGES:
@@ -95,11 +96,19 @@ def build(fs: LittleFS, work: Path) -> list[str]:
     # when it finds this, so a fix lands on a panel that gave up on the old.
     with fs.open("/" + FRESH, "wb") as handle:
         handle.write(b"1")
+    # Printing waits for someone to read the port; only a debugged panel prints.
+    if debug:
+        with fs.open("/" + DEBUG, "wb") as handle:
+            handle.write(b"1")
+        changed.append("+ " + DEBUG + " (prints its log to the port)")
+    elif DEBUG in fs.listdir("/"):
+        fs.remove("/" + DEBUG)
+        changed.append("- " + DEBUG)
     changed.append("+ panel_main.mpy, main.py (launcher), " + FRESH)
     return changed
 
 
-def deploy(port: str) -> None:
+def deploy(port: str, debug: bool = False) -> None:
     if shutil.which("mpy-cross") is None:
         sys.exit("mpy-cross is missing: run this through `make panel-deploy`")
     with tempfile.TemporaryDirectory() as tmp:
@@ -117,8 +126,8 @@ def deploy(port: str) -> None:
 
         fs = _mount(current.read_bytes())
         kept = [name for name in fs.listdir("/")
-                if name not in (*PACKAGES, "main.py", "panel_main.mpy", FRESH)]
-        for line in build(fs, work):
+                if name not in (*PACKAGES, "main.py", "panel_main.mpy", FRESH, DEBUG)]
+        for line in build(fs, work, debug):
             print("  " + line)
         print("  kept: " + ", ".join(sorted(kept)))
         fs.unmount()
@@ -140,11 +149,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", required=True)
     parser.add_argument("--restore", type=Path, help="write a saved image back")
+    parser.add_argument("--debug", action="store_true",
+                        help="the panel prints its log to the port (read it, or it stalls)")
     args = parser.parse_args()
     if args.restore:
         restore(args.port, args.restore)
     else:
-        deploy(args.port)
+        deploy(args.port, args.debug)
 
 
 if __name__ == "__main__":

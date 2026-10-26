@@ -67,7 +67,7 @@ PORT ?= /dev/cu.usbmodem214201
 
 panel-deploy:
 	uv run --no-project --with esptool --with littlefs-python --with 'mpy-cross>=1.29,<1.30' \
-		python scripts/panel_deploy.py --port $(PORT)
+		python scripts/panel_deploy.py --port $(PORT) $(if $(DEBUG),--debug)
 
 coverage:
 	uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80
