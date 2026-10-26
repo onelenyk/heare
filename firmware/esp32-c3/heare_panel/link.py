@@ -21,17 +21,17 @@ driven by the board and by a fake in ``tests/firmware``.
 import socket
 import time
 
-from heare_panel import clock, http, sse, state
+from heare_panel import clock, device, http, sse, state
 
 PROTOCOL = 1
 VERSION = "0.1.0"
 
-ABOUT = "status panel: OLED, no actuators"
+ABOUT = "status panel: OLED, a light and nine free pins"
 UI = [{"name": "now", "kind": "label", "label": "Screen",
        "value": "BOOT", "head": True}]
 
 EVENT_KINDS = ("phase,permission,permission_closed,question,"
-               "question_closed,said,failed,cannot")
+               "question_closed,said,failed,cannot,control")
 
 BACKOFF_S = (1, 2, 4, 8, 15, 30)
 THROTTLED_S = 60
@@ -88,6 +88,8 @@ class Link:
         self.auto_ap = False
         self.needs_provisioning = store.get_part_token() is None
         self.waits: list[float] = []
+        # Called with (name, value) for a control addressed to this panel.
+        self.on_control = None
 
     def pair(self, code: str) -> str:
         """Redeem a one-time code, then exchange the machine key for a part key.
@@ -198,6 +200,9 @@ class Link:
             # The BOOT button answers an open permission with yes; the brain
             # lets it only after the person let the panel in.
             "approves": True,
+            # What the agent may do here; the brain asks the person first
+            # for every pin.
+            "acts": device.acts(),
         }
 
     def events(self, kinds: str = EVENT_KINDS) -> bool:
@@ -388,10 +393,23 @@ class Link:
         return self.display.state
 
     def _apply(self, event: dict, link: str | None = None) -> None:
+        if event.get("kind") == "control":
+            self._control(event)
+            return
         before = self.display.state
         self.display = state.reduce(self.display, event, self._now(), link)
         if self.display.state != before:
             self._notify()
+
+    def _control(self, event: dict) -> None:
+        # The panel hears the whole conversation, so it hears other parts'
+        # controls too; only its own are acted on.
+        if event.get("part") != self.pid or self.on_control is None:
+            return
+        try:
+            self.on_control(event.get("name"), event.get("value"))
+        except Exception:  # noqa: BLE001 - an act must not stop the stream
+            return
 
     def _set_link(self, link: str) -> None:
         before = self.display.state

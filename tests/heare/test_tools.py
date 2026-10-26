@@ -59,7 +59,7 @@ def test_stop_work_is_offered_only_with_a_running_task():
 
 def test_acknowledging_names_the_verbs_that_only_acknowledge():
     assert _toolbox().acknowledging() == {
-        "delegate", "stop_work", "remind", "cancel_reminder",
+        "delegate", "stop_work", "remind", "cancel_reminder", "panel",
     }
 
 

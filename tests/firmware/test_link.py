@@ -12,7 +12,7 @@ import json
 
 import pytest
 from heare_panel import link as link_module
-from heare_panel import state
+from heare_panel import device, state
 from heare_panel.link import (
     ABOUT,
     EVENT_KINDS,
@@ -159,6 +159,7 @@ def test_pair_exchanges_the_machine_key_for_a_part_key():
                 "value": "BOOT", "head": True}],
         "hears": "all",
         "approves": True,
+        "acts": device.acts(),
     }
     assert "started" not in json.loads(knock["body"])
 
@@ -341,6 +342,27 @@ def test_events_use_the_header_and_feed_the_reducer():
     assert request["headers"]["x-heare-token"] == "part-secret"
     assert seen == [state.IDLE, state.HEAR]
     assert link.state == state.HEAR
+
+
+def test_only_controls_addressed_to_this_panel_are_acted_on():
+    server = FakeServer([
+        _stream(
+            {"kind": "control", "part": PID, "name": "led", "value": "on"},
+            {"kind": "control", "part": "oled-ffff@esp32c3-ffff",
+             "name": "pin3", "value": True},
+        ),
+    ])
+    store = _store()
+    store.set_part_token("part-secret")
+    store.set_pid(PID)
+    link = _link(server, store)
+    done: list[tuple] = []
+    link.on_control = lambda name, value: done.append((name, value))
+
+    link.events()
+
+    assert done == [("led", "on")]
+    assert link.state == state.BRAIN or link.state == state.IDLE
 
 
 def test_an_unapproved_knock_shows_pair_and_backs_off(monkeypatch):

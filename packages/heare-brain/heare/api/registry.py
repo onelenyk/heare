@@ -74,7 +74,8 @@ class Registry:
     def attach(self, pid: str, channel: str, forms: list, about: str,
                host: str, state: str, ui: list | None = None,
                hears: str | None = None, version: str | None = None,
-               started: float | None = None, approves: bool = False) -> None:
+               started: float | None = None, approves: bool = False,
+               acts: list | None = None) -> None:
         old = self.bodies.get(pid) or {}
         # A knock from a process that began at another time is the part
         # started again: counted while this brain runs, so after an update
@@ -101,6 +102,9 @@ class Registry:
             # answer the open permission with yes, only once the person let
             # the part in; see server.part_may.
             "approves": bool(approves),
+            # What the agent may do with the part (show, light, switch); the
+            # part names them, the brain's verb decides which need a yes.
+            "acts": list(acts if acts is not None else old.get("acts") or []),
         }
         if state == "approved" and "executor" in forms and self._on_executor:
             self._on_executor(channel, about)
@@ -140,6 +144,22 @@ class Registry:
         """Whether a trusted part may say yes to the open permission."""
         entry = self.bodies.get(pid) or {}
         return entry.get("state") == "approved" and bool(entry.get("approves"))
+
+    def acting(self) -> dict[str, dict]:
+        """The parts the agent may act through: let in, here, with acts."""
+        return {pid: {"channel": b["channel"], "acts": list(b["acts"]),
+                      "values": dict(b.get("values") or {})}
+                for pid, b in self.bodies.items()
+                if b.get("state") == "approved" and b.get("acts")}
+
+    def act(self, pid: str, name: str, value: object) -> bool:
+        """Tell the part to do one of the acts it named; False for any other."""
+        entry = self.acting().get(pid)
+        if entry is None or name not in {a["name"] for a in entry["acts"]}:
+            return False
+        self._emit("control", channel=entry["channel"], name=name,
+                   value=value, part=pid)
+        return True
 
     def channel_of(self, pid: str) -> str:
         entry = self.bodies.get(pid) or {}

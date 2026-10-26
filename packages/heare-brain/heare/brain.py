@@ -26,8 +26,10 @@ from heare import lifeline
 from heare.prompt import budget, persona
 from heare.api import backup
 from heare.api import pair as codes
+from heare.api.registry import Registry
 from heare.config import HOME, Settings
 from heare.core import Core
+from heare.core.forms import Message
 from heare.engine import Engine, Intents
 from heare.features import build_features
 from heare.language import uk
@@ -142,6 +144,7 @@ class Brain:
             words=self.core.words,
             has_executors=lambda: bool(self.core.executors),
             reminders=self.intents,
+            devices=lambda: self.registry, ask=self.core.ask, say=self._say,
         ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.
@@ -154,6 +157,8 @@ class Brain:
         self._consolidate_lock = asyncio.Lock()
         self.features = build_features(self)
         self._runner: Any = None
+        # The parts the brain knows; made when the door opens.
+        self.registry: Registry | None = None
 
     async def consolidate_once(self) -> ReviewReport:
         """One learning pass, shared by the clock and the page. It reuses
@@ -242,16 +247,25 @@ class Brain:
             if report.error:
                 await asyncio.sleep(REVIEW_RETRY_S)
 
+    def _say(self, channel: str, text: str) -> None:
+        """What a part's act came to, said as it is."""
+        self.core.hear(Message(text=text, channel=channel, person=False,
+                               verbatim=True))
+
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""
         from heare.api.server import serve
         from heare.reach.remote import RemoteExecutor
 
         self.core.hydrate(self.journal.tail_messages())
+        self.registry = Registry(
+            Path(self.settings.parts_file), self.core.state.emit,
+            lambda name, about: self.core.add_executor(RemoteExecutor(name, about)))
+        self.registry.load(Path(self.settings.parts_dir))
         self._runner = await serve(
             self.core, self.settings, lambda: model_info(self.settings),
             make_executor=lambda name, about: RemoteExecutor(name, about),
-            mind=self.mind, features=self.features,
+            mind=self.mind, features=self.features, registry=self.registry,
         )
         logs.say(f"мозок на http://127.0.0.1:{self.settings.api_port}/")
         await asyncio.gather(

@@ -28,8 +28,9 @@ KNOW_EVERYTHING = {"app", "listener", "brain"}
 LEAVES = {"heare.keys", "heare.laws", "heare.model.providers"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part. Raised deliberately for the question
-# channel (an executor asking the person mid-work), not by drift.
-CORE_LINES = 1350
+# channel (an executor asking the person mid-work), and for the yes to one
+# act of a part (the panel's pins), not by drift.
+CORE_LINES = 1354
 
 
 def _imports(path: Path) -> set[str]:

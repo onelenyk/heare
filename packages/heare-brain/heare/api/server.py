@@ -59,7 +59,7 @@ HEARTBEAT_S = 5.0
 # stream cannot be talked into delivering one.
 STATUS_KINDS = frozenset({
     "phase", "permission", "permission_closed", "question", "question_closed",
-    "said", "failed", "cannot", "halted", "judged", "part",
+    "said", "failed", "cannot", "halted", "judged", "part", "control",
 })
 
 # What survives of each status kind once the stream has asked for status
@@ -76,7 +76,14 @@ _STATUS_FIELDS: dict[str, tuple[str, ...]] = {
     "judged": ("allowed",),
     "halted": ("tasks",),
     "cannot": (),
+    # What a part is told to do: the words to show are the panel's own act.
+    "control": ("part", "name", "value"),
 }
+
+# The kinds of act a part may offer the agent. The verb, not the part,
+# decides which of them wait for the person's yes.
+ACT_KINDS = frozenset({"show", "light", "switch"})
+MAX_ACTS = 32
 
 SESSION = "heare_session"
 # A backup brought from another Mac: a year of recordings fits well under it.
@@ -252,7 +259,8 @@ class VoiceOut:
 
 def build(core: Core, settings: Any, vitals: Any = None,
           make_executor: Any = None, *, mind: Any = None,
-          features: Any = None) -> web.Application:
+          features: Any = None, registry: Registry | None = None,
+          ) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen.
 
@@ -381,11 +389,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
         core.hear(Message(text=text, channel="screen"))
         return web.json_response({"ok": True})
 
-    registry = Registry(
-        Path(settings.parts_file), core.state.emit,
-        (lambda channel, about: core.add_executor(make_executor(channel, about)))
-        if make_executor is not None else None)
-    registry.load(Path(settings.parts_dir))
+    if registry is None:
+        registry = Registry(
+            Path(settings.parts_file), core.state.emit,
+            (lambda channel, about: core.add_executor(make_executor(channel, about)))
+            if make_executor is not None else None)
+        registry.load(Path(settings.parts_dir))
     bodies = registry.bodies
 
     def own_channel(request: web.Request, channel: str) -> None:
@@ -497,6 +506,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         approves = data.get("approves") is True
+        acts = _acts(data.get("acts"))
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
         if (pid in registry.trusted()
@@ -509,12 +519,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 registry.remember(pid)
             registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                             version=part_version, started=started,
-                            approves=approves)
+                            approves=approves, acts=acts)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
         registry.attach(pid, channel, forms, about, host, "pending", ui, hears,
                         version=part_version, started=started,
-                            approves=approves)
+                            approves=approves, acts=acts)
         decided = await registry.answer(pid)
         if decided == "expired":
             return web.json_response({"approved": False, "why": "ніхто не відповів"})
@@ -522,7 +532,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
             return web.json_response({"approved": False, "why": decided})
         registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                         version=part_version, started=started,
-                            approves=approves)
+                            approves=approves, acts=acts)
         return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 
@@ -1212,6 +1222,16 @@ def _requested(request: web.Request) -> frozenset[str] | None:
                      if name.strip() in STATUS_KINDS)
 
 
+def _acts(raw: object) -> list[dict]:
+    """The acts a knock offers, as names and known kinds; the rest dropped."""
+    if not isinstance(raw, list):
+        return []
+    acts = [{"name": a["name"], "kind": a["kind"]} for a in raw
+            if isinstance(a, dict) and isinstance(a.get("name"), str)
+            and a["name"] and a.get("kind") in ACT_KINDS]
+    return acts[:MAX_ACTS]
+
+
 def _status_view(event: Event) -> dict:
     """One event as a status-only stream sees it: what to draw, never words."""
     if event.kind == "part":
@@ -1223,7 +1243,8 @@ def _status_view(event: Event) -> dict:
 
 async def serve(core: Core, settings: Any, vitals: Any = None,
                 make_executor: Any = None, *, mind: Any = None,
-                features: Any = None) -> web.AppRunner:
+                features: Any = None, registry: Registry | None = None,
+                ) -> web.AppRunner:
     """Start the API, on this machine only unless ``api_host`` says else.
     Returns the runner to stop it.
 
@@ -1237,7 +1258,7 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
     runner = web.AppRunner(build(core, settings, vitals,
                                  make_executor=make_executor, mind=mind,
-                                 features=features))
+                                 features=features, registry=registry))
     await runner.setup()
     host = str(settings.api_host or "127.0.0.1")
     await web.TCPSite(runner, host, int(settings.api_port)).start()

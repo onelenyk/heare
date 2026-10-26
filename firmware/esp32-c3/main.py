@@ -51,6 +51,7 @@ SETUP_TITLE = "SETUP"
 BLINK_MS = 500
 # The BOOT button on ESP32-C3 boards; pulled up, so pressed reads 0.
 BUTTON_PIN = 9
+LEVELS_MS = 1000
 
 
 def _nvs():
@@ -319,6 +320,14 @@ def show_pair(panel, code, framebuf_module=None):
     )
 
 
+def show_text(panel, lines, framebuf_module=None):
+    """What the agent asked to show, a line every ten pixels."""
+    return _draw_lines(
+        panel, [(line, index * 10) for index, line in enumerate(lines)],
+        framebuf_module,
+    )
+
+
 FACE_STATES = ("IDLE", "HEAR", "THINK", "SPEAK")
 
 
@@ -408,11 +417,13 @@ def _start_thread(target, args):
     _thread.start_new_thread(target, args)
 
 
-def _report(link, word, outcome):
+def _report(link, word, outcome, levels=None):
     from heare_panel import link as link_module
 
+    values = {"now": word}
+    values.update(levels or {})
     try:
-        link.report({"now": word})
+        link.report(values)
     except link_module.NeedsProvisioning:
         outcome.append("provision")
     except Exception:  # noqa: BLE001 - a report failure is not fatal
@@ -441,6 +452,7 @@ def run_normal(
     ticks=None,
     attempts=WIFI_ATTEMPTS,
     button=None,
+    device=None,
 ):
     """Join Wi-Fi, start one ``Link`` thread, and render what it shows.
 
@@ -465,6 +477,13 @@ def run_normal(
         out("link=failed")
         return "error"
 
+    from heare_panel import device as device_module
+
+    board = device if device is not None else device_module.Device(
+        device_module.board_pin
+    )
+    link.on_control = lambda name, value: board.apply(name, value, clock.now_ms())
+
     initial = getattr(getattr(link, "display", None), "state", render.BRAIN)
     show_state(panel, initial, clock.now_ms())
     out("screen=" + initial)
@@ -479,6 +498,7 @@ def run_normal(
     last_word = None
     online_since = None
     boot_cleared = False
+    levels_at = None
     count = 0
     while ticks is None or count < ticks:
         count += 1
@@ -496,12 +516,20 @@ def run_normal(
             _press(link, out)
         was_pressed = down
 
-        key = frame_key(word, panel, now)
+        board.tick(now)
+        # A permission always shows: the words the agent put up wait.
+        text = board.text(now) if word != "ALLOW" else None
+        key = ("SHOW",) + tuple(text) if text else frame_key(word, panel, now)
         if key != last_key:
-            show_state(panel, word, now)
+            if text:
+                show_text(panel, text)
+            else:
+                show_state(panel, word, now)
             last_key = key
+        if word != last_word or levels_at is None or clock.elapsed(levels_at, now) >= LEVELS_MS:
+            _report(link, word, outcome, board.levels())
+            levels_at = now
         if word != last_word:
-            _report(link, word, outcome)
             out("screen=" + word)
             last_word = word
 

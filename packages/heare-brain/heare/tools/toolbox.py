@@ -13,8 +13,10 @@ from typing import Any, Awaitable, Callable
 from heare.core.forms import Memory, Task
 from heare.core.state import State
 from heare.tools import delegate as delegate_tool
+from heare.tools import devices as device_tools
 from heare.tools import recall, reminders as reminder_tools
-from heare.tools.ports import Reminders
+from heare.tools import schemas
+from heare.tools.ports import Devices, Reminders
 from heare.tools.schemas import (
     _CANCEL_REMINDER,
     _DELEGATE,
@@ -37,6 +39,9 @@ class Toolbox:
         has_executors: Callable[[], bool],
         reminders: Reminders | None = None,
         now: Callable[[], float] = time.time,
+        devices: Callable[[], Devices | None] = lambda: None,
+        ask: Callable[[str, str], Awaitable[bool]] | None = None,
+        say: Callable[[str, str], None] | None = None,
     ) -> None:
         self._memory = memory
         self._state = state
@@ -46,6 +51,9 @@ class Toolbox:
         self._has_executors = has_executors
         self._reminders = reminders
         self._now = now
+        self._devices = devices
+        self._ask = ask
+        self._say = say
 
     def verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]:
         verbs: dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]] = {}
@@ -59,13 +67,19 @@ class Toolbox:
             verbs["remind"] = (_REMIND, self._run_remind)
             verbs["list_reminders"] = (_LIST_REMINDERS, self._run_list_reminders)
             verbs["cancel_reminder"] = (_CANCEL_REMINDER, self._run_cancel_reminder)
+        here = device_tools.found(self._devices())
+        if here is not None and self._ask is not None and self._say is not None:
+            pins = device_tools.pins(here[1])
+            verbs["panel"] = (schemas.panel(pins), self._run_panel)
+            if pins:
+                verbs["read_pin"] = (schemas.read_pin(pins), self._run_read_pin)
         return verbs
 
     def acknowledging(self) -> set[str]:
-        return {"delegate", "stop_work", "remind", "cancel_reminder"}
+        return {"delegate", "stop_work", "remind", "cancel_reminder", "panel"}
 
     def read_only(self, name: str) -> bool:
-        return name in {"recall", "list_reminders"}
+        return name in {"recall", "list_reminders", "read_pin"}
 
     async def _run_recall(self, arguments: dict) -> str:
         return await recall.run(self._memory, arguments)
@@ -88,3 +102,12 @@ class Toolbox:
 
     async def _run_cancel_reminder(self, arguments: dict) -> str:
         return await reminder_tools.cancel(self._reminders, arguments)
+
+    async def _run_panel(self, arguments: dict) -> str:
+        devices = self._devices()
+        if devices is None or self._ask is None or self._say is None:
+            return "Панелі зараз немає."
+        return await device_tools.run(devices, self._ask, self._say, arguments)
+
+    async def _run_read_pin(self, arguments: dict) -> str:
+        return device_tools.read(self._devices(), arguments)
