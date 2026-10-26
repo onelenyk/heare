@@ -301,7 +301,8 @@ def test_a_pair_retry_needs_only_a_new_code(tmp_path):
         "ip": "192.168.7.42",
         "pid": "oled-abcd@esp32c3-abcd",
     }
-    assert fixture.sta.calls == [("connect", "home", "secret123")]
+    # Still on the network from the first try: no rejoin for a new code.
+    assert fixture.sta.calls == []
     assert fixture.factory.links[-1].codes == ["BBBB3333"]
     saved = fixture.store.load_config()
     assert saved["wifi"] == {"ssid": "home", "password": "secret123"}
@@ -471,3 +472,16 @@ def test_no_secret_reaches_a_log_or_a_result(tmp_path):
     for secret in (password, code, token):
         assert secret not in logs
         assert secret not in results
+
+
+def test_a_wifi_only_save_joins_and_stops_before_pairing(tmp_path):
+    fixture = Fixture(tmp_path)
+
+    result = fixture.provisioner.handle(
+        {"cmd": "save", "ssid_manual": "home", "password": "secret123"}
+    )
+
+    assert result == {"ok": True, "ip": "192.168.7.42", "pid": ""}
+    assert fixture.sta.calls == [("connect", "home", "secret123")]
+    assert fixture.factory.links == []
+    assert set(fixture.store.load_config()) == {"version", "wifi"}

@@ -260,10 +260,10 @@ def test_setup_is_needed_without_a_config(tmp_path):
     assert main.setup_required(_store(tmp_path)) is True
 
 
-def test_setup_is_needed_without_a_part_token(tmp_path):
+def test_wifi_without_a_part_token_is_not_a_bluetooth_boot(tmp_path):
     store = _store(tmp_path)
     store.save_config(_config())
-    assert main.setup_required(store) is True
+    assert main.setup_required(store) is False
 
 
 def test_setup_is_needed_after_three_consecutive_boots(tmp_path):
@@ -286,12 +286,12 @@ def test_record_boot_increments_the_counter(tmp_path):
 def test_show_state_renders_through_the_72x40_viewport():
     panel = Panel()
 
-    assert main.show_state(panel, render.IDLE, 0, Framebuf()) is True
+    assert main.show_state(panel, render.WIFI, 0, Framebuf()) is True
 
     buffer = panel.viewports[0]
     ops = buffer.canvas.ops
-    word = [op for op in ops if op[0] == "text" and op[1] == "IDLE"]
-    assert word == [("text", "IDLE", 28 + 20, 24, 1)]
+    word = [op for op in ops if op[0] == "text" and op[1] == "WIFI"]
+    assert word == [("text", "WIFI", 28 + 20, 24, 1)]
     assert len(panel.frames[0]) == panel.width * panel.height // 8
 
 
@@ -543,3 +543,154 @@ def test_main_has_no_access_point_or_portal():
     assert "portal" not in source.lower()
     assert "net.Ap" not in source
     assert "create_ap" not in source
+
+
+def _wifi_only(tmp_path):
+    store = _store(tmp_path)
+    store.save_config({"wifi": {"ssid": "home", "password": "secret123"}})
+    return store
+
+
+class Page:
+    """A pairing page that reports paired on the n-th poll."""
+
+    def __init__(self, paired_on=None):
+        self.paired_on = paired_on
+        self.polls = 0
+        self.started = False
+        self.closed = False
+        self.made = None
+
+    def __call__(self, handler, code, defaults, out=print):
+        self.made = (handler, code, defaults)
+        return self
+
+    def start(self):
+        self.started = True
+
+    def poll(self):
+        self.polls += 1
+        return self.paired_on is not None and self.polls >= self.paired_on
+
+    def close(self):
+        self.closed = True
+
+
+def test_wifi_without_a_key_boots_into_the_pairing_page(tmp_path, monkeypatch):
+    _record_screens(monkeypatch)
+    calls = []
+    monkeypatch.setattr(main, "run_pair", lambda *a, **k: calls.append(a) or "ticks")
+    monkeypatch.setattr(main, "run_setup", lambda *a, **k: "setup")
+
+    result = main.run(
+        store=_wifi_only(tmp_path),
+        sta=Sta(),
+        panel=Panel(),
+        wdt=Wdt(),
+        reset=lambda: None,
+        clock=Clock(),
+        out=lambda line: None,
+        sleep=lambda ms: None,
+    )
+
+    assert result == "ticks"
+    assert len(calls) == 1
+
+
+def test_the_pairing_page_falls_back_to_bluetooth_without_wifi(tmp_path, monkeypatch):
+    _record_screens(monkeypatch)
+    logs = []
+    monkeypatch.setattr(main, "run_setup", lambda *a, **k: "setup")
+
+    result = main.run(
+        store=_wifi_only(tmp_path),
+        sta=Sta(error=net.WifiError("gone")),
+        panel=Panel(),
+        wdt=Wdt(),
+        reset=lambda: None,
+        clock=Clock(),
+        out=logs.append,
+        sleep=lambda ms: None,
+    )
+
+    assert result == "setup"
+    assert "wifi failed 3x; ble setup" in logs
+
+
+def test_pairing_shows_the_address_serves_and_reboots_when_paired(tmp_path, monkeypatch):
+    _record_screens(monkeypatch)
+    logs = []
+    resets = []
+    page = Page(paired_on=3)
+    store = _wifi_only(tmp_path)
+    store.set_boot_count(2)
+
+    result = main.run_pair(
+        store,
+        Sta(),
+        Panel(),
+        store.load_config(),
+        code="4821",
+        page_factory=page,
+        wdt=Wdt(),
+        reset=lambda: resets.append(True),
+        clock=Clock(),
+        out=logs.append,
+        sleep=lambda ms: None,
+    )
+
+    assert result == "paired"
+    assert page.started and page.closed and page.polls == 3
+    assert page.made[1] == "4821"
+    assert "pair page http://heare-panel.local ip=192.168.1.50" in logs
+    assert resets == [True]
+    assert store.boot_count() == 0
+
+
+def test_show_pair_fits_the_address_and_code_in_the_window():
+    panel = Panel()
+
+    assert main.show_pair(panel, "4821", Framebuf()) is True
+
+    # 72 px wide: no line may run past the window's right edge.
+    for op in panel.viewports[0].canvas.ops:
+        if op[0] == "text":
+            assert op[2] - 28 + len(op[1]) * 8 <= 72, op
+    assert ("text", "4821", 28 + 20, 24 + 31, 1) in panel.viewports[0].canvas.ops
+
+
+def test_an_old_key_with_a_wifi_only_config_still_pairs(tmp_path, monkeypatch):
+    _record_screens(monkeypatch)
+    calls = []
+    monkeypatch.setattr(main, "run_pair", lambda *a, **k: calls.append(a) or "ticks")
+    store = _wifi_only(tmp_path)
+    store.set_part_token("left-from-an-earlier-pairing")
+
+    main.run(
+        store=store,
+        sta=Sta(),
+        panel=Panel(),
+        wdt=Wdt(),
+        reset=lambda: None,
+        clock=Clock(),
+        out=lambda line: None,
+        sleep=lambda ms: None,
+    )
+
+    assert len(calls) == 1
+
+
+def test_live_states_show_the_face_and_setup_states_the_word():
+    for word in ("IDLE", "HEAR", "THINK", "SPEAK"):
+        panel = Panel()
+        assert main.show_state(panel, word, 0, Framebuf()) is True
+        assert not [op for op in panel.viewports[0].canvas.ops if op[0] == "text"]
+
+
+def test_the_face_redraws_only_when_its_frame_changes():
+    panel = Panel()
+
+    assert main.frame_key("IDLE", panel, 0) == main.frame_key("IDLE", panel, 3000)
+    assert main.frame_key("IDLE", panel, 0) != main.frame_key("IDLE", panel, 5100)
+    assert main.frame_key("SPEAK", panel, 0) != main.frame_key("SPEAK", panel, 500)
+    assert main.frame_key("WIFI", panel, 0) == main.frame_key("WIFI", panel, 9000)

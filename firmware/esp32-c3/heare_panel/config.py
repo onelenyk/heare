@@ -10,9 +10,13 @@ The stored shape is fixed and deterministic::
 
     {"version": 1,
      "wifi": {"ssid": str, "password": str},
-     "brain": {"host": "192.168.1.10", "port": 9790},
-     "device": {"name": "kitchen"},
+     "brain": {"host": "192.168.1.10", "port": 9790},   # with device,
+     "device": {"name": "kitchen"},                    # or neither
      "pair": {"code": "ABCD2345"}}   # optional
+
+A Wi-Fi-only config is what Bluetooth setup leaves behind: the panel is on
+the network and serves its own pairing page, where ``brain`` and ``device``
+arrive together.
 
 An older firmware can read a newer file: unknown keys are dropped on load.
 """
@@ -50,12 +54,13 @@ def _safe(config):
             "ssid": wifi.get("ssid", ""),
             "password": SECRET if wifi.get("password") else "",
         },
-        "brain": {
+    }
+    if brain or device:
+        safe["brain"] = {
             "host": brain.get("host", ""),
             "port": brain.get("port", DEFAULT_PORT),
-        },
-        "device": {"name": device.get("name", "")},
-    }
+        }
+        safe["device"] = {"name": device.get("name", "")}
     pair = config.get("pair") or {}
     if pair:
         safe["pair"] = {"code": SECRET if pair.get("code") else ""}
@@ -70,12 +75,13 @@ def _plain(config):
             "ssid": config["wifi"]["ssid"],
             "password": config["wifi"]["password"],
         },
-        "brain": {
+    }
+    if "brain" in config:
+        plain["brain"] = {
             "host": config["brain"]["host"],
             "port": config["brain"]["port"],
-        },
-        "device": {"name": config["device"]["name"]},
-    }
+        }
+        plain["device"] = {"name": config["device"]["name"]}
     if "pair" in config:
         plain["pair"] = {"code": config["pair"]["code"]}
     return plain
@@ -140,8 +146,8 @@ def _code(value):
 def validate(config):
     """The config as a ``Config``, or ``ConfigError`` naming the bad field.
 
-    Required sections are ``wifi``, ``brain`` and ``device``; ``pair`` is
-    optional. A missing port becomes ``DEFAULT_PORT``, and a missing
+    ``wifi`` is required; ``brain`` and ``device`` come together or not
+    at all; ``pair`` is optional. A missing port becomes ``DEFAULT_PORT``, and a missing
     password becomes the empty string (an open network).
     """
     if not isinstance(config, dict):
@@ -165,6 +171,13 @@ def validate(config):
     if password and not 8 <= len(password) <= 63:
         raise ConfigError("wifi password must be 8-63 characters or empty")
 
+    clean = {
+        "version": VERSION,
+        "wifi": {"ssid": ssid, "password": password},
+    }
+    if config.get("brain") is None and config.get("device") is None:
+        return Config(clean)
+
     brain = config.get("brain")
     if not isinstance(brain, dict):
         raise ConfigError("brain section is required")
@@ -182,12 +195,8 @@ def validate(config):
     if not _name(name):
         raise ConfigError("device name must match [a-z0-9-]{1,24}")
 
-    clean = {
-        "version": VERSION,
-        "wifi": {"ssid": ssid, "password": password},
-        "brain": {"host": host, "port": port},
-        "device": {"name": name},
-    }
+    clean["brain"] = {"host": host, "port": port}
+    clean["device"] = {"name": name}
 
     pair = config.get("pair")
     if pair:
@@ -256,12 +265,10 @@ def merge(base, form):
         code = form["pair_code"]
         pair = {} if code is None or code == "" else {"code": code}
 
-    raw = {
-        "version": base.get("version", VERSION),
-        "wifi": wifi,
-        "brain": brain,
-        "device": device,
-    }
+    raw = {"version": base.get("version", VERSION), "wifi": wifi}
+    if brain or device:
+        raw["brain"] = brain
+        raw["device"] = device
     if pair:
         raw["pair"] = pair
     return validate(raw)
@@ -270,15 +277,14 @@ def merge(base, form):
 def public_view(config):
     """What the portal may show: no Wi-Fi password and no pair code."""
     clean = validate(config)
-    return {
-        "version": clean["version"],
-        "wifi": {"ssid": clean["wifi"]["ssid"]},
-        "brain": {
+    view = {"version": clean["version"], "wifi": {"ssid": clean["wifi"]["ssid"]}}
+    if "brain" in clean:
+        view["brain"] = {
             "host": clean["brain"]["host"],
             "port": clean["brain"]["port"],
-        },
-        "device": {"name": clean["device"]["name"]},
-    }
+        }
+        view["device"] = {"name": clean["device"]["name"]}
+    return view
 
 
 def identity(mac_hex):

@@ -283,3 +283,30 @@ def test_identity_rejects_a_bad_tag(mac):
         config.ConfigError, match="mac must contain at least 4 hex digits"
     ):
         config.identity(mac)
+
+
+def test_a_wifi_only_config_is_what_bluetooth_setup_leaves():
+    clean = config.validate({"wifi": {"ssid": "home", "password": "secret123"}})
+
+    assert set(clean) == {"version", "wifi"}
+    assert config.loads(config.dumps(clean)) == clean
+    assert "brain" not in config.public_view(clean)
+
+
+def test_brain_and_device_come_together():
+    with pytest.raises(config.ConfigError, match="device section is required"):
+        config.validate(
+            {"wifi": {"ssid": "home"}, "brain": {"host": "192.168.1.10"}}
+        )
+
+
+def test_merge_adds_the_brain_to_a_wifi_only_config():
+    base = config.validate({"wifi": {"ssid": "home", "password": "secret123"}})
+
+    merged = config.merge(
+        base, {"brain_host": "192.168.1.10", "brain_port": "9790", "name": "desk"}
+    )
+
+    assert merged["wifi"] == {"ssid": "home", "password": "secret123"}
+    assert merged["brain"] == {"host": "192.168.1.10", "port": 9790}
+    assert merged["device"] == {"name": "desk"}

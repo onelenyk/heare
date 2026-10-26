@@ -471,52 +471,16 @@
     </div>
   </section>
 
-  <section class="section" aria-labelledby="brain-title">
-    <div class="sec-head">
-      <span class="idx" aria-hidden="true">04</span>
-      <h2 id="brain-title">Мозок і панель</h2>
-    </div>
-    <div class="card form">
-      <div class="form-row">
-        <div class="field">
-          <label for="brain-host">Адреса мозку</label>
-          <input id="brain-host" type="text" inputmode="decimal" maxlength="15"
-                 autocomplete="off" placeholder="192.168.1.10">
-        </div>
-        <div class="field">
-          <label for="brain-port">Порт</label>
-          <input id="brain-port" type="number" min="1" max="65535" value="9790"
-                 inputmode="numeric" autocomplete="off">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="panel-name">Назва панелі</label>
-          <input id="panel-name" type="text" maxlength="24" autocomplete="off"
-                 pattern="[a-z0-9-]+" value="kitchen" placeholder="kitchen">
-          <p class="hint">a–z, 0–9, дефіс.</p>
-        </div>
-        <div class="field">
-          <label for="pair-code">Код пари</label>
-          <input class="pair-input" id="pair-code" type="text" maxlength="8"
-                 autocomplete="off" autocapitalize="characters" spellcheck="false"
-                 placeholder="ABCD2345">
-        </div>
-      </div>
-      <p class="hint">8 символів від <span data-command>heare-brain code</span> або зі сторінки мозку. Без 0, 1, I, L, O, U.</p>
-    </div>
-  </section>
-
   <section class="section" aria-labelledby="save-title">
     <div class="sec-head">
-      <span class="idx" aria-hidden="true">05</span>
+      <span class="idx" aria-hidden="true">04</span>
       <h2 id="save-title">Збереження</h2>
     </div>
     <div class="card actions">
       <div class="action-row">
         <button class="btn primary" id="save" type="button">Зберегти</button>
         <button class="btn danger" id="forget" type="button">Забути</button>
-        <p class="hint">Після збереження панель перезавантажиться й сама підключиться до мозку.</p>
+        <p class="hint">Після збереження панель підключиться до Wi-Fi і покаже на екрані <b>heare-panel.local</b>: відкрийте цю адресу, там вказується мозок.</p>
       </div>
       <p class="message" id="message" role="status" aria-live="polite"></p>
       <div class="progress" id="progress" aria-live="polite"></div>
@@ -526,7 +490,7 @@
 
   <section class="section" aria-labelledby="status-title">
     <div class="sec-head">
-      <span class="idx" aria-hidden="true">06</span>
+      <span class="idx" aria-hidden="true">05</span>
       <h2 id="status-title">Стан панелі</h2>
       <button class="btn link" id="refresh" type="button">Оновити</button>
     </div>
@@ -584,10 +548,6 @@
     ssidManual: byId("ssid-manual"),
     password: byId("password"),
     scan: byId("scan"),
-    host: byId("brain-host"),
-    port: byId("brain-port"),
-    name: byId("panel-name"),
-    pair: byId("pair-code"),
     save: byId("save"),
     forget: byId("forget"),
     refresh: byId("refresh"),
@@ -640,6 +600,21 @@
   function setMessage(text, tone) {
     el.message.className = "message" + (text ? " show" : "") + (tone ? " " + tone : "");
     el.message.textContent = text || "";
+  }
+
+  // The second step lives on the panel itself, once it is on Wi-Fi.
+  const PAIR_PAGE = "http://heare-panel.local";
+
+  function showNextStep(lead) {
+    setProgress("");
+    setPill("ok", "Wi-Fi збережено");
+    setMessage(lead + " Коли на екрані панелі з’явиться heare-panel.local, відкрийте ", "ok");
+    const link = document.createElement("a");
+    link.href = PAIR_PAGE;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = PAIR_PAGE;
+    el.message.append(link, " — там вказується мозок.");
   }
 
   function setProgress(text) {
@@ -697,19 +672,6 @@
       node.classList.toggle("empty", text === "—");
     }
     el.errorRow.classList.toggle("bad", Boolean(status.error));
-    if (!el.name.value && typeof status.name === "string" && status.name) {
-      el.name.value = status.name;
-    }
-  }
-
-  function isIPv4(text) {
-    const parts = text.split(".");
-    if (parts.length !== 4) return false;
-    return parts.every((part) => {
-      if (!/^\d{1,3}$/.test(part)) return false;
-      if (part.length > 1 && part[0] === "0") return false;
-      return Number(part) <= 255;
-    });
   }
 
   function nextId() {
@@ -773,8 +735,11 @@
     if (!back) throw new LinkLost("З’єднання з панеллю втрачено. Підключіть її знову.");
   }
 
-  async function readJson(char, what) {
+  async function readJson(name, what) {
+    // Resolve the characteristic only after reconnecting: a dropped link
+    // (the panel turns BLE off to join Wi-Fi) leaves state.chars null.
     await ensureConnected();
+    const char = state.chars[name];
     let view;
     try {
       view = await char.readValue();
@@ -824,7 +789,7 @@
   async function waitForResult(id, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const result = await readJson(state.chars.result, "результат");
+      const result = await readJson("result", "результат");
       if (result && result.id === id) return result;
       await sleep(350);
     }
@@ -877,7 +842,7 @@
 
   async function refreshStatus() {
     if (!state.authed) return null;
-    const status = await readJson(state.chars.status, "стан");
+    const status = await readJson("status", "стан");
     renderStatus(status);
     return status;
   }
@@ -936,7 +901,13 @@
   async function scanNetworks() {
     if (!(await ensureAuth())) return;
     setProgress("читаю стан сканування…");
-    const before = await readJson(state.chars.scan, "сканування");
+    // Before its first scan the panel has written nothing here yet.
+    let before = null;
+    try {
+      before = await readJson("scan", "сканування");
+    } catch (err) {
+      if (!(err instanceof PanelError) || err instanceof LinkLost) throw err;
+    }
     const result = await sendCommand({ cmd: "scan" }, 10000);
     if (result && result.ok === false) {
       setMessage("Панель не почала скан: " + (result.error || "невідома помилка") + ".", "bad");
@@ -947,7 +918,7 @@
     let found = null;
     for (let attempt = 0; attempt < 15; attempt += 1) {
       await sleep(1000);
-      const now = await readJson(state.chars.scan, "сканування");
+      const now = await readJson("scan", "сканування");
       if (now && now.seq !== startSeq) {
         found = now;
         break;
@@ -978,34 +949,9 @@
       el.password.focus();
       throw new PanelError("Пароль Wi-Fi — 8–63 символи, або порожньо для відкритої мережі.");
     }
-    const host = el.host.value.trim();
-    if (!isIPv4(host)) {
-      el.host.focus();
-      throw new PanelError("Адреса мозку має бути IPv4, наприклад 192.168.1.10.");
-    }
-    const port = Number(el.port.value);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      el.port.focus();
-      throw new PanelError("Порт — число від 1 до 65535.");
-    }
-    const name = el.name.value.trim();
-    if (!/^[a-z0-9-]{1,24}$/.test(name)) {
-      el.name.focus();
-      throw new PanelError("Назва панелі — 1–24 символи: a–z, 0–9, дефіс.");
-    }
-    const pair = el.pair.value.trim().toUpperCase();
-    if (!/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(pair)) {
-      el.pair.focus();
-      throw new PanelError("Код пари — 8 символів від heare-brain code (без 0, 1, I, L, O, U).");
-    }
-    return {
-      ssid,
-      pass,
-      brain_host: host,
-      brain_port: port,
-      name,
-      pair_code: pair,
-    };
+    // The panel reads "password"; this page once sent "pass", which the
+    // firmware dropped, so a stored password silently stayed in use.
+    return { ssid, password: pass };
   }
 
   function showSaveError(result) {
@@ -1041,15 +987,17 @@
       return;
     }
     if (!result) {
-      setProgress("панель перезавантажується — перепідключаюся…");
-      const back = await reopen(30, 2000);
+      setProgress("панель підключається до Wi-Fi…");
+      // A failed join brings Bluetooth back with the error within ~20 s.
+      const back = await reopen(15, 2000);
       if (!back) {
-        setPill("bad", "немає підтвердження");
-        setMessage("Панель не відповіла після збереження. Перевірте OLED: якщо там нова мережа, налаштування могли застосуватися, але підтвердити це через Bluetooth не вдалося.", "bad");
-        logError("save unconfirmed: reconnect exhausted");
+        // A failed save comes back on Bluetooth with its error; a successful
+        // one reboots the panel onto Wi-Fi, where it no longer advertises.
+        log("save: panel left Bluetooth, as it does after a join");
+        showNextStep("Панель підключилась до Wi-Fi і пішла з Bluetooth.");
         return;
       }
-      result = await readJson(state.chars.result, "результат");
+      result = await readJson("result", "результат");
       if (!result || result.id !== saveId) {
         setPill("bad", "немає підтвердження");
         setMessage("Не вдалося підтвердити, що панель зберегла налаштування: результат команди не збігається. Перевірте OLED.", "bad");
@@ -1063,30 +1011,7 @@
     }
 
     log("save ok");
-    setPill("ok", "збережено");
-    setMessage("Налаштування збережено. Панель перезавантажується й підключається до мозку.", "ok");
-
-    // The device may reboot and drop the link right after the result. Keep the
-    // BluetoothDevice and give it 30 × 2 s to come back, then read the status.
-    await sleep(700);
-    if (state.device && !state.device.gatt.connected) {
-      setProgress("чекаю, доки панель підніме Bluetooth…");
-      const back = await reopen(30, 2000);
-      if (!back) {
-        log("post-save status unavailable");
-        return;
-      }
-    }
-    if (!(await restoreAuth())) {
-      log("post-save auth unavailable");
-      return;
-    }
-    try {
-      await refreshStatus();
-    } catch (err) {
-      if (!(err instanceof LinkLost)) throw err;
-    }
-    setPill("ok", "збережено");
+    showNextStep("Wi-Fi збережено, панель перезавантажується.");
   }
 
   let forgetArmed = false;
@@ -1249,17 +1174,6 @@
   el.code.addEventListener("input", () => {
     const clean = el.code.value.replace(/\D/g, "").slice(0, 4);
     if (el.code.value !== clean) el.code.value = clean;
-  });
-
-  el.pair.addEventListener("input", () => {
-    const position = el.pair.selectionStart;
-    const upper = el.pair.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 8);
-    if (el.pair.value !== upper) {
-      el.pair.value = upper;
-      if (position !== null) {
-        el.pair.setSelectionRange(Math.min(position, upper.length), Math.min(position, upper.length));
-      }
-    }
   });
 
   for (const node of document.querySelectorAll("[data-panel-prefix]")) {

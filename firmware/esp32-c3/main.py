@@ -1,8 +1,14 @@
-"""Boot the panel: BLE setup when it must be provisioned, the link otherwise.
+"""Boot the panel: Bluetooth for Wi-Fi, its own page for the brain, then work.
 
-Setup is BLE only: the panel advertises ``heare-panel-XXXX`` for ten minutes
-with a four-digit code on the screen and on the serial line, and a save that
-succeeds stops BLE, shows ``IDLE`` and resets into normal operation.
+Three modes, chosen at boot from what is stored:
+
+* no Wi-Fi config (or three boots that never got healthy): BLE setup. The
+  panel advertises ``heare-panel-XXXX`` for ten minutes with a four-digit code
+  on the screen; the page sets Wi-Fi only, and a save that joins resets.
+* Wi-Fi but no part key: the pairing page. The panel joins Wi-Fi and serves
+  ``http://heare-panel.local`` with a new code on the screen; pairing there
+  resets into work.
+* both: normal operation, the link to the brain.
 
 A display that is missing or dies later never stops the network side: every
 draw is best effort. The module is import-safe on a laptop, so ``machine``,
@@ -32,7 +38,9 @@ CONFIG_PATH = "/config.json"
 BOOT_LIMIT = 3
 WDT_MS = 30_000
 HEALTHY_MS = 60_000
-TICK_MS = 200
+# Short enough for the face to move at ~8 frames a second; a frame is
+# drawn only when render.frame_key changes, so still states cost nothing.
+TICK_MS = 100
 BLE_WINDOW_MS = 600_000
 WIFI_ATTEMPTS = 3
 SETUP_NAME = "heare-panel-"
@@ -106,12 +114,12 @@ def _record_boot_nvs():
 
 
 def _setup_required_nvs():
+    # A missing part key is not a Bluetooth boot: with Wi-Fi stored, the
+    # panel pairs from its own page.
     if not _has_config():
         return True
     nvs = _nvs()
     if nvs is None:
-        return True
-    if _text(nvs, KEY_PART_TOKEN) is None:
         return True
     return _number(nvs, KEY_BOOT_COUNT) >= BOOT_LIMIT
 
@@ -131,8 +139,6 @@ def setup_required(store):
     """
     try:
         if store.load_config() is None:
-            return True
-        if store.get_part_token() is None:
             return True
         return store.boot_count() >= BOOT_LIMIT
     except Exception:  # noqa: BLE001 - a broken store must still offer setup
@@ -268,6 +274,36 @@ def show_setup(panel, code, framebuf_module=None):
     )
 
 
+def show_pair(panel, code, framebuf_module=None):
+    """The page's address and the code, in a 9-character-wide window."""
+    return _draw_lines(
+        panel,
+        [("heare-", 0), ("panel", 10), (".local", 20), (code, 31)],
+        framebuf_module,
+    )
+
+
+FACE_STATES = ("IDLE", "HEAR", "THINK", "SPEAK")
+
+
+def _shows_face(panel, word):
+    """The live states show the brand's face on the small window."""
+    if word not in FACE_STATES or panel is None:
+        return False
+    return (getattr(panel, "view_width", 0), getattr(panel, "view_height", 0)) == (72, 40)
+
+
+def frame_key(word, panel, now_ms):
+    """What tells one frame from the next; the loop redraws when it changes."""
+    if _shows_face(panel, word):
+        from heare_panel import face
+
+        return face.frame_key(word, now_ms)
+    if word == "ALLOW":
+        return (word, now_ms // BLINK_MS)
+    return (word,)
+
+
 def show_state(panel, word, now_ms=0, framebuf_module=None):
     from heare_panel import render
 
@@ -277,9 +313,14 @@ def show_state(panel, word, now_ms=0, framebuf_module=None):
     if canvas is None:
         return False
     try:
-        render.render(
-            word, canvas, panel.view_width, panel.view_height, now_ms
-        )
+        if _shows_face(panel, word):
+            from heare_panel import face
+
+            face.draw(word, canvas, now_ms)
+        else:
+            render.render(
+                word, canvas, panel.view_width, panel.view_height, now_ms
+            )
     except (ValueError, AttributeError):
         return False
     return _flush(panel, data)
@@ -320,9 +361,9 @@ def supervise(link, outcome, out=print):
         outcome.append("stopped")
     except link_module.NeedsProvisioning:
         outcome.append("provision")
-    except Exception:  # noqa: BLE001 - the reason is reported, not raised
+    except Exception as error:  # noqa: BLE001 - the reason is reported, not raised
         outcome.append("error")
-        out("link=error")
+        out("link=error " + type(error).__name__)
 
 
 def _start_thread(target, args):
@@ -411,8 +452,7 @@ def run_normal(
             return "error"
         word = link.display.state
 
-        blink = now // BLINK_MS if word == render.ALLOW else -1
-        key = (word, blink)
+        key = frame_key(word, panel, now)
         if key != last_key:
             show_state(panel, word, now)
             last_key = key
@@ -446,6 +486,85 @@ def run_normal(
         sleep(TICK_MS)
 
     _close(link)
+    return "ticks"
+
+
+def run_pair(
+    store,
+    sta,
+    panel,
+    config,
+    code=None,
+    page_factory=None,
+    link_factory=None,
+    wdt=None,
+    reset=None,
+    clock=clock,
+    out=print,
+    sleep=None,
+    framebuf_module=None,
+    ticks=None,
+    attempts=WIFI_ATTEMPTS,
+):
+    """Join Wi-Fi and serve the pairing page until the brain gives a key.
+
+    Returns ``wifi`` when the stored network cannot be joined (the caller
+    falls back to Bluetooth), ``paired`` after a reset into work, and
+    ``ticks`` when a test bounded the loop.
+    """
+    from heare_panel import link as link_module
+    from heare_panel import pair_web
+    from heare_panel.provision import Provisioner
+
+    sleep = sleep or _sleep
+    show_state(panel, "WIFI", clock.now_ms(), framebuf_module)
+    out("screen=WIFI")
+    ip = connect_wifi(sta, config, attempts, wdt, out)
+    if ip is None:
+        return "wifi"
+    # Wi-Fi works, so these boots are not the failures the counter is for.
+    clear_boot(store)
+
+    provisioner = Provisioner(
+        store, sta, link_factory or link_module.Link, clock=clock, out=out
+    )
+    code = code or ble_setup.make_code()
+    device = config.get("device") or {}
+    brain = config.get("brain") or {}
+    page = (page_factory or pair_web.PairPage)(
+        provisioner.handle,
+        code,
+        {
+            "brain_host": brain.get("host"),
+            "brain_port": brain.get("port"),
+            "name": device.get("name"),
+        },
+        out=out,
+    )
+    try:
+        page.start()
+    except OSError as error:
+        out("pair page failed " + type(error).__name__)
+        return "wifi"
+    shown = show_pair(panel, code, framebuf_module)
+    out("pair page http://" + net.HOSTNAME + ".local ip=" + str(ip))
+    out("code=" + code)
+    out("screen=PAIR" if shown else "screen=none")
+
+    count = 0
+    while ticks is None or count < ticks:
+        count += 1
+        _feed(wdt)
+        if page.poll():
+            # Let the browser receive its answer before the radio goes away.
+            sleep(1000)
+            page.close()
+            show_state(panel, "IDLE", clock.now_ms(), framebuf_module)
+            out("paired")
+            _reboot(reset)
+            return "paired"
+        sleep(TICK_MS)
+    page.close()
     return "ticks"
 
 
@@ -653,6 +772,28 @@ def run(
     try:
         config = store.load_config() if store is not None else None
     except Exception:  # noqa: BLE001 - an unreadable config means setup
+        config = None
+    # A key left from an earlier pairing is no use without a brain to use it
+    # on: a Wi-Fi-only config always means the pairing page.
+    if config is not None and ("brain" not in config or _token(store) is None):
+        result = run_pair(
+            store,
+            sta,
+            panel,
+            config,
+            code=code,
+            link_factory=link_factory,
+            wdt=wdt,
+            reset=reset,
+            clock=clock,
+            out=out,
+            sleep=sleep,
+            framebuf_module=framebuf_module,
+            ticks=ticks_setup,
+        )
+        if result != "wifi":
+            return result
+        out("wifi failed 3x; ble setup")
         config = None
     if config is None:
         return run_setup(

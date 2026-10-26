@@ -81,8 +81,14 @@ class Provisioner:
             return self._fail(ERROR_CONFIG)
 
         wifi = candidate["wifi"]
+        ip = None
+        if "ssid" not in form and "password" not in form:
+            # Pairing from the panel's own page: it is on that network now,
+            # and rejoining would drop the very connection the page uses.
+            ip = self._live_ip()
         try:
-            ip = self.sta.connect(wifi["ssid"], wifi["password"])
+            if not ip:
+                ip = self.sta.connect(wifi["ssid"], wifi["password"])
         except (net.WifiError, OSError, ValueError):
             return self._fail(ERROR_WIFI)
         if not ip:
@@ -95,6 +101,12 @@ class Provisioner:
         if not isinstance(saved, dict):
             saved = candidate
         self.ip = str(ip)
+        if "brain" not in saved:
+            # Bluetooth setup stops at Wi-Fi; the brain comes from the page
+            # the panel serves once it is on the network.
+            self.error = ""
+            self.out(f"save ok ip={self.ip}")
+            return {"ok": True, "ip": self.ip, "pid": ""}
 
         code = ""
         if "pair" in candidate:
@@ -160,6 +172,15 @@ class Provisioner:
         if stored:
             return STATE_PAIR
         return STATE_IDLE
+
+    def _live_ip(self) -> str:
+        """The station's address if the radio says it is connected now."""
+        try:
+            if self.sta.isconnected():
+                return self.sta.ip() or ""
+        except (AttributeError, OSError, ValueError):
+            pass
+        return ""
 
     def _current_ip(self) -> str:
         if self.ip:

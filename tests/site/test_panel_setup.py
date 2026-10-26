@@ -353,24 +353,20 @@ def run() -> int:
             )
 
             page.locator("#password").fill("correct-horse")
-            page.locator("#brain-host").fill("192.168.110.77")
-            page.locator("#brain-port").fill("9790")
-            page.locator("#panel-name").fill("kitchen")
-            page.locator("#pair-code").fill("abcd2345")
             check(
-                page.locator("#pair-code").input_value() == "ABCD2345",
-                "pair code is uppercased in the field",
+                page.locator("#brain-host").count() == 0
+                and page.locator("#pair-code").count() == 0,
+                "the Bluetooth page asks for Wi-Fi only",
             )
 
             page.locator("#save").click()
             expect(page.locator("#message")).to_contain_text(
-                "Налаштування збережено", timeout=30000
+                "heare-panel.local", timeout=40000
             )
-            expect(page.locator("#status-ip")).to_have_text(
-                "192.168.110.77", timeout=20000
+            check(
+                page.locator('#message a[href="http://heare-panel.local"]').count() == 1,
+                "after Wi-Fi the page links to the panel's own pairing page",
             )
-            expect(page.locator("#conn-text")).to_have_text("збережено", timeout=20000)
-            check(True, "save is confirmed by result and the panel reconnects")
 
             saved = page.evaluate("window.__fake.saved")
             check(isinstance(saved.get("id"), int), "save payload carries a command id")
@@ -378,11 +374,7 @@ def run() -> int:
             expected = {
                 "cmd": "save",
                 "ssid": "HomeNet",
-                "pass": "correct-horse",
-                "brain_host": "192.168.110.77",
-                "brain_port": 9790,
-                "name": "kitchen",
-                "pair_code": "ABCD2345",
+                "password": "correct-horse",
             }
             check(saved == expected, "save payload matches the BLE contract exactly")
             check(
@@ -405,10 +397,6 @@ def run() -> int:
                 and auth_entries[1]["ok"] is True,
                 "bad auth is rejected before the good auth",
             )
-            check(
-                page.evaluate("window.__fake.connectAttempts") >= 2,
-                "gatt.connect() was retried after the simulated reboot",
-            )
 
             storage = page.evaluate(
                 "({ local: Object.fromEntries(Object.entries(localStorage)),"
@@ -422,7 +410,7 @@ def run() -> int:
             check(
                 all(
                     secret not in url
-                    for secret in ("correct-horse", "ABCD2345", "1234")
+                    for secret in ("correct-horse", "1234")
                 ),
                 "URL carries no code, password, or pair code",
             )
