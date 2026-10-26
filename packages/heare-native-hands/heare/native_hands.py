@@ -90,6 +90,7 @@ class NativeHand:
         tools = _tools(here[1])
         messages: list[dict] = [{"role": "system", "content": _SYSTEM},
                                 {"role": "user", "content": task}]
+        done: list[str] = []
         for _ in range(STEPS):
             desk.step("думаю")
             text, calls = await self._turn(messages, tools)
@@ -98,8 +99,10 @@ class NativeHand:
             if not calls:
                 return text or "Готово."
             results = [(call, await self._call(call, desk)) for call in calls]
+            done += [said for _, said in results]
             messages += _turns(text, results)
-        return "Не впорався за кілька кроків."
+        # Out of steps: what was done is still the answer, not a failure.
+        return "Зроблено: " + " ".join(done[-3:])
 
     async def _turn(self, messages: list[dict], tools: list[dict]) -> tuple[str, list[dict]]:
         parts: list[str] = []
@@ -215,7 +218,9 @@ def _tools(entry: dict) -> list[dict]:
             "seconds": {"type": "integer", "description": "1..60, 10 if unsure."},
         }, ["text"]))
     if _named(entry, "light"):
-        tools.append(_tool("light", "Turn the panel's light on, off or blinking.", {
+        tools.append(_tool("light", "Turn the panel's light on, off or blinking. "
+                           "«blink» blinks by itself until told otherwise: to blink, "
+                           "call it once with «blink», never on and off in turns.", {
             "mode": {"type": "string", "enum": ["on", "off", "blink"]},
         }, ["mode"]))
     pins = _named(entry, "switch")

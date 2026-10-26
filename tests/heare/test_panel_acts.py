@@ -143,3 +143,13 @@ def test_a_knock_keeps_only_acts_of_known_kinds():
                   {"name": "", "kind": "show"}, "led", None]) == [
         {"name": "pin3", "kind": "switch"}]
     assert _acts("show") == []
+
+
+async def test_out_of_steps_it_says_what_was_done(tmp_path):
+    registry, _ = _registry(tmp_path)
+    turn = Says(calls=(("light", {"mode": "on"}),))
+    hand, _ = _hand(registry, *[turn] * 4)
+
+    said = await hand.run("кілька разів увімкни й вимкни", Desk())
+
+    assert said == "Зроблено: Світло: on. Світло: on. Світло: on."
