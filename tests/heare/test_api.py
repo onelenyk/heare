@@ -1850,25 +1850,78 @@ async def test_the_update_door_checks_and_refuses_what_it_cannot_do(tmp_path, mo
     await _close(room, client)
 
 
-async def test_only_a_let_in_executor_may_use_the_parts_acts(tmp_path):
+async def _knock(client, headers, pid, forms, **more):
+    channel, host = pid.split("@")
+    answer = await client.post("/api/bodies", json={
+        "channel": channel, "forms": forms, "about": "", "key": pid, "host": host,
+        **more}, headers=headers)
+    return {"X-Heare-Token": (await answer.json())["token"]}
+
+
+PIN = {"name": "pin3", "about": "реле", "effect": "change",
+       "params": {"type": "object", "properties": {"on": {"type": "boolean"}}}}
+
+
+async def test_only_a_let_in_executor_may_call_the_parts_skills(tmp_path):
     (tmp_path / "parts.json").write_text('["native@desk", "oled@desk"]', encoding="utf-8")
     room, client, master, _ = await _open(tmp_path)
-    panel = await client.post("/api/bodies", json={
-        "channel": "oled", "forms": ["output"], "about": "", "key": "oled@desk",
-        "host": "desk", "acts": [{"name": "led", "kind": "light"}]}, headers=master)
-    panel = {"X-Heare-Token": (await panel.json())["token"]}
-    hand = await client.post("/api/bodies", json={
-        "channel": "native", "forms": ["executor"], "about": "", "key": "native@desk",
-        "host": "desk"}, headers=master)
-    hand = {"X-Heare-Token": (await hand.json())["token"]}
+    panel = await _knock(client, master, "oled@desk", ["output"], name="desk",
+                         acts=[{"name": "led", "kind": "light"}])
+    hand = await _knock(client, master, "native@desk", ["executor"])
 
-    offered = await (await client.get("/api/acts", headers=hand)).json()
-    done = await client.post("/api/acts", json={"part": "oled@desk", "name": "led",
-                                                "value": "on"}, headers=hand)
-    unknown = await client.post("/api/acts", json={"part": "oled@desk", "name": "pin9",
-                                                   "value": True}, headers=hand)
+    offered = await (await client.get("/api/skills", headers=hand)).json()
+    told = await client.post("/api/skills/call", json={
+        "part": "oled@desk", "name": "led", "args": {"mode": "on"}}, headers=hand)
+    unknown = await client.post("/api/skills/call", json={
+        "part": "oled@desk", "name": "pin9", "args": {}}, headers=hand)
 
-    assert offered["oled@desk"]["acts"] == [{"name": "led", "kind": "light"}]
-    assert done.status == 200 and unknown.status == 404
-    assert (await client.get("/api/acts", headers=panel)).status == 403
+    assert offered["oled@desk"]["name"] == "desk"
+    assert [s["name"] for s in offered["oled@desk"]["skills"]] == ["led"]
+    assert (await told.json())["ok"] is True and unknown.status == 404
+    assert (await client.get("/api/skills", headers=panel)).status == 403
     await _close(room, client)
+
+
+async def test_a_call_waits_for_the_part_s_own_answer(tmp_path):
+    (tmp_path / "parts.json").write_text('["native@desk", "oled@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    panel = await _knock(client, master, "oled@desk", ["output"], skills=[PIN])
+    hand = await _knock(client, master, "native@desk", ["executor"])
+    events = room.core.state.subscribe()
+
+    calling = asyncio.create_task(client.post("/api/skills/call", json={
+        "part": "oled@desk", "name": "pin3", "args": {"on": True}}, headers=hand))
+    event = None
+    while event is None or event.kind != "call":
+        event = await asyncio.wait_for(events.get(), 2)
+    assert event.data["args"] == {"on": True}
+    await client.post(f"/api/skills/{event.data['id']}", json={"ok": True, "result": "pin3: 1"},
+                      headers=hand)
+    stranger = await client.post(f"/api/skills/{event.data['id']}", json={"ok": True},
+                                 headers=hand)
+    await client.post(f"/api/skills/{event.data['id']}", json={"ok": True, "result": "pin3: 1"},
+                      headers=panel)
+
+    assert stranger.status == 404
+    assert (await (await calling).json()) == {"ok": True, "result": "pin3: 1"}
+    await _close(room, client)
+
+
+async def test_a_part_with_a_new_switch_is_asked_about_again(tmp_path):
+    (tmp_path / "parts.json").write_text('["oled@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    await _knock(client, master, "oled@desk", ["output"], skills=[PIN])
+
+    knocking = asyncio.create_task(client.post("/api/bodies", json={
+        "channel": "oled", "forms": ["output"], "about": "", "key": "oled@desk", "host": "desk",
+        "skills": [PIN, {**PIN, "name": "pin4"}]}, headers=master))
+    for _ in range(100):
+        state = await (await client.get("/api/state", headers=master)).json()
+        if state["bodies"]["oled@desk"]["state"] == "pending":
+            break
+        await asyncio.sleep(0.01)
+    assert state["bodies"]["oled@desk"]["state"] == "pending"
+    await client.post("/api/bodies/oled@desk/approve", headers=master)
+    assert (await (await knocking).json())["approved"] is True
+    await _close(room, client)
+

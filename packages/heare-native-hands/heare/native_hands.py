@@ -2,16 +2,18 @@
 
     uv run python -m heare.native_hands
 
-The opencode hand takes seconds to start and a long prompt to read; turning on
-a light needs neither. This hand is a part like the others: it knocks as an
-executor, claims work, and does it with the voice's model and the acts the
-other parts named (``acts`` in their knock) as its tools, in a few calls at
-most. The dispatcher chooses between the hands by their ``about``; whatever
-needs a plan, files, code or questions belongs to the opencode hand.
+The cli hands take seconds to start and a long prompt to read; turning on a
+light needs neither. These hands are a part like the others: they knock as an
+executor, claim work, and do it with the voice's model and the other parts'
+skills as tools, in a few calls at most. Whatever needs a plan, files, code
+or questions belongs to the cli hands.
 
-Showing and lighting change nothing that matters and are done at once. A pin
-may be wired to anything, so it goes through the desk's ``judge``: what the
-person plainly asked for is done, anything else is asked.
+The hands know no kinds of device. A skill comes from its part with its name,
+its words, its parameters and its effect, and is a tool as it is
+(``part__skill``). ``read`` and ``harmless`` are done at once; ``change`` goes
+through the desk's ``judge``: what the person plainly asked for is done,
+anything else is asked. Two parts of one name share a tool, and the person is
+asked which.
 """
 
 from __future__ import annotations
@@ -20,8 +22,10 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import socket
 import sys
+from dataclasses import dataclass
 from typing import AsyncIterator, Protocol
 
 import httpx
@@ -29,32 +33,19 @@ import httpx
 from heare import hand as hand_life
 from heare import layout, logs, part, talk
 from heare.config import Settings
-from heare.core.forms import Desk, Model
+from heare.core.forms import Model
 
 logger = logging.getLogger("heare.native_hands")
 
 CHANNEL = "native-hands"
 ABOUT = (
-    "плата heare на столі з маленьким OLED-екраном: вивести на OLED кілька "
-    "слів, світло на платі, увімкнути чи вимкнути пін, прочитати пін. Плата "
-    "вже під'єднана, шукати її не треба. Одна-дві дії, без плану, без файлів, "
-    "коду, шелу й інтернету."
+    "тіла heare, що вже під'єднані: плата на столі з маленьким OLED-екраном "
+    "(вивести кілька слів, світло на платі, піни) і що ще під'єднано — датчики, "
+    "реле. Шукати їх не треба. Одна-дві дії, без плану, без файлів, коду, шелу "
+    "й інтернету."
 )
 STEPS = 4
-SHOW_S = 10
-SHOW_MAX_S = 60
-SHOW_CHARS = 40
 FAILED = "Не вийшло: модель не відповіла."
-# The OLED's font has Latin letters only; Ukrainian is written out in them
-# rather than drawn as noise.
-_LATIN = str.maketrans({
-    "а": "a", "б": "b", "в": "v", "г": "h", "ґ": "g", "д": "d", "е": "e",
-    "є": "ie", "ж": "zh", "з": "z", "и": "y", "і": "i", "ї": "i", "й": "i",
-    "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
-    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch",
-    "ш": "sh", "щ": "shch", "ь": "", "ю": "iu", "я": "ia", "ы": "y", "э": "e",
-    "ё": "io", "ъ": "", "’": "", "'": "",
-})
 
 _SYSTEM = (
     "Ти — швидкі руки heare. Зроби прохання інструментами й відповідай одним "
@@ -65,13 +56,32 @@ _SYSTEM = (
 
 
 class Devices(Protocol):
-    """The other parts' acts, as the brain tells them."""
+    """The other parts' skills, as the brain tells them."""
 
-    async def acting(self) -> dict[str, dict]:
-        """By pid: the part's channel, the acts it offers, its last values."""
+    async def skilled(self) -> dict[str, dict]:
+        """By pid: the part's name, about, channel and skills."""
         ...
 
-    async def act(self, pid: str, name: str, value: object) -> bool: ...
+    async def call(self, pid: str, name: str, args: dict) -> dict:
+        """One skill called; the part's answer as ``{"ok", "result"}``."""
+        ...
+
+
+@dataclass(frozen=True)
+class Tool:
+    """A skill as the model sees it, and every part that offers it."""
+
+    name: str
+    skill: dict
+    parts: tuple[tuple[str, dict], ...]  # (pid, the part's entry)
+
+    def schema(self) -> dict:
+        _pid, entry = self.parts[0]
+        where = f"{entry['name']} ({entry['about']})" if entry.get("about") else entry["name"]
+        return {"type": "function", "function": {
+            "name": self.name,
+            "description": f"{where}: {self.skill['about']}",
+            "parameters": self.skill["params"]}}
 
 
 class NativeHand:
@@ -81,22 +91,22 @@ class NativeHand:
         self._model = model
         self._devices = devices
 
-    async def run(self, task: str, desk: Desk) -> str:
-        here = await _found(self._devices)
-        if here is None:
-            return "Жодної частини з діями зараз немає."
-        tools = _tools(here[1])
+    async def run(self, task: str, desk: hand_life.Desk) -> str:
+        tools = catalog(await self._devices.skilled())
+        if not tools:
+            return "Жодної частини зі скілами зараз немає."
+        schemas = [tool.schema() for tool in tools.values()]
         messages: list[dict] = [{"role": "system", "content": _SYSTEM},
                                 {"role": "user", "content": task}]
         done: list[str] = []
         for _ in range(STEPS):
             desk.step("думаю")
-            text, calls = await self._turn(messages, tools)
+            text, calls = await self._turn(messages, schemas)
             if getattr(desk, "stopped", False):
                 raise asyncio.CancelledError
             if not calls:
                 return text or "Готово."
-            results = [(call, await self._call(call, desk)) for call in calls]
+            results = [(call, await self._call(tools, call, desk)) for call in calls]
             done += [said for _, said in results]
             messages += _turns(text, results)
         # Out of steps: what was done is still the answer, not a failure.
@@ -112,82 +122,58 @@ class NativeHand:
                 calls.append(event)
         return "".join(parts).strip(), calls
 
-    async def _call(self, call: dict, desk: Desk) -> str:
-        arguments = call.get("arguments") or {}
-        if isinstance(arguments, str):
+    async def _call(self, tools: dict[str, Tool], call: dict, desk: hand_life.Desk) -> str:
+        args = call.get("arguments") or {}
+        if isinstance(args, str):
             try:
-                arguments = json.loads(arguments or "{}")
+                args = json.loads(args or "{}")
             except ValueError:
-                arguments = {}
-        here = await _found(self._devices)
-        if here is None:
-            return "Частина пішла."
-        pid, entry = here
-        name = call.get("name")
-        desk.step(str(name))
-        if name == "show":
-            return await _show(self._devices, pid, entry, arguments)
-        if name == "light":
-            return await _light(self._devices, pid, entry, arguments)
-        if name == "switch":
-            return await _switch(self._devices, pid, entry, arguments, desk)
-        if name == "read_pin":
-            return _read(entry, arguments)
-        return "Такого інструмента немає."
+                args = {}
+        tool = tools.get(str(call.get("name")))
+        if tool is None or not isinstance(args, dict):
+            return "Такого скіла немає."
+        pid = await _which(tool, desk)
+        if pid is None:
+            return "Не зрозумів, яку саме частину."
+        desk.step(tool.name)
+        if tool.skill["effect"] == "change":
+            what = f"{tool.skill['about']} — {tool.name} {json.dumps(args, ensure_ascii=False)}"
+            if not await desk.permit(what, "judge", what):
+                return "Не роблю: дозволу немає."
+        answer = await self._devices.call(pid, tool.skill["name"], args)
+        result = answer.get("result")
+        said = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+        return said if answer.get("ok") else f"Не вийшло: {said}"
 
 
-async def _found(devices: Devices) -> tuple[str, dict] | None:
-    """The part to act through: the first, while there is one panel."""
-    return next(iter((await devices.acting()).items()), None)
+def catalog(skilled: dict[str, dict]) -> dict[str, Tool]:
+    """Every part's skills as tools, named ``part__skill``; parts of one name
+    (two boards both called «desk») share a tool and are asked about."""
+    found: dict[str, Tool] = {}
+    for pid, entry in skilled.items():
+        for skill in entry["skills"]:
+            name = _tool_name(f"{entry['name']}__{skill['name']}")
+            had = found.get(name)
+            parts = (had.parts if had else ()) + ((pid, entry),)
+            found[name] = Tool(name, had.skill if had else skill, parts)
+    return found
 
 
-def _named(entry: dict, kind: str) -> list[str]:
-    return [a["name"] for a in entry["acts"] if a["kind"] == kind]
+async def _which(tool: Tool, desk: hand_life.Desk) -> str | None:
+    """The part a call is for; the person is asked when two answer to one name."""
+    if len(tool.parts) == 1:
+        return tool.parts[0][0]
+    listed = "; ".join(f"{n}) {pid}" for n, (pid, _entry) in enumerate(tool.parts, 1))
+    answer = (await desk.ask(f"Таких частин кілька: {listed}. Яку?")).strip()
+    for n, (pid, _entry) in enumerate(tool.parts, 1):
+        if str(n) in re.findall(r"\d+", answer) or pid in answer:
+            return pid
+    return None
 
 
-async def _show(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
-    text = latin(str(arguments.get("text") or "")).strip()[:SHOW_CHARS]
-    if not _named(entry, "show") or not text:
-        return "Нема що показати."
-    try:
-        seconds = int(arguments.get("seconds") or SHOW_S)
-    except (TypeError, ValueError):
-        seconds = SHOW_S
-    seconds = max(1, min(seconds, SHOW_MAX_S))
-    await devices.act(pid, _named(entry, "show")[0], {"text": text, "seconds": seconds})
-    return f"Показано на {seconds} с."
-
-
-async def _light(devices: Devices, pid: str, entry: dict, arguments: dict) -> str:
-    mode = arguments.get("mode")
-    if not _named(entry, "light") or mode not in ("on", "off", "blink"):
-        return "Світло не зрозуміло, що робити."
-    await devices.act(pid, _named(entry, "light")[0], mode)
-    return f"Світло: {mode}."
-
-
-async def _switch(devices: Devices, pid: str, entry: dict, arguments: dict,
-                  desk: Desk) -> str:
-    pin = arguments.get("pin")
-    if pin not in _named(entry, "switch"):
-        return "Такого піна немає."
-    on = arguments.get("on") is True
-    what = f"{'увімкнути' if on else 'вимкнути'} {pin} на панелі"
-    if not await desk.permit(what, "judge", what):
-        return f"{pin} не чіпаю: дозволу немає."
-    if not await devices.act(pid, pin, on):
-        return "Панель пішла, не перемкнулось."
-    return f"{pin} {'увімкнено' if on else 'вимкнено'}."
-
-
-def _read(entry: dict, arguments: dict) -> str:
-    pin = arguments.get("pin")
-    if pin not in _named(entry, "switch"):
-        return "Такого піна немає."
-    level = entry["values"].get(pin)
-    if level not in (0, 1):
-        return f"{pin}: панель ще не сказала."
-    return f"{pin}: {level}"
+def _tool_name(text: str) -> str:
+    """A name the model's tools accept: letters, digits, _ and -, 64 at most."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", text)[:64]
 
 
 def _turns(text: str, results: list[tuple[dict, str]]) -> list[dict]:
@@ -206,61 +192,25 @@ def _turns(text: str, results: list[tuple[dict, str]]) -> list[dict]:
     return turns
 
 
-def _tools(entry: dict) -> list[dict]:
-    """What the part offers, as tools the model can call."""
-    tools: list[dict] = []
-    if _named(entry, "show"):
-        tools.append(_tool("show", "Show a few words on the panel's screen for a while.", {
-            "text": {"type": "string",
-                     "description": "A few short words, any language: up to 4 lines of 9 letters, "
-                                    "split by \\n."},
-            "seconds": {"type": "integer", "description": "1..60, 10 if unsure."},
-        }, ["text"]))
-    if _named(entry, "light"):
-        tools.append(_tool("light", "Turn the panel's light on, off or blinking. "
-                           "«blink» blinks by itself until told otherwise: to blink, "
-                           "call it once with «blink», never on and off in turns.", {
-            "mode": {"type": "string", "enum": ["on", "off", "blink"]},
-        }, ["mode"]))
-    pins = _named(entry, "switch")
-    if pins:
-        tools.append(_tool("switch", "Turn one of the panel's pins on or off — "
-                           "whatever is wired to it.", {
-            "pin": {"type": "string", "enum": pins},
-            "on": {"type": "boolean"},
-        }, ["pin", "on"]))
-        tools.append(_tool("read_pin", "Read one of the panel's pins: 1 high, 0 low.", {
-            "pin": {"type": "string", "enum": pins},
-        }, ["pin"]))
-    return tools
-
-
-def _tool(name: str, description: str, properties: dict, required: list[str]) -> dict:
-    return {"type": "function", "function": {
-        "name": name, "description": description,
-        "parameters": {"type": "object", "properties": properties, "required": required},
-    }}
-
-
-# -- the part: the brain's door, the model, the desk -------------------------
-
-
 class Parts:
-    """The other parts' acts, over the door."""
+    """The other parts' skills, over the door."""
 
     def __init__(self, wire: part.Wire) -> None:
         self._wire = wire
 
-    async def acting(self) -> dict[str, dict]:
+    async def skilled(self) -> dict[str, dict]:
         try:
-            answer = await self._wire.client.get(f"{self._wire.base}/api/acts")
+            answer = await self._wire.client.get(f"{self._wire.base}/api/skills")
         except httpx.HTTPError:
             return {}
         return answer.json() if answer.status_code == 200 else {}
 
-    async def act(self, pid: str, name: str, value: object) -> bool:
-        answer = await self._wire.post("/api/acts", {"part": pid, "name": name, "value": value})
-        return answer.status_code == 200
+    async def call(self, pid: str, name: str, args: dict) -> dict:
+        answer = await self._wire.post("/api/skills/call",
+                                       {"part": pid, "name": name, "args": args})
+        if answer.status_code != 200:
+            return {"ok": False, "result": "частина не знає такого скіла"}
+        return answer.json()
 
 
 def chosen(settings: Settings) -> talk.Wire:
@@ -294,16 +244,6 @@ class Chosen:
     async def reply(self, messages: list[dict], verbs: list[dict]) -> AsyncIterator[dict]:
         async for event in talk.Talk(chosen(self._settings), self._client).reply(messages, verbs):
             yield event
-
-
-def latin(text: str) -> str:
-    """Ukrainian written in Latin letters, case kept, for the OLED's font."""
-    out = []
-    for char in text:
-        low = char.lower()
-        spelled = low.translate(_LATIN)
-        out.append(spelled.capitalize() if char != low and spelled else spelled)
-    return "".join(out)
 
 
 async def run(settings: Settings | None = None, model: Model | None = None,

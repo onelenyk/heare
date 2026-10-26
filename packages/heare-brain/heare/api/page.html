@@ -1116,6 +1116,14 @@ function partWidget(pid, b) {
     if (b.approves) badges.append(el("span", "badge", "може дати дозвіл кнопкою"));
     card.append(badges);
   }
+  // What the hands may do with it. What changes the world is the trust the
+  // person gives when letting it in, so it is shown, and first.
+  const skills = (b.skills || []).filter(s => s.effect === "change");
+  if (skills.length) {
+    const list = el("div", "badges");
+    for (const s of skills) list.append(el("span", "badge", "змінює: " + s.name));
+    card.append(list);
+  }
   if (b.state === "pending") {
     card.append(el("p", "phost", b.host || ""));
     const acts = el("div", "actions");

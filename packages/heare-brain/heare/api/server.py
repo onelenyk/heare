@@ -40,6 +40,7 @@ from heare.core import PROTOCOL, Core, Event, Message
 from heare.api import auth
 from heare.api import pair as codes
 from heare.api.heard import Recordings
+from heare.api import skills
 from heare.api.registry import Registry
 from heare.model.providers import PROVIDERS, list_models
 
@@ -59,7 +60,7 @@ HEARTBEAT_S = 5.0
 # stream cannot be talked into delivering one.
 STATUS_KINDS = frozenset({
     "phase", "permission", "permission_closed", "question", "question_closed",
-    "said", "failed", "cannot", "halted", "judged", "part", "control",
+    "said", "failed", "cannot", "halted", "judged", "part", "control", "call",
 })
 
 # What survives of each status kind once the stream has asked for status
@@ -78,12 +79,10 @@ _STATUS_FIELDS: dict[str, tuple[str, ...]] = {
     "cannot": (),
     # What a part is told to do: the words to show are the panel's own act.
     "control": ("part", "name", "value"),
+    # A skill called on a part: the part answers it by id.
+    "call": ("part", "id", "name", "args"),
 }
 
-# The kinds of act a part may offer the agent. The verb, not the part,
-# decides which of them wait for the person's yes.
-ACT_KINDS = frozenset({"show", "light", "switch"})
-MAX_ACTS = 32
 
 SESSION = "heare_session"
 # A backup brought from another Mac: a year of recordings fits well under it.
@@ -285,16 +284,20 @@ def build(core: Core, settings: Any, vitals: Any = None,
     )
 
     PERMISSION = re.compile(r"^/api/permission/\d+$")
-    ACTS = re.compile(r"^/api/acts$")
+    SKILLS = re.compile(r"^/api/skills(/call)?$")
+    ANSWER = re.compile(r"^/api/skills/\d+$")
 
     def part_may(request: web.Request, pid: str) -> bool:
         if request.method == "POST" and PERMISSION.match(request.path):
             # The person's answer, given by a part only with their leave: a
             # trusted part that said it has a yes (the panel's button).
             return registry.approves(pid)
-        if ACTS.match(request.path):
+        if SKILLS.match(request.path):
             # What the parts can do, and doing it: for the hands only.
             return registry.works(pid)
+        if request.method == "POST" and ANSWER.match(request.path):
+            # A part's answer to a call; Calls checks it was this part's.
+            return True
         return any(request.method == method and rx.match(request.path)
                    for method, rx in PART_CALLS)
 
@@ -398,6 +401,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if make_executor is not None else None)
     registry.load(Path(settings.parts_dir))
     bodies = registry.bodies
+    trust = skills.Trust(Path(settings.parts_file).parent / "part_skills.json")
+    calls = skills.Calls()
 
     def own_channel(request: web.Request, channel: str) -> None:
         """A part may speak for its own channel and no other."""
@@ -508,10 +513,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         approves = data.get("approves") is True
-        acts = _acts(data.get("acts"))
+        # What the part can do, in its own words; the older acts read as skills.
+        offered = (skills.checked(data.get("skills"))
+                   or skills.legacy(skills.acts(data.get("acts"))))
+        named_as = str(data.get("name") or "")[:32]
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
-        if (pid in registry.trusted()
+        # A part whose world-changing skills are not those it was let in with
+        # is asked about again: a new switch is a new trust.
+        if ((pid in registry.trusted() and trust.same(pid, offered))
                 or str(who or "").startswith(("window@", "machine@"))):
             if str(who or "").startswith("machine@"):
                 # A paired machine vouches for its parts once: the part comes
@@ -519,22 +529,24 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 # must not wait for a yes it was never asked for (24 October:
                 # the sources stood pending after every brain restart).
                 registry.remember(pid)
+                trust.keep(pid, offered)
             registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                             version=part_version, started=started,
-                            approves=approves, acts=acts)
+                            approves=approves, skills=offered, name=named_as)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
         registry.attach(pid, channel, forms, about, host, "pending", ui, hears,
                         version=part_version, started=started,
-                            approves=approves, acts=acts)
+                            approves=approves, skills=offered, name=named_as)
         decided = await registry.answer(pid)
         if decided == "expired":
             return web.json_response({"approved": False, "why": "ніхто не відповів"})
         if decided != "approved":
             return web.json_response({"approved": False, "why": decided})
+        trust.keep(pid, offered)
         registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                         version=part_version, started=started,
-                            approves=approves, acts=acts)
+                            approves=approves, skills=offered, name=named_as)
         return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 
@@ -739,16 +751,35 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPBadRequest(text=str(exc)) from None
         return web.json_response(now)
 
-    # -- acts: what the hands may do with the parts -------------------------
+    # -- skills: what the hands may do with the parts -----------------------
 
-    async def acts(request: web.Request) -> web.Response:
-        return web.json_response(registry.acting())
+    async def skills_list(request: web.Request) -> web.Response:
+        return web.json_response(registry.skilled())
 
-    async def act(request: web.Request) -> web.Response:
+    async def skill_call(request: web.Request) -> web.Response:
+        """One skill of one part, called; waits for the part's answer."""
         data = await body(request)
-        if not registry.act(str(data.get("part", "")), str(data.get("name", "")),
-                            data.get("value")):
-            raise web.HTTPNotFound(text="no such act")
+        pid, name = str(data.get("part", "")), str(data.get("name", ""))
+        args = data.get("args") if isinstance(data.get("args"), dict) else {}
+        found = registry.skill(pid, name)
+        if found is None:
+            raise web.HTTPNotFound(text="no such skill")
+        channel, skill = found
+        if "act" in skill:
+            # A part of the older wire: told, not asked, so nothing comes back.
+            registry.emit("control", channel=channel, name=name,
+                          value=skills.value_of(skill, args), part=pid)
+            return web.json_response({"ok": True, "result": "сказано, без відповіді"})
+        call_id, waiting = calls.open(pid)
+        registry.emit("call", channel=channel, part=pid, id=call_id, name=name, args=args)
+        return web.json_response(await calls.wait(call_id, waiting))
+
+    async def skill_answer(request: web.Request) -> web.Response:
+        data = await body(request)
+        pid = request.get("part") or str(data.get("part", ""))
+        if not calls.answer(int(request.match_info["id"]), pid,
+                            data.get("ok") is not False, data.get("result")):
+            raise web.HTTPNotFound(text="no such call")
         return web.json_response({"ok": True})
 
     async def stop(request: web.Request) -> web.Response:
@@ -1177,8 +1208,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/system", machine),
         web.get("/api/controls", controls),
         web.post("/api/controls", control),
-        web.get("/api/acts", acts),
-        web.post("/api/acts", act),
+        web.get("/api/skills", skills_list),
+        web.post("/api/skills/call", skill_call),
+        web.post("/api/skills/{id:\\d+}", skill_answer),
         web.post("/api/stop", stop),
         web.get("/api/tasks", tasks),
         web.post("/api/tasks", start_task),
@@ -1236,16 +1268,6 @@ def _requested(request: web.Request) -> frozenset[str] | None:
         return None
     return frozenset(name.strip() for name in raw.split(",")
                      if name.strip() in STATUS_KINDS)
-
-
-def _acts(raw: object) -> list[dict]:
-    """The acts a knock offers, as names and known kinds; the rest dropped."""
-    if not isinstance(raw, list):
-        return []
-    acts = [{"name": a["name"], "kind": a["kind"]} for a in raw
-            if isinstance(a, dict) and isinstance(a.get("name"), str)
-            and a["name"] and a.get("kind") in ACT_KINDS]
-    return acts[:MAX_ACTS]
 
 
 def _status_view(event: Event) -> dict:

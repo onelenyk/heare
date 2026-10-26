@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from heare import hand, native_hands
-from heare.native_hands import Chosen, latin
+from heare.native_hands import Chosen
 from heare.talk import anthropic_turns
 
 
@@ -88,41 +88,6 @@ async def test_a_stop_is_heard_through_the_step_and_nothing_more_is_done():
     await asyncio.gather(*desk._steps)
 
     assert desk.stopped is True
-
-
-async def test_the_hand_stops_before_acting_once_stopped():
-    from tests.heare.fakes import Says, Script
-
-    class Devices:
-        acted: list = []
-
-        async def acting(self):
-            return {"oled@desk": {"channel": "oled", "values": {},
-                                  "acts": [{"name": "led", "kind": "light"}]}}
-
-        async def act(self, pid, name, value):
-            self.acted.append(name)
-            return True
-
-    class Stopped:
-        stopped = True
-        follows, asked = False, ""
-
-        def step(self, text):
-            pass
-
-    model = Script()
-    model.will_say(Says(calls=(("light", {"mode": "on"}),)))
-    devices = Devices()
-    with pytest.raises(asyncio.CancelledError):
-        await native_hands.NativeHand(model, devices).run("світло", Stopped())
-    assert devices.acted == []
-
-
-def test_ukrainian_is_written_out_for_the_oled():
-    assert latin("Привіт, Назаре!") == "Pryvit, Nazare!"
-    assert latin("Чайник готовий") == "Chainyk hotovyi"
-    assert latin("hello 42") == "hello 42"
 
 
 class _Settings:

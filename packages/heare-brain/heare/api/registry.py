@@ -75,7 +75,7 @@ class Registry:
                host: str, state: str, ui: list | None = None,
                hears: str | None = None, version: str | None = None,
                started: float | None = None, approves: bool = False,
-               acts: list | None = None) -> None:
+               skills: list | None = None, name: str = "") -> None:
         old = self.bodies.get(pid) or {}
         # A knock from a process that began at another time is the part
         # started again: counted while this brain runs, so after an update
@@ -102,9 +102,10 @@ class Registry:
             # answer the open permission with yes, only once the person let
             # the part in; see server.part_may.
             "approves": bool(approves),
-            # What the agent may do with the part (show, light, switch); the
-            # part names them, the brain's verb decides which need a yes.
-            "acts": list(acts if acts is not None else old.get("acts") or []),
+            # What the hands may do with the part, as the part says it
+            # (heare.api.skills), and what it is called among its kind.
+            "skills": list(skills if skills is not None else old.get("skills") or []),
+            "name": name or old.get("name") or channel,
         }
         if state == "approved" and "executor" in forms and self._on_executor:
             self._on_executor(channel, about)
@@ -145,26 +146,27 @@ class Registry:
         entry = self.bodies.get(pid) or {}
         return entry.get("state") == "approved" and bool(entry.get("approves"))
 
-    def acting(self) -> dict[str, dict]:
-        """The parts the agent may act through: let in, here, with acts."""
-        return {pid: {"channel": b["channel"], "acts": list(b["acts"]),
+    def skilled(self) -> dict[str, dict]:
+        """The parts the hands may act through: let in, here, with skills."""
+        return {pid: {"channel": b["channel"], "name": b["name"], "about": b["about"],
+                      "skills": [dict(s) for s in b["skills"]],
                       "values": dict(b.get("values") or {})}
                 for pid, b in self.bodies.items()
-                if b.get("state") == "approved" and b.get("acts")}
+                if b.get("state") == "approved" and b.get("skills")}
 
     def works(self, pid: str) -> bool:
         """Whether a part is a let-in executor: one that may act on the others."""
         entry = self.bodies.get(pid) or {}
         return entry.get("state") == "approved" and "executor" in entry.get("forms", [])
 
-    def act(self, pid: str, name: str, value: object) -> bool:
-        """Tell the part to do one of the acts it named; False for any other."""
-        entry = self.acting().get(pid)
-        if entry is None or name not in {a["name"] for a in entry["acts"]}:
-            return False
-        self._emit("control", channel=entry["channel"], name=name,
-                   value=value, part=pid)
-        return True
+    def skill(self, pid: str, name: str) -> tuple[str, dict] | None:
+        """A let-in part's skill by name, with the part's channel; None else."""
+        entry = self.skilled().get(pid)
+        found = next((s for s in entry["skills"] if s["name"] == name), None) if entry else None
+        return (entry["channel"], found) if found else None
+
+    def emit(self, kind: str, **data: object) -> None:
+        self._emit(kind, **data)
 
     def channel_of(self, pid: str) -> str:
         entry = self.bodies.get(pid) or {}

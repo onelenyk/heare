@@ -1,13 +1,14 @@
 """Virtual boards: parts that knock and act like the ESP32 panel, in Python.
 
-    uv run heare-sim --board desk --board kitchen
+    uv run heare-sim --board desk --board kitchen --sensor kitchen
 
-A bench for the hands and the bodies without a board on the desk: each
-virtual board knocks with the same ``acts`` the panel's firmware names, does
-what the brain tells it, remembers it (``Board.done``, ``Board.shown``,
-``Board.pins``) and reports its pins as the panel does. Any number of them
-run in one process, each a part of its own. A board can be told to be slow
-or to drop what it is told, so the bench can see what the hands do then.
+A bench for the hands and the bodies without a board on the desk. Each
+virtual board knocks with its skills (``heare.api.skills``), answers every
+call it gets, remembers what it was told (``done``, ``shown``, ``led``,
+``pins``) and reports as the panel does. Any number run in one process, each
+a part of its own. A board can be slow, deaf (drops calls unanswered), carry
+a sensor, or speak the older ``acts`` wire, so the bench sees what the hands
+do then.
 
 Not a part of the app: nothing installs it, the keeper never starts it.
 """
@@ -23,12 +24,34 @@ from heare import layout, logs, part
 from heare.config import Settings
 
 HOST = "sim"
-# The panel's own: the screen, the light, and the pins nothing on it uses.
+# The panel's own: the pins nothing on it uses.
 FREE_PINS = (0, 1, 2, 3, 4, 7, 10, 20, 21)
-PANEL_ACTS = (
-    [{"name": "show", "kind": "show"}, {"name": "led", "kind": "light"}]
-    + [{"name": f"pin{n}", "kind": "switch"} for n in FREE_PINS]
-)
+
+
+def panel_skills() -> list[dict]:
+    """What the panel offers, in the shape its firmware will knock with."""
+    found = [
+        {"name": "show", "about": "Показати кілька слів на OLED-екрані на кілька секунд",
+         "effect": "harmless", "params": {"type": "object", "required": ["text"], "properties": {
+             "text": {"type": "string", "description": "до 4 рядків по 9 літер"},
+             "seconds": {"type": "integer", "description": "1..60"}}}},
+        {"name": "light", "about": "Світлодіод: on, off або blink (блимає сам)",
+         "effect": "harmless", "params": {"type": "object", "required": ["mode"], "properties": {
+             "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
+        {"name": "read_pins", "about": "Рівні вільних пінів: 1 високий, 0 низький",
+         "effect": "read", "params": {"type": "object", "properties": {}}},
+    ]
+    for n in FREE_PINS:
+        found.append({"name": f"pin{n}", "about": f"Пін {n}: увімкнути чи вимкнути те, що під'єднано",
+                      "effect": "change", "params": {"type": "object", "required": ["on"],
+                                                     "properties": {"on": {"type": "boolean"}}}})
+    return found
+
+
+SENSOR = {"name": "temperature", "about": "Температура в кімнаті, °C",
+          "effect": "read", "params": {"type": "object", "properties": {}}}
+LEGACY_ACTS = ([{"name": "show", "kind": "show"}, {"name": "led", "kind": "light"}]
+               + [{"name": f"pin{n}", "kind": "switch"} for n in FREE_PINS])
 
 
 @dataclass
@@ -37,10 +60,13 @@ class Board:
 
     name: str
     about: str = "віртуальна плата з OLED-екраном"
-    acts: list[dict] = field(default_factory=lambda: [dict(a) for a in PANEL_ACTS])
-    # Seconds before an act is done; and whether acts are dropped unheard.
+    host: str = HOST
+    skills: list[dict] = field(default_factory=panel_skills)
+    # Seconds before a call is done; calls dropped unanswered; the older wire.
     slow: float = 0.0
     deaf: bool = False
+    legacy: bool = False
+    temperature: float = 21.5
     done: list[tuple[str, object]] = field(default_factory=list)
     shown: str = ""
     led: str = "off"
@@ -53,53 +79,75 @@ class Board:
 
     @property
     def pid(self) -> str:
-        return f"{self.channel}@{HOST}"
+        return f"{self.channel}@{self.host}"
 
     def knock(self) -> dict:
-        return {"channel": self.channel, "forms": ["output"], "about": self.about,
-                "key": self.pid, "host": HOST, "acts": self.acts,
+        offered = {"acts": LEGACY_ACTS} if self.legacy else {"skills": self.skills}
+        return {"channel": self.channel, "name": self.name, "forms": ["output"],
+                "about": self.about, "key": self.pid, "host": self.host, **offered,
                 "ui": [{"name": "now", "kind": "label", "label": "Екран",
                         "value": "", "head": True}]}
 
     def levels(self) -> dict[str, int]:
-        return {a["name"]: self.pins.get(a["name"], 0)
-                for a in self.acts if a["kind"] == "switch"}
+        return {f"pin{n}": self.pins.get(f"pin{n}", 0) for n in FREE_PINS}
 
-    def apply(self, name: str, value: object) -> bool:
-        """Do one act the way the panel does; False for what it would drop."""
-        named = {a["name"]: a["kind"] for a in self.acts}
-        kind = named.get(name)
-        if kind == "show" and isinstance(value, dict) and value.get("text"):
-            self.shown = str(value["text"])
-        elif kind == "light" and value in ("on", "off", "blink"):
-            self.led = str(value)
-        elif kind == "switch" and isinstance(value, bool):
-            self.pins[name] = 1 if value else 0
+    def call(self, name: str, args: dict) -> tuple[bool, object]:
+        """One skill, done the way the panel does it: (ok, result)."""
+        if name not in {s["name"] for s in self.skills}:
+            return False, "такого скіла немає"
+        if name == "show" and args.get("text"):
+            self.shown = str(args["text"])
+            result: object = f"показано: {self.shown}"
+        elif name == "light" and args.get("mode") in ("on", "off", "blink"):
+            self.led = str(args["mode"])
+            result = f"світло: {self.led}"
+        elif name == "read_pins":
+            return True, self.levels()
+        elif name == "temperature":
+            return True, self.temperature
+        elif name.startswith("pin") and isinstance(args.get("on"), bool):
+            self.pins[name] = 1 if args["on"] else 0
+            result = f"{name}: {self.pins[name]}"
         else:
-            return False
+            return False, "не той аргумент"
+        self.done.append((name, args))
+        return True, result
+
+    def control(self, name: str, value: object) -> None:
+        """An act on the older wire: told, never answered."""
+        if name == "show" and isinstance(value, dict):
+            self.shown = str(value.get("text") or "")
+        elif name == "led":
+            self.led = str(value)
+        elif name.startswith("pin"):
+            self.pins[name] = 1 if value else 0
         self.done.append((name, value))
-        return True
 
 
 async def live(board: Board, settings: Settings) -> int:
     """Keep one virtual board in the brain until cancelled."""
-    wire_of: dict[str, part.Wire] = {}
+    held: dict[str, part.Wire] = {}
 
     def on_event(event: dict) -> None:
-        if event.get("kind") != "control" or event.get("part") != board.pid or board.deaf:
+        if event.get("part") != board.pid or board.deaf:
             return
-        asyncio.get_running_loop().create_task(act(event))
+        if event.get("kind") in ("call", "control"):
+            asyncio.get_running_loop().create_task(answer(event))
 
-    async def act(event: dict) -> None:
+    async def answer(event: dict) -> None:
         if board.slow:
             await asyncio.sleep(board.slow)
-        if board.apply(str(event.get("name", "")), event.get("value")):
-            wire = wire_of.get("wire")
-            if wire is not None:
-                wire.report({"now": board.shown or "IDLE", **board.levels()})
+        wire = held["wire"]
+        if event["kind"] == "control":
+            board.control(str(event.get("name", "")), event.get("value"))
+        else:
+            args = event.get("args") if isinstance(event.get("args"), dict) else {}
+            ok, result = board.call(str(event.get("name", "")), args)
+            await wire.post(f"/api/skills/{event['id']}", {"ok": ok, "result": result})
+        wire.report({"now": board.shown or "IDLE", **board.levels()})
 
     async def work(wire: part.Wire) -> None:
-        wire_of["wire"] = wire
+        held["wire"] = wire
         wire.report({"now": "IDLE", **board.levels()})
         board.let_in.set()
         await asyncio.Event().wait()
@@ -108,9 +156,12 @@ async def live(board: Board, settings: Settings) -> int:
                            hello=f"віртуальна плата {board.name}", settings=settings)
 
 
-async def run(names: list[str], settings: Settings | None = None) -> int:
+async def run(names: list[str], sensors: list[str], settings: Settings | None = None) -> int:
     settings = settings or Settings()
     boards = [Board(name) for name in names]
+    for board in boards:
+        if board.name in sensors:
+            board.skills.append(dict(SENSOR))
     codes = await asyncio.gather(*(live(b, settings) for b in boards))
     return max(codes, default=0)
 
@@ -119,12 +170,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="heare.sim")
     parser.add_argument("--board", action="append", default=[],
                         help="ім'я віртуальної плати; можна кілька")
+    parser.add_argument("--sensor", action="append", default=[],
+                        help="плата, що має ще й датчик температури")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)
     layout.settle()
     try:
-        return asyncio.run(run(args.board or ["sim"]))
+        return asyncio.run(run(args.board or ["sim"], args.sensor))
     except KeyboardInterrupt:
         return 0
 

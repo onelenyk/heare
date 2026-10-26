@@ -2,8 +2,9 @@
 
 No network beyond 127.0.0.1 and no live heare: the brain is built on a
 temporary home, the models are scripts. What runs is the parts' own code —
-the knock, the claim, the acts doors, the control event, the board's report —
-so a change to any of them is seen here before it is seen on the desk.
+the knock with skills, the claim, the call and its answer, the board's
+report — so a change to any of them is seen here before it is seen on the
+desk.
 
     make bench
 """
@@ -18,19 +19,20 @@ import pytest
 from aiohttp.test_utils import TestServer
 
 from heare import native_hands, sim
+from heare.api import skills
 from heare.api.server import Screen, build
 from heare.config import Settings
+from heare.core.forms import Message
 from heare.reach.remote import RemoteExecutor
 from tests.heare.fakes import Says, Script, open_room
 
 HOST = "bench"
-TRUSTED = ["native-hands@bench", "oled-desk@sim", "oled-kitchen@sim"]
 
 
 class Bench:
-    def __init__(self, room, server, settings, boards, hand_model, tasks):
-        self.room, self.server, self.settings = room, server, settings
-        self.boards, self.hand_model, self.tasks = boards, hand_model, tasks
+    def __init__(self, room, settings, boards, hand_model):
+        self.room, self.settings = room, settings
+        self.boards, self.hand_model = boards, hand_model
 
     async def until(self, check, seconds: float = 5.0, what: str = "") -> None:
         loop = asyncio.get_running_loop()
@@ -40,15 +42,25 @@ class Bench:
                 raise AssertionError(f"the bench waited in vain: {what}")
             await asyncio.sleep(0.02)
 
-    def ask(self, voice: Says, *hand: Says | str) -> None:
-        """What the voice does with the next words, and what the hands' model says."""
-        self.room.model.will_say(voice)
+    def say(self, words: str, *hand: Says | str) -> None:
+        """The person's words, the voice handing them over, and what the
+        hands' model does with them."""
+        self.room.model.will_say(Says(calls=(("delegate", {"task": words}),)))
         self.hand_model.will_say(*hand)
+        self.room.core.hear(Message(text=words, channel="screen"))
+
+    def done(self) -> list:
+        return [t for t in self.room.core.state.tasks.values() if t.status != "running"]
+
+    async def finished(self):
+        await self.until(lambda: self.done(), what="the task finished")
+        return self.done()[0]
 
 
 @contextlib.asynccontextmanager
-async def bench(tmp_path, names=("desk", "kitchen")):
-    (tmp_path / "parts.json").write_text(json.dumps(TRUSTED), encoding="utf-8")
+async def bench(tmp_path, *boards: sim.Board):
+    trusted = ["native-hands@bench", *(b.pid for b in boards)]
+    (tmp_path / "parts.json").write_text(json.dumps(trusted), encoding="utf-8")
     room = await open_room()
     room.core.add_output(Screen(room.core))
     brain = Settings(
@@ -65,14 +77,13 @@ async def bench(tmp_path, names=("desk", "kitchen")):
     parts = Settings(path=tmp_path / "part.toml", api_token_file=tmp_path / "token",
                      machine_token_file=tmp_path / "no-machine-token",
                      url=f"http://127.0.0.1:{server.port}")
-    boards = {name: sim.Board(name) for name in names}
     hand_model = Script()
-    tasks = [asyncio.create_task(sim.live(b, parts)) for b in boards.values()]
+    tasks = [asyncio.create_task(sim.live(b, parts)) for b in boards]
     tasks.append(asyncio.create_task(native_hands.run(parts, hand_model, HOST)))
-    found = Bench(room, server, parts, boards, hand_model, tasks)
+    found = Bench(room, parts, {b.pid: b for b in boards}, hand_model)
     try:
         await found.until(lambda: "native-hands" in room.core.executors
-                          and all(b.let_in.is_set() for b in boards.values()),
+                          and all(b.let_in.is_set() for b in boards),
                           what="the hands and the boards let in")
         yield found
     finally:
@@ -83,77 +94,88 @@ async def bench(tmp_path, names=("desk", "kitchen")):
         await room.close()
 
 
-def _done(bench: Bench) -> list:
-    return [t for t in bench.room.core.state.tasks.values() if t.status != "running"]
-
-
 async def test_words_go_from_the_voice_through_the_hands_to_the_board(tmp_path):
-    async with bench(tmp_path, names=("desk",)) as b:
-        b.ask(Says(calls=(("delegate", {"task": "покажи hello на платі"}),)),
-              Says(calls=(("show", {"text": "hello", "seconds": 5}),)), "Показав.")
+    desk = sim.Board("desk")
+    async with bench(tmp_path, desk) as b:
+        b.say("покажи hello на платі",
+              Says(calls=(("desk__show", {"text": "hello", "seconds": 5}),)), "Показав.")
 
-        b.room.core.hear(native_hands_message("покажи hello на платі"))
-        await b.until(lambda: b.boards["desk"].shown == "hello", what="hello on the board")
-        await b.until(lambda: _done(b), what="the task finished")
+        task = await b.finished()
 
-        task = _done(b)[0]
+        assert desk.shown == "hello"
         assert (task.executor, task.status, task.result) == ("native-hands", "done", "Показав.")
-        assert b.boards["desk"].done == [("show", {"text": "hello", "seconds": 5})]
+        # The board's own answer is what the hands' model read.
+        assert b.hand_model.asked[1][-1]["content"] == "показано: hello"
 
 
-async def test_a_pin_is_switched_only_on_a_yes(tmp_path):
-    async with bench(tmp_path, names=("desk",)) as b:
-        b.ask(Says(calls=(("delegate", {"task": "увімкни pin3"}),)),
-              Says(calls=(("switch", {"pin": "pin3", "on": True}),)), "Увімкнув.")
+async def test_a_world_changing_skill_waits_for_a_yes(tmp_path):
+    desk = sim.Board("desk")
+    async with bench(tmp_path, desk) as b:
+        b.say("увімкни pin3", Says(calls=(("desk__pin3", {"on": True}),)), "Увімкнув.")
 
-        b.room.core.hear(native_hands_message("увімкни pin3"))
         await b.until(lambda: b.room.core.state.permission is not None, what="the question")
-        assert b.boards["desk"].pins == {}
+        assert desk.pins == {}
         b.room.core.permit(b.room.core.state.permission.id, True)
 
-        await b.until(lambda: b.boards["desk"].pins.get("pin3") == 1, what="pin3 on")
+        await b.until(lambda: desk.pins.get("pin3") == 1, what="pin3 on")
 
 
-async def test_the_board_reports_what_it_was_told(tmp_path):
-    async with bench(tmp_path, names=("desk",)) as b:
-        b.ask(Says(calls=(("delegate", {"task": "блимни"}),)),
-              Says(calls=(("light", {"mode": "blink"}),)), "Блимаю.")
+async def test_a_sensor_is_only_a_skill_its_board_brings(tmp_path):
+    kitchen = sim.Board("kitchen", about="на кухні", temperature=19.0)
+    kitchen.skills.append(dict(sim.SENSOR))
+    async with bench(tmp_path, kitchen) as b:
+        b.say("яка температура на кухні",
+              Says(calls=(("kitchen__temperature", {}),)), "19 градусів.")
 
-        b.room.core.hear(native_hands_message("блимни"))
-        await b.until(lambda: b.boards["desk"].led == "blink", what="the light blinking")
+        task = await b.finished()
 
-
-async def test_two_boards_are_both_in_the_brain(tmp_path):
-    # Б3: the brain knows both; the hands still act through the first only.
-    async with bench(tmp_path) as b:
-        import httpx
-
-        token = (tmp_path / "token").read_text()
-        async with httpx.AsyncClient() as client:
-            acting = (await client.get(f"{b.settings.base}/api/acts",
-                                       headers={"X-Heare-Token": token})).json()
-        assert set(acting) == {"oled-desk@sim", "oled-kitchen@sim"}
+        assert task.result == "19 градусів."
+        assert b.hand_model.asked[1][-1]["content"] == "19.0"
+        assert "kitchen__temperature" in b.hand_model.offered[0]
 
 
-async def test_a_deaf_board_leaves_the_hands_saying_it_was_done(tmp_path):
-    # Б2 made visible: an act has no answer, so a board that dropped it is
-    # reported as done. Skills with a reply (І4) turn this test around.
-    async with bench(tmp_path, names=("desk",)) as b:
-        b.boards["desk"].deaf = True
-        b.ask(Says(calls=(("delegate", {"task": "блимни"}),)),
-              Says(calls=(("light", {"mode": "blink"}),)), "Блимаю.")
+async def test_two_boards_are_told_apart_by_their_names(tmp_path):
+    desk, kitchen = sim.Board("desk"), sim.Board("kitchen", about="на кухні")
+    async with bench(tmp_path, desk, kitchen) as b:
+        b.say("покажи hi на кухні",
+              Says(calls=(("kitchen__show", {"text": "hi"}),)), "Показав.")
 
-        b.room.core.hear(native_hands_message("блимни"))
-        await b.until(lambda: _done(b), what="the task finished")
+        await b.finished()
 
-        assert _done(b)[0].status == "done"
-        assert b.boards["desk"].led == "off"
+        assert kitchen.shown == "hi" and desk.shown == ""
+        assert {"desk__show", "kitchen__show"} <= set(b.hand_model.offered[0])
 
 
-def native_hands_message(text: str):
-    from heare.core.forms import Message
+async def test_twins_of_one_name_are_asked_about(tmp_path):
+    one, two = sim.Board("desk", host="one"), sim.Board("desk", host="two")
+    async with bench(tmp_path, one, two) as b:
+        b.say("покажи hi", Says(calls=(("desk__show", {"text": "hi"}),)), "Показав.")
 
-    return Message(text=text, channel="screen")
+        await b.until(lambda: b.room.core.state.question is not None, what="which board")
+        b.room.core.hear(Message(text="2", channel="screen"))
+
+        await b.until(lambda: two.shown == "hi", what="the second twin shows it")
+        assert one.shown == ""
+
+
+async def test_a_board_that_does_not_answer_is_not_said_to_have_done_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(skills, "CALL_S", 0.3)
+    desk = sim.Board("desk", deaf=True)
+    async with bench(tmp_path, desk) as b:
+        b.say("блимни", Says(calls=(("desk__light", {"mode": "blink"}),)), "Не вийшло.")
+
+        await b.finished()
+
+        assert b.hand_model.asked[1][-1]["content"] == "Не вийшло: частина не відповіла"
+        assert desk.led == "off"
+
+
+async def test_a_board_on_the_older_wire_is_still_told(tmp_path):
+    old = sim.Board("desk", legacy=True)
+    async with bench(tmp_path, old) as b:
+        b.say("покажи привіт", Says(calls=(("desk__show", {"text": "привіт"}),)), "Показав.")
+
+        await b.until(lambda: old.shown == "pryvit", what="the older board told, in Latin")
 
 
 @pytest.fixture(autouse=True)
