@@ -179,6 +179,63 @@ async def test_a_button_answers_a_permission(tmp_path):
     await _close(room, client)
 
 
+async def _part(client, master, pid, *, approves):
+    channel, host = pid.split("@")
+    answer = await client.post("/api/bodies", json={
+        "channel": channel, "forms": ["output"], "about": "", "key": pid,
+        "host": host, "approves": approves}, headers=master)
+    return {"X-Heare-Token": (await answer.json())["token"]}
+
+
+async def _asking(room):
+    worker = Worker(asks=(("записати файл", "change"),))
+    room.core.add_executor(worker)
+    room.core.delegate("запиши")
+    await room.until(lambda: room.core.state.permission is not None)
+    return worker, room.core.state.permission.id
+
+
+async def test_a_trusted_panel_with_a_button_says_yes(tmp_path):
+    (tmp_path / "parts.json").write_text('["oled@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    panel = await _part(client, master, "oled@desk", approves=True)
+    worker, asked = await _asking(room)
+
+    answer = await client.post(f"/api/permission/{asked}", json={"allow": True}, headers=panel)
+
+    assert (await answer.json()) == {"answered": True}
+    await room.until(lambda: worker.allowed)
+    assert worker.allowed == [True]
+    await _close(room, client)
+
+
+async def test_a_button_never_says_no_and_never_answers_another_question(tmp_path):
+    (tmp_path / "parts.json").write_text('["oled@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    panel = await _part(client, master, "oled@desk", approves=True)
+    worker, asked = await _asking(room)
+
+    no = await client.post(f"/api/permission/{asked}", json={"allow": False}, headers=panel)
+    stale = await client.post(f"/api/permission/{asked + 1}", json={"allow": True}, headers=panel)
+
+    assert no.status == 403
+    assert (await stale.json()) == {"answered": False}
+    assert worker.allowed == []
+    await _close(room, client)
+
+
+async def test_a_part_without_a_yes_of_its_own_may_not_answer(tmp_path):
+    (tmp_path / "parts.json").write_text('["eyes@desk"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    eyes = await _part(client, master, "eyes@desk", approves=False)
+    _worker, asked = await _asking(room)
+
+    answer = await client.post(f"/api/permission/{asked}", json={"allow": True}, headers=eyes)
+
+    assert answer.status == 403
+    await _close(room, client)
+
+
 async def test_a_key_can_be_saved_and_never_read(tmp_path, monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     room, client, auth, _ = await _open(tmp_path)

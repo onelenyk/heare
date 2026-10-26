@@ -49,6 +49,8 @@ WIFI_ATTEMPTS = 3
 SETUP_NAME = "heare-panel-"
 SETUP_TITLE = "SETUP"
 BLINK_MS = 500
+# The BOOT button on ESP32-C3 boards; pulled up, so pressed reads 0.
+BUTTON_PIN = 9
 
 
 def _nvs():
@@ -438,6 +440,7 @@ def run_normal(
     sleep=None,
     ticks=None,
     attempts=WIFI_ATTEMPTS,
+    button=None,
 ):
     """Join Wi-Fi, start one ``Link`` thread, and render what it shows.
 
@@ -470,6 +473,8 @@ def run_normal(
     starter = thread_start or _start_thread
     starter(supervise, (link, outcome, out))
 
+    pressed = button if button is not None else _make_button()
+    was_pressed = True  # a button held through boot is not a yes
     last_key = None
     last_word = None
     online_since = None
@@ -485,6 +490,11 @@ def run_normal(
             _close(link)
             return "error"
         word = link.display.state
+
+        down = bool(pressed()) if pressed is not None else False
+        if down and not was_pressed:
+            _press(link, out)
+        was_pressed = down
 
         key = frame_key(word, panel, now)
         if key != last_key:
@@ -600,6 +610,30 @@ def run_pair(
         sleep(TICK_MS)
     page.close()
     return "ticks"
+
+
+def _make_button():
+    """A ``pressed()`` callable for the BOOT button, or None off the board."""
+    try:
+        import machine
+
+        pin = machine.Pin(BUTTON_PIN, machine.Pin.IN, machine.Pin.PULL_UP)
+    except Exception:  # noqa: BLE001 - no button is not a boot gate
+        return None
+    return lambda: pin.value() == 0
+
+
+def _press(link, out):
+    """The button is the person's yes, and only for an open permission."""
+    display = getattr(link, "display", None)
+    allow_id = getattr(display, "allow_id", None)
+    if getattr(display, "allow_kind", None) != "permission" or allow_id is None:
+        return
+    try:
+        answered = link.permit(allow_id)
+    except Exception:  # noqa: BLE001 - a lost yes must not stop the panel
+        answered = False
+    out("button yes " + ("given" if answered else "not taken"))
 
 
 def _token(store):

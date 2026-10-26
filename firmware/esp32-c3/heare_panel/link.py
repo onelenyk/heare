@@ -195,6 +195,9 @@ class Link:
             "ui": [{"name": "now", "kind": "label", "label": "Screen",
                     "value": "BOOT", "head": True}],
             "hears": "all",
+            # The BOOT button answers an open permission with yes; the brain
+            # lets it only after the person let the panel in.
+            "approves": True,
         }
 
     def events(self, kinds: str = EVENT_KINDS) -> bool:
@@ -344,6 +347,23 @@ class Link:
             sock.close()
             raise
         return sock
+
+    def permit(self, permission_id: int) -> bool:
+        """Say yes to the permission ``permission_id``; True if it was open.
+
+        Only yes: the brain refuses a part's no, and a stale id is answered
+        with ``answered: false`` instead of allowing something else.
+        """
+        token = self.store.get_part_token()
+        if not token:
+            return False
+        try:
+            status, answer = self._post(
+                "/api/permission/" + str(int(permission_id)), token, {"allow": True}
+            )
+        except (http.HttpError, OSError, ValueError):
+            return False
+        return status == 200 and answer.get("answered") is True
 
     def _post(self, path: str, token: str, body: dict) -> tuple[int, dict]:
         sock = self._connect()

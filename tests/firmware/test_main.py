@@ -708,3 +708,27 @@ def test_a_failed_save_survives_the_reboot_once(tmp_path):
 
     assert main._take_retry(path) == ("4821", {"id": 7, "ok": False, "error": "wifi"})
     assert main._take_retry(path) == (None, None)
+
+
+class _AskingLink:
+    def __init__(self, kind, allow_id=7):
+        self.display = type("D", (), {"allow_kind": kind, "allow_id": allow_id})()
+        self.permitted = []
+
+    def permit(self, permission_id):
+        self.permitted.append(permission_id)
+        return True
+
+
+def test_the_button_says_yes_to_an_open_permission_only():
+    asking, question, nothing = (
+        _AskingLink("permission"), _AskingLink("question"), _AskingLink(None, None)
+    )
+    logs = []
+
+    for link in (asking, question, nothing):
+        main._press(link, logs.append)
+
+    assert asking.permitted == [7]
+    assert question.permitted == [] and nothing.permitted == []
+    assert logs == ["button yes given"]

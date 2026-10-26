@@ -1109,9 +1109,11 @@ function partWidget(pid, b) {
   if (b.state === "approved") card.append(...partHealth(b));
   // Shown, because it is a wider trust than the rest: this part hears
   // the whole conversation, not only its own channel.
-  if (b.hears === "all") {
+  // The same for a part with a yes of its own: it may allow what he asks.
+  if (b.hears === "all" || b.approves) {
     const badges = el("div", "badges");
-    badges.append(el("span", "badge", "чує всю розмову"));
+    if (b.hears === "all") badges.append(el("span", "badge", "чує всю розмову"));
+    if (b.approves) badges.append(el("span", "badge", "може дати дозвіл кнопкою"));
     card.append(badges);
   }
   if (b.state === "pending") {

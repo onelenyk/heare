@@ -158,6 +158,7 @@ def test_pair_exchanges_the_machine_key_for_a_part_key():
         "ui": [{"name": "now", "kind": "label", "label": "Screen",
                 "value": "BOOT", "head": True}],
         "hears": "all",
+        "approves": True,
     }
     assert "started" not in json.loads(knock["body"])
 
@@ -460,3 +461,24 @@ def test_a_knock_with_the_stored_part_key_needs_no_flag():
 
     assert link.knock("part-secret")["approved"] is True
     assert json.loads(server.requests[0]["body"])["key"] == PID
+
+
+def test_permit_says_only_yes_to_the_one_permission():
+    server = FakeServer([_json({"answered": True}), _json({"answered": False})])
+    store = _store()
+    store.set_part_token("part-secret")
+    link = _link(server, store)
+
+    assert link.permit(7) is True
+    assert link.permit(8) is False
+
+    assert server.paths() == ["/api/permission/7", "/api/permission/8"]
+    assert server.bodies("/api/permission/7") == [{"allow": True}]
+    assert server.requests[0]["headers"]["x-heare-token"] == "part-secret"
+
+
+def test_permit_without_a_key_asks_nothing():
+    server = FakeServer([])
+
+    assert _link(server, _store()).permit(7) is False
+    assert server.requests == []

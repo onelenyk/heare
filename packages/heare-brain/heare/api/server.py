@@ -277,7 +277,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
         ("POST", re.compile(r"^/api/executor/\d+/(step|permit|result|ask)$")),
     )
 
-    def part_may(request: web.Request) -> bool:
+    PERMISSION = re.compile(r"^/api/permission/\d+$")
+
+    def part_may(request: web.Request, pid: str) -> bool:
+        if request.method == "POST" and PERMISSION.match(request.path):
+            # The person's answer, given by a part only with their leave: a
+            # trusted part that said it has a yes (the panel's button).
+            return registry.approves(pid)
         return any(request.method == method and rx.match(request.path)
                    for method, rx in PART_CALLS)
 
@@ -306,7 +312,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 request["part"] = pid
                 return await handler(request)
             raise web.HTTPForbidden(text="a machine only knocks")
-        if not part_may(request):
+        if not part_may(request, pid):
             raise web.HTTPForbidden(text="not for a part")
         request["part"] = pid
         return await handler(request)
@@ -490,6 +496,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
             started = None
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
+        approves = data.get("approves") is True
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
         if (pid in registry.trusted()
@@ -501,18 +508,21 @@ def build(core: Core, settings: Any, vitals: Any = None,
                 # the sources stood pending after every brain restart).
                 registry.remember(pid)
             registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
-                            version=part_version, started=started)
+                            version=part_version, started=started,
+                            approves=approves)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
         registry.attach(pid, channel, forms, about, host, "pending", ui, hears,
-                        version=part_version, started=started)
+                        version=part_version, started=started,
+                            approves=approves)
         decided = await registry.answer(pid)
         if decided == "expired":
             return web.json_response({"approved": False, "why": "ніхто не відповів"})
         if decided != "approved":
             return web.json_response({"approved": False, "why": decided})
         registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
-                        version=part_version, started=started)
+                        version=part_version, started=started,
+                            approves=approves)
         return web.json_response({"approved": True, "pid": pid, **named(),
                                   **granted(request, pid)})
 
@@ -779,6 +789,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     async def permit(request: web.Request) -> web.Response:
         allow = bool((await body(request)).get("allow"))
+        if request.get("part") and not allow:
+            # A button can say yes; no is the person's, by voice or page.
+            raise web.HTTPForbidden(text="a part only says yes")
         return web.json_response(
             {"answered": core.permit(int(request.match_info["id"]), allow)}
         )

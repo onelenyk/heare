@@ -74,7 +74,7 @@ class Registry:
     def attach(self, pid: str, channel: str, forms: list, about: str,
                host: str, state: str, ui: list | None = None,
                hears: str | None = None, version: str | None = None,
-               started: float | None = None) -> None:
+               started: float | None = None, approves: bool = False) -> None:
         old = self.bodies.get(pid) or {}
         # A knock from a process that began at another time is the part
         # started again: counted while this brain runs, so after an update
@@ -97,6 +97,10 @@ class Registry:
             # those controls are worth. Both travel to the page untouched.
             "ui": list(ui if ui is not None else old.get("ui") or []),
             "values": dict(old.get("values") or {}),
+            # A part with a "yes" of its own (the panel's button). It may
+            # answer the open permission with yes, only once the person let
+            # the part in; see server.part_may.
+            "approves": bool(approves),
         }
         if state == "approved" and "executor" in forms and self._on_executor:
             self._on_executor(channel, about)
@@ -131,6 +135,11 @@ class Registry:
 
     def pid_of(self, entry: dict) -> str:
         return next(pid for pid, b in self.bodies.items() if b is entry)
+
+    def approves(self, pid: str) -> bool:
+        """Whether a trusted part may say yes to the open permission."""
+        entry = self.bodies.get(pid) or {}
+        return entry.get("state") == "approved" and bool(entry.get("approves"))
 
     def channel_of(self, pid: str) -> str:
         entry = self.bodies.get(pid) or {}
