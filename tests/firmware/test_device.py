@@ -22,7 +22,7 @@ def _device():
 
 
 def test_the_board_offers_only_pins_nothing_else_uses():
-    names = {a["name"] for a in device.acts() if a["kind"] == "switch"}
+    names = {s["name"] for s in device.skills() if s["effect"] == "change"}
     assert names == {"pin" + str(n) for n in device.FREE_PINS}
     for taken in (5, 6, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19):
         assert "pin" + str(taken) not in names
@@ -66,3 +66,28 @@ def test_the_light_is_lit_by_pulling_its_pin_low():
 def test_lines_fit_the_small_window():
     assert device.lines("abcdefghijklmnop") == ["abcdefghi", "jklmnop"]
     assert len(device.lines("a\nb\nc\nd\ne")) == device.MAX_LINES
+
+
+def test_every_skill_has_the_form_the_brain_keeps():
+    for skill in device.skills():
+        assert set(skill) == {"name", "about", "effect", "params"}
+        assert skill["effect"] in ("read", "harmless", "change")
+        assert skill["params"]["type"] == "object"
+
+
+def test_a_call_is_answered_with_what_came_of_it():
+    board, made = _device()
+    assert board.call("show", {"text": "Привіт", "seconds": 5}, 0) == (True, "показано: Pryvit")
+    assert board.call("light", {"mode": "blink"}, 0) == (True, "світло: blink")
+    assert board.call("pin3", {"on": True}, 0) == (True, "pin3: 1")
+    assert board.call("read_pins", {}, 0)[1]["pin3"] == 1
+    assert board.call("pin9", {"on": True}, 0) == (False, "такого скіла немає")
+    assert board.call("pin3", {"on": "yes"}, 0)[0] is False
+    assert board.call("light", {"mode": "disco"}, 0)[0] is False
+    assert (9, "out") not in made
+
+
+def test_ukrainian_is_written_out_for_the_font():
+    assert device.latin("Привіт, Назаре!") == "Pryvit, Nazare!"
+    assert device.latin("Щастя їжака") == "Shchastia izhaka"
+    assert device.latin("hello 42") == "hello 42"

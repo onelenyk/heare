@@ -26,12 +26,12 @@ from heare_panel import clock, device, http, sse, state
 PROTOCOL = 1
 VERSION = "0.1.0"
 
-ABOUT = "status panel: OLED, a light and nine free pins"
+ABOUT = "плата на столі: OLED-екран, світлодіод і дев'ять вільних пінів"
 UI = [{"name": "now", "kind": "label", "label": "Screen",
        "value": "BOOT", "head": True}]
 
 EVENT_KINDS = ("phase,permission,permission_closed,question,"
-               "question_closed,said,failed,cannot,control")
+               "question_closed,said,failed,cannot,call")
 
 BACKOFF_S = (1, 2, 4, 8, 15, 30)
 THROTTLED_S = 60
@@ -88,8 +88,9 @@ class Link:
         self.auto_ap = False
         self.needs_provisioning = store.get_part_token() is None
         self.waits: list[float] = []
-        # Called with (name, value) for a control addressed to this panel.
-        self.on_control = None
+        # Called with (name, args) for a skill called on this panel; returns
+        # (ok, result), which goes back to the brain as the call's answer.
+        self.on_call = None
 
     def pair(self, code: str) -> str:
         """Redeem a one-time code, then exchange the machine key for a part key.
@@ -200,9 +201,12 @@ class Link:
             # The BOOT button answers an open permission with yes; the brain
             # lets it only after the person let the panel in.
             "approves": True,
-            # What the agent may do here; the brain asks the person first
-            # for every pin.
-            "acts": device.acts(),
+            # What the hands may do here, in the panel's own words; a pin
+            # changes the world, so the hands ask before switching one.
+            "skills": device.skills(),
+            # What the panel is called among others of its kind: the name
+            # given on the pairing page, as in its channel (oled-<name>).
+            "name": self.channel.split("-", 1)[1] if "-" in self.channel else self.channel,
         }
 
     def events(self, kinds: str = EVENT_KINDS) -> bool:
@@ -393,22 +397,30 @@ class Link:
         return self.display.state
 
     def _apply(self, event: dict, link: str | None = None) -> None:
-        if event.get("kind") == "control":
-            self._control(event)
+        if event.get("kind") == "call":
+            self._call(event)
             return
         before = self.display.state
         self.display = state.reduce(self.display, event, self._now(), link)
         if self.display.state != before:
             self._notify()
 
-    def _control(self, event: dict) -> None:
+    def _call(self, event: dict) -> None:
         # The panel hears the whole conversation, so it hears other parts'
-        # controls too; only its own are acted on.
-        if event.get("part") != self.pid or self.on_control is None:
+        # calls too; only its own are answered.
+        if event.get("part") != self.pid or self.on_call is None:
             return
         try:
-            self.on_control(event.get("name"), event.get("value"))
-        except Exception:  # noqa: BLE001 - an act must not stop the stream
+            ok, result = self.on_call(event.get("name"), event.get("args") or {})
+        except Exception:  # noqa: BLE001 - a skill must not stop the stream
+            ok, result = False, "панель не змогла"
+        token = self.store.get_part_token()
+        if not token:
+            return
+        try:
+            self._post("/api/skills/" + str(int(event.get("id"))), token,
+                       {"ok": bool(ok), "result": result})
+        except (http.HttpError, OSError, ValueError, TypeError):
             return
 
     def _set_link(self, link: str) -> None:

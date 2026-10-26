@@ -51,7 +51,6 @@ SETUP_TITLE = "SETUP"
 BLINK_MS = 500
 # The BOOT button on ESP32-C3 boards; pulled up, so pressed reads 0.
 BUTTON_PIN = 9
-LEVELS_MS = 1000
 
 
 def _nvs():
@@ -417,13 +416,11 @@ def _start_thread(target, args):
     _thread.start_new_thread(target, args)
 
 
-def _report(link, word, outcome, levels=None):
+def _report(link, word, outcome):
     from heare_panel import link as link_module
 
-    values = {"now": word}
-    values.update(levels or {})
     try:
-        link.report(values)
+        link.report({"now": word})
     except link_module.NeedsProvisioning:
         outcome.append("provision")
     except Exception:  # noqa: BLE001 - a report failure is not fatal
@@ -482,7 +479,7 @@ def run_normal(
     board = device if device is not None else device_module.Device(
         device_module.board_pin
     )
-    link.on_control = lambda name, value: board.apply(name, value, clock.now_ms())
+    link.on_call = lambda name, args: board.call(name, args, clock.now_ms())
 
     initial = getattr(getattr(link, "display", None), "state", render.BRAIN)
     show_state(panel, initial, clock.now_ms())
@@ -498,7 +495,6 @@ def run_normal(
     last_word = None
     online_since = None
     boot_cleared = False
-    levels_at = None
     count = 0
     while ticks is None or count < ticks:
         count += 1
@@ -526,10 +522,8 @@ def run_normal(
             else:
                 show_state(panel, word, now)
             last_key = key
-        if word != last_word or levels_at is None or clock.elapsed(levels_at, now) >= LEVELS_MS:
-            _report(link, word, outcome, board.levels())
-            levels_at = now
         if word != last_word:
+            _report(link, word, outcome)
             out("screen=" + word)
             last_word = word
 

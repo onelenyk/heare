@@ -780,7 +780,7 @@ def _acting(monkeypatch, tmp_path, then, ticks=3, clock=None):
 
 def test_words_the_agent_sends_are_shown_over_the_face(monkeypatch, tmp_path):
     result, _link, _screens, texts, _made = _acting(
-        monkeypatch, tmp_path, lambda link: link.on_control("show", {"text": "hello", "seconds": 5}))
+        monkeypatch, tmp_path, lambda link: link.on_call("show", {"text": "hello", "seconds": 5}))
 
     assert result == "ticks"
     assert texts == [["hello"]]
@@ -788,7 +788,7 @@ def test_words_the_agent_sends_are_shown_over_the_face(monkeypatch, tmp_path):
 
 def test_a_permission_is_shown_even_over_the_agent_s_words(monkeypatch, tmp_path):
     def then(link):
-        link.on_control("show", {"text": "hello", "seconds": 5})
+        link.on_call("show", {"text": "hello", "seconds": 5})
         link.display = state.reduce(link.display, {"kind": "permission", "id": 3}, 0)
 
     _result, _link, screens, texts, _made = _acting(monkeypatch, tmp_path, then)
@@ -801,35 +801,10 @@ def test_the_light_and_the_pins_follow_the_brain(monkeypatch, tmp_path):
     from heare_panel import device
 
     def then(link):
-        link.on_control("led", "on")
-        link.on_control("pin3", True)
+        assert link.on_call("light", {"mode": "on"}) == (True, "світло: on")
+        assert link.on_call("pin3", {"on": True}) == (True, "pin3: 1")
 
     _result, link, _screens, _texts, made = _acting(monkeypatch, tmp_path, then)
 
     assert made[(device.LED_PIN, "out")].level == 0  # lit: pulled low
     assert made[(3, "out")].level == 1
-    assert link.reports[-1]["pin3"] == 1 and link.reports[-1]["pin0"] == 0
-
-
-def test_pin_levels_are_reported_every_second_not_every_tick(monkeypatch, tmp_path):
-    clock = Clock()
-    sleeps = []
-
-    screens = _record_screens(monkeypatch)
-    factory = LinkFactory()
-    board, _made = _board()
-
-    def sleep(ms):
-        sleeps.append(ms)
-        clock.advance(ms)
-
-    main.run_normal(
-        _provisioned(tmp_path), Sta(), Panel(), _config(),
-        thread_start=lambda target, args: args[0].supervise(), link_factory=factory,
-        clock=clock, out=lambda line: None, sleep=sleep, ticks=25,
-        button=lambda: False, device=board,
-    )
-
-    # 25 ticks of 100 ms: the first report, then one a second.
-    assert len(factory.links[0].reports) == 3
-    assert screens

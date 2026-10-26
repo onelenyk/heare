@@ -109,7 +109,7 @@ class Brain:
         from heare.memory.facts import SQLiteFacts
         from heare.memory.journal import Journal
         from heare.model.chat import Chat
-        from heare.model.route import Router
+        from heare.model.route import NATIVE as route_native, Router
         from heare.model.judge import Judge
         from heare.tools import Toolbox
 
@@ -130,7 +130,10 @@ class Brain:
         self.core = Core(
             Chat(self.settings),
             memory=self.memory,
-            delegator=Router(self.settings, lambda: self.core.state.tasks),
+            delegator=Router(
+                self.settings, lambda: self.core.state.tasks,
+                expected=lambda: (Path(self.settings.parts_dir) / route_native / "heare.json").is_file(),
+                present=lambda: list(self.core.executors)),
             gate=Judge(self.settings),
             prompt=lambda: persona.prompt(self.core.state.around),
             names=names, judge=persona.JUDGE, words=uk,

@@ -159,7 +159,8 @@ def test_pair_exchanges_the_machine_key_for_a_part_key():
                 "value": "BOOT", "head": True}],
         "hears": "all",
         "approves": True,
-        "acts": device.acts(),
+        "skills": device.skills(),
+        "name": "a1b2",
     }
     assert "started" not in json.loads(knock["body"])
 
@@ -344,26 +345,34 @@ def test_events_use_the_header_and_feed_the_reducer():
     assert link.state == state.HEAR
 
 
-def test_only_controls_addressed_to_this_panel_are_acted_on():
+def test_only_calls_to_this_panel_are_answered_and_each_is_answered():
     server = FakeServer([
         _stream(
-            {"kind": "control", "part": PID, "name": "led", "value": "on"},
-            {"kind": "control", "part": "oled-ffff@esp32c3-ffff",
-             "name": "pin3", "value": True},
+            {"kind": "call", "part": PID, "id": 7, "name": "light", "args": {"mode": "on"}},
+            {"kind": "call", "part": "oled-ffff@esp32c3-ffff", "id": 8,
+             "name": "pin3", "args": {"on": True}},
         ),
+        _json({"ok": True}),
     ])
     store = _store()
     store.set_part_token("part-secret")
     store.set_pid(PID)
     link = _link(server, store)
     done: list[tuple] = []
-    link.on_control = lambda name, value: done.append((name, value))
+
+    def on_call(name, args):
+        done.append((name, args))
+        return True, "світло: on"
+
+    link.on_call = on_call
 
     link.events()
 
-    assert done == [("led", "on")]
-    assert link.state == state.BRAIN or link.state == state.IDLE
-
+    assert done == [("light", {"mode": "on"})]
+    answer = server.requests[1]
+    assert answer["path"] == "/api/skills/7"
+    assert answer["headers"]["x-heare-token"] == "part-secret"
+    assert json.loads(answer["body"]) == {"ok": True, "result": "світло: on"}
 
 def test_an_unapproved_knock_shows_pair_and_backs_off(monkeypatch):
     slept: list[float] = []

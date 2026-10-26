@@ -52,7 +52,7 @@ def main() -> int:
                 break
             time.sleep(0.5)
         if found is None:
-            print(f"✗ {phrase!r}: no task finished")
+            print(f"✗ {phrase!r}: no task finished", flush=True)
             misses += 1
             continue
         took = found["ended"] - found["started"]
@@ -61,11 +61,11 @@ def main() -> int:
         misses += not ok
         if wanted == "native-hands":
             times.append(took)
-        print(f"{'✓' if ok else '✗'} {took:5.1f} s  {reached:12} {phrase!r} → {found['result'][:70]}")
+        print(f"{'✓' if ok else '✗'} {took:5.1f} s  {reached:12} {phrase!r} → {found['result'][:70]}", flush=True)
         time.sleep(2)
     if times:
-        print(f"тіла: медіана {statistics.median(times):.1f} s")
-    print(f"{len(PHRASES) - misses}/{len(PHRASES)}")
+        print(f"тіла: медіана {statistics.median(times):.1f} s", flush=True)
+    print(f"{len(PHRASES) - misses}/{len(PHRASES)}", flush=True)
     return 1 if misses else 0
 
 

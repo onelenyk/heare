@@ -15,6 +15,7 @@ dispatcher's model used to write out, without the model.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -23,6 +24,9 @@ from heare.model.delegate import Dispatcher
 from heare.hand import Handoff
 
 NATIVE = "native-hands"
+# How long work waits for native hands that are turned on here but not back
+# yet: after a restart the brain is up seconds before its parts are.
+WAIT_S = 10.0
 
 
 def with_talk(request: str, history: list[dict]) -> str:
@@ -33,9 +37,15 @@ def with_talk(request: str, history: list[dict]) -> str:
 class Router(Dispatcher):
     """Assigns by the rule; cutting a long result down is still the model's."""
 
-    def __init__(self, settings: Any, tasks: Callable[[], dict[int, Task]]) -> None:
+    def __init__(self, settings: Any, tasks: Callable[[], dict[int, Task]],
+                 expected: Callable[[], bool] = lambda: False,
+                 present: Callable[[], list[str]] = list) -> None:
+        """expected: whether native hands are turned on here; present: the
+        hands there are now, looked at again while waiting for them."""
         super().__init__(settings)
         self._tasks = tasks
+        self._expected = expected
+        self._present = present
 
     async def assign(
         self, request: str, history: list[dict], executors: list[Executor]
@@ -49,9 +59,21 @@ class Router(Dispatcher):
             last = next((t for t in reversed(tasks) if t.executor in names), None)
             if last is not None:
                 return last.executor, task
+        if NATIVE not in names and self._expected():
+            names = await self._wait_for_native(names)
         if NATIVE in names:
             return NATIVE, task
         return names[0], task
+
+    async def _wait_for_native(self, names: list[str]) -> list[str]:
+        loop = asyncio.get_running_loop()
+        end = loop.time() + WAIT_S
+        while loop.time() < end:
+            now = self._present()
+            if NATIVE in now:
+                return now
+            await asyncio.sleep(0.2)
+        return names
 
 
 class FirstHand:
