@@ -9,7 +9,8 @@ import httpx
 import pytest
 
 from heare import hand, native_hands
-from heare.native_hands import Chat, latin
+from heare.native_hands import Chosen, latin
+from heare.talk import anthropic_turns
 
 
 class Wire:
@@ -147,7 +148,7 @@ async def test_the_model_is_asked_with_tools_and_its_calls_come_back():
         }}]})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
-        chat = Chat(_Settings(), client)
+        chat = Chosen(_Settings(), client)
         events = [e async for e in chat.reply([{"role": "user", "content": "x"}],
                                               [{"type": "function", "function": {"name": "light"}}])]
 
@@ -177,3 +178,48 @@ async def test_a_stop_from_the_brain_is_a_result_but_a_shutdown_goes_on_out():
     with pytest.raises(asyncio.CancelledError):
         await running
     assert _results(wire) == []
+
+
+class _Anthropic(_Settings):
+    llm_provider = "zai"
+    deepseek_api_key = ""
+    zai_api_key = "z-test"
+
+
+async def test_an_anthropic_provider_is_spoken_to_in_its_own_shape():
+    seen: list[dict] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append({"url": str(request.url), "key": request.headers.get("x-api-key"),
+                     "body": json.loads(request.content)})
+        return httpx.Response(200, json={"content": [
+            {"type": "text", "text": "Блимаю."},
+            {"type": "tool_use", "id": "t1", "name": "light", "input": {"mode": "blink"}}]})
+
+    messages = [{"role": "system", "content": "будь коротким"},
+                {"role": "user", "content": "блимни"},
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "c0", "type": "function",
+                     "function": {"name": "light", "arguments": '{"mode": "on"}'}}]},
+                {"role": "tool", "tool_call_id": "c0", "content": "Світло: on."}]
+    tools = [{"type": "function", "function": {"name": "light", "description": "d",
+                                                "parameters": {"type": "object"}}}]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
+        events = [e async for e in Chosen(_Anthropic(), client).reply(messages, tools)]
+
+    body = seen[0]["body"]
+    assert seen[0]["url"].endswith("/v1/messages") and seen[0]["key"] == "z-test"
+    assert body["system"] == "будь коротким"
+    assert body["tools"] == [{"name": "light", "description": "d",
+                              "input_schema": {"type": "object"}}]
+    assert [t["role"] for t in body["messages"]] == ["user", "assistant", "user"]
+    assert body["messages"][1]["content"][0]["input"] == {"mode": "on"}
+    assert body["messages"][2]["content"][0]["type"] == "tool_result"
+    assert events[1] == {"type": "tool_call", "id": "t1", "name": "light",
+                         "arguments": '{"mode": "blink"}'}
+
+
+def test_turns_of_one_role_are_joined_for_anthropic():
+    system, turns = anthropic_turns([{"role": "user", "content": "a"},
+                                     {"role": "user", "content": "b"}])
+    assert system == "" and len(turns) == 1 and len(turns[0]["content"]) == 2

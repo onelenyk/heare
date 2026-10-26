@@ -27,7 +27,7 @@ from typing import AsyncIterator, Protocol
 import httpx
 
 from heare import hand as hand_life
-from heare import layout, logs, part
+from heare import layout, logs, part, talk
 from heare.config import Settings
 from heare.core.forms import Desk, Model
 
@@ -44,7 +44,6 @@ STEPS = 4
 SHOW_S = 10
 SHOW_MAX_S = 60
 SHOW_CHARS = 40
-MODEL_TIMEOUT_S = 20.0
 FAILED = "Не вийшло: модель не відповіла."
 # The OLED's font has Latin letters only; Ukrainian is written out in them
 # rather than drawn as noise.
@@ -264,49 +263,37 @@ class Parts:
         return answer.status_code == 200
 
 
-class Chat:
-    """The voice's model, asked once per turn, with tools.
+def chosen(settings: Settings) -> talk.Wire:
+    """The model the voice talks with: the same provider, model and key.
 
-    Its own few lines rather than the brain's client: a part never imports
-    another part. Only providers that speak the OpenAI wire are used; the
-    rest of the choice — which provider, which model, which key — is the
-    same settings the voice reads.
-    """
+    The provider asked for first; if it has no key, the first that has one —
+    the same order the brain falls back in."""
+    from heare.model.providers import PROVIDERS
+
+    wanted = str(settings.llm_provider or "deepseek").lower()
+    for name in [wanted] + [k for k in PROVIDERS if k != wanted]:
+        cfg = PROVIDERS.get(name)
+        key = getattr(settings, cfg.api_key_attr, None) if cfg else None
+        if cfg is None or not key or cfg.api_style not in ("openai", "anthropic"):
+            continue
+        return talk.Wire(
+            base_url=getattr(settings, f"{name}_base_url", "") or cfg.base_url,
+            key=key,
+            model=getattr(settings, f"{name}_model", "") or cfg.default_model,
+            style=cfg.api_style)
+    raise RuntimeError("немає ключа до жодної моделі")
+
+
+class Chosen:
+    """The voice's model, chosen afresh each turn: a key or a provider
+    changed on the page is used without a restart."""
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
-        self._settings = settings
-        self._client = client
+        self._settings, self._client = settings, client
 
     async def reply(self, messages: list[dict], verbs: list[dict]) -> AsyncIterator[dict]:
-        url, key, model = self._chosen()
-        body: dict = {"model": model, "messages": messages, "temperature": 0.2}
-        if verbs:
-            body["tools"] = verbs
-        answer = await self._client.post(
-            f"{url}/chat/completions", json=body, timeout=MODEL_TIMEOUT_S,
-            headers={"Authorization": f"Bearer {key}"})
-        answer.raise_for_status()
-        said = (answer.json().get("choices") or [{}])[0].get("message") or {}
-        if said.get("content"):
-            yield {"type": "delta", "text": said["content"]}
-        for call in said.get("tool_calls") or []:
-            yield {"type": "tool_call", "id": call.get("id"),
-                   "name": call["function"]["name"],
-                   "arguments": call["function"].get("arguments") or "{}"}
-
-    def _chosen(self) -> tuple[str, str, str]:
-        from heare.model.providers import PROVIDERS
-
-        wanted = str(self._settings.llm_provider or "deepseek").lower()
-        for name in [wanted] + [k for k in PROVIDERS if k != wanted]:
-            cfg = PROVIDERS.get(name)
-            key = getattr(self._settings, cfg.api_key_attr, None) if cfg else None
-            if cfg is None or not key or cfg.api_style != "openai":
-                continue
-            url = getattr(self._settings, f"{name}_base_url", "") or cfg.base_url
-            model = getattr(self._settings, f"{name}_model", "") or cfg.default_model
-            return url.rstrip("/"), key, model
-        raise RuntimeError("немає ключа до моделі з OpenAI-протоколом")
+        async for event in talk.Talk(chosen(self._settings), self._client).reply(messages, verbs):
+            yield event
 
 
 def latin(text: str) -> str:
@@ -327,7 +314,7 @@ async def run(settings: Settings | None = None, model: Model | None = None,
     async with httpx.AsyncClient(timeout=None) as client:
 
         async def work(wire: part.Wire) -> None:
-            hand = NativeHand(model or Chat(settings, client), Parts(wire))
+            hand = NativeHand(model or Chosen(settings, client), Parts(wire))
             wire.report({"work": "чекає"})
 
             async def do(job: hand_life.Job, desk: hand_life.Desk) -> str:
