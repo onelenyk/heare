@@ -74,10 +74,24 @@ class ServerSocket(FakeSocket):
     def __init__(self, server: FakeServer) -> None:
         super().__init__()
         self.server = server
+        self.pending = bytearray()
 
     def sendall(self, data: bytes) -> None:
+        # A request may come in pieces, as on a real socket: it is answered
+        # once its head and all the body the head declared are here.
         super().sendall(data)
-        request = self.server.parse(bytes(data))
+        self.pending += data
+        head, sep, body = bytes(self.pending).partition(b"\r\n\r\n")
+        if not sep:
+            return
+        length = 0
+        for line in head.split(b"\r\n"):
+            if line.lower().startswith(b"content-length:"):
+                length = int(line.split(b":", 1)[1])
+        if len(body) < length:
+            return
+        request = self.server.parse(bytes(self.pending))
+        self.pending = bytearray()
         self.server.requests.append(request)
         self.feed(self.server.next(request))
 

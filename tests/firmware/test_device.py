@@ -22,11 +22,19 @@ def _device():
 
 
 def test_the_board_offers_only_pins_nothing_else_uses():
-    names = {s["name"] for s in device.skills() if s["effect"] == "change"}
-    assert names == {"pin" + str(n) for n in device.FREE_PINS}
+    pin = next(s for s in device.skills() if s["name"] == "pin")
+    offered = set(pin["params"]["properties"]["n"]["enum"])
+    assert offered == set(device.FREE_PINS)
     for taken in (5, 6, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19):
-        assert "pin" + str(taken) not in names
+        assert taken not in offered
+    assert [s["name"] for s in device.skills() if s["effect"] == "change"] == ["pin"]
 
+
+def test_the_knock_s_skills_are_small_enough_for_the_board():
+    import json
+
+    # 26 October: 10 KB of skills in every knock starved the board.
+    assert len(json.dumps(device.skills()).encode()) < 4096
 
 def test_a_pin_outside_the_list_is_never_touched():
     board, made = _device()
@@ -72,10 +80,11 @@ def test_a_call_is_answered_with_what_came_of_it():
     board, made = _device()
     assert board.call("show", {"text": "Привіт", "seconds": 5}, 0) == (True, "показано: Привіт")
     assert board.call("light", {"mode": "blink"}, 0) == (True, "світло: blink")
-    assert board.call("pin3", {"on": True}, 0) == (True, "pin3: 1")
+    assert board.call("pin", {"n": 3, "on": True}, 0) == (True, "pin3: 1")
     assert board.call("read_pins", {}, 0)[1]["pin3"] == 1
-    assert board.call("pin9", {"on": True}, 0) == (False, "такого скіла немає")
-    assert board.call("pin3", {"on": "yes"}, 0)[0] is False
+    assert board.call("pin", {"n": 9, "on": True}, 0) == (False, "пін недоступний")
+    assert board.call("pin", {"n": 3, "on": "yes"}, 0)[0] is False
+    assert board.call("pin3", {"on": True}, 0) == (False, "такого скіла немає")
     assert board.call("light", {"mode": "disco"}, 0)[0] is False
     assert (9, "out") not in made
 

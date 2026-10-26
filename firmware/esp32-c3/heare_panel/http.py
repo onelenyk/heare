@@ -34,16 +34,20 @@ def build_request(method: str, path: str, host: str, token: str,
     sees from a browser.
     """
     payload = _payload(body)
+    return _head(method, path, host, token, len(payload), port) + payload
+
+
+def _head(method: str, path: str, host: str, token: str, length: int, port: int) -> bytes:
     authority = host if port == 80 or host.endswith(f":{port}") else f"{host}:{port}"
     return (
         f"{method.upper()} {path} HTTP/1.0\r\n"
         f"Host: {authority}\r\n"
         f"X-Heare-Token: {token}\r\n"
         "Content-Type: application/json\r\n"
-        f"Content-Length: {len(payload)}\r\n"
+        f"Content-Length: {length}\r\n"
         "Connection: close\r\n"
         "\r\n"
-    ).encode() + payload
+    ).encode()
 
 
 def read_head(sock) -> tuple[int, dict[str, str]]:
@@ -100,7 +104,12 @@ def post_json(sock, method: str, path: str, host: str, token: str,
     caller must decide on (401 says the token is gone, 403 says the part may
     not do this). Only a malformed or oversized answer is an exception.
     """
-    sock.sendall(build_request(method, path, host, token, body, port))
+    # The head and the body go apart: joined, a big body would be in memory
+    # twice on a board that has little of it.
+    payload = _payload(body)
+    sock.sendall(_head(method, path, host, token, len(payload), port))
+    if payload:
+        sock.sendall(payload)
     status, headers = read_head(sock)
 
     declared = headers.get("content-length")

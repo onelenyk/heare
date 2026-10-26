@@ -29,78 +29,59 @@ SHOW_MAX_MS = 60_000
 BLINK_MS = 400
 
 
+# The skills travel in every knock, and the board has some 66 KB: words in
+# them are English and short (a model reads either), and the pins are one
+# skill, not nine.
 SCENE_HELP = (
-    "{id, layout, fields}. layout — віджет або {rows:[...]} / {cols:[...]}; у рядах "
-    "вага h, у колонках w (1..12), до 3 рівнів і 8 віджетів. Віджети: "
-    "{widget:text, text, size:1|2, align:left|center}; {widget:number, value, unit}; "
-    "{widget:icon, name} або {widget:icon, svg} (16×16); {widget:picture, svg} "
-    "(SVG viewBox 0 0 72 40, білим по чорному, товсті лінії); {widget:bar, value 0..100}; "
-    "{widget:clock}; {widget:spinner}. bind:\"поле\" бере значення з fields — "
-    "update міняє лише його. Іконки: sun cloud rain snow heart check cross bell clock "
+    "{id, layout, fields}. layout: a widget, or {rows:[..]} / {cols:[..]} with "
+    "weights h / w (1-12), 3 levels, 8 widgets. Widgets: text{text,size:1|2,align}, "
+    "number{value,unit}, icon{name} or icon{svg 16x16}, picture{svg 72x40, white on "
+    "black, thick lines}, bar{value 0-100}, clock, spinner. bind:'f' shows fields.f; "
+    "update changes fields. Icons: sun cloud rain snow heart check cross bell clock "
     "lamp lock home battery wifi up down left right mic thermo drop star music. "
-    "Пиши українською: екран має свої літери."
+    "Ukrainian text is fine."
 )
-
-_ON = {"type": "object", "required": ["on"],
-       "properties": {"on": {"type": "boolean"}}}
+_OBJECT = {"type": "object", "properties": {}}
+_LAYER = {"type": "string", "enum": ["flash", "pin", "idle"]}
 
 
 def skills():
     """The skills the knock offers the hands."""
-    found = [
-        {"name": "show", "effect": "harmless",
-         "about": "Показати кілька слів на OLED-екрані на кілька секунд",
+    return [
+        {"name": "show", "effect": "harmless", "about": "Show a few words on the OLED for some seconds",
          "params": {"type": "object", "required": ["text"], "properties": {
-             "text": {"type": "string", "description": "до 4 рядків по 9 літер"},
-             "seconds": {"type": "integer", "description": "1..60"}}}},
-        {"name": "light", "effect": "harmless",
-         "about": "Світлодіод на платі: on, off або blink (блимає сам, доки не скажуть інакше)",
-         "params": {"type": "object", "required": ["mode"], "properties": {
-             "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
-        {"name": "image", "effect": "harmless",
-         "about": "Намалювати картинку на OLED 72×40, чорно-білу, на кілька секунд",
+             "text": {"type": "string"}, "seconds": {"type": "integer"}}}},
+        {"name": "image", "effect": "harmless", "about": "Draw a picture on the 72x40 OLED for some seconds",
          "params": {"type": "object", "required": ["svg"], "properties": {
-             "svg": {"type": "string", "description":
-                     "SVG з viewBox=\"0 0 72 40\": білим по чорному, товсті лінії (від 2), "
-                     "великі прості форми, без дрібного тексту й градієнтів"},
-             "seconds": {"type": "integer", "description": "1..60"}}},
-         # The board cannot draw an SVG: the hands turn it into its pixels.
+             "svg": {"type": "string", "description": "viewBox 0 0 72 40, white on black, thick lines"},
+             "seconds": {"type": "integer"}}},
          "render": {"svg": {"to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bitmap"}}},
         {"name": "screen", "effect": "harmless",
-         "about": "Показати сцену на OLED 72×40: розкладка з віджетів і поля, які потім "
-                  "можна міняти (update). layer: flash — на seconds, pin — доки не clear, "
-                  "idle — екран спокою замість обличчя",
+         "about": "Put a scene on the OLED: flash for seconds, pin until cleared, idle instead of the face",
          "params": {"type": "object", "required": ["scene"], "properties": {
              "scene": {"type": "object", "description": SCENE_HELP},
-             "layer": {"type": "string", "enum": ["flash", "pin", "idle"]},
-             "seconds": {"type": "integer", "description": "для flash: 1..60"}}},
+             "layer": _LAYER, "seconds": {"type": "integer"}}},
          "render": {"scene": [
              {"deep": True, "key": "svg", "where": {"widget": "icon"},
               "to": "mono", "width": 16, "height": 16, "as": "bits"},
              {"deep": True, "key": "svg", "where": {"widget": "picture"},
               "to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bits"}]}},
-        {"name": "update", "effect": "harmless",
-         "about": "Змінити поля сцени, що вже на екрані, — перемалюється лише змінене",
+        {"name": "update", "effect": "harmless", "about": "Change fields of a scene on the screen",
          "params": {"type": "object", "required": ["id", "fields"], "properties": {
-             "id": {"type": "string"}, "fields": {"type": "object"}}}},
-        {"name": "clear", "effect": "harmless",
-         "about": "Прибрати сцену (id) або шар (flash, pin, idle) — повернеться те, що нижче",
-         "params": {"type": "object", "properties": {
-             "id": {"type": "string"},
-             "layer": {"type": "string", "enum": ["flash", "pin", "idle"]}}}},
-        {"name": "screen_info", "effect": "read",
-         "about": "Що зараз на екрані по шарах, розмір, віджети, іконки, вільна пам'ять",
-         "params": {"type": "object", "properties": {}}},
-        {"name": "read_pins", "effect": "read",
-         "about": "Рівні вільних пінів: 1 високий, 0 низький",
-         "params": {"type": "object", "properties": {}}},
+             "id": {"type": "string"}, "fields": _OBJECT}}},
+        {"name": "clear", "effect": "harmless", "about": "Take a scene (id) or a layer off the screen",
+         "params": {"type": "object", "properties": {"id": {"type": "string"}, "layer": _LAYER}}},
+        {"name": "screen_info", "effect": "read", "about": "What is on the screen, its size, widgets, icons",
+         "params": _OBJECT},
+        {"name": "light", "effect": "harmless", "about": "The board's LED: on, off or blink (blinks by itself)",
+         "params": {"type": "object", "required": ["mode"], "properties": {
+             "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
+        {"name": "read_pins", "effect": "read", "about": "Levels of the free pins, 1 or 0",
+         "params": _OBJECT},
+        {"name": "pin", "effect": "change", "about": "Switch a free pin on or off: whatever is wired to it",
+         "params": {"type": "object", "required": ["n", "on"], "properties": {
+             "n": {"type": "integer", "enum": list(FREE_PINS)}, "on": {"type": "boolean"}}}},
     ]
-    for number in FREE_PINS:
-        found.append({"name": "pin" + str(number), "effect": "change",
-                      "about": "Пін " + str(number)
-                      + ": Увімкнути чи вимкнути пін — те, що до нього під'єднано",
-                      "params": _ON})
-    return found
 
 
 def lines(text):
@@ -197,13 +178,14 @@ class Device:
             return (True, "світло: " + self.led_mode) if done else (False, "on, off або blink")
         if name == "read_pins":
             return True, self.levels()
-        if _pin_number(name) is not None:
-            on = args.get("on")
+        if name == "pin":
+            on, number = args.get("on"), args.get("n")
             if not isinstance(on, bool):
                 return False, "on: true або false"
-            if not self.apply(name, on, now_ms):
+            if number not in FREE_PINS:
                 return False, "пін недоступний"
-            return True, name + ": " + ("1" if on else "0")
+            self.apply("pin" + str(number), on, now_ms)
+            return True, "pin" + str(number) + ": " + ("1" if on else "0")
         return False, "такого скіла немає"
 
     def _screen(self, args, now_ms):

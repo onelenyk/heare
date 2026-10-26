@@ -40,6 +40,7 @@ VFS_OFFSET = 0x200000
 VFS_SIZE = 0x200000
 BLOCK = 4096
 PACKAGES = ("heare_panel", "lib")
+FRESH = "fresh_code"
 LAUNCHER = b"import panel_main\npanel_main.run()\n"
 
 
@@ -90,7 +91,11 @@ def build(fs: LittleFS, work: Path) -> list[str]:
         handle.write(_compile(FIRMWARE / "main.py", work / "panel_main.mpy"))
     with fs.open("/main.py", "wb") as handle:
         handle.write(LAUNCHER)
-    changed.append("+ panel_main.mpy, main.py (launcher)")
+    # New code is a fresh start: the panel clears its count of failed boots
+    # when it finds this, so a fix lands on a panel that gave up on the old.
+    with fs.open("/" + FRESH, "wb") as handle:
+        handle.write(b"1")
+    changed.append("+ panel_main.mpy, main.py (launcher), " + FRESH)
     return changed
 
 
@@ -111,7 +116,8 @@ def deploy(port: str) -> None:
         print(f"backup: {backup}")
 
         fs = _mount(current.read_bytes())
-        kept = [name for name in fs.listdir("/") if name not in (*PACKAGES, "main.py", "panel_main.mpy")]
+        kept = [name for name in fs.listdir("/")
+                if name not in (*PACKAGES, "main.py", "panel_main.mpy", FRESH)]
         for line in build(fs, work):
             print("  " + line)
         print("  kept: " + ", ".join(sorted(kept)))

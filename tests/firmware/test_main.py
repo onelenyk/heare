@@ -817,7 +817,7 @@ def test_the_light_and_the_pins_follow_the_brain(monkeypatch, tmp_path):
 
     def then(link):
         assert link.on_call("light", {"mode": "on"}) == (True, "світло: on")
-        assert link.on_call("pin3", {"on": True}) == (True, "pin3: 1")
+        assert link.on_call("pin", {"n": 3, "on": True}) == (True, "pin3: 1")
 
     _result, link, _screens, _texts, made = _acting(monkeypatch, tmp_path, then)
 
@@ -866,3 +866,21 @@ def test_show_picture_lights_the_pixels_the_bits_say():
     assert main.show_picture(Window(), bytes(bits), framebuf_module=_Framebuf())
     lit = [op for op in canvas.ops if op[0] == "pixel"]
     assert [(op[1], op[2]) for op in lit] == [(0, 0), (71, 39)]
+
+
+def test_fresh_code_clears_the_failed_boots_of_the_old(tmp_path, monkeypatch):
+    _record_screens(monkeypatch)
+    mark = tmp_path / "fresh_code"
+    mark.write_text("1")
+    monkeypatch.setattr(main, "FRESH_PATH", str(mark))
+    store = _provisioned(tmp_path)
+    store.set_boot_count(main.BOOT_LIMIT)
+    logs = []
+
+    result = main.run(store=store, sta=Sta(), panel=Panel(), wdt=Wdt(), reset=lambda: None,
+                      thread_start=lambda target, args: None, link_factory=LinkFactory(),
+                      clock=Clock(), out=logs.append, sleep=lambda ms: None, ticks_normal=2)
+
+    assert result == "ticks"  # normal work, not Bluetooth setup
+    assert "fresh code: boot count cleared" in logs
+    assert not mark.exists()

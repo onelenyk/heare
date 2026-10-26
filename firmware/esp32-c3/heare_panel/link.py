@@ -18,6 +18,7 @@ Nothing here logs a key or conversation text. The socket is injected
 driven by the board and by a fake in ``tests/firmware``.
 """
 
+import json
 import socket
 import time
 
@@ -88,6 +89,7 @@ class Link:
         self.auto_ap = False
         self.needs_provisioning = store.get_part_token() is None
         self.waits: list[float] = []
+        self._knock = None
         # Called with (name, args) for a skill called on this panel; returns
         # (ok, result), which goes back to the brain as the call's answer.
         self.on_call = None
@@ -147,9 +149,12 @@ class Link:
         """
         if token == self.store.get_part_token():
             part = True
-        body = self.knock_body()
+        if self._knock is None:
+            # Encoded once: the knock goes before every stream, and it is
+            # the largest thing the panel sends.
+            self._knock = json.dumps(self.knock_body()).encode()
         try:
-            status, answer = self._post("/api/bodies", token, body)
+            status, answer = self._post("/api/bodies", token, self._knock)
         except http.HttpError as error:
             self._refuse(error.status, "knock")
             raise

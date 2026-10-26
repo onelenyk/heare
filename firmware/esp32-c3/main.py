@@ -118,6 +118,31 @@ def _record_boot_nvs():
         pass
 
 
+FRESH_PATH = "/fresh_code"
+
+
+def _fresh_code(path=None):
+    """Whether a deploy left its mark; the mark is taken away either way."""
+    import os
+
+    try:
+        os.remove(path or FRESH_PATH)
+    except OSError:
+        return False
+    return True
+
+
+def _clear_boot_nvs():
+    nvs = _nvs()
+    if nvs is None:
+        return
+    try:
+        nvs.set_blob(KEY_BOOT_COUNT, b"0")
+        nvs.commit()
+    except OSError:
+        pass
+
+
 def _setup_required_nvs():
     # A missing part key is not a Bluetooth boot: with Wi-Fi stored, the
     # panel pairs from its own page.
@@ -821,6 +846,14 @@ def run(
     tag=None,
     code=None,
 ):
+    if _fresh_code():
+        # The code was just replaced: earlier failed boots were the old
+        # code's, not a reason to send the new one to Bluetooth setup.
+        if store is not None:
+            clear_boot(store)
+        else:
+            _clear_boot_nvs()
+        out("fresh code: boot count cleared")
     if store is not None:
         record_boot(store)
         needed = setup_required(store)
