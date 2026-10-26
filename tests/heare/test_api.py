@@ -1865,19 +1865,18 @@ PIN = {"name": "pin3", "about": "реле", "effect": "change",
 async def test_only_a_let_in_executor_may_call_the_parts_skills(tmp_path):
     (tmp_path / "parts.json").write_text('["native@desk", "oled@desk"]', encoding="utf-8")
     room, client, master, _ = await _open(tmp_path)
-    panel = await _knock(client, master, "oled@desk", ["output"], name="desk",
-                         acts=[{"name": "led", "kind": "light"}])
+    led = {"name": "led", "about": "світло", "effect": "harmless",
+           "params": {"type": "object", "properties": {}}}
+    panel = await _knock(client, master, "oled@desk", ["output"], name="desk", skills=[led])
     hand = await _knock(client, master, "native@desk", ["executor"])
 
     offered = await (await client.get("/api/skills", headers=hand)).json()
-    told = await client.post("/api/skills/call", json={
-        "part": "oled@desk", "name": "led", "args": {"mode": "on"}}, headers=hand)
     unknown = await client.post("/api/skills/call", json={
         "part": "oled@desk", "name": "pin9", "args": {}}, headers=hand)
 
     assert offered["oled@desk"]["name"] == "desk"
     assert [s["name"] for s in offered["oled@desk"]["skills"]] == ["led"]
-    assert (await told.json())["ok"] is True and unknown.status == 404
+    assert unknown.status == 404
     assert (await client.get("/api/skills", headers=panel)).status == 403
     await _close(room, client)
 

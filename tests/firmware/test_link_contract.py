@@ -115,12 +115,10 @@ def test_the_panel_s_skills_pass_the_brain_s_check_as_they_are():
 
 
 def test_the_panel_s_pins_are_the_trust_it_was_let_in_with():
-    # The panel was let in with its older acts; its skills must change
-    # nothing the person vouched for, or it waits on the page again.
+    # Live, the panel was let in with these world-changing skills
+    # (26 October). A change here makes it wait on the page again: decide
+    # that, then change the number.
     from heare.api import skills
     from heare_panel import device
 
-    older = skills.legacy(skills.acts(
-        [{"name": "show", "kind": "show"}, {"name": "led", "kind": "light"}]
-        + [{"name": f"pin{n}", "kind": "switch"} for n in device.FREE_PINS]))
-    assert skills.fingerprint(device.skills()) == skills.fingerprint(older)
+    assert skills.fingerprint(device.skills()) == "dc73103e8c33aa39"

@@ -513,9 +513,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         forms = list(data.get("forms") or [])
         about = str(data.get("about") or "")
         approves = data.get("approves") is True
-        # What the part can do, in its own words; the older acts read as skills.
-        offered = (skills.checked(data.get("skills"))
-                   or skills.legacy(skills.acts(data.get("acts"))))
+        # What the part can do, in its own words.
+        offered = skills.checked(data.get("skills"))
         named_as = str(data.get("name") or "")[:32]
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
@@ -764,12 +763,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         found = registry.skill(pid, name)
         if found is None:
             raise web.HTTPNotFound(text="no such skill")
-        channel, skill = found
-        if "act" in skill:
-            # A part of the older wire: told, not asked, so nothing comes back.
-            registry.emit("control", channel=channel, name=name,
-                          value=skills.value_of(skill, args), part=pid)
-            return web.json_response({"ok": True, "result": "сказано, без відповіді"})
+        channel, _skill = found
         call_id, waiting = calls.open(pid)
         registry.emit("call", channel=channel, part=pid, id=call_id, name=name, args=args)
         return web.json_response(await calls.wait(call_id, waiting))

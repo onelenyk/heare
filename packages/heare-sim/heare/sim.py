@@ -6,9 +6,8 @@ A bench for the hands and the bodies without a board on the desk. Each
 virtual board knocks with its skills (``heare.api.skills``), answers every
 call it gets, remembers what it was told (``done``, ``shown``, ``led``,
 ``pins``) and reports as the panel does. Any number run in one process, each
-a part of its own. A board can be slow, deaf (drops calls unanswered), carry
-a sensor, or speak the older ``acts`` wire, so the bench sees what the hands
-do then.
+a part of its own. A board can be slow, deaf (drops calls unanswered),
+or carry a sensor, so the bench sees what the hands do then.
 
 Not a part of the app: nothing installs it, the keeper never starts it.
 """
@@ -50,8 +49,6 @@ def panel_skills() -> list[dict]:
 
 SENSOR = {"name": "temperature", "about": "Температура в кімнаті, °C",
           "effect": "read", "params": {"type": "object", "properties": {}}}
-LEGACY_ACTS = ([{"name": "show", "kind": "show"}, {"name": "led", "kind": "light"}]
-               + [{"name": f"pin{n}", "kind": "switch"} for n in FREE_PINS])
 
 
 @dataclass
@@ -62,10 +59,9 @@ class Board:
     about: str = "віртуальна плата з OLED-екраном"
     host: str = HOST
     skills: list[dict] = field(default_factory=panel_skills)
-    # Seconds before a call is done; calls dropped unanswered; the older wire.
+    # Seconds before a call is done; and calls dropped unanswered.
     slow: float = 0.0
     deaf: bool = False
-    legacy: bool = False
     temperature: float = 21.5
     done: list[tuple[str, object]] = field(default_factory=list)
     shown: str = ""
@@ -82,9 +78,9 @@ class Board:
         return f"{self.channel}@{self.host}"
 
     def knock(self) -> dict:
-        offered = {"acts": LEGACY_ACTS} if self.legacy else {"skills": self.skills}
         return {"channel": self.channel, "name": self.name, "forms": ["output"],
-                "about": self.about, "key": self.pid, "host": self.host, **offered,
+                "about": self.about, "key": self.pid, "host": self.host,
+                "skills": self.skills,
                 "ui": [{"name": "now", "kind": "label", "label": "Екран",
                         "value": "", "head": True}]}
 
@@ -113,16 +109,6 @@ class Board:
         self.done.append((name, args))
         return True, result
 
-    def control(self, name: str, value: object) -> None:
-        """An act on the older wire: told, never answered."""
-        if name == "show" and isinstance(value, dict):
-            self.shown = str(value.get("text") or "")
-        elif name == "led":
-            self.led = str(value)
-        elif name.startswith("pin"):
-            self.pins[name] = 1 if value else 0
-        self.done.append((name, value))
-
 
 async def live(board: Board, settings: Settings) -> int:
     """Keep one virtual board in the brain until cancelled."""
@@ -131,19 +117,16 @@ async def live(board: Board, settings: Settings) -> int:
     def on_event(event: dict) -> None:
         if event.get("part") != board.pid or board.deaf:
             return
-        if event.get("kind") in ("call", "control"):
+        if event.get("kind") == "call":
             asyncio.get_running_loop().create_task(answer(event))
 
     async def answer(event: dict) -> None:
         if board.slow:
             await asyncio.sleep(board.slow)
         wire = held["wire"]
-        if event["kind"] == "control":
-            board.control(str(event.get("name", "")), event.get("value"))
-        else:
-            args = event.get("args") if isinstance(event.get("args"), dict) else {}
-            ok, result = board.call(str(event.get("name", "")), args)
-            await wire.post(f"/api/skills/{event['id']}", {"ok": ok, "result": result})
+        args = event.get("args") if isinstance(event.get("args"), dict) else {}
+        ok, result = board.call(str(event.get("name", "")), args)
+        await wire.post(f"/api/skills/{event['id']}", {"ok": ok, "result": result})
         wire.report({"now": board.shown or "IDLE", **board.levels()})
 
     async def work(wire: part.Wire) -> None:

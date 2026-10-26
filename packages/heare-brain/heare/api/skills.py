@@ -12,9 +12,7 @@ about it when they let the part in; a part whose ``change`` skills are not
 what was let in is asked about again (``Trust``).
 
 A call is delivered as a ``call`` event to the part and waits for the part's
-answer (``Calls``). A part that knocked with the older ``acts`` has no way
-to answer; its acts are read as skills (``legacy``) and a call to it is a
-``control`` event, answered at once — until the panel speaks skills.
+answer (``Calls``).
 """
 
 from __future__ import annotations
@@ -59,81 +57,6 @@ def checked(raw: object) -> list[dict]:
         found.append({"name": name, "about": about.strip()[:MAX_ABOUT],
                       "params": params, "effect": skill["effect"]})
     return found
-
-
-# The panel's acts before it spoke skills (firmware of 26 October), read as
-# skills. Goes when the panel's firmware knocks with skills.
-_LEGACY = {
-    "show": ("Показати кілька слів на OLED-екрані на кілька секунд; українське "
-             "буде латиницею", "harmless",
-             {"type": "object", "required": ["text"], "properties": {
-                 "text": {"type": "string", "description": "до 4 рядків по 9 літер, \\n між рядками"},
-                 "seconds": {"type": "integer", "description": "1..60"}}}),
-    "light": ("Світлодіод на платі: on, off або blink (блимає сам, доки не скажуть інакше)",
-              "harmless",
-              {"type": "object", "required": ["mode"], "properties": {
-                  "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}),
-    "switch": ("Увімкнути чи вимкнути пін — те, що до нього під'єднано", "change",
-               {"type": "object", "required": ["on"], "properties": {
-                   "on": {"type": "boolean"}}}),
-}
-
-
-def acts(raw: object) -> list[dict]:
-    """The older ``acts`` a knock may still bring, of the kinds read above."""
-    if not isinstance(raw, list):
-        return []
-    return [{"name": a["name"], "kind": a["kind"]} for a in raw[:MAX_SKILLS]
-            if isinstance(a, dict) and isinstance(a.get("name"), str)
-            and NAME.match(a["name"]) and a.get("kind") in _LEGACY]
-
-
-def legacy(acts: list[dict]) -> list[dict]:
-    found = []
-    for act in acts:
-        about, effect, params = _LEGACY[act["kind"]]
-        if act["kind"] == "switch":
-            about = f"Пін {act['name'][3:]}: {about}"
-        found.append({"name": act["name"], "about": about, "params": params,
-                      "effect": effect, "act": act["kind"]})
-    return found
-
-
-# The panel's font has Latin letters only, and the older firmware does not
-# write Ukrainian out itself; for it, the shim does.
-_LATIN = str.maketrans({
-    "а": "a", "б": "b", "в": "v", "г": "h", "ґ": "g", "д": "d", "е": "e",
-    "є": "ie", "ж": "zh", "з": "z", "и": "y", "і": "i", "ї": "i", "й": "i",
-    "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
-    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch",
-    "ш": "sh", "щ": "shch", "ь": "", "ю": "iu", "я": "ia", "ы": "y", "э": "e",
-    "ё": "io", "ъ": "", "’": "", "'": "",
-})
-
-
-
-def latin(text: str) -> str:
-    """Ukrainian written in Latin letters, case kept, for the OLED's font."""
-    out = []
-    for char in text:
-        low = char.lower()
-        spelled = low.translate(_LATIN)
-        out.append(spelled.capitalize() if char != low and spelled else spelled)
-    return "".join(out)
-
-
-def value_of(skill: dict, args: dict) -> object:
-    """A legacy act's value from a call's arguments."""
-    kind = skill.get("act")
-    if kind == "show":
-        try:
-            seconds = max(1, min(int(args.get("seconds") or 10), 60))
-        except (TypeError, ValueError):
-            seconds = 10
-        return {"text": latin(str(args.get("text") or ""))[:40], "seconds": seconds}
-    if kind == "light":
-        return args.get("mode")
-    return args.get("on") is True
 
 
 def fingerprint(skills: list[dict]) -> str:

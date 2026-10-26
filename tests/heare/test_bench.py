@@ -176,14 +176,6 @@ async def test_a_board_that_does_not_answer_is_not_said_to_have_done_it(tmp_path
         assert desk.led == "off"
 
 
-async def test_a_board_on_the_older_wire_is_still_told(tmp_path):
-    old = sim.Board("desk", legacy=True)
-    async with bench(tmp_path, old) as b:
-        b.say("покажи привіт", Says(calls=(("desk__show", {"text": "привіт"}),)), "Показав.")
-
-        await b.until(lambda: old.shown == "pryvit", what="the older board told, in Latin")
-
-
 async def test_what_is_not_for_the_bodies_goes_on_to_the_cli_hands(tmp_path):
     async with bench(tmp_path, sim.Board("desk")) as b:
         cli = Worker("opencode", result="12 файлів.")

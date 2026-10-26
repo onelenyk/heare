@@ -36,15 +36,6 @@ def test_skills_of_a_wrong_form_are_dropped():
     assert skills.checked("show") == []
 
 
-def test_the_older_acts_are_read_as_skills_until_the_panel_speaks_skills():
-    found = skills.legacy(skills.acts([{"name": "pin3", "kind": "switch"},
-                                       {"name": "led", "kind": "light"},
-                                       {"name": "x", "kind": "shell"}]))
-    assert [(s["name"], s["effect"]) for s in found] == [("pin3", "change"), ("led", "harmless")]
-    show = skills.legacy([{"name": "show", "kind": "show"}])[0]
-    assert skills.value_of(show, {"text": "Привіт", "seconds": 99}) == {"text": "Pryvit", "seconds": 60}
-
-
 def test_a_new_world_changing_skill_is_a_new_trust(tmp_path):
     trust = skills.Trust(tmp_path / "part_skills.json")
     assert trust.same("oled@desk", [SHOW, PIN]) is True      # first time: kept
