@@ -1,6 +1,6 @@
 """The hands body: the agent that does the work, connected over the door.
 
-    uv run python -m heare.hands
+    uv run python -m heare.cli_hands
 
 A body, not the brain: it holds no memory and decides nothing. It claims a
 piece of work, drives the agent CLI through it, asks about changes, and
@@ -175,7 +175,7 @@ def _settings_ui(settings: Settings) -> list[dict]:
         # store is another machine's once the brain lives elsewhere, so the
         # way to add one is said in the terms of this machine.
         source = keys.source(auth_env) if auth_env else None
-        missing = (f"немає на {socket.gethostname()}: heare-hands key {auth_env}"
+        missing = (f"немає на {socket.gethostname()}: heare-cli-hands key {auth_env}"
                    if auth_env else "обери ключ")
         ui += [
             {"name": "auth_env", "kind": "choice", "label": "Ключ",
@@ -526,7 +526,7 @@ def _store_key(name: str) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="heare.hands")
+    parser = argparse.ArgumentParser(prog="heare.cli_hands")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command")
     key = sub.add_parser("key", help="зберегти токен агента на цій машині")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from heare import hands, keys
+from heare import cli_hands as hands, keys
 from heare.config import Settings
 
 
@@ -214,7 +214,7 @@ def test_a_missing_key_says_how_to_add_it_on_this_machine(tmp_path, monkeypatch)
         tmp_path, executor="opencode", executor_auth="key",
         executor_auth_env="GROQ_API_KEY")))
 
-    assert "heare-hands key GROQ_API_KEY" in ui["key"]["value"]
+    assert "heare-cli-hands key GROQ_API_KEY" in ui["key"]["value"]
 
 
 def test_a_key_is_kept_on_the_hands_machine(monkeypatch, capsys):
@@ -233,7 +233,7 @@ def test_an_unknown_key_or_nothing_typed_is_not_kept(monkeypatch):
 def test_hands_sweep_away_sockets_of_hands_that_are_gone(tmp_path):
     import os
 
-    from heare.hands import _sweep
+    from heare.cli_hands import _sweep
 
     gone = tmp_path / "hands-999999.sock"
     mine = tmp_path / f"hands-{os.getpid()}.sock"

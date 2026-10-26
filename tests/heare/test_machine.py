@@ -16,8 +16,9 @@ from heare import keeper, machine
 def bin_dir(tmp_path):
     folder = tmp_path / "bin"
     folder.mkdir()
-    for name in machine.PARTS:
-        (folder / f"heare-{name}").write_text("#!/bin/sh\n", encoding="utf-8")
+    for name, part in machine.PARTS.items():
+        script = (part.module or name).replace("_", "-")
+        (folder / f"heare-{script}").write_text("#!/bin/sh\n", encoding="utf-8")
     return folder
 
 
@@ -38,6 +39,17 @@ def test_turning_a_part_off_takes_its_folder(tmp_path, bin_dir):
 
     assert keeper.wanted(parts) == {}
     assert machine.running(parts) == set()
+
+
+def test_the_hands_run_under_their_new_names(tmp_path, bin_dir):
+    assert machine.command("hands", bin_dir) == [str(bin_dir / "heare-cli-hands")]
+    assert machine.command("native-hands", tmp_path) == ["python", "-m", "heare.native_hands"]
+
+
+def test_a_manifest_written_before_the_rename_still_starts(tmp_path):
+    # Turned on before 26 October: the manifest names the old module.
+    assert keeper._resolve(["python", "-m", "heare.hands"])[1:] == ["-m", "heare.cli_hands"]
+    assert keeper._resolve(["/opt/bin/heare-hands"]) == ["/opt/bin/heare-cli-hands"]
 
 
 def test_a_part_in_the_app_is_a_module_of_its_python(tmp_path):

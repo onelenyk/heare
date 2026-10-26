@@ -1,6 +1,6 @@
-"""The native hand: quick, simple acts on the bodies, with no agent and no session.
+"""The native hands: quick, simple acts on the bodies, with no agent and no session.
 
-    uv run python -m heare.native
+    uv run python -m heare.native_hands
 
 The opencode hand takes seconds to start and a long prompt to read; turning on
 a light needs neither. This hand is a part like the others: it knocks as an
@@ -30,9 +30,9 @@ from heare import layout, logs, part
 from heare.config import Settings
 from heare.core.forms import Desk, Model
 
-logger = logging.getLogger("heare.native")
+logger = logging.getLogger("heare.native_hands")
 
-CHANNEL = "native"
+CHANNEL = "native-hands"
 ABOUT = (
     "швидкі прості дії з тілами heare: панель на столі — показати кілька "
     "слів, світло, увімкнути чи вимкнути пін, прочитати пін. Одна-дві дії, "
@@ -339,11 +339,11 @@ async def run() -> int:
              "key": f"{CHANNEL}@{host}", "host": host,
              "ui": [{"name": "work", "kind": "label", "label": "Справа",
                      "value": "чекає", "head": True}]},
-            work, hello="native hand", settings=settings, client=client)
+            work, hello="native hands", settings=settings, client=client)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="heare.native")
+    parser = argparse.ArgumentParser(prog="heare.native_hands")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)

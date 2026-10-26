@@ -1,12 +1,12 @@
 [project]
-name = "heare-native"
+name = "heare-cli-hands"
 version = "0.2.0"
 requires-python = ">=3.11"
 license = "LicenseRef-PolyForm-Shield-1.0.0"
-dependencies = ["heare-core", "httpx>=0.27.0"]
+dependencies = ["heare-core", "heare-reach", "httpx>=0.27.0"]
 
 [project.scripts]
-heare-native = "heare.native:main"
+heare-cli-hands = "heare.cli_hands:main"
 
 [build-system]
 requires = ["hatchling"]

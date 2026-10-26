@@ -2,11 +2,11 @@
 
 macOS voice assistant: it listens, decides when to answer, and acts
 through an agent (opencode over ACP) without blocking the conversation.
-The app is nine distributions under `packages/` sharing one `heare`
+The app is eleven distributions under `packages/` sharing one `heare`
 namespace; the old app that lived in `src/` was removed on
 18 October 2026 and its last commit is tagged `legacy-app`.
 
-## THE APP (`packages/`, nine distributions)
+## THE APP (`packages/`, eleven distributions)
 
 One core and five kinds of part: **input, output, model, memory,
 executor** (`packages/heare-core/heare/core/forms.py`). A channel (voice, text) is an input,
@@ -55,7 +55,8 @@ update, and the release it leaves behind is the way back.
 Parts — separate processes that knock and wait for approval on the page:
 
 ```bash
-uv run heare-hands
+uv run heare-cli-hands     # руки через агентний CLI (opencode)
+uv run heare-native-hands  # швидкі руки: дії з тілами, без агента
 uv run heare-eyes
 uv run heare-voice
 uv run heare-chat
@@ -72,7 +73,8 @@ model — and are excluded by default.
 | A spoken sentence becomes a reply | `packages/heare-core/heare/core/conversation.py` |
 | The door: HTTP, events, page, parts registry | `packages/heare-brain/heare/api/server.py`, `packages/heare-brain/heare/api/page.html` |
 | The canvas: what the model shows | `packages/heare-brain/heare/api/canvas.py` |
-| Hands: an agent over ACP | `packages/heare-hands/heare/hands.py`, `packages/heare-reach/heare/reach/` |
+| Hands: an agent over ACP | `packages/heare-cli-hands/heare/cli_hands.py`, `packages/heare-reach/heare/reach/` |
+| Native hands: quick acts on the parts, no agent | `packages/heare-native-hands/heare/native_hands.py`; the doors `/api/acts` in `server.py` |
 | Hands' runner: which CLI, sign-in, models | `packages/heare-reach/heare/reach/runner.py` — the hands', never the brain's |
 | How a part lives: knock, key, stream, reports, outliving the brain | `packages/heare-core/heare/part.py` — `part.live(about, work)`; every part uses it |
 | Which parts the brain knows, trust, presence, who hears what | `packages/heare-brain/heare/api/registry.py` |

@@ -47,9 +47,17 @@ def wanted(folder: Path) -> dict[str, list[str]]:
     return found
 
 
+# Modules renamed under a manifest already written (26 October: the hands
+# became the cli hands); the manifest stays the person's, the name is ours.
+RENAMED = {"heare.hands": "heare.cli_hands", "heare-hands": "heare-cli-hands"}
+
+
 def _resolve(command: list[str]) -> list[str]:
     """`python` in a manifest means the interpreter the beacon runs under —
     the one with heare installed, not whatever is first on PATH."""
+    command = [RENAMED.get(part, part) for part in command]
+    if command[0].endswith("/heare-hands"):
+        command = [command[0][: -len("heare-hands")] + "heare-cli-hands", *command[1:]]
     if command[0] in ("python", "python3"):
         return [sys.executable, *command[1:]]
     return command

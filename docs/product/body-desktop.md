@@ -30,7 +30,7 @@
 
 - `reach`: `installed()` знаходить агентів на `PATH`; `executor_cwd` —
   типова тека `~/heare-work`.
-- **Руки, голос і очі — тіла** (`packages/heare-hands/heare/hands.py`, `packages/heare-voice/heare/voice.py`,
+- **Руки, голос і очі — тіла** (`packages/heare-cli-hands/heare/cli_hands.py`, `packages/heare-voice/heare/voice.py`,
   `packages/heare-eyes/heare/eyes.py`): кожне реєструється, проходить одобрення і говорить з
   мозком по дроту. Очі шлють `note` — застосунок, простій, що грає.
 - Мозок керує руками через `/api/executor/*`, а не викликом.

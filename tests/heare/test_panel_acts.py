@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from heare.api.registry import Registry
 from heare.api.server import _acts
-from heare.native import NativeHand
+from heare.native_hands import NativeHand
 from heare.tools import Toolbox
 from heare.core.forms import Task
 from heare.core.state import State

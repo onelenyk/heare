@@ -29,6 +29,8 @@ class Part:
     about: str
     # The platform it can live on; None for any.
     only: str | None = None
+    # The module that runs it, when it is not named after the part.
+    module: str = ""
 
 
 PARTS = {part.name: part for part in (
@@ -38,11 +40,14 @@ PARTS = {part.name: part for part in (
          "очі: застосунок, простій, чи щось грає", only="darwin"),
     Part("sources", "Джерела", "погода й інше: що зараз навколо", "sources", ("input",),
          "джерела: погода — що зараз надворі"),
-    Part("hands", "Руки", "агент діє в системі: код, файли, команди", "opencode",
-         ("executor",), "агент у терміналі: код, файли, команди, пошук в інтернеті"),
-    Part("native", "Native hand", "швидкі дії з тілами: панель, світло, піни",
-         "native", ("executor",),
-         "швидкі прості дії з тілами heare: панель на столі, світло, піни"),
+    # "hands" is the folder the cli hands were turned on in before 26 October.
+    Part("hands", "CLI hands", "агент діє в системі: код, файли, команди", "opencode",
+         ("executor",), "агент у терміналі: код, файли, команди, пошук в інтернеті",
+         module="cli_hands"),
+    Part("native-hands", "Native hands", "швидкі дії з тілами: панель, світло, піни",
+         "native-hands", ("executor",),
+         "швидкі прості дії з тілами heare: панель на столі, світло, піни",
+         module="native_hands"),
 )}
 
 # Where a key is checked: a list of models answers only to a key that works.
@@ -59,13 +64,14 @@ def command(name: str, bin_dir: Path | None = None) -> list[str] | None:
     Installed as tools, each part is a script beside the keeper's own; in
     an app every part shares the keeper's Python and is a module of it."""
     bin_dir = bin_dir or Path(sys.argv[0]).absolute().parent
-    script = bin_dir / f"heare-{name}"
+    module = PARTS[name].module if name in PARTS and PARTS[name].module else name
+    script = bin_dir / f"heare-{module.replace('_', '-')}"
     if script.exists():
         return [str(script)]
     import importlib.util
 
-    if importlib.util.find_spec(f"heare.{name}") is not None:
-        return ["python", "-m", f"heare.{name}"]
+    if importlib.util.find_spec(f"heare.{module}") is not None:
+        return ["python", "-m", f"heare.{module}"]
     return None
 
 

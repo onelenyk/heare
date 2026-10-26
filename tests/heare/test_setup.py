@@ -138,7 +138,7 @@ def test_the_form_turns_a_part_on_and_off_with_no_install(form, tmp_path):
         before = json.loads(answer.read().decode())
     assert {p["name"]: p["on"] for p in before["parts"]} == {
         "voice": False, "eyes": False, "sources": False, "hands": False,
-        "native": False}
+        "native-hands": False}
 
     status, after = _post(base + "/part", {"name": "voice", "on": True})
     assert status == 200

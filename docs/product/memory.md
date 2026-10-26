@@ -34,7 +34,7 @@ Core — це **мова розмови**, а не місце для памʼя�
 | `heare-brain/heare/model/` | `Chat`, провайдери, `Dispatcher` | памʼять, двигун |
 | `heare-brain/heare/language/` | українські слова й правила | стан, мережу |
 | `heare-brain/heare/brain.py` | збирання всього | тримати логіку фічі |
-| `heare-voice`, `heare-hands`, `heare-eyes`, `heare-chat`, `heare-keeper`, `heare-reach` | тіла й агенти | імпортувати одне одного |
+| `heare-voice`, `heare-cli-hands`, `heare-eyes`, `heare-chat`, `heare-keeper`, `heare-reach` | тіла й агенти | імпортувати одне одного |
 
 Правило імпорту не змінилося: **частина бачить core і себе; дві частини
 ніколи не імпортують одна одну.** `tools/` тому й отримав порт `Reminders`,

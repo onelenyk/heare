@@ -9,8 +9,8 @@ dependencies = [
     "heare-eyes",
     "heare-sources",
     "heare-voice",
-    "heare-hands",
-    "heare-native",
+    "heare-cli-hands",
+    "heare-native-hands",
     "heare-chat",
     "heare-brain",
     "heare-memory",
@@ -35,8 +35,8 @@ heare-reach = { workspace = true }
 heare-eyes = { workspace = true }
 heare-sources = { workspace = true }
 heare-voice = { workspace = true }
-heare-hands = { workspace = true }
-heare-native = { workspace = true }
+heare-cli-hands = { workspace = true }
+heare-native-hands = { workspace = true }
 heare-chat = { workspace = true }
 heare-brain = { workspace = true }
 heare-memory = { workspace = true }

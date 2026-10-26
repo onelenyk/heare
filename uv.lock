@@ -13,12 +13,12 @@ resolution-markers = [
 members = [
     "heare-brain",
     "heare-chat",
+    "heare-cli-hands",
     "heare-core",
     "heare-eyes",
-    "heare-hands",
     "heare-keeper",
     "heare-memory",
-    "heare-native",
+    "heare-native-hands",
     "heare-reach",
     "heare-sources",
     "heare-voice",
@@ -597,6 +597,23 @@ requires-dist = [
 ]
 
 [[package]]
+name = "heare-cli-hands"
+version = "0.2.0"
+source = { editable = "packages/heare-cli-hands" }
+dependencies = [
+    { name = "heare-core" },
+    { name = "heare-reach" },
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "heare-core", editable = "packages/heare-core" },
+    { name = "heare-reach", editable = "packages/heare-reach" },
+    { name = "httpx", specifier = ">=0.27.0" },
+]
+
+[[package]]
 name = "heare-core"
 version = "0.2.0"
 source = { editable = "packages/heare-core" }
@@ -624,23 +641,6 @@ dependencies = [
 requires-dist = [
     { name = "heare-core", editable = "packages/heare-core" },
     { name = "numpy", specifier = ">=1.26" },
-]
-
-[[package]]
-name = "heare-hands"
-version = "0.2.0"
-source = { editable = "packages/heare-hands" }
-dependencies = [
-    { name = "heare-core" },
-    { name = "heare-reach" },
-    { name = "httpx" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "heare-core", editable = "packages/heare-core" },
-    { name = "heare-reach", editable = "packages/heare-reach" },
-    { name = "httpx", specifier = ">=0.27.0" },
 ]
 
 [[package]]
@@ -674,9 +674,9 @@ requires-dist = [
 ]
 
 [[package]]
-name = "heare-native"
+name = "heare-native-hands"
 version = "0.2.0"
-source = { editable = "packages/heare-native" }
+source = { editable = "packages/heare-native-hands" }
 dependencies = [
     { name = "heare-core" },
     { name = "httpx" },
@@ -746,12 +746,12 @@ source = { virtual = "." }
 dependencies = [
     { name = "heare-brain" },
     { name = "heare-chat" },
+    { name = "heare-cli-hands" },
     { name = "heare-core" },
     { name = "heare-eyes" },
-    { name = "heare-hands" },
     { name = "heare-keeper" },
     { name = "heare-memory" },
-    { name = "heare-native" },
+    { name = "heare-native-hands" },
     { name = "heare-reach" },
     { name = "heare-sources" },
     { name = "heare-voice" },
@@ -770,12 +770,12 @@ dev = [
 requires-dist = [
     { name = "heare-brain", editable = "packages/heare-brain" },
     { name = "heare-chat", editable = "packages/heare-chat" },
+    { name = "heare-cli-hands", editable = "packages/heare-cli-hands" },
     { name = "heare-core", editable = "packages/heare-core" },
     { name = "heare-eyes", editable = "packages/heare-eyes" },
-    { name = "heare-hands", editable = "packages/heare-hands" },
     { name = "heare-keeper", editable = "packages/heare-keeper" },
     { name = "heare-memory", editable = "packages/heare-memory" },
-    { name = "heare-native", editable = "packages/heare-native" },
+    { name = "heare-native-hands", editable = "packages/heare-native-hands" },
     { name = "heare-reach", editable = "packages/heare-reach" },
     { name = "heare-sources", editable = "packages/heare-sources" },
     { name = "heare-voice", editable = "packages/heare-voice" },

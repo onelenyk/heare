@@ -6,7 +6,7 @@ worktree на задачу.*
 
 ## Де ми
 
-- Руки — **тіло**: [`packages/heare-hands/heare/hands.py`](../../packages/heare-hands/heare/hands.py) реєструється, бере
+- Руки — **тіло**: [`packages/heare-cli-hands/heare/cli_hands.py`](../../packages/heare-cli-hands/heare/cli_hands.py) реєструється, бере
   задачу (`claim`), водить opencode через ACP, доносить результат.
 - Двері — `/api/executor/*` ([protocol.md](protocol.md) §3); мозок —
   [`packages/heare-reach/heare/reach/remote.py`](../../packages/heare-reach/heare/reach/remote.py).
@@ -21,7 +21,7 @@ worktree на задачу.*
   списку самого CLI, вхід (логін CLI або свій токен), base URL, «Перевірити».
   Зміна зберігається й застосовується **між справами**: руки починають знову
   в тому самому процесі, старий агент закривається.
-- **Токен — на машині рук:** `heare-hands key ІМ'Я` кладе його в Keychain
+- **Токен — на машині рук:** `heare-cli-hands key ІМ'Я` кладе його в Keychain
   цієї машини, без відлуння; картка каже, звідки ключ (оточення / Keychain),
   або яку команду виконати. ⚙ → Ключі на сторінці пише в Keychain **мозку** —
   те саме, лише поки вони на одній машині.
