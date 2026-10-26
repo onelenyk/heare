@@ -284,3 +284,11 @@ async def test_a_bad_reminder_stores_nothing(tmp_path, arguments, spoken):
 
     assert await box._run_remind(arguments) == spoken
     assert notes.alive(now=10**12) == []
+
+
+def test_delegate_names_the_hands_that_are_here():
+    box = Toolbox(memory=None, state=State(), delegate=lambda r, c: Task(1, r, ""),
+                  stop=lambda: 0, words=uk, has_executors=lambda: True,
+                  hands=lambda: [("native-hands", "панель на столі: світло, піни")])
+    described = box.verbs()["delegate"][0]["function"]["description"]
+    assert "- native-hands: панель на столі: світло, піни" in described

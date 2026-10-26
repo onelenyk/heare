@@ -14,10 +14,10 @@ from heare.core.forms import Memory, Task
 from heare.core.state import State
 from heare.tools import delegate as delegate_tool
 from heare.tools import recall, reminders as reminder_tools
+from heare.tools import schemas
 from heare.tools.ports import Reminders
 from heare.tools.schemas import (
     _CANCEL_REMINDER,
-    _DELEGATE,
     _LIST_REMINDERS,
     _RECALL,
     _REMIND,
@@ -37,6 +37,7 @@ class Toolbox:
         has_executors: Callable[[], bool],
         reminders: Reminders | None = None,
         now: Callable[[], float] = time.time,
+        hands: Callable[[], list[tuple[str, str]]] = lambda: [],
     ) -> None:
         self._memory = memory
         self._state = state
@@ -46,13 +47,14 @@ class Toolbox:
         self._has_executors = has_executors
         self._reminders = reminders
         self._now = now
+        self._hands = hands
 
     def verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]:
         verbs: dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]] = {}
         if self._memory is not None:
             verbs["recall"] = (_RECALL, self._run_recall)
         if self._has_executors():
-            verbs["delegate"] = (_DELEGATE, self._run_delegate)
+            verbs["delegate"] = (schemas.delegate(self._hands()), self._run_delegate)
         if any(task.status == "running" for task in self._state.tasks.values()):
             verbs["stop_work"] = (_STOP, self._run_stop)
         if self._reminders is not None:

@@ -142,6 +142,7 @@ class Brain:
             words=self.core.words,
             has_executors=lambda: bool(self.core.executors),
             reminders=self.intents,
+            hands=lambda: [(e.name, e.about) for e in self.core.executors.values()],
         ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.

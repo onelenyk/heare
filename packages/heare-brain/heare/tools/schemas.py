@@ -146,3 +146,17 @@ _CANCEL_REMINDER = {
     },
 }
 
+
+
+def delegate(hands: list[tuple[str, str]]) -> dict:
+    """The delegate verb, naming the hands that are here: without them the
+    voice took «the panel on the desk» for the page's canvas (26 October)."""
+    if not hands:
+        return _DELEGATE
+    roster = "\n".join(f"- {name}: {about}" for name, about in hands)
+    function = dict(_DELEGATE["function"])
+    function["description"] = (
+        f"{function['description']} The hands here now, and what each can "
+        f"reach:\n{roster}"
+    )
+    return {"type": "function", "function": function}
