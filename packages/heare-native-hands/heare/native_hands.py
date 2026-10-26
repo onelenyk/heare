@@ -60,8 +60,7 @@ _SYSTEM = (
     "Ти — швидкі руки heare. Зроби прохання інструментами й відповідай одним "
     "коротким реченням українською: що зроблено. Не вигадуй того, чого "
     "інструменти не сказали. Якщо прохання не про ці інструменти — скажи "
-    "одним реченням, що це не твоє. На екран пиши латиницею: кирилиці він "
-    "не має."
+    "одним реченням, що це не твоє."
 )
 
 
@@ -213,7 +212,8 @@ def _tools(entry: dict) -> list[dict]:
     if _named(entry, "show"):
         tools.append(_tool("show", "Show a few words on the panel's screen for a while.", {
             "text": {"type": "string",
-                     "description": "Up to 4 short lines of 9 Latin letters, split by \\n."},
+                     "description": "A few short words, any language: up to 4 lines of 9 letters, "
+                                    "split by \\n."},
             "seconds": {"type": "integer", "description": "1..60, 10 if unsure."},
         }, ["text"]))
     if _named(entry, "light"):
