@@ -193,3 +193,24 @@ def test_screen_info_tells_the_hands_what_there_is():
     assert ok and info["size"] == [72, 40] and info["layers"]["pinned"] == "weather"
     assert "number" in info["widgets"] and "state" not in info["widgets"]
     assert "sun" in info["icons"]
+
+
+def test_the_shapes_a_model_guesses_are_read_as_the_one_shape():
+    import base64
+
+    board, _ = _device()
+    guessed = {"id": "w", "layout": {"cols": [
+        {"w": 1, "icon": {"name": "sun"}},
+        {"w": 2, "widget": {"type": "number", "value": 21, "unit": "°"}},
+        {"type": "picture", "bits": base64.b64encode(bytes(360)).decode()}]}}
+    assert board.call("screen", {"scene": guessed}, 0)[0] is True
+    scene = board.screen.seen(0)[1]
+    kinds = [w["widget"] for _b, w in scene.placed(72, 40)]
+    assert kinds == ["icon", "number", "picture"]
+    assert scene.placed(72, 40)[2][1]["bits"] == bytes(360)  # decoded once, kept
+
+
+def test_a_shape_that_cannot_be_read_says_the_right_one():
+    board, _ = _device()
+    ok, said = board.call("screen", {"scene": {"id": "x", "layout": {"cols": [{"what": 1}]}}}, 0)
+    assert ok is False and '{"widget": "icon", "name": "sun"}' in said

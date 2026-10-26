@@ -18,12 +18,56 @@ class LayoutError(ValueError):
     """A layout that cannot be laid out, in words a model can act on."""
 
 
+KINDS = ("text", "picture", "number", "icon", "bar", "clock", "spinner", "state")
+SHAPE = 'кожен віджет — {"widget": "icon", "name": "sun"}; ряди — {"rows": [...]}, колонки — {"cols": [...]}'
+
+
+def normal(spec):
+    """A widget as a model is likely to write it, in the one shape there is.
+
+    ``{"type": "icon", ...}`` and ``{"icon": {"name": "sun"}}`` (or nested in
+    ``widget``) are what models write when they guess; they mean the same."""
+    if not isinstance(spec, dict):
+        return spec
+    inner = spec.get("widget")
+    if isinstance(inner, dict):
+        merged = {k: v for k, v in spec.items() if k != "widget"}
+        merged.update(inner)
+        spec = merged
+    if "widget" not in spec and spec.get("type") in KINDS:
+        spec = dict(spec)
+        spec["widget"] = spec.pop("type")
+    if "widget" not in spec and "rows" not in spec and "cols" not in spec:
+        named = [k for k in spec if k in KINDS]
+        if len(named) == 1:
+            found = {k: v for k, v in spec.items() if k != named[0]}
+            if isinstance(spec[named[0]], dict):
+                found.update(spec[named[0]])
+            found["widget"] = named[0]
+            spec = found
+    return spec
+
+
+def tidy(spec):
+    """The whole layout in the one shape, children and all: kept, then drawn."""
+    spec = normal(spec)
+    if isinstance(spec, dict) and "widget" not in spec:
+        for key in ("rows", "cols"):
+            if isinstance(spec.get(key), list):
+                spec = dict(spec)
+                spec[key] = [tidy(child) for child in spec[key]]
+    return spec
+
+
 def boxes(spec, x, y, width, height, depth=0):
     """Every widget of the layout with its box: [((x, y, w, h), widget)]."""
+    spec = normal(spec)
     if not isinstance(spec, dict):
-        raise LayoutError("розкладка — це віджет або rows/cols")
+        raise LayoutError("розкладка — це віджет або rows/cols: " + SHAPE)
     if "widget" in spec:
         return [((x, y, width, height), spec)]
+    if "rows" not in spec and "cols" not in spec:
+        raise LayoutError("не віджет і не ряди: " + SHAPE)
     across = "cols" in spec
     children = spec.get("cols" if across else "rows")
     if not isinstance(children, list) or not children:

@@ -33,13 +33,15 @@ BLINK_MS = 400
 # them are English and short (a model reads either), and the pins are one
 # skill, not nine.
 SCENE_HELP = (
-    "{id, layout, fields}. layout: a widget, or {rows:[..]} / {cols:[..]} with "
-    "weights h / w (1-12), 3 levels, 8 widgets. Widgets: text{text,size:1|2,align}, "
-    "number{value,unit}, icon{name} or icon{svg 16x16}, picture{svg 72x40, white on "
-    "black, thick lines}, bar{value 0-100}, clock, spinner. bind:'f' shows fields.f; "
-    "update changes fields. Icons: sun cloud rain snow heart check cross bell clock "
-    "lamp lock home battery wifi up down left right mic thermo drop star music. "
-    "Ukrainian text is fine."
+    "Example: {\"id\":\"weather\",\"fields\":{\"t\":21},\"layout\":{\"cols\":["
+    "{\"widget\":\"icon\",\"name\":\"sun\"},{\"w\":2,\"widget\":\"number\","
+    "\"bind\":\"t\",\"unit\":\"°\"}]}}. Every widget is {\"widget\":KIND,...}; "
+    "rows:[..] stack, cols:[..] side by side, weights h/w 1-12, 8 widgets at most. "
+    "KIND: text{text,size 1|2,align}, number{value,unit}, icon{name} or icon{svg 16x16}, "
+    "picture{svg 72x40 white on black}, bar{value 0-100}, clock, spinner. "
+    "bind:'t' shows fields.t; update changes fields. Icons: sun cloud rain snow heart "
+    "check cross bell clock lamp lock home battery wifi up down left right mic thermo "
+    "drop star music."
 )
 _OBJECT = {"type": "object", "properties": {}}
 _LAYER = {"type": "string", "enum": ["flash", "pin", "idle"]}

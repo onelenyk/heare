@@ -84,8 +84,9 @@ def check(spec, width=72, height=40):
     fields = spec.get("fields") or {}
     if not isinstance(fields, dict) or len(fields) > MAX_FIELDS:
         raise SceneError("fields — об'єкт, до " + str(MAX_FIELDS) + " полів")
+    tidy = layout.tidy(spec.get("layout"))
     try:
-        placed = layout.boxes(spec.get("layout"), 0, 0, width, height)
+        placed = layout.boxes(tidy, 0, 0, width, height)
     except layout.LayoutError as error:
         raise SceneError(str(error)) from None
     if len(placed) > MAX_WIDGETS:
@@ -105,7 +106,7 @@ def check(spec, width=72, height=40):
             pictures += 1
     if pictures > MAX_BITMAPS:
         raise SceneError("забагато картинок: до " + str(MAX_BITMAPS))
-    return Scene(name, spec["layout"], fields)
+    return Scene(name, tidy, fields)
 
 
 def _bits(encoded):
