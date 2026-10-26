@@ -246,11 +246,27 @@ class Ble:
 
 
 def _record_screens(monkeypatch):
+    """What reaches the window, as words: a status word, or what the hands
+    put there (("text", lines), ("picture", bits)) — every scene the one
+    painter is given, seen as the screen sees it."""
     screens = []
 
     def show(panel, word, now_ms=0, framebuf_module=None):
         screens.append(word)
         return True
+
+    def paint(panel, scene, now_ms=0, framebuf_module=None):
+        if hasattr(scene, "seen"):
+            _layer, scene = scene.seen(now_ms)
+        if scene.name == "state":
+            screens.append(scene.fields["word"])
+        elif scene.name == "text":
+            screens.append(("text", scene.fields["lines"]))
+        elif scene.name == "picture":
+            screens.append(("picture", scene.fields["bits"]))
+        return True
+
+    monkeypatch.setattr(main, "_paint", paint)
 
     def boot(panel, framebuf_module=None):
         screens.append("BOOT")
@@ -759,8 +775,6 @@ def _board():
 def _acting(monkeypatch, tmp_path, then, ticks=3, clock=None):
     """run_normal with a board, where ``then(link)`` is what the brain sends."""
     screens = _record_screens(monkeypatch)
-    texts = []
-    monkeypatch.setattr(main, "show_text", lambda panel, lines, fb=None: texts.append(lines))
     factory = LinkFactory()
     board, made = _board()
 
@@ -775,6 +789,7 @@ def _acting(monkeypatch, tmp_path, then, ticks=3, clock=None):
         out=lambda line: None, sleep=lambda ms: None, ticks=ticks,
         button=lambda: False, device=board,
     )
+    texts = [entry[1] for entry in screens if isinstance(entry, tuple) and entry[0] == "text"]
     return result, factory.links[0], screens, texts, made
 
 
@@ -813,22 +828,18 @@ def test_the_light_and_the_pins_follow_the_brain(monkeypatch, tmp_path):
 def test_a_picture_is_drawn_and_a_permission_still_comes_first(monkeypatch, tmp_path):
     import base64
 
-    drawn = []
-    monkeypatch.setattr(main, "show_picture", lambda panel, bits, fb=None: drawn.append(bits))
     bits = base64.b64encode(bytes([0xFF]) + bytes(359)).decode()
 
-    _result, _link, _screens, _texts, _made = _acting(
+    _result, _link, screens, _texts, _made = _acting(
         monkeypatch, tmp_path, lambda link: link.on_call("image", {"bitmap": bits}))
-    assert drawn == [bytes([0xFF]) + bytes(359)]
-
-    drawn.clear()
+    assert ("picture", bytes([0xFF]) + bytes(359)) in screens
 
     def then(link):
         link.on_call("image", {"bitmap": bits})
         link.display = state.reduce(link.display, {"kind": "permission", "id": 3}, 0)
 
     _result, _link, screens, _texts, _made = _acting(monkeypatch, tmp_path, then)
-    assert drawn == [] and screens[-1] == "ALLOW"
+    assert not any(isinstance(e, tuple) for e in screens) and screens[-1] == "ALLOW"
 
 
 class _Framebuf:

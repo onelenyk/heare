@@ -44,14 +44,6 @@ def test_a_switched_pin_becomes_an_output_and_reads_back():
     assert board.apply("pin3", "yes", 0) is False
 
 
-def test_words_are_shown_for_their_time_then_the_face_comes_back():
-    board, _ = _device()
-    assert board.apply("show", {"text": "chainyk gotovyi\nhi", "seconds": 2}, 1000)
-    assert board.text(1500) == ["chainyk", "gotovyi", "hi"]
-    assert board.text(3001) is None
-    assert board.apply("show", {"text": ""}, 0) is False
-
-
 def test_the_light_is_lit_by_pulling_its_pin_low():
     board, made = _device()
     board.apply("led", "on", 0)
@@ -94,6 +86,24 @@ def test_ukrainian_is_written_out_for_the_font():
     assert device.latin("hello 42") == "hello 42"
 
 
+def test_the_image_skill_asks_for_the_window_s_own_pixels():
+    image = next(s for s in device.skills() if s["name"] == "image")
+    assert image["render"] == {"svg": {"to": "mono", "width": 72, "height": 40, "as": "bitmap"}}
+
+
+def _seen(board, now):
+    layer, scene = board.screen.seen(now)
+    return layer, scene.name, dict(scene.fields)
+
+
+def test_words_are_shown_for_their_time_then_the_face_comes_back():
+    board, _ = _device()
+    assert board.apply("show", {"text": "chainyk gotovyi\nhi", "seconds": 2}, 1000)
+    assert _seen(board, 1500) == ("flash", "text", {"lines": ["chainyk", "gotovyi", "hi"]})
+    assert _seen(board, 3001)[:2] == ("face", "state")
+    assert board.apply("show", {"text": ""}, 0) is False
+
+
 def test_a_picture_the_hands_drew_is_shown_for_its_time():
     import base64
 
@@ -101,8 +111,8 @@ def test_a_picture_the_hands_drew_is_shown_for_its_time():
     bits = bytes(range(256)) + bytes(104)
     ok, said = board.call("image", {"bitmap": base64.b64encode(bits).decode(), "seconds": 2}, 0)
     assert (ok, said) == (True, "картинку показано")
-    assert board.drawing(1000) == bits
-    assert board.drawing(2001) is None
+    assert _seen(board, 1000) == ("flash", "picture", {"bits": bits})
+    assert _seen(board, 2001)[0] == "face"
 
 
 def test_a_picture_of_the_wrong_size_is_refused_and_words_replace_a_picture():
@@ -113,9 +123,4 @@ def test_a_picture_of_the_wrong_size_is_refused_and_words_replace_a_picture():
     assert board.call("image", {"bitmap": "not base64!!"}, 0)[0] is False
     board.call("image", {"bitmap": base64.b64encode(bytes(360)).decode()}, 0)
     board.call("show", {"text": "hi"}, 0)
-    assert board.drawing(1) is None and board.text(1) == ["hi"]
-
-
-def test_the_image_skill_asks_for_the_window_s_own_pixels():
-    image = next(s for s in device.skills() if s["name"] == "image")
-    assert image["render"] == {"svg": {"to": "mono", "width": 72, "height": 40, "as": "bitmap"}}
+    assert _seen(board, 1) == ("flash", "text", {"lines": ["hi"]})

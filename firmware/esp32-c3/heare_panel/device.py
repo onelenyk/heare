@@ -114,14 +114,15 @@ class Device:
     display loop reads ``shown`` and calls ``tick``. Plain attribute writes
     are all they share."""
 
-    def __init__(self, pin_factory=None):
+    def __init__(self, pin_factory=None, screen=None):
+        from heare_panel import screen as screen_module
+
         self._make = pin_factory
+        self.screen = screen if screen is not None else screen_module.Screen()
         self._pins = {}
         self._outputs = {}
         self._led = None
         self.led_mode = "off"
-        self.shown = None  # (lines, until_ms)
-        self.picture = None  # (bits, until_ms): what the hands drew
 
     def apply(self, name, value, now_ms):
         """Do one act; False for a name or a value this panel does not know."""
@@ -136,8 +137,7 @@ class Device:
             if not shown:
                 return False
             hold = max(1000, min(seconds * 1000, SHOW_MAX_MS))
-            self.shown = (shown, now_ms + hold)
-            self.picture = None
+            self.screen.put("flash", _scenes().text_scene(shown), now_ms + hold)
             return True
         if name == "led":
             if value not in ("on", "off", "blink"):
@@ -160,7 +160,7 @@ class Device:
         if name == "show":
             text = latin(args.get("text") or "")
             done = self.apply("show", {"text": text, "seconds": args.get("seconds") or 10}, now_ms)
-            return (True, "показано: " + " ".join(self.shown[0])) if done else (False, "нема що показати")
+            return (True, "показано: " + " ".join(lines(text))) if done else (False, "нема що показати")
         if name == "image":
             return self._picture(args.get("bitmap"), args.get("seconds"), now_ms)
         if name == "light":
@@ -190,29 +190,9 @@ class Device:
             hold = int(seconds or 10) * 1000
         except (TypeError, ValueError):
             hold = 10_000
-        self.picture = (bits, now_ms + max(1000, min(hold, SHOW_MAX_MS)))
-        self.shown = None
+        self.screen.put("flash", _scenes().picture_scene(bits),
+                        now_ms + max(1000, min(hold, SHOW_MAX_MS)))
         return True, "картинку показано"
-
-    def drawing(self, now_ms):
-        """The picture to show now, or None once its time is up."""
-        picture = self.picture
-        if picture is None:
-            return None
-        if _after(now_ms, picture[1]):
-            self.picture = None
-            return None
-        return picture[0]
-
-    def text(self, now_ms):
-        """The lines to show now, or None once their time is up."""
-        shown = self.shown
-        if shown is None:
-            return None
-        if _after(now_ms, shown[1]):
-            self.shown = None
-            return None
-        return shown[0]
 
     def tick(self, now_ms):
         """Keep the light in its mode; called by the display loop."""
@@ -267,6 +247,12 @@ class Device:
             return self._make(number, mode)
         except Exception:  # noqa: BLE001 - a pin that cannot be had is not offered
             return None
+
+
+def _scenes():
+    from heare_panel import screen
+
+    return screen
 
 
 def board_pin(number, mode):

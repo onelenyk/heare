@@ -284,20 +284,26 @@ def _flush(panel, data):
         return False
 
 
-def _draw_lines(panel, lines, framebuf_module=None):
+def _paint(panel, scene, now_ms=0, framebuf_module=None):
+    """Draw one scene on the window: the one way anything reaches it."""
     if panel is None or not getattr(panel, "available", False):
         return False
     data, canvas = _canvas(panel, framebuf_module)
     if canvas is None:
         return False
-    width = panel.view_width
     try:
-        canvas.fill(0)
-        for text, y in lines:
-            canvas.text(text, max((width - len(text) * 8) // 2, 0), y, 1)
-    except (ValueError, AttributeError):
+        scene.draw(canvas, panel.view_width, panel.view_height, now_ms)
+    except (ValueError, AttributeError, IndexError):
         return False
     return _flush(panel, data)
+
+
+def _draw_lines(panel, lines, framebuf_module=None):
+    from heare_panel import screen
+
+    scene = screen.Scene("lines", {"widget": "text", "lines": [t for t, _y in lines],
+                                   "at": [y for _t, y in lines]})
+    return _paint(panel, scene, 0, framebuf_module)
 
 
 def show_boot(panel, framebuf_module=None):
@@ -329,78 +335,31 @@ def _memory():
 
 
 def show_text(panel, lines, framebuf_module=None):
-    """What the agent asked to show, a line every ten pixels."""
-    return _draw_lines(
-        panel, [(line, index * 10) for index, line in enumerate(lines)],
-        framebuf_module,
-    )
+    """Words alone on the window, a line every ten pixels."""
+    from heare_panel import screen
+
+    return _paint(panel, screen.text_scene(lines), 0, framebuf_module)
 
 
 def show_picture(panel, bits, framebuf_module=None):
-    """What the hands drew: rows of the window, eight pixels a byte."""
-    if panel is None or not getattr(panel, "available", False):
-        return False
-    data, canvas = _canvas(panel, framebuf_module)
-    if canvas is None:
-        return False
-    width = panel.view_width
-    stride = width // 8
-    try:
-        canvas.fill(0)
-        for y in range(panel.view_height):
-            for column in range(stride):
-                byte = bits[y * stride + column]
-                if not byte:
-                    continue
-                for bit in range(8):
-                    if byte & (0x80 >> bit):
-                        canvas.pixel(column * 8 + bit, y, 1)
-    except (ValueError, AttributeError, IndexError):
-        return False
-    return _flush(panel, data)
+    """A picture alone on the window: rows, eight pixels a byte."""
+    from heare_panel import screen
 
-
-FACE_STATES = ("IDLE", "HEAR", "THINK", "SPEAK")
-
-
-def _shows_face(panel, word):
-    """The live states show the brand's face on the small window."""
-    if word not in FACE_STATES or panel is None:
-        return False
-    return (getattr(panel, "view_width", 0), getattr(panel, "view_height", 0)) == (72, 40)
+    return _paint(panel, screen.picture_scene(bits), 0, framebuf_module)
 
 
 def frame_key(word, panel, now_ms):
-    """What tells one frame from the next; the loop redraws when it changes."""
-    if _shows_face(panel, word):
-        from heare_panel import face
+    """What tells one frame of a status word from the next."""
+    from heare_panel import widgets
 
-        return face.frame_key(word, now_ms)
-    if word == "ALLOW":
-        return (word, now_ms // BLINK_MS)
-    return (word,)
+    box = (0, 0, getattr(panel, "view_width", 0), getattr(panel, "view_height", 0))
+    return widgets.key({"widget": "state", "word": word}, {}, now_ms, box)
 
 
 def show_state(panel, word, now_ms=0, framebuf_module=None):
-    from heare_panel import render
+    from heare_panel import screen
 
-    if panel is None or not getattr(panel, "available", False):
-        return False
-    data, canvas = _canvas(panel, framebuf_module)
-    if canvas is None:
-        return False
-    try:
-        if _shows_face(panel, word):
-            from heare_panel import face
-
-            face.draw(word, canvas, now_ms)
-        else:
-            render.render(
-                word, canvas, panel.view_width, panel.view_height, now_ms
-            )
-    except (ValueError, AttributeError):
-        return False
-    return _flush(panel, data)
+    return _paint(panel, screen.state_scene(word), now_ms, framebuf_module)
 
 
 def connect_wifi(sta, config, attempts=WIFI_ATTEMPTS, wdt=None, out=print):
@@ -547,23 +506,12 @@ def run_normal(
         was_pressed = down
 
         board.tick(now)
-        # A permission always shows: the words the agent put up wait.
-        text = board.text(now) if word != "ALLOW" else None
-        picture = board.drawing(now) if word != "ALLOW" else None
-        if picture:
-            key = ("PICTURE", id(picture))
-        elif text:
-            key = ("SHOW",) + tuple(text)
-        else:
-            key = frame_key(word, panel, now)
+        # The screen knows what is seen; the loop only draws when it changed.
+        board.screen.word(word)
+        key = board.screen.key(now)
         if key != last_key:
             drawn_at = clock.now_ms()
-            if picture:
-                show_picture(panel, picture)
-            elif text:
-                show_text(panel, text)
-            else:
-                show_state(panel, word, now)
+            _paint(panel, board.screen, now)
             slowest = max(slowest, clock.elapsed(drawn_at, clock.now_ms()))
             last_key = key
         if word != last_word:
