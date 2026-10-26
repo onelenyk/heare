@@ -166,10 +166,18 @@ async def test_a_part_that_did_not_answer_is_not_said_to_have_done_it():
     assert model.asked[1][-1]["content"] == "Не вийшло: частина не відповіла"
 
 
-async def test_with_no_part_here_it_says_so_without_the_model():
-    hand, model = _hand(Devices({}))
-    assert await hand.run("увімкни світло", Desk()) == "Жодної частини зі скілами зараз немає."
-    assert model.asked == []
+async def test_what_is_not_theirs_the_native_hands_hand_on_as_worded():
+    from heare import hand as hand_life
+
+    hand, model = _hand(Devices({}), Says(calls=(
+        ("pass_to_cli_hands", {"task": "Порахуй файли в ~/Downloads"}),)))
+    try:
+        await hand.run("скільки файлів у завантаженнях", Desk())
+    except hand_life.Handoff as handoff:
+        assert handoff.task == "Порахуй файли в ~/Downloads"
+    else:
+        raise AssertionError("no handoff")
+    assert model.offered[0] == ["pass_to_cli_hands"]
 
 
 async def test_out_of_steps_it_says_what_was_done():

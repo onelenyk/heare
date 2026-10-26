@@ -45,13 +45,15 @@ ABOUT = (
     "й інтернету."
 )
 STEPS = 4
+HANDOFF = "pass_to_cli_hands"
 FAILED = "Не вийшло: модель не відповіла."
 
 _SYSTEM = (
     "Ти — швидкі руки heare. Зроби прохання інструментами й відповідай одним "
     "коротким реченням українською: що зроблено. Не вигадуй того, чого "
-    "інструменти не сказали. Якщо прохання не про ці інструменти — скажи "
-    "одним реченням, що це не твоє."
+    "інструменти не сказали. Якщо прохання не про ці інструменти (файли, код, "
+    "шел, інтернет, план, щось довге) — не відповідай сам, а виклич "
+    f"{HANDOFF} з завданням, повним і зрозумілим без розмови."
 )
 
 
@@ -93,9 +95,7 @@ class NativeHand:
 
     async def run(self, task: str, desk: hand_life.Desk) -> str:
         tools = catalog(await self._devices.skilled())
-        if not tools:
-            return "Жодної частини зі скілами зараз немає."
-        schemas = [tool.schema() for tool in tools.values()]
+        schemas = [tool.schema() for tool in tools.values()] + [_HANDOFF]
         messages: list[dict] = [{"role": "system", "content": _SYSTEM},
                                 {"role": "user", "content": task}]
         done: list[str] = []
@@ -106,6 +106,9 @@ class NativeHand:
                 raise asyncio.CancelledError
             if not calls:
                 return text or "Готово."
+            for call in calls:
+                if call.get("name") == HANDOFF:
+                    raise hand_life.Handoff(_handed(call) or task)
             results = [(call, await self._call(tools, call, desk)) for call in calls]
             done += [said for _, said in results]
             messages += _turns(text, results)
@@ -144,6 +147,24 @@ class NativeHand:
         result = answer.get("result")
         said = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
         return said if answer.get("ok") else f"Не вийшло: {said}"
+
+
+_HANDOFF = {"type": "function", "function": {
+    "name": HANDOFF,
+    "description": "Not yours: give the work to the cli hands — an agent with files, "
+                   "code, the shell and the internet.",
+    "parameters": {"type": "object", "required": ["task"], "properties": {
+        "task": {"type": "string", "description": "The whole task, clear without the talk."}}}}}
+
+
+def _handed(call: dict) -> str:
+    args = call.get("arguments") or {}
+    if isinstance(args, str):
+        try:
+            args = json.loads(args or "{}")
+        except ValueError:
+            return ""
+    return str(args.get("task") or "").strip() if isinstance(args, dict) else ""
 
 
 def catalog(skilled: dict[str, dict]) -> dict[str, Tool]:

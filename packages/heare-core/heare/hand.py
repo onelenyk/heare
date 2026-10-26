@@ -26,6 +26,14 @@ logger = logging.getLogger("heare.hand")
 IDLE_S = 1.0
 
 
+class Handoff(Exception):
+    """The work is not this hand's: the brain gives it to another, as worded."""
+
+    def __init__(self, task: str) -> None:
+        super().__init__(task)
+        self.task = task
+
+
 @dataclass(frozen=True)
 class Job:
     """One piece of work as the brain hands it out."""
@@ -132,6 +140,8 @@ async def take(wire: part.Wire, name: str,
         if current is not None and current.cancelling():
             raise
         status, result = "stopped", "Зупинено."
+    except Handoff as handoff:
+        status, result = "handoff", handoff.task
     except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
         logger.warning("the work failed: %r", exc)
         status, result = "failed", failed(exc)

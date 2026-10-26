@@ -109,7 +109,7 @@ class Brain:
         from heare.memory.facts import SQLiteFacts
         from heare.memory.journal import Journal
         from heare.model.chat import Chat
-        from heare.model.delegate import Dispatcher
+        from heare.model.route import Router
         from heare.model.judge import Judge
         from heare.tools import Toolbox
 
@@ -130,7 +130,7 @@ class Brain:
         self.core = Core(
             Chat(self.settings),
             memory=self.memory,
-            delegator=Dispatcher(self.settings),
+            delegator=Router(self.settings, lambda: self.core.state.tasks),
             gate=Judge(self.settings),
             prompt=lambda: persona.prompt(self.core.state.around),
             names=names, judge=persona.JUDGE, words=uk,
@@ -246,12 +246,14 @@ class Brain:
     async def run(self) -> None:
         """Live until cancelled: open the door, answer, hold intents."""
         from heare.api.server import serve
+        from heare.model import route
         from heare.reach.remote import RemoteExecutor
 
         self.core.hydrate(self.journal.tail_messages())
         self._runner = await serve(
             self.core, self.settings, lambda: model_info(self.settings),
-            make_executor=lambda name, about: RemoteExecutor(name, about),
+            make_executor=lambda name, about: route.executor(
+                name, about, RemoteExecutor, lambda: list(self.core.executors.values())),
             mind=self.mind, features=self.features,
         )
         logs.say(f"мозок на http://127.0.0.1:{self.settings.api_port}/")

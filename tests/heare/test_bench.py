@@ -22,9 +22,11 @@ from heare import native_hands, sim
 from heare.api import skills
 from heare.api.server import Screen, build
 from heare.config import Settings
-from heare.core.forms import Message
+from heare.core.forms import Message, Task
+from heare.model import route
+from heare.model.route import Router
 from heare.reach.remote import RemoteExecutor
-from tests.heare.fakes import Says, Script, open_room
+from tests.heare.fakes import Says, Script, Worker, open_room
 
 HOST = "bench"
 
@@ -61,7 +63,10 @@ class Bench:
 async def bench(tmp_path, *boards: sim.Board):
     trusted = ["native-hands@bench", *(b.pid for b in boards)]
     (tmp_path / "parts.json").write_text(json.dumps(trusted), encoding="utf-8")
-    room = await open_room()
+    held: dict = {}
+    # The brain's own rule for who does what, as it runs live.
+    room = await open_room(delegator=Router(None, lambda: held["room"].core.state.tasks))
+    held["room"] = room
     room.core.add_output(Screen(room.core))
     brain = Settings(
         path=tmp_path / "config.toml", api_token_file=tmp_path / "token",
@@ -70,8 +75,9 @@ async def bench(tmp_path, *boards: sim.Board):
         pair_codes_file=tmp_path / "pair_codes.json", memory_dir=tmp_path / "memory",
         heard_dir=tmp_path / "heard", backups_dir=tmp_path / "home" / "backups",
     )
-    app = build(room.core, brain,
-                make_executor=lambda name, about: RemoteExecutor(name, about, claim_wait_s=0.5))
+    app = build(room.core, brain, make_executor=lambda name, about: route.executor(
+        name, about, lambda n, a: RemoteExecutor(n, a, claim_wait_s=0.5),
+        lambda: list(room.core.executors.values())))
     server = TestServer(app, host="127.0.0.1")
     await server.start_server()
     parts = Settings(path=tmp_path / "part.toml", api_token_file=tmp_path / "token",
@@ -176,6 +182,35 @@ async def test_a_board_on_the_older_wire_is_still_told(tmp_path):
         b.say("покажи привіт", Says(calls=(("desk__show", {"text": "привіт"}),)), "Показав.")
 
         await b.until(lambda: old.shown == "pryvit", what="the older board told, in Latin")
+
+
+async def test_what_is_not_for_the_bodies_goes_on_to_the_cli_hands(tmp_path):
+    async with bench(tmp_path, sim.Board("desk")) as b:
+        cli = Worker("opencode", result="12 файлів.")
+        cli.release.set()
+        b.room.core.add_executor(cli)
+        b.say("скільки файлів у завантаженнях", Says(calls=(
+            ("pass_to_cli_hands", {"task": "Порахуй файли в ~/Downloads"}),)))
+
+        task = await b.finished()
+
+        assert cli.tasks == ["Порахуй файли в ~/Downloads"]
+        assert (task.status, task.result) == ("done", "12 файлів.")
+
+
+async def test_work_that_goes_on_stays_with_its_hands(tmp_path):
+    async with bench(tmp_path, sim.Board("desk")) as b:
+        cli = Worker("opencode", result="Готово.")
+        cli.release.set()
+        b.room.core.add_executor(cli)
+        b.room.core.state.tasks[99] = Task(99, "напиши скрипт", "opencode", status="done")
+        b.room.model.will_say(Says(calls=(("delegate", {"task": "а тепер запусти",
+                                                        "continues": True}),)))
+        b.room.core.hear(Message(text="а тепер запусти", channel="screen"))
+
+        await b.until(lambda: cli.tasks, what="the cli hands took it")
+        assert cli.tasks[0].startswith("а тепер запусти")
+        assert b.hand_model.asked == []
 
 
 @pytest.fixture(autouse=True)

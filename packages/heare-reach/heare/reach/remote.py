@@ -12,6 +12,8 @@ import itertools
 from dataclasses import dataclass
 from typing import Any
 
+from heare.hand import Handoff
+
 
 @dataclass
 class _Job:
@@ -88,5 +90,9 @@ class RemoteExecutor:
         job = self._jobs.get(job_id)
         if job is None or job.future.done():
             return False
-        job.future.set_result(result)
+        if status == "handoff":
+            # Not this body's work: whoever routes it hands it on, as worded.
+            job.future.set_exception(Handoff(result))
+        else:
+            job.future.set_result(result)
         return True
