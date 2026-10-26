@@ -99,6 +99,32 @@
 сказало `"hears": "all"` у стуку (чат) — на його картці позначка «чує всю
 розмову».
 
+### Статус без слів (`kinds=`)
+
+Тіло, що лише показує, що діється, звужує потік запитом:
+
+`GET /api/events?kinds=phase,permission,permission_closed,question,question_closed,said,failed,cannot,halted,judged,part`
+
+- `kinds` — назви через кому. Невідома назва ігнорується, а незрозумілий
+  фільтр не відчиняє потік — він лишається порожнім. Фільтр діє **після**
+  `hears`: він лише звужує те, що тіло вже могло чути, і нічого не додає.
+- Дозволені види: `phase`, `permission`, `permission_closed`, `question`,
+  `question_closed`, `said`, `failed`, `cannot`, `halted`, `judged`, `part`.
+  Ті, що несуть слова (`heard`, `overheard`, `reply`, `task`, `verb`,
+  `canvas`, `control`, `screen`, `mind`, `key`, `update`, `feature`), у
+  фільтрований потік не потрапляють **ніколи**.
+- Проєкція (слова лишаються в мозку): `phase` — `{kind, at, phase}`;
+  `permission`, `question`, `question_closed` — `{kind, at, id}`;
+  `permission_closed` — `{kind, at, id, allowed}`; `said` — `{kind, at,
+  channel, failed}` (без `text`); `failed` — `{kind, at, channel}`;
+  `judged` — `{kind, at, allowed}`; `halted` — `{kind, at, tasks}`;
+  `cannot` — `{kind, at}`; `part` — без змін.
+- На відкритті, до повтору, мозок шле синтетичні події: поточний `phase`,
+  `permission` з `id` (якщо чекає) і `question` з `id` (якщо чекає). Той
+  самий фільтр діє і на них, і на повтор.
+- Без `kinds` потік незмінний: сторінка, голос і чат отримують усе, як
+  раніше.
+
 ### Вікна (сторінки)
 
 Сторінка не має імені машини: її ім'я — те, під яким її спарили

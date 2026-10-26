@@ -260,19 +260,51 @@ class Brain:
         )
 
 
+def _unpair(machine: str | None, pid: str | None) -> int:
+    if not machine and not pid:
+        print("unpair: назви машину, наприклад heare-brain unpair kitchen",
+              file=sys.stderr)
+        return 1
+    from heare.api import auth
+
+    tokens = Path(Settings().part_tokens_file)
+    status = 0
+    if machine:
+        target = f"machine@{machine}"
+        if auth.revoke(tokens, target):
+            print(f"revoked {target}")
+        else:
+            print(f"no such machine: {machine}", file=sys.stderr)
+            status = 1
+    if pid:
+        if auth.revoke(tokens, pid):
+            print(f"revoked {pid}")
+        else:
+            print(f"no such part: {pid}", file=sys.stderr)
+            status = 1
+    return status
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="heare-brain")
     parser.add_argument(
         "command", nargs="?", default="run",
-        choices=["run", "code", "review", "backup", "restore"],
+        choices=["run", "code", "review", "backup", "restore", "unpair"],
     )
-    parser.add_argument("file", nargs="?", help="restore: the backup to put back")
+    parser.add_argument(
+        "file", nargs="?",
+        help="restore: the backup to put back; unpair: the machine to forget",
+    )
     parser.add_argument("--no-sound", action="store_true",
                         help="backup: without the recordings")
+    parser.add_argument("--pid",
+                        help="unpair: also take this part's key away")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)
     layout.settle()
+    if args.command == "unpair":
+        return _unpair(args.file, args.pid)
     if args.command == "backup":
         from heare.api.server import running
         print(backup.make(HOME, sound=not args.no_sound, version=running()["version"]))

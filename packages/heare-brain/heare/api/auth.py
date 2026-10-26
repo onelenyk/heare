@@ -44,10 +44,13 @@ def issue(path: Path, pid: str) -> str:
     return token
 
 
-def revoke(path: Path, pid: str) -> None:
+def revoke(path: Path, pid: str) -> bool:
+    """Take one part's key away. True if it had one."""
     tokens = _read(path)
-    if tokens.pop(pid, None) is not None:
-        _write(path, tokens)
+    if tokens.pop(pid, None) is None:
+        return False
+    _write(path, tokens)
+    return True
 
 
 def owner(path: Path, token: str) -> str | None:

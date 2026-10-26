@@ -36,7 +36,7 @@ from aiohttp import web
 from heare import keys
 from heare.api import backup
 from heare.api.update import UpdateError, Updates
-from heare.core import PROTOCOL, Core, Message
+from heare.core import PROTOCOL, Core, Event, Message
 from heare.api import auth
 from heare.api import pair as codes
 from heare.api.heard import Recordings
@@ -51,6 +51,32 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 # How often a quiet stream is written to. A closed page is only noticed when
 # a write to it fails, so this is also how long it takes to show it left.
 HEARTBEAT_S = 5.0
+
+# A body that only shows what is happening may ask for these and nothing
+# else. Every one of them can be drawn without the words: a phase, an id, a
+# channel. A kind that carries conversation text is not here, so a filtered
+# stream cannot be talked into delivering one.
+STATUS_KINDS = frozenset({
+    "phase", "permission", "permission_closed", "question", "question_closed",
+    "said", "failed", "cannot", "halted", "judged", "part",
+})
+
+# What survives of each status kind once the stream has asked for status
+# only. A kind absent from this table is never in `STATUS_KINDS`; `part` is
+# passed through as it is, because there are no words in it.
+_STATUS_FIELDS: dict[str, tuple[str, ...]] = {
+    "phase": ("phase",),
+    "permission": ("id",),
+    "permission_closed": ("id", "allowed"),
+    "question": ("id",),
+    "question_closed": ("id",),
+    "said": ("channel", "failed"),
+    "failed": ("channel",),
+    "judged": ("allowed",),
+    "halted": ("tasks",),
+    "cannot": (),
+}
+
 SESSION = "heare_session"
 # A backup brought from another Mac: a year of recordings fits well under it.
 BACKUP_LIMIT = 2 * 1024 ** 3
@@ -589,18 +615,47 @@ def build(core: Core, settings: Any, vitals: Any = None,
             registry.listens(who)
         # A window is the person and hears all; a part, what is its own.
         listener = request.get("part")
+        # `kinds` narrows a stream; it never adds a kind the caller could not
+        # already hear, so it is applied after `hears`, never instead of it.
+        asked = _requested(request)
+
+        def for_stream(event: Event) -> dict | None:
+            if not registry.hears(listener, event.data):
+                return None
+            if asked is None:
+                return event.view()
+            if event.kind not in asked:
+                return None
+            return _status_view(event)
+
         try:
+            if asked is not None:
+                # What the present is, before anything changes: a panel that
+                # has just connected has seen no phase event and no ids.
+                now = time.time()
+                present = [Event("phase", {"phase": core.state.phase}, now)]
+                if core.state.permission is not None:
+                    present.append(
+                        Event("permission", core.state.permission.view(), now))
+                if core.state.question is not None:
+                    present.append(Event("question", core.state.question.view(), now))
+                for event in present:
+                    seen = for_stream(event)
+                    if seen is not None:
+                        await response.write(_sse(seen))
             # The past only when asked for: a page that also loads the
             # history would otherwise show the last exchange twice.
             replay = max(0, min(int(request.query.get("replay", "0")), 200))
             for past in list(core.state.journal)[-replay:] if replay else ():
-                if registry.hears(listener, past.data):
-                    await response.write(_sse(past.view()))
+                seen = for_stream(past)
+                if seen is not None:
+                    await response.write(_sse(seen))
             while True:
                 try:
                     event = await asyncio.wait_for(reader.get(), HEARTBEAT_S)
-                    if registry.hears(listener, event.data):
-                        await response.write(_sse(event.view()))
+                    seen = for_stream(event)
+                    if seen is not None:
+                        await response.write(_sse(seen))
                 except TimeoutError:
                     await response.write(b": still here\n\n")
         except (ConnectionResetError, asyncio.CancelledError):
@@ -1120,6 +1175,28 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
 def _sse(data: dict) -> bytes:
     return f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n".encode()
+
+
+def _requested(request: web.Request) -> frozenset[str] | None:
+    """The status kinds a stream asked for, or None for the whole stream.
+
+    An unknown name is dropped; a `kinds` that names nothing known leaves an
+    empty set, not the whole stream: a filter that cannot be understood must
+    not fall open."""
+    raw = request.query.get("kinds")
+    if raw is None:
+        return None
+    return frozenset(name.strip() for name in raw.split(",")
+                     if name.strip() in STATUS_KINDS)
+
+
+def _status_view(event: Event) -> dict:
+    """One event as a status-only stream sees it: what to draw, never words."""
+    if event.kind == "part":
+        return event.view()
+    fields = _STATUS_FIELDS[event.kind]
+    return {"kind": event.kind, "at": event.at,
+            **{name: event.data[name] for name in fields if name in event.data}}
 
 
 async def serve(core: Core, settings: Any, vitals: Any = None,
