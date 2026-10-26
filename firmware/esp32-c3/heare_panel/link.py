@@ -41,6 +41,12 @@ CONNECT_S = 5.0
 READ = 512
 
 
+def _collect() -> None:
+    import gc
+
+    gc.collect()
+
+
 class LinkError(Exception):
     """The brain could not be reached or refused the panel."""
 
@@ -279,8 +285,12 @@ class Link:
                 self._link_down()
                 self._wait(error.retry_s + self._jitter())
                 continue
-            except (LinkError, OSError):
+            except (LinkError, OSError, MemoryError) as error:
                 self._link_down()
+                if isinstance(error, MemoryError):
+                    # Little memory is a reason to wait and try again, not to
+                    # die: the next knock starts from a collected heap.
+                    _collect()
                 attempt = self._failed(attempt)
                 continue
 
@@ -297,8 +307,12 @@ class Link:
                 self._link_down()
                 self._wait(error.retry_s + self._jitter())
                 continue
-            except (LinkError, OSError):
+            except (LinkError, OSError, MemoryError) as error:
                 self._link_down()
+                if isinstance(error, MemoryError):
+                    # Little memory is a reason to wait and try again, not to
+                    # die: the next knock starts from a collected heap.
+                    _collect()
                 attempt = self._failed(attempt)
                 continue
 
@@ -417,6 +431,9 @@ class Link:
             return
         try:
             ok, result = self.on_call(event.get("name"), event.get("args") or {})
+        except MemoryError:
+            _collect()
+            ok, result = False, "панелі забракло пам'яті"
         except Exception:  # noqa: BLE001 - a skill must not stop the stream
             ok, result = False, "панель не змогла"
         token = self.store.get_part_token()

@@ -238,7 +238,7 @@ class Device:
         return {"size": [self.screen.width, self.screen.height],
                 "layers": self.screen.layers(),
                 "widgets": [k for k in widgets.KINDS if k != "state"],
-                "icons": sorted(glyphs.ICONS), "free": free,
+                "icons": sorted(glyphs.ICON_NAMES), "free": free,
                 "max_widgets": screen.MAX_WIDGETS}
 
     def _picture(self, bitmap, seconds, now_ms):

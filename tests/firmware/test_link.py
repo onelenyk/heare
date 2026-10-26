@@ -527,3 +527,44 @@ def test_permit_without_a_key_asks_nothing():
 
     assert _link(server, _store()).permit(7) is False
     assert server.requests == []
+
+
+def test_little_memory_is_a_wait_and_another_try_not_the_end(monkeypatch):
+    store = _store()
+    store.set_part_token("part-secret")
+    store.set_pid(PID)
+    link = Link(_config(), store, socket_factory=lambda: None)
+    knocks: list[int] = []
+
+    def knock(token, part=False):
+        knocks.append(1)
+        if len(knocks) == 1:
+            raise MemoryError
+        link.close()
+        raise OSError("stop")
+
+    monkeypatch.setattr(link, "knock", knock)
+    monkeypatch.setattr(link_module.time, "sleep", lambda s: None)
+
+    link.supervise()
+
+    assert len(knocks) == 2
+
+
+def test_a_skill_that_runs_out_of_memory_is_answered_not_dropped():
+    server = FakeServer([
+        _stream({"kind": "call", "part": PID, "id": 3, "name": "screen", "args": {}}),
+        _json({"ok": True}),
+    ])
+    store = _store()
+    store.set_part_token("part-secret")
+    store.set_pid(PID)
+    link = _link(server, store)
+
+    def broke(name, args):
+        raise MemoryError
+
+    link.on_call = broke
+    link.events()
+
+    assert json.loads(server.requests[1]["body"]) == {"ok": False, "result": "панелі забракло пам'яті"}

@@ -2,7 +2,7 @@
 
 The board's font is Latin only and drawn by ``canvas.text``. A Ukrainian
 letter that looks like a Latin one is drawn with it; the rest come from
-``glyphs.LETTERS`` and are drawn pixel by pixel. Size 2 is every letter's
+``glyphs.letter`` and are drawn pixel by pixel. Size 2 is every letter's
 eight rows doubled: the board's own letters are read back from a scratch
 ``framebuf`` once each (``rows``), which a laptop has not — tests hand in
 their own (``ascii_rows``).
@@ -23,8 +23,8 @@ def plain(text):
     """The text in the letters there are: lookalikes, and ? for the rest."""
     out = []
     for char in str(text):
-        char = glyphs.LOOKALIKE.get(char, char)
-        if char in glyphs.LETTERS or " " <= char <= "~":
+        char = glyphs.look(char)
+        if glyphs.letter(char) is not None or " " <= char <= "~":
             out.append(char)
         else:
             out.append("?")
@@ -41,10 +41,11 @@ def draw(canvas, text, x, y, size=1):
     if size == 1:
         run_start, run = x, ""
         for index, char in enumerate(text):
-            if char in glyphs.LETTERS:
+            own = glyphs.letter(char)
+            if own is not None:
                 if run:
                     canvas.text(run, run_start, y, 1)
-                _letter(canvas, glyphs.LETTERS[char], x + index * CELL, y, 1)
+                _letter(canvas, own, x + index * CELL, y, 1)
                 run, run_start = "", x + (index + 1) * CELL
             else:
                 run += char
@@ -54,7 +55,7 @@ def draw(canvas, text, x, y, size=1):
     for index, char in enumerate(text):
         if char == " ":
             continue
-        found = glyphs.LETTERS.get(char) or rows(char)
+        found = glyphs.letter(char) or rows(char)
         if found:
             _letter(canvas, found, x + index * CELL * size, y, size)
 

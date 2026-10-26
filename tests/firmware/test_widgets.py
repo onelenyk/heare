@@ -26,7 +26,7 @@ def test_ukrainian_letters_are_the_panel_s_own_and_lookalikes_are_latin():
     assert font.plain("日本") == "??"
     drawn = Raster()
     font.draw(drawn, "Пр", 0, 0)
-    letter = glyphs.LETTERS["П"]
+    letter = glyphs.letter("П")
     for row in range(8):
         assert [drawn.lit[row][c] for c in range(8)] == [bool(letter[row] & (0x80 >> c)) for c in range(8)]
     assert drawn.lit[0][8]  # «р» is the board's «p», a box here
@@ -56,7 +56,7 @@ def test_a_number_is_big_when_it_fits_and_small_when_it_does_not():
 
 def test_an_icon_lights_its_own_pixels_in_the_middle():
     drawn = _draw({"widget": "icon", "name": "heart"})
-    heart = glyphs.ICONS["heart"]
+    heart = glyphs.icon("heart")
     assert drawn.count() == sum(bin(b).count("1") for b in heart)
     assert not any(drawn.lit[y][x] for y in range(40) for x in range(0, 20))
 

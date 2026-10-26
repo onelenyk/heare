@@ -138,7 +138,7 @@ def _number(canvas, box, number, unit):
 
 def _icon(canvas, box, name, bits):
     x, y, width, height = box
-    data = glyphs.ICONS.get(name) if bits is None else bits
+    data = glyphs.icon(name) if bits is None else bits
     if not data:
         return
     # Named or drawn from an SVG, an icon is 16×16: the hands draw it so.
