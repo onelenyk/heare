@@ -54,23 +54,23 @@ async def remind(store: Reminders, now: float, arguments: dict) -> str:
 async def listed(store: Reminders, now: float) -> str:
     items = store.reminders(now)
     if not items:
-        return "Нагадувань немає."
+        return "No reminders."
     lines = []
     for intent in items:
         if intent.not_before is None:
-            when = "без часу"
+            when = "no time"
         else:
             delta = int(intent.not_before - now)
             if delta <= 0:
-                when = "вже час"
+                when = "due now"
             elif delta < 3600:
-                when = f"через {max(1, delta // 60)} хв"
+                when = f"in {max(1, delta // 60)} min"
             elif delta < 86400:
-                when = f"через {delta // 3600} год"
+                when = f"in {delta // 3600} h"
             else:
-                when = f"через {delta // 86400} дн"
+                when = f"in {delta // 86400} d"
         lines.append(f"{intent.id}. {intent.what} — {when}")
-    return "Нагадування:\n" + "\n".join(lines)
+    return "Reminders:\n" + "\n".join(lines)
 
 
 async def cancel(store: Reminders, arguments: dict) -> str:

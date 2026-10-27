@@ -176,7 +176,7 @@ class Calls:
             return await asyncio.wait_for(asyncio.shield(future),
                                           CALL_S if seconds is None else seconds)
         except TimeoutError:
-            return {"ok": False, "result": "частина не відповіла"}
+            return {"ok": False, "result": "the part did not answer"}
         finally:
             self._waiting.pop(call_id, None)
 

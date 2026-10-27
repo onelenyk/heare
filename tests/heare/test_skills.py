@@ -83,7 +83,7 @@ async def test_a_call_nobody_answers_says_so():
     calls = skills.Calls()
     call_id, waiting = calls.open("oled@desk")
     assert await calls.wait(call_id, waiting, 0.01) == {"ok": False,
-                                                        "result": "частина не відповіла"}
+                                                        "result": "the part did not answer"}
 
 
 def _part(name, *own, about=""):
@@ -174,12 +174,12 @@ async def test_twins_of_one_name_are_asked_about():
 
 async def test_a_part_that_did_not_answer_is_not_said_to_have_done_it():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)},
-                      {"ok": False, "result": "частина не відповіла"})
+                      {"ok": False, "result": "the part did not answer"})
     hand, model = _hand(devices, Says(calls=(("desk__show", {"text": "hi"}),)), "Не вийшло.")
 
     await hand.run("покажи hi", Desk())
 
-    assert model.asked[1][-1]["content"] == "Не вийшло: частина не відповіла"
+    assert model.asked[1][-1]["content"] == "Failed: the part did not answer"
 
 
 async def test_what_is_not_theirs_the_native_hands_hand_on_as_worded():
@@ -200,7 +200,7 @@ async def test_out_of_steps_it_says_what_was_done():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     turn = Says(calls=(("desk__show", {"text": "a"}),))
     hand, _ = _hand(devices, *[turn] * 4)
-    assert await hand.run("показуй різне", Desk()) == "Зроблено: ok ok ok"
+    assert await hand.run("показуй різне", Desk()) == "Done: ok ok ok"
 
 
 async def test_a_stop_ends_the_work_before_the_next_call():

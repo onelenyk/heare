@@ -36,11 +36,12 @@ AGENTS: dict[str, list[str]] = {
 # for every agent: ACP has no system-prompt field, and a prompt block is
 # the one place every agent is guaranteed to read.
 VOICE_RULES = (
-    "Ти відповідаєш голосом: твій текст буде зачитано вголос. Говори коротко, "
-    "одним-двома реченнями, як людина. Без markdown, списків, таблиць і коду. "
-    "Українською. Якщо робиш щось довге, наприкінці скажи одним реченням, що "
-    "вийшло. Якщо для роботи потрібне слово людини — шлях, вибір, деталь, якої "
-    "ти не знаєш — виклич інструмент {ask} і дочекайся відповіді, а не вгадуй."
+    "You answer by voice: your text will be read aloud. Speak briefly, in one "
+    "or two sentences, as a person would, in the language of the request. No "
+    "markdown, lists, tables or code. If you do something long, say at the end "
+    "in one sentence what came of it. If the work needs the person's word — a "
+    "path, a choice, a detail you do not know — call the {ask} tool and wait "
+    "for the answer; do not guess."
 )
 
 

@@ -46,7 +46,7 @@ ABOUT = (
 )
 STEPS = 4
 HANDOFF = "pass_to_cli_hands"
-FAILED = "Не вийшло: модель не відповіла."
+FAILED = "Failed: the model did not answer."
 
 _SYSTEM = (
     "You are heare's quick hands. Do the request with the tools and answer in "
@@ -105,7 +105,7 @@ class NativeHand:
             if getattr(desk, "stopped", False):
                 raise asyncio.CancelledError
             if not calls:
-                return text or "Готово."
+                return text or "Done."
             for call in calls:
                 if call.get("name") == HANDOFF:
                     raise hand_life.Handoff(_handed(call) or task)
@@ -113,7 +113,7 @@ class NativeHand:
             done += [said for _, said in results]
             messages += _turns(text, results)
         # Out of steps: what was done is still the answer, not a failure.
-        return "Зроблено: " + " ".join(done[-3:])
+        return "Done: " + " ".join(done[-3:])
 
     async def _turn(self, messages: list[dict], tools: list[dict]) -> tuple[str, list[dict]]:
         parts: list[str] = []
@@ -134,24 +134,24 @@ class NativeHand:
                 args = {}
         tool = tools.get(str(call.get("name")))
         if tool is None or not isinstance(args, dict):
-            return "Такого скіла немає."
+            return "No such skill."
         pid = await _which(tool, desk)
         if pid is None:
-            return "Не зрозумів, яку саме частину."
+            return "Not clear which part."
         desk.step(tool.name)
         if tool.skill["effect"] == "change":
             what = f"{tool.skill['about']} — {tool.name} {json.dumps(args, ensure_ascii=False)}"
             if not await desk.permit(what, "judge", what):
-                return "Не роблю: дозволу немає."
+                return "Not done: no permission."
         try:
             args = _rendered(tool.skill, args)
         except pixels.Unfit as unfit:
             # Said to the model, which may draw it again within its steps.
-            return f"Не вийшло: {unfit}"
+            return f"Failed: {unfit}"
         answer = await self._devices.call(pid, tool.skill["name"], args)
         result = answer.get("result")
         said = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
-        return said if answer.get("ok") else f"Не вийшло: {said}"
+        return said if answer.get("ok") else f"Failed: {said}"
 
 
 _HANDOFF = {"type": "function", "function": {
@@ -272,7 +272,7 @@ class Parts:
         answer = await self._wire.post("/api/skills/call",
                                        {"part": pid, "name": name, "args": args})
         if answer.status_code != 200:
-            return {"ok": False, "result": "частина не знає такого скіла"}
+            return {"ok": False, "result": "the part has no such skill"}
         return answer.json()
 
 

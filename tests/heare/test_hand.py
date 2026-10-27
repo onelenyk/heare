@@ -131,7 +131,7 @@ async def test_a_stop_from_the_brain_is_a_result_but_a_shutdown_goes_on_out():
 
     wire = Wire({"/api/executor/claim": [httpx.Response(200, json={"id": 2, "request": "x"})]})
     assert await take(wire, stopped) is True
-    assert _results(wire) == [{"status": "stopped", "result": "Зупинено."}]
+    assert _results(wire) == [{"status": "stopped", "result": "Stopped."}]
 
     async def forever(job, desk):
         await asyncio.Event().wait()

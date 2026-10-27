@@ -139,7 +139,7 @@ async def take(wire: part.Wire, name: str,
         current = asyncio.current_task()
         if current is not None and current.cancelling():
             raise
-        status, result = "stopped", "Зупинено."
+        status, result = "stopped", "Stopped."
     except Handoff as handoff:
         status, result = "handoff", handoff.task
     except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed

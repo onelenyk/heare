@@ -208,7 +208,7 @@ async def test_a_board_that_does_not_answer_is_not_said_to_have_done_it(tmp_path
 
         await b.finished()
 
-        assert b.hand_model.asked[1][-1]["content"] == "Не вийшло: частина не відповіла"
+        assert b.hand_model.asked[1][-1]["content"] == "Failed: the part did not answer"
         assert desk.led == "off"
 
 

@@ -68,8 +68,8 @@ class Known:
 
 
 _ABOUT = {
-    "opencode": "агент у терміналі: код, файли, команди, пошук в інтернеті",
-    "claude": "Claude Code: код, файли, команди; сильніший у складних задачах",
+    "opencode": "an agent in the terminal: code, files, commands, web search",
+    "claude": "Claude Code: code, files, commands; stronger at hard tasks",
 }
 
 # The table lives beside the agents so the hands that spawn one and the brain
@@ -135,10 +135,10 @@ _LOOKING_TOOLS = ("read", "glob", "grep", "list", "lsp", "todowrite", "todoread"
 # walks into.
 _RULES = {
     "careful": "",
-    "normal": ("[Правила heare] Видаляй файли в Кошик: `trash <шлях>`, не `rm`. "
-               "Що не можна повернути або що побачать інші, спершу зважать і, "
-               "можливо, спитають власника.\n\n"),
-    "auto": "[Правила heare] Видаляючи файли, бери `trash <шлях>`, не `rm`.\n\n",
+    "normal": ("[heare rules] Delete files to the Trash: `trash <path>`, not `rm`. "
+               "What cannot be undone or will be seen by others is weighed "
+               "first and may be put to the owner.\n\n"),
+    "auto": "[heare rules] When deleting files, use `trash <path>`, not `rm`.\n\n",
 }
 
 
@@ -301,16 +301,16 @@ class Agent:
             self._desks.pop(session.id, None)
             refused = self._refused.pop(session.id, [])
         if session.status == "cancelled":
-            return "Зупинено."
+            return "Stopped."
         # Some models leak their thinking into the answer; what follows
         # the last closing tag is the answer.
         said = session.text.rpartition("</think>")[2].strip()
         if refused:
             # Stated by the code, not left to the agent: an agent told no
             # often says nothing, and silence was being retold as success.
-            return (f"НЕ зроблено, бо людина сама щойно сказала «ні» на запит: "
+            return (f"NOT done: the person just said «no» to: "
                     f"{'; '.join(refused)}. {said}").strip()
-        return said or "Агент закінчив і нічого не повідомив; чи зроблено — невідомо."
+        return said or "The agent finished and said nothing; whether it was done is unknown."
 
     async def close(self) -> None:
         if self._agent is not None:

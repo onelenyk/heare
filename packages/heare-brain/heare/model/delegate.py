@@ -19,18 +19,20 @@ logger = logging.getLogger("heare.delegate")
 SPEAKABLE_CHARS = 280
 
 _ASSIGN = (
-    "Ти розподіляєш роботу. Людина сказала асистентові прохання в розмові. "
-    "Напиши завдання для виконавця так, щоб він зрозумів його без розмови: "
-    "що саме зробити і що повернути у відповідь. Візьми з розмови все, що "
-    "уточнює прохання (про який файл, проєкт чи річ ідеться). Нічого не "
-    "вигадуй. Виконавець має відповісти коротко, по суті, українською.\n\n"
-    "Перший рядок відповіді — лише ім'я виконавця з переліку. Далі — завдання."
+    "You hand out work. A person asked the assistant for something in a talk. "
+    "Write the task for an executor so that it is clear without the talk: "
+    "what exactly to do and what to give back. Take from the talk all that "
+    "makes the request precise (which file, project or thing it is about). "
+    "Make nothing up. The executor answers briefly, to the point, in the "
+    "language the person spoke.\n\n"
+    "The first line of the answer is only the executor's name from the list. "
+    "Then the task."
 )
 _BRIEF = (
-    "Ось результат роботи виконавця. Стисни його до одного-трьох речень, які "
-    "можна сказати вголос: що вийшло і найважливіше з подробиць — числа, "
-    "назви, що не вдалося. Без розмітки, списків і коду. Нічого не додавай "
-    "від себе."
+    "Here is an executor's result. Cut it to one to three sentences that can "
+    "be said aloud, in the language the person spoke: what came of it and "
+    "the most important details — numbers, names, what failed. No markup, "
+    "lists or code. Add nothing of your own."
 )
 
 
@@ -61,7 +63,7 @@ class Dispatcher:
         try:
             answer = await self.ask(
                 _ASSIGN,
-                f"Виконавці:\n{roster}\n\nРозмова:\n{talk}\n\nПрохання: {request}",
+                f"Executors:\n{roster}\n\nThe talk:\n{talk}\n\nRequest: {request}",
             )
         except Exception:
             logger.exception("could not write the task — handing the request over as said")
@@ -78,7 +80,7 @@ class Dispatcher:
             return task.result
         try:
             return await self.ask(
-                _BRIEF, f"Прохання: {task.request}\n\nРезультат:\n{task.result}"
+                _BRIEF, f"Request: {task.request}\n\nResult:\n{task.result}"
             ) or task.result[:SPEAKABLE_CHARS]
         except Exception:
             logger.exception("could not cut the result down")

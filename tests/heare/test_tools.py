@@ -230,7 +230,7 @@ async def test_an_invalid_at_stores_nothing(tmp_path):
 async def test_list_reminders_is_empty_when_nothing_is_held(tmp_path):
     box = _toolbox(reminders=Intents(tmp_path / "intents.json"))
 
-    assert await box._run_list_reminders({}) == "Нагадувань немає."
+    assert await box._run_list_reminders({}) == "No reminders."
 
 
 async def test_list_reminders_shows_ids_text_and_when(tmp_path):
@@ -241,10 +241,10 @@ async def test_list_reminders_shows_ids_text_and_when(tmp_path):
     box = _toolbox(reminders=notes, now=lambda: 100.0)
 
     assert await box._run_list_reminders({}) == (
-        "Нагадування:\n"
-        f"{untimed.id}. згадати все — без часу\n"
-        f"{due.id}. випити воду — вже час\n"
-        f"{future.id}. подзвонити мамі — через 10 хв"
+        "Reminders:\n"
+        f"{untimed.id}. згадати все — no time\n"
+        f"{due.id}. випити воду — due now\n"
+        f"{future.id}. подзвонити мамі — in 10 min"
     )
 
 

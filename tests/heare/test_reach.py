@@ -57,7 +57,7 @@ async def test_a_no_reaches_the_agent_as_a_refusal(tmp_path):
     room.says("ні")
     await room.until(lambda: task.status == "done", timeout=10)
     # Said by the code, whatever the agent did or did not say.
-    assert task.result.startswith("НЕ зроблено, бо людина сама щойно сказала «ні» на запит: змінити файл note.txt")
+    assert task.result.startswith("NOT done: the person just said «no» to: змінити файл note.txt")
     await _done(room, agent)
 
 
@@ -298,7 +298,7 @@ async def test_in_auto_the_agent_is_never_stopped_to_ask(tmp_path):
             return False
 
     result = await agent.run("WRITE the note", Desk())
-    assert asked == [] and "НЕ зроблено" not in result
+    assert asked == [] and "NOT done" not in result
     await agent.close()
 
 
