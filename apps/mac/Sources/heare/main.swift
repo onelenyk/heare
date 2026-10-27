@@ -13,7 +13,7 @@ if let at = arguments.firstIndex(of: "--uninstall") {
         withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
         .filter { $0.processIdentifier != me }
     if !others.isEmpty {
-        FileHandle.standardError.write("heare ще працює — спершу «Вийти» в його меню\n".data(using: .utf8)!)
+        FileHandle.standardError.write((tr("heare is still running — first «Quit» in its menu") + "\n").data(using: .utf8)!)
         exit(1)
     }
     for line in Uninstall.run(keep: keep) { print(line) }

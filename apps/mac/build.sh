@@ -55,6 +55,11 @@ sed -e "s/@VERSION@/$VERSION/g" \
     -e "s/<string>$DEFAULT_ID<\/string>/<string>${HEARE_BUNDLE_ID:-$DEFAULT_ID}<\/string>/" \
     "$HERE/Info.plist" > "$APP/Contents/Info.plist"
 cp "$HERE/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+# The shell's words: the same catalog as the brain's (scripts/po_strings.py).
+for po in "$ROOT"/packages/heare-core/heare/core/locale/*/LC_MESSAGES/heare.po; do
+    lang=$(basename "$(dirname "$(dirname "$po")")")
+    python3 "$ROOT/scripts/po_strings.py" "$po" "$APP/Contents/Resources/$lang.lproj/Localizable.strings"
+done
 tar -xzf "$CACHE/$PY_FILE" -C "$APP/Contents/Resources"
 PY="$APP/Contents/Resources/python/bin/python3"
 

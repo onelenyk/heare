@@ -30,12 +30,12 @@ enum Updater {
         let file = URL(fileURLWithPath: dmg).standardizedFileURL
         let allowed = Config.heare.appendingPathComponent("cache/update").standardizedFileURL.path
         guard file.path.hasPrefix(allowed + "/"), FileManager.default.fileExists(atPath: file.path) else {
-            return .failure(Failure("оновлення не там, де мозок мав його покласти"))
+            return .failure(Failure(tr("the update is not where the brain was to put it")))
         }
         guard bundle.pathExtension == "app",
               FileManager.default.isWritableFile(atPath: bundle.deletingLastPathComponent().path) else {
-            return .failure(Failure("тека \(bundle.deletingLastPathComponent().path) не записувана — "
-                                    + "постав нову версію з dmg вручну"))
+            return .failure(Failure(tr("the folder {path} is not writable — install the new version from the dmg by hand",
+                                       ["path": bundle.deletingLastPathComponent().path])))
         }
         let mount = FileManager.default.temporaryDirectory
             .appendingPathComponent("heare-update-\(UUID().uuidString)")
@@ -45,21 +45,21 @@ enum Updater {
         }
         guard run("/usr/bin/hdiutil", ["attach", file.path, "-nobrowse", "-readonly", "-noautoopen",
                                        "-mountpoint", mount.path, "-quiet"]) == 0 else {
-            return .failure(Failure("не вдалося відкрити dmg"))
+            return .failure(Failure(tr("could not open the dmg")))
         }
         let inside = mount.appendingPathComponent("heare.app")
         try? FileManager.default.removeItem(at: staged)
         guard run("/usr/bin/ditto", [inside.path, staged.path]) == 0 else {
-            return .failure(Failure("не вдалося скопіювати нову версію"))
+            return .failure(Failure(tr("could not copy the new version")))
         }
         let plist = NSDictionary(contentsOf: staged.appendingPathComponent("Contents/Info.plist"))
         guard plist?["CFBundleShortVersionString"] as? String == version else {
             try? FileManager.default.removeItem(at: staged)
-            return .failure(Failure("у dmg не та версія, що в релізі"))
+            return .failure(Failure(tr("the dmg holds another version than the release")))
         }
         guard run("/usr/bin/codesign", ["--verify", "--deep", staged.path]) == 0 else {
             try? FileManager.default.removeItem(at: staged)
-            return .failure(Failure("підпис нової версії не сходиться"))
+            return .failure(Failure(tr("the new version's signature does not match")))
         }
         return .success(Ready(fresh: staged, version: version))
     }

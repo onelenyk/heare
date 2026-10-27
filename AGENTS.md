@@ -24,6 +24,19 @@ HARD RULES:
 - Import style: `from heare.core.conversation import Core` — always
   absolute, always the `heare.` prefix.
 
+### LANGUAGE
+
+- **What a model reads is English**: prompts, context blocks, part and
+  skill descriptions, states, tool answers. Just write it in English.
+- **What the person hears and sees goes through one catalog**: `_()` /
+  `N_()` in Python, `tr()` / `data-t` in the pages, `tr()` in Swift; the key
+  is the English line. Then `make i18n` and the Ukrainian in
+  `packages/heare-core/heare/core/locale/uk/LC_MESSAGES/heare.po`.
+- **The person's words are never translated**; «…» quotes them.
+- `tests/heare/test_language_rule.py` fails on a word typed into the code,
+  a marked line with no translation, a stale catalog. How and why:
+  `docs/product/language.md`.
+
 ### THE RULE OF 2
 
 When wiring a new capability, count the participants: one caller + one
@@ -45,6 +58,8 @@ make format                       # ruff format
 make check                        # lint + test
 
 make live                         # check, then put this checkout live on this Mac and wait
+make i18n                         # find marked lines, merge into the catalogs, compile
+make prompt                       # the system prompt the running brain gives its model now
 make rollback                     # the release before (TO=name for another)
 make releases                     # what is kept; ● is live
 ```
@@ -87,6 +102,8 @@ model — and are excluded by default.
 | What the model can call: recall, delegate, remind | `packages/heare-brain/heare/tools/` |
 | Profile, journal, recall, memory CLI | `packages/heare-memory/heare/memory/` |
 | The plan | `docs/product/README.md`; what we do now: `docs/product/clock.md`; memory and activity: `docs/product/memory.md` |
+| Language: the catalog, the page words, the Mac's | `packages/heare-core/heare/core/i18n.py`, `packages/heare-core/heare/words.py`, `apps/mac/Sources/heare/Words.swift`; `docs/product/language.md` |
+| What the voice knows of its body | `packages/heare-brain/heare/prompt/body.py`; `docs/product/voice-context.md` |
 | The laws | `packages/heare-core/heare/laws.py`, `docs/laws.md` |
 
 ## WRITING CODE

@@ -48,12 +48,12 @@ final class MenuBarFace {
     private func draw() {
         guard let look else { return }
         button?.image = Self.image(look, frame: frame)
-        button?.setAccessibilityLabel(Self.said[look])
+        button?.setAccessibilityLabel(Self.said[look].map { tr($0) })
     }
 
     private static let said: [Look: String] = [
-        .idle: "heare: чекає", .hearing: "heare: слухає", .thinking: "heare: думає",
-        .speaking: "heare: говорить", .off: "heare: вимкнено",
+        .idle: "heare: waiting", .hearing: "heare: listening", .thinking: "heare: thinking",
+        .speaking: "heare: speaking", .off: "heare: off",
     ]
 
     // The mouth's bar heights, frame by frame (design system: menubar-speaking-1…4).

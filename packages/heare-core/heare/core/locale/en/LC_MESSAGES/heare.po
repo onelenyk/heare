@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 19:14+0200\n"
+"POT-Creation-Date: 2026-10-27 19:20+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -13,6 +13,184 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "Body · the brain is elsewhere"
+msgstr ""
+
+#, python-brace-format
+msgid "Body · the brain: {url}"
+msgstr ""
+
+msgid "The brain is waking up…"
+msgstr ""
+
+#, python-brace-format
+msgid "heare {v} is out — update…"
+msgstr ""
+
+msgid "Open heare"
+msgstr ""
+
+msgid "Parts"
+msgstr ""
+
+msgid "the keeper has not answered yet"
+msgstr ""
+
+msgid "Settings…"
+msgstr ""
+
+msgid "Start at login"
+msgstr ""
+
+msgid "About heare"
+msgstr ""
+
+msgid "Remove heare…"
+msgstr ""
+
+msgid "Quit"
+msgstr ""
+
+msgid "Check for updates…"
+msgstr ""
+
+msgid "Hide heare"
+msgstr ""
+
+msgid "Hide others"
+msgstr ""
+
+msgid "Show all"
+msgstr ""
+
+msgid "Quit heare"
+msgstr ""
+
+msgid "Edit"
+msgstr ""
+
+msgid "Undo"
+msgstr ""
+
+msgid "Redo"
+msgstr ""
+
+msgid "Cut"
+msgstr ""
+
+msgid "Copy"
+msgstr ""
+
+msgid "Paste"
+msgstr ""
+
+msgid "Select all"
+msgstr ""
+
+msgid "Window"
+msgstr ""
+
+msgid "Minimize"
+msgstr ""
+
+msgid "Close"
+msgstr ""
+
+msgid "heare console"
+msgstr ""
+
+msgid "Help"
+msgstr ""
+
+msgid "Guide"
+msgstr ""
+
+msgid "Report a problem…"
+msgstr ""
+
+msgid "Open the data folder"
+msgstr ""
+
+msgid "Open the logs"
+msgstr ""
+
+msgid "A voice assistant for the Mac."
+msgstr ""
+
+msgid "the keys are removed"
+msgstr ""
+
+msgid "the keys could not be removed"
+msgstr ""
+
+msgid "starting with the Mac is off"
+msgstr ""
+
+#, python-brace-format
+msgid "the memory stays in {path}"
+msgstr ""
+
+#, python-brace-format
+msgid "the agent's files stay in {path}"
+msgstr ""
+
+#, python-brace-format
+msgid "in the Trash: {path}"
+msgstr ""
+
+#, python-brace-format
+msgid "could not remove {path}: {why}"
+msgstr ""
+
+msgid "Remove heare?"
+msgstr ""
+
+msgid "heare stops, the model keys leave Keychain, and the app goes to the Trash."
+msgstr ""
+
+msgid "«Keep the memory» — conversations, facts, settings and backups stay in ~/.heare: if you install heare again, it picks them up. «Erase all» — the memory goes to the Trash too."
+msgstr ""
+
+msgid "The files the agent made (~/heare-work) stay."
+msgstr ""
+
+msgid "Keep the memory"
+msgstr ""
+
+msgid "Erase all"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "the update is not where the brain was to put it"
+msgstr ""
+
+#, python-brace-format
+msgid "the folder {path} is not writable — install the new version from the dmg by hand"
+msgstr ""
+
+msgid "could not open the dmg"
+msgstr ""
+
+msgid "could not copy the new version"
+msgstr ""
+
+msgid "the dmg holds another version than the release"
+msgstr ""
+
+msgid "the new version's signature does not match"
+msgstr ""
+
+msgid "heare is waking up…"
+msgstr ""
+
+msgid "heare — settings"
+msgstr ""
+
+msgid "heare is still running — first «Quit» in its menu"
+msgstr ""
 
 #, python-brace-format
 msgid "the brain is at {url}"
@@ -580,9 +758,6 @@ msgstr ""
 msgid "no settled facts yet."
 msgstr ""
 
-msgid "Cancel"
-msgstr ""
-
 msgid "Reminders"
 msgstr ""
 
@@ -807,9 +982,6 @@ msgstr ""
 msgid "{name} is saved. It counts from the next reply."
 msgstr ""
 
-msgid "Copy"
-msgstr ""
-
 msgid "wait a couple of seconds and try again"
 msgstr ""
 
@@ -913,9 +1085,6 @@ msgid "■ Stop"
 msgstr ""
 
 msgid "Stop everything?"
-msgstr ""
-
-msgid "Parts"
 msgstr ""
 
 msgid "the brain's registry"
@@ -1481,9 +1650,6 @@ msgstr ""
 msgid "the voice listens to you"
 msgstr ""
 
-msgid "Start at login"
-msgstr ""
-
 msgid "heare comes up with the computer"
 msgstr ""
 
@@ -1500,9 +1666,6 @@ msgid " — your own domain, a phone from anywhere: soon"
 msgstr ""
 
 msgid "done — the parts connect to the brain"
-msgstr ""
-
-msgid "Open heare"
 msgstr ""
 
 msgid "Start using it"
@@ -1697,6 +1860,16 @@ msgstr ""
 
 #, python-brace-format
 msgid "  … {n} more lines"
+msgstr ""
+
+#, python-brace-format
+msgid "virtual board {name}"
+msgstr ""
+
+msgid "a virtual board's name; several are fine"
+msgstr ""
+
+msgid "a board that also has a temperature sensor"
 msgstr ""
 
 msgid "sources: looking at what is outside"

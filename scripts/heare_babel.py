@@ -62,3 +62,11 @@ def page(fileobj: IO[bytes], keywords: object, comment_tags: object,
     markup.feed(text.split("<script>", 1)[0])
     for at, key in markup.found:
         yield at, "gettext", key, []
+
+
+def swift(fileobj: IO[bytes], keywords: object, comment_tags: object,
+          options: object) -> Iterator[tuple[int, str, object, list[str]]]:
+    """tr("…") in the Mac shell (apps/mac, Words.swift)."""
+    text = fileobj.read().decode("utf-8")
+    for m in TR.finditer(text):
+        yield text.count("\n", 0, m.start()) + 1, "gettext", _unquote(m.group(1)), []

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 19:14+0200\n"
+"POT-Creation-Date: 2026-10-27 19:20+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -13,6 +13,184 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "Body · the brain is elsewhere"
+msgstr "Тіло · мозок деінде"
+
+#, python-brace-format
+msgid "Body · the brain: {url}"
+msgstr "Тіло · мозок: {url}"
+
+msgid "The brain is waking up…"
+msgstr "Мозок прокидається…"
+
+#, python-brace-format
+msgid "heare {v} is out — update…"
+msgstr "Є heare {v} — оновити…"
+
+msgid "Open heare"
+msgstr "Відкрити heare"
+
+msgid "Parts"
+msgstr "Частини"
+
+msgid "the keeper has not answered yet"
+msgstr "наглядач ще не відповів"
+
+msgid "Settings…"
+msgstr "Налаштування…"
+
+msgid "Start at login"
+msgstr "Запускати при вході"
+
+msgid "About heare"
+msgstr "Про heare"
+
+msgid "Remove heare…"
+msgstr "Видалити heare…"
+
+msgid "Quit"
+msgstr "Вийти"
+
+msgid "Check for updates…"
+msgstr "Перевірити оновлення…"
+
+msgid "Hide heare"
+msgstr "Сховати heare"
+
+msgid "Hide others"
+msgstr "Сховати інші"
+
+msgid "Show all"
+msgstr "Показати всі"
+
+msgid "Quit heare"
+msgstr "Вийти з heare"
+
+msgid "Edit"
+msgstr "Правка"
+
+msgid "Undo"
+msgstr "Скасувати"
+
+msgid "Redo"
+msgstr "Повторити"
+
+msgid "Cut"
+msgstr "Вирізати"
+
+msgid "Copy"
+msgstr "Копіювати"
+
+msgid "Paste"
+msgstr "Вставити"
+
+msgid "Select all"
+msgstr "Виділити все"
+
+msgid "Window"
+msgstr "Вікно"
+
+msgid "Minimize"
+msgstr "Згорнути"
+
+msgid "Close"
+msgstr "Закрити"
+
+msgid "heare console"
+msgstr "Пульт heare"
+
+msgid "Help"
+msgstr "Довідка"
+
+msgid "Guide"
+msgstr "Посібник"
+
+msgid "Report a problem…"
+msgstr "Повідомити про проблему…"
+
+msgid "Open the data folder"
+msgstr "Відкрити теку даних"
+
+msgid "Open the logs"
+msgstr "Відкрити журнали"
+
+msgid "A voice assistant for the Mac."
+msgstr "Голосовий помічник для мака."
+
+msgid "the keys are removed"
+msgstr "ключі прибрано"
+
+msgid "the keys could not be removed"
+msgstr "ключі прибрати не вдалося"
+
+msgid "starting with the Mac is off"
+msgstr "старт із маком вимкнено"
+
+#, python-brace-format
+msgid "the memory stays in {path}"
+msgstr "памʼять лишилась у {path}"
+
+#, python-brace-format
+msgid "the agent's files stay in {path}"
+msgstr "файли агента лишились у {path}"
+
+#, python-brace-format
+msgid "in the Trash: {path}"
+msgstr "у Кошику: {path}"
+
+#, python-brace-format
+msgid "could not remove {path}: {why}"
+msgstr "не вдалося прибрати {path}: {why}"
+
+msgid "Remove heare?"
+msgstr "Видалити heare?"
+
+msgid "heare stops, the model keys leave Keychain, and the app goes to the Trash."
+msgstr "heare зупиниться, ключі моделей зникнуть із Keychain, а застосунок піде в Кошик."
+
+msgid "«Keep the memory» — conversations, facts, settings and backups stay in ~/.heare: if you install heare again, it picks them up. «Erase all» — the memory goes to the Trash too."
+msgstr "«Залишити памʼять» — розмови, факти, налаштування й копії лишаться в ~/.heare: якщо поставиш heare знову, він їх підхопить. «Стерти все» — і памʼять теж у Кошик."
+
+msgid "The files the agent made (~/heare-work) stay."
+msgstr "Файли, які робив агент (~/heare-work), лишаються."
+
+msgid "Keep the memory"
+msgstr "Залишити памʼять"
+
+msgid "Erase all"
+msgstr "Стерти все"
+
+msgid "Cancel"
+msgstr "Скасувати"
+
+msgid "the update is not where the brain was to put it"
+msgstr "оновлення не там, де мозок мав його покласти"
+
+#, python-brace-format
+msgid "the folder {path} is not writable — install the new version from the dmg by hand"
+msgstr "тека {path} не записувана — постав нову версію з dmg вручну"
+
+msgid "could not open the dmg"
+msgstr "не вдалося відкрити dmg"
+
+msgid "could not copy the new version"
+msgstr "не вдалося скопіювати нову версію"
+
+msgid "the dmg holds another version than the release"
+msgstr "у dmg не та версія, що в релізі"
+
+msgid "the new version's signature does not match"
+msgstr "підпис нової версії не сходиться"
+
+msgid "heare is waking up…"
+msgstr "heare прокидається…"
+
+msgid "heare — settings"
+msgstr "heare — налаштування"
+
+msgid "heare is still running — first «Quit» in its menu"
+msgstr "heare ще працює — спершу «Вийти» в його меню"
 
 #, python-brace-format
 msgid "the brain is at {url}"
@@ -580,9 +758,6 @@ msgstr "Сталі факти"
 msgid "no settled facts yet."
 msgstr "сталих фактів ще немає."
 
-msgid "Cancel"
-msgstr "Скасувати"
-
 msgid "Reminders"
 msgstr "Нагадування"
 
@@ -807,9 +982,6 @@ msgstr "Не збережено: {why}"
 msgid "{name} is saved. It counts from the next reply."
 msgstr "{name} збережено. Діє з наступної відповіді."
 
-msgid "Copy"
-msgstr "Копіювати"
-
 msgid "wait a couple of seconds and try again"
 msgstr "зачекай пару секунд і спробуй ще раз"
 
@@ -919,9 +1091,6 @@ msgstr "■ Стоп"
 
 msgid "Stop everything?"
 msgstr "Зупинити все?"
-
-msgid "Parts"
-msgstr "Частини"
 
 msgid "the brain's registry"
 msgstr "реєстр мозку"
@@ -1486,9 +1655,6 @@ msgstr "Мікрофон"
 msgid "the voice listens to you"
 msgstr "голос слухає тебе"
 
-msgid "Start at login"
-msgstr "Запускати при вході"
-
 msgid "heare comes up with the computer"
 msgstr "heare піднімається разом з комп'ютером"
 
@@ -1506,9 +1672,6 @@ msgstr " — свій домен, телефон звідусіль: скоро"
 
 msgid "done — the parts connect to the brain"
 msgstr "готово — частини підключаються до мозку"
-
-msgid "Open heare"
-msgstr "Відкрити heare"
 
 msgid "Start using it"
 msgstr "Почати користуватись"
@@ -1703,6 +1866,16 @@ msgstr "■ зупинено"
 #, python-brace-format
 msgid "  … {n} more lines"
 msgstr "  … ще {n} рядків"
+
+#, python-brace-format
+msgid "virtual board {name}"
+msgstr "віртуальна плата {name}"
+
+msgid "a virtual board's name; several are fine"
+msgstr "ім'я віртуальної плати; можна кілька"
+
+msgid "a board that also has a temperature sensor"
+msgstr "плата, що має ще й датчик температури"
 
 msgid "sources: looking at what is outside"
 msgstr "джерела: дивлюсь, що надворі"

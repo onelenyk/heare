@@ -15,10 +15,10 @@ enum Uninstall {
     @discardableResult
     static func run(keep: Keep) -> [String] {
         var said: [String] = []
-        said.append(forgetKeys() ? "ключі прибрано" : "ключі прибрати не вдалося")
+        said.append(forgetKeys() ? tr("the keys are removed") : tr("the keys could not be removed"))
         if Login.on {
             Login.set(false)
-            said.append("старт із маком вимкнено")
+            said.append(tr("starting with the Mac is off"))
         }
         let home = Config.heare
         if FileManager.default.fileExists(atPath: home.path) {
@@ -31,14 +31,14 @@ enum Uninstall {
                 for item in inside where !kept.contains(item.lastPathComponent) {
                     said.append(trash(item))
                 }
-                said.append("памʼять лишилась у \(home.path)")
+                said.append(tr("the memory stays in {path}", ["path": home.path]))
             }
         }
         let app = Bundle.main.bundleURL
         if app.pathExtension == "app" { said.append(trash(app)) }
         let work = Config.home.appendingPathComponent("heare-work")
         if FileManager.default.fileExists(atPath: work.path) {
-            said.append("файли агента лишились у \(work.path)")
+            said.append(tr("the agent's files stay in {path}", ["path": work.path]))
         }
         return said
     }
@@ -77,9 +77,9 @@ enum Uninstall {
             } else {
                 try files.trashItem(at: url, resultingItemURL: nil)
             }
-            return "у Кошику: \(url.path)"
+            return tr("in the Trash: {path}", ["path": url.path])
         } catch {
-            return "не вдалося прибрати \(url.path): \(error.localizedDescription)"
+            return tr("could not remove {path}: {why}", ["path": url.path, "why": error.localizedDescription])
         }
     }
 
@@ -87,20 +87,16 @@ enum Uninstall {
     static func ask() -> Keep? {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Видалити heare?"
-        alert.informativeText = """
-            heare зупиниться, ключі моделей зникнуть із Keychain, а застосунок піде в Кошик.
-
-            «Залишити памʼять» — розмови, факти, налаштування й копії лишаться в ~/.heare: \
-            якщо поставиш heare знову, він їх підхопить.
-            «Стерти все» — і памʼять теж у Кошик.
-
-            Файли, які робив агент (~/heare-work), лишаються.
-            """
+        alert.messageText = tr("Remove heare?")
+        alert.informativeText = [
+            tr("heare stops, the model keys leave Keychain, and the app goes to the Trash."),
+            tr("«Keep the memory» — conversations, facts, settings and backups stay in ~/.heare: if you install heare again, it picks them up. «Erase all» — the memory goes to the Trash too."),
+            tr("The files the agent made (~/heare-work) stay."),
+        ].joined(separator: "\n\n")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Залишити памʼять")
-        alert.addButton(withTitle: "Стерти все")
-        alert.addButton(withTitle: "Скасувати")
+        alert.addButton(withTitle: tr("Keep the memory"))
+        alert.addButton(withTitle: tr("Erase all"))
+        alert.addButton(withTitle: tr("Cancel"))
         switch alert.runModal() {
         case .alertFirstButtonReturn: return .memory
         case .alertSecondButtonReturn: return .nothing

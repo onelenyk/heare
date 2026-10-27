@@ -60,7 +60,7 @@ class PageWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelega
                  withError error: Error) {
         guard let target, tries < 60 else { return }
         tries += 1
-        if tries == 1 { waiting("heare прокидається…") }
+        if tries == 1 { waiting(tr("heare is waking up…")) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.web.load(URLRequest(url: target))
         }
@@ -156,7 +156,7 @@ final class InstallerWindow: PageWindow, WKScriptMessageHandler {
     init() {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = controller
-        super.init(title: "heare — налаштування", size: NSSize(width: 640, height: 760),
+        super.init(title: tr("heare — settings"), size: NSSize(width: 640, height: 760),
                    remembered: "heare.settings", configuration: configuration)
         controller.add(self, name: "heare")
     }
@@ -221,7 +221,7 @@ final class HeareWindow: PageWindow {
         if web.url?.host == "127.0.0.1" && web.url?.port == config.apiPort { return }
         guard !pairing else { return }
         pairing = true
-        waiting("heare прокидається…")
+        waiting(tr("heare is waking up…"))
         withKey(config, tries: 0) { [weak self] in
             self?.pairing = false
             self?.load(config.brainBase)

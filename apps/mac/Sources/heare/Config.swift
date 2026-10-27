@@ -12,6 +12,8 @@ struct Config {
     var apiPort = 9790
     var setupPort = 9791
     var url = ""
+    /// What the person hears and sees: uk or en, as config.py says.
+    var language = "uk"
     var apiTokenFile: String
 
     /// $HOME first, as Python's Path.home() does: the shell and its
@@ -52,6 +54,7 @@ struct Config {
             case "api_port": config.apiPort = Int(value) ?? config.apiPort
             case "setup_port": config.setupPort = Int(value) ?? config.setupPort
             case "url": config.url = string(value) ?? config.url
+            case "language": config.language = string(value) ?? config.language
             case "api_token_file":
                 if let path = string(value) { config.apiTokenFile = (path as NSString).expandingTildeInPath }
             default: continue

@@ -120,18 +120,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                    body: ["why": why], headers: ["X-Heare-Token": token]) { _ in }
     }
 
-    private static let phases = ["idle": "чекає", "hearing": "слухає",
-                                 "thinking": "думає", "speaking": "говорить"]
+    private static let phases = ["idle": "waiting", "hearing": "listening",
+                                 "thinking": "thinking", "speaking": "speaking"]
 
     private func status() -> String {
         if !config.brainHere {
-            return config.url.isEmpty ? "Тіло · мозок деінде" : "Тіло · мозок: \(config.url)"
+            return config.url.isEmpty ? tr("Body · the brain is elsewhere") : tr("Body · the brain: {url}", ["url": config.url])
         }
-        guard let state else { return "Мозок прокидається…" }
+        guard let state else { return tr("The brain is waking up…") }
         let model = state["model"] as? [String: Any]
         let name = (model?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "heare"
         let phase = state["phase"] as? String ?? ""
-        return "\(name) · \(Self.phases[phase] ?? phase)"
+        return "\(name) · \(tr(Self.phases[phase] ?? phase))"
     }
 
     // MARK: - the menu
@@ -145,43 +145,43 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(line)
         if let update = state?["update"] as? [String: Any], update["state"] as? String == "available",
            let latest = update["latest"] as? String {
-            menu.addItem(action("Є heare \(latest) — оновити…", #selector(openHeare), key: ""))
+            menu.addItem(action(tr("heare {v} is out — update…", ["v": latest]), #selector(openHeare), key: ""))
         }
         menu.addItem(.separator())
-        menu.addItem(action("Відкрити heare", #selector(openHeare), key: "o"))
+        menu.addItem(action(tr("Open heare"), #selector(openHeare), key: "o"))
 
-        let parts = NSMenuItem(title: "Частини", action: nil, keyEquivalent: "")
+        let parts = NSMenuItem(title: tr("Parts"), action: nil, keyEquivalent: "")
         let list = NSMenu()
         let known = machine?["parts"] as? [[String: Any]] ?? []
         if known.isEmpty {
-            let none = NSMenuItem(title: "наглядач ще не відповів", action: nil, keyEquivalent: "")
+            let none = NSMenuItem(title: tr("the keeper has not answered yet"), action: nil, keyEquivalent: "")
             none.isEnabled = false
             list.addItem(none)
         }
         for part in known {
             guard let name = part["name"] as? String else { continue }
-            let label = part["label"] as? String ?? name
+            let label = tr(part["label"] as? String ?? name)
             let why = part["why_not"] as? String
             let entry = NSMenuItem(title: why.map { "\(label) — \($0)" } ?? label,
                                    action: why == nil ? #selector(toggle(_:)) : nil, keyEquivalent: "")
             entry.target = self
             entry.representedObject = part
             entry.state = part["on"] as? Bool == true ? .on : .off
-            entry.toolTip = part["what"] as? String
+            entry.toolTip = (part["what"] as? String).map { tr($0) }
             entry.isEnabled = why == nil
             list.addItem(entry)
         }
         parts.submenu = list
         menu.addItem(parts)
         menu.addItem(.separator())
-        menu.addItem(action("Налаштування…", #selector(openSettings), key: ","))
-        let login = action("Запускати при вході", #selector(toggleLogin), key: "")
+        menu.addItem(action(tr("Settings…"), #selector(openSettings), key: ","))
+        let login = action(tr("Start at login"), #selector(toggleLogin), key: "")
         login.state = Login.on ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
-        menu.addItem(action("Про heare", #selector(about), key: ""))
-        menu.addItem(action("Видалити heare…", #selector(uninstall), key: ""))
-        menu.addItem(action("Вийти", #selector(quit), key: "q"))
+        menu.addItem(action(tr("About heare"), #selector(about), key: ""))
+        menu.addItem(action(tr("Remove heare…"), #selector(uninstall), key: ""))
+        menu.addItem(action(tr("Quit"), #selector(quit), key: "q"))
     }
 
     private func action(_ title: String, _ selector: Selector, key: String) -> NSMenuItem {
@@ -284,39 +284,39 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         _ = submenu("heare", [
-            action("Про heare", #selector(about), key: ""),
-            action("Перевірити оновлення…", #selector(checkForUpdates), key: ""),
+            action(tr("About heare"), #selector(about), key: ""),
+            action(tr("Check for updates…"), #selector(checkForUpdates), key: ""),
             .separator(),
-            action("Налаштування…", #selector(openSettings), key: ","),
+            action(tr("Settings…"), #selector(openSettings), key: ","),
             .separator(),
-            plain("Сховати heare", #selector(NSApplication.hide(_:)), "h"),
-            plain("Сховати інші", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
-            plain("Показати всі", #selector(NSApplication.unhideAllApplications(_:)), ""),
+            plain(tr("Hide heare"), #selector(NSApplication.hide(_:)), "h"),
+            plain(tr("Hide others"), #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+            plain(tr("Show all"), #selector(NSApplication.unhideAllApplications(_:)), ""),
             .separator(),
-            action("Вийти з heare", #selector(quit), key: "q"),
+            action(tr("Quit heare"), #selector(quit), key: "q"),
         ])
-        _ = submenu("Правка", [
-            plain("Скасувати", Selector(("undo:")), "z"),
-            plain("Повторити", Selector(("redo:")), "Z"),
+        _ = submenu(tr("Edit"), [
+            plain(tr("Undo"), Selector(("undo:")), "z"),
+            plain(tr("Redo"), Selector(("redo:")), "Z"),
             .separator(),
-            plain("Вирізати", #selector(NSText.cut(_:)), "x"),
-            plain("Копіювати", #selector(NSText.copy(_:)), "c"),
-            plain("Вставити", #selector(NSText.paste(_:)), "v"),
-            plain("Виділити все", #selector(NSText.selectAll(_:)), "a"),
+            plain(tr("Cut"), #selector(NSText.cut(_:)), "x"),
+            plain(tr("Copy"), #selector(NSText.copy(_:)), "c"),
+            plain(tr("Paste"), #selector(NSText.paste(_:)), "v"),
+            plain(tr("Select all"), #selector(NSText.selectAll(_:)), "a"),
         ])
-        let window = submenu("Вікно", [
-            plain("Згорнути", #selector(NSWindow.performMiniaturize(_:)), "m"),
-            plain("Закрити", #selector(NSWindow.performClose(_:)), "w"),
+        let window = submenu(tr("Window"), [
+            plain(tr("Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m"),
+            plain(tr("Close"), #selector(NSWindow.performClose(_:)), "w"),
             .separator(),
-            action("Пульт heare", #selector(openHeare), key: "0"),
+            action(tr("heare console"), #selector(openHeare), key: "0"),
         ])
         NSApp.windowsMenu = window
-        let help = submenu("Довідка", [
-            action("Посібник", #selector(openGuide), key: ""),
-            action("Повідомити про проблему…", #selector(reportProblem), key: ""),
+        let help = submenu(tr("Help"), [
+            action(tr("Guide"), #selector(openGuide), key: ""),
+            action(tr("Report a problem…"), #selector(reportProblem), key: ""),
             .separator(),
-            action("Відкрити теку даних", #selector(openData), key: ""),
-            action("Відкрити журнали", #selector(openLogs), key: ""),
+            action(tr("Open the data folder"), #selector(openData), key: ""),
+            action(tr("Open the logs"), #selector(openLogs), key: ""),
         ])
         NSApp.helpMenu = help
         return main
@@ -329,7 +329,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func about() {
         NSApp.activate(ignoringOtherApps: true)
         let text = NSMutableAttributedString(
-            string: "Голосовий помічник для мака.\n\nPolyForm Shield 1.0.0\n",
+            string: tr("A voice assistant for the Mac.") + "\n\nPolyForm Shield 1.0.0\n",
             attributes: [.font: NSFont.systemFont(ofSize: 11),
                          .foregroundColor: NSColor.secondaryLabelColor])
         text.append(NSAttributedString(string: "github.com/onelenyk/heare", attributes: [

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 from heare import layout, logs, part
 from heare.config import Settings
+from heare.core.i18n import _
 
 HOST = "sim"
 # The panel's own: the pins nothing on it uses.
@@ -168,7 +169,7 @@ async def live(board: Board, settings: Settings) -> int:
         await asyncio.Event().wait()
 
     return await part.live(board.knock(), work, on_event=on_event,
-                           hello=f"віртуальна плата {board.name}", settings=settings)
+                           hello=_("virtual board {name}").format(name=board.name), settings=settings)
 
 
 async def run(names: list[str], sensors: list[str], settings: Settings | None = None) -> int:
@@ -184,9 +185,9 @@ async def run(names: list[str], sensors: list[str], settings: Settings | None = 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="heare.sim")
     parser.add_argument("--board", action="append", default=[],
-                        help="ім'я віртуальної плати; можна кілька")
+                        help=_("a virtual board's name; several are fine"))
     parser.add_argument("--sensor", action="append", default=[],
-                        help="плата, що має ще й датчик температури")
+                        help=_("a board that also has a temperature sensor"))
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     logs.setup(args.verbose)
