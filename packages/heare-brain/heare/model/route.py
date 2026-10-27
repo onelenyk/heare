@@ -20,6 +20,7 @@ from collections.abc import Callable
 from typing import Any
 
 from heare.core import Executor, Task
+from heare.core.i18n import _
 from heare.model.delegate import Dispatcher
 from heare.hand import Handoff
 
@@ -99,7 +100,7 @@ class FirstHand:
         except Handoff as handoff:
             other = next((e for e in self._others() if e.name != self.name), None)
             if other is None:
-                return "Це не для швидких рук, а інших рук зараз немає."
+                return _("This is not for the quick hands, and no other hands are here.")
             # The page shows who does the work: from here on, the other hands.
             for found in self._tasks().values():
                 if (found.executor == self.name and found.status == "running"

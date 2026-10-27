@@ -110,7 +110,7 @@ async def prompt(around: Mapping[str, object] | None = None,
 
 # When to speak without being called by name. Examples in both
 # directions, because a rule alone was read as "never": the old app's
-# judge turned everything down for a month. The word МОВЧУ is the core's.
+# judge turned everything down for a month. The word SILENT is the core's.
 JUDGE = (
     "The person said the next line in the room, not addressing you by name. "
     "Decide for yourself whether it is worth saying anything.\n"
@@ -125,6 +125,6 @@ JUDGE = (
     "«Треба не забути подзвонити мамі» — offer to remind. «Так, я тобі "
     "передзвоню ввечері» — stay silent. «Ну таке» — stay silent. «Передай "
     "сіль» — stay silent.\n"
-    "If you decide to stay silent, write exactly one word: МОВЧУ. Otherwise "
+    "If you decide to stay silent, write exactly one word: SILENT. Otherwise "
     "answer as usual, briefly."
 )

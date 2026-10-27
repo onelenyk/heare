@@ -1,0 +1,117 @@
+# heare: what the person hears and sees.
+msgid ""
+msgstr ""
+"Project-Id-Version:  heare\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-27 17:37+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgid "as asked"
+msgstr ""
+
+msgid "not sure"
+msgstr ""
+
+msgid "the judge did not answer"
+msgstr ""
+
+msgid "This is not for the quick hands, and no other hands are here."
+msgstr ""
+
+msgid "Say what exactly to do."
+msgstr ""
+
+msgid "That is already under way."
+msgstr ""
+
+msgid "On it."
+msgstr ""
+
+msgid "What exactly should I recall?"
+msgstr ""
+
+msgid "What should I remind you of?"
+msgstr ""
+
+msgid "Say when to remind you."
+msgstr ""
+
+msgid "That time has passed."
+msgstr ""
+
+msgid "I do not remind that far ahead."
+msgstr ""
+
+msgid "Okay, I will remind you."
+msgstr ""
+
+msgid "Say which reminder to cancel."
+msgstr ""
+
+msgid "Cancelled."
+msgstr ""
+
+msgid "I did not find that reminder."
+msgstr ""
+
+msgid "Stopped."
+msgstr ""
+
+msgid "Nothing was running."
+msgstr ""
+
+msgid "Something went wrong — I could not answer."
+msgstr ""
+
+msgid "Okay."
+msgstr ""
+
+msgid "Okay, I won't."
+msgstr ""
+
+msgid "I do not know that action."
+msgstr ""
+
+msgid "That did not work. Try again."
+msgstr ""
+
+#, python-brace-format
+msgid "{who} wants to: {what}. I ask because {why}. Allow?"
+msgstr ""
+
+#, python-brace-format
+msgid "{who} asks leave to make changes for this work. It starts with: {what}. Allow?"
+msgstr ""
+
+#, python-brace-format
+msgid "Still waiting: {who} asks leave. Allow?"
+msgstr ""
+
+#, python-brace-format
+msgid "{who} asks: {what}"
+msgstr ""
+
+#, python-brace-format
+msgid "Several parts answer to that: {parts}. Which?"
+msgstr ""
+
+msgid "change the file"
+msgstr ""
+
+msgid "delete"
+msgstr ""
+
+msgid "move"
+msgstr ""
+
+msgid "run the command"
+msgstr ""
+

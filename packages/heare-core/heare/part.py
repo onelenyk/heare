@@ -21,6 +21,7 @@ from urllib.parse import quote
 import httpx
 
 from heare import logs
+from heare.core import i18n
 from heare.config import Settings
 from heare.core import PROTOCOL
 
@@ -196,6 +197,8 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
     restarted knows it — without the part noticing anything.
     """
     settings = settings or Settings()
+    # What this part says to the person follows the language on the page.
+    i18n.choose(lambda: str(settings.language))
     base = settings.base
     try:
         secret = settings.secret

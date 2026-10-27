@@ -11,6 +11,7 @@ import time
 from typing import Any, Awaitable, Callable
 
 from heare.core.forms import Memory, Task
+from heare.core.i18n import _
 from heare.core.state import State
 from heare.tools import delegate as delegate_tool
 from heare.tools import bodies as body_tools
@@ -96,7 +97,7 @@ class Toolbox:
         return await body_tools.read(bodies, arguments)
 
     async def _run_stop(self, arguments: dict) -> str:
-        return "Зупинив." if self._stop() else "Нічого не було запущено."
+        return _("Stopped.") if self._stop() else _("Nothing was running.")
 
     async def _run_remind(self, arguments: dict) -> str:
         return await reminder_tools.remind(

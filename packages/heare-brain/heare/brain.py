@@ -23,6 +23,7 @@ from typing import Any
 
 from heare import layout, logs
 from heare import lifeline
+from heare.core import i18n
 from heare.prompt import budget, persona
 from heare.tools.ports import Bodies
 from heare.api import backup
@@ -128,6 +129,8 @@ class Brain:
             self.facts, self.intents, self.settings,
             journal=self.journal, memory=self.memory,
         )
+        # What is said to the person follows the language chosen on the page.
+        i18n.choose(lambda: str(self.settings.language))
         # The door owns the registry and hands its reader over when it opens.
         self.bodies: Bodies | None = None
         self.core = Core(

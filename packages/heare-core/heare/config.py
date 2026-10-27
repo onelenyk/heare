@@ -88,6 +88,9 @@ DEFAULTS = {
     # Whether the brain asks once a day for a newer heare, and where.
     "update_check": True,
     "update_feed": "https://api.github.com/repos/onelenyk/heare/releases/latest",
+    # What the person hears and sees: uk or en (heare.core.i18n). What a
+    # model reads is English whatever this says.
+    "language": "uk",
 }
 
 

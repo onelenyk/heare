@@ -34,6 +34,7 @@ from heare import hand as hand_life
 from heare import layout, logs, part, pixels, talk
 from heare.config import Settings
 from heare.core.forms import Model
+from heare.core.i18n import _
 
 logger = logging.getLogger("heare.native_hands")
 
@@ -99,7 +100,7 @@ class NativeHand:
         messages: list[dict] = [{"role": "system", "content": _SYSTEM},
                                 {"role": "user", "content": task}]
         done: list[str] = []
-        for _ in range(STEPS):
+        for _step in range(STEPS):
             desk.step("думаю")
             text, calls = await self._turn(messages, schemas)
             if getattr(desk, "stopped", False):
@@ -227,7 +228,8 @@ async def _which(tool: Tool, desk: hand_life.Desk) -> str | None:
     if len(tool.parts) == 1:
         return tool.parts[0][0]
     listed = "; ".join(f"{n}) {pid}" for n, (pid, _entry) in enumerate(tool.parts, 1))
-    answer = (await desk.ask(f"Таких частин кілька: {listed}. Яку?")).strip()
+    answer = (await desk.ask(_("Several parts answer to that: {parts}. Which?").format(
+        parts=listed))).strip()
     for n, (pid, _entry) in enumerate(tool.parts, 1):
         if str(n) in re.findall(r"\d+", answer) or pid in answer:
             return pid
@@ -241,16 +243,16 @@ def _tool_name(text: str) -> str:
 
 def _turns(text: str, results: list[tuple[dict, str]]) -> list[dict]:
     """The calls and what they came to, in the protocol's own turns."""
-    ids = [call.get("id") or f"call_{index}" for index, (call, _) in enumerate(results, 1)]
+    ids = [call.get("id") or f"call_{index}" for index, (call, _said) in enumerate(results, 1)]
     calls = []
-    for call_id, (call, _) in zip(ids, results):
+    for call_id, (call, _said) in zip(ids, results):
         arguments = call.get("arguments") or {}
         if not isinstance(arguments, str):
             arguments = json.dumps(arguments, ensure_ascii=False)
         calls.append({"id": call_id, "type": "function",
                       "function": {"name": call.get("name", ""), "arguments": arguments}})
     turns: list[dict] = [{"role": "assistant", "content": text, "tool_calls": calls}]
-    for call_id, (_, said) in zip(ids, results):
+    for call_id, (_call, said) in zip(ids, results):
         turns.append({"role": "tool", "tool_call_id": call_id, "content": said})
     return turns
 

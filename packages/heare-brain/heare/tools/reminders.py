@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime
 
+from heare.core.i18n import _
 from heare.tools.ports import Reminders
 
 # A reminder is a one-off, not a schedule: it waits at most a month, and
@@ -16,13 +17,13 @@ REMIND_GRACE_S = 7 * 24 * 3600
 async def remind(store: Reminders, now: float, arguments: dict) -> str:
     text = str(arguments.get("text", "")).strip()
     if not text:
-        return "Що саме нагадати?"
+        return _("What should I remind you of?")
     at = str(arguments.get("at") or "").strip()
     if at:
         try:
             moment = datetime.fromisoformat(at)
         except ValueError:
-            return "Скажи, коли нагадати."
+            return _("Say when to remind you.")
         if moment.tzinfo is None:
             # A naive time is local wall time: mktime reads the zone rules for
             # that date, so a reminder still lands where the clock says after
@@ -31,24 +32,24 @@ async def remind(store: Reminders, now: float, arguments: dict) -> str:
         else:
             due = moment.timestamp()
         if due <= now:
-            return "Це вже минуло."
+            return _("That time has passed.")
         if due - now > REMIND_MAX_S:
-            return "Так далеко я не нагадую."
+            return _("I do not remind that far ahead.")
     else:
         try:
             seconds = int(arguments.get("in_seconds"))
         except (TypeError, ValueError):
-            return "Скажи, коли нагадати."
+            return _("Say when to remind you.")
         if seconds <= 0:
-            return "Це вже минуло."
+            return _("That time has passed.")
         if seconds > REMIND_MAX_S:
-            return "Так далеко я не нагадую."
+            return _("I do not remind that far ahead.")
         due = now + seconds
     store.hold(
         what=text[:200], why="reminder", weight=3, about="reminder",
         not_before=due, until=due + REMIND_GRACE_S,
     )
-    return "Добре, нагадаю."
+    return _("Okay, I will remind you.")
 
 
 async def listed(store: Reminders, now: float) -> str:
@@ -77,7 +78,7 @@ async def cancel(store: Reminders, arguments: dict) -> str:
     try:
         intent_id = int(arguments.get("id"))
     except (TypeError, ValueError):
-        return "Скажи, яке нагадування скасувати."
+        return _("Say which reminder to cancel.")
     if store.cancel(intent_id):
-        return "Скасував."
-    return "Не знайшов такого нагадування."
+        return _("Cancelled.")
+    return _("I did not find that reminder.")

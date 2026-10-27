@@ -26,6 +26,7 @@ from typing import Any
 
 from heare.reach import runner
 from heare.core import Desk
+from heare.core.i18n import N_, _
 from heare.reach import acp
 from heare.reach.life import guarded
 
@@ -41,8 +42,8 @@ _READING = frozenset({"read", "search", "think", "fetch"})
 # A request, as a person would say it. An agent's own title is often
 # just a path or a command line.
 _DOING = {
-    "edit": "змінити файл", "delete": "видалити", "move": "перемістити",
-    "execute": "виконати команду",
+    "edit": N_("change the file"), "delete": N_("delete"), "move": N_("move"),
+    "execute": N_("run the command"),
 }
 
 
@@ -55,7 +56,7 @@ def _what(request: dict) -> str:
     target = str(target)
     if "/" in target and " " not in target:
         target = Path(target).name  # the name is enough to say; the screen has the rest
-    doing = _DOING.get(call.get("kind") or "", "зробити")
+    doing = _(_DOING.get(call.get("kind") or "", N_("do")))
     return f"{doing} {target}".strip()
 
 

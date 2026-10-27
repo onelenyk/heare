@@ -127,7 +127,7 @@ async def test_a_recall_cue_finds_what_was_said_before_the_restart(
         await rig.say("Що я казав про колір?")
 
         system = rig.model.asked[0][0]["content"]
-        assert "[знайдене в памʼяті" in system
+        assert "[found in memory" in system
         assert "синій" in system
         assert "Ти казав, що синій." in rig.page.said[-1]
     finally:

@@ -87,7 +87,9 @@ def _normalize_source(source: str) -> str:
 # an instruction addressed to the model. Filtered out of search by their
 # first word rather than imported from `hands`, which drags the sixty-
 # tool surface into a module that deliberately imports almost nothing.
-WORKER_RESULT_MARK = "[результат роботи]"
+WORKER_RESULT_MARK = "[work result]"
+# The mark before 27 October 2026; old rows still carry it.
+OLD_RESULT_MARK = "[результат роботи]"
 
 # How much a mention in the last month outranks an older one of equal
 # textual quality. bm25 alone answers «що я казав про таймаут» with
@@ -246,8 +248,8 @@ class SpinePersistence:
             where.append("(t.source IS NULL OR t.source != ?)")
             params.append(OVERHEARD)
 
-        where.append("t.text NOT LIKE ?")
-        params.append(f"{WORKER_RESULT_MARK}%")
+        where.append("t.text NOT LIKE ? AND t.text NOT LIKE ?")
+        params += [f"{WORKER_RESULT_MARK}%", f"{OLD_RESULT_MARK}%"]
 
         if since is not None:
             where.append("t.ts >= ?")
@@ -305,8 +307,8 @@ class SpinePersistence:
                 cur = self._conn.execute(
                     "SELECT ts, text FROM transcripts "
                     "WHERE agent_spoken = 1 AND ts > ? AND ts <= ? "
-                    "AND text NOT LIKE ? ORDER BY ts LIMIT 1",
-                    (ts, ts + within_s, f"{WORKER_RESULT_MARK}%"),
+                    "AND text NOT LIKE ? AND text NOT LIKE ? ORDER BY ts LIMIT 1",
+                    (ts, ts + within_s, f"{WORKER_RESULT_MARK}%", f"{OLD_RESULT_MARK}%"),
                 )
                 row = cur.fetchone()
         except Exception:  # noqa: BLE001

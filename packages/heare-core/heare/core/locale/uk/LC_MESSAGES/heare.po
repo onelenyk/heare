@@ -1,0 +1,117 @@
+# heare: what the person hears and sees.
+msgid ""
+msgstr ""
+"Project-Id-Version:  heare\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-27 17:37+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: uk\n"
+"Language-Team: uk <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgid "as asked"
+msgstr "як просили"
+
+msgid "not sure"
+msgstr "не впевнений"
+
+msgid "the judge did not answer"
+msgstr "суддя не відповів"
+
+msgid "This is not for the quick hands, and no other hands are here."
+msgstr "Це не для швидких рук, а інших рук зараз немає."
+
+msgid "Say what exactly to do."
+msgstr "Скажи, що саме зробити."
+
+msgid "That is already under way."
+msgstr "Це вже в роботі."
+
+msgid "On it."
+msgstr "Беру."
+
+msgid "What exactly should I recall?"
+msgstr "Що саме згадати?"
+
+msgid "What should I remind you of?"
+msgstr "Що саме нагадати?"
+
+msgid "Say when to remind you."
+msgstr "Скажи, коли нагадати."
+
+msgid "That time has passed."
+msgstr "Це вже минуло."
+
+msgid "I do not remind that far ahead."
+msgstr "Так далеко я не нагадую."
+
+msgid "Okay, I will remind you."
+msgstr "Добре, нагадаю."
+
+msgid "Say which reminder to cancel."
+msgstr "Скажи, яке нагадування скасувати."
+
+msgid "Cancelled."
+msgstr "Скасував."
+
+msgid "I did not find that reminder."
+msgstr "Не знайшов такого нагадування."
+
+msgid "Stopped."
+msgstr "Зупинив."
+
+msgid "Nothing was running."
+msgstr "Нічого не було запущено."
+
+msgid "Something went wrong — I could not answer."
+msgstr "Щось пішло не так — не зміг відповісти."
+
+msgid "Okay."
+msgstr "Добре."
+
+msgid "Okay, I won't."
+msgstr "Добре, не буду."
+
+msgid "I do not know that action."
+msgstr "Такої дії я не знаю."
+
+msgid "That did not work. Try again."
+msgstr "Не вийшло. Спробуй ще раз."
+
+#, python-brace-format
+msgid "{who} wants to: {what}. I ask because {why}. Allow?"
+msgstr "{who} хоче: {what}. Питаю, бо {why}. Дозволяєш?"
+
+#, python-brace-format
+msgid "{who} asks leave to make changes for this work. It starts with: {what}. Allow?"
+msgstr "{who} просить дозволу на зміни для цієї справи. Почне з: {what}. Дозволяєш?"
+
+#, python-brace-format
+msgid "Still waiting: {who} asks leave. Allow?"
+msgstr "Ще чекаю: {who} просить дозволу. Дозволяєш?"
+
+#, python-brace-format
+msgid "{who} asks: {what}"
+msgstr "{who} питає: {what}"
+
+#, python-brace-format
+msgid "Several parts answer to that: {parts}. Which?"
+msgstr "Таких частин кілька: {parts}. Яку?"
+
+msgid "change the file"
+msgstr "змінити файл"
+
+msgid "delete"
+msgstr "видалити"
+
+msgid "move"
+msgstr "перемістити"
+
+msgid "run the command"
+msgstr "виконати команду"
+

@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test bench eval-route panel-preview panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist prompt
+.PHONY: help brain chat voice keeper test bench eval-route panel-preview panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist prompt i18n i18n-check
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -83,7 +83,7 @@ lint:
 format:
 	uv run ruff format packages/ tests/ firmware/
 
-check: lint test panel-test
+check: lint test panel-test i18n-check
 
 quality: check coverage typecheck
 
@@ -114,6 +114,21 @@ live: check
 # Install, update and uninstall in a sandbox beside the live heare (dist/e2e).
 e2e-dist:
 	uv run --no-project python scripts/e2e_dist.py
+
+# The person's lines: find what is marked with _(), merge into each
+# language's catalog, compile. i18n-check fails when a uk line is missing.
+LOCALE := packages/heare-core/heare/core/locale
+i18n:
+	uv run pybabel extract -F babel.cfg -o $(LOCALE)/heare.pot --no-location --no-wrap --omit-header -k _ -k N_ .
+	@for l in uk en; do \
+	  if [ -f $(LOCALE)/$$l/LC_MESSAGES/heare.po ]; then \
+	    uv run pybabel update -i $(LOCALE)/heare.pot -d $(LOCALE) -D heare -l $$l --no-fuzzy-matching --no-wrap; \
+	  else uv run pybabel init -i $(LOCALE)/heare.pot -d $(LOCALE) -D heare -l $$l --no-wrap; fi; \
+	done
+	uv run pybabel compile -d $(LOCALE) -D heare
+
+i18n-check:
+	uv run --no-project python scripts/i18n_check.py $(LOCALE)
 
 # What the model reads every turn, from the brain that is running here.
 prompt:

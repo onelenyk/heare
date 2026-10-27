@@ -11,6 +11,7 @@ import asyncio
 import time
 
 from heare.core import FAILURE_LINE, RESULT_PREFIX, Core, Message
+from heare.core.i18n import _ as said_as
 from heare.core.conversation import HISTORY_TURNS
 from heare.language import uk
 from heare.memory.book import Book
@@ -49,8 +50,8 @@ async def test_a_model_that_falls_over_still_ends_in_words():
     room.model.will_say(Says("Зараз", fails=True), "Працюю.")
     room.says("Привіт")
     await room.settled()
-    assert room.page.said[-1] == FAILURE_LINE
-    assert room.memory.kept[-1][:2] == ("assistant", FAILURE_LINE)
+    assert room.page.said[-1] == said_as(FAILURE_LINE)
+    assert room.memory.kept[-1][:2] == ("assistant", said_as(FAILURE_LINE))
     room.says("А тепер?")
     await room.settled()
     assert room.page.said[-1] == "Працюю. "
@@ -234,7 +235,7 @@ async def test_a_silent_recall_follow_up_that_breaks_still_reports_failure():
     )
     room.says("Що було з проектом?")
     await room.settled()
-    assert room.page.said[-1] == FAILURE_LINE
+    assert room.page.said[-1] == said_as(FAILURE_LINE)
     await room.close()
 
 
@@ -246,7 +247,7 @@ async def test_a_recall_cue_puts_memory_in_the_system_prompt():
     await room.settled()
     system = room.model.asked[0][0]["content"]
     assert "Ти казав про це вчора." in system
-    assert "[знайдене в памʼяті" in system
+    assert "[found in memory" in system
     assert room.memory.recalled == [("Що я казав про це?", "")]
     await room.close()
 
@@ -667,7 +668,7 @@ async def test_room_talk_it_has_nothing_to_say_about_stays_silent_and_unkept():
     from heare.core import Message
 
     room = await open_room()
-    room.model.will_say("МОВЧУ")
+    room.model.will_say("SILENT")
     room.core.hear(Message(text="Так, я тобі передзвоню ввечері", channel="text",
                            addressed=False))
     await room.settled()
@@ -676,7 +677,7 @@ async def test_room_talk_it_has_nothing_to_say_about_stays_silent_and_unkept():
     assert [e.data["why"] for e in room.core.state.journal if e.kind == "overheard"] == [
         "chose silence"
     ]
-    assert "не до тебе" in room.model.asked[0][0]["content"]
+    assert "not to you by name" in room.model.asked[0][0]["content"]
     await room.close()
 
 

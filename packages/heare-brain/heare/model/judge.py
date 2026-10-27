@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from heare.core import Task
+from heare.core.i18n import _
 from heare.model.llm import resolve_llm, stream_chat_events
 
 logger = logging.getLogger("heare.judge")
@@ -81,8 +82,8 @@ def verdict(answer: str) -> tuple[bool, str]:
         data = {}
     why = " ".join(str(data.get("why") or "").split())[:120]
     if data.get("verdict") == "allow":
-        return True, why or "як просили"
-    return False, why or "не впевнений"
+        return True, why or _("as asked")
+    return False, why or _("not sure")
 
 
 class Judge:
@@ -124,7 +125,7 @@ class Judge:
                 logger.warning("the judge did not answer on %.80s (try %d): %r",
                                what, attempt, exc)
         if answer is None:
-            return False, "суддя не відповів"
+            return False, _("the judge did not answer")
         found = verdict(answer)
         if len(self._seen) >= REMEMBERED:
             self._seen.clear()

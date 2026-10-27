@@ -38,3 +38,4 @@ apps/mac/.build/
 apps/mac/.cache/
 # A scratch home for running the app without touching the real ~/.heare
 .scratch-home/
+packages/heare-core/heare/core/locale/heare.pot

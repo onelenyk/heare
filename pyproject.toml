@@ -25,6 +25,7 @@ dev = [
     "pytest-cov>=5.0",
     "mypy>=1.11",
     "ruff>=0.6",
+    "babel>=2.16",
 ]
 
 [tool.uv.workspace]
