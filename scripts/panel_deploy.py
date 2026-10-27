@@ -1,23 +1,18 @@
-"""Put firmware/esp32-c3 on the panel as precompiled .mpy, keeping its settings.
+"""Build MicroPython with the panel's code frozen in, and put it on the panel.
 
-Why not ``mpremote cp``: on this board the sources compiled on the device
-grew MicroPython's heap into the memory Wi-Fi needs, and once ``main`` has
-started the 30 s watchdog a long copy is cut off by a reset. So this script
-never talks to the REPL. It reads the board's filesystem image over the ROM
-bootloader (``esptool``), swaps the code inside it on this Mac, and writes it
-back:
+Why frozen: bytecode loaded from the filesystem lives in RAM, and on the
+ESP32-C3 ~100 KB of it left Wi-Fi as little as 7 KB; the panel went deaf to
+the network while still drawing its clock (27 October). Frozen bytecode is
+read from flash, so that RAM goes back to Wi-Fi.
 
-* every ``heare_panel``/``lib`` module is compiled with ``mpy-cross`` (the
-  board runs MicroPython 1.29, mpy v6.3) and its ``.py`` is removed;
-* modules that no longer exist in the checkout are removed from the board;
-* ``main.py`` becomes a two-line launcher of ``panel_main.mpy``;
-* everything else (``config.json``, ``display.json``, ``boot.py``) is kept,
-  so a paired panel stays paired. The part key lives in NVS, untouched.
+The build runs in Docker (``espressif/idf``), against a MicroPython checkout
+in ``~/.cache/heare/micropython``. Flashing writes only the app region below
+the filesystem, so ``config.json`` and the part key in NVS stay; then the
+code that is now frozen is removed from the filesystem, where it would win
+over the frozen copy (``''`` comes before ``.frozen`` in ``sys.path``).
 
-The image read from the board is saved first; ``--restore FILE`` writes it
-back.
-
-    make panel-deploy                      # PORT=/dev/cu.usbmodem214201
+    make panel-deploy PORT=/dev/cu.usbmodem14101   # DEBUG=1 to read its log
+    make panel-deploy NOFLASH=1                    # only build
 """
 
 from __future__ import annotations
@@ -39,16 +34,28 @@ BACKUPS = Path(tempfile.gettempdir()) / "heare-panel-backups"
 VFS_OFFSET = 0x200000
 VFS_SIZE = 0x200000
 BLOCK = 4096
+# Where the code lived on the filesystem before it was frozen.
 PACKAGES = ("heare_panel", "lib")
 FRESH = "fresh_code"
 DEBUG = "debug"
 LAUNCHER = b"import panel_main\npanel_main.run()\n"
+STAGE = FIRMWARE / "build" / "frozen"
+MICROPYTHON = Path.home() / ".cache" / "heare" / "micropython"
+MP_TAG = "v1.29.0"
+IDF_IMAGE = "espressif/idf:v5.4.2"
+BOARD = "ESP32_GENERIC_C3"
+BUILT = MICROPYTHON / "ports" / "esp32" / f"build-{BOARD}" / "firmware.bin"
+# The pieces, each at its own address. Not the merged firmware.bin: it spans
+# NVS (0x9000-0xF000) with blanks, and NVS holds the part key — written whole,
+# it unpaired the panel (27 October).
+PIECES = (("0x0", "bootloader/bootloader.bin"),
+          ("0x8000", "partition_table/partition-table.bin"),
+          ("0x10000", "micropython.bin"))
 
 
 def _esptool(port: str, *args: str, reset: bool = True) -> None:
     # Every reset into the app is a boot the panel counts; three that never
-    # get healthy send it to Bluetooth setup. Reading stays in the bootloader
-    # so a deploy costs the panel one boot, after the write.
+    # get healthy send it to Bluetooth setup. Reading stays in the bootloader.
     after = "hard-reset" if reset else "no-reset"
     subprocess.run(
         [sys.executable, "-m", "esptool", "--port", port, "--after", after, *args],
@@ -64,98 +71,110 @@ def _mount(image: bytes) -> LittleFS:
     return fs
 
 
-def _compile(source: Path, target: Path) -> bytes:
-    subprocess.run(["mpy-cross", "-o", str(target), str(source)], check=True)
-    return target.read_bytes()
+def stage() -> None:
+    """The code as the firmware will hold it: main.py is ``panel_main``."""
+    shutil.rmtree(STAGE, ignore_errors=True)
+    (STAGE / "heare_panel").mkdir(parents=True)
+    for source in (FIRMWARE / "heare_panel").glob("*.py"):
+        shutil.copy(source, STAGE / "heare_panel" / source.name)
+    # /lib is on the board's path, so its modules are top-level when frozen.
+    for source in (FIRMWARE / "lib").glob("*.py"):
+        shutil.copy(source, STAGE / source.name)
+    shutil.copy(FIRMWARE / "main.py", STAGE / "panel_main.py")
 
 
-def build(fs: LittleFS, work: Path, debug: bool = False) -> list[str]:
-    """Swap the code inside ``fs``; return what changed, for the log."""
-    changed = []
-    for package in PACKAGES:
-        sources = sorted((FIRMWARE / package).glob("*.py"))
-        wanted = {source.stem for source in sources}
-        if package not in fs.listdir("/"):
-            fs.mkdir("/" + package)
-        for name in fs.listdir("/" + package):
-            stem, _, suffix = name.rpartition(".")
-            if suffix == "py" or (suffix == "mpy" and stem not in wanted):
-                fs.remove(f"/{package}/{name}")
-                if stem not in wanted:
-                    changed.append(f"- {package}/{name}")
-        for source in sources:
-            data = _compile(source, work / f"{package}.{source.stem}.mpy")
-            with fs.open(f"/{package}/{source.stem}.mpy", "wb") as handle:
-                handle.write(data)
-            changed.append(f"+ {package}/{source.stem}.mpy")
-    with fs.open("/panel_main.mpy", "wb") as handle:
-        handle.write(_compile(FIRMWARE / "main.py", work / "panel_main.mpy"))
-    with fs.open("/main.py", "wb") as handle:
-        handle.write(LAUNCHER)
-    # New code is a fresh start: the panel clears its count of failed boots
-    # when it finds this, so a fix lands on a panel that gave up on the old.
-    with fs.open("/" + FRESH, "wb") as handle:
-        handle.write(b"1")
-    # Printing waits for someone to read the port; only a debugged panel prints.
-    if debug:
-        with fs.open("/" + DEBUG, "wb") as handle:
-            handle.write(b"1")
-        changed.append("+ " + DEBUG + " (prints its log to the port)")
-    elif DEBUG in fs.listdir("/"):
-        fs.remove("/" + DEBUG)
-        changed.append("- " + DEBUG)
-    changed.append("+ panel_main.mpy, main.py (launcher), " + FRESH)
-    return changed
+def build() -> Path:
+    if not MICROPYTHON.exists():
+        MICROPYTHON.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "clone", "--depth", "1", "--branch", MP_TAG,
+                        "https://github.com/micropython/micropython.git",
+                        str(MICROPYTHON)], check=True)
+    stage()
+    script = (
+        "git config --global --add safe.directory '*' && "
+        "make -C /mp/mpy-cross >/dev/null && "
+        f"make BOARD={BOARD} FROZEN_MANIFEST=/fw/manifest.py submodules >/dev/null && "
+        f"make BOARD={BOARD} FROZEN_MANIFEST=/fw/manifest.py"
+    )
+    subprocess.run(
+        ["docker", "run", "--rm",
+         "-v", f"{MICROPYTHON}:/mp", "-v", f"{FIRMWARE}:/fw",
+         "-w", "/mp/ports/esp32", IDF_IMAGE, "bash", "-c", script],
+        check=True,
+    )
+    print(f"built {BUILT} ({BUILT.stat().st_size // 1024} KB)")
+    return BUILT
 
 
-def deploy(port: str, debug: bool = False) -> None:
-    if shutil.which("mpy-cross") is None:
-        sys.exit("mpy-cross is missing: run this through `make panel-deploy`")
+def unfreeze_filesystem(port: str, debug: bool = False) -> None:
+    """Leave only the launcher of the code: the .mpy copies would shadow it."""
     with tempfile.TemporaryDirectory() as tmp:
-        work = Path(tmp)
-        current = work / "vfs.bin"
-        print(f"reading the panel's filesystem from {port}…")
-        _esptool(
-            port, "read-flash", hex(VFS_OFFSET), hex(VFS_SIZE), str(current), reset=False
-        )
-
-        BACKUPS.mkdir(exist_ok=True)
-        backup = BACKUPS / time.strftime("vfs-%Y%m%d-%H%M%S.bin")
-        shutil.copy(current, backup)
-        print(f"backup: {backup}")
-
+        current = Path(tmp) / "vfs.bin"
+        _esptool(port, "read-flash", hex(VFS_OFFSET),
+                        hex(VFS_SIZE), str(current), reset=False)
         fs = _mount(current.read_bytes())
-        kept = [name for name in fs.listdir("/")
-                if name not in (*PACKAGES, "main.py", "panel_main.mpy", FRESH, DEBUG)]
-        for line in build(fs, work, debug):
-            print("  " + line)
-        print("  kept: " + ", ".join(sorted(kept)))
+        for package in PACKAGES:
+            if package in fs.listdir("/"):
+                for name in fs.listdir("/" + package):
+                    if name.endswith((".py", ".mpy")):
+                        fs.remove(f"/{package}/{name}")
+                        print(f"  - {package}/{name}")
+                # Even empty, the folder is a package that hides the frozen one.
+                if not fs.listdir("/" + package):
+                    fs.rmdir("/" + package)
+                    print(f"  - {package}/")
+        if "panel_main.mpy" in fs.listdir("/"):
+            fs.remove("/panel_main.mpy")
+            print("  - panel_main.mpy")
+        with fs.open("/main.py", "wb") as handle:
+            handle.write(LAUNCHER)
+        with fs.open("/" + FRESH, "wb") as handle:
+            handle.write(b"1")
+        # Printing waits for someone to read the port; only a debugged panel prints.
+        if debug:
+            with fs.open("/" + DEBUG, "wb") as handle:
+                handle.write(b"1")
+        elif DEBUG in fs.listdir("/"):
+            fs.remove("/" + DEBUG)
         fs.unmount()
-
-        image = work / "vfs-new.bin"
+        image = Path(tmp) / "vfs-new.bin"
         image.write_bytes(bytes(fs.context.buffer))
-        print("writing…")
-        _esptool(port, "write-flash", hex(VFS_OFFSET), str(image))
+        _esptool(port, "write-flash", hex(VFS_OFFSET), str(image),
+                        reset=False)
+
+
+def flash(port: str, firmware: Path, debug: bool = False) -> None:
+    BACKUPS.mkdir(exist_ok=True)
+    backup = BACKUPS / time.strftime("app-%Y%m%d-%H%M%S.bin")
+    print(f"backup of the current firmware: {backup}")
+    _esptool(port, "read-flash", "0x0", hex(VFS_OFFSET), str(backup),
+                    reset=False)
+    if firmware.stat().st_size > VFS_OFFSET:
+        sys.exit("the firmware would overwrite the filesystem")
+    print("removing the code the firmware now holds from the filesystem…")
+    unfreeze_filesystem(port, debug)
+    print("writing the firmware…")
+    pieces = []
+    for address, name in PIECES:
+        pieces += [address, str(firmware.parent / name)]
+    _esptool(port, "write-flash", *pieces)
     print("done; the panel has been reset")
-
-
-def restore(port: str, image: Path) -> None:
-    _mount(image.read_bytes())  # refuse a file that is not a filesystem image
-    _esptool(port, "write-flash", hex(VFS_OFFSET), str(image))
-    print(f"restored {image}; the panel has been reset")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--port", required=True)
-    parser.add_argument("--restore", type=Path, help="write a saved image back")
+    parser.add_argument("--port", help="flash it too")
     parser.add_argument("--debug", action="store_true",
                         help="the panel prints its log to the port (read it, or it stalls)")
+    parser.add_argument("--restore", type=Path, help="write a saved app image back")
     args = parser.parse_args()
     if args.restore:
-        restore(args.port, args.restore)
-    else:
-        deploy(args.port, args.debug)
+        # The backup holds NVS as it was: the key the panel was paired with.
+        _esptool(args.port, "write-flash", "0x0", str(args.restore))
+        return
+    firmware = build()
+    if args.port:
+        flash(args.port, firmware, args.debug)
 
 
 if __name__ == "__main__":

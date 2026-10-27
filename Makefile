@@ -69,7 +69,7 @@ PORT ?= /dev/cu.usbmodem214201
 # its files: settings and the part key stay. NOFLASH=1 only builds.
 panel-deploy:
 	uv run --no-project --with esptool --with littlefs-python \
-		python scripts/panel_firmware.py $(if $(NOFLASH),,--port $(PORT)) $(if $(DEBUG),--debug)
+		python scripts/panel_deploy.py $(if $(NOFLASH),,--port $(PORT)) $(if $(DEBUG),--debug)
 
 coverage:
 	uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80
