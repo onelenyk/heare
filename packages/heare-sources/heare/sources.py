@@ -29,7 +29,7 @@ from heare.feeds import weather
 logger = logging.getLogger("heare.sources")
 
 CHANNEL = "sources"
-ABOUT = "sources: the weather outside"
+ABOUT = "the weather outside"
 HELLO = "джерела: дивлюсь, що надворі"
 ROUND_S = 30 * 60
 # A fact from Open-Meteo is true for this long after it was fetched.

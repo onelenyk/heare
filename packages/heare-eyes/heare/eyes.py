@@ -25,7 +25,7 @@ from heare.surroundings.watch import Surroundings
 
 logger = logging.getLogger("heare.eyes")
 
-ABOUT = "eyes: which app is open on the Mac (its name only), whether something plays"
+ABOUT = "which app is open on the Mac (its name only), whether something plays"
 UI = [
     {"name": "looking", "kind": "toggle", "label": "Дивитись", "value": True},
     {"name": "sees", "kind": "label", "label": "Бачить", "value": "тихо",

@@ -27,7 +27,7 @@ from heare_panel import clock, device, http, journal, sse, state
 PROTOCOL = 1
 VERSION = "0.1.0"
 
-ABOUT = "panel: a board on the desk with an OLED screen, an LED and nine free pins"
+ABOUT = "a board on the desk with an OLED screen, an LED and nine free pins"
 UI = [{"name": "now", "kind": "label", "label": "Screen",
        "value": "BOOT", "head": True}]
 

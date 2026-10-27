@@ -18,7 +18,7 @@ from heare.prompt.body import body
 
 RULES = Path(__file__).resolve().parent / "prompts" / "voice_rules.txt"
 IDENTITY = Path.home() / ".heare" / "settings" / "identity.json"
-_DAYS = ("понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя")
+_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 def name() -> str:

@@ -278,7 +278,7 @@ async def run(settings: Settings | None = None, *,
 
     return await part.live(
         {"channel": CHANNEL, "forms": ["input", "output"],
-         "about": "voice: microphone and speaker", "key": f"voice@{host}", "host": host,
+         "about": "microphone and speaker", "key": f"voice@{host}", "host": host,
          "ui": UI},
         work, on_event=on_event, settings=settings, client=client)
 
