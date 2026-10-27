@@ -154,6 +154,16 @@ class Registry:
                 for pid, b in self.bodies.items()
                 if b.get("state") == "approved" and b.get("skills")}
 
+    def organs(self) -> dict[str, dict]:
+        """The voice's own senses: let-in parts with no skills that are not
+        hands and not a page's window — the voice, the eyes, a chat."""
+        return {pid: {"channel": b["channel"], "name": b["name"],
+                      "about": b["about"], "state": b["state"]}
+                for pid, b in self.bodies.items()
+                if b.get("state") in ("approved", "away") and not b.get("skills")
+                and "executor" not in b.get("forms", [])
+                and not pid.startswith("window@")}
+
     def works(self, pid: str) -> bool:
         """Whether a part is a let-in executor: one that may act on the others."""
         entry = self.bodies.get(pid) or {}

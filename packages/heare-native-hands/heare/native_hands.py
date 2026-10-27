@@ -38,12 +38,11 @@ from heare.core.forms import Model
 logger = logging.getLogger("heare.native_hands")
 
 CHANNEL = "native-hands"
+# Which bodies are here and what they can do the voice reads from the
+# registry itself; this says only what these hands are for.
 ABOUT = (
-    "тіла heare, що вже під'єднані: плата на столі з маленьким OLED-екраном — "
-    "слова (і українською), картинки й іконки (сонце, хмара, серце…), сцени з "
-    "числами, смужками прогресу й годинником, що можна оновлювати; світлодіод; "
-    "піни; і що ще під'єднано — датчики, реле. Шукати їх не треба. Одна-дві дії, "
-    "без плану, без файлів, коду, шелу й інтернету."
+    "швидкі дії з тілами зі списку «Тіла поруч»: показати, увімкнути, "
+    "прочитати. Одна-дві дії, без плану, без файлів, коду, шелу й інтернету."
 )
 STEPS = 4
 HANDOFF = "pass_to_cli_hands"

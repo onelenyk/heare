@@ -13,12 +13,14 @@ from typing import Any, Awaitable, Callable
 from heare.core.forms import Memory, Task
 from heare.core.state import State
 from heare.tools import delegate as delegate_tool
+from heare.tools import bodies as body_tools
 from heare.tools import recall, reminders as reminder_tools
 from heare.tools import schemas
-from heare.tools.ports import Reminders
+from heare.tools.ports import Bodies, Reminders
 from heare.tools.schemas import (
     _CANCEL_REMINDER,
     _LIST_REMINDERS,
+    _READ_BODY,
     _RECALL,
     _REMIND,
     _STOP,
@@ -38,6 +40,7 @@ class Toolbox:
         reminders: Reminders | None = None,
         now: Callable[[], float] = time.time,
         hands: Callable[[], list[tuple[str, str]]] = lambda: [],
+        bodies: Callable[[], Bodies | None] = lambda: None,
     ) -> None:
         self._memory = memory
         self._state = state
@@ -48,6 +51,7 @@ class Toolbox:
         self._reminders = reminders
         self._now = now
         self._hands = hands
+        self._bodies = bodies
 
     def verbs(self) -> dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]]:
         verbs: dict[str, tuple[dict, Callable[[dict], Awaitable[str]]]] = {}
@@ -61,13 +65,19 @@ class Toolbox:
             verbs["remind"] = (_REMIND, self._run_remind)
             verbs["list_reminders"] = (_LIST_REMINDERS, self._run_list_reminders)
             verbs["cancel_reminder"] = (_CANCEL_REMINDER, self._run_cancel_reminder)
+        bodies = self._bodies()
+        if bodies is not None and any(
+            s["effect"] == "read"
+            for entry in bodies.skilled().values() for s in entry["skills"]
+        ):
+            verbs["read_body"] = (_READ_BODY, self._run_read_body)
         return verbs
 
     def acknowledging(self) -> set[str]:
         return {"delegate", "stop_work", "remind", "cancel_reminder"}
 
     def read_only(self, name: str) -> bool:
-        return name in {"recall", "list_reminders"}
+        return name in {"recall", "list_reminders", "read_body"}
 
     async def _run_recall(self, arguments: dict) -> str:
         return await recall.run(self._memory, arguments)
@@ -76,6 +86,12 @@ class Toolbox:
         return await delegate_tool.run(
             self._start, self._state, self._words, arguments
         )
+
+    async def _run_read_body(self, arguments: dict) -> str:
+        bodies = self._bodies()
+        if bodies is None:
+            return "Тіл зараз немає."
+        return await body_tools.read(bodies, arguments)
 
     async def _run_stop(self, arguments: dict) -> str:
         return "Зупинив." if self._stop() else "Нічого не було запущено."

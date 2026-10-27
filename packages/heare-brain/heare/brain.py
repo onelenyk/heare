@@ -24,6 +24,7 @@ from typing import Any
 from heare import layout, logs
 from heare import lifeline
 from heare.prompt import budget, persona
+from heare.tools.ports import Bodies
 from heare.api import backup
 from heare.api import pair as codes
 from heare.config import HOME, Settings
@@ -127,6 +128,8 @@ class Brain:
             self.facts, self.intents, self.settings,
             journal=self.journal, memory=self.memory,
         )
+        # The door owns the registry and hands its reader over when it opens.
+        self.bodies: Bodies | None = None
         self.core = Core(
             Chat(self.settings),
             memory=self.memory,
@@ -135,7 +138,10 @@ class Brain:
                 expected=lambda: (Path(self.settings.parts_dir) / route_native / "heare.json").is_file(),
                 present=lambda: list(self.core.executors)),
             gate=Judge(self.settings),
-            prompt=lambda: persona.prompt(self.core.state.around),
+            prompt=lambda: persona.prompt(
+                self.core.state.around,
+                self.bodies.skilled() if self.bodies else None,
+                self.bodies.organs() if self.bodies else None),
             names=names, judge=persona.JUDGE, words=uk,
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
         )
@@ -146,6 +152,7 @@ class Brain:
             has_executors=lambda: bool(self.core.executors),
             reminders=self.intents,
             hands=lambda: [(e.name, e.about) for e in self.core.executors.values()],
+            bodies=lambda: self.bodies,
         ))
         # Hands are a body: they register over the door and are added then.
         # The brain itself holds no agent's process.
@@ -259,6 +266,7 @@ class Brain:
                 name, about, RemoteExecutor, lambda: list(self.core.executors.values()),
                 lambda: self.core.state.tasks),
             mind=self.mind, features=self.features,
+            show_bodies=lambda skilled: setattr(self, "bodies", skilled),
         )
         logs.say(f"мозок на http://127.0.0.1:{self.settings.api_port}/")
         await asyncio.gather(

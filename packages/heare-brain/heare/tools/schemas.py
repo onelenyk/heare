@@ -146,6 +146,30 @@ _CANCEL_REMINDER = {
     },
 }
 
+_READ_BODY = {
+    "type": "function",
+    "function": {
+        "name": "read_body",
+        "description": (
+            "Read one of the bodies nearby right now — a sensor, a state — "
+            "with a skill marked «читаю сам» in the list of bodies. The "
+            "answer comes back at once; tell the person what it says. For "
+            "anything that changes a body, use delegate."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "part": {"type": "string",
+                         "description": "The body's name as the list gives it."},
+                "skill": {"type": "string",
+                          "description": "The skill's name, in brackets in the list."},
+                "args": {"type": "object",
+                         "description": "The skill's parameters, if it has any."},
+            },
+            "required": ["part", "skill"],
+        },
+    },
+}
 
 
 def delegate(hands: list[tuple[str, str]]) -> dict:

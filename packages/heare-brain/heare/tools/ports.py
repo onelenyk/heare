@@ -25,3 +25,16 @@ class Reminders(Protocol):
 
     def cancel(self, intent_id: int, *, why: str = "reminder") -> bool: ...
 
+
+
+class Bodies(Protocol):
+    """The parts as the registry knows them, and a way to ask one.
+
+    The door owns the registry; the voice reads it through this, the same
+    truth the hands read over HTTP."""
+
+    def skilled(self) -> dict[str, dict]: ...
+
+    def organs(self) -> dict[str, dict]: ...
+
+    async def call(self, pid: str, name: str, args: dict) -> dict: ...

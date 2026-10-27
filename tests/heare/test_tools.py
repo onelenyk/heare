@@ -292,3 +292,53 @@ def test_delegate_names_the_hands_that_are_here():
                   hands=lambda: [("native-hands", "панель на столі: світло, піни")])
     described = box.verbs()["delegate"][0]["function"]["description"]
     assert "- native-hands: панель на столі: світло, піни" in described
+
+
+class _Bodies:
+    def __init__(self, skilled: dict, answer: dict | None = None) -> None:
+        self._skilled = skilled
+        self.answer = answer or {"ok": True, "result": "22.5 °C"}
+        self.called: list[tuple] = []
+
+    def skilled(self) -> dict:
+        return self._skilled
+
+    def organs(self) -> dict:
+        return {}
+
+    async def call(self, pid: str, name: str, args: dict) -> dict:
+        self.called.append((pid, name, args))
+        return self.answer
+
+
+_KITCHEN = {"kitchen@mac": {"name": "кухня", "skills": [
+    {"name": "temp", "effect": "read"}, {"name": "on", "effect": "change"}]}}
+
+
+def _with(bodies) -> Toolbox:
+    return Toolbox(memory=None, state=State(), delegate=lambda r: Task(1, r, ""),
+                   stop=lambda: 0, words=uk, has_executors=lambda: False,
+                   bodies=lambda: bodies)
+
+
+def test_read_body_is_offered_only_when_something_reads():
+    assert "read_body" in _with(_Bodies(_KITCHEN)).verbs()
+    only_changes = {"p": {"name": "реле", "skills": [{"name": "on", "effect": "change"}]}}
+    assert "read_body" not in _with(_Bodies(only_changes)).verbs()
+    assert "read_body" not in _with(None).verbs()
+    assert _with(None).read_only("read_body")
+
+
+async def test_read_body_asks_the_part_and_says_its_answer():
+    bodies = _Bodies(_KITCHEN)
+    _schema, run = _with(bodies).verbs()["read_body"]
+    assert await run({"part": "кухня", "skill": "temp"}) == "22.5 °C"
+    assert bodies.called == [("kitchen@mac", "temp", {})]
+
+
+async def test_read_body_never_changes_anything():
+    bodies = _Bodies(_KITCHEN)
+    _schema, run = _with(bodies).verbs()["read_body"]
+    said = await run({"part": "кухня", "skill": "on"})
+    assert "delegate" in said and bodies.called == []
+    assert "немає" in await run({"part": "спальня", "skill": "temp"})

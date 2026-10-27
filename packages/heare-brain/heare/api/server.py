@@ -29,6 +29,7 @@ import subprocess
 import time
 from importlib import metadata
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, AsyncIterator
 
 from aiohttp import web
@@ -256,9 +257,35 @@ class VoiceOut:
         self._core.state.emit("voice_stopped", channel=self.name)
 
 
+class Seen:
+    """The parts as the voice sees them: what the registry knows, and a call
+    to one of them that waits for its answer — the same call the hands make."""
+
+    def __init__(self, registry: Registry, calls: skills.Calls) -> None:
+        self._registry = registry
+        self._calls = calls
+
+    def skilled(self) -> dict[str, dict]:
+        return self._registry.skilled()
+
+    def organs(self) -> dict[str, dict]:
+        return self._registry.organs()
+
+    async def call(self, pid: str, name: str, args: dict) -> dict:
+        found = self._registry.skill(pid, name)
+        if found is None:
+            return {"ok": False, "result": "немає такого вміння"}
+        channel, _skill = found
+        call_id, waiting = self._calls.open(pid)
+        self._registry.emit("call", channel=channel, part=pid, id=call_id,
+                            name=name, args=args)
+        return await self._calls.wait(call_id, waiting)
+
+
 def build(core: Core, settings: Any, vitals: Any = None,
           make_executor: Any = None, *, mind: Any = None,
-          features: Any = None) -> web.Application:
+          features: Any = None,
+          show_bodies: Callable[[Seen], None] | None = None) -> web.Application:
     """vitals: () -> dict of what the app knows and the core does not —
     which model is answering, and whether it is the one that was chosen.
 
@@ -403,6 +430,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
     bodies = registry.bodies
     trust = skills.Trust(Path(settings.parts_file).parent / "part_skills.json")
     calls = skills.Calls()
+    seen = Seen(registry, calls)
+    if show_bodies is not None:
+        # The voice reads the same truth as the hands: what is let in and here.
+        show_bodies(seen)
 
     def own_channel(request: web.Request, channel: str) -> None:
         """A part may speak for its own channel and no other."""
@@ -763,13 +794,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         data = await body(request)
         pid, name = str(data.get("part", "")), str(data.get("name", ""))
         args = data.get("args") if isinstance(data.get("args"), dict) else {}
-        found = registry.skill(pid, name)
-        if found is None:
+        if registry.skill(pid, name) is None:
             raise web.HTTPNotFound(text="no such skill")
-        channel, _skill = found
-        call_id, waiting = calls.open(pid)
-        registry.emit("call", channel=channel, part=pid, id=call_id, name=name, args=args)
-        return web.json_response(await calls.wait(call_id, waiting))
+        return web.json_response(await seen.call(pid, name, args))
 
     async def skill_answer(request: web.Request) -> web.Response:
         data = await body(request)
@@ -1278,7 +1305,8 @@ def _status_view(event: Event) -> dict:
 
 async def serve(core: Core, settings: Any, vitals: Any = None,
                 make_executor: Any = None, *, mind: Any = None,
-                features: Any = None) -> web.AppRunner:
+                features: Any = None,
+                show_bodies: Callable[[Seen], None] | None = None) -> web.AppRunner:
     """Start the API, on this machine only unless ``api_host`` says else.
     Returns the runner to stop it.
 
@@ -1292,7 +1320,7 @@ async def serve(core: Core, settings: Any, vitals: Any = None,
     core.add_output(Canvas(Path(settings.canvas_file), core.state.emit))
     runner = web.AppRunner(build(core, settings, vitals,
                                  make_executor=make_executor, mind=mind,
-                                 features=features))
+                                 features=features, show_bodies=show_bodies))
     await runner.setup()
     host = str(settings.api_host or "127.0.0.1")
     await web.TCPSite(runner, host, int(settings.api_port)).start()
