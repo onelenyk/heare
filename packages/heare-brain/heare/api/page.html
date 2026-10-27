@@ -498,105 +498,107 @@
 <div id="app">
   <div id="left">
     <aside id="pult">
-      <div class="band"><b>Мозок</b><span>що він знає сам</span></div>
+      <div class="band"><b data-t>Brain</b><span data-t>what it knows itself</span></div>
 
       <div class="widgets">
         <section class="widget hero">
-          <div id="who"><span id="name">heare</span><span id="up"></span><button id="open-settings" title="налаштування: ключі, модель">⚙</button></div>
+          <div id="who"><span id="name">heare</span><span id="up"></span><button id="open-settings" data-t-title title="settings: keys, model">⚙</button></div>
           <div id="update" class="update" role="status" hidden></div>
           <div id="now"><svg class="face" id="face" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><span><span id="nowtext">…</span></span><span id="dot" hidden></span></div>
           <div class="lanes">
-            <div class="lane"><span>ти</span><div class="bar" id="you"><i></i></div></div>
-            <div class="lane"><span>він</span><div class="bar" id="it"><i></i></div></div>
+            <div class="lane"><span data-t>you</span><div class="bar" id="you"><i></i></div></div>
+            <div class="lane"><span data-t>it</span><div class="bar" id="it"><i></i></div></div>
           </div>
         </section>
 
         <section class="widget">
-          <div class="label">Стан</div>
+          <div class="label" data-t>State</div>
           <div class="rows">
-            <div class="row"><span>модель</span><span id="model">…</span></div>
+            <div class="row"><span data-t>model</span><span id="model">…</span></div>
             <span id="hands" hidden></span>
-            <div class="row"><span>довкола</span><span id="around">тихо</span></div>
-            <div class="row"><span>відповідь</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
-            <div class="row"><span>цей запуск</span><span id="session">…</span></div>
+            <div class="row"><span data-t>around</span><span id="around" data-t>quiet</span></div>
+            <div class="row"><span data-t>reply</span><span><span id="speed">—</span><svg id="spark" width="70" height="16"></svg></span></div>
+            <div class="row"><span data-t>this run</span><span id="session">…</span></div>
           </div>
         </section>
 
         <section class="widget" id="mind-widget">
-          <div class="label">Памʼять</div>
+          <div class="label" data-t>Memory</div>
           <div class="rows">
-            <div class="row"><span>чекають рішення</span><span id="mind-pending">—</span></div>
-            <div class="row"><span>сталі факти</span><span id="mind-confirmed">—</span></div>
-            <div class="row"><span>нагадування</span><span id="mind-reminders">—</span></div>
-            <div class="row"><span>останній огляд</span><span id="mind-review">—</span></div>
+            <div class="row"><span data-t>awaiting a decision</span><span id="mind-pending">—</span></div>
+            <div class="row"><span data-t>settled facts</span><span id="mind-confirmed">—</span></div>
+            <div class="row"><span data-t>reminders</span><span id="mind-reminders">—</span></div>
+            <div class="row"><span data-t>last review</span><span id="mind-review">—</span></div>
           </div>
-          <div class="keys"><button type="button" class="key wide" id="open-mind" aria-expanded="false">Відкрити памʼять</button></div>
+          <div class="keys"><button type="button" class="key wide" id="open-mind" aria-expanded="false" data-t>Open memory</button></div>
         </section>
 
         <section class="widget" id="hold" hidden>
-          <div class="label">Тримаю в голові</div>
+          <div class="label" data-t>On my mind</div>
           <div id="ask"></div>
           <div id="tasks"></div>
         </section>
 
         <section class="widget">
-          <div class="label">Керування</div>
+          <div class="label" data-t>Controls</div>
           <div class="keys">
-            <button class="key stop wide" id="stop">■ Стоп</button>
-            <div class="stopask" id="confirm" hidden><span>Зупинити все?</span><button class="mini yes" id="stop-yes">Так</button><button class="mini" id="stop-no">Ні</button></div>
+            <button class="key stop wide" id="stop" data-t>■ Stop</button>
+            <div class="stopask" id="confirm" hidden><span data-t>Stop everything?</span><button class="mini yes" id="stop-yes" data-t>Yes</button><button class="mini" id="stop-no" data-t>No</button></div>
           </div>
         </section>
       </div>
 
-      <div class="band"><b>Частини</b><span>реєстр мозку</span></div>
+      <div class="band"><b data-t>Parts</b><span data-t>the brain's registry</span></div>
 
-      <div id="bodies"><p class="empty">жодна частина не під'єднана</p></div>
+      <div id="bodies"><p class="empty" data-t>no part is connected</p></div>
     </aside>
   </div>
 
   <section id="partcol">
-    <div class="band"><b>Частини</b><div id="partfold"></div><button type="button" id="partfoldbtn" aria-expanded="true">згорнути</button></div>
+    <div class="band"><b data-t>Parts</b><div id="partfold"></div><button type="button" id="partfoldbtn" aria-expanded="true" data-t>fold</button></div>
     <div id="partwidgets"></div>
     <div id="partchips"></div>
   </section>
 
   <main id="stage">
-    <div class="band"><b>Екран</b><span>ставить модель</span></div>
+    <div class="band"><b data-t>Screen</b><span data-t>the model puts things here</span></div>
     <div id="live"></div>
-    <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span>Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима.</span></div>
+    <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span data-t>This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you.</span></div>
   </main>
 
   <section id="talkcol">
     <div id="talkdrawer">
-      <div class="band"><b>Розмова</b><span>він і ти</span></div>
+      <div class="band"><b data-t>Conversation</b><span data-t>it and you</span></div>
       <div id="talk"></div>
     </div>
     <div id="talkbar">
-      <button type="button" id="talktoggle" class="mini" aria-expanded="false" aria-controls="talkdrawer">Розмова</button>
-      <button type="button" id="speak" class="mini" title="чути відповідь уголос">чути</button>
-      <form id="say"><button type="button" id="hear" class="talk" title="говорити й почути">◉</button><input id="text" placeholder="Напиши…" autocomplete="off"><button>→</button></form>
+      <button type="button" id="talktoggle" class="mini" aria-expanded="false" aria-controls="talkdrawer" data-t>Conversation</button>
+      <button type="button" id="speak" class="mini" data-t-title title="hear the reply aloud" data-t>hear</button>
+      <form id="say"><button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button><input id="text" data-t-placeholder placeholder="Write…" autocomplete="off"><button>→</button></form>
     </div>
   </section>
 </div>
 
 <div class="veil" id="veil"></div>
 <aside id="settings">
-  <h2>Налаштування</h2>
-  <h3>Модель для розмови</h3>
-  <div class="field"><label for="provider">провайдер</label><select id="provider"></select></div>
-  <div class="field"><label for="modelpick">модель</label><div class="pair"><select id="modelpick"></select><button class="btn" id="save-model">Зберегти</button></div><input id="modelcustom" placeholder="або id моделі" autocomplete="off" spellcheck="false"></div>
+  <h2 data-t>Settings</h2>
+  <h3 data-t>Language</h3>
+  <div class="field"><label for="lang" data-t>what you hear and see</label><select id="lang"><option value="uk">Українська</option><option value="en">English</option></select></div>
+  <h3 data-t>Model for the conversation</h3>
+  <div class="field"><label for="provider" data-t>provider</label><select id="provider"></select></div>
+  <div class="field"><label for="modelpick" data-t>model</label><div class="pair"><select id="modelpick"></select><button class="btn" id="save-model" data-t>Save</button></div><input id="modelcustom" data-t-placeholder placeholder="or a model id" autocomplete="off" spellcheck="false"></div>
   <p class="note" id="modelnote"></p>
-  <h3>Ключі</h3>
+  <h3 data-t>Keys</h3>
   <div class="keylist" id="keylist"></div>
-  <div class="field"><label for="keyname">свій ключ</label><select id="keyname"></select></div>
-  <div class="field"><label for="keyvalue">значення</label><div class="pair"><input id="keyvalue" type="password" placeholder="встав токен" autocomplete="off"><button class="btn" id="save-key">Зберегти</button></div></div>
-  <p class="note" id="keynote">Значення не показуються ніколи — тільки те, звідки ключ.</p>
-  <h3>Пристрої</h3>
-  <p class="note devicehint">Новий браузер чи телефон: візьми код тут і введи його там.</p>
-  <button type="button" class="btn quiet" id="pair-code">Підключити пристрій</button>
+  <div class="field"><label for="keyname" data-t>your own key</label><select id="keyname"></select></div>
+  <div class="field"><label for="keyvalue" data-t>value</label><div class="pair"><input id="keyvalue" type="password" data-t-placeholder placeholder="paste the token" autocomplete="off"><button class="btn" id="save-key" data-t>Save</button></div></div>
+  <p class="note" id="keynote" data-t>Values are never shown — only where a key comes from.</p>
+  <h3 data-t>Devices</h3>
+  <p class="note devicehint" data-t>A new browser or phone: take a code here and enter it there.</p>
+  <button type="button" class="btn quiet" id="pair-code" data-t>Connect a device</button>
   <div id="pair-code-box" hidden>
-    <div class="devicecode"><code id="pair-code-value"></code><button type="button" class="btn quiet" id="pair-code-copy">Копіювати</button></div>
-    <p class="note">одноразовий, живе 5 хвилин</p>
+    <div class="devicecode"><code id="pair-code-value"></code><button type="button" class="btn quiet" id="pair-code-copy" data-t>Copy</button></div>
+    <p class="note" data-t>one-time, lives 5 minutes</p>
   </div>
   <p class="note" id="pair-code-note"></p>
   <div id="features" class="features"></div>
@@ -604,27 +606,27 @@
 
 <aside id="mind" aria-hidden="true" aria-labelledby="mind-title">
   <div class="mind-head">
-    <h2 id="mind-title">Памʼять</h2>
-    <button type="button" class="mind-x" id="mind-close" aria-label="закрити">×</button>
+    <h2 id="mind-title" data-t>Memory</h2>
+    <button type="button" class="mind-x" id="mind-close" data-t-aria aria-label="close">×</button>
   </div>
   <p class="mind-status" id="mind-status" role="status"></p>
   <div class="mind-chips" id="mind-chips"></div>
-  <div class="mind-tabs" role="tablist" aria-label="Памʼять">
-    <button type="button" class="mind-tab on" id="mind-tab-facts" role="tab" aria-selected="true" aria-controls="mind-panel-facts">Факти</button>
-    <button type="button" class="mind-tab" id="mind-tab-reminders" role="tab" aria-selected="false" aria-controls="mind-panel-reminders" tabindex="-1">Нагадування</button>
-    <button type="button" class="mind-tab" id="mind-tab-journal" role="tab" aria-selected="false" aria-controls="mind-panel-journal" tabindex="-1">Журнал</button>
-    <button type="button" class="mind-tab" id="mind-tab-search" role="tab" aria-selected="false" aria-controls="mind-panel-search" tabindex="-1">Пошук</button>
-    <button type="button" class="mind-tab" id="mind-tab-hearing" role="tab" aria-selected="false" aria-controls="mind-panel-hearing" tabindex="-1">Слух</button>
-    <button type="button" class="mind-tab" id="mind-tab-profile" role="tab" aria-selected="false" aria-controls="mind-panel-profile" tabindex="-1">Профіль</button>
-    <button type="button" class="mind-tab" id="mind-tab-backups" role="tab" aria-selected="false" aria-controls="mind-panel-backups" tabindex="-1">Копії</button>
+  <div class="mind-tabs" role="tablist" data-t-aria aria-label="Memory">
+    <button type="button" class="mind-tab on" id="mind-tab-facts" role="tab" aria-selected="true" aria-controls="mind-panel-facts" data-t>Facts</button>
+    <button type="button" class="mind-tab" id="mind-tab-reminders" role="tab" aria-selected="false" aria-controls="mind-panel-reminders" tabindex="-1" data-t>Reminders</button>
+    <button type="button" class="mind-tab" id="mind-tab-journal" role="tab" aria-selected="false" aria-controls="mind-panel-journal" tabindex="-1" data-t>Journal</button>
+    <button type="button" class="mind-tab" id="mind-tab-search" role="tab" aria-selected="false" aria-controls="mind-panel-search" tabindex="-1" data-t>Search</button>
+    <button type="button" class="mind-tab" id="mind-tab-hearing" role="tab" aria-selected="false" aria-controls="mind-panel-hearing" tabindex="-1" data-t>Hearing</button>
+    <button type="button" class="mind-tab" id="mind-tab-profile" role="tab" aria-selected="false" aria-controls="mind-panel-profile" tabindex="-1" data-t>Profile</button>
+    <button type="button" class="mind-tab" id="mind-tab-backups" role="tab" aria-selected="false" aria-controls="mind-panel-backups" tabindex="-1" data-t>Backups</button>
   </div>
   <div class="mind-panel" id="mind-panel-facts" role="tabpanel" aria-labelledby="mind-tab-facts"></div>
   <div class="mind-panel" id="mind-panel-reminders" role="tabpanel" aria-labelledby="mind-tab-reminders" hidden></div>
   <div class="mind-panel" id="mind-panel-journal" role="tabpanel" aria-labelledby="mind-tab-journal" hidden></div>
   <div class="mind-panel" id="mind-panel-search" role="tabpanel" aria-labelledby="mind-tab-search" hidden>
     <form class="mind-search" id="mind-search-form" autocomplete="off">
-      <input id="mind-search-q" type="search" placeholder="що пригадати?" spellcheck="false" autocomplete="off" aria-label="що пригадати">
-      <button type="submit" class="btn">Шукати</button>
+      <input id="mind-search-q" type="search" data-t-placeholder placeholder="what to recall?" spellcheck="false" autocomplete="off" data-t-aria aria-label="what to recall">
+      <button type="submit" class="btn" data-t>Search for it</button>
     </form>
     <p class="mind-search-status" id="mind-search-status" role="status"></p>
     <p class="mind-said" id="mind-search-said" hidden></p>
@@ -633,29 +635,29 @@
   <div class="mind-panel" id="mind-panel-hearing" role="tabpanel" aria-labelledby="mind-tab-hearing" hidden></div>
   <div class="mind-panel" id="mind-panel-profile" role="tabpanel" aria-labelledby="mind-tab-profile" hidden>
     <section class="mind-block">
-      <h3>Власник</h3>
-      <textarea id="mind-profile-user" placeholder="напр. Олена, звертайся на «ти»" spellcheck="false"></textarea>
-      <div class="mind-foot"><span class="mind-count" id="mind-count-user">0 / —</span><span class="mind-err" id="mind-err-user"></span><button type="button" class="btn" id="mind-save-user">Зберегти</button></div>
+      <h3 data-t>Owner</h3>
+      <textarea id="mind-profile-user" data-t-placeholder placeholder="e.g. Olena, speak informally" spellcheck="false"></textarea>
+      <div class="mind-foot"><span class="mind-count" id="mind-count-user">0 / —</span><span class="mind-err" id="mind-err-user"></span><button type="button" class="btn" id="mind-save-user" data-t>Save</button></div>
     </section>
     <section class="mind-block">
-      <h3>Відкриті нитки</h3>
-      <textarea id="mind-profile-threads" placeholder="що зараз у роботі" spellcheck="false"></textarea>
-      <div class="mind-foot"><span class="mind-count" id="mind-count-threads">0 / —</span><span class="mind-err" id="mind-err-threads"></span><button type="button" class="btn" id="mind-save-threads">Зберегти</button></div>
+      <h3 data-t>Open threads</h3>
+      <textarea id="mind-profile-threads" data-t-placeholder placeholder="what is in the works now" spellcheck="false"></textarea>
+      <div class="mind-foot"><span class="mind-count" id="mind-count-threads">0 / —</span><span class="mind-err" id="mind-err-threads"></span><button type="button" class="btn" id="mind-save-threads" data-t>Save</button></div>
     </section>
     <section class="mind-block">
-      <h3>Цілі</h3>
-      <textarea id="mind-profile-goals" placeholder="чого хочеш цього місяця" spellcheck="false"></textarea>
-      <div class="mind-foot"><span class="mind-count" id="mind-count-goals">0 / —</span><span class="mind-err" id="mind-err-goals"></span><button type="button" class="btn" id="mind-save-goals">Зберегти</button></div>
+      <h3 data-t>Goals</h3>
+      <textarea id="mind-profile-goals" data-t-placeholder placeholder="what you want this month" spellcheck="false"></textarea>
+      <div class="mind-foot"><span class="mind-count" id="mind-count-goals">0 / —</span><span class="mind-err" id="mind-err-goals"></span><button type="button" class="btn" id="mind-save-goals" data-t>Save</button></div>
     </section>
   </div>
   <div class="mind-panel" id="mind-panel-backups" role="tabpanel" aria-labelledby="mind-tab-backups" hidden>
-    <p class="mind-empty">Копія — один файл: розмови, журнал, факти, профіль, нагадування, налаштування. Ключів моделей і звʼязків цього мака в ній немає: на новому маку їх вводиш знову.</p>
+    <p class="mind-empty" data-t>A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again.</p>
     <div class="backup-make">
-      <label class="backup-sound"><input type="checkbox" id="backup-sound" checked> зі звуком (записи «Слуху»)</label>
-      <button type="button" class="btn" id="backup-make">Зробити копію</button>
+      <label class="backup-sound"><input type="checkbox" id="backup-sound" checked> <span data-t>with sound (Hearing recordings)</span></label>
+      <button type="button" class="btn" id="backup-make" data-t>Make a backup</button>
     </div>
     <div class="backup-make">
-      <label class="mini backup-bring" for="backup-file">Принести копію…</label>
+      <label class="mini backup-bring" for="backup-file" data-t>Bring a backup…</label>
       <input type="file" id="backup-file" accept=".zip,application/zip" hidden>
       <span class="mind-err" id="backup-status" role="status"></span>
     </div>
@@ -667,15 +669,33 @@
 
 <div id="pairing" hidden>
   <form id="pairform" autocomplete="off">
-    <h1>Підключити цей браузер</h1>
-    <p>Код покаже вже підключена сторінка: ⚙ → Пристрої. Або в терміналі: heare-brain code</p>
-    <input id="paircode" maxlength="12" autocomplete="off" spellcheck="false" placeholder="8 символів">
-    <button type="submit">Підключити</button>
+    <h1 data-t>Connect this browser</h1>
+    <p data-t>A page already connected shows the code: ⚙ → Devices. Or in the terminal: heare-brain code</p>
+    <input id="paircode" maxlength="12" autocomplete="off" spellcheck="false" data-t-placeholder placeholder="8 characters">
+    <button type="submit" data-t>Connect</button>
     <p class="pairerror" id="pairerror" role="alert"></p>
   </form>
 </div>
 
 <script>
+/* The words. English is the key; the brain puts the person's language here
+   as it hands the page out (heare.core.i18n). A word with no translation
+   stays English. Markup marks its words with data-t (the text) and
+   data-t-title / data-t-placeholder / data-t-aria (an attribute). */
+const I18N = /*I18N*/{};
+const fill = (s, vars) => vars ? s.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m) : s;
+const tr = (key, vars) => fill(typeof I18N[key] === "string" ? I18N[key] : key, vars);
+const trn = (n, one, other, vars) => {
+  const forms = I18N[one], d = n % 10, h = n % 100;
+  const i = !Array.isArray(forms) ? (n === 1 ? 0 : 1)
+    : document.documentElement.lang === "uk" ? (d === 1 && h !== 11 ? 0 : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 1 : 2)
+    : (n === 1 ? 0 : 1);
+  const s = Array.isArray(forms) ? forms[Math.min(i, forms.length - 1)] : [one, other][i];
+  return fill(s, {n, ...vars});
+};
+document.querySelectorAll("[data-t]").forEach(e => { e.textContent = tr(e.textContent.trim()); });
+for (const [mark, attr] of [["title", "title"], ["placeholder", "placeholder"], ["aria", "aria-label"]])
+  document.querySelectorAll(`[data-t-${mark}]`).forEach(e => e.setAttribute(attr, tr(e.getAttribute(attr))));
 const $ = id => document.getElementById(id);
 const api = (path, opts = {}) => fetch("/api/" + path, {
   ...opts, credentials: "same-origin",
@@ -693,7 +713,7 @@ function showPairing() {
 const webName = () => {
   const ua = navigator.userAgent;
   return /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome"
-    : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "браузер";
+    : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : tr("browser");
 };
 $("pairform").addEventListener("submit", async ev => {
   ev.preventDefault();
@@ -707,17 +727,17 @@ $("pairform").addEventListener("submit", async ev => {
     });
     if (answer.ok) { location.reload(); return; }
     $("pairerror").textContent = answer.status === 429
-      ? "занадто багато спроб — зачекай хвилину"
-      : "код невірний або прострочений — візьми новий: heare-brain code";
+      ? tr("too many tries — wait a minute")
+      : tr("the code is wrong or expired — take a new one: heare-brain code");
   } catch {
-    $("pairerror").textContent = "мозок не відповідає";
+    $("pairerror").textContent = tr("the brain does not answer");
   }
 });
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
-const NOW = {idle: "чекає", hearing: "слухає тебе", thinking: "думає", speaking: "говорить"};
-const VIA = {voice: "голосом", text: "текстом", screen: ""};
-const WHY = {busy: "був зайнятий", "chose silence": "вирішив не відповідати", playing: "щось грає, а звертання не було"};
+const NOW = {idle: tr("waiting"), hearing: tr("listening to you"), thinking: tr("thinking"), speaking: tr("speaking")};
+const VIA = {voice: tr("by voice"), text: tr("by text"), screen: ""};
+const WHY = {busy: tr("was busy"), "chose silence": tr("chose not to answer"), playing: tr("something is playing, and no one called it")};
 let voice = null, phase = "idle", state = null, writing = null, askedAt = null;
 let aloud = localStorage.getItem("heare.aloud") === "1", webPid = null;
 const speeds = [];
@@ -737,7 +757,7 @@ api("history?n=20").then(past => {
     if (turn.user) frag.append(el("div", "line me old", turn.user));
     if (turn.agent) frag.append(el("div", "line it old", turn.agent));
   }
-  if (past.length) frag.append(el("div", "divider", "зараз"));
+  if (past.length) frag.append(el("div", "divider", tr("now")));
   $("talk").prepend(frag); $("talk").scrollTop = $("talk").scrollHeight;
 }).catch(() => {});
 
@@ -746,7 +766,7 @@ function show() {
   const off = voice && !voice.mic && !voice.speaker;
   const mood = off ? "off" : phase;
   $("face").setAttribute("class", "face " + mood); $("bigface").setAttribute("class", "face " + mood);
-  $("nowtext").textContent = off ? "на паузі" : NOW[phase] + (voice ? (voice.mic ? "" : " · не чує") : " · без голосу");
+  $("nowtext").textContent = off ? tr("paused") : NOW[phase] + (voice ? (voice.mic ? "" : tr(" · not hearing")) : tr(" · no voice"));
   $("you").classList.toggle("live", phase === "hearing" && !off);
   $("it").classList.toggle("live", phase === "thinking" || phase === "speaking");
 }
@@ -755,34 +775,34 @@ function vitals(s) {
   const m = s.model || {};
   if (m.name) { $("name").textContent = m.name; $("bigname").textContent = m.name; document.title = m.name + " · heare"; }
   const box = $("model"); box.replaceChildren();
-  if (m.error) box.append(el("b", "bad", "немає ключа жодної моделі"));
+  if (m.error) box.append(el("b", "bad", tr("no key for any model")));
   else {
     box.append(el("b", "", m.provider || "?"), document.createTextNode(" · " + (m.model || "?")));
-    if (m.fallback) box.append(el("div", "warn", `обрано ${m.wanted}, але в нього немає ключа`));
+    if (m.fallback) box.append(el("div", "warn", tr("{wanted} is chosen, but it has no key", {wanted: m.wanted})));
   }
   const hands = s.parts.executors.filter(n => n !== "screens");
-  $("hands").replaceChildren(hands.length ? el("b", "ok", hands.join(" · ")) : el("span", "warn", "агентів не знайдено"));
+  $("hands").replaceChildren(hands.length ? el("b", "ok", hands.join(" · ")) : el("span", "warn", tr("no agents found")));
   const around = s.around || {}, playing = around.playing || [];
   const near = [];
   if (around.app) near.push(around.app);
-  near.push(playing.length ? "грає: " + playing.join(", ") : "тихо");
-  near.push(around.present === false ? "не тут" : "ти тут");
+  near.push(playing.length ? tr("playing: {what}", {what: playing.join(", ")}) : tr("quiet"));
+  near.push(around.present === false ? tr("not here") : tr("you are here"));
   $("around").replaceChildren(el("span", playing.length ? "warn" : "", near.join(" · ")));
   const t = s.session, mins = Math.round((Date.now() / 1000 - t.started) / 60);
-  const up = mins < 1 ? "щойно запущено" : mins < 60 ? `${mins} хв` : `${Math.floor(mins / 60)} год ${mins % 60} хв`;
+  const up = mins < 1 ? tr("just started") : mins < 60 ? tr("{m} min", {m: mins}) : tr("{h} h {m} min", {h: Math.floor(mins / 60), m: mins % 60});
   const run = s.running || {};
   $("up").textContent = run.version ? `${up} · v${run.version}` : up;
   drawUpdate(s.update);
-  $("up").title = run.commit ? `коміт ${run.commit}` : "";
-  $("session").textContent = `відповідей: ${t.turns}`;
+  $("up").title = run.commit ? tr("commit {c}", {c: run.commit}) : "";
+  $("session").textContent = tr("replies: {n}", {n: t.turns});
 }
 
 /* ── a newer heare ── */
 const UPDATE_SAYS = {
-  downloading: u => `завантажую heare ${u.latest || ""}…`,
-  backing_up: () => "роблю копію памʼяті перед оновленням…",
-  installing: u => `ставлю heare ${u.version || u.latest || ""} — він зараз перезапуститься`,
-  updated: u => `оновлено${u.previous ? " з " + u.previous : ""} до ${u.current}`,
+  downloading: u => tr("downloading heare {v}…", {v: u.latest || ""}),
+  backing_up: () => tr("backing up memory before the update…"),
+  installing: u => tr("installing heare {v} — it will restart now", {v: u.version || u.latest || ""}),
+  updated: u => u.previous ? tr("updated from {old} to {new}", {old: u.previous, new: u.current}) : tr("updated to {new}", {new: u.current}),
 };
 function drawUpdate(u) {
   const box = $("update");
@@ -793,25 +813,25 @@ function drawUpdate(u) {
   box.classList.toggle("bad", u.state === "failed");
   const parts = [];
   if (u.state === "available") {
-    parts.push(el("b", "", `Є heare ${u.latest}`), el("span", "", `у тебе ${u.current}`));
+    parts.push(el("b", "", tr("heare {v} is out", {v: u.latest})), el("span", "", tr("you have {v}", {v: u.current})));
     if (u.can_install) {
-      const go = el("button", "mini yes", "Оновити");
+      const go = el("button", "mini yes", tr("Update"));
       go.type = "button";
       go.onclick = () => {
         go.disabled = true;
         api("update/install", {method: "POST"}).then(drawUpdate)
-          .catch(why => drawUpdate({...u, state: "failed", error: typeof why === "string" && why ? why : "не вийшло почати оновлення"}));
+          .catch(why => drawUpdate({...u, state: "failed", error: typeof why === "string" && why ? why : tr("the update could not start")}));
       };
       parts.push(go);
     } else if (u.page) {
-      const link = el("a", "", "сторінка релізу");
+      const link = el("a", "", tr("release page"));
       link.href = u.page; link.target = "_blank"; link.rel = "noopener";
       parts.push(link);
     }
     if (u.notes) parts.push(el("p", "notes", u.notes));
   } else if (u.state === "failed") {
-    parts.push(el("b", "", "Оновлення не вийшло"), el("span", "", u.error || ""));
-    const again = el("button", "mini", "Перевірити ще");
+    parts.push(el("b", "", tr("The update failed")), el("span", "", u.error || ""));
+    const again = el("button", "mini", tr("Check again"));
     again.type = "button";
     again.onclick = () => { again.disabled = true; api("update/check", {method: "POST"}).then(drawUpdate).catch(() => { again.disabled = false; }); };
     parts.push(again);
@@ -824,7 +844,7 @@ function drawUpdate(u) {
 function spark() {
   if (!speeds.length) return;
   const last = speeds[speeds.length - 1], sorted = [...speeds].sort((a, b) => a - b);
-  $("speed").textContent = `${last.toFixed(1)} с · медіана ${sorted[Math.floor(sorted.length / 2)].toFixed(1)} с`;
+  $("speed").textContent = tr("{last} s · median {mid} s", {last: last.toFixed(1), mid: sorted[Math.floor(sorted.length / 2)].toFixed(1)});
   const max = Math.max(...speeds, 1), w = 70 / Math.max(speeds.length, 8);
   $("spark").innerHTML = speeds.map((v, i) => `<rect x="${i * w}" y="${16 - v / max * 15}" width="${Math.max(w - 1.5, 1)}" height="${v / max * 15}" fill="currentColor" opacity=".55"/>`).join("");
 }
@@ -835,19 +855,19 @@ function tasks(list, permission, question) {
   $("tasks").replaceChildren(...(live.length ? live.reverse().map(t => {
     const row = el("div", "task"), what = el("div");
     what.append(el("p", "", t.request));
-    const how = {running: t.step || "працює", done: "готово", failed: "не вдалося", stopped: "зупинено"}[t.status];
+    const how = {running: t.step || tr("working"), done: tr("done"), failed: tr("failed"), stopped: tr("stopped")}[t.status];
     const secs = Math.round((t.ended || Date.now() / 1000) - t.started);
-    what.append(el("small", t.status === "failed" ? "bad" : "", [t.executor, how, secs + " с"].filter(Boolean).join(" · ")));
+    what.append(el("small", t.status === "failed" ? "bad" : "", [t.executor, how, tr("{s} s", {s: secs})].filter(Boolean).join(" · ")));
     row.append(what);
-    if (t.status === "running") { const b = el("button", "mini", "зупинити"); b.onclick = () => api(`tasks/${t.id}/stop`, {method: "POST"}); row.append(b); }
+    if (t.status === "running") { const b = el("button", "mini", tr("stop")); b.onclick = () => api(`tasks/${t.id}/stop`, {method: "POST"}); row.append(b); }
     return row;
-  }) : [el("p", "empty", "Зараз нічого не роблю.")]));
+  }) : [el("p", "empty", tr("Doing nothing now."))]));
   $("ask").replaceChildren();
   if (question) {
     const box = el("div", "ask");
-    box.append(el("p", "", `${question.executor} питає: ${question.text}`));
-    const field = el("input"); field.placeholder = "Відповідь…"; field.autocomplete = "off";
-    const send = el("button", "mini yes", "Надіслати");
+    box.append(el("p", "", tr("{who} asks: {what}", {who: question.executor, what: question.text})));
+    const field = el("input"); field.placeholder = tr("Answer…"); field.autocomplete = "off";
+    const send = el("button", "mini yes", tr("Send"));
     const reply = () => {
       const text = field.value.trim();
       if (!text) return;
@@ -861,9 +881,9 @@ function tasks(list, permission, question) {
   }
   if (permission) {
     const box = el("div", "ask");
-    box.append(el("p", "", `${permission.executor} хоче: ${permission.what}`));
-    if (permission.why) box.append(el("p", "why", `питаю, бо ${permission.why}`));
-    const yes = el("button", "mini yes", "Так"), no = el("button", "mini", "Ні");
+    box.append(el("p", "", tr("{who} wants to: {what}", {who: permission.executor, what: permission.what})));
+    if (permission.why) box.append(el("p", "why", tr("I ask because {why}", {why: permission.why})));
+    const yes = el("button", "mini yes", tr("Yes")), no = el("button", "mini", tr("No"));
     yes.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: true}});
     no.onclick = () => api(`permission/${permission.id}`, {method: "POST", body: {allow: false}});
     box.append(yes, no); $("ask").append(box);
@@ -871,9 +891,9 @@ function tasks(list, permission, question) {
 }
 
 /* ── the parts that connect to the brain ── */
-const FORM = {input: "вхід", output: "вихід", executor: "виконавець"};
-const PART_LABEL = {web: "сторінка", eyes: "очі", text: "чат", voice: "голос", opencode: "руки"};
-const PART_STATE = {pending: "чекає", approved: "під'єднано", away: "не на зв'язку", rejected: "відхилено", expired: "не дочекався"};
+const FORM = {input: tr("input"), output: tr("output"), executor: tr("executor")};
+const PART_LABEL = {web: tr("page"), eyes: tr("eyes"), text: tr("chat"), voice: tr("voice"), opencode: tr("hands")};
+const PART_STATE = {pending: tr("waiting"), approved: tr("connected"), away: tr("not connected"), rejected: tr("rejected"), expired: tr("timed out")};
 const PART_ORDER = {pending: 0, approved: 1, away: 2, rejected: 3, expired: 4};
 // Where a card stands on the strip. Always the same order, so a part that
 // drops out or comes back moves nothing; only a part that asks comes first.
@@ -884,8 +904,8 @@ const placeOf = (pid, b) => b.state === "pending" ? 0
 // A page has one switch, and a part that is away has none to offer: both
 // are a chip in one line under the cards, not a card.
 const isChip = (pid, b) => pid.startsWith("window@") || !["approved", "pending"].includes(b.state);
-const nameOf = (pid, b) => pid === webPid ? "ця сторінка"
-  : pid.startsWith("window@") ? "сторінка · " + (b.host || pid.slice(7))
+const nameOf = (pid, b) => pid === webPid ? tr("this page")
+  : pid.startsWith("window@") ? tr("page · {host}", {host: b.host || pid.slice(7)})
   : PART_LABEL[b.channel] || b.channel || pid;
 
 const truth = (b, c) => (b.values && Object.prototype.hasOwnProperty.call(b.values, c.name)) ? b.values[c.name] : c.value;
@@ -895,7 +915,7 @@ function controlsFor(pid, b, group = "", act = null) {
   if (b.state !== "approved" || !list.length) return null;
   const grid = el("div", "keys"), extra = el("div", "actions"), facts = el("p", "pfacts");
   const send = act || ((name, value) => turn(pid, name, value));
-  const shown = (c, value) => c.unit != null ? `${value} ${c.unit}` : Math.round(Number(value) * 100) + "%";
+  const shown = (c, value) => c.unit != null ? `${value} ${tr(c.unit)}` : Math.round(Number(value) * 100) + "%";
   for (const c of list) {
     const value = truth(b, c);
     if (c.kind === "toggle") {
@@ -903,8 +923,8 @@ function controlsFor(pid, b, group = "", act = null) {
       row.type = "button";
       row.setAttribute("role", "switch");
       row.setAttribute("aria-checked", String(Boolean(value)));
-      row.title = value ? "увімкнено" : "вимкнено";
-      row.append(el("span", "", c.label || c.name), el("i", "sw"));
+      row.title = value ? tr("on") : tr("off");
+      row.append(el("span", "", tr(c.label || c.name)), el("i", "sw"));
       row.onclick = () => send(c.name, !value);
       grid.append(row);
     } else if (c.kind === "slider") {
@@ -914,23 +934,23 @@ function controlsFor(pid, b, group = "", act = null) {
       const pct = el("span", "", shown(c, value));
       range.oninput = () => { pct.textContent = shown(c, range.value); };
       range.onchange = () => send(c.name, Number(range.value));
-      row.append(el("span", "", c.label || c.name), range, pct);
+      row.append(el("span", "", tr(c.label || c.name)), range, pct);
       grid.append(row);
     } else if (c.kind === "choice") {
       const row = el("div", "vol"), pick = el("select");
       for (const o of c.options || []) {
-        const option = el("option", "", o.label || o.value); option.value = o.value; pick.append(option);
+        const option = el("option", "", tr(o.label || o.value)); option.value = o.value; pick.append(option);
       }
       pick.value = value;
       pick.onchange = () => send(c.name, pick.value);
-      row.append(el("span", "", c.label || c.name), pick, el("span", ""));
+      row.append(el("span", "", tr(c.label || c.name)), pick, el("span", ""));
       grid.append(row);
     } else if (c.kind === "text") {
       const row = el("div", "vol"), field = el("input");
-      field.value = value ?? ""; field.placeholder = c.hint || "";
+      field.value = value ?? ""; field.placeholder = tr(c.hint || "");
       field.autocomplete = "off"; field.spellcheck = false;
       field.onchange = () => send(c.name, field.value.trim());
-      row.append(el("span", "", c.label || c.name), field, el("span", ""));
+      row.append(el("span", "", tr(c.label || c.name)), field, el("span", ""));
       grid.append(row);
     } else if (c.kind === "label") {
       // The one marked head is what the part is doing now: the card's top
@@ -939,14 +959,14 @@ function controlsFor(pid, b, group = "", act = null) {
       if (c.head) continue;
       if (group) {
         const row = el("div", "vol");
-        row.append(el("span", "", c.label || c.name), el("b", "", String(value ?? "")), el("span", ""));
+        row.append(el("span", "", tr(c.label || c.name)), el("b", "", tr(String(value ?? ""))), el("span", ""));
         grid.append(row);
       } else {
         if (facts.childNodes.length) facts.append(" · ");
-        facts.append((c.label || c.name) + " ", el("b", "", String(value ?? "—")));
+        facts.append((tr(c.label || c.name)) + " ", el("b", "", tr(String(value ?? "—"))));
       }
     } else if (c.kind === "button") {
-      const push = el("button", "mini" + (c.action === "stop" ? " yes" : ""), c.label || c.name);
+      const push = el("button", "mini" + (c.action === "stop" ? " yes" : ""), tr(c.label || c.name));
       push.onclick = () => send(c.name, true);
       extra.append(push);
     } else if (c.kind === "log") {
@@ -967,7 +987,7 @@ function controlsFor(pid, b, group = "", act = null) {
 const termScroll = {};
 // Each line is coloured by how it starts, which is all the hands say of it.
 const TERM_LINES = [
-  [/^\d\d:\d\d › /, "t-ask"], [/^\$ |^• /, "t-cmd"], [/^агент: /, "t-said"],
+  [/^\d\d:\d\d › /, "t-ask"], [/^\$ |^• /, "t-cmd"], [/^(агент|agent): /, "t-said"],
   [/^──/, "t-sep"], [/^\s*✓ /, "t-auto"], [/^\s*\? /, "t-q"], [/^\s*(✗|■)/, "t-bad"], [/^⋯/, "t-run"],
   [/^\s/, "t-out"],
 ];
@@ -1001,7 +1021,7 @@ let unpairing = null;
 function partRow(pid, b) {
   const row = el("div", "partrow");
   row.append(el("span", "pdot " + b.state));
-  row.append(el("b", "pname", (PART_LABEL[b.channel] || b.channel || pid) + (pid === webPid ? " · ця" : "")));
+  row.append(el("b", "pname", (PART_LABEL[b.channel] || b.channel || pid) + (pid === webPid ? tr(" · this") : "")));
   row.append(el("span", "pstate " + b.state, PART_STATE[b.state] || b.state));
   // The list is the registry, the strip the controls: pointing at a row
   // shows which card on the strip it is.
@@ -1009,23 +1029,23 @@ function partRow(pid, b) {
   row.onmouseleave = () => lit(pid, false);
   const acts = el("div", "pactions");
   if (b.state === "pending") {
-    const yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Відхилити");
+    const yes = el("button", "mini yes", tr("Approve")), no = el("button", "mini", tr("Reject"));
     yes.onclick = () => partCall(pid, "approve", yes);
     no.onclick = () => partCall(pid, "reject", no);
     acts.append(yes, no);
   } else if (pid.startsWith("window@") && unpairing === pid) {
     row.classList.add("asking");
-    const yes = el("button", "mini yes", "Відключити"), no = el("button", "mini", "Ні");
+    const yes = el("button", "mini yes", tr("Disconnect")), no = el("button", "mini", tr("No"));
     yes.onclick = () => { unpairing = null; partCall(pid, "forget", yes); };
     no.onclick = () => { unpairing = null; parts(state && state.bodies); };
-    acts.append(el("span", "pstate", pid === webPid ? "ця сторінка попросить код" : "вікно попросить код"), yes, no);
+    acts.append(el("span", "pstate", pid === webPid ? tr("this page will ask for a code") : tr("the window will ask for a code")), yes, no);
   } else if (pid.startsWith("window@")) {
-    const gone = el("button", "mini", "Відключити");
-    gone.title = "забрати ключ цього вікна";
+    const gone = el("button", "mini", tr("Disconnect"));
+    gone.title = tr("take this window's key away");
     gone.onclick = () => { unpairing = pid; parts(state && state.bodies); };
     acts.append(gone);
   } else {
-    const gone = el("button", "mini", "Забути");
+    const gone = el("button", "mini", tr("Forget"));
     gone.onclick = () => partCall(pid, "forget", gone);
     acts.append(gone);
   }
@@ -1045,12 +1065,12 @@ function partHead(pid, b) {
   name.title = [b.channel, ...(b.forms || []).map(f => FORM[f] || f), b.host,
     b.version && "v" + b.version].filter(Boolean).join(" · ");
   const head = (b.ui || []).find(c => c.head && c.kind === "label");
-  const now = b.state === "approved" && head ? String(truth(b, head) ?? "") : PART_STATE[b.state] || b.state;
+  const now = b.state === "approved" && head ? tr(String(truth(b, head) ?? "")) : PART_STATE[b.state] || b.state;
   top.append(el("span", "pdot " + b.state), name);
   const brain = state && state.running && state.running.version;
   if (b.version && brain && b.version !== brain) {
     const odd = el("span", "part-ver", "≠");
-    odd.title = `версія частини v${b.version}, мозку — v${brain}`;
+    odd.title = tr("the part is v{part}, the brain v{brain}", {part: b.version, brain});
     top.append(odd);
   }
   top.append(el("span", "part-state", now));
@@ -1058,7 +1078,7 @@ function partHead(pid, b) {
     const open = drawerPid === pid;
     const gear = el("button", "part-gear" + (open ? " on" : ""), "⚙");
     gear.type = "button";
-    gear.title = open ? "сховати налаштування" : "налаштування";
+    gear.title = open ? tr("hide settings") : tr("settings");
     gear.setAttribute("aria-label", gear.title);
     gear.setAttribute("aria-expanded", String(open));
     gear.onclick = () => {
@@ -1074,18 +1094,18 @@ function partHead(pid, b) {
 // How long a part has run and how often it started again since this brain
 // did; its last error, if it had one. Seen without opening a log.
 function lasted(seconds) {
-  if (seconds < 90) return "щойно";
-  if (seconds < 5400) return Math.round(seconds / 60) + " хв";
-  if (seconds < 172800) return Math.round(seconds / 3600) + " год";
-  return Math.round(seconds / 86400) + " дн";
+  if (seconds < 90) return tr("just now");
+  if (seconds < 5400) return tr("{m} min", {m: Math.round(seconds / 60)});
+  if (seconds < 172800) return tr("{h} h", {h: Math.round(seconds / 3600)});
+  return tr("{d} d", {d: Math.round(seconds / 86400)});
 }
 function partHealth(b) {
   const out = [], bits = [];
   if (b.version) bits.push(el("span", "", "v" + b.version));
-  if (b.started) bits.push(el("span", "", "працює " + lasted(Date.now() / 1000 - b.started)));
+  if (b.started) bits.push(el("span", "", tr("up {for}", {for: lasted(Date.now() / 1000 - b.started)})));
   if (b.started) {
     const n = b.restarts || 0;
-    bits.push(el("span", n ? "fell" : "", n ? `перезапусків: ${n}` : "без перезапусків"));
+    bits.push(el("span", n ? "fell" : "", n ? tr("restarts: {n}", {n}) : tr("no restarts")));
   }
   if (bits.length) {
     const line = el("div", "health");
@@ -1112,8 +1132,8 @@ function partWidget(pid, b) {
   // The same for a part with a yes of its own: it may allow what he asks.
   if (b.hears === "all" || b.approves) {
     const badges = el("div", "badges");
-    if (b.hears === "all") badges.append(el("span", "badge", "чує всю розмову"));
-    if (b.approves) badges.append(el("span", "badge", "може дати дозвіл кнопкою"));
+    if (b.hears === "all") badges.append(el("span", "badge", tr("hears the whole conversation")));
+    if (b.approves) badges.append(el("span", "badge", tr("can give leave with a button")));
     card.append(badges);
   }
   // What the hands may do with it. What changes the world is the trust the
@@ -1121,13 +1141,13 @@ function partWidget(pid, b) {
   const skills = (b.skills || []).filter(s => s.effect === "change");
   if (skills.length) {
     const list = el("div", "badges");
-    for (const s of skills) list.append(el("span", "badge", "змінює: " + s.name));
+    for (const s of skills) list.append(el("span", "badge", tr("changes: {skill}", {skill: s.name})));
     card.append(list);
   }
   if (b.state === "pending") {
     card.append(el("p", "phost", b.host || ""));
     const acts = el("div", "actions");
-    const yes = el("button", "mini yes", "Одобрити"), no = el("button", "mini", "Ні");
+    const yes = el("button", "mini yes", tr("Approve")), no = el("button", "mini", tr("No"));
     yes.onclick = () => partCall(pid, "approve", yes);
     no.onclick = () => partCall(pid, "reject", no);
     acts.append(yes, no);
@@ -1159,15 +1179,15 @@ const typingIn = node => {
 
 /* ── features: the brain's own capabilities, in the settings drawer ── */
 let featureGroups = [], featureList = [];
-const FEATURE_STATE = {running: "працює", off: "вимкнено", error: "збій", ready: "готово"};
+const FEATURE_STATE = {running: tr("working"), off: tr("off"), error: tr("failure"), ready: tr("done")};
 
 function featureCard(f) {
   const card = el("article", "feature"), top = el("div", "feat-top");
-  top.append(el("b", "feat-name", f.title || f.id));
+  top.append(el("b", "feat-name", tr(f.title || f.id)));
   const state = f.state || "off", stateText = FEATURE_STATE[state] || state;
   if (state !== "ready") top.append(el("span", "fstate " + state, stateText));
   card.append(top);
-  if (f.about) card.append(el("p", "feat-about", f.about));
+  if (f.about) card.append(el("p", "feat-about", tr(f.about)));
   if (f.note && f.note !== stateText) card.append(el("p", "feat-note", f.note));
   // The note already states the last run; a label would say it twice.
   const visible = (f.controls || []).filter(c => c.kind !== "label" || !f.note
@@ -1197,14 +1217,14 @@ function featureDraw() {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     if (!items.length) continue;
     seen.add(g.id);
-    frag.append(el("h3", "", g.title || g.id));
+    frag.append(el("h3", "", tr(g.title || g.id)));
     for (const f of items) frag.append(featureCard(f));
   }
   const rest = featureList
     .filter(f => !seen.has(f.group))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   if (rest.length) {
-    frag.append(el("h3", "", "Інше"));
+    frag.append(el("h3", "", tr("Other")));
     for (const f of rest) frag.append(featureCard(f));
   }
   box.replaceChildren(frag);
@@ -1221,7 +1241,7 @@ function featureLoad() {
     const box = $("features");
     if (!box) return;
     box.hidden = false;
-    box.replaceChildren(el("p", "note featurefail", "не вдалося прочитати"));
+    box.replaceChildren(el("p", "note featurefail", tr("could not read it")));
   });
 }
 
@@ -1240,15 +1260,15 @@ function featureTurn(id, name, value) {
 function parts(map) {
   const box = $("bodies"), grid = $("partwidgets"), all = Object.entries(map || {});
   if (!all.length) {
-    box.replaceChildren(el("p", "empty", "жодна частина не під'єднана"));
-    grid.replaceChildren(el("p", "empty", "жодна частина не під'єднана"));
+    box.replaceChildren(el("p", "empty", tr("no part is connected")));
+    grid.replaceChildren(el("p", "empty", tr("no part is connected")));
     $("partchips").replaceChildren();
     $("partfold").replaceChildren();
     return;
   }
   const groups = new Map();
   for (const [pid, b] of all) {
-    const host = String(b.host || "").trim() || "без хоста";
+    const host = String(b.host || "").trim() || tr("no host");
     if (!groups.has(host)) groups.set(host, []);
     groups.get(host).push([pid, b]);
   }
@@ -1274,7 +1294,7 @@ function parts(map) {
   const now = [...grid.children].filter(n => n !== drawer);
   if (now.length === fresh.length && fresh.every((card, i) => card === now[i] || !fresh.includes(now[i]))) {
     fresh.forEach((card, i) => { if (now[i] !== card) now[i].replaceWith(card); });
-  } else grid.replaceChildren(...(fresh.length ? fresh : [el("p", "empty", "жодна частина не на зв'язку")]));
+  } else grid.replaceChildren(...(fresh.length ? fresh : [el("p", "empty", tr("no part is connected now"))]));
   const chips = $("partchips");
   if (!typingIn(chips))
     chips.replaceChildren(...ordered.filter(([pid, b]) => isChip(pid, b)).map(([pid, b]) => partChip(pid, b)));
@@ -1282,7 +1302,7 @@ function parts(map) {
     const head = (b.ui || []).find(c => c.head && c.kind === "label");
     const one = el("span");
     one.append(el("i", "pdot " + b.state), el("b", "", nameOf(pid, b)),
-               b.state === "approved" && head ? String(truth(b, head) ?? "") : PART_STATE[b.state] || b.state);
+               b.state === "approved" && head ? tr(String(truth(b, head) ?? "")) : PART_STATE[b.state] || b.state);
     return one;
   }));
   placeDrawer();
@@ -1313,9 +1333,9 @@ function placeDrawer() {
   if (drawer.dataset.pid !== drawerPid) {
     drawer.dataset.pid = drawerPid;
     const top = el("div", "pdrawer-top"), close = el("button", "", "✕");
-    close.type = "button"; close.title = "сховати налаштування";
+    close.type = "button"; close.title = tr("hide settings");
     close.onclick = () => { drawerPid = null; parts(state && state.bodies); };
-    top.append(el("small", "", "налаштування · " + nameOf(drawerPid, b)), close);
+    top.append(el("small", "", tr("settings · {part}", {part: nameOf(drawerPid, b)})), close);
     drawer.replaceChildren(top);
   }
   const node = settingsFor(drawerPid, b);
@@ -1349,7 +1369,7 @@ addEventListener("keydown", ev => {
 const FOLD_KEY = "heare.parts.folded";
 function fold(on) {
   $("partcol").classList.toggle("folded", on);
-  $("partfoldbtn").textContent = on ? "розгорнути" : "згорнути";
+  $("partfoldbtn").textContent = on ? tr("unfold") : tr("fold");
   $("partfoldbtn").setAttribute("aria-expanded", String(!on));
   try { localStorage.setItem(FOLD_KEY, on ? "1" : ""); } catch { /* kept for this visit only */ }
 }
@@ -1412,7 +1432,7 @@ function block(b) {
   if (editing && editing.node === node) editing.stop();
   if (!node) { node = el("div", "blk"); node.id = "blk-" + b.id; $("live").append(node); }
   node.className = "blk " + (b.size || "s");
-  const x = el("button", "x", "×"); x.title = "прибрати"; x.onclick = () => api("canvas/remove", {method: "POST", body: {id: b.id}});
+  const x = el("button", "x", "×"); x.title = tr("remove"); x.onclick = () => api("canvas/remove", {method: "POST", body: {id: b.id}});
   node.dataset.html = b.html;
   if (/<script/i.test(b.html)) {
     const frame = document.createElement("iframe");
@@ -1422,7 +1442,7 @@ function block(b) {
     const body = el("div", "w"); body.innerHTML = b.html;
     node.replaceChildren(x, body);
     if (/<svg[\s>]/i.test(b.html)) {
-      const pen = el("button", "ed", "✎"); pen.title = "редагувати малюнок";
+      const pen = el("button", "ed", "✎"); pen.title = tr("edit the drawing");
       pen.onclick = () => editDrawing(node, b.id);
       node.insertBefore(pen, body);
     }
@@ -1471,14 +1491,14 @@ function editDrawing(node, id) {
 
   let selected = null, drag = null, preview = null, live = true;
   const bar = el("div", "edbar");
-  const hint = el("span", "edhint", "вибери коло чи лінію");
+  const hint = el("span", "edhint", tr("pick a circle or a line"));
   const color = document.createElement("input");
-  color.type = "color"; color.value = "#9d7cff"; color.title = "колір вибраного"; color.disabled = true;
-  const addCircle = /<circle[\s>]/i.test(body.innerHTML) ? el("button", "", "＋ коло") : null;
-  const addPath = /<path[\s>]/i.test(body.innerHTML) ? el("button", "", "＋ лінія") : null;
-  const dropBtn = el("button", "", "прибрати"); dropBtn.disabled = true;
-  const cancelBtn = el("button", "", "скасувати");
-  const saveBtn = el("button", "edsave", "готово");
+  color.type = "color"; color.value = "#9d7cff"; color.title = tr("colour of the selected"); color.disabled = true;
+  const addCircle = /<circle[\s>]/i.test(body.innerHTML) ? el("button", "", tr("＋ circle")) : null;
+  const addPath = /<path[\s>]/i.test(body.innerHTML) ? el("button", "", tr("＋ line")) : null;
+  const dropBtn = el("button", "", tr("remove")); dropBtn.disabled = true;
+  const cancelBtn = el("button", "", tr("cancel"));
+  const saveBtn = el("button", "edsave", tr("done"));
   bar.append(hint, color);
   if (addCircle) bar.append(addCircle);
   if (addPath) bar.append(addPath);
@@ -1498,9 +1518,9 @@ function editDrawing(node, id) {
   };
   const sync = () => {
     const tag = selected ? selected.tagName.toLowerCase() : "";
-    hint.textContent = tag === "path" ? "потягни по полю — лінія перемалюється"
-      : tag === "circle" ? "тягни коло, а вузол — щоб змінити радіус"
-      : "вибери коло чи лінію";
+    hint.textContent = tag === "path" ? tr("drag across the field — the line is redrawn")
+      : tag === "circle" ? tr("drag the circle, and the handle to change the radius")
+      : tr("pick a circle or a line");
     dropBtn.disabled = color.disabled = !selected;
     if (selected) color.value = hex(tag === "path" ? selected.getAttribute("stroke")
       : (selected.getAttribute("fill") || "none") !== "none" ? selected.getAttribute("fill")
@@ -1530,14 +1550,14 @@ function editDrawing(node, id) {
     holder.querySelectorAll(".ed-sel").forEach(n => n.classList.remove("ed-sel"));
     const html = holder.innerHTML;
     saveBtn.disabled = cancelBtn.disabled = dropBtn.disabled = true;
-    saveBtn.textContent = "зберігаю…";
+    saveBtn.textContent = tr("saving…");
     api("canvas/put", {method: "POST", body: {id, html}}).then(() => {
       body.innerHTML = html;
       stop();
     }, err => {
-      saveBtn.disabled = cancelBtn.disabled = false; saveBtn.textContent = "готово";
+      saveBtn.disabled = cancelBtn.disabled = false; saveBtn.textContent = tr("done");
       const note = bar.querySelector(".ederror") || el("span", "ederror");
-      note.textContent = "не збереглося: " + err;
+      note.textContent = tr("not saved: {why}", {why: err});
       bar.append(note);
     });
   };
@@ -1675,10 +1695,10 @@ api("canvas").then(c => { restyle(c.css); c.blocks.forEach(block); few(); });
 // The page is a body too: it knocks so the person sees it among the parts,
 // and knocks again whenever its stream reconnects (a brain restarted).
 const knock = () => api("bodies", {method: "POST", body: {
-  channel: "web", forms: ["input", "output"], about: "сторінка в браузері",
+  channel: "web", forms: ["input", "output"], about: "a page in the browser",
   ui: [
-    {name: "aloud", kind: "toggle", label: "Чути відповідь", value: aloud},
-    {name: "state", kind: "label", label: "Стан", value: "на зв'язку", head: true},
+    {name: "aloud", kind: "toggle", label: "Hear the reply", value: aloud},
+    {name: "state", kind: "label", label: "State", value: "online", head: true},
   ]}}).then(answer => { webPid = (answer && answer.pid) || webPid; }).then(() => api("input", {method: "POST", body: {
     kind: "state", channel: "web", values: {aloud}}})).catch(() => {});
 knock();
@@ -1702,7 +1722,7 @@ const turn = (part, name, value) => api("controls", {method: "POST", body: {part
 const confirming = on => { $("stop").hidden = on; $("confirm").hidden = !on; };
 $("stop").onclick = () => confirming(true);
 $("stop-no").onclick = () => confirming(false);
-$("stop-yes").onclick = () => api("stop", {method: "POST"}).then(() => { confirming(false); aside("зупинено"); });
+$("stop-yes").onclick = () => api("stop", {method: "POST"}).then(() => { confirming(false); aside(tr("stopped")); });
 
 /* ── the conversation drawer: open on the toggle or on the input ── */
 const talkOn = on => {
@@ -1765,12 +1785,12 @@ const mindDirty = {user: false, threads: false, goals: false};
 const MIND_PROFILE = ["user", "threads", "goals"];
 const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", "profile", "backups"];
 const MIND_SOURCE = {
-  legacy: "зі старої памʼяті",
-  consolidated: "зі слів",
-  user_confirmed: "ти підтвердив",
-  user_said: "ти сказав",
-  model_inferred: "висновок огляду",
-  tool_output: "з інструмента",
+  legacy: tr("from the old memory"),
+  consolidated: tr("from words"),
+  user_confirmed: tr("you confirmed"),
+  user_said: tr("you said"),
+  model_inferred: tr("the review's conclusion"),
+  tool_output: tr("from a tool"),
 };
 
 const mindSource = v => MIND_SOURCE[v] || (v ? String(v) : "—");
@@ -1789,14 +1809,14 @@ const mindTime = sec => {
 const mindIn = sec => {
   const diff = Number(sec) - Date.now() / 1000;
   if (!Number.isFinite(diff)) return "";
-  if (diff <= 0) return "прострочено";
-  if (diff < 60) return "менш ніж за хвилину";
-  if (diff < 3600) return "через " + Math.round(diff / 60) + " хв";
-  if (diff < 86400) return "через " + Math.round(diff / 3600) + " год";
-  return "через " + Math.round(diff / 86400) + " дн";
+  if (diff <= 0) return tr("overdue");
+  if (diff < 60) return tr("in less than a minute");
+  if (diff < 3600) return tr("in {m} min", {m: Math.round(diff / 60)});
+  if (diff < 86400) return tr("in {h} h", {h: Math.round(diff / 3600)});
+  return tr("in {d} d", {d: Math.round(diff / 86400)});
 };
 const mindReview = v => {
-  if (!v) return "ще не було";
+  if (!v) return tr("not yet");
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
   return m ? m[3] + "." + m[2] : String(v);
 };
@@ -1827,11 +1847,11 @@ function mindChips(d) {
     return e;
   };
   $("mind-chips").replaceChildren(
-    chip("чекають рішення", c.pending),
-    chip("сталі факти", c.confirmed),
-    chip("нагадування", c.reminders),
-    chip("огляд", mindReview(d && d.review && d.review.last)),
-    chip("зведено", mindStamp(d && d.consolidation && d.consolidation.last)),
+    chip(tr("awaiting a decision"), c.pending),
+    chip(tr("settled facts"), c.confirmed),
+    chip(tr("reminders"), c.reminders),
+    chip(tr("review"), mindReview(d && d.review && d.review.last)),
+    chip(tr("consolidated"), mindStamp(d && d.consolidation && d.consolidation.last)),
   );
 }
 
@@ -1858,31 +1878,31 @@ function mindAction(button, path, opts, err) {
   err.textContent = "";
   api(path, opts)
     .then(() => { mindLoad(true); mindSummary(); })
-    .catch(() => { button.disabled = false; err.textContent = "не вийшло — спробуй ще"; });
+    .catch(() => { button.disabled = false; err.textContent = tr("failed — try again"); });
 }
 function mindFact(f, pending) {
   const card = el("div", "mind-fact" + (pending ? " pending" : ""));
   card.append(el("p", "", f.text || ""));
   const meta = el("div", "mind-meta");
   meta.append(el("span", "", mindSource(f.source)));
-  if (typeof f.confidence === "number") meta.append(el("span", "", "впевненість " + Math.round(f.confidence * 100) + "%"));
+  if (typeof f.confidence === "number") meta.append(el("span", "", tr("confidence {p}%", {p: Math.round(f.confidence * 100)})));
   const at = f.valid_from || f.created_at;
   if (at) meta.append(el("span", "", mindDate(at)));
   card.append(meta);
   const actions = el("div", "mind-actions");
   const err = el("span", "mind-err", "");
   if (pending) {
-    const yes = el("button", "mini yes", "Підтвердити");
+    const yes = el("button", "mini yes", tr("Confirm"));
     yes.type = "button";
     yes.onclick = () => mindAction(yes, "mind/facts/" + f.id + "/confirm", {method: "POST"}, err);
-    const no = el("button", "mini", "Відхилити");
+    const no = el("button", "mini", tr("Reject"));
     no.type = "button";
     no.onclick = () => mindAction(no, "mind/facts/" + f.id + "/reject", {method: "POST"}, err);
     actions.append(yes, no, err);
   } else {
-    const forget = el("button", "mini", "Забути");
+    const forget = el("button", "mini", tr("Forget"));
     forget.type = "button";
-    twice(forget, "Точно забути?",
+    twice(forget, tr("Forget for sure?"),
           () => mindAction(forget, "mind/facts/" + f.id + "/reject", {method: "POST"}, err));
     actions.append(forget, err);
   }
@@ -1893,11 +1913,11 @@ function mindFacts(d) {
   const facts = (d && d.facts) || {};
   const pending = facts.pending || [], confirmed = facts.confirmed || [];
   const box = $("mind-panel-facts");
-  box.replaceChildren(mindSec("Чекають рішення", pending.length));
-  if (!pending.length) box.append(el("p", "mind-empty", "нічого не чекає рішення."));
+  box.replaceChildren(mindSec(tr("Awaiting a decision"), pending.length));
+  if (!pending.length) box.append(el("p", "mind-empty", tr("nothing awaits a decision.")));
   else for (const f of pending) box.append(mindFact(f, true));
-  box.append(mindSec("Сталі факти", confirmed.length));
-  if (!confirmed.length) box.append(el("p", "mind-empty", "сталих фактів ще немає."));
+  box.append(mindSec(tr("Settled facts"), confirmed.length));
+  if (!confirmed.length) box.append(el("p", "mind-empty", tr("no settled facts yet.")));
   else for (const f of confirmed) box.append(mindFact(f, false));
 }
 function mindReminder(r) {
@@ -1911,7 +1931,7 @@ function mindReminder(r) {
   card.append(meta);
   const actions = el("div", "mind-actions");
   const err = el("span", "mind-err", "");
-  const cancel = el("button", "mini", "Скасувати");
+  const cancel = el("button", "mini", tr("Cancel"));
   cancel.type = "button";
   cancel.onclick = () => mindAction(cancel, "mind/reminders/" + r.id + "/cancel", {method: "POST"}, err);
   actions.append(cancel, err);
@@ -1921,11 +1941,11 @@ function mindReminder(r) {
 function mindReminders(d) {
   const list = (d && d.reminders) || [];
   const box = $("mind-panel-reminders");
-  box.replaceChildren(mindSec("Нагадування", list.length));
+  box.replaceChildren(mindSec(tr("Reminders"), list.length));
   if (!list.length) {
     const empty = el("div", "mind-empty");
-    empty.append(el("p", "", "нічого не нагадувати."));
-    empty.append(el("p", "", "скажи «нагадай…», і воно з'явиться тут."));
+    empty.append(el("p", "", tr("nothing to remind.")));
+    empty.append(el("p", "", tr("say «remind me…», and it will appear here.")));
     box.append(empty);
     return;
   }
@@ -1973,21 +1993,21 @@ function mindJournalLoad() {
   if (!mindOpen) return;
   const box = $("mind-panel-journal");
   const seq = ++mindJournalSeq;
-  if (!box.childElementCount) box.replaceChildren(el("p", "mind-empty", "читаю журнал…"));
+  if (!box.childElementCount) box.replaceChildren(el("p", "mind-empty", tr("reading the journal…")));
   api("mind/journal?limit=80").then(d => {
     if (seq !== mindJournalSeq || mindTab !== "journal") return;
     const items = ((d && d.items) || []).slice().sort((a, b) => mindWhen(b.at) - mindWhen(a.at));
-    box.replaceChildren(mindSec("Журнал", items.length));
-    if (!items.length) { box.append(el("p", "mind-empty", "журнал порожній.")); return; }
+    box.replaceChildren(mindSec(tr("Journal"), items.length));
+    if (!items.length) { box.append(el("p", "mind-empty", tr("the journal is empty."))); return; }
     for (const item of items) {
       const row = mindItem(item);
       if (item.kind === "heard" || item.kind === "said") {
         const actions = el("div", "mind-actions");
         const err = el("span", "mind-err", "");
-        const forget = el("button", "mini", "Забути");
+        const forget = el("button", "mini", tr("Forget"));
         forget.type = "button";
-        forget.title = "Його не буде ні в журналі, ні в пошуку";
-        twice(forget, "Точно забути?",
+        forget.title = tr("It will be neither in the journal nor in search");
+        twice(forget, tr("Forget for sure?"),
               () => mindAction(forget, "mind/journal/forget", {method: "POST", body: {ids: [item.id]}}, err));
         actions.append(forget, err);
         row.append(actions);
@@ -1997,17 +2017,17 @@ function mindJournalLoad() {
   }).catch(() => {
     if (seq !== mindJournalSeq || mindTab !== "journal") return;
     const fail = el("div", "mind-empty");
-    fail.append(el("p", "mind-err", "не вдалося прочитати журнал."));
-    const retry = el("button", "mini", "Спробувати ще");
+    fail.append(el("p", "mind-err", tr("could not read the journal.")));
+    const retry = el("button", "mini", tr("Try again"));
     retry.type = "button";
     retry.onclick = () => mindJournalLoad();
     fail.append(retry);
-    box.replaceChildren(mindSec("Журнал"), fail);
+    box.replaceChildren(mindSec(tr("Journal")), fail);
   });
 }
 /* ── «Слух»: what the ear heard, to hear again and mark ── */
 let hearingSeq = 0, hearingAudio = null;
-const HEAR_LABEL = {me: "до Доки", background: "фон"};
+const HEAR_LABEL = {me: tr("to the assistant"), background: tr("background")};
 function hearingPlay(button, pieces) {
   if (hearingAudio) { hearingAudio.pause(); const was = hearingAudio.button; hearingAudio = null;
     if (was) was.textContent = "▶"; if (was === button) return; }
@@ -2026,52 +2046,52 @@ function hearingPlay(button, pieces) {
 function hearingMark(r, label, truth, err) {
   return api("heard/" + encodeURIComponent(r.turn), {method: "POST", body: {label, truth}})
     .then(() => hearingLoad())
-    .catch(() => { err.textContent = "не вийшло — спробуй ще"; });
+    .catch(() => { err.textContent = tr("failed — try again"); });
 }
 function hearingRow(r) {
   const row = el("div", "mind-item hear-row" + (r.label ? " " + r.label : ""));
   const top = el("div", "mind-item-top");
   const play = el("button", "mini play", "▶");
-  play.type = "button"; play.title = "прослухати"; play.setAttribute("aria-label", "прослухати");
+  play.type = "button"; play.title = tr("listen"); play.setAttribute("aria-label", tr("listen"));
   play.onclick = () => hearingPlay(play, r.pieces);
   top.append(play);
   if (r.label) top.append(el("span", "mind-item-kind", HEAR_LABEL[r.label] || r.label));
-  else if (r.dropped) top.append(el("span", "mind-item-kind", "відкинуто як вигадка"));
+  else if (r.dropped) top.append(el("span", "mind-item-kind", tr("dropped as made up")));
   top.append(el("span", "mind-item-time",
-    mindTime(r.at) + " · " + (r.ms / 1000).toFixed(1) + " с" + (r.pieces.length > 1 ? " · " + r.pieces.length + " шматки" : "")));
+    mindTime(r.at) + " · " + tr("{s} s", {s: (r.ms / 1000).toFixed(1)}) + (r.pieces.length > 1 ? " · " + trn(r.pieces.length, "{n} piece", "{n} pieces") : "")));
   row.append(top);
   const heard = r.dropped ? r.pieces.map(p => p.text).join(" ") : r.text;
   if (r.truth && r.truth !== heard) {
     row.append(el("p", "was", heard || "—"));
     row.append(el("p", "mind-item-text", r.truth));
   } else {
-    row.append(el("p", "mind-item-text" + (heard ? "" : " none"), heard || "нічого не розпізнано"));
+    row.append(el("p", "mind-item-text" + (heard ? "" : " none"), heard || tr("nothing recognised")));
   }
   const actions = el("div", "mind-actions");
   const err = el("span", "mind-err", "");
-  const right = el("button", "mini yes", r.dropped ? "Це був я" : "Правильно");
+  const right = el("button", "mini yes", r.dropped ? tr("It was me") : tr("Right"));
   right.type = "button";
-  right.title = "сказано Доці, і розпізнано так";
+  right.title = tr("said to the assistant, and recognised so");
   right.onclick = () => { right.disabled = true; hearingMark(r, "me", heard, err); };
-  const fix = el("button", "mini", "Виправити");
+  const fix = el("button", "mini", tr("Correct"));
   fix.type = "button";
   fix.onclick = () => {
     const form = el("form", "fix");
     const input = el("input");
-    input.value = r.truth || heard || ""; input.setAttribute("aria-label", "що сказано насправді");
-    input.placeholder = "що ти насправді сказав";
-    const save = el("button", "mini yes", "Зберегти"); save.type = "submit";
+    input.value = r.truth || heard || ""; input.setAttribute("aria-label", tr("what was really said"));
+    input.placeholder = tr("what you really said");
+    const save = el("button", "mini yes", tr("Save")); save.type = "submit";
     form.append(input, save);
     form.onsubmit = ev => { ev.preventDefault(); const t = input.value.trim();
-      if (!t) { err.textContent = "напиши, що було сказано"; return; }
+      if (!t) { err.textContent = tr("write what was said"); return; }
       save.disabled = true; hearingMark(r, "me", t, err); };
     actions.replaceWith(form, actions);
     fix.disabled = true;
     input.focus();
   };
-  const noise = el("button", "mini", "Фон");
+  const noise = el("button", "mini", tr("Background"));
   noise.type = "button";
-  noise.title = "не до Доки: телевізор, інші люди, тиша";
+  noise.title = tr("not to the assistant: TV, other people, silence");
   noise.onclick = () => { noise.disabled = true; hearingMark(r, "background", null, err); };
   actions.append(right, fix, noise, err);
   row.append(actions);
@@ -2081,30 +2101,26 @@ function hearingLoad() {
   if (!mindOpen) return;
   const box = $("mind-panel-hearing");
   const seq = ++hearingSeq;
-  if (!box.childElementCount) box.replaceChildren(el("p", "mind-empty", "читаю записи…"));
+  if (!box.childElementCount) box.replaceChildren(el("p", "mind-empty", tr("reading the recordings…")));
   api("heard?limit=80").then(d => {
     if (seq !== hearingSeq || mindTab !== "hearing") return;
     const replies = (d && d.replies) || [];
-    box.replaceChildren(mindSec("Що я почув", `розмічено ${d.marked || 0} з ${d.total || 0}`));
-    box.append(el("p", "mind-empty", "Послухай і познач: «Правильно» — сказано мені й почуто так; «Виправити» — що було насправді; «Фон» — не до мене. З цього ми міряємо, як я тебе чую."));
-    if (!replies.length) { box.append(el("p", "mind-empty", "записів ще немає — вони зʼявляться, щойно я щось почую.")); return; }
+    box.replaceChildren(mindSec(tr("What I heard"), tr("marked {done} of {all}", {done: d.marked || 0, all: d.total || 0})));
+    box.append(el("p", "mind-empty", tr("Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you.")));
+    if (!replies.length) { box.append(el("p", "mind-empty", tr("no recordings yet — they appear as soon as I hear something."))); return; }
     for (const r of replies) box.append(hearingRow(r));
   }).catch(() => {
     if (seq !== hearingSeq || mindTab !== "hearing") return;
     const fail = el("div", "mind-empty");
-    fail.append(el("p", "mind-err", "не вдалося прочитати записи."));
-    const retry = el("button", "mini", "Спробувати ще");
+    fail.append(el("p", "mind-err", tr("could not read the recordings.")));
+    const retry = el("button", "mini", tr("Try again"));
     retry.type = "button"; retry.onclick = () => hearingLoad();
     fail.append(retry);
-    box.replaceChildren(mindSec("Що я почув"), fail);
+    box.replaceChildren(mindSec(tr("What I heard")), fail);
   });
 }
 /* ── «Копії»: the owner's memory in one file, and back ── */
 let backupsSeq = 0;
-const many = (n, one, few, lots) => {
-  const t = n % 10, h = n % 100;
-  return n + " " + (t === 1 && h !== 11 ? one : t >= 2 && t <= 4 && (h < 12 || h > 14) ? few : lots);
-};
 const backupWhen = iso => {
   const d = new Date(iso);
   return Number.isFinite(d.getTime())
@@ -2120,27 +2136,27 @@ function backupRow(b) {
   const row = el("div", "mind-item backup-row");
   const top = el("div", "mind-item-top");
   top.append(el("span", "mind-item-time", b.made ? backupWhen(b.made) : b.name));
-  if (b.broken) top.append(el("span", "mind-item-kind", "пошкоджена"));
-  else if (!b.sound) top.append(el("span", "mind-item-kind", "без звуку"));
-  top.append(el("span", "mind-item-time", (b.size / 1048576).toFixed(1) + " МБ"));
+  if (b.broken) top.append(el("span", "mind-item-kind", tr("damaged")));
+  else if (!b.sound) top.append(el("span", "mind-item-kind", tr("without sound")));
+  top.append(el("span", "mind-item-time", tr("{mb} MB", {mb: (b.size / 1048576).toFixed(1)})));
   row.append(top);
   if (!b.broken) {
     const c = b.counts || {};
-    row.append(el("p", "mind-item-text", [many(c.facts || 0, "факт", "факти", "фактів"),
-      many(c.days || 0, "день журналу", "дні журналу", "днів журналу"),
-      many(c.recordings || 0, "запис", "записи", "записів"),
-      many(c.reminders || 0, "нагадування", "нагадування", "нагадувань")].join(" · ")));
+    row.append(el("p", "mind-item-text", [trn(c.facts || 0, "{n} fact", "{n} facts"),
+      trn(c.days || 0, "{n} day of journal", "{n} days of journal"),
+      trn(c.recordings || 0, "{n} recording", "{n} recordings"),
+      trn(c.reminders || 0, "{n} reminder", "{n} reminders")].join(" · ")));
   }
   const actions = el("div", "mind-actions");
-  const take = el("a", "mini", "Завантажити");
+  const take = el("a", "mini", tr("Download"));
   take.href = "/api/backups/" + encodeURIComponent(b.name);
   take.setAttribute("download", b.name);
   actions.append(take);
   if (!b.broken) {
-    const back = el("button", "mini", "Відновити");
+    const back = el("button", "mini", tr("Restore"));
     back.type = "button";
-    back.title = "поточна памʼять відкладеться в backups/before-restore-…";
-    twice(back, "Точно? Поточне відкладу", () => backupRestore(b, back));
+    back.title = tr("the current memory is set aside in backups/before-restore-…");
+    twice(back, tr("Sure? I will set the current aside"), () => backupRestore(b, back));
     actions.append(back);
   }
   row.append(actions);
@@ -2150,61 +2166,61 @@ function backupsLoad() {
   if (!mindOpen) return;
   const seq = ++backupsSeq;
   const list = $("backup-list");
-  if (!list.childElementCount) list.replaceChildren(el("p", "mind-empty", "читаю копії…"));
+  if (!list.childElementCount) list.replaceChildren(el("p", "mind-empty", tr("reading the backups…")));
   api("backups").then(d => {
     if (seq !== backupsSeq) return;
     const items = (d && d.backups) || [];
-    list.replaceChildren(mindSec("Копії", items.length));
-    if (!items.length) list.append(el("p", "mind-empty", "копій ще немає — зроби першу кнопкою вище."));
+    list.replaceChildren(mindSec(tr("Backups"), items.length));
+    if (!items.length) list.append(el("p", "mind-empty", tr("no backups yet — make the first with the button above.")));
     for (const b of items) list.append(backupRow(b));
-    $("backup-folder").textContent = d && d.folder ? "лежать у " + d.folder : "";
+    $("backup-folder").textContent = d && d.folder ? tr("kept in {folder}", {folder: d.folder}) : "";
     const r = d && d.restored, note = $("backup-restored");
     note.hidden = !r;
-    note.textContent = r ? `Відновлено ${backupWhen(r.at)} з копії від ${backupWhen(r.made)}. Що було до того — у backups/${r.aside}.` : "";
+    note.textContent = r ? tr("Restored {at} from the backup of {made}. What was there before is in backups/{aside}.", {at: backupWhen(r.at), made: backupWhen(r.made), aside: r.aside}) : "";
   }).catch(() => {
     if (seq !== backupsSeq) return;
-    list.replaceChildren(el("p", "mind-err", "не вдалося прочитати копії."));
+    list.replaceChildren(el("p", "mind-err", tr("could not read the backups.")));
   });
 }
 function backupMake() {
   const button = $("backup-make");
   button.disabled = true;
-  backupStatus("роблю копію…", true);
+  backupStatus(tr("making a backup…"), true);
   api("backups", {method: "POST", body: {sound: $("backup-sound").checked}})
-    .then(b => { backupStatus("готово: " + (b.size / 1048576).toFixed(1) + " МБ", true); backupsLoad(); })
-    .catch(() => backupStatus("не вийшло зробити копію"))
+    .then(b => { backupStatus(tr("done: {mb} MB", {mb: (b.size / 1048576).toFixed(1)}), true); backupsLoad(); })
+    .catch(() => backupStatus(tr("could not make a backup")))
     .finally(() => { button.disabled = false; });
 }
 function backupBring(ev) {
   const file = ev.target.files && ev.target.files[0];
   ev.target.value = "";
   if (!file) return;
-  backupStatus("перевіряю " + file.name + "…", true);
+  backupStatus(tr("checking {file}…", {file: file.name}), true);
   fetch("/api/backups/bring", {method: "POST", body: file, credentials: "same-origin",
                                headers: {"Content-Type": "application/zip"}})
     .then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)))
-    .then(() => { backupStatus("копію принесено — її видно в списку", true); backupsLoad(); })
-    .catch(why => backupStatus("не прийняв: " + (typeof why === "string" && why ? why : "файл не підходить")));
+    .then(() => { backupStatus(tr("the backup is brought in — it is in the list"), true); backupsLoad(); })
+    .catch(why => backupStatus(tr("not taken: {why}", {why: typeof why === "string" && why ? why : tr("the file does not fit")})));
 }
 function backupRestore(b, button) {
   button.disabled = true;
-  backupStatus("ставлю копію на місце — мозок перезапускається…", true);
+  backupStatus(tr("putting the backup in place — the brain restarts…"), true);
   const asked = Date.now();
   // The page reloads when the brain comes back; it should open here again.
   try { sessionStorage.setItem("heare-restoring", "1"); } catch (_) {}
   api("backups/" + encodeURIComponent(b.name) + "/restore", {method: "POST"}).then(() => {
     let tries = 0;
     const wait = () => {
-      if (++tries > 60) { backupStatus("мозок не повернувся за хвилину — глянь на застосунок"); return; }
+      if (++tries > 60) { backupStatus(tr("the brain did not come back within a minute — look at the app")); return; }
       setTimeout(() => api("backups").then(d => {
         const r = d && d.restored;
         if (!r || r.name !== b.name || new Date(r.at).getTime() < asked - 1000) return wait();
-        backupStatus("відновлено", true);
+        backupStatus(tr("restored"), true);
         backupsLoad(); mindLoad(true); mindSummary();
       }).catch(wait), 1000);
     };
     wait();
-  }).catch(why => { button.disabled = false; backupStatus("не відновив: " + (typeof why === "string" ? why : "")); });
+  }).catch(why => { button.disabled = false; backupStatus(tr("not restored: {why}", {why: typeof why === "string" ? why : ""})); });
 }
 $("backup-make").onclick = backupMake;
 $("backup-file").onchange = backupBring;
@@ -2215,12 +2231,12 @@ function mindSearchSubmit(ev) {
   const list = $("mind-search-results");
   if (!q) {
     status.className = "mind-search-status bad";
-    status.textContent = "напиши, що пригадати.";
+    status.textContent = tr("write what to recall.");
     return;
   }
   const seq = ++mindSearchSeq;
   status.className = "mind-search-status";
-  status.textContent = "шукаю…";
+  status.textContent = tr("searching…");
   said.hidden = true;
   said.textContent = "";
   api("mind/search?q=" + encodeURIComponent(q)).then(d => {
@@ -2231,12 +2247,12 @@ function mindSearchSubmit(ev) {
     said.hidden = !text;
     said.textContent = text;
     const items = (d && d.items) || [];
-    if (!items.length) { list.replaceChildren(el("p", "mind-empty", "нічого не пригадую.")); return; }
+    if (!items.length) { list.replaceChildren(el("p", "mind-empty", tr("I recall nothing."))); return; }
     list.replaceChildren(...items.map(mindItem));
   }).catch(() => {
     if (seq !== mindSearchSeq) return;
     status.className = "mind-search-status bad";
-    status.textContent = "не вдалося пошукати";
+    status.textContent = tr("the search failed");
   });
 }
 function mindShow(tab) {
@@ -2269,7 +2285,7 @@ function mindLoad(force) {
     if (mindTab === "journal") mindJournalLoad();
   }).catch(() => {
     if (seq !== mindSeq) return;
-    $("mind-status").textContent = "памʼять зараз недоступна";
+    $("mind-status").textContent = tr("memory is unavailable now");
     $("mind-status").className = "mind-status bad";
   });
 }
@@ -2327,14 +2343,14 @@ for (const key of MIND_PROFILE) {
         mindDirty[key] = false;
         save.disabled = false;
         err.className = "mind-err ok";
-        err.textContent = "збережено";
+        err.textContent = tr("saved");
         mindLoad();
         mindSummary();
       })
       .catch(() => {
         save.disabled = false;
         err.className = "mind-err";
-        err.textContent = "не вийшло — спробуй ще";
+        err.textContent = tr("failed — try again");
       });
   };
 }
@@ -2349,7 +2365,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") { shut(); ta
 function keyRows(have) {
   const list = $("keylist");
   if (!have) {
-    list.replaceChildren(el("p", "empty", "не вдалося дізнатися, звідки ключі"));
+    list.replaceChildren(el("p", "empty", tr("could not learn where the keys come from")));
     return;
   }
   list.replaceChildren(...Object.keys(have).map(name => {
@@ -2358,10 +2374,10 @@ function keyRows(have) {
     const row = el("div", "keyrow");
     row.append(el("span", "kname", name));
     const chip = el("span", "kchip " + state,
-      {env: "в оточенні", stored: "збережено", none: "немає"}[state]);
+      {env: tr("in the environment"), stored: tr("saved"), none: tr("none")}[state]);
     row.append(chip);
     if (info.env) {
-      const adopt = el("button", "kadopt", "Використати з оточення");
+      const adopt = el("button", "kadopt", tr("Use the one from the environment"));
       adopt.type = "button";
       adopt.onclick = () => adoptKey(name, adopt, chip);
       row.append(adopt);
@@ -2374,13 +2390,13 @@ function adoptKey(name, button, chip) {
   api("keys/adopt", {method: "POST", body: {name}})
     .then(() => {
       chip.className = "kchip stored";
-      chip.textContent = "збережено";
+      chip.textContent = tr("saved");
       button.remove();
-      $("keynote").textContent = `${name} взято з оточення. Діє з наступної відповіді.`;
+      $("keynote").textContent = tr("{name} is taken from the environment. It counts from the next reply.", {name});
       refresh();
     })
     .catch(() => {
-      $("keynote").textContent = "Не вийшло взяти ключ з оточення.";
+      $("keynote").textContent = tr("Could not take the key from the environment.");
       button.disabled = false;
     });
 }
@@ -2400,17 +2416,17 @@ function loadModels(saved) {
   custom.value = "";
   note.textContent = "";
   if (!provider) {
-    pick.replaceChildren(new Option("— типова —", ""));
+    pick.replaceChildren(new Option(tr("— default —"), ""));
     pick.disabled = false;
     return;
   }
   pick.disabled = true;
-  pick.replaceChildren(new Option("шукаю…", ""));
+  pick.replaceChildren(new Option(tr("searching…"), ""));
   api("models?provider=" + encodeURIComponent(provider)).then(answer => {
     if (seq !== modelListSeq) return;
     const models = (answer && answer.models) || [];
     const frag = document.createDocumentFragment();
-    frag.append(new Option("— типова —", ""));
+    frag.append(new Option(tr("— default —"), ""));
     for (const id of models) frag.append(new Option(id, id));
     pick.replaceChildren(frag);
     pick.disabled = false;
@@ -2419,10 +2435,10 @@ function loadModels(saved) {
     else { pick.value = ""; custom.value = want; }
   }).catch(() => {
     if (seq !== modelListSeq) return;
-    pick.replaceChildren(new Option("— типова —", ""));
+    pick.replaceChildren(new Option(tr("— default —"), ""));
     pick.disabled = false;
     custom.value = saved || "";
-    note.textContent = "список не прийшов — впиши id вручну.";
+    note.textContent = tr("the list did not come — type the id.");
   });
 }
 $("open-settings").onclick = () => {
@@ -2447,17 +2463,21 @@ $("save-model").onclick = () => {
   const chosen = $("modelcustom").value.trim() || $("modelpick").value;
   const change = {llm_provider: provider, [provider + "_model"]: chosen};
   api("settings", {method: "POST", body: change})
-    .then(() => { $("modelnote").textContent = "Збережено. Діє з наступної відповіді."; refresh(); })
-    .catch(why => { $("modelnote").textContent = "Не збережено: " + why; });
+    .then(() => { $("modelnote").textContent = tr("Saved. It counts from the next reply."); refresh(); })
+    .catch(why => { $("modelnote").textContent = tr("Not saved: {why}", {why}); });
 };
 $("save-key").onclick = () => {
   const name = $("keyname").value, value = $("keyvalue").value.trim();
   if (!value) return;
   $("keyvalue").value = "";
   api("keys", {method: "POST", body: {name, value}})
-    .then(() => { $("keynote").textContent = `${name} збережено. Діє з наступної відповіді.`; keys(); refresh(); })
-    .catch(why => { $("keynote").textContent = "Не збережено: " + why; });
+    .then(() => { $("keynote").textContent = tr("{name} is saved. It counts from the next reply.", {name}); keys(); refresh(); })
+    .catch(why => { $("keynote").textContent = tr("Not saved: {why}", {why}); });
 };
+/* The language of what the person hears and sees: the page comes back in it. */
+$("lang").value = document.documentElement.lang;
+$("lang").onchange = () => api("settings", {method: "POST", body: {language: $("lang").value}})
+  .then(() => location.reload());
 $("pair-code").onclick = () => {
   const button = $("pair-code"), note = $("pair-code-note");
   button.disabled = true;
@@ -2465,13 +2485,13 @@ $("pair-code").onclick = () => {
   api("pair-code", {method: "POST"})
     .then(answer => {
       $("pair-code-value").textContent = answer.code;
-      $("pair-code-copy").textContent = "Копіювати";
+      $("pair-code-copy").textContent = tr("Copy");
       $("pair-code-box").hidden = false;
     })
     .catch(why => {
       note.textContent = why === "too fast"
-        ? "зачекай пару секунд і спробуй ще раз"
-        : "не вдалося взяти код";
+        ? tr("wait a couple of seconds and try again")
+        : tr("could not get a code");
     })
     .finally(() => { button.disabled = false; });
 };
@@ -2479,8 +2499,8 @@ $("pair-code-copy").onclick = () => {
   const code = $("pair-code-value").textContent;
   if (!code) return;
   navigator.clipboard.writeText(code).then(() => {
-    $("pair-code-copy").textContent = "Скопійовано";
-    setTimeout(() => { $("pair-code-copy").textContent = "Копіювати"; }, 1500);
+    $("pair-code-copy").textContent = tr("Copied");
+    setTimeout(() => { $("pair-code-copy").textContent = tr("Copy"); }, 1500);
   }).catch(() => {});
 };
 
@@ -2497,14 +2517,14 @@ stream.onmessage = m => {
   const e = JSON.parse(m.data);
   if (e.kind === "heard") { writing = null; askedAt = e.at; line(e.text, "me", e.channel); }
   else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); $("talk").scrollTop = $("talk").scrollHeight; }
-  else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside("збій: " + e.failed); else if (mine) speak(e.text, e.channel); }
-  else if (e.kind === "overheard") aside(`почув «${e.text}» — ${WHY[e.why] || "без імені, не відповідаю"}`);
+  else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }
+  else if (e.kind === "overheard") aside(tr("heard «{text}» — {why}", {text: e.text, why: WHY[e.why] || tr("no name, not answering")}));
   else if (e.kind === "phase") {
     phase = e.phase; show();
     if (e.phase === "speaking" && askedAt) { speeds.push(e.at - askedAt); if (speeds.length > 20) speeds.shift(); askedAt = null; spark(); }
   }
   else if (e.kind === "around") refresh();
-  else if (e.kind === "cannot") aside(`не можу: ${e.what} (${e.why})`);
+  else if (e.kind === "cannot") aside(tr("cannot: {what} ({why})", {what: e.what, why: e.why}));
   else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
   else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
@@ -2513,7 +2533,7 @@ stream.onmessage = m => {
 
   if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
 };
-stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = "немає зв'язку з heare"; };
+stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = tr("no connection to heare"); };
 stream.onopen = () => refresh();
 
 $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; ask(text); };

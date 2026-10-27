@@ -25,6 +25,7 @@ from heare import layout, logs
 from heare import part
 from heare.config import SETTINGS, Settings
 from heare.feeds import weather
+from heare.core.i18n import N_
 
 logger = logging.getLogger("heare.sources")
 
@@ -38,9 +39,9 @@ WEATHER_TIMEOUT_S = 15.0
 SETTINGS_FILE = SETTINGS / "sources.json"
 DEFAULTS = {"weather": True, "city": "Київ"}
 UI = [
-    {"name": "weather", "kind": "toggle", "label": "Погода", "value": True},
-    {"name": "city", "kind": "text", "label": "Місто", "value": DEFAULTS["city"]},
-    {"name": "sees", "kind": "label", "label": "Зараз", "value": "—", "head": True},
+    {"name": "weather", "kind": "toggle", "label": N_("Weather"), "value": True},
+    {"name": "city", "kind": "text", "label": N_("City"), "value": DEFAULTS["city"]},
+    {"name": "sees", "kind": "label", "label": N_("Now"), "value": "—", "head": True},
 ]
 
 
@@ -88,7 +89,7 @@ class Sources:
         if name == "weather":
             self.weather = bool(event.get("value"))
             if not self.weather:
-                self.sees = "вимкнено"
+                self.sees = N_("off")
         elif name == "city":
             city = str(event.get("value") or "").strip()
             if not city:
@@ -120,10 +121,10 @@ class Sources:
             found = await weather.fetch(self._web, self.city)
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("could not fetch the weather for %s: %s", self.city, exc)
-            self.show("немає зв'язку з погодою, спробую ще")
+            self.show(N_("no connection to the weather, will try again"))
             return
         if found is None:
-            self.show("місто не знайдено")
+            self.show(N_("city not found"))
             return
         label, text = found
         self.show(text)

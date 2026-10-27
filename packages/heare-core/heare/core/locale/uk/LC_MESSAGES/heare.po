@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 17:37+0200\n"
+"POT-Creation-Date: 2026-10-27 19:06+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -13,6 +13,972 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "Memory"
+msgstr "Памʼять"
+
+msgid "could not read it"
+msgstr "не вдалося прочитати"
+
+msgid "error"
+msgstr "помилка"
+
+msgid "off"
+msgstr "вимкнено"
+
+msgid "not yet"
+msgstr "ще не було"
+
+#, python-brace-format
+msgid "last: {when}"
+msgstr "останній: {when}"
+
+msgid "on"
+msgstr "увімкнено"
+
+msgid "hour"
+msgstr "година"
+
+msgid "h"
+msgstr "год"
+
+msgid "Review now"
+msgstr "Оглянути зараз"
+
+msgid "last"
+msgstr "останній"
+
+msgid "Daily review"
+msgstr "Щоденний огляд"
+
+msgid "Once a day it rereads yesterday's conversation and remembers what was missed."
+msgstr "Раз на добу перечитує вчорашню розмову і запамʼятовує пропущене."
+
+#, python-brace-format
+msgid "last pass: {when}"
+msgstr "останній прохід: {when}"
+
+msgid "Remember now"
+msgstr "Запамʼятати зараз"
+
+msgid "Remembering"
+msgstr "Запамʼятовування"
+
+msgid "Every 5 minutes it reads what was newly said and remembers facts about you."
+msgstr "Кожні 5 хвилин читає нове сказане і запамʼятовує факти про тебе."
+
+msgid "browser"
+msgstr "браузер"
+
+msgid "too many tries — wait a minute"
+msgstr "занадто багато спроб — зачекай хвилину"
+
+msgid "the code is wrong or expired — take a new one: heare-brain code"
+msgstr "код невірний або прострочений — візьми новий: heare-brain code"
+
+msgid "the brain does not answer"
+msgstr "мозок не відповідає"
+
+msgid "waiting"
+msgstr "чекає"
+
+msgid "listening to you"
+msgstr "слухає тебе"
+
+msgid "thinking"
+msgstr "думаю"
+
+msgid "speaking"
+msgstr "говорить"
+
+msgid "by voice"
+msgstr "голосом"
+
+msgid "by text"
+msgstr "текстом"
+
+msgid "was busy"
+msgstr "був зайнятий"
+
+msgid "chose not to answer"
+msgstr "вирішив не відповідати"
+
+msgid "something is playing, and no one called it"
+msgstr "щось грає, а звертання не було"
+
+msgid "now"
+msgstr "зараз"
+
+msgid "paused"
+msgstr "на паузі"
+
+msgid " · not hearing"
+msgstr " · не чує"
+
+msgid " · no voice"
+msgstr " · без голосу"
+
+msgid "no key for any model"
+msgstr "немає ключа жодної моделі"
+
+#, python-brace-format
+msgid "{wanted} is chosen, but it has no key"
+msgstr "обрано {wanted}, але в нього немає ключа"
+
+msgid "no agents found"
+msgstr "агентів не знайдено"
+
+#, python-brace-format
+msgid "playing: {what}"
+msgstr "грає: {what}"
+
+msgid "quiet"
+msgstr "тихо"
+
+msgid "not here"
+msgstr "не тут"
+
+msgid "you are here"
+msgstr "ти тут"
+
+msgid "just started"
+msgstr "щойно запущено"
+
+#, python-brace-format
+msgid "{m} min"
+msgstr "{m} хв"
+
+#, python-brace-format
+msgid "{h} h {m} min"
+msgstr "{h} год {m} хв"
+
+#, python-brace-format
+msgid "commit {c}"
+msgstr "коміт {c}"
+
+#, python-brace-format
+msgid "replies: {n}"
+msgstr "відповідей: {n}"
+
+#, python-brace-format
+msgid "downloading heare {v}…"
+msgstr "завантажую heare {v}…"
+
+msgid "backing up memory before the update…"
+msgstr "роблю копію памʼяті перед оновленням…"
+
+#, python-brace-format
+msgid "installing heare {v} — it will restart now"
+msgstr "ставлю heare {v} — він зараз перезапуститься"
+
+#, python-brace-format
+msgid "updated from {old} to {new}"
+msgstr "оновлено з {old} до {new}"
+
+#, python-brace-format
+msgid "updated to {new}"
+msgstr "оновлено до {new}"
+
+#, python-brace-format
+msgid "heare {v} is out"
+msgstr "Є heare {v}"
+
+#, python-brace-format
+msgid "you have {v}"
+msgstr "у тебе {v}"
+
+msgid "Update"
+msgstr "Оновити"
+
+msgid "the update could not start"
+msgstr "не вийшло почати оновлення"
+
+msgid "release page"
+msgstr "сторінка релізу"
+
+msgid "The update failed"
+msgstr "Оновлення не вийшло"
+
+msgid "Check again"
+msgstr "Перевірити ще"
+
+#, python-brace-format
+msgid "{last} s · median {mid} s"
+msgstr "{last} с · медіана {mid} с"
+
+msgid "working"
+msgstr "працює"
+
+msgid "done"
+msgstr "готово"
+
+msgid "failed"
+msgstr "не вдалося"
+
+msgid "stopped"
+msgstr "зупинено"
+
+#, python-brace-format
+msgid "{s} s"
+msgstr "{s} с"
+
+msgid "stop"
+msgstr "зупинити"
+
+msgid "Doing nothing now."
+msgstr "Зараз нічого не роблю."
+
+#, python-brace-format
+msgid "{who} asks: {what}"
+msgstr "{who} питає: {what}"
+
+msgid "Answer…"
+msgstr "Відповідь…"
+
+msgid "Send"
+msgstr "Надіслати"
+
+#, python-brace-format
+msgid "{who} wants to: {what}"
+msgstr "{who} хоче: {what}"
+
+#, python-brace-format
+msgid "I ask because {why}"
+msgstr "питаю, бо {why}"
+
+msgid "Yes"
+msgstr "Так"
+
+msgid "No"
+msgstr "Ні"
+
+msgid "input"
+msgstr "вхід"
+
+msgid "output"
+msgstr "вихід"
+
+msgid "executor"
+msgstr "виконавець"
+
+msgid "page"
+msgstr "сторінка"
+
+msgid "eyes"
+msgstr "очі"
+
+msgid "chat"
+msgstr "чат"
+
+msgid "voice"
+msgstr "голос"
+
+msgid "hands"
+msgstr "руки"
+
+msgid "connected"
+msgstr "під'єднано"
+
+msgid "not connected"
+msgstr "не на зв'язку"
+
+msgid "rejected"
+msgstr "відхилено"
+
+msgid "timed out"
+msgstr "не дочекався"
+
+msgid "this page"
+msgstr "ця сторінка"
+
+#, python-brace-format
+msgid "page · {host}"
+msgstr "сторінка · {host}"
+
+msgid " · this"
+msgstr " · ця"
+
+msgid "Approve"
+msgstr "Одобрити"
+
+msgid "Reject"
+msgstr "Відхилити"
+
+msgid "Disconnect"
+msgstr "Відключити"
+
+msgid "this page will ask for a code"
+msgstr "ця сторінка попросить код"
+
+msgid "the window will ask for a code"
+msgstr "вікно попросить код"
+
+msgid "take this window's key away"
+msgstr "забрати ключ цього вікна"
+
+msgid "Forget"
+msgstr "Забути"
+
+#, python-brace-format
+msgid "the part is v{part}, the brain v{brain}"
+msgstr "версія частини v{part}, мозку — v{brain}"
+
+msgid "hide settings"
+msgstr "сховати налаштування"
+
+msgid "settings"
+msgstr "налаштування"
+
+msgid "just now"
+msgstr "щойно"
+
+#, python-brace-format
+msgid "{h} h"
+msgstr "{h} год"
+
+#, python-brace-format
+msgid "{d} d"
+msgstr "{d} дн"
+
+#, python-brace-format
+msgid "up {for}"
+msgstr "працює {for}"
+
+#, python-brace-format
+msgid "restarts: {n}"
+msgstr "перезапусків: {n}"
+
+msgid "no restarts"
+msgstr "без перезапусків"
+
+msgid "hears the whole conversation"
+msgstr "чує всю розмову"
+
+msgid "can give leave with a button"
+msgstr "може дати дозвіл кнопкою"
+
+#, python-brace-format
+msgid "changes: {skill}"
+msgstr "змінює: {skill}"
+
+msgid "failure"
+msgstr "збій"
+
+msgid "Other"
+msgstr "Інше"
+
+msgid "no part is connected"
+msgstr "жодна частина не під'єднана"
+
+msgid "no host"
+msgstr "без хоста"
+
+msgid "no part is connected now"
+msgstr "жодна частина не на зв'язку"
+
+#, python-brace-format
+msgid "settings · {part}"
+msgstr "налаштування · {part}"
+
+msgid "unfold"
+msgstr "розгорнути"
+
+msgid "fold"
+msgstr "згорнути"
+
+msgid "remove"
+msgstr "прибрати"
+
+msgid "edit the drawing"
+msgstr "редагувати малюнок"
+
+msgid "pick a circle or a line"
+msgstr "вибери коло чи лінію"
+
+msgid "colour of the selected"
+msgstr "колір вибраного"
+
+msgid "＋ circle"
+msgstr "＋ коло"
+
+msgid "＋ line"
+msgstr "＋ лінія"
+
+msgid "cancel"
+msgstr "скасувати"
+
+msgid "drag across the field — the line is redrawn"
+msgstr "потягни по полю — лінія перемалюється"
+
+msgid "drag the circle, and the handle to change the radius"
+msgstr "тягни коло, а вузол — щоб змінити радіус"
+
+msgid "saving…"
+msgstr "зберігаю…"
+
+#, python-brace-format
+msgid "not saved: {why}"
+msgstr "не збереглося: {why}"
+
+msgid "from the old memory"
+msgstr "зі старої памʼяті"
+
+msgid "from words"
+msgstr "зі слів"
+
+msgid "you confirmed"
+msgstr "ти підтвердив"
+
+msgid "you said"
+msgstr "ти сказав"
+
+msgid "the review's conclusion"
+msgstr "висновок огляду"
+
+msgid "from a tool"
+msgstr "з інструмента"
+
+msgid "overdue"
+msgstr "прострочено"
+
+msgid "in less than a minute"
+msgstr "менш ніж за хвилину"
+
+#, python-brace-format
+msgid "in {m} min"
+msgstr "через {m} хв"
+
+#, python-brace-format
+msgid "in {h} h"
+msgstr "через {h} год"
+
+#, python-brace-format
+msgid "in {d} d"
+msgstr "через {d} дн"
+
+msgid "awaiting a decision"
+msgstr "чекають рішення"
+
+msgid "settled facts"
+msgstr "сталі факти"
+
+msgid "reminders"
+msgstr "нагадування"
+
+msgid "review"
+msgstr "огляд"
+
+msgid "consolidated"
+msgstr "зведено"
+
+msgid "failed — try again"
+msgstr "не вийшло — спробуй ще"
+
+#, python-brace-format
+msgid "confidence {p}%"
+msgstr "впевненість {p}%"
+
+msgid "Confirm"
+msgstr "Підтвердити"
+
+msgid "Forget for sure?"
+msgstr "Точно забути?"
+
+msgid "Awaiting a decision"
+msgstr "Чекають рішення"
+
+msgid "nothing awaits a decision."
+msgstr "нічого не чекає рішення."
+
+msgid "Settled facts"
+msgstr "Сталі факти"
+
+msgid "no settled facts yet."
+msgstr "сталих фактів ще немає."
+
+msgid "Cancel"
+msgstr "Скасувати"
+
+msgid "Reminders"
+msgstr "Нагадування"
+
+msgid "nothing to remind."
+msgstr "нічого не нагадувати."
+
+msgid "say «remind me…», and it will appear here."
+msgstr "скажи «нагадай…», і воно з'явиться тут."
+
+msgid "reading the journal…"
+msgstr "читаю журнал…"
+
+msgid "Journal"
+msgstr "Журнал"
+
+msgid "the journal is empty."
+msgstr "журнал порожній."
+
+msgid "It will be neither in the journal nor in search"
+msgstr "Його не буде ні в журналі, ні в пошуку"
+
+msgid "could not read the journal."
+msgstr "не вдалося прочитати журнал."
+
+msgid "Try again"
+msgstr "Спробувати ще"
+
+msgid "to the assistant"
+msgstr "до Доки"
+
+msgid "background"
+msgstr "фон"
+
+msgid "listen"
+msgstr "прослухати"
+
+msgid "dropped as made up"
+msgstr "відкинуто як вигадка"
+
+msgid "nothing recognised"
+msgstr "нічого не розпізнано"
+
+msgid "It was me"
+msgstr "Це був я"
+
+msgid "Right"
+msgstr "Правильно"
+
+msgid "said to the assistant, and recognised so"
+msgstr "сказано Доці, і розпізнано так"
+
+msgid "Correct"
+msgstr "Виправити"
+
+msgid "what was really said"
+msgstr "що сказано насправді"
+
+msgid "what you really said"
+msgstr "що ти насправді сказав"
+
+msgid "Save"
+msgstr "Зберегти"
+
+msgid "write what was said"
+msgstr "напиши, що було сказано"
+
+msgid "Background"
+msgstr "Фон"
+
+msgid "not to the assistant: TV, other people, silence"
+msgstr "не до Доки: телевізор, інші люди, тиша"
+
+msgid "reading the recordings…"
+msgstr "читаю записи…"
+
+msgid "What I heard"
+msgstr "Що я почув"
+
+#, python-brace-format
+msgid "marked {done} of {all}"
+msgstr "розмічено {done} з {all}"
+
+msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
+msgstr "Послухай і познач: «Правильно» — сказано мені й почуто так; «Виправити» — що було насправді; «Фон» — не до мене. З цього ми міряємо, як я тебе чую."
+
+msgid "no recordings yet — they appear as soon as I hear something."
+msgstr "записів ще немає — вони зʼявляться, щойно я щось почую."
+
+msgid "could not read the recordings."
+msgstr "не вдалося прочитати записи."
+
+msgid "damaged"
+msgstr "пошкоджена"
+
+msgid "without sound"
+msgstr "без звуку"
+
+#, python-brace-format
+msgid "{mb} MB"
+msgstr "{mb} МБ"
+
+msgid "Download"
+msgstr "Завантажити"
+
+msgid "Restore"
+msgstr "Відновити"
+
+msgid "the current memory is set aside in backups/before-restore-…"
+msgstr "поточна памʼять відкладеться в backups/before-restore-…"
+
+msgid "Sure? I will set the current aside"
+msgstr "Точно? Поточне відкладу"
+
+msgid "reading the backups…"
+msgstr "читаю копії…"
+
+msgid "Backups"
+msgstr "Копії"
+
+msgid "no backups yet — make the first with the button above."
+msgstr "копій ще немає — зроби першу кнопкою вище."
+
+#, python-brace-format
+msgid "kept in {folder}"
+msgstr "лежать у {folder}"
+
+#, python-brace-format
+msgid "Restored {at} from the backup of {made}. What was there before is in backups/{aside}."
+msgstr "Відновлено {at} з копії від {made}. Що було до того — у backups/{aside}."
+
+msgid "could not read the backups."
+msgstr "не вдалося прочитати копії."
+
+msgid "making a backup…"
+msgstr "роблю копію…"
+
+#, python-brace-format
+msgid "done: {mb} MB"
+msgstr "готово: {mb} МБ"
+
+msgid "could not make a backup"
+msgstr "не вийшло зробити копію"
+
+#, python-brace-format
+msgid "checking {file}…"
+msgstr "перевіряю {file}…"
+
+msgid "the backup is brought in — it is in the list"
+msgstr "копію принесено — її видно в списку"
+
+#, python-brace-format
+msgid "not taken: {why}"
+msgstr "не прийняв: {why}"
+
+msgid "the file does not fit"
+msgstr "файл не підходить"
+
+msgid "putting the backup in place — the brain restarts…"
+msgstr "ставлю копію на місце — мозок перезапускається…"
+
+msgid "the brain did not come back within a minute — look at the app"
+msgstr "мозок не повернувся за хвилину — глянь на застосунок"
+
+msgid "restored"
+msgstr "відновлено"
+
+#, python-brace-format
+msgid "not restored: {why}"
+msgstr "не відновив: {why}"
+
+msgid "write what to recall."
+msgstr "напиши, що пригадати."
+
+msgid "searching…"
+msgstr "шукаю…"
+
+msgid "I recall nothing."
+msgstr "нічого не пригадую."
+
+msgid "the search failed"
+msgstr "не вдалося пошукати"
+
+msgid "memory is unavailable now"
+msgstr "памʼять зараз недоступна"
+
+msgid "saved"
+msgstr "збережено"
+
+msgid "could not learn where the keys come from"
+msgstr "не вдалося дізнатися, звідки ключі"
+
+msgid "in the environment"
+msgstr "в оточенні"
+
+msgid "none"
+msgstr "немає"
+
+msgid "Use the one from the environment"
+msgstr "Використати з оточення"
+
+#, python-brace-format
+msgid "{name} is taken from the environment. It counts from the next reply."
+msgstr "{name} взято з оточення. Діє з наступної відповіді."
+
+msgid "Could not take the key from the environment."
+msgstr "Не вийшло взяти ключ з оточення."
+
+msgid "— default —"
+msgstr "— типова —"
+
+msgid "the list did not come — type the id."
+msgstr "список не прийшов — впиши id вручну."
+
+msgid "Saved. It counts from the next reply."
+msgstr "Збережено. Діє з наступної відповіді."
+
+#, python-brace-format
+msgid "Not saved: {why}"
+msgstr "Не збережено: {why}"
+
+#, python-brace-format
+msgid "{name} is saved. It counts from the next reply."
+msgstr "{name} збережено. Діє з наступної відповіді."
+
+msgid "Copy"
+msgstr "Копіювати"
+
+msgid "wait a couple of seconds and try again"
+msgstr "зачекай пару секунд і спробуй ще раз"
+
+msgid "could not get a code"
+msgstr "не вдалося взяти код"
+
+msgid "Copied"
+msgstr "Скопійовано"
+
+#, python-brace-format
+msgid "failure: {why}"
+msgstr "збій: {why}"
+
+#, python-brace-format
+msgid "heard «{text}» — {why}"
+msgstr "почув «{text}» — {why}"
+
+msgid "no name, not answering"
+msgstr "без імені, не відповідаю"
+
+#, python-brace-format
+msgid "cannot: {what} ({why})"
+msgstr "не можу: {what} ({why})"
+
+msgid "no connection to heare"
+msgstr "немає зв'язку з heare"
+
+#, python-brace-format
+msgid "{n} piece"
+msgid_plural "{n} pieces"
+msgstr[0] "{n} шматок"
+msgstr[1] "{n} шматки"
+msgstr[2] "{n} шматків"
+
+#, python-brace-format
+msgid "{n} fact"
+msgid_plural "{n} facts"
+msgstr[0] "{n} факт"
+msgstr[1] "{n} факти"
+msgstr[2] "{n} фактів"
+
+#, python-brace-format
+msgid "{n} day of journal"
+msgid_plural "{n} days of journal"
+msgstr[0] "{n} день журналу"
+msgstr[1] "{n} дні журналу"
+msgstr[2] "{n} днів журналу"
+
+#, python-brace-format
+msgid "{n} recording"
+msgid_plural "{n} recordings"
+msgstr[0] "{n} запис"
+msgstr[1] "{n} записи"
+msgstr[2] "{n} записів"
+
+#, python-brace-format
+msgid "{n} reminder"
+msgid_plural "{n} reminders"
+msgstr[0] "{n} нагадування"
+msgstr[1] "{n} нагадування"
+msgstr[2] "{n} нагадувань"
+
+msgid "Brain"
+msgstr "Мозок"
+
+msgid "what it knows itself"
+msgstr "що він знає сам"
+
+msgid "settings: keys, model"
+msgstr "налаштування: ключі, модель"
+
+msgid "you"
+msgstr "ти"
+
+msgid "it"
+msgstr "він"
+
+msgid "State"
+msgstr "Стан"
+
+msgid "model"
+msgstr "модель"
+
+msgid "around"
+msgstr "довкола"
+
+msgid "reply"
+msgstr "відповідь"
+
+msgid "this run"
+msgstr "цей запуск"
+
+msgid "last review"
+msgstr "останній огляд"
+
+msgid "Open memory"
+msgstr "Відкрити памʼять"
+
+msgid "On my mind"
+msgstr "Тримаю в голові"
+
+msgid "Controls"
+msgstr "Керування"
+
+msgid "■ Stop"
+msgstr "■ Стоп"
+
+msgid "Stop everything?"
+msgstr "Зупинити все?"
+
+msgid "Parts"
+msgstr "Частини"
+
+msgid "the brain's registry"
+msgstr "реєстр мозку"
+
+msgid "Screen"
+msgstr "Екран"
+
+msgid "the model puts things here"
+msgstr "ставить модель"
+
+msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
+msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
+
+msgid "Conversation"
+msgstr "Розмова"
+
+msgid "it and you"
+msgstr "він і ти"
+
+msgid "hear the reply aloud"
+msgstr "чути відповідь уголос"
+
+msgid "hear"
+msgstr "чути"
+
+msgid "speak and hear"
+msgstr "говорити й почути"
+
+msgid "Write…"
+msgstr "Напиши…"
+
+msgid "Settings"
+msgstr "Налаштування"
+
+msgid "Language"
+msgstr "Мова"
+
+msgid "what you hear and see"
+msgstr "що ти чуєш і бачиш"
+
+msgid "Model for the conversation"
+msgstr "Модель для розмови"
+
+msgid "provider"
+msgstr "провайдер"
+
+msgid "or a model id"
+msgstr "або id моделі"
+
+msgid "Keys"
+msgstr "Ключі"
+
+msgid "your own key"
+msgstr "свій ключ"
+
+msgid "value"
+msgstr "значення"
+
+msgid "paste the token"
+msgstr "встав токен"
+
+msgid "Values are never shown — only where a key comes from."
+msgstr "Значення не показуються ніколи — тільки те, звідки ключ."
+
+msgid "Devices"
+msgstr "Пристрої"
+
+msgid "A new browser or phone: take a code here and enter it there."
+msgstr "Новий браузер чи телефон: візьми код тут і введи його там."
+
+msgid "Connect a device"
+msgstr "Підключити пристрій"
+
+msgid "one-time, lives 5 minutes"
+msgstr "одноразовий, живе 5 хвилин"
+
+msgid "close"
+msgstr "закрити"
+
+msgid "Facts"
+msgstr "Факти"
+
+msgid "Search"
+msgstr "Пошук"
+
+msgid "Hearing"
+msgstr "Слух"
+
+msgid "Profile"
+msgstr "Профіль"
+
+msgid "what to recall?"
+msgstr "що пригадати?"
+
+msgid "what to recall"
+msgstr "що пригадати"
+
+msgid "Search for it"
+msgstr "Шукати"
+
+msgid "Owner"
+msgstr "Власник"
+
+msgid "e.g. Olena, speak informally"
+msgstr "напр. Олена, звертайся на «ти»"
+
+msgid "Open threads"
+msgstr "Відкриті нитки"
+
+msgid "what is in the works now"
+msgstr "що зараз у роботі"
+
+msgid "Goals"
+msgstr "Цілі"
+
+msgid "what you want this month"
+msgstr "чого хочеш цього місяця"
+
+msgid "A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again."
+msgstr "Копія — один файл: розмови, журнал, факти, профіль, нагадування, налаштування. Ключів моделей і звʼязків цього мака в ній немає: на новому маку їх вводиш знову."
+
+msgid "with sound (Hearing recordings)"
+msgstr "зі звуком (записи «Слуху»)"
+
+msgid "Make a backup"
+msgstr "Зробити копію"
+
+msgid "Bring a backup…"
+msgstr "Принести копію…"
+
+msgid "Connect this browser"
+msgstr "Підключити цей браузер"
+
+msgid "A page already connected shows the code: ⚙ → Devices. Or in the terminal: heare-brain code"
+msgstr "Код покаже вже підключена сторінка: ⚙ → Пристрої. Або в терміналі: heare-brain code"
+
+msgid "8 characters"
+msgstr "8 символів"
+
+msgid "Connect"
+msgstr "Підключити"
 
 msgid "as asked"
 msgstr "як просили"
@@ -68,6 +1034,108 @@ msgstr "Зупинив."
 msgid "Nothing was running."
 msgstr "Нічого не було запущено."
 
+msgid "Print"
+msgstr "Друкувати"
+
+msgid "listening to the terminal"
+msgstr "слухає термінал"
+
+msgid "silent"
+msgstr "мовчить"
+
+msgid "Type"
+msgstr "Тип"
+
+msgid "Binary"
+msgstr "Бінарник"
+
+msgid "empty — find it yourself"
+msgstr "порожньо — шукати самому"
+
+msgid "Found"
+msgstr "Знайдено"
+
+msgid "not found"
+msgstr "не знайдено"
+
+msgid "— as in the CLI —"
+msgstr "— як у CLI —"
+
+msgid "Model"
+msgstr "Модель"
+
+msgid "the list did not come — type the id"
+msgstr "список не прийшов — id вручну"
+
+msgid "Sign-in"
+msgstr "Вхід"
+
+msgid "CLI login"
+msgstr "Логін CLI"
+
+msgid "Own token"
+msgstr "Свій токен"
+
+msgid "pick a key"
+msgstr "обери ключ"
+
+msgid "Key"
+msgstr "Ключ"
+
+msgid "Token"
+msgstr "Токен"
+
+msgid "present (from the environment)"
+msgstr "є (з оточення)"
+
+msgid "present (in Keychain)"
+msgstr "є (у Keychain)"
+
+msgid "Login"
+msgstr "Логін"
+
+msgid "empty — the native endpoint; only for a proxy"
+msgstr "порожньо — рідний endpoint; тільки для проксі"
+
+msgid "Check"
+msgstr "Перевірити"
+
+msgid "Checks"
+msgstr "Перевірка"
+
+msgid "Careful — asks about every change"
+msgstr "Обережно — питає про кожну зміну"
+
+msgid "Normal — weighs itself whether to ask"
+msgstr "Звичайно — сам зважує, чи питати"
+
+msgid "Auto — asks nothing"
+msgstr "Авто — не питає нічого"
+
+msgid "no agent found — see ⚙"
+msgstr "агента не знайдено — глянь ⚙"
+
+msgid "Take work"
+msgstr "Брати справи"
+
+msgid "Mode"
+msgstr "Режим"
+
+msgid "Agent"
+msgstr "Агент"
+
+msgid "not ready"
+msgstr "не готові"
+
+msgid "Price"
+msgstr "Ціна"
+
+msgid "Terminal"
+msgstr "Термінал"
+
+msgid "will apply the settings once free"
+msgstr "застосую налаштування, щойно звільнюсь"
+
 msgid "Something went wrong — I could not answer."
 msgstr "Щось пішло не так — не зміг відповісти."
 
@@ -95,13 +1163,18 @@ msgstr "{who} просить дозволу на зміни для цієї сп
 msgid "Still waiting: {who} asks leave. Allow?"
 msgstr "Ще чекаю: {who} просить дозволу. Дозволяєш?"
 
-#, python-brace-format
-msgid "{who} asks: {what}"
-msgstr "{who} питає: {what}"
+msgid "Look"
+msgstr "Дивитись"
+
+msgid "Sees"
+msgstr "Бачить"
 
 #, python-brace-format
 msgid "Several parts answer to that: {parts}. Which?"
 msgstr "Таких частин кілька: {parts}. Яку?"
+
+msgid "Work"
+msgstr "Справа"
 
 msgid "change the file"
 msgstr "змінити файл"
@@ -114,4 +1187,43 @@ msgstr "перемістити"
 
 msgid "run the command"
 msgstr "виконати команду"
+
+msgid "Weather"
+msgstr "Погода"
+
+msgid "City"
+msgstr "Місто"
+
+msgid "Now"
+msgstr "Зараз"
+
+msgid "no connection to the weather, will try again"
+msgstr "немає зв'язку з погодою, спробую ще"
+
+msgid "city not found"
+msgstr "місто не знайдено"
+
+msgid "Microphone"
+msgstr "Мікрофон"
+
+msgid "Sound"
+msgstr "Звук"
+
+msgid "Volume"
+msgstr "Гучність"
+
+msgid "Answers"
+msgstr "Відповідає"
+
+msgid "decides itself"
+msgstr "сам вирішує"
+
+msgid "only to its name"
+msgstr "лише на ім'я"
+
+msgid "Keep recordings"
+msgstr "Зберігати записи"
+
+msgid "hearing"
+msgstr "чує"
 

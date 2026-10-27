@@ -24,6 +24,7 @@ from heare import part
 from heare.channels.voice.channel import Voice, open_voice
 from heare.config import Settings
 from heare.core import Message
+from heare.core.i18n import N_
 
 logger = logging.getLogger("heare.voice.body")
 
@@ -35,16 +36,16 @@ _END = object()
 # What the person can touch on this body. The values here are the defaults
 # the page shows until the voice is open and reports the real ones.
 UI = [
-    {"name": "mic", "kind": "toggle", "label": "Мікрофон", "value": True},
-    {"name": "speaker", "kind": "toggle", "label": "Звук", "value": True},
-    {"name": "volume", "kind": "slider", "label": "Гучність", "value": 1.0,
+    {"name": "mic", "kind": "toggle", "label": N_("Microphone"), "value": True},
+    {"name": "speaker", "kind": "toggle", "label": N_("Sound"), "value": True},
+    {"name": "volume", "kind": "slider", "label": N_("Volume"), "value": 1.0,
      "min": 0, "max": 1, "step": 0.05},
-    {"name": "listen", "kind": "choice", "label": "Відповідає", "value": "judge",
-     "options": [{"value": "judge", "label": "сам вирішує"},
-                 {"value": "name", "label": "лише на ім'я"}]},
-    {"name": "keep_heard", "kind": "toggle", "label": "Зберігати записи",
+    {"name": "listen", "kind": "choice", "label": N_("Answers"), "value": "judge",
+     "options": [{"value": "judge", "label": N_("decides itself")},
+                 {"value": "name", "label": N_("only to its name")}]},
+    {"name": "keep_heard", "kind": "toggle", "label": N_("Keep recordings"),
      "value": True},
-    {"name": "mode", "kind": "label", "label": "Стан", "value": "чує",
+    {"name": "mode", "kind": "label", "label": N_("State"), "value": N_("hearing"),
      "head": True},
 ]
 
@@ -52,7 +53,7 @@ UI = [
 def values_of(voice: Voice) -> dict:
     """The controls' present worth, with the one line a person reads first."""
     values = dict(voice.controls)
-    values["mode"] = "чує" if values.get("mic") else "на паузі"
+    values["mode"] = N_("hearing") if values.get("mic") else N_("paused")
     return values
 
 

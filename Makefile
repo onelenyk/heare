@@ -119,7 +119,7 @@ e2e-dist:
 # language's catalog, compile. i18n-check fails when a uk line is missing.
 LOCALE := packages/heare-core/heare/core/locale
 i18n:
-	uv run pybabel extract -F babel.cfg -o $(LOCALE)/heare.pot --no-location --no-wrap --omit-header -k _ -k N_ .
+	PYTHONPATH=scripts uv run pybabel extract -F babel.cfg -o $(LOCALE)/heare.pot --no-location --no-wrap --omit-header -k _ -k N_ .
 	@for l in uk en; do \
 	  if [ -f $(LOCALE)/$$l/LC_MESSAGES/heare.po ]; then \
 	    uv run pybabel update -i $(LOCALE)/heare.pot -d $(LOCALE) -D heare -l $$l --no-fuzzy-matching --no-wrap; \

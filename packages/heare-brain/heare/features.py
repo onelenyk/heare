@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from heare.memory.review import last_reviewed
+from heare.core.i18n import N_, _
 
 if TYPE_CHECKING:
     from heare.brain import Brain
@@ -31,7 +32,7 @@ logger = logging.getLogger("heare.features")
 
 # The drawers the page shows. A feature names one; a group without features
 # is not sent. The number is the drawer's place, not the feature's.
-GROUPS: dict[str, tuple[str, int]] = {"memory": ("Памʼять", 10)}
+GROUPS: dict[str, tuple[str, int]] = {"memory": (N_("Memory"), 10)}
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,7 @@ class Features:
         except Exception:  # noqa: BLE001 — one broken feature must not hide the rest
             logger.exception("feature %s could not be read", feature.id)
             return {
-                **base, "state": "error", "note": "не вдалося прочитати",
+                **base, "state": "error", "note": _("could not read it"),
                 "controls": [],
             }
         if feature.id in self._errors:
@@ -146,7 +147,7 @@ class Features:
             await work_factory()
         except Exception as exc:  # noqa: BLE001 — a feature fails alone
             logger.exception("feature %s failed", id)
-            self._errors[id] = str(exc) or "помилка"
+            self._errors[id] = str(exc) or _("error")
             state = "error"
         finally:
             if state == "done":
@@ -189,27 +190,27 @@ def build_features(brain: Brain) -> Features:
         enabled = bool(brain.settings.review_enabled)
         last = last_reviewed(Path(brain.settings.memory_dir))
         if not enabled:
-            note = "вимкнено"
+            note = _("off")
         elif last is None:
-            note = "ще не було"
+            note = _("not yet")
         else:
-            note = f"останній: {last:%d.%m}"
+            note = _("last: {when}").format(when=f"{last:%d.%m}")
         return {
             "state": "ready" if enabled else "off",
             "note": note,
             "controls": [
                 {
-                    "kind": "toggle", "name": "enabled", "label": "увімкнено",
+                    "kind": "toggle", "name": "enabled", "label": N_("on"),
                     "value": enabled,
                 },
                 {
-                    "kind": "slider", "name": "hour", "label": "година",
+                    "kind": "slider", "name": "hour", "label": N_("hour"),
                     "value": int(brain.settings.review_hour),
-                    "min": 0, "max": 23, "step": 1, "unit": "год",
+                    "min": 0, "max": 23, "step": 1, "unit": N_("h"),
                 },
-                {"kind": "button", "name": "run", "label": "Оглянути зараз"},
+                {"kind": "button", "name": "run", "label": N_("Review now")},
                 {
-                    "kind": "label", "name": "last", "label": "останній",
+                    "kind": "label", "name": "last", "label": N_("last"),
                     "value": f"{last:%d.%m}" if last is not None else "—",
                 },
             ],
@@ -233,25 +234,25 @@ def build_features(brain: Brain) -> Features:
             raise ValueError(f"unknown action: {name}")
 
     features.add(Feature(
-        id="review", title="Щоденний огляд",
-        about="Раз на добу перечитує вчорашню розмову і запамʼятовує пропущене.",
+        id="review", title=N_("Daily review"),
+        about=N_("Once a day it rereads yesterday's conversation and remembers what was missed."),
         group="memory", order=10, read=review_read, write=review_write,
     ))
 
     def consolidation_read() -> dict[str, object]:
         last = _consolidated_at(Path(brain.settings.memory_dir))
         if last is None:
-            note, shown = "ще не було", "—"
+            note, shown = _("not yet"), "—"
         else:
             stamp = f"{last:%d.%m, %H:%M}"
-            note, shown = f"останній прохід: {stamp}", stamp
+            note, shown = _("last pass: {when}").format(when=stamp), stamp
         return {
             "state": "ready",
             "note": note,
             "controls": [
-                {"kind": "button", "name": "run", "label": "Запамʼятати зараз"},
+                {"kind": "button", "name": "run", "label": N_("Remember now")},
                 {
-                    "kind": "label", "name": "last", "label": "останній",
+                    "kind": "label", "name": "last", "label": N_("last"),
                     "value": shown,
                 },
             ],
@@ -263,8 +264,8 @@ def build_features(brain: Brain) -> Features:
         features.start("consolidation", brain.consolidate_once)
 
     features.add(Feature(
-        id="consolidation", title="Запамʼятовування",
-        about="Кожні 5 хвилин читає нове сказане і запамʼятовує факти про тебе.",
+        id="consolidation", title=N_("Remembering"),
+        about=N_("Every 5 minutes it reads what was newly said and remembers facts about you."),
         group="memory", order=20,
         read=consolidation_read, write=consolidation_write,
     ))

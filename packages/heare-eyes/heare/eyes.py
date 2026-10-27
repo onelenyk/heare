@@ -22,13 +22,14 @@ from heare import part
 from heare.config import Settings
 from heare.core import Message
 from heare.surroundings.watch import Surroundings
+from heare.core.i18n import N_
 
 logger = logging.getLogger("heare.eyes")
 
 ABOUT = "which app is open on the Mac (its name only), whether something plays"
 UI = [
-    {"name": "looking", "kind": "toggle", "label": "Дивитись", "value": True},
-    {"name": "sees", "kind": "label", "label": "Бачить", "value": "тихо",
+    {"name": "looking", "kind": "toggle", "label": N_("Look"), "value": True},
+    {"name": "sees", "kind": "label", "label": N_("Sees"), "value": N_("quiet"),
      "head": True},
 ]
 
@@ -49,7 +50,7 @@ class Door:
         # them to tell a brain that restarted.
         self.wire: part.Wire | None = None
         self.looking = True
-        self.sees = "тихо"
+        self.sees = N_("quiet")
 
     def values(self) -> dict:
         return {"looking": self.looking, "sees": self.sees}
@@ -73,7 +74,7 @@ class Door:
         if not self.looking:
             return
         if key == "app":
-            self.sees = str(value or "тихо")
+            self.sees = str(value or N_("quiet"))
         task = asyncio.create_task(self._post(key, value))
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)

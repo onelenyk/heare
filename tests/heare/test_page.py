@@ -66,7 +66,7 @@ def test_the_mind_drawer_asks_for_journal_and_search():
 def test_the_journal_can_forget_an_entry_on_a_second_click():
     journal = SCRIPT.split("function mindJournalLoad")[1].split("function mindSearchSubmit")[0]
     assert 'mindAction(forget, "mind/journal/forget"' in journal
-    assert 'twice(forget, "Точно забути?"' in journal
+    assert 'twice(forget, tr("Forget for sure?")' in journal
     assert 'item.kind === "heard" || item.kind === "said"' in journal
     # The search tab shares mindItem, and its items carry no journal id to forget.
     item = SCRIPT.split("function mindItem")[1].split("const mindWhen")[0]
@@ -76,10 +76,10 @@ def test_the_journal_can_forget_an_entry_on_a_second_click():
 
 def test_journal_and_search_say_what_happened():
     # Empty and failed states live in their panels, never in an alert.
-    assert "журнал порожній." in SCRIPT
-    assert "нічого не пригадую." in SCRIPT
-    assert "не вдалося пошукати" in SCRIPT
-    assert "не вдалося прочитати журнал." in SCRIPT
+    assert "the journal is empty." in SCRIPT
+    assert "I recall nothing." in SCRIPT
+    assert "the search failed" in SCRIPT
+    assert "could not read the journal." in SCRIPT
     assert 'said.hidden = !text' in SCRIPT
     assert "alert(" not in SCRIPT.split("function mindItem")[1].split("function mindShow")[0]
 
@@ -139,7 +139,7 @@ def test_the_backups_tab_makes_brings_takes_and_restores_on_a_second_click():
     assert 'api("backups", {method: "POST", body: {sound: $("backup-sound").checked}})' in tab
     assert 'fetch("/api/backups/bring", {method: "POST", body: file' in tab
     assert 'take.href = "/api/backups/" + encodeURIComponent(b.name)' in tab
-    assert 'twice(back, "Точно? Поточне відкладу"' in tab
+    assert 'twice(back, tr("Sure? I will set the current aside")' in tab
     assert '"/restore", {method: "POST"}' in tab
     assert 'if (tab === "backups") backupsLoad();' in SCRIPT
 
@@ -156,6 +156,6 @@ def test_after_a_restore_the_reloaded_page_opens_on_the_backups():
 def test_the_page_offers_a_newer_heare_and_says_how_it_goes():
     draw = SCRIPT.split("function drawUpdate(u)")[1].split("function spark()")[0]
     assert 'api("update/install", {method: "POST"})' in draw
-    assert "u.can_install" in draw and "сторінка релізу" in draw
+    assert "u.can_install" in draw and "release page" in draw
     assert "drawUpdate(s.update);" in SCRIPT
     assert 'else if (e.kind === "update") drawUpdate(e);' in SCRIPT

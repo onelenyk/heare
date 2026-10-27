@@ -55,9 +55,3 @@ def _(text: str) -> str:
 def N_(text: str) -> str:
     """Marks a line for the catalog where it is defined; ``_`` says it later."""
     return text
-
-
-def catalog(lang: str) -> dict[str, str]:
-    """Every translation of *lang*, English key to text: for the page."""
-    found = _catalog(lang if lang in LANGUAGES else DEFAULT)
-    return {k: v for k, v in getattr(found, "_catalog", {}).items() if k and v}

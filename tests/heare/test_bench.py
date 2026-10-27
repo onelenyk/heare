@@ -112,7 +112,7 @@ async def test_words_go_from_the_voice_through_the_hands_to_the_board(tmp_path):
         assert desk.shown == "hello"
         assert (task.executor, task.status, task.result) == ("native-hands", "done", "Показав.")
         # The board's own answer is what the hands' model read.
-        assert b.hand_model.asked[1][-1]["content"] == "показано: hello"
+        assert b.hand_model.asked[1][-1]["content"] == "shown: hello"
 
 
 async def test_an_svg_the_model_writes_reaches_the_board_as_its_pixels(tmp_path):
@@ -127,7 +127,7 @@ async def test_an_svg_the_model_writes_reaches_the_board_as_its_pixels(tmp_path)
         assert len(desk.picture) == 360
         assert desk.picture[20 * 9 + 4] & 0x08          # (36, 20): lit
         assert not desk.picture[0]                       # the corner: dark
-        assert b.hand_model.asked[1][-1]["content"] == "картинку показано"
+        assert b.hand_model.asked[1][-1]["content"] == "the picture is shown"
 
 
 async def test_a_scene_reaches_the_board_with_its_icons_drawn_and_updates_after(tmp_path):

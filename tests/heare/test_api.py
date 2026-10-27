@@ -414,9 +414,9 @@ async def test_a_screen_is_saved_listed_and_served_as_a_client(tmp_path):
 async def test_the_built_in_page_is_served(tmp_path):
     room, client, _, _ = await _open(tmp_path)
     page = await (await client.get("/")).text()
-    assert "HEARE_TOKEN" not in page and "Керування" in page
+    assert "HEARE_TOKEN" not in page and "Controls" in page
     assert 'id="pairing"' in page  # a browser without a key asks for a code
-    assert "Пристрої" in page and "Підключити пристрій" in page
+    assert "Devices" in page and "Connect a device" in page
     await _close(room, client)
 
 
@@ -775,8 +775,8 @@ async def test_a_part_declares_the_controls_the_person_will_see(tmp_path):
     (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
     room, client, auth, _ = await _open(tmp_path)
     ui = [
-        {"name": "mic", "kind": "toggle", "label": "Мікрофон", "value": True},
-        {"name": "volume", "kind": "slider", "label": "Гучність",
+        {"name": "mic", "kind": "toggle", "label": "Microphone", "value": True},
+        {"name": "volume", "kind": "slider", "label": "Volume",
          "value": 1.0, "min": 0, "max": 1, "step": 0.05},
     ]
     await client.post("/api/bodies", json={
@@ -795,7 +795,7 @@ async def test_turning_a_parts_control_is_a_wish_the_part_answers(tmp_path):
     await client.post("/api/bodies", json={
         "channel": "voice", "forms": ["input", "output"], "about": "мікрофон",
         "key": "voice@mac", "host": "mac",
-        "ui": [{"name": "mic", "kind": "toggle", "label": "Мікрофон", "value": True}],
+        "ui": [{"name": "mic", "kind": "toggle", "label": "Microphone", "value": True}],
     }, headers=auth)
     events = room.core.state.subscribe()
     turned = await client.post("/api/controls", json={
@@ -1705,7 +1705,7 @@ async def test_features_are_listed_and_acted_on_through_the_door(tmp_path):
     room, client, auth, _ = await _open(tmp_path, features=registry)
 
     listed = await (await client.get("/api/features", headers=auth)).json()
-    assert listed["groups"] == [{"id": "memory", "title": "Памʼять",
+    assert listed["groups"] == [{"id": "memory", "title": "Memory",
                                  "order": 10}]
     assert listed["features"][0]["id"] == "demo"
     assert listed["features"][0]["controls"][0]["name"] == "run"

@@ -18,6 +18,7 @@ is served, so a web page from somewhere else cannot drive the assistant.
 from __future__ import annotations
 
 import asyncio
+import gettext
 import json
 import logging
 import os
@@ -38,6 +39,7 @@ from heare import keys
 from heare.api import backup
 from heare.api.update import UpdateError, Updates
 from heare.core import PROTOCOL, Core, Event, Message
+from heare.core import i18n
 from heare.api import auth
 from heare.api import pair as codes
 from heare.api.heard import Recordings
@@ -280,6 +282,23 @@ class Seen:
         self._registry.emit("call", channel=channel, part=pid, id=call_id,
                             name=name, args=args)
         return await self._calls.wait(call_id, waiting)
+
+
+
+def catalog(lang: str) -> dict[str, str | list[str]]:
+    """Every word of *lang* for the page, English key to text; a line with
+    plural forms maps to the list of them, in the catalog's order."""
+    found = gettext.translation(i18n.DOMAIN, i18n.LOCALE, [lang], fallback=True)
+    said: dict[str, str | list[str]] = {}
+    plural: dict[str, dict[int, str]] = {}
+    for key, value in getattr(found, "_catalog", {}).items():
+        if isinstance(key, tuple):
+            plural.setdefault(key[0], {})[key[1]] = value
+        elif key and value:
+            said[key] = value
+    for key, forms in plural.items():
+        said[key] = [forms[n] for n in sorted(forms)]
+    return said
 
 
 def build(core: Core, settings: Any, vitals: Any = None,
@@ -1199,7 +1218,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return handed(path.read_text(encoding="utf-8"))
 
     async def page(request: web.Request) -> web.Response:
-        return handed(PAGE.read_text(encoding="utf-8"))
+        # The words come with the page: no second request, no English flash
+        # before the catalog arrives.
+        lang = i18n.language()
+        words = json.dumps(catalog(lang), ensure_ascii=False).replace("</", "<\\/")
+        return handed(PAGE.read_text(encoding="utf-8")
+                      .replace("/*I18N*/{}", words, 1)
+                      .replace('<html lang="uk">', f'<html lang="{lang}">', 1))
 
     async def font(request: web.Request) -> web.FileResponse:
         path = FONTS / f"{request.match_info['name']}.woff2"

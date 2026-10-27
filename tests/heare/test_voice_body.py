@@ -77,7 +77,7 @@ def test_the_port_sends_each_report_exactly():
     port.heard(Message(text="без часу", channel="voice"))
     port.nothing("voice")
     port.note("playing", "music")
-    port.overheard("voice", "тихо")
+    port.overheard("voice", "quiet")
     verdict = port.said_over("voice", "ага", 150.0, False)
 
     assert verdict is False
@@ -97,7 +97,7 @@ def test_the_port_sends_each_report_exactly():
             "value": "music",
         }),
         ("/api/input", {
-            "channel": "voice", "kind": "overheard", "text": "тихо",
+            "channel": "voice", "kind": "overheard", "text": "quiet",
         }),
         ("/api/input/said_over", {
             "channel": "voice", "text": "ага", "speech_ms": 150.0,
@@ -224,7 +224,7 @@ async def test_a_control_from_the_page_is_applied_and_reported():
     assert ears.controls["volume"] == 0.4
     assert seen == [("/api/input", {
         "channel": "voice", "kind": "state",
-        "values": {"mic": True, "volume": 0.4, "mode": "чує"},
+        "values": {"mic": True, "volume": 0.4, "mode": "hearing"},
     })]
 
 
@@ -243,7 +243,7 @@ async def test_a_refused_control_still_reports_what_is_true():
     assert ears.controls == {"mic": True, "volume": 1.0}
     assert seen[-1] == ("/api/input", {
         "channel": "voice", "kind": "state",
-        "values": {"mic": True, "volume": 1.0, "mode": "чує"},
+        "values": {"mic": True, "volume": 1.0, "mode": "hearing"},
     })
 
 

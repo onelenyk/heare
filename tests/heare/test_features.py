@@ -42,7 +42,7 @@ def test_list_has_only_used_groups_sorted_by_order_and_title():
 
     listed = features.list()
 
-    assert listed["groups"] == [{"id": "memory", "title": "Памʼять",
+    assert listed["groups"] == [{"id": "memory", "title": "Memory",
                                  "order": 10}]
     assert [item["id"] for item in listed["features"]] == [
         "a", "z", "second"]
@@ -160,18 +160,18 @@ def test_the_first_slice_has_two_memory_features(tmp_path):
     assert [item["id"] for item in listed["features"]] == [
         "review", "consolidation"]
     review = listed["features"][0]
-    assert review["title"] == "Щоденний огляд"
+    assert review["title"] == "Daily review"
     assert review["group"] == "memory" and review["order"] == 10
     assert review["state"] == "ready" and review["note"] == "ще не було"
     assert [control["name"] for control in review["controls"]] == [
         "enabled", "hour", "run", "last"]
     hour = review["controls"][1]
     assert hour == {
-        "kind": "slider", "name": "hour", "label": "година", "value": 4,
-        "min": 0, "max": 23, "step": 1, "unit": "год",
+        "kind": "slider", "name": "hour", "label": "hour", "value": 4,
+        "min": 0, "max": 23, "step": 1, "unit": "h",
     }
     consolidation = listed["features"][1]
-    assert consolidation["title"] == "Запамʼятовування"
+    assert consolidation["title"] == "Remembering"
     assert consolidation["note"] == "ще не було"
     assert [control["name"] for control in consolidation["controls"]] == [
         "run", "last"]

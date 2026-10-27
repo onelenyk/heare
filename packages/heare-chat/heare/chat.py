@@ -16,11 +16,12 @@ import sys
 
 from heare import layout, logs
 from heare import part
+from heare.core.i18n import N_
 
 UI = [
-    {"name": "printing", "kind": "toggle", "label": "Друкувати", "value": True},
-    {"name": "state", "kind": "label", "label": "Стан", "head": True,
-     "value": "слухає термінал"},
+    {"name": "printing", "kind": "toggle", "label": N_("Print"), "value": True},
+    {"name": "state", "kind": "label", "label": N_("State"), "head": True,
+     "value": N_("listening to the terminal")},
 ]
 
 
@@ -37,15 +38,15 @@ class Printer:
 
     def __init__(self) -> None:
         self.name = "heare"
-        self.values = {"printing": True, "state": "слухає термінал"}
+        self.values = {"printing": True, "state": N_("listening to the terminal")}
         self.wire: part.Wire | None = None
 
     def event(self, event: dict) -> None:
         if event.get("kind") == "control" and event.get("channel") == "text":
             if event.get("name") == "printing":
                 self.values["printing"] = bool(event.get("value"))
-                self.values["state"] = ("слухає термінал" if self.values["printing"]
-                                        else "мовчить")
+                self.values["state"] = (N_("listening to the terminal") if self.values["printing"]
+                                        else N_("silent"))
                 if self.wire is not None:
                     self.wire.report(self.values)
             return
@@ -95,7 +96,7 @@ async def run() -> int:
     # The chat shows the whole conversation, not only what was typed here.
     return await part.live(
         {"channel": "text", "forms": ["input", "output"],
-         "about": "чат у терміналі", "key": f"text@{host}", "host": host,
+         "about": "a chat in the terminal", "key": f"text@{host}", "host": host,
          "ui": UI, "hears": "all"},
         work, on_event=printer.event)
 

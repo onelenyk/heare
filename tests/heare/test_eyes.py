@@ -76,5 +76,5 @@ async def test_looking_can_be_turned_off_and_is_reported():
     assert len(seen) == 1
     assert json.loads(seen[0].content) == {
         "channel": "eyes", "kind": "state",
-        "values": {"looking": False, "sees": "тихо"},
+        "values": {"looking": False, "sees": "quiet"},
     }

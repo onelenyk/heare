@@ -167,7 +167,7 @@ def test_a_key_sign_in_shows_the_key_and_whether_it_is_there(tmp_path, monkeypat
         executor_auth_env="ANTHROPIC_API_KEY")))
 
     assert ui["auth_env"]["value"] == "ANTHROPIC_API_KEY"
-    assert ui["key"]["value"] == "є (у Keychain)"
+    assert ui["key"]["value"] == "present (in Keychain)"
     assert "login" not in ui
 
 

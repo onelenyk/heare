@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 17:37+0200\n"
+"POT-Creation-Date: 2026-10-27 19:06+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -13,6 +13,967 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "Memory"
+msgstr ""
+
+msgid "could not read it"
+msgstr ""
+
+msgid "error"
+msgstr ""
+
+msgid "off"
+msgstr ""
+
+msgid "not yet"
+msgstr ""
+
+#, python-brace-format
+msgid "last: {when}"
+msgstr ""
+
+msgid "on"
+msgstr ""
+
+msgid "hour"
+msgstr ""
+
+msgid "h"
+msgstr ""
+
+msgid "Review now"
+msgstr ""
+
+msgid "last"
+msgstr ""
+
+msgid "Daily review"
+msgstr ""
+
+msgid "Once a day it rereads yesterday's conversation and remembers what was missed."
+msgstr ""
+
+#, python-brace-format
+msgid "last pass: {when}"
+msgstr ""
+
+msgid "Remember now"
+msgstr ""
+
+msgid "Remembering"
+msgstr ""
+
+msgid "Every 5 minutes it reads what was newly said and remembers facts about you."
+msgstr ""
+
+msgid "browser"
+msgstr ""
+
+msgid "too many tries — wait a minute"
+msgstr ""
+
+msgid "the code is wrong or expired — take a new one: heare-brain code"
+msgstr ""
+
+msgid "the brain does not answer"
+msgstr ""
+
+msgid "waiting"
+msgstr ""
+
+msgid "listening to you"
+msgstr ""
+
+msgid "thinking"
+msgstr ""
+
+msgid "speaking"
+msgstr ""
+
+msgid "by voice"
+msgstr ""
+
+msgid "by text"
+msgstr ""
+
+msgid "was busy"
+msgstr ""
+
+msgid "chose not to answer"
+msgstr ""
+
+msgid "something is playing, and no one called it"
+msgstr ""
+
+msgid "now"
+msgstr ""
+
+msgid "paused"
+msgstr ""
+
+msgid " · not hearing"
+msgstr ""
+
+msgid " · no voice"
+msgstr ""
+
+msgid "no key for any model"
+msgstr ""
+
+#, python-brace-format
+msgid "{wanted} is chosen, but it has no key"
+msgstr ""
+
+msgid "no agents found"
+msgstr ""
+
+#, python-brace-format
+msgid "playing: {what}"
+msgstr ""
+
+msgid "quiet"
+msgstr ""
+
+msgid "not here"
+msgstr ""
+
+msgid "you are here"
+msgstr ""
+
+msgid "just started"
+msgstr ""
+
+#, python-brace-format
+msgid "{m} min"
+msgstr ""
+
+#, python-brace-format
+msgid "{h} h {m} min"
+msgstr ""
+
+#, python-brace-format
+msgid "commit {c}"
+msgstr ""
+
+#, python-brace-format
+msgid "replies: {n}"
+msgstr ""
+
+#, python-brace-format
+msgid "downloading heare {v}…"
+msgstr ""
+
+msgid "backing up memory before the update…"
+msgstr ""
+
+#, python-brace-format
+msgid "installing heare {v} — it will restart now"
+msgstr ""
+
+#, python-brace-format
+msgid "updated from {old} to {new}"
+msgstr ""
+
+#, python-brace-format
+msgid "updated to {new}"
+msgstr ""
+
+#, python-brace-format
+msgid "heare {v} is out"
+msgstr ""
+
+#, python-brace-format
+msgid "you have {v}"
+msgstr ""
+
+msgid "Update"
+msgstr ""
+
+msgid "the update could not start"
+msgstr ""
+
+msgid "release page"
+msgstr ""
+
+msgid "The update failed"
+msgstr ""
+
+msgid "Check again"
+msgstr ""
+
+#, python-brace-format
+msgid "{last} s · median {mid} s"
+msgstr ""
+
+msgid "working"
+msgstr ""
+
+msgid "done"
+msgstr ""
+
+msgid "failed"
+msgstr ""
+
+msgid "stopped"
+msgstr ""
+
+#, python-brace-format
+msgid "{s} s"
+msgstr ""
+
+msgid "stop"
+msgstr ""
+
+msgid "Doing nothing now."
+msgstr ""
+
+#, python-brace-format
+msgid "{who} asks: {what}"
+msgstr ""
+
+msgid "Answer…"
+msgstr ""
+
+msgid "Send"
+msgstr ""
+
+#, python-brace-format
+msgid "{who} wants to: {what}"
+msgstr ""
+
+#, python-brace-format
+msgid "I ask because {why}"
+msgstr ""
+
+msgid "Yes"
+msgstr ""
+
+msgid "No"
+msgstr ""
+
+msgid "input"
+msgstr ""
+
+msgid "output"
+msgstr ""
+
+msgid "executor"
+msgstr ""
+
+msgid "page"
+msgstr ""
+
+msgid "eyes"
+msgstr ""
+
+msgid "chat"
+msgstr ""
+
+msgid "voice"
+msgstr ""
+
+msgid "hands"
+msgstr ""
+
+msgid "connected"
+msgstr ""
+
+msgid "not connected"
+msgstr ""
+
+msgid "rejected"
+msgstr ""
+
+msgid "timed out"
+msgstr ""
+
+msgid "this page"
+msgstr ""
+
+#, python-brace-format
+msgid "page · {host}"
+msgstr ""
+
+msgid " · this"
+msgstr ""
+
+msgid "Approve"
+msgstr ""
+
+msgid "Reject"
+msgstr ""
+
+msgid "Disconnect"
+msgstr ""
+
+msgid "this page will ask for a code"
+msgstr ""
+
+msgid "the window will ask for a code"
+msgstr ""
+
+msgid "take this window's key away"
+msgstr ""
+
+msgid "Forget"
+msgstr ""
+
+#, python-brace-format
+msgid "the part is v{part}, the brain v{brain}"
+msgstr ""
+
+msgid "hide settings"
+msgstr ""
+
+msgid "settings"
+msgstr ""
+
+msgid "just now"
+msgstr ""
+
+#, python-brace-format
+msgid "{h} h"
+msgstr ""
+
+#, python-brace-format
+msgid "{d} d"
+msgstr ""
+
+#, python-brace-format
+msgid "up {for}"
+msgstr ""
+
+#, python-brace-format
+msgid "restarts: {n}"
+msgstr ""
+
+msgid "no restarts"
+msgstr ""
+
+msgid "hears the whole conversation"
+msgstr ""
+
+msgid "can give leave with a button"
+msgstr ""
+
+#, python-brace-format
+msgid "changes: {skill}"
+msgstr ""
+
+msgid "failure"
+msgstr ""
+
+msgid "Other"
+msgstr ""
+
+msgid "no part is connected"
+msgstr ""
+
+msgid "no host"
+msgstr ""
+
+msgid "no part is connected now"
+msgstr ""
+
+#, python-brace-format
+msgid "settings · {part}"
+msgstr ""
+
+msgid "unfold"
+msgstr ""
+
+msgid "fold"
+msgstr ""
+
+msgid "remove"
+msgstr ""
+
+msgid "edit the drawing"
+msgstr ""
+
+msgid "pick a circle or a line"
+msgstr ""
+
+msgid "colour of the selected"
+msgstr ""
+
+msgid "＋ circle"
+msgstr ""
+
+msgid "＋ line"
+msgstr ""
+
+msgid "cancel"
+msgstr ""
+
+msgid "drag across the field — the line is redrawn"
+msgstr ""
+
+msgid "drag the circle, and the handle to change the radius"
+msgstr ""
+
+msgid "saving…"
+msgstr ""
+
+#, python-brace-format
+msgid "not saved: {why}"
+msgstr ""
+
+msgid "from the old memory"
+msgstr ""
+
+msgid "from words"
+msgstr ""
+
+msgid "you confirmed"
+msgstr ""
+
+msgid "you said"
+msgstr ""
+
+msgid "the review's conclusion"
+msgstr ""
+
+msgid "from a tool"
+msgstr ""
+
+msgid "overdue"
+msgstr ""
+
+msgid "in less than a minute"
+msgstr ""
+
+#, python-brace-format
+msgid "in {m} min"
+msgstr ""
+
+#, python-brace-format
+msgid "in {h} h"
+msgstr ""
+
+#, python-brace-format
+msgid "in {d} d"
+msgstr ""
+
+msgid "awaiting a decision"
+msgstr ""
+
+msgid "settled facts"
+msgstr ""
+
+msgid "reminders"
+msgstr ""
+
+msgid "review"
+msgstr ""
+
+msgid "consolidated"
+msgstr ""
+
+msgid "failed — try again"
+msgstr ""
+
+#, python-brace-format
+msgid "confidence {p}%"
+msgstr ""
+
+msgid "Confirm"
+msgstr ""
+
+msgid "Forget for sure?"
+msgstr ""
+
+msgid "Awaiting a decision"
+msgstr ""
+
+msgid "nothing awaits a decision."
+msgstr ""
+
+msgid "Settled facts"
+msgstr ""
+
+msgid "no settled facts yet."
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Reminders"
+msgstr ""
+
+msgid "nothing to remind."
+msgstr ""
+
+msgid "say «remind me…», and it will appear here."
+msgstr ""
+
+msgid "reading the journal…"
+msgstr ""
+
+msgid "Journal"
+msgstr ""
+
+msgid "the journal is empty."
+msgstr ""
+
+msgid "It will be neither in the journal nor in search"
+msgstr ""
+
+msgid "could not read the journal."
+msgstr ""
+
+msgid "Try again"
+msgstr ""
+
+msgid "to the assistant"
+msgstr ""
+
+msgid "background"
+msgstr ""
+
+msgid "listen"
+msgstr ""
+
+msgid "dropped as made up"
+msgstr ""
+
+msgid "nothing recognised"
+msgstr ""
+
+msgid "It was me"
+msgstr ""
+
+msgid "Right"
+msgstr ""
+
+msgid "said to the assistant, and recognised so"
+msgstr ""
+
+msgid "Correct"
+msgstr ""
+
+msgid "what was really said"
+msgstr ""
+
+msgid "what you really said"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "write what was said"
+msgstr ""
+
+msgid "Background"
+msgstr ""
+
+msgid "not to the assistant: TV, other people, silence"
+msgstr ""
+
+msgid "reading the recordings…"
+msgstr ""
+
+msgid "What I heard"
+msgstr ""
+
+#, python-brace-format
+msgid "marked {done} of {all}"
+msgstr ""
+
+msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
+msgstr ""
+
+msgid "no recordings yet — they appear as soon as I hear something."
+msgstr ""
+
+msgid "could not read the recordings."
+msgstr ""
+
+msgid "damaged"
+msgstr ""
+
+msgid "without sound"
+msgstr ""
+
+#, python-brace-format
+msgid "{mb} MB"
+msgstr ""
+
+msgid "Download"
+msgstr ""
+
+msgid "Restore"
+msgstr ""
+
+msgid "the current memory is set aside in backups/before-restore-…"
+msgstr ""
+
+msgid "Sure? I will set the current aside"
+msgstr ""
+
+msgid "reading the backups…"
+msgstr ""
+
+msgid "Backups"
+msgstr ""
+
+msgid "no backups yet — make the first with the button above."
+msgstr ""
+
+#, python-brace-format
+msgid "kept in {folder}"
+msgstr ""
+
+#, python-brace-format
+msgid "Restored {at} from the backup of {made}. What was there before is in backups/{aside}."
+msgstr ""
+
+msgid "could not read the backups."
+msgstr ""
+
+msgid "making a backup…"
+msgstr ""
+
+#, python-brace-format
+msgid "done: {mb} MB"
+msgstr ""
+
+msgid "could not make a backup"
+msgstr ""
+
+#, python-brace-format
+msgid "checking {file}…"
+msgstr ""
+
+msgid "the backup is brought in — it is in the list"
+msgstr ""
+
+#, python-brace-format
+msgid "not taken: {why}"
+msgstr ""
+
+msgid "the file does not fit"
+msgstr ""
+
+msgid "putting the backup in place — the brain restarts…"
+msgstr ""
+
+msgid "the brain did not come back within a minute — look at the app"
+msgstr ""
+
+msgid "restored"
+msgstr ""
+
+#, python-brace-format
+msgid "not restored: {why}"
+msgstr ""
+
+msgid "write what to recall."
+msgstr ""
+
+msgid "searching…"
+msgstr ""
+
+msgid "I recall nothing."
+msgstr ""
+
+msgid "the search failed"
+msgstr ""
+
+msgid "memory is unavailable now"
+msgstr ""
+
+msgid "saved"
+msgstr ""
+
+msgid "could not learn where the keys come from"
+msgstr ""
+
+msgid "in the environment"
+msgstr ""
+
+msgid "none"
+msgstr ""
+
+msgid "Use the one from the environment"
+msgstr ""
+
+#, python-brace-format
+msgid "{name} is taken from the environment. It counts from the next reply."
+msgstr ""
+
+msgid "Could not take the key from the environment."
+msgstr ""
+
+msgid "— default —"
+msgstr ""
+
+msgid "the list did not come — type the id."
+msgstr ""
+
+msgid "Saved. It counts from the next reply."
+msgstr ""
+
+#, python-brace-format
+msgid "Not saved: {why}"
+msgstr ""
+
+#, python-brace-format
+msgid "{name} is saved. It counts from the next reply."
+msgstr ""
+
+msgid "Copy"
+msgstr ""
+
+msgid "wait a couple of seconds and try again"
+msgstr ""
+
+msgid "could not get a code"
+msgstr ""
+
+msgid "Copied"
+msgstr ""
+
+#, python-brace-format
+msgid "failure: {why}"
+msgstr ""
+
+#, python-brace-format
+msgid "heard «{text}» — {why}"
+msgstr ""
+
+msgid "no name, not answering"
+msgstr ""
+
+#, python-brace-format
+msgid "cannot: {what} ({why})"
+msgstr ""
+
+msgid "no connection to heare"
+msgstr ""
+
+#, python-brace-format
+msgid "{n} piece"
+msgid_plural "{n} pieces"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-brace-format
+msgid "{n} fact"
+msgid_plural "{n} facts"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-brace-format
+msgid "{n} day of journal"
+msgid_plural "{n} days of journal"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-brace-format
+msgid "{n} recording"
+msgid_plural "{n} recordings"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-brace-format
+msgid "{n} reminder"
+msgid_plural "{n} reminders"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Brain"
+msgstr ""
+
+msgid "what it knows itself"
+msgstr ""
+
+msgid "settings: keys, model"
+msgstr ""
+
+msgid "you"
+msgstr ""
+
+msgid "it"
+msgstr ""
+
+msgid "State"
+msgstr ""
+
+msgid "model"
+msgstr ""
+
+msgid "around"
+msgstr ""
+
+msgid "reply"
+msgstr ""
+
+msgid "this run"
+msgstr ""
+
+msgid "last review"
+msgstr ""
+
+msgid "Open memory"
+msgstr ""
+
+msgid "On my mind"
+msgstr ""
+
+msgid "Controls"
+msgstr ""
+
+msgid "■ Stop"
+msgstr ""
+
+msgid "Stop everything?"
+msgstr ""
+
+msgid "Parts"
+msgstr ""
+
+msgid "the brain's registry"
+msgstr ""
+
+msgid "Screen"
+msgstr ""
+
+msgid "the model puts things here"
+msgstr ""
+
+msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
+msgstr ""
+
+msgid "Conversation"
+msgstr ""
+
+msgid "it and you"
+msgstr ""
+
+msgid "hear the reply aloud"
+msgstr ""
+
+msgid "hear"
+msgstr ""
+
+msgid "speak and hear"
+msgstr ""
+
+msgid "Write…"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Language"
+msgstr ""
+
+msgid "what you hear and see"
+msgstr ""
+
+msgid "Model for the conversation"
+msgstr ""
+
+msgid "provider"
+msgstr ""
+
+msgid "or a model id"
+msgstr ""
+
+msgid "Keys"
+msgstr ""
+
+msgid "your own key"
+msgstr ""
+
+msgid "value"
+msgstr ""
+
+msgid "paste the token"
+msgstr ""
+
+msgid "Values are never shown — only where a key comes from."
+msgstr ""
+
+msgid "Devices"
+msgstr ""
+
+msgid "A new browser or phone: take a code here and enter it there."
+msgstr ""
+
+msgid "Connect a device"
+msgstr ""
+
+msgid "one-time, lives 5 minutes"
+msgstr ""
+
+msgid "close"
+msgstr ""
+
+msgid "Facts"
+msgstr ""
+
+msgid "Search"
+msgstr ""
+
+msgid "Hearing"
+msgstr ""
+
+msgid "Profile"
+msgstr ""
+
+msgid "what to recall?"
+msgstr ""
+
+msgid "what to recall"
+msgstr ""
+
+msgid "Search for it"
+msgstr ""
+
+msgid "Owner"
+msgstr ""
+
+msgid "e.g. Olena, speak informally"
+msgstr ""
+
+msgid "Open threads"
+msgstr ""
+
+msgid "what is in the works now"
+msgstr ""
+
+msgid "Goals"
+msgstr ""
+
+msgid "what you want this month"
+msgstr ""
+
+msgid "A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again."
+msgstr ""
+
+msgid "with sound (Hearing recordings)"
+msgstr ""
+
+msgid "Make a backup"
+msgstr ""
+
+msgid "Bring a backup…"
+msgstr ""
+
+msgid "Connect this browser"
+msgstr ""
+
+msgid "A page already connected shows the code: ⚙ → Devices. Or in the terminal: heare-brain code"
+msgstr ""
+
+msgid "8 characters"
+msgstr ""
+
+msgid "Connect"
+msgstr ""
 
 msgid "as asked"
 msgstr ""
@@ -68,6 +1029,108 @@ msgstr ""
 msgid "Nothing was running."
 msgstr ""
 
+msgid "Print"
+msgstr ""
+
+msgid "listening to the terminal"
+msgstr ""
+
+msgid "silent"
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "Binary"
+msgstr ""
+
+msgid "empty — find it yourself"
+msgstr ""
+
+msgid "Found"
+msgstr ""
+
+msgid "not found"
+msgstr ""
+
+msgid "— as in the CLI —"
+msgstr ""
+
+msgid "Model"
+msgstr ""
+
+msgid "the list did not come — type the id"
+msgstr ""
+
+msgid "Sign-in"
+msgstr ""
+
+msgid "CLI login"
+msgstr ""
+
+msgid "Own token"
+msgstr ""
+
+msgid "pick a key"
+msgstr ""
+
+msgid "Key"
+msgstr ""
+
+msgid "Token"
+msgstr ""
+
+msgid "present (from the environment)"
+msgstr ""
+
+msgid "present (in Keychain)"
+msgstr ""
+
+msgid "Login"
+msgstr ""
+
+msgid "empty — the native endpoint; only for a proxy"
+msgstr ""
+
+msgid "Check"
+msgstr ""
+
+msgid "Checks"
+msgstr ""
+
+msgid "Careful — asks about every change"
+msgstr ""
+
+msgid "Normal — weighs itself whether to ask"
+msgstr ""
+
+msgid "Auto — asks nothing"
+msgstr ""
+
+msgid "no agent found — see ⚙"
+msgstr ""
+
+msgid "Take work"
+msgstr ""
+
+msgid "Mode"
+msgstr ""
+
+msgid "Agent"
+msgstr ""
+
+msgid "not ready"
+msgstr ""
+
+msgid "Price"
+msgstr ""
+
+msgid "Terminal"
+msgstr ""
+
+msgid "will apply the settings once free"
+msgstr ""
+
 msgid "Something went wrong — I could not answer."
 msgstr ""
 
@@ -95,12 +1158,17 @@ msgstr ""
 msgid "Still waiting: {who} asks leave. Allow?"
 msgstr ""
 
-#, python-brace-format
-msgid "{who} asks: {what}"
+msgid "Look"
+msgstr ""
+
+msgid "Sees"
 msgstr ""
 
 #, python-brace-format
 msgid "Several parts answer to that: {parts}. Which?"
+msgstr ""
+
+msgid "Work"
 msgstr ""
 
 msgid "change the file"
@@ -113,5 +1181,44 @@ msgid "move"
 msgstr ""
 
 msgid "run the command"
+msgstr ""
+
+msgid "Weather"
+msgstr ""
+
+msgid "City"
+msgstr ""
+
+msgid "Now"
+msgstr ""
+
+msgid "no connection to the weather, will try again"
+msgstr ""
+
+msgid "city not found"
+msgstr ""
+
+msgid "Microphone"
+msgstr ""
+
+msgid "Sound"
+msgstr ""
+
+msgid "Volume"
+msgstr ""
+
+msgid "Answers"
+msgstr ""
+
+msgid "decides itself"
+msgstr ""
+
+msgid "only to its name"
+msgstr ""
+
+msgid "Keep recordings"
+msgstr ""
+
+msgid "hearing"
 msgstr ""
 

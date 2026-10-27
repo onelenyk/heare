@@ -26,6 +26,7 @@ from heare.config import Settings
 from heare.reach import runner
 from heare.reach.agents import KNOWN as AGENTS, MODE, MODES, Agent
 from heare.reach.terminal import Terminal
+from heare.core.i18n import N_
 
 # run() returns this when the person changed the runner: main() starts the
 # hands again, so the agent is built once from settings, never patched live.
@@ -101,54 +102,54 @@ def _settings_ui(settings: Settings) -> list[dict]:
     auth_env = str(settings.executor_auth_env or "").strip()
 
     ui: list[dict] = [
-        {"name": "type", "kind": "choice", "label": "Тип", "value": kind,
+        {"name": "type", "kind": "choice", "label": N_("Type"), "value": kind,
          "options": [{"value": name, "label": entry["label"]}
                      for name, entry in runner.KNOWN.items()]},
-        {"name": "binary", "kind": "text", "label": "Бінарник", "value": binary,
-         "hint": "порожньо — шукати самому"},
-        {"name": "found", "kind": "label", "label": "Знайдено",
-         "value": resolved or "не знайдено"},
+        {"name": "binary", "kind": "text", "label": N_("Binary"), "value": binary,
+         "hint": N_("empty — find it yourself")},
+        {"name": "found", "kind": "label", "label": N_("Found"),
+         "value": resolved or N_("not found")},
     ]
     listed = [m["id"] for group in runner.models(kind, resolved)
               for m in group["models"]]
-    options = [{"value": "", "label": "— як у CLI —"}] + [
+    options = [{"value": "", "label": N_("— as in the CLI —")}] + [
         {"value": id_, "label": id_} for id_ in listed]
     if model and model not in listed:
         options.append({"value": model, "label": model})
     if listed:
-        ui.append({"name": "model", "kind": "choice", "label": "Модель",
+        ui.append({"name": "model", "kind": "choice", "label": N_("Model"),
                    "value": model, "options": options})
     else:
-        ui.append({"name": "model", "kind": "text", "label": "Модель",
-                   "value": model, "hint": "список не прийшов — id вручну"})
-    ui.append({"name": "auth", "kind": "choice", "label": "Вхід", "value": auth,
-               "options": [{"value": "login", "label": "Логін CLI"},
-                           {"value": "key", "label": "Свій токен"}]})
+        ui.append({"name": "model", "kind": "text", "label": N_("Model"),
+                   "value": model, "hint": N_("the list did not come — type the id")})
+    ui.append({"name": "auth", "kind": "choice", "label": N_("Sign-in"), "value": auth,
+               "options": [{"value": "login", "label": N_("CLI login")},
+                           {"value": "key", "label": N_("Own token")}]})
     if auth == "key":
         # The key is read here, on the hands' machine. The brain's own key
         # store is another machine's once the brain lives elsewhere, so the
         # way to add one is said in the terms of this machine.
         source = keys.source(auth_env) if auth_env else None
-        missing = (f"немає на {socket.gethostname()}: heare-cli-hands key {auth_env}"
-                   if auth_env else "обери ключ")
+        missing = (f"missing on {socket.gethostname()}: heare-cli-hands key {auth_env}"
+                   if auth_env else N_("pick a key"))
         ui += [
-            {"name": "auth_env", "kind": "choice", "label": "Ключ",
+            {"name": "auth_env", "kind": "choice", "label": N_("Key"),
              "value": auth_env,
              "options": [{"value": "", "label": "—"}]
              + [{"value": name, "label": name} for name in keys.NAMES]},
-            {"name": "key", "kind": "label", "label": "Токен",
-             "value": {"env": "є (з оточення)", "stored": "є (у Keychain)"}.get(
+            {"name": "key", "kind": "label", "label": N_("Token"),
+             "value": {"env": N_("present (from the environment)"), "stored": N_("present (in Keychain)")}.get(
                  source or "", missing)},
         ]
     else:
-        ui.append({"name": "login", "kind": "label", "label": "Логін",
+        ui.append({"name": "login", "kind": "label", "label": N_("Login"),
                    "value": runner.login(kind, resolved)["summary"]})
     ui += [
         {"name": "base_url", "kind": "text", "label": "Base URL",
          "value": str(settings.executor_base_url or ""),
-         "hint": "порожньо — рідний endpoint; тільки для проксі"},
-        {"name": "check", "kind": "button", "label": "Перевірити"},
-        {"name": "checks", "kind": "log", "label": "Перевірка", "value": ""},
+         "hint": N_("empty — the native endpoint; only for a proxy")},
+        {"name": "check", "kind": "button", "label": N_("Check")},
+        {"name": "checks", "kind": "log", "label": N_("Checks"), "value": ""},
     ]
     for control in ui:
         control["group"] = "settings"
@@ -173,7 +174,7 @@ def _setting(name: str, value: object) -> tuple[str, str] | None:
 
 
 def _checks(settings: Settings) -> str:
-    """What "Перевірити" shows: one line per thing the runner needs."""
+    """What N_("Check") shows: one line per thing the runner needs."""
     kind = _kind(settings)
     health = runner.health(
         kind,
@@ -238,9 +239,9 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
 
 
 # The modes as the card names them.
-_MODE_LABELS = {"careful": "Обережно — питає про кожну зміну",
-                "normal": "Звичайно — сам зважує, чи питати",
-                "auto": "Авто — не питає нічого"}
+_MODE_LABELS = {"careful": N_("Careful — asks about every change"),
+                "normal": N_("Normal — weighs itself whether to ask"),
+                "auto": N_("Auto — asks nothing")}
 
 
 def _mode(settings: Settings) -> str:
@@ -330,19 +331,19 @@ async def run() -> int:
     # Hands without an agent still knock: their settings are the only place
     # a wrong path can be put right, and they take no work meanwhile.
     name = agent.name if agent is not None else _kind(settings)
-    about = agent.about if agent is not None else "агента не знайдено — глянь ⚙"
+    about = agent.about if agent is not None else N_("no agent found — see ⚙")
     forms = ["executor"] if agent is not None else []
     asks = await asyncio.start_unix_server(handle, path=str(socket_path))
     ui = [
-        {"name": "taking", "kind": "toggle", "label": "Брати справи",
+        {"name": "taking", "kind": "toggle", "label": N_("Take work"),
          "value": True},
-        {"name": "mode", "kind": "choice", "label": "Режим", "value": _mode(settings),
+        {"name": "mode", "kind": "choice", "label": N_("Mode"), "value": _mode(settings),
          "options": [{"value": m, "label": _MODE_LABELS[m]} for m in MODES]},
-        {"name": "agent", "kind": "label", "label": "Агент", "value": name},
-        {"name": "work", "kind": "label", "label": "Стан", "head": True,
-         "value": "чекає" if agent is not None else "не готові"},
-        {"name": "usage", "kind": "label", "label": "Ціна", "value": "—"},
-        {"name": "terminal", "kind": "terminal", "label": "Термінал", "value": ""},
+        {"name": "agent", "kind": "label", "label": N_("Agent"), "value": name},
+        {"name": "work", "kind": "label", "label": N_("State"), "head": True,
+         "value": N_("waiting") if agent is not None else N_("not ready")},
+        {"name": "usage", "kind": "label", "label": N_("Price"), "value": "—"},
+        {"name": "terminal", "kind": "terminal", "label": N_("Terminal"), "value": ""},
         {"name": "acp", "kind": "log", "label": "ACP", "value": "",
          "group": "settings"},
     ] + await asyncio.to_thread(_settings_ui, settings)
@@ -366,7 +367,7 @@ async def run() -> int:
         elif (change := _setting(str(control), value)) is not None:
             settings.set(*change)
             values[str(control)] = change[1]
-            values["work"] = "застосую налаштування, щойно звільнюсь"
+            values["work"] = N_("will apply the settings once free")
             restart.set()
         else:
             return
@@ -391,7 +392,7 @@ async def run() -> int:
 
         def begin(job: hand.Job, desk: hand.Desk) -> None:
             logs.say(f"взято {job.id}: {job.request[:60]}")
-            values["work"] = f"роблю: {job.request[:50]}"
+            values["work"] = f"working: {job.request[:50]}"
             wire.report(values)
             screen.begin(job.request, new=not job.continues, asked=job.asked)
             current["desk"] = desk
@@ -415,7 +416,7 @@ async def run() -> int:
                 except OSError:
                     pass
             if not restart.is_set():
-                values["work"] = "чекає"
+                values["work"] = N_("waiting")
             wire.report(values)
 
         wiring = asyncio.create_task(report_acp())

@@ -30,18 +30,18 @@ FREE_PINS = (0, 1, 2, 3, 4, 7, 10, 20, 21)
 def panel_skills() -> list[dict]:
     """What the panel offers, in the shape its firmware will knock with."""
     found = [
-        {"name": "show", "about": "Показати кілька слів на OLED-екрані на кілька секунд",
+        {"name": "show", "about": "Show a few words on the OLED screen for some seconds",
          "effect": "harmless", "params": {"type": "object", "required": ["text"], "properties": {
-             "text": {"type": "string", "description": "до 4 рядків по 9 літер"},
+             "text": {"type": "string", "description": "up to 4 lines of 9 letters"},
              "seconds": {"type": "integer", "description": "1..60"}}}},
-        {"name": "light", "about": "Світлодіод: on, off або blink (блимає сам)",
+        {"name": "light", "about": "The LED: on, off or blink (blinks by itself)",
          "effect": "harmless", "params": {"type": "object", "required": ["mode"], "properties": {
              "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
-        {"name": "image", "about": "Намалювати картинку на OLED 72×40",
+        {"name": "image", "about": "Draw a picture on the 72×40 OLED",
          "effect": "harmless", "params": {"type": "object", "required": ["svg"], "properties": {
              "svg": {"type": "string"}, "seconds": {"type": "integer"}}},
          "render": {"svg": {"to": "mono", "width": 72, "height": 40, "as": "bitmap"}}},
-        {"name": "screen", "about": "Показати сцену: розкладка з віджетів і поля",
+        {"name": "screen", "about": "Show a scene: a layout of widgets and fields",
          "effect": "harmless", "params": {"type": "object", "required": ["scene"], "properties": {
              "scene": {"type": "object"}, "layer": {"type": "string"},
              "seconds": {"type": "integer"}}},
@@ -50,20 +50,20 @@ def panel_skills() -> list[dict]:
               "to": "mono", "width": 16, "height": 16, "as": "bits"},
              {"deep": True, "key": "svg", "where": {"widget": "picture"},
               "to": "mono", "width": 72, "height": 40, "as": "bits"}]}},
-        {"name": "update", "about": "Змінити поля сцени", "effect": "harmless",
+        {"name": "update", "about": "Change fields of a scene", "effect": "harmless",
          "params": {"type": "object", "required": ["id", "fields"], "properties": {
              "id": {"type": "string"}, "fields": {"type": "object"}}}},
-        {"name": "read_pins", "about": "Рівні вільних пінів: 1 високий, 0 низький",
+        {"name": "read_pins", "about": "Levels of the free pins: 1 high, 0 low",
          "effect": "read", "params": {"type": "object", "properties": {}}},
     ]
     for n in FREE_PINS:
-        found.append({"name": f"pin{n}", "about": f"Пін {n}: увімкнути чи вимкнути те, що під'єднано",
+        found.append({"name": f"pin{n}", "about": f"Pin {n}: switch what is wired to it on or off",
                       "effect": "change", "params": {"type": "object", "required": ["on"],
                                                      "properties": {"on": {"type": "boolean"}}}})
     return found
 
 
-SENSOR = {"name": "temperature", "about": "Температура в кімнаті, °C",
+SENSOR = {"name": "temperature", "about": "The room temperature, °C",
           "effect": "read", "params": {"type": "object", "properties": {}}}
 
 
@@ -72,7 +72,7 @@ class Board:
     """One virtual board: what it offers and what it was told."""
 
     name: str
-    about: str = "віртуальна плата з OLED-екраном"
+    about: str = "a virtual board with an OLED screen"
     host: str = HOST
     skills: list[dict] = field(default_factory=panel_skills)
     # Seconds before a call is done; and calls dropped unanswered.
@@ -99,7 +99,7 @@ class Board:
         return {"channel": self.channel, "name": self.name, "forms": ["output"],
                 "about": self.about, "key": self.pid, "host": self.host,
                 "skills": self.skills,
-                "ui": [{"name": "now", "kind": "label", "label": "Екран",
+                "ui": [{"name": "now", "kind": "label", "label": "Screen",
                         "value": "", "head": True}]}
 
     def levels(self) -> dict[str, int]:
@@ -108,27 +108,27 @@ class Board:
     def call(self, name: str, args: dict) -> tuple[bool, object]:
         """One skill, done the way the panel does it: (ok, result)."""
         if name not in {s["name"] for s in self.skills}:
-            return False, "такого скіла немає"
+            return False, "no such skill"
         if name == "show" and args.get("text"):
             self.shown = str(args["text"])
-            result: object = f"показано: {self.shown}"
+            result: object = f"shown: {self.shown}"
         elif name == "light" and args.get("mode") in ("on", "off", "blink"):
             self.led = str(args["mode"])
-            result = f"світло: {self.led}"
+            result = f"light: {self.led}"
         elif name == "image" and args.get("bitmap"):
             import base64
 
             self.picture = base64.b64decode(str(args["bitmap"]))
             if len(self.picture) != 360:
-                return False, "картинка має бути 72x40"
-            result = "картинку показано"
+                return False, "the picture must be 72x40"
+            result = "the picture is shown"
         elif name == "screen" and isinstance(args.get("scene"), dict):
             scene = args["scene"]
             self.scenes[str(scene.get("id") or "scene")] = scene
-            result = f"сцену {scene.get('id')} показано"
+            result = f"scene {scene.get('id')} is shown"
         elif name == "update" and str(args.get("id")) in self.scenes:
             self.scenes[str(args["id"])].setdefault("fields", {}).update(args.get("fields") or {})
-            result = f"оновлено: {args['id']}"
+            result = f"updated: {args['id']}"
         elif name == "read_pins":
             return True, self.levels()
         elif name == "temperature":
@@ -137,7 +137,7 @@ class Board:
             self.pins[name] = 1 if args["on"] else 0
             result = f"{name}: {self.pins[name]}"
         else:
-            return False, "не той аргумент"
+            return False, "not that argument"
         self.done.append((name, args))
         return True, result
 

@@ -35,6 +35,7 @@ from heare import layout, logs, part, pixels, talk
 from heare.config import Settings
 from heare.core.forms import Model
 from heare.core.i18n import _
+from heare.core.i18n import N_
 
 logger = logging.getLogger("heare.native_hands")
 
@@ -101,7 +102,7 @@ class NativeHand:
                                 {"role": "user", "content": task}]
         done: list[str] = []
         for _step in range(STEPS):
-            desk.step("думаю")
+            desk.step(N_("thinking"))
             text, calls = await self._turn(messages, schemas)
             if getattr(desk, "stopped", False):
                 raise asyncio.CancelledError
@@ -296,7 +297,7 @@ def chosen(settings: Settings) -> talk.Wire:
             key=key,
             model=getattr(settings, f"{name}_model", "") or cfg.default_model,
             style=cfg.api_style)
-    raise RuntimeError("немає ключа до жодної моделі")
+    raise RuntimeError("no key for any model")
 
 
 class Chosen:
@@ -320,23 +321,23 @@ async def run(settings: Settings | None = None, model: Model | None = None,
 
         async def work(wire: part.Wire) -> None:
             hand = NativeHand(model or Chosen(settings, client), Parts(wire))
-            wire.report({"work": "чекає"})
+            wire.report({"work": N_("waiting")})
 
             async def do(job: hand_life.Job, desk: hand_life.Desk) -> str:
                 return await hand.run(job.request, desk)
 
             await hand_life.serve(
                 wire, CHANNEL, do,
-                on_begin=lambda job, desk: wire.report({"work": f"роблю: {job.request[:50]}"}),
-                on_end=lambda job, status, result: wire.report({"work": "чекає"}),
+                on_begin=lambda job, desk: wire.report({"work": f"working: {job.request[:50]}"}),
+                on_end=lambda job, status, result: wire.report({"work": N_("waiting")}),
                 # The person hears a sentence; the reason goes to the log.
                 failed=lambda exc: FAILED)
 
         return await part.live(
             {"channel": CHANNEL, "forms": ["executor"], "about": ABOUT,
              "key": f"{CHANNEL}@{host}", "host": host,
-             "ui": [{"name": "work", "kind": "label", "label": "Справа",
-                     "value": "чекає", "head": True}]},
+             "ui": [{"name": "work", "kind": "label", "label": N_("Work"),
+                     "value": N_("waiting"), "head": True}]},
             work, hello="native hands", settings=settings, client=client)
 
 

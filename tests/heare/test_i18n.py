@@ -22,5 +22,9 @@ def test_an_unknown_language_or_line_falls_back_without_breaking():
     i18n.choose(lambda: "uk")
 
 
-def test_the_page_gets_the_whole_catalog():
-    assert i18n.catalog("uk")["Stopped."] == "Зупинив."
+def test_the_page_gets_the_whole_catalog_with_plural_forms():
+    from heare.api.server import catalog
+
+    words = catalog("uk")
+    assert words["Stopped."] == "Зупинив." and words["Brain"] == "Мозок"
+    assert words["{n} fact"] == ["{n} факт", "{n} факти", "{n} фактів"]

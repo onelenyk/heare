@@ -201,7 +201,7 @@ async def test_nothing_is_posted_while_the_weather_is_off(tmp_path):
     await web.aclose()
 
     assert _notes(brain_seen) == []
-    assert sources.sees == "вимкнено"
+    assert sources.sees == "off"
 
 
 async def test_a_failed_fetch_is_shown_and_does_not_end_the_part(tmp_path):
@@ -219,7 +219,7 @@ async def test_a_failed_fetch_is_shown_and_does_not_end_the_part(tmp_path):
     await web.aclose()
 
     assert _notes(brain_seen) == []
-    assert sources.sees == "немає зв'язку з погодою, спробую ще"
+    assert sources.sees == "no connection to the weather, will try again"
 
 
 async def test_an_unknown_city_is_shown_on_the_card(tmp_path):
@@ -235,7 +235,7 @@ async def test_an_unknown_city_is_shown_on_the_card(tmp_path):
     await web.aclose()
 
     assert _notes(brain_seen) == []
-    assert sources.sees == "місто не знайдено"
+    assert sources.sees == "city not found"
 
 
 def test_the_city_and_the_toggle_survive_a_restart(tmp_path):

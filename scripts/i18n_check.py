@@ -17,10 +17,12 @@ def untranslated(po: Path) -> list[str]:
     for line in po.read_text(encoding="utf-8").splitlines():
         if line.startswith("msgid "):
             key = line[6:].strip('"')
-        elif line.startswith("msgstr ") and key:
-            if line[7:].strip() == '""':
+        elif line.startswith("msgstr") and key:
+            # msgstr, or msgstr[n] for each plural form.
+            if line.split(" ", 1)[1].strip() == '""':
                 missing.append(key)
-            key = None
+            if not line.startswith("msgstr["):
+                key = None
     return missing
 
 
