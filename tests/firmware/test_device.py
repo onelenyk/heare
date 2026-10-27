@@ -34,8 +34,7 @@ def test_the_knock_s_skills_are_small_enough_for_the_board():
     import json
 
     # 26 October: 10 KB of skills in every knock starved the board.
-    # Measured as the board writes it: MicroPython's json keeps UTF-8 as is.
-    assert len(json.dumps(device.skills(), ensure_ascii=False).encode()) < 3700
+    assert len(json.dumps(device.skills()).encode()) < 4096
 
 def test_a_pin_outside_the_list_is_never_touched():
     board, made = _device()

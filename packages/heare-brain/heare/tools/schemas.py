@@ -152,7 +152,7 @@ _READ_BODY = {
         "name": "read_body",
         "description": (
             "Read one of the bodies nearby right now — a sensor, a state — "
-            "with a skill marked «читаю сам» in the list of bodies. The "
+            "with a skill under «read it yourself» in «My body». The "
             "answer comes back at once; tell the person what it says. For "
             "anything that changes a body, use delegate."
         ),

@@ -30,8 +30,8 @@ from heare.core.state import State
 logger = logging.getLogger("heare.core")
 
 DEFAULT_PROMPT = (
-    "Ти асистент на ім'я heare. Відповідай коротко, українською, простою "
-    "прозою — без розмітки, списків і коду. Одна-три фрази, як у живій розмові."
+    "You are a voice assistant. Answer briefly, in the person's language, in "
+    "plain prose, no markup — one to three sentences, as in a live talk."
 )
 
 # Said when a turn dies below the core — the model, an output, anything.
@@ -109,7 +109,7 @@ class Plain:
         self, request: str, history: list[dict], executors: list[Executor]
     ) -> tuple[str, str]:
         talk = "\n".join(f"{m['role']}: {m['content']}" for m in history)
-        task = f"{request}\n\nОстанні репліки розмови:\n{talk}" if talk else request
+        task = f"{request}\n\nThe last lines of the talk:\n{talk}" if talk else request
         return executors[0].name, task
 
     async def brief(self, task: Task) -> str:
@@ -739,30 +739,30 @@ class Core:
         # «доручив агенту» to every new request and call nothing.
         lines = []
         for task in list(self.state.tasks.values())[-5:]:
-            status = {"running": "У РОБОТІ", "done": "готово", "failed": "не вийшло",
-                      "stopped": "зупинено"}.get(task.status, task.status)
+            status = {"running": "RUNNING", "done": "done", "failed": "failed",
+                      "stopped": "stopped"}.get(task.status, task.status)
             line = f"- {status}: {task.request[:90]}"
             # What it is at and what came of it: without, «що ти знайшов?» had no answer.
             if task.status == "running" and task.step:
-                line += f" — зараз: {task.step[:80]}"
+                line += f" — now: {task.step[:80]}"
             elif task.result:
-                line += f"\n  результат: {' '.join(task.result.split())[:400]}"
+                line += f"\n  result: {' '.join(task.result.split())[:400]}"
             lines.append(line)
         busy = sum(t.status == "running" for t in self.state.tasks.values())
-        known = ("\n\nЗапис системи про справи (не твої слова). Зараз у роботі: "
-                 f"{busy}" + ("" if busy else " — тобто зараз ти нічого не робиш")
+        known = ("\n\nThe system's record of work (not your words). Running now: "
+                 f"{busy}" + ("" if busy else " — you are doing nothing now")
                  + "." + ("\n" + "\n".join(lines) if lines else "")
-                 + "\nСправа існує лише тоді, коли вона є в цьому записі. Нове прохання "
-                 "про роботу — це завжди новий виклик delegate; сказати «доручив» без "
-                 "виклику означає нічого не зробити.") if self.executors else ""
+                 + "\nWork exists only when it is in this record. A new request for "
+                 "work is always a new delegate call; saying it is handed over "
+                 "without the call does nothing.") if self.executors else ""
         if self._permission is not None:
-            known += ("\n\nЧекає відповіді питання дозволу: «"
-                      f"{self._permission.what[:120]}». Дозволяє лише людина — словом "
-                      "або кнопкою; ти сам не дозволяєш і не кажи, що дозволив.")
+            known += ("\n\nA permission question waits for an answer: «"
+                      f"{self._permission.what[:120]}». Only the person allows it — by word "
+                      "or button; you never allow it, nor say that you did.")
         playing = self.state.around.get("playing")
         if playing:
-            known += ("\n\nЗараз поруч грає звук (" + ", ".join(map(str, playing)) + "). "
-                      "Поки він грає, ти відповідаєш лише на пряме звертання на ім'я.")
+            known += ("\n\nSound is playing nearby (" + ", ".join(map(str, playing)) + "). "
+                      "While it plays, you answer only when called by name.")
         return known
 
     async def _say(self, out: Output | None, text: str) -> str:

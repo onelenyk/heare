@@ -92,7 +92,7 @@ class Toolbox:
     async def _run_read_body(self, arguments: dict) -> str:
         bodies = self._bodies()
         if bodies is None:
-            return "Тіл зараз немає."
+            return "No bodies are connected now."
         return await body_tools.read(bodies, arguments)
 
     async def _run_stop(self, arguments: dict) -> str:

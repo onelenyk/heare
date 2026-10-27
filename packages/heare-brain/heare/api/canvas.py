@@ -230,21 +230,21 @@ class Canvas:
         """Every turn: what is drawn, short. Not «the screen» — that word is
         the Mac's and the panel's too."""
         if not self.blocks:
-            return "Канвас (сторінка heare у браузері) зараз порожній."
-        own = ("\nУ канвасу є власний стиль; перш ніж міняти вигляд, глянь його "
-               "через canvas_view." if self.css else "")
-        return ("Канвас (сторінка heare у браузері) — на ньому вже намальовано, "
-                "зліва направо, у дужках ширина; не малюй те саме вдруге, а щоб "
-                "дописати віджет, спершу глянь його через canvas_view:\n"
+            return "The canvas (the heare page in the browser) is empty."
+        own = ("\nThe canvas has a stylesheet of its own; look at it with "
+               "canvas_view before changing the look." if self.css else "")
+        return ("The canvas (the heare page in the browser) already shows, left to "
+                "right, width in brackets; do not draw the same again, and look at "
+                "a widget with canvas_view before adding to it:\n"
                 + self.outline(TURN_CHARS, TURN_TOTAL) + own)
 
     def full(self) -> str:
         """On asking: the long outline and the stylesheet."""
         if not self.blocks and not self.css:
-            return "Канвас порожній, стиль типовий."
-        own = (f"\nВласний стиль (canvas_style замінює його цілком):\n{self.css}"
-               if self.css else "\nСтиль типовий.")
-        return (self.outline() or "Віджетів немає.") + own
+            return "The canvas is empty, the style is the default."
+        own = (f"\nIts own stylesheet (canvas_style replaces it whole):\n{self.css}"
+               if self.css else "\nThe style is the default.")
+        return (self.outline() or "No widgets.") + own
 
     # -- as an output: a reply sent here is written, not spoken --------
 

@@ -41,19 +41,19 @@ CHANNEL = "native-hands"
 # Which bodies are here and what they can do the voice reads from the
 # registry itself; this says only what these hands are for.
 ABOUT = (
-    "швидкі дії з тілами зі списку «Тіла поруч»: показати, увімкнути, "
-    "прочитати. Одна-дві дії, без плану, без файлів, коду, шелу й інтернету."
+    "quick acts on the bodies in «My body»: show, switch, read. One or two "
+    "acts, no plan, no files, code, shell or internet."
 )
 STEPS = 4
 HANDOFF = "pass_to_cli_hands"
 FAILED = "Не вийшло: модель не відповіла."
 
 _SYSTEM = (
-    "Ти — швидкі руки heare. Зроби прохання інструментами й відповідай одним "
-    "коротким реченням українською: що зроблено. Не вигадуй того, чого "
-    "інструменти не сказали. Якщо прохання не про ці інструменти (файли, код, "
-    "шел, інтернет, план, щось довге) — не відповідай сам, а виклич "
-    f"{HANDOFF} з завданням, повним і зрозумілим без розмови."
+    "You are heare's quick hands. Do the request with the tools and answer in "
+    "one short sentence, in the language of the request: what was done. Do not "
+    "make up what the tools did not say. If the request is not for these tools "
+    "(files, code, shell, internet, a plan, anything long), do not answer "
+    f"yourself — call {HANDOFF} with the task, whole and clear without the talk."
 )
 
 

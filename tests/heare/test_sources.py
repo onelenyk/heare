@@ -72,8 +72,8 @@ def test_a_cold_windy_evening_is_said_in_one_line():
     text = weather.describe(_current(), _hourly())
 
     assert text == (
-        "+3°, відчувається як −1°, вітер 8 м/с, хмарно, без опадів; "
-        "до −2° найближчі 12 год"
+        "+3°, feels like −1°, wind 8 m/s, cloudy, no precipitation; "
+        "down to −2° in the next 12 h"
     )
 
 
@@ -81,41 +81,41 @@ def test_the_feels_like_figure_is_shown_only_when_it_differs_by_two():
     close = weather.describe(_current(apparent_temperature=4.0), _hourly())
     far = weather.describe(_current(apparent_temperature=1.0), _hourly())
 
-    assert "відчувається" not in close
-    assert "відчувається як +1°" in far
+    assert "feels like" not in close
+    assert "feels like +1°" in far
 
 
 def test_a_likely_rain_in_the_next_hours_is_said():
     rainy = weather.describe(_current(), _hourly(chances=[10, 60] + [10] * 10))
     dry = weather.describe(_current(), _hourly(chances=[40] * 12))
 
-    assert rainy.endswith("до −2° найближчі 12 год, можливий дощ")
-    assert "можливий дощ" not in dry
+    assert rainy.endswith("down to −2° in the next 12 h, rain likely")
+    assert "rain likely" not in dry
 
 
 def test_falling_precipitation_names_itself_and_no_dry_sky():
     text = weather.describe(_current(weather_code=63, precipitation=1.2), _hourly())
 
-    assert text.startswith("+3°, відчувається як −1°, вітер 8 м/с, дощ; ")
-    assert "без опадів" not in text
+    assert text.startswith("+3°, feels like −1°, wind 8 m/s, rain; ")
+    assert "no precipitation" not in text
 
 
 @pytest.mark.parametrize(
     ("code", "word"),
     [
-        (0, "ясно"),
-        (1, "ясно"),
-        (2, "хмарно"),
-        (45, "туман"),
-        (48, "туман"),
-        (53, "мряка"),
-        (57, "мряка"),
-        (63, "дощ"),
-        (67, "дощ"),
-        (75, "сніг"),
-        (82, "злива"),
-        (95, "гроза"),
-        (99, "гроза"),
+        (0, "clear"),
+        (1, "clear"),
+        (2, "cloudy"),
+        (45, "fog"),
+        (48, "fog"),
+        (53, "drizzle"),
+        (57, "drizzle"),
+        (63, "rain"),
+        (67, "rain"),
+        (75, "snow"),
+        (82, "downpour"),
+        (95, "thunderstorm"),
+        (99, "thunderstorm"),
     ],
 )
 def test_wmo_codes_are_grouped_into_the_words_a_person_uses(code, word):
@@ -127,13 +127,13 @@ def test_wmo_codes_are_grouped_into_the_words_a_person_uses(code, word):
 def test_an_unknown_code_says_nothing_about_the_sky():
     text = weather.describe(_current(weather_code=999), _hourly())
 
-    assert text.startswith("+3°, відчувається як −1°, вітер 8 м/с, без опадів; ")
+    assert text.startswith("+3°, feels like −1°, wind 8 m/s, no precipitation; ")
 
 
 def test_without_an_hourly_forecast_only_the_present_is_said():
     text = weather.describe(_current(), {})
 
-    assert text == "+3°, відчувається як −1°, вітер 8 м/с, хмарно, без опадів"
+    assert text == "+3°, feels like −1°, wind 8 m/s, cloudy, no precipitation"
 
 
 # fetch: Open-Meteo, mocked --------------------------------------------------
@@ -145,9 +145,9 @@ async def test_fetch_gives_the_label_and_the_text_for_the_city():
 
     assert found is not None
     label, text = found
-    assert label == "погода (Київ)"
-    assert text.startswith("+3°, відчувається як −1°")
-    assert text.endswith("до −2° найближчі 12 год")
+    assert label == "weather (Київ)"
+    assert text.startswith("+3°, feels like −1°")
+    assert text.endswith("down to −2° in the next 12 h")
 
 
 async def test_an_unknown_city_is_none_not_an_error():
@@ -183,7 +183,7 @@ async def test_the_weather_note_is_posted_with_its_expiry(tmp_path):
     assert note["channel"] == "sources"
     assert note["kind"] == "note"
     assert note["key"] == "weather"
-    assert note["value"]["label"] == "погода (Київ)"
+    assert note["value"]["label"] == "weather (Київ)"
     assert note["value"]["text"].startswith("+3°")
     assert before + 90 * 60 - 1 <= note["value"]["until"] <= time.time() + 90 * 60 + 1
 

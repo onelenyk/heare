@@ -21,10 +21,10 @@ def test_nothing_connected_is_said_plainly():
 
 def test_a_part_says_what_it_is_what_it_shows_and_what_it_can_do():
     text = body({"p": PANEL})
-    assert "- панель — плата на столі з OLED-екраном; зараз: годинник" in text
+    assert "- панель — плата на столі з OLED-екраном; now: годинник" in text
     # A reading skill keeps its name for read_body; a changing one is words.
-    assert "читаю сам: What is on the screen [screen_info]" in text
-    assert "через руки: Show a few words on the OLED for some…; Put a scene on the OLED" in text
+    assert "read it yourself: What is on the screen [screen_info]" in text
+    assert "through the hands: Show a few words on the OLED for some…; Put a scene on the OLED" in text
     assert "[show]" not in text
 
 
@@ -33,8 +33,8 @@ def test_an_absent_part_is_one_line_and_comes_last():
                        "skills": [{"name": "on", "effect": "change"}]},
                  "p": PANEL})
     assert text.index("панель") < text.index("реле")
-    assert "- реле — кухня; немає на зв'язку" in text
-    assert "on" not in text.split("реле", 1)[1]
+    assert "- реле — кухня; not connected" in text
+    assert "through the hands" not in text.split("реле", 1)[1]
 
 
 def test_many_parts_stay_within_the_budget():
@@ -55,5 +55,5 @@ def test_now_is_the_head_label_as_last_reported():
 def test_what_the_prompt_already_says_now_is_not_said_twice():
     weather = {"w": {"name": "sources", "about": "джерела", "state": "approved",
                      "now": "+8°, хмарно"}}
-    assert "зараз" not in body(weather, "- погода: +8°, хмарно")
-    assert "зараз: +8°, хмарно" in body(weather)
+    assert "now:" not in body(weather, "- погода: +8°, хмарно")
+    assert "now: +8°, хмарно" in body(weather)

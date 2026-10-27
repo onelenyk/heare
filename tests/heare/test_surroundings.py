@@ -68,8 +68,8 @@ async def test_it_knows_its_work_and_the_room_without_being_told():
     room.says("Що ти зараз робиш?")
     await room.settled()
     prompt = room.model.asked[-1][0]["content"]
-    assert "зупинено: створи десять файлів" in prompt and "Зараз у роботі: 0 — тобто зараз ти нічого не робиш." in prompt
-    assert "грає звук (Google Chrome)" in prompt
+    assert "stopped: створи десять файлів" in prompt and "Running now: 0 — you are doing nothing now." in prompt
+    assert "Sound is playing nearby (Google Chrome)" in prompt
     assert room.core.state.snapshot()["around"] == {"playing": ["Google Chrome"]}
     await room.close()
 

@@ -31,7 +31,7 @@ WAIT_S = 10.0
 
 def with_talk(request: str, history: list[dict]) -> str:
     talk = "\n".join(f"{m['role']}: {m['content']}" for m in history if m.get("content"))
-    return f"{request}\n\nОстанні репліки розмови:\n{talk}" if talk else request
+    return f"{request}\n\nThe last lines of the talk:\n{talk}" if talk else request
 
 
 class Router(Dispatcher):

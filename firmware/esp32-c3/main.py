@@ -488,12 +488,11 @@ def _start_thread(target, args):
     _thread.start_new_thread(target, args)
 
 
-# What the panel's state is called where people and the voice read it; the
-# screen itself keeps the short English word, it has room for no more.
-_SAID = {"BOOT": "запускається", "WIFI": "шукає Wi-Fi", "PAIR": "чекає спарювання",
-         "BRAIN": "шукає мозок", "IDLE": "обличчя", "HEAR": "слухає",
-         "THINK": "думає", "SPEAK": "говорить", "ALLOW": "питає дозволу",
-         "ERROR": "помилка", "OFFLINE": "без зв'язку"}
+# What the panel's state is called where the voice reads it: words, not codes.
+_SAID = {"BOOT": "starting", "WIFI": "looking for Wi-Fi", "PAIR": "waiting to pair",
+         "BRAIN": "looking for the brain", "IDLE": "face", "HEAR": "listening",
+         "THINK": "thinking", "SPEAK": "speaking", "ALLOW": "asking leave",
+         "ERROR": "error", "OFFLINE": "offline"}
 
 
 def _report(link, word, outcome):

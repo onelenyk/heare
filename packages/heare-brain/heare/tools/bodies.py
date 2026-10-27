@@ -19,16 +19,16 @@ async def read(bodies: Bodies, arguments: dict) -> str:
     found = [(pid, entry) for pid, entry in bodies.skilled().items()
              if part in (pid, entry.get("name"))]
     if not found:
-        return f"Тіла «{part}» зараз немає."
+        return f"No body «{part}» is connected now."
     if len(found) > 1:
-        return f"Тіл «{part}» кілька: " + ", ".join(pid for pid, _ in found) + ". Яке?"
+        return f"Several bodies are called «{part}»: " + ", ".join(pid for pid, _ in found) + ". Ask which."
     pid, entry = found[0]
     known = next((s for s in entry["skills"] if s["name"] == skill), None)
     if known is None:
-        return f"У «{part}» немає вміння «{skill}»."
+        return f"«{part}» has no skill «{skill}»."
     if known["effect"] != "read":
-        return "Це вміння щось змінює — його роблять руки, через delegate."
+        return "This skill changes something: the hands do it, through delegate."
     answer = await bodies.call(pid, skill, args)
     result = answer.get("result")
     text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
-    return text if answer.get("ok") else f"Не вийшло прочитати: {text}"
+    return text if answer.get("ok") else f"Could not read it: {text}"

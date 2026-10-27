@@ -35,9 +35,9 @@ class Part:
 
 PARTS = {part.name: part for part in (
     Part("voice", "Голос", "слухає й говорить", "voice", ("input", "output"),
-         "голос: мікрофон і динамік"),
+         "voice: microphone and speaker"),
     Part("eyes", "Очі", "що спереду, чи ти тут, чи щось грає", "eyes", ("input",),
-         "очі: що відкрито на Маку (лише назва застосунку), чи щось грає", only="darwin"),
+         "eyes: which app is open on the Mac (its name only), whether something plays", only="darwin"),
     Part("sources", "Джерела", "погода й інше: що зараз навколо", "sources", ("input",),
          "джерела: погода — що зараз надворі"),
     # "hands" is the folder the cli hands were turned on in before 26 October.

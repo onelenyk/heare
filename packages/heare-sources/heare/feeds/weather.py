@@ -1,4 +1,4 @@
-"""Weather from Open-Meteo, said in one Ukrainian line for the model.
+"""Weather from Open-Meteo, said in one English line for the model.
 
 Free and keyless. ``describe`` is pure so the words can be checked without
 the network; ``fetch`` is the only part that talks to Open-Meteo.
@@ -20,16 +20,16 @@ FEELS_S = 2.0
 RAIN_PERCENT = 50
 
 # WMO weather codes, grouped into the words a person would use.
-SKY = {0: "ясно", 1: "ясно", 2: "хмарно", 3: "хмарно"}
-FOG = {45: "туман", 48: "туман"}
-DRIZZLE = {51: "мряка", 53: "мряка", 55: "мряка", 56: "мряка", 57: "мряка"}
-RAIN = {61: "дощ", 63: "дощ", 65: "злива", 66: "дощ", 67: "дощ"}
-SNOW = {71: "сніг", 73: "сніг", 75: "сніг", 77: "сніг", 85: "сніг", 86: "сніг"}
-SHOWERS = {80: "злива", 81: "злива", 82: "злива"}
-STORM = {95: "гроза", 96: "гроза", 99: "гроза"}
+SKY = {0: "clear", 1: "clear", 2: "cloudy", 3: "cloudy"}
+FOG = {45: "fog", 48: "fog"}
+DRIZZLE = {51: "drizzle", 53: "drizzle", 55: "drizzle", 56: "drizzle", 57: "drizzle"}
+RAIN = {61: "rain", 63: "rain", 65: "downpour", 66: "rain", 67: "rain"}
+SNOW = {71: "snow", 73: "snow", 75: "snow", 77: "snow", 85: "snow", 86: "snow"}
+SHOWERS = {80: "downpour", 81: "downpour", 82: "downpour"}
+STORM = {95: "thunderstorm", 96: "thunderstorm", 99: "thunderstorm"}
 WORDS = {**SKY, **FOG, **DRIZZLE, **RAIN, **SNOW, **SHOWERS, **STORM}
-# The words that already say it is falling: no need to add «без опадів».
-FALLING = {"мряка", "дощ", "злива", "сніг", "гроза"}
+# The words that already say it is falling: no need to add «no precipitation».
+FALLING = {"drizzle", "rain", "downpour", "snow", "thunderstorm"}
 
 
 def _degrees(value: float) -> str:
@@ -43,7 +43,7 @@ def _degrees(value: float) -> str:
 
 
 def describe(current: dict, hourly: dict) -> str:
-    """The weather now and the next hours, as one line of Ukrainian text.
+    """The weather now and the next hours, as one line of English text.
 
     *current* is Open-Meteo's ``current`` block, *hourly* its ``hourly``
     block; the hourly lists start at this hour.
@@ -56,24 +56,24 @@ def describe(current: dict, hourly: dict) -> str:
 
     parts = [_degrees(temperature)]
     if abs(feels - temperature) >= FEELS_S:
-        parts.append(f"відчувається як {_degrees(feels)}")
-    parts.append(f"вітер {wind} м/с")
+        parts.append(f"feels like {_degrees(feels)}")
+    parts.append(f"wind {wind} m/s")
     if word in FALLING:
         parts.append(word)
     elif precipitation > 0:
-        falling = f"опади {precipitation:g} мм"
+        falling = f"precipitation {precipitation:g} mm"
         parts.append(f"{word}, {falling}" if word else falling)
     else:
-        parts.append(f"{word}, без опадів" if word else "без опадів")
+        parts.append(f"{word}, no precipitation" if word else "no precipitation")
     now = ", ".join(parts)
 
     temps = [float(t) for t in (hourly.get("temperature_2m") or [])[:HOURS]]
     chances = [int(p) for p in (hourly.get("precipitation_probability") or [])[:HOURS]]
     if not temps:
         return now
-    later = f"до {_degrees(min(temps))} найближчі {HOURS} год"
+    later = f"down to {_degrees(min(temps))} in the next {HOURS} h"
     if any(chance >= RAIN_PERCENT for chance in chances):
-        later += ", можливий дощ"
+        later += ", rain likely"
     return f"{now}; {later}"
 
 
@@ -106,4 +106,4 @@ async def fetch(client: httpx.AsyncClient, city: str) -> tuple[str, str] | None:
     forecast.raise_for_status()
     body = forecast.json()
     text = describe(body["current"], body.get("hourly") or {})
-    return f"погода ({place.get('name') or city})", text[:200]
+    return f"weather ({place.get('name') or city})", text[:200]

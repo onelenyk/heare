@@ -341,4 +341,4 @@ async def test_read_body_never_changes_anything():
     _schema, run = _with(bodies).verbs()["read_body"]
     said = await run({"part": "кухня", "skill": "on"})
     assert "delegate" in said and bodies.called == []
-    assert "немає" in await run({"part": "спальня", "skill": "temp"})
+    assert "No body" in await run({"part": "спальня", "skill": "temp"})

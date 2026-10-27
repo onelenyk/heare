@@ -64,7 +64,7 @@ def test_widgets_stay_side_by_side_each_with_a_size(tmp_path):
 
 def test_the_model_is_told_what_is_drawn_as_an_outline_not_as_markup(tmp_path):
     canvas = _canvas(tmp_path)
-    assert "порожній" in canvas.context()
+    assert "empty" in canvas.context()
     canvas.put("prices", "<table><tr><th>Модель</th></tr><tr><td>deepseek</td></tr></table>")
     told = canvas.context()
     assert "prices [m]: Модель deepseek" in told and "<table" not in told
