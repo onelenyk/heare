@@ -62,10 +62,10 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 
 class ScreenMaker:
     name = "screens"
-    about = ("робить окремий екран — цілу сторінку зі скриптами, яка живе сама "
-             "і показує стан чи дані асистента наживо (панель, монітор, "
-             "форма налаштувань). Для звичайних таблиць, списків і тексту "
-             "не потрібен: їх асистент малює на канвасі сам")
+    about = ("makes a separate screen — a whole page with scripts that lives by "
+             "itself and shows the assistant's state or data live (a panel, a "
+             "monitor, a settings form). Not for plain tables, lists and text: "
+             "the assistant draws those on the canvas itself")
 
     def __init__(self, folder: Path, write: Callable[[str, str], Awaitable[str]],
                  emit: Callable[..., object]) -> None:
@@ -79,7 +79,7 @@ class ScreenMaker:
         self._last = ""
 
     async def run(self, task: str, desk: Desk) -> str:
-        desk.step("пишу екран")
+        desk.step("writing a screen")
         request = task
         current = self._folder / f"{self._last}.html"
         if self._last and current.is_file():
@@ -97,9 +97,9 @@ class ScreenMaker:
         name = first.removeprefix("name:").strip().lower()
         if not _NAME.fullmatch(name) or "<" not in html:
             self._emit("cannot", what=task[:120], why="the model did not return a page")
-            return "Не вдалося: модель не повернула сторінку."
+            return "Failed: the model did not return a page."
         self._folder.mkdir(parents=True, exist_ok=True)
         (self._folder / f"{name}.html").write_text(html.strip(), encoding="utf-8")
         self._last = name
         self._emit("screen", name=name)
-        return f"Екран «{name}» готовий, він у вкладках над канвасом."
+        return f"The screen «{name}» is ready, in the tabs above the canvas."

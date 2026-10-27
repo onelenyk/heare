@@ -27,7 +27,9 @@ KNOW_EVERYTHING = {"app", "listener", "brain"}
 # door and the model must agree on, the laws every prompt speaks under, and
 # the hands' life — a hand handing work on (Handoff) is said the same way by
 # the hand, the body behind the door and the router.
-LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand"}
+# heare.words puts the catalog into a page: the brain's door and the keeper's
+# form hand theirs out the same way.
+LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "heare.words"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part. Raised deliberately for the question
 # channel (an executor asking the person mid-work), not by drift; and on

@@ -71,7 +71,7 @@ def _aside(home: Path, path: Path, why: str) -> None:
     target = home / "old" / f"{why}-{_stamp()}" / path.relative_to(home)
     target.parent.mkdir(parents=True, exist_ok=True)
     os.replace(path, target)
-    logger.warning("відклав %s у %s", path.name, target.parent)
+    logger.warning("set %s aside in %s", path.name, target.parent)
 
 
 def _move(home: Path, old: Path, new: Path, first: bool) -> None:
@@ -149,4 +149,4 @@ def settle(home: Path | None = None) -> None:
         except OSError:
             # A half-moved home still works through its links; the next
             # start finishes the move.
-            logger.exception("не вдалося розкласти %s", home)
+            logger.exception("could not lay out %s", home)

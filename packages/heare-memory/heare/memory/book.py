@@ -24,6 +24,7 @@ from heare.memory.facts import SQLiteFacts
 from heare.memory.journal import Journal
 from heare.memory.persist import SpinePersistence
 from heare.memory.profile import Profile
+from heare.core.i18n import _
 
 logger = logging.getLogger("heare.memory.book")
 
@@ -96,7 +97,7 @@ class Book:
 
     async def recall(self, query: str, when: str = "") -> str:
         """Off the event loop: synchronous SQLite over thousands of rows."""
-        said, _ = await self.look_up(query, when)
+        said, _found = await self.look_up(query, when)
         return said
 
     async def look_up(
@@ -117,7 +118,7 @@ class Book:
             {
                 "id": f"search-{index}",
                 "at": datetime.fromtimestamp(fragment.ts).astimezone().isoformat(),
-                "title": "heare" if fragment.agent_spoken else "ти казав",
+                "title": "heare" if fragment.agent_spoken else _("you were saying"),
                 "text": search.shorten(fragment.text),
                 "meta": [],
             }

@@ -40,7 +40,7 @@ class Unfit(ValueError):
 def clean(svg: str) -> str:
     """The SVG with nothing in it that reaches outside the document."""
     if len(svg) > MAX_SVG:
-        raise Unfit(f"SVG задовгий: до {MAX_SVG} символів")
+        raise Unfit(f"SVG too long: up to {MAX_SVG} characters")
     found = _TAG.sub("", _BLOCK.sub("", svg))
     found = _OUTSIDE.sub("", found)
     return _EVENT.sub("", found)
@@ -55,13 +55,13 @@ def render(svg: str, spec: dict) -> str:
         png = resvg_py.svg_to_bytes(svg_string=clean(svg), width=width, height=height,
                                     background="black")
     except ValueError as exc:
-        raise Unfit(f"SVG не малюється: {exc}") from None
+        raise Unfit(f"SVG does not draw: {exc}") from None
     w, h, rows = _rgba(png)
     lit = [[_bright(row, x) for x in range(w)] for row in rows]
     if not any(any(line) for line in lit):
-        raise Unfit("картинка вийшла порожня: малюй білим по чорному, товщими лініями")
+        raise Unfit("the picture came out empty: draw white on black, with thicker lines")
     if all(all(line) for line in lit):
-        raise Unfit("картинка вийшла суцільно білою: фон має бути чорним")
+        raise Unfit("the picture came out all white: the background must be black")
     return base64.b64encode(mono(lit)).decode()
 
 
@@ -86,7 +86,7 @@ def _bright(row: bytearray, x: int) -> bool:
 def _rgba(png: bytes) -> tuple[int, int, list[bytearray]]:
     """A PNG of 8-bit RGBA, as resvg writes it, into rows of pixels."""
     if png[:8] != b"\x89PNG\r\n\x1a\n":
-        raise Unfit("не PNG")
+        raise Unfit("not a PNG")
     pos, data, width, height = 8, b"", 0, 0
     while pos < len(png):
         size, kind = struct.unpack(">I4s", png[pos:pos + 8])
@@ -95,7 +95,7 @@ def _rgba(png: bytes) -> tuple[int, int, list[bytearray]]:
         if kind == b"IHDR":
             width, height, depth, color = struct.unpack(">IIBB", body[:10])
             if (depth, color, body[12]) != (8, 6, 0):
-                raise Unfit("PNG не того виду")
+                raise Unfit("a PNG of the wrong kind")
         elif kind == b"IDAT":
             data += body
     raw, stride = zlib.decompress(data), width * 4

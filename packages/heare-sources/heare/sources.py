@@ -25,13 +25,13 @@ from heare import layout, logs
 from heare import part
 from heare.config import SETTINGS, Settings
 from heare.feeds import weather
-from heare.core.i18n import N_
+from heare.core.i18n import N_, _
 
 logger = logging.getLogger("heare.sources")
 
 CHANNEL = "sources"
 ABOUT = "the weather outside"
-HELLO = "джерела: дивлюсь, що надворі"
+HELLO = _("sources: looking at what is outside")
 ROUND_S = 30 * 60
 # A fact from Open-Meteo is true for this long after it was fetched.
 TRUE_FOR_S = 90 * 60

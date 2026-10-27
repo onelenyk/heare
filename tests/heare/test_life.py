@@ -22,7 +22,7 @@ async def test_silence_is_stopped_as_idle():
         await asyncio.sleep(10)
 
     started = time.monotonic()
-    with pytest.raises(LifeOver, match="мовчить"):
+    with pytest.raises(LifeOver, match="silent"):
         await guarded(silent(), lambda: started, idle_s=0.1, total_s=10)
 
 
@@ -30,7 +30,7 @@ async def test_a_long_task_is_stopped_as_too_long():
     async def slow() -> None:
         await asyncio.sleep(10)
 
-    with pytest.raises(LifeOver, match="занадто довго"):
+    with pytest.raises(LifeOver, match="too long"):
         await guarded(slow(), time.monotonic, idle_s=10, total_s=0.1)
 
 

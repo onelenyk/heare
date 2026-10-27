@@ -652,7 +652,7 @@ class Core:
                 yield held
 
         if out is None:
-            async for _ in pieces():
+            async for _piece in pieces():
                 pass
             outcome = "done"
         else:

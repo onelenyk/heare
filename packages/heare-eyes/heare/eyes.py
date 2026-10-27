@@ -22,7 +22,7 @@ from heare import part
 from heare.config import Settings
 from heare.core import Message
 from heare.surroundings.watch import Surroundings
-from heare.core.i18n import N_
+from heare.core.i18n import N_, _
 
 logger = logging.getLogger("heare.eyes")
 
@@ -125,7 +125,7 @@ async def run() -> int:
         return await part.live(
             {"channel": "eyes", "forms": ["input"], "about": ABOUT,
              "key": f"eyes@{host}", "host": host, "ui": UI},
-            work, on_event=door.event, hello="очі: дивлюсь навколо",
+            work, on_event=door.event, hello=_("eyes: looking around"),
             settings=settings, client=client)
 
 

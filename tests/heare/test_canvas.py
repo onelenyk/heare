@@ -58,7 +58,7 @@ def test_widgets_stay_side_by_side_each_with_a_size(tmp_path):
         ("weather", "s"), ("cpu", "m"), ("cities", "m"),
     ]
     told = canvas.context()
-    assert "weather [s] (живий): Бурштин" in told and "load()" not in told
+    assert "weather [s] (live): Бурштин" in told and "load()" not in told
     assert _canvas(tmp_path).sizes == {"weather": "s", "cpu": "m", "cities": "m"}
 
 

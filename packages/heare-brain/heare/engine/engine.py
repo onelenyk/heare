@@ -17,6 +17,7 @@ from heare.core import Message
 from heare.core.conversation import RESULT_PREFIX
 from heare.engine.intent import Intent
 from heare.engine.store import Intents
+from heare.core.i18n import _
 
 # How often the engine looks at the clock when nothing happens; a reminder
 # due while idle should not wait for the next event to be told.
@@ -196,7 +197,7 @@ class Engine:
         news = [i for i in intents if i.why != "reminder"]
         if reminders:
             self._speak(Message(
-                text="Нагадування: " + "; ".join(i.what for i in reminders),
+                text=_("Reminder: {what}").format(what="; ".join(i.what for i in reminders)),
                 channel="engine", person=False, verbatim=True,
             ))
         if news:

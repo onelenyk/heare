@@ -34,9 +34,9 @@ def test_the_owner_files_are_rendered_in_order(tmp_path):
     _write(tmp_path, "goals.md", "Запустити heare.")
     rendered = Profile(tmp_path).render()
     order = [
-        rendered.index("### Власник"),
-        rendered.index("### Відкриті нитки"),
-        rendered.index("### Цілі"),
+        rendered.index("### Owner"),
+        rendered.index("### Open threads"),
+        rendered.index("### Goals"),
     ]
     assert order == sorted(order)
     assert (
@@ -47,9 +47,9 @@ def test_the_owner_files_are_rendered_in_order(tmp_path):
 
 
 @pytest.mark.parametrize(("name", "heading", "limit"), [
-    ("user.md", "### Власник", USER_LIMIT),
-    ("threads.md", "### Відкриті нитки", THREADS_LIMIT),
-    ("goals.md", "### Цілі", GOALS_LIMIT),
+    ("user.md", "### Owner", USER_LIMIT),
+    ("threads.md", "### Open threads", THREADS_LIMIT),
+    ("goals.md", "### Goals", GOALS_LIMIT),
 ])
 def test_a_block_is_truncated_at_its_limit_without_breaking_a_letter(
     tmp_path, name, heading, limit
@@ -67,8 +67,8 @@ def test_missing_or_unreadable_files_are_empty_blocks(tmp_path):
     (tmp_path / "user.md").mkdir()
     _write(tmp_path, "threads.md", "До пʼятниці — подати звіт.")
     rendered = Profile(tmp_path).render()
-    assert "### Власник" not in rendered
-    assert "### Відкриті нитки" in rendered
+    assert "### Owner" not in rendered
+    assert "### Open threads" in rendered
     assert rendered.startswith(FRAME)
     assert rendered.endswith(CLOSE)
 

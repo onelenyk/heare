@@ -16,7 +16,7 @@ import sys
 
 from heare import layout, logs
 from heare import part
-from heare.core.i18n import N_
+from heare.core.i18n import N_, _
 
 UI = [
     {"name": "printing", "kind": "toggle", "label": N_("Print"), "value": True},
@@ -62,7 +62,7 @@ def _line() -> str | None:
     multi-byte character in pieces and raised UnicodeDecodeError. ``sys.stdin``
     is asked directly instead, and a mangled byte becomes «�», not a crash.
     """
-    print("ти: ", end="", flush=True)
+    print(_("you: "), end="", flush=True)
     line = sys.stdin.readline()
     return line.rstrip("\n") if line else None
 

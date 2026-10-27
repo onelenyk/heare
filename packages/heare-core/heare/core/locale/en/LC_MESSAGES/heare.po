@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 19:06+0200\n"
+"POT-Creation-Date: 2026-10-27 19:14+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -13,6 +13,28 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgid "the brain is at {url}"
+msgstr ""
+
+msgid "unpair: name the machine, e.g. heare-brain unpair kitchen"
+msgstr ""
+
+msgid "restore: name the backup file"
+msgstr ""
+
+#, python-brace-format
+msgid "will not restore: {why}"
+msgstr ""
+
+#, python-brace-format
+msgid "the backup of {made} is ready; it takes its place when the brain starts next time — restart heare"
+msgstr ""
+
+#, python-brace-format
+msgid "restored from the backup {name}; what was there is in backups/{aside}"
+msgstr ""
 
 msgid "Memory"
 msgstr ""
@@ -65,6 +87,68 @@ msgid "Remembering"
 msgstr ""
 
 msgid "Every 5 minutes it reads what was newly said and remembers facts about you."
+msgstr ""
+
+msgid "heard"
+msgstr ""
+
+msgid "said"
+msgstr ""
+
+msgid "work"
+msgstr ""
+
+msgid "action"
+msgstr ""
+
+msgid "leave"
+msgstr ""
+
+msgid "leave closed"
+msgstr ""
+
+msgid "forgotten"
+msgstr ""
+
+msgid "profile"
+msgstr ""
+
+msgid "this is not a heare backup: no description inside"
+msgstr ""
+
+msgid "the backup's description is damaged"
+msgstr ""
+
+msgid "the backup is from a newer heare — update heare first"
+msgstr ""
+
+#, python-brace-format
+msgid "a foreign path in the backup: {name}"
+msgstr ""
+
+msgid "the backup lacks files or has extra ones"
+msgstr ""
+
+#, python-brace-format
+msgid "a file in the backup is damaged: {name}"
+msgstr ""
+
+msgid "the file is damaged or not a zip"
+msgstr ""
+
+msgid "Look at the screen."
+msgstr ""
+
+msgid "Removed."
+msgstr ""
+
+msgid "Changed the look."
+msgstr ""
+
+msgid "Rearranged."
+msgstr ""
+
+msgid "Cleared the screen."
 msgstr ""
 
 msgid "browser"
@@ -975,6 +1059,36 @@ msgstr ""
 msgid "Connect"
 msgstr ""
 
+msgid "could not ask about a new version"
+msgstr ""
+
+msgid "there is no new version — check first"
+msgstr ""
+
+msgid "this brain was not started by the app — install the new version from the release page"
+msgstr ""
+
+#, python-brace-format
+msgid "the release has no {dmg} or {sums}"
+msgstr ""
+
+msgid "could not download the new version"
+msgstr ""
+
+#, python-brace-format
+msgid "{sums} has no sum for {dmg}"
+msgstr ""
+
+msgid "the download does not match the release sum — not installing"
+msgstr ""
+
+msgid "the app could not install the new version"
+msgstr ""
+
+#, python-brace-format
+msgid "Reminder: {what}"
+msgstr ""
+
 msgid "as asked"
 msgstr ""
 
@@ -1038,6 +1152,9 @@ msgstr ""
 msgid "silent"
 msgstr ""
 
+msgid "you: "
+msgstr ""
+
 msgid "Type"
 msgstr ""
 
@@ -1098,6 +1215,22 @@ msgstr ""
 msgid "Checks"
 msgstr ""
 
+#, python-brace-format
+msgid "unknown agent {kind}; known: {known}"
+msgstr ""
+
+#, python-brace-format
+msgid "no agent {kind}: {binary} not found — set the path in the settings"
+msgstr ""
+
+#, python-brace-format
+msgid "for {kind}, {command} is not found"
+msgstr ""
+
+#, python-brace-format
+msgid "agent {kind} is not in the table"
+msgstr ""
+
 msgid "Careful — asks about every change"
 msgstr ""
 
@@ -1129,6 +1262,62 @@ msgid "Terminal"
 msgstr ""
 
 msgid "will apply the settings once free"
+msgstr ""
+
+#, python-brace-format
+msgid "taken {id}: {what}"
+msgstr ""
+
+#, python-brace-format
+msgid "done {id}: {status} {what}"
+msgstr ""
+
+#, python-brace-format
+msgid "hands: {name}"
+msgstr ""
+
+#, python-brace-format
+msgid "no key {name}; known: {known}"
+msgstr ""
+
+#, python-brace-format
+msgid "{name} (not shown): "
+msgstr ""
+
+msgid "nothing entered — not saved"
+msgstr ""
+
+#, python-brace-format
+msgid "{name} is saved on {host}. The hands take it when they start again: after any change in ⚙ or a restart."
+msgstr ""
+
+msgid "save the agent's token on this machine"
+msgstr ""
+
+msgid "hands: new settings, starting again"
+msgstr ""
+
+#, python-brace-format
+msgid "({n} more times in {m} min)"
+msgstr ""
+
+msgid "waiting to be approved on the page…"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain does not answer at {base} yet — waiting"
+msgstr ""
+
+#, python-brace-format
+msgid "no key ({file}) — is the brain running?"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain does not answer at {base}: {why}"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain did not approve: {why}"
 msgstr ""
 
 msgid "Something went wrong — I could not answer."
@@ -1164,11 +1353,297 @@ msgstr ""
 msgid "Sees"
 msgstr ""
 
+msgid "eyes: looking around"
+msgstr ""
+
+msgid "This Mac"
+msgstr ""
+
+msgid "Ready"
+msgstr ""
+
+msgid "All here"
+msgstr ""
+
+msgid "the brain and the parts on this computer"
+msgstr ""
+
+msgid "Body"
+msgstr ""
+
+msgid "the brain is elsewhere; here — voice, eyes, hands"
+msgstr ""
+
+msgid "Only the brain"
+msgstr ""
+
+msgid "the parts connect from other machines"
+msgstr ""
+
+msgid "thinking — the brain answers with it"
+msgstr ""
+
+msgid "hearing — it recognises the voice's speech"
+msgstr ""
+
+msgid "first run"
+msgstr ""
+
+msgid "Next →"
+msgstr ""
+
+msgid "This computer is…"
+msgstr ""
+
+msgid "The brain is memory and conversation. There is one; the parts can be on different machines."
+msgstr ""
+
+msgid "https://my-brain.example"
+msgstr ""
+
+msgid "8 characters from the brain's page"
+msgstr ""
+
+msgid "The brain's address"
+msgstr ""
+
+msgid "The connection code — on the brain's page: ⚙ → Devices"
+msgstr ""
+
+msgid "connecting…"
+msgstr ""
+
+msgid "What heare hears, sees and acts with on this computer. They turn on and off at once — any time later too."
+msgstr ""
+
+msgid "This computer is only the brain: parts are usually not needed here, but they may be."
+msgstr ""
+
+msgid "The agent is opencode or Claude Code; the hands find it themselves, or say on their card what is missing."
+msgstr ""
+
+msgid "into Keychain"
+msgstr ""
+
+msgid "in Keychain"
+msgstr ""
+
+msgid "into the key store"
+msgstr ""
+
+msgid "in the store"
+msgstr ""
+
+#, python-brace-format
+msgid "heare's mind and hearing are cloud models. A key goes {into} this computer; I keep only one the provider accepted."
+msgstr ""
+
+msgid "This computer needs no keys: the brain is elsewhere, and the voice is off."
+msgstr ""
+
+msgid "✓ present (from the environment)"
+msgstr ""
+
+#, python-brace-format
+msgid "✓ present ({where})"
+msgstr ""
+
+msgid "where to get it"
+msgstr ""
+
+msgid "Replace"
+msgstr ""
+
+msgid "a new key, if needed"
+msgstr ""
+
+msgid "paste the key"
+msgstr ""
+
+msgid "asking the provider…"
+msgstr ""
+
+msgid "later is fine too — without a key this part stays silent"
+msgstr ""
+
+msgid "What else"
+msgstr ""
+
+msgid "Almost done"
+msgstr ""
+
+msgid "Allow"
+msgstr ""
+
+msgid "Microphone"
+msgstr ""
+
+msgid "the voice listens to you"
+msgstr ""
+
+msgid "Start at login"
+msgstr ""
+
+msgid "heare comes up with the computer"
+msgstr ""
+
+msgid "Permissions"
+msgstr ""
+
+msgid "macOS asks for the microphone itself when the voice first listens"
+msgstr ""
+
+msgid "Access from outside"
+msgstr ""
+
+msgid " — your own domain, a phone from anywhere: soon"
+msgstr ""
+
+msgid "done — the parts connect to the brain"
+msgstr ""
+
+msgid "Open heare"
+msgstr ""
+
+msgid "Start using it"
+msgstr ""
+
+msgid "Voice"
+msgstr ""
+
+msgid "listens and speaks"
+msgstr ""
+
+msgid "Eyes"
+msgstr ""
+
+msgid "what is in front, whether you are here, whether something plays"
+msgstr ""
+
+msgid "Sources"
+msgstr ""
+
+msgid "the weather and more: what is around now"
+msgstr ""
+
+msgid "an agent acts in the system: code, files, commands"
+msgstr ""
+
+msgid "quick acts on the bodies: OLED, light, pins"
+msgstr ""
+
+msgid "only on a Mac"
+msgstr ""
+
+#, python-brace-format
+msgid "only on {where}"
+msgstr ""
+
+msgid "not installed on this machine"
+msgstr ""
+
+msgid "not checked — saved"
+msgstr ""
+
+msgid "no connection to the provider — check the internet"
+msgstr ""
+
+msgid "the key does not fit"
+msgstr ""
+
+#, python-brace-format
+msgid "the provider answered {code}"
+msgstr ""
+
+msgid "alive"
+msgstr ""
+
+#, python-brace-format
+msgid "not switched on: {error}"
+msgstr ""
+
+msgid "no such page"
+msgstr ""
+
+msgid "another page does not control this form"
+msgstr ""
+
+msgid "JSON is needed"
+msgstr ""
+
+msgid "no such action"
+msgstr ""
+
+msgid "could not read the request"
+msgstr ""
+
+msgid "unknown part"
+msgstr ""
+
+msgid "unknown role"
+msgstr ""
+
+msgid "the address must start with http:// or https://"
+msgstr ""
+
+msgid "the code must be 8 characters"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain did not connect: {error}"
+msgstr ""
+
+msgid "an unknown or empty key"
+msgstr ""
+
+#, python-brace-format
+msgid "not saved: {error}"
+msgstr ""
+
+msgid "an unknown key"
+msgstr ""
+
+msgid "no such key in the environment"
+msgstr ""
+
+#, python-brace-format
+msgid "port {port} is taken — the settings page is unavailable: {error}"
+msgstr ""
+
+#, python-brace-format
+msgid "form: {address}"
+msgstr ""
+
+msgid "you were saying"
+msgstr ""
+
+msgid "(empty profile)"
+msgstr ""
+
+msgid "Say which fact."
+msgstr ""
+
+msgid "Confirmed."
+msgstr ""
+
+msgid "Not found."
+msgstr ""
+
+msgid "Rejected."
+msgstr ""
+
+#, python-brace-format
+msgid "Forgot {n}."
+msgstr ""
+
 #, python-brace-format
 msgid "Several parts answer to that: {parts}. Which?"
 msgstr ""
 
 msgid "Work"
+msgstr ""
+
+msgid "something"
 msgstr ""
 
 msgid "change the file"
@@ -1181,6 +1656,50 @@ msgid "move"
 msgstr ""
 
 msgid "run the command"
+msgstr ""
+
+#, python-brace-format
+msgid "agent: {said}"
+msgstr ""
+
+msgid "⋯ working"
+msgstr ""
+
+msgid "──── new work ────"
+msgstr ""
+
+msgid "the judge weighs: "
+msgstr ""
+
+msgid "waiting for leave: "
+msgstr ""
+
+#, python-brace-format
+msgid "  ✓ by itself: {why}"
+msgstr ""
+
+#, python-brace-format
+msgid " (asking, because {why})"
+msgstr ""
+
+#, python-brace-format
+msgid "  ? allow: {what}{reason} → {answer}"
+msgstr ""
+
+msgid "yes"
+msgstr ""
+
+msgid "no"
+msgstr ""
+
+msgid "■ stopped"
+msgstr ""
+
+#, python-brace-format
+msgid "  … {n} more lines"
+msgstr ""
+
+msgid "sources: looking at what is outside"
 msgstr ""
 
 msgid "Weather"
@@ -1196,9 +1715,6 @@ msgid "no connection to the weather, will try again"
 msgstr ""
 
 msgid "city not found"
-msgstr ""
-
-msgid "Microphone"
 msgstr ""
 
 msgid "Sound"
@@ -1220,5 +1736,12 @@ msgid "Keep recordings"
 msgstr ""
 
 msgid "hearing"
+msgstr ""
+
+msgid "I cannot hear — the microphone did not open. I need a restart."
+msgstr ""
+
+#, python-brace-format
+msgid "I stopped hearing {s} seconds ago — the microphone seems gone. I need a restart."
 msgstr ""
 

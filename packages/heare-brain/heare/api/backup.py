@@ -24,6 +24,7 @@ import sqlite3
 import tempfile
 import time
 import zipfile
+from heare.core.i18n import _
 from datetime import datetime
 from pathlib import Path
 
@@ -141,9 +142,9 @@ def _manifest(archive: zipfile.ZipFile) -> dict:
     try:
         manifest = json.loads(archive.read("manifest.json"))
     except (KeyError, ValueError):
-        raise BackupError("це не копія heare: немає опису всередині") from None
+        raise BackupError(_("this is not a heare backup: no description inside")) from None
     if not isinstance(manifest, dict) or not isinstance(manifest.get("files"), dict):
-        raise BackupError("опис копії пошкоджений")
+        raise BackupError(_("the backup's description is damaged"))
     return manifest
 
 
@@ -172,25 +173,25 @@ def check(path: Path) -> dict:
         with zipfile.ZipFile(path) as archive:
             manifest = _manifest(archive)
             if not isinstance(manifest.get("format"), int) or manifest["format"] > FORMAT:
-                raise BackupError("копія з новішої версії heare — спершу онови heare")
+                raise BackupError(_("the backup is from a newer heare — update heare first"))
             names = set(archive.namelist()) - {"manifest.json"}
             files = manifest["files"]
             for name in names | set(files):
                 parts = Path(name).parts
                 if (name.startswith("/") or ".." in parts or not parts
                         or parts[0] not in SECTIONS):
-                    raise BackupError(f"у копії чужий шлях: {name}")
+                    raise BackupError(_("a foreign path in the backup: {name}").format(name=name))
             if names != set(files):
-                raise BackupError("у копії бракує файлів або є зайві")
+                raise BackupError(_("the backup lacks files or has extra ones"))
             for name, about in files.items():
                 digest = hashlib.sha256()
                 with archive.open(name) as member:
                     for block in iter(lambda: member.read(1 << 20), b""):
                         digest.update(block)
                 if digest.hexdigest() != about.get("sha256"):
-                    raise BackupError(f"файл у копії пошкоджений: {name}")
+                    raise BackupError(_("a file in the backup is damaged: {name}").format(name=name))
     except zipfile.BadZipFile:
-        raise BackupError("файл пошкоджений або це не zip") from None
+        raise BackupError(_("the file is damaged or not a zip")) from None
     return manifest
 
 

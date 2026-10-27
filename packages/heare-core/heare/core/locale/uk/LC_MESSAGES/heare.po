@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 19:06+0200\n"
+"POT-Creation-Date: 2026-10-27 19:14+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -13,6 +13,28 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgid "the brain is at {url}"
+msgstr "мозок на {url}"
+
+msgid "unpair: name the machine, e.g. heare-brain unpair kitchen"
+msgstr "unpair: назви машину, наприклад heare-brain unpair kitchen"
+
+msgid "restore: name the backup file"
+msgstr "restore: назви файл копії"
+
+#, python-brace-format
+msgid "will not restore: {why}"
+msgstr "не відновлю: {why}"
+
+#, python-brace-format
+msgid "the backup of {made} is ready; it takes its place when the brain starts next time — restart heare"
+msgstr "копію від {made} підготовлено; вона стане на місце, коли мозок запуститься наступного разу — перезапусти heare"
+
+#, python-brace-format
+msgid "restored from the backup {name}; what was there is in backups/{aside}"
+msgstr "відновлено з копії {name}; що було — у backups/{aside}"
 
 msgid "Memory"
 msgstr "Памʼять"
@@ -66,6 +88,68 @@ msgstr "Запамʼятовування"
 
 msgid "Every 5 minutes it reads what was newly said and remembers facts about you."
 msgstr "Кожні 5 хвилин читає нове сказане і запамʼятовує факти про тебе."
+
+msgid "heard"
+msgstr "почуто"
+
+msgid "said"
+msgstr "сказано"
+
+msgid "work"
+msgstr "справа"
+
+msgid "action"
+msgstr "дія"
+
+msgid "leave"
+msgstr "дозвіл"
+
+msgid "leave closed"
+msgstr "дозвіл закрито"
+
+msgid "forgotten"
+msgstr "забуто"
+
+msgid "profile"
+msgstr "профіль"
+
+msgid "this is not a heare backup: no description inside"
+msgstr "це не копія heare: немає опису всередині"
+
+msgid "the backup's description is damaged"
+msgstr "опис копії пошкоджений"
+
+msgid "the backup is from a newer heare — update heare first"
+msgstr "копія з новішої версії heare — спершу онови heare"
+
+#, python-brace-format
+msgid "a foreign path in the backup: {name}"
+msgstr "у копії чужий шлях: {name}"
+
+msgid "the backup lacks files or has extra ones"
+msgstr "у копії бракує файлів або є зайві"
+
+#, python-brace-format
+msgid "a file in the backup is damaged: {name}"
+msgstr "файл у копії пошкоджений: {name}"
+
+msgid "the file is damaged or not a zip"
+msgstr "файл пошкоджений або це не zip"
+
+msgid "Look at the screen."
+msgstr "Глянь на екран."
+
+msgid "Removed."
+msgstr "Прибрав."
+
+msgid "Changed the look."
+msgstr "Змінив вигляд."
+
+msgid "Rearranged."
+msgstr "Переставив."
+
+msgid "Cleared the screen."
+msgstr "Очистив екран."
 
 msgid "browser"
 msgstr "браузер"
@@ -980,6 +1064,36 @@ msgstr "8 символів"
 msgid "Connect"
 msgstr "Підключити"
 
+msgid "could not ask about a new version"
+msgstr "не вдалося спитати про нову версію"
+
+msgid "there is no new version — check first"
+msgstr "нової версії немає — спершу перевір"
+
+msgid "this brain was not started by the app — install the new version from the release page"
+msgstr "цей мозок запущено не застосунком — постав нову версію зі сторінки релізу"
+
+#, python-brace-format
+msgid "the release has no {dmg} or {sums}"
+msgstr "у релізі немає {dmg} або {sums}"
+
+msgid "could not download the new version"
+msgstr "не вдалося завантажити нову версію"
+
+#, python-brace-format
+msgid "{sums} has no sum for {dmg}"
+msgstr "у {sums} немає суми для {dmg}"
+
+msgid "the download does not match the release sum — not installing"
+msgstr "завантажене не збігається з сумою релізу — не ставлю"
+
+msgid "the app could not install the new version"
+msgstr "застосунок не зміг поставити нову версію"
+
+#, python-brace-format
+msgid "Reminder: {what}"
+msgstr "Нагадування: {what}"
+
 msgid "as asked"
 msgstr "як просили"
 
@@ -1043,6 +1157,9 @@ msgstr "слухає термінал"
 msgid "silent"
 msgstr "мовчить"
 
+msgid "you: "
+msgstr "ти: "
+
 msgid "Type"
 msgstr "Тип"
 
@@ -1103,6 +1220,22 @@ msgstr "Перевірити"
 msgid "Checks"
 msgstr "Перевірка"
 
+#, python-brace-format
+msgid "unknown agent {kind}; known: {known}"
+msgstr "невідомий агент {kind}; відомі: {known}"
+
+#, python-brace-format
+msgid "no agent {kind}: {binary} not found — set the path in the settings"
+msgstr "агента {kind} немає: {binary} не знайдено — задай шлях у налаштуваннях"
+
+#, python-brace-format
+msgid "for {kind}, {command} is not found"
+msgstr "для {kind} не знайдено {command}"
+
+#, python-brace-format
+msgid "agent {kind} is not in the table"
+msgstr "агента {kind} немає в таблиці"
+
 msgid "Careful — asks about every change"
 msgstr "Обережно — питає про кожну зміну"
 
@@ -1135,6 +1268,62 @@ msgstr "Термінал"
 
 msgid "will apply the settings once free"
 msgstr "застосую налаштування, щойно звільнюсь"
+
+#, python-brace-format
+msgid "taken {id}: {what}"
+msgstr "взято {id}: {what}"
+
+#, python-brace-format
+msgid "done {id}: {status} {what}"
+msgstr "готово {id}: {status} {what}"
+
+#, python-brace-format
+msgid "hands: {name}"
+msgstr "руки: {name}"
+
+#, python-brace-format
+msgid "no key {name}; known: {known}"
+msgstr "не знаю ключа {name}; відомі: {known}"
+
+#, python-brace-format
+msgid "{name} (not shown): "
+msgstr "{name} (не показується): "
+
+msgid "nothing entered — not saved"
+msgstr "нічого не введено — не збережено"
+
+#, python-brace-format
+msgid "{name} is saved on {host}. The hands take it when they start again: after any change in ⚙ or a restart."
+msgstr "{name} збережено на {host}. Руки візьмуть його, коли почнуть знову: після будь-якої зміни в ⚙ або перезапуску."
+
+msgid "save the agent's token on this machine"
+msgstr "зберегти токен агента на цій машині"
+
+msgid "hands: new settings, starting again"
+msgstr "руки: нові налаштування, починаю знову"
+
+#, python-brace-format
+msgid "({n} more times in {m} min)"
+msgstr "(ще {n} раз за {m} хв)"
+
+msgid "waiting to be approved on the page…"
+msgstr "чекаю, доки мене одобрять на сторінці…"
+
+#, python-brace-format
+msgid "the brain does not answer at {base} yet — waiting"
+msgstr "мозок ще не відповідає на {base} — чекаю"
+
+#, python-brace-format
+msgid "no key ({file}) — is the brain running?"
+msgstr "немає ключа ({file}) — мозок запущений?"
+
+#, python-brace-format
+msgid "the brain does not answer at {base}: {why}"
+msgstr "мозок не відповідає на {base}: {why}"
+
+#, python-brace-format
+msgid "the brain did not approve: {why}"
+msgstr "мозок не одобрив: {why}"
 
 msgid "Something went wrong — I could not answer."
 msgstr "Щось пішло не так — не зміг відповісти."
@@ -1169,12 +1358,298 @@ msgstr "Дивитись"
 msgid "Sees"
 msgstr "Бачить"
 
+msgid "eyes: looking around"
+msgstr "очі: дивлюсь навколо"
+
+msgid "This Mac"
+msgstr "Цей Mac"
+
+msgid "Ready"
+msgstr "Готово"
+
+msgid "All here"
+msgstr "Усе тут"
+
+msgid "the brain and the parts on this computer"
+msgstr "мозок і частини на цьому комп'ютері"
+
+msgid "Body"
+msgstr "Тіло"
+
+msgid "the brain is elsewhere; here — voice, eyes, hands"
+msgstr "мозок деінде; тут — голос, очі, руки"
+
+msgid "Only the brain"
+msgstr "Лише мозок"
+
+msgid "the parts connect from other machines"
+msgstr "частини підключаться з інших машин"
+
+msgid "thinking — the brain answers with it"
+msgstr "думати — ним відповідає мозок"
+
+msgid "hearing — it recognises the voice's speech"
+msgstr "чути — розпізнає мовлення голосу"
+
+msgid "first run"
+msgstr "перший запуск"
+
+msgid "Next →"
+msgstr "Далі →"
+
+msgid "This computer is…"
+msgstr "Цей комп'ютер — це…"
+
+msgid "The brain is memory and conversation. There is one; the parts can be on different machines."
+msgstr "Мозок — це пам'ять і розмова. Він один; частини можуть бути на різних машинах."
+
+msgid "https://my-brain.example"
+msgstr "https://мій-мозок.example"
+
+msgid "8 characters from the brain's page"
+msgstr "8 символів зі сторінки мозку"
+
+msgid "The brain's address"
+msgstr "Адреса мозку"
+
+msgid "The connection code — on the brain's page: ⚙ → Devices"
+msgstr "Код підключення — на сторінці мозку: ⚙ → Пристрої"
+
+msgid "connecting…"
+msgstr "підключаюсь…"
+
+msgid "What heare hears, sees and acts with on this computer. They turn on and off at once — any time later too."
+msgstr "Те, чим heare чує, бачить і діє на цьому комп'ютері. Вмикаються й вимикаються одразу — будь-коли потім теж."
+
+msgid "This computer is only the brain: parts are usually not needed here, but they may be."
+msgstr "Цей комп'ютер — лише мозок: частини тут зазвичай не потрібні, але можна."
+
+msgid "The agent is opencode or Claude Code; the hands find it themselves, or say on their card what is missing."
+msgstr "Агент — opencode або Claude Code; руки знайдуть його самі, або скажуть на своїй картці, чого бракує."
+
+msgid "into Keychain"
+msgstr "в Keychain"
+
+msgid "in Keychain"
+msgstr "у Keychain"
+
+msgid "into the key store"
+msgstr "у сховище ключів"
+
+msgid "in the store"
+msgstr "у сховищі"
+
+#, python-brace-format
+msgid "heare's mind and hearing are cloud models. A key goes {into} this computer; I keep only one the provider accepted."
+msgstr "Розум і слух heare — у хмарних моделях. Ключ лягає {into} цього комп'ютера; зберігаю лише той, що провайдер прийняв."
+
+msgid "This computer needs no keys: the brain is elsewhere, and the voice is off."
+msgstr "Цьому комп'ютеру ключі не потрібні: мозок деінде, а голос вимкнено."
+
+msgid "✓ present (from the environment)"
+msgstr "✓ є (з оточення)"
+
+#, python-brace-format
+msgid "✓ present ({where})"
+msgstr "✓ є ({where})"
+
+msgid "where to get it"
+msgstr "де взяти"
+
+msgid "Replace"
+msgstr "Замінити"
+
+msgid "a new key, if needed"
+msgstr "новий ключ, якщо треба"
+
+msgid "paste the key"
+msgstr "вставити ключ"
+
+msgid "asking the provider…"
+msgstr "питаю провайдера…"
+
+msgid "later is fine too — without a key this part stays silent"
+msgstr "можна й пізніше — без ключа ця частина мовчатиме"
+
+msgid "What else"
+msgstr "Що ще"
+
+msgid "Almost done"
+msgstr "Майже все"
+
+msgid "Allow"
+msgstr "Дозволити"
+
+msgid "Microphone"
+msgstr "Мікрофон"
+
+msgid "the voice listens to you"
+msgstr "голос слухає тебе"
+
+msgid "Start at login"
+msgstr "Запускати при вході"
+
+msgid "heare comes up with the computer"
+msgstr "heare піднімається разом з комп'ютером"
+
+msgid "Permissions"
+msgstr "Дозволи"
+
+msgid "macOS asks for the microphone itself when the voice first listens"
+msgstr "мікрофон macOS попросить сам, коли голос уперше почне слухати"
+
+msgid "Access from outside"
+msgstr "Доступ ззовні"
+
+msgid " — your own domain, a phone from anywhere: soon"
+msgstr " — свій домен, телефон звідусіль: скоро"
+
+msgid "done — the parts connect to the brain"
+msgstr "готово — частини підключаються до мозку"
+
+msgid "Open heare"
+msgstr "Відкрити heare"
+
+msgid "Start using it"
+msgstr "Почати користуватись"
+
+msgid "Voice"
+msgstr "Голос"
+
+msgid "listens and speaks"
+msgstr "слухає й говорить"
+
+msgid "Eyes"
+msgstr "Очі"
+
+msgid "what is in front, whether you are here, whether something plays"
+msgstr "що спереду, чи ти тут, чи щось грає"
+
+msgid "Sources"
+msgstr "Джерела"
+
+msgid "the weather and more: what is around now"
+msgstr "погода й інше: що зараз навколо"
+
+msgid "an agent acts in the system: code, files, commands"
+msgstr "агент діє в системі: код, файли, команди"
+
+msgid "quick acts on the bodies: OLED, light, pins"
+msgstr "швидкі дії з тілами: OLED, світло, піни"
+
+msgid "only on a Mac"
+msgstr "лише на Mac"
+
+#, python-brace-format
+msgid "only on {where}"
+msgstr "лише на {where}"
+
+msgid "not installed on this machine"
+msgstr "не встановлена на цій машині"
+
+msgid "not checked — saved"
+msgstr "не перевіряю — збережено"
+
+msgid "no connection to the provider — check the internet"
+msgstr "немає зв'язку з провайдером — перевір інтернет"
+
+msgid "the key does not fit"
+msgstr "ключ не підходить"
+
+#, python-brace-format
+msgid "the provider answered {code}"
+msgstr "провайдер відповів {code}"
+
+msgid "alive"
+msgstr "живий"
+
+#, python-brace-format
+msgid "not switched on: {error}"
+msgstr "не ввімкнув: {error}"
+
+msgid "no such page"
+msgstr "не знаю такої сторінки"
+
+msgid "another page does not control this form"
+msgstr "чужа сторінка не керує цією формою"
+
+msgid "JSON is needed"
+msgstr "потрібен JSON"
+
+msgid "no such action"
+msgstr "не знаю такої дії"
+
+msgid "could not read the request"
+msgstr "не розібрав запит"
+
+msgid "unknown part"
+msgstr "невідома частина"
+
+msgid "unknown role"
+msgstr "невідома роль"
+
+msgid "the address must start with http:// or https://"
+msgstr "адреса має починатися з http:// або https://"
+
+msgid "the code must be 8 characters"
+msgstr "код має бути 8 символів"
+
+#, python-brace-format
+msgid "the brain did not connect: {error}"
+msgstr "мозок не підключив: {error}"
+
+msgid "an unknown or empty key"
+msgstr "невідомий або порожній ключ"
+
+#, python-brace-format
+msgid "not saved: {error}"
+msgstr "не зберіг: {error}"
+
+msgid "an unknown key"
+msgstr "невідомий ключ"
+
+msgid "no such key in the environment"
+msgstr "немає такого ключа в оточенні"
+
+#, python-brace-format
+msgid "port {port} is taken — the settings page is unavailable: {error}"
+msgstr "порт {port} зайнятий — сторінка налаштувань недоступна: {error}"
+
+#, python-brace-format
+msgid "form: {address}"
+msgstr "форма: {address}"
+
+msgid "you were saying"
+msgstr "ти казав"
+
+msgid "(empty profile)"
+msgstr "(порожній профіль)"
+
+msgid "Say which fact."
+msgstr "Скажи, який факт."
+
+msgid "Confirmed."
+msgstr "Підтверджено."
+
+msgid "Not found."
+msgstr "Не знайдено."
+
+msgid "Rejected."
+msgstr "Відхилено."
+
+#, python-brace-format
+msgid "Forgot {n}."
+msgstr "Забув {n}."
+
 #, python-brace-format
 msgid "Several parts answer to that: {parts}. Which?"
 msgstr "Таких частин кілька: {parts}. Яку?"
 
 msgid "Work"
 msgstr "Справа"
+
+msgid "something"
+msgstr "щось"
 
 msgid "change the file"
 msgstr "змінити файл"
@@ -1187,6 +1662,50 @@ msgstr "перемістити"
 
 msgid "run the command"
 msgstr "виконати команду"
+
+#, python-brace-format
+msgid "agent: {said}"
+msgstr "агент: {said}"
+
+msgid "⋯ working"
+msgstr "⋯ працює"
+
+msgid "──── new work ────"
+msgstr "──── нова справа ────"
+
+msgid "the judge weighs: "
+msgstr "суддя зважує: "
+
+msgid "waiting for leave: "
+msgstr "чекає дозволу: "
+
+#, python-brace-format
+msgid "  ✓ by itself: {why}"
+msgstr "  ✓ сам: {why}"
+
+#, python-brace-format
+msgid " (asking, because {why})"
+msgstr " (питаю, бо {why})"
+
+#, python-brace-format
+msgid "  ? allow: {what}{reason} → {answer}"
+msgstr "  ? дозволити: {what}{reason} → {answer}"
+
+msgid "yes"
+msgstr "так"
+
+msgid "no"
+msgstr "ні"
+
+msgid "■ stopped"
+msgstr "■ зупинено"
+
+#, python-brace-format
+msgid "  … {n} more lines"
+msgstr "  … ще {n} рядків"
+
+msgid "sources: looking at what is outside"
+msgstr "джерела: дивлюсь, що надворі"
 
 msgid "Weather"
 msgstr "Погода"
@@ -1202,9 +1721,6 @@ msgstr "немає зв'язку з погодою, спробую ще"
 
 msgid "city not found"
 msgstr "місто не знайдено"
-
-msgid "Microphone"
-msgstr "Мікрофон"
 
 msgid "Sound"
 msgstr "Звук"
@@ -1226,4 +1742,11 @@ msgstr "Зберігати записи"
 
 msgid "hearing"
 msgstr "чує"
+
+msgid "I cannot hear — the microphone did not open. I need a restart."
+msgstr "я не чую — мікрофон не відкрився. Мене треба перезапустити."
+
+#, python-brace-format
+msgid "I stopped hearing {s} seconds ago — the microphone seems gone. I need a restart."
+msgstr "я перестав чути {s} секунд тому — схоже, зник мікрофон. Мене треба перезапустити."
 

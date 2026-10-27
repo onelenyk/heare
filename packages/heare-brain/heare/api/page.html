@@ -678,24 +678,7 @@
 </div>
 
 <script>
-/* The words. English is the key; the brain puts the person's language here
-   as it hands the page out (heare.core.i18n). A word with no translation
-   stays English. Markup marks its words with data-t (the text) and
-   data-t-title / data-t-placeholder / data-t-aria (an attribute). */
-const I18N = /*I18N*/{};
-const fill = (s, vars) => vars ? s.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m) : s;
-const tr = (key, vars) => fill(typeof I18N[key] === "string" ? I18N[key] : key, vars);
-const trn = (n, one, other, vars) => {
-  const forms = I18N[one], d = n % 10, h = n % 100;
-  const i = !Array.isArray(forms) ? (n === 1 ? 0 : 1)
-    : document.documentElement.lang === "uk" ? (d === 1 && h !== 11 ? 0 : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 1 : 2)
-    : (n === 1 ? 0 : 1);
-  const s = Array.isArray(forms) ? forms[Math.min(i, forms.length - 1)] : [one, other][i];
-  return fill(s, {n, ...vars});
-};
-document.querySelectorAll("[data-t]").forEach(e => { e.textContent = tr(e.textContent.trim()); });
-for (const [mark, attr] of [["title", "title"], ["placeholder", "placeholder"], ["aria", "aria-label"]])
-  document.querySelectorAll(`[data-t-${mark}]`).forEach(e => e.setAttribute(attr, tr(e.getAttribute(attr))));
+/*WORDS*/
 const $ = id => document.getElementById(id);
 const api = (path, opts = {}) => fetch("/api/" + path, {
   ...opts, credentials: "same-origin",

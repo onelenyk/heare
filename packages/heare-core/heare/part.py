@@ -22,6 +22,7 @@ import httpx
 
 from heare import logs
 from heare.core import i18n
+from heare.core.i18n import _
 from heare.config import Settings
 from heare.core import PROTOCOL
 
@@ -69,13 +70,13 @@ async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
             client.post(url, json=about) if isinstance(client, httpx.AsyncClient)
             else asyncio.to_thread(client.post, url, json=about))
         try:
-            done, _ = await asyncio.wait({asking}, timeout=ASKING_S)
+            done, _pending = await asyncio.wait({asking}, timeout=ASKING_S)
             if not done:
-                logs.say("чекаю, доки мене одобрять на сторінці…")
+                logs.say(_("waiting to be approved on the page…"))
             answer = await asking
         except (httpx.ConnectError, httpx.ConnectTimeout):
             if not said_down:
-                logs.say(f"мозок ще не відповідає на {base} — чекаю")
+                logs.say(_("the brain does not answer at {base} yet — waiting").format(base=base))
                 said_down = True
             await asyncio.sleep(RETRY_S)
             continue
@@ -203,7 +204,7 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
     try:
         secret = settings.secret
     except OSError:
-        print(f"немає ключа ({settings.api_token_file}) — мозок запущений?",
+        print(_("no key ({file}) — is the brain running?").format(file=settings.api_token_file),
               file=sys.stderr)
         return 1
     about = {"v": PROTOCOL, "version": installed(), "started": STARTED, **about}
@@ -214,10 +215,10 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         try:
             answer = await knock(client, base, about)
         except httpx.HTTPError as exc:
-            logs.say(f"мозок не відповідає на {base}: {exc}")
+            logs.say(_("the brain does not answer at {base}: {why}").format(base=base, why=exc))
             return 1
         if not answer.get("approved"):
-            logs.say(f"мозок не одобрив: {answer.get('why') or 'відхилено'}")
+            logs.say(_("the brain did not approve: {why}").format(why=answer.get("why") or _("rejected")))
             return 1
         if answer.get("token"):
             secret = answer["token"]

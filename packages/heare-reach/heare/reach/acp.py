@@ -23,6 +23,7 @@ import itertools
 import json
 import re
 import time
+from heare.core.i18n import _
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -416,7 +417,7 @@ def _pick(options: list[dict], verdict: str) -> str | None:
 def describe(request: dict) -> str:
     """A permission request in one line: what the agent wants to do."""
     call = request.get("toolCall") or {}
-    title = call.get("title") or call.get("kind") or "щось"
+    title = call.get("title") or call.get("kind") or _("something")
     raw = call.get("rawInput") or {}
     detail = raw.get("command") or raw.get("file_path") or raw.get("path") or ""
     return f"{title} {detail}".strip() if detail and detail not in title else title

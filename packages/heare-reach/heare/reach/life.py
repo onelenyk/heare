@@ -43,9 +43,9 @@ async def guarded(
                 return await task
             now = time.monotonic()
             if now - started > total_s:
-                raise LifeOver(f"занадто довго: понад {int(total_s)} с")
+                raise LifeOver(f"too long: over {int(total_s)} s")
             if now - last() > idle_s:
-                raise LifeOver(f"агент мовчить понад {int(idle_s)} с")
+                raise LifeOver(f"the agent is silent for over {int(idle_s)} s")
     finally:
         if not task.done():
             task.cancel()

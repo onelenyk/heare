@@ -20,8 +20,10 @@ from pathlib import Path
 
 from heare import logs
 from heare import keys, machine
+from heare import words
 from heare.config import Settings
 from heare.pairing import pair
+from heare.core.i18n import _
 
 ROLES = ("all", "body", "brain")
 INSTALLER = Path(__file__).with_name("installer.html")
@@ -73,9 +75,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, _machine())
             return
         if path != "/":
-            self._send(404, {"errors": ["не знаю такої сторінки"]})
+            self._send(404, {"errors": [_("no such page")]})
             return
-        self._send(200, INSTALLER.read_text(encoding="utf-8"),
+        self._send(200, words.page(INSTALLER.read_text(encoding="utf-8")),
                    content_type="text/html; charset=utf-8")
 
     def _same_origin(self) -> bool:
@@ -88,11 +90,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if not self._same_origin():
-            self._send(403, {"errors": ["чужа сторінка не керує цією формою"]})
+            self._send(403, {"errors": [_("another page does not control this form")]})
             return
         kind = (self.headers.get("Content-Type") or "").lower()
         if not kind.startswith("application/json"):
-            self._send(415, {"errors": ["потрібен JSON"]})
+            self._send(415, {"errors": [_("JSON is needed")]})
             return
         path = self.path.split("?", 1)[0]
         if path == "/close":
@@ -100,17 +102,17 @@ class _Handler(BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         if path not in ("/keys", "/part", "/key", "/role", "/done"):
-            self._send(404, {"errors": ["не знаю такої дії"]})
+            self._send(404, {"errors": [_("no such action")]})
             return
 
         try:
             length = int(self.headers.get("Content-Length") or 0)
             data = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
         except (ValueError, UnicodeDecodeError):
-            self._send(400, {"errors": ["не розібрав запит"]})
+            self._send(400, {"errors": [_("could not read the request")]})
             return
         if not isinstance(data, dict):
-            self._send(400, {"errors": ["не розібрав запит"]})
+            self._send(400, {"errors": [_("could not read the request")]})
             return
 
         if path == "/keys":
@@ -128,7 +130,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _turn(self, data: dict) -> None:
         name, on = data.get("name"), data.get("on")
         if name not in machine.PARTS or not isinstance(on, bool):
-            self._send(400, {"errors": ["невідома частина"]})
+            self._send(400, {"errors": [_("unknown part")]})
             return
         try:
             machine.turn(Path(Settings().parts_dir), name, on)
@@ -143,21 +145,21 @@ class _Handler(BaseHTTPRequestHandler):
         or the service on a server), and it reads this answer."""
         role = data.get("role")
         if role not in ROLES:
-            self._send(400, {"errors": ["невідома роль"]})
+            self._send(400, {"errors": [_("unknown role")]})
             return
         settings = Settings()
         if role == "body":
             url, code = _text(data, "url").rstrip("/"), _text(data, "code")
             if not url.startswith(("http://", "https://")):
-                self._send(400, {"errors": ["адреса має починатися з http:// або https://"]})
+                self._send(400, {"errors": [_("the address must start with http:// or https://")]})
                 return
             if len(code) != 8:
-                self._send(400, {"errors": ["код має бути 8 символів"]})
+                self._send(400, {"errors": [_("the code must be 8 characters")]})
                 return
             try:
                 answer = pair(url, code, "machine", socket.gethostname())
             except OSError as error:
-                self._send(400, {"errors": [f"мозок не підключив: {error}"]})
+                self._send(400, {"errors": [_("the brain did not connect: {error}").format(error=error)]})
                 return
             token = Path(settings.machine_token_file)
             token.parent.mkdir(parents=True, exist_ok=True)
@@ -180,14 +182,14 @@ class _Handler(BaseHTTPRequestHandler):
         """Check a key with its provider and keep it only if it works."""
         name, value = data.get("name"), data.get("value")
         if name not in keys.NAMES or not isinstance(value, str) or not value.strip():
-            self._send(400, {"errors": ["невідомий або порожній ключ"]})
+            self._send(400, {"errors": [_("an unknown or empty key")]})
             return
         ok, said = machine.check_key(name, value)
         if ok:
             try:
                 keys.store(name, value)
             except OSError as error:
-                ok, said = False, f"не зберіг: {error}"
+                ok, said = False, _("not saved: {error}").format(error=error)
         if ok and name == "DEEPSEEK_API_KEY":
             # The brain's key this page asks for is DeepSeek's; giving it is
             # choosing the provider, so the brain must not keep one it has
@@ -198,7 +200,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _adopt(self, data: dict) -> None:
         name = data.get("name")
         if not isinstance(name, str) or name not in keys.NAMES:
-            self._send(400, {"errors": ["невідомий ключ"]})
+            self._send(400, {"errors": [_("an unknown key")]})
             return
         try:
             saved = keys.adopt(name)
@@ -206,7 +208,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"errors": [str(error)]})
             return
         if not saved:
-            self._send(400, {"errors": ["немає такого ключа в оточенні"]})
+            self._send(400, {"errors": [_("no such key in the environment")]})
             return
         self._send(200, {"saved": name})
 
@@ -242,10 +244,10 @@ def serve(port: int | None = None) -> None:
     try:
         httpd = _FormServer(("127.0.0.1", port))
     except OSError as error:
-        raise OSError(f"порт {port} зайнятий — сторінка налаштувань недоступна: {error}") from error
+        raise OSError(_("port {port} is taken — the settings page is unavailable: {error}").format(port=port, error=error)) from error
 
     address = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    logs.say(f"форма: {address}")
+    logs.say(_("form: {address}").format(address=address))
     # The page opens by itself only for the first run; after that it is the
     # settings, there when asked for.
     if not os.environ.get("HEARE_NO_BROWSER") and want_setup(Settings()):

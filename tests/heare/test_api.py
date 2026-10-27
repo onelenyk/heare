@@ -483,7 +483,7 @@ async def test_a_model_that_returns_no_page_is_said_plainly(tmp_path):
     )
     task = room.core.delegate("зроби екран")
     await room.until(lambda: task.status == "done")
-    assert task.result.startswith("Не вдалося")
+    assert task.result.startswith("Failed")
     assert any(e.kind == "cannot" for e in room.core.state.journal)
     assert await (await client.get("/api/screens", headers=auth)).json() == []
     await _close(room, client)

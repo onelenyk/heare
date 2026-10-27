@@ -18,7 +18,6 @@ is served, so a web page from somewhere else cannot drive the assistant.
 from __future__ import annotations
 
 import asyncio
-import gettext
 import json
 import logging
 import os
@@ -39,7 +38,7 @@ from heare import keys
 from heare.api import backup
 from heare.api.update import UpdateError, Updates
 from heare.core import PROTOCOL, Core, Event, Message
-from heare.core import i18n
+from heare import words
 from heare.api import auth
 from heare.api import pair as codes
 from heare.api.heard import Recordings
@@ -276,29 +275,13 @@ class Seen:
     async def call(self, pid: str, name: str, args: dict) -> dict:
         found = self._registry.skill(pid, name)
         if found is None:
-            return {"ok": False, "result": "немає такого вміння"}
+            return {"ok": False, "result": "no such skill"}
         channel, _skill = found
         call_id, waiting = self._calls.open(pid)
         self._registry.emit("call", channel=channel, part=pid, id=call_id,
                             name=name, args=args)
         return await self._calls.wait(call_id, waiting)
 
-
-
-def catalog(lang: str) -> dict[str, str | list[str]]:
-    """Every word of *lang* for the page, English key to text; a line with
-    plural forms maps to the list of them, in the catalog's order."""
-    found = gettext.translation(i18n.DOMAIN, i18n.LOCALE, [lang], fallback=True)
-    said: dict[str, str | list[str]] = {}
-    plural: dict[str, dict[int, str]] = {}
-    for key, value in getattr(found, "_catalog", {}).items():
-        if isinstance(key, tuple):
-            plural.setdefault(key[0], {})[key[1]] = value
-        elif key and value:
-            said[key] = value
-    for key, forms in plural.items():
-        said[key] = [forms[n] for n in sorted(forms)]
-    return said
 
 
 def build(core: Core, settings: Any, vitals: Any = None,
@@ -555,7 +538,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
             # Said, not half understood: a part of another wire leaves with
             # the reason instead of talking past the brain.
             return web.json_response({"approved": False, "why": (
-                f"мозок говорить протоколом v{PROTOCOL}, частина — v{version}")})
+                f"the brain speaks protocol v{PROTOCOL}, the part v{version}")})
         hears = "all" if data.get("hears") == "all" else "own"
         # The part's own version: shown on its card, never a reason to trust.
         part_version = str(data["version"]) if data.get("version") else None
@@ -592,7 +575,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
                             approves=approves, skills=offered, name=named_as)
         decided = await registry.answer(pid)
         if decided == "expired":
-            return web.json_response({"approved": False, "why": "ніхто не відповів"})
+            return web.json_response({"approved": False, "why": "nobody answered"})
         if decided != "approved":
             return web.json_response({"approved": False, "why": decided})
         trust.keep(pid, offered)
@@ -1141,7 +1124,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
             raise web.HTTPBadRequest(text=str(exc)) from None
         # The database is open here; the next start puts the backup in place
         # before anything opens it. The app (or Docker) starts the brain again.
-        logger.warning("відновлюю з %s: мозок виходить, щоб стати на неї", path.name)
+        logger.warning("restoring from %s: the brain exits to take its place", path.name)
         asyncio.get_running_loop().call_later(0.5, os.kill, os.getpid(), signal.SIGTERM)
         return web.json_response({"ok": True, "made": manifest.get("made")})
 
@@ -1220,11 +1203,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def page(request: web.Request) -> web.Response:
         # The words come with the page: no second request, no English flash
         # before the catalog arrives.
-        lang = i18n.language()
-        words = json.dumps(catalog(lang), ensure_ascii=False).replace("</", "<\\/")
-        return handed(PAGE.read_text(encoding="utf-8")
-                      .replace("/*I18N*/{}", words, 1)
-                      .replace('<html lang="uk">', f'<html lang="{lang}">', 1))
+        return handed(words.page(PAGE.read_text(encoding="utf-8")))
 
     async def font(request: web.Request) -> web.FileResponse:
         path = FONTS / f"{request.match_info['name']}.woff2"

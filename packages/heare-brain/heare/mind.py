@@ -24,6 +24,7 @@ from heare.memory.profile import (
     Profile,
 )
 from heare.memory.review import last_reviewed
+from heare.core.i18n import N_, _
 
 if TYPE_CHECKING:
     from heare.memory.book import Book
@@ -37,14 +38,14 @@ _EVENT_ID = re.compile(r"ev_[0-9a-f]{32}")
 FORGET_LIMIT = 50
 
 _JOURNAL_TITLES = {
-    "heard": "почуто",
-    "said": "сказано",
-    "task": "справа",
-    "verb": "дія",
-    "permission": "дозвіл",
-    "permission_closed": "дозвіл закрито",
-    "forget": "забуто",
-    "profile_edited": "профіль",
+    "heard": N_("heard"),
+    "said": N_("said"),
+    "task": N_("work"),
+    "verb": N_("action"),
+    "permission": N_("leave"),
+    "permission_closed": N_("leave closed"),
+    "forget": N_("forgotten"),
+    "profile_edited": N_("profile"),
 }
 _JOURNAL_TEXT_KEYS = ("text", "what", "name", "key", "status")
 _JOURNAL_META_KEYS = ("channel", "status")
@@ -120,7 +121,7 @@ def _event_view(event: dict) -> dict[str, Any]:
         "id": str(event.get("id", "")),
         "at": at if isinstance(at, str) else "",
         "kind": raw_kind,
-        "title": _JOURNAL_TITLES.get(raw_kind, raw_kind),
+        "title": _(_JOURNAL_TITLES[raw_kind]) if raw_kind in _JOURNAL_TITLES else raw_kind,
         "text": _event_text(event),
         "meta": _event_meta(event),
     }

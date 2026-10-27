@@ -7,6 +7,7 @@ from __future__ import annotations
 import collections
 import re
 import time
+from heare.core.i18n import _
 
 # Enough to scroll back through one piece of work; the page gets all of it
 # on every report, so not more.
@@ -27,7 +28,7 @@ _QUIET = re.compile(r"^(?:export\s+(?:\w+=\S*\s*)+;\s*)+")
 
 def _command(text: str) -> str:
     """A command on one line: its first line, without the agent's own noise."""
-    first, _, more = text.strip().partition("\n")
+    first, _sep, more = text.strip().partition("\n")
     first = _QUIET.sub("", first.strip())
     return _cut(first + (" …" if more.strip() else ""), 120)
 
@@ -70,8 +71,8 @@ class Terminal:
         if self._running:
             said = self._spoken()
             if said:
-                tail.append(f"агент: {_cut(said, 400)}")
-            tail.append(f"  ? {self._waiting}" if self._waiting else "⋯ працює")
+                tail.append(_("agent: {said}").format(said=_cut(said, 400)))
+            tail.append(f"  ? {self._waiting}" if self._waiting else _("⋯ working"))
         return "\n".join([*self.lines, *tail])
 
     def begin(self, request: str, *, new: bool, asked: str = "",
@@ -80,7 +81,7 @@ class Terminal:
         they are known. New work is set apart from the last."""
         if new and self.lines:
             self._add("")
-            self._add("──── нова справа ────")
+            self._add(_("──── new work ────"))
         stamp = time.strftime("%H:%M", time.localtime(at))
         self._add(f"{stamp} › {_cut(' '.join((asked or request).split()))}")
         self._running = True
@@ -91,22 +92,23 @@ class Terminal:
         lets it through or brings it to the person, or by the person.
         ``allowed`` is None while the answer is awaited."""
         if allowed is None:
-            self._waiting = ("суддя зважує: " if by == "judge" else "чекає дозволу: ") \
+            self._waiting = (_("the judge weighs: ") if by == "judge" else _("waiting for leave: ")) \
                 + _command(what)
             return
         self._waiting = ""
         self._flush()
         if by == "judge":
-            self._add(f"  ✓ сам: {_cut(why or _command(what))}")
+            self._add(_("  ✓ by itself: {why}").format(why=_cut(why or _command(what))))
             return
-        reason = f" (питаю, бо {_cut(why, 100)})" if why else ""
-        self._add(f"  ? дозволити: {_command(what)}{reason} → {'так' if allowed else 'ні'}")
+        reason = _(" (asking, because {why})").format(why=_cut(why, 100)) if why else ""
+        self._add(_("  ? allow: {what}{reason} → {answer}").format(
+            what=_command(what), reason=reason, answer=_("yes") if allowed else _("no")))
 
     def end(self, status: str, result: str) -> None:
         self._running = False
         self._flush()
         if status == "stopped":
-            self._add("■ зупинено")
+            self._add(_("■ stopped"))
         elif status == "failed":
             self._add(f"✗ {_cut(result)}")
 
@@ -126,7 +128,7 @@ class Terminal:
                 out = _output(update)
                 # A refusal is already on screen as the person's «ні».
                 if "rejected permission" not in out:
-                    self._add(f"  ✗ {_cut(out or 'не вийшло')}")
+                    self._add(f"  ✗ {_cut(out or _('failed'))}")
 
     def _call(self, update: dict) -> None:
         """A call is shown once: as soon as it says what it runs, or, if it
@@ -161,7 +163,7 @@ class Terminal:
         for line in lines[:OUTPUT_LINES]:
             self._add(f"  {_cut(line)}")
         if len(lines) > OUTPUT_LINES:
-            self._add(f"  … ще {len(lines) - OUTPUT_LINES} рядків")
+            self._add(_("  … {n} more lines").format(n=len(lines) - OUTPUT_LINES))
 
     def _spoken(self) -> str:
         return " ".join(self._said.rpartition("</think>")[2].split())
@@ -170,4 +172,4 @@ class Terminal:
         said = self._spoken()
         self._said = ""
         if said:
-            self._add(f"агент: {said}")
+            self._add(_("agent: {said}").format(said=said))

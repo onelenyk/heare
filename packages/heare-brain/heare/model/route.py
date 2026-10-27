@@ -106,7 +106,7 @@ class FirstHand:
                 if (found.executor == self.name and found.status == "running"
                         and found.request == getattr(desk, "asked", None)):
                     found.executor = other.name
-            desk.step(f"передано від {self.name}")
+            desk.step(f"handed over from {self.name}")
             return await other.run(handoff.task, desk)
 
     def __getattr__(self, name: str) -> Any:

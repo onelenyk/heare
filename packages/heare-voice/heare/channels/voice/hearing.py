@@ -35,6 +35,7 @@ Two things it must not do
 from __future__ import annotations
 
 import logging
+from heare.core.i18n import _
 from dataclasses import dataclass
 
 logger = logging.getLogger("heare.voice.hearing")
@@ -71,10 +72,10 @@ class Hearing:
         stream is not open" is not a sentence anyone should have to hear
         from something that talks."""
         if not self.stream_open:
-            return "я не чую — мікрофон не відкрився. Мене треба перезапустити."
+            return _("I cannot hear — the microphone did not open. I need a restart.")
         return (
-            f"я перестала чути {int(self.silent_for)} секунд тому — "
-            "схоже, зник мікрофон. Мене треба перезапустити."
+            _("I stopped hearing {s} seconds ago — the microphone seems gone. "
+              "I need a restart.").format(s=int(self.silent_for))
         )
 
 

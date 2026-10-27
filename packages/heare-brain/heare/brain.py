@@ -24,6 +24,7 @@ from typing import Any
 from heare import layout, logs
 from heare import lifeline
 from heare.core import i18n
+from heare.core.i18n import _
 from heare.prompt import budget, persona
 from heare.tools.ports import Bodies
 from heare.api import backup
@@ -269,7 +270,7 @@ class Brain:
             mind=self.mind, features=self.features,
             show_bodies=lambda skilled: setattr(self, "bodies", skilled),
         )
-        logs.say(f"мозок на http://127.0.0.1:{self.settings.api_port}/")
+        logs.say(_("the brain is at {url}").format(url=f"http://127.0.0.1:{self.settings.api_port}/"))
         await asyncio.gather(
             self.core.run(), self.engine.run(), self.journal.run(self.core.state),
             self._consolidate(), self._review(),
@@ -278,7 +279,7 @@ class Brain:
 
 def _unpair(machine: str | None, pid: str | None) -> int:
     if not machine and not pid:
-        print("unpair: назви машину, наприклад heare-brain unpair kitchen",
+        print(_("unpair: name the machine, e.g. heare-brain unpair kitchen"),
               file=sys.stderr)
         return 1
     from heare.api import auth
@@ -327,14 +328,14 @@ def main() -> int:
         return 0
     if args.command == "restore":
         if not args.file:
-            parser.error("restore: назви файл копії")
+            parser.error(_("restore: name the backup file"))
         try:
             made = backup.stage(HOME, Path(args.file)).get("made")
         except backup.BackupError as exc:
-            print(f"не відновлю: {exc}", file=sys.stderr)
+            print(_("will not restore: {why}").format(why=exc), file=sys.stderr)
             return 1
-        print(f"копію від {made} підготовлено; вона стане на місце, коли мозок "
-              "запуститься наступного разу — перезапусти heare")
+        print(_("the backup of {made} is ready; it takes its place when the brain "
+                "starts next time — restart heare").format(made=made))
         return 0
     if args.command == "code":
         print(codes.make(Path(Settings().pair_codes_file)))
@@ -344,7 +345,8 @@ def main() -> int:
         return 0
     lifeline.watch()
     if (done := backup.apply(HOME)) is not None:
-        logs.say(f"відновлено з копії {done['name']}; що було — у backups/{done['aside']}")
+        logs.say(_("restored from the backup {name}; what was there is in backups/{aside}").format(
+            name=done["name"], aside=done["aside"]))
     try:
         asyncio.run(Brain().run())
     except KeyboardInterrupt:

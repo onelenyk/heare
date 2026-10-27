@@ -23,7 +23,7 @@ def test_an_unknown_language_or_line_falls_back_without_breaking():
 
 
 def test_the_page_gets_the_whole_catalog_with_plural_forms():
-    from heare.api.server import catalog
+    from heare.words import catalog
 
     words = catalog("uk")
     assert words["Stopped."] == "Зупинив." and words["Brain"] == "Мозок"

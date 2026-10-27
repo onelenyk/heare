@@ -27,6 +27,7 @@ from pathlib import Path
 import httpx
 
 from heare.api import backup
+from heare.core.i18n import _
 
 logger = logging.getLogger("heare.api.update")
 
@@ -125,7 +126,7 @@ class Updates:
                 release = answer.json()
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("could not ask for a newer heare: %s", exc)
-            return self._set(checked=time.time(), error="не вдалося спитати про нову версію")
+            return self._set(checked=time.time(), error=_("could not ask about a new version"))
         found = read_release(release if isinstance(release, dict) else {}, self.current, self.arch)
         self._release = found
         state = "available" if found["newer"] else (
@@ -136,12 +137,12 @@ class Updates:
     async def install(self) -> dict:
         """Fetch, check, back up; then the app takes it from here."""
         if self.state["state"] != "available":
-            raise UpdateError("нової версії немає — спершу перевір")
+            raise UpdateError(_("there is no new version — check first"))
         if not self.under_app:
-            raise UpdateError("цей мозок запущено не застосунком — постав нову версію зі сторінки релізу")
+            raise UpdateError(_("this brain was not started by the app — install the new version from the release page"))
         release = self._release
         if not release.get("dmg") or not release.get("sums"):
-            raise UpdateError(f"у релізі немає {dmg_name(self.arch)} або {SUMS}")
+            raise UpdateError(_("the release has no {dmg} or {sums}").format(dmg=dmg_name(self.arch), sums=SUMS))
         self._set(state="downloading", error=None)
         try:
             path = await self._fetch(release)
@@ -149,7 +150,7 @@ class Updates:
             await asyncio.to_thread(backup.make, self.home, sound=False, version=self.current)
         except (UpdateError, httpx.HTTPError, OSError) as exc:
             logger.warning("the update stopped: %s", exc)
-            why = str(exc) if isinstance(exc, UpdateError) else "не вдалося завантажити нову версію"
+            why = str(exc) if isinstance(exc, UpdateError) else _("could not download the new version")
             return self._set(state="failed", error=why)
         (self.folder / "installing.json").write_text(json.dumps(
             {"from": self.current, "to": release["latest"]}), encoding="utf-8")
@@ -165,7 +166,7 @@ class Updates:
             sums.raise_for_status()
             wanted = expected_sum(sums.text, dmg_name(self.arch))
             if wanted is None:
-                raise UpdateError(f"у {SUMS} немає суми для {dmg_name(self.arch)}")
+                raise UpdateError(_("{sums} has no sum for {dmg}").format(sums=SUMS, dmg=dmg_name(self.arch)))
             async with web.stream("GET", release["dmg"]) as answer:
                 answer.raise_for_status()
                 with partial.open("wb") as out:
@@ -174,12 +175,12 @@ class Updates:
                         out.write(chunk)
         if digest.hexdigest() != wanted:
             partial.unlink(missing_ok=True)
-            raise UpdateError("завантажене не збігається з сумою релізу — не ставлю")
+            raise UpdateError(_("the download does not match the release sum — not installing"))
         os.replace(partial, target)
         return target
 
     def failed(self, why: str) -> dict:
         """The app could not put the new version in."""
         (self.folder / "installing.json").unlink(missing_ok=True)
-        return self._set(state="failed", error=why[:300] or "застосунок не зміг поставити нову версію")
+        return self._set(state="failed", error=why[:300] or _("the app could not install the new version"))
 

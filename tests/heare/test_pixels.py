@@ -38,9 +38,9 @@ def test_nothing_the_svg_names_outside_itself_is_kept():
 
 
 def test_an_empty_or_all_white_picture_is_said_so_to_the_model():
-    with pytest.raises(pixels.Unfit, match="порожня"):
+    with pytest.raises(pixels.Unfit, match="empty"):
         pixels.render('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 40"/>', SPEC)
-    with pytest.raises(pixels.Unfit, match="білою"):
+    with pytest.raises(pixels.Unfit, match="all white"):
         pixels.render('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 40">'
                       '<rect width="72" height="40" fill="white"/></svg>', SPEC)
     with pytest.raises(pixels.Unfit):

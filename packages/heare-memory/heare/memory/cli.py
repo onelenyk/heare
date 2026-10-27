@@ -21,10 +21,11 @@ from heare.memory.consolidate import consolidate
 from heare.memory.journal import Journal
 from heare.memory.migrate import migrate
 from heare.memory.profile import FILES, Profile
+from heare.core.i18n import N_, _
 
 _MEMORY = Path.home() / ".heare" / "memory"
 
-EMPTY = "(порожній профіль)"
+EMPTY = N_("(empty profile)")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -131,14 +132,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             fact_id = int(args.id)
         except ValueError:
-            print("Скажи, який факт.")
+            print(_("Say which fact."))
             return 2
         if args.command == "confirm":
             found = store.confirm(fact_id)
-            print("Підтверджено." if found else "Не знайдено.")
+            print(_("Confirmed.") if found else _("Not found."))
         else:
             found = store.reject(fact_id)
-            print("Відхилено." if found else "Не знайдено.")
+            print(_("Rejected.") if found else _("Not found."))
         return 0 if found else 2
     if args.command == "consolidate":
         from heare.memory.facts import SQLiteFacts
@@ -154,11 +155,11 @@ def main(argv: list[str] | None = None) -> int:
             forgotten = asyncio.run(book.forget(args.ids))
         finally:
             book.close()
-        print(f"Забув {forgotten}.")
+        print(_("Forgot {n}.").format(n=forgotten))
         return 0
     profile = Profile(args.root)
     if args.command == "show":
-        print(profile.render() or EMPTY)
+        print(profile.render() or _(EMPTY))
         return 0
     key = args.key
     if key not in FILES:

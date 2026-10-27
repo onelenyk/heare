@@ -12,6 +12,7 @@ import logging
 import signal
 import sys
 import time
+from heare.core.i18n import _
 
 FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 DATE = "%Y-%m-%d %H:%M:%S"
@@ -42,7 +43,7 @@ class Once(logging.Filter):
         held = last[1] if last else 0
         self._seen[key] = (now, 0)
         if held:
-            record.msg = f"{record.msg} (ще {held} раз за {int(self.quiet_s // 60)} хв)"
+            record.msg = f"{record.msg} " + _("({n} more times in {m} min)").format(n=held, m=int(self.quiet_s // 60))
         return True
 
 

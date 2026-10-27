@@ -34,8 +34,7 @@ from heare import hand as hand_life
 from heare import layout, logs, part, pixels, talk
 from heare.config import Settings
 from heare.core.forms import Model
-from heare.core.i18n import _
-from heare.core.i18n import N_
+from heare.core.i18n import N_, _
 
 logger = logging.getLogger("heare.native_hands")
 

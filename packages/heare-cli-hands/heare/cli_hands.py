@@ -26,7 +26,7 @@ from heare.config import Settings
 from heare.reach import runner
 from heare.reach.agents import KNOWN as AGENTS, MODE, MODES, Agent
 from heare.reach.terminal import Terminal
-from heare.core.i18n import N_
+from heare.core.i18n import N_, _
 
 # run() returns this when the person changed the runner: main() starts the
 # hands again, so the agent is built once from settings, never patched live.
@@ -191,15 +191,15 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
     kind = str(settings.executor or "opencode").strip()
     entry = runner.KNOWN.get(kind)
     if entry is None:
-        print(f"невідомий агент {kind}; відомі: {', '.join(runner.KNOWN)}",
+        print(_("unknown agent {kind}; known: {known}").format(kind=kind, known=", ".join(runner.KNOWN)),
               file=sys.stderr)
         return None
 
     setting = str(settings.executor_binary or "").strip()
     resolved = runner.resolve(setting or entry["binary"])
     if resolved is None:
-        print(f"агента {kind} немає: {setting or entry['binary']} не знайдено "
-              "— задай шлях у налаштуваннях", file=sys.stderr)
+        print(_("no agent {kind}: {binary} not found — set the path in the settings").format(
+            kind=kind, binary=setting or entry["binary"]), file=sys.stderr)
         return None
 
     # opencode is its own ACP server. Claude speaks ACP through an adapter
@@ -209,7 +209,7 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
     if entry["command"][0] != entry["binary"]:
         launch = runner.resolve(entry["command"][0])
         if launch is None:
-            print(f"для {kind} не знайдено {entry['command'][0]}",
+            print(_("for {kind}, {command} is not found").format(kind=kind, command=entry["command"][0]),
                   file=sys.stderr)
             return None
     command = [launch] + list(entry["command"][1:])
@@ -223,7 +223,7 @@ def _agent(settings: Settings, tap, mcp_servers: list[dict]) -> Agent | None:
 
     known = next((k for k in AGENTS if k.name == kind), None)
     if known is None:
-        print(f"агента {kind} немає в таблиці", file=sys.stderr)
+        print(_("agent {kind} is not in the table").format(kind=kind), file=sys.stderr)
         return None
     return Agent(
         known,
@@ -391,7 +391,7 @@ async def run() -> int:
                     wire.report(values)
 
         def begin(job: hand.Job, desk: hand.Desk) -> None:
-            logs.say(f"взято {job.id}: {job.request[:60]}")
+            logs.say(_("taken {id}: {what}").format(id=job.id, what=job.request[:60]))
             values["work"] = f"working: {job.request[:50]}"
             wire.report(values)
             screen.begin(job.request, new=not job.continues, asked=job.asked)
@@ -407,7 +407,7 @@ async def run() -> int:
             nonlocal resume, told
             screen.end(status, result)
             told += 1
-            logs.say(f"готово {job.id}: {status} {result[:60]}")
+            logs.say(_("done {id}: {status} {what}").format(id=job.id, status=status, what=result[:60]))
             current["desk"] = None
             if agent.last_session:
                 resume = agent.last_session
@@ -448,7 +448,7 @@ async def run() -> int:
         return await part.live(
             {"channel": name, "forms": forms, "about": about,
              "key": f"{name}@{host}", "host": host, "ui": ui},
-            work, on_event=on_control, hello=f"руки: {name}", settings=settings)
+            work, on_event=on_control, hello=_("hands: {name}").format(name=name), settings=settings)
     finally:
         asks.close()
         if agent is not None:
@@ -460,16 +460,16 @@ async def run() -> int:
 def _store_key(name: str) -> int:
     """Keep a token for the agent on this machine, typed and never echoed."""
     if name not in keys.NAMES:
-        print(f"не знаю ключа {name}; відомі: {', '.join(keys.NAMES)}",
+        print(_("no key {name}; known: {known}").format(name=name, known=", ".join(keys.NAMES)),
               file=sys.stderr)
         return 1
-    value = getpass.getpass(f"{name} (не показується): ").strip()
+    value = getpass.getpass(_("{name} (not shown): ").format(name=name)).strip()
     if not value:
-        print("нічого не введено — не збережено", file=sys.stderr)
+        print(_("nothing entered — not saved"), file=sys.stderr)
         return 1
     keys.store(name, value)
-    print(f"{name} збережено на {socket.gethostname()}. Руки візьмуть його, "
-          "коли почнуть знову: після будь-якої зміни в ⚙ або перезапуску.")
+    print(_("{name} is saved on {host}. The hands take it when they start again: "
+            "after any change in ⚙ or a restart.").format(name=name, host=socket.gethostname()))
     return 0
 
 
@@ -477,7 +477,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="heare.cli_hands")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command")
-    key = sub.add_parser("key", help="зберегти токен агента на цій машині")
+    key = sub.add_parser("key", help=_("save the agent's token on this machine"))
     key.add_argument("name", choices=keys.NAMES)
     args = parser.parse_args()
     if args.command == "key":
@@ -486,7 +486,7 @@ def main() -> int:
     layout.settle()
     try:
         while (code := asyncio.run(run())) == RESTART:
-            logs.say("руки: нові налаштування, починаю знову")
+            logs.say(_("hands: new settings, starting again"))
         return code
     except KeyboardInterrupt:
         return 0

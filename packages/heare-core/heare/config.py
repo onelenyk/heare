@@ -17,6 +17,7 @@ import tomllib
 from pathlib import Path
 
 from heare import keys
+from heare.core import i18n
 
 HOME = Path.home() / ".heare"
 # The owner's: what a backup carries and a restore puts back.
@@ -172,3 +173,9 @@ class Settings:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         self._seen = None
+
+
+# Every process says things to the person in the chosen language — a CLI, the
+# keeper's form — unless its owner tells i18n where else to look.
+_chosen = Settings()
+i18n.choose(lambda: str(_chosen.language))

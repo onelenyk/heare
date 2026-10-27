@@ -72,11 +72,12 @@
 </head>
 <body>
 <div class="shell">
-  <header><b>heare</b><span id="mode">перший запуск</span></header>
+  <header><b>heare</b><span id="mode" data-t>first run</span></header>
   <nav id="nav"></nav>
   <main class="card" id="card"></main>
 </div>
 <script>
+/*WORDS*/
 /* The installer and the settings are one page: every answer is applied the
    moment it is given — a part starts within seconds, a key is checked and
    kept — so finishing only says the first run is over. */
@@ -85,15 +86,15 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const post = (path, body) => fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
   .then(async r => { const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error((data.errors || [r.statusText]).join("; ")); return data; });
 
-const STEPS = [["role", "Цей Mac"], ["parts", "Частини"], ["keys", "Ключі"], ["ready", "Готово"]];
+const STEPS = [["role", tr("This Mac")], ["parts", tr("Parts")], ["keys", tr("Keys")], ["ready", tr("Ready")]];
 const ROLES = [
-  ["all", "Усе тут", "мозок і частини на цьому комп'ютері"],
-  ["body", "Тіло", "мозок деінде; тут — голос, очі, руки"],
-  ["brain", "Лише мозок", "частини підключаться з інших машин"],
+  ["all", tr("All here"), tr("the brain and the parts on this computer")],
+  ["body", tr("Body"), tr("the brain is elsewhere; here — voice, eyes, hands")],
+  ["brain", tr("Only the brain"), tr("the parts connect from other machines")],
 ];
 const KEYS = {
-  DEEPSEEK_API_KEY: {label: "DeepSeek", why: "думати — ним відповідає мозок", get: "https://platform.deepseek.com/api_keys"},
-  GROQ_API_KEY: {label: "Groq", why: "чути — розпізнає мовлення голосу", get: "https://console.groq.com/keys"},
+  DEEPSEEK_API_KEY: {label: "DeepSeek", why: tr("thinking — the brain answers with it"), get: "https://platform.deepseek.com/api_keys"},
+  GROQ_API_KEY: {label: "Groq", why: tr("hearing — it recognises the voice's speech"), get: "https://console.groq.com/keys"},
 };
 // The shell around the page, when there is one: the Mac app answers what a
 // page cannot — the microphone, starting at login.
@@ -112,7 +113,7 @@ function needs() {
 
 function draw() {
   const done = machine.done;
-  $("mode").textContent = done ? "налаштування" : "перший запуск";
+  $("mode").textContent = done ? tr("settings") : tr("first run");
   const nav = $("nav"); nav.replaceChildren();
   const at = STEPS.findIndex(([name]) => name === step);
   STEPS.forEach(([name, label], i) => {
@@ -124,7 +125,7 @@ function draw() {
   $("card").replaceChildren(...({role, parts, keys, ready})[step]());
 }
 
-function foot(next, label = "Далі →", say = "") {
+function foot(next, label = tr("Next →"), say = "") {
   const box = el("div", "foot"), note = el("span", "say", say), go = el("button", "btn go", label);
   go.onclick = () => next(go, note);
   box.append(note, go);
@@ -134,7 +135,7 @@ const forward = () => { step = STEPS[STEPS.findIndex(([n]) => n === step) + 1][0
 
 function role() {
   const chosen = machine.role || "all";
-  const out = [el("h2", "", "Цей комп'ютер — це…"), el("p", "lead", "Мозок — це пам'ять і розмова. Він один; частини можуть бути на різних машинах.")];
+  const out = [el("h2", "", tr("This computer is…")), el("p", "lead", tr("The brain is memory and conversation. There is one; the parts can be on different machines."))];
   let pick = chosen;
   const url = el("input"), code = el("input");
   const body = el("div"); body.hidden = pick !== "body";
@@ -145,14 +146,14 @@ function role() {
     const text = el("span"); text.append(el("b", "", title), el("small", "", what));
     row.append(radio, text); out.push(row);
   }
-  url.placeholder = "https://мій-мозок.example"; url.value = machine.url || "";
-  code.placeholder = "8 символів зі сторінки мозку"; code.maxLength = 8; code.autocomplete = "off";
+  url.placeholder = tr("https://my-brain.example"); url.value = machine.url || "";
+  code.placeholder = tr("8 characters from the brain's page"); code.maxLength = 8; code.autocomplete = "off";
   const f1 = el("div", "field"), f2 = el("div", "field");
-  f1.append(el("label", "", "Адреса мозку"), url);
-  f2.append(el("label", "", "Код підключення — на сторінці мозку: ⚙ → Пристрої"), code);
+  f1.append(el("label", "", tr("The brain's address")), url);
+  f2.append(el("label", "", tr("The connection code — on the brain's page: ⚙ → Devices")), code);
   body.append(f1, f2);
   out.push(body, foot(async (go, note) => {
-    go.disabled = true; note.className = "say soft"; note.textContent = pick === "body" ? "підключаюсь…" : "";
+    go.disabled = true; note.className = "say soft"; note.textContent = pick === "body" ? tr("connecting…") : "";
     try {
       machine = await post("role", {role: pick, url: url.value.trim(), code: code.value.trim()});
       forward();
@@ -162,15 +163,15 @@ function role() {
 }
 
 function parts() {
-  const out = [el("h2", "", "Частини"), el("p", "lead", "Те, чим heare чує, бачить і діє на цьому комп'ютері. Вмикаються й вимикаються одразу — будь-коли потім теж.")];
-  if (machine.role === "brain") out.push(el("p", "note", "Цей комп'ютер — лише мозок: частини тут зазвичай не потрібні, але можна."));
+  const out = [el("h2", "", tr("Parts")), el("p", "lead", tr("What heare hears, sees and acts with on this computer. They turn on and off at once — any time later too."))];
+  if (machine.role === "brain") out.push(el("p", "note", tr("This computer is only the brain: parts are usually not needed here, but they may be.")));
   const list = el("div");
   for (const p of machine.parts) {
     const row = el("div", "row"), what = el("div", "what"), sw = el("button", "sw" + (p.on ? " on" : ""));
-    what.append(el("b", "", p.label), el("small", "", p.why_not ? p.why_not : p.what));
-    if (p.name === "hands" && !p.why_not) what.append(el("small", "", "Агент — opencode або Claude Code; руки знайдуть його самі, або скажуть на своїй картці, чого бракує."));
+    what.append(el("b", "", tr(p.label)), el("small", "", p.why_not ? p.why_not : tr(p.what)));
+    if (p.name === "hands" && !p.why_not) what.append(el("small", "", tr("The agent is opencode or Claude Code; the hands find it themselves, or say on their card what is missing.")));
     sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(p.on));
-    sw.setAttribute("aria-label", p.label);
+    sw.setAttribute("aria-label", tr(p.label));
     sw.disabled = Boolean(p.why_not) && !p.on;
     sw.onclick = async () => {
       if (busy) return; busy = true; sw.disabled = true;
@@ -189,26 +190,26 @@ let partSaid = "", loginSwitch = null;
 
 // A server has no Keychain: there the key goes to a file only its owner reads.
 const vault = () => machine.platform === "darwin"
-  ? {into: "в Keychain", in: "у Keychain"}
-  : {into: "у сховище ключів", in: "у сховищі"};
+  ? {into: tr("into Keychain"), in: tr("in Keychain")}
+  : {into: tr("into the key store"), in: tr("in the store")};
 
 function keys() {
-  const out = [el("h2", "", "Ключі"), el("p", "lead", `Розум і слух heare — у хмарних моделях. Ключ лягає ${vault().into} цього комп'ютера; зберігаю лише той, що провайдер прийняв.`)];
+  const out = [el("h2", "", tr("Keys")), el("p", "lead", tr("heare's mind and hearing are cloud models. A key goes {into} this computer; I keep only one the provider accepted.", {into: vault().into}))];
   const wanted = needs();
-  if (!wanted.length) out.push(el("p", "note", "Цьому комп'ютеру ключі не потрібні: мозок деінде, а голос вимкнено."));
+  if (!wanted.length) out.push(el("p", "note", tr("This computer needs no keys: the brain is elsewhere, and the voice is off.")));
   for (const name of wanted) {
     const info = KEYS[name], held = machine.keys[name] || {};
     const box = el("div", "key"), top = el("div", "top"), state = el("span", "state");
-    state.textContent = held.source === "env" ? "✓ є (з оточення)" : held.source === "stored" ? `✓ є (${vault().in})` : "немає";
+    state.textContent = held.source === "env" ? tr("✓ present (from the environment)") : held.source === "stored" ? tr("✓ present ({where})", {where: vault().in}) : tr("none");
     state.className = "state " + (held.source ? "ok" : "warn");
-    const where = el("a", "", "де взяти"); where.href = info.get; where.target = "_blank"; where.rel = "noopener";
+    const where = el("a", "", tr("where to get it")); where.href = info.get; where.target = "_blank"; where.rel = "noopener";
     top.append(el("b", "", info.label), el("small", "", info.why), state);
-    const pair = el("div", "pair"), input = el("input"), check = el("button", "btn", held.source ? "Замінити" : "Перевірити");
-    input.type = "password"; input.placeholder = held.source ? "новий ключ, якщо треба" : "вставити ключ"; input.autocomplete = "off";
+    const pair = el("div", "pair"), input = el("input"), check = el("button", "btn", held.source ? tr("Replace") : tr("Check"));
+    input.type = "password"; input.placeholder = held.source ? tr("a new key, if needed") : tr("paste the key"); input.autocomplete = "off";
     const said = el("small", "soft");
     check.onclick = async () => {
       if (!input.value.trim()) return;
-      check.disabled = true; said.className = "soft"; said.textContent = "питаю провайдера…";
+      check.disabled = true; said.className = "soft"; said.textContent = tr("asking the provider…");
       try {
         const answer = await post("key", {name, value: input.value});
         machine.keys = answer.keys;
@@ -224,28 +225,28 @@ function keys() {
     out.push(box);
   }
   const missing = wanted.filter(name => !(machine.keys[name] || {}).source);
-  out.push(foot(forward, "Далі →", missing.length ? "можна й пізніше — без ключа ця частина мовчатиме" : ""));
+  out.push(foot(forward, tr("Next →"), missing.length ? tr("later is fine too — without a key this part stays silent") : ""));
   return out;
 }
 
 function ready() {
-  const out = [el("h2", "", machine.done ? "Що ще" : "Майже все")];
+  const out = [el("h2", "", machine.done ? tr("What else") : tr("Almost done"))];
   const list = el("div");
   const line = (title, what, right) => { const row = el("div", "row"), w = el("div", "what"); w.append(el("b", "", title), el("small", "", what)); row.append(w); if (right) row.append(right); list.append(row); };
   if (shell) {
-    const mic = el("button", "btn", "Дозволити"); mic.onclick = () => shell.postMessage({ask: "microphone"});
-    line("Мікрофон", "голос слухає тебе", mic);
+    const mic = el("button", "btn", tr("Allow")); mic.onclick = () => shell.postMessage({ask: "microphone"});
+    line(tr("Microphone"), tr("the voice listens to you"), mic);
     // The shell tells the truth before the page draws; a first run starts
     // with it on, and finishing says what the switch shows.
     const truth = window.heareShell && window.heareShell.login;
     const login = el("button", "sw" + (truth || !machine.done ? " on" : ""));
     login.onclick = () => { login.classList.toggle("on"); shell.postMessage({login: login.classList.contains("on")}); };
     loginSwitch = login;
-    line("Запускати при вході", "heare піднімається разом з комп'ютером", login);
+    line(tr("Start at login"), tr("heare comes up with the computer"), login);
   } else {
-    line("Дозволи", "мікрофон macOS попросить сам, коли голос уперше почне слухати");
+    line(tr("Permissions"), tr("macOS asks for the microphone itself when the voice first listens"));
   }
-  const soon = el("div", "soon"); soon.append(el("b", "", "Доступ ззовні"), el("small", "", " — свій домен, телефон звідусіль: скоро"));
+  const soon = el("div", "soon"); soon.append(el("b", "", tr("Access from outside")), el("small", "", tr(" — your own domain, a phone from anywhere: soon")));
   list.append(soon);
   out.push(list);
   const role = machine.role || "all";
@@ -255,9 +256,9 @@ function ready() {
       await post("done", {});
       if (shell) shell.postMessage({login: Boolean(loginSwitch && loginSwitch.classList.contains("on")), done: true});
       else if (role !== "body") location.href = `http://127.0.0.1:${machine.api_port}/`;
-      else { note.className = "say ok"; note.textContent = "готово — частини підключаються до мозку"; machine.done = true; draw(); }
+      else { note.className = "say ok"; note.textContent = tr("done — the parts connect to the brain"); machine.done = true; draw(); }
     } catch (error) { note.className = "say bad"; note.textContent = error.message; go.disabled = false; }
-  }, machine.done ? "Відкрити heare" : "Почати користуватись"));
+  }, machine.done ? tr("Open heare") : tr("Start using it")));
   return out;
 }
 

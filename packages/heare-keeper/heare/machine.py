@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+from heare.core.i18n import N_, _
 
 
 @dataclass(frozen=True)
@@ -34,19 +35,19 @@ class Part:
 
 
 PARTS = {part.name: part for part in (
-    Part("voice", "Голос", "слухає й говорить", "voice", ("input", "output"),
+    Part("voice", N_("Voice"), N_("listens and speaks"), "voice", ("input", "output"),
          "microphone and speaker"),
-    Part("eyes", "Очі", "що спереду, чи ти тут, чи щось грає", "eyes", ("input",),
+    Part("eyes", N_("Eyes"), N_("what is in front, whether you are here, whether something plays"), "eyes", ("input",),
          "which app is open on the Mac (its name only), whether something plays", only="darwin"),
-    Part("sources", "Джерела", "погода й інше: що зараз навколо", "sources", ("input",),
-         "джерела: погода — що зараз надворі"),
+    Part("sources", N_("Sources"), N_("the weather and more: what is around now"), "sources", ("input",),
+         "the weather outside"),
     # "hands" is the folder the cli hands were turned on in before 26 October.
-    Part("hands", "CLI hands", "агент діє в системі: код, файли, команди", "opencode",
-         ("executor",), "агент у терміналі: код, файли, команди, пошук в інтернеті",
+    Part("hands", "CLI hands", N_("an agent acts in the system: code, files, commands"), "opencode",
+         ("executor",), "an agent in the terminal: code, files, commands, web search",
          module="cli_hands"),
-    Part("native-hands", "Native hands", "швидкі дії з тілами: OLED, світло, піни",
+    Part("native-hands", "Native hands", N_("quick acts on the bodies: OLED, light, pins"),
          "native-hands", ("executor",),
-         "плата heare на столі з OLED-екраном: слова, картинки, іконки, сцени, світло",
+         "quick acts on the bodies in «My body»: show, switch, read",
          module="native_hands"),
 )}
 
@@ -79,9 +80,9 @@ def why_not(name: str, bin_dir: Path | None = None) -> str | None:
     """Why a part cannot run here, in the person's words; None if it can."""
     part = PARTS[name]
     if part.only and sys.platform != part.only:
-        return "лише на Mac" if part.only == "darwin" else f"лише на {part.only}"
+        return _("only on a Mac") if part.only == "darwin" else _("only on {where}").format(where=part.only)
     if command(name, bin_dir) is None:
-        return "не встановлена на цій машині"
+        return _("not installed on this machine")
     return None
 
 
@@ -121,17 +122,17 @@ def check_key(name: str, value: str) -> tuple[bool, str]:
     """Whether a key works, asked of its provider; and what to tell."""
     url = KEY_CHECKS.get(name)
     if url is None:
-        return True, "не перевіряю — збережено"
+        return True, _("not checked — saved")
     try:
         answer = httpx.get(url, headers={"Authorization": f"Bearer {value.strip()}"},
                            timeout=CHECK_TIMEOUT_S)
     except httpx.HTTPError:
-        return False, "немає зв'язку з провайдером — перевір інтернет"
+        return False, _("no connection to the provider — check the internet")
     if answer.status_code in (401, 403):
-        return False, "ключ не підходить"
+        return False, _("the key does not fit")
     if answer.status_code >= 400:
-        return False, f"провайдер відповів {answer.status_code}"
-    return True, "живий"
+        return False, _("the provider answered {code}").format(code=answer.status_code)
+    return True, _("alive")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -159,10 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         try:
             turn(folder, name, args.switch == "on", bin_dir)
         except (ValueError, OSError) as error:
-            print(f"не ввімкнув: {error}", file=sys.stderr)
+            print(_("not switched on: {error}").format(error=error), file=sys.stderr)
             failed += 1
             continue
-        print(f"{name}: {'увімкнено' if args.switch == 'on' else 'вимкнено'}")
+        print(f"{name}: {_('on') if args.switch == 'on' else _('off')}")
     return 1 if failed else 0
 
 
