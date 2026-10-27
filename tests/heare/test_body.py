@@ -24,7 +24,7 @@ def test_a_part_says_what_it_is_what_it_shows_and_what_it_can_do():
     assert "- панель — плата на столі з OLED-екраном; зараз: годинник" in text
     # A reading skill keeps its name for read_body; a changing one is words.
     assert "читаю сам: What is on the screen [screen_info]" in text
-    assert "через руки: Show a few words on the OLED for some s…; Put a scene on the OLED" in text
+    assert "через руки: Show a few words on the OLED for some…; Put a scene on the OLED" in text
     assert "[show]" not in text
 
 

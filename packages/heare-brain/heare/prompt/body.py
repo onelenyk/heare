@@ -68,4 +68,8 @@ def _does(skill: Mapping[str, object]) -> str:
 
 def _short(text: object, limit: int) -> str:
     said = " ".join(str(text or "").split())
-    return said if len(said) <= limit else said[: limit - 1].rstrip() + "…"
+    if len(said) <= limit:
+        return said
+    # At a word: «for some s…» reads as a mistake, «for some…» does not.
+    cut = said[: limit - 1]
+    return (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip(" ,;:—") + "…"
