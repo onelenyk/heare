@@ -10,7 +10,7 @@ help:
 	@echo "  make test      - the core against stand-ins: no network, no keys"
 	@echo "  make panel-test - the panel's pure modules on the host: no board"
 	@echo "  make panel-smoke - identify the board and its OLED over USB"
-	@echo "  make panel-deploy - firmware/esp32-c3 onto the board as .mpy, settings kept (PORT=...)"
+	@echo "  make panel-deploy - firmware/esp32-c3 frozen into MicroPython, settings kept (PORT=...)"
 	@echo "  make coverage  - test, with the coverage floor at 80%"
 	@echo "  make typecheck - mypy over heare-memory"
 	@echo "  make lint      - ruff"
@@ -65,9 +65,11 @@ panel-smoke:
 
 PORT ?= /dev/cu.usbmodem214201
 
+# MicroPython with the panel's code frozen in (built in Docker), flashed below
+# its files: settings and the part key stay. NOFLASH=1 only builds.
 panel-deploy:
-	uv run --no-project --with esptool --with littlefs-python --with 'mpy-cross>=1.29,<1.30' \
-		python scripts/panel_deploy.py --port $(PORT) $(if $(DEBUG),--debug)
+	uv run --no-project --with esptool --with littlefs-python \
+		python scripts/panel_firmware.py $(if $(NOFLASH),,--port $(PORT)) $(if $(DEBUG),--debug)
 
 coverage:
 	uv run pytest tests/heare -q --cov=heare --cov-report=term-missing --cov-fail-under=80

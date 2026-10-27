@@ -358,6 +358,35 @@ def test_normal_boot_goes_boot_wifi_brain_idle(tmp_path, monkeypatch):
     assert wdt.feeds >= 1
 
 
+def test_bluetooth_that_cannot_start_falls_back_to_the_saved_settings(tmp_path, monkeypatch):
+    screens = _record_screens(monkeypatch)
+    logs = []
+    store = _provisioned(tmp_path, boots=3)
+
+    class Broken:
+        def start(self):
+            raise OSError(5)
+
+    result = main.run(
+        store=store,
+        sta=Sta(),
+        panel=Panel(),
+        wdt=Wdt(),
+        reset=lambda: None,
+        thread_start=lambda target, args: target(*args),
+        ble_factory=lambda *args, **kwargs: Broken(),
+        link_factory=LinkFactory(),
+        clock=Clock(),
+        out=logs.append,
+        sleep=lambda ms: None,
+        ticks_normal=3,
+    )
+
+    assert result == "stopped"
+    assert "ble failed; trying the saved settings" in logs
+    assert screens[-1] == "IDLE"
+
+
 def test_ble_handler_status_scan_and_name_are_wired(tmp_path, monkeypatch):
     _record_screens(monkeypatch)
     factory = BleFactory()

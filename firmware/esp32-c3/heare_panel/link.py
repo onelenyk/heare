@@ -22,7 +22,7 @@ import json
 import socket
 import time
 
-from heare_panel import clock, device, http, sse, state
+from heare_panel import clock, device, http, journal, sse, state
 
 PROTOCOL = 1
 VERSION = "0.1.0"
@@ -291,6 +291,7 @@ class Link:
                 self._wait(error.retry_s + self._jitter())
                 continue
             except (LinkError, OSError, MemoryError) as error:
+                journal.say("knock=down " + type(error).__name__ + " " + str(error))
                 self._link_down()
                 if isinstance(error, MemoryError):
                     # Little memory is a reason to wait and try again, not to
@@ -313,6 +314,7 @@ class Link:
                 self._wait(error.retry_s + self._jitter())
                 continue
             except (LinkError, OSError, MemoryError) as error:
+                journal.say("events=down " + type(error).__name__ + " " + str(error))
                 self._link_down()
                 if isinstance(error, MemoryError):
                     # Little memory is a reason to wait and try again, not to

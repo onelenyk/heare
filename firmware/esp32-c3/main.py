@@ -119,6 +119,22 @@ def _record_boot_nvs():
         pass
 
 
+def _quiet_system():
+    """The chip's own log off the USB port, unless the panel is debugged.
+
+    ESP-IDF writes Wi-Fi and system messages to the USB port. On a Mac's USB
+    with nobody reading it, a write waits for room, and the panel stalled
+    before reaching the brain (26 October). A panel on a charger never saw it."""
+    if journal.loud():
+        return
+    try:
+        import esp
+
+        esp.osdebug(None)
+    except (ImportError, AttributeError):
+        pass
+
+
 FRESH_PATH = "/fresh_code"
 
 
@@ -387,6 +403,17 @@ def _memory():
     return gc.mem_free() if hasattr(gc, "mem_free") else -1
 
 
+def _system_memory():
+    """ESP-IDF's own free heap: what Wi-Fi and every socket live on, apart
+    from Python's. When it runs out, the panel stops answering even a ping."""
+    try:
+        import esp32
+
+        return sum(block[1] for block in esp32.idf_heap_info(esp32.HEAP_DATA))
+    except (ImportError, AttributeError):
+        return -1
+
+
 def show_text(panel, lines, framebuf_module=None):
     """Words alone on the window, a line every ten pixels."""
     from heare_panel import screen
@@ -592,12 +619,14 @@ def run_normal(
         if online:
             if online_since is None:
                 online_since = now
-                out("link=online mem free=" + str(_memory()))
+                out("link=online mem free=" + str(_memory())
+                    + " idf=" + str(_system_memory()))
             elif not boot_cleared and clock.elapsed(online_since, now) >= HEALTHY_MS:
                 clear_boot(store)
                 boot_cleared = True
                 out("healthy=60s slowest frame ms=" + str(slowest)
-                    + " mem free=" + str(_memory()))
+                    + " mem free=" + str(_memory())
+                    + " idf=" + str(_system_memory()))
         else:
             online_since = None
 
@@ -890,6 +919,7 @@ def run(
     tag=None,
     code=None,
 ):
+    _quiet_system()
     if _fresh_code():
         # The code was just replaced: earlier failed boots were the old
         # code's, not a reason to send the new one to Bluetooth setup.
@@ -919,7 +949,7 @@ def run(
     out("BOOT")
 
     if needed:
-        return run_setup(
+        result = run_setup(
             store,
             sta,
             panel,
@@ -934,6 +964,15 @@ def run(
             framebuf_module=framebuf_module,
             max_ticks=ticks_setup,
         )
+        if result != "ble-failed":
+            return result
+        # Setup that cannot start is no reason to stand frozen on BOOT: the
+        # saved settings get another go (26 October: EIO, stuck until reflash).
+        if store is not None:
+            clear_boot(store)
+        else:
+            _clear_boot_nvs()
+        out("ble failed; trying the saved settings")
 
     if store is None:
         try:

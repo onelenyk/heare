@@ -287,11 +287,17 @@ class Device:
             free = gc.mem_free()
         except (ImportError, AttributeError):
             free = -1
+        try:
+            import esp32
+
+            system = sum(b[1] for b in esp32.idf_heap_info(esp32.HEAP_DATA))
+        except (ImportError, AttributeError):
+            system = -1
         return {"size": [self.screen.width, self.screen.height],
                 "layers": self.screen.layers(),
                 "widgets": [k for k in widgets.KINDS if k != "state"],
                 "icons": sorted(glyphs.ICON_NAMES), "free": free,
-                "max_widgets": screen.MAX_WIDGETS}
+                "system_free": system, "max_widgets": screen.MAX_WIDGETS}
 
     def _picture(self, bitmap, seconds, now_ms):
         import binascii
