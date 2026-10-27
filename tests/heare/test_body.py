@@ -50,3 +50,10 @@ def test_now_is_the_head_label_as_last_reported():
     assert _now(entry) == "Safari"
     assert _now({"ui": [{"name": "x", "head": True, "value": "—"}]}) == ""
     assert _now({"ui": []}) == ""
+
+
+def test_what_the_prompt_already_says_now_is_not_said_twice():
+    weather = {"w": {"name": "sources", "about": "джерела", "state": "approved",
+                     "now": "+8°, хмарно"}}
+    assert "зараз" not in body(weather, "- погода: +8°, хмарно")
+    assert "зараз: +8°, хмарно" in body(weather)

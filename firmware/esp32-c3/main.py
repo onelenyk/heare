@@ -488,11 +488,19 @@ def _start_thread(target, args):
     _thread.start_new_thread(target, args)
 
 
+# What the panel's state is called where people and the voice read it; the
+# screen itself keeps the short English word, it has room for no more.
+_SAID = {"BOOT": "запускається", "WIFI": "шукає Wi-Fi", "PAIR": "чекає спарювання",
+         "BRAIN": "шукає мозок", "IDLE": "обличчя", "HEAR": "слухає",
+         "THINK": "думає", "SPEAK": "говорить", "ALLOW": "питає дозволу",
+         "ERROR": "помилка", "OFFLINE": "без зв'язку"}
+
+
 def _report(link, word, outcome):
     from heare_panel import link as link_module
 
     try:
-        link.report({"now": word})
+        link.report({"now": _SAID.get(word, word)})
     except link_module.NeedsProvisioning:
         outcome.append("provision")
     except Exception:  # noqa: BLE001 - a report failure is not fatal

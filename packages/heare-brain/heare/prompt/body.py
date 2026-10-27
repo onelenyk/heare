@@ -26,7 +26,9 @@ NOTHING = "Тіл поруч зараз немає: діяти на щось ф�
 _CLAUSE = re.compile(r"[:;(]|, | — ")
 
 
-def body(parts: Mapping[str, dict]) -> str:
+def body(parts: Mapping[str, dict], said: str = "") -> str:
+    """said: what the prompt already carries; a part's «зараз» found there
+    (the weather, from the sources) is not said twice."""
     if not parts:
         return NOTHING
     # Here first, then away: what can answer now is what matters.
@@ -34,22 +36,22 @@ def body(parts: Mapping[str, dict]) -> str:
                      key=lambda p: (p.get("state") != "approved", str(p.get("name"))))
     lines = [HEAD]
     for part in ordered:
-        said = _part(part)
-        if len("\n".join([*lines, said])) > MAX_CHARS:
+        line = _part(part, said)
+        if len("\n".join([*lines, line])) > MAX_CHARS:
             lines.append("- …")
             break
-        lines.append(said)
+        lines.append(line)
     return "\n".join(lines)
 
 
-def _part(part: Mapping[str, object]) -> str:
+def _part(part: Mapping[str, object], said: str) -> str:
     name = str(part.get("name") or part.get("channel") or "?").strip()
     about = _short(part.get("about"), ABOUT_CHARS)
     head = f"- {name} — {about}" if about else f"- {name}"
     if part.get("state") != "approved":
         return f"{head}; немає на зв'язку"
     now = _short(part.get("now"), NOW_CHARS)
-    if now:
+    if now and str(part.get("now"))[:20] not in said:
         head += f"; зараз: {now}"
     skills = [s for s in part.get("skills") or [] if isinstance(s, dict)]
     reads = [f"{_does(s)} [{s.get('name')}]" for s in skills if s.get("effect") == "read"]

@@ -100,12 +100,11 @@ async def prompt(around: Mapping[str, object] | None = None,
     # A model does not know the hour unless it is told.
     now = datetime.now()
     said.append(f"It is {_DAYS[now.weekday()]}, {now:%d.%m.%Y}, {now:%H:%M}.")
+    block = now_block(around, now.timestamp()) if around is not None else ""
     if parts is not None:
-        said.append(body(parts))
-    if around is not None:
-        block = now_block(around, now.timestamp())
-        if block:
-            said.append(block)
+        said.append(body(parts, block))
+    if block:
+        said.append(block)
     return "\n\n".join(said)
 
 

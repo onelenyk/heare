@@ -53,16 +53,16 @@ _LAYER = {"type": "string", "enum": ["flash", "pin", "idle"]}
 def skills():
     """The skills the knock offers the hands."""
     return [
-        {"name": "show", "effect": "harmless", "about": "Show a few words on the OLED for some seconds",
+        {"name": "show", "effect": "harmless", "about": "Кілька слів на екрані на секунди",
          "params": {"type": "object", "required": ["text"], "properties": {
              "text": {"type": "string"}, "seconds": {"type": "integer"}}}},
-        {"name": "image", "effect": "harmless", "about": "Draw a picture on the 72x40 OLED for some seconds",
+        {"name": "image", "effect": "harmless", "about": "Картинка 72×40 на секунди",
          "params": {"type": "object", "required": ["svg"], "properties": {
              "svg": {"type": "string", "description": "viewBox 0 0 72 40, white on black, thick lines"},
              "seconds": {"type": "integer"}}},
          "render": {"svg": {"to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "bitmap"}}},
         {"name": "screen", "effect": "harmless",
-         "about": "Put a scene on the OLED: flash for seconds, pin until cleared, idle instead of the face",
+         "about": "Сцена: на секунди, доки не приберуть, чи замість обличчя",
          "params": {"type": "object", "required": ["scene"], "properties": {
              "scene": {"type": "object", "description": SCENE_HELP},
              "layer": _LAYER, "seconds": {"type": "integer"}}},
@@ -75,20 +75,20 @@ def skills():
               "to": "mono", "width": 16, "height": 16, "as": "frames"},
              {"deep": True, "key": "frames", "where": {"widget": "picture"},
               "to": "mono", "width": VIEW_W, "height": VIEW_H, "as": "frames"}]}},
-        {"name": "update", "effect": "harmless", "about": "Change fields of a scene on the screen",
+        {"name": "update", "effect": "harmless", "about": "Змінити поля сцени",
          "params": {"type": "object", "required": ["id", "fields"], "properties": {
              "id": {"type": "string"}, "fields": _OBJECT}}},
-        {"name": "clear", "effect": "harmless", "about": "Take a scene (id) or a layer off the screen",
+        {"name": "clear", "effect": "harmless", "about": "Прибрати сцену (id) чи шар",
          "params": {"type": "object", "properties": {"id": {"type": "string"}, "layer": _LAYER}}},
-        {"name": "screen_info", "effect": "read", "about": "What is on the screen, its size, widgets, icons",
+        {"name": "screen_info", "effect": "read", "about": "Що на екрані: розмір, віджети, іконки",
          "params": _OBJECT},
-        {"name": "log", "effect": "read", "about": "The board's last log lines", "params": _OBJECT},
-        {"name": "light", "effect": "harmless", "about": "The board's LED: on, off or blink (blinks by itself)",
+        {"name": "log", "effect": "read", "about": "Останні рядки журналу", "params": _OBJECT},
+        {"name": "light", "effect": "harmless", "about": "Світлодіод: on, off чи blink",
          "params": {"type": "object", "required": ["mode"], "properties": {
              "mode": {"type": "string", "enum": ["on", "off", "blink"]}}}},
-        {"name": "read_pins", "effect": "read", "about": "Levels of the free pins, 1 or 0",
+        {"name": "read_pins", "effect": "read", "about": "Рівні вільних пінів, 1 чи 0",
          "params": _OBJECT},
-        {"name": "pin", "effect": "change", "about": "Switch a free pin on or off: whatever is wired to it",
+        {"name": "pin", "effect": "change", "about": "Вільний пін: увімкнути чи вимкнути",
          "params": {"type": "object", "required": ["n", "on"], "properties": {
              "n": {"type": "integer", "enum": list(FREE_PINS)}, "on": {"type": "boolean"}}}},
     ]

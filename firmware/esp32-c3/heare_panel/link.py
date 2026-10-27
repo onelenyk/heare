@@ -27,7 +27,7 @@ from heare_panel import clock, device, http, journal, sse, state
 PROTOCOL = 1
 VERSION = "0.1.0"
 
-ABOUT = "плата на столі: OLED-екран, світлодіод і дев'ять вільних пінів"
+ABOUT = "панель: плата на столі з OLED-екраном, світлодіодом і дев'ятьма вільними пінами"
 UI = [{"name": "now", "kind": "label", "label": "Screen",
        "value": "BOOT", "head": True}]
 
