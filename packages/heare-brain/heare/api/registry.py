@@ -154,13 +154,14 @@ class Registry:
                 for pid, b in self.bodies.items()
                 if b.get("state") == "approved" and b.get("skills")}
 
-    def organs(self) -> dict[str, dict]:
-        """The voice's own senses: let-in parts with no skills that are not
-        hands and not a page's window — the voice, the eyes, a chat."""
-        return {pid: {"channel": b["channel"], "name": b["name"],
-                      "about": b["about"], "state": b["state"]}
+    def parts(self) -> dict[str, dict]:
+        """The parts as the voice sees them: let in, here or away, with what
+        each shows now (its ``head`` label). Not the hands — they are in
+        ``delegate`` — and not a page's window."""
+        return {pid: {"name": b["name"], "about": b["about"], "state": b["state"],
+                      "now": _now(b), "skills": [dict(s) for s in b["skills"]]}
                 for pid, b in self.bodies.items()
-                if b.get("state") in ("approved", "away") and not b.get("skills")
+                if b.get("state") in ("approved", "away")
                 and "executor" not in b.get("forms", [])
                 and not pid.startswith("window@")}
 
@@ -280,3 +281,12 @@ class Registry:
         self._emit("part", channel=entry["channel"], forms=entry["forms"],
                    about=entry["about"], host=entry["host"],
                    state=state or entry["state"])
+
+
+def _now(entry: dict) -> str:
+    """What a part shows now: the value of its head label, as last reported."""
+    head = next((c for c in entry.get("ui") or [] if c.get("head")), None)
+    if head is None:
+        return ""
+    value = (entry.get("values") or {}).get(head.get("name"), head.get("value"))
+    return "" if value in (None, "", "—") else str(value)

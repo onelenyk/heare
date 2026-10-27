@@ -37,7 +37,7 @@ PARTS = {part.name: part for part in (
     Part("voice", "Голос", "слухає й говорить", "voice", ("input", "output"),
          "мікрофон і динамік"),
     Part("eyes", "Очі", "що спереду, чи ти тут, чи щось грає", "eyes", ("input",),
-         "очі: застосунок, простій, чи щось грає", only="darwin"),
+         "що відкрито на Маку (лише назва застосунку), чи щось грає", only="darwin"),
     Part("sources", "Джерела", "погода й інше: що зараз навколо", "sources", ("input",),
          "джерела: погода — що зараз надворі"),
     # "hands" is the folder the cli hands were turned on in before 26 October.

@@ -37,6 +37,11 @@ BLOCK_CHARS = 6000
 # prompt drowns, as the old app's did with the whole display in it.
 OUTLINE_CHARS = 400
 OUTLINE_TOTAL = 2400
+# What every turn carries is the short outline; the long one, and the
+# stylesheet, come by ``canvas_view`` when the model is about to change
+# them. Up to 1800 characters of CSS were in every prompt before (27 October).
+TURN_CHARS = 120
+TURN_TOTAL = 900
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,40}")
 _PAIRED = re.compile(r"<\s*(iframe|object|embed)\b.*?</\s*\1\s*>", re.IGNORECASE | re.DOTALL)
 _LONE = re.compile(r"</?\s*(iframe|object|embed|link|meta|base)\b[^>]*>?", re.IGNORECASE)
@@ -199,33 +204,47 @@ class Canvas:
         self.arrange(order, sizes)
         return "Переставив."
 
+    async def _view(self, arguments: dict) -> str:
+        return self.full()
+
     async def _clear(self, arguments: dict) -> str:
         self.clear()
         return "Очистив екран."
 
     def verbs(self) -> list[tuple[dict, object]]:
         return [(_PUT, self._put), (_STYLE, self._style), (_ARRANGE, self._arrange),
-                (_REMOVE, self._remove), (_CLEAR, self._clear)]
+                (_REMOVE, self._remove), (_CLEAR, self._clear), (_VIEW, self._view)]
 
-    def context(self) -> str:
-        """An outline: names and first words. Enough to change the right
-        block; never the markup itself."""
-        if not self.blocks:
-            return "Канвас (екран перед людиною) зараз порожній."
+    def outline(self, each: int = OUTLINE_CHARS, total: int = OUTLINE_TOTAL) -> str:
+        """Names and first words. Enough to change the right block; never
+        the markup itself."""
         lines = [
             f"- {key} [{self.sizes.get(key, 's')}]"
             f"{' (живий)' if '<script' in html.lower() else ''}: "
-            f"{_text(html)[:OUTLINE_CHARS]}" for key, html in self.blocks.items()
+            f"{_text(html)[:each]}" for key, html in self.blocks.items()
         ]
-        outline = "\n".join(lines)
-        if len(outline) > OUTLINE_TOTAL:
-            outline = outline[:OUTLINE_TOTAL] + " …"
-        own = (f"\nВласний стиль канвасу зараз (canvas_style замінює його цілком):\n"
-               f"{self.css[:1800]}" if self.css else "")
-        return ("На канвасі (екран перед людиною) зараз такі віджети, у порядку "
-                "зліва направо і згори донизу; у дужках ширина. Вони вже "
-                "намальовані й лишаються, поки їх не приберуть — не малюй те "
-                "саме вдруге:\n" + outline + own)
+        said = "\n".join(lines)
+        return said if len(said) <= total else said[:total] + " …"
+
+    def context(self) -> str:
+        """Every turn: what is drawn, short. Not «the screen» — that word is
+        the Mac's and the panel's too."""
+        if not self.blocks:
+            return "Канвас (сторінка heare у браузері) зараз порожній."
+        own = ("\nУ канвасу є власний стиль; перш ніж міняти вигляд, глянь його "
+               "через canvas_view." if self.css else "")
+        return ("Канвас (сторінка heare у браузері) — на ньому вже намальовано, "
+                "зліва направо, у дужках ширина; не малюй те саме вдруге, а щоб "
+                "дописати віджет, спершу глянь його через canvas_view:\n"
+                + self.outline(TURN_CHARS, TURN_TOTAL) + own)
+
+    def full(self) -> str:
+        """On asking: the long outline and the stylesheet."""
+        if not self.blocks and not self.css:
+            return "Канвас порожній, стиль типовий."
+        own = (f"\nВласний стиль (canvas_style замінює його цілком):\n{self.css}"
+               if self.css else "\nСтиль типовий.")
+        return (self.outline() or "Віджетів немає.") + own
 
     # -- as an output: a reply sent here is written, not spoken --------
 
@@ -255,7 +274,7 @@ def _verb(name: str, description: str, properties: dict, required: list[str]) ->
 
 _PUT = _verb(
     "canvas_put",
-    "Put a widget on the canvas — the one screen in front of the person. "
+    "Put a widget on the canvas — the heare page in the browser. "
     "Use it by yourself, without being asked, whenever something is better "
     "seen than heard (a list, steps, a table, numbers, code) or the person "
     "wants something to keep an eye on (weather, the processor, a timer). "
@@ -333,6 +352,11 @@ _ARRANGE = _verb(
 _REMOVE = _verb(
     "canvas_remove", "Take one widget off the canvas.",
     {"id": {"type": "string", "description": "The widget's id."}}, ["id"],
+)
+_VIEW = _verb(
+    "canvas_view",
+    "Look at the canvas closely: each widget's words at length and its own "
+    "stylesheet. Before adding to a widget or changing the look.", {}, [],
 )
 _CLEAR = _verb(
     "canvas_clear",

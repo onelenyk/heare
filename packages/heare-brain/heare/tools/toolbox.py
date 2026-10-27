@@ -77,7 +77,9 @@ class Toolbox:
         return {"delegate", "stop_work", "remind", "cancel_reminder"}
 
     def read_only(self, name: str) -> bool:
-        return name in {"recall", "list_reminders", "read_body"}
+        # canvas_view is the canvas's verb, not ours; named here because only
+        # the toolbox says what may be read and answered on in the same turn.
+        return name in {"recall", "list_reminders", "read_body", "canvas_view"}
 
     async def _run_recall(self, arguments: dict) -> str:
         return await recall.run(self._memory, arguments)

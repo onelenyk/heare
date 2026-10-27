@@ -180,7 +180,8 @@ def test_the_look_of_the_canvas_is_its_own_stylesheet(tmp_path):
                  "#blk-clock { grid-column: 1 / -1 } #stage { --accent: #e0a030 }")
     assert "@import" not in canvas.css and "grid-template-columns: 1fr 2fr" in canvas.css
     assert events[-1][1] == {"op": "style", "css": canvas.css}
-    assert "--accent: #e0a030" in canvas.context()
+    assert "--accent" not in canvas.context() and "canvas_view" in canvas.context()
+    assert "--accent: #e0a030" in canvas.full()
     again = _canvas(tmp_path)
     assert again.css == canvas.css and list(again.blocks) == ["clock"]
     again.clear()

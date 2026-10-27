@@ -139,9 +139,7 @@ class Brain:
                 present=lambda: list(self.core.executors)),
             gate=Judge(self.settings),
             prompt=lambda: persona.prompt(
-                self.core.state.around,
-                self.bodies.skilled() if self.bodies else None,
-                self.bodies.organs() if self.bodies else None),
+                self.core.state.around, self.bodies.parts() if self.bodies else None),
             names=names, judge=persona.JUDGE, words=uk,
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
         )

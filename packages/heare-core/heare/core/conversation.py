@@ -518,7 +518,7 @@ class Core:
         # output. (It used to be asked twice — once to decide, once to
         # answer — and every such reply cost a second of waiting.)
         judged = not message.addressed
-        system = await self._system()
+        system = await self.system()
         if self.memory is not None and self.words.recall_cue(message.text):
             try:
                 found = await self.memory.recall(message.text)
@@ -709,7 +709,7 @@ class Core:
             if spoken and call.get("name") not in self._acknowledging():
                 await self._say(out, spoken)
 
-    async def _system(self) -> str:
+    async def system(self) -> str:  # public: `make prompt` shows it
         prompt = DEFAULT_PROMPT
         if self._prompt is not None:
             try:

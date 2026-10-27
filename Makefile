@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test bench eval-route panel-preview panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist
+.PHONY: help brain chat voice keeper test bench eval-route panel-preview panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist prompt
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -114,6 +114,10 @@ live: check
 # Install, update and uninstall in a sandbox beside the live heare (dist/e2e).
 e2e-dist:
 	uv run --no-project python scripts/e2e_dist.py
+
+# What the model reads every turn, from the brain that is running here.
+prompt:
+	uv run --no-project python scripts/prompt.py
 
 soak:
 	uv run --no-project python scripts/soak.py $(or $(N),1)

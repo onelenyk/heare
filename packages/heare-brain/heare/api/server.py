@@ -268,8 +268,8 @@ class Seen:
     def skilled(self) -> dict[str, dict]:
         return self._registry.skilled()
 
-    def organs(self) -> dict[str, dict]:
-        return self._registry.organs()
+    def parts(self) -> dict[str, dict]:
+        return self._registry.parts()
 
     async def call(self, pid: str, name: str, args: dict) -> dict:
         found = self._registry.skill(pid, name)
@@ -786,6 +786,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     # -- skills: what the hands may do with the parts -----------------------
 
+    async def system_prompt(request: web.Request) -> web.Response:
+        """What the model reads every turn, for a person to look at."""
+        return web.Response(text=await core.system())
+
     async def skills_list(request: web.Request) -> web.Response:
         return web.json_response(registry.skilled())
 
@@ -1233,6 +1237,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/controls", controls),
         web.post("/api/controls", control),
         web.get("/api/skills", skills_list),
+        web.get("/api/prompt", system_prompt),
         web.post("/api/skills/call", skill_call),
         web.post("/api/skills/{id:\\d+}", skill_answer),
         web.post("/api/stop", stop),

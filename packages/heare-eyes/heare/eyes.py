@@ -25,7 +25,7 @@ from heare.surroundings.watch import Surroundings
 
 logger = logging.getLogger("heare.eyes")
 
-ABOUT = "очі: застосунок, простій, чи щось грає"
+ABOUT = "що відкрито на Маку (лише назва застосунку), чи щось грає"
 UI = [
     {"name": "looking", "kind": "toggle", "label": "Дивитись", "value": True},
     {"name": "sees", "kind": "label", "label": "Бачить", "value": "тихо",
