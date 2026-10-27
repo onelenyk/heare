@@ -17,8 +17,9 @@ def strings(mo: Path) -> str:
     with mo.open("rb") as handle:
         catalog = gettext.GNUTranslations(handle)
     quote = lambda s: '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'  # noqa: E731
-    lines = [f"{quote(k)} = {quote(v)};" for k, v in sorted(catalog._catalog.items())
-             if isinstance(k, str) and k and v]
+    # Plural forms (tuple keys) are the page's; the shell says none.
+    single = {k: v for k, v in catalog._catalog.items() if isinstance(k, str) and k and v}
+    lines = [f"{quote(k)} = {quote(v)};" for k, v in sorted(single.items())]
     return "\n".join(lines) + "\n"
 
 

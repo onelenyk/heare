@@ -194,3 +194,13 @@ def test_the_tools_the_voice_is_offered_are_english():
     offered = [schemas._RECALL, schemas._STOP, schemas._DELEGATE, schemas._REMIND,
                schemas._LIST_REMINDERS, schemas._CANCEL_REMINDER, schemas._READ_BODY]
     assert not [s["function"]["name"] for s in offered if _speaks(str(s))]
+
+
+def test_the_mac_gets_the_same_catalog_as_strings(tmp_path):
+    """build.sh turns the catalog into the shell's Localizable.strings."""
+    out = tmp_path / "Localizable.strings"
+    subprocess.run([sys.executable, str(ROOT / "scripts/po_strings.py"), str(PO), str(out)],
+                   check=True)
+    text = out.read_text(encoding="utf-8")
+    assert '"Quit" = "Вийти";' in text
+    assert '"in the Trash: {path}" = "у Кошику: {path}";' in text
