@@ -162,6 +162,42 @@ def test_a_long_tool_step_is_cut_to_one_hundred_and_twenty():
     assert len(text) == 120
 
 
+def test_a_command_is_said_without_its_environment():
+    said = agents._what({"toolCall": {
+        "kind": "execute",
+        "rawInput": {"command": "export CI=true GIT_PAGER=cat ls ~/Downloads | wc -l"},
+    }})
+    assert "ls ~/Downloads" in said
+    assert "CI=true" not in said
+
+
+def test_a_long_command_is_cut_for_the_voice():
+    said = agents._what({"toolCall": {"kind": "execute",
+                                      "rawInput": {"command": "x" * 300}}})
+    doing = agents._(agents.N_("run the command"))
+    assert said.endswith("…")
+    assert said.startswith(doing + " ")
+    assert len(said) - len(doing) - 1 <= 60
+
+
+def test_a_file_is_named_without_its_folders():
+    said = agents._what({"toolCall": {
+        "kind": "edit", "rawInput": {"file_path": "/Users/x/Documents/resume.pdf"},
+    }})
+    assert "resume.pdf" in said
+    assert "/Users" not in said
+
+
+def test_a_command_of_assignments_only_is_still_said():
+    said = agents._what({"toolCall": {"kind": "execute",
+                                      "rawInput": {"command": "A=1 B=2"}}})
+    assert "A=1 B=2" in said
+    long_said = agents._what({"toolCall": {
+        "kind": "execute", "rawInput": {"command": f"A={'.' * 300}"},
+    }})
+    assert long_said.endswith("…")
+
+
 async def test_the_model_is_named_on_the_session(monkeypatch, tmp_path):
     session = _Session()
     agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None,

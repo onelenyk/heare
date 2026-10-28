@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -47,14 +48,30 @@ _DOING = {
 }
 
 
+# A command's setup is not the act: the person is owed the command, not the
+# environment wrapped around it.
+_SETUP = re.compile(r"^(?:export\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=\S+(?:\s+|$))+")
+# Said, not printed: the screen has the whole command.
+_COMMAND_CHARS = 60
+
+
+def _command_said(command: str) -> str:
+    """The act, without its setup, short enough to say aloud."""
+    said = " ".join(_SETUP.sub("", command).split()) or " ".join(command.split())
+    return said if len(said) <= _COMMAND_CHARS \
+        else said[:_COMMAND_CHARS - 3] + "…"
+
+
 def _what(request: dict) -> str:
     """What the agent wants to do, in words fit to be said aloud."""
     call = request.get("toolCall") or {}
     raw = call.get("rawInput") or {}
-    target = raw.get("command") or raw.get("file_path") or raw.get("filePath") \
-        or raw.get("path") or call.get("title") or ""
-    target = str(target)
-    if "/" in target and " " not in target:
+    command = raw.get("command")
+    target = str(command or raw.get("file_path") or raw.get("filePath")
+                 or raw.get("path") or call.get("title") or "")
+    if command:
+        target = _command_said(target)
+    elif "/" in target and " " not in target:
         target = Path(target).name  # the name is enough to say; the screen has the rest
     doing = _(_DOING.get(call.get("kind") or "", N_("do")))
     return f"{doing} {target}".strip()
