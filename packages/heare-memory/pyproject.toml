@@ -1,6 +1,6 @@
 [project]
 name = "heare-memory"
-version = "0.2.0"
+version = "0.3.0"
 requires-python = ">=3.11"
 license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = ["heare-core", "aiosqlite>=0.20.0"]

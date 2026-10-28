@@ -570,7 +570,7 @@ wheels = [
 
 [[package]]
 name = "heare-brain"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-brain" }
 dependencies = [
     { name = "aiohttp" },
@@ -593,7 +593,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-chat"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-chat" }
 dependencies = [
     { name = "heare-core" },
@@ -608,7 +608,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-cli-hands"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-cli-hands" }
 dependencies = [
     { name = "heare-core" },
@@ -625,7 +625,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-core"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-core" }
 dependencies = [
     { name = "httpx" },
@@ -640,7 +640,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-eyes"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-eyes" }
 dependencies = [
     { name = "heare-core" },
@@ -655,7 +655,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-keeper"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-keeper" }
 dependencies = [
     { name = "heare-core" },
@@ -670,7 +670,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-memory"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-memory" }
 dependencies = [
     { name = "aiosqlite" },
@@ -685,7 +685,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-native-hands"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-native-hands" }
 dependencies = [
     { name = "heare-core" },
@@ -702,7 +702,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-reach"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-reach" }
 dependencies = [
     { name = "heare-core" },
@@ -717,7 +717,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-sim"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-sim" }
 dependencies = [
     { name = "heare-core" },
@@ -732,7 +732,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-sources"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-sources" }
 dependencies = [
     { name = "heare-core" },
@@ -747,7 +747,7 @@ requires-dist = [
 
 [[package]]
 name = "heare-voice"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/heare-voice" }
 dependencies = [
     { name = "edge-tts" },
