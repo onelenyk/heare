@@ -1,0 +1,12 @@
+{"id": "greeting", "ask": "привіт", "forbid": ["recall", "delegate", "remind", "list_reminders", "cancel_reminder", "read_body", "stop_work"], "max_chars": 80}
+{"id": "thanks", "ask": "дякую", "forbid": ["recall", "delegate", "remind", "list_reminders", "cancel_reminder", "read_body", "stop_work"], "max_chars": 80}
+{"id": "recall_vacation", "ask": "що було з відпусткою?", "facts": ["Людину звати Назар"], "memory": "Ти казав, що відпустка в листопаді.", "verbs": ["recall"], "said_has": [["листопад"]]}
+{"id": "recall_yesterday", "ask": "що я казав вчора про відпустку?", "facts": ["Людину звати Назар"], "memory": "Ти казав, що відпустка в листопаді.", "verbs": ["recall"], "said_has": [["листопад"]]}
+{"id": "count_reminders", "ask": "скільки в мене нагадувань?", "reminders": [{"text": "подзвонити мамі", "in_seconds": 900}], "verbs": ["list_reminders"], "said_has": [["1", "одн"]]}
+{"id": "set_reminder", "ask": "нагадай мені за десять хвилин подзвонити мамі", "verbs": ["remind"]}
+{"id": "cancel_reminder", "ask": "скасуй нагадування про дзвінок", "reminders": [{"text": "подзвонити мамі", "in_seconds": 900}], "verbs": ["cancel_reminder"]}
+{"id": "delegate_files", "ask": "порахуй файли в теці Downloads", "verbs": ["delegate"]}
+{"id": "delegate_draw", "ask": "намалюй сердечко на екрані Mac", "verbs": ["delegate"]}
+{"id": "recall_empty_day", "ask": "що я робив у понеділок?", "verbs": ["recall"], "said_not": ["зустріч", "лікар", "презентац", "вечер", "подорож"]}
+{"id": "ambiguous_cleanup", "ask": "прибери це", "forbid": ["delegate"], "said_has": [["що саме", "уточн", "?"]]}
+{"id": "capabilities", "ask": "що ти вмієш?", "forbid": ["recall", "delegate", "remind", "list_reminders", "cancel_reminder", "read_body", "stop_work"], "said_has": [["файл", "код", "shell", "команд", "агент", "руки", "нагад", "екран"]]}

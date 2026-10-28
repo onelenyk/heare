@@ -1,4 +1,4 @@
-.PHONY: help brain chat voice keeper test bench eval-route panel-preview panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge fact-e2e clean app live rollback releases release soak e2e-dist prompt i18n i18n-check
+.PHONY: help brain chat voice keeper test bench eval-route panel-preview panel-test panel-smoke panel-deploy coverage typecheck lint format check quality eval-review eval-judge eval-voice fact-e2e clean app live rollback releases release soak e2e-dist prompt i18n i18n-check
 
 help:
 	@echo "heare — the app (heare/), the tests (tests/heare/)"
@@ -19,6 +19,7 @@ help:
 	@echo "  make quality   - check + coverage + typecheck"
 	@echo "  make eval-review - live quality eval for the daily review (manual, paid)"
 	@echo "  make eval-judge - live quality eval for the judge of actions (manual, paid)"
+	@echo "  make eval-voice - live quality eval for the voice (manual, paid)"
 	@echo "  make fact-e2e  - live fact loop end to end (manual, paid)"
 	@echo "  make clean     - caches and bytecode"
 	@echo "  make app       - dist/heare.app and dist/heare.dmg: the menubar app, Python inside"
@@ -94,6 +95,11 @@ eval-review:
 
 eval-judge:
 	uv run python scripts/judge_eval.py
+
+# Not part of check: a real model, real keys, real cost. What the voice does
+# with real phrases: the verbs it calls, what it says, how long.
+eval-voice:
+	uv run python scripts/voice_eval.py
 
 # Not part of check: two real model calls, real cost, a temporary state root.
 fact-e2e:
