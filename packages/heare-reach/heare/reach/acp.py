@@ -73,6 +73,28 @@ class Event:
     t: float
 
 
+# The raw input fields that say what a tool is doing, in the order worth
+# trying: a command, then a file, then a search.
+_RAW = ("command", "file_path", "filePath", "path", "pattern", "query")
+
+
+def _tool_text(u: dict) -> str:
+    """A tool step in one line: its title, and what it is doing if it says."""
+    title = u.get("title") or u.get("kind") or "tool"
+    raw = u.get("rawInput")
+    raw = raw if isinstance(raw, dict) else {}
+    detail = next(
+        (" ".join(str(raw[k]).split()) for k in _RAW
+         if isinstance(raw.get(k), str) and raw[k].strip()),
+        "",
+    )
+    if not detail:
+        return title
+    text = f"{title} · {detail}"
+    # The 120 counts the ellipsis too: a step that fits is not cut.
+    return text[:119] + "…" if len(text) > 120 else text
+
+
 # Given the session and the request's params, answer "allow" or "reject".
 Decide = Callable[["Session", dict], Awaitable[str]]
 
@@ -171,7 +193,7 @@ class Session:
         elif kind == "agent_thought_chunk":
             ev = Event("thought", (u.get("content") or {}).get("text") or "", t)
         elif kind == "tool_call":
-            ev = Event("tool", u.get("title") or u.get("kind") or "tool", t)
+            ev = Event("tool", _tool_text(u), t)
         elif kind == "tool_call_update" and u.get("status") in ("completed", "failed"):
             ev = Event("tool_done", f"{u.get('title') or ''} {u['status']}".strip(), t)
         elif kind == "plan":

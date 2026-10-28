@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from heare.reach import agents
+from heare.reach import acp, agents
 from heare.reach.agents import Agent, Known, installed
 from tests.heare.fakes import open_room
 
@@ -132,6 +132,34 @@ class _Acp:
 
     async def session(self, on_event) -> _Session:
         return self._session
+
+
+async def _allow(session, request) -> str:
+    return "allow"
+
+
+def _step(update: dict) -> str:
+    """The event text one ACP update makes."""
+    session = acp.Session(acp.Agent("opencode", on_permission=_allow), "s1")
+    session._update(update)
+    return session.events[-1].text
+
+
+def test_a_tool_step_says_what_the_tool_is_doing():
+    assert _step({"sessionUpdate": "tool_call", "title": "bash",
+                  "rawInput": {"command": "ls ~/Downloads | wc -l"}}) \
+        == "bash · ls ~/Downloads | wc -l"
+    assert _step({"sessionUpdate": "tool_call", "title": "read",
+                  "rawInput": {"file_path": "~/Downloads/a.txt"}}) \
+        == "read · ~/Downloads/a.txt"
+    assert _step({"sessionUpdate": "tool_call", "title": "bash"}) == "bash"
+
+
+def test_a_long_tool_step_is_cut_to_one_hundred_and_twenty():
+    text = _step({"sessionUpdate": "tool_call", "title": "bash",
+                  "rawInput": {"command": "x" * 200}})
+    assert text.endswith("…")
+    assert len(text) == 120
 
 
 async def test_the_model_is_named_on_the_session(monkeypatch, tmp_path):

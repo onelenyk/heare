@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from heare.core.forms import Task
+from heare.core.i18n import _ as said
 from heare.model.route import FirstHand, Router
 from heare.hand import Handoff
 
@@ -67,7 +68,8 @@ async def test_what_the_native_hands_hand_on_the_other_hands_do():
 
     assert await first.run("скільки файлів", desk) == "opencode: готово"
     assert cli.tasks == ["Порахуй файли в ~/Downloads"]
-    assert desk.steps == ["handed over from native-hands"]
+    assert desk.steps == [said("handed over from {name}").format(name="native-hands")]
+    assert desk.steps != ["handed over from native-hands"]
 
 
 async def test_with_nobody_to_hand_on_to_it_says_so():
