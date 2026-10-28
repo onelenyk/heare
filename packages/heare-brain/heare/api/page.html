@@ -680,6 +680,7 @@
 
 <script>
 /*WORDS*/
+const LOCALE = document.documentElement.lang === "uk" ? "uk-UA" : "en-US";
 const $ = id => document.getElementById(id);
 const api = (path, opts = {}) => fetch("/api/" + path, {
   ...opts, credentials: "same-origin",
@@ -920,12 +921,23 @@ function tasks(list, permission, question) {
 
 /* ── the parts that connect to the brain ── */
 const FORM = {input: tr("input"), output: tr("output"), executor: tr("executor")};
-const PART_LABEL = {web: tr("page"), eyes: tr("eyes"), text: tr("chat"), voice: tr("voice"), opencode: tr("hands")};
+const PART_LABEL = {web: tr("page"), eyes: tr("Eyes"), text: tr("chat"), voice: tr("Voice"), opencode: tr("CLI hands"), sources: tr("Sources"), "native-hands": tr("Native hands")};
+// What a part is, in the person's words. The manifest's `about` is for the
+// model (English, how to route work to it); it must not be shown here.
+const PART_WHAT = {
+  voice: tr("listens and speaks"),
+  eyes: tr("what is in front, whether you are here, whether something plays"),
+  sources: tr("the weather and more: what is around now"),
+  opencode: tr("an agent acts in the system: code, files, commands"),
+  "native-hands": tr("quick acts on the bodies: OLED, light, pins"),
+  web: tr("a page in the browser"),
+  text: tr("a conversation in the terminal"),
+};
 const PART_STATE = {pending: tr("waiting"), approved: tr("connected"), away: tr("not connected"), rejected: tr("rejected"), expired: tr("timed out")};
 const PART_ORDER = {pending: 0, approved: 1, away: 2, rejected: 3, expired: 4};
 // Where a card stands on the strip. Always the same order, so a part that
 // drops out or comes back moves nothing; only a part that asks comes first.
-const PART_PLACE = {voice: 1, opencode: 2, eyes: 3, text: 4};
+const PART_PLACE = {voice: 1, "native-hands": 2, opencode: 2, eyes: 3, sources: 3, text: 4};
 const placeOf = (pid, b) => b.state === "pending" ? 0
   : pid === webPid ? 8 : pid.startsWith("window@") ? 9
   : PART_PLACE[b.channel] ?? ((b.forms || []).includes("executor") ? 2 : 5);
@@ -1153,7 +1165,8 @@ function partWidget(pid, b) {
   const card = el("div", "part" + (b.state === "pending" ? " wait" : "") + (drawerPid === pid ? " open" : ""));
   card.dataset.pid = pid;
   card.append(partHead(pid, b));
-  if (b.about) card.append(el("p", "about", b.about));
+  const what = PART_WHAT[b.channel] || b.about;
+  if (what) card.append(el("p", "about", what));
   if (b.state === "approved") card.append(...partHealth(b));
   // Shown, because it is a wider trust than the rest: this part hears
   // the whole conversation, not only its own channel.
@@ -1772,7 +1785,7 @@ const speak = (text, channel) => {
   if (!aloud || !text || !speech || (channel !== "screen" && channel !== "web")) return;
   speech.cancel();
   const said = new SpeechSynthesisUtterance(text);
-  said.lang = "uk-UA";
+  said.lang = LOCALE;
   speech.speak(said);
 };
 const setAloud = on => {
@@ -1792,7 +1805,7 @@ const hear = $("hear");
 if (!Recognition) hear.hidden = true;
 else {
   const rec = new Recognition();
-  rec.lang = "uk-UA"; rec.interimResults = false; rec.continuous = false;
+  rec.lang = LOCALE; rec.interimResults = false; rec.continuous = false;
   let listening = false;
   rec.onresult = e => {
     const text = [...e.results].map(r => r[0].transcript).join(" ").trim();
@@ -1825,13 +1838,13 @@ const mindSource = v => MIND_SOURCE[v] || (v ? String(v) : "—");
 const mindDate = sec => {
   const d = new Date(Number(sec) * 1000);
   return Number.isFinite(d.getTime())
-    ? d.toLocaleDateString("uk-UA", {day: "2-digit", month: "2-digit", year: "numeric"})
+    ? d.toLocaleDateString(LOCALE, {day: "2-digit", month: "2-digit", year: "numeric"})
     : "—";
 };
 const mindTime = sec => {
   const d = new Date(Number(sec) * 1000);
   return Number.isFinite(d.getTime())
-    ? d.toLocaleString("uk-UA", {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"})
+    ? d.toLocaleString(LOCALE, {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"})
     : "—";
 };
 const mindIn = sec => {
@@ -1852,7 +1865,7 @@ const mindStamp = v => {
   if (!v) return "—";
   const d = new Date(v);
   return Number.isFinite(d.getTime())
-    ? d.toLocaleString("uk-UA", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})
+    ? d.toLocaleString(LOCALE, {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})
     : "—";
 };
 
@@ -2152,7 +2165,7 @@ let backupsSeq = 0;
 const backupWhen = iso => {
   const d = new Date(iso);
   return Number.isFinite(d.getTime())
-    ? d.toLocaleString("uk-UA", {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"})
+    ? d.toLocaleString(LOCALE, {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"})
     : "—";
 };
 function backupStatus(text, ok) {

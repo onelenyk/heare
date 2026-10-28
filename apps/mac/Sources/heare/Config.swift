@@ -13,7 +13,7 @@ struct Config {
     var setupPort = 9791
     var url = ""
     /// What the person hears and sees: uk or en, as config.py says.
-    var language = "uk"
+    var language = "en"
     var apiTokenFile: String
 
     /// $HOME first, as Python's Path.home() does: the shell and its

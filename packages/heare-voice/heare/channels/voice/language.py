@@ -15,6 +15,21 @@ WHISPER_NAME_TO_ISO: dict[str, str] = {
 }
 
 
+def language_of(settings, *, fallback: str = "uk") -> str:
+    """The language this voice hears and speaks, from the person's settings.
+
+    ``groq_language`` is the old per-turn recogniser hint and still wins when
+    it is set; otherwise the same ``language`` the page and the brain use
+    decides. Anything unrecognised falls back — the default stays Ukrainian,
+    because that is what ``language`` defaults to.
+    """
+    for name in ("groq_language", "language"):
+        value = str(getattr(settings, name, "") or "").strip().lower()
+        if value in SUPPORTED_LANGS:
+            return value
+    return fallback
+
+
 # CCS-05a: politeness markers that may precede a stop-word in a standalone
 # cancel imperative (e.g. "please cancel", "будь ласка стоп"). Stripped
 # at the START of the utterance only — they cannot appear mid-utterance.

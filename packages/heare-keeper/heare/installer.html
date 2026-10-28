@@ -86,12 +86,7 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const post = (path, body) => fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
   .then(async r => { const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error((data.errors || [r.statusText]).join("; ")); return data; });
 
-const STEPS = [["role", tr("This Mac")], ["parts", tr("Parts")], ["keys", tr("Keys")], ["ready", tr("Ready")]];
-const ROLES = [
-  ["all", tr("All here"), tr("the brain and the parts on this computer")],
-  ["body", tr("Body"), tr("the brain is elsewhere; here — voice, eyes, hands")],
-  ["brain", tr("Only the brain"), tr("the parts connect from other machines")],
-];
+const STEPS = [["role", tr("Role")], ["parts", tr("Parts")], ["keys", tr("Keys")], ["ready", tr("Ready")]];
 const KEYS = {
   DEEPSEEK_API_KEY: {label: "DeepSeek", why: tr("thinking — the brain answers with it"), get: "https://platform.deepseek.com/api_keys"},
   GROQ_API_KEY: {label: "Groq", why: tr("hearing — it recognises the voice's speech"), get: "https://console.groq.com/keys"},
@@ -139,11 +134,11 @@ function role() {
   let pick = chosen;
   const url = el("input"), code = el("input");
   const body = el("div"); body.hidden = pick !== "body";
-  for (const [name, title, what] of ROLES) {
+  for (const {name, label, what} of machine.roles) {
     const row = el("label", "choice" + (name === pick ? " on" : "")), radio = el("input");
     radio.type = "radio"; radio.name = "role"; radio.checked = name === pick;
     radio.onchange = () => { pick = name; body.hidden = name !== "body"; out.forEach(n => n.classList && n.classList.contains("choice") && n.classList.toggle("on", n.contains(radio))); };
-    const text = el("span"); text.append(el("b", "", title), el("small", "", what));
+    const text = el("span"); text.append(el("b", "", tr(label)), el("small", "", tr(what)));
     row.append(radio, text); out.push(row);
   }
   url.placeholder = tr("https://my-brain.example"); url.value = machine.url || "";

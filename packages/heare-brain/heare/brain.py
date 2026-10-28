@@ -33,7 +33,7 @@ from heare.config import HOME, Settings
 from heare.core import Core
 from heare.engine import Engine, Intents
 from heare.features import build_features
-from heare.language import uk
+from heare.language import for_language
 from heare.memory.contracts import ReviewReport
 from heare.memory.review import last_reviewed, mark_reviewed, notice
 from heare.mind import Mind
@@ -144,7 +144,7 @@ class Brain:
             gate=Judge(self.settings),
             prompt=lambda: persona.prompt(
                 self.core.state.around, self.bodies.parts() if self.bodies else None),
-            names=names, judge=persona.JUDGE, words=uk,
+            names=names, judge=persona.JUDGE, words=for_language(self.settings.language),
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
         )
         self.core.attach_tools(Toolbox(

@@ -21,6 +21,23 @@ from heare.core.i18n import N_, _
 
 
 @dataclass(frozen=True)
+class Role:
+    name: str
+    label: str
+    what: str
+
+
+# The three answers the keeper's form and install.sh share, in the order
+# the form shows them. A part belongs to no role: the role says where the
+# brain is, the parts say what this machine does.
+ROLES = {role.name: role for role in (
+    Role("all", N_("All here"), N_("the brain and the parts on this computer")),
+    Role("body", N_("Body"), N_("the brain is elsewhere; here are the parts")),
+    Role("brain", N_("Only the brain"), N_("the parts connect from other machines")),
+)}
+
+
+@dataclass(frozen=True)
 class Part:
     name: str
     label: str
@@ -42,14 +59,20 @@ PARTS = {part.name: part for part in (
     Part("sources", N_("Sources"), N_("the weather and more: what is around now"), "sources", ("input",),
          "the weather outside"),
     # "hands" is the folder the cli hands were turned on in before 26 October.
-    Part("hands", "CLI hands", N_("an agent acts in the system: code, files, commands"), "opencode",
+    Part("hands", N_("CLI hands"), N_("an agent acts in the system: code, files, commands"), "opencode",
          ("executor",), "an agent in the terminal: code, files, commands, web search",
          module="cli_hands"),
-    Part("native-hands", "Native hands", N_("quick acts on the bodies: OLED, light, pins"),
+    Part("native-hands", N_("Native hands"), N_("quick acts on the bodies: OLED, light, pins"),
          "native-hands", ("executor",),
          "quick acts on the bodies in «My body»: show, switch, read",
          module="native_hands"),
 )}
+
+
+def roles() -> list[dict]:
+    """The roles the form offers: name, label, what, in canonical order."""
+    return [{"name": role.name, "label": role.label, "what": role.what}
+            for role in ROLES.values()]
 
 # Where a key is checked: a list of models answers only to a key that works.
 KEY_CHECKS = {

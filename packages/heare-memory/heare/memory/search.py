@@ -70,6 +70,7 @@ from typing import Any
 # the one that stopped being extended would quietly return nothing for
 # ordinary spoken questions — the exact failure that list was built to
 # stop.
+from heare.core.i18n import _, language
 from heare.memory.fts import _sanitize_fts_query
 from heare.memory.when import parse_when, said_when, strip_when
 
@@ -106,6 +107,31 @@ QUESTION_KEEPS_WORDS = 2
 # near-identical, so the top three rows are frequently fewer than three
 # distinct things said.
 _OVERFETCH = 8
+
+# The Ukrainian wording of the recall answer, used when the catalog has
+# not been integrated yet. Every line is marked with `_()` above; once
+# `make i18n` has translated them the catalog wins and this table is
+# never consulted. It stays here while search.py is still in the
+# language rule's MAY_SPEAK list (see docs/product/language.md, «Лишилось»).
+_UK_RECALL = {
+    "I don't remember talking about that.": "Не пригадую, щоб ми про це говорили.",
+    "{when} you said: {what}": "{when} ти казав: {what}",
+    "{when} it came up: {what}": "{when} прозвучало: {what}",
+    "Also about that: {days}.": "Ще про це було {days}.",
+}
+
+
+def _say(text: str, **fields: str) -> str:
+    """One person-facing sentence, in the language chosen on the page.
+
+    `_()` is the catalog key (the English line). The fallback only covers
+    the window before the Ukrainian translation exists, so Ukrainian does
+    not turn English the day this code lands.
+    """
+    said = _(text)
+    if language() == "uk" and said == text:
+        said = _UK_RECALL.get(text, text)
+    return said.format(**fields) if fields else said
 
 
 def strip_names(text: str, names: Sequence[str]) -> str:
@@ -302,13 +328,15 @@ def spoken(fragments: list[Fragment], *, now: datetime) -> str:
     memory and a coincidence.
     """
     if not fragments:
-        return "Не пригадую, щоб ми про це говорили."
+        return _say("I don't remember talking about that.")
 
     first, *rest = fragments
     when = said_when(first.ts, now=now)
-    lead = when[0].upper() + when[1:]
-    verb = "прозвучало" if first.agent_spoken else "ти казав"
-    answer = f"{lead} {verb}: {shorten(first.text)}"
+    lead = _lead(when)
+    key = (
+        "{when} it came up: {what}" if first.agent_spoken else "{when} you said: {what}"
+    )
+    answer = _say(key, when=lead, what=shorten(first.text))
     if not answer.endswith((".", "!", "?", "…")):
         answer += "."
 
@@ -324,8 +352,23 @@ def spoken(fragments: list[Fragment], *, now: datetime) -> str:
         if said != when and said not in others:
             others.append(said)
     if others:
-        answer += f" Ще про це було {' і '.join(others)}."
+        joiner = " and " if language() == "en" else " і "
+        answer += " " + _say("Also about that: {days}.", days=joiner.join(others))
     return answer
+
+
+def _lead(when: str) -> str:
+    """The date at the head of the sentence.
+
+    English needs "On Tuesday you said", but never "On today"; Ukrainian
+    already carries its preposition in the weekday and only needs the
+    capital letter.
+    """
+    if language() == "en":
+        if when in ("today", "yesterday", "the day before yesterday"):
+            return when[0].upper() + when[1:]
+        return f"On {when}"
+    return when[0].upper() + when[1:]
 
 
 __all__ = [

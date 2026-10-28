@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-28 01:19+0200\n"
+"POT-Creation-Date: 2026-10-28 21:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -544,16 +544,43 @@ msgstr ""
 msgid "page"
 msgstr ""
 
-msgid "eyes"
+msgid "Eyes"
 msgstr ""
 
 msgid "chat"
 msgstr ""
 
-msgid "voice"
+msgid "Voice"
 msgstr ""
 
-msgid "hands"
+msgid "CLI hands"
+msgstr ""
+
+msgid "Sources"
+msgstr ""
+
+msgid "Native hands"
+msgstr ""
+
+msgid "listens and speaks"
+msgstr ""
+
+msgid "what is in front, whether you are here, whether something plays"
+msgstr ""
+
+msgid "the weather and more: what is around now"
+msgstr ""
+
+msgid "an agent acts in the system: code, files, commands"
+msgstr ""
+
+msgid "quick acts on the bodies: OLED, light, pins"
+msgstr ""
+
+msgid "a page in the browser"
+msgstr ""
+
+msgid "a conversation in the terminal"
 msgstr ""
 
 msgid "connected"
@@ -1550,28 +1577,10 @@ msgstr ""
 msgid "eyes: looking around"
 msgstr ""
 
-msgid "This Mac"
+msgid "Role"
 msgstr ""
 
 msgid "Ready"
-msgstr ""
-
-msgid "All here"
-msgstr ""
-
-msgid "the brain and the parts on this computer"
-msgstr ""
-
-msgid "Body"
-msgstr ""
-
-msgid "the brain is elsewhere; here — voice, eyes, hands"
-msgstr ""
-
-msgid "Only the brain"
-msgstr ""
-
-msgid "the parts connect from other machines"
 msgstr ""
 
 msgid "thinking — the brain answers with it"
@@ -1696,28 +1705,22 @@ msgstr ""
 msgid "Start using it"
 msgstr ""
 
-msgid "Voice"
+msgid "All here"
 msgstr ""
 
-msgid "listens and speaks"
+msgid "the brain and the parts on this computer"
 msgstr ""
 
-msgid "Eyes"
+msgid "Body"
 msgstr ""
 
-msgid "what is in front, whether you are here, whether something plays"
+msgid "the brain is elsewhere; here are the parts"
 msgstr ""
 
-msgid "Sources"
+msgid "Only the brain"
 msgstr ""
 
-msgid "the weather and more: what is around now"
-msgstr ""
-
-msgid "an agent acts in the system: code, files, commands"
-msgstr ""
-
-msgid "quick acts on the bodies: OLED, light, pins"
+msgid "the parts connect from other machines"
 msgstr ""
 
 msgid "only on a Mac"
@@ -1942,4 +1945,19 @@ msgstr ""
 #, python-brace-format
 msgid "I stopped hearing {s} seconds ago — the microphone seems gone. I need a restart."
 msgstr ""
+
+#~ msgid "This Mac"
+#~ msgstr ""
+
+#~ msgid "the brain is elsewhere; here — voice, eyes, hands"
+#~ msgstr ""
+
+#~ msgid "eyes"
+#~ msgstr ""
+
+#~ msgid "voice"
+#~ msgstr ""
+
+#~ msgid "hands"
+#~ msgstr ""
 

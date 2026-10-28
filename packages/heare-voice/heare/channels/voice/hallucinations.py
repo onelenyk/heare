@@ -51,6 +51,26 @@ _ALWAYS: frozenset[str] = frozenset(
         "конец",
         "the end",
         "you",
+        # The English caption furniture: the same training data, the same
+        # invented credits and sign-offs when the room is quiet.
+        "subtitles",
+        "subtitles by",
+        "subtitled by",
+        "transcribed by",
+        "transcription by",
+        "captioned by",
+        "amara.org",
+        "www.amara.org",
+        "please subscribe",
+        "like and subscribe",
+        "don't forget to subscribe",
+        "see you next time",
+        "see you in the next video",
+        "background music",
+        "music playing",
+        "silence",
+        "no speech",
+        "inaudible",
     }
 )
 
@@ -75,6 +95,24 @@ _COURTESY: frozenset[str] = frozenset(
         "окей",
         "ok",
         "okay",
+        "bye",
+        "bye bye",
+        "goodbye",
+        "see you",
+        "see you later",
+        "you're welcome",
+        "yeah",
+        "yep",
+        "yup",
+        "nah",
+        "nope",
+        "hmm",
+        "mm-hmm",
+        "uh-huh",
+        "uh",
+        "um",
+        "er",
+        "mm",
     }
 )
 
@@ -88,6 +126,16 @@ _PREFIXES: tuple[str, ...] = (
     "продовження дал",
     "продолжение след",
     "переклад субтитр",
+    "subtitles by",
+    "subtitled by",
+    "transcribed by",
+    "transcription by",
+    "captioned by",
+    "please subscribe",
+    "like and subscribe",
+    "don't forget to subscribe",
+    "amara.org",
+    "www.amara.org",
 )
 
 _BRACKETED = re.compile(r"^[\[\(\*<]+.*[\]\)\*>]+$")

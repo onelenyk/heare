@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="heare — знімок архітектури й інфраструктури на 18 жовтня 2026.">
+<meta name="description" content="heare — знімок архітектури й інфраструктури на 28 жовтня 2026.">
 <title>heare — як воно влаштоване зараз</title>
 <style>
   :root {
@@ -1240,7 +1240,7 @@
       <span>архітектурний знімок · прототип на одному <span class="proper">Mac</span></span>
     </div>
     <h1>heare — як воно влаштоване зараз</h1>
-    <p class="dateline">18 жовтня 2026</p>
+    <p class="dateline">28 жовтня 2026</p>
     <p class="note">знімок архітектури; джерело правди — код</p>
   </header>
 
@@ -1413,7 +1413,7 @@
         </div>
       </div>
 
-      <figcaption class="caption">Схема 1 · мозок слухає лише 127.0.0.1:9790; сторінка тримає ключ власника; частини ходять у двері й читають свій канал.</figcaption>
+      <figcaption class="caption">Схема 1 · мозок типово слухає 127.0.0.1:9790; сторінка тримає HttpOnly cookie; частини ходять у двері й читають свій канал.</figcaption>
     </figure>
   </section>
 
@@ -1718,9 +1718,9 @@
 
       <article class="trust">
         <span class="k">02 · сторінка</span>
-        <h3>Ключ у вікні</h3>
-        <p>На localhost HTML приходить із ключем усередині: <code>window.HEARE_TOKEN</code>. Сторінка схвалює частини, відповідає на питання, зупиняє роботу.</p>
-        <span class="tagline">лише 127.0.0.1</span>
+        <h3>Ключ у cookie</h3>
+        <p>Сторінка отримує <code>heare_session</code> — HttpOnly cookie після парування кодом; далі браузер шле її сам. Сторінка схвалює частини, відповідає на питання, зупиняє роботу.</p>
+        <span class="tagline">cookie, не токен в URL</span>
       </article>
 
       <article class="trust">
@@ -1754,7 +1754,7 @@
 
     <div class="warning">
       <span class="w-mark">Чесно</span>
-      <p><b>Це авторизація прототипу.</b> Вона безпечна лише тому, що мозок слухає <code>127.0.0.1</code>. Публічний мозок потребує переробки: токени на пристрій, одноразові коди, cookies замість токенів в URL, ліміти, аудит. Цього ще немає.</p>
+      <p><b>Це авторизація прототипу.</b> На localhost мозок слухає <code>127.0.0.1</code>. Для публічного мозку вже є ключ на кожну частину, одноразовий код парування (5 хв) і HttpOnly cookie замість токена в URL; TLS, тунелю й аудиту доступу немає.</p>
     </div>
   </section>
 
@@ -1878,7 +1878,7 @@
         <span class="milestone">Ф6</span>
         <div>
           <h3>Мозок ззовні</h3>
-          <p>Публічний домен, https, тунель назовні. Зараз двері чують лише <code>127.0.0.1</code>.</p>
+          <p>Публічний домен, https, тунель назовні. Типово двері слухають <code>127.0.0.1</code>; у Docker — <code>0.0.0.0</code>, але порт публікується на loopback.</p>
         </div>
       </article>
 
@@ -1891,18 +1891,10 @@
       </article>
 
       <article class="gap-item">
-        <span class="milestone">Ф6</span>
-        <div>
-          <h3>Переробка pairing/auth</h3>
-          <p>Токени на пристрій, одноразові коди, cookies замість токенів в URL, ліміти, аудит. Планується до того, як мозок стане публічним.</p>
-        </div>
-      </article>
-
-      <article class="gap-item">
         <span class="milestone">Ф3</span>
         <div>
           <h3>Мозок на сервері</h3>
-          <p>Тіла тягнуться назовні до мозку на сервері. Готово, коли закрив Mac — а присутність лишилась.</p>
+          <p>Механізм є: окремий мозок, Docker, роль сервера, пара токеном. Справжнього деплою поза Mac ще не робили. Готово, коли закрив Mac — а присутність лишилась.</p>
         </div>
       </article>
 
@@ -1916,16 +1908,17 @@
     </div>
 
     <div class="status">
-      <span><b>Стан на 18 жовтня:</b> Ф1 — зроблено</span>
-      <span>Ф2 — ≈70%</span>
-      <span>Ф4 — ≈90%</span>
-      <span>Ф3, Ф5, Ф6 — не почато</span>
+      <span><b>Стан на 28 жовтня:</b> Ф1 — зроблено</span>
+      <span>Ф2 — ≈85%</span>
+      <span>Ф3 — механізм є</span>
+      <span>Ф4 — зроблено</span>
+      <span>Ф5, Ф6 — немає</span>
     </div>
   </section>
 
   <footer class="footer">
     <a href="https://github.com/onelenyk/heare">onelenyk/heare</a>
-    <span>18 жовтня 2026 · знімок архітектури; джерело правди — код</span>
+    <span>28 жовтня 2026 · знімок архітектури; джерело правди — код</span>
   </footer>
 
 </main>

@@ -61,6 +61,43 @@ _RULES: tuple[tuple[re.Pattern[str], str, str], ...] = (
         "commitment",
         "Не забути: {}.",
     ),
+    # The same statements in English. Both sets are live at once: the
+    # journal holds whatever was said, and the language can be switched
+    # between two lines of it. The fact's `text` is English for an English
+    # sentence, so what the model reads stays English.
+    (
+        re.compile(r"\bmy\s+name(?:'s|\s+is)\s+(?P<value>.+)", re.IGNORECASE),
+        "name",
+        "Your name is {}.",
+    ),
+    (
+        re.compile(r"\bi\s+(?:like|love)\s+(?P<value>.+)", re.IGNORECASE),
+        "prefers",
+        "You like {}.",
+    ),
+    (
+        re.compile(
+            r"\bi(?:'m|\s+am)\s+working\s+on\s+(?P<value>.+)",
+            re.IGNORECASE,
+        ),
+        "works_on",
+        "You are working on {}.",
+    ),
+    (
+        re.compile(r"\bi\s+live\s+in\s+(?P<value>.+)", re.IGNORECASE),
+        "lives_in",
+        "You live in {}.",
+    ),
+    (
+        re.compile(
+            r"\b(?:don't|do\s+not)\s+forget\s+(?P<value>.+)"
+            r"|\bremember\s+to\s+(?P<remember>.+)"
+            r"|\bremind\s+me\s+to\s+(?P<remind>.+)",
+            re.IGNORECASE,
+        ),
+        "commitment",
+        "Don't forget: {}.",
+    ),
 )
 
 # The owner's own words, so the fact starts out proposed. A pass never
@@ -110,9 +147,7 @@ def consolidate(
         added += 1
     if state_path is not None and state is not None:
         journal.save_state(state_path, state)
-    return ConsolidationReport(
-        considered=considered, added=added, skipped=skipped
-    )
+    return ConsolidationReport(considered=considered, added=added, skipped=skipped)
 
 
 def _extract(text: str) -> tuple[str, str, str] | None:
@@ -122,7 +157,17 @@ def _extract(text: str) -> tuple[str, str, str] | None:
         found = pattern.search(text)
         if found is None:
             continue
-        value = found.group("value").strip().rstrip(_TRAILING).strip()
+        value = (
+            (
+                found.group("value")
+                or found.groupdict().get("remember")
+                or found.groupdict().get("remind")
+                or ""
+            )
+            .strip()
+            .rstrip(_TRAILING)
+            .strip()
+        )
         if not 2 <= len(value) <= 200:
             return None
         return predicate, value, template.format(value)

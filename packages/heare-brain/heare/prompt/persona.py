@@ -13,12 +13,17 @@ from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
+from heare.core import i18n
 from heare.laws import TEXT
 from heare.prompt.body import body
 
 RULES = Path(__file__).resolve().parent / "prompts" / "voice_rules.txt"
 IDENTITY = Path.home() / ".heare" / "settings" / "identity.json"
 _DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def _english() -> bool:
+    return i18n.language() == "en"
 
 
 def name() -> str:
@@ -29,8 +34,12 @@ def name() -> str:
 
 
 def names() -> frozenset[str]:
-    """The name as a word of a command must not count: «Дока, стоп» is «стоп»."""
-    return frozenset(w for w in (name().lower(), "дока", "heare") if w)
+    """The name as a word of a command must not count: «Дока, стоп» is «стоп».
+
+    Both spellings of the default name are kept: the recogniser writes
+    «Дока» or «Doka» depending on the language it heard.
+    """
+    return frozenset(w for w in (name().lower(), "дока", "doka", "heare") if w)
 
 
 def now_block(around: Mapping[str, object], now: float) -> str:
@@ -85,13 +94,15 @@ async def prompt(around: Mapping[str, object] | None = None,
     # How to act on the body. What the body is comes in its own block,
     # built from the parts; this says once what every line there means.
     # «Екран» is the word that went wrong: he read the canvas when asked
-    # about the screen (27 October).
+    # about the screen (27 October). The person's word is theirs, so the
+    # example follows the language they speak.
+    screen = "screen" if _english() else "екран"
     said.append(
         "Your body is listed below under «My body». To read a body, call "
         "read_body; to change one, and for real work with files, code and "
         "programs, call delegate. The canvas is the heare page in the "
         "browser, not the Mac's screen. When a word could mean more than one "
-        "of your bodies — «екран» may be the canvas, the panel's OLED or the "
+        f"of your bodies — «{screen}» may be the canvas, the panel's OLED or the "
         "Mac — ask which in a few words. When a body is not connected, say so. "
         "When music or video is playing nearby, you answer only when called by "
         "name — that already works. If asked to change how you behave and you "
@@ -111,7 +122,8 @@ async def prompt(around: Mapping[str, object] | None = None,
 # When to speak without being called by name. Examples in both
 # directions, because a rule alone was read as "never": the old app's
 # judge turned everything down for a month. The word SILENT is the core's.
-JUDGE = (
+# The words in «…» are the person's own, so each language has its own set.
+_JUDGE_UK = (
     "The person said the next line in the room, not addressing you by name. "
     "Decide for yourself whether it is worth saying anything.\n"
     "Answer if: it is a question or a request you can answer or carry out; the "
@@ -128,3 +140,35 @@ JUDGE = (
     "If you decide to stay silent, write exactly one word: SILENT. Otherwise "
     "answer as usual, briefly."
 )
+
+_JUDGE_EN = (
+    "The person said the next line in the room, not addressing you by name. "
+    "Decide for yourself whether it is worth saying anything.\n"
+    "Answer if: it is a question or a request you can answer or carry out; the "
+    "person is clearly talking to you («hello», «can you hear me?», «what do "
+    "you think about this?»); they say they have to do or not forget something, "
+    "and you can offer help in one sentence.\n"
+    "Stay silent if: it is a conversation with someone else or on the phone; "
+    "thinking aloud, exclamations, swearing, single words with no meaning "
+    "(«yeah», «well», «uh-huh», «damn»); sound from a video; you have nothing "
+    "to add.\n"
+    "Examples. «Can you hear me?» — answer. «What time is it?» — answer. "
+    "«I must remember to call mom» — offer to remind. «Yeah, I'll call you "
+    "tonight» — stay silent. «Well, whatever» — stay silent. «Pass the "
+    "salt» — stay silent.\n"
+    "If you decide to stay silent, write exactly one word: SILENT. Otherwise "
+    "answer as usual, briefly."
+)
+
+
+def _judge() -> str:
+    """The room judge in the language the person chose, read at use."""
+    return _JUDGE_EN if _english() else _JUDGE_UK
+
+
+def __getattr__(name: str) -> str:
+    # The core is handed ``persona.JUDGE`` once, but the language is read
+    # on every access: a choice made on the page counts from the next turn.
+    if name == "JUDGE":
+        return _judge()
+    raise AttributeError(name)

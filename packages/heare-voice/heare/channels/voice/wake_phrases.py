@@ -52,6 +52,27 @@ _LATIN = str.maketrans({
     "y": "и", "z": "з",
 })
 
+# The other direction, so a name written in Cyrillic («Дока») is still heard
+# when an English recogniser writes it in Latin ("Doka"). «г» is written "g"
+# and not "h": both map to «г» above, but "gava" is how the letter is read
+# in a name, and a wake phrase that sounds wrong is a wake phrase nobody says.
+_CYRILLIC_TO_LATIN = str.maketrans({
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ф": "f",
+    "и": "y", "і": "i", "й": "j", "к": "k", "л": "l", "м": "m", "н": "n",
+    "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "з": "z",
+})
+
+# What an English speaker calls it by, whatever its own name is. A deployment
+# whose identity says «Дока» is still "Doka" to the person beside a Mac set to
+# English, and "heare" is what they say when they cannot remember the name.
+# Matching is whole-word, so a bare "heare" is a complete address on its own.
+_ENGLISH_ADDRESSES: tuple[str, ...] = (
+    "hey heare",
+    "hi heare",
+    "okay heare",
+    "heare",
+)
+
 
 def _forms(name: str) -> list[str]:
     """The name as a person addressing it would actually say it.
@@ -90,6 +111,10 @@ def _variants(word: str) -> list[str]:
         cyrillic = key.translate(_LATIN)
         if cyrillic != key:
             written.append(cyrillic)
+    elif any("Ѐ" <= ch <= "ӿ" for ch in key):
+        latin = key.translate(_CYRILLIC_TO_LATIN)
+        if latin != key:
+            written.append(latin)
     for spelling in written:
         for form in _forms(spelling):
             if form not in out:
@@ -134,6 +159,13 @@ def wake_phrases(settings: Any, persona: str = "", name: str = "") -> list[str]:
     if not phrases:  # never gate on an empty list — it would block everything
         logger.warning("wake: no phrases resolved; falling back to 'гава'")
         phrases = ["гава"]
+    else:
+        # The English addresses are added whenever a name resolved, whatever
+        # language that name is written in: the room may say either, and the
+        # gate cannot know which before it hears the first word.
+        for address in _ENGLISH_ADDRESSES:
+            if address not in phrases:
+                phrases.append(address)
     return phrases
 
 

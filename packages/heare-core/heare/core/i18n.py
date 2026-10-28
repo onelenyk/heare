@@ -20,7 +20,7 @@ from pathlib import Path
 LOCALE = Path(__file__).resolve().parent / "locale"
 DOMAIN = "heare"
 LANGUAGES = ("uk", "en")
-DEFAULT = "uk"
+DEFAULT = "en"
 
 def _default() -> str:
     return DEFAULT

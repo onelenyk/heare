@@ -27,7 +27,7 @@ def test_one_version_is_written_everywhere_it_is_carried(tmp_path):
     for path in release.carriers(repo):
         assert release.rewrite(path, "7.8.9")
     assert release.current(repo) == "7.8.9"
-    site = (repo / "site/index.html").read_text(encoding="utf-8")
+    site = (repo / "site" / "install.html").read_text(encoding="utf-8")
     assert 'const VERSION = "7.8.9";' in site and "v7.8.9</span>" in site
     server = (repo / "docs/server.md").read_text(encoding="utf-8")
     assert "heare/v7.8.9/install.sh" in server and "download/v7.8.9 --version 7.8.9" in server

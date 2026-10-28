@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-28 01:19+0200\n"
+"POT-Creation-Date: 2026-10-28 21:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -544,17 +544,44 @@ msgstr "виконавець"
 msgid "page"
 msgstr "сторінка"
 
-msgid "eyes"
-msgstr "очі"
+msgid "Eyes"
+msgstr "Очі"
 
 msgid "chat"
 msgstr "чат"
 
-msgid "voice"
-msgstr "голос"
+msgid "Voice"
+msgstr "Голос"
 
-msgid "hands"
-msgstr "руки"
+msgid "CLI hands"
+msgstr "Руки CLI"
+
+msgid "Sources"
+msgstr "Джерела"
+
+msgid "Native hands"
+msgstr "Нативні руки"
+
+msgid "listens and speaks"
+msgstr "слухає й говорить"
+
+msgid "what is in front, whether you are here, whether something plays"
+msgstr "що попереду, чи ти тут, чи щось грає"
+
+msgid "the weather and more: what is around now"
+msgstr "погода й інше: що зараз навколо"
+
+msgid "an agent acts in the system: code, files, commands"
+msgstr "агент діє в системі: код, файли, команди"
+
+msgid "quick acts on the bodies: OLED, light, pins"
+msgstr "швидкі дії з тілами: OLED, світло, піни"
+
+msgid "a page in the browser"
+msgstr "сторінка в браузері"
+
+msgid "a conversation in the terminal"
+msgstr "розмова в терміналі"
 
 msgid "connected"
 msgstr "під'єднано"
@@ -1555,29 +1582,11 @@ msgstr "Бачить"
 msgid "eyes: looking around"
 msgstr "очі: дивлюсь навколо"
 
-msgid "This Mac"
-msgstr "Цей Mac"
+msgid "Role"
+msgstr "Роль"
 
 msgid "Ready"
 msgstr "Готово"
-
-msgid "All here"
-msgstr "Усе тут"
-
-msgid "the brain and the parts on this computer"
-msgstr "мозок і частини на цьому комп'ютері"
-
-msgid "Body"
-msgstr "Тіло"
-
-msgid "the brain is elsewhere; here — voice, eyes, hands"
-msgstr "мозок деінде; тут — голос, очі, руки"
-
-msgid "Only the brain"
-msgstr "Лише мозок"
-
-msgid "the parts connect from other machines"
-msgstr "частини підключаться з інших машин"
 
 msgid "thinking — the brain answers with it"
 msgstr "думати — ним відповідає мозок"
@@ -1701,29 +1710,23 @@ msgstr "готово — частини підключаються до мозк
 msgid "Start using it"
 msgstr "Почати користуватись"
 
-msgid "Voice"
-msgstr "Голос"
+msgid "All here"
+msgstr "Усе тут"
 
-msgid "listens and speaks"
-msgstr "слухає й говорить"
+msgid "the brain and the parts on this computer"
+msgstr "мозок і частини на цій машині"
 
-msgid "Eyes"
-msgstr "Очі"
+msgid "Body"
+msgstr "Тіло"
 
-msgid "what is in front, whether you are here, whether something plays"
-msgstr "що спереду, чи ти тут, чи щось грає"
+msgid "the brain is elsewhere; here are the parts"
+msgstr "мозок деінде; тут частини"
 
-msgid "Sources"
-msgstr "Джерела"
+msgid "Only the brain"
+msgstr "Лише мозок"
 
-msgid "the weather and more: what is around now"
-msgstr "погода й інше: що зараз навколо"
-
-msgid "an agent acts in the system: code, files, commands"
-msgstr "агент діє в системі: код, файли, команди"
-
-msgid "quick acts on the bodies: OLED, light, pins"
-msgstr "швидкі дії з тілами: OLED, світло, піни"
+msgid "the parts connect from other machines"
+msgstr "частини підключаються з інших машин"
 
 msgid "only on a Mac"
 msgstr "лише на Mac"
@@ -1947,4 +1950,19 @@ msgstr "я не чую — мікрофон не відкрився. Мене т
 #, python-brace-format
 msgid "I stopped hearing {s} seconds ago — the microphone seems gone. I need a restart."
 msgstr "я перестав чути {s} секунд тому — схоже, зник мікрофон. Мене треба перезапустити."
+
+#~ msgid "This Mac"
+#~ msgstr "Цей Mac"
+
+#~ msgid "the brain is elsewhere; here — voice, eyes, hands"
+#~ msgstr "мозок деінде; тут — голос, очі, руки"
+
+#~ msgid "eyes"
+#~ msgstr "очі"
+
+#~ msgid "voice"
+#~ msgstr "голос"
+
+#~ msgid "hands"
+#~ msgstr "руки"
 

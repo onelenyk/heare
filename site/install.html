@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" data-i18n-attr="content:metaDescription" content="Installing heare — a second self that hears, sees and reaches your Mac.">
+<title data-i18n="title">heare — install</title>
+<link rel="icon" href="./assets/heare-face.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/lang.css">
+<style>
+  :root {
+    --bg:#131217; --card:#1c1a21; --card-2:#242029; --line:#302c37;
+    --ink:#ece8e2; --soft:#96909e; --accent:#9d7cff; --accent-ink:#17141d;
+    --ok:#5fbf8f;
+    --sans:-apple-system,'Segoe UI',system-ui,sans-serif;
+    --mono:'SF Mono','Fira Code','Cascadia Code',ui-monospace,monospace;
+    --radius:16px;
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { color-scheme:dark; }
+  body {
+    min-height:100vh;
+    background:
+      radial-gradient(900px 460px at 52% -180px, rgba(157,124,255,.08), transparent 72%),
+      var(--bg);
+    color:var(--ink);
+    font:15px/1.6 var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection { background:rgba(157,124,255,.32); }
+  a { color:inherit; }
+  button, input { font:inherit; color:inherit; }
+  .wrap { max-width:820px; margin:0 auto; padding:58px 28px 52px; }
+
+  /* ── back to the landing ── */
+
+  .topbar {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    margin-bottom:34px;
+  }
+  .back {
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    min-height:44px;
+    color:var(--soft);
+    text-decoration:none;
+    font:12px/1 var(--mono);
+    letter-spacing:.04em;
+    transition:color .15s ease;
+  }
+  .back .arrow { color:var(--accent); transition:transform .15s ease; }
+  .back:hover { color:var(--ink); }
+  .back:hover .arrow { transform:translateX(-2px); }
+  .where {
+    color:var(--soft);
+    font:10.5px/1 var(--mono);
+    letter-spacing:.12em;
+    text-transform:uppercase;
+  }
+  .topbar-side {
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+
+  /* ── hero ── */
+
+  .hero { margin-bottom:64px; }
+  h1 {
+    font-size:clamp(52px, 10vw, 78px);
+    line-height:.95;
+    font-weight:640;
+    letter-spacing:-.05em;
+    margin:0 0 26px;
+  }
+  .brand-dot {
+    display:inline-block;
+    width:10px; height:10px;
+    margin-left:10px;
+    border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 0 5px rgba(157,124,255,.11);
+    vertical-align:super;
+  }
+  .lead {
+    max-width:640px;
+    font-size:clamp(19px, 2.7vw, 23px);
+    line-height:1.42;
+    letter-spacing:-.014em;
+    color:var(--ink);
+  }
+  .sub { margin-top:11px; max-width:560px; color:var(--soft); font-size:14.5px; }
+
+  /* ── sections ── */
+
+  .section { margin-top:54px; }
+  .sec-head { display:flex; align-items:baseline; gap:13px; margin-bottom:16px; }
+  .idx { font:11px/1 var(--mono); letter-spacing:.08em; color:var(--accent); }
+  h2 { font-size:18px; font-weight:600; letter-spacing:-.012em; }
+  .card {
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+  }
+
+  /* ── what gets installed ── */
+
+  .what { overflow:hidden; }
+  .what-row {
+    display:grid;
+    grid-template-columns:112px minmax(0, 1fr);
+    gap:20px;
+    align-items:baseline;
+    padding:15px 21px;
+    border-top:1px solid var(--line);
+  }
+  .what-row:first-child { border-top:0; }
+  .what-name { font:12.5px/1.5 var(--mono); color:var(--ink); }
+  .what-desc { color:var(--soft); font-size:14px; }
+
+  /* ── picker ── */
+
+  .picker { padding:23px; display:flex; flex-direction:column; gap:24px; }
+  fieldset { border:0; padding:0; margin:0; min-width:0; }
+  .group-label {
+    display:block;
+    padding:0;
+    margin-bottom:10px;
+    font:11px/1 var(--mono);
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--soft);
+  }
+  .roles { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+  .role, .part-opt { position:relative; display:block; cursor:pointer; }
+  .role input, .part-opt input {
+    position:absolute;
+    width:1px; height:1px;
+    margin:-1px; padding:0; border:0;
+    clip:rect(0 0 0 0);
+    clip-path:inset(50%);
+    overflow:hidden;
+    white-space:nowrap;
+  }
+  .role-body {
+    display:block;
+    min-height:74px;
+    padding:14px 16px;
+    background:var(--card-2);
+    border:1px solid var(--line);
+    border-radius:12px;
+    transition:border-color .16s ease, background .16s ease;
+  }
+  .role-title { display:flex; align-items:center; gap:10px; font-size:15px; font-weight:560; }
+  .radio-dot {
+    position:relative;
+    flex:none;
+    width:17px; height:17px;
+    border:1px solid var(--soft);
+    border-radius:50%;
+  }
+  .radio-dot::after {
+    content:"";
+    position:absolute;
+    inset:3px;
+    border-radius:50%;
+    background:var(--accent);
+    transform:scale(0);
+    transition:transform .16s ease;
+  }
+  .role-sub { display:block; margin-top:4px; padding-left:27px; color:var(--soft); font-size:12.5px; line-height:1.4; }
+  .role:hover .role-body { border-color:var(--soft); }
+  .role input:checked + .role-body {
+    border-color:rgba(157,124,255,.55);
+    background:rgba(157,124,255,.055);
+  }
+  .role input:checked + .role-body .radio-dot { border-color:var(--accent); }
+  .role input:checked + .role-body .radio-dot::after { transform:scale(1); }
+  .role input:focus-visible + .role-body,
+  .part-opt input:focus-visible + .part-body {
+    outline:2px solid var(--accent);
+    outline-offset:3px;
+  }
+
+  .part-opts { display:grid; grid-template-columns:repeat(3, 1fr); gap:9px; }
+  .part-body {
+    display:flex;
+    gap:11px;
+    align-items:flex-start;
+    min-height:58px;
+    padding:12px 14px;
+    background:var(--card-2);
+    border:1px solid var(--line);
+    border-radius:11px;
+    transition:border-color .16s ease, opacity .16s ease;
+  }
+  .part-opt:hover .part-body { border-color:var(--soft); }
+  .box {
+    display:grid;
+    place-items:center;
+    flex:none;
+    width:17px; height:17px;
+    margin-top:2px;
+    border:1px solid var(--soft);
+    border-radius:4px;
+    transition:background .16s ease, border-color .16s ease;
+  }
+  .box::after {
+    content:"";
+    width:4px; height:8px;
+    margin-top:-2px;
+    border-right:1.6px solid var(--accent-ink);
+    border-bottom:1.6px solid var(--accent-ink);
+    transform:rotate(42deg);
+    opacity:0;
+    transition:opacity .12s ease;
+  }
+  .part-opt input:checked + .part-body { border-color:rgba(157,124,255,.45); }
+  .part-opt input:checked + .part-body .box { background:var(--accent); border-color:var(--accent); }
+  .part-opt input:checked + .part-body .box::after { opacity:1; }
+  .part-title { display:block; font-size:14px; line-height:1.35; }
+  .part-sub { display:block; margin-top:2px; color:var(--soft); font-size:11.5px; line-height:1.4; }
+
+  .parts.off .part-opt { cursor:not-allowed; }
+  .parts.off .part-body { opacity:.4; }
+  .parts.off .part-opt:hover .part-body { border-color:var(--line); }
+  .hint { margin-top:10px; color:var(--soft); font:11.5px/1.5 var(--mono); }
+
+  /* ── a body's brain ── */
+
+  .body-fields {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    padding:15px;
+    background:var(--card-2);
+    border:1px solid var(--line);
+    border-radius:12px;
+  }
+  .body-fields[hidden] { display:none; }
+  .field { display:grid; gap:5px; }
+  .field span { color:var(--soft); font:11.5px/1.4 var(--mono); letter-spacing:.02em; }
+  .field input {
+    width:100%;
+    min-width:0;
+    padding:9px 11px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:9px;
+    font:12.5px/1.5 var(--mono);
+  }
+  .field input:focus { outline:none; border-color:var(--accent); }
+
+  /* ── the command ── */
+
+  .command { padding-top:21px; border-top:1px solid var(--line); }
+  .command-head {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    margin-bottom:9px;
+  }
+  .command-label {
+    font:11px/1 var(--mono);
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--soft);
+  }
+  .copy {
+    appearance:none;
+    min-height:42px;
+    padding:0 15px;
+    border:1px solid transparent;
+    border-radius:9px;
+    background:var(--accent);
+    color:var(--accent-ink);
+    font:12px/1 var(--mono);
+    cursor:pointer;
+    transition:filter .15s ease, transform .12s ease, background .15s ease;
+  }
+  .copy:hover { filter:brightness(1.08); }
+  .copy:active { transform:translateY(1px); }
+  .copy:disabled { opacity:.45; cursor:not-allowed; filter:none; transform:none; }
+  .copy:focus-visible { outline:2px solid var(--ink); outline-offset:3px; }
+  .copy.done { background:var(--ok); }
+  pre {
+    margin:0;
+    padding:16px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:12px;
+    color:var(--ink);
+    font:12.5px/1.75 var(--mono);
+    white-space:pre-wrap;
+    overflow-wrap:anywhere;
+  }
+
+  /* ── next ── */
+
+  .next { overflow:hidden; }
+  .step {
+    display:grid;
+    grid-template-columns:96px minmax(0, 1fr);
+    gap:18px;
+    align-items:baseline;
+    padding:14px 21px;
+    border-top:1px solid var(--line);
+  }
+  .step:first-child { border-top:0; }
+  .step-label { font:11px/1.5 var(--mono); letter-spacing:.07em; text-transform:uppercase; color:var(--soft); }
+  .step-value { font-size:14.5px; color:var(--ink); }
+  .step-value a {
+    color:var(--ink);
+    text-decoration:underline;
+    text-decoration-color:var(--line);
+    text-underline-offset:3px;
+    transition:text-decoration-color .15s ease;
+  }
+  .step-value a:hover { text-decoration-color:var(--accent); }
+  code {
+    padding:1px 5px;
+    background:var(--card-2);
+    border:1px solid var(--line);
+    border-radius:5px;
+    font:12.5px/1.5 var(--mono);
+    color:var(--ink);
+  }
+
+  /* ── footer ── */
+
+  .footer {
+    display:flex;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+    margin-top:58px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    color:var(--soft);
+    font:11.5px/1.5 var(--mono);
+    letter-spacing:.02em;
+  }
+  .footer a { color:var(--soft); text-decoration:none; transition:color .15s ease; }
+  .footer a:hover { color:var(--ink); }
+
+  .sr-only {
+    position:absolute;
+    width:1px; height:1px;
+    margin:-1px; padding:0; border:0;
+    clip:rect(0 0 0 0);
+    clip-path:inset(50%);
+    overflow:hidden;
+    white-space:nowrap;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero, .section { animation:rise .58s cubic-bezier(.2,.7,.2,1) both; }
+    .hero { animation-delay:.04s; }
+    .section:nth-of-type(1) { animation-delay:.1s; }
+    .section:nth-of-type(2) { animation-delay:.16s; }
+    .section:nth-of-type(3) { animation-delay:.22s; }
+    @keyframes rise {
+      from { opacity:0; transform:translateY(10px); }
+      to { opacity:1; transform:translateY(0); }
+    }
+  }
+
+  @media (max-width:600px) {
+    .wrap { padding:34px 18px 38px; }
+    .topbar { margin-bottom:28px; }
+    .hero { margin-bottom:48px; }
+    .section { margin-top:46px; }
+    .roles { grid-template-columns:1fr; }
+    .part-opts { grid-template-columns:1fr; }
+    .body-fields { grid-template-columns:1fr; }
+    .part-body { min-height:54px; }
+    .what-row { grid-template-columns:96px minmax(0, 1fr); gap:14px; padding:13px 16px; }
+    .picker { padding:18px; }
+    .copy { min-height:44px; padding:0 16px; }
+    .step { grid-template-columns:1fr; gap:3px; padding:13px 16px; }
+    .footer { flex-direction:column; gap:7px; }
+  }
+</style>
+
+<main class="wrap">
+  <nav class="topbar" aria-label="Page navigation" data-i18n-attr="aria-label:navLabel">
+    <a class="back" href="./" data-lang-link><span class="arrow" aria-hidden="true">←</span><span data-i18n="back">Back to the landing</span></a>
+    <div class="topbar-side">
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="uk" aria-pressed="false">УКР</button>
+      </div>
+      <span class="where" data-i18n="where">install</span>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <h1>heare<span class="brand-dot" aria-hidden="true"></span></h1>
+    <p class="lead" data-i18n="lead">a second self: it hears, sees and reaches your Mac</p>
+    <p class="sub" data-i18n="sub">the brain on a server or here, the parts wherever the hardware is</p>
+  </header>
+
+  <section class="section" aria-labelledby="what-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">01</span>
+      <h2 id="what-title" data-i18n="whatTitle">What gets installed</h2>
+    </div>
+    <div class="card what">
+      <div class="what-row">
+        <span class="what-name" data-i18n="whatBrain">brain</span>
+        <span class="what-desc" data-i18n="whatBrainDesc">doors, conversation, memory, engine</span>
+      </div>
+      <div class="what-row">
+        <span class="what-name" data-i18n="whatVoice">Voice</span>
+        <span class="what-desc" data-i18n="whatVoiceDesc">listens and speaks</span>
+      </div>
+      <div class="what-row">
+        <span class="what-name" data-i18n="whatEyes">Eyes</span>
+        <span class="what-desc" data-i18n="whatEyesDesc">what is in front, whether you are here, whether something is playing · macOS only</span>
+      </div>
+      <div class="what-row">
+        <span class="what-name" data-i18n="whatSources">Sources</span>
+        <span class="what-desc" data-i18n="whatSourcesDesc">weather and more: what is around right now</span>
+      </div>
+      <div class="what-row">
+        <span class="what-name" data-i18n="whatCliHands">CLI hands</span>
+        <span class="what-desc" data-i18n="whatCliHandsDesc">the agent acts in the system: code, files, commands</span>
+      </div>
+      <div class="what-row">
+        <span class="what-name" data-i18n="whatNativeHands">Native hands</span>
+        <span class="what-desc" data-i18n="whatNativeHandsDesc">quick acts on the bodies: OLED, light, pins</span>
+      </div>
+      <div class="what-row">
+        <span class="what-name" data-i18n="whatChat">chat</span>
+        <span class="what-desc" data-i18n="whatChatDesc">conversation in text</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="pick-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">02</span>
+      <h2 id="pick-title" data-i18n="pickTitle">What to install</h2>
+    </div>
+    <div class="card picker">
+      <fieldset class="group">
+        <legend class="group-label" data-i18n="role">Role</legend>
+        <div class="roles" id="roles"></div>
+        <div class="body-fields" id="body-fields" hidden>
+          <label class="field">
+            <span data-i18n="brainUrl">Brain address</span>
+            <input id="brain-url" type="url" placeholder="https://my-brain.example" autocomplete="off">
+          </label>
+          <label class="field">
+            <span data-i18n="brainCode">Connection code — on the brain page: ⚙ → Devices</span>
+            <input id="brain-code" maxlength="8" autocomplete="off" placeholder="8 characters">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="group parts" id="parts">
+        <legend class="group-label" data-i18n="parts">Parts</legend>
+        <div class="part-opts" id="part-opts"></div>
+        <p class="hint" id="parts-hint" aria-live="polite">the selected parts are installed on this machine</p>
+      </fieldset>
+
+      <div class="command">
+        <div class="command-head">
+          <span class="command-label" data-i18n="command">Command</span>
+          <button class="copy" id="copy" type="button">Copy</button>
+        </div>
+        <pre tabindex="0"><code id="command"></code></pre>
+        <p class="hint" id="command-hint" aria-live="polite"></p>
+        <span class="sr-only" id="copy-status" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="next-title">
+    <div class="sec-head">
+      <span class="idx" aria-hidden="true">03</span>
+      <h2 id="next-title" data-i18n="nextTitle">Next</h2>
+    </div>
+    <div class="card next">
+      <div class="step">
+        <span class="step-label" data-i18n="stepPage">Page</span>
+        <span class="step-value"><a href="http://127.0.0.1:9790/">http://127.0.0.1:9790/</a></span>
+      </div>
+      <div class="step">
+        <span class="step-label" data-i18n="stepKeys">Keys</span>
+        <span class="step-value" data-i18n="stepKeysValue">under ⚙ on this page</span>
+      </div>
+      <div class="step">
+        <span class="step-label" data-i18n="stepLogs">Logs</span>
+        <span class="step-value"><code>~/.heare/logs</code></span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <a href="https://github.com/onelenyk/heare" data-repo>onelenyk/heare</a>
+    <a href="./" data-lang-link data-i18n="backFooter">← to the landing</a>
+    <span data-version>v0.3.0</span>
+  </footer>
+</main>
+
+<!-- The one model the page is drawn from. It mirrors heare.machine.ROLES and
+     heare.machine.PARTS; tests/heare/test_unified_model.py keeps them equal. -->
+<script type="application/json" id="model">
+{
+  "roles": [
+    {"name": "all", "label": "Усе тут", "what": "мозок і частини на цій машині"},
+    {"name": "body", "label": "Тіло", "what": "мозок деінде; тут частини"},
+    {"name": "brain", "label": "Лише мозок", "what": "частини підключаються з інших машин"}
+  ],
+  "parts": [
+    {"name": "voice", "label": "Голос", "what": "слухає й говорить", "only": null},
+    {"name": "eyes", "label": "Очі", "what": "що попереду, чи ти тут, чи щось грає", "only": "darwin"},
+    {"name": "sources", "label": "Джерела", "what": "погода й інше: що зараз навколо", "only": null},
+    {"name": "hands", "label": "Руки CLI", "what": "агент діє в системі: код, файли, команди", "only": null},
+    {"name": "native-hands", "label": "Нативні руки", "what": "швидкі дії з тілами: OLED, світло, піни", "only": null}
+  ]
+}
+</script>
+
+<script src="./assets/lang.js"></script>
+<script>
+const REPO = "onelenyk/heare";
+// The next release: the native-hands wheel and the fixed install.sh land
+// with the packages at v0.3.0. Kept in step with them by scripts/release.py.
+const VERSION = "0.3.0";
+const MODEL = JSON.parse(document.getElementById("model").textContent);
+
+const STR = {
+  en: {
+    metaDescription: "Installing heare — a second self that hears, sees and reaches your Mac.",
+    title: "heare — install",
+    navLabel: "Page navigation",
+    back: "Back to the landing",
+    where: "install",
+    lead: "a second self: it hears, sees and reaches your Mac",
+    sub: "the brain on a server or here, the parts wherever the hardware is",
+    whatTitle: "What gets installed",
+    whatBrain: "brain",
+    whatBrainDesc: "doors, conversation, memory, engine",
+    whatVoice: "Voice",
+    whatVoiceDesc: "listens and speaks",
+    whatEyes: "Eyes",
+    whatEyesDesc: "what is in front, whether you are here, whether something is playing · macOS only",
+    whatSources: "Sources",
+    whatSourcesDesc: "weather and more: what is around right now",
+    whatCliHands: "CLI hands",
+    whatCliHandsDesc: "the agent acts in the system: code, files, commands",
+    whatNativeHands: "Native hands",
+    whatNativeHandsDesc: "quick acts on the bodies: OLED, light, pins",
+    whatChat: "chat",
+    whatChatDesc: "conversation in text",
+    pickTitle: "What to install",
+    role: "Role",
+    brainUrl: "Brain address",
+    brainCode: "Connection code — on the brain page: ⚙ → Devices",
+    parts: "Parts",
+    partsHint: "the selected parts are installed on this machine",
+    command: "Command",
+    copy: "Copy",
+    copied: "Copied",
+    copyStatus: "The command was copied.",
+    nextTitle: "Next",
+    stepPage: "Page",
+    stepKeys: "Keys",
+    stepKeysValue: "under ⚙ on this page",
+    stepLogs: "Logs",
+    backFooter: "← to the landing",
+    onlyMac: " · macOS only",
+    needUrl: "for a body, enter the brain address",
+    badCode: "the connection code is exactly 8 characters",
+    bodyOk: "the body will connect to this brain",
+    roles: {
+      all: { label: "Everything here", what: "brain and parts on this machine" },
+      body: { label: "Body", what: "the brain elsewhere; parts here" },
+      brain: { label: "Brain only", what: "parts connect from other machines" }
+    },
+    partsByKey: {
+      voice: { label: "Voice", what: "listens and speaks" },
+      eyes: { label: "Eyes", what: "what is in front, whether you are here, whether something is playing" },
+      sources: { label: "Sources", what: "weather and more: what is around right now" },
+      hands: { label: "CLI hands", what: "the agent acts in the system: code, files, commands" },
+      "native-hands": { label: "Native hands", what: "quick acts on the bodies: OLED, light, pins" }
+    }
+  },
+  uk: {
+    metaDescription: "Встановлення heare — друге я, що чує, бачить і дотягується до твого Mac.",
+    title: "heare — встановлення",
+    navLabel: "Навігація сторінки",
+    back: "На головну",
+    where: "встановлення",
+    lead: "друге я: чує, бачить і дотягується до твого Mac",
+    sub: "мозок на сервері або тут, частини — там, де є залізо",
+    whatTitle: "Що ставиться",
+    whatBrain: "мозок",
+    whatBrainDesc: "двері, розмова, пам'ять, двигун",
+    whatVoice: "Голос",
+    whatVoiceDesc: "слухає й говорить",
+    whatEyes: "Очі",
+    whatEyesDesc: "що попереду, чи ти тут, чи щось грає · лише macOS",
+    whatSources: "Джерела",
+    whatSourcesDesc: "погода й інше: що зараз навколо",
+    whatCliHands: "Руки CLI",
+    whatCliHandsDesc: "агент діє в системі: код, файли, команди",
+    whatNativeHands: "Нативні руки",
+    whatNativeHandsDesc: "швидкі дії з тілами: OLED, світло, піни",
+    whatChat: "чат",
+    whatChatDesc: "розмова текстом",
+    pickTitle: "Що поставити",
+    role: "Роль",
+    brainUrl: "Адреса мозку",
+    brainCode: "Код підключення — на сторінці мозку: ⚙ → Пристрої",
+    parts: "Частини",
+    partsHint: "обрані частини ставляться на цю машину",
+    command: "Команда",
+    copy: "Скопіювати",
+    copied: "скопійовано",
+    copyStatus: "Команду скопійовано.",
+    nextTitle: "Далі",
+    stepPage: "Сторінка",
+    stepKeys: "Ключі",
+    stepKeysValue: "у ⚙ на цій сторінці",
+    stepLogs: "Логи",
+    backFooter: "← на головну",
+    onlyMac: " · лише macOS",
+    needUrl: "для тіла вкажи адресу мозку",
+    badCode: "код підключення — рівно 8 символів",
+    bodyOk: "тіло підключиться до цього мозку",
+    roles: {
+      all: { label: "Усе тут", what: "мозок і частини на цій машині" },
+      body: { label: "Тіло", what: "мозок деінде; тут частини" },
+      brain: { label: "Лише мозок", what: "частини підключаються з інших машин" }
+    },
+    partsByKey: {
+      voice: { label: "Голос", what: "слухає й говорить" },
+      eyes: { label: "Очі", what: "що попереду, чи ти тут, чи щось грає" },
+      sources: { label: "Джерела", what: "погода й інше: що зараз навколо" },
+      hands: { label: "Руки CLI", what: "агент діє в системі: код, файли, команди" },
+      "native-hands": { label: "Нативні руки", what: "швидкі дії з тілами: OLED, світло, піни" }
+    }
+  }
+};
+
+const T = (key) => (STR[HeareSite.lang] || STR.en)[key];
+const roleCopy = (name) => T("roles")[name];
+const partCopy = (name) => T("partsByKey")[name];
+
+function commandFor(role, parts, url, code) {
+  const flags = [`--role ${role}`];
+  if (role === "body" && url && code.length === 8) {
+    flags.push(`--url ${url}`, `--code ${code}`);
+  }
+  if (parts.length > 0) flags.push(`--parts ${parts.join(",")}`);
+  flags.push(`--from https://github.com/${REPO}/releases/download/v${VERSION}`);
+  flags.push(`--version ${VERSION}`);
+  return `curl -sSL https://raw.githubusercontent.com/${REPO}/v${VERSION}/install.sh | sh -s -- ${flags.join(" ")}`;
+}
+
+if (typeof document !== "undefined") {
+  const rolesBox = document.getElementById("roles");
+  const partsBox = document.getElementById("part-opts");
+  const bodyFields = document.getElementById("body-fields");
+  const urlInput = document.getElementById("brain-url");
+  const codeInput = document.getElementById("brain-code");
+  const partsHint = document.getElementById("parts-hint");
+  const commandHint = document.getElementById("command-hint");
+  const out = document.getElementById("command");
+  const copyBtn = document.getElementById("copy");
+  const copyStatus = document.getElementById("copy-status");
+
+  const roleNodes = [];
+  const partNodes = [];
+  let copyTimer;
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function partWhat(part) {
+    const copy = partCopy(part.name);
+    return part.only === "darwin" ? copy.what + T("onlyMac") : copy.what;
+  }
+
+  MODEL.roles.forEach((role) => {
+    const label = el("label", "role");
+    const input = el("input");
+    input.type = "radio";
+    input.name = "role";
+    input.value = role.name;
+    input.checked = role.name === "all";
+    input.addEventListener("change", render);
+
+    const card = el("span", "role-body");
+    const title = el("span", "role-title");
+    const dot = el("span", "radio-dot");
+    dot.setAttribute("aria-hidden", "true");
+    const name = el("span", null, roleCopy(role.name).label);
+    title.append(dot, name);
+    const sub = el("span", "role-sub", roleCopy(role.name).what);
+    card.append(title, sub);
+    label.append(input, card);
+    rolesBox.append(label);
+    roleNodes.push({ role, name, sub });
+  });
+
+  MODEL.parts.forEach((part) => {
+    const label = el("label", "part-opt");
+    const input = el("input");
+    input.type = "checkbox";
+    input.name = "part";
+    input.value = part.name;
+    input.checked = true;
+    input.addEventListener("change", render);
+
+    const card = el("span", "part-body");
+    const box = el("span", "box");
+    box.setAttribute("aria-hidden", "true");
+    const text = el("span");
+    const title = el("span", "part-title", partCopy(part.name).label);
+    const sub = el("span", "part-sub", partWhat(part));
+    text.append(title, sub);
+    card.append(box, text);
+    label.append(input, card);
+    partsBox.append(label);
+    partNodes.push({ part, title, sub });
+  });
+
+  function selectedRole() {
+    return document.querySelector('input[name="role"]:checked').value;
+  }
+
+  function selectedParts() {
+    return MODEL.parts
+      .filter((part) => document.querySelector(`input[name="part"][value="${part.name}"]`).checked)
+      .map((part) => part.name);
+  }
+
+  function idleCopy() {
+    clearTimeout(copyTimer);
+    copyBtn.classList.remove("done");
+    copyBtn.textContent = T("copy");
+    copyStatus.textContent = "";
+  }
+
+  function render() {
+    const role = selectedRole();
+    const url = urlInput.value.trim();
+    const code = codeInput.value.trim();
+    const isBody = role === "body";
+    const complete = !isBody || (url !== "" && code.length === 8);
+
+    bodyFields.hidden = !isBody;
+    partsHint.textContent = T("partsHint");
+    out.textContent = commandFor(role, selectedParts(), url, code);
+    copyBtn.disabled = !complete;
+    commandHint.textContent = !isBody ? ""
+      : !url ? T("needUrl")
+      : code.length !== 8 ? T("badCode")
+      : T("bodyOk");
+    idleCopy();
+  }
+
+  function relabel() {
+    for (const { role, name, sub } of roleNodes) {
+      const copy = roleCopy(role.name);
+      name.textContent = copy.label;
+      sub.textContent = copy.what;
+    }
+    for (const { part, title, sub } of partNodes) {
+      title.textContent = partCopy(part.name).label;
+      sub.textContent = partWhat(part);
+    }
+    render();
+  }
+
+  HeareSite.apply(STR);
+  document.addEventListener("hearelang", relabel);
+
+  urlInput.addEventListener("input", render);
+  codeInput.addEventListener("input", render);
+
+  copyBtn.addEventListener("click", async () => {
+    if (copyBtn.disabled) return;
+    const text = out.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.append(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+
+    clearTimeout(copyTimer);
+    copyBtn.classList.add("done");
+    copyBtn.textContent = T("copied");
+    copyStatus.textContent = T("copyStatus");
+    copyTimer = setTimeout(idleCopy, 1800);
+  });
+
+  document.querySelectorAll("[data-repo]").forEach((node) => {
+    node.textContent = REPO;
+    node.href = `https://github.com/${REPO}`;
+  });
+  document.querySelectorAll("[data-version]").forEach((node) => {
+    node.textContent = `v${VERSION}`;
+  });
+
+  render();
+}
+</script>
+</html>

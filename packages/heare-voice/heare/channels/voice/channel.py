@@ -25,13 +25,14 @@ from typing import Any, AsyncIterator
 from heare import keys
 from heare.channels.voice.hallucinations import is_junk
 from heare.channels.voice.heard import Heard, levels
+from heare.channels.voice.language import language_of
 from heare.channels.voice.sentences import sentences, speakable
 from heare.channels.voice.stt import transcribe
 from heare.channels.voice.tts import synthesise
 from heare.channels.voice.turn import TurnAssembler
 from heare.channels.voice.utterance import Mouth
 from heare.channels.voice.vad import EnergyVAD, loud_ms
-from heare.channels.voice.voicing import pick_voice
+from heare.channels.voice.voicing import voice_for_language
 from heare.channels.voice.wake import WakeGate
 from heare.channels.voice.wake_phrases import own_name, wake_phrases
 from heare.core import Message, Port
@@ -202,12 +203,13 @@ class Voice:
         loud = loud_ms(pcm)
         if loud < MIN_SPEECH_MS:
             return ""
+        language = language_of(self.settings)
         about = {"loud_ms": round(loud), "over": over, "turn": turn, **levels(pcm),
-                 "language": _or(self.settings, "groq_language", "uk")}
+                 "language": language}
         try:
             result = await transcribe(
                 pcm, api_key=keys.get("GROQ_API_KEY") or "",
-                language=about["language"],
+                language=language,
             )
         except Exception:
             self._keep(pcm, {**about, "text": "", "dropped": "failed"})
@@ -287,8 +289,12 @@ class Voice:
         # One voice for everything it says. The old rule picked a voice by
         # the letters of each sentence, so a sentence that was mostly
         # Latin — «Python, Go і Rust» — came out in another person's
-        # voice, in the middle of a reply.
-        voice = self._voice or _or(self.settings, "voice", "") or pick_voice("а", fallback_lang="uk")
+        # voice, in the middle of a reply. The person's `language` decides
+        # now, so English is spoken by the English voice; an unset setting
+        # still resolves to Ukrainian.
+        voice = (self._voice or _or(self.settings, "voice", "")
+                 or voice_for_language(language_of(self.settings),
+                                       fallback_lang="uk"))
         for wait in (0.2, 0.5, 1.0, None):
             sounded = False
             async for chunk in synthesise(text, voice=voice):

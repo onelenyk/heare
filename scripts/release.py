@@ -48,9 +48,9 @@ def parse(version: str) -> tuple[int, int, int]:
 
 
 def carriers(repo: Path = REPO) -> list[Path]:
-    """Every file that says the version: each package, the site, the server guide."""
+    """Every file that says the version: each package, the install page, the server guide."""
     files = sorted(repo.glob("packages/*/pyproject.toml"))
-    for extra in (repo / "site" / "index.html", repo / "docs" / "server.md"):
+    for extra in (repo / "site" / "install.html", repo / "docs" / "server.md"):
         if extra.exists():
             files.append(extra)
     return files

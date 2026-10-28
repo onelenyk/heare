@@ -25,7 +25,7 @@ from heare.config import Settings
 from heare.pairing import pair
 from heare.core.i18n import _
 
-ROLES = ("all", "body", "brain")
+ROLES = machine.ROLES
 INSTALLER = Path(__file__).with_name("installer.html")
 DEFAULT_PORT = 9791
 
@@ -219,6 +219,7 @@ def _machine() -> dict:
     return {"platform": sys.platform,
             "role": settings.role or "",
             "done": settings.setup_done is True,
+            "roles": machine.roles(),
             "parts": machine.parts(Path(settings.parts_dir)),
             "keys": keys.view(),
             "url": settings.url or "",

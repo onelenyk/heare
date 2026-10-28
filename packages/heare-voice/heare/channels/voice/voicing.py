@@ -12,6 +12,20 @@ VOICES: dict[str, str] = LANG_TO_VOICE
 Sourced from heare.channels.voice.language.LANG_TO_VOICE for consistency."""
 
 
+def voice_for_language(language: str, *, fallback_lang: str = "uk") -> str:
+    """The Edge voice for a configured language code.
+
+    One voice per deployment, chosen from the person's ``language`` setting
+    rather than from each sentence's letters — that used to change voice in
+    the middle of a reply on a mixed sentence. A blank or unknown code keeps
+    the Ukrainian default, so a config with no ``language`` sounds as before.
+    """
+    code = (language or "").strip().lower()
+    if code not in VOICES:
+        code = fallback_lang if fallback_lang in VOICES else "uk"
+    return VOICES[code]
+
+
 def pick_voice(text: str, *, fallback_lang: str = "uk") -> str:
     """Edge TTS voice for this text: Cyrillic -> the uk (or ru, per
     fallback_lang) voice; Latin -> the en voice; empty/undecidable ->

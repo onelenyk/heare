@@ -44,12 +44,38 @@ _CONTINUATION_WORDS: frozenset[str] = frozenset(
         "тобто", "або", "чи", "ну", "типу", "значить", "наприклад",
         "для", "від", "до", "з", "із", "зі", "на", "в", "у", "під",
         "над", "при", "без", "про", "по", "за", "як", "коли", "хоча",
-        "and", "but", "because", "that", "if", "when", "for", "with",
+        # The same rule in English. Whisper punctuates English speech the
+        # same way, so a fragment left on "and" or "well" is a pause too.
+        "and", "but", "or", "so", "well", "because", "that", "if", "when",
+        "while", "for", "with", "from", "about", "as", "than", "the", "a",
+        "an", "to", "of", "in", "on", "at", "then", "uh", "um", "er", "hmm",
     }
+)
+
+# More than one word, and still not the end of the thought. Checked against
+# the words at the END of a fragment, never anywhere else: "I mean it" is a
+# finished sentence, "I mean" is a person still going.
+_CONTINUATION_PHRASES: tuple[tuple[str, ...], ...] = tuple(
+    tuple(phrase.split())
+    for phrase in (
+        "i mean", "let me think", "you know", "kind of", "sort of",
+        "i think", "you see", "to be fair",
+    )
 )
 
 _TERMINAL = ".!?…"
 _WORD_RE = re.compile(r"[\w'’-]+", re.UNICODE)
+
+
+def _trails_off(words: list[str]) -> bool:
+    if not words:
+        return False
+    if words[-1] in _CONTINUATION_WORDS:
+        return True
+    return any(
+        len(words) >= len(phrase) and tuple(words[-len(phrase):]) == phrase
+        for phrase in _CONTINUATION_PHRASES
+    )
 
 
 def sounds_unfinished(text: str) -> bool:
@@ -65,7 +91,7 @@ def sounds_unfinished(text: str) -> bool:
     if stripped.endswith("…") or stripped.endswith("..."):
         return True
     words = _WORD_RE.findall(stripped.lower())
-    if words and words[-1] in _CONTINUATION_WORDS:
+    if _trails_off(words):
         # Even punctuated: «...і.» is Whisper marking a pause, not an end.
         return True
     # Whisper punctuates finished speech; a fragment without a closing

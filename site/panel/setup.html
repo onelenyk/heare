@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Налаштування панелі heare через Web Bluetooth: мережа, мозок, код пари.">
+<meta name="description" data-i18n-attr="content:metaDescription" content="heare panel setup over Web Bluetooth: network, brain, pairing code.">
 <meta name="color-scheme" content="dark">
-<title>heare — панель · налаштування</title>
+<title data-i18n="title">heare — panel · setup</title>
+<link rel="stylesheet" href="../assets/lang.css">
 <!--
   Standalone Web Bluetooth setup page for the heare ESP32-C3 panel.
   Hosted at https://onelenyk.github.io/heare/panel/setup.html (GitHub Pages).
@@ -81,6 +82,15 @@
     border-radius:50%;
     background:var(--accent);
   }
+  .hero-top {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+  }
+  .hero-top .tag { margin-top:0; }
 
   /* ── sections ── */
 
@@ -402,26 +412,32 @@
 
 <main class="wrap">
   <header class="hero">
+    <div class="hero-top">
+      <span class="tag" data-i18n="tag">Chrome / Edge · HTTPS</span>
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="uk" aria-pressed="false">УКР</button>
+      </div>
+    </div>
     <h1>heare<span class="brand-dot" aria-hidden="true"></span></h1>
-    <p class="lead">панель: налаштування через Bluetooth</p>
-    <p class="sub">З’єднайте панель, введіть код із OLED і збережіть Wi-Fi. Мозок вказується потім на сторінці самої панелі — heare-panel.local. Ця сторінка говорить лише Bluetooth: без сервера й без токенів.</p>
-    <span class="tag">Chrome / Edge · HTTPS</span>
+    <p class="lead" data-i18n="lead">panel: setup over Bluetooth</p>
+    <p class="sub" data-i18n="sub">Connect the panel, enter the code from the OLED and save Wi-Fi. The brain is set later on the panel’s own page — heare-panel.local. This page speaks Bluetooth only: no server and no tokens.</p>
   </header>
 
   <section class="section" aria-labelledby="connect-title">
     <div class="sec-head">
       <span class="idx" aria-hidden="true">01</span>
-      <h2 id="connect-title">З’єднання</h2>
+      <h2 id="connect-title" data-i18n="connectTitle">Connection</h2>
     </div>
     <div class="card connect">
       <div class="connect-row">
         <div class="connect-copy">
-          <span class="device-name" id="device-name">панель не вибрана</span>
-          <span class="pill" id="conn-pill"><span class="dot" aria-hidden="true"></span><span id="conn-text">не підключено</span></span>
+          <span class="device-name" id="device-name" data-i18n="noPanel">no panel selected</span>
+          <span class="pill" id="conn-pill"><span class="dot" aria-hidden="true"></span><span id="conn-text" data-i18n="notConnected">not connected</span></span>
         </div>
-        <button class="btn primary" id="connect" type="button">Підключити панель</button>
+        <button class="btn primary" id="connect" type="button">Connect panel</button>
       </div>
-      <p class="hint">Потрібен Chrome або Edge. Тримайте панель поруч: у списку буде <span data-panel-prefix>heare-panel-</span>.</p>
+      <p class="hint" data-i18n-html="connectHint">Chrome or Edge is required. Keep the panel nearby: the list will show <span data-panel-prefix>heare-panel-</span>.</p>
       <p class="notice" id="support" role="status" hidden></p>
     </div>
   </section>
@@ -429,17 +445,17 @@
   <section class="section" aria-labelledby="code-title">
     <div class="sec-head">
       <span class="idx" aria-hidden="true">02</span>
-      <h2 id="code-title">Код із OLED</h2>
+      <h2 id="code-title" data-i18n="codeTitle">Code from the OLED</h2>
     </div>
     <div class="card form">
       <div class="inline-row">
         <div class="field">
-          <label for="setup-code">4 цифри на екрані панелі</label>
+          <label for="setup-code" data-i18n="codeLabel">4 digits on the panel screen</label>
           <input class="code-input" id="setup-code" type="text" inputmode="numeric" pattern="[0-9]{4}"
                  maxlength="4" autocomplete="one-time-code" placeholder="0000" aria-describedby="code-hint">
         </div>
-        <button class="btn" id="unlock" type="button">Увійти</button>
-        <p class="hint" id="code-hint">Код показується лише на самій панелі. Він не зберігається на сторінці.</p>
+        <button class="btn" id="unlock" type="button">Enter</button>
+        <p class="hint" id="code-hint" data-i18n="codeHint">The code is shown only on the panel itself. It is not stored on this page.</p>
       </div>
     </div>
   </section>
@@ -447,26 +463,26 @@
   <section class="section" aria-labelledby="wifi-title">
     <div class="sec-head">
       <span class="idx" aria-hidden="true">03</span>
-      <h2 id="wifi-title">Wi-Fi</h2>
+      <h2 id="wifi-title" data-i18n="wifiTitle">Wi-Fi</h2>
     </div>
     <div class="card form">
       <div class="field">
-        <label for="ssid-select">Мережа</label>
+        <label for="ssid-select" data-i18n="network">Network</label>
         <div class="scan-row">
           <select id="ssid-select">
-            <option value="">— просканувати —</option>
+            <option value="" data-i18n="scanPlaceholder">— scan —</option>
           </select>
-          <button class="btn" id="scan" type="button">Сканувати</button>
+          <button class="btn" id="scan" type="button" data-i18n="scan">Scan</button>
         </div>
         <input id="ssid-manual" type="text" maxlength="32" autocomplete="off"
-               placeholder="або введіть назву вручну" aria-label="Назва Wi-Fi мережі вручну">
-        <p class="hint">Скан іде через панель. Введена вручну назва має приоритет над списком.</p>
+               placeholder="or type the name" data-i18n-attr="placeholder:ssidPlaceholder;aria-label:ssidLabel" aria-label="Wi-Fi network name, typed manually">
+        <p class="hint" data-i18n="ssidHint">The scan runs through the panel. A name typed manually takes priority over the list.</p>
       </div>
       <div class="field">
-        <label for="password">Пароль Wi-Fi</label>
+        <label for="password" data-i18n="password">Wi-Fi password</label>
         <input id="password" type="password" minlength="8" maxlength="63"
-               autocomplete="new-password" placeholder="8–63 символи, або порожньо">
-        <p class="hint">Пароль передається панелі один раз і не пише нікуди, крім самої панелі.</p>
+               autocomplete="new-password" placeholder="8–63 characters, or empty" data-i18n-attr="placeholder:passwordPlaceholder">
+        <p class="hint" data-i18n="passwordHint">The password is sent to the panel once and is written nowhere but the panel itself.</p>
       </div>
     </div>
   </section>
@@ -474,13 +490,13 @@
   <section class="section" aria-labelledby="save-title">
     <div class="sec-head">
       <span class="idx" aria-hidden="true">04</span>
-      <h2 id="save-title">Збереження</h2>
+      <h2 id="save-title" data-i18n="saveTitle">Save</h2>
     </div>
     <div class="card actions">
       <div class="action-row">
-        <button class="btn primary" id="save" type="button">Зберегти</button>
-        <button class="btn danger" id="forget" type="button">Забути</button>
-        <p class="hint">Після збереження панель підключиться до Wi-Fi і покаже на екрані <b>heare-panel.local</b>: відкрийте цю адресу, там вказується мозок.</p>
+        <button class="btn primary" id="save" type="button" data-i18n="save">Save</button>
+        <button class="btn danger" id="forget" type="button" data-i18n="forget">Forget</button>
+        <p class="hint" data-i18n-html="saveHint">After saving, the panel joins Wi-Fi and shows <b>heare-panel.local</b> on its screen: open that address to set the brain.</p>
       </div>
       <p class="message" id="message" role="status" aria-live="polite"></p>
       <div class="progress" id="progress" aria-live="polite"></div>
@@ -491,36 +507,255 @@
   <section class="section" aria-labelledby="status-title">
     <div class="sec-head">
       <span class="idx" aria-hidden="true">05</span>
-      <h2 id="status-title">Стан панелі</h2>
-      <button class="btn link" id="refresh" type="button">Оновити</button>
+      <h2 id="status-title" data-i18n="statusTitle">Panel state</h2>
+      <button class="btn link" id="refresh" type="button" data-i18n="refresh">Refresh</button>
     </div>
     <div class="card status">
       <dl class="status-grid">
-        <div class="status-cell"><dt>стан</dt><dd class="empty" id="status-state">—</dd></div>
-        <div class="status-cell"><dt>назва</dt><dd class="empty" id="status-name">—</dd></div>
+        <div class="status-cell"><dt data-i18n="state">state</dt><dd class="empty" id="status-state">—</dd></div>
+        <div class="status-cell"><dt data-i18n="name">name</dt><dd class="empty" id="status-name">—</dd></div>
         <div class="status-cell"><dt>IP</dt><dd class="empty" id="status-ip">—</dd></div>
-        <div class="status-cell"><dt>мережа</dt><dd class="empty" id="status-ssid">—</dd></div>
-        <div class="status-cell wide"><dt>id панелі</dt><dd class="empty" id="status-pid">—</dd></div>
-        <div class="status-cell wide" id="status-error-row"><dt>помилка</dt><dd class="empty" id="status-error">—</dd></div>
+        <div class="status-cell"><dt data-i18n="networkLower">network</dt><dd class="empty" id="status-ssid">—</dd></div>
+        <div class="status-cell wide"><dt data-i18n="panelId">panel id</dt><dd class="empty" id="status-pid">—</dd></div>
+        <div class="status-cell wide" id="status-error-row"><dt data-i18n="error">error</dt><dd class="empty" id="status-error">—</dd></div>
       </dl>
     </div>
   </section>
 
   <footer class="footer">
     <a href="https://onelenyk.github.io/heare/panel/setup.html">onelenyk.github.io/heare/panel/setup.html</a>
-    <span class="only-ble">лише Bluetooth · без токенів · без сервера</span>
+    <span class="only-ble" data-i18n="onlyBle">Bluetooth only · no tokens · no server</span>
   </footer>
 </main>
 
 <noscript>
   <p style="max-width:820px;margin:0 auto 40px;padding:0 28px;color:#e58d8d;font:13px/1.5 ui-monospace,monospace">
-    Для налаштування панелі потрібен JavaScript і Chrome або Edge.
+    Panel setup needs JavaScript and Chrome or Edge.
   </p>
 </noscript>
 
+<script src="../assets/lang.js"></script>
 <script>
+const STR = {
+  en: {
+    metaDescription: "heare panel setup over Web Bluetooth: network, brain, pairing code.",
+    title: "heare — panel · setup",
+    tag: "Chrome / Edge · HTTPS",
+    lead: "panel: setup over Bluetooth",
+    sub: "Connect the panel, enter the code from the OLED and save Wi-Fi. The brain is set later on the panel’s own page — heare-panel.local. This page speaks Bluetooth only: no server and no tokens.",
+    connectTitle: "Connection",
+    noPanel: "no panel selected",
+    notConnected: "not connected",
+    connectBtn: "Connect panel",
+    connectedBtn: "Connected",
+    reconnectBtn: "Reconnect",
+    connectHint: "Chrome or Edge is required. Keep the panel nearby: the list will show <span data-panel-prefix>heare-panel-</span>.",
+    codeTitle: "Code from the OLED",
+    codeLabel: "4 digits on the panel screen",
+    unlockBtn: "Enter",
+    codeAcceptedBtn: "Code accepted",
+    codeHint: "The code is shown only on the panel itself. It is not stored on this page.",
+    wifiTitle: "Wi-Fi",
+    network: "Network",
+    scanPlaceholder: "— scan —",
+    scan: "Scan",
+    ssidPlaceholder: "or type the name",
+    ssidLabel: "Wi-Fi network name, typed manually",
+    ssidHint: "The scan runs through the panel. A name typed manually takes priority over the list.",
+    password: "Wi-Fi password",
+    passwordPlaceholder: "8–63 characters, or empty",
+    passwordHint: "The password is sent to the panel once and is written nowhere but the panel itself.",
+    saveTitle: "Save",
+    save: "Save",
+    forget: "Forget",
+    saveHint: "After saving, the panel joins Wi-Fi and shows <b>heare-panel.local</b> on its screen: open that address to set the brain.",
+    statusTitle: "Panel state",
+    refresh: "Refresh",
+    state: "state",
+    name: "name",
+    networkLower: "network",
+    panelId: "panel id",
+    error: "error",
+    onlyBle: "Bluetooth only · no tokens · no server",
+    connectFirst: "Connect the panel first.",
+    connected: "connected",
+    reconnecting: "reconnecting",
+    working: "working…",
+    waitingAttempt: "waiting for the panel… attempt {a} of {b}",
+    linkLostConnect: "The connection to the panel was lost. Connect it again.",
+    readFailed: "Could not read {what} from the panel.",
+    emptyAnswer: "The panel returned an empty answer ({what}).",
+    unreadable: "The panel returned unreadable data ({what}).",
+    badJson: "The panel returned invalid JSON ({what}).",
+    writeFailed: "Writing to the panel failed. The connection was lost.",
+    noConfirm: "The panel did not confirm the command within {seconds} s.",
+    commandTooBig: "The command is too large for the panel.",
+    whatResult: "the result",
+    whatState: "the state",
+    whatScan: "the scan",
+    needCode: "Enter the 4-digit code from the OLED.",
+    checkingCode: "checking the code…",
+    codeRejected: "Code not accepted{why}. Look at the OLED and try again.",
+    codeRejectedPill: "code not accepted",
+    codeAcceptedPill: "code accepted",
+    codeAccepted: "Code accepted. Now choose a network.",
+    chooseNetwork: "— choose a network —",
+    readingScan: "reading the scan state…",
+    scanFailed: "The panel did not start the scan: {why}.",
+    unknownError: "unknown error",
+    scanning: "looking for networks…",
+    noNetworksInTime: "No networks appeared within 15 seconds. Try again, closer to the panel.",
+    networksFound: "Networks found: {count}. Choose yours from the list.",
+    noNetworks: "The panel sees no networks. Type the name manually.",
+    needSsid: "Enter the Wi-Fi network name (1–32 characters).",
+    badPassword: "The Wi-Fi password must be 8–63 characters, or empty for an open network.",
+    panelNoConfirm: "no confirmation from the panel",
+    notSavedPill: "not saved",
+    saveFailed: "The panel did not save the settings: {why}.",
+    sending: "sending the settings…",
+    saving: "saving…",
+    joiningWifi: "the panel is joining Wi-Fi…",
+    noConfirmShort: "no confirmation",
+    saveUnconfirmed: "Could not confirm that the panel saved the settings: the command result does not match. Check the OLED.",
+    wifiSavedPill: "Wi-Fi saved",
+    savedReboot: "Wi-Fi saved, the panel is restarting.",
+    savedLeftBle: "The panel joined Wi-Fi and left Bluetooth.",
+    nextOpen: "When heare-panel.local appears on the panel screen, open",
+    nextTail: " — that is where the brain is set.",
+    forgetConfirm: "Confirm",
+    forgetWarn: "Press “Confirm” to erase the network and the brain from the panel.",
+    erasing: "erasing the settings…",
+    eraseFailed: "Could not erase the settings: {why}.",
+    erasedPill: "settings erased",
+    forgotten: "The panel forgot the network and the brain.",
+    linkLostPill: "connection lost",
+    errorPrefix: "Error: ",
+    panelNotChosen: "No panel selected. Try again and pick heare-panel-… from the list.",
+    connecting: "connecting…",
+    openingGatt: "opening GATT…",
+    connectedMsg: "The panel is connected. Enter the code from the OLED.",
+    reconnectingPill: "reconnecting…",
+    disconnectedMsg: "The connection to the panel was lost. Press “Connect panel” again.",
+    unsupported: "This browser does not support Web Bluetooth. Open the page in Chrome or Edge on macOS, Windows or Android.",
+    browserUnsupportedPill: "browser not supported",
+    insecure: "Web Bluetooth needs HTTPS (or localhost). Open https://onelenyk.github.io/heare/panel/setup.html — from http:// on an IP address the browser will refuse.",
+    refreshing: "refreshing the state…",
+    refreshed: "Panel state refreshed."
+  },
+  uk: {
+    metaDescription: "Налаштування панелі heare через Web Bluetooth: мережа, мозок, код пари.",
+    title: "heare — панель · налаштування",
+    tag: "Chrome / Edge · HTTPS",
+    lead: "панель: налаштування через Bluetooth",
+    sub: "З’єднайте панель, введіть код із OLED і збережіть Wi-Fi. Мозок вказується потім на сторінці самої панелі — heare-panel.local. Ця сторінка говорить лише Bluetooth: без сервера й без токенів.",
+    connectTitle: "З’єднання",
+    noPanel: "панель не вибрана",
+    notConnected: "не підключено",
+    connectBtn: "Підключити панель",
+    connectedBtn: "Підключено",
+    reconnectBtn: "Перепідключити",
+    connectHint: "Потрібен Chrome або Edge. Тримайте панель поруч: у списку буде <span data-panel-prefix>heare-panel-</span>.",
+    codeTitle: "Код із OLED",
+    codeLabel: "4 цифри на екрані панелі",
+    unlockBtn: "Увійти",
+    codeAcceptedBtn: "Код прийнято",
+    codeHint: "Код показується лише на самій панелі. Він не зберігається на сторінці.",
+    wifiTitle: "Wi-Fi",
+    network: "Мережа",
+    scanPlaceholder: "— просканувати —",
+    scan: "Сканувати",
+    ssidPlaceholder: "або введіть назву вручну",
+    ssidLabel: "Назва Wi-Fi мережі вручну",
+    ssidHint: "Скан іде через панель. Введена вручну назва має приоритет над списком.",
+    password: "Пароль Wi-Fi",
+    passwordPlaceholder: "8–63 символи, або порожньо",
+    passwordHint: "Пароль передається панелі один раз і не пише нікуди, крім самої панелі.",
+    saveTitle: "Збереження",
+    save: "Зберегти",
+    forget: "Забути",
+    saveHint: "Після збереження панель підключиться до Wi-Fi і покаже на екрані <b>heare-panel.local</b>: відкрийте цю адресу, там вказується мозок.",
+    statusTitle: "Стан панелі",
+    refresh: "Оновити",
+    state: "стан",
+    name: "назва",
+    networkLower: "мережа",
+    panelId: "id панелі",
+    error: "помилка",
+    onlyBle: "лише Bluetooth · без токенів · без сервера",
+    connectFirst: "Спочатку підключіть панель.",
+    connected: "підключено",
+    reconnecting: "перепідключення",
+    working: "працюю…",
+    waitingAttempt: "чекаю панель… спроба {a} із {b}",
+    linkLostConnect: "З’єднання з панеллю втрачено. Підключіть її знову.",
+    readFailed: "Не вдалося прочитати {what} із панелі.",
+    emptyAnswer: "Панель повернула порожню відповідь ({what}).",
+    unreadable: "Панель повернула нечитабельні дані ({what}).",
+    badJson: "Панель повернула некоректний JSON ({what}).",
+    writeFailed: "Запис у панель не вдався. З’єднання втрачено.",
+    noConfirm: "Панель не підтвердила команду за {seconds} с.",
+    commandTooBig: "Команда занадто велика для панелі.",
+    whatResult: "результат",
+    whatState: "стан",
+    whatScan: "сканування",
+    needCode: "Введіть 4-цифровий код з OLED.",
+    checkingCode: "перевіряю код…",
+    codeRejected: "Код не прийнято{why}. Подивіться на OLED і спробуйте ще раз.",
+    codeRejectedPill: "код не прийнято",
+    codeAcceptedPill: "код прийнято",
+    codeAccepted: "Код прийнято. Тепер оберіть мережу.",
+    chooseNetwork: "— оберіть мережу —",
+    readingScan: "читаю стан сканування…",
+    scanFailed: "Панель не почала скан: {why}.",
+    unknownError: "невідома помилка",
+    scanning: "шукаю мережі…",
+    noNetworksInTime: "Мережі не з’явилися за 15 секунд. Спробуйте ще раз, ближче до панелі.",
+    networksFound: "Знайдено мереж: {count}. Оберіть свою зі списку.",
+    noNetworks: "Панель не бачить жодної мережі. Введіть назву вручну.",
+    needSsid: "Вкажіть назву Wi-Fi мережі (1–32 символи).",
+    badPassword: "Пароль Wi-Fi — 8–63 символи, або порожньо для відкритої мережі.",
+    panelNoConfirm: "немає підтвердження від панелі",
+    notSavedPill: "не збережено",
+    saveFailed: "Панель не зберегла налаштування: {why}.",
+    sending: "передаю налаштування…",
+    saving: "зберігаю…",
+    joiningWifi: "панель підключається до Wi-Fi…",
+    noConfirmShort: "немає підтвердження",
+    saveUnconfirmed: "Не вдалося підтвердити, що панель зберегла налаштування: результат команди не збігається. Перевірте OLED.",
+    wifiSavedPill: "Wi-Fi збережено",
+    savedReboot: "Wi-Fi збережено, панель перезавантажується.",
+    savedLeftBle: "Панель підключилась до Wi-Fi і пішла з Bluetooth.",
+    nextOpen: "Коли на екрані панелі з’явиться heare-panel.local, відкрийте",
+    nextTail: " — там вказується мозок.",
+    forgetConfirm: "Підтвердити",
+    forgetWarn: "Натисніть «Підтвердити», щоб стерти мережу й мозок із панелі.",
+    erasing: "стираю налаштування…",
+    eraseFailed: "Не вдалося стерти налаштування: {why}.",
+    erasedPill: "налаштування стерто",
+    forgotten: "Панель забула мережу й мозок.",
+    linkLostPill: "з’єднання втрачено",
+    errorPrefix: "Помилка: ",
+    panelNotChosen: "Панель не вибрано. Спробуйте ще раз і виберіть heare-panel-… у списку.",
+    connecting: "підключення…",
+    openingGatt: "відкриваю GATT…",
+    connectedMsg: "Панель підключена. Введіть код із OLED.",
+    reconnectingPill: "перепідключення…",
+    disconnectedMsg: "З’єднання з панеллю втрачено. Натисніть «Підключити панель» ще раз.",
+    unsupported: "Цей браузер не підтримує Web Bluetooth. Відкрийте сторінку в Chrome або Edge на macOS, Windows чи Android.",
+    browserUnsupportedPill: "браузер не підтримується",
+    insecure: "Web Bluetooth потребує HTTPS (або localhost). Відкрийте https://onelenyk.github.io/heare/panel/setup.html — з http:// на IP-адресі браузер відмовить.",
+    refreshing: "оновлюю стан…",
+    refreshed: "Стан панелі оновлено."
+  }
+};
+
 (() => {
   "use strict";
+
+  const T = (key) => (STR[HeareSite.lang] || STR.en)[key];
+  const fill = (key, values) => T(key).replace(/\{(\w+)\}/g, (match, name) => (
+    Object.prototype.hasOwnProperty.call(values, name) ? values[name] : match
+  ));
 
   // The whole contract: one service and four characteristics. The page never
   // talks to the brain, never asks for a token, and never stores a secret.
@@ -605,16 +840,17 @@
   // The second step lives on the panel itself, once it is on Wi-Fi.
   const PAIR_PAGE = "http://heare-panel.local";
 
-  function showNextStep(lead) {
+  function showNextStep(leadKey) {
     setProgress("");
-    setPill("ok", "Wi-Fi збережено");
-    setMessage(lead + " Коли на екрані панелі з’явиться heare-panel.local, відкрийте ", "ok");
+    setPill("ok", T("wifiSavedPill"));
+    el.message.className = "message show ok";
+    el.message.textContent = T(leadKey) + " " + T("nextOpen") + " ";
     const link = document.createElement("a");
     link.href = PAIR_PAGE;
     link.target = "_blank";
     link.rel = "noopener";
     link.textContent = PAIR_PAGE;
-    el.message.append(link, " — там вказується мозок.");
+    el.message.append(link, T("nextTail"));
   }
 
   function setProgress(text) {
@@ -623,19 +859,19 @@
   }
 
   function setDeviceName(name) {
-    el.deviceName.textContent = name || "панель не вибрана";
+    el.deviceName.textContent = name || T("noPanel");
   }
 
   function syncControls() {
     const ready = state.connected && !state.busy;
     el.connect.disabled = state.busy || state.connected;
     el.connect.textContent = state.connected
-      ? "Підключено"
+      ? T("connectedBtn")
       : state.device
-        ? "Перепідключити"
-        : "Підключити панель";
+        ? T("reconnectBtn")
+        : T("connectBtn");
     el.unlock.disabled = !ready || state.authed;
-    el.unlock.textContent = state.authed ? "Код прийнято" : "Увійти";
+    el.unlock.textContent = state.authed ? T("codeAcceptedBtn") : T("unlockBtn");
     el.code.disabled = !ready || state.authed;
     el.scan.disabled = !ready;
     el.save.disabled = !ready;
@@ -680,7 +916,7 @@
   }
 
   async function bindGatt() {
-    if (!state.device) throw new PanelError("Спочатку підключіть панель.");
+    if (!state.device) throw new PanelError(T("connectFirst"));
     if (!state.device.gatt.connected) {
       state.connected = false;
       await state.device.gatt.connect();
@@ -710,13 +946,13 @@
             await bindGatt();
           }
           log("reconnected attempt=" + attempt);
-          setPill("ok", "підключено");
+          setPill("ok", T("connected"));
           return true;
         } catch (err) {
           state.connected = false;
           if (attempt < attempts) {
-            setPill("busy", "перепідключення " + attempt + "/" + attempts);
-            setProgress("чекаю панель… спроба " + attempt + " із " + attempts);
+            setPill("busy", T("reconnecting") + " " + attempt + "/" + attempts);
+            setProgress(fill("waitingAttempt", { a: attempt, b: attempts }));
             await sleep(delayMs);
           }
         }
@@ -730,9 +966,9 @@
 
   async function ensureConnected() {
     if (state.device && state.device.gatt.connected && state.chars) return;
-    if (!state.device) throw new PanelError("Спочатку підключіть панель.");
+    if (!state.device) throw new PanelError(T("connectFirst"));
     const back = await reopen(3, 500);
-    if (!back) throw new LinkLost("З’єднання з панеллю втрачено. Підключіть її знову.");
+    if (!back) throw new LinkLost(T("linkLostConnect"));
   }
 
   async function readJson(name, what) {
@@ -746,20 +982,20 @@
     } catch (err) {
       state.connected = false;
       syncControls();
-      throw new LinkLost("Не вдалося прочитати " + what + " із панелі.");
+      throw new LinkLost(fill("readFailed", { what }));
     }
     const bytes = new Uint8Array(view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength));
-    if (bytes.length === 0) throw new PanelError("Панель повернула порожню відповідь (" + what + ").");
+    if (bytes.length === 0) throw new PanelError(fill("emptyAnswer", { what }));
     let text;
     try {
       text = decoder.decode(bytes);
     } catch (err) {
-      throw new PanelError("Панель повернула нечитабельні дані (" + what + ").");
+      throw new PanelError(fill("unreadable", { what }));
     }
     try {
       return JSON.parse(text);
     } catch (err) {
-      throw new PanelError("Панель повернула некоректний JSON (" + what + ").");
+      throw new PanelError(fill("badJson", { what }));
     }
   }
 
@@ -783,17 +1019,17 @@
         break;
       }
     }
-    throw new LinkLost("Запис у панель не вдався. З’єднання втрачено.");
+    throw new LinkLost(T("writeFailed"));
   }
 
   async function waitForResult(id, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const result = await readJson("result", "результат");
+      const result = await readJson("result", T("whatResult"));
       if (result && result.id === id) return result;
       await sleep(350);
     }
-    const error = new ResultTimeout("Панель не підтвердила команду за " + Math.round(timeoutMs / 1000) + " с.");
+    const error = new ResultTimeout(fill("noConfirm", { seconds: Math.round(timeoutMs / 1000) }));
     error.commandId = id;
     throw error;
   }
@@ -804,7 +1040,7 @@
     payload.id = id;
     const bytes = encoder.encode(JSON.stringify(payload));
     const total = Math.max(1, Math.ceil(bytes.length / CHUNK));
-    if (total > 255) throw new PanelError("Команда занадто велика для панелі.");
+    if (total > 255) throw new PanelError(T("commandTooBig"));
     log("cmd " + payload.cmd + " id=" + id + " chunks=" + total + " bytes=" + bytes.length);
     try {
       for (let index = 0; index < total; index += 1) {
@@ -842,7 +1078,7 @@
 
   async function refreshStatus() {
     if (!state.authed) return null;
-    const status = await readJson("status", "стан");
+    const status = await readJson("status", T("whatState"));
     renderStatus(status);
     return status;
   }
@@ -851,26 +1087,26 @@
     if (state.authed) return true;
     const code = el.code.value.trim();
     if (!/^\d{4}$/.test(code)) {
-      setMessage("Введіть 4-цифровий код з OLED.", "bad");
+      setMessage(T("needCode"), "bad");
       el.code.focus();
       return false;
     }
-    setProgress("перевіряю код…");
+    setProgress(T("checkingCode"));
     const result = await sendCommand({ cmd: "auth", code }, 8000);
     if (!result || result.ok !== true) {
       state.authed = false;
       const why = result && result.error ? " (" + result.error + ")" : "";
       log("auth failed");
-      setMessage("Код не прийнято" + why + ". Подивіться на OLED і спробуйте ще раз.", "bad");
-      setPill("bad", "код не прийнято");
+      setMessage(fill("codeRejected", { why }), "bad");
+      setPill("bad", T("codeRejectedPill"));
       syncControls();
       return false;
     }
     state.authed = true;
     log("auth ok");
-    setPill("ok", "код прийнято");
+    setPill("ok", T("codeAcceptedPill"));
     syncControls();
-    setMessage("Код прийнято. Тепер оберіть мережу.", "ok");
+    setMessage(T("codeAccepted"), "ok");
     try {
       await refreshStatus();
     } catch (err) {
@@ -881,7 +1117,7 @@
 
   function fillNetworks(list) {
     const previous = el.ssidSelect.value;
-    el.ssidSelect.replaceChildren(new Option("— оберіть мережу —", ""));
+    el.ssidSelect.replaceChildren(new Option(T("chooseNetwork"), ""));
     const seen = new Set();
     const ordered = [...list].sort((a, b) => (Number(b.rssi) || -999) - (Number(a.rssi) || -999));
     for (const network of ordered) {
@@ -900,41 +1136,41 @@
 
   async function scanNetworks() {
     if (!(await ensureAuth())) return;
-    setProgress("читаю стан сканування…");
+    setProgress(T("readingScan"));
     // Before its first scan the panel has written nothing here yet.
     let before = null;
     try {
-      before = await readJson("scan", "сканування");
+      before = await readJson("scan", T("whatScan"));
     } catch (err) {
       if (!(err instanceof PanelError) || err instanceof LinkLost) throw err;
     }
     const result = await sendCommand({ cmd: "scan" }, 10000);
     if (result && result.ok === false) {
-      setMessage("Панель не почала скан: " + (result.error || "невідома помилка") + ".", "bad");
+      setMessage(fill("scanFailed", { why: result.error || T("unknownError") }), "bad");
       return;
     }
-    setProgress("шукаю мережі…");
+    setProgress(T("scanning"));
     const startSeq = before && typeof before.seq === "number" ? before.seq : -1;
     let found = null;
     for (let attempt = 0; attempt < 15; attempt += 1) {
       await sleep(1000);
-      const now = await readJson("scan", "сканування");
+      const now = await readJson("scan", T("whatScan"));
       if (now && now.seq !== startSeq) {
         found = now;
         break;
       }
     }
     if (!found) {
-      setMessage("Мережі не з’явилися за 15 секунд. Спробуйте ще раз, ближче до панелі.", "bad");
+      setMessage(T("noNetworksInTime"), "bad");
       return;
     }
     const list = Array.isArray(found.list) ? found.list : [];
     const count = fillNetworks(list);
     log("scan found=" + count);
     if (count > 0) {
-      setMessage("Знайдено мереж: " + count + ". Оберіть свою зі списку.", "ok");
+      setMessage(fill("networksFound", { count }), "ok");
     } else {
-      setMessage("Панель не бачить жодної мережі. Введіть назву вручну.", "warn");
+      setMessage(T("noNetworks"), "warn");
     }
   }
 
@@ -942,12 +1178,12 @@
     const ssid = (el.ssidManual.value.trim() || el.ssidSelect.value || "").trim();
     if (ssid.length < 1 || ssid.length > 32) {
       el.ssidManual.focus();
-      throw new PanelError("Вкажіть назву Wi-Fi мережі (1–32 символи).");
+      throw new PanelError(T("needSsid"));
     }
     const pass = el.password.value;
     if (pass && (pass.length < 8 || pass.length > 63)) {
       el.password.focus();
-      throw new PanelError("Пароль Wi-Fi — 8–63 символи, або порожньо для відкритої мережі.");
+      throw new PanelError(T("badPassword"));
     }
     // The panel reads "password"; this page once sent "pass", which the
     // firmware dropped, so a stored password silently stayed in use.
@@ -955,17 +1191,17 @@
   }
 
   function showSaveError(result) {
-    const why = result && result.error ? String(result.error) : "немає підтвердження від панелі";
+    const why = result && result.error ? String(result.error) : T("panelNoConfirm");
     logError("save error: " + why);
-    setPill("bad", "не збережено");
-    setMessage("Панель не зберегла налаштування: " + why + ".", "bad");
+    setPill("bad", T("notSavedPill"));
+    setMessage(fill("saveFailed", { why }), "bad");
   }
 
   async function saveConfig() {
     const form = readForm();
     if (!(await ensureAuth())) return;
-    setProgress("передаю налаштування…");
-    setPill("busy", "зберігаю…");
+    setProgress(T("sending"));
+    setPill("busy", T("saving"));
     let result = null;
     let saveId = null;
     try {
@@ -987,20 +1223,20 @@
       return;
     }
     if (!result) {
-      setProgress("панель підключається до Wi-Fi…");
+      setProgress(T("joiningWifi"));
       // A failed join brings Bluetooth back with the error within ~20 s.
       const back = await reopen(15, 2000);
       if (!back) {
         // A failed save comes back on Bluetooth with its error; a successful
         // one reboots the panel onto Wi-Fi, where it no longer advertises.
         log("save: panel left Bluetooth, as it does after a join");
-        showNextStep("Панель підключилась до Wi-Fi і пішла з Bluetooth.");
+        showNextStep("savedLeftBle");
         return;
       }
-      result = await readJson("result", "результат");
+      result = await readJson("result", T("whatResult"));
       if (!result || result.id !== saveId) {
-        setPill("bad", "немає підтвердження");
-        setMessage("Не вдалося підтвердити, що панель зберегла налаштування: результат команди не збігається. Перевірте OLED.", "bad");
+        setPill("bad", T("noConfirmShort"));
+        setMessage(T("saveUnconfirmed"), "bad");
         logError("save unconfirmed: result id mismatch");
         return;
       }
@@ -1011,7 +1247,7 @@
     }
 
     log("save ok");
-    showNextStep("Wi-Fi збережено, панель перезавантажується.");
+    showNextStep("savedReboot");
   }
 
   let forgetArmed = false;
@@ -1021,21 +1257,21 @@
     clearTimeout(forgetTimer);
     forgetArmed = false;
     el.forget.classList.remove("armed");
-    el.forget.textContent = "Забути";
+    el.forget.textContent = T("forget");
   }
 
   async function doForget() {
     if (!(await ensureAuth())) return;
-    setProgress("стираю налаштування…");
+    setProgress(T("erasing"));
     const result = await sendCommand({ cmd: "forget" }, 10000);
     if (!result || result.ok !== true) {
-      const why = result && result.error ? result.error : "немає підтвердження";
-      setMessage("Не вдалося стерти налаштування: " + why + ".", "bad");
+      const why = result && result.error ? result.error : T("noConfirmShort");
+      setMessage(fill("eraseFailed", { why }), "bad");
       return;
     }
     log("forget ok");
-    setPill("ok", "налаштування стерто");
-    setMessage("Панель забула мережу й мозок.", "ok");
+    setPill("ok", T("erasedPill"));
+    setMessage(T("forgotten"), "ok");
     resetStatus();
     try {
       await refreshStatus();
@@ -1049,8 +1285,8 @@
     if (!forgetArmed) {
       forgetArmed = true;
       el.forget.classList.add("armed");
-      el.forget.textContent = "Підтвердити";
-      setMessage("Натисніть «Підтвердити», щоб стерти мережу й мозок із панелі.", "warn");
+      el.forget.textContent = T("forgetConfirm");
+      setMessage(T("forgetWarn"), "warn");
       forgetTimer = setTimeout(resetForget, 4000);
       return;
     }
@@ -1066,13 +1302,13 @@
       await action();
     } catch (err) {
       if (err instanceof LinkLost) {
-        setPill("bad", "з’єднання втрачено");
+        setPill("bad", T("linkLostPill"));
         setMessage(err.message, "bad");
       } else if (err instanceof PanelError) {
         setMessage(err.message, "bad");
       } else {
         logError(String(err && err.stack ? err.stack : err));
-        setMessage("Помилка: " + (err && err.message ? err.message : String(err)), "bad");
+        setMessage(T("errorPrefix") + (err && err.message ? err.message : String(err)), "bad");
       }
     } finally {
       setBusy(false);
@@ -1093,7 +1329,7 @@
         });
       } catch (err) {
         if (err && (err.name === "NotFoundError" || err.name === "AbortError")) {
-          throw new PanelError("Панель не вибрано. Спробуйте ще раз і виберіть heare-panel-… у списку.");
+          throw new PanelError(T("panelNotChosen"));
         }
         throw err;
       }
@@ -1104,13 +1340,13 @@
       state.listening = true;
     }
     setDeviceName(state.device.name || "heare-panel");
-    setPill("busy", "підключення…");
-    setProgress("відкриваю GATT…");
+    setPill("busy", T("connecting"));
+    setProgress(T("openingGatt"));
     await bindGatt();
     state.authed = false;
     log("connected name=" + (state.device.name || "?"));
-    setPill("ok", "підключено");
-    setMessage("Панель підключена. Введіть код із OLED.", "ok");
+    setPill("ok", T("connected"));
+    setMessage(T("connectedMsg"), "ok");
     syncControls();
   }
 
@@ -1120,23 +1356,38 @@
     state.chars = null;
     syncControls();
     if (state.reconnecting) {
-      setPill("busy", "перепідключення…");
+      setPill("busy", T("reconnectingPill"));
       return;
     }
     if (state.busy) {
-      setPill("busy", "з’єднання втрачено");
+      setPill("busy", T("linkLostPill"));
       return;
     }
     log("disconnected");
-    setPill("bad", "з’єднання втрачено");
-    setMessage("З’єднання з панеллю втрачено. Натисніть «Підключити панель» ще раз.", "bad");
+    setPill("bad", T("linkLostPill"));
+    setMessage(T("disconnectedMsg"), "bad");
   }
 
   function showUnsupported() {
     el.support.hidden = false;
-    el.support.textContent = "Цей браузер не підтримує Web Bluetooth. Відкрийте сторінку в Chrome або Edge на macOS, Windows чи Android.";
+    el.support.textContent = T("unsupported");
     el.connect.disabled = true;
-    setPill("bad", "браузер не підтримується");
+    setPill("bad", T("browserUnsupportedPill"));
+  }
+
+  function relabel() {
+    if (state.device) setDeviceName(state.device.name || "heare-panel");
+    else setDeviceName("");
+    if (!el.support.hidden) {
+      el.support.textContent = navigator.bluetooth ? T("insecure") : T("unsupported");
+    }
+    if (state.busy) setPill("busy", T("working"));
+    else if (state.connected) setPill("ok", T("connected"));
+    else setPill("", T("notConnected"));
+    resetForget();
+    setProgress("");
+    setMessage("");
+    syncControls();
   }
 
   function boot() {
@@ -1146,11 +1397,13 @@
     }
     if (!window.isSecureContext) {
       el.support.hidden = false;
-      el.support.textContent = "Web Bluetooth потребує HTTPS (або localhost). Відкрийте https://onelenyk.github.io/heare/panel/setup.html — з http:// на IP-адресі браузер відмовить.";
+      el.support.textContent = T("insecure");
     }
     resetStatus();
     syncControls();
   }
+
+  document.addEventListener("hearelang", relabel);
 
   el.connect.addEventListener("click", () => run(connect));
   el.unlock.addEventListener("click", () => run(async () => {
@@ -1162,9 +1415,9 @@
   el.forget.addEventListener("click", processForget);
   el.refresh.addEventListener("click", () => run(async () => {
     if (!(await ensureAuth())) return;
-    setProgress("оновлюю стан…");
+    setProgress(T("refreshing"));
     await refreshStatus();
-    setMessage("Стан панелі оновлено.", "ok");
+    setMessage(T("refreshed"), "ok");
   }));
 
   el.ssidSelect.addEventListener("change", () => {
@@ -1183,6 +1436,7 @@
     node.textContent = "heare-brain code";
   }
 
+  HeareSite.apply(STR);
   boot();
 })();
 </script>

@@ -54,7 +54,7 @@ MAY_SPEAK = {
     "heare-memory/heare/memory/persist.py": "the mark old rows still carry",
     "heare-sources/heare/sources.py": "the default city, a name",
     # Not yet: the recall answer is built with when.py's Ukrainian dates.
-    "heare-memory/heare/memory/search.py": "recall's answer — language.md, «Лишилось»",
+    "heare-memory/heare/memory/search.py": "the Ukrainian fallback of recall's answer",
 }
 
 

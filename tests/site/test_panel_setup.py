@@ -262,7 +262,7 @@ def run() -> int:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     server = start_server()
     base = f"http://127.0.0.1:{server.server_address[1]}"
-    page_url = base + "/panel/setup.html"
+    page_url = base + "/panel/setup.html?lang=uk"
     lines: list[str] = []
     failures: list[str] = []
 
@@ -433,7 +433,7 @@ def run() -> int:
             file_context = browser.new_context(viewport={"width": 1100, "height": 900})
             file_context.add_init_script(FAKE_JS)
             file_page = file_context.new_page()
-            file_page.goto((SITE / "panel" / "setup.html").as_uri())
+            file_page.goto((SITE / "panel" / "setup.html").as_uri() + "?lang=uk")
             expect(file_page.locator("#connect")).to_be_enabled(timeout=5000)
             check(
                 file_page.title().startswith("heare"),

@@ -48,7 +48,7 @@ footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:v
 <main>
 <h1>Встановлення без прапорців</h1>
 <p class="sub">Одна команда → одна локальна форма → все налаштовано.</p>
-<p class="sub" style="color:#e8b06a;font-size:14.5px;border:1px solid rgba(232,176,106,.35);border-radius:10px;padding:10px 14px;display:inline-block">Це пропозиція, а не поточний стан: у коді цього ще немає.</p>
+<p class="sub" style="color:#e8b06a;font-size:14.5px;border:1px solid rgba(232,176,106,.35);border-radius:10px;padding:10px 14px;display:inline-block">Пропозиція. Стан 28 жовтня: одна команда, форма, сесії й одноразові коди вже в коді; тунелю, домену й підписаного .pkg ще немає.</p>
 
 <h2>1 · Шлях</h2>
 <p class="lead">Сайт більше не генерує команду з виборами. Команда завжди одна; вибори — у формі, яку відкриває наглядач.</p>
@@ -60,10 +60,10 @@ footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:v
   <div class="box">Наглядач відкриває локальну форму <span class="mono muted">127.0.0.1:&lt;порт&gt;</span></div>
   <div class="arrow"><b>форма питає один раз</b><span>↓</span></div>
   <div class="box">
-    <div class="form-row"><span>Ця машина — мозок?</span><b>так / ні</b></div>
-    <div class="form-row"><span>Частини</span><b>голос · руки · очі</b></div>
-    <div class="form-row"><span>Адреса мозку</span><b class="mono">https://heare.onelenyk.dev</b></div>
-    <div class="form-row"><span>Код підключення</span><b class="mono">8 символів, з консолі мозку</b></div>
+    <div class="form-row"><span>Роль машини</span><b>Усе тут · Тіло · Лише мозок</b></div>
+    <div class="form-row"><span>Частини</span><b>Голос · Очі · Джерела · Руки CLI · Нативні руки</b></div>
+    <div class="form-row"><span>Адреса мозку</span><b class="mono">https://… · домену ще немає</b></div>
+    <div class="form-row"><span>Код підключення</span><b class="mono">8 символів, heare-brain code</b></div>
     <div class="form-row"><span></span><b class="ok">[ Підключити ]</b></div>
   </div>
   <div class="arrow"><b>перевірка з'єднання</b><span>↓</span></div>
@@ -76,8 +76,8 @@ footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:v
 <h2>2 · Дві машини</h2>
 <p class="lead">Кожна машина вводить адресу й код один раз. Далі — тільки з'єднання.</p>
 <div class="two">
-  <div class="box machine"><span class="role">Сервер</span><b>мозок</b><br><span class="mono muted">heare-brain · публічний домен</span></div>
-  <div class="box machine"><span class="role">MacBook</span><b>голос · руки · очі</b><br><span class="mono muted">heare-voice · heare-cli-hands · heare-eyes</span></div>
+  <div class="box machine"><span class="role">Сервер</span><b>мозок</b><br><span class="mono muted">heare-brain · домену ще немає</span></div>
+  <div class="box machine"><span class="role">MacBook</span><b>голос · очі · джерела · руки CLI · нативні руки</b><br><span class="mono muted">heare-voice · heare-eyes · heare-sources · heare-cli-hands · heare-native-hands</span></div>
 </div>
 <div class="arrow"><b>https + код · з'єднання назовні</b><span>↕</span></div>
 <div class="box">Браузер (телефон або Mac) → <span class="mono">https://heare.onelenyk.dev</span> → код → вікно<br><span class="muted">браузер не встановлюють — він просто відкриває домен</span></div>
@@ -103,13 +103,13 @@ footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:v
 </ul>
 
 <h2>5 · Порядок</h2>
-<div class="step"><span class="n">01</span><div><b>Авторизація</b><div class="why">сесії, одноразові коди, сторінка без майстра. Без неї «ввести домен» означає «зайди хто хоче».</div></div></div>
-<div class="step"><span class="n">02</span><div><b>Форма + одна команда</b><div class="why">наглядач відкриває форму; сайт перестає генерувати прапорці.</div></div></div>
-<div class="step"><span class="n">03</span><div><b>Тунель + домен</b><div class="why">https, Cloudflare, мозок ззовні.</div></div></div>
-<div class="step"><span class="n">04</span><div><b>Пуш + тег</b><div class="why">реліз із колесами, після чого команда справді працює.</div></div></div>
-<div class="step"><span class="n">05</span><div><b>Підписаний .pkg</b><div class="why">коли треба віддавати іншим. Начинка не змінюється.</div></div></div>
+<div class="step"><span class="n">01</span><div><b>Авторизація — у коді</b><div class="why">сесії, одноразові коди, сторінка без майстра.</div></div></div>
+<div class="step"><span class="n">02</span><div><b>Форма + одна команда — у коді</b><div class="why">наглядач відкриває форму; сайт перестає генерувати прапорці.</div></div></div>
+<div class="step"><span class="n">03</span><div><b>Тунель + домен — немає</b><div class="why">https, Cloudflare, мозок ззовні.</div></div></div>
+<div class="step"><span class="n">04</span><div><b>Пуш + тег — є</b><div class="why">реліз із колесами, після чого команда справді працює.</div></div></div>
+<div class="step"><span class="n">05</span><div><b>Підписаний .pkg — немає</b><div class="why">коли треба віддавати іншим. Начинка не змінюється.</div></div></div>
 
-<footer>heare · знімок 18 жовтня 2026 · джерело правди — код</footer>
+<footer>heare · пропозиція, стан 28 жовтня 2026 · джерело правди — код</footer>
 </main>
 </body>
 </html>

@@ -1,0 +1,44 @@
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .015);
+  font: 11px/1 var(--mono, ui-monospace, monospace);
+  letter-spacing: .06em;
+}
+
+.lang-switch button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--soft);
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  transition: color .16s ease, background .16s ease;
+}
+.lang-switch button:hover { color: var(--ink); }
+.lang-switch button[aria-pressed="true"] {
+  background: rgba(157, 124, 255, .17);
+  color: var(--ink);
+}
+.lang-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 380px) {
+  .lang-switch { padding: 2px; }
+  .lang-switch button { min-width: 30px; min-height: 28px; padding: 0 6px; }
+}

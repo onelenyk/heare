@@ -20,3 +20,14 @@ def _keys_in_a_file(monkeypatch):
     keys._STORED.clear()
     for name in keys.NAMES:
         monkeypatch.delenv(name, raising=False)
+
+@pytest.fixture(autouse=True)
+def _tests_speak_ukrainian(monkeypatch):
+    """The product defaults to English; the old suite asserts Ukrainian words."""
+    from heare import config
+    from heare.core import i18n
+
+    monkeypatch.setitem(config.DEFAULTS, "language", "uk")
+    i18n.choose(lambda: "uk")
+    yield
+    i18n.choose(lambda: "uk")
