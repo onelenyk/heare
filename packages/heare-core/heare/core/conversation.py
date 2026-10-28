@@ -583,70 +583,9 @@ class Core:
                     return
                 self.state.emit("heard", text=message.text, channel=message.channel)
                 await self._keep("user", message.text, message.channel)
-            limit = ROOM_LOOKS + 1 if judged else LOOK_STEPS
-            spent = 1
-            ran: dict[str, str] = {}
-            fed = 0
-            repeats = 0
-            must_answer = False
-            while (
-                message.person
-                and not broke
-                and outcome != "stopped"
-                and calls
-                and self._tools is not None
-                and spent < limit
-                and time.monotonic() - started < LOOK_S
-                and all(self._tools.lookup(str(c.get("name", ""))) for c in calls)
-            ):
-                results: list[tuple[dict, str]] = []
-                enough = False
-                for call in calls:
-                    key = json.dumps(
-                        [call.get("name"), call.get("arguments")],
-                        sort_keys=True, default=str,
-                    )
-                    if key in ran:
-                        repeats += 1
-                        text = f"{LOOKED_ALREADY}\n{ran[key]}"
-                    else:
-                        text = await self._run_verb(call)
-                        if len(text) > LOOK_CHARS:
-                            text = text[:LOOK_CHARS] + "…"
-                        ran[key] = text
-                    if fed + len(text) > LOOK_TOTAL_CHARS:
-                        enough = True
-                        break
-                    fed += len(text)
-                    results.append((call, text))
-                    if repeats >= 2:
-                        enough = True
-                        break
-                if results:
-                    messages = [*messages, *self._tool_turns(reply, results)]
-                spent += 1
-                if enough:
-                    must_answer = True
-                    break
-                self.state.set_phase("thinking")
-                reply, calls, outcome, broke = await self._voice(
-                    out if judged else None, messages, judged
-                )
-            if (
-                not must_answer and spent > 1 and message.person and not broke
-                and outcome != "stopped" and calls and self._tools is not None
-                and all(self._tools.lookup(str(c.get("name", ""))) for c in calls)
-                and (spent >= limit or time.monotonic() - started >= LOOK_S)
-            ):
-                must_answer = True
-            if must_answer:
-                reply, calls, outcome, broke = await self._voice(
-                    out if judged else None,
-                    [*messages, {"role": "user", "content": FORCE_ANSWER}],
-                    judged,
-                    verbs=[],
-                )
-                calls = []
+            reply, calls, outcome, broke, spent = await self._look_around(
+                out, messages, judged, message.person, reply, calls, outcome,
+                broke, started)
             if broke:
                 failure, reply = "model", ""
             if (
@@ -689,6 +628,83 @@ class Core:
                 len(self._acknowledging()) > 2 and self.words.claims_done(reply)
             ):
                 await self._keep_the_promise(messages, reply, out)
+
+    async def _look_around(
+        self, out: Output | None, messages: list[dict], judged: bool,
+        person: bool, reply: str, calls: list[dict], outcome: str, broke: bool,
+        started: float,
+    ) -> tuple[str, list[dict], str, bool, int]:
+        """One turn's look-ups: run them, feed them back, ask again until
+        the budget is spent; then one answer with no tools. Returns the
+        reply, the calls, how delivery ended, whether the model fell
+        over, and how many model calls the turn spent."""
+        limit = ROOM_LOOKS + 1 if judged else LOOK_STEPS
+        spent = 1
+        ran: dict[str, str] = {}
+        fed = 0
+        repeats = 0
+        must_answer = False
+        while (
+            person
+            and not broke
+            and outcome != "stopped"
+            and calls
+            and self._tools is not None
+            and spent < limit
+            and time.monotonic() - started < LOOK_S
+            and all(self._tools.lookup(str(c.get("name", ""))) for c in calls)
+        ):
+            results: list[tuple[dict, str]] = []
+            enough = False
+            for call in calls:
+                key = json.dumps(
+                    [call.get("name"), call.get("arguments")],
+                    sort_keys=True, default=str,
+                )
+                if key in ran:
+                    repeats += 1
+                    text = f"{LOOKED_ALREADY}\n{ran[key]}"
+                else:
+                    text = await self._run_verb(call)
+                    if len(text) > LOOK_CHARS:
+                        text = text[:LOOK_CHARS] + "…"
+                    ran[key] = text
+                if fed + len(text) > LOOK_TOTAL_CHARS:
+                    enough = True
+                    break
+                fed += len(text)
+                results.append((call, text))
+                if repeats >= 2:
+                    enough = True
+                    break
+            if results:
+                # In place: the caller still holds this list for the
+                # promise retry after the look-ups.
+                messages += self._tool_turns(reply, results)
+            spent += 1
+            if enough:
+                must_answer = True
+                break
+            self.state.set_phase("thinking")
+            reply, calls, outcome, broke = await self._voice(
+                out if judged else None, messages, judged
+            )
+        if (
+            not must_answer and spent > 1 and person and not broke
+            and outcome != "stopped" and calls and self._tools is not None
+            and all(self._tools.lookup(str(c.get("name", ""))) for c in calls)
+            and (spent >= limit or time.monotonic() - started >= LOOK_S)
+        ):
+            must_answer = True
+        if must_answer:
+            reply, calls, outcome, broke = await self._voice(
+                out if judged else None,
+                [*messages, {"role": "user", "content": FORCE_ANSWER}],
+                judged,
+                verbs=[],
+            )
+            calls = []
+        return reply, calls, outcome, broke, spent
 
     async def _voice(
         self,

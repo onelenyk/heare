@@ -35,8 +35,10 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # channel (an executor asking the person mid-work), not by drift; on
 # 27 October 2026 for i18n — the core speaks to the person, so it says it
 # in their language; for the lookup loop; and for the speaking phase; on
-# 28 October 2026 for the catch-all deadline on one piece of work.
-CORE_LINES = 1514
+# 28 October 2026 for the catch-all deadline on one piece of work, and for
+# lifting the look-up loop out of _exchange (a method costs its signature
+# and docstring; _exchange fell from 150 lines to 91).
+CORE_LINES = 1530
 
 
 def _imports(path: Path) -> set[str]:
