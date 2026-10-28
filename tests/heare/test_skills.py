@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from heare.api import skills
-from heare.native_hands import NativeHand, catalog
+from heare.native_hands import SAME_CALL, STEPS, NativeHand, catalog
 from tests.heare.fakes import Says, Script
 
 SHOW = {"name": "show", "about": "Показати слова", "effect": "harmless",
@@ -196,11 +196,130 @@ async def test_what_is_not_theirs_the_native_hands_hand_on_as_worded():
     assert model.offered[0] == ["pass_to_cli_hands"]
 
 
-async def test_out_of_steps_it_says_what_was_done():
+async def test_one_act_then_an_answer():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
-    turn = Says(calls=(("desk__show", {"text": "a"}),))
-    hand, _ = _hand(devices, *[turn] * 4)
-    assert await hand.run("показуй різне", Desk()) == "Done: ok ok ok"
+    hand, model = _hand(devices, Says(calls=(("desk__show", {"text": "hi"}),)), "Показав.")
+
+    assert await hand.run("покажи hi", Desk()) == "Показав."
+    assert devices.calls == [("oled-desk@sim", "show", {"text": "hi"})]
+    assert len(model.asked) == 2
+
+
+async def test_the_same_call_twice_runs_once():
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
+    call = ("desk__show", {"text": "hi"})
+    hand, model = _hand(devices, Says(calls=(call, call)), "Показав.")
+
+    assert await hand.run("покажи hi", Desk()) == "Показав."
+    assert devices.calls == [("oled-desk@sim", "show", {"text": "hi"})]
+    tool_turns = [m for m in model.asked[1] if m["role"] == "tool"]
+    assert SAME_CALL in tool_turns[1]["content"]
+
+
+async def test_a_second_repeat_forces_an_answer():
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
+    call = ("desk__show", {"text": "hi"})
+    hand, model = _hand(devices, *[Says(calls=(call,))] * 3, "Готово.")
+
+    assert await hand.run("покажи hi", Desk()) == "Готово."
+    assert devices.calls == [("oled-desk@sim", "show", {"text": "hi"})]
+    assert model.offered[-1] == []
+
+
+async def test_a_hung_skill_is_a_failed_step_not_a_hang(monkeypatch):
+    class Hung(Devices):
+        async def call(self, pid, name, args):
+            self.calls.append((pid, name, args))
+            await asyncio.sleep(10)
+            return {"ok": True, "result": "ok"}
+
+    devices = Hung({"oled-desk@sim": _part("desk", SHOW)})
+    hand, model = _hand(devices, Says(calls=(("desk__show", {"text": "hi"}),)), "Не дочекався.")
+    monkeypatch.setattr("heare.native_hands.CALL_S", 0.01)
+
+    assert await hand.run("покажи hi", Desk()) == "Не дочекався."
+    assert "did not answer" in model.asked[1][-1]["content"]
+
+
+async def test_the_deadline_forces_an_answer(monkeypatch):
+    class FastClock:
+        now = 0.0
+
+        def monotonic(self):
+            self.now += 10.0
+            return self.now
+
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
+    step = Says(calls=(("desk__show", {"text": "a"}),))
+    hand, model = _hand(devices, step, "Досить.")
+    monkeypatch.setattr("heare.native_hands.time", FastClock())
+
+    assert await hand.run("показуй", Desk()) == "Досить."
+    assert model.offered[-1] == []
+    assert len(model.asked) <= STEPS + 1
+
+
+async def test_steps_end_in_words_not_raw_results():
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
+    hand, _ = _hand(devices, *[
+        Says(text="Далі.", calls=(("desk__show", {"text": n}),)) for n in "abcd"
+    ], "Показав усе.")
+
+    said = await hand.run("показуй різне", Desk())
+
+    assert said == "Показав усе."
+    assert not said.startswith("Done:")
+
+
+async def test_a_stop_before_a_call_runs_nothing():
+    class StoppingDesk(Desk):
+        def step(self, text):
+            self.stopped = True
+
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)})
+    hand, _ = _hand(devices, Says(calls=(("desk__show", {"text": "a"}),)))
+    try:
+        await hand.run("покажи", StoppingDesk())
+    except asyncio.CancelledError:
+        pass
+    else:
+        raise AssertionError("no stop")
+    assert devices.calls == []
+
+
+async def test_handoff_still_escapes():
+    from heare import hand as hand_life
+
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)})
+    hand, _ = _hand(devices, Says(calls=(
+        ("pass_to_cli_hands", {"task": "Порахуй файли"}),)))
+    try:
+        await hand.run("скільки файлів", Desk())
+    except hand_life.Handoff:
+        pass
+    else:
+        raise AssertionError("no handoff")
+    assert devices.calls == []
+
+
+async def test_the_last_resort_is_the_raw_results():
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
+    hand, _ = _hand(devices, *[
+        Says(calls=(("desk__show", {"text": n}),)) for n in "abcd"
+    ], Says(""))
+
+    said = await hand.run("показуй різне", Desk())
+
+    assert said.startswith("Done: ")
+
+
+async def test_out_of_steps_ends_in_words():
+    devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
+    hand, _ = _hand(devices, *[
+        Says(calls=(("desk__show", {"text": n}),)) for n in "abcd"
+    ], "Готово.")
+
+    assert await hand.run("показуй різне", Desk()) == "Готово."
 
 
 async def test_a_stop_ends_the_work_before_the_next_call():

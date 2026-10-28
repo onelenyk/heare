@@ -25,6 +25,7 @@ import logging
 import re
 import socket
 import sys
+import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Protocol
 
@@ -45,9 +46,20 @@ ABOUT = (
     "quick acts on the bodies in «My body»: show, switch, read. One or two "
     "acts, no plan, no files, code, shell or internet."
 )
-STEPS = 4
+STEPS = 4            # 1 turn to understand, 1–2 to act, 1 to answer
+DEADLINE_S = 15.0    # the whole loop's ceiling; checked before every turn
+CALL_S = 10.0        # one skill; a hung part is a step, not forever
 HANDOFF = "pass_to_cli_hands"
 FAILED = "Failed: the model did not answer."
+
+SAME_CALL = (
+    "You already called this with these arguments; this is that answer. "
+    "Use it, call something else, or answer."
+)
+FORCE_ANSWER = (
+    "You have done enough for now. Answer the person in one or two sentences "
+    "with what came of it. Call no tool."
+)
 
 _SYSTEM = (
     "You are heare's quick hands. Do the request with the tools and answer in "
@@ -100,21 +112,51 @@ class NativeHand:
         messages: list[dict] = [{"role": "system", "content": _SYSTEM},
                                 {"role": "user", "content": task}]
         done: list[str] = []
+        seen: dict[str, str] = {}
+        repeats = 0
+        started = time.monotonic()
         for _step in range(STEPS):
+            if desk.stopped:
+                raise asyncio.CancelledError
+            if time.monotonic() - started >= DEADLINE_S:
+                break
             desk.step(N_("thinking"))
             text, calls = await self._turn(messages, schemas)
-            if getattr(desk, "stopped", False):
+            if desk.stopped:
                 raise asyncio.CancelledError
             if not calls:
                 return text or "Done."
             for call in calls:
                 if call.get("name") == HANDOFF:
                     raise hand_life.Handoff(_handed(call) or task)
-            results = [(call, await self._call(tools, call, desk)) for call in calls]
+            results: list[tuple[dict, str]] = []
+            for call in calls:
+                if desk.stopped:
+                    raise asyncio.CancelledError
+                key = json.dumps(
+                    [call.get("name"), call.get("arguments")],
+                    sort_keys=True, default=str,
+                )
+                if key in seen:
+                    repeats += 1
+                    results.append((call, f"{SAME_CALL}\n{seen[key]}"))
+                    continue
+                try:
+                    said = await asyncio.wait_for(
+                        self._call(tools, call, desk), CALL_S)
+                except TimeoutError:
+                    said = (f"Failed: {call.get('name')} did not answer in "
+                            f"{int(CALL_S)} s; whether it happened is unknown.")
+                seen[key] = said
+                results.append((call, said))
             done += [said for _, said in results]
             messages += _turns(text, results)
-        # Out of steps: what was done is still the answer, not a failure.
-        return "Done: " + " ".join(done[-3:])
+            if repeats >= 2:
+                break
+        # Out of turns or time: the model says what came of it in words.
+        reply, _calls = await self._turn(
+            [*messages, {"role": "user", "content": FORCE_ANSWER}], [])
+        return reply or ("Done: " + " ".join(done[-3:]))
 
     async def _turn(self, messages: list[dict], tools: list[dict]) -> tuple[str, list[dict]]:
         parts: list[str] = []
