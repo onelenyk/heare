@@ -46,6 +46,18 @@ KEEP_THE_PROMISE = (
     "so nothing is happening. Call the tool you meant now. Write no text."
 )
 
+# Asked when the loop has spent its budget and must answer with what it has.
+FORCE_ANSWER = (
+    "You have looked enough for now. Answer the person's last question in "
+    "one to three sentences, using only what you already have. Call no tool."
+)
+
+# Fed back instead of running the same call a second time.
+LOOKED_ALREADY = (
+    "You already called this with these arguments; this is that answer. "
+    "Use it, look something else up, or answer."
+)
+
 # An instruction, not a label: as a bare tag a small model read a result
 # as more input and answered «зараз гляну» a second time.
 RESULT_PREFIX = (
@@ -72,8 +84,21 @@ CONTEXT_TURNS = 6
 PERMISSION_REMINDER_S = 60.0
 # An executor's question waits this long; the agent's own idle guard is 5 min.
 QUESTION_TIMEOUT_S = 240.0
+# The longest the brain waits for one piece of work. The agent's own guard
+# is 30 minutes; this is the catch-all for a body that went away mid-task.
+TASK_S = 35 * 60.0
 SAY_CHARS = 70
 RECALL_CHARS = 1200
+
+# A turn may look things up and be asked again: five model calls at most
+# (the first included) and eight seconds, then one answer with no tools.
+LOOK_STEPS = 5
+LOOK_S = 8.0
+# Room talk is answered in one go: one lookup after the first call, as before.
+ROOM_LOOKS = 1
+# One observation is capped, and so is everything a turn feeds back.
+LOOK_CHARS = 1500
+LOOK_TOTAL_CHARS = 6000
 
 
 class NoWords:
@@ -546,6 +571,7 @@ class Core:
         failure: str | None = None
         reply, calls, outcome = "", [], "done"
         try:
+            started = time.monotonic()
             reply, calls, outcome, broke = await self._voice(out, messages, judged)
             if judged:
                 if not reply and not calls:
@@ -557,18 +583,77 @@ class Core:
                     return
                 self.state.emit("heard", text=message.text, channel=message.channel)
                 await self._keep("user", message.text, message.channel)
+            limit = ROOM_LOOKS + 1 if judged else LOOK_STEPS
+            spent = 1
+            ran: dict[str, str] = {}
+            fed = 0
+            repeats = 0
+            must_answer = False
+            while (
+                message.person
+                and not broke
+                and outcome != "stopped"
+                and calls
+                and self._tools is not None
+                and spent < limit
+                and time.monotonic() - started < LOOK_S
+                and all(self._tools.lookup(str(c.get("name", ""))) for c in calls)
+            ):
+                results: list[tuple[dict, str]] = []
+                enough = False
+                for call in calls:
+                    key = json.dumps(
+                        [call.get("name"), call.get("arguments")],
+                        sort_keys=True, default=str,
+                    )
+                    if key in ran:
+                        repeats += 1
+                        text = f"{LOOKED_ALREADY}\n{ran[key]}"
+                    else:
+                        text = await self._run_verb(call)
+                        if len(text) > LOOK_CHARS:
+                            text = text[:LOOK_CHARS] + "…"
+                        ran[key] = text
+                    if fed + len(text) > LOOK_TOTAL_CHARS:
+                        enough = True
+                        break
+                    fed += len(text)
+                    results.append((call, text))
+                    if repeats >= 2:
+                        enough = True
+                        break
+                if results:
+                    messages = [*messages, *self._tool_turns(reply, results)]
+                spent += 1
+                if enough:
+                    must_answer = True
+                    break
+                self.state.set_phase("thinking")
+                reply, calls, outcome, broke = await self._voice(
+                    out if judged else None, messages, judged
+                )
+            if (
+                not must_answer and spent > 1 and message.person and not broke
+                and outcome != "stopped" and calls and self._tools is not None
+                and all(self._tools.lookup(str(c.get("name", ""))) for c in calls)
+                and (spent >= limit or time.monotonic() - started >= LOOK_S)
+            ):
+                must_answer = True
+            if must_answer:
+                reply, calls, outcome, broke = await self._voice(
+                    out if judged else None,
+                    [*messages, {"role": "user", "content": FORCE_ANSWER}],
+                    judged,
+                    verbs=[],
+                )
+                calls = []
             if broke:
                 failure, reply = "model", ""
-            elif outcome != "stopped":
-                if (
-                    message.person and calls and self._tools is not None
-                    and all(self._tools.read_only(c.get("name", "")) for c in calls)
-                ):
-                    results = [(call, await self._run_verb(call)) for call in calls]
-                    messages = [*messages, *self._tool_turns(reply, results)]
-                    reply, calls, outcome, broke = await self._voice(out, messages, judged)
-                    if broke:
-                        failure, reply = "model", ""
+            if (
+                not judged and spent > 1 and message.person
+                and outcome != "stopped" and failure is None and reply
+            ):
+                outcome = await self._say(out, reply)
             for call in (calls if outcome != "stopped" and not broke else []):
                 spoken = await self._run_verb(call)
                 # The model already said something; «Беру.» on top of
@@ -606,23 +691,30 @@ class Core:
                 await self._keep_the_promise(messages, reply, out)
 
     async def _voice(
-        self, out: Output | None, messages: list[dict], may_be_silent: bool = False
+        self,
+        out: Output | None,
+        messages: list[dict],
+        may_be_silent: bool = False,
+        verbs: list[dict] | None = None,
     ) -> tuple[str, list[dict], str, bool]:
         """The model's reply, delivered while it is written. Returns the
         text, the verbs it called, how delivery ended, and whether the
         model fell over — which is not the output's failure and must not
         be reported as one. With ``may_be_silent`` the first few letters
         are held back until it is clear they are not the word for
-        silence; if they are, nothing is delivered and the text is empty."""
+        silence; if they are, nothing is delivered and the text is empty.
+        ``verbs`` narrows what the model is offered for this call: an
+        empty list asks for words alone, when the turn must answer now."""
         parts: list[str] = []
         calls: list[dict] = []
         broke = False
         held, decided = "", not may_be_silent
+        schemas = self._schemas() if verbs is None else verbs
 
         async def pieces() -> AsyncIterator[str]:
             nonlocal broke, held, decided
             try:
-                async for event in self.model.reply(messages, self._schemas()):
+                async for event in self.model.reply(messages, schemas):
                     kind = event.get("type")
                     if kind == "delta":
                         text = event["text"]
@@ -632,7 +724,7 @@ class Core:
                             if SILENCE.startswith(start) or start.startswith(SILENCE):
                                 continue  # silence, or still could be
                             decided, text = True, held
-                        if not parts:
+                        if not parts and out is not None:
                             self.state.set_phase("speaking")
                         parts.append(text)
                         yield text
@@ -662,7 +754,7 @@ class Core:
     def _tool_turns(
         self, reply: str, results: list[tuple[dict, str]]
     ) -> list[dict]:
-        """The reply and what its read-only calls found, in the protocol's
+        """The reply and what its lookup calls found, in the protocol's
         own turns: an assistant turn that called them, then one result."""
         ids = [
             call.get("id") or f"call_{index}"
@@ -769,6 +861,7 @@ class Core:
     async def _say(self, out: Output | None, text: str) -> str:
         if out is None or not text:
             return "done"
+        self.state.set_phase("speaking")
         return await out.say(_one(text))
 
     async def _say_failure(self, out: Output | None) -> None:
@@ -856,13 +949,18 @@ class Core:
             )
             task.executor = name
             self.state.emit("task", **task.view())
-            task.result = await self.executors[name].run(text, _Desk(self, task))
+            task.result = await asyncio.wait_for(
+                self.executors[name].run(text, _Desk(self, task)), TASK_S)
             task.status = "done"
         except asyncio.CancelledError:
             task.status = "stopped"
             task.ended = time.time()
             self.state.emit("task", **task.view())
             raise
+        except TimeoutError:
+            logger.warning("task %d: the hands did not answer in %d s",
+                           task.id, int(TASK_S))
+            task.status, task.result = "failed", _("The hands did not answer in time.")
         except Exception as exc:  # failed work must still be reported
             logger.exception("task %d failed: %.120s", task.id, task.request)
             task.status, task.result = "failed", f"Failed: {exc}"

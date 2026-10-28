@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 19:20+0200\n"
+"POT-Creation-Date: 2026-10-28 01:19+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -367,6 +367,24 @@ msgstr "вирішив не відповідати"
 
 msgid "something is playing, and no one called it"
 msgstr "щось грає, а звертання не було"
+
+msgid "looking in memory"
+msgstr "шукаю в памʼяті"
+
+msgid "checking the reminders"
+msgstr "перевіряю нагадування"
+
+msgid "looking at a part"
+msgstr "дивлюсь на частину"
+
+msgid "looking at the screen"
+msgstr "дивлюсь на екран"
+
+msgid "setting a reminder"
+msgstr "ставлю нагадування"
+
+msgid "cancelling a reminder"
+msgstr "скасовую нагадування"
 
 msgid "now"
 msgstr "зараз"
@@ -1275,6 +1293,10 @@ msgstr "суддя не відповів"
 msgid "This is not for the quick hands, and no other hands are here."
 msgstr "Це не для швидких рук, а інших рук зараз немає."
 
+#, python-brace-format
+msgid "handed over from {name}"
+msgstr "передано від {name}"
+
 msgid "Say what exactly to do."
 msgstr "Скажи, що саме зробити."
 
@@ -1508,6 +1530,9 @@ msgstr "Такої дії я не знаю."
 
 msgid "That did not work. Try again."
 msgstr "Не вийшло. Спробуй ще раз."
+
+msgid "The hands did not answer in time."
+msgstr "Руки не відповіли вчасно."
 
 #, python-brace-format
 msgid "{who} wants to: {what}. I ask because {why}. Allow?"

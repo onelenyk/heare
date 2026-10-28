@@ -72,6 +72,15 @@ def test_read_only_names_the_verbs_that_change_nothing(tmp_path):
     assert box.read_only("delegate") is False
     assert box.read_only("remind") is False
 
+    assert box.lookup("recall") is True
+    assert box.lookup("list_reminders") is True
+    assert box.lookup("read_body") is True
+    assert box.lookup("canvas_view") is True
+    assert box.lookup("remind") is True
+    assert box.lookup("cancel_reminder") is True
+    assert box.lookup("delegate") is False
+    assert box.lookup("stop_work") is False
+
 
 def test_remind_is_offered_only_with_intents(tmp_path):
     assert "remind" not in _toolbox().verbs()

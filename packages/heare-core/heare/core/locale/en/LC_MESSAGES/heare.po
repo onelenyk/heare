@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-27 19:20+0200\n"
+"POT-Creation-Date: 2026-10-28 01:19+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -366,6 +366,24 @@ msgid "chose not to answer"
 msgstr ""
 
 msgid "something is playing, and no one called it"
+msgstr ""
+
+msgid "looking in memory"
+msgstr ""
+
+msgid "checking the reminders"
+msgstr ""
+
+msgid "looking at a part"
+msgstr ""
+
+msgid "looking at the screen"
+msgstr ""
+
+msgid "setting a reminder"
+msgstr ""
+
+msgid "cancelling a reminder"
 msgstr ""
 
 msgid "now"
@@ -1270,6 +1288,10 @@ msgstr ""
 msgid "This is not for the quick hands, and no other hands are here."
 msgstr ""
 
+#, python-brace-format
+msgid "handed over from {name}"
+msgstr ""
+
 msgid "Say what exactly to do."
 msgstr ""
 
@@ -1502,6 +1524,9 @@ msgid "I do not know that action."
 msgstr ""
 
 msgid "That did not work. Try again."
+msgstr ""
+
+msgid "The hands did not answer in time."
 msgstr ""
 
 #, python-brace-format

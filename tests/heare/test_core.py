@@ -12,7 +12,7 @@ import time
 
 from heare.core import FAILURE_LINE, RESULT_PREFIX, Core, Message
 from heare.core.i18n import _ as said_as
-from heare.core.conversation import HISTORY_TURNS
+from heare.core.conversation import HISTORY_TURNS, LOOKED_ALREADY, LOOK_STEPS
 from heare.language import uk
 from heare.memory.book import Book
 from heare.memory.journal import Journal
@@ -168,7 +168,7 @@ async def test_recall_is_said_as_found():
     )
     room.says("Що я казав про відпустку?")
     await room.settled()
-    assert room.page.said == ["Ти казав про це вчора. "]
+    assert room.page.said == ["Ти казав про це вчора."]
     await room.close()
 
 
@@ -189,7 +189,7 @@ async def test_a_silent_recall_gets_a_follow_up_answer():
     tool = next(m for m in follow_up if m["role"] == "tool")
     assert tool["tool_call_id"] == assistant["tool_calls"][0]["id"]
     assert tool["content"] == "Ти казав про це вчора."
-    assert room.page.said == ["Ти казав про це вчора. "]
+    assert room.page.said == ["Ти казав про це вчора."]
     assert ("проект", "") in room.memory.recalled
     await room.close()
 
@@ -204,7 +204,7 @@ async def test_text_plus_recall_gets_a_native_follow_up():
     room.says("Що було з проектом?")
     await room.settled()
     assert len(room.model.asked) == 2
-    assert room.page.said == ["Зараз гляну. ", "Ти казав про це вчора. "]
+    assert room.page.said == ["Зараз гляну. ", "Ти казав про це вчора."]
     follow_up = room.model.asked[1]
     assistant = next(
         m for m in follow_up if m["role"] == "assistant" and m.get("tool_calls")
@@ -279,9 +279,12 @@ async def test_a_verb_is_offered_only_when_it_can_work():
 
 async def test_the_model_can_set_a_one_off_reminder():
     room = await open_room()
-    room.model.will_say(Says(calls=(
-        ("remind", {"text": "подзвонити мамі", "in_seconds": 600}),
-    )))
+    room.model.will_say(
+        Says(calls=(
+            ("remind", {"text": "подзвонити мамі", "in_seconds": 600}),
+        )),
+        Says("Добре, нагадаю."),
+    )
     room.says("Нагадай мені за десять хвилин подзвонити мамі")
     await room.settled()
 
@@ -310,7 +313,7 @@ async def test_listing_reminders_is_a_read_only_follow_up():
     tool = next(m for m in follow_up if m["role"] == "tool")
     assert "подзвонити мамі" in tool["content"]
     assert str(held.id) in tool["content"]
-    assert room.page.said[-1] == "У тебе одне нагадування. "
+    assert room.page.said[-1] == "У тебе одне нагадування."
     await room.close()
 
 
@@ -319,13 +322,203 @@ async def test_cancelling_a_reminder_is_a_side_effect():
     held = room.extra["intents"].hold(
         "подзвонити мамі", "reminder", 3, not_before=time.time() + 600,
     )
-    room.model.will_say(Says(calls=(("cancel_reminder", {"id": held.id}),)))
+    room.model.will_say(
+        Says(calls=(("cancel_reminder", {"id": held.id}),)),
+        Says("Скасував."),
+    )
     room.says("Скасуй нагадування про дзвінок")
     await room.settled()
 
     assert room.page.said[-1] == "Скасував."
     assert held.status == "dropped"
+    assert len(room.model.asked) == 2
+    await room.close()
+
+
+async def test_two_lookups_in_one_turn_get_a_third_answer():
+    room = await open_room()
+    room.memory.found = "Ти казав про це вчора."
+    room.extra["intents"].hold(
+        "подзвонити мамі", "reminder", 3, not_before=time.time() + 600,
+    )
+    room.model.will_say(
+        Says(text="Зараз гляну.", calls=(("recall", {"query": "проект"}),)),
+        Says(calls=(("list_reminders", {}),)),
+        Says("Ти казав про це вчора, і маєш одне нагадування."),
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+
+    assert len(room.model.asked) == 3
+    third = room.model.asked[2]
+    assistants = [m for m in third if m["role"] == "assistant" and m.get("tool_calls")]
+    tools = [m for m in third if m["role"] == "tool"]
+    assert len(assistants) == 2 and len(tools) == 2
+    assert assistants[0]["tool_calls"][0]["id"] == tools[0]["tool_call_id"]
+    assert assistants[1]["tool_calls"][0]["id"] == tools[1]["tool_call_id"]
+    assert len(room.memory.recalled) == 1
+    assert room.page.said == [
+        "Зараз гляну. ", "Ти казав про це вчора, і маєш одне нагадування.",
+    ]
+    await room.close()
+
+
+async def test_a_silent_lookup_does_not_claim_to_speak():
+    room = await open_room()
+    events = room.core.state.subscribe()
+    room.model.will_say(
+        Says(calls=(("recall", {"query": "проект"}),)),
+        Says(text="Гляну в профіль.", calls=(("recall", {"query": "профіль"}),)),
+        Says("Ти казав про це вчора."),
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+
+    speaking = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "phase" and event.data.get("phase") == "speaking":
+            speaking.append(event)
+    assert len(speaking) == 1
+    assert room.page.said == ["Ти казав про це вчора."]
+    await room.close()
+
+
+async def test_a_lookup_then_delegate_runs_the_lookup_once():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.model.will_say(
+        Says(calls=(("recall", {"query": "проект"}),)),
+        Says(text="Беру.", calls=(("delegate", {"task": "зроби"}),)),
+    )
+    room.says("Зроби")
+    await room.until(lambda: worker.tasks)
+    await room.settled()
+
+    assert len(room.model.asked) == 2
+    assert len(worker.tasks) == 1
+    assert len(room.memory.recalled) == 1
+    await room.close()
+
+
+async def test_lookups_stop_at_the_step_cap_and_force_an_answer():
+    room = await open_room()
+    room.model.will_say(
+        *[Says(calls=(("recall", {"query": f"q{step}"}),))
+          for step in range(LOOK_STEPS)],
+        Says("Досить."),
+    )
+    room.says("Що було?")
+    await room.settled()
+
+    assert len(room.model.asked) == LOOK_STEPS + 1
+    assert room.model.offered[-1] == []
+    assert room.page.said[-1] == "Досить."
+    await room.close()
+
+
+async def test_room_talk_gets_one_lookup_and_answers():
+    room = await open_room()
+    room.memory.found = "Ти казав про це вчора."
+    room.model.will_say(
+        Says(calls=(("recall", {"query": "проект"}),)),
+        Says("Ти казав про це вчора."),
+    )
+    room.core.hear(Message(
+        text="Що було з проектом?", channel="text", addressed=False,
+    ))
+    await room.settled()
+
+    assert len(room.model.asked) == 2
+    follow_up = room.model.asked[1]
+    tool = next(m for m in follow_up if m["role"] == "tool")
+    assert tool["content"] == "Ти казав про це вчора."
+    assert room.page.said == ["Ти казав про це вчора. "]
+    await room.close()
+
+
+async def test_a_break_in_a_later_pass_reports_the_failure():
+    room = await open_room()
+    room.model.will_say(
+        Says(text="Зараз гляну.", calls=(("recall", {"query": "проект"}),)),
+        Says(fails=True),
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+
+    assert room.page.said[-1] == said_as(FAILURE_LINE)
+    assert [m for m in room.core.history if m["role"] == "assistant"] == []
+    await room.close()
+
+
+async def test_stop_while_speaking_skips_the_pending_lookup():
+    room = await open_room(slow=0.08)
+    held = room.extra["intents"].hold(
+        "подзвонити мамі", "reminder", 3, not_before=time.time() + 600,
+    )
+    room.model.will_say(Says(
+        text="Зараз подивлюся, що там було.",
+        calls=(("cancel_reminder", {"id": held.id}),),
+    ))
+    room.says("Скасуй нагадування")
+    await room.until(lambda: room.page.speaking)
+    room.page.stop()
+    await room.settled()
+
     assert len(room.model.asked) == 1
+    assert held.status != "dropped"
+    assert room.page.outcomes[-1] == "stopped"
+    await room.close()
+
+
+async def test_the_same_lookup_twice_is_not_run_twice():
+    room = await open_room()
+    recall = ("recall", {"query": "проект"})
+    room.model.will_say(
+        Says(calls=(recall,)),
+        Says(calls=(recall,)),
+        Says("Ти казав про це вчора."),
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+
+    assert len(room.memory.recalled) == 1
+    assert len(room.model.asked) == 3
+    third = room.model.asked[2]
+    assert any(
+        m["role"] == "tool" and LOOKED_ALREADY in m["content"] for m in third
+    )
+    assert room.page.said == ["Ти казав про це вчора."]
+    await room.close()
+
+
+async def test_the_look_loop_respects_its_deadline(monkeypatch):
+    class Clock:
+        def __init__(self) -> None:
+            self.now = 0.0
+
+        def monotonic(self) -> float:
+            self.now += 3.0
+            return self.now
+
+    room = await open_room()
+    monkeypatch.setattr(
+        "heare.core.conversation.time.monotonic", Clock().monotonic,
+    )
+    room.model.will_say(
+        *[Says(calls=(("recall", {"query": f"q{step}"}),))
+          for step in range(LOOK_STEPS)],
+        Says("Досить."),
+    )
+    room.says("Що було?")
+    for _ in range(200):
+        if room.core.settled:
+            break
+        await asyncio.sleep(0)
+
+    assert len(room.model.asked) < LOOK_STEPS + 1
+    assert room.model.offered[-1] == []
     await room.close()
 
 
@@ -388,6 +581,34 @@ async def test_two_tasks_are_both_visible_and_labelled():
     await room.settled()
     first = room.model.asked[0][-1]["content"]
     assert "[перша справа]" in first or "[друга справа]" in first
+    await room.close()
+
+
+async def test_work_that_never_returns_is_given_up_on(monkeypatch):
+    room = await open_room()
+    monkeypatch.setattr("heare.core.conversation.TASK_S", 0.05)
+    worker = Worker()
+    room.core.add_executor(worker)
+    task = room.core.delegate("зроби")
+    await room.until(lambda: task.status == "failed")
+
+    assert task.result == said_as("The hands did not answer in time.")
+    assert worker.stopped == 1
+    await room.close()
+
+
+async def test_a_timeout_is_a_failure_not_a_stop(monkeypatch):
+    room = await open_room()
+    monkeypatch.setattr("heare.core.conversation.TASK_S", 0.05)
+    worker = Worker()
+    room.core.add_executor(worker)
+    task = room.core.delegate("зроби")
+    await room.until(lambda: any(
+        e.kind == "task" and e.data["id"] == task.id
+        and e.data["status"] == "failed"
+        for e in room.core.state.journal))
+
+    assert task.status == "failed" and task.status != "stopped"
     await room.close()
 
 

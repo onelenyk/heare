@@ -32,10 +32,11 @@ KNOW_EVERYTHING = {"app", "listener", "brain"}
 LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "heare.words"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part. Raised deliberately for the question
-# channel (an executor asking the person mid-work), not by drift; and on
+# channel (an executor asking the person mid-work), not by drift; on
 # 27 October 2026 for i18n — the core speaks to the person, so it says it
-# in their language.
-CORE_LINES = 1420
+# in their language; for the lookup loop; and for the speaking phase; on
+# 28 October 2026 for the catch-all deadline on one piece of work.
+CORE_LINES = 1514
 
 
 def _imports(path: Path) -> set[str]:

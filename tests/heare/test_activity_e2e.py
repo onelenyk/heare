@@ -95,17 +95,20 @@ async def test_a_reminder_is_set_listed_cancelled_and_delivered(tmp_path):
     rig = build_rig(tmp_path)
     try:
         # 1. The model calls remind; the toolbox holds it through Intents.
-        rig.model.will_say(Says(text="", calls=(
-            ("remind", {"text": "подзвонити мамі", "in_seconds": 600}),
-        )))
+        rig.model.will_say(
+            Says(text="", calls=(
+                ("remind", {"text": "подзвонити мамі", "in_seconds": 600}),
+            )),
+            Says("Гаразд."),
+        )
         await rig.say("Нагадай через 10 хвилин подзвонити мамі")
 
-        assert rig.page.said[-1].strip() == "Добре, нагадаю."
+        assert rig.page.said[-1].strip() == "Гаразд."
         [reminder] = rig.intents.reminders(rig.clock["t"])
         assert reminder.what == "подзвонити мамі"
         assert reminder.not_before == rig.clock["t"] + 600
 
-        # 2. list_reminders is read-only: the core runs it and asks again
+        # 2. list_reminders is a lookup: the core runs it and asks again
         #    with the tool turn in front of the model, all in one say.
         rig.model.will_say(
             Says(calls=(("list_reminders", {}),)),
@@ -113,26 +116,32 @@ async def test_a_reminder_is_set_listed_cancelled_and_delivered(tmp_path):
         )
         await rig.say("Що ти тримаєш у голові?")
 
-        assert len(rig.model.asked) == 3
+        assert len(rig.model.asked) == 4
         follow_up = rig.model.asked[-1]
         tool = next(m for m in follow_up if m["role"] == "tool")
         assert "подзвонити мамі" in tool["content"]
         assert str(reminder.id) in tool["content"]
         assert rig.page.said[-1].strip() == "У тебе одне нагадування."
 
-        # 3. Cancelling is a side effect, spoken as the verb's own answer.
-        rig.model.will_say(Says(calls=(
-            ("cancel_reminder", {"id": reminder.id}),
-        )))
+        # 3. Cancelling changes something locally; its answer is fed back.
+        rig.model.will_say(
+            Says(calls=(
+                ("cancel_reminder", {"id": reminder.id}),
+            )),
+            Says("Скасував."),
+        )
         await rig.say("Скасуй це нагадування")
 
         assert rig.page.said[-1].strip() == "Скасував."
         assert rig.intents.reminders(rig.clock["t"]) == []
 
         # 4. A second reminder, this time due in five minutes.
-        rig.model.will_say(Says(text="", calls=(
-            ("remind", {"text": "випити води", "in_seconds": 300}),
-        )))
+        rig.model.will_say(
+            Says(text="", calls=(
+                ("remind", {"text": "випити води", "in_seconds": 300}),
+            )),
+            Says("Гаразд."),
+        )
         await rig.say("Нагадай через 5 хвилин випити води")
 
         [water] = rig.intents.reminders(rig.clock["t"])

@@ -82,6 +82,12 @@ class Toolbox:
         # the toolbox says what may be read and answered on in the same turn.
         return name in {"recall", "list_reminders", "read_body", "canvas_view"}
 
+    def lookup(self, name: str) -> bool:
+        # remind and cancel_reminder change something, but only locally and
+        # without permission; their answer is worth seeing inside the turn.
+        return name in {"recall", "list_reminders", "read_body", "canvas_view",
+                        "remind", "cancel_reminder"}
+
     async def _run_recall(self, arguments: dict) -> str:
         return await recall.run(self._memory, arguments)
 

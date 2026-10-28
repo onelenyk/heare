@@ -135,6 +135,12 @@ class Tools(Protocol):
         the model as a native tool result instead of being spoken."""
         ...
 
+    def lookup(self, name: str) -> bool:
+        """Whether a call finds something out — or keeps the person's own
+        reminder — so its result may go back to the model in the same turn.
+        """
+        ...
+
 
 class Model(Protocol):
     def reply(self, messages: list[dict], verbs: list[dict]) -> AsyncIterator[dict]:

@@ -50,7 +50,7 @@ Core — це **мова розмови**, а не місце для памʼя�
 | Один write-path розмови | `memory/book.py` (`Book.keep`) | є |
 | Recall за cue | `language/uk.py`, `core/conversation.py` | є |
 | Бюджет ходу | `prompt/budget.py` | є |
-| Native tool-result цикл | `core/conversation.py`, `model/llm.py` | є для read-only |
+| Native tool-result цикл | `core/conversation.py`, `model/llm.py` | є: до 5 викликів і 8 с, потім одна відповідь без інструментів |
 | Каталог `recall`/`delegate`/`stop_work` | `tools/` | є |
 | Нагадування: створити, показати, скасувати | `tools/reminders.py`, `engine/` | є |
 | Порт нагадувань | `tools/ports.py` | є |
