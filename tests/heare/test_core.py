@@ -946,6 +946,71 @@ async def test_what_the_code_says_itself_is_part_of_the_conversation():
     await room.close()
 
 
+async def test_a_turn_records_how_long_it_took():
+    room = await open_room()
+    events = room.core.state.subscribe()
+    room.model.will_say("Чотири.")
+    room.says("Скільки буде два плюс два?")
+    await room.settled()
+
+    said = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "said":
+            said.append(event.data)
+    assert len(said) == 1
+    data = said[0]
+    assert 0 <= data["first"] <= data["seconds"]
+    assert data["calls"] == 1
+    assert data["looked"] == 0
+    await room.close()
+
+
+async def test_a_lookup_turn_counts_its_calls():
+    room = await open_room()
+    events = room.core.state.subscribe()
+    room.model.will_say(
+        Says(calls=(("recall", {"query": "проект"}),)),
+        "Ти казав про це вчора.",
+    )
+    room.says("Що було з проектом?")
+    await room.settled()
+
+    said = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "said":
+            said.append(event.data)
+    assert len(said) == 1
+    data = said[0]
+    assert data["calls"] == 2
+    assert data["looked"] == 1
+    assert data["first"] <= data["seconds"]
+    await room.close()
+
+
+async def test_a_verbatim_line_takes_no_model_call():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.core.delegate("довга справа")
+    await room.until(lambda: worker.tasks)
+    events = room.core.state.subscribe()
+    room.says("Зупини все")
+    await room.settled()
+
+    said = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "said":
+            said.append(event.data)
+    assert len(said) == 1
+    data = said[0]
+    assert data["calls"] == 0
+    assert data["seconds"] == 0.0
+    await room.close()
+
+
 async def test_a_short_answer_that_starts_like_the_word_for_silence_is_still_said():
     from heare.core import Message
 

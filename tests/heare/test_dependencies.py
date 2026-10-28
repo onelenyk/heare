@@ -37,8 +37,9 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # in their language; for the lookup loop; and for the speaking phase; on
 # 28 October 2026 for the catch-all deadline on one piece of work, and for
 # lifting the look-up loop out of _exchange (a method costs its signature
-# and docstring; _exchange fell from 150 lines to 91).
-CORE_LINES = 1530
+# and docstring; _exchange fell from 150 lines to 91), and for the timings
+# on the said event (seconds, first, calls, looked).
+CORE_LINES = 1544
 
 
 def _imports(path: Path) -> set[str]:

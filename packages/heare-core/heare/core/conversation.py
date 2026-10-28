@@ -245,6 +245,8 @@ class Core:
         self._asking = asyncio.Lock()
         self._taking = False
         self._tools: Tools | None = None
+        self._turn_started: float | None = None
+        self._first_word: float | None = None
 
     # -- attaching parts --------------------------------------------------
 
@@ -530,7 +532,8 @@ class Core:
                 await self._say(out, message.text)
                 await self._keep("assistant", message.text, out.name if out else "")
                 self.state.emit("said", text=message.text,
-                                channel=out.name if out else "", failed=None)
+                                channel=out.name if out else "", failed=None,
+                                seconds=0.0, first=0.0, calls=0, looked=0)
                 return
             await self._exchange(message, out)
         finally:
@@ -570,8 +573,10 @@ class Core:
 
         failure: str | None = None
         reply, calls, outcome = "", [], "done"
+        spent = 1
         try:
             started = time.monotonic()
+            self._turn_started, self._first_word = started, None
             reply, calls, outcome, broke = await self._voice(out, messages, judged)
             if judged:
                 if not reply and not calls:
@@ -618,7 +623,14 @@ class Core:
         recorded = reply or (_(FAILURE_LINE) if failure else "")
         if recorded:
             await self._keep("assistant", recorded, out.name if out else "")
-        self.state.emit("said", text=recorded, channel=out.name if out else "", failed=failure)
+        seconds = (round(time.monotonic() - self._turn_started, 2)
+                   if self._turn_started is not None else 0.0)
+        first = (round(self._first_word - self._turn_started, 2)
+                 if self._first_word is not None and self._turn_started is not None
+                 else 0.0)
+        self.state.emit("said", text=recorded, channel=out.name if out else "",
+                        failed=failure, seconds=seconds, first=first,
+                        calls=spent, looked=max(spent - 1, 0))
 
         if (
             failure is None and not calls and message.person
@@ -742,6 +754,8 @@ class Core:
                             decided, text = True, held
                         if not parts and out is not None:
                             self.state.set_phase("speaking")
+                            if self._first_word is None:
+                                self._first_word = time.monotonic()
                         parts.append(text)
                         yield text
                     elif kind == "tool_call":
