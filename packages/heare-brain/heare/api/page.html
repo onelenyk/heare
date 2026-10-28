@@ -97,6 +97,7 @@
   .task:first-child { border-top:0; padding-top:0; }
   .task p { font-family:var(--sans); font-size:13px; overflow-wrap:anywhere; }
   .task small { color:var(--soft); }
+  .tsteps { margin-top:2px; font:10.5px var(--mono); line-height:1.5; color:var(--soft); }
   .mini { padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:transparent; cursor:pointer; font-size:11.5px; }
   .mini:hover { border-color:var(--accent); }
   .ask { border:1px solid var(--warn); border-radius:10px; padding:11px; margin-bottom:12px; background:rgba(219,182,79,.07); }
@@ -724,6 +725,7 @@ const WHY = {busy: tr("was busy"), "chose silence": tr("chose not to answer"), p
 let voice = null, phase = "idle", state = null, writing = null, askedAt = null;
 let aloud = localStorage.getItem("heare.aloud") === "1", webPid = null;
 const speeds = [];
+const stepLog = new Map();   // task id -> {request, steps: [{executor, step}, …]}
 
 /* ── the conversation ── */
 function line(text, who, via) {
@@ -733,6 +735,26 @@ function line(text, who, via) {
   return e;
 }
 const aside = text => { $("talk").append(el("div", "aside", text)); $("talk").scrollTop = $("talk").scrollHeight; };
+const LOOK = {
+  recall: tr("looking in memory"),
+  list_reminders: tr("checking the reminders"),
+  read_body: tr("looking at a part"),
+  canvas_view: tr("looking at the screen"),
+  remind: tr("setting a reminder"),
+  cancel_reminder: tr("cancelling a reminder"),
+};
+const quoted = text => {
+  const t = String(text ?? "").trim();
+  if (!t) return "";
+  const cut = t.length > 40 ? t.slice(0, 40).trimEnd() + "…" : t;
+  return ` «${cut}»`;
+};
+const step = e => {
+  const label = LOOK[e.name];
+  if (!label) return;
+  const words = e.arguments && (e.arguments.query || e.arguments.text);
+  aside("· " + label + quoted(words));
+};
 
 api("history?n=20").then(past => {
   const frag = document.createDocumentFragment();
@@ -832,6 +854,17 @@ function spark() {
   $("spark").innerHTML = speeds.map((v, i) => `<rect x="${i * w}" y="${16 - v / max * 15}" width="${Math.max(w - 1.5, 1)}" height="${v / max * 15}" fill="currentColor" opacity=".55"/>`).join("");
 }
 
+// A task event replaces its step on every change; remember the last few so a
+// long run does not read as the same word three times.
+function noteTask(e) {
+  const key = `${e.id}`;
+  let entry = stepLog.get(key);
+  if (!entry || entry.request !== e.request) { entry = {request: e.request, steps: []}; stepLog.set(key, entry); }
+  const last = entry.steps[entry.steps.length - 1];
+  if (e.step && (!last || last.step !== e.step)) entry.steps.push({executor: e.executor, step: e.step});
+  entry.steps = entry.steps.slice(-3);
+}
+
 function tasks(list, permission, question) {
   const live = list.filter(t => t.status === "running" || Date.now() / 1000 - (t.ended || 0) < 180);
   $("hold").hidden = !live.length && !permission && !question;
@@ -841,6 +874,18 @@ function tasks(list, permission, question) {
     const how = {running: t.step || tr("working"), done: tr("done"), failed: tr("failed"), stopped: tr("stopped")}[t.status];
     const secs = Math.round((t.ended || Date.now() / 1000) - t.started);
     what.append(el("small", t.status === "failed" ? "bad" : "", [t.executor, how, tr("{s} s", {s: secs})].filter(Boolean).join(" · ")));
+    const logged = stepLog.get(`${t.id}`);
+    if (logged && logged.request === t.request) {
+      // The header already carries the step in flight; the trail holds the
+      // ones before it, so the card never says the same thing twice.
+      const steps = t.status === "running" && logged.steps.at(-1)?.step === t.step
+        ? logged.steps.slice(0, -1) : logged.steps;
+      if (steps.length) {
+        const trail = el("div", "tsteps");
+        for (const s of steps) trail.append(el("div", "", `· ${s.step}`));
+        what.append(trail);
+      }
+    }
     row.append(what);
     if (t.status === "running") { const b = el("button", "mini", tr("stop")); b.onclick = () => api(`tasks/${t.id}/stop`, {method: "POST"}); row.append(b); }
     return row;
@@ -2508,11 +2553,13 @@ stream.onmessage = m => {
   }
   else if (e.kind === "around") refresh();
   else if (e.kind === "cannot") aside(tr("cannot: {what} ({why})", {what: e.what, why: e.why}));
+  else if (e.kind === "verb") step(e);
   else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
   else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
   else if (e.kind === "update") drawUpdate(e);
   else if (e.kind === "feature") { if ($("settings").classList.contains("on")) featureLoad(); }
+  else if (e.kind === "task") noteTask(e);
 
   if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
 };
