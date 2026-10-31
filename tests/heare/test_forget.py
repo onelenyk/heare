@@ -128,7 +128,7 @@ async def test_forget_removes_derived_facts_from_the_prompt(tmp_path):
             facts,
             journal,
             _review([{
-                "predicate": "favourite_drink",
+                "predicate": "prefers",
                 "value": "кава",
                 "text": "Your favourite drink is coffee.",
                 "confidence": 0.9,

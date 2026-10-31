@@ -25,6 +25,7 @@ from heare.memory.facts import SQLiteFacts
 from heare.memory.journal import Journal
 from heare.memory.review import (
     MAX_MESSAGES,
+    _SYSTEM,
     last_reviewed,
     mark_reviewed,
     notice,
@@ -87,7 +88,7 @@ def _known() -> FakeFacts:
 def _model() -> Script:
     answer = json.dumps([
         {
-            "predicate": "likes_coffee",
+            "predicate": "prefers",
             "value": "strong coffee",
             "text": "You like strong coffee.",
             "confidence": 0.9,
@@ -104,6 +105,11 @@ def _model() -> Script:
     return model
 
 
+def test_the_prompt_names_the_predicate_vocabulary():
+    assert "lives_in" in _SYSTEM
+    assert "has_pet" in _SYSTEM
+
+
 async def test_a_review_adds_only_the_new_valid_fact(tmp_path):
     store, model = _known(), _model()
 
@@ -117,7 +123,7 @@ async def test_a_review_adds_only_the_new_valid_fact(tmp_path):
     assert len(review) == 1
     fact = review[0]
     assert (fact.subject, fact.predicate, fact.value) == (
-        "owner", "likes_coffee", "strong coffee"
+        "owner", "prefers", "strong coffee"
     )
     assert fact.text == "You like strong coffee."
     assert fact.source == CONSOLIDATED
@@ -127,7 +133,7 @@ async def test_a_review_adds_only_the_new_valid_fact(tmp_path):
     assert fact.valid_from == fact.created_at == 1000.0
     assert fact.source_ids[0].startswith("review:")
 
-    assert [f.predicate for f in store.current()] == ["likes_coffee"]
+    assert [f.predicate for f in store.current()] == ["prefers"]
     assert len(facts) == 2
 
     messages = model.asked[0]
@@ -245,7 +251,7 @@ def test_a_broken_review_marker_reads_as_never_reviewed(tmp_path):
 
 def _pet_answer() -> str:
     return json.dumps([{
-        "predicate": "pet",
+        "predicate": "has_pet",
         "value": "Груша, кіт",
         "text": "У тебе є кіт Груша.",
         "confidence": 0.9,
@@ -269,7 +275,7 @@ async def test_notice_learns_a_fact_and_does_not_reread_it(tmp_path):
     assert "user: Груша мій кіт." in model.asked[0][1]["content"]
     facts = store.current()
     assert [(f.predicate, f.value, f.status) for f in facts] == [
-        ("pet", "Груша, кіт", CONFIRMED)
+        ("has_pet", "Груша, кіт", CONFIRMED)
     ]
     assert state_path.exists()
 
@@ -381,6 +387,42 @@ async def test_an_answer_of_only_unusable_items_is_an_error_and_keeps_the_cursor
 
     assert retry == ReviewReport(considered=1, added=1)
     assert store.current()[0].value == "Груша, кіт"
+
+
+async def test_an_off_vocabulary_predicate_is_an_error_and_keeps_the_cursor(
+    tmp_path,
+):
+    journal = Journal(tmp_path / "events")
+    _heard(journal, "Я люблю каву.", at=_stamp(DAY, 10))
+    store = FakeFacts()
+    state_path = tmp_path / "consolidate.json"
+    broken = Script()
+    broken.will_say(json.dumps([
+        {
+            "predicate": "likes_coffee",
+            "value": "strong coffee",
+            "text": "You like strong coffee.",
+            "confidence": 0.9,
+        },
+    ]))
+
+    failed = await notice(
+        store, journal, broken, state_path=state_path, now=1000.0
+    )
+
+    assert failed.error
+    assert failed.added == 0
+    assert store.current(include_pending=True) == []
+    assert not state_path.exists()
+
+    model = Script()
+    model.will_say(_pet_answer())
+    retry = await notice(
+        store, journal, model, state_path=state_path, now=2000.0
+    )
+
+    assert retry == ReviewReport(considered=1, added=1)
+    assert store.current()[0].predicate == "has_pet"
 
 
 async def test_a_late_fact_survives_the_message_cap(tmp_path):
