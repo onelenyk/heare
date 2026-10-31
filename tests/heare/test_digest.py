@@ -127,6 +127,20 @@ def test_broken_json_is_skipped_not_raised(tmp_path):
     assert len(_signals(tmp_path, 7)) == 2
 
 
+def test_a_rejected_fact_is_a_signal_and_a_confirmed_one_is_not(tmp_path):
+    _journal(
+        tmp_path / "journal.jsonl",
+        _event("mind", {"what": "fact", "action": "rejected", "id": 10}),
+        _event("mind", {"what": "fact", "action": "confirmed", "id": 9}),
+    )
+
+    signals = _signals(tmp_path, 7)
+
+    assert len(signals) == 1
+    assert signals[0].kind == "fact rejected"
+    assert signals[0].detail == "#10"
+
+
 def test_files_older_than_the_cutoff_are_not_read(tmp_path):
     path = _journal(
         tmp_path / "journal.jsonl",

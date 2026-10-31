@@ -2,8 +2,9 @@
 
 G7 asks for a list of annoyances, but the application has nowhere to type
 one in. The journal, meanwhile, has been recording them all along: halted
-work, cut replies, failed turns, unusable verbs, unanswered questions. This
-report only reads that and counts it.
+work, cut replies, failed turns, unusable verbs, unanswered questions,
+facts the person rejected, reminders they cancelled. This report only reads
+that and counts it.
 
 Manual and read-only: nothing is written, nothing is paid for. Files older
 than ``--days`` are skipped by mtime, malformed lines are skipped silently,
@@ -54,6 +55,13 @@ def _signal(row: dict, kind: str, payload: dict) -> Signal | None:
         request = str(payload.get("request", ""))[:40]
         detail = str(payload.get("executor") or request)
         return Signal(at, day, f"task {status}", detail)
+    if kind == "mind":
+        what = str(payload.get("what", ""))
+        if what == "fact" and payload.get("action") == "rejected":
+            return Signal(at, day, "fact rejected", f"#{payload.get('id')}")
+        if what == "reminder" and payload.get("action") == "cancelled":
+            return Signal(at, day, "reminder cancelled", f"#{payload.get('id')}")
+        return None
     return None
 
 

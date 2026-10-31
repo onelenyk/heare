@@ -583,13 +583,18 @@ async def test_run_records_only_the_system_events(tmp_path):
     state.emit("question_closed", id="q2", answer="так")
     state.emit("feature", id="memory", state="error")
     state.emit("feature", id="memory", state="done")
+    state.emit("mind", what="fact", action="confirmed", id=9)
+    state.emit("mind", what="fact", action="rejected", id=10)
+    state.emit("mind", what="reminder", action="cancelled", id=11)
+    state.emit("mind", what="profile", action="saved", id="user")
+    state.emit("mind", what="journal", action="forgotten", count=2)
     state.emit("overheard", text="не до мене", channel="voice")
     state.emit("around", key="front", value="Safari")
     state.emit("around", key="playing", value=["музика"])
     state.emit("phase", phase="thinking")
 
     for _ in range(100):
-        if len(list(journal.events())) == 12:
+        if len(list(journal.events())) == 14:
             break
         await asyncio.sleep(0.01)
     running.cancel()
@@ -599,7 +604,7 @@ async def test_run_records_only_the_system_events(tmp_path):
     assert [row["kind"] for row in rows] == [
         "task", "verb", "permission", "permission_closed", "halted",
         "voice_stopped", "failed", "cannot", "cannot", "question_closed",
-        "feature", "around",
+        "feature", "mind", "mind", "around",
     ]
     assert rows[0]["source"] == "hands"
     assert rows[0]["trust"] == "tool_output"
@@ -621,12 +626,20 @@ async def test_run_records_only_the_system_events(tmp_path):
     features = [row for row in rows if row["kind"] == "feature"]
     assert len(features) == 1
     assert features[0]["payload"] == {"feature": "memory", "state": "error"}
+    minds = [row for row in rows if row["kind"] == "mind"]
+    assert len(minds) == 2
+    assert minds[0]["payload"] == {"what": "fact", "action": "rejected", "id": 10}
+    assert minds[1]["payload"] == {
+        "what": "reminder", "action": "cancelled", "id": 11,
+    }
+    for row in minds:
+        assert (row["source"], row["trust"]) == ("brain", "system")
 
     for kind in ("halted", "voice_stopped", "failed", "cannot"):
         for row in rows:
             if row["kind"] == kind:
                 assert (row["source"], row["trust"]) == ("core", "system")
-    for row in (questions[0], features[0]):
+    for row in (questions[0], features[0], *minds):
         assert (row["source"], row["trust"]) == ("brain", "system")
 
 

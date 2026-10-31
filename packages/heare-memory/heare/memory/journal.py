@@ -536,6 +536,14 @@ class Journal:
             self.append("feature", {"feature": data.get("id", ""),
                                     "state": "error"},
                         source="brain", trust="system")
+        elif kind == "mind" and data.get("action") in ("rejected", "cancelled"):
+            # A correction, not a system event: the person said no to a fact
+            # or dropped a reminder. The id finds it; the words are already
+            # in the conversation, so they are not copied here.
+            self.append("mind", {"what": data.get("what", ""),
+                                 "action": data.get("action", ""),
+                                 "id": data.get("id")},
+                        source="brain", trust="system")
 
 
 def _write_all(fd: int, data: bytes) -> None:
