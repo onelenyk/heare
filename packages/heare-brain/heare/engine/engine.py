@@ -9,6 +9,7 @@ such event is a piece of work ending.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import Any
@@ -18,6 +19,8 @@ from heare.core.conversation import RESULT_PREFIX
 from heare.engine.intent import Intent
 from heare.engine.store import Intents
 from heare.core.i18n import _
+
+logger = logging.getLogger("heare.engine")
 
 # How often the engine looks at the clock when nothing happens; a reminder
 # due while idle should not wait for the next event to be told.
@@ -223,8 +226,13 @@ class Engine:
         reader = self._state.subscribe()
         while True:
             try:
-                event = await asyncio.wait_for(reader.get(), timeout=self._tick)
-            except TimeoutError:
-                self._deliver_due()
-                continue
-            self.note(event)
+                try:
+                    event = await asyncio.wait_for(reader.get(), timeout=self._tick)
+                except TimeoutError:
+                    self._deliver_due()
+                    continue
+                self.note(event)
+            except Exception:
+                # A file that cannot be written, or a row that cannot be read,
+                # must not end the engine: the next event or tick tries again.
+                logger.exception("the engine could not keep an intent")

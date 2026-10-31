@@ -57,6 +57,8 @@ class Features:
         self._running: dict[str, asyncio.Task[None]] = {}
         # The last failure of each feature, shown until it works again.
         self._errors: dict[str, str] = {}
+        # What an action found that is not a failure — «already done».
+        self._notes: dict[str, str] = {}
 
     def add(self, feature: Feature) -> None:
         if feature.id in self._features:
@@ -81,10 +83,19 @@ class Features:
             }
         if feature.id in self._errors:
             view["note"] = self._errors[feature.id]
+        elif feature.id in self._notes:
+            view["note"] = self._notes[feature.id]
         task = self._running.get(feature.id)
         if task is not None and not task.done():
             view["state"] = "running"
         return {**base, **view}
+
+    def note(self, id: str, text: str = "") -> None:
+        """Show what an action found, or clear it with an empty line."""
+        if text:
+            self._notes[id] = text
+        else:
+            self._notes.pop(id, None)
 
     def list(self) -> dict[str, object]:
         ordered = sorted(
@@ -217,9 +228,13 @@ def build_features(brain: Brain) -> Features:
         }
 
     async def review_run() -> None:
-        report = await brain.review_once()
-        if report is not None and report.error:
-            raise RuntimeError(report.error)
+        result = await brain.review_once()
+        features.note("review")
+        if result.already:
+            features.note("review", _("Already reviewed today."))
+            return
+        if result.report is not None and result.report.error:
+            raise RuntimeError(result.report.error)
 
     async def review_write(name: str, value: object) -> None:
         if name == "enabled":

@@ -26,20 +26,48 @@ def _english() -> bool:
     return i18n.language() == "en"
 
 
-def name() -> str:
+DEFAULT_NAME = "Дока"
+
+
+def ensure(path: Path | None = None) -> Path:
+    """Give a fresh install a name; leave an identity that exists alone.
+
+    The README promises «Дока» from the first start, and until now nothing
+    wrote the file, so the persona had no name and the voice waited for
+    «гава» instead of its own. The default is written once, on the first
+    brain start, and never overwrites a person's choice.
+    """
+    target = Path(path) if path is not None else IDENTITY
+    if target.is_file():
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps({"name": DEFAULT_NAME}, ensure_ascii=False, indent=1),
+        encoding="utf-8",
+    )
+    return target
+
+
+def _identity_path(path: Path | None) -> Path:
+    return Path(path) if path is not None else IDENTITY
+
+
+def name(path: Path | None = None) -> str:
     try:
-        return str(json.loads(IDENTITY.read_text(encoding="utf-8")).get("name") or "")
+        data = json.loads(_identity_path(path).read_text(encoding="utf-8"))
+        return str(data.get("name") or "")
     except (OSError, ValueError):
         return ""
 
 
-def names() -> frozenset[str]:
+def names(path: Path | None = None) -> frozenset[str]:
     """The name as a word of a command must not count: «Дока, стоп» is «стоп».
 
     Both spellings of the default name are kept: the recogniser writes
     «Дока» or «Doka» depending on the language it heard.
     """
-    return frozenset(w for w in (name().lower(), "дока", "doka", "heare") if w)
+    called = name(path)
+    return frozenset(w for w in (called.lower(), "дока", "doka", "heare") if w)
 
 
 def now_block(around: Mapping[str, object], now: float) -> str:
@@ -74,14 +102,15 @@ def now_block(around: Mapping[str, object], now: float) -> str:
 
 
 async def prompt(around: Mapping[str, object] | None = None,
-                 parts: Mapping[str, dict] | None = None) -> str:
+                 parts: Mapping[str, dict] | None = None, *,
+                 identity: Path | None = None) -> str:
     """Read again on every turn: a saved rule counts from the next reply."""
     try:
         rules = RULES.read_text(encoding="utf-8").strip()
     except OSError:
         rules = ""
     said = [rules] if rules else []
-    if called := name():
+    if called := name(identity):
         said.append(f"Your name is {called}.")
     # The laws are commands, so they stand in the prompt with the other
     # commands — not inside the profile, which is framed as data.
@@ -167,8 +196,8 @@ def _judge() -> str:
 
 
 def __getattr__(name: str) -> str:
-    # The core is handed ``persona.JUDGE`` once, but the language is read
-    # on every access: a choice made on the page counts from the next turn.
+    # The brain hands the core a callable, so ``persona.JUDGE`` is read on
+    # every use: a choice made on the page counts from the next turn.
     if name == "JUDGE":
         return _judge()
     raise AttributeError(name)

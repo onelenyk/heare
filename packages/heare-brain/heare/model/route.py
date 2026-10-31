@@ -19,7 +19,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
-from heare.core import Executor, Task
+from heare.core import Executor, Outcome, Task
 from heare.core.i18n import _
 from heare.model.delegate import Dispatcher
 from heare.hand import Handoff
@@ -94,7 +94,7 @@ class FirstHand:
     def about(self) -> str:
         return self._inner.about
 
-    async def run(self, task: str, desk: Any) -> str:
+    async def run(self, task: str, desk: Any) -> str | Outcome:
         try:
             return await self._inner.run(task, desk)
         except Handoff as handoff:

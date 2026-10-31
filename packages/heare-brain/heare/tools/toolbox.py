@@ -36,7 +36,7 @@ class Toolbox:
         state: State,
         delegate: Callable[[str, bool], Task],
         stop: Callable[[], int],
-        words: Any,
+        words: Any | Callable[[], Any],
         has_executors: Callable[[], bool],
         reminders: Reminders | None = None,
         now: Callable[[], float] = time.time,
@@ -92,8 +92,9 @@ class Toolbox:
         return await recall.run(self._memory, arguments)
 
     async def _run_delegate(self, arguments: dict) -> str:
+        words = self._words() if callable(self._words) else self._words
         return await delegate_tool.run(
-            self._start, self._state, self._words, arguments
+            self._start, self._state, words, arguments
         )
 
     async def _run_read_body(self, arguments: dict) -> str:

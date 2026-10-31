@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -396,3 +397,36 @@ def test_who_just_spoke_is_there_whatever_the_eyes_say(tmp_path):
     clock["t"] += 3600
     motor.note(event("done", id=8, news="Інше готове."))
     assert len(said) == 1  # an hour of silence, and the eyes see nobody: away
+
+
+async def test_a_corrupt_intent_row_does_not_kill_engine_run(tmp_path, caplog):
+    from heare.core.state import State
+
+    path = tmp_path / "intents.json"
+    path.write_text(json.dumps([
+        {"id": "one", "what": "щось", "why": "reminder", "weight": 2},
+        {"id": 2, "what": "інше", "why": "reminder", "weight": 2,
+         "until": "soon"},
+    ]), encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="heare.engine.store"):
+        store = Intents(path)
+    assert store.alive(now=100.0) == []
+    assert len([r for r in caplog.records if "corrupt intent row" in r.message]) == 2
+
+    state = State()
+    said: list = []
+    motor = Engine(store, state=state, speak=said.append, tick=0.01,
+                   quiet=("00:00", "00:00"), daily_limit=99)
+    task = asyncio.create_task(motor.run())
+    try:
+        await asyncio.sleep(0.02)
+        assert not task.done()
+        state.emit("task", id=7, request="зроби сайт",
+                   news="Сайт готовий.", status="done")
+        await asyncio.sleep(0.05)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert said and "Сайт готовий." in said[0].text

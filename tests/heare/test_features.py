@@ -145,8 +145,11 @@ class _Brain:
         self.reviewed = 0
         self.consolidated = 0
 
-    async def review_once(self) -> None:
+    async def review_once(self):
+        from heare.brain import ReviewRun
+
         self.reviewed += 1
+        return ReviewRun()
 
     async def consolidate_once(self) -> None:
         self.consolidated += 1
@@ -219,8 +222,10 @@ async def test_a_failed_review_is_kept_as_a_note(tmp_path):
 
     brain = _Brain(tmp_path)
 
-    async def failed() -> ReviewReport:
-        return ReviewReport(error="model is down")
+    async def failed():
+        from heare.brain import ReviewRun
+
+        return ReviewRun(report=ReviewReport(error="model is down"))
 
     brain.review_once = failed
     features = build_features(brain)

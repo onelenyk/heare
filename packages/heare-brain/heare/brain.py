@@ -16,6 +16,7 @@ import asyncio
 import logging
 import sys
 import time as clock
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
@@ -47,10 +48,27 @@ CONSOLIDATE_EVERY_S = 5 * 60.0
 # A failed daily review is retried rather than skipped until tomorrow.
 REVIEW_RETRY_S = 15 * 60.0
 
+# The hour used when the file holds something that is not an hour of the day.
+DEFAULT_REVIEW_HOUR = 4
+
 # How many missed days a single run will catch up on. A week is enough to
 # survive a holiday without turning one startup into a month of model
 # calls; older days stay unreviewed by choice.
 REVIEW_CATCH_UP_DAYS = 7
+
+
+@dataclass(frozen=True)
+class ReviewRun:
+    """What one run of the daily review did: a report, or nothing to do.
+
+    ``already`` is separate from an empty report on purpose: the page's
+    «Review now» said done whether it had reviewed a day or skipped one,
+    and the person could not tell a success from a no-op.
+    """
+
+    day: date | None = None
+    report: ReviewReport | None = None
+    already: bool = False
 
 
 def next_review_at(now: float, hour: int) -> float:
@@ -94,13 +112,14 @@ def model_info(settings: Settings) -> dict:
     try:
         cfg = resolve_llm(settings)
     except RuntimeError as exc:
-        return {"wanted": wanted, "error": str(exc), "name": persona.name()}
+        return {"wanted": wanted, "error": str(exc),
+                "name": persona.name(settings.identity_file)}
     finally:
         logging.getLogger("heare.model.llm").disabled = False
     return {
         "provider": cfg.provider, "model": cfg.model, "wanted": wanted,
         "fallback": cfg.provider != wanted, "providers": sorted(PROVIDERS),
-        "name": persona.name(),
+        "name": persona.name(settings.identity_file),
     }
 
 
@@ -117,7 +136,8 @@ class Brain:
         from heare.tools import Toolbox
 
         self.settings = settings or Settings()
-        names = persona.names()
+        persona.ensure(self.settings.identity_file)
+        names = persona.names(self.settings.identity_file)
         self.journal = Journal(self.settings.events_dir)
         self.facts = SQLiteFacts(self.settings.db_path)
         self.intents = Intents(self.settings.intents_path)
@@ -143,14 +163,16 @@ class Brain:
                 present=lambda: list(self.core.executors)),
             gate=Judge(self.settings),
             prompt=lambda: persona.prompt(
-                self.core.state.around, self.bodies.parts() if self.bodies else None),
-            names=names, judge=persona.JUDGE, words=for_language(self.settings.language),
+                self.core.state.around, self.bodies.parts() if self.bodies else None,
+                identity=self.settings.identity_file),
+            names=names, judge=lambda: persona.JUDGE,
+            words=lambda: for_language(self.settings.language),
             fit=partial(budget.fit, limit=int(self.settings.context_tokens)),
         )
         self.core.attach_tools(Toolbox(
             memory=self.core.memory, state=self.core.state,
             delegate=self.core.delegate, stop=self.core.stop_all,
-            words=self.core.words,
+            words=lambda: self.core.words,
             has_executors=lambda: bool(self.core.executors),
             reminders=self.intents,
             hands=lambda: [(e.name, e.about) for e in self.core.executors.values()],
@@ -191,13 +213,14 @@ class Brain:
             except Exception:
                 logger.exception("consolidation failed (non-fatal)")
 
-    async def review_once(self) -> ReviewReport | None:
+    async def review_once(self) -> ReviewRun:
         """Review the day that is due, and mark it only when it succeeded."""
         async with self._review_lock:
             root = Path(self.settings.memory_dir)
-            due = next_review_day(last_reviewed(root), date.today())
+            last = last_reviewed(root)
+            due = next_review_day(last, date.today())
             if due is None:
-                return None
+                return ReviewRun(day=last, already=True)
             report = await self.review_now(due)
             if report.error is None:
                 mark_reviewed(root, due)
@@ -209,7 +232,7 @@ class Brain:
             else:
                 logger.warning(
                     "daily review for %s failed: %s", due, report.error)
-            return report
+            return ReviewRun(day=due, report=report)
 
     async def review_now(self, day: date | None = None) -> ReviewReport:
         from heare.memory.review import review_day
@@ -232,7 +255,15 @@ class Brain:
                 await asyncio.sleep(60.0)
                 continue
             now = clock.time()
-            hour = int(self.settings.review_hour)
+            try:
+                hour = int(self.settings.review_hour)
+                if not 0 <= hour <= 23:
+                    raise ValueError(f"not an hour: {hour}")
+            except (TypeError, ValueError):
+                logger.warning(
+                    "review_hour is not an hour of the day (%r); using %d",
+                    self.settings.review_hour, DEFAULT_REVIEW_HOUR)
+                hour = DEFAULT_REVIEW_HOUR
             gate = datetime.combine(date.today(), time(hour=hour)).timestamp()
             if now < gate:
                 await asyncio.sleep(min(60.0, gate - now))
@@ -243,16 +274,16 @@ class Brain:
                 await asyncio.sleep(min(60.0, max(1.0, when - now)))
                 continue
             try:
-                report = await self.review_once()
+                run = await self.review_once()
             except Exception:
                 logger.exception("daily review failed (non-fatal)")
                 await asyncio.sleep(REVIEW_RETRY_S)
                 continue
-            if report is None:
+            if run.already or run.report is None:
                 when = next_review_at(now, hour)
                 await asyncio.sleep(min(60.0, max(1.0, when - now)))
                 continue
-            if report.error:
+            if run.report.error:
                 await asyncio.sleep(REVIEW_RETRY_S)
 
     async def run(self) -> None:

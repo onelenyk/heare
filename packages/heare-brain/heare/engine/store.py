@@ -9,6 +9,7 @@ dropped, missing ones take their defaults.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import asdict, fields
 from datetime import datetime
@@ -16,7 +17,30 @@ from pathlib import Path
 
 from heare.engine.intent import Intent
 
+logger = logging.getLogger("heare.engine.store")
+
 _KNOWN = {f.name for f in fields(Intent)}
+_NUMBER = (int, float)
+
+
+def _sound(row: object) -> bool:
+    """A row the store can use: right container, right types, nothing sortable broken."""
+    if not isinstance(row, dict):
+        return False
+    if not isinstance(row.get("id"), int) or isinstance(row.get("id"), bool):
+        return False
+    if not isinstance(row.get("what"), str) or not isinstance(row.get("why"), str):
+        return False
+    if not isinstance(row.get("weight"), int) or isinstance(row.get("weight"), bool):
+        return False
+    for name in ("until", "not_before", "made", "delivered_at"):
+        value = row.get(name)
+        if value is not None and (not isinstance(value, _NUMBER) or isinstance(value, bool)):
+            return False
+    for name in ("about", "status"):
+        if name in row and not isinstance(row[name], str):
+            return False
+    return True
 
 
 class Intents:
@@ -34,10 +58,11 @@ class Intents:
         except (OSError, ValueError):
             rows = []
         for row in rows if isinstance(rows, list) else []:
-            try:
-                intent = Intent(**{k: v for k, v in row.items() if k in _KNOWN})
-            except TypeError:
-                continue  # a row missing something required is simply skipped
+            if not _sound(row):
+                # A corrupt row must cost one intent, never the brain.
+                logger.warning("skipping a corrupt intent row: %.100r", row)
+                continue
+            intent = Intent(**{k: v for k, v in row.items() if k in _KNOWN})
             self._by_id[intent.id] = intent
             self._next = max(self._next, intent.id + 1)
 

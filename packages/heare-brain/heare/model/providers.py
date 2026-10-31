@@ -5,7 +5,7 @@ hardcoding provider names, API keys, base URLs, or model lists.
 Adding a new provider = add one ``ProviderConfig`` entry in the
 ``PROVIDERS`` dict — everything else auto-discovers it.
 
-Dependency-free by design: standard library + dataclasses only.
+Dependency-free by design: the standard library and the core only.
 No pipecat, no switchable, no build imports.
 """
 
@@ -13,6 +13,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+
+from heare.core.i18n import _
+
+# Where a key is checked: a model list answers only to a key that works.
+# The keeper's setup form asks the same two providers the same way.
+KEY_CHECKS = {
+    "DEEPSEEK_API_KEY": "https://api.deepseek.com/v1/models",
+    "GROQ_API_KEY": "https://api.groq.com/openai/v1/models",
+}
+CHECK_TIMEOUT_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -224,6 +234,29 @@ LLM_STALL_TIMEOUT_SECS = 20.0
 
 
 
+async def check_key(
+    name: str, value: str, timeout: float = CHECK_TIMEOUT_S
+) -> tuple[bool, str]:
+    """Whether a provider accepts a key, and what to tell the person."""
+    url = KEY_CHECKS.get(name)
+    if url is None:
+        return True, _("not checked — saved")
+    import httpx  # deferred
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            answer = await client.get(
+                url, headers={"Authorization": f"Bearer {value.strip()}"})
+    except httpx.HTTPError:
+        return False, _("no connection to the provider — check the internet")
+    if answer.status_code in (401, 403):
+        return False, _("the key does not fit")
+    if answer.status_code >= 400:
+        return False, _("the provider answered {code}").format(
+            code=answer.status_code)
+    return True, _("alive")
+
+
 async def list_models(
     config: ProviderConfig, api_key: str, timeout: float = 10.0
 ) -> list[str]:
@@ -331,6 +364,7 @@ __all__ = [
     "ProviderConfig",
     "PROVIDERS",
     "all_keys",
+    "check_key",
     "get_config",
     "get_available",
     "make_identity_bootstrap",
