@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from heare.api import skills
-from heare.native_hands import SAME_CALL, STEPS, NativeHand, catalog
+from heare.native_hands import SAME_CALL, NativeHand, catalog
 from tests.heare.fakes import Says, Script
 
 SHOW = {"name": "show", "about": "Показати слова", "effect": "harmless",
@@ -61,14 +61,22 @@ def test_deep_render_rules_are_checked_for_form():
         assert skills.checked([{**scene, "render": {"scene": bad}}]) == [], bad
 
 
-def test_a_new_world_changing_skill_is_a_new_trust(tmp_path):
+def test_any_new_or_changed_skill_is_a_new_trust(tmp_path):
     trust = skills.Trust(tmp_path / "part_skills.json")
     assert trust.same("oled@desk", [SHOW, PIN]) is True      # first time: kept
-    assert trust.same("oled@desk", [SHOW, PIN, HEAT]) is True  # a reading is no new trust
+    assert trust.same("oled@desk", [SHOW, PIN, HEAT]) is False  # even a reading counts
     pin4 = {**PIN, "name": "pin4"}
     assert trust.same("oled@desk", [SHOW, PIN, pin4]) is False
     trust.keep("oled@desk", [SHOW, PIN, pin4])
     assert trust.same("oled@desk", [SHOW, PIN, pin4]) is True
+
+
+def test_a_changed_harmless_skill_is_asked_about_again(tmp_path):
+    trust = skills.Trust(tmp_path / "part_skills.json")
+    assert trust.same("oled@desk", [SHOW, PIN]) is True
+    wider = {**SHOW, "params": {"type": "object", "properties": {
+        "text": {"type": "string"}, "size": {"type": "integer"}}}}
+    assert trust.same("oled@desk", [wider, PIN]) is False
 
 
 async def test_a_call_gets_its_part_s_answer_and_nobody_else_s():
@@ -241,7 +249,7 @@ async def test_a_hung_skill_is_a_failed_step_not_a_hang(monkeypatch):
     assert "did not answer" in model.asked[1][-1]["content"]
 
 
-async def test_the_deadline_forces_an_answer(monkeypatch):
+async def test_a_deadline_with_no_time_left_does_not_call_again(monkeypatch):
     class FastClock:
         now = 0.0
 
@@ -254,9 +262,8 @@ async def test_the_deadline_forces_an_answer(monkeypatch):
     hand, model = _hand(devices, step, "Досить.")
     monkeypatch.setattr("heare.native_hands.time", FastClock())
 
-    assert await hand.run("показуй", Desk()) == "Досить."
-    assert model.offered[-1] == []
-    assert len(model.asked) <= STEPS + 1
+    assert await hand.run("показуй", Desk()) == "Done: ok"
+    assert len(model.asked) == 1
 
 
 async def test_steps_end_in_words_not_raw_results():

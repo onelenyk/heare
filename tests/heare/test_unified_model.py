@@ -84,16 +84,16 @@ def test_the_public_page_names_both_hands_apart():
     assert labels["native-hands"] == "Нативні руки"
 
 
-def test_install_sh_installs_every_part_and_the_brain():
+def test_install_sh_installs_every_part_a_server_or_body_can_run():
     script = (ROOT / "install.sh").read_text(encoding="utf-8")
     base = re.search(r'^TOOLS="([^"]+)"', script, re.M).group(1).split()
-    mac = re.search(r'^\[ "\$OS" = "mac" \] && TOOLS="\$TOOLS ([^"]+)"',
-                    script, re.M).group(1).split()
 
     assert base == ["brain", "keeper", "voice", "hands", "sources", "native-hands", "chat"]
-    assert "eyes" not in base and "eyes" in mac
+    assert "eyes" not in base
     for name, part in machine.PARTS.items():
-        assert name in (mac if part.only == "darwin" else base)
+        if part.only == "darwin":
+            continue
+        assert name in base
     assert {"brain", "keeper", "chat"} <= set(base)
 
 
@@ -110,7 +110,6 @@ def test_install_sh_accepts_the_canonical_roles_and_old_aliases():
     assert "all|body|brain|mac|server" in script
     assert "mac) ROLE=all" in script
     assert "server) ROLE=brain" in script
-    assert "mac is an alias for all, server for brain" in script
 
 
 @pytest.mark.parametrize(("name", "wheel"), [

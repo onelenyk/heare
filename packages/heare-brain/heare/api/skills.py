@@ -119,39 +119,76 @@ def _rule(spec: object, deep: bool) -> dict | None:
 
 
 def fingerprint(skills: list[dict]) -> str:
-    """What the person vouched for: the skills that change the world."""
-    changing = sorted((s["name"], json.dumps(s["params"], sort_keys=True))
-                      for s in skills if s["effect"] == "change")
-    return hashlib.sha256(json.dumps(changing).encode()).hexdigest()[:16]
+    """What the person vouched for: the part's whole skill set.
+
+    A harmless skill can still act, so a change to any of them is a change
+    to what was let in — not only the ones that say ``change``.
+    """
+    offers = sorted(
+        (s["name"], s["effect"], json.dumps(s["params"], sort_keys=True))
+        for s in skills
+    )
+    return hashlib.sha256(json.dumps(offers).encode()).hexdigest()[:16]
+
+
+def shape_fingerprint(shape: dict | None) -> str:
+    """The part as it was let in: its channel, forms, ears and yes."""
+    fields = (
+        str((shape or {}).get("channel") or ""),
+        sorted(str(form) for form in (shape or {}).get("forms") or []),
+        str((shape or {}).get("hears") or "own"),
+        bool((shape or {}).get("approves")),
+    )
+    return hashlib.sha256(json.dumps(fields).encode()).hexdigest()[:16]
 
 
 class Trust:
-    """Which ``change`` skills each part was let in with."""
+    """What each part was let in with: its changing skills and its shape."""
 
     def __init__(self, path: Path) -> None:
         self._path = path
 
-    def _read(self) -> dict[str, str]:
+    def _read(self) -> dict[str, object]:
         try:
             found = json.loads(self._path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
         return found if isinstance(found, dict) else {}
 
-    def same(self, pid: str, skills: list[dict]) -> bool:
-        """True when nothing that changes the world is new since the person's yes.
+    def same(self, pid: str, skills: list[dict], shape: dict | None = None) -> bool:
+        """True when neither the world-changing skills nor the part's shape
+        are new since the person's yes.
 
+        An entry written before shapes were kept is a plain skills hash:
+        it is treated as skills-only trust and rewritten in the new form.
         A part trusted before skills were kept has nothing written yet: its
         skills are written now, as the trust it already had."""
         known = self._read()
         if pid not in known:
-            self.keep(pid, skills)
+            self.keep(pid, skills, shape)
             return True
-        return known[pid] == fingerprint(skills)
+        entry = known[pid]
+        if isinstance(entry, str):
+            if entry != fingerprint(skills):
+                return False
+            self.keep(pid, skills, shape)
+            return True
+        if not isinstance(entry, dict):
+            return False
+        if entry.get("skills") != fingerprint(skills):
+            return False
+        saved_shape = entry.get("shape")
+        if saved_shape is None:
+            self.keep(pid, skills, shape)
+            return True
+        return saved_shape == shape_fingerprint(shape)
 
-    def keep(self, pid: str, skills: list[dict]) -> None:
+    def keep(self, pid: str, skills: list[dict], shape: dict | None = None) -> None:
         known = self._read()
-        known[pid] = fingerprint(skills)
+        known[pid] = {
+            "skills": fingerprint(skills),
+            "shape": None if shape is None else shape_fingerprint(shape),
+        }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(known, ensure_ascii=False, sort_keys=True),
                               encoding="utf-8")

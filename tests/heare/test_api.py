@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import socket
 from importlib import metadata
 from pathlib import Path
 
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from heare import pairing
@@ -22,7 +24,8 @@ from tests.heare.fakes import Says, Worker, open_room
 
 
 async def _open(tmp_path, *, facts=None, intents=None, memory_dir=None,
-                features=None, journal=None, memory=None, **room_kw):
+                features=None, journal=None, memory=None, make_executor=None,
+                **room_kw):
     room = await open_room(**room_kw)
     settings = Settings(
         path=tmp_path / "config.toml", api_token_file=tmp_path / "token",
@@ -41,7 +44,8 @@ async def _open(tmp_path, *, facts=None, intents=None, memory_dir=None,
         from heare.mind import Mind
         mind = Mind(facts, intents, settings, journal=journal, memory=memory)
     client = TestClient(TestServer(
-        build(room.core, settings, mind=mind, features=features)))
+        build(room.core, settings, mind=mind, features=features,
+              make_executor=make_executor)))
     await client.start_server()
     token = (tmp_path / "token").read_text()
     return room, client, {"X-Heare-Token": token}, settings
@@ -238,6 +242,11 @@ async def test_a_part_without_a_yes_of_its_own_may_not_answer(tmp_path):
 
 async def test_a_key_can_be_saved_and_never_read(tmp_path, monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    async def alive(name, value, timeout=10.0):
+        return True, "alive"
+
+    monkeypatch.setattr(api_server, "check_key", alive)
     room, client, auth, _ = await _open(tmp_path)
     before = await (await client.get("/api/keys", headers=auth)).json()
     assert before["DEEPSEEK_API_KEY"] == {"source": None, "env": False, "stored": False}
@@ -254,6 +263,28 @@ async def test_a_key_can_be_saved_and_never_read(tmp_path, monkeypatch):
     refused = await client.post("/api/keys", json={"name": "PATH", "value": "x"}, headers=auth)
     assert refused.status == 400
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    await _close(room, client)
+
+
+async def test_a_bad_key_from_the_pult_is_not_stored(tmp_path, monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    async def refused(name, value, timeout=10.0):
+        return False, "the key does not fit"
+
+    monkeypatch.setattr(api_server, "check_key", refused)
+    room, client, auth, _ = await _open(tmp_path)
+    bad = await client.post(
+        "/api/keys", json={"name": "DEEPSEEK_API_KEY", "value": "sk-bad"},
+        headers=auth,
+    )
+
+    assert bad.status == 400
+    assert "the key does not fit" in await bad.text()
+    report = await (await client.get("/api/keys", headers=auth)).json()
+    assert report["DEEPSEEK_API_KEY"] == {
+        "source": None, "env": False, "stored": False,
+    }
     await _close(room, client)
 
 
@@ -411,6 +442,17 @@ async def test_a_screen_is_saved_listed_and_served_as_a_client(tmp_path):
     await _close(room, client)
 
 
+async def test_a_screen_is_served_sandboxed_and_cannot_reach_the_api(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    await client.put("/api/screens/costs", json={
+        "html": "<script>fetch('/api/state')</script>"}, headers=auth)
+    shown = await client.get("/screens/costs", headers=auth)
+    policy = shown.headers.get("Content-Security-Policy", "")
+    assert "sandbox" in policy and "allow-scripts" in policy
+    assert "allow-same-origin" not in policy and "default-src 'none'" in policy
+    await _close(room, client)
+
+
 async def test_the_built_in_page_is_served(tmp_path):
     room, client, _, _ = await _open(tmp_path)
     page = await (await client.get("/")).text()
@@ -455,7 +497,7 @@ async def test_a_screen_asked_for_is_written_saved_and_announced(tmp_path):
     room, client, auth, settings = await _open(tmp_path)
 
     async def write(system: str, request: str) -> str:
-        assert "/api/state" in system  # the model is told what it may call
+        assert "sandbox" in system  # the model is told the screen cannot call the API
         return "name: my-tasks\n<!doctype html><h1>Справи</h1>"
 
     room.core.add_executor(
@@ -846,6 +888,233 @@ async def test_a_pairing_code_gives_a_window_the_person_s_powers(tmp_path):
     given = await answer.json()
     assert "token" not in given  # the browser never sees it: only the cookie
     assert (await client.get("/api/state")).status == 200
+    await _close(room, client)
+
+
+# Every route a remote window may not use, named here on purpose. The census
+# below walks the router, so a route added later has to be put in this table
+# or in REMOTE_WINDOW_ALLOWED before the suite passes: the default is local.
+LOCAL_ONLY = frozenset({
+    ("POST", "/api/pair-code"),
+    ("POST", "/api/bodies/{id}/approve"),
+    ("POST", "/api/bodies/{id}/reject"),
+    ("POST", "/api/bodies/{id}/forget"),
+    ("POST", "/api/executor/claim"),
+    ("POST", "/api/executor/{id}/step"),
+    ("POST", "/api/executor/{id}/permit"),
+    ("POST", "/api/executor/{id}/ask"),
+    ("POST", "/api/executor/{id}/result"),
+    ("POST", "/api/canvas/put"),
+    ("POST", "/api/canvas/remove"),
+    ("POST", "/api/controls"),
+    ("GET", "/api/skills"),
+    ("GET", "/api/prompt"),
+    ("POST", "/api/skills/call"),
+    ("POST", "/api/skills/{id}"),
+    ("POST", "/api/tasks"),
+    ("POST", "/api/settings"),
+    ("GET", "/api/keys"),
+    ("POST", "/api/keys"),
+    ("POST", "/api/keys/adopt"),
+    ("POST", "/api/features/{id}/act"),
+    ("GET", "/api/update"),
+    ("POST", "/api/update/check"),
+    ("POST", "/api/update/install"),
+    ("POST", "/api/update/failed"),
+    ("GET", "/api/backups"),
+    ("POST", "/api/backups"),
+    ("POST", "/api/backups/bring"),
+    ("GET", "/api/backups/{name}"),
+    ("POST", "/api/backups/{name}/restore"),
+    ("POST", "/api/mind/facts/{id}/confirm"),
+    ("POST", "/api/mind/facts/{id}/reject"),
+    ("POST", "/api/mind/reminders/{id}/cancel"),
+    ("GET", "/api/screens"),
+    ("PUT", "/api/screens/{name}"),
+    ("GET", "/screens/{name}"),
+})
+
+
+def _may_reach_remote(method: str, canonical: str) -> bool:
+    """Whether a route's example path is allowed: a placeholder may be a
+    number or a slug, so both are tried."""
+    return any(
+        api_server._remote_window_may(
+            method, re.sub(r"\{[^}]+\}", filler, canonical))
+        for filler in ("1", "x"))
+
+
+def test_a_remote_window_keeps_the_pult_and_not_the_powers():
+    allowed = [
+        ("POST", "/api/bodies"),
+        ("POST", "/api/message"),
+        ("POST", "/api/input"),
+        ("POST", "/api/input/said_over"),
+        ("GET", "/api/events"),
+        ("GET", "/api/state"),
+        ("GET", "/api/history"),
+        ("GET", "/api/canvas"),
+        ("GET", "/api/system"),
+        ("GET", "/api/tasks"),
+        ("GET", "/api/controls"),
+        ("GET", "/api/settings"),
+        ("GET", "/api/models"),
+        ("GET", "/api/memory"),
+        ("GET", "/api/mind"),
+        ("GET", "/api/mind/journal"),
+        ("GET", "/api/mind/search"),
+        ("GET", "/api/heard"),
+        ("GET", "/api/heard/turn-1.wav"),
+        ("GET", "/api/features"),
+        ("POST", "/api/stop"),
+        ("POST", "/api/tasks/12/stop"),
+        ("POST", "/api/permission/12"),
+        ("POST", "/api/answer/12"),
+        ("POST", "/api/mind/journal/forget"),
+        ("PUT", "/api/mind/profile"),
+        ("POST", "/api/heard/turn-1"),
+    ]
+    denied = [
+        ("POST", "/api/settings"),
+        ("GET", "/api/keys"),
+        ("POST", "/api/keys"),
+        ("POST", "/api/pair-code"),
+        ("POST", "/api/bodies/voice@mac/approve"),
+        ("POST", "/api/bodies/voice@mac/reject"),
+        ("POST", "/api/bodies/voice@mac/forget"),
+        ("POST", "/api/executor/claim"),
+        ("POST", "/api/executor/1/step"),
+        ("POST", "/api/skills/call"),
+        ("POST", "/api/tasks"),
+        ("POST", "/api/controls"),
+        ("POST", "/api/canvas/put"),
+        ("POST", "/api/features/x/act"),
+        ("GET", "/api/update"),
+        ("POST", "/api/update/install"),
+        ("GET", "/api/backups"),
+        ("PUT", "/api/screens/today"),
+    ]
+    assert all(api_server._remote_window_may(method, path)
+               for method, path in allowed)
+    assert not any(api_server._remote_window_may(method, path)
+                   for method, path in denied)
+    # A HEAD is the GET it stands in for, never a way around the table.
+    assert api_server._remote_window_may("HEAD", "/api/state")
+    assert not api_server._remote_window_may("HEAD", "/api/keys")
+
+
+async def test_every_route_is_decided_for_a_remote_window(tmp_path):
+    room, client, auth, _ = await _open(tmp_path)
+    undecided = []
+    for route in client.app.router.routes():
+        if route.method is None or route.resource is None:
+            continue
+        method = "GET" if route.method == "HEAD" else route.method
+        canonical = route.resource.canonical
+        if not (canonical.startswith("/api/")
+                or canonical.startswith("/screens/")):
+            continue  # the page and its fonts are public by design
+        if (method, canonical) == ("POST", "/api/pair"):
+            continue  # the one door a stranger may knock on
+        if _may_reach_remote(method, canonical):
+            continue
+        if (method, canonical) not in LOCAL_ONLY:
+            undecided.append((method, canonical))
+    await _close(room, client)
+    assert not undecided, (
+        "a route is neither allowed to a remote window nor marked local-only: "
+        f"{undecided}")
+
+
+async def test_a_remote_window_cannot_reach_the_powers_that_change_the_mac(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(web.Request, "remote",
+                        property(lambda self: "203.0.113.7"))
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    assert (await client.post(
+        "/api/pair", json={"code": code, "kind": "window",
+                           "name": "phone"})).status == 200
+    assert (await client.get("/api/state")).status == 200
+    assert (await client.get("/api/history")).status == 200
+    assert (await client.get("/api/settings")).status == 200
+    assert (await client.get("/api/controls")).status == 200
+    assert (await client.post(
+        "/api/message", json={"text": "привіт"})).status == 200
+    await room.settled()
+    assert (await client.post("/api/skills/call", json={
+        "part": "voice@mac", "name": "x", "args": {}})).status == 403
+    assert (await client.post("/api/tasks", json={"text": "щось"})).status == 403
+    assert (await client.post(
+        "/api/bodies/voice@mac/approve")).status == 403
+    assert (await client.post("/api/executor/claim", json={})).status == 403
+    assert (await client.get("/api/keys")).status == 403
+    assert (await client.post("/api/settings", json={
+        "deepseek_model": "deepseek-chat"})).status == 403
+    assert (await client.post("/api/pair-code")).status == 403
+    await _close(room, client)
+
+
+async def test_a_remote_window_can_knock_as_its_own_body(tmp_path, monkeypatch):
+    monkeypatch.setattr(web.Request, "remote",
+                        property(lambda self: "203.0.113.7"))
+    room, client, auth, settings = await _open(tmp_path)
+    paired = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "phone"})
+    assert paired.status == 200
+    pid = (await paired.json())["pid"]
+
+    # The page knocks without a key: its cookie is the window. A `key` in
+    # the body names another part only for a machine; a window is always
+    # itself, so the knock lands on its own card and cannot borrow one.
+    answer = await client.post("/api/bodies", json={
+        "channel": "web", "forms": ["input", "output"],
+        "host": "elsewhere", "key": "voice@mac"})
+    assert answer.status == 200
+    given = await answer.json()
+    assert given["approved"] is True and given["pid"] == pid
+
+    bodies = (await (await client.get(
+        "/api/state", headers=auth)).json())["bodies"]
+    assert bodies[pid]["channel"] == "web"
+    assert bodies[pid]["state"] == "approved"
+    assert "voice@mac" not in bodies
+    await _close(room, client)
+
+
+async def test_the_allowlist_entries_all_match_a_live_route(tmp_path):
+    room, client, _, _ = await _open(tmp_path)
+    live = set()
+    for route in client.app.router.routes():
+        if route.method is None or route.resource is None:
+            continue
+        method = "GET" if route.method == "HEAD" else route.method
+        live.add((method, route.resource.canonical))
+    await _close(room, client)
+
+    stale = []
+    for method, rx in api_server.REMOTE_WINDOW_ALLOWED:
+        if not any(
+            method == live_method
+            and rx.fullmatch(re.sub(r"\{[^}]+\}", filler, canonical))
+            for live_method, canonical in live
+            for filler in ("1", "x")
+        ):
+            stale.append((method, rx.pattern))
+    assert not stale, f"allowlist entries match no live route: {stale}"
+
+
+async def test_a_window_on_this_machine_keeps_the_person_s_powers(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    assert (await client.post(
+        "/api/pair", json={"code": code, "kind": "window",
+                           "name": "here"})).status == 200
+    changed = await client.post("/api/settings", json={
+        "deepseek_model": "deepseek-chat"})
+    assert changed.status == 200
+    assert (await client.get("/api/keys")).status == 200
     await _close(room, client)
 
 
@@ -1755,6 +2024,7 @@ async def test_what_the_ear_heard_is_listed_heard_and_marked(tmp_path):
 
     listed = await (await client.get("/api/heard", headers=headers)).json()
     assert listed["total"] == 2 and listed["marked"] == 0
+    assert listed["purpose"] == "collect" and listed["measured"] is False
     newest, older = listed["replies"]
     assert newest["dropped"] and newest["text"] == ""
     assert older["text"] == "Та можню." and len(older["pieces"]) == 2
@@ -1935,4 +2205,185 @@ async def test_a_knock_is_told_the_brain_s_offset_from_utc(tmp_path):
         "channel": "oled", "forms": ["output"], "about": "", "key": "oled@desk",
         "host": "desk"}, headers=master)).json()
     assert answer["utc_offset"] == clock.localtime().tm_gmtoff
+    await _close(room, client)
+
+
+async def test_a_machine_key_cannot_claim_another_parts_name(tmp_path):
+    from heare.reach.remote import RemoteExecutor
+
+    (tmp_path / "parts.json").write_text('["opencode@mac"]', encoding="utf-8")
+    room, client, master, settings = await _open(
+        tmp_path,
+        make_executor=lambda name, about: RemoteExecutor(name, about, claim_wait_s=0.5))
+    agent = await _knock(client, master, "opencode@mac", ["executor"])
+    executor = room.core.executors["opencode"]
+
+    given = await (await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "machine", "name": "mac"})).json()
+    stolen = await client.post("/api/bodies", headers={
+        "X-Heare-Token": given["token"]}, json={
+        "channel": "opencode", "forms": ["executor"], "about": "mine",
+        "key": "opencode@mac", "host": "mac"})
+
+    assert stolen.status == 403
+    assert "not your name" in await stolen.text()
+    assert room.core.executors["opencode"] is executor
+    state = await (await client.get("/api/state", headers=master)).json()
+    assert state["bodies"]["opencode@mac"]["state"] == "approved"
+    assert state["bodies"]["opencode@mac"]["about"] == ""
+    # The part's own key was not replaced by the refused claim.
+    assert (await client.get("/api/skills", headers=agent)).status == 200
+    await _close(room, client)
+
+
+async def test_a_machine_key_can_claim_its_own_untouched_pid(tmp_path):
+    room, client, master, settings = await _open(tmp_path)
+    given = await (await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "machine", "name": "mac"})).json()
+    machine = {"X-Heare-Token": given["token"]}
+
+    first = await client.post("/api/bodies", headers=machine, json={
+        "channel": "voice", "forms": ["input"], "host": "mac", "key": "voice@mac"})
+    answer = await first.json()
+    assert first.status == 200 and answer["approved"] is True and answer["token"]
+    assert authlib.owner(Path(settings.part_tokens_file), answer["token"]) == "voice@mac"
+
+    # The machine may knock again for the pid it claimed itself.
+    again = await client.post("/api/bodies", headers=machine, json={
+        "channel": "voice", "forms": ["input"], "host": "mac", "key": "voice@mac"})
+    assert (await again.json())["approved"] is True
+
+    # And for another pid nobody has claimed.
+    other = await client.post("/api/bodies", headers=machine, json={
+        "channel": "eyes", "forms": ["input"], "host": "mac", "key": "eyes@mac"})
+    other_answer = await other.json()
+    assert other_answer["approved"] is True and other_answer["token"]
+    await _close(room, client)
+
+
+async def test_an_approved_part_cannot_widen_hears_on_a_knock(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    old = await _knock(client, master, "voice@mac", ["input"])
+
+    knocking = asyncio.create_task(client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "", "key": "voice@mac",
+        "host": "mac", "hears": "all"}, headers=old))
+    for _ in range(100):
+        state = await (await client.get("/api/state", headers=master)).json()
+        if state["bodies"]["voice@mac"]["state"] == "pending":
+            break
+        await asyncio.sleep(0.01)
+    assert state["bodies"]["voice@mac"]["state"] == "pending"
+    # The key the part had while it was trusted no longer opens the door.
+    assert (await client.post("/api/input", json={
+        "kind": "started", "channel": "voice"}, headers=old)).status == 401
+
+    await client.post("/api/bodies/voice@mac/approve", headers=master)
+    granted = await (await knocking).json()
+    assert granted["approved"] is True and granted["token"]
+    assert (await client.post("/api/input", json={
+        "kind": "started", "channel": "voice"},
+        headers={"X-Heare-Token": granted["token"]})).status == 200
+    await _close(room, client)
+
+
+async def test_a_rejected_part_keeps_no_key(tmp_path):
+    (tmp_path / "parts.json").write_text('["voice@mac"]', encoding="utf-8")
+    room, client, master, _ = await _open(tmp_path)
+    old = await _knock(client, master, "voice@mac", ["input"])
+
+    knocking = asyncio.create_task(client.post("/api/bodies", json={
+        "channel": "voice", "forms": ["input"], "about": "", "key": "voice@mac",
+        "host": "mac", "hears": "all"}, headers=old))
+    for _ in range(100):
+        state = await (await client.get("/api/state", headers=master)).json()
+        if state["bodies"]["voice@mac"]["state"] == "pending":
+            break
+        await asyncio.sleep(0.01)
+    assert state["bodies"]["voice@mac"]["state"] == "pending"
+    await client.post("/api/bodies/voice@mac/reject", headers=master)
+    assert (await (await knocking).json())["approved"] is False
+    assert (await client.post("/api/input", json={
+        "kind": "started", "channel": "voice"}, headers=old)).status == 401
+    await _close(room, client)
+
+
+async def test_a_window_cannot_point_the_brain_at_another_update_feed(tmp_path):
+    room, client, master, settings = await _open(tmp_path)
+    paired = await client.post("/api/pair", json={
+        "code": pair.make(Path(settings.pair_codes_file)),
+        "kind": "window", "name": "phone"})
+    window = {"X-Heare-Token": paired.cookies["heare_session"].value}
+
+    # A window on this machine is the pult: it keeps the person's powers.
+    assert (await client.post("/api/settings", json={"language": "en"},
+                              headers=window)).status == 200
+    # From another machine the pult stays and the changing powers are shut.
+    for method, path in (
+        ("POST", "/api/settings"), ("GET", "/api/keys"), ("POST", "/api/keys"),
+        ("POST", "/api/keys/adopt"), ("GET", "/api/update"),
+        ("POST", "/api/update/install"), ("GET", "/api/backups"),
+        ("POST", "/api/backups"), ("POST", "/api/backups/x/restore"),
+        ("POST", "/api/pair-code"), ("PUT", "/api/screens/home"),
+        ("POST", "/api/skills/call"),
+        ("POST", "/api/executor/claim"), ("POST", "/api/tasks"),
+    ):
+        assert not api_server._remote_window_may(method, path), (method, path)
+    for method, path in (
+        ("POST", "/api/bodies"),
+        ("POST", "/api/message"), ("GET", "/api/state"), ("GET", "/api/events"),
+        ("POST", "/api/input"),
+    ):
+        assert api_server._remote_window_may(method, path), (method, path)
+    assert api_server._loopback("127.0.0.1")
+    assert not api_server._loopback("192.168.1.50")
+    await _close(room, client)
+
+
+async def test_a_second_knock_keeps_the_executor_and_its_job(tmp_path):
+    from heare.reach.remote import RemoteExecutor
+
+    (tmp_path / "parts.json").write_text('["opencode@mac"]', encoding="utf-8")
+    room, client, master, _ = await _open(
+        tmp_path,
+        make_executor=lambda name, about: RemoteExecutor(name, about, claim_wait_s=1.0))
+    hands = await _knock(client, master, "opencode@mac", ["executor"])
+    executor = room.core.executors["opencode"]
+
+    task = room.core.delegate("зроби щось")
+    claim = await client.post("/api/executor/claim", json={"name": "opencode"},
+                              headers=hands)
+    job = (await claim.json())["id"]
+
+    again = await client.post("/api/bodies", json={
+        "channel": "opencode", "forms": ["executor"], "about": "код, оновлено",
+        "key": "opencode@mac", "host": "mac"}, headers=hands)
+    assert (await again.json())["approved"] is True
+    assert room.core.executors["opencode"] is executor
+
+    answered = await client.post(f"/api/executor/{job}/result?name=opencode",
+                                 json={"status": "done", "result": "зроблено"},
+                                 headers=hands)
+    assert answered.status == 200 and (await answered.json())["ok"] is True
+    await room.until(lambda: task.status == "done")
+    assert task.result == "зроблено"
+    await _close(room, client)
+
+
+async def test_a_result_for_an_unknown_job_is_refused_and_logged(tmp_path, caplog):
+    from heare.reach.remote import RemoteExecutor
+
+    room, client, auth, _ = await _open(tmp_path)
+    room.core.add_executor(RemoteExecutor("worker", "робить усе"))
+
+    with caplog.at_level(logging.WARNING, logger="heare.api.server"):
+        refused = await client.post(
+            "/api/executor/999/result?name=worker",
+            json={"status": "done", "result": "нікому"}, headers=auth)
+
+    assert refused.status == 404
+    assert any("unknown job 999" in record.message for record in caplog.records)
     await _close(room, client)

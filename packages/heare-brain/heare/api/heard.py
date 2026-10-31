@@ -63,7 +63,12 @@ class Recordings:
             })
         replies.sort(key=lambda r: r["at"] or 0, reverse=True)
         marked = sum(1 for r in replies if r["label"])
-        return {"replies": replies[:limit], "total": len(replies), "marked": marked}
+        return {
+            "replies": replies[:limit], "total": len(replies), "marked": marked,
+            # Labels are kept for a later measurement; nothing reads them as
+            # one today, so the answer says so rather than implying a score.
+            "purpose": "collect", "measured": False,
+        }
 
     def sound(self, name: str) -> Path | None:
         if not NAME.fullmatch(name):

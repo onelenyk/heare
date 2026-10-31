@@ -2,8 +2,14 @@
 
 The built-in page is deliberately small. Everything else — costs, a
 history view, a form for some setting — the person asks for, and it is
-written against the same API the built-in page uses. A screen is saved
-in the person's own folder; the assistant's code does not change.
+written as one self-contained page. A screen is saved in the person's own
+folder; the assistant's code does not change.
+
+A screen is opened under a sandbox (``show_screen`` in ``server.py``): it
+gets an opaque origin, cannot read or write ``/api/*``, and cannot fetch
+anything at all. That is the point — a model wrote it, and model output
+must not become code in the person's origin. So it may show only what it
+was written with; anything live belongs on the canvas.
 
 In the core's terms this is an executor like any other: it is handed a
 task and returns what came of it, so the model that hands work out
@@ -18,42 +24,16 @@ from typing import Awaitable, Callable
 
 from heare.core import Desk
 
-API = """\
-The page is served by the assistant and may call its API. Every request
-is answered by the cookie the page pairs with: no token in the HTML.
-
-GET  /api/state            -> {phase: idle|hearing|thinking|speaking, parts:{inputs,outputs,executors}, tasks:[...], permission, controls,
-                              model:{provider, model, wanted, fallback}, session:{started, turns, cost_usd, unpriced}}
-GET  /api/history?n=20     -> [{user, agent}] the last exchanges, oldest first
-GET  /api/controls         -> {part: {name: value}}, e.g. {"voice": {"mic": true, "speaker": true, "volume": 1.0, "listen": "judge"}}
-POST /api/controls         {part, name, value}   turn one (mic/speaker: bool, volume: 0..1, listen: "judge"|"name")
-POST /api/stop                              stop the reply and all work now
-GET  /api/tasks            -> [{id, request, executor, status, step, result, started, ended}]
-POST /api/tasks            {request}        start a piece of work
-POST /api/tasks/{id}/stop                   stop it
-POST /api/permission/{id}  {allow: bool}    answer a pending question
-POST /api/message          {text}           say something to the assistant
-GET  /api/events?token=…&replay=50   Server-Sent Events (replay = how many past events first): {kind, at, ...}; kinds: heard{text,channel},
-                           reply{text}, said{text,channel}, phase{phase}, task{...},
-                           permission{id,executor,what}, usage{...}
-GET  /api/settings         -> plain settings (never keys)
-POST /api/settings         {name: value}    change settings
-GET  /api/keys             -> {KEY_NAME: true|false}  which keys exist
-POST /api/keys             {name, value}    save a key (it can never be read back)
-GET  /api/memory?q=…       -> {said}        search past conversations
-GET  /api/screens          -> [names]
-"""
-
 _WRITE = (
     "You draw on the assistant's canvas: one self-contained HTML page that "
     "fills a large area in the centre of its screen. "
-    "Inline CSS and JavaScript only, no external resources. Ukrainian text. "
-    "Clean and readable in light and dark (prefers-color-scheme), works on a "
-    "narrow window. For anything about the assistant itself — its state, "
-    "tasks, costs, settings, memory — use only the API below, and if the "
-    "API does not have it, say so on the page instead of inventing it. "
-    "General knowledge (facts, capitals, numbers anyone can look up) you "
-    "simply write in.\n\n" + API + "\n"
+    "Inline CSS and JavaScript only, no external resources. The page is "
+    "opened in a sandbox: it cannot call the assistant's API and cannot read "
+    "its memory, keys or conversation, and its requests to the network are "
+    "blocked. Do not invent live numbers: for anything about the assistant "
+    "itself, say on the page that the built-in pult shows it. "
+    "Ukrainian text. Clean and readable in light and dark "
+    "(prefers-color-scheme), works on a narrow window.\n\n"
     "Answer with exactly this and nothing else:\n"
     "name: <short-latin-name-with-dashes>\n<!doctype html>…the page…"
 )

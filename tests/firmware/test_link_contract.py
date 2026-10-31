@@ -115,11 +115,12 @@ def test_the_panel_s_skills_pass_the_brain_s_check_as_they_are():
 
 
 def test_the_panel_s_pins_are_the_trust_it_was_let_in_with():
-    # Live, the panel is trusted with these world-changing skills: one «pin»
-    # (26 October, after nine pin skills made the knock too big for the
-    # board). A change here makes it wait on the page again: decide that,
-    # then change the number.
+    # Live, the panel is trusted with these skills: one «pin» (26 October,
+    # after nine pin skills made the knock too big for the board). A change
+    # here makes it wait on the page again: decide that, then change the
+    # number. 29 October: the fingerprint covers every skill, not only the
+    # world-changing ones, so every part is asked once more by design.
     from heare.api import skills
     from heare_panel import device
 
-    assert skills.fingerprint(device.skills()) == "8ce83052ad6828dc"
+    assert skills.fingerprint(device.skills()) == "4c54aacd225dd1ef"

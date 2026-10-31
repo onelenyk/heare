@@ -1454,14 +1454,13 @@ function restyle(css) {
   $("own").textContent = frames.join("\n") + (scoped.trim() ? `\n@scope (#stage) {\n${scoped}\n}` : "");
 }
 // What a live widget may ask for. It runs in a sealed frame and reaches
-// the assistant only through these.
-const MAY_GET = /^(system|state|tasks|history(\?n=\d+)?|canvas|memory\?q=[^&]+)$/;
+// the page only through these: the machine's state, never the person's
+// conversation or memory, and it can never speak as the person.
+const MAY_GET = /^(system|state|tasks)$/;
 const BRIDGE = `<script>
 const heare = { _n: 0, _w: {},
-  get(path) { return new Promise((ok, no) => { const id = ++this._n; this._w[id] = [ok, no]; parent.postMessage({heare: "get", id, path}, "*"); }); },
-  say(text) { parent.postMessage({heare: "say", text}, "*"); } };
+  get(path) { return new Promise((ok, no) => { const id = ++this._n; this._w[id] = [ok, no]; parent.postMessage({heare: "get", id, path}, "*"); }); } };
 addEventListener("message", e => { const w = heare._w[e.data && e.data.id]; if (!w) return; delete heare._w[e.data.id]; e.data.error ? w[1](new Error(e.data.error)) : w[0](e.data.data); });
-addEventListener("click", e => { const b = e.target.closest("[data-say]"); if (b) heare.say(b.dataset.say); });
 new ResizeObserver(() => parent.postMessage({heare: "size", h: document.documentElement.scrollHeight}, "*")).observe(document.documentElement);
 <\/script>`;
 // The frame's body carries the widget's id, so a rule written for
@@ -1751,7 +1750,6 @@ addEventListener("message", ev => {
   const m = ev.data, frame = [...document.querySelectorAll("#live iframe")].find(f => f.contentWindow === ev.source);
   if (!m || !m.heare || !frame) return;
   if (m.heare === "size") frame.style.height = Math.min(Math.max(m.h, 40), 900) + "px";
-  else if (m.heare === "say" && typeof m.text === "string") ask(m.text.slice(0, 500));
   else if (m.heare === "get") {
     if (!MAY_GET.test(String(m.path))) return ev.source.postMessage({id: m.id, error: "not allowed"}, "*");
     api(m.path).then(data => ev.source.postMessage({id: m.id, data}, "*"), err => ev.source.postMessage({id: m.id, error: String(err)}, "*"));
@@ -2147,7 +2145,7 @@ function hearingLoad() {
     if (seq !== hearingSeq || mindTab !== "hearing") return;
     const replies = (d && d.replies) || [];
     box.replaceChildren(mindSec(tr("What I heard"), tr("marked {done} of {all}", {done: d.marked || 0, all: d.total || 0})));
-    box.append(el("p", "mind-empty", tr("Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you.")));
+    box.append(el("p", "mind-empty", tr("Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. The marks stay with the recording, so I can learn what to listen for.")));
     if (!replies.length) { box.append(el("p", "mind-empty", tr("no recordings yet — they appear as soon as I hear something."))); return; }
     for (const r of replies) box.append(hearingRow(r));
   }).catch(() => {
@@ -2482,11 +2480,15 @@ function loadModels(saved) {
     note.textContent = tr("the list did not come — type the id.");
   });
 }
+function fillProviders() {
+  const m = (state && state.model) || {}, offers = m.providers || [];
+  const chosen = $("provider").value;
+  $("provider").replaceChildren(...offers.map(p => new Option(p, p)));
+  $("provider").value = chosen && offers.includes(chosen) ? chosen : (m.wanted || m.provider || "");
+}
 $("open-settings").onclick = () => {
   shut();
-  const m = (state && state.model) || {};
-  $("provider").replaceChildren(...(m.providers || []).map(p => new Option(p, p)));
-  $("provider").value = m.wanted || m.provider || "";
+  fillProviders();
   $("modelcustom").value = "";
   api("settings").then(s => loadModels(s[$("provider").value + "_model"] || ""))
     .catch(() => loadModels(""));
@@ -2512,7 +2514,18 @@ $("save-key").onclick = () => {
   if (!value) return;
   $("keyvalue").value = "";
   api("keys", {method: "POST", body: {name, value}})
-    .then(() => { $("keynote").textContent = tr("{name} is saved. It counts from the next reply.", {name}); keys(); refresh(); })
+    .then(() => {
+      $("keynote").textContent = tr("{name} is saved. It counts from the next reply.", {name});
+      keys();
+      // A fresh install has no provider list until a key exists; saving
+      // one here gives the drawer its choices without a close and reopen.
+      refresh().then(() => {
+        if (!$("settings").classList.contains("on")) return;
+        fillProviders();
+        api("settings").then(s => loadModels(s[$("provider").value + "_model"] || ""))
+          .catch(() => loadModels(""));
+      }, () => {});
+    })
     .catch(why => { $("keynote").textContent = tr("Not saved: {why}", {why}); });
 };
 /* The language of what the person hears and sees: the page comes back in it. */
@@ -2553,7 +2566,6 @@ if (restoring) { mindOpenDrawer(); mindShow("backups"); }
 
 /* ── live ── */
 const stream = new EventSource("/api/events");
-stream.onopen = knock;
 stream.onmessage = m => {
   const e = JSON.parse(m.data);
   if (e.kind === "heard") { writing = null; askedAt = e.at; line(e.text, "me", e.channel); }
@@ -2577,7 +2589,9 @@ stream.onmessage = m => {
   if (["task", "permission", "permission_closed", "question", "question_closed", "control", "usage", "said", "key", "halted", "part"].includes(e.kind)) refresh();
 };
 stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext").textContent = tr("no connection to heare"); };
-stream.onopen = () => refresh();
+// One open does both: the page is present among the parts again after a
+// brain restart (a knock re-registers this window), and the state is fresh.
+stream.onopen = () => { knock(); refresh(); };
 
 $("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; ask(text); };
 refresh(); setInterval(refresh, 15000);

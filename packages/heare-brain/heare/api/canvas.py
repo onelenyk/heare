@@ -13,13 +13,15 @@ like one thing made by one hand, and a widget is small plain HTML.
 
 A widget may be alive. One that carries a script is run by the page in
 a sealed frame of its own, where it can refresh itself, ask a public
-service for data, and ask the assistant about this machine through a
-small bridge (``heare.get``) — and nothing else. What is on the canvas is told to the model in every
-prompt as an outline, not as markup: the old app put the whole display
-into the prompt and the model drowned in it.
+service for data, and read this machine's state through a small bridge
+(``heare.get('system'|'state'|'tasks')``) — and nothing else. It cannot
+reach the person's conversation, memory or keys, and it cannot speak as
+the person. What is on the canvas is told to the model in every prompt as
+an outline, not as markup: the old app put the whole display into the
+prompt and the model drowned in it.
 
-A button with ``data-say="…"`` says that to the assistant when pressed,
-so what is drawn can answer back.
+A static widget's button with ``data-say="…"`` says that to the assistant
+when the person presses it, so what is drawn can answer back.
 """
 
 from __future__ import annotations
@@ -52,15 +54,41 @@ _IMPORT = re.compile(r"@import[^;]*;?", re.IGNORECASE)
 _HANDLER = re.compile(r"\son[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.IGNORECASE)
 _JS_URL = re.compile(r"javascript\s*:", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")
+# A widget without a script is written into the page itself, so it must not
+# be able to change how the page looks or make the browser fetch anything.
+_STYLE_BLOCK = re.compile(r"<\s*style\b.*?</\s*style\s*>", re.IGNORECASE | re.DOTALL)
+_STYLE_LONE = re.compile(r"</?\s*style\b[^>]*>?", re.IGNORECASE)
+_FORM = re.compile(r"</?\s*form\b[^>]*>", re.IGNORECASE)
+# Tags that fetch on their own or show a fake form.
+_FETCHING = re.compile(
+    r"<\s*(img|picture|source|video|audio|track|input)\b[^>]*>", re.IGNORECASE)
+# SVG animation can invent an href after the sanitiser has looked at it.
+_ANIMATION = re.compile(
+    r"<\s*(animate|animateMotion|animateTransform|set|discard)\b[^>]*>",
+    re.IGNORECASE)
+# Any attribute that points somewhere: remote loads, beacons, form posts.
+_URL_ATTR = re.compile(
+    r"\s(?:src|href|xlink:href|action|formaction|poster|background|ping|data)"
+    r"\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.IGNORECASE)
+_CSS_URL = re.compile(r"\burl\s*\([^)]*\)", re.IGNORECASE)
+
+
+def _drop_url(attribute: re.Match[str]) -> str:
+    value = attribute.group(1).strip("\"'")
+    # A fragment stays: it points inside the same widget, not elsewhere.
+    return attribute.group(0) if value.startswith("#") else ""
 
 
 def clean(html: str) -> str:
-    """Frames, external sheets, inline handlers and script URLs are taken
-    out. A <script> stays: the page never runs it in itself, only inside
-    a sealed frame that can reach nothing of the person's."""
+    """Frames, external sheets, styles, forms, fetching tags, inline handlers
+    and script URLs are taken out. A <script> stays: the page never runs it
+    in itself, only inside a sealed frame that can reach nothing of the
+    person's. The rest is safe to put into the page as it is."""
     html = _LONE.sub("", _PAIRED.sub("", html))
-    html = _HANDLER.sub("", html)
-    return _JS_URL.sub("", html)
+    html = _STYLE_LONE.sub("", _STYLE_BLOCK.sub("", html))
+    html = _FORM.sub("", _FETCHING.sub("", _ANIMATION.sub("", html)))
+    html = _HANDLER.sub("", _URL_ATTR.sub(_drop_url, html))
+    return _CSS_URL.sub("", _JS_URL.sub("", html))
 
 
 def _text(html: str) -> str:
@@ -152,9 +180,10 @@ class Canvas:
 
     def style(self, css: str) -> None:
         """Replace the canvas's own stylesheet. Nothing is fetched by it:
-        an @import is taken out, and what it can do is change how the
-        canvas looks."""
-        self.css = _JS_URL.sub("", _IMPORT.sub("", css)).replace("</style", "")[:STYLE_CHARS]
+        an @import, a url() and a script URL are taken out, and what it can
+        do is change how the canvas looks."""
+        self.css = (_CSS_URL.sub("", _JS_URL.sub("", _IMPORT.sub("", css)))
+                    .replace("</style", "")[:STYLE_CHARS])
         self._keep()
         self._emit("canvas", op="style", css=self.css)
 
@@ -286,8 +315,9 @@ _PUT = _verb(
     "HTML only, no <style>: the canvas styles everything alike. Start with "
     "<h3>title</h3>. Helpers: class=\"big\" a large value, \"muted\" small "
     "grey text, \"row\" a label–value line (two spans), \"meter\" with "
-    "style=\"--v:0.42\" a bar, \"pill\" a tag. <button data-say=\"…\"> says "
-    "that to you.\n"
+    "style=\"--v:0.42\" a bar, \"pill\" a tag. A static widget's "
+    "<button data-say=\"…\"> says that to you when pressed; a live widget "
+    "cannot speak.\n"
     "A LIVE widget carries one <script> that fills elements by id and "
     "refreshes itself with setInterval. In it: `await heare.get('system')` "
     "-> {cpu:{percent,load,cores}, memory:{percent,used_gb,total_gb}, "

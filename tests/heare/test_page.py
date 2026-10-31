@@ -159,3 +159,41 @@ def test_the_page_offers_a_newer_heare_and_says_how_it_goes():
     assert "u.can_install" in draw and "release page" in draw
     assert "drawUpdate(s.update);" in SCRIPT
     assert 'else if (e.kind === "update") drawUpdate(e);' in SCRIPT
+
+
+def test_the_stream_reconnects_and_knocks():
+    """After a brain restart the page must re-knock as well as refresh: the
+    registry forgot the window and a stream alone does not register it."""
+    opens = [line for line in SCRIPT.splitlines() if "stream.onopen =" in line]
+    assert len(opens) == 1, opens
+    assert "knock()" in opens[0] and "refresh()" in opens[0]
+
+
+def test_a_live_widget_cannot_read_memory_or_say():
+    may = re.search(r"const MAY_GET = /(.*?)/;", SCRIPT).group(1)
+    for forbidden in ("memory", "history", "canvas"):
+        assert forbidden not in may
+    assert {"system", "state", "tasks"} <= set(re.findall(r"[a-z]+", may))
+    bridge = SCRIPT.split("const BRIDGE = `", 1)[1].split("<\\/script>`", 1)[0]
+    assert "say" not in bridge
+    assert 'frame.setAttribute("sandbox", "allow-scripts")' in SCRIPT
+    assert "allow-same-origin" not in SCRIPT
+    assert 'heare: "say"' not in SCRIPT and 'm.heare === "say"' not in SCRIPT
+
+
+def test_the_page_takes_its_name_from_the_brain():
+    # Step 7a writes identity.json («Дока»); /api/state carries it in
+    # model.name, so the header is not stuck on the static «heare».
+    assert ('if (m.name) { $("name").textContent = m.name; '
+            '$("bigname").textContent = m.name;' in SCRIPT)
+
+
+def test_the_hearing_form_says_what_the_marks_are_for():
+    assert "The marks stay with the recording" in SCRIPT
+    assert "From this we measure" not in SCRIPT
+
+
+def test_a_saved_key_refills_the_providers_without_reopening():
+    assert "function fillProviders()" in SCRIPT
+    save = SCRIPT.split('$("save-key").onclick')[1].split('$("lang").value')[0]
+    assert "refresh().then" in save and "fillProviders()" in save

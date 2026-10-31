@@ -62,6 +62,28 @@ def test_widgets_stay_side_by_side_each_with_a_size(tmp_path):
     assert _canvas(tmp_path).sizes == {"weather": "s", "cpu": "m", "cities": "m"}
 
 
+def test_a_stored_widget_cannot_style_or_form_the_page(tmp_path):
+    """A widget without a script lands in the page itself: it must not be
+    able to restyle the pult, post a form, or make the browser fetch."""
+    canvas = _canvas(tmp_path)
+    canvas.put("bad", '<style>#pult{display:none}</style>'
+                      '<form action="https://evil.example"><input name="x">'
+                      '<img src="https://evil.example/beacon"></form>'
+                      '<p>safe</p><a href="https://evil.example">x</a>'
+                      '<svg><use href="https://evil.example/x.svg"></use>'
+                      '<animate attributeName="href" values="//evil"></animate></svg>')
+    stored = canvas.blocks["bad"]
+    for gone in ("<style", "<form", "<input", "<img", "<animate", "https://evil", "action="):
+        assert gone not in stored
+    assert "safe" in stored
+
+
+def test_the_canvas_stylesheet_cannot_fetch_anything(tmp_path):
+    canvas = _canvas(tmp_path)
+    canvas.style('#stage{background:url("https://evil.example/x")}')
+    assert "url(" not in canvas.css and "https://evil" not in canvas.css
+
+
 def test_the_model_is_told_what_is_drawn_as_an_outline_not_as_markup(tmp_path):
     canvas = _canvas(tmp_path)
     assert "empty" in canvas.context()

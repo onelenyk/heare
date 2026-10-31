@@ -75,7 +75,8 @@ class Registry:
                host: str, state: str, ui: list | None = None,
                hears: str | None = None, version: str | None = None,
                started: float | None = None, approves: bool = False,
-               skills: list | None = None, name: str = "") -> None:
+               skills: list | None = None, name: str = "",
+               machine: str | None = None) -> None:
         old = self.bodies.get(pid) or {}
         # A knock from a process that began at another time is the part
         # started again: counted while this brain runs, so after an update
@@ -86,6 +87,9 @@ class Registry:
         self.bodies[pid] = {
             "channel": channel, "forms": forms, "about": about,
             "host": host, "state": state,
+            # The machine key that claimed this pid, if one did. A machine
+            # may knock again for its own parts and no one else's.
+            "machine": machine or old.get("machine"),
             # What the part last said it is; a manifest says nothing, so the
             # version from its last knock stays until it knocks again.
             "version": version or old.get("version"),

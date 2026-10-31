@@ -18,6 +18,7 @@ is served, so a web page from somewhere else cannot drive the assistant.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -44,7 +45,8 @@ from heare.api import pair as codes
 from heare.api.heard import Recordings
 from heare.api import skills
 from heare.api.registry import Registry
-from heare.model.providers import PROVIDERS, list_models
+from heare.hand import Gone
+from heare.model.providers import PROVIDERS, check_key, list_models
 
 logger = logging.getLogger("heare.api.server")
 
@@ -84,6 +86,63 @@ _STATUS_FIELDS: dict[str, tuple[str, ...]] = {
     # A skill called on a part: the part answers it by id.
     "call": ("part", "id", "name", "args"),
 }
+
+
+# A window on another machine keeps the pult — the conversation, the page,
+# its own body — but not the powers that change this Mac. The local page is
+# still the person's. What a remote window may do is named here one route at
+# a time; everything else is refused by default, so a route added later is
+# local until someone says otherwise. The census in tests/heare/test_api.py
+# walks the router and fails when a route is neither here nor explicitly
+# local-only.
+REMOTE_WINDOW_ALLOWED: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("POST", re.compile(r"^/api/bodies$")),
+    ("POST", re.compile(r"^/api/message$")),
+    ("POST", re.compile(r"^/api/input$")),
+    ("POST", re.compile(r"^/api/input/said_over$")),
+    ("GET", re.compile(r"^/api/events$")),
+    ("GET", re.compile(r"^/api/state$")),
+    ("GET", re.compile(r"^/api/history$")),
+    ("GET", re.compile(r"^/api/canvas$")),
+    ("GET", re.compile(r"^/api/system$")),
+    ("GET", re.compile(r"^/api/tasks$")),
+    ("GET", re.compile(r"^/api/controls$")),
+    ("GET", re.compile(r"^/api/settings$")),
+    ("GET", re.compile(r"^/api/models$")),
+    ("GET", re.compile(r"^/api/memory$")),
+    ("GET", re.compile(r"^/api/mind$")),
+    ("GET", re.compile(r"^/api/mind/journal$")),
+    ("GET", re.compile(r"^/api/mind/search$")),
+    ("GET", re.compile(r"^/api/heard$")),
+    ("GET", re.compile(r"^/api/heard/[^/]+\.wav$")),
+    ("GET", re.compile(r"^/api/features$")),
+    ("POST", re.compile(r"^/api/stop$")),
+    ("POST", re.compile(r"^/api/tasks/\d+/stop$")),
+    ("POST", re.compile(r"^/api/permission/\d+$")),
+    ("POST", re.compile(r"^/api/answer/\d+$")),
+    ("POST", re.compile(r"^/api/mind/journal/forget$")),
+    ("PUT", re.compile(r"^/api/mind/profile$")),
+    ("POST", re.compile(r"^/api/heard/[^/]+$")),
+)
+
+
+def _loopback(remote: str | None) -> bool:
+    try:
+        return ipaddress.ip_address(remote or "").is_loopback
+    except ValueError:
+        return False
+
+
+def _remote_window_may(method: str, path: str) -> bool:
+    """Whether a window from another machine may use this route.
+
+    A window on this Mac is the person's and is never asked this; it is the
+    question the guard puts only to a remote one. A body-less HEAD is the
+    GET it stands in for."""
+    if method == "HEAD":
+        method = "GET"
+    return any(method == want and rx.fullmatch(path)
+               for want, rx in REMOTE_WINDOW_ALLOWED)
 
 
 SESSION = "heare_session"
@@ -346,8 +405,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if pid is None:
             raise web.HTTPUnauthorized(text="no token")
         if pid.startswith("window@"):
-            # A window has the person's powers, but is still one window: its
-            # knock is its own, so two open pages are two parts, not one.
+            # A window on this machine has the person's powers, but is still
+            # one window: its knock is its own, so two open pages are two
+            # parts, not one. From elsewhere it is the pult only.
+            if not _loopback(request.remote) and not _remote_window_may(
+                    request.method, request.path):
+                raise web.HTTPForbidden(
+                    text="a window from elsewhere keeps the pult only")
             request["window"] = pid
             return await handler(request)
         if pid.startswith("machine@"):
@@ -424,10 +488,21 @@ def build(core: Core, settings: Any, vitals: Any = None,
         core.hear(Message(text=text, channel="screen"))
         return web.json_response({"ok": True})
 
+    def on_executor(channel: str, about: str) -> None:
+        """One executor per channel: a re-knock updates its card, not the
+        object that holds the jobs already handed to it."""
+        found = core.executors.get(channel)
+        if found is not None:
+            try:
+                found.about = about
+            except (AttributeError, TypeError):
+                pass
+            return
+        core.add_executor(make_executor(channel, about))
+
     registry = Registry(
         Path(settings.parts_file), core.state.emit,
-        (lambda channel, about: core.add_executor(make_executor(channel, about)))
-        if make_executor is not None else None)
+        on_executor if make_executor is not None else None)
     registry.load(Path(settings.parts_dir))
     bodies = registry.bodies
     trust = skills.Trust(Path(settings.parts_file).parent / "part_skills.json")
@@ -473,17 +548,24 @@ def build(core: Core, settings: Any, vitals: Any = None,
         """The agent's question mid-work: the person's answer comes back."""
         data = await body(request)
         found = _executor_for(request)
-        answer = await found.ask(int(request.match_info["id"]),
-                                 str(data.get("question", "")))
+        try:
+            answer = await found.ask(int(request.match_info["id"]),
+                                     str(data.get("question", "")))
+        except Gone:
+            raise web.HTTPNotFound(text="no such job") from None
         return web.json_response({"answer": answer})
 
     async def result(request: web.Request) -> web.Response:
         data = await body(request)
         found = _executor_for(request)
-        return web.json_response({"ok": found.result(
-            int(request.match_info["id"]),
-            str(data.get("status", "done")), str(data.get("result", "")),
-        )})
+        job = int(request.match_info["id"])
+        if not found.result(
+            job, str(data.get("status", "done")), str(data.get("result", "")),
+        ):
+            logger.warning("a result came for unknown job %s from %s", job,
+                           request.query.get("name") or "")
+            raise web.HTTPNotFound(text="no such job")
+        return web.json_response({"ok": True})
 
     def _executor_for(request: web.Request):
         name = request.query.get("name") or ""
@@ -515,6 +597,35 @@ def build(core: Core, settings: Any, vitals: Any = None,
             return {}
         return {"token": auth.issue(part_tokens, pid)}
 
+    def machine_may_claim(who: str, pid: str, channel: str) -> bool:
+        """A machine gets only the pids it claimed and never a part or
+        executor someone already has.
+
+        A manifest is a folder the person put there by hand; it is not a
+        claim, so an away entry whose host is this machine may still be
+        claimed. An approved or pending local part may not."""
+        name = who.split("@", 1)[1]
+        if pid.split("@", 1)[-1] != name:
+            return False
+        entry = registry.bodies.get(pid)
+        if entry is not None:
+            claimed = entry.get("machine")
+            if claimed is not None and claimed != who:
+                return False
+            if claimed is None and entry.get("state") != "away":
+                return False
+        owner = registry.by_channel(channel)
+        if owner is not None:
+            owner_pid = registry.pid_of(owner)
+            if owner_pid != pid and (owner.get("state") == "approved"
+                                     or owner.get("machine") != who):
+                return False
+        if channel in core.executors:
+            holder = registry.bodies.get(pid)
+            if holder is None or holder.get("channel") != channel:
+                return False
+        return True
+
     async def register(request: web.Request) -> web.Response:
         """A part knocks; the person decides whether to trust it.
 
@@ -531,7 +642,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
         host = str(data.get("host") or (who.split("@", 1)[1] if window
                                         else socket.gethostname()))
         pid = who if window else str(data.get("key") or f"{channel}@{host}")
-        if who is not None and who != pid and not who.startswith("machine@"):
+        machine = who if str(who or "").startswith("machine@") else None
+        if who is not None and who != pid and not machine:
+            raise web.HTTPForbidden(text="not your name")
+        if machine is not None and not machine_may_claim(machine, pid, channel):
             raise web.HTTPForbidden(text="not your name")
         version = data.get("v")
         if version is not None and version != PROTOCOL:
@@ -552,38 +666,48 @@ def build(core: Core, settings: Any, vitals: Any = None,
         # What the part can do, in its own words.
         offered = skills.checked(data.get("skills"))
         named_as = str(data.get("name") or "")[:32]
+        shape = {"channel": channel, "forms": sorted(str(f) for f in forms),
+                 "hears": hears, "approves": approves}
         ui = list(data.get("ui") or []) or list(
             (bodies.get(pid) or {}).get("ui") or [])
-        # A part whose world-changing skills are not those it was let in with
-        # is asked about again: a new switch is a new trust.
-        if ((pid in registry.trusted() and trust.same(pid, offered))
+        # A part whose skills or shape are not those it was let in with is
+        # asked about again: a new switch or a wider ear is a new trust.
+        if ((pid in registry.trusted() and trust.same(pid, offered, shape))
                 or str(who or "").startswith(("window@", "machine@"))):
-            if str(who or "").startswith("machine@"):
+            if machine is not None:
                 # A paired machine vouches for its parts once: the part comes
                 # back with a key of its own, and after the brain restarts it
                 # must not wait for a yes it was never asked for (24 October:
                 # the sources stood pending after every brain restart).
                 registry.remember(pid)
-                trust.keep(pid, offered)
+                trust.keep(pid, offered, shape)
             registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                             version=part_version, started=started,
-                            approves=approves, skills=offered, name=named_as)
+                            approves=approves, skills=offered, name=named_as,
+                            machine=machine)
             return web.json_response({"approved": True, "pid": pid, **named(),
                                       **granted(request, pid)})
         registry.attach(pid, channel, forms, about, host, "pending", ui, hears,
                         version=part_version, started=started,
-                            approves=approves, skills=offered, name=named_as)
+                            approves=approves, skills=offered, name=named_as,
+                            machine=machine)
+        # A part waiting for a new yes does not keep the key from the old one.
+        auth.revoke(part_tokens, pid)
         decided = await registry.answer(pid)
         if decided == "expired":
+            auth.revoke(part_tokens, pid)
             return web.json_response({"approved": False, "why": "nobody answered"})
         if decided != "approved":
+            auth.revoke(part_tokens, pid)
             return web.json_response({"approved": False, "why": decided})
-        trust.keep(pid, offered)
+        trust.keep(pid, offered, shape)
         registry.attach(pid, channel, forms, about, host, "approved", ui, hears,
                         version=part_version, started=started,
-                            approves=approves, skills=offered, name=named_as)
+                            approves=approves, skills=offered, name=named_as,
+                            machine=machine)
+        # Its old key went with the old yes; the new yes comes with a new one.
         return web.json_response({"approved": True, "pid": pid, **named(),
-                                  **granted(request, pid)})
+                                  "token": auth.issue(part_tokens, pid)})
 
     async def approve(request: web.Request) -> web.Response:
         return _decide(request, "approved")
@@ -606,8 +730,11 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.json_response({"ok": True})
 
     def _decide(request: web.Request, state: str) -> web.Response:
-        if not registry.decide(request.match_info["id"], state):
+        pid = request.match_info["id"]
+        if not registry.decide(pid, state):
             raise web.HTTPNotFound(text="no such part is waiting")
+        if state != "approved":
+            auth.revoke(part_tokens, pid)
         return web.json_response({"ok": True})
 
     async def input_event(request: web.Request) -> web.Response:
@@ -930,9 +1057,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
         name, value = str(data.get("name", "")), str(data.get("value", "")).strip()
         if name not in keys.NAMES or not value:
             raise web.HTTPBadRequest(text="not a key this assistant uses")
+        ok, why = await check_key(name, value)
+        if not ok:
+            raise web.HTTPBadRequest(text=why)
         await asyncio.to_thread(keys.store, name, value)
         core.state.emit("key", name=name)
-        return web.json_response({"saved": name})
+        return web.json_response({"saved": name, "why": why})
 
     async def adopt_key(request: web.Request) -> web.Response:
         """Copy a key the environment already holds into the store."""
@@ -1174,6 +1304,14 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     # -- screens ----------------------------------------------------------
 
+    # A screen is model-written HTML. It runs with scripts (a screen may
+    # animate itself), but in an opaque origin with no way to reach /api/*,
+    # the person's cookie or the network. Model output never becomes code
+    # in the pult's origin.
+    SCREEN_CSP = ("sandbox allow-scripts; default-src 'none'; "
+                  "script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                  "img-src data: blob:; font-src data:")
+
     def screen_path(request: web.Request) -> Path:
         name = request.match_info["name"]
         if not _NAME.fullmatch(name):
@@ -1198,7 +1336,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         path = screen_path(request)
         if not path.is_file():
             raise web.HTTPNotFound(text="no such screen")
-        return handed(path.read_text(encoding="utf-8"))
+        shown = handed(path.read_text(encoding="utf-8"))
+        shown.headers["Content-Security-Policy"] = SCREEN_CSP
+        return shown
 
     async def page(request: web.Request) -> web.Response:
         # The words come with the page: no second request, no English flash
