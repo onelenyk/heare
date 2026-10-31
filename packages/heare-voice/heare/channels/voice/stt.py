@@ -13,6 +13,11 @@ from dataclasses import dataclass
 import httpx
 
 
+# One recogniser round trip, and the shortest a turn may wait for it
+# before deciding the recogniser itself is dead.
+STT_TIMEOUT_S = 15.0
+
+
 @dataclass
 class Transcript:
     """Transcribed speech result.
@@ -46,7 +51,7 @@ async def transcribe(
     model: str = "whisper-large-v3",
     language: str | None = "uk",
     client: httpx.AsyncClient | None = None,
-    timeout: float = 15.0,
+    timeout: float = STT_TIMEOUT_S,
 ) -> Transcript:
     """Transcribe 16 kHz mono int16 PCM audio.
 

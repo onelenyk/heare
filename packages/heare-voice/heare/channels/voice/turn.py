@@ -32,6 +32,8 @@ import re
 import time
 from typing import Callable
 
+from heare.channels.voice.stt import STT_TIMEOUT_S
+
 # Words a thought hangs on: conjunctions, prepositions and the fillers
 # people say while the next clause arrives. A fragment ending here is
 # not an utterance, it is the first half of one.
@@ -121,8 +123,14 @@ class TurnAssembler:
         continuation_hold_s: float | None = None,
         wall: Callable[[], float] = time.time,
         suspend_threshold_s: float = 5.0,
+        dead_stt_s: float = STT_TIMEOUT_S,
     ) -> None:
         self._hold_s = hold_s
+        # A recogniser allowed fifteen seconds must not be declared dead
+        # after eight: the late transcript would close the first fragment
+        # as one turn and become a second. The dead window is never
+        # shorter than one recogniser round trip.
+        self._dead_stt_s = max(dead_stt_s, 10.0 * hold_s)
         # A pause in the middle of a thought sounds different from a pause
         # at the end of one, and the words say which it is: a fragment
         # left hanging on «і», «тому що», «типу» — or with no closing
@@ -143,7 +151,7 @@ class TurnAssembler:
         self._speaking = False
         # Timestamp of the most recent speech_started() call that has not
         # yet been followed by a transcript() — used only to detect a dead
-        # STT (defensive close after 10*hold_s of silence from it).
+        # STT (defensive close after the dead-STT window).
         self._speech_started_at: float | None = None
 
     def _sample(self) -> bool:
@@ -231,8 +239,9 @@ class TurnAssembler:
 
         Closes when: speech is not in progress, a deadline is set, and
         the clock has reached it. Also defends against a dead STT: if
-        speech_started() fired but no transcript() followed for
-        10*hold_s, the turn is force-closed with whatever fragments it
+        speech_started() fired but no transcript() followed for the
+        dead-STT window (at least one recogniser timeout), the turn is
+        force-closed with whatever fragments it
         has (or simply reset to the empty/closed state if it has none),
         so `open` cannot get stuck True forever.
 
@@ -246,7 +255,7 @@ class TurnAssembler:
 
         if (
             self._speech_started_at is not None
-            and now - self._speech_started_at >= 10 * self._hold_s
+            and now - self._speech_started_at >= self._dead_stt_s
         ):
             # STT died mid-utterance: stop waiting on it. Fragments are
             # only ever appended together with a deadline (see

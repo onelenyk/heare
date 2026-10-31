@@ -17,14 +17,17 @@ at a time and are not reconsidered here.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 from heare import keys
 from heare.channels.voice.hallucinations import is_junk
 from heare.channels.voice.heard import Heard, levels
+from heare.channels.voice.hearing import SILENT_AFTER_S, EarWatch, read
 from heare.channels.voice.language import language_of
 from heare.channels.voice.sentences import sentences, speakable
 from heare.channels.voice.stt import transcribe
@@ -47,6 +50,16 @@ MIN_SPEECH_MS = 240
 # A voice over the speaker for this long is an interruption whatever it says.
 INTERRUPT_HOLD_MS = 600.0
 POLL_S = 0.1
+# How often the ear is asked whether the device still calls. The threshold
+# itself lives in hearing.py; this is only the cost of looking.
+WATCHDOG_POLL_S = 1.0
+# After one failed reopen, wait longer each time. A dead device must not
+# become a reopen storm; the keeper would show a part that never rests.
+WATCHDOG_RETRY_S = 30.0
+WATCHDOG_RETRY_MAX_S = 120.0
+# The waits between synthesiser attempts: empty audio is retried, four
+# times is the documented policy, then the machine's own voice.
+SYNTH_RETRY_S: tuple[float | None, ...] = (0.2, 0.5, 1.0, None)
 
 
 @dataclass
@@ -65,7 +78,9 @@ class Voice:
 
     def __init__(self, device: Any, settings: Any, *, aec: Any = None,
                  wake: WakeGate | None = None, voice: str = "",
-                 heard: Heard | None = None) -> None:
+                 heard: Heard | None = None,
+                 watch_s: float = WATCHDOG_POLL_S,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.device = device
         self.heard = heard
         self.settings = settings
@@ -91,6 +106,12 @@ class Voice:
         self._reported = False
         self._spoke_at = 0.0
         self._port: Port | None = None
+        self._watch_s = watch_s
+        self._clock = clock
+        self._ear = EarWatch()
+        self._restart_at = 0.0
+        self._retry_s = WATCHDOG_RETRY_S
+        self._synthesis_failed = False
 
     @property
     def duplex(self) -> bool:
@@ -140,7 +161,52 @@ class Voice:
 
     async def run(self, port: Port) -> None:
         self._port = port
-        await asyncio.gather(self._listen(), self._recognise(), self._turns())
+        await asyncio.gather(
+            self._listen(), self._recognise(), self._turns(), self._watch(),
+        )
+
+    async def _watch(self) -> None:
+        while True:
+            await asyncio.sleep(self._watch_s)
+            await self._watch_once()
+
+    async def _watch_once(self) -> None:
+        """One reading of the ear: say an outage once, reopen at most once
+        per cooldown, and never turn a dead device into a reopen storm."""
+        now = self._clock()
+        mute_user = bool(getattr(self.device, "mute_input_user", False))
+        reading = read(self.device, muted=mute_user)
+        said = self._ear.feed(reading, now=now)
+        if said is not None:
+            text, key = said
+            logger.error("the microphone is deaf: %s", text)
+            if self._port is not None:
+                self._port.note(key, text)
+        if not reading.deaf:
+            self._retry_s = WATCHDOG_RETRY_S
+            return
+        if now < self._restart_at:
+            return
+        try:
+            reopened = await self._restart_input()
+        except Exception:  # noqa: BLE001 — the watchdog must stay alive
+            logger.exception("the microphone could not be reopened")
+            reopened = False
+        now = self._clock()
+        if reopened:
+            # Judge the new stream from a fresh threshold; a stream that
+            # opens but never calls must not be reopened again at once.
+            self._restart_at = now + SILENT_AFTER_S
+            self._retry_s = WATCHDOG_RETRY_S
+        else:
+            self._restart_at = now + self._retry_s
+            self._retry_s = min(self._retry_s * 2.0, WATCHDOG_RETRY_MAX_S)
+
+    async def _restart_input(self) -> bool:
+        restart = getattr(self.device, "restart_input", None)
+        if restart is None:
+            return False
+        return bool(await restart())
 
     async def _listen(self) -> None:
         while True:
@@ -153,10 +219,12 @@ class Voice:
                 frame = self.aec.process(frame)
             event = self.vad.feed(frame)
             over = self._over
-            if over is not None and not over.settled:
+            if over is not None and not over.settled and over.speech_ms is None:
                 # Audio time and speech only: a real nod is followed by
                 # the silence the detector waits through, and that must
-                # not count as talking.
+                # not count as talking. Once END has frozen the reading,
+                # later frames (a slow recogniser, a reply still playing)
+                # must not turn a nod into an interruption.
                 loud = getattr(self.vad, "loud_ms_in_speech", None)
                 over.heard_ms = loud if loud is not None else over.heard_ms + len(frame) / 32.0
                 over.long = over.long or over.heard_ms >= INTERRUPT_HOLD_MS
@@ -174,6 +242,7 @@ class Voice:
                 over = self._over
                 if over is not None and not over.settled:
                     over.speech_ms = over.heard_ms
+                    over.long = over.long or over.speech_ms >= INTERRUPT_HOLD_MS
                 # One worker, in order: two phrases of one turn must reach
                 # the assembler as they were said, whatever the network does.
                 self._jobs.put_nowait((event.utterance, self._starts, over, self._turn))
@@ -192,10 +261,14 @@ class Voice:
                 if self._over is over:
                     self._over = None
                 # The core decides what a voice over a reply meant. A nod
-                # and a cough are not a turn.
-                if not self._port.said_over(
+                # and a cough are not a turn. A port may answer directly
+                # or await the brain; both are a verdict.
+                verdict = self._port.said_over(
                     self.name, text, over.speech_ms or 0.0, over.long
-                ):
+                )
+                if inspect.isawaitable(verdict):
+                    verdict = await verdict
+                if not verdict:
                     text = ""
             self.assembler.transcript(text, speech_resumed=self._starts > starts_then)
 
@@ -262,6 +335,7 @@ class Voice:
 
     async def say(self, pieces: AsyncIterator[str]) -> str:
         utterance = self.mouth.open(self._synthesise, mute_mic=not self.duplex)
+        self._synthesis_failed = False
         try:
             async for sentence in sentences(pieces):
                 if utterance.stopped:
@@ -295,20 +369,32 @@ class Voice:
         voice = (self._voice or _or(self.settings, "voice", "")
                  or voice_for_language(language_of(self.settings),
                                        fallback_lang="uk"))
-        for wait in (0.2, 0.5, 1.0, None):
+        for wait in SYNTH_RETRY_S:
             sounded = False
-            async for chunk in synthesise(text, voice=voice):
-                sounded = True
-                yield chunk
+            try:
+                async for chunk in synthesise(text, voice=voice):
+                    sounded = True
+                    yield chunk
+            except Exception:  # noqa: BLE001 — the fallback is the policy
+                logger.exception("the synthesiser raised for %r", text[:40])
+                sounded = False
             if sounded:
                 return
             if wait is not None:
                 logger.warning("no audio for %r — trying again", text[:40])
                 await asyncio.sleep(wait)
         logger.warning("the synthesiser is refusing — using the system voice")
+        self._report_synthesis_failed()
         pcm = await asyncio.to_thread(_system_voice, text)
         if pcm:
             yield pcm
+
+    def _report_synthesis_failed(self) -> None:
+        if self._synthesis_failed:
+            return
+        self._synthesis_failed = True
+        if self._port is not None:
+            self._port.note("tts", "failed")
 
     def pause(self) -> None:
         self.mouth.pause_all()
@@ -356,7 +442,8 @@ def _or(settings: Any, name: str, default: Any) -> Any:
     return default if value in ("", None) else value
 
 
-def build(device: Any, settings: Any, *, wake: bool = True, aec: bool = True) -> Voice:
+def build(device: Any, settings: Any, *, wake: bool = True, aec: bool = True,
+          watch_s: float = WATCHDOG_POLL_S) -> Voice:
     """The voice on a given device — a real one, or the listener's tape."""
     canceller = None
     if aec:
@@ -374,17 +461,26 @@ def build(device: Any, settings: Any, *, wake: bool = True, aec: bool = True) ->
             max_window_s=float(_or(settings, "wake_window_max_seconds", 180.0)),
             required=bool(_or(settings, "wake_required", True)),
         )
-    return Voice(device, settings, aec=canceller, wake=gate)
+    return Voice(device, settings, aec=canceller, wake=gate, watch_s=watch_s)
 
 
-async def open_voice(settings: Any) -> Voice:
-    """The voice on this machine's microphone and speaker."""
+async def open_voice(settings: Any, *,
+                     watch_s: float = WATCHDOG_POLL_S) -> Voice:
+    """The voice on this machine's microphone and speaker.
+
+    A device that cannot open is not a reason to exit: the part stays
+    alive, deaf, and the watchdog reopens it with backoff. The keeper
+    would otherwise restart the same failure forever.
+    """
     from heare.channels.voice.device import AudioIO
 
     from pathlib import Path
 
     device = AudioIO()
-    await device.start()
-    voice = build(device, settings)
+    try:
+        await device.start()
+    except Exception:  # noqa: BLE001 — deaf but alive is the contract
+        logger.exception("the microphone did not open; staying alive deaf")
+    voice = build(device, settings, watch_s=watch_s)
     voice.heard = Heard(Path(settings.heard_dir))
     return voice

@@ -64,7 +64,7 @@ class Utterance:
             # from before the first sound, through tool calls, until the
             # speaker drains — not from the first sentence. The thinking
             # gap is the part a stray echo would otherwise land in.
-            self._speaker.mute_input = True
+            self._mouth._mute()
 
     # -- speaking -------------------------------------------------------
 
@@ -190,7 +190,7 @@ class Utterance:
             return
         self._closed = True
         if self._mute_mic:
-            self._speaker.mute_input = False
+            self._mouth._unmute()
         self._sentences.clear()
         self._mouth._forget(self)
 
@@ -208,6 +208,19 @@ class Mouth:
         self.speaker = speaker
         self._live: list[Utterance] = []
         self.last: Utterance | None = None
+        # Half-duplex mute is per utterance but the microphone is one:
+        # closing the newer reply must not unmute while an older one is
+        # still speaking.
+        self._mutes = 0
+
+    def _mute(self) -> None:
+        self._mutes += 1
+        self.speaker.mute_input = True
+
+    def _unmute(self) -> None:
+        self._mutes = max(0, self._mutes - 1)
+        if self._mutes == 0:
+            self.speaker.mute_input = False
 
     def open(self, synthesise: Synthesise, *, mute_mic: bool = False) -> Utterance:
         utterance = Utterance(self, synthesise, mute_mic=mute_mic)

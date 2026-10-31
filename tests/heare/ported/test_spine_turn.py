@@ -112,8 +112,9 @@ def test_stale_speech_started_with_prior_fragment_closes_anyway() -> None:
     ta.speech_started()
     assert ta.open is True
 
-    # STT died: no transcript, no further speech_started, for >10*hold
-    advance(HOLD * 10 + 0.001)
+    # STT died: no transcript, no further speech_started, for longer
+    # than one recogniser timeout (the dead window is never shorter).
+    advance(15.001)
     assert ta.poll() == "fragment one."
     assert ta.open is False
 
@@ -125,7 +126,7 @@ def test_stale_speech_started_without_fragment_does_not_wedge_open() -> None:
     ta.speech_started()
     assert ta.open is True  # speech is in progress, even with no fragment yet
 
-    advance(HOLD * 10 + 0.001)
+    advance(15.001)
     assert ta.poll() is None
     assert ta.open is False
 

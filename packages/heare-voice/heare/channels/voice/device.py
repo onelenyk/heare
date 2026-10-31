@@ -265,6 +265,9 @@ class AudioIO:
         import sounddevice
 
         self._loop = asyncio.get_running_loop()
+        # Started before the wait as well: a boot that never opens must
+        # still look silent, not as if the clock had never begun.
+        self._last_frame_ts = time.monotonic()
         opening = asyncio.ensure_future(asyncio.to_thread(self._open, sounddevice))
         done, _ = await asyncio.wait({opening}, timeout=OPEN_SLOW_S)
         if not done:
@@ -278,7 +281,7 @@ class AudioIO:
         self._last_frame_ts = time.monotonic()
 
     def _open(self, sounddevice) -> None:
-        self._input_stream = sounddevice.RawInputStream(
+        input_stream = sounddevice.RawInputStream(
             channels=1,
             samplerate=self.input_rate,
             dtype="int16",
@@ -286,18 +289,33 @@ class AudioIO:
             blocksize=(self.input_rate * self.frame_ms) // 1000,
             device=self.input_device,
         )
+        self._input_stream = input_stream
 
-        self._output_stream = sounddevice.RawOutputStream(
-            channels=1,
-            samplerate=self.output_rate,
-            dtype="int16",
-            callback=self._on_output,
-            blocksize=(self.output_rate * self.frame_ms) // 1000,
-            device=self.output_device,
-        )
-
-        self._input_stream.start()
-        self._output_stream.start()
+        try:
+            output_stream = sounddevice.RawOutputStream(
+                channels=1,
+                samplerate=self.output_rate,
+                dtype="int16",
+                callback=self._on_output,
+                blocksize=(self.output_rate * self.frame_ms) // 1000,
+                device=self.output_device,
+            )
+            self._output_stream = output_stream
+            input_stream.start()
+            output_stream.start()
+        except Exception:
+            # A half-open device is worse than no device: the input stream
+            # would keep calling into a part that never finished booting.
+            for stream in (input_stream, self._output_stream):
+                if stream is None:
+                    continue
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:  # noqa: BLE001
+                    logger.debug("audio: half-open stream did not close", exc_info=True)
+            self._input_stream = self._output_stream = None
+            raise
 
     async def restart_input(self) -> bool:
         """Reopen the microphone stream. True when it came back.
@@ -324,6 +342,11 @@ class AudioIO:
 
         if self._loop is None:
             return False
+        # Whatever is already queued belongs to the dead stream; keeping it
+        # would feed the detector old audio as if it were the new one. The
+        # gap is announced too, so an utterance in flight is dropped.
+        self.note_input_gap()
+        self._drain_input()
         old = self._input_stream
         self._input_stream = None
         if old is not None:
@@ -356,6 +379,16 @@ class AudioIO:
         self._last_frame_ts = time.monotonic()
         logger.info("audio: microphone stream reopened")
         return True
+
+    def _drain_input(self) -> int:
+        """Drop frames queued before a restart; return how many were dropped."""
+        dropped = 0
+        while True:
+            try:
+                self.input_frames.get_nowait()
+            except asyncio.QueueEmpty:
+                return dropped
+            dropped += 1
 
     async def stop(self) -> None:
         """Stop and close sounddevice streams — off the loop, like opening."""

@@ -8,9 +8,11 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from heare import part
 from heare.config import Settings
 from heare.core import Message
-from heare.voice import HttpPort, _follow, _Speaker, run
+from heare.channels.voice.utterance import Mouth
+from heare.voice import HttpPort, _apply_saved, _follow, _Speaker, run
 
 
 class Ears:
@@ -137,6 +139,51 @@ def test_a_dropped_report_does_not_stop_the_body():
     assert port.said_over("voice", "ага", 200.0, False) is False
 
 
+def test_the_microphone_survives_a_restart(tmp_path):
+    path = tmp_path / "config.toml"
+    settings = Settings(path=path)
+    ears = Ears()
+    ears.controls["speaker"] = True
+    _Speaker(ears, settings=settings).feed(
+        {"channel": "voice", "kind": "control", "name": "mic", "value": False})
+
+    assert ears.controls["mic"] is False
+    restored = Ears()
+    restored.controls["speaker"] = True
+    _apply_saved(restored, Settings(path=path))
+    assert restored.controls["mic"] is False
+
+
+def test_the_sound_switch_survives_a_restart(tmp_path):
+    path = tmp_path / "config.toml"
+    settings = Settings(path=path)
+    ears = Ears()
+    ears.controls["speaker"] = True
+    _Speaker(ears, settings=settings).feed(
+        {"channel": "voice", "kind": "control", "name": "speaker", "value": False})
+
+    assert ears.controls["speaker"] is False
+    restored = Ears()
+    restored.controls["speaker"] = True
+    _apply_saved(restored, Settings(path=path))
+    assert restored.controls["speaker"] is False
+
+
+def test_the_volume_survives_a_restart(tmp_path):
+    path = tmp_path / "config.toml"
+    settings = Settings(path=path)
+    ears = Ears()
+    ears.controls["speaker"] = True
+    _Speaker(ears, settings=settings).feed(
+        {"channel": "voice", "kind": "control", "name": "volume", "value": 0.35})
+
+    assert ears.controls["volume"] == 0.35
+    restored = Ears()
+    restored.controls["speaker"] = True
+    _apply_saved(restored, Settings(path=path))
+    assert restored.controls["volume"] == 0.35
+
+
 async def test_the_reply_stream_becomes_one_utterance_in_order():
     ears = Ears()
     await _follow(_lines([
@@ -195,15 +242,15 @@ async def test_the_body_says_when_the_mouth_is_sounding():
         seen.append(json.loads(request.content))
         return httpx.Response(200, json={"ok": True})
 
+    port = _port(handler)
     await _follow(_lines([
         _event("reply", text="раз"),
         _event("said", text="раз"),
-    ]), _Speaker(ears, _port(handler)))
-
-    for _ in range(100):
-        if any(v.get("values", {}).get("speaking") is False for v in seen):
-            break
+    ]), _Speaker(ears, port))
+    await port.drain()
+    while len(seen) < 2:
         await asyncio.sleep(0)
+
     sounds = [v["values"] for v in seen if v.get("kind") == "state"]
     assert sounds[0] == {"speaking": True}
     assert sounds[-1] == {"speaking": False}
@@ -217,9 +264,11 @@ async def test_a_control_from_the_page_is_applied_and_reported():
         seen.append((request.url.path, json.loads(request.content)))
         return httpx.Response(200, json={"ok": True})
 
+    port = _port(handler)
     await _follow(_lines([
         'data: {"kind": "control", "channel": "voice", "name": "volume", "value": 0.4}',
-    ]), _Speaker(ears, _port(handler)))
+    ]), _Speaker(ears, port))
+    await port.drain()
 
     assert ears.controls["volume"] == 0.4
     assert seen == [("/api/input", {
@@ -236,9 +285,11 @@ async def test_a_refused_control_still_reports_what_is_true():
         seen.append((request.url.path, json.loads(request.content)))
         return httpx.Response(200, json={"ok": True})
 
+    port = _port(handler)
     await _follow(_lines([
         'data: {"kind": "control", "channel": "voice", "name": "warp", "value": 9}',
-    ]), _Speaker(ears, _port(handler)))
+    ]), _Speaker(ears, port))
+    await port.drain()
 
     assert ears.controls == {"mic": True, "volume": 1.0}
     assert seen[-1] == ("/api/input", {
@@ -271,7 +322,7 @@ async def test_events_for_another_channel_never_reach_the_mouth():
     assert ears.paused == 0
 
 
-async def test_a_refused_registration_exits_one_with_the_reason(
+async def test_a_refused_registration_exits_rejected_with_the_reason(
     tmp_path, capsys,
 ):
     token = tmp_path / "token"
@@ -288,7 +339,7 @@ async def test_a_refused_registration_exits_one_with_the_reason(
     code = await run(settings, client=client)
     await client.aclose()
 
-    assert code == 1
+    assert code == part.EXIT_REJECTED
     assert "мозок не одобрив: rejected" in capsys.readouterr().err
 
 
@@ -311,3 +362,39 @@ def test_a_report_the_brain_never_answers_does_not_hold_the_voice():
     finally:
         quiet.close()
     assert voice.REPORT_TIMEOUT.read is not None and voice.REPORT_TIMEOUT.read <= 5.0
+
+
+class _SpeakerDevice:
+    mute_input = False
+    mute_output = False
+    mute_output_user = False
+
+    def play(self, pcm: bytes) -> None:
+        pass
+
+    def stop_playback(self) -> int:
+        return 0
+
+    @property
+    def playing(self) -> bool:
+        return False
+
+
+async def test_the_mic_stays_muted_until_the_last_live_utterance_closes():
+    """Two replies can be live at once. The newer one closing first must
+    not give the microphone back while the older one is still speaking."""
+    speaker = _SpeakerDevice()
+    mouth = Mouth(speaker)
+
+    def synthesise(text: str):
+        return None
+
+    older = mouth.open(synthesise, mute_mic=True)
+    newer = mouth.open(synthesise, mute_mic=True)
+    assert speaker.mute_input is True
+
+    newer.close()
+    assert speaker.mute_input is True, "the older reply is still speaking"
+
+    older.close()
+    assert speaker.mute_input is False
