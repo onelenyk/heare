@@ -62,7 +62,8 @@ class Notebook:
         self._memory = memory
         self.recalled: list[tuple[str, str]] = []
 
-    async def keep(self, role: str, text: str, channel: str) -> None:
+    async def keep(self, role: str, text: str, channel: str,
+                   fields: dict | None = None) -> None:
         return None
 
     async def recall(self, query: str, when: str = "") -> str:

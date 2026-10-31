@@ -173,8 +173,16 @@ class Book:
                 text, turn_id, source, journal_id=event_id, ts=moment
             )
 
-    async def keep(self, role: str, text: str, channel: str) -> None:
+    async def keep(self, role: str, text: str, channel: str,
+                   fields: dict | None = None) -> None:
         source = _SOURCES.get(channel, channel or "voice")
+        data: dict = {"text": text, "channel": source}
+        if role != "user":
+            data["failed"] = None
+            if self._turn_journal is not None:
+                data["in_reply_to"] = self._turn_journal
+            if fields:
+                data.update(fields)
         # The append and a baseline a forget may move are one decision:
         # no forget may reconcile between this line and the offset that
         # says the line was seen. The SQLite write is outside the lock —
@@ -184,20 +192,7 @@ class Book:
         # duplicating the turn.
         async with self._journal_lock:
             event = self._append(
-                "heard" if role == "user" else "said",
-                {"text": text, "channel": source}
-                if role == "user"
-                else {
-                    "text": text,
-                    "channel": source,
-                    "failed": None,
-                    **(
-                        {"in_reply_to": self._turn_journal}
-                        if self._turn_journal is not None
-                        else {}
-                    ),
-                },
-                source,
+                "heard" if role == "user" else "said", data, source
             )
         event_id = event.get("id") if event is not None else None
         if role == "user":

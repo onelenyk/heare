@@ -125,7 +125,8 @@ class Notebook:
         self.found = found
         self.known = ""
 
-    async def keep(self, role: str, text: str, channel: str) -> None:
+    async def keep(self, role: str, text: str, channel: str,
+                   fields: dict | None = None) -> None:
         self.kept.append((role, text, channel))
 
     async def recall(self, query: str, when: str = "") -> str:

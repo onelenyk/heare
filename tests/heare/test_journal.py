@@ -573,13 +573,23 @@ async def test_run_records_only_the_system_events(tmp_path):
     state.emit("verb", name="recall", arguments={"query": "x"})
     state.emit("permission", id=2, task=1, executor="worker", what="записати")
     state.emit("permission_closed", id=2, allowed=True)
+    state.emit("halted", tasks=3)
+    state.emit("voice_stopped", channel="voice")
+    state.emit("failed", channel="voice")
+    state.emit("cannot", what="set_volume", why="no such verb")
+    state.emit("cannot", what="some private request text",
+               why="no executor connected")
+    state.emit("question_closed", id="q1", answer="")
+    state.emit("question_closed", id="q2", answer="так")
+    state.emit("feature", id="memory", state="error")
+    state.emit("feature", id="memory", state="done")
     state.emit("overheard", text="не до мене", channel="voice")
     state.emit("around", key="front", value="Safari")
     state.emit("around", key="playing", value=["музика"])
     state.emit("phase", phase="thinking")
 
     for _ in range(100):
-        if len(list(journal.events())) == 5:
+        if len(list(journal.events())) == 12:
             break
         await asyncio.sleep(0.01)
     running.cancel()
@@ -587,7 +597,9 @@ async def test_run_records_only_the_system_events(tmp_path):
 
     rows = list(journal.events())
     assert [row["kind"] for row in rows] == [
-        "task", "verb", "permission", "permission_closed", "around",
+        "task", "verb", "permission", "permission_closed", "halted",
+        "voice_stopped", "failed", "cannot", "cannot", "question_closed",
+        "feature", "around",
     ]
     assert rows[0]["source"] == "hands"
     assert rows[0]["trust"] == "tool_output"
@@ -595,6 +607,27 @@ async def test_run_records_only_the_system_events(tmp_path):
     assert rows[1]["source"] == "core"
     assert rows[2]["source"] == "brain"
     assert rows[3]["source"] == "brain"
+
+    by_kind = {row["kind"]: row for row in rows if row["kind"] != "cannot"}
+    cannots = [row for row in rows if row["kind"] == "cannot"]
+    assert by_kind["halted"]["payload"] == {"tasks": 3}
+    assert cannots[0]["payload"] == {"what": "set_volume", "why": "no such verb"}
+    assert cannots[1]["payload"] == {"why": "no executor connected"}
+    assert "what" not in cannots[1]["payload"]
+
+    questions = [row for row in rows if row["kind"] == "question_closed"]
+    assert len(questions) == 1
+    assert questions[0]["payload"] == {"question": "q1"}
+    features = [row for row in rows if row["kind"] == "feature"]
+    assert len(features) == 1
+    assert features[0]["payload"] == {"feature": "memory", "state": "error"}
+
+    for kind in ("halted", "voice_stopped", "failed", "cannot"):
+        for row in rows:
+            if row["kind"] == kind:
+                assert (row["source"], row["trust"]) == ("core", "system")
+    for row in (questions[0], features[0]):
+        assert (row["source"], row["trust"]) == ("brain", "system")
 
 
 def test_what_plays_nearby_is_kept_and_the_rest_of_around_is_not(tmp_path):

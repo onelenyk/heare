@@ -149,8 +149,11 @@ class Model(Protocol):
 
 
 class Memory(Protocol):
-    async def keep(self, role: str, text: str, channel: str) -> None:
-        """Write one side of one turn down. Always, not when a model thinks to."""
+    async def keep(self, role: str, text: str, channel: str,
+                   fields: dict | None = None) -> None:
+        """Write one side of one turn down. Always, not when a model thinks to.
+        ``fields`` are what the turn learned about itself — how long it took,
+        whether it failed — kept beside the text, not instead of it."""
 
     async def recall(self, query: str, when: str = "") -> str:
         """What was said before, as one finished sentence to say aloud."""

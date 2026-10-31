@@ -42,7 +42,9 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # the turn-wide failure guard (a turn always ends in words and an event) and
 # for the Outcome a hand returns when its work failed or was stopped, and for
 # the live words/judge accessor (a language change counts from the next turn).
-CORE_LINES = 1570
+# On 31 October 2026 for carrying a turn's own quality signals (the ``fields``
+# argument on ``Memory.keep`` and the said dict built once and used twice).
+CORE_LINES = 1578
 
 
 def _imports(path: Path) -> set[str]:

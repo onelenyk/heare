@@ -539,17 +539,20 @@ class Core:
                 # work it had just been told to stop.
                 self.history.append({"role": "assistant", "content": message.text})
                 await self._say(out, message.text)
-                await self._keep("assistant", message.text, out.name if out else "")
-                self.state.emit("said", text=message.text,
-                                channel=out.name if out else "", failed=None,
-                                seconds=0.0, first=0.0, calls=0, looked=0)
+                said = {"text": message.text, "channel": out.name if out else "",
+                        "failed": None, "seconds": 0.0, "first": 0.0,
+                        "calls": 0, "looked": 0}
+                await self._keep("assistant", message.text, said["channel"], said)
+                self.state.emit("said", **said)
                 return
             await self._exchange(message, out)
         except Exception:
             # A failure anywhere in the turn still ends with words and an event.
             logger.exception("the turn could not be completed")
             await self._say_failure(out)
-            await self._keep("assistant", _(FAILURE_LINE), out.name if out else "")
+            await self._keep("assistant", _(FAILURE_LINE), out.name if out else "",
+                             {"failed": "model", "seconds": 0.0, "first": 0.0,
+                              "calls": 0, "looked": 0})
         finally:
             self._turn = None if self._turn is asyncio.current_task() else self._turn
             self._refresh()
@@ -635,16 +638,17 @@ class Core:
         if failure is not None:
             await self._say_failure(out)
         recorded = reply or (_(FAILURE_LINE) if failure else "")
-        if recorded:
-            await self._keep("assistant", recorded, out.name if out else "")
         seconds = (round(time.monotonic() - self._turn_started, 2)
                    if self._turn_started is not None else 0.0)
         first = (round(self._first_word - self._turn_started, 2)
                  if self._first_word is not None and self._turn_started is not None
                  else 0.0)
-        self.state.emit("said", text=recorded, channel=out.name if out else "",
-                        failed=failure, seconds=seconds, first=first,
-                        calls=spent, looked=max(spent - 1, 0))
+        said = {"text": recorded, "channel": out.name if out else "",
+                "failed": failure, "seconds": seconds, "first": first,
+                "calls": spent, "looked": max(spent - 1, 0)}
+        if recorded:
+            await self._keep("assistant", recorded, said["channel"], said)
+        self.state.emit("said", **said)
 
         if (
             failure is None and not calls and message.person
@@ -915,12 +919,13 @@ class Core:
             logger.exception("the failure line could not be delivered either")
         self.state.emit("failed", channel=out.name if out else "")
 
-    async def _keep(self, role: str, text: str, channel: str) -> None:
+    async def _keep(self, role: str, text: str, channel: str,
+                    fields: dict | None = None) -> None:
         """Memory must never break the conversation."""
         if self.memory is None:
             return
         try:
-            await self.memory.keep(role, text, channel)
+            await self.memory.keep(role, text, channel, fields)
         except Exception:
             logger.exception("memory.keep failed (non-fatal)")
 

@@ -510,6 +510,32 @@ class Journal:
             # What played nearby, when it changed: the ear's recordings are
             # weighed against it (was that the television?).
             self.append("around", dict(data), source="eyes", trust="tool_output")
+        elif kind == "halted":
+            self.append("halted", {"tasks": data.get("tasks", 0)},
+                        source="core", trust="system")
+        elif kind == "voice_stopped":
+            self.append("voice_stopped", {"channel": data.get("channel", "")},
+                        source="core", trust="system")
+        elif kind == "failed":
+            self.append("failed", {"channel": data.get("channel", "")},
+                        source="core", trust="system")
+        elif kind == "cannot":
+            # The invented verb's name is the signal. The request text is not:
+            # it is already in the heard line, and repeating it on disk twice
+            # costs privacy for nothing.
+            payload = {"why": data.get("why", "")}
+            if data.get("why") == "no such verb":
+                payload["what"] = data.get("what", "")
+            self.append("cannot", payload, source="core", trust="system")
+        elif kind == "question_closed" and not data.get("answer"):
+            # An answered question is a normal turn; an empty answer means the
+            # person never answered and the work waited 240 s for nothing.
+            self.append("question_closed", {"question": data.get("id", "")},
+                        source="brain", trust="system")
+        elif kind == "feature" and data.get("state") == "error":
+            self.append("feature", {"feature": data.get("id", ""),
+                                    "state": "error"},
+                        source="brain", trust="system")
 
 
 def _write_all(fd: int, data: bytes) -> None:
