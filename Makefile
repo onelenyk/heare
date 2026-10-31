@@ -105,6 +105,10 @@ eval-voice:
 latency:
 	uv run python scripts/voice_latency.py
 
+# Read-only: what irritated the person this week, from the journal.
+digest:
+	uv run python scripts/digest.py
+
 # Not part of check: two real model calls, real cost, a temporary state root.
 fact-e2e:
 	uv run python scripts/fact_e2e.py

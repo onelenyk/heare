@@ -62,6 +62,7 @@ make i18n                         # find marked lines, merge into the catalogs, 
 make prompt                       # the system prompt the running brain gives its model now
 make rollback                     # the release before (TO=name for another)
 make releases                     # what is kept; ● is live
+make digest                       # what irritated this week, from the journal
 ```
 
 Never copy files into the installed tools by hand: `make live` is the
