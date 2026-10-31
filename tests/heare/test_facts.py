@@ -208,6 +208,31 @@ def test_search_survives_arbitrary_punctuation(tmp_path):
     assert store.search("") == []
 
 
+def test_a_like_search_does_not_treat_percent_as_a_wildcard(tmp_path):
+    store = SQLiteFacts(tmp_path / "heare.db")
+    store.add(
+        _fact(
+            text="I saved 100 dollars.",
+            value="100 dollars",
+            predicate="saved",
+            source_ids=("saved",),
+        )
+    )
+    store.add(
+        _fact(
+            text="The discount is 100%.",
+            value="100%",
+            predicate="discount",
+            source_ids=("percent",),
+        )
+    )
+    store.fts_ready = False
+
+    found = store.search("100%")
+
+    assert [fact.value for fact in found] == ["100%"]
+
+
 def test_confirm_reject_and_forget(tmp_path):
     store = SQLiteFacts(tmp_path / "heare.db")
     fact_id = store.add(_fact(status=PENDING, source_ids=("pending",)))

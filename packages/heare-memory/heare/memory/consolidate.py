@@ -119,10 +119,11 @@ def consolidate(
         for fact in store.current(include_pending=True)
     }
     if state_path is None:
-        events = list(journal.events())
+        events = list(journal.visible_events())
         state = None
     else:
-        events, state = journal.new_events(state_path)
+        new, state = journal.new_events(state_path)
+        events = list(journal.visible_events(new))
     for event in events:
         if event.get("kind") != "heard":
             continue

@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import re
 
-from heare.core.i18n import language
-
 _STOPWORDS: frozenset[str] = frozenset(
     {
         # Ukrainian
@@ -211,6 +209,56 @@ _STOPWORDS: frozenset[str] = frozenset(
 
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
+# A token is Ukrainian (or Russian) when it holds at least one Cyrillic
+# letter. The script, not the UI language, decides which endings apply:
+# the person can have English selected while the transcript holds the
+# Ukrainian sentence they actually said, and the other way round.
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04ff]")
+
+# The endings Ukrainian uses to decline a noun and conjugate a verb.
+# Longest first, so one word is cut once at the end that really changes:
+# «кава», «каву», «каві» and «кавою» all share the stem «кав». A stem is
+# only searched as a prefix and only when at least three letters remain,
+# so a short word never turns the index into a substring scan.
+_UKRAINIAN_ENDINGS = (
+    "увати",
+    "ювати",
+    "ові",
+    "еві",
+    "єві",
+    "ами",
+    "ями",
+    "ого",
+    "ому",
+    "ою",
+    "ею",
+    "єю",
+    "ах",
+    "ях",
+    "ам",
+    "ям",
+    "ів",
+    "їв",
+    "их",
+    "ім",
+    "им",
+    "ий",
+    "ій",
+    "ом",
+    "ем",
+    "єм",
+    "а",
+    "я",
+    "у",
+    "ю",
+    "і",
+    "ї",
+    "и",
+    "е",
+    "о",
+    "ь",
+)
+
 # English inflections that FTS5's default unicode61 tokenizer keeps as
 # different tokens. The query side is stemmed and the stems are searched
 # as prefixes, which is the same trick the Ukrainian declension path
@@ -250,6 +298,31 @@ def _english_stems(token: str) -> list[str]:
     return stems
 
 
+def _ukrainian_stems(token: str) -> list[str]:
+    """The stems a Ukrainian case ending would hide from FTS5.
+
+    Short words matter most: «кава» is four letters and used to be
+    skipped by the old length gate, so «каву» in the transcript could
+    never be reached. Cutting the ending first, and falling back to the
+    last-letter cut only for longer words, keeps the prefix long enough
+    to stay specific.
+    """
+    word = token.lower()
+    stems: list[str] = []
+    for ending in _UKRAINIAN_ENDINGS:
+        if not word.endswith(ending):
+            continue
+        stem = word[: -len(ending)]
+        if len(stem) >= 3 and stem != word:
+            stems.append(stem)
+        break
+    if len(word) >= 5:
+        stem = word[:-1]
+        if stem not in stems:
+            stems.append(stem)
+    return stems
+
+
 def _sanitize_fts_query(raw: str) -> str | None:
     """Turn a natural-language query into an FTS5 MATCH expression.
 
@@ -280,14 +353,13 @@ def _sanitize_fts_query(raw: str) -> str | None:
     # tokens get a suffix-stripped stem and a prefix of the word itself.
     # Both paths are safe to run in either language: a Ukrainian token
     # has no English ending, and an English one has no Cyrillic case.
-    english = language() == "en"
     terms: list[str] = []
     for token in kept:
         terms.append(f'"{token}"')
-        if english:
+        if _CYRILLIC_RE.search(token):
+            terms.extend(f'"{stem}"*' for stem in _ukrainian_stems(token))
+        else:
             if len(token) >= 3:
                 terms.append(f'"{token}"*')
             terms.extend(f'"{stem}"*' for stem in _english_stems(token))
-        elif len(token) >= 5:
-            terms.append(f'"{token[:-1]}"*')
     return " OR ".join(dict.fromkeys(terms))

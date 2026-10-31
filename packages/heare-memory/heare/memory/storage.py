@@ -11,6 +11,8 @@ from typing import Any
 
 import aiosqlite
 
+from heare.memory.db import BUSY_TIMEOUT_MS
+
 
 SCHEMA_VERSION = 8
 
@@ -139,6 +141,13 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_kind ON usage_events(kind);
 # `ROLE_SESSIONS_SCHEMA` leaves it alone: storage.py refuses to open a DB
 # recorded as newer than the code opening it, so bumping it here would
 # make ~/.heare/heare.db unopenable by anything not yet rebuilt.
+# Separate from SCHEMA because a database old enough to predate the
+# `turn_id` column cannot take this index until the table is known to
+# have it; both owners create it after that check.
+TRANSCRIPTS_TURN_INDEX = (
+    "CREATE INDEX IF NOT EXISTS idx_transcripts_turn ON transcripts(turn_id)"
+)
+
 TRANSCRIPTS_FTS_SCHEMA = """
 CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
     text,
@@ -171,6 +180,7 @@ class TranscriptStore:
     async def init(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self.db_path)
+        await self._db.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
         # WAL mode: watch refresh is 0.5s, reader/writer would otherwise
         # contend. Idempotent on already-WAL DBs.
         await self._db.execute("PRAGMA journal_mode=WAL")
@@ -182,7 +192,16 @@ class TranscriptStore:
         await self._migrate_action_log_columns()
         await self._migrate_displays_content_type()
         await self._migrate_transcripts_source()
+        await self._ensure_transcripts_turn_index()
         await self._check_schema_version()
+
+    async def _ensure_transcripts_turn_index(self) -> None:
+        cursor = await self.db.execute("PRAGMA table_info(transcripts)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "turn_id" not in columns:
+            return
+        await self.db.execute(TRANSCRIPTS_TURN_INDEX)
+        await self.db.commit()
 
     async def _migrate_action_log_columns(self) -> None:
         # CCS-01: persist the in-memory action log to the actions table.

@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
+import sqlite3
 import stat
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import pytest
 
 from heare.core.state import State
+from heare.memory.book import Book
 from heare.memory.journal import Journal
 
 
@@ -177,6 +184,61 @@ def test_new_events_returns_only_what_the_cursor_has_not_seen(tmp_path):
     assert state == {"version": 1, "files": {path.name: path.stat().st_size}}
 
 
+def test_a_torn_line_is_not_silently_skipped_by_the_cursor(tmp_path, caplog):
+    journal = Journal(tmp_path / "events")
+    state_path = tmp_path / "memory" / "consolidate.json"
+    first = journal.append(
+        "heard", {"text": "перше"}, source="voice", trust="user_said",
+    )
+    path = next((tmp_path / "events").glob("*.jsonl"))
+    torn = b'{"id": "ev_torn", "kind": "hea\n'
+    with path.open("ab") as file:
+        file.write(torn)
+
+    with caplog.at_level(logging.WARNING, logger="heare.memory.journal"):
+        events, state = journal.new_events(state_path)
+
+    assert [event["id"] for event in events] == [first["id"]]
+    first_line = path.read_bytes().splitlines(keepends=True)[0]
+    assert state["files"][path.name] == len(first_line)
+    assert any("unreadable line" in record.message for record in caplog.records)
+
+    second = journal.append(
+        "heard", {"text": "друге"}, source="voice", trust="user_said",
+    )
+
+    assert [row["id"] for row in journal.events()] == [
+        first["id"], second["id"],
+    ]
+    _events, again = journal.new_events(state_path)
+    assert again["files"][path.name] == len(first_line)
+
+
+def test_two_processes_appending_do_not_interleave_a_line(tmp_path):
+    root = tmp_path / "events"
+    body = "х" * 8_000
+
+    def write(worker: int) -> None:
+        journal = Journal(root)
+        for step in range(30):
+            journal.append(
+                "heard",
+                {"text": f"{worker}-{step}-{body}"},
+                source="voice",
+                trust="user_said",
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(write, range(2)))
+
+    lines = _lines(root)
+    assert len(lines) == 60
+    rows = [json.loads(line) for line in lines]
+    assert sorted(row["payload"]["text"].split("-")[0] for row in rows) == (
+        ["0"] * 30 + ["1"] * 30
+    )
+
+
 def test_new_events_restarts_a_truncated_file_from_zero(tmp_path):
     journal = Journal(tmp_path / "events")
     state_path = tmp_path / "memory" / "consolidate.json"
@@ -215,19 +277,266 @@ def test_the_consolidation_state_is_private(tmp_path):
     assert stat.S_IMODE(state_path.parent.stat().st_mode) == 0o700
 
 
-def test_export_writes_every_event_including_forget(tmp_path):
+def test_export_keeps_the_tombstone_but_not_the_forgotten_line(tmp_path):
+    # This test used to assert that the forgotten line was exported too.
+    # That was the leak: an export is a copy of memory, so it must not
+    # hand back what a tombstone buried. The tombstone itself stays.
     journal = Journal(tmp_path)
-    heard = journal.append(
+    kept = journal.append(
+        "heard", {"text": "лишається"}, source="voice", trust="user_said",
+    )
+    gone = journal.append(
         "heard", {"text": "перше"}, source="voice", trust="user_said",
     )
-    journal.forget([heard["id"]])
+    journal.forget([gone["id"]])
 
     target = tmp_path / "exports" / "everything.jsonl"
     assert journal.export(target) == 2
 
     rows = [json.loads(line) for line in _lines(target.parent)]
     assert [row["kind"] for row in rows] == ["heard", "forget"]
+    assert rows[0]["id"] == kept["id"]
+    assert "перше" not in target.read_text(encoding="utf-8")
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+async def test_forget_clears_aggregated_text_and_export(tmp_path):
+    journal = Journal(tmp_path / "events")
+    book = Book(
+        tmp_path / "heare.db",
+        profile_dir=tmp_path / "memory",
+        journal=journal,
+    )
+    forgotten = "Унікальний маркер для забуття."
+    try:
+        await book.keep("user", forgotten, "text")
+        await book.keep("user", "Це лишається.", "text")
+        ids = [
+            event["id"]
+            for event in journal.events()
+            if event.get("kind") == "heard"
+            and event["payload"]["text"] == forgotten
+        ]
+        await book.forget(ids)
+    finally:
+        book.close()
+
+    with sqlite3.connect(tmp_path / "heare.db") as conn:
+        aggregated = [
+            row[0] for row in conn.execute("SELECT aggregated_text FROM turns")
+        ]
+    assert all(forgotten not in text for text in aggregated)
+    assert any("Це лишається." in text for text in aggregated)
+
+    target = tmp_path / "export.jsonl"
+    journal.export(target)
+    exported = target.read_text(encoding="utf-8")
+    assert forgotten not in exported
+    assert "Це лишається." in exported
+
+
+async def test_forget_removes_the_words_from_the_journal_file(tmp_path):
+    journal = Journal(tmp_path / "events")
+    book = Book(
+        tmp_path / "heare.db",
+        profile_dir=tmp_path / "memory",
+        journal=journal,
+    )
+    gone = "Це просили забути."
+    kept = "Це лишається."
+    try:
+        await book.keep("user", gone, "text")
+        await book.keep("user", kept, "text")
+        ids = [
+            event["id"]
+            for event in journal.events()
+            if event.get("kind") == "heard"
+            and event["payload"]["text"] == gone
+        ]
+        await book.forget(ids)
+    finally:
+        book.close()
+
+    raw = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((tmp_path / "events").glob("*.jsonl"))
+    )
+    assert gone not in raw
+    assert kept in raw
+
+    rows = list(journal.events())
+    assert ids[0] not in [row["id"] for row in rows]
+    tombstones = [row for row in rows if row.get("kind") == "forget"]
+    assert len(tombstones) == 1
+    assert tombstones[0]["payload"] == {"ids": ids, "by": "user"}
+    assert gone not in json.dumps(tombstones[0], ensure_ascii=False)
+
+
+def test_the_journal_stays_readable_after_a_compaction(tmp_path):
+    journal = Journal(tmp_path)
+    first = journal.append(
+        "heard", {"text": "перше"}, source="voice", trust="user_said",
+        at=datetime(2026, 10, 20, 12).timestamp(),
+    )
+    gone = journal.append(
+        "heard", {"text": "забути"}, source="voice", trust="user_said",
+        at=datetime(2026, 10, 20, 13).timestamp(),
+    )
+    third = journal.append(
+        "heard", {"text": "третє"}, source="voice", trust="user_said",
+        at=datetime(2026, 10, 21, 9).timestamp(),
+    )
+    gone_too = journal.append(
+        "heard", {"text": "теж забути"}, source="voice", trust="user_said",
+        at=datetime(2026, 10, 21, 10).timestamp(),
+    )
+    fourth = journal.append(
+        "heard", {"text": "четверте"}, source="voice", trust="user_said",
+        at=datetime(2026, 10, 21, 11).timestamp(),
+    )
+    before = [row["id"] for row in journal.visible_events()]
+
+    journal.forget([gone["id"], gone_too["id"]])
+    tombstone = next(
+        row for row in journal.events() if row.get("kind") == "forget"
+    )
+    journal.compact([gone["id"], gone_too["id"]])
+
+    assert before == [
+        first["id"], gone["id"], third["id"], gone_too["id"], fourth["id"],
+    ]
+    assert [row["id"] for row in journal.events()] == [
+        first["id"], third["id"], fourth["id"], tombstone["id"],
+    ]
+    assert [row["id"] for row in journal.visible_events()] == [
+        first["id"], third["id"], fourth["id"],
+    ]
+    assert journal.tail_messages() == [
+        {"role": "user", "content": text}
+        for text in ("перше", "третє", "четверте")
+    ]
+
+
+def test_a_compaction_keeps_a_concurrent_append_whole(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "events"
+    journal = Journal(root)
+    forgotten = [
+        journal.append(
+            "heard", {"text": f"remove-{n}"}, source="voice",
+            trust="user_said",
+        )
+        for n in range(5)
+    ]
+    entered = threading.Event()
+    release = threading.Event()
+    original = Journal._rewrite
+
+    def paused(self, path, data):
+        entered.set()
+        assert release.wait(5)
+        original(self, path, data)
+
+    monkeypatch.setattr(Journal, "_rewrite", paused)
+
+    written: list[str] = []
+    errors: list[BaseException] = []
+
+    def writer() -> None:
+        try:
+            other = Journal(root)
+            for step in range(50):
+                event = other.append(
+                    "heard", {"text": f"keep-{step}"}, source="voice",
+                    trust="user_said",
+                )
+                written.append(event["id"])
+        except BaseException as error:  # noqa: BLE001
+            errors.append(error)
+
+    compactor = threading.Thread(
+        target=journal.compact, args=([event["id"] for event in forgotten],)
+    )
+    compactor.start()
+    assert entered.wait(5)
+    thread = threading.Thread(target=writer)
+    thread.start()
+    time.sleep(0.05)
+    release.set()
+    compactor.join(10)
+    thread.join(10)
+
+    assert not errors
+    assert len(written) == 50
+    raw = _lines(root)
+    rows = [json.loads(line) for line in raw]
+    assert [row["id"] for row in rows] == written
+    assert all(f"remove-{n}" not in "\n".join(raw) for n in range(5))
+
+
+def test_a_compaction_does_not_stall_the_consolidation_cursor(tmp_path):
+    journal = Journal(tmp_path / "events")
+    state_path = tmp_path / "memory" / "consolidate.json"
+    journal.append(
+        "heard", {"text": "х" * 200}, source="voice", trust="user_said",
+    )
+    second = journal.append(
+        "heard", {"text": "друге"}, source="voice", trust="user_said",
+    )
+    _, state = journal.new_events(state_path)
+    journal.save_state(state_path, state)
+
+    third = journal.append(
+        "heard", {"text": "т" * 300}, source="voice", trust="user_said",
+    )
+    gone = next(
+        event
+        for event in journal.events()
+        if event["payload"].get("text") == "х" * 200
+    )
+    journal.forget([gone["id"]])
+    journal.compact([gone["id"]])
+
+    events, _ = journal.new_events(state_path)
+    assert [
+        event["id"] for event in events if event.get("kind") == "heard"
+    ] == [second["id"], third["id"]]
+
+
+def test_a_crash_mid_compaction_leaves_the_old_journal(
+    tmp_path, monkeypatch
+):
+    journal = Journal(tmp_path)
+    kept = journal.append(
+        "heard", {"text": "лишається"}, source="voice", trust="user_said",
+    )
+    gone = journal.append(
+        "heard", {"text": "забути"}, source="voice", trust="user_said",
+    )
+    journal.forget([gone["id"]])
+    path = next(tmp_path.glob("*.jsonl"))
+    before = path.read_bytes()
+
+    def boom(*_args, **_kwargs):
+        raise OSError("power loss before the replace")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "replace", boom)
+        with pytest.raises(OSError):
+            journal.compact([gone["id"]])
+
+    assert path.read_bytes() == before
+    assert "забути" in path.read_text(encoding="utf-8")
+    assert not [
+        p for p in tmp_path.iterdir() if p.name.startswith(".compact-")
+    ]
+
+    assert journal.compact([gone["id"]]) == 1
+    raw = path.read_text(encoding="utf-8")
+    assert "забути" not in raw
+    assert "лишається" in raw
+    assert kept["id"] in [row["id"] for row in journal.events()]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")

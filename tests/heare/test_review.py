@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from heare.brain import next_review_at, next_review_day
+from heare.memory.book import Book
 from heare.memory.contracts import (
     CONFIRMED,
     CONSOLIDATED,
@@ -20,6 +21,7 @@ from heare.memory.contracts import (
     Fact,
     ReviewReport,
 )
+from heare.memory.facts import SQLiteFacts
 from heare.memory.journal import Journal
 from heare.memory.review import (
     MAX_MESSAGES,
@@ -441,14 +443,45 @@ async def test_review_once_reviews_yesterday_and_marks_it(tmp_path, monkeypatch)
 
     monkeypatch.setattr(brain, "review_now", fake)
 
-    report = await brain.review_once()
+    run = await brain.review_once()
 
     yesterday = date.today() - timedelta(days=1)
-    assert report == ReviewReport(considered=1, added=1)
+    assert run.day == yesterday
+    assert run.report == ReviewReport(considered=1, added=1)
+    assert run.already is False
     assert asked == [yesterday]
     assert last_reviewed(tmp_path) == yesterday
-    assert await brain.review_once() is None
+    again = await brain.review_once()
+    assert again.already is True and again.report is None
     assert asked == [yesterday]
+
+
+async def test_review_now_says_when_today_was_already_reviewed(tmp_path):
+    from types import SimpleNamespace
+
+    from heare.brain import Brain
+    from heare.config import Settings
+    from heare.core.i18n import _ as said
+    from heare.features import build_features
+
+    brain = object.__new__(Brain)
+    brain.settings = Settings(memory_dir=tmp_path, review_hour=4)
+    brain._review_lock = asyncio.Lock()
+    brain.core = SimpleNamespace(
+        state=SimpleNamespace(emit=lambda kind, **data: None))
+    today = date.today()
+    mark_reviewed(tmp_path, today)
+
+    run = await brain.review_once()
+
+    assert run.already is True
+    assert run.report is None
+    assert run.day == today
+
+    features = build_features(brain)
+    await features.act("review", "run", True)
+    await features._running["review"]
+    assert features.list()["features"][0]["note"] == said("Already reviewed today.")
 
 
 async def test_a_failed_review_is_retried_and_not_marked(tmp_path, monkeypatch):
@@ -470,7 +503,64 @@ async def test_a_failed_review_is_retried_and_not_marked(tmp_path, monkeypatch):
     second = await brain.review_once()
 
     yesterday = date.today() - timedelta(days=1)
-    assert first is not None and first.error == "boom"
-    assert second is not None and second.error == "boom"
+    assert first.report is not None and first.report.error == "boom"
+    assert second.report is not None and second.report.error == "boom"
     assert asked == [yesterday, yesterday]
     assert last_reviewed(tmp_path) is None
+
+
+async def test_conflicting_values_are_not_both_current(tmp_path):
+    journal = Journal(tmp_path / "events")
+    _heard(journal, "Я живу в Києві.", at=_stamp(DAY, 10))
+    store = FakeFacts()
+    first = Script()
+    first.will_say(json.dumps([{
+        "predicate": "lives_in",
+        "value": "Kyiv",
+        "text": "You live in Kyiv.",
+        "confidence": 0.9,
+    }]))
+    await review_day(store, journal, first, day=DAY, now=1000.0)
+    assert [fact.value for fact in store.current()] == ["Kyiv"]
+
+    next_day = DAY + timedelta(days=1)
+    _heard(journal, "Я живу в Берліні.", at=_stamp(next_day, 10))
+    second = Script()
+    second.will_say(json.dumps([{
+        "predicate": "lives_in",
+        "value": "Berlin",
+        "text": "You live in Berlin.",
+        "confidence": 0.9,
+    }]))
+    await review_day(store, journal, second, day=next_day, now=2000.0)
+
+    assert [fact.value for fact in store.current()] == ["Berlin"]
+    old = next(
+        fact for fact in store.current(include_pending=True, now=1500.0)
+        if fact.value == "Kyiv"
+    )
+    assert old.valid_to == 2000.0
+
+
+async def test_confidence_zero_is_not_confirmed(tmp_path):
+    journal = Journal(tmp_path / "events")
+    _heard(journal, "Я живу в Києві.", at=_stamp(DAY, 10))
+    db = tmp_path / "heare.db"
+    facts = SQLiteFacts(db)
+    model = Script()
+    model.will_say(json.dumps([{
+        "predicate": "lives_in",
+        "value": "Kyiv",
+        "text": "You live in Kyiv.",
+        "confidence": 0.0,
+    }]))
+
+    report = await review_day(facts, journal, model, day=DAY, now=1000.0)
+
+    assert report.added == 0
+    assert facts.current(include_pending=True) == []
+    book = Book(db, profile_dir=tmp_path / "memory", journal=journal, facts=facts)
+    try:
+        assert "Kyiv" not in await book.always()
+    finally:
+        book.close()

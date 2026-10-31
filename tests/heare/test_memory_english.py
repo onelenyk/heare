@@ -218,6 +218,36 @@ def test_ukrainian_declension_still_reaches_the_transcript(
         store.close()
 
 
+def test_short_statement_is_recalled(tmp_path, monkeypatch) -> None:
+    i18n.choose(lambda: "uk")
+    monkeypatch.setattr(search, "NOT_YET_A_MEMORY_S", 0.0)
+    store = SpinePersistence(tmp_path / "heare.db")
+    try:
+        store.log_user_turn("Я купив каву.")
+        store.log_user_turn("Купив каву.")
+        found = search.find(store, "що я казав про каву", now=datetime.now())
+        texts = [fragment.text for fragment in found]
+        assert "Я купив каву." in texts
+        assert "Купив каву." in texts
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("query", ["кава", "каву", "каві", "кавою"])
+def test_short_ukrainian_word_matches_its_cases(
+    tmp_path, monkeypatch, query: str
+) -> None:
+    i18n.choose(lambda: "uk")
+    monkeypatch.setattr(search, "NOT_YET_A_MEMORY_S", 0.0)
+    store = SpinePersistence(tmp_path / "heare.db")
+    try:
+        store.log_user_turn("Я купив каву.")
+        found = search.find(store, query, now=datetime.now())
+        assert [fragment.text for fragment in found] == ["Я купив каву."]
+    finally:
+        store.close()
+
+
 def test_ukrainian_dates_are_still_ukrainian() -> None:
     i18n.choose(lambda: "uk")
     assert days(when("вчора")) == ("2026-08-20", "2026-08-21")

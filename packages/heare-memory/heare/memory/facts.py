@@ -28,8 +28,9 @@ import time
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterator
+from typing import Iterable, Iterator
 
+from heare.memory import db
 from heare.memory.contracts import CONFIRMED, REJECTED, Fact
 
 SCHEMA = """
@@ -140,6 +141,14 @@ def _match(query: str) -> str | None:
     return " OR ".join(f'"{token}"' for token in tokens)
 
 
+def _escape_like(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _mentions(text: str, value: str) -> bool:
+    return bool(value) and value.casefold() in text.casefold()
+
+
 class SQLiteFacts:
     """Facts over SQLite, with their sources and a full-text index."""
 
@@ -167,7 +176,7 @@ class SQLiteFacts:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path)
+        conn = db.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         try:
@@ -239,25 +248,28 @@ class SQLiteFacts:
         return fact_id
 
     def add(self, fact: Fact) -> int:
-        with self._connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                existing = self._source_fact(conn, fact.source_ids)
-                if existing is not None:
+        def attempt() -> int:
+            with self._connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    existing = self._source_fact(conn, fact.source_ids)
+                    if existing is not None:
+                        conn.rollback()
+                        return existing
+                    fact_id = self._insert(conn, fact)
+                    conn.commit()
+                    return fact_id
+                except sqlite3.IntegrityError:
                     conn.rollback()
-                    return existing
-                fact_id = self._insert(conn, fact)
-                conn.commit()
-                return fact_id
-            except sqlite3.IntegrityError:
-                conn.rollback()
-                existing = self._source_fact(conn, fact.source_ids)
-                if existing is not None:
-                    return existing
-                raise
-            except Exception:
-                conn.rollback()
-                raise
+                    existing = self._source_fact(conn, fact.source_ids)
+                    if existing is not None:
+                        return existing
+                    raise
+                except Exception:
+                    conn.rollback()
+                    raise
+
+        return db.retry_busy(attempt)
 
     def has_source(self, source_id: str) -> bool:
         with self._connect() as conn:
@@ -342,10 +354,11 @@ class SQLiteFacts:
                     # A bad MATCH costs the index, not the answer: fall
                     # through to a literal LIKE over the same window.
                     pass
-            like = f"%{needle}%"
+            like = f"%{_escape_like(needle)}%"
             sql = (
-                "SELECT * FROM facts WHERE (text LIKE ? OR value LIKE ?"
-                " OR predicate LIKE ?) AND "
+                "SELECT * FROM facts WHERE (text LIKE ? ESCAPE '\\'"
+                " OR value LIKE ? ESCAPE '\\'"
+                " OR predicate LIKE ? ESCAPE '\\') AND "
                 + " AND ".join(clauses)
                 + " ORDER BY created_at DESC, id DESC LIMIT ?"
             )
@@ -357,40 +370,125 @@ class SQLiteFacts:
     def confirm(self, fact_id: int) -> bool:
         # A rejected fact stays rejected; confirming it again is not how
         # the owner changes their mind — a new fact with a source is.
-        with self._connect() as conn, conn:
-            cursor = conn.execute(
-                "UPDATE facts SET status = ? WHERE id = ? AND status != ?",
-                (CONFIRMED, fact_id, REJECTED),
-            )
-        return cursor.rowcount > 0
+        def attempt() -> bool:
+            with self._connect() as conn, conn:
+                cursor = conn.execute(
+                    "UPDATE facts SET status = ? WHERE id = ? AND status != ?",
+                    (CONFIRMED, fact_id, REJECTED),
+                )
+            return cursor.rowcount > 0
+
+        return db.retry_busy(attempt)
 
     def reject(self, fact_id: int) -> bool:
-        with self._connect() as conn, conn:
-            cursor = conn.execute(
-                "UPDATE facts SET status = ? WHERE id = ?",
-                (REJECTED, fact_id),
-            )
-        return cursor.rowcount > 0
+        def attempt() -> bool:
+            with self._connect() as conn, conn:
+                cursor = conn.execute(
+                    "UPDATE facts SET status = ? WHERE id = ?",
+                    (REJECTED, fact_id),
+                )
+            return cursor.rowcount > 0
+
+        return db.retry_busy(attempt)
 
     def supersede(self, old_id: int, new: Fact) -> int:
-        with self._connect() as conn, conn:
-            old = conn.execute(
-                "SELECT id FROM facts WHERE id = ?", (old_id,)
-            ).fetchone()
-            if old is not None:
-                conn.execute(
-                    "UPDATE facts SET valid_to = ? WHERE id = ?",
-                    (new.valid_from, old_id),
-                )
-            existing = self._source_fact(conn, new.source_ids)
-            if existing is not None:
-                return existing
-            return self._insert(conn, replace(new, supersedes=old_id))
+        def attempt() -> int:
+            with self._connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    old = conn.execute(
+                        "SELECT id FROM facts WHERE id = ?", (old_id,)
+                    ).fetchone()
+                    if old is not None:
+                        conn.execute(
+                            "UPDATE facts SET valid_to = ? WHERE id = ?",
+                            (new.valid_from, old_id),
+                        )
+                    existing = self._source_fact(conn, new.source_ids)
+                    if existing is not None:
+                        conn.commit()
+                        return existing
+                    fact_id = self._insert(conn, replace(new, supersedes=old_id))
+                    conn.commit()
+                    return fact_id
+                except sqlite3.IntegrityError:
+                    conn.rollback()
+                    existing = self._source_fact(conn, new.source_ids)
+                    if existing is not None:
+                        return existing
+                    raise
+                except Exception:
+                    conn.rollback()
+                    raise
+
+        return db.retry_busy(attempt)
 
     def forget(self, fact_id: int) -> bool:
-        with self._connect() as conn, conn:
-            cursor = conn.execute(
-                "UPDATE facts SET status = ?, valid_to = ? WHERE id = ?",
-                (REJECTED, time.time(), fact_id),
-            )
-        return cursor.rowcount > 0
+        def attempt() -> bool:
+            with self._connect() as conn, conn:
+                cursor = conn.execute(
+                    "UPDATE facts SET status = ?, valid_to = ? WHERE id = ?",
+                    (REJECTED, time.time(), fact_id),
+                )
+            return cursor.rowcount > 0
+
+        return db.retry_busy(attempt)
+
+    def forget_derived(
+        self,
+        event_ids: Iterable[str],
+        forgotten_texts: Iterable[str],
+        *,
+        surviving_ids: Iterable[str] = (),
+        surviving_texts: Iterable[str] = (),
+    ) -> int:
+        """Close facts that only a forgotten event or line supports.
+
+        A fact is derived when it names a forgotten event (consolidation
+        stores the event id) or its value is in a forgotten line (a review
+        fact stores a digest, not the event). It survives when another
+        source or another visible line still says the same thing; that is
+        what keeps one forgotten copy of a twice-learned fact from erasing
+        the fact. Rows stay for history; ``current`` and the prompt stop
+        serving them.
+        """
+        gone = [ident for ident in event_ids if isinstance(ident, str)]
+        forgotten = set(gone)
+        buried = [text for text in forgotten_texts if text]
+        alive_ids = {ident for ident in surviving_ids if isinstance(ident, str)}
+        alive = [text for text in surviving_texts if text]
+
+        def attempt() -> int:
+            removed = 0
+            with self._connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    rows = conn.execute(
+                        "SELECT * FROM facts WHERE status != ?", (REJECTED,)
+                    ).fetchall()
+                    for row in rows:
+                        fact = _as_fact(row)
+                        sources = set(fact.source_ids)
+                        direct = bool(sources & forgotten)
+                        textual = any(
+                            _mentions(text, fact.value) for text in buried
+                        )
+                        if not (direct or textual):
+                            continue
+                        if sources & alive_ids:
+                            continue
+                        if any(_mentions(text, fact.value) for text in alive):
+                            continue
+                        conn.execute(
+                            "UPDATE facts SET status = ?, valid_to = ?"
+                            " WHERE id = ?",
+                            (REJECTED, time.time(), fact.id),
+                        )
+                        removed += 1
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+            return removed
+
+        return db.retry_busy(attempt)

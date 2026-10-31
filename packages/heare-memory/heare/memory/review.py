@@ -10,8 +10,10 @@ refuses a second fact from it.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import tempfile
@@ -35,6 +37,12 @@ MAX_MESSAGES = 200
 MAX_CHARS = 6000
 MAX_KNOWN = 20
 DEFAULT_CONFIDENCE = 0.6
+
+# Below this the model is guessing; a guess repeated in every prompt is
+# worse than a missing fact, so the review drops it without storing it.
+MIN_CONFIDENCE = 0.6
+
+logger = logging.getLogger("heare.memory.review")
 
 _REVIEW_FILE = "review.json"
 
@@ -119,7 +127,7 @@ async def review_day(
     now: float | None = None,
 ) -> ReviewReport:
     moment = time.time() if now is None else now
-    transcript = _transcript(journal, day)
+    transcript = await asyncio.to_thread(_transcript, journal, day)
     if not transcript:
         return ReviewReport()
     return await _learn(store, model, transcript, moment=moment)
@@ -139,14 +147,14 @@ async def notice(
     successful read, so a failed model call is retried on the same lines.
     """
     moment = time.time() if now is None else now
-    events, state = journal.new_events(state_path)
-    transcript = _capped(_heard_texts(events, day=None))
+    events, state = await asyncio.to_thread(journal.new_events, state_path)
+    transcript = await asyncio.to_thread(_heard_transcript, journal, events)
     if not transcript:
-        journal.save_state(state_path, state)
+        await asyncio.to_thread(journal.save_state, state_path, state)
         return ReviewReport()
     report = await _learn(store, model, transcript, moment=moment)
     if report.error is None:
-        journal.save_state(state_path, state)
+        await asyncio.to_thread(journal.save_state, state_path, state)
     return report
 
 
@@ -160,10 +168,9 @@ async def _learn(
     considered = len(transcript)
     added = skipped = 0
     try:
-        known_facts = store.current()[:MAX_KNOWN]
-        known = {
-            (fact.predicate, fact.value) for fact in store.current(include_pending=True)
-        }
+        known_facts = (await asyncio.to_thread(store.current))[:MAX_KNOWN]
+        pending = await asyncio.to_thread(store.current, include_pending=True)
+        known = {(fact.predicate, fact.value) for fact in pending}
         answer = await _ask(model, _prompt(known_facts, transcript))
         items = json.loads(_json_array(answer))
         if not isinstance(items, list):
@@ -173,14 +180,33 @@ async def _learn(
             if item is None:
                 continue
             predicate, value, text, confidence = item
+            if confidence < MIN_CONFIDENCE:
+                logger.debug(
+                    "review: dropping %s=%s at confidence %.2f",
+                    predicate, value, confidence,
+                )
+                skipped += 1
+                continue
             if (predicate, value) in known:
                 skipped += 1
                 continue
             fact = _fact(predicate, value, text, confidence, moment)
-            if store.has_source(fact.source_ids[0]):
+            if await asyncio.to_thread(store.has_source, fact.source_ids[0]):
                 skipped += 1
                 continue
-            store.add(fact)
+            older = [
+                current
+                for current in await asyncio.to_thread(
+                    store.current, subject=fact.subject, predicate=predicate
+                )
+                if current.id is not None and current.value != value
+            ]
+            if older:
+                for stale in older:
+                    await asyncio.to_thread(store.supersede, stale.id, fact)
+            else:
+                await asyncio.to_thread(store.add, fact)
+            known.add((predicate, value))
             added += 1
     except Exception as exc:
         return ReviewReport(
@@ -191,7 +217,12 @@ async def _learn(
 
 def _transcript(journal: Journal, day: date) -> list[str]:
     """The heard lines of one local day, capped for the prompt."""
-    return _capped(_heard_texts(journal.events(), day=day))
+    return _capped(_heard_texts(journal.visible_events(), day=day))
+
+
+def _heard_transcript(journal: Journal, events: list[dict]) -> list[str]:
+    """The visible heard lines among already-read events, capped."""
+    return _capped(_heard_texts(journal.visible_events(events), day=None))
 
 
 def _heard_texts(events: Iterable[dict], *, day: date | None) -> list[str]:

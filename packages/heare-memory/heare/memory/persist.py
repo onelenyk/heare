@@ -33,13 +33,21 @@ import logging
 import sqlite3
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
-from heare.memory.storage import SCHEMA, SCHEMA_VERSION, TRANSCRIPTS_FTS_SCHEMA
+from heare.memory import db
+from heare.memory.storage import (
+    SCHEMA,
+    SCHEMA_VERSION,
+    TRANSCRIPTS_FTS_SCHEMA,
+    TRANSCRIPTS_TURN_INDEX,
+)
 
 logger = logging.getLogger("heare.memory.persist")
+
+T = TypeVar("T")
 
 # What `transcripts.source` says about a line. The column already held
 # "voice" and "typed" from the old engine; these are the spine's two, and
@@ -125,6 +133,40 @@ CREATE INDEX IF NOT EXISTS idx_role_sessions_live
     ON role_sessions(ended_ts);
 """
 
+# The durable link between a journal event and the row it became. The
+# journal is written first, the row second; a process killed between the
+# two leaves the event here without a row, and the next `Book` replays
+# it. The id is the journal's, so a replay after a successful insert is
+# a no-op rather than a duplicate turn. Spine-only, like
+# ROLE_SESSIONS_SCHEMA, and for the same reason: additive and invisible
+# to the shared schema version.
+JOURNAL_APPLIED_SCHEMA = """
+CREATE TABLE IF NOT EXISTS journal_applied (
+    event_id TEXT PRIMARY KEY,
+    turn_id INTEGER NOT NULL,
+    applied_ts REAL NOT NULL
+);
+"""
+
+# Events a DB upgrade found already in the rows but with no journal_applied
+# row to say so: a release before this table wrote the turn and the event
+# without linking them. The new reconcile anchor re-reads the newest day
+# file, so those events need a marker that makes the re-read a no-op
+# exactly as journal_applied does for the rest. Spine-only and additive,
+# like the two tables above.
+JOURNAL_SEEN_SCHEMA = """
+CREATE TABLE IF NOT EXISTS journal_seen (
+    event_id TEXT PRIMARY KEY,
+    seen_ts REAL NOT NULL
+);
+"""
+
+# Where the first replay starts. A DB that already holds turns and has
+# no marker predates this table; its journal is already in the rows, so
+# the marker is set to the journal's end instead of replaying history
+# into duplicates.
+JOURNAL_BASELINE_KEY = "journal_reconcile_from"
+
 
 class SpinePersistence:
     """The spine's memory of what was said — same DB as the daemon."""
@@ -138,19 +180,31 @@ class SpinePersistence:
         # worker threads over the lifetime of this object. self._lock
         # (held for the duration of every method below) is what keeps
         # that safe, not this flag alone.
-        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self._conn = db.connect(self.db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         # Reuses storage.py's own schema script verbatim (see module
         # docstring) — idempotent, so this is safe whether the DB is
         # brand new or already at schema v8.
         self._conn.executescript(SCHEMA)
+        self._ensure_transcripts_turn_index()
         # Additive, spine-only (see ROLE_SESSIONS_SCHEMA): executed the same
         # way — one idempotent script, right after the shared one.
         self._conn.executescript(ROLE_SESSIONS_SCHEMA)
+        self._conn.executescript(JOURNAL_APPLIED_SCHEMA)
+        self._conn.executescript(JOURNAL_SEEN_SCHEMA)
         self._conn.commit()
         self._ensure_schema_version_row()
+        self.fts_health = False
+        self.fts_rebuilds = 0
         self.fts_ready = self._ensure_transcripts_fts()
+
+    def _ensure_transcripts_turn_index(self) -> None:
+        columns = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(transcripts)")
+        }
+        if "turn_id" in columns:
+            self._conn.execute(TRANSCRIPTS_TURN_INDEX)
 
     def _ensure_schema_version_row(self) -> None:
         """Mirror storage.py's `_check_schema_version` for a fresh DB only.
@@ -193,23 +247,70 @@ class SpinePersistence:
                 "SELECT value FROM meta WHERE key = ?", ("transcripts_fts",)
             )
             if cur.fetchone() is None:
-                self._conn.execute(
-                    "INSERT INTO transcripts_fts(transcripts_fts) VALUES ('rebuild')"
-                )
-                self._conn.execute(
-                    "INSERT INTO meta (key, value) VALUES (?, ?)",
-                    ("transcripts_fts", "built"),
-                )
-                cur = self._conn.execute("SELECT count(*) FROM transcripts")
+                self._rebuild_transcripts_fts()
                 logger.info(
                     "persist: indexed %d transcripts for search",
-                    int((cur.fetchone() or [0])[0]),
+                    self._transcript_count(),
                 )
+            elif not self._fts_matches():
+                # The marker says the index was built, but it no longer
+                # holds the same rows: a dropped or half-written index
+                # would otherwise answer every question with silence.
+                logger.warning(
+                    "persist: transcripts_fts is out of step; rebuilding"
+                )
+                self._rebuild_transcripts_fts()
             self._conn.commit()
+            self.fts_health = self._fts_matches()
             return True
         except Exception:  # noqa: BLE001
             logger.exception("persist: no full-text index — search is off")
+            self.fts_health = False
             return False
+
+    def _transcript_count(self) -> int:
+        row = self._conn.execute("SELECT count(*) FROM transcripts").fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def _fts_matches(self) -> bool:
+        """Whether the index holds the same number of rows as the table.
+
+        An external-content FTS5 table answers ``count(*)`` from the
+        content table, so it reports the right number even after its
+        index was emptied. The ``_docsize`` shadow table holds one row
+        per indexed document and is what actually tells the truth.
+        """
+        if self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ("transcripts_fts_docsize",),
+        ).fetchone() is not None:
+            row = self._conn.execute(
+                "SELECT count(*) FROM transcripts_fts_docsize"
+            ).fetchone()
+        else:
+            row = self._conn.execute("SELECT count(*) FROM transcripts_fts").fetchone()
+        indexed = int(row[0]) if row is not None else 0
+        return indexed == self._transcript_count()
+
+    def _rebuild_transcripts_fts(self) -> None:
+        self._conn.execute(
+            "INSERT INTO transcripts_fts(transcripts_fts) VALUES ('rebuild')"
+        )
+        self._conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            ("transcripts_fts", "built"),
+        )
+        self._conn.commit()
+        self.fts_rebuilds += 1
+
+    def search_health(self) -> bool:
+        """Whether transcript search has a complete index right now.
+
+        A broken index used to be indistinguishable from "nothing was
+        ever said about that"; this is the flag the brain can read to
+        tell the two apart. It is not wired to the API yet.
+        """
+        return self.fts_health
 
     def search_transcripts(
         self,
@@ -281,13 +382,45 @@ class SpinePersistence:
             )
         params.append(int(limit))
 
-        try:
+        def run() -> list[tuple[float, str, int]]:
             with self._lock:
                 cur = self._conn.execute(sql, params)
                 return [(float(ts), str(text), int(spoken)) for ts, text, spoken in cur]
+
+        try:
+            return run()
+        except sqlite3.OperationalError as exc:
+            logger.exception("persist: search failed (non-fatal)")
+            # A missing or corrupt index is repaired once and retried;
+            # a malformed MATCH expression is not an index problem and
+            # must not rebuild the whole thing for one bad query.
+            if (
+                match is not None
+                and _looks_like_broken_index(exc)
+                and self._repair_index()
+            ):
+                try:
+                    return run()
+                except Exception:  # noqa: BLE001
+                    logger.exception("persist: search failed after rebuild")
+            return []
         except Exception:  # noqa: BLE001
             logger.exception("persist: search failed (non-fatal)")
+            self.fts_health = False
             return []
+
+    def _repair_index(self) -> bool:
+        with self._lock:
+            try:
+                self._rebuild_transcripts_fts()
+                self.fts_ready = True
+                self.fts_health = self._fts_matches()
+                return self.fts_health
+            except Exception:  # noqa: BLE001
+                logger.exception("persist: the full-text index could not be rebuilt")
+                self.fts_ready = False
+                self.fts_health = False
+                return False
 
     def reply_to(self, ts: float, within_s: float) -> tuple[float, str] | None:
         """What the assistant said back, if it answered soon enough.
@@ -341,13 +474,117 @@ class SpinePersistence:
         assert cur.lastrowid is not None
         return cur.lastrowid
 
-    def log_user_turn(self, text: str, fragment_count: int = 1, source: str = "voice") -> int:
+    def _write(self, work: Callable[[], T]) -> T:
+        """One locked write, retried while another process holds the lock."""
+        with self._lock:
+            return db.retry_busy(work, on_retry=self._conn.rollback)
+
+    def _applied_turn(self, journal_id: str) -> int | None:
+        cur = self._conn.execute(
+            "SELECT turn_id FROM journal_applied WHERE event_id = ?",
+            (journal_id,),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row is not None else None
+
+    def _remember_applied(self, journal_id: str, turn_id: int, ts: float) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO journal_applied "
+            "(event_id, turn_id, applied_ts) VALUES (?, ?, ?)",
+            (journal_id, turn_id, ts),
+        )
+
+    def applied_turns(self) -> dict[str, int]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT event_id, turn_id FROM journal_applied"
+            )
+            return {str(event_id): int(turn_id) for event_id, turn_id in cur}
+
+    def seen_events(self) -> set[str]:
+        """Event ids an upgrade found already in the rows, without a turn
+        of their own to record in journal_applied."""
+        with self._lock:
+            cur = self._conn.execute("SELECT event_id FROM journal_seen")
+            return {str(event_id) for (event_id,) in cur}
+
+    def mark_seen(self, event_ids: Iterable[str]) -> None:
+        """Remember that these journal events are already in the rows.
+
+        Written once, when a DB that predates journal_applied is first
+        opened; from then on a reconcile from the start of a day file
+        skips them instead of inserting their turns a second time.
+        """
+        wanted = sorted({ident for ident in event_ids if isinstance(ident, str)})
+        if not wanted:
+            return
+
+        def work() -> None:
+            now = time.time()
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO journal_seen (event_id, seen_ts) "
+                "VALUES (?, ?)",
+                [(ident, now) for ident in wanted],
+            )
+            self._conn.commit()
+
+        self._write(work)
+
+    def has_turns(self) -> bool:
+        with self._lock:
+            cur = self._conn.execute("SELECT 1 FROM turns LIMIT 1")
+            return cur.fetchone() is not None
+
+    def journal_baseline(self) -> tuple[str | None, int] | None:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT value FROM meta WHERE key = ?", (JOURNAL_BASELINE_KEY,)
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        try:
+            saved = json.loads(row[0])
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(saved, dict):
+            return None
+        file = saved.get("file")
+        offset = saved.get("offset")
+        if file is not None and not isinstance(file, str):
+            return None
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            return None
+        return file, offset
+
+    def remember_journal_baseline(self, file: str | None, offset: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                (JOURNAL_BASELINE_KEY, json.dumps({"file": file, "offset": offset})),
+            )
+            self._conn.commit()
+
+    def log_user_turn(
+        self,
+        text: str,
+        fragment_count: int = 1,
+        source: str = "voice",
+        *,
+        journal_id: str | None = None,
+        ts: float | None = None,
+    ) -> int:
         """Insert the user turn: a transcripts row (mode='spine',
         agent_spoken=0) AND a turns row (aggregated_text=text,
         utterance_count=fragment_count, start_ts/end_ts=now), linking
         transcripts.turn_id to the new turn. Returns turn_id."""
-        with self._lock:
-            now = time.time()
+
+        def work() -> int:
+            if journal_id is not None:
+                applied = self._applied_turn(journal_id)
+                if applied is not None:
+                    return applied
+            now = time.time() if ts is None else ts
             conversation_id = self._active_conversation_id()
             cur = self._conn.execute(
                 "INSERT INTO turns "
@@ -364,14 +601,29 @@ class SpinePersistence:
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (now, text, "spine", 0, turn_id, stored_source),
             )
+            if journal_id is not None:
+                self._remember_applied(journal_id, turn_id, now)
             self._conn.commit()
             return turn_id
 
-    def log_agent_reply(self, text: str, turn_id: int, source: str = "voice") -> None:
+        return self._write(work)
+
+    def log_agent_reply(
+        self,
+        text: str,
+        turn_id: int,
+        source: str = "voice",
+        *,
+        journal_id: str | None = None,
+        ts: float | None = None,
+    ) -> None:
         """Insert the reply as transcripts row (agent_spoken=1) with the
         same turn_id, and stamp turns.end_ts=now."""
-        with self._lock:
-            now = time.time()
+
+        def work() -> None:
+            if journal_id is not None and self._applied_turn(journal_id) is not None:
+                return
+            now = time.time() if ts is None else ts
             stored_source = _normalize_source(source)
             self._conn.execute(
                 "INSERT INTO transcripts "
@@ -382,9 +634,20 @@ class SpinePersistence:
             self._conn.execute(
                 "UPDATE turns SET end_ts = ? WHERE id = ?", (now, turn_id)
             )
+            if journal_id is not None:
+                self._remember_applied(journal_id, turn_id, now)
             self._conn.commit()
 
-    def log_system_turn(self, text: str, source: str = "engine") -> int:
+        self._write(work)
+
+    def log_system_turn(
+        self,
+        text: str,
+        source: str = "engine",
+        *,
+        journal_id: str | None = None,
+        ts: float | None = None,
+    ) -> int:
         """A message the assistant sent on its own — a reminder, a permission
         request — as a turn of its own, with no user side.
 
@@ -393,8 +656,13 @@ class SpinePersistence:
         user turn: a reminder is not the answer to what the person said
         ten minutes ago.
         """
-        with self._lock:
-            now = time.time()
+
+        def work() -> int:
+            if journal_id is not None:
+                applied = self._applied_turn(journal_id)
+                if applied is not None:
+                    return applied
+            now = time.time() if ts is None else ts
             conversation_id = self._active_conversation_id()
             cur = self._conn.execute(
                 "INSERT INTO turns "
@@ -410,8 +678,12 @@ class SpinePersistence:
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (now, text, "spine", 1, turn_id, _normalize_source(source)),
             )
+            if journal_id is not None:
+                self._remember_applied(journal_id, turn_id, now)
             self._conn.commit()
             return turn_id
+
+        return self._write(work)
 
     def last_turn_times(self) -> dict[str, float | None]:
         """When anything was last said, and when the user last said it.
@@ -503,34 +775,48 @@ class SpinePersistence:
             return 0
 
     def forget_texts(self, texts: Iterable[str]) -> int:
-        """Delete transcripts rows whose text is exactly one of `texts`.
+        """Delete transcripts rows whose text is exactly one of `texts`,
+        and take the same words out of the turn they were aggregated into.
 
         Exact rather than a pattern or a fuzzy match: the caller is
         removing specific events whose text it has read, and a forget
         must not miss a row because of case folding or tokenisation.
-        The FTS triggers (see storage.py's TRANSCRIPTS_FTS_SCHEMA) keep
-        the search index in step; when FTS5 was unavailable there is no
-        index to maintain.
+        `turns.aggregated_text` can hold several fragments, so it is
+        replaced rather than dropped: the row keeps its place in history,
+        its words do not. The FTS triggers (see storage.py's
+        TRANSCRIPTS_FTS_SCHEMA) keep the search index in step; when FTS5
+        was unavailable there is no index to maintain.
 
-        Returns how many rows were deleted. A failure is logged, rolled
-        back and reported as zero, never raised — forgetting is a repair,
-        not a reason to take the conversation down.
+        Returns how many transcripts rows were deleted. A failure is
+        logged, rolled back and reported as zero, never raised —
+        forgetting is a repair, not a reason to take the conversation
+        down.
         """
         wanted = [text for text in texts if isinstance(text, str) and text]
         if not wanted:
             return 0
-        deleted = 0
-        try:
-            with self._lock:
-                for start in range(0, len(wanted), _FORGET_CHUNK):
-                    chunk = wanted[start : start + _FORGET_CHUNK]
-                    marks = ", ".join("?" for _ in chunk)
-                    cur = self._conn.execute(
-                        f"DELETE FROM transcripts WHERE text IN ({marks})",
-                        chunk,
+        def work() -> int:
+            deleted = 0
+            for start in range(0, len(wanted), _FORGET_CHUNK):
+                chunk = wanted[start : start + _FORGET_CHUNK]
+                marks = ", ".join("?" for _ in chunk)
+                cur = self._conn.execute(
+                    f"DELETE FROM transcripts WHERE text IN ({marks})",
+                    chunk,
+                )
+                deleted += cur.rowcount or 0
+                for text in chunk:
+                    self._conn.execute(
+                        "UPDATE turns SET aggregated_text ="
+                        " TRIM(REPLACE(aggregated_text, ?, ''))"
+                        " WHERE instr(aggregated_text, ?) > 0",
+                        (text, text),
                     )
-                    deleted += cur.rowcount or 0
-                self._conn.commit()
+            self._conn.commit()
+            return deleted
+
+        try:
+            return self._write(work)
         except Exception:  # noqa: BLE001
             logger.exception("persist: forgetting texts failed (non-fatal)")
             try:
@@ -538,7 +824,6 @@ class SpinePersistence:
             except Exception:  # noqa: BLE001
                 pass
             return 0
-        return deleted
 
     # -- where one conversation ends and the next begins ---------------
     #
@@ -652,29 +937,23 @@ class SpinePersistence:
         first, read via turn_id joins — for the prompt context."""
         with self._lock:
             cur = self._conn.execute(
-                "SELECT id FROM turns ORDER BY id DESC LIMIT ?", (n,)
+                "SELECT t.turn_id, t.text, t.agent_spoken "
+                "FROM transcripts t JOIN "
+                "(SELECT id FROM turns ORDER BY id DESC LIMIT ?) AS recent "
+                "ON recent.id = t.turn_id "
+                "ORDER BY recent.id ASC, t.ts ASC",
+                (n,),
             )
-            turn_ids = [row[0] for row in cur.fetchall()]
-            turn_ids.reverse()
-
-            exchanges: list[dict] = []
-            for turn_id in turn_ids:
-                cur = self._conn.execute(
-                    "SELECT text, agent_spoken FROM transcripts "
-                    "WHERE turn_id = ? ORDER BY ts ASC",
-                    (turn_id,),
+            exchanges: dict[int, dict] = {}
+            for turn_id, text, agent_spoken in cur.fetchall():
+                exchange = exchanges.setdefault(
+                    int(turn_id), {"user": None, "agent": None}
                 )
-                user_text: str | None = None
-                agent_text: str | None = None
-                for text, agent_spoken in cur.fetchall():
-                    if agent_spoken:
-                        agent_text = text
-                    else:
-                        user_text = text
-                if user_text is None and agent_text is None:
-                    continue
-                exchanges.append({"user": user_text, "agent": agent_text})
-            return exchanges
+                if agent_spoken:
+                    exchange["agent"] = text
+                else:
+                    exchange["user"] = text
+            return list(exchanges.values())
 
     # -- role sessions -------------------------------------------------
     #
@@ -819,6 +1098,16 @@ class SpinePersistence:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+
+def _looks_like_broken_index(exc: sqlite3.OperationalError) -> bool:
+    text = str(exc).lower()
+    return (
+        "no such table" in text
+        or "malformed" in text
+        or "disk image" in text
+        or "corrupt" in text
+    )
 
 
 def _decode_turn_ids(raw: str | None) -> list[int]:

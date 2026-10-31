@@ -154,3 +154,32 @@ def test_the_cursor_considers_only_new_heard_lines(tmp_path):
     facts = store.current(include_pending=True)
     assert {fact.predicate for fact in facts} == {"prefers", "lives_in"}
 
+
+
+def test_a_forgotten_line_is_not_consolidated(tmp_path):
+    journal = Journal(tmp_path / "events")
+    heard = _heard(journal, "Я люблю каву.")
+    journal.forget([heard["id"]])
+    store = FakeFacts()
+
+    report = consolidate(store, journal, now=1000.0)
+
+    assert report == ConsolidationReport(considered=0, added=0, skipped=0)
+    assert store.current(include_pending=True) == []
+
+
+def test_the_cursor_does_not_rewind_over_a_forgotten_line(tmp_path):
+    journal = Journal(tmp_path / "events")
+    state_path = tmp_path / "memory" / "consolidate.json"
+    heard = _heard(journal, "Я люблю каву.")
+    store = FakeFacts()
+
+    first = consolidate(store, journal, now=1000.0, state_path=state_path)
+    assert first.added == 1
+
+    journal.forget([heard["id"]])
+
+    after = consolidate(store, journal, now=2000.0, state_path=state_path)
+    assert after == ConsolidationReport(considered=0, added=0, skipped=0)
+    again = consolidate(store, journal, now=3000.0, state_path=state_path)
+    assert again.considered == 0

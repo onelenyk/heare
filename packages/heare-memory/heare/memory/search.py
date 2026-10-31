@@ -89,18 +89,77 @@ FRAGMENT_CHARS = 180
 # documents, and the shortest lines in a voice transcript are the wake
 # word and «Дякую.» — searching the real database for «докер» answered
 # «12 серпня ти казав: Докер.», beating the sentence that came four
-# seconds later and actually said something.
-MIN_CHARS = 12
+# seconds later and actually said something. Eight rather than twelve:
+# «Купив каву.» is eleven characters and a real thing to remember, while
+# every wake word and acknowledgement stays below the line.
+MIN_CHARS = 8
 
 # A line that is itself a question about what was said is not an answer
 # to one. Observed live: asked «що я казав про бекапи?» a second time, it
 # quoted the *first* asking back — thirty minutes old, so past the
 # freshness bound, and a perfect lexical match precisely because it was
-# the same question. Recognised the same way the query is: strip the
-# recall scaffolding and count what is left. «Дока, що я казав про
-# бекапи?» keeps two words — the assistant's name and the subject being
-# asked about. A line that said something keeps a sentence.
-QUESTION_KEEPS_WORDS = 2
+# the same question. Recognised by how it is phrased, never by length:
+# counting words dropped real short statements such as «Я купив каву».
+# A question mark, a recall phrase or a question word at the start is
+# what tells an asking from a saying.
+_QUESTION_OPENERS = frozenset(
+    {
+        "що",
+        "як",
+        "який",
+        "яка",
+        "яке",
+        "які",
+        "коли",
+        "де",
+        "куди",
+        "звідки",
+        "хто",
+        "кого",
+        "чому",
+        "навіщо",
+        "чи",
+        "скільки",
+        "what",
+        "how",
+        "when",
+        "where",
+        "who",
+        "whom",
+        "whose",
+        "why",
+        "which",
+        "did",
+        "do",
+        "does",
+        "can",
+        "could",
+        "would",
+        "will",
+        "is",
+        "are",
+        "was",
+        "were",
+    }
+)
+
+# The recogniser does not always punctuate, and a question about memory
+# says so in words long before it ends with a mark.
+_RECALL_MARKERS = (
+    "що я казав",
+    "що я говорив",
+    "що я сказав",
+    "про що я",
+    "нагадай",
+    "пригадай",
+    "what did i say",
+    "what did we say",
+    "what have i said",
+    "did i say",
+    "do you remember",
+    "do you recall",
+    "remind me what",
+)
 
 # Over-fetch before de-duplicating and dropping the too-short: a user
 # line and the reply restating it are both good matches and often
@@ -289,24 +348,29 @@ def find(
 def _is_a_question_about_memory(text: str) -> bool:
     """Whether this line was someone asking rather than someone saying.
 
-    The same stripping the query goes through, applied to the candidate:
-    take out the time words and the stopwords and see what is left. «Дока,
-    що я казав про бекапи?» leaves "бекапи" — one word, which is the
-    subject of the question, not a thing anybody said about it. A line
-    that actually said something keeps a sentence.
+    A question is recognised from its syntax, not from how few words
+    survive the stopword filter. «Дока, що я казав про бекапи?» asks; «Я
+    купив каву.» says. Both keep two content words, and the old count
+    threw the second away with the first.
 
     Only user lines are tested. The assistant's replies quote back and
     restate, which is exactly what makes them the clean version of a
     mangled transcript — the property this verb was built on.
     """
-    remains = _sanitize_fts_query(strip_when(text, None))
-    if remains is None:
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if _sanitize_fts_query(strip_when(stripped, None)) is None:
         return True
-    # The sanitizer emits an FTS expression — quoted terms plus prefix
-    # stems of each. Only the whole words count; the stems are the same
-    # words again with their endings cut off.
-    words = re.findall(r'"([^"]+)"(?!\*)', remains)
-    return len(words) <= QUESTION_KEEPS_WORDS
+    lowered = stripped.casefold()
+    if any(marker in lowered for marker in _RECALL_MARKERS):
+        return True
+    if stripped.endswith("?"):
+        return True
+    words = re.findall(r"\w+", lowered)
+    return bool(words) and words[0] in _QUESTION_OPENERS and not stripped.endswith(
+        (".", "!", "…")
+    )
 
 
 def shorten(text: str, limit: int = FRAGMENT_CHARS) -> str:
