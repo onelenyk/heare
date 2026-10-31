@@ -95,7 +95,12 @@ const KEYS = {
 // page cannot — the microphone, starting at login.
 const shell = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heare;
 
-let machine = null, step = "role", busy = false;
+let machine = null, step = "role", busy = false, pendingLogin = null;
+const applyLogin = on => new Promise(resolve => {
+  if (!shell) { resolve(null); return; }
+  pendingLogin = resolve;
+  shell.postMessage({login: on});
+});
 const load = () => fetch("machine").then(r => r.json()).then(m => { machine = m; draw(); });
 
 function needs() {
@@ -164,6 +169,7 @@ function parts() {
   for (const p of machine.parts) {
     const row = el("div", "row"), what = el("div", "what"), sw = el("button", "sw" + (p.on ? " on" : ""));
     what.append(el("b", "", tr(p.label)), el("small", "", p.why_not ? p.why_not : tr(p.what)));
+    if (p.state === "unwell" && p.why) what.append(el("small", "bad", p.why));
     if (p.name === "hands" && !p.why_not) what.append(el("small", "", tr("The agent is opencode or Claude Code; the hands find it themselves, or say on their card what is missing.")));
     sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(p.on));
     sw.setAttribute("aria-label", tr(p.label));
@@ -227,17 +233,49 @@ function keys() {
 function ready() {
   const out = [el("h2", "", machine.done ? tr("What else") : tr("Almost done"))];
   const list = el("div");
-  const line = (title, what, right) => { const row = el("div", "row"), w = el("div", "what"); w.append(el("b", "", title), el("small", "", what)); row.append(w); if (right) row.append(right); list.append(row); };
+  const line = (title, what, right, note) => { const row = el("div", "row"), w = el("div", "what"); w.append(el("b", "", title), el("small", "", what)); if (note) w.append(note); row.append(w); if (right) row.append(right); list.append(row); };
   if (shell) {
-    const mic = el("button", "btn", tr("Allow")); mic.onclick = () => shell.postMessage({ask: "microphone"});
-    line(tr("Microphone"), tr("the voice listens to you"), mic);
-    // The shell tells the truth before the page draws; a first run starts
-    // with it on, and finishing says what the switch shows.
+    const micNote = el("small", "soft");
+    const mic = el("button", "btn", tr("Allow"));
+    const showMic = state => {
+      mic.disabled = false;
+      mic.textContent = tr("Allow");
+      micNote.className = "soft";
+      micNote.textContent = "";
+      if (state === "granted") { mic.textContent = tr("Allowed"); mic.disabled = true; }
+      else if (state === "denied" || state === "restricted") {
+        micNote.className = "bad";
+        micNote.textContent = tr("the microphone is off — turn it on in System Settings → Privacy & Security → Microphone");
+      }
+    };
+    showMic(window.heareShell && window.heareShell.mic);
+    window.heareMic = showMic;
+    mic.onclick = () => { mic.disabled = true; shell.postMessage({ask: "microphone"}); };
+    line(tr("Microphone"), tr("the voice listens to you"), mic, micNote);
+
+    // The shell tells the truth before the page draws. A first run may
+    // choose login on; a refused registration comes back off and with why.
     const truth = window.heareShell && window.heareShell.login;
-    const login = el("button", "sw" + (truth || !machine.done ? " on" : ""));
-    login.onclick = () => { login.classList.toggle("on"); shell.postMessage({login: login.classList.contains("on")}); };
+    const loginWhy = window.heareShell && window.heareShell.loginWhy;
+    const loginNote = el("small", loginWhy ? "bad" : "soft", loginWhy || "");
+    const login = el("button", "sw" + (truth || (!machine.done && !loginWhy) ? " on" : ""));
+    login.type = "button";
+    login.onclick = () => {
+      const want = !login.classList.contains("on");
+      login.disabled = true;
+      loginNote.className = "soft";
+      loginNote.textContent = "";
+      shell.postMessage({login: want});
+    };
+    window.heareLogin = (actual, why) => {
+      login.classList.toggle("on", Boolean(actual));
+      login.disabled = false;
+      loginNote.className = why ? "bad" : "soft";
+      loginNote.textContent = why || "";
+      if (pendingLogin) { const done = pendingLogin; pendingLogin = null; done(why || null); }
+    };
     loginSwitch = login;
-    line(tr("Start at login"), tr("heare comes up with the computer"), login);
+    line(tr("Start at login"), tr("heare comes up with the computer"), login, loginNote);
   } else {
     line(tr("Permissions"), tr("macOS asks for the microphone itself when the voice first listens"));
   }
@@ -248,8 +286,12 @@ function ready() {
   out.push(foot(async (go, note) => {
     go.disabled = true;
     try {
+      const desired = Boolean(loginSwitch && loginSwitch.classList.contains("on"));
+      const changed = shell && loginSwitch && (desired !== Boolean(window.heareShell && window.heareShell.login) || !machine.done);
+      const why = changed ? await applyLogin(desired) : null;
+      if (why) { note.className = "say bad"; note.textContent = why; go.disabled = false; return; }
       await post("done", {});
-      if (shell) shell.postMessage({login: Boolean(loginSwitch && loginSwitch.classList.contains("on")), done: true});
+      if (shell) shell.postMessage({done: true});
       else if (role !== "body") location.href = `http://127.0.0.1:${machine.api_port}/`;
       else { note.className = "say ok"; note.textContent = tr("done — the parts connect to the brain"); machine.done = true; draw(); }
     } catch (error) { note.className = "say bad"; note.textContent = error.message; go.disabled = false; }

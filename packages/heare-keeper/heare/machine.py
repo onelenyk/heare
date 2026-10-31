@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -113,6 +114,53 @@ def running(folder: Path) -> set[str]:
     return {name for name in PARTS if (folder / name / "heare.json").exists()}
 
 
+# What the keeper last said about a part: a manifest being present is not
+# the same as the process being well. The keeper writes this beside the
+# parts folder; the page and the menu read it, so a part that cannot start
+# or keeps falling is visible instead of looking healthy.
+HEALTH_NAME = "parts_health.json"
+
+
+def health_file(folder: Path) -> Path:
+    return folder.parent / HEALTH_NAME
+
+
+def health(folder: Path) -> dict[str, dict]:
+    """Every part's last keeper state, or nothing when the keeper never ran."""
+    try:
+        data = json.loads(health_file(folder).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(name): value for name, value in data.items() if isinstance(value, dict)}
+
+
+def _write_health(folder: Path, data: dict[str, dict]) -> None:
+    path = health_file(folder)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fresh = path.with_name(path.name + ".new")
+    fresh.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    fresh.replace(path)
+
+
+def remember(folder: Path, name: str, state: str, why: str = "", **fields) -> None:
+    """Record what the keeper knows about a part; the page reads this."""
+    data = health(folder)
+    entry = dict(data.get(name) or {})
+    entry.update({"state": state, "why": why, "at": time.time()})
+    entry.update({key: value for key, value in fields.items() if value is not None})
+    data[name] = entry
+    _write_health(folder, data)
+
+
+def forget(folder: Path, name: str) -> None:
+    """Forget a part that is no longer asked for."""
+    data = health(folder)
+    if data.pop(name, None) is not None:
+        _write_health(folder, data)
+
+
 def turn(folder: Path, name: str, on: bool, bin_dir: Path | None = None) -> None:
     """Write or remove a part's manifest; the keeper does the rest."""
     part = PARTS[name]
@@ -136,9 +184,17 @@ def turn(folder: Path, name: str, on: bool, bin_dir: Path | None = None) -> None
 def parts(folder: Path, bin_dir: Path | None = None) -> list[dict]:
     """Every part this app knows: on or off here, and why not if it cannot."""
     on = running(folder)
-    return [{"name": p.name, "label": p.label, "what": p.what,
-             "on": p.name in on, "why_not": why_not(p.name, bin_dir)}
-            for p in PARTS.values()]
+    known = health(folder)
+    listed = []
+    for p in PARTS.values():
+        last = known.get(p.name) or {}
+        listed.append({
+            "name": p.name, "label": p.label, "what": p.what,
+            "on": p.name in on, "why_not": why_not(p.name, bin_dir),
+            "state": last.get("state") or ("on" if p.name in on else "off"),
+            "why": last.get("why") or "",
+        })
+    return listed
 
 
 def check_key(name: str, value: str) -> tuple[bool, str]:

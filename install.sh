@@ -1,18 +1,18 @@
 #!/bin/sh
-# heare — install every tool this machine can run (brain, keeper, voice,
-# CLI hands, native hands, sources, chat; eyes on a Mac), write the config
-# for its role, and keep the brain and the keeper running with launchd or
-# systemd. Which parts run is not an install: it is a switch on the
-# keeper's page, 127.0.0.1:9791.
+# heare — install the brain, the keeper and the parts on a Linux machine or
+# a body, write the config for its role, and keep the brain and the keeper
+# running with systemd. A Mac has one install path: the app (heare.app), or
+# `make live` in a checkout. Which parts run is not an install: it is a
+# switch on the keeper's page, 127.0.0.1:9791.
 #
-#   ./install.sh                     # a Mac: the brain and the parts here
+#   ./install.sh                     # a Linux machine: the brain and the parts here
 #   ./install.sh --role brain        # a server: the brain; parts if you want
 #   ./install.sh --role body --url https://brain.example --code ABCD1234
 #   ./install.sh --lang uk           # speak Ukrainian
 #
-# --role R         all (default on macOS), brain (default on Linux), body;
-#                  mac is an alias for all, server for brain
-# --parts a,b      turn these parts on now (voice, eyes, sources, hands,
+# --role R         all (default on Linux), brain (default on Linux), body;
+#                  server is an alias for brain
+# --parts a,b      turn these parts on now (voice, sources, hands,
 #                  native-hands); or on the page
 # --from DIR|URL   where the wheels are (default: ./dist)
 # --version V      the version the URL holds
@@ -22,12 +22,12 @@
 # --lang en|uk     what the installer says; en by default (or HEARE_LANG).
 #                  A fresh config gets the same language; a run with no
 #                  --lang keeps the language the machine already has.
-# --deepseek-key K, --groq-key K   keep a key (Keychain on a Mac, else ~/.heare/keys.json)
+# --keys-file PATH keys from a file (DEEPSEEK_API_KEY=…, GROQ_API_KEY=… lines)
 # --no-service     install and configure; start nothing
 #
-# Keys also come from HEARE_DEEPSEEK_KEY and HEARE_GROQ_KEY, so they never
-# have to appear on a command line. Run again to update: the role this
-# machine already has is kept unless --role says another.
+# Keys come from HEARE_DEEPSEEK_KEY and HEARE_GROQ_KEY, or from --keys-file,
+# and never from a command line. Run again to update: the role this machine
+# already has is kept unless --role says another.
 set -eu
 
 ROLE=""
@@ -39,6 +39,7 @@ URL=""
 CODE=""
 DEEPSEEK_KEY="${HEARE_DEEPSEEK_KEY:-}"
 GROQ_KEY="${HEARE_GROQ_KEY:-}"
+KEYS_FILE=""
 SERVICE=1
 
 # Every line a person reads comes from here, in both languages. A branch
@@ -51,18 +52,19 @@ text_en() {
         err_lang) printf 'language is en or uk, not: %s' "$2" ;;
         usage)
             printf '%s\n' \
-                "heare — install every tool this machine can run, write the config" \
-                "for its role, and keep the brain and the keeper running with launchd" \
-                "or systemd. Which parts run is not an install: it is a switch on the" \
-                "keeper's page, 127.0.0.1:9791." \
+                "heare — install every tool a Linux machine or a body can run, write" \
+                "the config for its role, and keep the brain and the keeper running" \
+                "with systemd. A Mac uses the app: heare.app, or make live in a checkout." \
+                "Which parts run is not an install: it is a switch on the keeper's" \
+                "page, 127.0.0.1:9791." \
                 "" \
-                "  ./install.sh                     a Mac: the brain and the parts here" \
+                "  ./install.sh                     a Linux machine: the brain and the parts here" \
                 "  ./install.sh --role brain        a server: the brain; parts if you want" \
                 "  ./install.sh --role body --url https://brain.example --code ABCD1234" \
                 "" \
-                "--role R         all (default on macOS), brain (default on Linux), body;" \
-                "                 mac is an alias for all, server for brain" \
-                "--parts a,b      turn these parts on now (voice, eyes, sources, hands," \
+                "--role R         all (default on Linux), brain (default on Linux), body;" \
+                "                 server is an alias for brain" \
+                "--parts a,b      turn these parts on now (voice, sources, hands," \
                 "                 native-hands); or on the page" \
                 "--from DIR|URL   where the wheels are (default: ./dist)" \
                 "--version V      the version the URL holds" \
@@ -70,13 +72,20 @@ text_en() {
                 "--url URL        where the brain is (a body)" \
                 "--code CODE      pair this body with the brain at --url" \
                 "--lang en|uk     what the installer says; en by default (or HEARE_LANG)" \
-                "--deepseek-key K, --groq-key K   keep a key (Keychain on a Mac, else ~/.heare/keys.json)" \
+                "--keys-file PATH keys from a file (DEEPSEEK_API_KEY=…, GROQ_API_KEY=… lines)" \
                 "--no-service     install and configure; start nothing" \
                 "" \
-                "Keys also come from HEARE_DEEPSEEK_KEY and HEARE_GROQ_KEY, so they never" \
-                "have to appear on a command line. Run again to update: the role this" \
+                "Keys come from HEARE_DEEPSEEK_KEY and HEARE_GROQ_KEY, or from --keys-file," \
+                "and never from a command line. Run again to update: the role this" \
                 "machine already has is kept unless --role says another." \
                 ;;
+        use_app) printf 'this is a Mac: heare is the app — install it from the dmg, or run make live in a checkout' ;;
+        keys_file_missing) printf 'no key file: %s' "$2" ;;
+        keys_failed) printf 'the keys did not save' ;;
+        no_sums) printf 'no SHA256SUMS.txt beside the wheels in %s' "$2" ;;
+        sum_missing) printf 'SHA256SUMS.txt has no sum for %s' "$2" ;;
+        sum_wrong) printf 'the download of %s does not match SHA256SUMS.txt — not installing' "$2" ;;
+        staging_failed) printf 'the tools were not swapped — the ones already here still run' ;;
         os_only) printf 'only macOS and Linux' ;;
         role_wrong) printf 'role is all, brain or body (mac = all, server = brain)' ;;
         body_needs_pair) printf 'a body needs --url and --code (the code is on the brain page: gear → Devices)' ;;
@@ -103,7 +112,6 @@ text_en() {
         pair_failed) printf 'did not pair with the brain — check the address and the code' ;;
         body_paired) printf 'the body is paired with %s' "$2" ;;
         port_set) printf 'the brain port: %s' "$2" ;;
-        keys_keychain) printf 'the keys are in the Keychain' ;;
         keys_stored) printf 'the keys are saved' ;;
         parts_partial) printf 'not every part came on — the rest are on the page' ;;
         no_ffmpeg) printf 'no ffmpeg — voice will use the system one, or install it' ;;
@@ -114,15 +122,12 @@ text_en() {
         brain_page_linux)
             printf 'The brain page — the same way:\n    ssh -L %s:127.0.0.1:%s %s@%s\nand open http://127.0.0.1:%s  (sign-in code: heare-brain code)\n' "$2" "$2" "$3" "$4" "$2"
             ;;
-        page_here) printf 'Settings: http://127.0.0.1:9791/' ;;
         no_service_keeper) printf 'done (nothing started): heare-keeper — parts and the settings page' ;;
         no_service_brain) printf '                               heare-brain — the brain' ;;
-        launchd_line) printf 'launchd: %s' "$2" ;;
         no_systemd) printf 'no systemd --user in this session — start by hand: heare-keeper; heare-brain' ;;
         systemd_line) printf 'systemd: %s' "$2" ;;
         linger_hint) printf 'so the services live without a login: sudo loginctl enable-linger %s' "$2" ;;
         done_logs) printf 'done. Logs: %s (on Linux: journalctl --user -u heare-keeper)' "$2" ;;
-        mac_page) printf 'Page: http://127.0.0.1:%s/' "$2" ;;
     esac
 }
 
@@ -133,32 +138,40 @@ text_uk() {
         err_lang) printf 'мова — en або uk, не: %s' "$2" ;;
         usage)
             printf '%s\n' \
-                "heare — поставити всі інструменти, які вміє ця машина, записати" \
-                "конфіг для її ролі й тримати мозок і наглядача під launchd чи" \
-                "systemd. Які частини працюють — не установка, а перемикач на" \
-                "сторінці наглядача, 127.0.0.1:9791." \
+                "heare — поставити мозок і його частини на Linux чи тілі, записати" \
+                "конфіг для ролі й тримати мозок і наглядача під systemd. На Mac" \
+                "один шлях — застосунок heare.app або make live у робочій копії." \
+                "Які частини працюють — не установка, а перемикач на сторінці" \
+                "наглядача, 127.0.0.1:9791." \
                 "" \
-                "  ./install.sh                     Mac: мозок і частини тут" \
+                "  ./install.sh                     Linux: мозок і частини тут" \
                 "  ./install.sh --role brain        сервер: мозок; частини за бажанням" \
                 "  ./install.sh --role body --url https://brain.example --code ABCD1234" \
                 "" \
-                "--role R         all (типово на macOS), brain (типово на Linux), body;" \
-                "                 mac — аліас all, server — brain" \
-                "--parts a,b      увімкнути ці частини зараз (voice, eyes, sources," \
-                "                 hands, native-hands); або на сторінці" \
+                "--role R         all (типово на Linux), brain (типово на Linux), body;" \
+                "                 server — аліас brain" \
+                "--parts a,b      увімкнути ці частини зараз (voice, sources, hands," \
+                "                 native-hands); або на сторінці" \
                 "--from DIR|URL   де колеса (типово: ./dist)" \
                 "--version V      версія, яку тримає URL" \
                 "--port P         порт мозку (типово 9790)" \
                 "--url URL        де мозок (для тіла)" \
                 "--code CODE      підключити це тіло до мозку за --url" \
                 "--lang en|uk     мова інсталятора; типово en (або HEARE_LANG)" \
-                "--deepseek-key K, --groq-key K   зберегти ключ (Keychain на Mac, інакше ~/.heare/keys.json)" \
+                "--keys-file PATH ключі з файлу (рядки DEEPSEEK_API_KEY=…, GROQ_API_KEY=…)" \
                 "--no-service     поставити й налаштувати; нічого не запускати" \
                 "" \
-                "Ключі також беруться з HEARE_DEEPSEEK_KEY і HEARE_GROQ_KEY, тож їм" \
-                "не треба з'являтися в командному рядку. Запусти ще раз, щоб оновити:" \
-                "роль, яку машина вже має, лишається, якщо --role не каже інше." \
+                "Ключі беруться з HEARE_DEEPSEEK_KEY і HEARE_GROQ_KEY або з --keys-file," \
+                "і ніколи з командного рядка. Запусти ще раз, щоб оновити: роль, яку" \
+                "машина вже має, лишається, якщо --role не каже інше." \
                 ;;
+        use_app) printf 'це Mac: heare — це застосунок — постав його з dmg або запусти make live у робочій копії' ;;
+        keys_file_missing) printf 'немає файлу ключів: %s' "$2" ;;
+        keys_failed) printf 'ключі не збереглися' ;;
+        no_sums) printf 'немає SHA256SUMS.txt поруч із колесами в %s' "$2" ;;
+        sum_missing) printf 'у SHA256SUMS.txt немає суми для %s' "$2" ;;
+        sum_wrong) printf 'завантажене %s не збігається з SHA256SUMS.txt — не ставлю' "$2" ;;
+        staging_failed) printf 'інструменти не замінені — ті, що вже є, далі працюють' ;;
         os_only) printf 'лише macOS і Linux' ;;
         role_wrong) printf 'роль — all, brain або body (mac = all, server = brain)' ;;
         body_needs_pair) printf 'тілу потрібні --url і --code (код — на сторінці мозку: ⚙ → Пристрої)' ;;
@@ -185,7 +198,6 @@ text_uk() {
         pair_failed) printf 'не підключився до мозку — перевір адресу й код' ;;
         body_paired) printf 'тіло підключене до %s' "$2" ;;
         port_set) printf 'порт мозку: %s' "$2" ;;
-        keys_keychain) printf 'ключі в Keychain' ;;
         keys_stored) printf 'ключі збережено' ;;
         parts_partial) printf 'не всі частини ввімкнулись — решту на сторінці' ;;
         no_ffmpeg) printf 'немає ffmpeg — голос візьме системний, або постав його' ;;
@@ -196,15 +208,12 @@ text_uk() {
         brain_page_linux)
             printf 'Сторінка мозку — так само:\n    ssh -L %s:127.0.0.1:%s %s@%s\nі відкрий http://127.0.0.1:%s  (код входу: heare-brain code)\n' "$2" "$2" "$3" "$4" "$2"
             ;;
-        page_here) printf 'Налаштування: http://127.0.0.1:9791/' ;;
         no_service_keeper) printf 'готово (нічого не запускав): heare-keeper — частини й сторінка налаштувань' ;;
         no_service_brain) printf '                               heare-brain — мозок' ;;
-        launchd_line) printf 'launchd: %s' "$2" ;;
         no_systemd) printf 'немає systemd --user у цій сесії — запусти вручну: heare-keeper; heare-brain' ;;
         systemd_line) printf 'systemd: %s' "$2" ;;
         linger_hint) printf 'щоб служби жили без входу: sudo loginctl enable-linger %s' "$2" ;;
         done_logs) printf 'готово. Логи: %s (на Linux: journalctl --user -u heare-keeper)' "$2" ;;
-        mac_page) printf 'Сторінка: http://127.0.0.1:%s/' "$2" ;;
     esac
 }
 
@@ -256,8 +265,7 @@ while [ $# -gt 0 ]; do
         --port) PORT=$2; shift 2 ;;
         --url) URL=$2; shift 2 ;;
         --code) CODE=$2; shift 2 ;;
-        --deepseek-key) DEEPSEEK_KEY=$2; shift 2 ;;
-        --groq-key) GROQ_KEY=$2; shift 2 ;;
+        --keys-file) KEYS_FILE=$2; shift 2 ;;
         --lang) shift 2 ;;
         --lang=*) shift ;;
         # The old way to get only the form. Everything is installed now,
@@ -270,7 +278,12 @@ while [ $# -gt 0 ]; do
 done
 
 case "$(uname -s)" in
-    Darwin) OS=mac ;;
+    Darwin)
+        # One supervisor on a Mac: the app holds its keeper and brain as
+        # children. A second supervisor beside it would run every part twice.
+        OS=mac
+        die "$(msg use_app)"
+        ;;
     Linux) OS=linux ;;
     *) die "$(msg os_only)" ;;
 esac
@@ -301,9 +314,9 @@ fi
 # no wheel for it yet: the build failed on a stranger's server.
 PYTHON="${HEARE_PYTHON:-3.12}"
 
-# Every tool this system can run; eyes read macOS alone.
+# Every tool a Linux machine or a body can run. Eyes read macOS alone and
+# travel in the app, not here.
 TOOLS="brain keeper voice hands sources native-hands chat"
-[ "$OS" = "mac" ] && TOOLS="$TOOLS eyes"
 
 command -v uv >/dev/null 2>&1 || {
     command -v curl >/dev/null 2>&1 || die "$(msg uv_needs_curl)"
@@ -314,7 +327,14 @@ command -v uv >/dev/null 2>&1 || {
 }
 
 WHEELS=$(mktemp -d)
-trap 'rm -rf "$WHEELS"' EXIT
+STAGE=""
+cleanup() {
+    rm -rf "$WHEELS"
+    if [ -n "$STAGE" ]; then
+        rm -rf "$STAGE"
+    fi
+}
+trap cleanup EXIT
 
 # The wheel a part comes in. Part names are not package names: the CLI
 # hands are heare-cli-hands, and hyphens become underscores in a wheel.
@@ -325,16 +345,40 @@ wheel_base() {
     esac
 }
 
+sum_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+# A wheel from a URL is only installed when the release's own sums name
+# the file that was published. A local build is the person's own tree.
+verify_wheel() {
+    file=$1
+    name=$(basename "$file")
+    expected=$(awk -v n="$name" '{f = $2; sub(/^\*/, "", f); if (f == n) {print $1; exit}}' "$SUMS")
+    [ -n "$expected" ] || die "$(msg sum_missing "$name")"
+    [ "$(sum_of "$file")" = "$expected" ] || die "$(msg sum_wrong "$name")"
+}
+
 if [ -d "$FROM" ]; then
     cp "$FROM"/heare_*.whl "$WHEELS"/ || die "$(msg no_wheels "$FROM")"
 else
     [ -n "$VERSION" ] || die "$(msg version_required)"
+    SUMS="$WHEELS/SHA256SUMS.txt"
+    curl -fsSL "$FROM/SHA256SUMS.txt" -o "$SUMS" \
+        || die "$(msg no_sums "$FROM")"
     # memory is not a tool: the brain's wheel depends on it.
     for name in core reach memory $TOOLS; do
         base=$(wheel_base "$name")
         curl -fsSL "$FROM/$base-${VERSION}-py3-none-any.whl" \
             -o "$WHEELS/$base-${VERSION}-py3-none-any.whl" \
             || die "$(msg download_failed "$base")"
+    done
+    for file in "$WHEELS"/heare_*.whl; do
+        verify_wheel "$file"
     done
 fi
 say wheels_ready
@@ -349,9 +393,19 @@ CORE=$(wheel core)
 REACH=$(wheel reach)
 MEMORY=$(wheel memory)
 
-# A tool's own environment, with the wheels it needs beside it. The brain
-# and the keeper must install; a part that will not is said and skipped —
-# the page then shows it as not on this machine.
+# Every tool is unpacked into a staging tree first. Only when they all fit
+# does the tree move into place, each old environment kept in a sibling
+# folder (uv would read `<name>.previous` as another tool): a failed install
+# leaves the tools that already run alone.
+REAL_TOOLS=$(uv tool dir)
+REAL_BIN=$(uv tool dir --bin)
+PREVIOUS="$(dirname "$REAL_TOOLS")/heare-tool-previous"
+mkdir -p "$REAL_TOOLS" "$REAL_BIN" "$PREVIOUS"
+STAGE=$(mktemp -d "$REAL_TOOLS/.heare-stage.XXXXXX")
+STAGE_TOOLS="$STAGE/tools"
+STAGE_BIN="$STAGE/bin"
+mkdir -p "$STAGE_TOOLS" "$STAGE_BIN"
+
 tool() {
     name=$1
     case "$name" in
@@ -360,9 +414,9 @@ tool() {
     esac
     # The brain keeps its memory in heare-memory; the other tools do not.
     [ "$name" = "brain" ] && set -- "$@" --with "$MEMORY"
-    if uv tool install --force --python "$PYTHON" "$(wheel "$name")" "$@" \
+    if UV_TOOL_DIR="$STAGE_TOOLS" UV_TOOL_BIN_DIR="$STAGE_BIN" \
+            uv tool install --force --python "$PYTHON" "$(wheel "$name")" "$@" \
             >/dev/null 2>"$WHEELS/$name.log"; then
-        say installed "$name"
         return 0
     fi
     case "$name" in
@@ -375,18 +429,70 @@ tool() {
 }
 
 printf '%s\n' "$(msg system "$OS")"
+INSTALLED_TOOLS=""
 for name in $TOOLS; do
-    tool "$name"
+    if tool "$name"; then
+        INSTALLED_TOOLS="$INSTALLED_TOOLS $name"
+    fi
 done
 
-BIN=$(uv tool dir --bin)
+restore_tools() {
+    for name in $INSTALLED_TOOLS; do
+        if [ -d "$PREVIOUS/$name" ]; then
+            rm -rf "$REAL_TOOLS/$name"
+            mv "$PREVIOUS/$name" "$REAL_TOOLS/$name" || true
+        else
+            rm -rf "$REAL_TOOLS/$name"
+        fi
+    done
+}
+
+swap_tools() {
+    for name in $INSTALLED_TOOLS; do
+        if [ -d "$REAL_TOOLS/$name" ]; then
+            rm -rf "$PREVIOUS/$name"
+            mv "$REAL_TOOLS/$name" "$PREVIOUS/$name" || return 1
+        fi
+    done
+    for name in $INSTALLED_TOOLS; do
+        [ -d "$STAGE_TOOLS/$name" ] || continue
+        mv "$STAGE_TOOLS/$name" "$REAL_TOOLS/$name" || return 1
+    done
+}
+
+link_tools() {
+    for shim in "$STAGE_BIN"/*; do
+        [ -e "$shim" ] || [ -L "$shim" ] || continue
+        command=$(basename "$shim")
+        target=$(readlink "$shim" 2>/dev/null || true)
+        case "$target" in
+            "$STAGE_TOOLS"/*) target="$REAL_TOOLS/${target#"$STAGE_TOOLS/"}" ;;
+        esac
+        if [ -n "$target" ]; then
+            ln -sf "$target" "$REAL_BIN/$command"
+        else
+            cp -p "$shim" "$REAL_BIN/$command"
+        fi
+    done
+}
+
+if ! swap_tools; then
+    restore_tools
+    die "$(msg staging_failed)"
+fi
+link_tools
+for name in $INSTALLED_TOOLS; do
+    say installed "$name"
+done
+
+BIN="$REAL_BIN"
 case ":$PATH:" in
     *":$BIN:"*) ;;
     *) say path_hint "$BIN" ;;
 esac
 # The keeper's own Python: it has the core, and heare.machine writes a
 # manifest exactly as the page does.
-PY="$(uv tool dir)/heare-keeper/bin/python"
+PY="$REAL_TOOLS/heare-keeper/bin/python"
 [ -x "$PY" ] || die "$(msg keeper_python_missing "$PY")"
 
 # A run with no --role keeps the role this machine already has: an update
@@ -397,28 +503,29 @@ if [ -z "$ROLE" ]; then
         all|mac) ROLE=all ;;
         brain|server) ROLE=brain ;;
         body) ROLE=body ;;
-        *) if [ "$OS" = "mac" ]; then ROLE=all; else ROLE=brain; fi ;;
+        *) ROLE=brain ;;
     esac
     [ -n "$KEPT" ] && say role_kept "$ROLE"
 fi
 printf '%s\n' "$(msg role_now "$ROLE")"
 
 if [ "$ROLE" = "body" ] && [ -n "$CODE" ]; then
-    PAIR_CODE='import sys
+    PAIR_CODE='import os
+import sys
 import urllib.error
 from pathlib import Path
 
 from heare.config import Settings
 from heare.pairing import pair
 
-url = sys.argv[1].rstrip("/")
+url = os.environ["HEARE_PAIR_URL"].rstrip("/")
 try:
-    answer = pair(url, sys.argv[2], "machine", sys.argv[3])
+    answer = pair(url, os.environ["HEARE_PAIR_CODE"], "machine", sys.argv[1])
 except urllib.error.HTTPError as error:
-    sys.stderr.write((sys.argv[4] + "\n") % error.code)
+    sys.stderr.write((sys.argv[2] + "\n") % error.code)
     raise SystemExit(1)
 except urllib.error.URLError as error:
-    sys.stderr.write((sys.argv[5] + "\n") % error.reason)
+    sys.stderr.write((sys.argv[3] + "\n") % error.reason)
     raise SystemExit(1)
 
 settings = Settings()
@@ -427,7 +534,8 @@ path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(answer["token"], encoding="utf-8")
 path.chmod(0o600)
 settings.set("url", url)'
-    "$PY" -c "$PAIR_CODE" "$URL" "$CODE" "$(uname -n)" \
+    HEARE_PAIR_URL="$URL" HEARE_PAIR_CODE="$CODE" \
+        "$PY" -c "$PAIR_CODE" "$(uname -n)" \
         "$(msg pair_http_error)" "$(msg pair_url_error)" \
         || die "$(msg pair_failed)"
     say body_paired "$URL"
@@ -449,19 +557,35 @@ if [ -n "$PORT" ]; then
     say port_set "$PORT"
 fi
 
+if [ -n "$KEYS_FILE" ]; then
+    [ -r "$KEYS_FILE" ] || die "$(msg keys_file_missing "$KEYS_FILE")"
+    DEEPSEEK_KEY=$(sed -n 's/^[[:space:]]*DEEPSEEK_API_KEY[[:space:]]*=[[:space:]]*//p' \
+        "$KEYS_FILE" | sed 's/\r$//' | tail -n 1)
+    GROQ_KEY=$(sed -n 's/^[[:space:]]*GROQ_API_KEY[[:space:]]*=[[:space:]]*//p' \
+        "$KEYS_FILE" | sed 's/\r$//' | tail -n 1)
+fi
+
 if [ -n "$DEEPSEEK_KEY" ] || [ -n "$GROQ_KEY" ]; then
+    # The keys reach Python through a file only its owner reads, never argv.
+    KEYFILE="$WHEELS/keys"
+    (umask 077; printf '%s\n%s\n' "$DEEPSEEK_KEY" "$GROQ_KEY" > "$KEYFILE")
     # The DeepSeek key is the brain's: giving it is choosing the provider,
     # as on the page.
     KEYCODE='import sys
+from pathlib import Path
+
 from heare import keys
 from heare.config import Settings
-if sys.argv[1]:
-    keys.store("DEEPSEEK_API_KEY", sys.argv[1])
+
+deepseek, groq = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()[:2]
+Path(sys.argv[1]).unlink(missing_ok=True)
+if deepseek:
+    keys.store("DEEPSEEK_API_KEY", deepseek)
     Settings().set("llm_provider", "deepseek")
-if sys.argv[2]:
-    keys.store("GROQ_API_KEY", sys.argv[2])'
-    "$PY" -c "$KEYCODE" "$DEEPSEEK_KEY" "$GROQ_KEY"
-    if [ "$OS" = "mac" ]; then say keys_keychain; else say keys_stored; fi
+if groq:
+    keys.store("GROQ_API_KEY", groq)'
+    "$PY" -c "$KEYCODE" "$KEYFILE" || die "$(msg keys_failed)"
+    say keys_stored
 fi
 
 if [ -n "$PARTS" ]; then
@@ -477,14 +601,9 @@ BRAIN=0
 [ "$ROLE" != "body" ] && BRAIN=1
 
 page_hint() {
-    if [ "$OS" = "linux" ]; then
-        msg page_linux "$(id -un)" "$(uname -n)"
-        if [ "$BRAIN" = "1" ]; then
-            msg brain_page_linux "${PORT:-9790}" "$(id -un)" "$(uname -n)"
-        fi
-    else
-        msg page_here
-        printf '\n'
+    msg page_linux "$(id -un)" "$(uname -n)"
+    if [ "$BRAIN" = "1" ]; then
+        msg brain_page_linux "${PORT:-9790}" "$(id -un)" "$(uname -n)"
     fi
 }
 
@@ -500,42 +619,6 @@ fi
 mkdir -p "$LOGS"
 
 case "$OS" in
-mac)
-    AGENTS="$HOME/Library/LaunchAgents"
-    mkdir -p "$AGENTS"
-    plist() {
-        label=$1 program=$2 log=$3
-        cat > "$AGENTS/$label.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>$label</string>
-  <key>ProgramArguments</key><array><string>$BIN/$program</string></array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string></dict>
-  <key>StandardOutPath</key><string>$LOGS/$log</string>
-  <key>StandardErrorPath</key><string>$LOGS/$log</string>
-</dict></plist>
-EOF
-        launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-        sleep 1
-        launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist" 2>/dev/null || {
-            sleep 2
-            launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist"
-        }
-        say launchd_line "$label"
-    }
-    if [ "$BRAIN" = "1" ]; then
-        plist com.heare.brain heare-brain brain.log
-        launchctl bootout "gui/$(id -u)/com.heare.desktop" 2>/dev/null || true
-    else
-        # A body has its brain elsewhere: one left here from before must go.
-        launchctl bootout "gui/$(id -u)/com.heare.brain" 2>/dev/null || true
-        rm -f "$AGENTS/com.heare.brain.plist"
-    fi
-    plist com.heare.keeper heare-keeper parts.log
-    ;;
 linux)
     if ! systemctl --user show-environment >/dev/null 2>&1; then
         warn no_systemd
@@ -583,5 +666,4 @@ esac
 
 printf '\n'
 printf '%s\n' "$(msg done_logs "$LOGS")"
-[ "$OS" = "mac" ] && [ "$BRAIN" = "1" ] && printf '%s\n' "$(msg mac_page "${PORT:-9790}")"
 page_hint

@@ -11,36 +11,60 @@ enum Uninstall {
     /// What "keep the memory" keeps: what a reinstall picks up again.
     static let kept: Set<String> = ["memory", "settings", "backups"]
 
+    struct Outcome {
+        let lines: [String]
+        let ok: Bool
+    }
+
     /// What it did, one line each, for the terminal or the log.
     @discardableResult
-    static func run(keep: Keep) -> [String] {
+    static func run(keep: Keep) -> Outcome {
         var said: [String] = []
-        said.append(forgetKeys() ? tr("the keys are removed") : tr("the keys could not be removed"))
+        var ok = true
+        if forgetKeys() {
+            said.append(tr("the keys are removed"))
+        } else {
+            ok = false
+            said.append(tr("the keys could not be removed"))
+        }
         if Login.on {
-            Login.set(false)
-            said.append(tr("starting with the Mac is off"))
+            if let why = Login.set(false) {
+                ok = false
+                said.append(tr("starting with the Mac could not be turned off: {why}",
+                               ["why": why]))
+            } else {
+                said.append(tr("starting with the Mac is off"))
+            }
         }
         let home = Config.heare
         if FileManager.default.fileExists(atPath: home.path) {
             switch keep {
             case .nothing:
-                said.append(trash(home))
+                let gone = trash(home)
+                ok = ok && gone.ok
+                said.append(gone.line)
             case .memory:
                 let inside = (try? FileManager.default.contentsOfDirectory(
                     at: home, includingPropertiesForKeys: nil)) ?? []
                 for item in inside where !kept.contains(item.lastPathComponent) {
-                    said.append(trash(item))
+                    let gone = trash(item)
+                    ok = ok && gone.ok
+                    said.append(gone.line)
                 }
                 said.append(tr("the memory stays in {path}", ["path": home.path]))
             }
         }
         let app = Bundle.main.bundleURL
-        if app.pathExtension == "app" { said.append(trash(app)) }
+        if app.pathExtension == "app" {
+            let gone = trash(app)
+            ok = ok && gone.ok
+            said.append(gone.line)
+        }
         let work = Config.home.appendingPathComponent("heare-work")
         if FileManager.default.fileExists(atPath: work.path) {
             said.append(tr("the agent's files stay in {path}", ["path": work.path]))
         }
-        return said
+        return Outcome(lines: said, ok: ok)
     }
 
     /// The keys live where the Python side keeps them; only it knows which
@@ -61,7 +85,7 @@ enum Uninstall {
 
     /// The Trash, or the folder HEARE_TRASH names: the e2e run keeps what it
     /// throws away in its own sandbox, not in the person's Trash.
-    private static func trash(_ url: URL) -> String {
+    private static func trash(_ url: URL) -> (line: String, ok: Bool) {
         let files = FileManager.default
         do {
             if let folder = ProcessInfo.processInfo.environment["HEARE_TRASH"], !folder.isEmpty {
@@ -77,9 +101,10 @@ enum Uninstall {
             } else {
                 try files.trashItem(at: url, resultingItemURL: nil)
             }
-            return tr("in the Trash: {path}", ["path": url.path])
+            return (tr("in the Trash: {path}", ["path": url.path]), true)
         } catch {
-            return tr("could not remove {path}: {why}", ["path": url.path, "why": error.localizedDescription])
+            return (tr("could not remove {path}: {why}", ["path": url.path,
+                    "why": error.localizedDescription]), false)
         }
     }
 

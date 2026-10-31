@@ -1336,16 +1336,16 @@
           <aside class="rail" aria-label="Наглядач і стан">
             <div class="node">
               <div class="node-head">
-                <span class="node-title">launchd</span>
+                <span class="node-title">heare.app / systemd</span>
                 <span class="node-tag">сервіс</span>
               </div>
-              <p><code>com.heare.brain</code> · <code>com.heare.keeper</code></p>
+              <p>Mac: застосунок тримає <code>heare-brain</code> і <code>heare-keeper</code>; Linux: <code>heare-brain.service</code> · <code>heare-keeper.service</code></p>
               <p>Логи: <code>~/.heare/logs/brain.log</code>, <code>parts.log</code>.</p>
             </div>
 
             <div class="rail-wire">
               <span class="mark" aria-hidden="true">↓</span>
-              <span><b>launchd →</b> мозок і наглядач · старт при вході</span>
+              <span><b>сервіс →</b> мозок і наглядач · старт при вході</span>
             </div>
 
             <div class="node">
@@ -1825,7 +1825,7 @@
         <span class="del-num" aria-hidden="true">05</span>
         <div class="del-card">
           <div class="del-head"><h3>install.sh</h3><span class="badge">POSIX sh</span></div>
-          <p>Визначає macOS або Linux; ставить uv, якщо його немає; завантажує 8 коліс; кожен дистрибутив — в окреме середовище <code>uv tool</code>; пише маніфести; може зберегти ключі <code>--deepseek-key</code>, <code>--groq-key</code>; ставить launchd plists або systemd user units з PATH; <code>--no-service</code> — без запуску.</p>
+          <p>Linux або Mac (на Mac відмовляється: там застосунок <code>heare.app</code> і <code>make live</code>); ставить uv, якщо його немає; звіряє колеса з <code>SHA256SUMS.txt</code>; кожен дистрибутив — в окреме середовище <code>uv tool</code>, спершу в тимчасове дерево; пише маніфести; ключі — з <code>HEARE_DEEPSEEK_KEY</code>/<code>HEARE_GROQ_KEY</code> або <code>--keys-file</code>; ставить systemd user units з PATH; <code>--no-service</code> — без запуску.</p>
         </div>
       </div>
       <div class="del-link">
@@ -1836,8 +1836,8 @@
       <div class="del-stage">
         <span class="del-num" aria-hidden="true">06</span>
         <div class="del-card">
-          <div class="del-head"><h3>Середовище</h3><span class="badge">uv tool · launchd · systemd</span></div>
-          <p>Вісім окремих <code>uv tool</code> середовищ; маніфести в <code>~/.heare/parts/</code>; launchd на macOS або systemd user units на Linux; PATH у середовищі сервісу.</p>
+          <div class="del-head"><h3>Середовище</h3><span class="badge">uv tool · systemd · heare.app</span></div>
+          <p>Вісім окремих <code>uv tool</code> середовищ; маніфести в <code>~/.heare/parts/</code>; systemd user units на Linux, а на Mac мозок і наглядач — діти застосунку <code>heare.app</code>; PATH у середовищі сервісу.</p>
         </div>
       </div>
       <div class="del-link">

@@ -135,9 +135,10 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # The app checks the dmg it downloads against this before it updates.
+      # The app checks the dmg it downloads against this before it updates;
+      # install.sh checks every wheel it fetches from the same file.
       - name: Sums
-        run: (cd dist && sha256sum *.dmg > SHA256SUMS.txt && cat SHA256SUMS.txt)
+        run: (cd dist && sha256sum *.dmg *.whl > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Publish
         env:

@@ -17,12 +17,30 @@ enum Updater {
     static var bundle: URL { Bundle.main.bundleURL }
     static var aside: URL { bundle.deletingPathExtension().appendingPathExtension("app.old") }
     static var staged: URL { bundle.deletingPathExtension().appendingPathExtension("app.new") }
+    static var failed: URL { bundle.deletingPathExtension().appendingPathExtension("app.failed") }
 
-    /// What a former update left beside this app.
+    /// Whether a former version still sits beside this app.
+    static var keepsOld: Bool { FileManager.default.fileExists(atPath: aside.path) }
+    static var oldVersion: String? { version(of: aside) }
+    static var currentVersion: String? { version(of: bundle) }
+
+    private static func version(of app: URL) -> String? {
+        guard let plist = NSDictionary(
+            contentsOf: app.appendingPathComponent("Contents/Info.plist")) else { return nil }
+        return plist["CFBundleShortVersionString"] as? String
+    }
+
+    /// What an unfinished update left beside this app. The old app stays
+    /// until this one has proved its children are healthy (`retireOld`).
     static func cleanUp() {
-        for leftover in [aside, staged] where FileManager.default.fileExists(atPath: leftover.path) {
+        for leftover in [staged, failed] where FileManager.default.fileExists(atPath: leftover.path) {
             try? FileManager.default.removeItem(at: leftover)
         }
+    }
+
+    /// The previous app is no longer the way back: this one is healthy.
+    static func retireOld() {
+        try? FileManager.default.removeItem(at: aside)
     }
 
     /// Unpack and check, off the main thread; the reason when it cannot.
@@ -88,6 +106,29 @@ enum Updater {
             try? files.removeItem(at: bundle)
             try? files.moveItem(at: aside, to: bundle)
         }
+        start()
+        return false
+    }
+
+    /// Put the previous app back when the new one never became healthy.
+    /// The failed app stays beside it for the next launch to clear.
+    static func revert() -> Bool {
+        let files = FileManager.default
+        try? files.removeItem(at: failed)
+        do {
+            try files.moveItem(at: bundle, to: failed)
+            do {
+                try files.moveItem(at: aside, to: bundle)
+            } catch {
+                try? files.moveItem(at: failed, to: bundle)
+                return false
+            }
+        } catch {
+            return false
+        }
+        if start() { return true }
+        try? files.removeItem(at: bundle)
+        try? files.moveItem(at: failed, to: bundle)
         start()
         return false
     }

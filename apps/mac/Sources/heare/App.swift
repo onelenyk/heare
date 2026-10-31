@@ -30,6 +30,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // A newer heare, unpacked beside this one; swapped in once they have.
     private var updating = false
     private var replacing: Updater.Ready?
+    // The previous app is kept until this one's children answer.
+    private var reverting = false
+    private var keeperOk = false
+    private var brainOk = false
+    private var healthy = false
+    private var began = Date()
+    private var offeredOld = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.cleanUp()
@@ -67,18 +74,22 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         Local.call(config.setupBase.appendingPathComponent("machine")) { [weak self] answer in
             self?.machine = answer.status == 200 ? answer.json as? [String: Any] : nil
+            self?.keeperOk = answer.status == 200
             self?.draw()
+            self?.checkHealth()
         }
         guard config.brainHere, let token = config.masterToken else {
             state = nil
             // A body's brain is elsewhere: nothing here is off.
             face.show(config.brainHere ? .off : .idle)
             draw()
+            checkHealth()
             return
         }
         Local.call(config.brainBase.appendingPathComponent("api/state"),
                    headers: ["X-Heare-Token": token]) { [weak self] answer in
             self?.state = answer.status == 200 ? answer.json as? [String: Any] : nil
+            self?.brainOk = answer.status == 200
             // The events say a phase the moment it changes; this keeps the
             // face right when they are not coming (the brain away: «off»).
             if let state = self?.state {
@@ -88,6 +99,37 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             self?.draw()
             self?.updateIfAsked()
+            self?.checkHealth()
+        }
+    }
+
+    /// The old app goes only when this one's keeper — and its brain, where
+    /// the brain lives here — has answered. Until then it is the way back.
+    private func checkHealth() {
+        guard keeperOk && (config.brainHere ? brainOk : true) else {
+            checkOld()
+            return
+        }
+        guard !healthy else { return }
+        healthy = true
+        Updater.retireOld()
+    }
+
+    private func checkOld() {
+        guard !healthy, Updater.keepsOld, !offeredOld,
+              Date().timeIntervalSince(began) > 60, let old = Updater.oldVersion else { return }
+        offeredOld = true
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = tr("The new heare did not start")
+        alert.informativeText = tr("heare {new} is not answering. Go back to {old}?",
+                                   ["new": Updater.currentVersion ?? "?", "old": old])
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: tr("Go back to {v}", ["v": old]))
+        alert.addButton(withTitle: tr("Keep the new one"))
+        if alert.runModal() == .alertFirstButtonReturn {
+            reverting = true
+            NSApp.terminate(nil)
         }
     }
 
@@ -191,7 +233,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleLogin() {
-        Login.set(!Login.on)
+        if let why = Login.set(!Login.on) {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = tr("Start at login")
+            alert.informativeText = why
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: tr("Close"))
+            alert.runModal()
+        }
         draw()
     }
 
@@ -254,9 +304,23 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func leave() {
         if let keep = removing {
-            for line in Uninstall.run(keep: keep) { NSLog("heare: %@", line) }
+            let outcome = Uninstall.run(keep: keep)
+            for line in outcome.lines { NSLog("heare: %@", line) }
+            if !outcome.ok {
+                NSApp.activate(ignoringOtherApps: true)
+                let alert = NSAlert()
+                alert.messageText = tr("Some of heare could not be removed")
+                alert.informativeText = outcome.lines.joined(separator: "\n")
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: tr("Close"))
+                alert.runModal()
+            }
         }
-        if let ready = replacing, !Updater.swap(ready) {
+        if reverting {
+            if !Updater.revert() {
+                NSLog("heare: update: the previous version could not be put back")
+            }
+        } else if let ready = replacing, !Updater.swap(ready) {
             // This app is back in its place; the brain will say it failed
             // when it is asked again. Starting over is the simplest truth.
             NSLog("heare: update: the new version could not be put in; the old one stays")

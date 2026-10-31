@@ -42,10 +42,10 @@ def _wait_for(url: str) -> None:
     raise AssertionError("the form did not start")
 
 
-def _post(url: str, data: dict) -> tuple[int, dict]:
+def _post(url: str, data: dict, headers: dict | None = None) -> tuple[int, dict]:
     request = urllib.request.Request(
         url, data=json.dumps(data).encode(), method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **(headers or {})},
     )
     with urllib.request.urlopen(request, timeout=10) as answer:
         return answer.status, json.loads(answer.read().decode())
@@ -60,6 +60,7 @@ def form(tmp_path, monkeypatch):
     monkeypatch.setattr(
         setup, "Settings",
         lambda: Settings(config, machine_token_file=machine,
+                         api_token_file=tmp_path / "api_token",
                          parts_dir=tmp_path / "parts"),
     )
     port = _free_port()
@@ -218,3 +219,72 @@ def test_a_first_run_starts_with_every_part_this_machine_can_have(form, tmp_path
     Settings(config).set("setup_done", True)
     _, again = _post(base + "/role", {"role": "all"})
     assert next(p for p in again["parts"] if p["name"] == "eyes")["on"] is False
+
+
+def test_a_rebound_host_cannot_drive_the_form(form):
+    base, config, _ = form
+    host = f"evil.test:{base.rsplit(':', 1)[1]}"
+
+    with pytest.raises(urllib.error.HTTPError) as page:
+        urllib.request.urlopen(
+            urllib.request.Request(base + "/", headers={"Host": host}), timeout=2)
+    assert page.value.code == 403
+
+    with pytest.raises(urllib.error.HTTPError) as role:
+        _post(base + "/role", {"role": "all"},
+              headers={"Host": host, "Origin": f"http://{host}"})
+    assert role.value.code == 403
+    assert not Settings(config).role
+
+
+def test_a_foreign_origin_cannot_save_a_key(form, monkeypatch):
+    base, _, _ = form
+    monkeypatch.setattr(setup.machine, "check_key", lambda name, value: (True, "живий"))
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        _post(base + "/key", {"name": "GROQ_API_KEY", "value": "stolen"},
+              headers={"Origin": "https://evil.example"})
+    assert refused.value.code == 403
+    assert keys.get("GROQ_API_KEY") is None
+
+
+def test_the_installer_page_still_works_from_loopback(form, monkeypatch):
+    base, _, _ = form
+    with urllib.request.urlopen(
+            urllib.request.Request(base + "/", headers={"Origin": base}), timeout=2) as answer:
+        assert answer.status == 200
+
+    monkeypatch.setattr(setup.machine, "check_key", lambda name, value: (True, "живий"))
+    status, state = _post(base + "/role", {"role": "all"}, headers={"Origin": base})
+    assert status == 200 and state["role"] == "all"
+
+    status, state = _post(base + "/done", {})
+    assert status == 200 and state["done"] is True
+
+
+def test_switching_from_body_to_all_forgets_the_machine_token(form, tmp_path):
+    base, config, _ = form
+    (tmp_path / "api_token").write_text("master", encoding="utf-8")
+    (tmp_path / "machine_token").write_text("machine", encoding="utf-8")
+    Settings(config).set("url", "https://brain.example")
+    Settings(config).set("role", "body")
+
+    status, state = _post(base + "/role", {"role": "all"})
+
+    assert status == 200 and state["role"] == "all" and state["url"] == ""
+    assert not (tmp_path / "machine_token").exists()
+    settings = Settings(config, machine_token_file=tmp_path / "machine_token",
+                        api_token_file=tmp_path / "api_token")
+    assert settings.secret == "master"
+
+
+def test_a_taken_setup_port_says_which(tmp_path):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        with pytest.raises(OSError) as taken:
+            setup.serve(port=port)
+
+    assert str(port) in str(taken.value)
+    assert setup.state()["state"] == "taken"
+    assert setup.state()["port"] == port

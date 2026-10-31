@@ -165,7 +165,8 @@ final class InstallerWindow: PageWindow, WKScriptMessageHandler {
         // What only the shell knows, told to the page before it draws: the
         // login switch shows the truth, not a guess.
         controller.removeAllUserScripts()
-        let said = "window.heareShell = {login: \(Login.on)};"
+        let said = "window.heareShell = {login: \(Login.on), "
+            + "loginWhy: \(Self.js(Login.why)), mic: \(Self.js(Self.microphoneState()))};"
         controller.addUserScript(WKUserScript(source: said, injectionTime: .atDocumentStart,
                                               forMainFrameOnly: true))
         load(config.setupBase)
@@ -176,26 +177,73 @@ final class InstallerWindow: PageWindow, WKScriptMessageHandler {
                                didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any] else { return }
         if body["ask"] as? String == "microphone" {
-            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] allowed in
+                DispatchQueue.main.async {
+                    let state = allowed ? "granted" : Self.microphoneState()
+                    self?.web.evaluateJavaScript(
+                        "window.heareMic && window.heareMic(\(Self.js(state)))",
+                        completionHandler: nil)
+                }
+            }
         }
-        if let on = body["login"] as? Bool { Login.set(on) }
+        if let on = body["login"] as? Bool {
+            let why = Login.set(on)
+            let said = "window.heareLogin && window.heareLogin(\(Login.on), \(Self.js(why)));"
+            web.evaluateJavaScript(said, completionHandler: nil)
+        }
         if body["done"] as? Bool == true {
+            if let on = body["login"] as? Bool { _ = Login.set(on) }
             window.close()
             onDone?()
         }
     }
+
+    private static func microphoneState() -> String {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: return "granted"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "undetermined"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private static func js(_ value: String?) -> String {
+        guard let value else { return "null" }
+        let data = (try? JSONEncoder().encode(value)) ?? Data("\"\"".utf8)
+        return String(data: data, encoding: .utf8) ?? "null"
+    }
 }
 
 /// Starting with the Mac: one switch, read from and written to the system.
+/// A refused registration says why; the page shows that, not the wish.
 enum Login {
     static var on: Bool { SMAppService.mainApp.status == .enabled }
 
-    static func set(_ on: Bool) {
+    static var why: String? {
+        switch SMAppService.mainApp.status {
+        case .requiresApproval:
+            return tr("macOS needs your approval in System Settings → General → Login Items")
+        case .notFound:
+            return tr("macOS cannot find the login item")
+        default:
+            return nil
+        }
+    }
+
+    static func set(_ on: Bool) -> String? {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            NSLog("heare: login item: %@", error.localizedDescription)
+            return error.localizedDescription
         }
+        if on && !self.on {
+            return why ?? tr("starting with the Mac did not turn on")
+        }
+        if !on && self.on {
+            return tr("starting with the Mac did not turn off")
+        }
+        return nil
     }
 }
 

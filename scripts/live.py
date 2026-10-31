@@ -30,6 +30,8 @@ HOME = Path.home() / ".heare"
 MACHINE = HOME / "machine" if (HOME / "machine").is_dir() else HOME
 RELEASES = HOME / "releases"
 LIVE = RELEASES / "live"
+INSTALLED = RELEASES / "installed"
+HEALTHY = "healthy"
 KEEP = 5
 BASE = os.environ.get("HEARE_URL", "http://127.0.0.1:9790")
 WAIT_S = 90.0
@@ -73,6 +75,30 @@ def live_name() -> str:
         return LIVE.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
+
+
+def installed_name() -> str:
+    try:
+        return INSTALLED.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def is_healthy(release: Path) -> bool:
+    """Whether this release was seen running with every part connected.
+
+    Releases from before the healthy note have none; one at or before the
+    live marker did run, and one newer than it never became live.
+    """
+    if (release / HEALTHY).exists():
+        return True
+    live = live_name()
+    return bool(live) and release.name <= live
+
+
+def mark_healthy(release: Path) -> None:
+    (release / HEALTHY).write_text(
+        datetime.now().isoformat(timespec="seconds"), encoding="utf-8")
 
 
 def note(release: Path) -> dict:
@@ -139,11 +165,22 @@ def quit_app() -> None:
 def install(release: Path) -> None:
     quit_app()
     staged = APP.with_name("heare.app.new")
+    aside = APP.with_name("heare.app.old")
     shutil.rmtree(staged, ignore_errors=True)
+    shutil.rmtree(aside, ignore_errors=True)
     run("ditto", str(release / "heare.app"), str(staged))
-    if APP.exists():
-        shutil.rmtree(APP)
-    staged.rename(APP)
+    had = APP.exists()
+    if had:
+        APP.rename(aside)
+    try:
+        staged.rename(APP)
+    except OSError:
+        if had and aside.exists():
+            aside.rename(APP)
+        raise
+    if had:
+        shutil.rmtree(aside, ignore_errors=True)
+    INSTALLED.write_text(release.name, encoding="utf-8")
     python = APP / "Contents/Resources/python/bin/python3"
     SHIM_DIR.mkdir(parents=True, exist_ok=True)
     for name, module in SHIMS.items():
@@ -229,6 +266,7 @@ def put_live(release: Path, why: str) -> int:
         say(f"не вийшло за {time.monotonic() - started:.0f} с — журнали:"
             f" {HOME / 'logs'}; назад: make rollback")
         return 1
+    mark_healthy(release)
     LIVE.write_text(release.name, encoding="utf-8")
     n = note(release)
     parts = ", ".join(sorted(wanted_parts())) or "без частин"
@@ -254,17 +292,31 @@ def rollback(to: str = "") -> int:
     known = releases()
     if to:
         # By its name, or by its commit: TO=8ed418f is enough.
+        def commit(release: Path) -> str:
+            parts = release.name.split("-")
+            return parts[2] if len(parts) > 2 else ""
+
         target = next((r for r in reversed(known)
-                       if r.name.startswith(to) or r.name.split("-")[2].startswith(to)), None)
+                       if r.name.startswith(to) or commit(r).startswith(to)), None)
         if target is None:
             stop(f"немає релізу {to} — дивись: make releases")
     else:
-        names = [r.name for r in known]
         current = live_name()
-        older = known[:names.index(current)] if current in names else known[:-1]
-        if not older:
+        installed = installed_name()
+        # A failed live installs a release that never became healthy. The
+        # marker still names the last good one, so go back to that release —
+        # not to the one before it, which is what a plain "step back" does.
+        newer = [r for r in known if current and r.name > current]
+        if newer or (installed and installed != current):
+            candidates = [r for r in known
+                          if is_healthy(r) and (r.name != installed or r.name == current)]
+        elif current:
+            candidates = [r for r in known if is_healthy(r) and r.name < current]
+        else:
+            candidates = [r for r in known if is_healthy(r)]
+        if not candidates:
             stop("нема на що повертатись — дивись: make releases")
-        target = older[-1]
+        target = candidates[-1]
     return put_live(target, "повертаю")
 
 

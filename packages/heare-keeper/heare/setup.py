@@ -17,6 +17,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from heare import logs
 from heare import keys, machine
@@ -28,6 +29,15 @@ from heare.core.i18n import _
 ROLES = machine.ROLES
 INSTALLER = Path(__file__).with_name("installer.html")
 DEFAULT_PORT = 9791
+# What the form was last able to do: "serving", "taken" or "unknown". The
+# page cannot report a port it never bound, so the keeper and the page read
+# this instead of guessing.
+STATE: dict = {"port": None, "state": "unknown"}
+
+
+def state() -> dict:
+    return dict(STATE)
+
 
 
 def want_setup(settings: Settings) -> bool:
@@ -38,6 +48,18 @@ def want_setup(settings: Settings) -> bool:
 def _text(data: dict, name: str) -> str:
     value = data.get(name)
     return value.strip() if isinstance(value, str) else ""
+
+
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _loopback(host: str) -> bool:
+    """True when a Host header names this machine's loopback, any port or none."""
+    try:
+        name = urlsplit(f"//{host}").hostname
+    except ValueError:
+        return False
+    return name in _LOOPBACK
 
 
 class _FormServer(ThreadingHTTPServer):
@@ -67,6 +89,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self) -> None:
+        if not self._same_origin():
+            self._send(403, {"errors": [_("another page does not control this form")]})
+            return
         path = self.path.split("?", 1)[0]
         if path == "/keys":
             self._send(200, keys.view())
@@ -81,11 +106,13 @@ class _Handler(BaseHTTPRequestHandler):
                    content_type="text/html; charset=utf-8")
 
     def _same_origin(self) -> bool:
-        """The form is a local page: no other origin may drive it."""
+        """The form is a local page: only loopback may read or drive it."""
+        host = self.headers.get("Host") or ""
+        if not _loopback(host):
+            return False
         origin = self.headers.get("Origin")
         if origin is None:
             return True
-        host = self.headers.get("Host") or ""
         return origin == f"http://{host}"
 
     def do_POST(self) -> None:
@@ -167,7 +194,7 @@ class _Handler(BaseHTTPRequestHandler):
             token.chmod(0o600)
             settings.set("url", url)
         else:
-            settings.set("url", "")
+            settings.forget_pairing()
         settings.set("role", role)
         # A first run starts with every part this machine can have: one
         # asked to turn each on by itself had to guess that it must.
@@ -223,7 +250,8 @@ def _machine() -> dict:
             "parts": machine.parts(Path(settings.parts_dir)),
             "keys": keys.view(),
             "url": settings.url or "",
-            "api_port": settings.api_port}
+            "api_port": settings.api_port,
+            "setup": state()}
 
 
 def _open(address: str) -> None:
@@ -241,11 +269,14 @@ def serve(port: int | None = None) -> None:
     # Exactly the configured port: the app and the person look for the page
     # there, and a page that moved to the next free port quietly was a page
     # nobody could find.
+    global STATE
     port = port if port is not None else int(Settings().setup_port or DEFAULT_PORT)
     try:
         httpd = _FormServer(("127.0.0.1", port))
     except OSError as error:
+        STATE = {"port": port, "state": "taken", "why": str(error)}
         raise OSError(_("port {port} is taken — the settings page is unavailable: {error}").format(port=port, error=error)) from error
+    STATE = {"port": port, "state": "serving"}
 
     address = f"http://127.0.0.1:{httpd.server_address[1]}/"
     logs.say(_("form: {address}").format(address=address))

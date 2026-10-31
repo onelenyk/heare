@@ -84,6 +84,9 @@ switch away in ⚙.
 
    You only need to do this once.
 
+The Mac has one install path: this app. `install.sh` is for Linux servers
+and bodies; on a Mac it refuses and points here.
+
 ## First run
 
 heare opens its setup in its own window and asks for:

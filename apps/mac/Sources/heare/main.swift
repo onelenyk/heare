@@ -16,8 +16,9 @@ if let at = arguments.firstIndex(of: "--uninstall") {
         FileHandle.standardError.write((tr("heare is still running — first «Quit» in its menu") + "\n").data(using: .utf8)!)
         exit(1)
     }
-    for line in Uninstall.run(keep: keep) { print(line) }
-    exit(0)
+    let outcome = Uninstall.run(keep: keep)
+    for line in outcome.lines { print(line) }
+    exit(outcome.ok ? 0 : 1)
 }
 
 // One heare on this Mac: a second would fight the first for its ports. A
