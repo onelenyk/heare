@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import struct
+import sys
 from types import SimpleNamespace
+
+import pytest
 
 from heare.core import Message
 from heare.surroundings import sound
@@ -21,9 +25,48 @@ def test_the_assistants_own_bodies_are_not_other_programs(monkeypatch):
     assert sound._ours(456) is False
 
 
+def test_our_own_voice_is_not_playing(monkeypatch):
+    """install.sh runs the voice as a heare-voice tool script, not -m heare."""
+    monkeypatch.setattr(sound, "subprocess", SimpleNamespace(run=lambda *a, **k: (
+        SimpleNamespace(stdout="/usr/bin/python3 /Users/me/.local/bin/heare-voice\n"))))
+    assert sound._ours(789) is True
+
+
 def test_the_sense_answers_with_names_and_never_breaks():
     heard = sound.playing()
-    assert isinstance(heard, list) and all(isinstance(n, str) for n in heard)
+    assert heard is None or (isinstance(heard, list)
+                             and all(isinstance(n, str) for n in heard))
+
+
+def test_the_poll_uses_one_ps_per_round(monkeypatch):
+    if sys.platform != "darwin":
+        pytest.skip("CoreAudio lives only on macOS")
+    calls: list[list[str]] = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(stdout=(
+            "  101 /Applications/Music.app/Contents/MacOS/Music\n"
+            "  202 /usr/bin/python3 /Users/me/.local/bin/heare-voice\n"))
+
+    listed = struct.pack("2I", 1000, 1001)
+
+    def get(obj, selector):
+        if obj == sound._SYSTEM:
+            return listed
+        if selector == "ppid":
+            return struct.pack("i", 101 if obj == 1000 else 202)
+        if selector == "piro":
+            return struct.pack("I", 1)
+        return None
+
+    monkeypatch.setattr(sound.subprocess, "run", run)
+    monkeypatch.setattr(sound, "_get", get)
+    monkeypatch.setattr(sound, "_library", object())
+
+    assert sound.playing() == ["Music"]
+    assert len(calls) == 1
+    assert calls[0][:2] == ["ps", "-axo"]
 
 
 async def test_while_something_plays_only_the_name_gets_an_answer():

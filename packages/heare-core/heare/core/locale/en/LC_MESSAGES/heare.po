@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-28 21:43+0200\n"
+"POT-Creation-Date: 2026-10-29 22:50+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -13,6 +13,20 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "The new heare did not start"
+msgstr ""
+
+#, python-brace-format
+msgid "heare {new} is not answering. Go back to {old}?"
+msgstr ""
+
+#, python-brace-format
+msgid "Go back to {v}"
+msgstr ""
+
+msgid "Keep the new one"
+msgstr ""
 
 msgid "Body · the brain is elsewhere"
 msgstr ""
@@ -50,6 +64,12 @@ msgid "Remove heare…"
 msgstr ""
 
 msgid "Quit"
+msgstr ""
+
+msgid "Close"
+msgstr ""
+
+msgid "Some of heare could not be removed"
 msgstr ""
 
 msgid "Check for updates…"
@@ -94,9 +114,6 @@ msgstr ""
 msgid "Minimize"
 msgstr ""
 
-msgid "Close"
-msgstr ""
-
 msgid "heare console"
 msgstr ""
 
@@ -122,6 +139,10 @@ msgid "the keys are removed"
 msgstr ""
 
 msgid "the keys could not be removed"
+msgstr ""
+
+#, python-brace-format
+msgid "starting with the Mac could not be turned off: {why}"
 msgstr ""
 
 msgid "starting with the Mac is off"
@@ -189,6 +210,18 @@ msgstr ""
 msgid "heare — settings"
 msgstr ""
 
+msgid "macOS needs your approval in System Settings → General → Login Items"
+msgstr ""
+
+msgid "macOS cannot find the login item"
+msgstr ""
+
+msgid "starting with the Mac did not turn on"
+msgstr ""
+
+msgid "starting with the Mac did not turn off"
+msgstr ""
+
 msgid "heare is still running — first «Quit» in its menu"
 msgstr ""
 
@@ -246,6 +279,9 @@ msgid "Review now"
 msgstr ""
 
 msgid "last"
+msgstr ""
+
+msgid "Already reviewed today."
 msgstr ""
 
 msgid "Daily review"
@@ -885,7 +921,7 @@ msgstr ""
 msgid "marked {done} of {all}"
 msgstr ""
 
-msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
+msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. The marks stay with the recording, so I can learn what to listen for."
 msgstr ""
 
 msgid "no recordings yet — they appear as soon as I hear something."
@@ -1312,6 +1348,22 @@ msgstr ""
 msgid "the judge did not answer"
 msgstr ""
 
+msgid "not checked — saved"
+msgstr ""
+
+msgid "no connection to the provider — check the internet"
+msgstr ""
+
+msgid "the key does not fit"
+msgstr ""
+
+#, python-brace-format
+msgid "the provider answered {code}"
+msgstr ""
+
+msgid "alive"
+msgstr ""
+
 msgid "This is not for the quick hands, and no other hands are here."
 msgstr ""
 
@@ -1519,15 +1571,27 @@ msgstr ""
 msgid "({n} more times in {m} min)"
 msgstr ""
 
+#, python-brace-format
+msgid "no key ({file}) — waiting for the brain to make one"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain refused the key ({code}) — the machine may be paired with another brain"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain has no such route ({code}) — it may be another version"
+msgstr ""
+
+#, python-brace-format
+msgid "the brain answered {code}"
+msgstr ""
+
 msgid "waiting to be approved on the page…"
 msgstr ""
 
 #, python-brace-format
 msgid "the brain does not answer at {base} yet — waiting"
-msgstr ""
-
-#, python-brace-format
-msgid "no key ({file}) — is the brain running?"
 msgstr ""
 
 #, python-brace-format
@@ -1678,6 +1742,12 @@ msgstr ""
 msgid "Allow"
 msgstr ""
 
+msgid "Allowed"
+msgstr ""
+
+msgid "the microphone is off — turn it on in System Settings → Privacy & Security → Microphone"
+msgstr ""
+
 msgid "Microphone"
 msgstr ""
 
@@ -1703,6 +1773,34 @@ msgid "done — the parts connect to the brain"
 msgstr ""
 
 msgid "Start using it"
+msgstr ""
+
+msgid "the brain refused the key"
+msgstr ""
+
+msgid "the brain has no such route"
+msgstr ""
+
+msgid "the brain answered with an error"
+msgstr ""
+
+#, python-brace-format
+msgid "fell (code {code}) — {why}"
+msgstr ""
+
+#, python-brace-format
+msgid "fell (code {code})"
+msgstr ""
+
+#, python-brace-format
+msgid "could not start {command}: {why}"
+msgstr ""
+
+#, python-brace-format
+msgid "another keeper already runs on this computer (pid {pid}) — this one stops"
+msgstr ""
+
+msgid "settings changed; the parts restart"
 msgstr ""
 
 msgid "All here"
@@ -1733,30 +1831,14 @@ msgstr ""
 msgid "not installed on this machine"
 msgstr ""
 
-msgid "not checked — saved"
-msgstr ""
-
-msgid "no connection to the provider — check the internet"
-msgstr ""
-
-msgid "the key does not fit"
-msgstr ""
-
-#, python-brace-format
-msgid "the provider answered {code}"
-msgstr ""
-
-msgid "alive"
-msgstr ""
-
 #, python-brace-format
 msgid "not switched on: {error}"
 msgstr ""
 
-msgid "no such page"
+msgid "another page does not control this form"
 msgstr ""
 
-msgid "another page does not control this form"
+msgid "no such page"
 msgstr ""
 
 msgid "JSON is needed"
@@ -1959,5 +2041,11 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "hands"
+#~ msgstr ""
+
+#~ msgid "no key ({file}) — is the brain running?"
+#~ msgstr ""
+
+#~ msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
 #~ msgstr ""
 

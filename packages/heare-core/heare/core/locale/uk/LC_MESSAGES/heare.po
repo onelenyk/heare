@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-28 21:43+0200\n"
+"POT-Creation-Date: 2026-10-29 22:50+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -13,6 +13,20 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "The new heare did not start"
+msgstr "Новий heare не запустився"
+
+#, python-brace-format
+msgid "heare {new} is not answering. Go back to {old}?"
+msgstr "heare {new} не відповідає. Повернутися до {old}?"
+
+#, python-brace-format
+msgid "Go back to {v}"
+msgstr "Повернутися до {v}"
+
+msgid "Keep the new one"
+msgstr "Лишити нову версію"
 
 msgid "Body · the brain is elsewhere"
 msgstr "Тіло · мозок деінде"
@@ -51,6 +65,12 @@ msgstr "Видалити heare…"
 
 msgid "Quit"
 msgstr "Вийти"
+
+msgid "Close"
+msgstr "Закрити"
+
+msgid "Some of heare could not be removed"
+msgstr "Дещо з heare не вдалося прибрати"
 
 msgid "Check for updates…"
 msgstr "Перевірити оновлення…"
@@ -94,9 +114,6 @@ msgstr "Вікно"
 msgid "Minimize"
 msgstr "Згорнути"
 
-msgid "Close"
-msgstr "Закрити"
-
 msgid "heare console"
 msgstr "Пульт heare"
 
@@ -123,6 +140,10 @@ msgstr "ключі прибрано"
 
 msgid "the keys could not be removed"
 msgstr "ключі прибрати не вдалося"
+
+#, python-brace-format
+msgid "starting with the Mac could not be turned off: {why}"
+msgstr "не вдалося вимкнути старт із маком: {why}"
 
 msgid "starting with the Mac is off"
 msgstr "старт із маком вимкнено"
@@ -189,6 +210,18 @@ msgstr "heare прокидається…"
 msgid "heare — settings"
 msgstr "heare — налаштування"
 
+msgid "macOS needs your approval in System Settings → General → Login Items"
+msgstr "macOS чекає схвалення: Системні налаштування → Загальні → Об'єкти входу"
+
+msgid "macOS cannot find the login item"
+msgstr "macOS не бачить об'єкта входу"
+
+msgid "starting with the Mac did not turn on"
+msgstr "старт із маком не увімкнувся"
+
+msgid "starting with the Mac did not turn off"
+msgstr "старт із маком не вимкнувся"
+
 msgid "heare is still running — first «Quit» in its menu"
 msgstr "heare ще працює — спершу «Вийти» в його меню"
 
@@ -247,6 +280,9 @@ msgstr "Оглянути зараз"
 
 msgid "last"
 msgstr "останній"
+
+msgid "Already reviewed today."
+msgstr "Сьогодні вже переглянуто."
 
 msgid "Daily review"
 msgstr "Щоденний огляд"
@@ -885,8 +921,8 @@ msgstr "Що я почув"
 msgid "marked {done} of {all}"
 msgstr "розмічено {done} з {all}"
 
-msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
-msgstr "Послухай і познач: «Правильно» — сказано мені й почуто так; «Виправити» — що було насправді; «Фон» — не до мене. З цього ми міряємо, як я тебе чую."
+msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. The marks stay with the recording, so I can learn what to listen for."
+msgstr "Послухай і познач: «Правильно» — сказано мені й почуто так; «Виправити» — що було насправді; «Фон» — не до мене. Позначки лишаються із записом, щоб я вчився, до чого дослухатися."
 
 msgid "no recordings yet — they appear as soon as I hear something."
 msgstr "записів ще немає — вони зʼявляться, щойно я щось почую."
@@ -1317,6 +1353,22 @@ msgstr "не впевнений"
 msgid "the judge did not answer"
 msgstr "суддя не відповів"
 
+msgid "not checked — saved"
+msgstr "не перевіряю — збережено"
+
+msgid "no connection to the provider — check the internet"
+msgstr "немає зв'язку з провайдером — перевір інтернет"
+
+msgid "the key does not fit"
+msgstr "ключ не підходить"
+
+#, python-brace-format
+msgid "the provider answered {code}"
+msgstr "провайдер відповів {code}"
+
+msgid "alive"
+msgstr "живий"
+
 msgid "This is not for the quick hands, and no other hands are here."
 msgstr "Це не для швидких рук, а інших рук зараз немає."
 
@@ -1524,16 +1576,28 @@ msgstr "руки: нові налаштування, починаю знову"
 msgid "({n} more times in {m} min)"
 msgstr "(ще {n} раз за {m} хв)"
 
+#, python-brace-format
+msgid "no key ({file}) — waiting for the brain to make one"
+msgstr "немає ключа ({file}) — чекаю, доки мозок створить його"
+
+#, python-brace-format
+msgid "the brain refused the key ({code}) — the machine may be paired with another brain"
+msgstr "мозок відкинув ключ ({code}) — можливо, ця машина спарована з іншим мозком"
+
+#, python-brace-format
+msgid "the brain has no such route ({code}) — it may be another version"
+msgstr "у мозку немає такого маршруту ({code}) — можливо, це інша версія"
+
+#, python-brace-format
+msgid "the brain answered {code}"
+msgstr "мозок відповів {code}"
+
 msgid "waiting to be approved on the page…"
 msgstr "чекаю, доки мене одобрять на сторінці…"
 
 #, python-brace-format
 msgid "the brain does not answer at {base} yet — waiting"
 msgstr "мозок ще не відповідає на {base} — чекаю"
-
-#, python-brace-format
-msgid "no key ({file}) — is the brain running?"
-msgstr "немає ключа ({file}) — мозок запущений?"
 
 #, python-brace-format
 msgid "the brain does not answer at {base}: {why}"
@@ -1683,6 +1747,12 @@ msgstr "Майже все"
 msgid "Allow"
 msgstr "Дозволити"
 
+msgid "Allowed"
+msgstr "Дозволено"
+
+msgid "the microphone is off — turn it on in System Settings → Privacy & Security → Microphone"
+msgstr "мікрофон вимкнено — увімкни його: Системні налаштування → Конфіденційність і безпека → Мікрофон"
+
 msgid "Microphone"
 msgstr "Мікрофон"
 
@@ -1709,6 +1779,34 @@ msgstr "готово — частини підключаються до мозк
 
 msgid "Start using it"
 msgstr "Почати користуватись"
+
+msgid "the brain refused the key"
+msgstr "мозок відкинув ключ"
+
+msgid "the brain has no such route"
+msgstr "у мозку немає такого маршруту"
+
+msgid "the brain answered with an error"
+msgstr "мозок відповів помилкою"
+
+#, python-brace-format
+msgid "fell (code {code}) — {why}"
+msgstr "впала (код {code}) — {why}"
+
+#, python-brace-format
+msgid "fell (code {code})"
+msgstr "впала (код {code})"
+
+#, python-brace-format
+msgid "could not start {command}: {why}"
+msgstr "не вдалося запустити {command}: {why}"
+
+#, python-brace-format
+msgid "another keeper already runs on this computer (pid {pid}) — this one stops"
+msgstr "наглядач уже працює на цьому комп'ютері (pid {pid}) — цей зупиняється"
+
+msgid "settings changed; the parts restart"
+msgstr "налаштування змінилися; частини перезапускаються"
 
 msgid "All here"
 msgstr "Усе тут"
@@ -1738,31 +1836,15 @@ msgstr "лише на {where}"
 msgid "not installed on this machine"
 msgstr "не встановлена на цій машині"
 
-msgid "not checked — saved"
-msgstr "не перевіряю — збережено"
-
-msgid "no connection to the provider — check the internet"
-msgstr "немає зв'язку з провайдером — перевір інтернет"
-
-msgid "the key does not fit"
-msgstr "ключ не підходить"
-
-#, python-brace-format
-msgid "the provider answered {code}"
-msgstr "провайдер відповів {code}"
-
-msgid "alive"
-msgstr "живий"
-
 #, python-brace-format
 msgid "not switched on: {error}"
 msgstr "не ввімкнув: {error}"
 
-msgid "no such page"
-msgstr "не знаю такої сторінки"
-
 msgid "another page does not control this form"
 msgstr "чужа сторінка не керує цією формою"
+
+msgid "no such page"
+msgstr "не знаю такої сторінки"
 
 msgid "JSON is needed"
 msgstr "потрібен JSON"
@@ -1965,4 +2047,10 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "hands"
 #~ msgstr "руки"
+
+#~ msgid "no key ({file}) — is the brain running?"
+#~ msgstr "немає ключа ({file}) — мозок запущений?"
+
+#~ msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
+#~ msgstr "Послухай і познач: «Правильно» — сказано мені й почуто так; «Виправити» — що було насправді; «Фон» — не до мене. З цього ми міряємо, як я тебе чую."
 

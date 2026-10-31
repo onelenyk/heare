@@ -13,6 +13,7 @@ import pytest
 
 from heare import machine, part
 from heare.feeds import weather
+from heare.prompt import persona
 from heare.sources import Sources, load
 
 HOURLY_TEMPERATURES = [2, 1, 0, -2, -1, 0, 1, 2, 3, 4, 5, 6]
@@ -200,7 +201,9 @@ async def test_nothing_is_posted_while_the_weather_is_off(tmp_path):
         await wire.settle()
     await web.aclose()
 
-    assert _notes(brain_seen) == []
+    (retraction,) = _notes(brain_seen)
+    assert retraction["key"] == "weather"
+    assert retraction["value"]["until"] <= time.time()
     assert sources.sees == "off"
 
 
@@ -234,7 +237,8 @@ async def test_an_unknown_city_is_shown_on_the_card(tmp_path):
         await wire.settle()
     await web.aclose()
 
-    assert _notes(brain_seen) == []
+    (retraction,) = _notes(brain_seen)
+    assert retraction["value"]["until"] <= time.time()
     assert sources.sees == "city not found"
 
 
@@ -263,3 +267,46 @@ def test_the_keeper_knows_the_sources_part():
     assert "sources" in machine.PARTS
     assert machine.PARTS["sources"].channel == "sources"
     assert machine.PARTS["sources"].forms == ("input",)
+
+
+async def test_turning_weather_off_expires_the_now_note(tmp_path):
+    brain_seen: list[httpx.Request] = []
+    web = httpx.AsyncClient(transport=httpx.MockTransport(_open_meteo))
+    async with httpx.AsyncClient(transport=_brain(brain_seen)) as client:
+        wire = part.Wire(client, "http://127.0.0.1:9790", "sources", "pid", "secret")
+        sources = Sources(web, tmp_path / "sources.json")
+        sources.wire = wire
+        await sources.look()
+        sources.event({"kind": "control", "name": "weather", "value": False})
+        await sources.look()
+        await wire.settle()
+    await web.aclose()
+
+    notes = _notes(brain_seen)
+    assert len(notes) == 2
+    assert notes[0]["value"]["until"] > time.time()
+    expired = notes[1]["value"]
+    assert expired["until"] <= time.time()
+    assert persona.now_block({"weather": expired}, time.time()) == ""
+    assert sources.weather is False
+
+
+async def test_changing_the_city_expires_the_old_now_note(tmp_path):
+    brain_seen: list[httpx.Request] = []
+    web = httpx.AsyncClient(transport=httpx.MockTransport(_open_meteo))
+    async with httpx.AsyncClient(transport=_brain(brain_seen)) as client:
+        wire = part.Wire(client, "http://127.0.0.1:9790", "sources", "pid", "secret")
+        sources = Sources(web, tmp_path / "sources.json")
+        sources.wire = wire
+        await sources.look()
+        sources.event({"kind": "control", "name": "city", "value": "Львів"})
+        await sources.look()
+        await wire.settle()
+    await web.aclose()
+
+    old, expired, new = _notes(brain_seen)
+    assert old["value"]["until"] > time.time()
+    assert expired["value"]["until"] <= time.time()
+    assert persona.now_block({"weather": expired["value"]}, time.time()) == ""
+    assert new["value"]["until"] > time.time()
+    assert sources.city == "Львів"

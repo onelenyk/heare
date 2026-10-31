@@ -25,6 +25,7 @@ from heare.surroundings.watch import Surroundings
 from heare.core.i18n import N_, _
 
 logger = logging.getLogger("heare.eyes")
+NOTE_TIMEOUT_S = 5.0
 
 ABOUT = "which app is open on the Mac (its name only), whether something plays"
 UI = [
@@ -43,13 +44,15 @@ class Door:
 
     name = "eyes"
 
-    def __init__(self, client: httpx.AsyncClient, base: str) -> None:
+    def __init__(self, client: httpx.AsyncClient, base: str,
+                 settings: Settings | None = None) -> None:
         self._client, self._base = client, base
+        self._settings = settings
         self._sending: set[asyncio.Task] = set()
         # Once the part is let in, reports go through its wire, which keeps
         # them to tell a brain that restarted.
         self.wire: part.Wire | None = None
-        self.looking = True
+        self.looking = bool(getattr(settings, "eyes_looking", True)) if settings else True
         self.sees = N_("quiet")
 
     def values(self) -> dict:
@@ -58,6 +61,8 @@ class Door:
     def event(self, event: dict) -> None:
         if event.get("kind") == "control" and event.get("name") == "looking":
             self.looking = bool(event.get("value"))
+            if self._settings is not None:
+                self._settings.set("eyes_looking", self.looking)
             self.tell()
 
     def tell(self) -> None:
@@ -69,26 +74,37 @@ class Door:
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)
 
-    def note(self, key: str, value: object) -> None:
-        """Post the fact without waiting: a sensor must not stall the loop."""
-        if not self.looking:
-            return
+    def note(self, key: str, value: object) -> asyncio.Task[bool] | None:
+        """Post the fact without waiting; the task says whether it was taken.
+
+        ``Surroundings`` awaits the task and only marks the fact told after
+        a 2xx, so a note that met a restarting brain is sent again on the
+        next tick. A sensor that failed hands over ``None`` and is not
+        turned into a false «quiet».
+        """
+        if not self.looking or value is None:
+            return None
         if key == "app":
             self.sees = str(value or N_("quiet"))
         task = asyncio.create_task(self._post(key, value))
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)
+        return task
 
-    async def _post(self, key: str, value: object) -> None:
+    async def _post(self, key: str, value: object) -> bool:
+        taken = False
         try:
-            answer = await self._client.post(f"{self._base}/api/input", json={
-                "channel": self.name, "kind": "note", "key": key, "value": value,
-            })
+            answer = await self._client.post(
+                f"{self._base}/api/input", timeout=NOTE_TIMEOUT_S, json={
+                    "channel": self.name, "kind": "note", "key": key, "value": value,
+                })
             answer.raise_for_status()
+            taken = True
         except httpx.HTTPError as exc:
             logger.warning("could not tell the brain about %s: %s", key, exc)
         if key == "app":
             self.tell()
+        return taken
 
     async def settle(self) -> None:
         """Wait for every note already posted to reach the door."""
@@ -112,7 +128,7 @@ async def run() -> int:
     settings = Settings()
     host = socket.gethostname()
     async with httpx.AsyncClient(timeout=None) as client:
-        door = Door(client, settings.base)
+        door = Door(client, settings.base, settings)
 
         async def work(wire: part.Wire) -> None:
             door.wire = wire

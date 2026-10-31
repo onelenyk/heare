@@ -30,7 +30,7 @@ from heare.core.i18n import N_, _
 logger = logging.getLogger("heare.sources")
 
 CHANNEL = "sources"
-ABOUT = "the weather outside"
+ABOUT = "the weather outside, from Open-Meteo (geocoding and forecast)"
 HELLO = _("sources: looking at what is outside")
 ROUND_S = 30 * 60
 # A fact from Open-Meteo is true for this long after it was fetched.
@@ -78,6 +78,9 @@ class Sources:
         # Set when the person changes a setting, so the next fetch is now
         # and not in half an hour.
         self.wake = asyncio.Event()
+        # The old Now note is expired before the next fetch, so a switched
+        # off or moved city never keeps being served.
+        self._retract = False
 
     def values(self) -> dict:
         return {"weather": self.weather, "city": self.city, "sees": self.sees}
@@ -90,11 +93,14 @@ class Sources:
             self.weather = bool(event.get("value"))
             if not self.weather:
                 self.sees = N_("off")
+                self._retract = True
         elif name == "city":
             city = str(event.get("value") or "").strip()
-            if not city:
+            if not city or city == self.city:
                 return
             self.city = city
+            self.sees = "—"
+            self._retract = True
         else:
             return
         save(self._path, {"weather": self.weather, "city": self.city})
@@ -115,6 +121,7 @@ class Sources:
         A failed fetch is logged and shown; the next round tries again. It
         never ends the part.
         """
+        await self.expire()
         if not self.weather or self.wire is None:
             return
         try:
@@ -131,6 +138,13 @@ class Sources:
         await self.post(
             "weather", {"text": text, "until": time.time() + TRUE_FOR_S, "label": label}
         )
+
+    async def expire(self) -> None:
+        """Retract the old Now note at once, before a new value is fetched."""
+        if not self._retract or self.wire is None:
+            return
+        self._retract = False
+        await self.post("weather", {"text": "", "until": 0.0, "label": ""})
 
     async def post(self, key: str, value: dict) -> None:
         assert self.wire is not None
