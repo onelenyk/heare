@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Sequence
 
 from heare.memory import search
+from heare.memory.contracts import Fact
 from heare.memory.facts import SQLiteFacts
 from heare.memory.journal import Journal
 from heare.memory.persist import SpinePersistence
@@ -375,7 +376,7 @@ class Book:
         facts = self._facts.current()[:FACT_LIMIT]
         if facts:
             lines = [_FACTS_OPEN]
-            lines.extend(f"- {fact.text}" for fact in facts)
+            lines.extend(_fact_line(fact) for fact in facts)
             lines.append(_FACTS_CLOSE)
             block = "\n".join(lines)
             return f"{profile}\n\n{block}" if profile else block
@@ -383,6 +384,17 @@ class Book:
 
     def close(self) -> None:
         self._store.close()
+
+
+def _fact_line(fact: Fact) -> str:
+    """A fact's age is part of it: «lives in Kyiv» learned last week
+    and the same words from last year are different claims. A fact
+    with no recorded date — everything carried from the old app —
+    must not pretend to be from 1970."""
+    if fact.valid_from <= 0:
+        return f"- {fact.text}"
+    day = datetime.fromtimestamp(fact.valid_from).strftime("%Y-%m-%d")
+    return f"- {day}: {fact.text}"
 
 
 def _payload(event: dict) -> dict:

@@ -166,7 +166,7 @@ async def _learn(
     moment: float,
 ) -> ReviewReport:
     considered = len(transcript)
-    added = skipped = 0
+    added = skipped = parsed = 0
     try:
         known_facts = (await asyncio.to_thread(store.current))[:MAX_KNOWN]
         pending = await asyncio.to_thread(store.current, include_pending=True)
@@ -179,6 +179,7 @@ async def _learn(
             item = _item(raw)
             if item is None:
                 continue
+            parsed += 1
             predicate, value, text, confidence = item
             if confidence < MIN_CONFIDENCE:
                 logger.debug(
@@ -208,6 +209,11 @@ async def _learn(
                 await asyncio.to_thread(store.add, fact)
             known.add((predicate, value))
             added += 1
+        if items and not parsed:
+            # A full array of unusable items is not "nothing to remember":
+            # it is a broken answer. Raising keeps the cursor where it is,
+            # so the same lines are read again instead of being lost.
+            raise ValueError("the review answer had no usable fact")
     except Exception as exc:
         return ReviewReport(
             considered=considered, added=added, skipped=skipped, error=str(exc)

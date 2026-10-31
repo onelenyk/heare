@@ -353,6 +353,36 @@ async def test_a_failed_notice_keeps_the_cursor_for_the_next_pass(tmp_path):
     assert len(store.current()) == 1
 
 
+async def test_an_answer_of_only_unusable_items_is_an_error_and_keeps_the_cursor(
+    tmp_path,
+):
+    journal = Journal(tmp_path / "events")
+    _heard(journal, "Груша мій кіт.", at=_stamp(DAY, 10))
+    store = FakeFacts()
+    state_path = tmp_path / "consolidate.json"
+    broken = Script()
+    broken.will_say(json.dumps([
+        {"predicate": "Bad Predicate", "value": "x", "text": "y"},
+    ]))
+
+    failed = await notice(
+        store, journal, broken, state_path=state_path, now=1000.0
+    )
+
+    assert failed.error
+    assert failed.added == 0
+    assert not state_path.exists()
+
+    model = Script()
+    model.will_say(_pet_answer())
+    retry = await notice(
+        store, journal, model, state_path=state_path, now=2000.0
+    )
+
+    assert retry == ReviewReport(considered=1, added=1)
+    assert store.current()[0].value == "Груша, кіт"
+
+
 async def test_a_late_fact_survives_the_message_cap(tmp_path):
     journal = Journal(tmp_path / "events")
     for index in range(MAX_MESSAGES + 1):
