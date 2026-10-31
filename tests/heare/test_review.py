@@ -389,15 +389,13 @@ async def test_an_answer_of_only_unusable_items_is_an_error_and_keeps_the_cursor
     assert store.current()[0].value == "Груша, кіт"
 
 
-async def test_an_off_vocabulary_predicate_is_an_error_and_keeps_the_cursor(
-    tmp_path,
-):
+async def test_an_off_vocabulary_predicate_is_kept_as_other(tmp_path):
     journal = Journal(tmp_path / "events")
     _heard(journal, "Я люблю каву.", at=_stamp(DAY, 10))
     store = FakeFacts()
     state_path = tmp_path / "consolidate.json"
-    broken = Script()
-    broken.will_say(json.dumps([
+    model = Script()
+    model.will_say(json.dumps([
         {
             "predicate": "likes_coffee",
             "value": "strong coffee",
@@ -406,23 +404,16 @@ async def test_an_off_vocabulary_predicate_is_an_error_and_keeps_the_cursor(
         },
     ]))
 
-    failed = await notice(
-        store, journal, broken, state_path=state_path, now=1000.0
+    report = await notice(
+        store, journal, model, state_path=state_path, now=1000.0
     )
 
-    assert failed.error
-    assert failed.added == 0
-    assert store.current(include_pending=True) == []
-    assert not state_path.exists()
-
-    model = Script()
-    model.will_say(_pet_answer())
-    retry = await notice(
-        store, journal, model, state_path=state_path, now=2000.0
-    )
-
-    assert retry == ReviewReport(considered=1, added=1)
-    assert store.current()[0].predicate == "has_pet"
+    assert report == ReviewReport(considered=1, added=1)
+    assert state_path.exists()
+    fact = store.current()[0]
+    assert fact.predicate == "other"
+    assert fact.value == "strong coffee"
+    assert fact.text == "You like strong coffee."
 
 
 async def test_a_late_fact_survives_the_message_cap(tmp_path):

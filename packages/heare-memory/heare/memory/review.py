@@ -356,7 +356,10 @@ def _item(raw: object) -> tuple[str, str, str, float] | None:
     if not isinstance(predicate, str) or not _PREDICATE.fullmatch(predicate):
         return None
     if predicate not in PREDICATES:
-        return None
+        # The fact is worth more than the key. Refusing it would also keep
+        # the cursor on the same lines every pass, so the review would stop
+        # learning anything new while it argued with the model.
+        predicate = "other"
     if not isinstance(value, str) or not isinstance(text, str):
         return None
     value, text = value.strip(), text.strip()
