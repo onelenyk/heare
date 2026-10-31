@@ -19,9 +19,12 @@ and a running turn can be stopped (``session/cancel``).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import json
+import os
 import re
+import signal
 import time
 from heare.core.i18n import _
 from collections.abc import Awaitable, Callable
@@ -32,6 +35,10 @@ AGENTS: dict[str, list[str]] = {
     "claude": ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.81.2"],
     "opencode": ["opencode", "acp"],
 }
+
+# Every call but a prompt gets an answer or a reason within this. A prompt
+# is bounded by the hands' watchdog: it is meant to think for minutes.
+CALL_TIMEOUT_S = 60.0
 
 # Sent once, as the first block of a session's first prompt. The same text
 # for every agent: ACP has no system-prompt field, and a prompt block is
@@ -140,13 +147,16 @@ class Session:
             result = await self.agent._call(
                 "session/prompt", {"sessionId": self.id, "prompt": blocks}
             )
+            if not isinstance(result, dict):
+                raise AcpError(f"{self.agent.name} answered a prompt with "
+                               "something ACP does not have")
+            self.stop_reason = result.get("stopReason")
+            self.status = "cancelled" if self.stop_reason == "cancelled" else "done"
         except BaseException:
             self.status = "failed"
             raise
         finally:
             self.total = time.monotonic() - self._started
-        self.stop_reason = (result or {}).get("stopReason")
-        self.status = "cancelled" if self.stop_reason == "cancelled" else "done"
         return self.text
 
     async def cancel(self) -> None:
@@ -170,10 +180,14 @@ class Session:
         return True
 
     def _update(self, u: dict) -> None:
+        if not isinstance(u, dict):
+            return
         kind = u.get("sessionUpdate")
         t = time.monotonic() - self._started
+        content = u.get("content")
+        content = content if isinstance(content, dict) else {}
         if kind == "agent_message_chunk":
-            chunk = (u.get("content") or {}).get("text") or ""
+            chunk = content.get("text") or ""
             if not chunk:
                 return
             # A new message after a tool call starts without a space; heard
@@ -191,13 +205,15 @@ class Session:
                 self.first_sentence = t
             ev = Event("text", chunk, t)
         elif kind == "agent_thought_chunk":
-            ev = Event("thought", (u.get("content") or {}).get("text") or "", t)
+            ev = Event("thought", content.get("text") or "", t)
         elif kind == "tool_call":
             ev = Event("tool", _tool_text(u), t)
         elif kind == "tool_call_update" and u.get("status") in ("completed", "failed"):
             ev = Event("tool_done", f"{u.get('title') or ''} {u['status']}".strip(), t)
         elif kind == "plan":
-            steps = [e.get("content", "") for e in u.get("entries", [])]
+            entries = u.get("entries")
+            entries = entries if isinstance(entries, list) else []
+            steps = [e.get("content", "") for e in entries if isinstance(e, dict)]
             ev = Event("plan", " · ".join(steps), t)
         else:
             return
@@ -231,6 +247,7 @@ class Agent:
         self.startup: float | None = None
         self._decide = on_permission
         self._stderr = stderr
+        self._stderr_file = None
         self._proc: asyncio.subprocess.Process | None = None
         self._reader: asyncio.Task | None = None
         self._ids = itertools.count(1)
@@ -240,42 +257,74 @@ class Agent:
 
     # -- lifecycle ------------------------------------------------------
 
+    @property
+    def alive(self) -> bool:
+        """True while the CLI is still there to answer."""
+        return self._proc is not None and self._proc.returncode is None
+
     async def start(self) -> None:
         t0 = time.monotonic()
-        err = open(self._stderr, "ab") if self._stderr else asyncio.subprocess.DEVNULL
-        self._proc = await asyncio.create_subprocess_exec(
-            *self.command,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=err,
-            env=self._env,
-            limit=2**24,  # one message is one line; tool output can be long
-        )
-        self._reader = asyncio.create_task(self._read(), name=f"acp-{self.name}")
-        self.info = await self._call(
-            "initialize",
-            {
-                "protocolVersion": 1,
-                # No file or terminal access is lent to the agent: it uses its
-                # own tools, so the client stays a voice and nothing more.
-                "clientCapabilities": {
-                    "fs": {"readTextFile": False, "writeTextFile": False},
-                    "terminal": False,
+        Path(self.cwd).mkdir(parents=True, exist_ok=True)
+        self._stderr_file = open(self._stderr, "ab") if self._stderr else None
+        err = self._stderr_file or asyncio.subprocess.DEVNULL
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                *self.command,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=err,
+                env=self._env,
+                cwd=self.cwd,
+                start_new_session=True,  # a stop takes the whole tree, not just npx
+                limit=2**24,  # one message is one line; tool output can be long
+            )
+            self._reader = asyncio.create_task(self._read(), name=f"acp-{self.name}")
+            self.info = await self._call(
+                "initialize",
+                {
+                    "protocolVersion": 1,
+                    # No file or terminal access is lent to the agent: it uses its
+                    # own tools, so the client stays a voice and nothing more.
+                    "clientCapabilities": {
+                        "fs": {"readTextFile": False, "writeTextFile": False},
+                        "terminal": False,
+                    },
+                    "clientInfo": {"name": "heare", "version": "0"},
                 },
-                "clientInfo": {"name": "heare", "version": "0"},
-            },
-        )
+            )
+        except BaseException:
+            await self.close()
+            raise
         self.startup = time.monotonic() - t0
 
     async def close(self) -> None:
-        if self._proc and self._proc.returncode is None:
-            self._proc.terminate()
+        proc, self._proc = self._proc, None
+        if proc is not None and proc.returncode is None:
+            self._signal_group(proc, signal.SIGTERM)
             try:
-                await asyncio.wait_for(self._proc.wait(), 5)
+                await asyncio.wait_for(proc.wait(), 5)
             except TimeoutError:
-                self._proc.kill()
-        if self._reader:
+                self._signal_group(proc, signal.SIGKILL)
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(proc.wait(), 2)
+        if self._reader is not None:
             self._reader.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._reader
+            self._reader = None
+        self._fail_pending(AcpError(f"{self.name} closed"))
+        if self._stderr_file is not None:
+            with contextlib.suppress(OSError):
+                self._stderr_file.close()
+            self._stderr_file = None
+
+    @staticmethod
+    def _signal_group(proc: asyncio.subprocess.Process, sig: int) -> None:
+        try:
+            os.killpg(proc.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            with contextlib.suppress(ProcessLookupError):
+                proc.send_signal(sig)
 
     # -- the three verbs' agent half -------------------------------------
 
@@ -351,59 +400,87 @@ class Agent:
         except Exception:  # noqa: BLE001 — a watcher's failure is not the agent's
             pass
 
-    async def _call(self, method: str, params: dict) -> dict:
+    async def _call(
+        self, method: str, params: dict, timeout: float | None = None
+    ) -> dict:
         rid = next(self._ids)
         fut = asyncio.get_running_loop().create_future()
         self._pending[rid] = fut
-        await self._send(
-            {"jsonrpc": "2.0", "id": rid, "method": method, "params": params}
-        )
-        return await fut
+        try:
+            await self._send(
+                {"jsonrpc": "2.0", "id": rid, "method": method, "params": params}
+            )
+        except BaseException:
+            self._pending.pop(rid, None)
+            raise
+        if method == "session/prompt":
+            return await fut
+        limit = CALL_TIMEOUT_S if timeout is None else timeout
+        try:
+            return await asyncio.wait_for(asyncio.shield(fut), limit)
+        except TimeoutError:
+            self._pending.pop(rid, None)
+            fut.cancel()
+            raise AcpError(
+                f"{self.name} did not answer {method} in {limit:g} s") from None
 
     async def _notify(self, method: str, params: dict) -> None:
         await self._send({"jsonrpc": "2.0", "method": method, "params": params})
 
-    async def _read(self) -> None:
-        assert self._proc and self._proc.stdout
-        async for line in self._proc.stdout:
-            try:
-                msg = json.loads(line)
-            except ValueError:
-                continue  # an agent's stray log line, not a message
-            self._tapped("in", msg)
-            method = msg.get("method")
-            if method and "id" in msg:
-                asyncio.create_task(self._answer(msg))
-            elif method == "session/update":
-                p = msg.get("params") or {}
-                s = self._sessions.get(p.get("sessionId"))
-                if s:
-                    s._update(p.get("update") or {})
-            elif not method:
-                fut = self._pending.pop(msg.get("id"), None)
-                if fut and not fut.done():
-                    if "error" in msg:
-                        fut.set_exception(AcpError(msg["error"]))
-                    else:
-                        fut.set_result(msg.get("result"))
+    def _fail_pending(self, error: AcpError) -> None:
         for fut in self._pending.values():
             if not fut.done():
-                fut.set_exception(AcpError(f"{self.name} exited"))
+                fut.set_exception(error)
         self._pending.clear()
+
+    async def _read(self) -> None:
+        assert self._proc and self._proc.stdout
+        try:
+            async for line in self._proc.stdout:
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue  # an agent's stray log line, not a message
+                if not isinstance(msg, dict):
+                    continue  # a frame of a shape ACP does not have
+                self._tapped("in", msg)
+                method = msg.get("method")
+                if method and "id" in msg:
+                    asyncio.create_task(self._answer(msg))
+                elif method == "session/update":
+                    p = msg.get("params")
+                    if not isinstance(p, dict):
+                        continue
+                    s = self._sessions.get(p.get("sessionId"))
+                    if s:
+                        s._update(p.get("update"))
+                elif not method:
+                    fut = self._pending.pop(msg.get("id"), None)
+                    if fut and not fut.done():
+                        if "error" in msg:
+                            fut.set_exception(AcpError(msg["error"]))
+                        else:
+                            fut.set_result(msg.get("result"))
+        finally:
+            self._fail_pending(AcpError(f"{self.name} exited"))
 
     async def _answer(self, msg: dict) -> None:
         """A request from the agent. Only permission is supported: the
         client offered no files and no terminal at ``initialize``."""
-        if msg["method"] != "session/request_permission":
-            await self._send(
-                {
-                    "jsonrpc": "2.0",
-                    "id": msg["id"],
-                    "error": {"code": -32601, "message": "not offered"},
-                }
-            )
+        rid, method = msg.get("id"), msg.get("method")
+        p = msg.get("params")
+        if method != "session/request_permission":
+            if rid is not None:
+                await self._send(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": rid,
+                        "error": {"code": -32601, "message": "not offered"},
+                    }
+                )
             return
-        p = msg["params"]
+        if not isinstance(p, dict):
+            p = {}
         s = self._sessions.get(p.get("sessionId"))
         ask = asyncio.create_task(self._decide(s, p)) if s else None
         outcome: dict = {"outcome": "cancelled"}
@@ -413,15 +490,19 @@ class Agent:
                 verdict = await ask
             except asyncio.CancelledError:
                 verdict = None  # the turn was cancelled while it waited
+            except Exception:
+                verdict = None  # a desk that fails says no, not hangs the turn
             finally:
                 s._asking.discard(ask)
             if verdict:
-                option = _pick(p.get("options") or [], verdict)
+                options = p.get("options")
+                option = _pick(options if isinstance(options, list) else [], verdict)
                 if option:
                     outcome = {"outcome": "selected", "optionId": option}
-        await self._send(
-            {"jsonrpc": "2.0", "id": msg["id"], "result": {"outcome": outcome}}
-        )
+        if rid is not None:
+            await self._send(
+                {"jsonrpc": "2.0", "id": rid, "result": {"outcome": outcome}}
+            )
 
 
 def _pick(options: list[dict], verdict: str) -> str | None:
@@ -431,8 +512,11 @@ def _pick(options: list[dict], verdict: str) -> str | None:
     kinds = [f"{prefix}_once", f"{prefix}_always"]
     for kind in kinds:
         for o in options:
-            if o.get("kind") == kind:
-                return o["optionId"]
+            if not isinstance(o, dict):
+                continue
+            option_id = o.get("optionId")
+            if o.get("kind") == kind and isinstance(option_id, str):
+                return option_id
     return None
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+from heare.core import Outcome
 from heare.reach.remote import RemoteExecutor
 
 
@@ -60,6 +61,24 @@ async def test_after_a_stop_the_next_step_reads_as_stopped():
     assert hands.step(task["id"], "працюю") is True  # gone: stopped
     allow, stopped = await hands.permit(task["id"], "змінити", "change")
     assert allow is False and stopped is True
+
+
+async def test_a_failed_hand_result_is_not_a_done_string():
+    hands = RemoteExecutor("opencode", "код")
+    running = asyncio.create_task(hands.run("зроби", Desk()))
+    task = await hands.claim()
+
+    assert hands.result(task["id"], "failed", "Не вийшло.") is True
+    assert await asyncio.wait_for(running, 1.0) == Outcome("failed", "Не вийшло.")
+
+
+async def test_a_stopped_hand_result_is_an_outcome():
+    hands = RemoteExecutor("opencode", "код")
+    running = asyncio.create_task(hands.run("зроби", Desk()))
+    task = await hands.claim()
+
+    assert hands.result(task["id"], "stopped", "Спинено.") is True
+    assert await asyncio.wait_for(running, 1.0) == Outcome("stopped", "Спинено.")
 
 
 async def test_claim_returns_nothing_when_there_is_no_work():

@@ -244,6 +244,17 @@ _MODE_LABELS = {"careful": N_("Careful — asks about every change"),
                 "auto": N_("Auto — asks nothing")}
 
 
+def _taking(settings: Settings) -> bool:
+    value = getattr(settings, "hands_taking", True)
+    return True if value == "" else bool(value)
+
+
+def _take_work(settings: Settings, value: object) -> bool:
+    on = bool(value)
+    settings.set("hands_taking", on)
+    return on
+
+
 def _mode(settings: Settings) -> str:
     mode = str(getattr(settings, "executor_mode", "") or "").strip()
     return mode if mode in MODES else MODE
@@ -336,7 +347,7 @@ async def run() -> int:
     asks = await asyncio.start_unix_server(handle, path=str(socket_path))
     ui = [
         {"name": "taking", "kind": "toggle", "label": N_("Take work"),
-         "value": True},
+         "value": _taking(settings)},
         {"name": "mode", "kind": "choice", "label": N_("Mode"), "value": _mode(settings),
          "options": [{"value": m, "label": _MODE_LABELS[m]} for m in MODES]},
         {"name": "agent", "kind": "label", "label": N_("Agent"), "value": name},
@@ -360,7 +371,7 @@ async def run() -> int:
             return
         control, value = event.get("name"), event.get("value")
         if control == "taking":
-            values["taking"] = bool(value)
+            values["taking"] = _take_work(settings, value)
         elif control == "check":
             asyncio.create_task(check())
             return

@@ -47,8 +47,10 @@ ABOUT = (
     "acts, no plan, no files, code, shell or internet."
 )
 STEPS = 4            # 1 turn to understand, 1–2 to act, 1 to answer
-DEADLINE_S = 15.0    # the whole loop's ceiling; checked before every turn
+DEADLINE_S = 15.0    # the whole loop's ceiling, the forced final turn too
 CALL_S = 10.0        # one skill; a hung part is a step, not forever
+SKILLS_S = 5.0       # the brain has to say what the parts can do
+HTTP_S = 30.0        # a socket without an answer is not a wait without end
 HANDOFF = "pass_to_cli_hands"
 FAILED = "Failed: the model did not answer."
 
@@ -88,15 +90,23 @@ class Tool:
 
     name: str
     skill: dict
-    parts: tuple[tuple[str, dict], ...]  # (pid, the part's entry)
+    parts: tuple[tuple[str, dict, dict], ...]  # (pid, the part, that part's skill)
 
     def schema(self) -> dict:
-        _pid, entry = self.parts[0]
+        _pid, entry, _skill = self.parts[0]
         where = f"{entry['name']} ({entry['about']})" if entry.get("about") else entry["name"]
         return {"type": "function", "function": {
             "name": self.name,
             "description": f"{where}: {self.skill['about']}",
             "parameters": self.skill["params"]}}
+
+    def for_part(self, pid: str) -> dict:
+        """The skill as the part that will be called declares it: its effect,
+        its parameters and its render rules, not a twin's."""
+        for part_pid, _entry, skill in self.parts:
+            if part_pid == pid:
+                return skill
+        return self.skill
 
 
 class NativeHand:
@@ -107,7 +117,11 @@ class NativeHand:
         self._devices = devices
 
     async def run(self, task: str, desk: hand_life.Desk) -> str:
-        tools = catalog(await self._devices.skilled())
+        try:
+            skilled = await asyncio.wait_for(self._devices.skilled(), SKILLS_S)
+        except TimeoutError:
+            skilled = {}
+        tools = catalog(skilled)
         schemas = [tool.schema() for tool in tools.values()] + [_HANDOFF]
         messages: list[dict] = [{"role": "system", "content": _SYSTEM},
                                 {"role": "user", "content": task}]
@@ -118,10 +132,15 @@ class NativeHand:
         for _step in range(STEPS):
             if desk.stopped:
                 raise asyncio.CancelledError
-            if time.monotonic() - started >= DEADLINE_S:
+            left = DEADLINE_S - (time.monotonic() - started)
+            if left <= 0:
                 break
             desk.step(N_("thinking"))
-            text, calls = await self._turn(messages, schemas)
+            try:
+                text, calls = await asyncio.wait_for(
+                    self._turn(messages, schemas), left)
+            except TimeoutError:
+                break
             if desk.stopped:
                 raise asyncio.CancelledError
             if not calls:
@@ -153,9 +172,19 @@ class NativeHand:
             messages += _turns(text, results)
             if repeats >= 2:
                 break
-        # Out of turns or time: the model says what came of it in words.
-        reply, _calls = await self._turn(
-            [*messages, {"role": "user", "content": FORCE_ANSWER}], [])
+        if desk.stopped:
+            raise asyncio.CancelledError
+        # Out of turns or time: the model says what came of it in words, but
+        # only with what is left of the same budget.
+        left = DEADLINE_S - (time.monotonic() - started)
+        reply = ""
+        if left > 0:
+            try:
+                reply, _calls = await asyncio.wait_for(
+                    self._turn([*messages, {"role": "user", "content": FORCE_ANSWER}], []),
+                    left)
+            except TimeoutError:
+                reply = ""
         return reply or ("Done: " + " ".join(done[-3:]))
 
     async def _turn(self, messages: list[dict], tools: list[dict]) -> tuple[str, list[dict]]:
@@ -181,17 +210,18 @@ class NativeHand:
         pid = await _which(tool, desk)
         if pid is None:
             return "Not clear which part."
+        skill = tool.for_part(pid)
         desk.step(tool.name)
-        if tool.skill["effect"] == "change":
-            what = f"{tool.skill['about']} — {tool.name} {json.dumps(args, ensure_ascii=False)}"
+        if skill["effect"] == "change":
+            what = f"{skill['about']} — {tool.name} {json.dumps(args, ensure_ascii=False)}"
             if not await desk.permit(what, "judge", what):
                 return "Not done: no permission."
         try:
-            args = _rendered(tool.skill, args)
+            args = _rendered(skill, args)
         except pixels.Unfit as unfit:
             # Said to the model, which may draw it again within its steps.
             return f"Failed: {unfit}"
-        answer = await self._devices.call(pid, tool.skill["name"], args)
+        answer = await self._devices.call(pid, skill["name"], args)
         result = answer.get("result")
         said = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
         return said if answer.get("ok") else f"Failed: {said}"
@@ -260,7 +290,7 @@ def catalog(skilled: dict[str, dict]) -> dict[str, Tool]:
         for skill in entry["skills"]:
             name = _tool_name(f"{entry['name']}__{skill['name']}")
             had = found.get(name)
-            parts = (had.parts if had else ()) + ((pid, entry),)
+            parts = (had.parts if had else ()) + ((pid, entry, skill),)
             found[name] = Tool(name, had.skill if had else skill, parts)
     return found
 
@@ -269,10 +299,11 @@ async def _which(tool: Tool, desk: hand_life.Desk) -> str | None:
     """The part a call is for; the person is asked when two answer to one name."""
     if len(tool.parts) == 1:
         return tool.parts[0][0]
-    listed = "; ".join(f"{n}) {pid}" for n, (pid, _entry) in enumerate(tool.parts, 1))
+    listed = "; ".join(
+        f"{n}) {pid}" for n, (pid, _entry, _skill) in enumerate(tool.parts, 1))
     answer = (await desk.ask(_("Several parts answer to that: {parts}. Which?").format(
         parts=listed))).strip()
-    for n, (pid, _entry) in enumerate(tool.parts, 1):
+    for n, (pid, _entry, _skill) in enumerate(tool.parts, 1):
         if str(n) in re.findall(r"\d+", answer) or pid in answer:
             return pid
     return None
@@ -358,7 +389,8 @@ async def run(settings: Settings | None = None, model: Model | None = None,
     """The part's life; a bench hands in its own brain, model and host."""
     settings = settings or Settings()
     host = host or socket.gethostname()
-    async with httpx.AsyncClient(timeout=None) as client:
+    async with httpx.AsyncClient(
+            timeout=httpx.Timeout(HTTP_S, connect=5.0)) as client:
 
         async def work(wire: part.Wire) -> None:
             hand = NativeHand(model or Chosen(settings, client), Parts(wire))

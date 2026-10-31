@@ -200,10 +200,15 @@ def test_a_login_drops_anthropic_key_variables_for_claude(monkeypatch):
     assert "ANTHROPIC_AUTH_TOKEN" not in merged
 
 
-def test_a_login_keeps_the_environment_untouched_for_opencode(monkeypatch):
+def test_a_login_carries_no_provider_key_for_opencode(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "env-secret")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "another-secret")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "cloud-secret")
     merged = runner.env("opencode", "login", "", "", "")
-    assert merged["ANTHROPIC_API_KEY"] == "env-secret"
+    assert "ANTHROPIC_API_KEY" not in merged
+    assert "DEEPSEEK_API_KEY" not in merged
+    assert "AWS_SECRET_ACCESS_KEY" not in merged
+    assert "PATH" in merged and "HOME" in merged
 
 
 def test_a_claude_base_url_is_an_environment_variable():

@@ -29,7 +29,7 @@ from heare.reach import runner
 from heare.core import Desk
 from heare.core.i18n import N_, _
 from heare.reach import acp
-from heare.reach.life import guarded
+from heare.reach.life import LifeOver, guarded
 
 logger = logging.getLogger("heare.reach")
 
@@ -37,6 +37,11 @@ logger = logging.getLogger("heare.reach")
 # task may run in total. A coder thinks for minutes, so idle is generous.
 IDLE_S = 5 * 60.0
 TOTAL_S = 30 * 60.0
+# A CLI that cannot even say hello is not started; a stopped command gets
+# this long to withdraw before its whole process group is killed.
+START_S = 60.0
+STOP_GRACE_S = 5.0
+STOP_POLL_S = 0.2
 
 # What an agent may do without asking: looking is not changing.
 _READING = frozenset({"read", "search", "think", "fetch"})
@@ -64,8 +69,10 @@ def _command_said(command: str) -> str:
 
 def _what(request: dict) -> str:
     """What the agent wants to do, in words fit to be said aloud."""
-    call = request.get("toolCall") or {}
-    raw = call.get("rawInput") or {}
+    call = request.get("toolCall")
+    call = call if isinstance(call, dict) else {}
+    raw = call.get("rawInput")
+    raw = raw if isinstance(raw, dict) else {}
     command = raw.get("command")
     target = str(command or raw.get("file_path") or raw.get("filePath")
                  or raw.get("path") or call.get("title") or "")
@@ -131,8 +138,9 @@ MODEL = "deepseek/deepseek-flash"
 # How much the agent does on its own (the owner's choice, 24 October):
 # «careful» brings every change to the person; «normal» lets the judge in
 # the brain weigh each one against what the person asked; «auto» asks about
-# nothing. In every mode the machine's admin rights, settings and secrets
-# stay out of reach — a floor no judge is asked about.
+# nothing. Every mode refuses an action that names an admin tool; the check
+# is a literal word scan of the action, so an obfuscated command
+# (`sh -c "$(printf su)do …"`) can slip past it — `auto` has no other gate.
 MODES = ("careful", "normal", "auto")
 MODE = "normal"
 
@@ -142,6 +150,17 @@ _NEVER = (
     "networksetup", "pmset", "spctl", "csrutil", "nvram", "diskutil", "launchctl",
     "dscl", "passwd", "chsh", "fdesetup", "tccutil",
 )
+# The same floor as words rather than prefix patterns: an absolute path or a
+# wrapper (`sh -c 'sudo …'`) still names the act, and `su` must not match
+# `sudo` or a path that merely contains those letters.
+_NEVER_WORDS = frozenset(pattern.split()[0] for pattern in _NEVER)
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+
+
+def _never(text: str) -> str | None:
+    """The forbidden word an action names, if any, wherever it is spelled."""
+    found = _NEVER_WORDS.intersection(_WORD.findall(text))
+    return min(found) if found else None
 # opencode's own tools that only look: never worth a question, nor a judge.
 # Our own ask is a question to the person already; weighing it first asked
 # twice (24 October).
@@ -166,13 +185,12 @@ def _commands(rule: str, names: tuple[str, ...]) -> dict[str, str]:
 
 def _opencode_config(patch: dict | None = None, mode: str = MODE) -> dict:
     """Everything that is not plainly looking comes to `_decide`, MCP tools
-    too (the catch-all `*`); there the mode decides who weighs it. The last
-    pattern that matches wins, so each catch-all goes first."""
-    if mode == "auto":
-        permission: dict = {"*": "allow", "bash": {"*": "allow"}}
-    else:
-        permission = {"*": "ask", **{tool: "allow" for tool in _LOOKING_TOOLS},
-                      "edit": "ask", "bash": {"*": "ask", **_commands("allow", _LOOKING)}}
+    too (the catch-all `*`); there the mode decides who weighs it. Even in
+    `auto` the wire asks first, because ``_decide`` is the one floor every
+    agent crosses. The last pattern that matches wins, so each catch-all goes
+    first."""
+    permission: dict = {"*": "ask", **{tool: "allow" for tool in _LOOKING_TOOLS},
+                        "edit": "ask", "bash": {"*": "ask", **_commands("allow", _LOOKING)}}
     permission["bash"].update(_commands("deny", _NEVER))
     config = {"$schema": "https://opencode.ai/config.json", "permission": permission}
     config.update(patch or {})
@@ -180,12 +198,16 @@ def _opencode_config(patch: dict | None = None, mode: str = MODE) -> dict:
 
 
 def _opencode_env(home: Path, patch: dict | None = None,
-                  mode: str = MODE) -> dict[str, str]:
+                  mode: str = MODE, base: dict[str, str] | None = None) -> dict[str, str]:
     """opencode with a configuration of the assistant's own, in which a
     write or a command that changes something is asked about. Measured on
     25 September: with its defaults it wrote a file after being told no,
     because it never asked. The person's own opencode configuration is
-    not touched; this file is the assistant's and is rewritten to match."""
+    not touched; this file is the assistant's and is rewritten to match.
+
+    An inherited ``OPENCODE_CONFIG`` survives only when it is this very
+    file — an agent may edit what it can write, but it may not redirect the
+    permission config to its own."""
     config = home / "opencode"
     config.mkdir(parents=True, exist_ok=True)
     path = config / "opencode.json"
@@ -196,8 +218,14 @@ def _opencode_env(home: Path, patch: dict | None = None,
         current = ""
     if current != wanted:
         path.write_text(wanted, encoding="utf-8")
-    return {**os.environ, "OPENCODE_CONFIG_DIR": str(config),
-            "OPENCODE_CONFIG": str(path)}
+    env = dict(base) if base is not None else runner.env(
+        "opencode", "login", "", "", "")
+    env["OPENCODE_CONFIG_DIR"] = str(config)
+    parent = os.environ.get("OPENCODE_CONFIG")
+    if parent and Path(parent).resolve() != path.resolve():
+        env.pop("OPENCODE_CONFIG", None)
+    env["OPENCODE_CONFIG"] = str(path)
+    return env
 
 
 class Agent:
@@ -215,7 +243,7 @@ class Agent:
         self.mode = mode if mode in MODES else MODE
         self.about = known.about
         self._known = known
-        self._cwd = cwd
+        self._cwd = cwd or Path.home() / "heare-work"
         self._home = home or Path.home() / ".heare"
         self._command = command or list(known.command)
         self._env = env
@@ -233,14 +261,19 @@ class Agent:
         self._starting = asyncio.Lock()
 
     async def _started(self) -> acp.Agent:
-        """One process for every task, started when first needed."""
+        """One process for every task, started when first needed — and a
+        dead one is thrown away rather than reused."""
         async with self._starting:
+            if self._agent is not None and not self._agent.alive:
+                await self._agent.close()
+                self._agent = None
             if self._agent is None:
                 env = self._env
+                if env is None:
+                    env = runner.env(self.name, "login", "", "", "")
                 if self.name == "opencode":
-                    permission = _opencode_env(self._home / "machine", self._config_patch,
-                                               self.mode)
-                    env = permission if env is None else {**permission, **env}
+                    env = _opencode_env(
+                        self._home / "machine", self._config_patch, self.mode, env)
                 logs = self._home / "logs"
                 logs.mkdir(parents=True, exist_ok=True)
                 agent = acp.Agent(
@@ -249,7 +282,11 @@ class Agent:
                     command=self._command, env=env, tap=self._tap,
                     mcp_servers=self._mcp,
                 )
-                await agent.start()
+                try:
+                    await asyncio.wait_for(agent.start(), START_S)
+                except BaseException:
+                    await agent.close()
+                    raise
                 self._agent = agent
             return self._agent
 
@@ -257,17 +294,24 @@ class Agent:
         desk = self._desks.get(session.id)
         if desk is None:
             return "reject"
-        if self.mode == "auto":
-            return "allow"
         call = request.get("toolCall") or {}
-        if call.get("kind") in _READING:
-            kind = "read"
-        else:
-            kind = "judge" if self.mode == "normal" else "change"
+        if not isinstance(call, dict):
+            call = {}
         what = _what(request)
         # The judge is shown the action whole: which tool, and with what.
         detail = json.dumps({k: call.get(k) for k in ("kind", "title", "rawInput")
                              if call.get(k)}, ensure_ascii=False)
+        # The floor is checked before the mode: `auto` may skip the person,
+        # but it may not hand out root, keychain or system settings.
+        if _never(detail):
+            self._refused.setdefault(session.id, []).append(what)
+            return "reject"
+        if self.mode == "auto":
+            return "allow"
+        if call.get("kind") in _READING:
+            kind = "read"
+        else:
+            kind = "judge" if self.mode == "normal" else "change"
         self._waiting += 1
         try:
             allowed = await desk.permit(what, kind, detail)
@@ -304,8 +348,13 @@ class Agent:
         await session.set("model", self._model or MODEL)
         self._desks[session.id] = desk
         self._activity = time.monotonic()
+        prompt = asyncio.create_task(
+            session.prompt(_RULES[self.mode] + task), name=f"turn-{session.id[:8]}")
+        watch = asyncio.create_task(
+            self._called_off(desk, session, agent, prompt),
+            name=f"stop-{session.id[:8]}")
         try:
-            await guarded(session.prompt(_RULES[self.mode] + task),
+            await guarded(prompt,
                           lambda: time.monotonic() if self._waiting else self._activity,
                           idle_s=IDLE_S, total_s=TOTAL_S, stop=session.cancel)
         except asyncio.CancelledError:
@@ -315,10 +364,20 @@ class Agent:
             except Exception:  # noqa: BLE001
                 logger.exception("%s: could not be told to stop", self.name)
             raise
+        except LifeOver:
+            # The turn was called stuck: the session is not enough, the CLI
+            # itself must go so the next job starts clean.
+            await self._retire(agent)
+            raise
+        except acp.AcpError:
+            if not getattr(desk, "stopped", False):
+                raise
         finally:
+            watch.cancel()
+            await asyncio.gather(watch, return_exceptions=True)
             self._desks.pop(session.id, None)
             refused = self._refused.pop(session.id, [])
-        if session.status == "cancelled":
+        if session.status == "cancelled" or getattr(desk, "stopped", False):
             return "Stopped."
         # Some models leak their thinking into the answer; what follows
         # the last closing tag is the answer.
@@ -330,6 +389,31 @@ class Agent:
                     f"{'; '.join(refused)}. {said}").strip()
         return said or "The agent finished and said nothing; whether it was done is unknown."
 
+    async def _called_off(self, desk: Desk, session: acp.Session,
+                          agent: acp.Agent, prompt: asyncio.Task) -> None:
+        """Watch for «стоп» between events; a command that will not withdraw
+        is not left running after the person has called it off."""
+        while not prompt.done():
+            await asyncio.sleep(STOP_POLL_S)
+            if not getattr(desk, "stopped", False):
+                continue
+            try:
+                await session.cancel()
+            except Exception:  # noqa: BLE001 — a dead CLI is already stopped
+                logger.exception("%s: could not be told to stop", self.name)
+            try:
+                await asyncio.wait_for(asyncio.shield(prompt), STOP_GRACE_S)
+            except TimeoutError:
+                await self._retire(agent)
+            except Exception:  # noqa: BLE001 — the turn ended on its own
+                pass
+            return
+
+    async def _retire(self, agent: acp.Agent) -> None:
+        if self._agent is agent:
+            self._agent = None
+        await agent.close()
+
     async def close(self) -> None:
         if self._agent is not None:
             await self._agent.close()
@@ -340,8 +424,7 @@ def connect(settings: Any) -> list[Agent]:
     """The agent the settings name (``executor``; «all» for every
     installed one), working in its own folder (``executor_cwd``)."""
     only = str(getattr(settings, "executor", "") or "").strip().lower()
-    cwd = getattr(settings, "executor_cwd", "") or None
-    if cwd:
-        Path(cwd).mkdir(parents=True, exist_ok=True)
+    cwd = Path(getattr(settings, "executor_cwd", "") or Path.home() / "heare-work")
+    cwd.mkdir(parents=True, exist_ok=True)
     found = [k for k in installed() if only in ("", "all") or k.name == only]
     return [Agent(k, cwd=cwd) for k in found]

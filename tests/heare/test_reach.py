@@ -3,11 +3,16 @@ does nothing. What is tested is everything between the core and the wire."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import signal
 import sys
 from pathlib import Path
 
-from heare.reach import acp, agents
+import pytest
+
+from heare.reach import acp, agents, runner
 from heare.reach.agents import Agent, Known, installed
 from tests.heare.fakes import open_room
 
@@ -323,9 +328,11 @@ def test_in_careful_and_normal_everything_but_looking_comes_to_be_weighed():
         assert _rule(config, "trash old.pdf") == "ask"
         assert _rule(config, "git push origin main") == "ask"
 
+    # `auto` decides in `_decide`, not in the config: the wire must ask so
+    # the never-floor sees every command, and `_decide` then says allow.
     auto = agents._opencode_config(mode="auto")
-    assert auto["permission"]["*"] == "allow"
-    assert _rule(auto, "rm old.pdf") == "allow"
+    assert auto["permission"]["*"] == "ask"
+    assert _rule(auto, "rm old.pdf") == "ask"
 
     for mode in agents.MODES:
         config = agents._opencode_config(mode=mode)
@@ -368,3 +375,135 @@ async def test_in_auto_the_agent_is_never_stopped_to_ask(tmp_path):
 
 def test_an_unknown_mode_falls_back_to_normal(tmp_path):
     assert Agent(KNOWN, home=tmp_path, mode="reckless").mode == "normal"
+
+
+async def test_agent_env_contains_only_the_chosen_key(tmp_path, monkeypatch):
+    work = tmp_path / "heare-work"
+    report = tmp_path / "report.json"
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "chosen-secret")
+    monkeypatch.setenv("GROQ_API_KEY", "unrelated-secret")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "cloud-secret")
+    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/ssh-agent")
+    monkeypatch.setenv("GITHUB_TOKEN", "a-token")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    env = runner.env("opencode", "key", "DEEPSEEK_API_KEY", "", "")
+    agent = acp.Agent("fake", on_permission=_allow, cwd=work, command=FAKE, env=env)
+    await agent.start()
+    session = await agent.session()
+    await session.prompt(f"REPORT {report}")
+    await agent.close()
+
+    seen = json.loads(report.read_text(encoding="utf-8"))
+    assert seen["env"]["DEEPSEEK_API_KEY"] == "chosen-secret"
+    for secret in ("GROQ_API_KEY", "AWS_SECRET_ACCESS_KEY",
+                   "SSH_AUTH_SOCK", "GITHUB_TOKEN"):
+        assert secret not in seen["env"]
+    assert "PATH" in seen["env"] and "HOME" in seen["env"]
+    assert Path(seen["cwd"]) == work
+
+
+async def test_claude_in_auto_still_denies_the_never_list(tmp_path):
+    claude = Known("claude", "claude", ("claude", "acp"), "x")
+    agent = Agent(claude, cwd=tmp_path, home=tmp_path, command=FAKE, env=None,
+                  mode="auto")
+    session = acp.Session(acp.Agent("claude", on_permission=_allow), "s1")
+    asked: list[str] = []
+
+    class Desk(_Desk):
+        async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
+            asked.append(what)
+            return True
+
+    agent._desks[session.id] = Desk()
+    for command in (
+        "sudo rm -rf /",
+        "/usr/bin/sudo id",
+        "security find-generic-password -s heare",
+        "/usr/bin/security find-internet-password",
+        "defaults write com.apple.dock autohide -bool true",
+        "bash -c 'sudo id'",
+        "env sudo id",
+        "xargs sudo id",
+    ):
+        verdict = await agent._decide(session, {"toolCall": {
+            "kind": "execute", "title": "bash", "rawInput": {"command": command}}})
+        assert verdict == "reject", command
+
+    assert asked == []
+    plain = await agent._decide(session, {"toolCall": {
+        "kind": "execute", "title": "bash", "rawInput": {"command": "ls -la"}}})
+    assert plain == "allow"
+
+
+async def test_a_killed_agent_is_detected_and_restarted(tmp_path):
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None)
+
+    with pytest.raises(acp.AcpError):
+        await agent.run("DIE now", _Desk())
+    first = agent._agent
+    assert first is not None and not first.alive
+
+    assert await agent.run("зроби щось", _Desk()) == "Зроблено."
+    assert agent._agent is not None and agent._agent is not first
+    await agent.close()
+
+
+async def test_stop_cancels_a_running_command(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "STOP_GRACE_S", 0.2)
+    monkeypatch.setattr(agents, "STOP_POLL_S", 0.02)
+    sent: list[dict] = []
+    killed: list[int] = []
+    real_killpg = os.killpg
+
+    def recording_killpg(pid: int, sig: int) -> None:
+        killed.append(sig)
+        real_killpg(pid, sig)
+
+    monkeypatch.setattr(acp.os, "killpg", recording_killpg)
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None,
+                  tap=lambda direction, msg: sent.append(msg)
+                  if direction == "out" else None)
+
+    class Desk(_Desk):
+        stopped = False
+
+        def step(self, text: str) -> None:
+            self.stopped = True
+
+    result = await asyncio.wait_for(agent.run("DEAF forever", Desk()), 5)
+
+    assert result == "Stopped."
+    assert any(m.get("method") == "session/cancel" for m in sent)
+    assert signal.SIGTERM in killed
+    await agent.close()
+
+
+async def test_a_malformed_acp_frame_does_not_hang_the_turn(tmp_path):
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None)
+
+    result = await asyncio.wait_for(agent.run("MALFORMED now", _Desk()), 5)
+
+    assert result == "Зроблено."
+    await agent.close()
+
+
+async def test_a_rerun_of_the_harness_does_not_leak_a_child_process(tmp_path):
+    agent = Agent(KNOWN, cwd=tmp_path, home=tmp_path, command=FAKE, env=None)
+    assert await agent.run("зроби щось", _Desk()) == "Зроблено."
+    inner = agent._agent
+    assert inner is not None
+    proc = inner._proc
+
+    await agent.close()
+
+    assert agent._agent is None
+    assert proc is not None and proc.returncode is not None
+    assert inner._reader is None
+    assert await agent.run("зроби ще", _Desk()) == "Зроблено."
+    second = agent._agent
+    assert second is not None and second._proc is not None
+    second_proc = second._proc
+    await agent.close()
+    assert second_proc.returncode is not None

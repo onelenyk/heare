@@ -197,6 +197,15 @@ def test_a_control_becomes_a_setting_only_when_the_value_is_one_it_takes():
     assert hands._setting("mode", "reckless") is None
 
 
+def test_taking_work_survives_a_restart(tmp_path):
+    settings = _settings(tmp_path)
+    assert hands._taking(settings) is True
+
+    assert hands._take_work(settings, False) is False
+
+    assert hands._taking(Settings(path=tmp_path / "config.toml")) is False
+
+
 def test_the_check_is_one_line_per_need(tmp_path, monkeypatch):
     monkeypatch.setattr(hands.runner, "health", lambda *a: {"ok": False, "checks": [
         {"name": "binary", "ok": True, "detail": "/bin/opencode"},

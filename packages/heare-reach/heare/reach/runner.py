@@ -11,8 +11,10 @@ directories too, and hands spawns an absolute path.
 
 Nothing here returns a secret. Sign-in for opencode is the *names* of the
 providers in its auth store; a key is reported as present or absent, never
-as a value. ``env`` copies the process environment and overlays only what
-a chosen sign-in needs.
+as a value. ``env`` starts from an allowlist — a path home, a locale and the
+agent's own configuration folders — and adds exactly one key, the one the
+person chose. The hands' own tokens and every other exported secret stay
+behind.
 """
 
 from __future__ import annotations
@@ -63,6 +65,17 @@ _EXTRA_DIRS = (
 # ``opencode models`` prints one ``provider/model`` per line.
 _MODEL_LINE = re.compile(r"^[\w.-]+/\S+$")
 _CLAUDE_ALIASES = ("fable", "opus", "sonnet", "haiku")
+
+# What a spawned agent may inherit: where commands are, its home, the
+# locale, and its own configuration folders. Nothing that carries a
+# credential. ``HOME`` is what lets an agent read its own sign-in store.
+_ENV_ALWAYS = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM")
+_ENV_DIRS = {
+    "opencode": ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+                 "XDG_STATE_HOME"),
+    "claude": ("CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+               "XDG_CACHE_HOME", "XDG_STATE_HOME"),
+}
 
 # Listing models spawns the CLI, so an answer is kept for a while. A person
 # who signs in to a new provider sees it after this window, not a restart.
@@ -230,25 +243,32 @@ def env(
     base_url: str,
     model: str,
 ) -> dict[str, str]:
-    """The environment for a spawned runner: the process's own, plus auth.
+    """The environment for a spawned runner: an allowlist, plus one key.
 
-    A key is read through ``heare.keys`` and only ever placed in the copy,
-    never logged. Claude Code prefers an API key in its environment over its
-    own OAuth login, so a login run drops both Anthropic key variables — a
-    person who chose "its own sign-in" should not be billed through a key
-    some shell happened to export. For opencode a base URL is a provider
-    option, not an environment variable; see ``opencode_config_patch``.
+    The hands' environment holds the person's whole shell; an agent has no
+    business seeing it. Only the path, home, locale and the agent's own
+    configuration folders cross over, and exactly one credential: the
+    variable the person chose for this runner. A login run carries none —
+    the agent uses its own sign-in store. For opencode a base URL is a
+    provider option, not an environment variable; see
+    ``opencode_config_patch``.
     """
-    merged = dict(os.environ)
+    merged: dict[str, str] = {}
+    for name in _ENV_ALWAYS:
+        value = os.environ.get(name)
+        if value:
+            merged[name] = value
+    merged.setdefault("HOME", str(Path.home()))
+    merged.setdefault("PATH", os.defpath)
+    for name in _ENV_DIRS.get(kind, ()):
+        value = os.environ.get(name)
+        if value:
+            merged[name] = value
 
     if auth == "key" and auth_env:
         value = keys.get(auth_env)
         if value is not None:
             merged[auth_env] = value
-
-    if auth == "login" and kind == "claude":
-        merged.pop("ANTHROPIC_API_KEY", None)
-        merged.pop("ANTHROPIC_AUTH_TOKEN", None)
 
     if base_url and kind == "claude":
         merged["ANTHROPIC_BASE_URL"] = base_url

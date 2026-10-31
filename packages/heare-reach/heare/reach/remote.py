@@ -12,7 +12,8 @@ import itertools
 from dataclasses import dataclass
 from typing import Any
 
-from heare.hand import Handoff
+from heare.core import Outcome
+from heare.hand import Gone, Handoff
 
 
 @dataclass
@@ -36,7 +37,7 @@ class RemoteExecutor:
         self._jobs: dict[int, _Job] = {}
         self._ids = itertools.count(1)
 
-    async def run(self, task: str, desk: Any) -> str:
+    async def run(self, task: str, desk: Any) -> str | Outcome:
         job = _Job(next(self._ids), task, getattr(desk, "follows", False),
                    getattr(desk, "asked", ""), desk,
                    asyncio.get_running_loop().create_future())
@@ -58,25 +59,32 @@ class RemoteExecutor:
         return {"id": job.id, "request": job.request, "continues": job.follows,
                 "asked": job.asked}
 
+    def _over(self, job: _Job | None) -> bool:
+        """The job is gone, or its future already ended: either way stopped."""
+        return job is None or job.future.done()
+
     def step(self, job_id: int, text: str) -> bool:
         job = self._jobs.get(job_id)
-        if job is None:
+        if self._over(job):
             return True  # stopped
+        assert job is not None
         job.desk.step(text)
         return False
 
     async def ask(self, job_id: int, text: str) -> str:
         """An executor's question, waiting for the person's words."""
         job = self._jobs.get(job_id)
-        if job is None:
-            return ""
+        if self._over(job):
+            raise Gone(f"the brain no longer knows job {job_id}")
+        assert job is not None
         return await job.desk.question(text)
 
     async def permit(self, job_id: int, what: str, kind: str,
                      detail: str = "") -> tuple[bool, bool]:
         job = self._jobs.get(job_id)
-        if job is None:
+        if self._over(job):
             return False, True  # stopped
+        assert job is not None
         allowed = await job.desk.permit(what, kind, detail)
         return allowed, False
 
@@ -84,7 +92,9 @@ class RemoteExecutor:
         """Who allowed the job's last action, and why: the gate or the person."""
         job = self._jobs.get(job_id)
         found = getattr(job.desk, "verdict", None) if job is not None else None
-        return tuple(found) if found else ("person", "")  # type: ignore[return-value] — a desk keeps two strings
+        if isinstance(found, tuple) and len(found) == 2:
+            return str(found[0]), str(found[1])
+        return ("person", "")
 
     def result(self, job_id: int, status: str, result: str) -> bool:
         job = self._jobs.get(job_id)
@@ -93,6 +103,8 @@ class RemoteExecutor:
         if status == "handoff":
             # Not this body's work: whoever routes it hands it on, as worded.
             job.future.set_exception(Handoff(result))
+        elif status in ("failed", "stopped"):
+            job.future.set_result(Outcome(status, result))
         else:
             job.future.set_result(result)
         return True
