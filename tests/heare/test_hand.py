@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 import httpx
 import pytest
@@ -88,6 +89,44 @@ async def test_a_stop_is_heard_through_the_step_and_nothing_more_is_done():
     await asyncio.gather(*desk._steps)
 
     assert desk.stopped is True
+
+
+async def test_a_step_after_a_brain_restart_stops_the_hand():
+    wire = Wire({"/api/executor/7/step": [httpx.Response(404, text="no such job")]})
+    desk = hand.Desk(wire, hand.Job(7, "x"), "native-hands")
+
+    desk.step("думаю")
+    await asyncio.gather(*desk._steps)
+
+    assert desk.stopped is True
+
+    # A question for a job the brain has forgotten is a stop, not a failure
+    # that keeps the hand working and then drops its result.
+    wire = Wire({
+        "/api/executor/claim": [httpx.Response(200, json={"id": 8, "request": "x"})],
+        "/api/executor/8/ask": [httpx.Response(404, text="no such job")],
+        "/api/executor/8/result": [httpx.Response(404, text="no such job")],
+    })
+
+    async def asks(job, desk):
+        await desk.ask("що робити?")
+        return "не мало статися"
+
+    assert await take(wire, asks) is True
+    assert _results(wire) == [{"status": "stopped", "result": "Stopped."}]
+
+
+async def test_a_refused_result_is_logged_not_swallowed(caplog):
+    wire = Wire({
+        "/api/executor/claim": [httpx.Response(200, json={"id": 9, "request": "x"})],
+        "/api/executor/9/result": [httpx.Response(404, text="no such job")],
+    })
+
+    with caplog.at_level(logging.WARNING, logger="heare.hand"):
+        assert await take(wire, Hand()) is True
+
+    assert any("refused the result for job 9" in record.message
+               for record in caplog.records)
 
 
 class _Settings:
@@ -188,3 +227,92 @@ def test_turns_of_one_role_are_joined_for_anthropic():
     system, turns = anthropic_turns([{"role": "user", "content": "a"},
                                      {"role": "user", "content": "b"}])
     assert system == "" and len(turns) == 1 and len(turns[0]["content"]) == 2
+
+
+def _part(name: str, *own: dict) -> dict:
+    return {"channel": f"oled-{name}", "name": name, "about": "",
+            "skills": list(own), "values": {}}
+
+
+class _Devices:
+    def __init__(self, parts: dict[str, dict], answer: dict | None = None) -> None:
+        self.parts = parts
+        self.calls: list[tuple[str, str, dict]] = []
+        self.answer = answer or {"ok": True, "result": "зроблено"}
+
+    async def skilled(self) -> dict[str, dict]:
+        return self.parts
+
+    async def call(self, pid: str, name: str, args: dict) -> dict:
+        self.calls.append((pid, name, args))
+        return self.answer
+
+
+class _Desk:
+    stopped = False
+
+    def __init__(self, allow: bool = True, says: str = "") -> None:
+        self.allow, self.says = allow, says
+        self.permits: list[str] = []
+        self.questions: list[str] = []
+
+    def step(self, text: str) -> None:
+        pass
+
+    async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
+        self.permits.append(kind)
+        return self.allow
+
+    async def ask(self, text: str) -> str:
+        self.questions.append(text)
+        return self.says
+
+
+def _native(devices: _Devices, *answers):
+    from heare.native_hands import NativeHand
+    from tests.heare.fakes import Script
+
+    model = Script()
+    model.will_say(*answers)
+    return NativeHand(model, devices), model
+
+
+async def test_the_native_forced_final_turn_is_inside_the_budget(monkeypatch):
+    from heare import native_hands
+
+    class Slow:
+        async def reply(self, messages, verbs):
+            await asyncio.sleep(10)
+            yield {"type": "delta", "text": "пізно"}
+
+    monkeypatch.setattr(native_hands, "STEPS", 0)
+    monkeypatch.setattr(native_hands, "DEADLINE_S", 0.05)
+    hand = native_hands.NativeHand(Slow(), _Devices({}))
+    started = asyncio.get_running_loop().time()
+
+    assert await hand.run("покажи", _Desk()) == "Done: "
+    assert asyncio.get_running_loop().time() - started < 1.0
+
+
+async def test_duplicate_skill_names_use_the_effect_of_the_part_called():
+    from tests.heare.fakes import Says
+
+    harmless = {"name": "show", "about": "Показати слова", "effect": "harmless",
+                "params": {"type": "object", "properties": {"text": {"type": "string"}}}}
+    changing = {**harmless, "effect": "change"}
+    parts = {"oled-a": _part("desk", harmless), "oled-b": _part("desk", changing)}
+    devices = _Devices(parts)
+    call = ("desk__show", {"text": "hi"})
+
+    hand, _ = _native(devices, Says(calls=(call,)), "Показав.")
+    quiet = _Desk(says="1")
+    await hand.run("покажи", quiet)
+    assert quiet.permits == []
+    assert devices.calls == [("oled-a", "show", {"text": "hi"})]
+
+    devices.calls.clear()
+    hand, _ = _native(devices, Says(calls=(call,)), "Не можна.")
+    guarded = _Desk(allow=False, says="2")
+    await hand.run("покажи", guarded)
+    assert guarded.permits == ["judge"]
+    assert devices.calls == []

@@ -8,6 +8,7 @@ that has the form.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 from heare.core import FAILURE_LINE, RESULT_PREFIX, Core, Message
@@ -689,7 +690,7 @@ async def test_stopping_work_answers_its_open_question_no():
     await room.close()
 
 
-async def test_work_that_goes_on_keeps_the_yes_and_new_work_is_asked_again():
+async def test_work_that_goes_on_keeps_context_not_the_yes():
     room = await open_room()
     worker = Worker(asks=(("записати файл", "change"),))
     room.core.add_executor(worker)
@@ -701,8 +702,11 @@ async def test_work_that_goes_on_keeps_the_yes_and_new_work_is_asked_again():
     await room.until(lambda: first.status == "done")
 
     goes_on = room.core.delegate("а тепер друге", follows=True)
+    await room.until(lambda: room.core.state.permission is not None)
+    assert goes_on.allowed is None and worker.allowed == [True]
+    room.says("Так")
     await room.until(lambda: len(worker.allowed) == 2)
-    assert goes_on.allowed is True and worker.allowed == [True, True]
+    assert worker.allowed == [True, True]
     await room.until(lambda: goes_on.status == "done")
 
     worker.release.clear()
@@ -750,10 +754,9 @@ async def test_a_promise_still_not_kept_is_never_handed_over_by_itself():
     await room.close()
 
 
-async def test_one_piece_of_work_is_asked_about_once():
+async def test_one_action_in_a_piece_of_work_is_asked_about_once():
     room = await open_room()
-    worker = Worker(asks=(("записати a.txt", "change"), ("запустити скрипт", "change"),
-                          ("записати b.txt", "change")))
+    worker = Worker(asks=(("записати a.txt", "change"),) * 3)
     room.core.add_executor(worker)
     task = room.core.delegate("зроби три речі")
     await room.until(lambda: room.core.state.permission is not None)
@@ -765,6 +768,24 @@ async def test_one_piece_of_work_is_asked_about_once():
     await room.settled()
     assert "Добре." in room.page.said  # a yes is answered, not met with silence
     assert room.model.asked == []
+    await room.close()
+
+
+async def test_a_yes_in_careful_is_not_reused_for_a_different_command():
+    room = await open_room()
+    worker = Worker(asks=(("записати a.txt", "change"),
+                          ("запустити скрипт", "change")))
+    room.core.add_executor(worker)
+    room.core.delegate("зроби дві речі")
+    await room.until(lambda: room.core.state.permission is not None)
+    room.says("Так")
+    await room.until(lambda: worker.allowed == [True])
+
+    await room.until(lambda: room.core.state.permission is not None)
+    assert room.core.state.permission.what == "запустити скрипт"
+    room.says("Так")
+    await room.until(lambda: worker.allowed == [True, True])
+    worker.release.set()
     await room.close()
 
 
@@ -1265,4 +1286,57 @@ async def test_the_phase_follows_the_sound_to_its_end():
     speaker.sounding = False
     room.core.port.sounded()
     assert room.core.state.phase == "idle"
+    await room.close()
+
+
+async def test_a_broken_take_does_not_stop_the_conversation():
+    class BrokenContext(Page):
+        broken_once = True
+
+        def context(self):
+            if self.broken_once:
+                self.broken_once = False
+                raise RuntimeError("no context")
+            return ""
+
+    room = await open_room()
+    room.core.add_output(BrokenContext("broken"))
+    events = room.core.state.subscribe()
+    room.says("Привіт")
+    await room.settled()
+
+    assert room.page.said[-1] == said_as(FAILURE_LINE)
+    assert ("assistant", said_as(FAILURE_LINE), "text") in room.memory.kept
+    kinds = []
+    while not events.empty():
+        kinds.append(events.get_nowait().kind)
+    assert "failed" in kinds
+
+    room.model.will_say("Працюю.")
+    room.says("Ти тут?")
+    await room.settled()
+    assert room.page.said[-1] == "Працюю. "
+    await room.close()
+
+
+async def test_a_failed_hand_work_is_not_done():
+    from heare.reach.remote import RemoteExecutor
+
+    room = await open_room()
+    hands = RemoteExecutor("worker", "робить усе")
+    room.core.add_executor(hands)
+    task = room.core.delegate("зроби")
+    claimed = await hands.claim()
+    assert claimed is not None
+
+    assert hands.result(claimed["id"], "failed", "Не вийшло.") is True
+    await room.until(lambda: task.status == "failed")
+    assert task.result == "Не вийшло."
+
+    path = room.extra["intents"]._path
+    await room.until(lambda: path.exists() and f"task:{task.id}" in path.read_text())
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    assert [r["why"] for r in rows if r.get("about") == f"task:{task.id}"] == [
+        "task_failed"]
+    assert all(r["why"] != "task_done" for r in rows)
     await room.close()

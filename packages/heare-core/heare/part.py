@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sys
 import time
 from collections.abc import Awaitable, Callable
 from importlib import metadata
@@ -20,7 +19,7 @@ from urllib.parse import quote
 
 import httpx
 
-from heare import logs
+from heare import lifeline, logs
 from heare.core import i18n
 from heare.core.i18n import _
 from heare.config import Settings
@@ -29,6 +28,18 @@ from heare.core import PROTOCOL
 logger = logging.getLogger("heare.part")
 
 RETRY_S = 1.0
+# A missing token is waited for, not fallen on: the app starts the keeper
+# before the brain, so a part is spawned before any token exists. The wait
+# doubles to a ceiling, so a home with no brain yet does not fill a log.
+TOKEN_WAIT_S = 1.0
+TOKEN_WAIT_MAX_S = 60.0
+# Cases the keeper should tell apart: a refused key is not a missing route,
+# and neither is a brain that answered with an error.
+EXIT_AGAIN = 1
+EXIT_REFUSED = 2
+EXIT_NO_ROUTE = 3
+EXIT_BRAIN_ERROR = 4
+EXIT_REJECTED = 5
 # The brain writes to a quiet stream every 5 s (HEARTBEAT_S in the door);
 # three missed beats and the stream is taken for dead and opened again.
 SILENT_S = 15.0
@@ -51,6 +62,28 @@ def installed() -> str | None:
         return metadata.version("heare-core")
     except metadata.PackageNotFoundError:
         return None
+
+
+async def _wait_for_secret(settings: Settings) -> str:
+    """Wait for the brain's token; a missing file is a wait, not a fall."""
+    delay = TOKEN_WAIT_S
+    while True:
+        try:
+            return settings.secret
+        except OSError:
+            logs.say(_("no key ({file}) — waiting for the brain to make one").format(
+                file=settings.api_token_file))
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, TOKEN_WAIT_MAX_S)
+
+
+def _trouble_for(error: httpx.HTTPStatusError) -> str:
+    code = error.response.status_code
+    if code in (401, 403):
+        return _("the brain refused the key ({code}) — the machine may be paired with another brain").format(code=code)
+    if code == 404:
+        return _("the brain has no such route ({code}) — it may be another version").format(code=code)
+    return _("the brain answered {code}").format(code=code)
 
 
 async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
@@ -187,6 +220,7 @@ class Wire:
 
 async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
                on_event: Callable[[dict], None] | None = None,
+               on_reconnect: Callable[[], None] | None = None,
                hello: str = "", settings: Settings | None = None,
                client: httpx.AsyncClient | None = None) -> int:
     """Let a part in and keep it in while *work* runs; the part's exit code.
@@ -200,13 +234,12 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
     settings = settings or Settings()
     # What this part says to the person follows the language on the page.
     i18n.choose(lambda: str(settings.language))
+    # A part lives only as long as its keeper: if the keeper is killed the
+    # process is reparented and leaves, instead of holding the keys and the
+    # ports against the next keeper (heare.lifeline, as for the brain).
+    lifeline.watch()
     base = settings.base
-    try:
-        secret = settings.secret
-    except OSError:
-        print(_("no key ({file}) — is the brain running?").format(file=settings.api_token_file),
-              file=sys.stderr)
-        return 1
+    secret = await _wait_for_secret(settings)
     about = {"v": PROTOCOL, "version": installed(), "started": STARTED, **about}
     owned = client is None
     client = client or httpx.AsyncClient(timeout=None)
@@ -214,12 +247,20 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
     try:
         try:
             answer = await knock(client, base, about)
+        except httpx.HTTPStatusError as exc:
+            logs.say(_trouble_for(exc))
+            code = exc.response.status_code
+            if code in (401, 403):
+                return EXIT_REFUSED
+            if code == 404:
+                return EXIT_NO_ROUTE
+            return EXIT_BRAIN_ERROR
         except httpx.HTTPError as exc:
             logs.say(_("the brain does not answer at {base}: {why}").format(base=base, why=exc))
-            return 1
+            return EXIT_AGAIN
         if not answer.get("approved"):
             logs.say(_("the brain did not approve: {why}").format(why=answer.get("why") or _("rejected")))
-            return 1
+            return EXIT_REJECTED
         if answer.get("token"):
             secret = answer["token"]
             client.headers["X-Heare-Token"] = secret
@@ -244,6 +285,11 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         def on_open() -> None:
             nonlocal opened
             if opened:
+                if on_reconnect is not None:
+                    try:
+                        on_reconnect()
+                    except Exception:  # noqa: BLE001 — the stream will try again
+                        logger.exception("the reconnect hook failed")
                 asyncio.create_task(again())
             opened = True
 

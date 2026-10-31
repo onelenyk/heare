@@ -34,6 +34,10 @@ class Handoff(Exception):
         self.task = task
 
 
+class Gone(Exception):
+    """The brain no longer knows this job."""
+
+
 @dataclass(frozen=True)
 class Job:
     """One piece of work as the brain hands it out."""
@@ -72,27 +76,36 @@ class Desk:
 
     async def _step(self, text: str) -> None:
         answer = await self._wire.post(self._path("step"), {"text": text})
+        if answer.status_code == 404:
+            self.stopped = True
+            logger.warning("the brain no longer knows job %d; stopping", self._job.id)
+            return
         try:
             if answer.json().get("stopped"):
                 self.stopped = True
         except ValueError:
-            pass
+            logger.warning("the brain's answer to a step was not JSON")
+
+    async def _call(self, what: str, body: dict) -> dict:
+        answer = await self._wire.post(self._path(what), body)
+        if answer.status_code == 404:
+            raise Gone(f"the brain no longer knows job {self._job.id}")
+        found = answer.json()
+        if found.get("stopped"):
+            raise asyncio.CancelledError
+        return found
 
     async def ask(self, text: str) -> str:
         """The work's question: the person's words come back as the answer."""
-        answer = (await self._wire.post(self._path("ask"), {"question": text})).json()
-        if answer.get("stopped"):
-            raise asyncio.CancelledError
+        answer = await self._call("ask", {"question": text})
         return str(answer.get("answer") or "")
 
     async def permit(self, what: str, kind: str = "change", detail: str = "") -> bool:
         weighing = "judge" if kind == "judge" else "person"
         if self._on_permit is not None:
             self._on_permit(what, None, weighing, "")  # the answer may take a while
-        answer = (await self._wire.post(
-            self._path("permit"), {"what": what, "kind": kind, "detail": detail})).json()
-        if answer.get("stopped"):
-            raise asyncio.CancelledError
+        answer = await self._call(
+            "permit", {"what": what, "kind": kind, "detail": detail})
         allowed = bool(answer.get("allow"))
         if self._on_permit is not None:
             self._on_permit(what, allowed, str(answer.get("by") or "person"),
@@ -142,13 +155,19 @@ async def take(wire: part.Wire, name: str,
         status, result = "stopped", "Stopped."
     except Handoff as handoff:
         status, result = "handoff", handoff.task
+    except Gone as gone:
+        logger.warning("job %d: %s", job.id, gone)
+        status, result = "stopped", "Stopped."
     except Exception as exc:  # noqa: BLE001 — the brain is told, not crashed
         logger.warning("the work failed: %r", exc)
         status, result = "failed", failed(exc)
     if on_end is not None:
         on_end(job, status, result)
-    await wire.post(f"/api/executor/{job.id}/result?name={name}",
-                    {"status": status, "result": result})
+    answer = await wire.post(f"/api/executor/{job.id}/result?name={name}",
+                             {"status": status, "result": result})
+    if answer.status_code >= 400:
+        logger.warning("the brain refused the result for job %d (HTTP %d)",
+                       job.id, answer.status_code)
     return True
 
 

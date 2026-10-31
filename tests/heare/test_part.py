@@ -95,9 +95,23 @@ async def test_a_refused_part_does_no_work(tmp_path, capsys):
         raise AssertionError("a refused part must not work")
 
     assert await part.live({"channel": "eyes"}, work,
-                           settings=_settings(tmp_path), client=client) == 1
+                           settings=_settings(tmp_path), client=client) == part.EXIT_REJECTED
     assert "мозок не одобрив: ні" in capsys.readouterr().err
     await client.aclose()
+
+
+async def test_a_part_that_knocks_and_is_rejected_returns_the_rejected_code(tmp_path):
+    client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={"approved": False, "why": "no"})))
+
+    async def work(wire):
+        raise AssertionError("a rejected part must not work")
+
+    code = await part.live({"channel": "eyes"}, work,
+                           settings=_settings(tmp_path), client=client)
+    await client.aclose()
+
+    assert code == part.EXIT_REJECTED
 
 
 async def test_a_call_outlives_a_brain_that_restarts(monkeypatch):
@@ -220,3 +234,26 @@ async def test_a_stream_gone_silent_is_opened_again(monkeypatch):
         await asyncio.gather(following, return_exceptions=True)
         await server.close()
     assert len(opened) >= 2
+
+
+async def test_a_part_without_a_token_waits_instead_of_crashing(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(part, "TOKEN_WAIT_S", 0.01)
+    monkeypatch.setattr(part, "TOKEN_WAIT_MAX_S", 0.02)
+    settings = _settings(tmp_path)
+    (tmp_path / "token").unlink()
+
+    async def work(wire):
+        raise AssertionError("a part with no key must not work")
+
+    waiting = asyncio.create_task(part.live({"channel": "eyes"}, work, settings=settings))
+    try:
+        await asyncio.sleep(0.15)
+        assert not waiting.done()
+    finally:
+        waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+
+    err = capsys.readouterr().err
+    assert str(tmp_path / "token") in err
+    assert "Traceback" not in err
+    assert err.count(str(tmp_path / "token")) <= 9

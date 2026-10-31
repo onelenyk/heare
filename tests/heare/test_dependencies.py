@@ -38,8 +38,11 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # 28 October 2026 for the catch-all deadline on one piece of work, and for
 # lifting the look-up loop out of _exchange (a method costs its signature
 # and docstring; _exchange fell from 150 lines to 91), and for the timings
-# on the said event (seconds, first, calls, looked).
-CORE_LINES = 1544
+# on the said event (seconds, first, calls, looked). On 29 October 2026 for
+# the turn-wide failure guard (a turn always ends in words and an event) and
+# for the Outcome a hand returns when its work failed or was stopped, and for
+# the live words/judge accessor (a language change counts from the next turn).
+CORE_LINES = 1570
 
 
 def _imports(path: Path) -> set[str]:

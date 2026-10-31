@@ -86,6 +86,13 @@ DEFAULTS = {
     # proposes facts; the owner still confirms them.
     "review_enabled": True,
     "review_hour": 4,
+    # What a body's switch was left at, so a restart does not silently put
+    # the microphone back on or stop the hands taking work.
+    "voice_mic": True,
+    "voice_speaker": True,
+    "voice_volume": 1.0,
+    "eyes_looking": True,
+    "hands_taking": True,
     # Whether the brain asks once a day for a newer heare, and where.
     "update_check": True,
     "update_feed": "https://api.github.com/repos/onelenyk/heare/releases/latest",
@@ -93,6 +100,24 @@ DEFAULTS = {
     # model reads is English whatever this says.
     "language": "en",
 }
+
+
+def _hour_of_day(value: str | int | float | bool) -> int:
+    """An hour of the day, 0–23, refused where it is written, not where used."""
+    if isinstance(value, bool):
+        raise ValueError("review_hour is an hour of the day, 0–23")
+    if isinstance(value, str):
+        text = value.strip()
+        if not text.isdigit():
+            raise ValueError("review_hour is an hour of the day, 0–23")
+        hour = int(text)
+    elif isinstance(value, int):
+        hour = value
+    else:
+        raise ValueError("review_hour is an hour of the day, 0–23")
+    if not 0 <= hour <= 23:
+        raise ValueError("review_hour is an hour of the day, 0–23")
+    return hour
 
 
 class Settings:
@@ -131,6 +156,20 @@ class Settings:
         return url or f"http://127.0.0.1:{self.api_port}"
 
     @property
+    def path(self) -> Path:
+        """The file these settings are read from and written to."""
+        return self._path
+
+    def forget_pairing(self) -> None:
+        """A machine that is its own brain keeps no pairing with another one.
+
+        The token would otherwise outlive the role: every local part would
+        knock with a key this brain never issued and be refused forever.
+        """
+        Path(self.machine_token_file).unlink(missing_ok=True)
+        self.set("url", "")
+
+    @property
     def secret(self) -> str:
         """What a part knocks with: a machine's own pairing first, the master
         second. A machine that paired for a brain elsewhere has no master."""
@@ -152,6 +191,8 @@ class Settings:
             raise ValueError(f"not a setting: {name!r}")
         if not isinstance(value, (str, int, float, bool)):
             raise ValueError("a setting is text, a number or a switch")
+        if name == "review_hour":
+            value = _hour_of_day(value)
         rendered = (
             ("true" if value else "false") if isinstance(value, bool)
             else json.dumps(value, ensure_ascii=False)

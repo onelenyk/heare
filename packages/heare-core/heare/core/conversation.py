@@ -22,8 +22,8 @@ import time
 from typing import AsyncIterator, Awaitable, Callable
 
 from heare.core.forms import (
-    Delegator, Executor, Gate, Input, Memory, Message, Model, Output, Permission,
-    Question, Task, Tools,
+    Delegator, Executor, Gate, Input, Memory, Message, Model, Outcome, Output,
+    Permission, Question, Task, Tools,
 )
 from heare.core.i18n import N_, _
 from heare.core.state import State
@@ -206,20 +206,21 @@ class Core:
         prompt: Callable[[], Awaitable[str]] | None = None,
         names: frozenset[str] = frozenset(),
         permission_reminder: float = PERMISSION_REMINDER_S,
-        judge: str = JUDGE,
-        words: object = None,
+        judge: str | Callable[[], str] = JUDGE,
+        words: object | Callable[[], object] | None = None,
         fit: Callable[[str, list[dict]], tuple[str, list[dict]]] | None = None,
     ) -> None:
         """names: the assistant's own name in every spelling, lower case.
-        It is not a word of a command: «Дока, стоп» is «стоп»."""
+        It is not a word of a command: «Дока, стоп» is «стоп». ``judge`` and
+        ``words`` may be callables, asked again at each use (a live language)."""
         self.model = model
         self.memory = memory
         self.delegator = delegator or Plain()
         self.gate = gate
         self.names = names
         self.permission_reminder = permission_reminder
-        self.judge = judge
-        self.words = words or NoWords()
+        self._judge = judge
+        self._words = words or NoWords()
         self._fit = fit
         self.state = State()
         self.port = _Port(self)
@@ -264,6 +265,14 @@ class Core:
 
     def attach_tools(self, tools: Tools) -> None:
         self._tools = tools
+
+    @property
+    def words(self) -> object:
+        return self._words() if callable(self._words) else self._words
+
+    @property
+    def judge(self) -> str:
+        return self._judge() if callable(self._judge) else self._judge
 
     # -- controls ---------------------------------------------------------
 
@@ -536,6 +545,11 @@ class Core:
                                 seconds=0.0, first=0.0, calls=0, looked=0)
                 return
             await self._exchange(message, out)
+        except Exception:
+            # A failure anywhere in the turn still ends with words and an event.
+            logger.exception("the turn could not be completed")
+            await self._say_failure(out)
+            await self._keep("assistant", _(FAILURE_LINE), out.name if out else "")
         finally:
             self._turn = None if self._turn is asyncio.current_task() else self._turn
             self._refresh()
@@ -899,7 +913,7 @@ class Core:
             await self._say(out, _(FAILURE_LINE))
         except Exception:
             logger.exception("the failure line could not be delivered either")
-            self.state.emit("failed", channel=out.name if out else "")
+        self.state.emit("failed", channel=out.name if out else "")
 
     async def _keep(self, role: str, text: str, channel: str) -> None:
         """Memory must never break the conversation."""
@@ -960,11 +974,7 @@ class Core:
         """Hand a piece of work off. Returns at once; the result arrives
         later as a message of its own, in the quiet lane."""
         task = Task(next(self._ids), request, executor="", follows=follows)
-        # Work that goes on from the last keeps the person's yes to it:
-        # working together, being asked again at every step is no help.
-        last = next(reversed(self.state.tasks.values()), None)
-        if follows and last is not None and last.allowed:
-            task.allowed = True
+        # A continuation keeps context, never permission.
         self.state.tasks[task.id] = task
         job = asyncio.create_task(self._work(task), name=f"task-{task.id}")
         self._jobs[task.id] = job
@@ -979,9 +989,11 @@ class Core:
             )
             task.executor = name
             self.state.emit("task", **task.view())
-            task.result = await asyncio.wait_for(
+            outcome = await asyncio.wait_for(
                 self.executors[name].run(text, _Desk(self, task)), TASK_S)
-            task.status = "done"
+            task.status, task.result = (
+                (outcome.status, outcome.text) if isinstance(outcome, Outcome)
+                else ("done", outcome))
         except asyncio.CancelledError:
             task.status = "stopped"
             task.ended = time.time()
@@ -994,11 +1006,14 @@ class Core:
         except Exception as exc:  # failed work must still be reported
             logger.exception("task %d failed: %.120s", task.id, task.request)
             task.status, task.result = "failed", f"Failed: {exc}"
-        try:
-            news = await self.delegator.brief(task)
-        except Exception:
-            logger.exception("briefing failed — saying the result as it came")
+        if task.status == "stopped":
             news = task.result
+        else:
+            try:
+                news = await self.delegator.brief(task)
+            except Exception:
+                logger.exception("briefing failed — saying the result as it came")
+                news = task.result
         # Named only when others are still running: one result needs no
         # label, two arriving out of order cannot be told apart without.
         others = any(t.status == "running" for t in self.state.tasks.values())
@@ -1047,11 +1062,13 @@ class Core:
             if allowed:
                 return True, "judge", why
         async with self._asking:
-            # Asked once for the whole piece of work: thirty questions in ten
-            # minutes made talking impossible. What the gate brings is asked
-            # one action at a time: one yes must not open all the rest.
-            if kind != "judge" and task.allowed is not None:
-                return task.allowed, "person", ""
+            # A yes is kept for the exact action it was said about; a
+            # different change is a new question. A no holds for the task.
+            if kind != "judge":
+                if task.allowed is False:
+                    return False, "person", ""
+                if (what, detail) in task.approved:
+                    return True, "person", ""
             permission = Permission(next(self._ids), task.id, task.executor, what, why)
             self._answered = asyncio.get_running_loop().create_future()
             self._permission = self.state.permission = permission
@@ -1079,6 +1096,8 @@ class Core:
             finally:
                 if kind != "judge":
                     task.allowed = allowed
+                    if allowed:
+                        task.approved.add((what, detail))
                 self._permission = self.state.permission = None
                 self.state.emit("permission_closed", id=permission.id, allowed=allowed)
             return allowed, "person", why

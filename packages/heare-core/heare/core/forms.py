@@ -175,14 +175,21 @@ class Desk(Protocol):
         allow, ``"judge"`` weighed by the gate first; ``detail``: in full."""
 
 
+@dataclass(frozen=True)
+class Outcome:
+    status: str
+    text: str
+
+
 class Executor(Protocol):
     name: str
     # One line a model can choose by: what this one is good for.
     about: str
 
-    async def run(self, task: str, desk: Desk) -> str:
+    async def run(self, task: str, desk: Desk) -> str | Outcome:
         """Do the task and return what came of it. Being cancelled is how
-        it is told to stop, and it must stop."""
+        it is told to stop, and it must stop. An ``Outcome`` says it failed
+        or was stopped; words alone mean it was done."""
 
 
 class Gate(Protocol):
@@ -214,9 +221,9 @@ class Task:
     status: str = "running"  # running · done · failed · stopped
     step: str = ""
     result: str = ""
-    # The person's answer for this piece of work: asked once, and it
-    # holds for everything the work needs after that. None: not asked yet.
+    # A yes is kept per action (``approved``); a no holds for the task.
     allowed: bool | None = None
+    approved: set[tuple[str, str]] = field(default_factory=set)
     follows: bool = False
     started: float = field(default_factory=time.time)
     ended: float | None = None
