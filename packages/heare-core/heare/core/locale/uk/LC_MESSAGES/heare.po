@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-01 20:43+0200\n"
+"POT-Creation-Date: 2026-11-01 22:48+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -710,6 +710,24 @@ msgstr "збій"
 
 msgid "Other"
 msgstr "Інше"
+
+msgid "Built-in · in the brain"
+msgstr "Вбудовані · у мозку"
+
+msgid "journal, facts, profile"
+msgstr "журнал, факти, профіль"
+
+msgid "Model"
+msgstr "Модель"
+
+msgid "Page"
+msgstr "Сторінка"
+
+msgid "served by the brain"
+msgstr "її віддає мозок"
+
+msgid "Remote · connected to the brain"
+msgstr "Віддалені · під'єднані до мозку"
 
 msgid "no part is connected"
 msgstr "жодна частина не під'єднана"
@@ -1566,9 +1584,6 @@ msgstr "не знайдено"
 
 msgid "— as in the CLI —"
 msgstr "— як у CLI —"
-
-msgid "Model"
-msgstr "Модель"
 
 msgid "the list did not come — type the id"
 msgstr "список не прийшов — id вручну"

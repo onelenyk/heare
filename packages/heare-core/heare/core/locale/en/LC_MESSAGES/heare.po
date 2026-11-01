@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-01 20:43+0200\n"
+"POT-Creation-Date: 2026-11-01 22:48+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -709,6 +709,24 @@ msgid "failure"
 msgstr ""
 
 msgid "Other"
+msgstr ""
+
+msgid "Built-in · in the brain"
+msgstr ""
+
+msgid "journal, facts, profile"
+msgstr ""
+
+msgid "Model"
+msgstr ""
+
+msgid "Page"
+msgstr ""
+
+msgid "served by the brain"
+msgstr ""
+
+msgid "Remote · connected to the brain"
 msgstr ""
 
 msgid "no part is connected"
@@ -1558,9 +1576,6 @@ msgid "not found"
 msgstr ""
 
 msgid "— as in the CLI —"
-msgstr ""
-
-msgid "Model"
 msgstr ""
 
 msgid "the list did not come — type the id"

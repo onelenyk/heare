@@ -135,6 +135,8 @@
   #partchips { display:flex; flex-wrap:wrap; gap:6px 8px; padding:10px var(--pad) 14px; min-width:0; }
   #partchips:empty { padding-top:0; }
 
+  .place { color:var(--soft); font:10.5px var(--mono); text-transform:uppercase; letter-spacing:.06em; margin-top:10px; }
+  .builtin { padding:3px 2px; }
   #bodies { display:grid; gap:4px; min-width:0; }
   .host { display:flex; align-items:center; gap:8px; color:var(--soft); font-size:10.5px; margin:2px 4px 0; overflow-wrap:anywhere; }
   .host:first-child { margin-top:0; }
@@ -1463,10 +1465,25 @@ function featureTurn(id, name, value) {
     .catch(() => { featureLoad(); });
 }
 
+// Where a part lives is shown apart from what it is: built-in ones live and
+// fall with the brain, so nothing here can be let in, cut off or forgotten.
+function builtIn() {
+  const rows = [el("div", "place", tr("Built-in · in the brain"))];
+  const model = $("model").textContent.trim();
+  for (const [name, what] of [[tr("Memory"), tr("journal, facts, profile")],
+                              [tr("Model"), model === "…" ? "" : model],
+                              [tr("Page"), tr("served by the brain")]]) {
+    const row = el("div", "part-top builtin");
+    row.append(el("span", "pdot approved"), el("b", "part-name", name), el("span", "part-state", what));
+    rows.push(row);
+  }
+  return rows;
+}
+
 function parts(map) {
   const box = $("bodies"), grid = $("partwidgets"), all = Object.entries(map || {});
   if (!all.length) {
-    box.replaceChildren(el("p", "empty", tr("no part is connected")));
+    box.replaceChildren(...builtIn(), el("div", "place", tr("Remote · connected to the brain")), el("p", "empty", tr("no part is connected")));
     grid.replaceChildren(el("p", "empty", tr("no part is connected")));
     $("partchips").replaceChildren();
     $("partfold").replaceChildren();
@@ -1480,6 +1497,7 @@ function parts(map) {
   }
   const first = ([, list]) => Math.min(...list.map(([, b]) => PART_ORDER[b.state] ?? 9));
   const frag = document.createDocumentFragment();
+  frag.append(...builtIn(), el("div", "place", tr("Remote · connected to the brain")));
   for (const [host, list] of [...groups].sort((a, b) => first(a) - first(b))) {
     frag.append(el("div", "host", host));
     list.sort((a, b) => (PART_ORDER[a[1].state] ?? 9) - (PART_ORDER[b[1].state] ?? 9));
