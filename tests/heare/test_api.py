@@ -891,6 +891,29 @@ async def test_a_pairing_code_gives_a_window_the_person_s_powers(tmp_path):
     await _close(room, client)
 
 
+async def test_a_name_cannot_make_a_window_the_owner(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    answer = await client.post(
+        "/api/pair", json={"code": code, "kind": "window", "name": "!owner-x"})
+    assert "!" not in (await answer.json())["pid"]
+    wrong = await client.post("/api/pair", json={"secret": "nope", "kind": "window"})
+    assert wrong.status == 401
+    await _close(room, client)
+
+
+async def test_the_master_token_makes_a_window_the_owner_and_health_is_open(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    assert (await client.get("/health")).status == 200
+    machine = await client.post(
+        "/api/pair", json={"secret": auth["X-Heare-Token"], "kind": "machine"})
+    assert machine.status == 401  # the master token opens windows, not machines
+    answer = await client.post(
+        "/api/pair", json={"secret": auth["X-Heare-Token"], "kind": "window"})
+    assert (await answer.json())["pid"].startswith("window@!owner-")
+    await _close(room, client)
+
+
 # Every route a remote window may not use, named here on purpose. The census
 # below walks the router, so a route added later has to be put in this table
 # or in REMOTE_WINDOW_ALLOWED before the suite passes: the default is local.

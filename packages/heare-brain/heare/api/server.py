@@ -150,6 +150,8 @@ def _remote_window_may(method: str, path: str) -> bool:
 
 
 SESSION = "heare_session"
+# Cannot come from a name: pairing strips this character from every name.
+OWNER = "!owner-"
 # A backup brought from another Mac: a year of recordings fits well under it.
 BACKUP_LIMIT = 2 * 1024 ** 3
 # A newer heare is asked about a minute after the start, then once a day.
@@ -404,7 +406,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
 
     @web.middleware
     async def guard(request: web.Request, handler):
-        if request.path == "/api/pair":
+        if request.path in ("/api/pair", "/health"):
             return await handler(request)
         if not (request.path.startswith("/api/")
                 or request.path.startswith("/screens/")):
@@ -421,8 +423,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
             # A window on this machine has the person's powers, but is still
             # one window: its knock is its own, so two open pages are two
             # parts, not one. From elsewhere it is the pult only.
-            if not _loopback(request.remote) and not _remote_window_may(
-                    request.method, request.path):
+            if (not pid.startswith(f"window@{OWNER}") and not _loopback(request.remote)
+                    and not _remote_window_may(request.method, request.path)):
                 raise web.HTTPForbidden(
                     text="a window from elsewhere keeps the pult only")
             request["window"] = pid
@@ -441,6 +443,10 @@ def build(core: Core, settings: Any, vitals: Any = None,
     pace = Slow()
     minted_at: dict[str, float] = {}
 
+    async def health(request: web.Request) -> web.Response:
+        """For the server's watchdog: alive, and nothing more, for anyone."""
+        return web.json_response({"ok": True})
+
     async def pair(request: web.Request) -> web.Response:
         """A machine or a window with a one-time code takes a key of its own."""
         if not pace.allow(request.remote or "?"):
@@ -449,14 +455,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
         kind = str(data.get("kind") or "window")
         if kind not in ("machine", "window"):
             raise web.HTTPBadRequest(text="kind is machine or window")
-        if not codes.redeem(code_path, str(data.get("code") or "")):
+        # On a server no window is local, so the person proves it with the
+        # master token once, and that window keeps the whole pult.
+        given = str(data.get("secret") or "").encode()
+        owner = kind == "window" and bool(given) and secrets.compare_digest(given, secret.encode())
+        if not owner and not codes.redeem(code_path, str(data.get("code") or "")):
             raise web.HTTPUnauthorized(text="bad code")
         name = re.sub(r"[^A-Za-z0-9._-]", "", str(data.get("name") or ""))[:40]
         who = name or request.remote or "here"
         # Every tab of one browser calls itself "Chrome". A pid of its own per
         # pairing keeps a second tab from revoking the first one's key, which
         # otherwise makes two open tabs take turns asking for a code.
-        pid = f"{kind}@{who}" if kind == "machine" else f"window@{who}-{secrets.token_hex(2)}"
+        pid = f"{kind}@{who}" if kind == "machine" else f"window@{OWNER if owner else ''}{who}-{secrets.token_hex(2)}"
         token = auth.issue(part_tokens, pid)
         if kind == "machine":
             return web.json_response({"pid": pid, "token": token})
@@ -1516,6 +1526,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/pair", pair),
         web.post("/api/pair-code", pair_code),
         web.post("/api/message", message),
+        web.get("/health", health),
         web.post("/api/bodies", register),
         web.post("/api/bodies/{id}/approve", approve),
         web.post("/api/bodies/{id}/reject", reject),
