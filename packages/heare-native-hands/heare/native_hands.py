@@ -27,6 +27,7 @@ import socket
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import AsyncIterator, Callable, Protocol
 
 import httpx
@@ -125,8 +126,11 @@ class Reach:
     """The owner's switch on the internet, and what one task has spent of it."""
 
     def __init__(self, settings: Settings | None = None) -> None:
-        self._settings = settings
-        self.wanted = bool(getattr(settings, "native_hands_internet", False))
+        # Its own file, not a setting: the keeper restarts the parts when the
+        # settings change, and the job in hand would be lost with the process.
+        self._file = (Path(settings.api_token_file).with_name("native_hands_internet")
+                      if settings else None)
+        self.wanted = bool(self._file and self._file.exists())
         self.spent = 0
         self.note: Callable[[str], None] = lambda line: None
 
@@ -137,8 +141,11 @@ class Reach:
     def event(self, event: dict) -> None:
         if event.get("kind") == "control" and event.get("name") == "internet":
             self.wanted = bool(event.get("value"))
-            if self._settings is not None:
-                self._settings.set("native_hands_internet", self.wanted)
+            if self._file is not None:
+                if self.wanted:
+                    self._file.touch()
+                else:
+                    self._file.unlink(missing_ok=True)
 
 
 class NativeHand:

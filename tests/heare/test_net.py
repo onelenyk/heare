@@ -211,5 +211,15 @@ def test_the_switch_is_the_parts_own_control():
     assert r.wanted
 
 
+def test_the_switch_survives_a_restart_and_leaves_the_settings_alone(tmp_path):
+    from types import SimpleNamespace
+
+    settings = SimpleNamespace(api_token_file=tmp_path / "token")
+    Reach(settings).event({"kind": "control", "name": "internet", "value": True})
+    assert Reach(settings).wanted
+    Reach(settings).event({"kind": "control", "name": "internet", "value": False})
+    assert not Reach(settings).wanted
+
+
 def test_the_tool_schema_is_json():
     assert json.loads(json.dumps(net.SCHEMA))["function"]["name"] == net.TOOL
