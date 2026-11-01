@@ -135,11 +135,20 @@ class Sessions:
         return rows
 
     def for_model(self, session: str) -> list[dict]:
-        """A file stays a name after its turn: the budget holds the talk."""
+        """The newest text file comes back whole, because that is the one the
+        talk is still about; older files stay names, so the budget holds the talk."""
+        rows = self.read(session)
+        latest = next((row for row in reversed(rows)
+                       if any(f["kind"] == "text" for f in row.get("files", []))), None)
         turns = []
-        for row in self.read(session):
-            names = ", ".join(f["name"] for f in row.get("files", []))
-            shown = f"{row['text']}\n[attached earlier: {names}]" if names else row["text"]
+        for row in rows:
+            files = row.get("files", [])
+            shown = row["text"]
+            if row is latest:
+                shown += self.block(session, [f["id"] for f in files if f["kind"] == "text"])[0]
+                files = [f for f in files if f["kind"] != "text"]
+            if files:
+                shown += f"\n[attached earlier: {', '.join(f['name'] for f in files)}]"
             turns.append({"role": row["role"], "content": shown})
         return turns
 

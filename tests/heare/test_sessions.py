@@ -115,8 +115,20 @@ async def test_a_text_file_reaches_the_model_as_data_and_stays_a_chip(tmp_path):
     await client.post("/api/sessions", headers=h)
     await client.post(f"/api/sessions/{active}/open", headers=h)
     await say(room, client, h, "ще")
-    assert "секрет плати" not in told(room.model) and "attached earlier: notes.md" in told(room.model)
+    assert "секрет плати" in told(room.model)
     await _close(room, client)
+
+
+async def test_only_the_newest_text_file_comes_back_after_a_switch(tmp_path):
+    sessions = Sessions(tmp_path)
+    session = sessions.new()
+    old = sessions.store(session, "old.md", "старий вміст".encode())
+    new = sessions.store(session, "new.md", "новий вміст".encode())
+    sessions.add(session, "user", "перший", [old])
+    sessions.add(session, "user", "другий", [new])
+    text = json.dumps(sessions.for_model(session), ensure_ascii=False)
+    assert "новий вміст" in text and "старий вміст" not in text
+    assert "attached earlier: old.md" in text
 
 
 async def test_an_image_is_named_not_pretended_read(tmp_path):
