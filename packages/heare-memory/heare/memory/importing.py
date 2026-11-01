@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -53,6 +54,9 @@ def origin(source: str) -> str:
     return f"{ORIGIN}{source}"
 
 
+_WRITING = threading.Lock()
+
+
 class Seen:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -62,12 +66,18 @@ class Seen:
             self.keys = set()
 
     def add(self, keys: Iterable[str]) -> None:
-        self.keys.update(keys)
-        self.path.write_text(json.dumps(sorted(self.keys)), encoding="utf-8")
+        """Merged with the file, not written over it: two sources imported at
+        once each hold their own Seen, and the later one erased the earlier."""
+        with _WRITING:
+            self.keys.update(keys)
+            self.keys.update(Seen(self.path).keys)
+            self.path.write_text(json.dumps(sorted(self.keys)), encoding="utf-8")
 
     def drop(self, prefix: str) -> None:
-        self.keys = {key for key in self.keys if not key.startswith(prefix)}
-        self.path.write_text(json.dumps(sorted(self.keys)), encoding="utf-8")
+        with _WRITING:
+            kept = self.keys | Seen(self.path).keys
+            self.keys = {key for key in kept if not key.startswith(prefix)}
+            self.path.write_text(json.dumps(sorted(self.keys)), encoding="utf-8")
 
 
 def waiting(source: Source, seen: Seen, kinds: set[str] | None = None) -> list[Record]:
@@ -92,6 +102,7 @@ async def import_from(source: Source, store: FactStore, model: Model, seen: Seen
     read again next time rather than lost."""
     records = (await asyncio.to_thread(waiting, source, seen, kinds))[:MOST]
     done = added = 0
+    told(0, len(records))
     known = {(f.predicate, f.value) for f in
              await asyncio.to_thread(store.current, include_pending=True)}
     for start in range(0, len(records), BATCH):

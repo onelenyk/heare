@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-01 18:54+0200\n"
+"POT-Creation-Date: 2026-11-01 20:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -1052,7 +1052,62 @@ msgstr ""
 msgid "the search failed"
 msgstr ""
 
-msgid "Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts."
+msgid "Notes Claude Code keeps about you and your projects."
+msgstr ""
+
+msgid "Engram's records of your work with coding agents."
+msgstr ""
+
+msgid "Observations claude-mem made during coding sessions."
+msgstr ""
+
+msgid "Who you are"
+msgstr ""
+
+msgid "Notes about you: role, habits, preferences."
+msgstr ""
+
+msgid "How you like to work"
+msgstr ""
+
+msgid "What you asked agents to do differently."
+msgstr ""
+
+msgid "Your decisions"
+msgstr ""
+
+msgid "Choices you made and why."
+msgstr ""
+
+#, python-brace-format
+msgid "Importing: {done} of {total} notes"
+msgstr ""
+
+msgid "Importing: getting started"
+msgstr ""
+
+msgid "You can close this. It keeps going, and what it finds will wait under Facts."
+msgstr ""
+
+#, python-brace-format
+msgid "Importing {name}: {done} of {total}"
+msgstr ""
+
+#, python-brace-format
+msgid "Removes them from heare, even the ones you confirmed. {name} itself stays as it is."
+msgstr ""
+
+msgid "Remove from heare"
+msgstr ""
+
+msgid "Press again to remove"
+msgstr ""
+
+#, python-brace-format
+msgid "Other tools keep notes too. Importing reads their notes and sends them to your model, {model}. Nothing is saved until you confirm it under Facts. The tools' own notes never change."
+msgstr ""
+
+msgid "the current model"
 msgstr ""
 
 msgid "not on this machine"
@@ -1062,7 +1117,11 @@ msgstr ""
 msgid "{n} records"
 msgstr ""
 
-msgid "Undo import"
+#, python-brace-format
+msgid "All imported: {n} notes read."
+msgstr ""
+
+msgid "Nothing to import: no notes here are about you."
 msgstr ""
 
 #, python-brace-format
@@ -1169,6 +1228,18 @@ msgstr[1] ""
 #, python-brace-format
 msgid "{n} reminder"
 msgid_plural "{n} reminders"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-brace-format
+msgid "Import {n} note"
+msgid_plural "Import {n} notes"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-brace-format
+msgid "{n} fact came from here"
+msgid_plural "{n} facts came from here"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2135,5 +2206,11 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Okay, I will remind you."
+#~ msgstr ""
+
+#~ msgid "Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts."
+#~ msgstr ""
+
+#~ msgid "Undo import"
 #~ msgstr ""
 

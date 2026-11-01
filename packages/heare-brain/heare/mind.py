@@ -8,6 +8,7 @@ write is malformed.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from datetime import datetime
@@ -142,6 +143,8 @@ class Mind:
         self._settings = settings
         self._journal = journal
         self._memory = memory
+        self._imports: dict[str, asyncio.Task[None]] = {}
+        self._progress: dict[str, dict[str, int]] = {}
 
     def snapshot(self) -> dict[str, Any]:
         now = time.time()
@@ -205,17 +208,44 @@ class Mind:
 
     def sources(self) -> list[dict[str, Any]]:
         seen, listed = self._seen(), []
+        facts = self._facts.current(include_pending=True)
         for source in all_sources():
             found = source.found()
             kinds = Counter(r.kind for r in importing.waiting(source, seen)) if found else {}
             listed.append({"name": source.name, "found": found,
-                           "records": source.count() if found else 0, "waiting": dict(kinds)})
+                           "records": source.count() if found else 0, "waiting": dict(kinds),
+                           "running": self._progress.get(source.name),
+                           "read": sum(key.startswith(f"{source.name}:") for key in seen.keys),
+                           "imported": sum(f.source == importing.origin(source.name)
+                                           for f in facts)})
         return listed
 
-    async def import_source(self, name: str, kinds: set[str] | None, model: Any,
-                            told: Callable[[int, int], None]) -> importing.ImportReport:
+    def importing(self, name: str) -> bool:
+        return name in self._imports
+
+    def start_import(self, name: str, kinds: set[str] | None, model: Any,
+                     told: Callable[[int, int], None],
+                     ended: Callable[[importing.ImportReport], None]) -> None:
+        """It outlives the request, and how far it got lives here, so a page
+        opened in the middle sees it too."""
         source = next(s for s in all_sources() if s.name == name)
-        return await importing.import_from(source, self._facts, model, self._seen(), kinds, told)
+        self._progress[name] = {"done": 0, "total": 0}
+
+        def moved(done: int, total: int) -> None:
+            self._progress[name] = {"done": done, "total": total}
+            told(done, total)
+
+        async def work() -> None:
+            try:
+                report = await importing.import_from(
+                    source, self._facts, model, self._seen(), kinds, moved)
+            except Exception as failed:
+                report = importing.ImportReport(error=str(failed))
+            self._imports.pop(name, None)
+            self._progress.pop(name, None)
+            ended(report)
+
+        self._imports[name] = asyncio.create_task(work(), name=f"import-{name}")
 
     def undo_source(self, name: str) -> int:
         return importing.undo(name, self._facts, self._seen())

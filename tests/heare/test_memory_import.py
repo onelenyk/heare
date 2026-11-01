@@ -125,3 +125,39 @@ async def test_a_confirmed_import_is_undone_too(tmp_path):
     store.confirm(fact.id)
     assert store.current()[0].status == CONFIRMED
     assert undo("notes", store, seen) == 1 and store.current() == []
+
+
+def test_two_sources_imported_at_once_keep_each_others_marks(tmp_path):
+    path = tmp_path / "imported.json"
+    first, second = Seen(path), Seen(path)
+    first.add(["engram:1"])
+    second.add(["claude-code:2"])
+    assert Seen(path).keys == {"engram:1", "claude-code:2"}
+
+
+async def test_an_import_shows_how_far_it_got_and_says_when_it_failed(tmp_path, monkeypatch):
+    import asyncio
+
+    from heare import mind as minds
+    from heare.config import Settings
+    from heare.memory import importing as module
+
+    class Source:
+        name = "other"
+
+    gate, ended = asyncio.Event(), []
+
+    async def slow(source, store, model, seen, kinds, told):
+        told(1, 2)
+        await gate.wait()
+        raise RuntimeError("no model")
+
+    monkeypatch.setattr(minds, "all_sources", lambda: [Source()])
+    monkeypatch.setattr(module, "import_from", slow)
+    hand = minds.Mind(None, None, Settings(memory_dir=str(tmp_path)))
+    hand.start_import("other", None, None, lambda done, total: None, ended.append)
+    await asyncio.sleep(0)
+    assert hand.importing("other") and hand._progress["other"] == {"done": 1, "total": 2}
+    gate.set()
+    await asyncio.sleep(0.01)
+    assert not hand.importing("other") and ended[0].error == "no model"

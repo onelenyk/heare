@@ -500,6 +500,20 @@
   .mind-foot { display:flex; align-items:center; gap:10px; margin-top:6px; flex-wrap:wrap; }
   .mind-count { color:var(--soft); font:10.5px var(--mono); }
   .mind-count.over { color:var(--bad); }
+  #mind-panel-sources .mind-block { background:var(--card-2); border:1px solid var(--line); border-radius:10px; padding:12px; margin:0 0 12px; }
+  #mind-panel-sources .mind-block > h3 { margin:0 0 4px; }
+  #mind-panel-sources .mind-block > .mind-count { margin:2px 0 0; line-height:1.45; }
+  #mind-panel-sources .source-row { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:8px; }
+  #mind-panel-sources .source-row.undo { border-style:dashed; }
+  .source-working { display:flex; flex-direction:column; gap:4px; padding:10px 12px; margin:8px 0; border:1px solid var(--accent); border-radius:8px; font-size:13px; }
+  .source-working span { color:var(--soft); font-size:12px; }
+  .source-bar { height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:4px; }
+  .source-bar i { display:block; height:100%; background:var(--accent); animation:pulse 1.4s infinite; transition:width .3s; }
+  #imports-now { color:var(--accent); font:11px var(--mono); margin:8px 0 0; animation:pulse 1.4s infinite; }
+  .source-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line); }
+  .source-words { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; font-size:13px; }
+  .source-words span { color:var(--soft); font-size:12px; }
+  .source-row .btn { flex:none; padding:7px 12px; font-size:12px; }
   .mind-foot .btn { margin-left:auto; padding:6px 11px; font-size:12px; }
   /* journal and search: one quiet row per remembered thing, drawn by the
      same renderer whether it came from the journal or from a search. */
@@ -596,6 +610,7 @@
             <div class="row"><span data-t>reminders</span><span id="mind-reminders">—</span></div>
             <div class="row"><span data-t>last review</span><span id="mind-review">—</span></div>
           </div>
+          <p id="imports-now" hidden></p>
           <div class="keys"><button type="button" class="key wide" id="open-mind" aria-expanded="false" data-t>Open memory</button></div>
         </section>
 
@@ -2597,37 +2612,94 @@ function mindShow(tab) {
   if (tab === "sources") sourcesLoad();
 }
 const sourceNotes = {};
+const sourceRunning = {};
+const sourceAbout = () => ({
+  "claude-code": tr("Notes Claude Code keeps about you and your projects."),
+  "engram": tr("Engram's records of your work with coding agents."),
+  "claude-mem": tr("Observations claude-mem made during coding sessions."),
+});
+const sourceKinds = () => ({
+  user: [tr("Who you are"), tr("Notes about you: role, habits, preferences.")],
+  feedback: [tr("How you like to work"), tr("What you asked agents to do differently.")],
+  decision: [tr("Your decisions"), tr("Choices you made and why.")],
+});
+function sourceImport(name, kind, n, busy) {
+  const about = sourceKinds()[kind] || [kind, ""];
+  const row = el("div", "source-row");
+  const words = el("div", "source-words");
+  words.append(el("strong", "", about[0]));
+  if (about[1]) words.append(el("span", "", about[1]));
+  const go = el("button", "btn", trn(n, "Import {n} note", "Import {n} notes"));
+  go.type = "button";
+  go.disabled = busy;
+  go.onclick = () => { go.disabled = true; api(`mind/sources/${encodeURIComponent(name)}/import`, {method: "POST", body: {kinds: [kind]}}).catch(() => { go.disabled = false; }); };
+  row.append(words, go);
+  return row;
+}
+function sourceWorking(run) {
+  const box = el("div", "source-working");
+  box.append(el("strong", "", run.total ? tr("Importing: {done} of {total} notes", run) : tr("Importing: getting started")));
+  box.append(el("span", "", tr("You can close this. It keeps going, and what it finds will wait under Facts.")));
+  const bar = el("div", "source-bar");
+  const fill = el("i");
+  fill.style.width = run.total ? `${Math.round(run.done / run.total * 100)}%` : "4%";
+  bar.append(fill);
+  box.append(bar);
+  return box;
+}
+function sourceBanner() {
+  const running = Object.entries(sourceRunning);
+  const line = $("imports-now");
+  line.hidden = !running.length;
+  line.textContent = running.map(([name, run]) => tr("Importing {name}: {done} of {total}", {name, done: run.done, total: run.total || "…"})).join(" · ");
+}
+function sourceUndo(s) {
+  const row = el("div", "source-row undo");
+  const words = el("div", "source-words");
+  words.append(el("strong", "", trn(s.imported, "{n} fact came from here", "{n} facts came from here")));
+  words.append(el("span", "", tr("Removes them from heare, even the ones you confirmed. {name} itself stays as it is.", {name: s.name})));
+  const undo = el("button", "btn quiet", tr("Remove from heare"));
+  undo.type = "button";
+  undo.onclick = () => {
+    if (!undo.dataset.sure) { undo.dataset.sure = "1"; undo.textContent = tr("Press again to remove"); return; }
+    api(`mind/sources/${encodeURIComponent(s.name)}/undo`, {method: "POST"}).then(sourcesLoad).catch(() => {});
+  };
+  row.append(words, undo);
+  return row;
+}
 async function sourcesLoad() {
   const list = await api("mind/sources").catch(() => []);
+  for (const s of list) {
+    if (s.running) sourceRunning[s.name] = s.running; else delete sourceRunning[s.name];
+  }
+  sourceBanner();
   const panel = $("mind-panel-sources");
-  panel.replaceChildren(el("p", "mind-said", tr("Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts.")));
+  panel.replaceChildren(el("p", "mind-said", tr("Other tools keep notes too. Importing reads their notes and sends them to your model, {model}. Nothing is saved until you confirm it under Facts. The tools' own notes never change.", {model: $("model")?.textContent?.trim() || tr("the current model")})));
   for (const s of list) {
     const block = el("section", "mind-block");
     block.append(el("h3", "", s.name));
+    if (sourceAbout()[s.name]) block.append(el("p", "mind-count", sourceAbout()[s.name]));
     if (!s.found) { block.append(el("p", "mind-count", tr("not on this machine"))); panel.append(block); continue; }
     block.append(el("p", "mind-count", tr("{n} records", {n: s.records})));
-    const foot = el("div", "mind-foot");
-    Object.entries(s.waiting).forEach(([kind, n]) => {
-      const go = el("button", "btn", `${kind} · ${n}`);
-      go.type = "button";
-      go.onclick = () => { go.disabled = true; api(`mind/sources/${encodeURIComponent(s.name)}/import`, {method: "POST", body: {kinds: [kind]}}).catch(() => { go.disabled = false; }); };
-      foot.append(go);
-    });
-    const undo = el("button", "btn", tr("Undo import"));
-    undo.type = "button";
-    undo.onclick = () => api(`mind/sources/${encodeURIComponent(s.name)}/undo`, {method: "POST"}).then(sourcesLoad).catch(() => {});
-    foot.append(undo);
-    block.append(foot);
-    if (sourceNotes[s.name]) block.append(el("p", "mind-count", sourceNotes[s.name]));
+    const kinds = Object.entries(s.waiting);
+    const run = sourceRunning[s.name];
+    if (run) block.append(sourceWorking(run));
+    kinds.forEach(([kind, n]) => block.append(sourceImport(s.name, kind, n, Boolean(run))));
+    if (!kinds.length && !run) block.append(el("p", "mind-count", s.read ? tr("All imported: {n} notes read.", {n: s.read}) : tr("Nothing to import: no notes here are about you.")));
+    if (s.imported && !run) block.append(sourceUndo(s));
+    if (sourceNotes[s.name] && !run) block.append(el("p", "mind-count", sourceNotes[s.name]));
     panel.append(block);
   }
 }
 function sourceProgress(e) {
-  sourceNotes[e.name] = e.error ? tr("It stopped: {why}", {why: e.error})
-    : e.finished ? tr("Read {read}, found {added}", {read: e.read, added: e.added})
-    : `${e.done} / ${e.total}`;
+  if (e.finished) {
+    delete sourceRunning[e.name];
+    sourceNotes[e.name] = e.error ? tr("It stopped: {why}", {why: e.error}) : tr("Read {read}, found {added}", {read: e.read, added: e.added});
+  } else sourceRunning[e.name] = {done: e.done, total: e.total};
+  sourceBanner();
   if (mindTab === "sources" && mindOpen) sourcesLoad();
 }
+api("mind/sources").then(list => { list.forEach(s => { if (s.running) sourceRunning[s.name] = s.running; }); sourceBanner(); }).catch(() => {});
 function mindLoad(force) {
   if (!force && !mindOpen) return Promise.resolve();
   const seq = ++mindSeq;

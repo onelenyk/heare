@@ -361,7 +361,6 @@ def build(core: Core, settings: Any, vitals: Any = None,
     screens = Path(settings.screens_dir)
     recordings = Recordings(Path(settings.heard_dir))
     home = Path(settings.backups_dir).parent
-    importing_now: dict[str, asyncio.Task] = {}
     sessions = Sessions(Path(settings.memory_dir) / "sessions")
     sessions.seed(core.history)
     if not sessions.active:
@@ -1245,24 +1244,21 @@ def build(core: Core, settings: Any, vitals: Any = None,
         known = await asyncio.to_thread(hand().sources)
         if not any(s["name"] == name and s["found"] for s in known):
             raise web.HTTPNotFound(text="no such source")
-        if name in importing_now:
+        if hand().importing(name):
             raise web.HTTPConflict(text="already reading it")
         kinds = (await body(request)).get("kinds")
 
-        async def work() -> None:
-            def told(done: int, total: int) -> None:
-                core.state.emit("sources", name=name, done=done, total=total)
+        def told(done: int, total: int) -> None:
+            core.state.emit("sources", name=name, done=done, total=total)
 
-            try:
-                report = await hand().import_source(
-                    name, set(kinds) if isinstance(kinds, list) else None, core.model, told)
-                core.state.emit("sources", name=name, finished=True, added=report.added,
-                                read=report.read, error=report.error)
-                core.state.emit("mind", what="fact", action="imported")
-            finally:
-                importing_now.pop(name, None)
+        def ended(report: Any) -> None:
+            core.state.emit("sources", name=name, finished=True, added=report.added,
+                            read=report.read, error=report.error)
+            core.state.emit("mind", what="fact", action="imported")
 
-        importing_now[name] = asyncio.create_task(work(), name=f"import-{name}")
+        hand().start_import(name, set(kinds) if isinstance(kinds, list) else None,
+                            core.model, told, ended)
+        told(0, 0)
         return web.json_response({"started": True}, status=202)
 
     async def source_undo(request: web.Request) -> web.Response:

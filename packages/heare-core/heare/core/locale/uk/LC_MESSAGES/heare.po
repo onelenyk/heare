@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-01 18:54+0200\n"
+"POT-Creation-Date: 2026-11-01 20:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1052,8 +1052,63 @@ msgstr "нічого не пригадую."
 msgid "the search failed"
 msgstr "не вдалося пошукати"
 
-msgid "Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts."
-msgstr "Нотатки інших інструментів. Імпорт надсилає їх моделі; знайдене чекає твого «так» у фактах."
+msgid "Notes Claude Code keeps about you and your projects."
+msgstr "Нотатки Claude Code про тебе і твої проєкти."
+
+msgid "Engram's records of your work with coding agents."
+msgstr "Записи Engram про твою роботу з агентами."
+
+msgid "Observations claude-mem made during coding sessions."
+msgstr "Спостереження claude-mem із робочих сесій."
+
+msgid "Who you are"
+msgstr "Хто ти"
+
+msgid "Notes about you: role, habits, preferences."
+msgstr "Нотатки про тебе: роль, звички, уподобання."
+
+msgid "How you like to work"
+msgstr "Як ти любиш працювати"
+
+msgid "What you asked agents to do differently."
+msgstr "Що ти просив агентів робити інакше."
+
+msgid "Your decisions"
+msgstr "Твої рішення"
+
+msgid "Choices you made and why."
+msgstr "Що ти обрав і чому."
+
+#, python-brace-format
+msgid "Importing: {done} of {total} notes"
+msgstr "Імпорт: {done} із {total} нотаток"
+
+msgid "Importing: getting started"
+msgstr "Імпорт: починаю"
+
+msgid "You can close this. It keeps going, and what it finds will wait under Facts."
+msgstr "Це можна закрити. Імпорт триватиме, а знайдене чекатиме у «Фактах»."
+
+#, python-brace-format
+msgid "Importing {name}: {done} of {total}"
+msgstr "Імпорт {name}: {done} із {total}"
+
+#, python-brace-format
+msgid "Removes them from heare, even the ones you confirmed. {name} itself stays as it is."
+msgstr "Прибирає їх із heare, навіть ті, що ти підтвердив. Сам {name} лишається без змін."
+
+msgid "Remove from heare"
+msgstr "Прибрати з heare"
+
+msgid "Press again to remove"
+msgstr "Натисни ще раз, щоб прибрати"
+
+#, python-brace-format
+msgid "Other tools keep notes too. Importing reads their notes and sends them to your model, {model}. Nothing is saved until you confirm it under Facts. The tools' own notes never change."
+msgstr "Інші інструменти теж ведуть нотатки. Імпорт читає їх і надсилає твоїй моделі, {model}. Нічого не збережеться, доки ти не підтвердиш це у «Фактах». Нотатки самих інструментів не змінюються."
+
+msgid "the current model"
+msgstr "поточна модель"
 
 msgid "not on this machine"
 msgstr "на цьому маку немає"
@@ -1062,8 +1117,12 @@ msgstr "на цьому маку немає"
 msgid "{n} records"
 msgstr "записів: {n}"
 
-msgid "Undo import"
-msgstr "Скасувати імпорт"
+#, python-brace-format
+msgid "All imported: {n} notes read."
+msgstr "Усе імпортовано, прочитано нотаток: {n}."
+
+msgid "Nothing to import: no notes here are about you."
+msgstr "Імпортувати нічого: тут немає нотаток про тебе."
 
 #, python-brace-format
 msgid "It stopped: {why}"
@@ -1176,6 +1235,20 @@ msgid_plural "{n} reminders"
 msgstr[0] "{n} нагадування"
 msgstr[1] "{n} нагадування"
 msgstr[2] "{n} нагадувань"
+
+#, python-brace-format
+msgid "Import {n} note"
+msgid_plural "Import {n} notes"
+msgstr[0] "Імпортувати {n} нотатку"
+msgstr[1] "Імпортувати {n} нотатки"
+msgstr[2] "Імпортувати {n} нотаток"
+
+#, python-brace-format
+msgid "{n} fact came from here"
+msgid_plural "{n} facts came from here"
+msgstr[0] "Звідси прийшов {n} факт"
+msgstr[1] "Звідси прийшло {n} факти"
+msgstr[2] "Звідси прийшло {n} фактів"
 
 msgid "Brain"
 msgstr "Мозок"
@@ -2141,4 +2214,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Okay, I will remind you."
 #~ msgstr "Добре, нагадаю."
+
+#~ msgid "Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts."
+#~ msgstr "Нотатки інших інструментів. Імпорт надсилає їх моделі; знайдене чекає твого «так» у фактах."
 
