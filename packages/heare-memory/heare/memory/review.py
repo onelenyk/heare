@@ -304,8 +304,12 @@ def _prompt(known: Iterable[Fact], transcript: list[str]) -> str:
 
 
 async def _ask(model: Model, prompt: str) -> str:
+    return await _prose_ask(model, _SYSTEM, prompt)
+
+
+async def _prose_ask(model: Model, system: str, prompt: str) -> str:
     messages = [
-        {"role": "system", "content": _SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": prompt},
     ]
     pieces: list[str] = []

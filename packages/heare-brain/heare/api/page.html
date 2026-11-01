@@ -691,6 +691,7 @@
     <button type="button" class="mind-tab" id="mind-tab-search" role="tab" aria-selected="false" aria-controls="mind-panel-search" tabindex="-1" data-t>Search</button>
     <button type="button" class="mind-tab" id="mind-tab-hearing" role="tab" aria-selected="false" aria-controls="mind-panel-hearing" tabindex="-1" data-t>Hearing</button>
     <button type="button" class="mind-tab" id="mind-tab-profile" role="tab" aria-selected="false" aria-controls="mind-panel-profile" tabindex="-1" data-t>Profile</button>
+    <button type="button" class="mind-tab" id="mind-tab-sources" role="tab" aria-selected="false" aria-controls="mind-panel-sources" tabindex="-1" data-t>Sources</button>
     <button type="button" class="mind-tab" id="mind-tab-backups" role="tab" aria-selected="false" aria-controls="mind-panel-backups" tabindex="-1" data-t>Backups</button>
   </div>
   <div class="mind-panel" id="mind-panel-facts" role="tabpanel" aria-labelledby="mind-tab-facts"></div>
@@ -723,6 +724,7 @@
       <div class="mind-foot"><span class="mind-count" id="mind-count-goals">0 / —</span><span class="mind-err" id="mind-err-goals"></span><button type="button" class="btn" id="mind-save-goals" data-t>Save</button></div>
     </section>
   </div>
+  <div class="mind-panel" id="mind-panel-sources" role="tabpanel" aria-labelledby="mind-tab-sources" hidden></div>
   <div class="mind-panel" id="mind-panel-backups" role="tabpanel" aria-labelledby="mind-tab-backups" hidden>
     <p class="mind-empty" data-t>A backup is one file: conversations, journal, facts, profile, reminders, settings. Model keys and this Mac's bonds are not in it: on a new Mac you enter them again.</p>
     <div class="backup-make">
@@ -2107,7 +2109,7 @@ let mind = null, mindOpen = false, mindTimer = null, mindSeq = 0;
 let mindTab = "facts", mindJournalSeq = 0, mindSearchSeq = 0;
 const mindDirty = {user: false, threads: false, goals: false};
 const MIND_PROFILE = ["user", "threads", "goals"];
-const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", "profile", "backups"];
+const MIND_TABS = ["facts", "reminders", "journal", "search", "hearing", "profile", "sources", "backups"];
 const MIND_SOURCE = {
   legacy: tr("from the old memory"),
   consolidated: tr("from words"),
@@ -2592,6 +2594,39 @@ function mindShow(tab) {
   if (tab === "journal") mindJournalLoad();
   if (tab === "hearing") hearingLoad();
   if (tab === "backups") backupsLoad();
+  if (tab === "sources") sourcesLoad();
+}
+const sourceNotes = {};
+async function sourcesLoad() {
+  const list = await api("mind/sources").catch(() => []);
+  const panel = $("mind-panel-sources");
+  panel.replaceChildren(el("p", "mind-said", tr("Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts.")));
+  for (const s of list) {
+    const block = el("section", "mind-block");
+    block.append(el("h3", "", s.name));
+    if (!s.found) { block.append(el("p", "mind-count", tr("not on this machine"))); panel.append(block); continue; }
+    block.append(el("p", "mind-count", tr("{n} records", {n: s.records})));
+    const foot = el("div", "mind-foot");
+    Object.entries(s.waiting).forEach(([kind, n]) => {
+      const go = el("button", "btn", `${kind} · ${n}`);
+      go.type = "button";
+      go.onclick = () => { go.disabled = true; api(`mind/sources/${encodeURIComponent(s.name)}/import`, {method: "POST", body: {kinds: [kind]}}).catch(() => { go.disabled = false; }); };
+      foot.append(go);
+    });
+    const undo = el("button", "btn", tr("Undo import"));
+    undo.type = "button";
+    undo.onclick = () => api(`mind/sources/${encodeURIComponent(s.name)}/undo`, {method: "POST"}).then(sourcesLoad).catch(() => {});
+    foot.append(undo);
+    block.append(foot);
+    if (sourceNotes[s.name]) block.append(el("p", "mind-count", sourceNotes[s.name]));
+    panel.append(block);
+  }
+}
+function sourceProgress(e) {
+  sourceNotes[e.name] = e.error ? tr("It stopped: {why}", {why: e.error})
+    : e.finished ? tr("Read {read}, found {added}", {read: e.read, added: e.added})
+    : `${e.done} / ${e.total}`;
+  if (mindTab === "sources" && mindOpen) sourcesLoad();
 }
 function mindLoad(force) {
   if (!force && !mindOpen) return Promise.resolve();
@@ -2867,6 +2902,7 @@ stream.onmessage = m => {
   else if (e.kind === "verb") step(e);
   else if (e.kind === "control" && e.channel === "web" && e.name === "aloud" && (!e.part || e.part === webPid)) setAloud(e.value);
   else if (e.kind === "canvas") drawn(e);
+  else if (e.kind === "sources") sourceProgress(e);
   else if (e.kind === "mind") { mindSummary(); if (mindOpen) mindLoad(); }
   else if (e.kind === "update") drawUpdate(e);
   else if (e.kind === "feature") { if ($("settings").classList.contains("on")) featureLoad(); }

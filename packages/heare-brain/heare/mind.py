@@ -11,11 +11,15 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
+from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from heare.config import Settings
 from heare.engine import Intent, Intents
+from heare.memory import importing
+from heare.memory.sources import all_sources
 from heare.memory.contracts import PENDING, Fact, FactStore
 from heare.memory.profile import (
     GOALS_LIMIT,
@@ -193,6 +197,28 @@ class Mind:
         if len(checked) != len(ids):
             raise ValueError("ids must be a list of journal event ids")
         return await self._memory.forget(checked)
+
+    # -- other tools' memory ------------------------------------------------
+
+    def _seen(self) -> importing.Seen:
+        return importing.Seen(Path(self._settings.memory_dir) / "imported.json")
+
+    def sources(self) -> list[dict[str, Any]]:
+        seen, listed = self._seen(), []
+        for source in all_sources():
+            found = source.found()
+            kinds = Counter(r.kind for r in importing.waiting(source, seen)) if found else {}
+            listed.append({"name": source.name, "found": found,
+                           "records": source.count() if found else 0, "waiting": dict(kinds)})
+        return listed
+
+    async def import_source(self, name: str, kinds: set[str] | None, model: Any,
+                            told: Callable[[int, int], None]) -> importing.ImportReport:
+        source = next(s for s in all_sources() if s.name == name)
+        return await importing.import_from(source, self._facts, model, self._seen(), kinds, told)
+
+    def undo_source(self, name: str) -> int:
+        return importing.undo(name, self._facts, self._seen())
 
     def confirm(self, fact_id: int) -> bool:
         return bool(self._facts.confirm(fact_id))

@@ -361,6 +361,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
     screens = Path(settings.screens_dir)
     recordings = Recordings(Path(settings.heard_dir))
     home = Path(settings.backups_dir).parent
+    importing_now: dict[str, asyncio.Task] = {}
     sessions = Sessions(Path(settings.memory_dir) / "sessions")
     sessions.seed(core.history)
     if not sessions.active:
@@ -1234,6 +1235,41 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def mind_snapshot(request: web.Request) -> web.Response:
         return web.json_response(await asyncio.to_thread(hand().snapshot))
 
+    # -- other tools' memory: read here, sent to the model only on a press ------
+
+    async def sources_list(request: web.Request) -> web.Response:
+        return web.json_response(await asyncio.to_thread(hand().sources))
+
+    async def source_import(request: web.Request) -> web.Response:
+        name = request.match_info["name"]
+        known = await asyncio.to_thread(hand().sources)
+        if not any(s["name"] == name and s["found"] for s in known):
+            raise web.HTTPNotFound(text="no such source")
+        if name in importing_now:
+            raise web.HTTPConflict(text="already reading it")
+        kinds = (await body(request)).get("kinds")
+
+        async def work() -> None:
+            def told(done: int, total: int) -> None:
+                core.state.emit("sources", name=name, done=done, total=total)
+
+            try:
+                report = await hand().import_source(
+                    name, set(kinds) if isinstance(kinds, list) else None, core.model, told)
+                core.state.emit("sources", name=name, finished=True, added=report.added,
+                                read=report.read, error=report.error)
+                core.state.emit("mind", what="fact", action="imported")
+            finally:
+                importing_now.pop(name, None)
+
+        importing_now[name] = asyncio.create_task(work(), name=f"import-{name}")
+        return web.json_response({"started": True}, status=202)
+
+    async def source_undo(request: web.Request) -> web.Response:
+        gone = await asyncio.to_thread(hand().undo_source, request.match_info["name"])
+        core.state.emit("mind", what="fact", action="undone")
+        return web.json_response({"gone": gone})
+
     async def confirm_fact(request: web.Request) -> web.Response:
         fact_id = int(request.match_info["id"])
         if not await asyncio.to_thread(hand().confirm, fact_id):
@@ -1549,6 +1585,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get(f"/api/backups/{{name:{backup.NAME}}}", backups_get),
         web.post(f"/api/backups/{{name:{backup.NAME}}}/restore", backups_restore),
         web.post("/api/mind/facts/{id:\\d+}/confirm", confirm_fact),
+        web.get("/api/mind/sources", sources_list),
+        web.post("/api/mind/sources/{name}/import", source_import),
+        web.post("/api/mind/sources/{name}/undo", source_undo),
         web.post("/api/mind/facts/{id:\\d+}/reject", reject_fact),
         web.post("/api/mind/reminders/{id:\\d+}/cancel", cancel_reminder),
         web.put("/api/mind/profile", save_profile),

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-01 15:44+0200\n"
+"POT-Creation-Date: 2026-11-01 18:54+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1051,6 +1051,27 @@ msgstr "нічого не пригадую."
 
 msgid "the search failed"
 msgstr "не вдалося пошукати"
+
+msgid "Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts."
+msgstr "Нотатки інших інструментів. Імпорт надсилає їх моделі; знайдене чекає твого «так» у фактах."
+
+msgid "not on this machine"
+msgstr "на цьому маку немає"
+
+#, python-brace-format
+msgid "{n} records"
+msgstr "записів: {n}"
+
+msgid "Undo import"
+msgstr "Скасувати імпорт"
+
+#, python-brace-format
+msgid "It stopped: {why}"
+msgstr "Зупинилось: {why}"
+
+#, python-brace-format
+msgid "Read {read}, found {added}"
+msgstr "Прочитано {read}, знайдено {added}"
 
 msgid "memory is unavailable now"
 msgstr "памʼять зараз недоступна"
