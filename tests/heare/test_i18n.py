@@ -7,9 +7,9 @@ from heare.core import i18n
 
 def test_ukrainian_by_default_and_english_when_chosen():
     i18n.choose(lambda: "uk")
-    assert i18n._("On it.") == "Беру."
+    assert i18n._("Stopped.") == "Зупинив."
     i18n.choose(lambda: "en")
-    assert i18n._("On it.") == "On it."
+    assert i18n._("Stopped.") == "Stopped."
     i18n.choose(lambda: "uk")
 
 

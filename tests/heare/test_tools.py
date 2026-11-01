@@ -115,7 +115,7 @@ async def test_delegate_calls_the_callback_and_acknowledges():
         delegate=lambda request, follows: asked.append(request) or Task(1, request, "")
     )._run_delegate({"task": "перевір пошту"})
 
-    assert spoken == "Беру."
+    assert spoken == "Handed over: the work has started."
     assert asked == ["перевір пошту"]
 
 
@@ -143,7 +143,7 @@ async def test_a_duplicate_running_request_is_not_started_again():
 
     spoken = await box._run_delegate({"task": "Відкрий файл"})
 
-    assert spoken == "Це вже в роботі."
+    assert spoken == "That is already under way."
     assert asked == []
 
 
@@ -160,7 +160,7 @@ async def test_remind_stores_a_one_off_due_later(tmp_path):
         {"text": "подзвонити мамі", "in_seconds": 600}
     )
 
-    assert spoken == "Добре, нагадаю."
+    assert spoken == "The reminder is set."
     [held] = notes.alive(now=700.0)
     assert held.why == "reminder"
     assert held.not_before == 700.0
@@ -175,7 +175,7 @@ async def test_remind_uses_an_absolute_time_with_an_offset(tmp_path):
 
     spoken = await box._run_remind({"text": "подзвонити мамі", "at": at})
 
-    assert spoken == "Добре, нагадаю."
+    assert spoken == "The reminder is set."
     [held] = notes.alive(now=due)
     assert held.not_before == due
     assert held.until == due + REMIND_GRACE_S
@@ -193,7 +193,7 @@ async def test_remind_reads_a_naive_time_as_local(tmp_path):
 
     spoken = await box._run_remind({"text": "подзвонити мамі", "at": at})
 
-    assert spoken == "Добре, нагадаю."
+    assert spoken == "The reminder is set."
     [held] = notes.reminders(now=now)
     assert held.not_before == expected
     assert held.not_before > now
@@ -209,7 +209,7 @@ async def test_remind_prefers_at_over_in_seconds(tmp_path):
         {"text": "подзвонити мамі", "at": at, "in_seconds": 600}
     )
 
-    assert spoken == "Добре, нагадаю."
+    assert spoken == "The reminder is set."
     [held] = notes.alive(now=due)
     assert held.not_before == due
 

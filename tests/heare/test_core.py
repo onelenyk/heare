@@ -13,7 +13,7 @@ import time
 
 from heare.core import FAILURE_LINE, RESULT_PREFIX, Core, Message
 from heare.core.i18n import _ as said_as
-from heare.core.conversation import HISTORY_TURNS, LOOKED_ALREADY, LOOK_STEPS
+from heare.core.conversation import CONTEXTS_KEPT, HISTORY_TURNS, LOOKED_ALREADY, LOOK_STEPS
 from heare.language import uk
 from heare.memory.book import Book
 from heare.memory.journal import Journal
@@ -528,10 +528,10 @@ async def test_delegated_work_leaves_the_person_free_and_comes_back():
     worker = Worker(result="Білд зелений.")
     room.core.add_executor(worker)
     room.model.will_say(Says(calls=(("delegate", {"task": "глянь білд"}),)),
-                        "Так, я тут.", "Білд пройшов.")
+                        "Беру.", "Так, я тут.", "Білд пройшов.")
     room.says("Глянь, що з білдом")
     await room.until(lambda: worker.tasks)
-    assert room.page.said == ["Беру."]
+    assert room.page.said == ["Беру. "]
     assert "глянь білд" in worker.tasks[0] and "Глянь, що з білдом" in worker.tasks[0]
     room.says("Ти ще тут?")
     await room.settled()
@@ -551,11 +551,11 @@ async def test_a_result_waits_until_the_reply_in_progress_is_over():
     worker = Worker(result="Готово.")
     room.core.add_executor(worker)
     room.model.will_say(Says(calls=(("delegate", {"task": "зроби"}),)),
-                        "Раз два три чотири п'ять.", "Зроблено.")
+                        "Беру.", "Раз два три чотири п'ять.", "Зроблено.")
     room.says("Зроби")
     await room.settled()
     room.says("Порахуй")
-    await room.until(lambda: room.page.speaking and len(room.model.asked) == 2)
+    await room.until(lambda: room.page.speaking and len(room.model.asked) == 3)
     worker.release.set()
     # The result reaches the core after the release; on a slow machine the
     # core can be idle for a moment before it does (CI, 25 October).
@@ -795,13 +795,13 @@ async def test_asking_again_for_work_in_progress_does_not_start_it_twice():
     room.core.add_executor(worker)
     call = ("delegate", {"task": "глянь, скільки файлів у робочій теці"})
     again = ("delegate", {"task": "скільки файлів у робочій теці, глянь ще раз"})
-    room.model.will_say(Says(calls=(call,)), Says(calls=(again,)))
+    room.model.will_say(Says(calls=(call,)), "Беру.", Says(calls=(again,)), "Це вже в роботі.")
     room.says("Глянь, скільки файлів у теці")
     await room.until(lambda: worker.tasks)
     room.says("Ну то що там з файлами?")
     await room.settled()
     assert len(worker.tasks) == 1
-    assert room.page.said[-1] == "Це вже в роботі."
+    assert room.page.said[-1] == "Це вже в роботі. "
     await room.close()
 
 
@@ -1339,4 +1339,54 @@ async def test_a_failed_hand_work_is_not_done():
     assert [r["why"] for r in rows if r.get("about") == f"task:{task.id}"] == [
         "task_failed"]
     assert all(r["why"] != "task_done" for r in rows)
+    await room.close()
+
+
+async def test_the_context_shown_is_what_really_went_out():
+    room = await open_room()
+    worker = Worker()
+    room.core.add_executor(worker)
+    room.model.will_say(Says("Беру.", calls=(("delegate", {"task": "видали його"}),)))
+    room.says("Видали його")
+    await room.until(lambda: worker.tasks)
+    await room.until(lambda: room.core.state.tasks[1].brief)
+    sent = room.core.last_context["messages"]
+    assert sent[0]["role"] == "system"
+    assert sent[-1] == {"role": "user", "content": "Видали його"}
+    assert room.core.state.tasks[1].brief in worker.tasks
+    assert "brief" not in room.core.state.tasks[1].view()
+    worker.release.set()
+    await room.close()
+
+
+async def test_the_contexts_of_past_turns_are_kept_and_bounded():
+    room = await open_room()
+    for i in range(CONTEXTS_KEPT + 2):
+        room.model.will_say(Says("Так."))
+        room.says(f"слово {i}")
+        await room.until(lambda n=i: len(room.model.asked) > n and room.core.state.phase == "idle")
+    assert len(room.core.contexts) == CONTEXTS_KEPT
+    assert room.core.contexts[-1] is room.core.last_context
+    assert "verbs" in room.core.contexts[-1]
+    await room.close()
+
+
+async def test_an_act_with_no_words_is_worded_by_the_model_not_by_a_catalog():
+    room = await open_room()
+    room.core.add_executor(Worker())
+    room.model.will_say(Says(calls=(("delegate", {"task": "зроби"}),)), "Роблю.")
+    room.says("Зроби")
+    await room.until(lambda: len(room.model.asked) == 2)
+    await room.until(lambda: room.page.said)
+    assert room.page.said == ["Роблю. "]
+    assert any("Handed over" in str(m.get("content")) for m in room.model.asked[-1])
+    await room.close()
+
+
+async def test_stop_is_heard_without_asking_the_model():
+    room = await open_room()
+    room.model.will_say(Says(calls=(("stop_work", {}),)))
+    room.says("Зупини все, що робиш, будь ласка")
+    await room.settled()
+    assert len(room.model.asked) == 1 and room.page.said
     await room.close()

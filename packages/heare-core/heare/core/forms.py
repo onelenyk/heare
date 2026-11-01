@@ -224,6 +224,8 @@ class Task:
     status: str = "running"  # running · done · failed · stopped
     step: str = ""
     result: str = ""
+    # The words the executor was given; not in `view`, which every event carries.
+    brief: str = ""
     # A yes is kept per action (``approved``); a no holds for the task.
     allowed: bool | None = None
     approved: set[tuple[str, str]] = field(default_factory=set)

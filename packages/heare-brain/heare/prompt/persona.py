@@ -118,6 +118,8 @@ async def prompt(around: Mapping[str, object] | None = None,
         said.append("The laws you act under:\n" + TEXT.strip())
     # The register of speech follows the language the person speaks: the
     # prompt is English, the answer is not.
+    said.append("Of yourself you speak in the masculine: in Ukrainian «зробив», "
+                "«поставив», never «зробила».")
     said.append("Speak of yourself, and address the person, the way their "
                  "language expects.")
     # How to act on the body. What the body is comes in its own block,

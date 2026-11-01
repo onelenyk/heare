@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-29 22:50+0200\n"
+"POT-Creation-Date: 2026-11-01 15:44+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -350,21 +350,6 @@ msgstr ""
 msgid "the file is damaged or not a zip"
 msgstr ""
 
-msgid "Look at the screen."
-msgstr ""
-
-msgid "Removed."
-msgstr ""
-
-msgid "Changed the look."
-msgstr ""
-
-msgid "Rearranged."
-msgstr ""
-
-msgid "Cleared the screen."
-msgstr ""
-
 msgid "browser"
 msgstr ""
 
@@ -422,7 +407,23 @@ msgstr ""
 msgid "cancelling a reminder"
 msgstr ""
 
-msgid "now"
+msgid "Earlier"
+msgstr ""
+
+msgid "New session"
+msgstr ""
+
+msgid "Wait for the reply to end."
+msgstr ""
+
+msgid "Sure?"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+#, python-brace-format
+msgid "{name} did not upload"
 msgstr ""
 
 msgid "paused"
@@ -727,6 +728,36 @@ msgid "unfold"
 msgstr ""
 
 msgid "fold"
+msgstr ""
+
+msgid "Person"
+msgstr ""
+
+msgid "Assistant"
+msgstr ""
+
+msgid "tokens"
+msgstr ""
+
+msgid "System prompt"
+msgstr ""
+
+msgid "Conversation"
+msgstr ""
+
+msgid "verbs"
+msgstr ""
+
+msgid "No turn yet."
+msgstr ""
+
+msgid "Hands"
+msgstr ""
+
+msgid "What heare handed over; the agent's own prompt stays inside the agent."
+msgstr ""
+
+msgid "No tasks yet."
 msgstr ""
 
 msgid "remove"
@@ -1174,16 +1205,19 @@ msgstr ""
 msgid "Screen"
 msgstr ""
 
-msgid "the model puts things here"
+msgid "Context"
 msgstr ""
 
 msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
 msgstr ""
 
-msgid "Conversation"
+msgid "Sessions"
 msgstr ""
 
-msgid "it and you"
+msgid "New"
+msgstr ""
+
+msgid "Rename"
 msgstr ""
 
 msgid "hear the reply aloud"
@@ -1193,6 +1227,9 @@ msgid "hear"
 msgstr ""
 
 msgid "speak and hear"
+msgstr ""
+
+msgid "attach a file"
 msgstr ""
 
 msgid "Write…"
@@ -1371,15 +1408,6 @@ msgstr ""
 msgid "handed over from {name}"
 msgstr ""
 
-msgid "Say what exactly to do."
-msgstr ""
-
-msgid "That is already under way."
-msgstr ""
-
-msgid "On it."
-msgstr ""
-
 msgid "What exactly should I recall?"
 msgstr ""
 
@@ -1393,9 +1421,6 @@ msgid "That time has passed."
 msgstr ""
 
 msgid "I do not remind that far ahead."
-msgstr ""
-
-msgid "Okay, I will remind you."
 msgstr ""
 
 msgid "Say which reminder to cancel."
@@ -1916,6 +1941,12 @@ msgstr ""
 msgid "Work"
 msgstr ""
 
+msgid "Internet"
+msgstr ""
+
+msgid "Last request"
+msgstr ""
+
 msgid "something"
 msgstr ""
 
@@ -2047,5 +2078,41 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
+#~ msgstr ""
+
+#~ msgid "the model puts things here"
+#~ msgstr ""
+
+#~ msgid "now"
+#~ msgstr ""
+
+#~ msgid "it and you"
+#~ msgstr ""
+
+#~ msgid "Look at the screen."
+#~ msgstr ""
+
+#~ msgid "Removed."
+#~ msgstr ""
+
+#~ msgid "Changed the look."
+#~ msgstr ""
+
+#~ msgid "Rearranged."
+#~ msgstr ""
+
+#~ msgid "Cleared the screen."
+#~ msgstr ""
+
+#~ msgid "Say what exactly to do."
+#~ msgstr ""
+
+#~ msgid "That is already under way."
+#~ msgstr ""
+
+#~ msgid "On it."
+#~ msgstr ""
+
+#~ msgid "Okay, I will remind you."
 #~ msgstr ""
 

@@ -228,6 +228,16 @@
   /* ── the conversation: a bar under everything, its transcript a drawer
         that opens upward over the canvas ── */
   #talkcol { grid-column:1 / -1; grid-row:3; position:relative; min-width:0; background:var(--bg); border-top:1px solid var(--line); padding:10px 14px; }
+  .band.sess { align-items:center; }
+  .band.sess select { flex:1; min-width:0; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:5px 8px; font-size:12px; }
+  #chips, .line .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  #chips { padding:0 0 8px; }
+  #chips:empty { display:none; }
+  .line .chips { margin-top:6px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; max-width:220px; padding:3px 9px; border:1px solid var(--line); border-radius:999px; background:var(--card-2); color:var(--ink); font-size:11.5px; text-decoration:none; }
+  .chip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip button { border:0; background:none; color:var(--soft); cursor:pointer; padding:0; }
+  .chip:hover { border-color:var(--accent); }
   #talkbar { display:flex; align-items:center; gap:8px; min-width:0; }
   #talktoggle { flex:none; height:38px; padding:0 12px; border:1px solid var(--line); border-radius:9px; background:var(--card-2); color:var(--soft); cursor:pointer; font-size:12px; }
   #talktoggle:hover { border-color:var(--accent); color:var(--accent); }
@@ -235,7 +245,62 @@
   #talkdrawer { position:absolute; left:0; right:0; bottom:100%; z-index:8; display:none; flex-direction:column; max-height:45vh; background:var(--card); border-top:1px solid var(--line); box-shadow:0 -24px 70px rgba(0,0,0,.55); }
   #talkdrawer.on { display:flex; }
   #talkdrawer .band { flex:none; padding:12px 16px 0; }
-  #stage .band { padding:14px var(--pad) 0; }
+  .tabs { position:sticky; top:0; z-index:2; display:flex; gap:2px; padding:8px var(--pad) 0; background:var(--bg); border-bottom:1px solid var(--line); }
+  .tabs button { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--soft); cursor:pointer; padding:6px 12px; font-size:11px; }
+  .tabs button:hover { color:var(--ink); }
+  .tabs button[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--accent); }
+  .page { position:relative; min-height:calc(100% - 40px); }
+  .page[hidden] { display:none; }
+  #page-context { padding:18px var(--pad) 26px; display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:28px; align-items:start; }
+  @media (max-width:1000px) { #page-context { grid-template-columns:minmax(0,1fr); } }
+  .ctx { display:grid; gap:10px; min-width:0; }
+  .ctx h3 { margin:0; font-weight:600; font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--soft); }
+  .ctx .note { color:var(--soft); font-size:11.5px; line-height:1.5; }
+  .ctx .gauge { display:flex; align-items:baseline; gap:8px; }
+  .ctx .gauge b { font:700 30px var(--display); letter-spacing:-.5px; color:var(--ink); }
+  .ctx .gauge span { color:var(--soft); font-size:12px; }
+  .ctx .gauge time { margin-left:auto; color:var(--soft); font:11px var(--mono); }
+  .ctx .fill { display:flex; height:6px; border-radius:3px; background:var(--card-2); overflow:hidden; }
+  .ctx .fill i { display:block; height:100%; background:var(--accent); }
+  .ctx .fill i.talk { background:var(--info); }
+  .ctx .fill.over i { background:var(--bad); }
+  .ctx .legend { display:flex; flex-wrap:wrap; gap:14px; color:var(--soft); font-size:11px; margin-bottom:6px; }
+  .ctx .legend span::before { content:""; display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; background:var(--accent); }
+  .ctx .legend span.talk::before { background:var(--info); }
+  .timeline { display:flex; align-items:flex-end; gap:6px; height:112px; padding:8px 10px; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow-x:auto; }
+  .tick { flex:1 0 34px; max-width:68px; height:100%; display:flex; flex-direction:column; justify-content:flex-end; gap:4px; padding:4px; border:0; border-radius:8px; background:transparent; cursor:pointer; }
+  .tick:hover { background:var(--card-2); }
+  .tick.on { background:var(--card-2); box-shadow:inset 0 0 0 1px var(--accent); }
+  .tick em { min-height:12px; font:normal 10px var(--mono); color:var(--soft); text-align:center; }
+  .tick em.up { color:var(--warn); }
+  .tick em.down { color:var(--ok); }
+  .tick .stack { flex:1; display:flex; flex-direction:column; justify-content:flex-end; min-height:0; gap:1px; }
+  .tick .stack i { display:block; border-radius:2px; min-height:2px; }
+  .stack i.verbs { background:var(--line); }
+  .stack i.system { background:var(--accent); }
+  .stack i.talk { background:var(--info); }
+  .ctx .gauge .delta { padding:1px 8px; border-radius:999px; background:var(--card-2); font:11px var(--mono); }
+  .ctx .gauge .delta.up { color:var(--warn); }
+  .ctx .gauge .delta.down { color:var(--ok); }
+  .ctx .gauge .delta.file { color:var(--info); }
+  .ctx .legend span.verbs::before { background:var(--line); }
+  .ctx .legend span.budget { margin-left:auto; font-family:var(--mono); }
+  .ctx .legend span.budget::before { display:none; }
+  .ctx .bit.fresh { background:color-mix(in srgb, var(--warn) 9%, transparent); }
+  .ctx .bit.fresh::after { content:"new"; position:absolute; top:28px; right:14px; color:var(--warn); font:10px var(--mono); }
+  .ctx .sheet { background:var(--card); border:1px solid var(--line); border-radius:12px; min-width:0; }
+  .ctx .sheet > h4 { position:sticky; top:40px; z-index:1; margin:0; display:flex; gap:8px; padding:10px 14px; background:var(--card); border-radius:12px 12px 0 0; border-bottom:1px solid var(--line); font-size:12px; font-weight:600; color:var(--ink); }
+  .ctx .sheet > h4 small { margin-left:auto; color:var(--soft); font:10.5px var(--mono); }
+  .ctx .bit { position:relative; padding:10px 64px 10px 14px; border-top:1px solid var(--line); border-left:3px solid var(--role, transparent); }
+  .ctx .sheet > h4 + .bit { border-top:0; }
+  .ctx .bit.user { --role:var(--info); }
+  .ctx .bit.assistant { --role:var(--ok); }
+  .ctx .bit.running { --role:var(--warn); }
+  .ctx .bit.failed { --role:var(--bad); }
+  .ctx .bit > b { display:block; margin-bottom:3px; color:var(--soft); font-size:10.5px; font-weight:600; }
+  .ctx .bit > small { position:absolute; top:11px; right:14px; color:var(--soft); font:10.5px var(--mono); }
+  .ctx .bit > .from { display:block; margin-top:4px; color:var(--soft); font:normal 10px var(--mono); opacity:.75; }
+  .ctx .bit > p { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink); font:12.5px/1.6 var(--sans); }
   #talk { flex:1; min-height:0; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:7px; }
   .line { max-width:88%; padding:7px 11px; border-radius:12px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.45; }
   .me { align-self:flex-end; background:var(--accent); color:var(--accent-ink); border-bottom-right-radius:4px; }
@@ -562,20 +627,27 @@
   </section>
 
   <main id="stage">
-    <div class="band"><b data-t>Screen</b><span data-t>the model puts things here</span></div>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-page="screen" data-t>Screen</button>
+      <button type="button" role="tab" data-page="context" data-t>Context</button>
+    </nav>
+    <div class="page" id="page-screen">
     <div id="live"></div>
     <div id="empty"><svg class="face" id="bigface" viewBox="0 0 120 120" aria-hidden="true"><rect class="head" x="12" y="16" width="96" height="88" rx="30"/><rect class="eye" x="37" y="42" width="13" height="22" rx="6.5"/><rect class="eye" x="70" y="42" width="13" height="22" rx="6.5"/><g><rect class="bar" x="42" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="50" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="58" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="66" y="76" width="5" height="14" rx="2.5"/><rect class="bar" x="74" y="76" width="5" height="14" rx="2.5"/></g></svg><b id="bigname">heare</b><span data-t>This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you.</span></div>
+    </div>
+    <div class="page" id="page-context" hidden></div>
   </main>
 
   <section id="talkcol">
     <div id="talkdrawer">
-      <div class="band"><b data-t>Conversation</b><span data-t>it and you</span></div>
+      <div class="band sess"><select id="sessionpick" data-t-title title="Sessions"></select><button type="button" id="sessionnew" class="mini" data-t>New</button><button type="button" id="sessionname" class="mini" data-t>Rename</button><button type="button" id="sessiondrop" class="mini" data-t>Delete</button></div>
       <div id="talk"></div>
     </div>
+    <div id="chips"></div>
     <div id="talkbar">
       <button type="button" id="talktoggle" class="mini" aria-expanded="false" aria-controls="talkdrawer" data-t>Conversation</button>
       <button type="button" id="speak" class="mini" data-t-title title="hear the reply aloud" data-t>hear</button>
-      <form id="say"><button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button><input id="text" data-t-placeholder placeholder="Write…" autocomplete="off"><button>→</button></form>
+      <form id="say"><button type="button" id="hear" class="talk" data-t-title title="speak and hear">◉</button><button type="button" id="attach" class="talk" data-t-title title="attach a file">＋</button><input id="filepick" type="file" multiple hidden><input id="text" data-t-placeholder placeholder="Write…" autocomplete="off"><button>→</button></form>
     </div>
   </section>
 </div>
@@ -757,15 +829,91 @@ const step = e => {
   aside("· " + label + quoted(words));
 };
 
-api("history?n=20").then(past => {
-  const frag = document.createDocumentFragment();
-  for (const turn of past) {
-    if (turn.user) frag.append(el("div", "line me old", turn.user));
-    if (turn.agent) frag.append(el("div", "line it old", turn.agent));
+/* ── sessions ── */
+let session = "", pending = [];
+const LINK = /https?:\/\/[^\s«»"<>]+/g;
+const ICONS = {image: "▣", text: "▤", file: "▢"};
+function fileChip(owner, f) {
+  const chip = el("a", "chip");
+  chip.href = `/api/sessions/${owner}/files/${f.id}`; chip.target = "_blank"; chip.rel = "noopener";
+  chip.append(el("span", "", `${ICONS[f.kind] || ICONS.file} ${f.name}`));
+  return chip;
+}
+function linkChip(url) {
+  const chip = el("a", "chip"); let host = url;
+  try { host = new URL(url).hostname; } catch { /* shown as written */ }
+  chip.href = url; chip.target = "_blank"; chip.rel = "noopener noreferrer";
+  chip.append(el("span", "", `↗ ${host}`));
+  return chip;
+}
+function chipped(node, text, owner, files) {
+  const links = (text.match(LINK) || []).filter(u => { try { return ["http:", "https:"].includes(new URL(u).protocol); } catch { return false; } });
+  if (!links.length && !(files || []).length) return node;
+  const row = el("div", "chips");
+  (files || []).forEach(f => row.append(fileChip(owner, f)));
+  links.forEach(u => row.append(linkChip(u)));
+  node.append(row);
+  return node;
+}
+function showPending() {
+  $("chips").replaceChildren(...pending.map(f => {
+    const chip = fileChip(session, f), off = el("button", "", "✕");
+    off.type = "button";
+    off.onclick = e => { e.preventDefault(); pending = pending.filter(p => p !== f); showPending(); };
+    chip.append(off);
+    return chip;
+  }));
+}
+function sessionName(s) {
+  const name = s.title || (s.earlier ? tr("Earlier") : tr("New session"));
+  return (s.unread ? `● ${s.unread} · ` : "") + name;
+}
+async function loadSessions() {
+  const now = await api("sessions");
+  const changed = now.active !== session;
+  session = now.active;
+  $("sessionpick").replaceChildren(...now.items.map(s => {
+    const o = el("option", "", sessionName(s)); o.value = s.id; return o;
+  }));
+  $("sessionpick").value = session;
+  if (!changed) return;
+  pending = []; showPending();
+  const turns = await api(`sessions/${session}/turns`);
+  $("talk").replaceChildren(...turns.map(t =>
+    chipped(el("div", `line ${t.role === "user" ? "me" : "it"} old`, t.text), t.text, session, t.files)));
+  $("talk").scrollTop = $("talk").scrollHeight;
+}
+const sessionAct = path => api(path, {method: "POST"}).catch(() => aside(tr("Wait for the reply to end.")));
+$("sessionpick").onchange = () => sessionAct(`sessions/${$("sessionpick").value}/open`).then(loadSessions);
+$("sessionnew").onclick = () => sessionAct("sessions").then(loadSessions);
+$("sessionname").onclick = async () => {
+  const field = el("input"), row = $("sessionpick");
+  field.value = row.selectedOptions[0]?.textContent || "";
+  row.replaceWith(field); field.focus(); field.select();
+  const done = async keep => {
+    field.replaceWith(row);
+    if (keep && field.value.trim()) await api(`sessions/${session}/rename`, {method: "POST", body: {title: field.value.trim()}}).catch(() => {});
+    loadSessions();
+  };
+  field.onblur = () => done(true);
+  field.onkeydown = e => { if (e.key === "Enter") field.blur(); if (e.key === "Escape") { field.onblur = null; done(false); } };
+};
+let dropArmed = 0;
+$("sessiondrop").onclick = () => {
+  const now = Date.now();
+  if (now - dropArmed > 3000) { dropArmed = now; $("sessiondrop").textContent = tr("Sure?"); setTimeout(() => { $("sessiondrop").textContent = tr("Delete"); }, 3000); return; }
+  dropArmed = 0; $("sessiondrop").textContent = tr("Delete");
+  api(`sessions/${session}`, {method: "DELETE"}).then(loadSessions).catch(() => aside(tr("Wait for the reply to end.")));
+};
+$("attach").onclick = () => $("filepick").click();
+$("filepick").onchange = async () => {
+  for (const file of $("filepick").files) {
+    const sent = await fetch(`/api/sessions/${session}/files?name=${encodeURIComponent(file.name)}`, {method: "POST", body: file, credentials: "same-origin"});
+    if (sent.ok) pending.push(await sent.json()); else aside(tr("{name} did not upload", {name: file.name}));
   }
-  if (past.length) frag.append(el("div", "divider", tr("now")));
-  $("talk").prepend(frag); $("talk").scrollTop = $("talk").scrollHeight;
-}).catch(() => {});
+  $("filepick").value = ""; showPending();
+};
+loadSessions().catch(() => {});
 
 /* ── the panel ── */
 function show() {
@@ -1417,6 +1565,143 @@ function fold(on) {
 $("partfoldbtn").onclick = () => fold(!$("partcol").classList.contains("folded"));
 try { if (localStorage.getItem(FOLD_KEY)) fold(true); } catch { /* unfolded */ }
 
+// Its text is data, so it only ever goes in through textContent.
+const tokens = text => Math.ceil(text.length / 4);
+function ctxBit(title, text, cls, from) {
+  const bit = el("div", cls ? `bit ${cls}` : "bit");
+  if (title) bit.append(el("b", "", title));
+  bit.append(el("small", "", `~${tokens(text)}`), el("p", "", text));
+  if (from) bit.append(el("i", "from", from));
+  return bit;
+}
+// Where a paragraph comes from, read off how it opens. What matches nothing
+// is the persona: it is what the prompt is built from when nothing else adds.
+const SOURCES = [
+  [/^\[found in memory/, "heare-memory · recall"],
+  [/^\[/, "heare-memory · always"],
+  [/^The canvas/, "api/canvas.py"],
+  [/^The laws/, "core/laws.py"],
+  [/^(Your body|No bodies)/, "prompt/body.py"],
+];
+const sourceOf = text => (SOURCES.find(([opens]) => opens.test(text)) || [0, "prompt/persona.py"])[1];
+function ctxSheet(title, note, bits) {
+  const sheet = el("div", "sheet"), head = el("h4", "", title);
+  head.append(el("small", "", note));
+  sheet.append(head, ...bits);
+  return sheet;
+}
+// The prompt is built of paragraphs; a block of data names itself: «[what — …]».
+function promptBits(text) {
+  return text.split(/\n{2,}/).filter(p => p.trim()).map(p => {
+    const named = p.match(/^\[([^\]\n]*?)(?: — [^\]\n]*)?\]\n?/);
+    return named ? ctxBit(named[1], p.slice(named[0].length), "", sourceOf(p)) : ctxBit("", p, "", sourceOf(p));
+  });
+}
+function verbBit(verb) {
+  const v = verb.function || verb;
+  const takes = Object.keys((v.parameters || v.input_schema || {}).properties || {});
+  return ctxBit(v.name, v.description || "", "", takes.length ? `(${takes.join(", ")})` : "");
+}
+const ROLES = {user: () => tr("Person"), assistant: () => tr("Assistant")};
+let ctxSeen = "", ctxNow = null, ctxPicked = null;  // null: follow the newest turn
+function ctxMeasure(turn) {
+  const size = m => tokens(m.content || "");
+  const system = turn.messages.filter(m => m.role === "system").reduce((s, m) => s + size(m), 0);
+  const talk = turn.messages.reduce((s, m) => s + size(m), 0) - system;
+  const verbs = tokens(JSON.stringify(turn.verbs || []));
+  return {system, talk, verbs, total: system + talk + verbs};
+}
+function ctxCause(turn, before) {
+  const had = new Set((before ? before.messages : []).map(m => m.content));
+  const fresh = turn.messages.filter(m => m.role !== "system" && !had.has(m.content));
+  const files = fresh.flatMap(m => [...(m.content || "").matchAll(/^«(.+?)»(?::| \()/gm)].map(x => x[1]));
+  return {fresh: new Set(fresh.map(m => m.content)), files};
+}
+function ctxTimeline(turns, shown) {
+  const row = el("div", "timeline"), top = Math.max(...turns.map(t => ctxMeasure(t).total), 1);
+  turns.forEach((turn, i) => {
+    const size = ctxMeasure(turn), before = i ? ctxMeasure(turns[i - 1]).total : size.total;
+    const change = size.total - before, tick = el("button", i === shown ? "tick on" : "tick");
+    tick.type = "button";
+    const stack = el("span", "stack");
+    [["verbs", size.verbs], ["system", size.system], ["talk", size.talk]].forEach(([cls, n]) => {
+      const part = el("i", cls); part.style.height = `${n / top * 100}%`; stack.append(part);
+    });
+    tick.append(el("em", change > 0 ? "up" : change < 0 ? "down" : "", i && change ? `${change > 0 ? "+" : ""}${change}` : ""), stack);
+    tick.onclick = () => { ctxPicked = i === turns.length - 1 ? null : turn.at; drawContext(); };
+    row.append(tick);
+  });
+  return row;
+}
+function drawContext() {
+  const now = ctxNow, turns = now.turns || [];
+  const voice = el("section", "ctx"), hands = el("section", "ctx");
+  voice.append(el("h3", "", tr("Voice")));
+  let shown = turns.findIndex(t => t.at === ctxPicked);
+  if (shown < 0) { shown = turns.length - 1; ctxPicked = null; }
+  const turn = turns[shown];
+  if (turn) {
+    const before = turns[shown - 1], size = ctxMeasure(turn), all = turn.messages;
+    const cause = before ? ctxCause(turn, before) : {fresh: new Set(), files: []};
+    const change = before ? size.total - ctxMeasure(before).total : 0;
+    const gauge = el("div", "gauge");
+    gauge.append(el("b", "", `~${size.total}`), el("span", "", tr("tokens")));
+    if (change) gauge.append(el("span", change > 0 ? "delta up" : "delta down", `${change > 0 ? "+" : ""}${change}`));
+    cause.files.forEach(name => gauge.append(el("span", "delta file", name)));
+    gauge.append(el("time", "", new Date(turn.at * 1000).toLocaleTimeString()));
+    const used = size.system + size.talk, fill = el("div", used > now.limit ? "fill over" : "fill");
+    const part = (n, cls) => { const i = el("i", cls); i.style.width = `${n / Math.max(used, now.limit) * 100}%`; return i; };
+    fill.append(part(size.system), part(size.talk, "talk"));
+    const legend = el("div", "legend");
+    legend.append(el("span", "", `${tr("System prompt")} ~${size.system}`),
+                  el("span", "talk", `${tr("Conversation")} ~${size.talk}`),
+                  el("span", "verbs", `${tr("verbs")} ~${size.verbs}`),
+                  el("span", "budget", `${used} / ${now.limit}`));
+    voice.append(ctxTimeline(turns, shown), gauge, fill, legend);
+    all.filter(m => m.role === "system").forEach(m =>
+      voice.append(ctxSheet(tr("System prompt"), `~${tokens(m.content || "")}`, promptBits(m.content || ""))));
+    const talk = all.filter(m => m.role !== "system");
+    if (talk.length) voice.append(ctxSheet(tr("Conversation"), `~${size.talk}`, talk.map(m =>
+      ctxBit(ROLES[m.role] ? ROLES[m.role]() : m.role, m.content || "",
+             `${m.role}${cause.fresh.has(m.content) ? " fresh" : ""}`, "core.history"))));
+    // Outside the budget: `fit` counts the messages, not the verbs offered.
+    if (turn.verbs) voice.append(ctxSheet(tr("verbs"), `${turn.verbs.length}`, turn.verbs.map(verbBit)));
+  } else voice.append(el("div", "note", tr("No turn yet.")));
+  hands.append(el("h3", "", tr("Hands")));
+  hands.append(el("div", "note", tr("What heare handed over; the agent's own prompt stays inside the agent.")));
+  if (!now.tasks.length) hands.append(el("div", "note", tr("No tasks yet.")));
+  now.tasks.forEach(t => hands.append(ctxSheet(`#${t.id} ${t.executor || "…"}`, t.status, [
+    ctxBit("", t.brief || t.request, t.status, `${new Date(t.started * 1000).toLocaleTimeString()} · core.delegator`)])));
+  $("page-context").replaceChildren(voice, hands);
+}
+async function showContext() {
+  const now = await api("context").catch(() => null);
+  if (!now) return;
+  const seen = JSON.stringify(now);
+  if (seen === ctxSeen) return;
+  ctxSeen = seen; ctxNow = now;
+  drawContext();
+}
+setInterval(() => { if (!$("page-context").hidden) showContext(); }, 3000);
+
+const PAGE_KEY = "heare.page";
+function openPage(name) {
+  document.querySelectorAll(".tabs [data-page]").forEach(tab => {
+    const on = tab.dataset.page === name;
+    tab.setAttribute("aria-selected", on);
+    $(`page-${tab.dataset.page}`).hidden = !on;
+  });
+  if (name === "context") showContext();
+  try { localStorage.setItem(PAGE_KEY, name); } catch { /* kept for this visit only */ }
+}
+document.querySelector(".tabs").onclick = e => {
+  const page = e.target.dataset?.page;
+  if (page) openPage(page);
+};
+let openedPage = "screen";
+try { openedPage = localStorage.getItem(PAGE_KEY) || openedPage; } catch { /* the first page */ }
+openPage($(`page-${openedPage}`) ? openedPage : "screen");
+
 let born = null;
 const voiceOf = s => {
   const part = Object.values(s.bodies || {}).find(b => b.channel === "voice" && b.state === "approved");
@@ -1778,7 +2063,7 @@ const speech = window.speechSynthesis;
 /* Every open page sees every reply, but only the page that asked says it
    aloud: two pages with "Чути" on were two voices reading one answer. */
 let askedHere = false;
-const ask = text => { askedHere = true; return api("message", {method: "POST", body: {text}}); };
+const ask = text => { askedHere = true; const files = pending.map(f => f.id); pending = []; showPending(); return api("message", {method: "POST", body: {text, files}}); };
 const speak = (text, channel) => {
   if (!aloud || !text || !speech || (channel !== "screen" && channel !== "web")) return;
   speech.cancel();
@@ -2568,7 +2853,8 @@ if (restoring) { mindOpenDrawer(); mindShow("backups"); }
 const stream = new EventSource("/api/events");
 stream.onmessage = m => {
   const e = JSON.parse(m.data);
-  if (e.kind === "heard") { writing = null; askedAt = e.at; line(e.text, "me", e.channel); }
+  if (e.kind === "sessions") loadSessions().catch(() => {});
+  else if (e.kind === "heard") { writing = null; askedAt = e.at; const words = e.text.split("\n\n[attached")[0]; chipped(line(words, "me", e.channel), words); }
   else if (e.kind === "reply") { writing = writing || line("", "it"); writing.firstChild ? writing.firstChild.textContent += e.text : writing.append(e.text); $("talk").scrollTop = $("talk").scrollHeight; }
   else if (e.kind === "said") { if (!writing && e.text) line(e.text, "it", e.channel); writing = null; const mine = askedHere; askedHere = false; if (e.failed) aside(tr("failure: {why}", {why: e.failed})); else if (mine) speak(e.text, e.channel); }
   else if (e.kind === "overheard") aside(tr("heard «{text}» — {why}", {text: e.text, why: WHY[e.why] || tr("no name, not answering")}));
@@ -2593,7 +2879,7 @@ stream.onerror = () => { $("face").setAttribute("class", "face off"); $("nowtext
 // brain restart (a knock re-registers this window), and the state is fresh.
 stream.onopen = () => { knock(); refresh(); };
 
-$("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text) return; $("text").value = ""; ask(text); };
+$("say").onsubmit = ev => { ev.preventDefault(); const text = $("text").value.trim(); if (!text && !pending.length) return; $("text").value = ""; ask(text); };
 refresh(); setInterval(refresh, 15000);
 </script>
 </html>

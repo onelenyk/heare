@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from heare.core.forms import Task
-from heare.core.i18n import _
 from heare.core.state import State
 
 
@@ -14,11 +13,11 @@ async def run(
 ) -> str:
     request = str(arguments.get("task", "")).strip()
     if not request:
-        return _("Say what exactly to do.")
+        return "Nothing was started: the task was empty."
     if same(state, words, request) is not None:
-        return _("That is already under way.")
+        return "That is already under way."
     start(request, arguments.get("continues") is True)
-    return _("On it.")
+    return "Handed over: the work has started."
 
 
 def same(state: State, words: Any, request: str) -> Task | None:

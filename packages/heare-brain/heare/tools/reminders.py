@@ -49,7 +49,7 @@ async def remind(store: Reminders, now: float, arguments: dict) -> str:
         what=text[:200], why="reminder", weight=3, about="reminder",
         not_before=due, until=due + REMIND_GRACE_S,
     )
-    return _("Okay, I will remind you.")
+    return "The reminder is set."
 
 
 async def listed(store: Reminders, now: float) -> str:

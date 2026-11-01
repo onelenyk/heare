@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-29 22:50+0200\n"
+"POT-Creation-Date: 2026-11-01 15:44+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -350,21 +350,6 @@ msgstr "файл у копії пошкоджений: {name}"
 msgid "the file is damaged or not a zip"
 msgstr "файл пошкоджений або це не zip"
 
-msgid "Look at the screen."
-msgstr "Глянь на екран."
-
-msgid "Removed."
-msgstr "Прибрав."
-
-msgid "Changed the look."
-msgstr "Змінив вигляд."
-
-msgid "Rearranged."
-msgstr "Переставив."
-
-msgid "Cleared the screen."
-msgstr "Очистив екран."
-
 msgid "browser"
 msgstr "браузер"
 
@@ -422,8 +407,24 @@ msgstr "ставлю нагадування"
 msgid "cancelling a reminder"
 msgstr "скасовую нагадування"
 
-msgid "now"
-msgstr "зараз"
+msgid "Earlier"
+msgstr "Раніше"
+
+msgid "New session"
+msgstr "Нова сесія"
+
+msgid "Wait for the reply to end."
+msgstr "Зачекай, поки закінчиться відповідь."
+
+msgid "Sure?"
+msgstr "Точно?"
+
+msgid "Delete"
+msgstr "Видалити"
+
+#, python-brace-format
+msgid "{name} did not upload"
+msgstr "{name} не завантажився"
 
 msgid "paused"
 msgstr "на паузі"
@@ -728,6 +729,36 @@ msgstr "розгорнути"
 
 msgid "fold"
 msgstr "згорнути"
+
+msgid "Person"
+msgstr "Людина"
+
+msgid "Assistant"
+msgstr "Асистент"
+
+msgid "tokens"
+msgstr "токенів"
+
+msgid "System prompt"
+msgstr "Системний промпт"
+
+msgid "Conversation"
+msgstr "Розмова"
+
+msgid "verbs"
+msgstr "дієслова"
+
+msgid "No turn yet."
+msgstr "Ще не було ходу."
+
+msgid "Hands"
+msgstr "Руки"
+
+msgid "What heare handed over; the agent's own prompt stays inside the agent."
+msgstr "Те, що heare передав; власний промпт агента лишається в агенті."
+
+msgid "No tasks yet."
+msgstr "Завдань ще не було."
 
 msgid "remove"
 msgstr "прибрати"
@@ -1179,17 +1210,20 @@ msgstr "реєстр мозку"
 msgid "Screen"
 msgstr "Екран"
 
-msgid "the model puts things here"
-msgstr "ставить модель"
+msgid "Context"
+msgstr "Контекст"
 
 msgid "This is its screen. It puts here what is better seen than heard — and what you ask to keep in front of you."
 msgstr "Це його екран. Він сам ставить сюди те, що краще побачити, ніж почути — і те, що ти попросиш тримати перед очима."
 
-msgid "Conversation"
-msgstr "Розмова"
+msgid "Sessions"
+msgstr "Сесії"
 
-msgid "it and you"
-msgstr "він і ти"
+msgid "New"
+msgstr "Нова"
+
+msgid "Rename"
+msgstr "Назва"
 
 msgid "hear the reply aloud"
 msgstr "чути відповідь уголос"
@@ -1199,6 +1233,9 @@ msgstr "чути"
 
 msgid "speak and hear"
 msgstr "говорити й почути"
+
+msgid "attach a file"
+msgstr "додати файл"
 
 msgid "Write…"
 msgstr "Напиши…"
@@ -1376,15 +1413,6 @@ msgstr "Це не для швидких рук, а інших рук зараз 
 msgid "handed over from {name}"
 msgstr "передано від {name}"
 
-msgid "Say what exactly to do."
-msgstr "Скажи, що саме зробити."
-
-msgid "That is already under way."
-msgstr "Це вже в роботі."
-
-msgid "On it."
-msgstr "Беру."
-
 msgid "What exactly should I recall?"
 msgstr "Що саме згадати?"
 
@@ -1399,9 +1427,6 @@ msgstr "Це вже минуло."
 
 msgid "I do not remind that far ahead."
 msgstr "Так далеко я не нагадую."
-
-msgid "Okay, I will remind you."
-msgstr "Добре, нагадаю."
 
 msgid "Say which reminder to cancel."
 msgstr "Скажи, яке нагадування скасувати."
@@ -1921,6 +1946,12 @@ msgstr "Таких частин кілька: {parts}. Яку?"
 msgid "Work"
 msgstr "Справа"
 
+msgid "Internet"
+msgstr "Інтернет"
+
+msgid "Last request"
+msgstr "Останній запит"
+
 msgid "something"
 msgstr "щось"
 
@@ -2053,4 +2084,40 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Listen and mark: «Right» — said to me and heard so; «Correct» — what it really was; «Background» — not to me. From this we measure how well I hear you."
 #~ msgstr "Послухай і познач: «Правильно» — сказано мені й почуто так; «Виправити» — що було насправді; «Фон» — не до мене. З цього ми міряємо, як я тебе чую."
+
+#~ msgid "the model puts things here"
+#~ msgstr "ставить модель"
+
+#~ msgid "now"
+#~ msgstr "зараз"
+
+#~ msgid "it and you"
+#~ msgstr "він і ти"
+
+#~ msgid "Look at the screen."
+#~ msgstr "Глянь на екран."
+
+#~ msgid "Removed."
+#~ msgstr "Прибрав."
+
+#~ msgid "Changed the look."
+#~ msgstr "Змінив вигляд."
+
+#~ msgid "Rearranged."
+#~ msgstr "Переставив."
+
+#~ msgid "Cleared the screen."
+#~ msgstr "Очистив екран."
+
+#~ msgid "Say what exactly to do."
+#~ msgstr "Скажи, що саме зробити."
+
+#~ msgid "That is already under way."
+#~ msgstr "Це вже в роботі."
+
+#~ msgid "On it."
+#~ msgstr "Беру."
+
+#~ msgid "Okay, I will remind you."
+#~ msgstr "Добре, нагадаю."
 

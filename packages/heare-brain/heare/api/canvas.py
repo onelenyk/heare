@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import json
 import re
-from heare.core.i18n import _
 from pathlib import Path
 from typing import AsyncIterator, Callable
 
@@ -216,15 +215,15 @@ class Canvas:
             return ""
         # Said only when the model drew without a word: silence after a
         # question is the worst answer, even with the answer on the screen.
-        return str(arguments.get("say", "")).strip() or _("Look at the screen.")
+        return str(arguments.get("say", "")).strip() or "It is on the canvas."
 
     async def _remove(self, arguments: dict) -> str:
         self.remove(str(arguments.get("id", "")))
-        return _("Removed.")
+        return "The widget is removed."
 
     async def _style(self, arguments: dict) -> str:
         self.style(str(arguments.get("css", "")))
-        return str(arguments.get("say", "")).strip() or _("Changed the look.")
+        return str(arguments.get("say", "")).strip() or "The look is changed."
 
     async def _arrange(self, arguments: dict) -> str:
         order = arguments.get("order") or []
@@ -232,14 +231,14 @@ class Canvas:
         if not isinstance(order, list) or not isinstance(sizes, dict):
             return ""
         self.arrange(order, sizes)
-        return _("Rearranged.")
+        return "The widgets are rearranged."
 
     async def _view(self, arguments: dict) -> str:
         return self.full()
 
     async def _clear(self, arguments: dict) -> str:
         self.clear()
-        return _("Cleared the screen.")
+        return "The canvas is cleared."
 
     def verbs(self) -> list[tuple[dict, object]]:
         return [(_PUT, self._put), (_STYLE, self._style), (_ARRANGE, self._arrange),

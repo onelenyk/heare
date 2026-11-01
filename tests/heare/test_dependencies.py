@@ -43,8 +43,10 @@ LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "he
 # for the Outcome a hand returns when its work failed or was stopped, and for
 # the live words/judge accessor (a language change counts from the next turn).
 # On 31 October 2026 for carrying a turn's own quality signals (the ``fields``
-# argument on ``Memory.keep`` and the said dict built once and used twice).
-CORE_LINES = 1578
+# argument on ``Memory.keep`` and the said dict built once and used twice),
+# for keeping what really went out (the last turn's messages, a task's brief),
+# and for a model's own words after an act, instead of a catalog's.
+CORE_LINES = 1605
 
 
 def _imports(path: Path) -> set[str]:

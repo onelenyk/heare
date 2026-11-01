@@ -15,6 +15,7 @@ a question from an executor, a reminder — waits until nobody is talking.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import itertools
 import json
 import logging
@@ -75,6 +76,8 @@ JUDGE = (
 )
 
 HISTORY_TURNS = 12
+CONTEXTS_KEPT = 20
+STOP_VERB = "stop_work"
 # How many recent turns an executor is shown: «відкрий той файл» names
 # nothing without them.
 CONTEXT_TURNS = 6
@@ -225,6 +228,11 @@ class Core:
         self.state = State()
         self.port = _Port(self)
         self.history: list[dict] = []
+        # What the model was last sent, whole: the page shows this and not
+        # `system()`, because memory, the judge and `fit` change it per turn.
+        # Kept in memory only: it holds the person's words.
+        self.last_context: dict | None = None
+        self.contexts: deque[dict] = deque(maxlen=CONTEXTS_KEPT)
         self.inputs: dict[str, Input] = {}
         self.outputs: dict[str, Output] = {}
         self.executors: dict[str, Executor] = {}
@@ -586,6 +594,8 @@ class Core:
             except Exception:
                 logger.exception("prompt fit failed (non-fatal)")
         messages = [{"role": "system", "content": system}, *turns]
+        self.last_context = {"at": time.time(), "messages": [dict(m) for m in messages]}
+        self.contexts.append(self.last_context)
         self.state.set_phase("thinking")
 
         failure: str | None = None
@@ -615,18 +625,32 @@ class Core:
                 and outcome != "stopped" and failure is None and reply
             ):
                 outcome = await self._say(out, reply)
+            acted: list[tuple[dict, str]] = []
             for call in (calls if outcome != "stopped" and not broke else []):
                 spoken = await self._run_verb(call)
                 # The model already said something; «Беру.» on top of
                 # «Зараз гляну.» is the same thing said twice. A verb
                 # that only acknowledges speaks when the model did not.
-                if reply and call.get("name") in self._acknowledging():
-                    continue
+                if call.get("name") in self._acknowledging():
+                    if reply:
+                        continue
+                    # «Stop» must be heard even if the model is what hangs,
+                    # and a `say` is already the model's own words.
+                    args = call.get("arguments")
+                    worded = isinstance(args, dict) and args.get("say")
+                    if call.get("name") != STOP_VERB and not worded:
+                        acted.append((call, spoken))
+                        continue
                 if spoken:
                     reply = f"{reply} {spoken}".strip()
                     outcome = await self._say(out, spoken)
                     if outcome == "stopped":
                         break
+            if acted and not reply and outcome != "stopped":
+                # The words are the model's: it knows what language this is.
+                self.state.set_phase("thinking")
+                reply, _calls, outcome, broke = await self._voice(
+                    out, [*messages, *self._tool_turns("", acted)], verbs=[])
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -756,6 +780,7 @@ class Core:
         broke = False
         held, decided = "", not may_be_silent
         schemas = self._schemas() if verbs is None else verbs
+        (self.last_context or {})["verbs"] = schemas
 
         async def pieces() -> AsyncIterator[str]:
             nonlocal broke, held, decided
@@ -992,7 +1017,7 @@ class Core:
                 task.request, self.history[-CONTEXT_TURNS:],
                 list(self.executors.values()),
             )
-            task.executor = name
+            task.executor, task.brief = name, text
             self.state.emit("task", **task.view())
             outcome = await asyncio.wait_for(
                 self.executors[name].run(text, _Desk(self, task)), TASK_S)

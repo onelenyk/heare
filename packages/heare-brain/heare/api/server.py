@@ -21,6 +21,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import mimetypes
 import os
 import re
 import secrets
@@ -30,6 +31,7 @@ import subprocess
 import time
 from importlib import metadata
 from pathlib import Path
+from urllib.parse import quote
 from collections.abc import Callable
 from typing import Any, AsyncIterator
 
@@ -45,6 +47,7 @@ from heare.api import pair as codes
 from heare.api.heard import Recordings
 from heare.api import skills
 from heare.api.registry import Registry
+from heare.api.sessions import MAX_FILE_BYTES, Kept, Sessions
 from heare.hand import Gone
 from heare.model.providers import PROVIDERS, check_key, list_models
 
@@ -57,6 +60,7 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")
 # How often a quiet stream is written to. A closed page is only noticed when
 # a write to it fails, so this is also how long it takes to show it left.
 HEARTBEAT_S = 5.0
+CONTEXT_TASKS = 10  # how many handed-over tasks the Context page keeps showing
 
 # A body that only shows what is happening may ask for these and nothing
 # else. Every one of them can be drawn without the words: a phase, an id, a
@@ -357,6 +361,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
     screens = Path(settings.screens_dir)
     recordings = Recordings(Path(settings.heard_dir))
     home = Path(settings.backups_dir).parent
+    sessions = Sessions(Path(settings.memory_dir) / "sessions")
+    sessions.seed(core.history)
+    if not sessions.active:
+        sessions.open(sessions.listed()[0]["id"])
+    core.history.clear()
+    core.hydrate(sessions.for_model(sessions.active))
+    kept = Kept(core.memory, sessions) if core.memory is not None else None
+    if kept is not None:
+        core.memory = kept
     tally = Tally(core)
     # Read once: the version cannot change under a running process.
     build_info = running()
@@ -482,11 +495,109 @@ def build(core: Core, settings: Any, vitals: Any = None,
     # -- messages ---------------------------------------------------------
 
     async def message(request: web.Request) -> web.Response:
-        text = str((await body(request)).get("text", "")).strip()
-        if not text:
+        data = await body(request)
+        text = str(data.get("text", "")).strip()
+        ids = data.get("files") if isinstance(data.get("files"), list) else []
+        attached, metas = sessions.block(sessions.active, ids)
+        if not text and not metas:
             raise web.HTTPBadRequest(text="nothing was said")
-        core.hear(Message(text=text, channel="screen"))
+        if kept is not None:
+            kept.files = metas
+        core.hear(Message(text=(text or "(see attached)") + attached, channel="screen"))
         return web.json_response({"ok": True})
+
+    # -- sessions: the talk divided -------------------------------------------
+
+    def session_of(request: web.Request) -> str:
+        session = request.match_info["id"]
+        if not sessions.has(session):
+            raise web.HTTPNotFound(text="no such session")
+        return session
+
+    def idle() -> None:
+        # A turn under way belongs to the session it began in.
+        if core.state.phase != "idle":
+            raise web.HTTPConflict(text="a turn is under way")
+
+    def went_to(session: str) -> web.Response:
+        core.history.clear()
+        if session:
+            core.hydrate(sessions.for_model(session))
+        core.state.emit("sessions", active=session)
+        return web.json_response({"active": session})
+
+    async def sessions_list(request: web.Request) -> web.Response:
+        return web.json_response({"active": sessions.active, "items": sessions.listed()})
+
+    async def session_new(request: web.Request) -> web.Response:
+        idle()
+        return went_to(sessions.new())
+
+    async def session_open(request: web.Request) -> web.Response:
+        session = session_of(request)
+        idle()
+        sessions.open(session)
+        return went_to(session)
+
+    async def session_rename(request: web.Request) -> web.Response:
+        session = session_of(request)
+        sessions.rename(session, str((await body(request)).get("title", "")).strip())
+        core.state.emit("sessions", active=sessions.active)
+        return web.json_response({"ok": True})
+
+    async def session_delete(request: web.Request) -> web.Response:
+        session = session_of(request)
+        idle()
+        sessions.delete(session)
+        if not sessions.active:
+            sessions.new()
+        return went_to(sessions.active)
+
+    async def session_turns(request: web.Request) -> web.Response:
+        return web.json_response(sessions.read(session_of(request)))
+
+    async def session_upload(request: web.Request) -> web.Response:
+        session = session_of(request)
+        data = await request.read()
+        if not data:
+            raise web.HTTPBadRequest(text="an empty file")
+        return web.json_response(sessions.store(session, request.query.get("name", "file"), data))
+
+    async def session_file(request: web.Request) -> web.StreamResponse:
+        found = sessions.stored(session_of(request), request.match_info["file"])
+        if found is None:
+            raise web.HTTPNotFound(text="no such file")
+        meta, path = found
+        shown = "inline" if meta["kind"] == "image" else "attachment"
+        return web.FileResponse(path, headers={
+            "Content-Disposition": f"{shown}; filename*=UTF-8''{quote(meta['name'])}",
+            "Content-Type": mimetypes.guess_type(meta["name"])[0] if shown == "inline"
+            else "application/octet-stream",
+            "X-Content-Type-Options": "nosniff"})
+
+    async def follow_tasks(app: web.Application) -> None:
+        """Work that ends in another session is written to the one that asked."""
+        origin: dict[int, str] = {}
+        reader = core.state.subscribe()
+
+        async def follow() -> None:
+            while True:
+                event = await reader.get()
+                if event.kind != "task":
+                    continue
+                task = event.data["id"]
+                began = origin.setdefault(task, sessions.active)
+                news = event.data.get("news")
+                if news and began != sessions.active:
+                    sessions.add(began, "assistant", news, unread=True)
+                    core.state.emit("sessions", active=sessions.active)
+
+        follower = asyncio.create_task(follow(), name="sessions-tasks")
+
+        async def stop(_: web.Application) -> None:
+            follower.cancel()
+
+        app.on_cleanup.append(stop)
 
     def on_executor(channel: str, about: str) -> None:
         """One executor per channel: a re-knock updates its card, not the
@@ -918,6 +1029,18 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def system_prompt(request: web.Request) -> web.Response:
         """What the model reads every turn, for a person to look at."""
         return web.Response(text=await core.system())
+
+    async def context(request: web.Request) -> web.Response:
+        """What really went out: the last turn's messages, and each task's brief."""
+        recent = sorted(core.state.tasks.values(), key=lambda t: t.id)[-CONTEXT_TASKS:]
+        return web.json_response({
+            "voice": core.last_context,
+            "turns": list(core.contexts),
+            "limit": int(settings.context_tokens),
+            "tasks": [{"id": t.id, "executor": t.executor, "status": t.status,
+                       "started": t.started, "request": t.request, "brief": t.brief}
+                      for t in reversed(recent)],
+        })
 
     async def skills_list(request: web.Request) -> web.Response:
         return web.json_response(registry.skilled())
@@ -1352,7 +1475,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         return web.FileResponse(path, headers={
             "Content-Type": "font/woff2", "Cache-Control": "max-age=604800"})
 
-    app = web.Application(middlewares=[guard])
+    app = web.Application(middlewares=[guard], client_max_size=MAX_FILE_BYTES)
+    app.on_startup.append(follow_tasks)
     app.cleanup_ctx.append(asking_for_updates)
     app.add_routes([
         web.get("/", page),
@@ -1382,6 +1506,15 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/controls", control),
         web.get("/api/skills", skills_list),
         web.get("/api/prompt", system_prompt),
+        web.get("/api/sessions", sessions_list),
+        web.post("/api/sessions", session_new),
+        web.post("/api/sessions/{id}/open", session_open),
+        web.post("/api/sessions/{id}/rename", session_rename),
+        web.delete("/api/sessions/{id}", session_delete),
+        web.get("/api/sessions/{id}/turns", session_turns),
+        web.post("/api/sessions/{id}/files", session_upload),
+        web.get("/api/sessions/{id}/files/{file}", session_file),
+        web.get("/api/context", context),
         web.post("/api/skills/call", skill_call),
         web.post("/api/skills/{id:\\d+}", skill_answer),
         web.post("/api/stop", stop),

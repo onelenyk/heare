@@ -127,7 +127,7 @@ def extracted(tmp_path_factory) -> set[str]:
     with pot.open("rb") as handle:
         found = {m.id if isinstance(m.id, str) else m.id[0] for m in read_po(handle) if m.id}
     # A finder that finds nothing would pass every check below.
-    assert {"On it.", "Brain", "Next →", "Open heare"} <= found
+    assert {"Stopped.", "Brain", "Next →", "Open heare"} <= found
     return found
 
 
@@ -171,10 +171,10 @@ def test_the_compiled_catalog_is_the_source(ukrainian):
 def test_english_is_the_key_so_english_needs_no_catalog():
     i18n.choose(lambda: "en")
     try:
-        assert i18n._("On it.") == "On it."
+        assert i18n._("Stopped.") == "Stopped."
     finally:
         i18n.choose(lambda: "uk")
-    assert i18n._("On it.") == "Беру."
+    assert i18n._("Stopped.") == "Зупинив."
 
 
 async def test_what_the_voice_reads_is_english(tmp_path, monkeypatch):
