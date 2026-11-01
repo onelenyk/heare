@@ -102,6 +102,10 @@ eval-judge:
 eval-voice:
 	uv run python scripts/voice_eval.py
 
+# Whole talks as a recogniser hands them over: same terms as eval-voice.
+eval-talk:
+	uv run python scripts/voice_talk_eval.py
+
 latency:
 	uv run python scripts/voice_latency.py
 
