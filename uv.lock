@@ -690,6 +690,7 @@ name = "heare-native-hands"
 version = "0.3.0"
 source = { editable = "packages/heare-native-hands" }
 dependencies = [
+    { name = "certifi" },
     { name = "heare-core" },
     { name = "httpx" },
     { name = "resvg-py" },
@@ -697,6 +698,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi" },
     { name = "heare-core", editable = "packages/heare-core" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "resvg-py", specifier = ">=0.5,<0.6" },

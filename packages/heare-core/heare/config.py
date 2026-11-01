@@ -92,6 +92,7 @@ DEFAULTS = {
     "voice_speaker": True,
     "voice_volume": 1.0,
     "eyes_looking": True,
+    "native_hands_internet": False,
     "hands_taking": True,
     # Whether the brain asks once a day for a newer heare, and where.
     "update_check": True,
