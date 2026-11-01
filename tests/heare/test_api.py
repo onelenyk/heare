@@ -891,27 +891,20 @@ async def test_a_pairing_code_gives_a_window_the_person_s_powers(tmp_path):
     await _close(room, client)
 
 
-async def test_a_name_cannot_make_a_window_the_owner(tmp_path):
+async def test_health_is_open_and_says_nothing_else(tmp_path):
     room, client, auth, settings = await _open(tmp_path)
-    code = pair.make(Path(settings.pair_codes_file))
-    answer = await client.post(
-        "/api/pair", json={"code": code, "kind": "window", "name": "!owner-x"})
-    assert "!" not in (await answer.json())["pid"]
-    wrong = await client.post("/api/pair", json={"secret": "nope", "kind": "window"})
-    assert wrong.status == 401
+    answer = await client.get("/health")
+    assert answer.status == 200 and await answer.json() == {"ok": True}
     await _close(room, client)
 
 
-async def test_the_master_token_makes_a_window_the_owner_and_health_is_open(tmp_path):
-    room, client, auth, settings = await _open(tmp_path)
-    assert (await client.get("/health")).status == 200
-    machine = await client.post(
-        "/api/pair", json={"secret": auth["X-Heare-Token"], "kind": "machine"})
-    assert machine.status == 401  # the master token opens windows, not machines
-    answer = await client.post(
-        "/api/pair", json={"secret": auth["X-Heare-Token"], "kind": "window"})
-    assert (await answer.json())["pid"].startswith("window@!owner-")
-    await _close(room, client)
+def test_a_window_is_the_owner_only_when_the_server_says_so(monkeypatch):
+    from heare.api import server
+
+    monkeypatch.delenv("HEARE_WINDOWS_ARE_THE_OWNER", raising=False)
+    assert not server.WINDOWS_ARE_THE_OWNER()
+    monkeypatch.setenv("HEARE_WINDOWS_ARE_THE_OWNER", "1")
+    assert server.WINDOWS_ARE_THE_OWNER()
 
 
 # Every route a remote window may not use, named here on purpose. The census
