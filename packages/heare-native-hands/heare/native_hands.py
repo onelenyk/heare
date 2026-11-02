@@ -32,6 +32,7 @@ from typing import AsyncIterator, Callable, Protocol
 
 import httpx
 
+from heare import at_hand
 from heare import hand as hand_life
 from heare import layout, logs, net, part, pixels, talk
 from heare.config import Settings
@@ -44,13 +45,14 @@ CHANNEL = "native-hands"
 # Which bodies are here and what they can do the voice reads from the
 # registry itself; this says only what these hands are for.
 ABOUT = (
-    "quick acts on the bodies in «My body»: show, switch, read. One or two "
-    "acts, no plan, no files, code or shell. Short internet requests "
+    "quick acts on the bodies in «My body»: show, switch, read; and on this "
+    "machine: list and read files, run plain commands, write a file with the "
+    "person's yes. A few acts, no plan, no long work. Short internet requests "
     "(a site's status, a page, an API) when the owner has turned them on."
 )
-STEPS = 4            # 1 turn to understand, 1–2 to act, 1 to answer
-DEADLINE_S = 15.0    # the whole loop's ceiling, the forced final turn too
-CALL_S = 10.0        # one skill; a hung part is a step, not forever
+STEPS = 6            # a look at a file before the act is a turn too
+DEADLINE_S = 120.0   # the whole loop's ceiling: a yes from the person is in it
+CALL_S = 90.0        # one act, the wait for that yes included
 SKILLS_S = 5.0       # the brain has to say what the parts can do
 HTTP_S = 30.0        # a socket without an answer is not a wait without end
 # The internet takes longer than a lamp, and a yes from the person longer still.
@@ -73,7 +75,7 @@ _SYSTEM = (
     "You are heare's quick hands. Do the request with the tools and answer in "
     "one short sentence, in the language of the request: what was done. Do not "
     "make up what the tools did not say. If the request is not for these tools "
-    "(files, code, shell, a plan, anything long), do not answer "
+    "(a plan, writing code, anything long), do not answer "
     f"yourself — call {HANDOFF} with the task, whole and clear without the talk."
 )
 
@@ -162,7 +164,7 @@ class NativeHand:
         except TimeoutError:
             skilled = {}
         tools = catalog(skilled)
-        schemas = [tool.schema() for tool in tools.values()] + [_HANDOFF]
+        schemas = [tool.schema() for tool in tools.values()] + at_hand.SCHEMAS + [_HANDOFF]
         online = self._reach.on
         self._reach.spent = 0
         steps, deadline, call_s = STEPS, DEADLINE_S, CALL_S
@@ -252,6 +254,8 @@ class NativeHand:
                 args = json.loads(args or "{}")
             except ValueError:
                 args = {}
+        if call.get("name") in at_hand.NAMES and isinstance(args, dict):
+            return await at_hand.run(str(call["name"]), args, desk)
         if call.get("name") == net.TOOL and self._reach.on and isinstance(args, dict):
             return await self._request(net.Asked.of(args), desk)
         tool = tools.get(str(call.get("name")))

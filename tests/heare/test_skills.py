@@ -201,7 +201,7 @@ async def test_what_is_not_theirs_the_native_hands_hand_on_as_worded():
         assert handoff.task == "Порахуй файли в ~/Downloads"
     else:
         raise AssertionError("no handoff")
-    assert model.offered[0] == ["pass_to_cli_hands"]
+    assert "pass_to_cli_hands" in model.offered[0]
 
 
 async def test_one_act_then_an_answer():
@@ -254,7 +254,7 @@ async def test_a_deadline_with_no_time_left_does_not_call_again(monkeypatch):
         now = 0.0
 
         def monotonic(self):
-            self.now += 10.0
+            self.now += 100.0
             return self.now
 
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
@@ -269,7 +269,7 @@ async def test_a_deadline_with_no_time_left_does_not_call_again(monkeypatch):
 async def test_steps_end_in_words_not_raw_results():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     hand, _ = _hand(devices, *[
-        Says(text="Далі.", calls=(("desk__show", {"text": n}),)) for n in "abcd"
+        Says(text="Далі.", calls=(("desk__show", {"text": n}),)) for n in "abcdefgh"
     ], "Показав усе.")
 
     said = await hand.run("показуй різне", Desk())
