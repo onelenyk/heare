@@ -126,6 +126,9 @@ app:
 	sh apps/mac/build.sh
 
 # The daily update on this Mac: never a red tree, and always a way back.
+smoke:
+	uv run --no-project python scripts/smoke.py
+
 live: check
 	uv run --no-project python scripts/live.py live
 

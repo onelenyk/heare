@@ -20,6 +20,8 @@ import signal
 import subprocess
 import sys
 import time
+import tomllib
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +37,7 @@ HEALTHY = "healthy"
 KEEP = 5
 BASE = os.environ.get("HEARE_URL", "http://127.0.0.1:9790")
 WAIT_S = 90.0
+BODY_STEADY_S = 20  # seconds every part must stay up
 STOP_S = 20.0
 REPO = Path(__file__).resolve().parents[1]
 APP = Path("/Applications/heare.app")
@@ -237,6 +240,62 @@ def wait(before: str) -> bool:
     return False
 
 
+def remote_brain() -> str:
+    """The brain's address when it lives elsewhere; empty when it lives here."""
+    try:
+        with (HOME / "settings" / "config.toml").open("rb") as file:
+            config = tomllib.load(file)
+    except (OSError, ValueError):
+        return ""
+    return str(config.get("url") or "") if config.get("role") == "body" else ""
+
+
+def parts_steady(health: dict, wanted: dict[str, str], since: float) -> bool:
+    """Every part started after ``since``, running, and not falling."""
+    return all(
+        (health.get(name) or {}).get("state") == "running"
+        and (health.get(name) or {}).get("at", 0) >= since
+        and not (health.get(name) or {}).get("restarts")
+        for name in wanted)
+
+
+def wait_body(brain: str, since: float) -> bool:
+    """The brain is another machine's: its state is not this key's to read,
+    so what is checked here is that it answers and that the parts stay up."""
+    wanted = wanted_parts()
+    deadline = time.monotonic() + WAIT_S
+    steady, health = 0, {}
+    while time.monotonic() < deadline:
+        try:
+            health = json.loads((MACHINE / "parts_health.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            health = {}
+        steady = steady + 1 if parts_steady(health, wanted, since) else 0
+        if steady >= BODY_STEADY_S:
+            return brain_answers(brain)
+        time.sleep(1.0)
+    say("  не дочекався:")
+    for name in wanted:
+        say(f"    {name}: {(health.get(name) or {}).get('state') or 'не стартував'}")
+    return False
+
+
+def brain_answers(brain: str) -> bool:
+    ask = urllib.request.Request(f"{brain.rstrip('/')}/api/state",
+                                 headers={"User-Agent": "heare"})
+    try:
+        urllib.request.urlopen(ask, timeout=10)
+    except urllib.error.HTTPError as answer:
+        if answer.code == 401:
+            return True  # its door, answering a stranger as it should
+        say(f"  мозок {brain}: HTTP {answer.code}")
+        return False
+    except OSError as error:
+        say(f"  мозок {brain} не відповідає: {error}")
+        return False
+    return True
+
+
 def falls_since(offsets: dict[Path, int]) -> list[str]:
     found = []
     for log, offset in offsets.items():
@@ -256,9 +315,11 @@ def put_live(release: Path, why: str) -> int:
     logs = [HOME / "logs" / "app-keeper.log"]
     offsets = {log: log.stat().st_size if log.exists() else 0 for log in logs}
     say(f"{why}: {release.name}")
+    since = time.time()
     install(release)
     start()
-    ok = wait(before)
+    brain = remote_brain()
+    ok = wait_body(brain, since) if brain else wait(before)
     falls = falls_since(offsets)
     if not ok or falls:
         for line in falls[-5:]:
@@ -272,7 +333,8 @@ def put_live(release: Path, why: str) -> int:
     parts = ", ".join(sorted(wanted_parts())) or "без частин"
     say(f"живе {n['commit']}{' (з незакоміченим)' if n['dirty'] else ''} — "
         f"«{n.get('subject', '')}»")
-    say(f"за {time.monotonic() - started:.0f} с; мозок і {parts} під'єднані, падінь 0")
+    where = f"мозок {brain} відповідає, частини працюють: {parts}" if brain else f"мозок і {parts} під'єднані"
+    say(f"за {time.monotonic() - started:.0f} с; {where}, падінь 0")
     return 0
 
 
