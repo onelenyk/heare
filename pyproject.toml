@@ -26,6 +26,7 @@ dev = [
     "mypy>=1.11",
     "ruff>=0.6",
     "babel>=2.16",
+    "pytest-timeout>=2.4.0",
 ]
 
 [tool.uv.workspace]
@@ -51,6 +52,9 @@ package = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# 2 November: a test hung on CI's Mac until the job died at 15 minutes, with no
+# name. A hang now fails as that test, with every thread's stack.
+timeout = 120
 # `spine_live` leaves the machine — real Edge and DeepSeek, real cost. It is
 # excluded here and run deliberately.
 addopts = "--strict-markers --tb=short -m 'not spine_live'"
