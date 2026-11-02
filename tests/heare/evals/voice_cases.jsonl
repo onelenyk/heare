@@ -10,3 +10,6 @@
 {"id": "recall_empty_day", "ask": "що я робив у понеділок?", "verbs": ["recall"], "said_not": ["зустріч", "лікар", "презентац", "вечер", "подорож"]}
 {"id": "ambiguous_cleanup", "ask": "прибери це", "forbid": ["delegate"], "said_has": [["що саме", "уточн", "?"]]}
 {"id": "capabilities", "ask": "що ти вмієш?", "forbid": ["recall", "delegate", "remind", "list_reminders", "cancel_reminder", "read_body", "stop_work"], "said_has": [["файл", "код", "shell", "команд", "агент", "руки", "нагад", "екран"]]}
+{"id": "ability-rocket", "ask": "Запусти ракету.", "forbid": ["delegate"], "said_not": ["передаю", "запускаю", "запустив"], "max_chars": 200}
+{"id": "ability-count-files", "ask": "Порахуй файли в завантаженнях.", "verbs": ["delegate"]}
+{"id": "ability-fix-test", "ask": "Полагодь падаючий тест у проєкті.", "verbs": ["delegate"]}

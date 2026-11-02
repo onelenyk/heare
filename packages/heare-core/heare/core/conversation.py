@@ -64,7 +64,8 @@ LOOKED_ALREADY = (
 RESULT_PREFIX = (
     "[work result] The work is done. Here is what came of it — retell it to "
     "the person in one or two sentences, in their language, in your own "
-    "words. Do not say you will check anything: it is checked. Result:"
+    "words. Do not say you will check anything: it is checked. Do not say "
+    "which hands or agent did it. Result:"
 )
 
 # The word that means "I have nothing to say". The rule for when to say

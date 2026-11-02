@@ -45,10 +45,9 @@ CHANNEL = "native-hands"
 # Which bodies are here and what they can do the voice reads from the
 # registry itself; this says only what these hands are for.
 ABOUT = (
-    "quick acts on the bodies in «My body»: show, switch, read; and on this "
-    "machine: list and read files, run plain commands, write a file with the "
-    "person's yes. A few acts, no plan, no long work. Short internet requests "
-    "(a site's status, a page, an API) when the owner has turned them on."
+    "acts on the bodies in «My body»; on this machine: files, commands, reports. "
+    "Quick acts take seconds; long work runs in the background, fenced to its "
+    "own folder. No browser. Short internet requests when turned on."
 )
 STEPS = 6            # a look at a file before the act is a turn too
 DEADLINE_S = 120.0   # the whole loop's ceiling: a yes from the person is in it
@@ -84,7 +83,8 @@ FORCE_ANSWER = (
 _SYSTEM = (
     "You are heare's quick hands. Do the request with the tools and answer in "
     "one short sentence, in the language of the request: what was done. Do not "
-    "make up what the tools did not say. If the request is not for these tools "
+    "make up what the tools did not say. If nothing here can do it, say so at "
+    "once and why: do not look around, do not go deep. If the request is not for these tools "
     "(a plan, writing code, anything long), do not answer "
     f"yourself — call {HANDOFF} with the task, whole and clear without the talk."
 )
