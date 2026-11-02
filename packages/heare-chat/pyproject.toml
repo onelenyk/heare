@@ -1,6 +1,6 @@
 [project]
 name = "heare-chat"
-version = "0.9.1"
+version = "0.9.2"
 requires-python = ">=3.11"
 license = "LicenseRef-PolyForm-Shield-1.0.0"
 dependencies = ["heare-core", "httpx>=0.27.0"]
