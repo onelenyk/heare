@@ -10,6 +10,8 @@ rule in passing. Secrets stay out of reach of the free path, not of a yes.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -18,7 +20,8 @@ from heare import fence
 from heare import hand as hand_life
 
 LIST, READ, RUN, WRITE = "list_files", "read_file", "run_command", "write_file"
-NAMES = frozenset({LIST, READ, RUN, WRITE})
+EDIT, SEARCH, PLAN, RECIPE = "edit_file", "search_text", "keep_plan", "keep_recipe"
+NAMES = frozenset({LIST, READ, RUN, WRITE, EDIT, SEARCH, PLAN, RECIPE})
 OUTPUT_CHARS = 8000
 RUN_S = 30.0
 DEEP_RUN_S = 300.0
@@ -116,11 +119,55 @@ async def _write(args: dict, desk: hand_life.Desk) -> str:
     return f"Written: {path}"
 
 
-async def _deep(command: str, desk: hand_life.Desk) -> str:
+async def _edit(args: dict, desk: hand_life.Desk) -> str:
+    """One exact piece replaced: it must be there, and there once."""
+    path, old = _path(args.get("path")), str(args.get("old") or "")
+    new = str(args.get("new") or "")
+    if secret(str(path.resolve())):
+        return "Not done: this file holds secrets."
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return f"Failed: {exc}"
+    if not old or text.count(old) != 1:
+        return f"Failed: the piece is there {text.count(old) if old else 0} times, not once."
+    return await _write({"path": str(path), "text": text.replace(old, new)}, desk)
+
+
+async def _search(args: dict) -> str:
+    """Through a whole tree: only inside the fence, which hides the secrets."""
+    work = Path.home() / WORK
+    argv = ["grep", "-rIn", "--", str(args.get("text") or ""), str(_path(args.get("path")))]
+    fenced = fence.wrap(argv, work)
+    if fenced is None:
+        return "Failed: no fence on this machine, so no search through a tree."
+    return await asyncio.to_thread(_exec, fenced)
+
+
+def _notes(folder: str, name: str) -> Path:
+    path = Path.home() / WORK / folder / f"{name}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def plan_of(task: str) -> Path:
+    return _notes(".plans", hashlib.sha256(task.encode()).hexdigest()[:16])
+
+
+def recipes() -> str:
+    """What was learned before; a line each, for the model to read on."""
+    folder = Path.home() / WORK / ".recipes"
+    return "\n".join(f"- {p.stem}: {p.read_text(encoding='utf-8')[:300]}"
+                     for p in sorted(folder.glob("*.md")))[:3000] if folder.is_dir() else ""
+
+
+async def _deep(command: str, desk: hand_life.Desk, net: bool = False) -> str:
     """Inside the fence a shell is safe enough to need no yes: its worst is
     the work folder. With no fence it is an ordinary command, and asked."""
     work = Path.home() / WORK
-    fenced = fence.wrap(["/bin/sh", "-c", command], work)
+    if net and not await desk.permit(f"network: {command}", "change", command):
+        return "Not done: no permission."
+    fenced = fence.wrap(["/bin/sh", "-c", command], work, net=net)
     if fenced is not None:
         return await asyncio.to_thread(_exec, fenced, DEEP_RUN_S, work)
     if not await desk.permit(command, "change", command):
@@ -131,7 +178,7 @@ async def _deep(command: str, desk: hand_life.Desk) -> str:
 async def _run(args: dict, desk: hand_life.Desk, deep: bool = False) -> str:
     command = str(args.get("command") or "").strip()
     if deep and command:
-        return await _deep(command, desk)
+        return await _deep(command, desk, str(args.get("network")).lower() == "yes")
     try:
         argv = shlex.split(command)
     except ValueError as exc:
@@ -148,8 +195,23 @@ async def _run(args: dict, desk: hand_life.Desk, deep: bool = False) -> str:
     return await asyncio.to_thread(_exec, argv)
 
 
-async def run(name: str, args: dict, desk: hand_life.Desk, *, deep: bool = False) -> str:
+async def run(name: str, args: dict, desk: hand_life.Desk, *, deep: bool = False,
+              task: str = "") -> str:
     desk.step(name)
+    if name == EDIT:
+        return await _edit(args, desk)
+    if name == SEARCH:
+        return await _search(args)
+    if name == PLAN:
+        text = str(args.get("text") or "")
+        plan_of(task).write_text(text, encoding="utf-8")
+        now = next((line for line in text.splitlines() if line.startswith("- [ ]")), "")
+        desk.step(now[5:].strip()[:80] or "plan kept")
+        return "Kept."
+    if name == RECIPE:
+        title = re.sub(r"[^\w-]+", "-", str(args.get("title") or "recipe"))[:40]
+        _notes(".recipes", title).write_text(str(args.get("text") or ""), encoding="utf-8")
+        return "Kept."
     if name == LIST:
         return await _list(args)
     if name == READ:
@@ -162,12 +224,22 @@ async def run(name: str, args: dict, desk: hand_life.Desk, *, deep: bool = False
 def _tool(name: str, about: str, **fields: str) -> dict:
     return {"type": "function", "function": {
         "name": name, "description": about,
-        "parameters": {"type": "object", "required": list(fields), "properties": {
+        "parameters": {"type": "object", "required": [k for k in fields if k != "network"], "properties": {
             key: {"type": "string", "description": words}
             for key, words in fields.items()}}}}
 
 
 SCHEMAS = [
+    _tool(EDIT, "Replace one exact piece of a text file; it must occur once. "
+                "Outside ~/heare-work the person is asked first.",
+          path="The file.", old="The exact piece.", new="What takes its place."),
+    _tool(SEARCH, "Find text through a whole folder; secrets stay hidden.",
+          text="The text.", path="The folder; ~ is allowed."),
+    _tool(PLAN, "Keep the plan of long work as lines '- [ ] step' and '- [x] step'. "
+                "The first open step is shown to the person; after a failure the "
+                "work continues from it.", text="The whole plan."),
+    _tool(RECIPE, "Keep how a kind of task was solved, for next time.",
+          title="A short name.", text="The steps that worked."),
     _tool(LIST, "List a folder on this machine.", path="The folder; ~ is allowed."),
     _tool(READ, "Read a text file on this machine.", path="The file; ~ is allowed."),
     _tool(WRITE, "Write a text file on this machine; the person is asked first.",
@@ -175,5 +247,5 @@ SCHEMAS = [
     _tool(RUN, "Run one command on this machine, with no shell: no pipes, no "
                "redirects. Looking commands (ls, cat, grep, find, df, ps, git "
                "status…) run at once; any other is asked of the person first.",
-          command="The command line."),
+          command="The command line.", network="yes, in deep mode, for the internet; else no."),
 ]

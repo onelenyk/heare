@@ -67,3 +67,27 @@ async def test_deep_work_has_pipes_inside_the_fence_and_stays_there(monkeypatch,
     outside = tmp_path / "outside"
     await at_hand.run(at_hand.RUN, {"command": f"touch {outside}"}, desk, deep=True)
     assert not outside.exists()
+
+
+async def test_an_edit_needs_the_piece_there_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(at_hand.Path, "home", lambda: tmp_path.resolve())
+    path = tmp_path / "heare-work" / "a.txt"
+    path.parent.mkdir()
+    path.write_text("a b a")
+    args = {"path": str(path), "old": "a", "new": "c"}
+    assert (await at_hand.run(at_hand.EDIT, args, Desk(True))).startswith("Failed")
+    await at_hand.run(at_hand.EDIT, {**args, "old": "b"}, Desk(False))
+    assert path.read_text() == "a c a"
+
+
+async def test_the_network_is_the_persons_word(tmp_path, monkeypatch):
+    monkeypatch.setattr(at_hand.Path, "home", lambda: tmp_path.resolve())
+    said = await at_hand.run(at_hand.RUN, {"command": "true", "network": "yes"},
+                             Desk(False), deep=True)
+    assert said.startswith("Not done")
+
+
+async def test_a_plan_outlives_the_try(tmp_path, monkeypatch):
+    monkeypatch.setattr(at_hand.Path, "home", lambda: tmp_path.resolve())
+    await at_hand.run(at_hand.PLAN, {"text": "- [x] a\n- [ ] b"}, Desk(True), task="t")
+    assert "- [ ] b" in at_hand.plan_of("t").read_text()

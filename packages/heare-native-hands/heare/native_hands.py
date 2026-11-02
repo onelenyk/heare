@@ -65,6 +65,9 @@ DEEP = "go_deep"
 DEEP_STEPS = 60
 DEEP_S = 1800.0
 DEEP_CALL_S = 330.0
+# What one task may send the model, in characters: a ceiling on the bill that
+# holds whichever model is chosen. About a million tokens.
+DEEP_CHARS = 4_000_000
 KEPT_RESULTS = 8     # the last results stay whole; older ones are cut
 CUT_CHARS = 400
 FAILED = "Failed: the model did not answer."
@@ -186,9 +189,10 @@ class NativeHand:
         seen: dict[str, str] = {}
         repeats = 0
         started = time.monotonic()
-        taken = 0
+        taken = sent = 0
         self._deep = False
-        while taken < steps:
+        self._task = task
+        while taken < steps and sent < DEEP_CHARS:
             taken += 1
             if desk.stopped:
                 raise asyncio.CancelledError
@@ -199,6 +203,7 @@ class NativeHand:
             try:
                 text, calls = await asyncio.wait_for(
                     self._turn(_cut(messages), schemas), left)
+                sent += sum(len(str(m.get("content"))) for m in _cut(messages))
             except TimeoutError:
                 break
             if desk.stopped:
@@ -215,7 +220,7 @@ class NativeHand:
                 if call.get("name") == DEEP:
                     self._deep = True
                     steps, deadline, call_s = DEEP_STEPS, DEEP_S, DEEP_CALL_S
-                    results.append((call, _DEEP_SAID))
+                    results.append((call, _deep_said(task)))
                     continue
                 key = json.dumps(
                     [call.get("name"), call.get("arguments")],
@@ -270,7 +275,8 @@ class NativeHand:
             except ValueError:
                 args = {}
         if call.get("name") in at_hand.NAMES and isinstance(args, dict):
-            return await at_hand.run(str(call["name"]), args, desk, deep=self._deep)
+            return await at_hand.run(str(call["name"]), args, desk, deep=self._deep,
+                                       task=self._task)
         if call.get("name") == net.TOOL and self._reach.on and isinstance(args, dict):
             return await self._request(net.Asked.of(args), desk)
         tool = tools.get(str(call.get("name")))
@@ -333,8 +339,22 @@ _DEEP_SAID = (
     f"~/{at_hand.WORK}: it writes only there, has no network, cannot see "
     "secrets. Work in steps: try, read what came, correct. A failure from the "
     "fence is a limit, not a bug: say so instead of going round it. When done, "
-    "say what was found and where the results are."
+    "say what was found and where the results are. Keep a plan with keep_plan; "
+    "keep_recipe what is worth knowing next time. run_command takes network: "
+    "yes when a command needs the internet; the person is asked."
 )
+
+
+def _deep_said(task: str) -> str:
+    """The standing orders, and what an earlier try and earlier tasks left."""
+    said = _DEEP_SAID
+    plan = at_hand.plan_of(task)
+    if plan.exists():
+        said += f"\n\nA plan from an earlier try; go on from it:\n{plan.read_text(encoding='utf-8')}"
+    known = at_hand.recipes()
+    if known:
+        said += f"\n\nWhat worked before:\n{known}"
+    return said
 
 
 def _cut(messages: list[dict]) -> list[dict]:
