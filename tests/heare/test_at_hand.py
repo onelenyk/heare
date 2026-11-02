@@ -57,3 +57,13 @@ async def test_writing_asks_the_person_and_never_the_judge(tmp_path):
 async def test_a_secret_is_not_read_by_the_free_path():
     said = await at_hand.run(at_hand.READ, {"path": "~/.ssh/id_rsa"}, Desk(True))
     assert said.startswith("Not done")
+
+
+async def test_deep_work_has_pipes_inside_the_fence_and_stays_there(monkeypatch, tmp_path):
+    monkeypatch.setattr(at_hand.Path, "home", lambda: tmp_path.resolve())
+    desk = Desk(False)
+    said = await at_hand.run(at_hand.RUN, {"command": "echo hi | tr h H"}, desk, deep=True)
+    assert "Hi" in said and desk.asked == []
+    outside = tmp_path / "outside"
+    await at_hand.run(at_hand.RUN, {"command": f"touch {outside}"}, desk, deep=True)
+    assert not outside.exists()

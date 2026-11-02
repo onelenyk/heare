@@ -60,6 +60,13 @@ NET_STEPS = 8
 NET_DEADLINE_S = 120.0
 NET_CALL_S = 90.0
 HANDOFF = "pass_to_cli_hands"
+# Long work: the voice is not waiting, the fence holds what the steps do.
+DEEP = "go_deep"
+DEEP_STEPS = 60
+DEEP_S = 1800.0
+DEEP_CALL_S = 330.0
+KEPT_RESULTS = 8     # the last results stay whole; older ones are cut
+CUT_CHARS = 400
 FAILED = "Failed: the model did not answer."
 
 SAME_CALL = (
@@ -164,7 +171,7 @@ class NativeHand:
         except TimeoutError:
             skilled = {}
         tools = catalog(skilled)
-        schemas = [tool.schema() for tool in tools.values()] + at_hand.SCHEMAS + [_HANDOFF]
+        schemas = [tool.schema() for tool in tools.values()] + at_hand.SCHEMAS + [_DEEP, _HANDOFF]
         online = self._reach.on
         self._reach.spent = 0
         steps, deadline, call_s = STEPS, DEADLINE_S, CALL_S
@@ -179,7 +186,10 @@ class NativeHand:
         seen: dict[str, str] = {}
         repeats = 0
         started = time.monotonic()
-        for _step in range(steps):
+        taken = 0
+        self._deep = False
+        while taken < steps:
+            taken += 1
             if desk.stopped:
                 raise asyncio.CancelledError
             left = deadline - (time.monotonic() - started)
@@ -188,7 +198,7 @@ class NativeHand:
             desk.step(N_("thinking"))
             try:
                 text, calls = await asyncio.wait_for(
-                    self._turn(messages, schemas), left)
+                    self._turn(_cut(messages), schemas), left)
             except TimeoutError:
                 break
             if desk.stopped:
@@ -202,6 +212,11 @@ class NativeHand:
             for call in calls:
                 if desk.stopped:
                     raise asyncio.CancelledError
+                if call.get("name") == DEEP:
+                    self._deep = True
+                    steps, deadline, call_s = DEEP_STEPS, DEEP_S, DEEP_CALL_S
+                    results.append((call, _DEEP_SAID))
+                    continue
                 key = json.dumps(
                     [call.get("name"), call.get("arguments")],
                     sort_keys=True, default=str,
@@ -255,7 +270,7 @@ class NativeHand:
             except ValueError:
                 args = {}
         if call.get("name") in at_hand.NAMES and isinstance(args, dict):
-            return await at_hand.run(str(call["name"]), args, desk)
+            return await at_hand.run(str(call["name"]), args, desk, deep=self._deep)
         if call.get("name") == net.TOOL and self._reach.on and isinstance(args, dict):
             return await self._request(net.Asked.of(args), desk)
         tool = tools.get(str(call.get("name")))
@@ -305,6 +320,31 @@ class NativeHand:
     def _noted(self, asked: net.Asked, outcome: str) -> None:
         logger.info("internet: %s -> %s", asked.words, outcome)
         self._reach.note(f"{asked.words[:_NOTED]} → {outcome}")
+
+
+_DEEP = {"type": "function", "function": {
+    "name": DEEP,
+    "description": "Take this as long work: up to half an hour and many steps, "
+                   "with a real shell inside a fence. Use it when a task needs "
+                   "trying, checking and trying again.",
+    "parameters": {"type": "object", "properties": {}}}}
+_DEEP_SAID = (
+    "Deep mode. run_command is now a real shell with pipes, in the folder "
+    f"~/{at_hand.WORK}: it writes only there, has no network, cannot see "
+    "secrets. Work in steps: try, read what came, correct. A failure from the "
+    "fence is a limit, not a bug: say so instead of going round it. When done, "
+    "say what was found and where the results are."
+)
+
+
+def _cut(messages: list[dict]) -> list[dict]:
+    """Old results shortened, so long work does not fill the model's memory."""
+    told = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
+    old = set(told[:-KEPT_RESULTS])
+    return [
+        {**m, "content": str(m.get("content"))[:CUT_CHARS] + " …cut"}
+        if i in old and len(str(m.get("content"))) > CUT_CHARS else m
+        for i, m in enumerate(messages)]
 
 
 _HANDOFF = {"type": "function", "function": {

@@ -21,6 +21,7 @@ LIST, READ, RUN, WRITE = "list_files", "read_file", "run_command", "write_file"
 NAMES = frozenset({LIST, READ, RUN, WRITE})
 OUTPUT_CHARS = 8000
 RUN_S = 30.0
+DEEP_RUN_S = 300.0
 WORK = "heare-work"
 
 FREE = frozenset({
@@ -62,12 +63,13 @@ def _capped(text: str) -> str:
     return text[:OUTPUT_CHARS] + f"\n… cut, {len(text)} characters in all"
 
 
-def _exec(argv: list[str]) -> str:
+def _exec(argv: list[str], limit: float = RUN_S, cwd: Path | None = None) -> str:
     try:
         done = subprocess.run(argv, capture_output=True, text=True, errors="replace",
-                              timeout=RUN_S, cwd=Path.home(), stdin=subprocess.DEVNULL)
+                              timeout=limit, cwd=cwd or Path.home(),
+                              stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
-        return f"Failed: no end in {int(RUN_S)} s; whether it happened is unknown."
+        return f"Failed: no end in {int(limit)} s; whether it happened is unknown."
     except OSError as exc:
         return f"Failed: {exc}"
     said = _capped(done.stdout + done.stderr)
@@ -102,7 +104,9 @@ async def _read(args: dict) -> str:
 async def _write(args: dict, desk: hand_life.Desk) -> str:
     path, text = _path(args.get("path")), str(args.get("text") or "")
     what = f"write {len(text)} characters to {path}"
-    if not await desk.permit(what, "change", f"{what}\n{text[:2000]}"):
+    work = (Path.home() / WORK).resolve()
+    mine = path.resolve().is_relative_to(work)
+    if not mine and not await desk.permit(what, "change", f"{what}\n{text[:2000]}"):
         return "Not done: no permission."
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,8 +116,22 @@ async def _write(args: dict, desk: hand_life.Desk) -> str:
     return f"Written: {path}"
 
 
-async def _run(args: dict, desk: hand_life.Desk) -> str:
+async def _deep(command: str, desk: hand_life.Desk) -> str:
+    """Inside the fence a shell is safe enough to need no yes: its worst is
+    the work folder. With no fence it is an ordinary command, and asked."""
+    work = Path.home() / WORK
+    fenced = fence.wrap(["/bin/sh", "-c", command], work)
+    if fenced is not None:
+        return await asyncio.to_thread(_exec, fenced, DEEP_RUN_S, work)
+    if not await desk.permit(command, "change", command):
+        return "Not done: no permission."
+    return await asyncio.to_thread(_exec, ["/bin/sh", "-c", command], DEEP_RUN_S, work)
+
+
+async def _run(args: dict, desk: hand_life.Desk, deep: bool = False) -> str:
     command = str(args.get("command") or "").strip()
+    if deep and command:
+        return await _deep(command, desk)
     try:
         argv = shlex.split(command)
     except ValueError as exc:
@@ -130,7 +148,7 @@ async def _run(args: dict, desk: hand_life.Desk) -> str:
     return await asyncio.to_thread(_exec, argv)
 
 
-async def run(name: str, args: dict, desk: hand_life.Desk) -> str:
+async def run(name: str, args: dict, desk: hand_life.Desk, *, deep: bool = False) -> str:
     desk.step(name)
     if name == LIST:
         return await _list(args)
@@ -138,7 +156,7 @@ async def run(name: str, args: dict, desk: hand_life.Desk) -> str:
         return await _read(args)
     if name == WRITE:
         return await _write(args, desk)
-    return await _run(args, desk)
+    return await _run(args, desk, deep)
 
 
 def _tool(name: str, about: str, **fields: str) -> dict:
