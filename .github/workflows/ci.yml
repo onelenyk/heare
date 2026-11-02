@@ -85,7 +85,7 @@ jobs:
         include:
           # The app carries its machine's wheels, so each is built on its own
           # kind of Mac.
-          - { arch: arm64, runner: macos-15 }
+          - { arch: arm64, runner: macos-latest }
           - { arch: x86_64, runner: macos-15-intel }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
