@@ -34,10 +34,21 @@ NAMES = (
 # nor the developer's keys file.
 _STORED: dict[str, str] = {}
 
+# Lent by a brain on another machine: held by the process, never on disk.
+_LENT: dict[str, str] = {}
+
 
 def get(name: str) -> str | None:
-    """The key, or None. The environment wins; then the store."""
-    return _from_env(name) or _from_store(name)
+    """The key, or None. The environment wins; then a loan; then the store."""
+    return _from_env(name) or _LENT.get(name) or _from_store(name)
+
+
+def lend(name: str, value: str | None) -> None:
+    """Hold a key the brain lent this process; None takes it back."""
+    if value:
+        _LENT[name] = value
+    else:
+        _LENT.pop(name, None)
 
 
 def source(name: str) -> str | None:

@@ -44,6 +44,7 @@ from heare.core import PROTOCOL, Core, Event, Message
 from heare import words
 from heare.api import auth
 from heare.api import pair as codes
+from heare.api.grants import Grants
 from heare.api.heard import Recordings
 from heare.api import skills
 from heare.api.registry import Registry
@@ -386,6 +387,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         ("POST", re.compile(r"^/api/input$")),
         ("POST", re.compile(r"^/api/input/said_over$")),
         ("GET", re.compile(r"^/api/events$")),
+        ("POST", re.compile(r"^/api/keys/ask$")),
         ("POST", re.compile(r"^/api/executor/claim$")),
         ("POST", re.compile(r"^/api/executor/\d+/(step|permit|result|ask)$")),
     )
@@ -836,6 +838,43 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def reject(request: web.Request) -> web.Response:
         return _decide(request, "rejected")
 
+    lent = Grants(Path(settings.part_tokens_file).with_name("key_grants.json"))
+
+    async def key_ask(request: web.Request) -> web.Response:
+        """A part asks for a key: for the code that said yes, or it waits."""
+        pid = request.get("part")
+        if pid is None or pid.startswith("machine@"):
+            raise web.HTTPForbidden(text="only a part borrows a key")
+        data = await body(request)
+        name = str(data.get("key") or "")
+        if name not in keys.NAMES:
+            raise web.HTTPBadRequest(text="no such key")
+        code = str(data.get("fingerprint") or "")[:64]
+        if not lent.allowed(pid, name, code):
+            lent.ask(pid, name, code, str(data.get("version") or "")[:32])
+            return web.json_response({"waiting": True})
+        value = keys.get(name)
+        logger.info("key %s lent to %s", name, pid)
+        return web.json_response({"value": value} if value else {"missing": True})
+
+    async def key_asked(request: web.Request) -> web.Response:
+        return web.json_response(sorted(
+            lent.waiting.values(), key=lambda asked: (asked["pid"], asked["key"])))
+
+    async def key_answer(request: web.Request) -> web.Response:
+        """The person's word; a host answers all that machine has asked."""
+        data = await body(request)
+        allow = data.get("allow") is True
+        host = str(data.get("host") or "")
+        chosen = [k for k in lent.waiting if host and k[0].split("@", 1)[-1] == host]
+        if not host:
+            chosen = [(str(data.get("pid") or ""), str(data.get("key") or ""))]
+        told = [lent.answer(pid, key, allow) for pid, key in chosen]
+        for (pid, key), done in zip(chosen, told):
+            if done:
+                logger.info("key %s for %s: %s", key, pid, "yes" if allow else "no")
+        return web.json_response({"answered": sum(told)})
+
     async def forget(request: web.Request) -> web.Response:
         """The person takes a part out of the registry and out of trust.
 
@@ -847,6 +886,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         if entry is None:
             raise web.HTTPNotFound(text="no such part")
         auth.revoke(part_tokens, pid)
+        lent.forget(pid)
         core.executors.pop(str(entry.get("channel", "")), None)
         return web.json_response({"ok": True})
 
@@ -1572,6 +1612,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.get("/api/keys", get_keys),
         web.post("/api/keys", set_key),
         web.post("/api/keys/adopt", adopt_key),
+        web.post("/api/keys/ask", key_ask),
+        web.get("/api/keys/asked", key_asked),
+        web.post("/api/keys/answer", key_answer),
         web.get("/api/memory", memory),
         web.get("/api/features", list_features),
         web.post("/api/features/{id:[a-z][a-z0-9_-]*}/act", act_feature),

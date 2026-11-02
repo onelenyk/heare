@@ -10,16 +10,19 @@ work it does.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from importlib import metadata
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
 
-from heare import lifeline, logs
+import heare
+from heare import keys, lifeline, logs
 from heare.core import i18n
 from heare.core.i18n import _
 from heare.config import Settings
@@ -31,6 +34,8 @@ RETRY_S = 1.0
 # A missing token is waited for, not fallen on: the app starts the keeper
 # before the brain, so a part is spawned before any token exists. The wait
 # doubles to a ceiling, so a home with no brain yet does not fill a log.
+BORROW_WAIT_S = 5.0
+BORROW_AGAIN_S = 300.0
 TOKEN_WAIT_S = 1.0
 TOKEN_WAIT_MAX_S = 60.0
 # Cases the keeper should tell apart: a refused key is not a missing route,
@@ -84,6 +89,54 @@ def _trouble_for(error: httpx.HTTPStatusError) -> str:
     if code == 404:
         return _("the brain has no such route ({code}) — it may be another version").format(code=code)
     return _("the brain answered {code}").format(code=code)
+
+
+def fingerprint() -> str:
+    """The code this process runs: every source file of the namespace."""
+    digest = hashlib.sha256()
+    for root in heare.__path__:
+        for path in sorted(Path(root).rglob("*.py")):
+            digest.update(str(path.relative_to(root)).encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+async def borrow(wire: "Wire", names: Sequence[str], code: str,
+                 version: str | None) -> bool:
+    """Ask the brain for keys once; True when none is left waiting.
+
+    A brain that refuses or waits takes the loan back, so a no holds at
+    once. Keys travel only over TLS or inside this machine."""
+    if not wire.base.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+        logs.say(_("keys are not borrowed over plain http: {base}").format(base=wire.base))
+        return True
+    done = True
+    for name in names:
+        try:
+            answer = await wire.client.post(
+                f"{wire.base}/api/keys/ask",
+                json={"key": name, "fingerprint": code, "version": version or ""})
+            answer.raise_for_status()
+            given = answer.json()
+        except httpx.HTTPError as exc:
+            logger.warning("could not ask for %s: %s", name, exc)
+            done = False
+            continue
+        keys.lend(name, given.get("value"))
+        if given.get("waiting"):
+            done = False
+    return done
+
+
+async def _keep_borrowing(wire: "Wire", names: Sequence[str], code: str,
+                          version: str | None) -> None:
+    said = False
+    while True:
+        done = await borrow(wire, names, code, version)
+        if not done and not said:
+            logs.say(_("waiting for the keys to be allowed on the page…"))
+        said = not done
+        await asyncio.sleep(BORROW_WAIT_S if not done else BORROW_AGAIN_S)
 
 
 async def knock(client: httpx.AsyncClient | httpx.Client, base: str,
@@ -269,6 +322,13 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         wire = Wire(client, base, about["channel"],
                     str(answer.get("pid") or about.get("key") or ""), secret,
                     str(answer.get("name") or ""))
+        # The brain's own machine shares its store: nothing to borrow there.
+        needs = [str(name) for name in about.get("keys") or []]
+        lending = None
+        if needs and str(settings.url):
+            code = await asyncio.to_thread(fingerprint)
+            lending = asyncio.create_task(
+                _keep_borrowing(wire, needs, code, about.get("version")))
         opened = False
         trouble = _Trouble(wire)
         logging.getLogger().addHandler(trouble)
@@ -301,6 +361,8 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         finally:
             logging.getLogger().removeHandler(trouble)
             following.cancel()
+            if lending is not None:
+                lending.cancel()
             await asyncio.gather(following, return_exceptions=True)
             await wire.settle()
     finally:

@@ -912,6 +912,9 @@ def test_a_window_is_the_owner_only_when_the_server_says_so(monkeypatch):
 # or in REMOTE_WINDOW_ALLOWED before the suite passes: the default is local.
 LOCAL_ONLY = frozenset({
     ("POST", "/api/pair-code"),
+    ("POST", "/api/keys/ask"),
+    ("GET", "/api/keys/asked"),
+    ("POST", "/api/keys/answer"),
     ("POST", "/api/bodies/{id}/approve"),
     ("POST", "/api/bodies/{id}/reject"),
     ("POST", "/api/bodies/{id}/forget"),
@@ -2414,4 +2417,30 @@ async def test_a_result_for_an_unknown_job_is_refused_and_logged(tmp_path, caplo
 
     assert refused.status == 404
     assert any("unknown job 999" in record.message for record in caplog.records)
+    await _close(room, client)
+
+
+async def test_a_paired_machine_never_vouches_for_a_key(tmp_path):
+    from heare import keys
+
+    room, client, auth, settings = await _open(tmp_path)
+    keys.store("GROQ_API_KEY", "gsk_test")
+    code = pair.make(Path(settings.pair_codes_file))
+    machine = await (await client.post("/api/pair", json={
+        "code": code, "kind": "machine", "name": "mac"})).json()
+    head = {"X-Heare-Token": machine["token"]}
+    knocked = await (await client.post("/api/bodies", headers=head, json={
+        "channel": "voice", "key": "voice@mac", "host": "mac"})).json()
+    part = {"X-Heare-Token": knocked["token"]}
+    ask = {"key": "GROQ_API_KEY", "fingerprint": "a", "version": "1"}
+    assert (await client.post("/api/keys/ask", headers=head, json=ask)).status == 403
+    first = await (await client.post("/api/keys/ask", headers=part, json=ask)).json()
+    assert first == {"waiting": True}
+    # A part cannot say yes to itself.
+    assert (await client.post("/api/keys/answer", headers=part, json={
+        "host": "mac", "allow": True})).status == 403
+    assert (await client.post("/api/keys/answer", headers=auth, json={
+        "host": "mac", "allow": True})).status == 200
+    lent = await (await client.post("/api/keys/ask", headers=part, json=ask)).json()
+    assert lent == {"value": "gsk_test"}
     await _close(room, client)

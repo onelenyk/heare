@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-01 22:48+0200\n"
+"POT-Creation-Date: 2026-11-02 12:14+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -638,6 +638,12 @@ msgstr "ця сторінка"
 #, python-brace-format
 msgid "page · {host}"
 msgstr "сторінка · {host}"
+
+msgid "Allow"
+msgstr "Дозволити"
+
+msgid "Refuse"
+msgstr "Відмовити"
 
 msgid " · this"
 msgstr " · ця"
@@ -1726,6 +1732,13 @@ msgstr "у мозку немає такого маршруту ({code}) — мо
 msgid "the brain answered {code}"
 msgstr "мозок відповів {code}"
 
+#, python-brace-format
+msgid "keys are not borrowed over plain http: {base}"
+msgstr "ключі не беруться через відкритий http: {base}"
+
+msgid "waiting for the keys to be allowed on the page…"
+msgstr "чекаю, поки на пульті дозволять ключі…"
+
 msgid "waiting to be approved on the page…"
 msgstr "чекаю, доки мене одобрять на сторінці…"
 
@@ -1877,9 +1890,6 @@ msgstr "Що ще"
 
 msgid "Almost done"
 msgstr "Майже все"
-
-msgid "Allow"
-msgstr "Дозволити"
 
 msgid "Allowed"
 msgstr "Дозволено"

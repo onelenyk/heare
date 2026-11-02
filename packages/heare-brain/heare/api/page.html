@@ -144,6 +144,8 @@
   .partrow { display:flex; align-items:center; gap:8px; height:34px; min-width:0; padding:0 2px; font-size:12px; }
   .pdot { width:8px; height:8px; border-radius:50%; background:var(--soft); flex:none; }
   .pdot.pending { background:var(--warn); box-shadow:0 0 0 3px rgba(219,182,79,.15); }
+  .key-ask { border:1px solid var(--warn); border-radius:8px; padding:8px; margin:6px 0; }
+  .key-ask-what { font-size:12px; opacity:.75; margin:3px 0 6px; overflow-wrap:anywhere; }
   .pdot.approved { background:var(--ok); }
   .pdot.rejected, .pdot.expired { background:var(--bad); }
   .partrow .pname { font-weight:600; overflow-wrap:anywhere; }
@@ -639,6 +641,7 @@
 
   <section id="partcol">
     <div class="band"><b data-t>Parts</b><div id="partfold"></div><button type="button" id="partfoldbtn" aria-expanded="true" data-t>fold</button></div>
+    <div id="key-asks"></div>
     <div id="partwidgets"></div>
     <div id="partchips"></div>
   </section>
@@ -1216,6 +1219,33 @@ function terminalView(pid, text) {
 }
 
 // The person's answer to a part, and forgetting one.
+/* A part that asks for a key is asked about here, one answer per machine:
+   after an update every part of it asks at once. */
+async function keyAsks() {
+  const box = $("key-asks");
+  if (!box) return;
+  let asked = [];
+  try { asked = await (await fetch("/api/keys/asked")).json(); } catch { return; }
+  const hosts = new Map();
+  for (const a of asked) {
+    const host = a.pid.split("@")[1] || a.pid;
+    hosts.set(host, [...(hosts.get(host) || []), a]);
+  }
+  box.replaceChildren(...[...hosts].map(([host, list]) => {
+    const row = el("div", "key-ask");
+    const line = list.map(a => `${a.pid.split("@")[0]}: ${a.key} (${a.version || "?"})`).join(", ");
+    const say = el("div", "", tr(list.some(a => a.update) ? "{host} updated and asks for keys again" : "{host} asks for keys", {host}));
+    const what = el("div", "key-ask-what", line);
+    const yes = el("button", "mini yes", tr("Allow")), no = el("button", "mini", tr("Refuse"));
+    const answer = allow => fetch("/api/keys/answer", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({host, allow})}).then(keyAsks);
+    yes.onclick = () => answer(true);
+    no.onclick = () => answer(false);
+    row.append(say, what, yes, no);
+    return row;
+  }));
+}
+setInterval(keyAsks, 5000); setTimeout(keyAsks, 500);
+
 function partCall(pid, what, btn) {
   btn.disabled = true;
   api(`bodies/${encodeURIComponent(pid)}/${what}`, {method: "POST"}).catch(() => { btn.disabled = false; });

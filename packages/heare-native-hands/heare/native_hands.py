@@ -487,6 +487,7 @@ async def run(settings: Settings | None = None, model: Model | None = None,
         return await part.live(
             {"channel": CHANNEL, "forms": ["executor"], "about": ABOUT,
              "key": f"{CHANNEL}@{host}", "host": host,
+             "keys": [f"{settings.llm_provider or 'deepseek'}_API_KEY".upper()],
              "ui": [{"name": "work", "kind": "label", "label": N_("Work"),
                      "value": N_("waiting"), "head": True},
                     {"name": "internet", "kind": "toggle", "label": N_("Internet"), "value": False},

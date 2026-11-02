@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-01 22:48+0200\n"
+"POT-Creation-Date: 2026-11-02 12:14+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -637,6 +637,12 @@ msgstr ""
 
 #, python-brace-format
 msgid "page · {host}"
+msgstr ""
+
+msgid "Allow"
+msgstr ""
+
+msgid "Refuse"
 msgstr ""
 
 msgid " · this"
@@ -1719,6 +1725,13 @@ msgstr ""
 msgid "the brain answered {code}"
 msgstr ""
 
+#, python-brace-format
+msgid "keys are not borrowed over plain http: {base}"
+msgstr ""
+
+msgid "waiting for the keys to be allowed on the page…"
+msgstr ""
+
 msgid "waiting to be approved on the page…"
 msgstr ""
 
@@ -1869,9 +1882,6 @@ msgid "What else"
 msgstr ""
 
 msgid "Almost done"
-msgstr ""
-
-msgid "Allow"
 msgstr ""
 
 msgid "Allowed"
