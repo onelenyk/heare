@@ -14,12 +14,14 @@ import shlex
 import subprocess
 from pathlib import Path
 
+from heare import fence
 from heare import hand as hand_life
 
 LIST, READ, RUN, WRITE = "list_files", "read_file", "run_command", "write_file"
 NAMES = frozenset({LIST, READ, RUN, WRITE})
 OUTPUT_CHARS = 8000
 RUN_S = 30.0
+WORK = "heare-work"
 
 FREE = frozenset({
     "ls", "pwd", "date", "cal", "whoami", "uname", "uptime", "sw_vers", "df",
@@ -118,7 +120,12 @@ async def _run(args: dict, desk: hand_life.Desk) -> str:
         return f"Failed: {exc}"
     if not argv:
         return "Failed: no command."
-    if not is_free(argv) and not await desk.permit(command, "change", command):
+    if is_free(argv):
+        # What is only looking stays only looking, by the system's hand too.
+        fenced = fence.wrap(argv, Path.home() / WORK)
+        if fenced is not None:
+            return await asyncio.to_thread(_exec, fenced)
+    if not await desk.permit(command, "change", command):
         return "Not done: no permission."
     return await asyncio.to_thread(_exec, argv)
 
