@@ -269,7 +269,7 @@ async def test_a_deadline_with_no_time_left_does_not_call_again(monkeypatch):
 async def test_steps_end_in_words_not_raw_results():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     hand, _ = _hand(devices, *[
-        Says(text="Далі.", calls=(("desk__show", {"text": n}),)) for n in "abcdefgh"
+        Says(text="Далі.", calls=(("desk__show", {"text": n}),)) for n in "abcdef"
     ], "Показав усе.")
 
     said = await hand.run("показуй різне", Desk())
@@ -312,7 +312,7 @@ async def test_handoff_still_escapes():
 async def test_the_last_resort_is_the_raw_results():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     hand, _ = _hand(devices, *[
-        Says(calls=(("desk__show", {"text": n}),)) for n in "abcd"
+        Says(calls=(("desk__show", {"text": n}),)) for n in "abcdef"
     ], Says(""))
 
     said = await hand.run("показуй різне", Desk())
@@ -323,7 +323,7 @@ async def test_the_last_resort_is_the_raw_results():
 async def test_out_of_steps_ends_in_words():
     devices = Devices({"oled-desk@sim": _part("desk", SHOW)}, {"ok": True, "result": "ok"})
     hand, _ = _hand(devices, *[
-        Says(calls=(("desk__show", {"text": n}),)) for n in "abcd"
+        Says(calls=(("desk__show", {"text": n}),)) for n in "abcdef"
     ], "Готово.")
 
     assert await hand.run("показуй різне", Desk()) == "Готово."
