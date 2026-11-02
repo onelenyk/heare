@@ -708,6 +708,7 @@ def build(core: Core, settings: Any, vitals: Any = None,
         # Where the brain is in time: a part with a clock and no zone of its
         # own (the panel) shows the brain's local time, summer time included.
         offset = {"utc_offset": int(time.localtime().tm_gmtoff or 0)}
+        offset["language"] = str(settings.language)
         return {"name": name, **offset} if name else offset
 
     def granted(request: web.Request, pid: str) -> dict:
@@ -766,6 +767,12 @@ def build(core: Core, settings: Any, vitals: Any = None,
                                         else socket.gethostname()))
         pid = who if window else str(data.get("key") or f"{channel}@{host}")
         machine = who if str(who or "").startswith("machine@") else None
+        # A part back on its own key after the brain restarted is still its
+        # machine's: forgetting that made the machine's next knock look like
+        # taking a name (2 November: every part fell at once on an update).
+        if machine is None and who == pid and not window:
+            mine = f"machine@{pid.split('@', 1)[-1]}"
+            machine = mine if auth.known(part_tokens, mine) else None
         if who is not None and who != pid and not machine:
             raise web.HTTPForbidden(text="not your name")
         if machine is not None and not machine_may_claim(machine, pid, channel):
@@ -1230,6 +1237,8 @@ def build(core: Core, settings: Any, vitals: Any = None,
         name, value = str(data.get("name", "")), str(data.get("value", "")).strip()
         if name not in keys.NAMES or not value:
             raise web.HTTPBadRequest(text="not a key this assistant uses")
+        if not value.isascii() or any(c.isspace() for c in value):
+            raise web.HTTPBadRequest(text="this does not look like a key: latin letters and digits only")
         ok, why = await check_key(name, value)
         if not ok:
             raise web.HTTPBadRequest(text=why)

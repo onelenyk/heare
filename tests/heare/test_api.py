@@ -2444,3 +2444,23 @@ async def test_a_paired_machine_never_vouches_for_a_key(tmp_path):
     lent = await (await client.post("/api/keys/ask", headers=part, json=ask)).json()
     assert lent == {"value": "gsk_test"}
     await _close(room, client)
+
+
+async def test_a_part_stays_its_machines_across_a_brain_restart(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    machine = await (await client.post("/api/pair", json={
+        "code": code, "kind": "machine", "name": "mac"})).json()
+    about = {"channel": "voice", "key": "voice@mac", "host": "mac"}
+    first = await (await client.post("/api/bodies", json=about, headers={
+        "X-Heare-Token": machine["token"]})).json()
+    await _close(room, client)
+
+    room, client, auth, settings = await _open(tmp_path)
+    assert (await client.post("/api/bodies", json=about, headers={
+        "X-Heare-Token": first["token"]})).status == 200
+    # The app restarts before the brain saw the old stream end.
+    again = await client.post("/api/bodies", json=about, headers={
+        "X-Heare-Token": machine["token"]})
+    assert again.status == 200
+    await _close(room, client)

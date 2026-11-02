@@ -44,6 +44,10 @@ _LANGUAGE_MAP = {
 }
 
 
+class NoKey(Exception):
+    """There is nothing to ask the recogniser with."""
+
+
 async def transcribe(
     pcm: bytes,
     *,
@@ -82,6 +86,8 @@ async def transcribe(
     httpx.HTTPStatusError
         If the Groq API returns an error status.
     """
+    if not api_key:
+        raise NoKey
     # Build WAV in memory: 16 kHz, mono, 2-byte samples.
     wav_bytes = io.BytesIO()
     with wave.open(wav_bytes, "wb") as w:

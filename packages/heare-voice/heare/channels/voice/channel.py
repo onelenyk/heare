@@ -25,12 +25,13 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 from heare import keys
+from heare.core.i18n import _
 from heare.channels.voice.hallucinations import is_junk
 from heare.channels.voice.heard import Heard, levels
 from heare.channels.voice.hearing import SILENT_AFTER_S, EarWatch, read
 from heare.channels.voice.language import language_of
 from heare.channels.voice.sentences import sentences, speakable
-from heare.channels.voice.stt import transcribe
+from heare.channels.voice.stt import NoKey, transcribe
 from heare.channels.voice.tts import synthesise
 from heare.channels.voice.turn import TurnAssembler
 from heare.channels.voice.utterance import Mouth
@@ -81,6 +82,7 @@ class Voice:
                  heard: Heard | None = None,
                  watch_s: float = WATCHDOG_POLL_S,
                  clock: Callable[[], float] = time.monotonic) -> None:
+        self._no_key_said = False
         self.device = device
         self.heard = heard
         self.settings = settings
@@ -284,9 +286,16 @@ class Voice:
                 pcm, api_key=keys.get("GROQ_API_KEY") or "",
                 language=language,
             )
+        except NoKey:
+            # Said once: the microphone hears speech several times a second.
+            if not self._no_key_said:
+                self._no_key_said = True
+                logger.warning(_("no recognition key: allow it on the page or add GROQ_API_KEY"))
+            return ""
         except Exception:
             self._keep(pcm, {**about, "text": "", "dropped": "failed"})
             raise
+        self._no_key_said = False
         text = (result.text or "").strip()
         recently = time.time() - self._spoke_at < COURTESY_WINDOW_S
         junk = is_junk(text, agent_spoke_recently=recently)

@@ -2733,7 +2733,7 @@ async function sourcesLoad() {
     const run = sourceRunning[s.name];
     if (run) block.append(sourceWorking(run));
     kinds.forEach(([kind, n]) => block.append(sourceImport(s.name, kind, n, Boolean(run))));
-    if (!kinds.length && !run) block.append(el("p", "mind-count", s.read ? tr("All imported: {n} notes read.", {n: s.read}) : tr("Nothing to import: no notes here are about you.")));
+    if (!kinds.length && !run) block.append(el("p", "mind-count", s.read ? trn(s.read, "All imported: {n} note read.", "All imported: {n} notes read.") : tr("Nothing to import: no notes here are about you.")));
     if (s.imported && !run) block.append(sourceUndo(s));
     if (sourceNotes[s.name] && !run) block.append(el("p", "mind-count", sourceNotes[s.name]));
     panel.append(block);

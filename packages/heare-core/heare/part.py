@@ -319,6 +319,10 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
             client.headers["X-Heare-Token"] = secret
         if hello:
             logs.say(hello)
+        # The language is chosen on the brain's page; a part elsewhere follows.
+        spoken = str(answer.get("language") or "")
+        if spoken and str(settings.url) and spoken != str(settings.language):
+            settings.set("language", spoken)
         wire = Wire(client, base, about["channel"],
                     str(answer.get("pid") or about.get("key") or ""), secret,
                     str(answer.get("name") or ""))

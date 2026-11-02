@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-02 12:14+0200\n"
+"POT-Creation-Date: 2026-11-02 12:30+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -1141,10 +1141,6 @@ msgstr "на цьому маку немає"
 msgid "{n} records"
 msgstr "записів: {n}"
 
-#, python-brace-format
-msgid "All imported: {n} notes read."
-msgstr "Усе імпортовано, прочитано нотаток: {n}."
-
 msgid "Nothing to import: no notes here are about you."
 msgstr "Імпортувати нічого: тут немає нотаток про тебе."
 
@@ -1273,6 +1269,13 @@ msgid_plural "{n} facts came from here"
 msgstr[0] "Звідси прийшов {n} факт"
 msgstr[1] "Звідси прийшло {n} факти"
 msgstr[2] "Звідси прийшло {n} фактів"
+
+#, python-brace-format
+msgid "All imported: {n} note read."
+msgid_plural "All imported: {n} notes read."
+msgstr[0] "Усе імпортовано: прочитано {n} нотатку."
+msgstr[1] "Усе імпортовано: прочитано {n} нотатки."
+msgstr[2] "Усе імпортовано: прочитано {n} нотаток."
 
 msgid "Brain"
 msgstr "Мозок"
@@ -2176,6 +2179,9 @@ msgstr "Зберігати записи"
 msgid "hearing"
 msgstr "чує"
 
+msgid "no recognition key: allow it on the page or add GROQ_API_KEY"
+msgstr "немає ключа розпізнавання: дозволь його на пульті або додай GROQ_API_KEY"
+
 msgid "I cannot hear — the microphone did not open. I need a restart."
 msgstr "я не чую — мікрофон не відкрився. Мене треба перезапустити."
 
@@ -2242,4 +2248,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "Notes kept by other tools. Importing sends them to the model; what it finds waits for your yes under Facts."
 #~ msgstr "Нотатки інших інструментів. Імпорт надсилає їх моделі; знайдене чекає твого «так» у фактах."
+
+#~ msgid "All imported: {n} notes read."
+#~ msgstr "Усе імпортовано, прочитано нотаток: {n}."
 

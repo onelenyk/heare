@@ -53,6 +53,11 @@ def revoke(path: Path, pid: str) -> bool:
     return True
 
 
+def known(path: Path, pid: str) -> bool:
+    """Whether this pid holds a key at all."""
+    return pid in _read(path)
+
+
 def owner(path: Path, token: str) -> str | None:
     """The pid this token belongs to, if it is any part's token."""
     if not token:
