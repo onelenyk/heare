@@ -17,6 +17,6 @@ def pair(base: str, code: str, kind: str, name: str) -> dict:
     body = json.dumps({"code": code, "kind": kind, "name": name}).encode()
     request = urllib.request.Request(
         f"{base.rstrip('/')}/api/pair", data=body, method="POST",
-        headers={"Content-Type": "application/json"})
+        headers={"Content-Type": "application/json", "User-Agent": "heare"})
     with urllib.request.urlopen(request, timeout=20) as answer:
         return json.loads(answer.read().decode())
