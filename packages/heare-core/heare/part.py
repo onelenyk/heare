@@ -91,13 +91,27 @@ def _trouble_for(error: httpx.HTTPStatusError) -> str:
     return _("the brain answered {code}").format(code=code)
 
 
-def fingerprint() -> str:
-    """The code this process runs: every source file of the namespace."""
+def fingerprint(package: str = "") -> str:
+    """The code a part runs: its own package and the core, so that an update
+    of the voice does not ask about the hands' keys. A checkout has no list
+    of files to read: there it is every source of the namespace."""
     digest = hashlib.sha256()
-    for root in heare.__path__:
-        for path in sorted(Path(root).rglob("*.py")):
-            digest.update(str(path.relative_to(root)).encode())
-            digest.update(path.read_bytes())
+    files: list[tuple[str, Path]] = []
+    try:
+        for name in ("heare-core", package):
+            if name:
+                found = metadata.distribution(name)
+                files += [(str(f), Path(str(found.locate_file(f))))
+                          for f in found.files or [] if f.suffix == ".py"]
+    except metadata.PackageNotFoundError:
+        files = []
+    files = [(name, path) for name, path in files if path.is_file()]
+    if len(files) < 2:
+        files = [(str(path.relative_to(root)), path) for root in heare.__path__
+                 for path in Path(root).rglob("*.py")]
+    for name, path in sorted(files):
+        digest.update(name.encode())
+        digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
@@ -330,7 +344,7 @@ async def live(about: dict, work: Callable[[Wire], Awaitable[int | None]], *,
         needs = [str(name) for name in about.get("keys") or []]
         lending = None
         if needs and str(settings.url):
-            code = await asyncio.to_thread(fingerprint)
+            code = await asyncio.to_thread(fingerprint, str(about.get("package") or ""))
             lending = asyncio.create_task(
                 _keep_borrowing(wire, needs, code, about.get("version")))
         opened = False

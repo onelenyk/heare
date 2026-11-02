@@ -46,3 +46,30 @@ def test_a_loan_stays_in_the_process_and_can_be_taken_back():
     assert keys.get("GROQ_API_KEY") == "lent"
     keys.lend("GROQ_API_KEY", None)
     assert keys.get("GROQ_API_KEY") != "lent"
+
+
+def test_an_update_of_one_part_does_not_touch_anothers_fingerprint(tmp_path, monkeypatch):
+    from importlib import metadata
+    from pathlib import PurePosixPath
+
+    from heare import part
+
+    for name in ("core", "voice", "hands"):
+        (tmp_path / f"{name}.py").write_text(name)
+
+    class Found:
+        def __init__(self, name):
+            self.files = [PurePosixPath(f"{name}.py")]
+
+        def locate_file(self, file):
+            return tmp_path / file
+
+    monkeypatch.setattr(metadata, "distribution",
+                        lambda name: Found(name.removeprefix("heare-")))
+    hands = part.fingerprint("heare-hands")
+    voice = part.fingerprint("heare-voice")
+    (tmp_path / "voice.py").write_text("new")
+    assert part.fingerprint("heare-hands") == hands
+    assert part.fingerprint("heare-voice") != voice
+    (tmp_path / "core.py").write_text("new")
+    assert part.fingerprint("heare-hands") != hands

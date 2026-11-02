@@ -446,7 +446,7 @@ async def run(settings: Settings | None = None, *,
     return await part.live(
         {"channel": CHANNEL, "forms": ["input", "output"],
          "about": "microphone and speaker", "key": f"voice@{host}", "host": host,
-         "keys": ["GROQ_API_KEY"],
+         "keys": ["GROQ_API_KEY"], "package": "heare-voice",
          "ui": UI},
         work, on_event=on_event, on_reconnect=on_reconnect,
         settings=settings, client=client)
