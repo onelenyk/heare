@@ -34,6 +34,8 @@ class Transcript:
 
     text: str
     language: str
+    no_speech: float | None = None
+    logprob: float | None = None
 
 
 # Groq API language response names to ISO 639-1 codes.
@@ -137,4 +139,9 @@ async def transcribe(
     detected_lang = payload.get("language", "").lower()
     language_iso = _LANGUAGE_MAP.get(detected_lang, detected_lang or (language or "uk"))
 
-    return Transcript(text=text, language=language_iso)
+    # The recogniser's own doubt, kept beside what it heard: loudness cannot
+    # tell noise from speech here, so this is what a filter can be measured on.
+    pieces = payload.get("segments") or []
+    doubt = max((float(p.get("no_speech_prob") or 0) for p in pieces), default=None)
+    sure = min((float(p.get("avg_logprob") or 0) for p in pieces), default=None)
+    return Transcript(text=text, language=language_iso, no_speech=doubt, logprob=sure)

@@ -397,3 +397,9 @@ async def test_the_long_flag_is_frozen_at_the_end_of_the_over_utterance(monkeypa
     _, _, speech_ms, long = port.said_overs[0]
     assert speech_ms == frozen
     assert long is False, "frames after END turned a nod into an interruption"
+
+
+def test_the_courtesy_window_is_short_enough_that_noise_cannot_live_in_it():
+    from heare.channels.voice import channel
+
+    assert channel.COURTESY_WINDOW_S <= 10

@@ -45,7 +45,9 @@ logger = logging.getLogger("heare.voice")
 
 # «Дякую» right after an answer is a person being polite; the same word
 # into silence is the recogniser filling a gap.
-COURTESY_WINDOW_S = 25.0
+# Short: every reply opened this window, and noise read as «дякую» walked in
+# through it (2 November: 74 of the last 400 heard lines).
+COURTESY_WINDOW_S = 8.0
 # Shorter than a spoken word: do not pay a recogniser to invent one.
 MIN_SPEECH_MS = 240
 # A voice over the speaker for this long is an interruption whatever it says.
@@ -300,6 +302,7 @@ class Voice:
         recently = time.time() - self._spoke_at < COURTESY_WINDOW_S
         junk = is_junk(text, agent_spoke_recently=recently)
         self._keep(pcm, {**about, "text": text, "detected": result.language,
+                         "no_speech": result.no_speech, "logprob": result.logprob,
                          "dropped": "invented" if junk else None})
         if junk:
             logger.info("dropped an invented phrase: %r", text[:60])
