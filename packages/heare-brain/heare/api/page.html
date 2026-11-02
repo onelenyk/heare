@@ -980,6 +980,17 @@ const UPDATE_SAYS = {
   installing: u => tr("installing heare {v} — it will restart now", {v: u.version || u.latest || ""}),
   updated: u => u.previous ? tr("updated from {old} to {new}", {old: u.previous, new: u.current}) : tr("updated to {new}", {new: u.current}),
 };
+/* Every part of a machine is released together, so a machine is one line. */
+function machinesBehind(latest) {
+  const hosts = new Map();
+  for (const b of Object.values((state && state.bodies) || {})) {
+    if (!b.version || b.version === latest) continue;
+    const host = b.host || "?";
+    hosts.set(host, (hosts.get(host) || new Set()).add(b.version));
+  }
+  return [...hosts].map(([host, seen]) =>
+    tr("{host} is on {v}", {host, v: [...seen].join(", ")}));
+}
 function drawUpdate(u) {
   const box = $("update");
   if (!u || !["available", "downloading", "backing_up", "installing", "updated", "failed"].includes(u.state)) {
@@ -1004,6 +1015,7 @@ function drawUpdate(u) {
       link.href = u.page; link.target = "_blank"; link.rel = "noopener";
       parts.push(link);
     }
+    for (const line of machinesBehind(u.latest)) parts.push(el("p", "notes", line));
     if (u.notes) parts.push(el("p", "notes", u.notes));
   } else if (u.state === "failed") {
     parts.push(el("b", "", tr("The update failed")), el("span", "", u.error || ""));

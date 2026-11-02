@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-02 12:30+0200\n"
+"POT-Creation-Date: 2026-11-03 00:05+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -494,6 +494,10 @@ msgstr ""
 
 #, python-brace-format
 msgid "updated to {new}"
+msgstr ""
+
+#, python-brace-format
+msgid "{host} is on {v}"
 msgstr ""
 
 #, python-brace-format
