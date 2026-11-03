@@ -209,3 +209,22 @@ def test_nothing_is_asked_of_a_machine_before_a_release_is_known(tmp_path):
     updates = Updates(_Settings(""), "0.2.0", tmp_path)
     with pytest.raises(update.UpdateError):
         updates.ask_machine("machine@mac")
+
+
+def test_the_owners_word_for_a_machine_outlives_a_brain_restart(tmp_path):
+    updates = Updates(_Settings(""), "0.2.0", tmp_path)
+    _released(updates)
+    updates.ask_machine("machine@mac")
+    again = Updates(_Settings(""), "0.2.0", tmp_path)
+    assert again.machines["machine@mac"]["to"] == "0.2.0"
+    assert again.state["machines"]["machine@mac"]["state"] == "asked"
+    _released(again)
+    assert again.for_machine("machine@mac", "0.1.0", "arm64")["version"] == "0.2.0"
+    again.for_machine("machine@mac", "0.2.0", "arm64")
+    assert Updates(_Settings(""), "0.2.0", tmp_path).machines == {}
+
+
+def test_a_spoiled_file_of_asks_is_no_asks(tmp_path):
+    (tmp_path / "cache" / "update").mkdir(parents=True)
+    (tmp_path / "cache" / "update" / "machines.json").write_text("{not json", encoding="utf-8")
+    assert Updates(_Settings(""), "0.2.0", tmp_path).machines == {}

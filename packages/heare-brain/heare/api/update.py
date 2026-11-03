@@ -92,9 +92,12 @@ class Updates:
         self._release: dict = {}
         self._raw: dict = {}
         # Machine pid → {to, state, error}: what each machine elsewhere was
-        # asked to take. Held in memory: after a brain restart it is asked again.
-        self.machines: dict[str, dict] = {}
+        # asked to take. Kept on disk: the brain itself restarts on an update,
+        # and the owner's word for the Mac must outlive that.
+        self.machines: dict[str, dict] = self._asked()
         self.state: dict = {"state": "idle", "current": current, "can_install": self.under_app}
+        if self.machines:
+            self.state["machines"] = dict(self.machines)
         done = self._installed()
         if done:
             self.state.update(state="updated", previous=done.get("from"))
@@ -110,7 +113,30 @@ class Updates:
         (self.folder / "installing.json").unlink(missing_ok=True)
         return done
 
+    @property
+    def _asked_file(self) -> Path:
+        return self.folder / "machines.json"
+
+    def _asked(self) -> dict[str, dict]:
+        try:
+            kept = json.loads(self._asked_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return {str(k): v for k, v in kept.items()
+                if isinstance(v, dict) and version_of(v.get("to"))} if isinstance(kept, dict) else {}
+
+    def _keep_asked(self) -> None:
+        try:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            partial = self._asked_file.with_suffix(".part")
+            partial.write_text(json.dumps(self.machines), encoding="utf-8")
+            os.replace(partial, self._asked_file)
+        except OSError as exc:
+            logger.warning("could not keep which machines are to update: %s", exc)
+
     def _set(self, **fields) -> dict:
+        if "machines" in fields:
+            self._keep_asked()
         self.state.update(fields)
         self._emit("update", **self.state)
         return dict(self.state)
