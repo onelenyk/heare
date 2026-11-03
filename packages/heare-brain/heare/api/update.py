@@ -90,6 +90,10 @@ class Updates:
         self.under_app = bool(os.environ.get("HEARE_PARENT_PID"))
         self.folder = home / "cache" / "update"
         self._release: dict = {}
+        self._raw: dict = {}
+        # Machine pid → {to, state, error}: what each machine elsewhere was
+        # asked to take. Held in memory: after a brain restart it is asked again.
+        self.machines: dict[str, dict] = {}
         self.state: dict = {"state": "idle", "current": current, "can_install": self.under_app}
         done = self._installed()
         if done:
@@ -127,8 +131,10 @@ class Updates:
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("could not ask for a newer heare: %s", exc)
             return self._set(checked=time.time(), error=_("could not ask about a new version"))
-        found = read_release(release if isinstance(release, dict) else {}, self.current, self.arch)
+        release = release if isinstance(release, dict) else {}
+        found = read_release(release, self.current, self.arch)
         self._release = found
+        self._raw = release
         state = "available" if found["newer"] else (
             "updated" if self.state["state"] == "updated" else "current")
         return self._set(state=state, latest=found["latest"], notes=found["notes"],
@@ -178,6 +184,46 @@ class Updates:
             raise UpdateError(_("the download does not match the release sum — not installing"))
         os.replace(partial, target)
         return target
+
+    # -- a machine elsewhere ------------------------------------------------
+    #
+    # The brain no longer sits inside the Mac's app, so it cannot put the dmg
+    # there. It says which version a machine is to take and where the release
+    # keeps it; the machine fetches, checks and swaps on its own.
+
+    def ask_machine(self, machine: str) -> dict:
+        """The owner's word: this machine takes the newest release."""
+        latest = self.state.get("latest")
+        if self.state.get("state") not in ("available", "current", "updated") or not version_of(latest):
+            raise UpdateError(_("there is no new version — check first"))
+        self.machines[machine] = {"to": latest, "state": "asked", "at": time.time()}
+        return self._set(machines=dict(self.machines))
+
+    def for_machine(self, machine: str, version: str, arch: str) -> dict:
+        """What a machine asking is to take: nothing, or a version and where
+        it lies. A machine already on it is done."""
+        asked = self.machines.get(machine)
+        if not asked:
+            return {}
+        have, want = version_of(version), version_of(asked["to"])
+        if have and want and have >= want:
+            self.machines.pop(machine, None)
+            self._set(machines=dict(self.machines))
+            return {}
+        found = read_release(getattr(self, "_raw", {}), version, arch)
+        if found.get("latest") != asked["to"] or not found.get("dmg") or not found.get("sums"):
+            return {}
+        if asked["state"] != "taking":
+            asked["state"] = "taking"
+            self._set(machines=dict(self.machines))
+        return {"version": asked["to"], "dmg": found["dmg"], "sums": found["sums"],
+                "name": dmg_name(arch)}
+
+    def machine_failed(self, machine: str, why: str) -> dict:
+        asked = self.machines.get(machine)
+        if asked:
+            asked.update(state="failed", error=why[:300] or _("the app could not install the new version"))
+        return self._set(machines=dict(self.machines))
 
     def failed(self, why: str) -> dict:
         """The app could not put the new version in."""

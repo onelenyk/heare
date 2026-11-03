@@ -915,6 +915,9 @@ LOCAL_ONLY = frozenset({
     ("POST", "/api/keys/ask"),
     ("GET", "/api/keys/asked"),
     ("POST", "/api/keys/answer"),
+    ("POST", "/api/update/machine"),
+    ("GET", "/api/update/mine"),
+    ("POST", "/api/update/mine/failed"),
     ("POST", "/api/bodies/{id}/approve"),
     ("POST", "/api/bodies/{id}/reject"),
     ("POST", "/api/bodies/{id}/forget"),
@@ -2463,4 +2466,18 @@ async def test_a_part_stays_its_machines_across_a_brain_restart(tmp_path):
     again = await client.post("/api/bodies", json=about, headers={
         "X-Heare-Token": machine["token"]})
     assert again.status == 200
+    await _close(room, client)
+
+
+async def test_a_machine_asks_only_for_its_own_update_and_nothing_else(tmp_path):
+    room, client, auth, settings = await _open(tmp_path)
+    code = pair.make(Path(settings.pair_codes_file))
+    given = await (await client.post(
+        "/api/pair", json={"code": code, "kind": "machine", "name": "mac"})).json()
+    machine = {"X-Heare-Token": given["token"]}
+    mine = await client.get("/api/update/mine?version=0.1.0&arch=arm64", headers=machine)
+    assert mine.status == 200 and await mine.json() == {}
+    # The owner's button is not the machine's to press.
+    pressed = await client.post("/api/update/machine", headers=machine, json={"machine": "machine@mac"})
+    assert pressed.status == 403
     await _close(room, client)

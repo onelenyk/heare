@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-03 00:05+0200\n"
+"POT-Creation-Date: 2026-11-03 12:28+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -133,6 +133,16 @@ msgid "Open the logs"
 msgstr ""
 
 msgid "A voice assistant for the Mac."
+msgstr ""
+
+msgid "could not download the new version"
+msgstr ""
+
+#, python-brace-format
+msgid "{sums} has no sum for {dmg}"
+msgstr ""
+
+msgid "the download does not match the release sum — not installing"
 msgstr ""
 
 msgid "the keys are removed"
@@ -496,8 +506,21 @@ msgstr ""
 msgid "updated to {new}"
 msgstr ""
 
+msgid "asked to update"
+msgstr ""
+
+msgid "updating…"
+msgstr ""
+
+#, python-brace-format
+msgid "could not update: {why}"
+msgstr ""
+
 #, python-brace-format
 msgid "{host} is on {v}"
+msgstr ""
+
+msgid "Update"
 msgstr ""
 
 #, python-brace-format
@@ -506,9 +529,6 @@ msgstr ""
 
 #, python-brace-format
 msgid "you have {v}"
-msgstr ""
-
-msgid "Update"
 msgstr ""
 
 msgid "the update could not start"
@@ -1479,16 +1499,6 @@ msgstr ""
 
 #, python-brace-format
 msgid "the release has no {dmg} or {sums}"
-msgstr ""
-
-msgid "could not download the new version"
-msgstr ""
-
-#, python-brace-format
-msgid "{sums} has no sum for {dmg}"
-msgstr ""
-
-msgid "the download does not match the release sum — not installing"
 msgstr ""
 
 msgid "the app could not install the new version"

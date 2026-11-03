@@ -76,6 +76,13 @@ struct Config {
     var brainBase: URL { URL(string: "http://127.0.0.1:\(apiPort)")! }
     var setupBase: URL { URL(string: "http://127.0.0.1:\(setupPort)")! }
 
+    /// This machine's own key with a brain elsewhere: it only knocks, and
+    /// asks the brain what version to take.
+    var machineToken: String? {
+        (try? String(contentsOf: Config.inSection("machine", "machine_token"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// The master token. The shell runs as the person, so it may read what
     /// the person may read; it never writes or passes this anywhere else.
     var masterToken: String? {

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-03 00:05+0200\n"
+"POT-Creation-Date: 2026-11-03 12:28+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -134,6 +134,16 @@ msgstr "Відкрити журнали"
 
 msgid "A voice assistant for the Mac."
 msgstr "Голосовий помічник для мака."
+
+msgid "could not download the new version"
+msgstr "не вдалося завантажити нову версію"
+
+#, python-brace-format
+msgid "{sums} has no sum for {dmg}"
+msgstr "у {sums} немає суми для {dmg}"
+
+msgid "the download does not match the release sum — not installing"
+msgstr "завантажене не збігається з сумою релізу — не ставлю"
 
 msgid "the keys are removed"
 msgstr "ключі прибрано"
@@ -496,9 +506,22 @@ msgstr "оновлено з {old} до {new}"
 msgid "updated to {new}"
 msgstr "оновлено до {new}"
 
+msgid "asked to update"
+msgstr "чекає оновлення"
+
+msgid "updating…"
+msgstr "оновлюється…"
+
+#, python-brace-format
+msgid "could not update: {why}"
+msgstr "не оновився: {why}"
+
 #, python-brace-format
 msgid "{host} is on {v}"
 msgstr "{host}: версія {v}"
+
+msgid "Update"
+msgstr "Оновити"
 
 #, python-brace-format
 msgid "heare {v} is out"
@@ -507,9 +530,6 @@ msgstr "Є heare {v}"
 #, python-brace-format
 msgid "you have {v}"
 msgstr "у тебе {v}"
-
-msgid "Update"
-msgstr "Оновити"
 
 msgid "the update could not start"
 msgstr "не вийшло почати оновлення"
@@ -1488,16 +1508,6 @@ msgstr "цей мозок запущено не застосунком — по�
 #, python-brace-format
 msgid "the release has no {dmg} or {sums}"
 msgstr "у релізі немає {dmg} або {sums}"
-
-msgid "could not download the new version"
-msgstr "не вдалося завантажити нову версію"
-
-#, python-brace-format
-msgid "{sums} has no sum for {dmg}"
-msgstr "у {sums} немає суми для {dmg}"
-
-msgid "the download does not match the release sum — not installing"
-msgstr "завантажене не збігається з сумою релізу — не ставлю"
 
 msgid "the app could not install the new version"
 msgstr "застосунок не зміг поставити нову версію"

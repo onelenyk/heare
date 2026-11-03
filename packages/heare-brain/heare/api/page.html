@@ -980,16 +980,42 @@ const UPDATE_SAYS = {
   installing: u => tr("installing heare {v} — it will restart now", {v: u.version || u.latest || ""}),
   updated: u => u.previous ? tr("updated from {old} to {new}", {old: u.previous, new: u.current}) : tr("updated to {new}", {new: u.current}),
 };
-/* Every part of a machine is released together, so a machine is one line. */
-function machinesBehind(latest) {
+/* Every part of a machine is released together, so a machine is one line.
+   A machine paired with its own key can be told to take the new version;
+   it fetches and checks it itself. */
+const MACHINE_SAYS = {
+  asked: () => tr("asked to update"),
+  taking: () => tr("updating…"),
+  failed: m => tr("could not update: {why}", {why: m.error || ""}),
+};
+function machinesBehind(u) {
   const hosts = new Map();
   for (const b of Object.values((state && state.bodies) || {})) {
-    if (!b.version || b.version === latest) continue;
+    if (!b.version || b.version === u.latest) continue;
     const host = b.host || "?";
-    hosts.set(host, (hosts.get(host) || new Set()).add(b.version));
+    const seen = hosts.get(host) || {versions: new Set(), machine: null};
+    seen.versions.add(b.version);
+    seen.machine = seen.machine || b.machine || null;
+    hosts.set(host, seen);
   }
-  return [...hosts].map(([host, seen]) =>
-    tr("{host} is on {v}", {host, v: [...seen].join(", ")}));
+  return [...hosts].map(([host, seen]) => {
+    const line = el("p", "notes", tr("{host} is on {v}", {host, v: [...seen.versions].join(", ")}));
+    const asked = seen.machine && (u.machines || {})[seen.machine];
+    if (asked && MACHINE_SAYS[asked.state]) {
+      line.append(" · ", MACHINE_SAYS[asked.state](asked));
+    }
+    if (seen.machine && (!asked || asked.state === "failed")) {
+      const go = el("button", "mini yes", tr("Update"));
+      go.type = "button";
+      go.onclick = () => {
+        go.disabled = true;
+        api("update/machine", {method: "POST", body: {machine: seen.machine}})
+          .then(drawUpdate).catch(() => { go.disabled = false; });
+      };
+      line.append(" ", go);
+    }
+    return line;
+  });
 }
 function drawUpdate(u) {
   const box = $("update");
@@ -1015,7 +1041,7 @@ function drawUpdate(u) {
       link.href = u.page; link.target = "_blank"; link.rel = "noopener";
       parts.push(link);
     }
-    for (const line of machinesBehind(u.latest)) parts.push(el("p", "notes", line));
+    parts.push(...machinesBehind(u));
     if (u.notes) parts.push(el("p", "notes", u.notes));
   } else if (u.state === "failed") {
     parts.push(el("b", "", tr("The update failed")), el("span", "", u.error || ""));

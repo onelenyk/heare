@@ -436,7 +436,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
             request["window"] = pid
             return await handler(request)
         if pid.startswith("machine@"):
-            if request.method == "POST" and request.path == "/api/bodies":
+            if (request.method, request.path) in (
+                    ("POST", "/api/bodies"), ("GET", "/api/update/mine"),
+                    ("POST", "/api/update/mine/failed")):
                 request["part"] = pid
                 return await handler(request)
             raise web.HTTPForbidden(text="a machine only knocks")
@@ -1491,6 +1493,27 @@ def build(core: Core, settings: Any, vitals: Any = None,
         data = await body(request)
         return web.json_response(updates.failed(str(data.get("why") or "")))
 
+    async def update_machine(request: web.Request) -> web.Response:
+        """The owner's button: this machine takes the newest release."""
+        data = await body(request)
+        machine = str(data.get("machine") or "")
+        if not machine.startswith("machine@"):
+            raise web.HTTPBadRequest(text="machine is a machine@ pid")
+        try:
+            return web.json_response(updates.ask_machine(machine))
+        except UpdateError as exc:
+            raise web.HTTPConflict(text=str(exc)) from None
+
+    async def update_mine(request: web.Request) -> web.Response:
+        """A machine's own question: is there a version for me to take?"""
+        return web.json_response(updates.for_machine(
+            request["part"], str(request.query.get("version") or ""),
+            re.sub(r"[^a-z0-9_]", "", str(request.query.get("arch") or ""))[:16]))
+
+    async def update_mine_failed(request: web.Request) -> web.Response:
+        data = await body(request)
+        return web.json_response(updates.machine_failed(request["part"], str(data.get("why") or "")))
+
     async def asking_for_updates(app: web.Application):
         async def every_day() -> None:
             await asyncio.sleep(UPDATE_FIRST_S)
@@ -1638,6 +1661,9 @@ def build(core: Core, settings: Any, vitals: Any = None,
         web.post("/api/update/check", update_check),
         web.post("/api/update/install", update_install),
         web.post("/api/update/failed", update_failed),
+        web.post("/api/update/machine", update_machine),
+        web.get("/api/update/mine", update_mine),
+        web.post("/api/update/mine/failed", update_mine_failed),
         web.get("/api/backups", backups_list),
         web.post("/api/backups", backups_make),
         web.post("/api/backups/bring", backups_bring),

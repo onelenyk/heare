@@ -170,3 +170,42 @@ def test_the_app_saying_it_failed_is_shown(tmp_path):
     failed = updates.failed("тека Applications не записувана")
     assert failed["state"] == "failed" and "Applications" in failed["error"]
     assert not (tmp_path / "cache" / "update" / "installing.json").exists()
+
+
+def _released(updates, version="0.2.0"):
+    raw = {"tag_name": f"v{version}", "assets": [
+        {"name": "heare-arm64.dmg", "browser_download_url": "https://x/heare-arm64.dmg"},
+        {"name": "SHA256SUMS.txt", "browser_download_url": "https://x/SHA256SUMS.txt"}]}
+    updates._raw = raw
+    updates.state.update(state="available", latest=version)
+
+
+def test_a_machine_is_told_its_version_only_once_the_owner_asked(tmp_path):
+    updates = Updates(_Settings(""), "0.2.0", tmp_path)
+    _released(updates)
+    assert updates.for_machine("machine@mac", "0.1.0", "arm64") == {}
+    updates.ask_machine("machine@mac")
+    told = updates.for_machine("machine@mac", "0.1.0", "arm64")
+    assert told == {"version": "0.2.0", "dmg": "https://x/heare-arm64.dmg",
+                    "sums": "https://x/SHA256SUMS.txt", "name": "heare-arm64.dmg"}
+    assert updates.state["machines"]["machine@mac"]["state"] == "taking"
+    # Another machine was not asked; another kind of Mac has no dmg here.
+    assert updates.for_machine("machine@other", "0.1.0", "arm64") == {}
+    assert updates.for_machine("machine@mac", "0.1.0", "x86_64") == {}
+
+
+def test_a_machine_on_the_version_is_done_and_a_failure_is_kept(tmp_path):
+    updates = Updates(_Settings(""), "0.2.0", tmp_path)
+    _released(updates)
+    updates.ask_machine("machine@mac")
+    updates.machine_failed("machine@mac", "could not open the dmg")
+    assert updates.state["machines"]["machine@mac"] == {
+        **updates.state["machines"]["machine@mac"], "state": "failed", "error": "could not open the dmg"}
+    assert updates.for_machine("machine@mac", "0.2.0", "arm64") == {}
+    assert "machine@mac" not in updates.state["machines"]
+
+
+def test_nothing_is_asked_of_a_machine_before_a_release_is_known(tmp_path):
+    updates = Updates(_Settings(""), "0.2.0", tmp_path)
+    with pytest.raises(update.UpdateError):
+        updates.ask_machine("machine@mac")

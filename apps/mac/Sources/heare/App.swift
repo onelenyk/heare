@@ -37,6 +37,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var healthy = false
     private var began = Date()
     private var offeredOld = false
+    private var lastAsked = Date.distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.cleanUp()
@@ -78,6 +79,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.draw()
             self?.checkHealth()
         }
+        if !config.brainHere { askBrainElsewhere() }
         guard config.brainHere, let token = config.masterToken else {
             state = nil
             // A body's brain is elsewhere: nothing here is off.
@@ -154,9 +156,44 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// A body asks its brain, once a minute, whether it is to take a newer
+    /// heare; the owner's button on the pult is what makes the answer yes.
+    private func askBrainElsewhere() {
+        guard !updating, Date().timeIntervalSince(lastAsked) >= 60,
+              let token = config.machineToken, !token.isEmpty,
+              var parts = URLComponents(string: config.url), !config.url.isEmpty else { return }
+        lastAsked = Date()
+        parts.path = (parts.path.hasSuffix("/") ? String(parts.path.dropLast()) : parts.path) + "/api/update/mine"
+        parts.queryItems = [URLQueryItem(name: "version", value: Updater.currentVersion ?? ""),
+                            URLQueryItem(name: "arch", value: Fetch.arch)]
+        guard let url = parts.url else { return }
+        Local.call(url, headers: ["X-Heare-Token": token, "User-Agent": "heare"]) { [weak self] answer in
+            guard answer.status == 200, let asked = Fetch.asked(answer.json), let self, !self.updating else { return }
+            self.updating = true
+            DispatchQueue.global().async {
+                let prepared = Fetch.take(asked).flatMap { Updater.prepare(dmg: $0, version: asked.version) }
+                DispatchQueue.main.async { [weak self] in
+                    switch prepared {
+                    case .success(let ready):
+                        self?.replacing = ready
+                        NSApp.terminate(nil)
+                    case .failure(let failure):
+                        self?.updateFailed(failure.why)
+                    }
+                }
+            }
+        }
+    }
+
     private func updateFailed(_ why: String) {
         NSLog("heare: update: %@", why)
         updating = false
+        if !config.brainHere {
+            guard let token = config.machineToken, let base = URL(string: config.url), !config.url.isEmpty else { return }
+            Local.call(base.appendingPathComponent("api/update/mine/failed"), method: "POST", body: ["why": why],
+                       headers: ["X-Heare-Token": token, "User-Agent": "heare"]) { _ in }
+            return
+        }
         guard let token = config.masterToken else { return }
         Local.call(config.brainBase.appendingPathComponent("api/update/failed"), method: "POST",
                    body: ["why": why], headers: ["X-Heare-Token": token]) { _ in }
