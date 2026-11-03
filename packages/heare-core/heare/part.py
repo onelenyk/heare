@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from importlib import metadata
@@ -194,6 +195,7 @@ async def follow(base: str, secret: str, channel: str | None,
     again a second later, which is what makes a body a beacon.
     """
     while True:
+        opened, events, last = None, 0, None
         try:
             timeout = httpx.Timeout(None, connect=5.0, read=SILENT_S)
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -205,18 +207,35 @@ async def follow(base: str, secret: str, channel: str | None,
                             on_open()
                         except Exception:  # noqa: BLE001 — the stream will try again
                             logger.exception("the knock on reconnect failed")
+                    opened = last = time.monotonic()
                     async for line in response.aiter_lines():
+                        last = time.monotonic()
                         if not line.startswith("data: "):
                             continue
                         try:
                             event = json.loads(line[6:])
                         except ValueError:
                             continue
+                        events += 1
                         if channel is None or event.get("channel") == channel:
                             on_event(event)
         except (httpx.HTTPError, OSError) as exc:
-            logger.warning("the stream broke: %s", exc)
+            logger.warning("the stream broke: %s", broke(exc, opened, last, events))
         await asyncio.sleep(RETRY_S)
+
+
+def broke(exc: BaseException, opened: float | None, last: float | None,
+          events: int, now: float | None = None) -> str:
+    """Why a stream ended, never empty. 2 November: 74 breaks in a day all
+    read "the stream broke: " — httpx timeouts carry no text, so the type is
+    said, then how long the stream lived and how long it had been silent.
+    The text loses the stream's URL: it carries the token."""
+    text = re.sub(r"token=[^&\s'\"]+", "token=…", str(exc)).strip()
+    why = f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+    if opened is None:
+        return f"{why} (before it opened)"
+    now = time.monotonic() if now is None else now
+    return f"{why} (after {now - opened:.0f} s, silent {now - (last or opened):.0f} s, {events} events)"
 
 
 async def report(client: httpx.AsyncClient, base: str, channel: str,

@@ -257,3 +257,12 @@ async def test_a_part_without_a_token_waits_instead_of_crashing(tmp_path, monkey
     assert str(tmp_path / "token") in err
     assert "Traceback" not in err
     assert err.count(str(tmp_path / "token")) <= 9
+
+
+def test_a_broken_stream_always_says_why_and_never_its_token():
+    import httpx
+    from heare.part import broke
+    said = broke(httpx.ReadTimeout(""), opened=100.0, last=130.0, events=7, now=145.0)
+    assert said == "ReadTimeout (after 45 s, silent 15 s, 7 events)"
+    said = broke(httpx.ConnectError("no route to http://b/api/events?token=SECRET123"), None, None, 0)
+    assert said.startswith("ConnectError: ") and "SECRET123" not in said and "(before it opened)" in said
