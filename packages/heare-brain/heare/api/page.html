@@ -990,6 +990,11 @@ const MACHINE_SAYS = {
 };
 function machinesBehind(u) {
   const hosts = new Map();
+  // The brain's own machine, where no app swaps it: its keeper takes it.
+  const brain = state && state.running && state.running.version;
+  if (brain && brain !== u.latest && !u.can_install) {
+    hosts.set(tr("the brain"), {versions: new Set([brain]), machine: "machine@brain"});
+  }
   for (const b of Object.values((state && state.bodies) || {})) {
     if (!b.version || b.version === u.latest) continue;
     const host = b.host || "?";

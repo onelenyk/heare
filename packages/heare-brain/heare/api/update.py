@@ -33,6 +33,8 @@ logger = logging.getLogger("heare.api.update")
 
 FEED = "https://api.github.com/repos/onelenyk/heare/releases/latest"
 SUMS = "SHA256SUMS.txt"
+# A machine without the app updates the way it was installed.
+INSTALLER = "install.sh"
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 # What a release note is cut to on the page.
 NOTES_CHARS = 600
@@ -236,6 +238,8 @@ class Updates:
             self.machines.pop(machine, None)
             self._set(machines=dict(self.machines))
             return {}
+        if arch == "linux":
+            return self._wheels_for(asked)
         found = read_release(getattr(self, "_raw", {}), version, arch)
         if found.get("latest") != asked["to"] or not found.get("dmg") or not found.get("sums"):
             return {}
@@ -244,6 +248,23 @@ class Updates:
             self._set(machines=dict(self.machines))
         return {"version": asked["to"], "dmg": found["dmg"], "sums": found["sums"],
                 "name": dmg_name(arch)}
+
+    def _wheels_for(self, asked: dict) -> dict:
+        """A machine without the app takes wheels: install.sh does the swap,
+        as it does on a first install, and keeps the tools it replaces."""
+        raw = getattr(self, "_raw", {}) or {}
+        if str(raw.get("tag_name") or "").lstrip("v") != asked["to"]:
+            return {}
+        assets = {str(a.get("name")): str(a.get("browser_download_url") or "")
+                  for a in raw.get("assets") or [] if isinstance(a, dict)}
+        script, sums = assets.get(INSTALLER), assets.get(SUMS)
+        if not script or not sums:
+            return {}
+        if asked["state"] != "taking":
+            asked["state"] = "taking"
+            self._set(machines=dict(self.machines))
+        return {"version": asked["to"], "kind": "wheels", "install": script, "sums": sums,
+                "from": script.rsplit("/", 1)[0]}
 
     def machine_failed(self, machine: str, why: str) -> dict:
         asked = self.machines.get(machine)

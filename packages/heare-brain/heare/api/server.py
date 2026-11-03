@@ -162,6 +162,9 @@ BACKUP_LIMIT = 2 * 1024 ** 3
 # A newer heare is asked about a minute after the start, then once a day.
 UPDATE_FIRST_S = 60.0
 UPDATE_EVERY_S = 24 * 3600.0
+# The machine the brain lives on, as the update card names it: its keeper
+# asks with the master token, which no machine key is.
+BRAIN_MACHINE = "machine@brain"
 
 
 class Slow:
@@ -1507,12 +1510,13 @@ def build(core: Core, settings: Any, vitals: Any = None,
     async def update_mine(request: web.Request) -> web.Response:
         """A machine's own question: is there a version for me to take?"""
         return web.json_response(updates.for_machine(
-            request["part"], str(request.query.get("version") or ""),
+            request.get("part") or BRAIN_MACHINE, str(request.query.get("version") or ""),
             re.sub(r"[^a-z0-9_]", "", str(request.query.get("arch") or ""))[:16]))
 
     async def update_mine_failed(request: web.Request) -> web.Response:
         data = await body(request)
-        return web.json_response(updates.machine_failed(request["part"], str(data.get("why") or "")))
+        return web.json_response(updates.machine_failed(
+            request.get("part") or BRAIN_MACHINE, str(data.get("why") or "")))
 
     async def asking_for_updates(app: web.Application):
         async def every_day() -> None:

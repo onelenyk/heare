@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-03 12:28+0200\n"
+"POT-Creation-Date: 2026-11-03 22:32+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -514,6 +514,9 @@ msgstr ""
 
 #, python-brace-format
 msgid "could not update: {why}"
+msgstr ""
+
+msgid "the brain"
 msgstr ""
 
 #, python-brace-format
@@ -2043,6 +2046,18 @@ msgstr ""
 
 #, python-brace-format
 msgid "form: {address}"
+msgstr ""
+
+msgid "install.sh failed"
+msgstr ""
+
+msgid "the new version did not start"
+msgstr ""
+
+msgid "the new version did not install"
+msgstr ""
+
+msgid "the brain did not answer after the update"
 msgstr ""
 
 msgid "you were saying"

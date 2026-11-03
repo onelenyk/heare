@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-03 12:28+0200\n"
+"POT-Creation-Date: 2026-11-03 22:32+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -515,6 +515,9 @@ msgstr "оновлюється…"
 #, python-brace-format
 msgid "could not update: {why}"
 msgstr "не оновився: {why}"
+
+msgid "the brain"
+msgstr "мозок"
 
 #, python-brace-format
 msgid "{host} is on {v}"
@@ -2052,6 +2055,18 @@ msgstr "порт {port} зайнятий — сторінка налаштува
 #, python-brace-format
 msgid "form: {address}"
 msgstr "форма: {address}"
+
+msgid "install.sh failed"
+msgstr "install.sh не спрацював"
+
+msgid "the new version did not start"
+msgstr "нова версія не запустилась"
+
+msgid "the new version did not install"
+msgstr "нова версія не встановилась"
+
+msgid "the brain did not answer after the update"
+msgstr "мозок не відповів після оновлення"
 
 msgid "you were saying"
 msgstr "ти казав"

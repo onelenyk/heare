@@ -25,9 +25,10 @@ from pathlib import Path
 
 from heare import layout, logs
 from heare import lifeline, machine, part
-from heare.config import Settings
+from heare.config import HOME, Settings
 from heare.core.i18n import _
 from heare.setup import serve
+from heare.updating import Updating
 
 logger = logging.getLogger("heare.keeper")
 
@@ -366,6 +367,8 @@ async def kept(folder: Path, settings_path: Path | None = None) -> int:
     single lock; a second one says who has it and leaves without spawning.
     """
     running = asyncio.create_task(Keeper(folder, settings_path).run())
+    # Held here: a task nobody keeps a reference to may be collected.
+    taking = asyncio.create_task(Updating(Settings(), HOME).run())
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, running.cancel)
@@ -373,6 +376,8 @@ async def kept(folder: Path, settings_path: Path | None = None) -> int:
         return await running
     except asyncio.CancelledError:
         return 0
+    finally:
+        taking.cancel()
 
 
 def _serve_form() -> None:
