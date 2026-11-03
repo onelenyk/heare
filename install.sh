@@ -436,27 +436,60 @@ for name in $TOOLS; do
     fi
 done
 
+# The folder uv gives a tool is its package's name, not the part's: brain
+# lives in heare-brain, hands in heare-cli-hands. 3 November: the swap moved
+# folders named by part, found none, and a fresh install left no tools.
+tool_dir() {
+    case "$1" in
+        hands) printf 'heare-cli-hands' ;;
+        *) printf 'heare-%s' "$1" ;;
+    esac
+}
+
 restore_tools() {
     for name in $INSTALLED_TOOLS; do
-        if [ -d "$PREVIOUS/$name" ]; then
-            rm -rf "$REAL_TOOLS/$name"
-            mv "$PREVIOUS/$name" "$REAL_TOOLS/$name" || true
+        dir=$(tool_dir "$name")
+        if [ -d "$PREVIOUS/$dir" ]; then
+            rm -rf "${REAL_TOOLS:?}/$dir"
+            mv "$PREVIOUS/$dir" "$REAL_TOOLS/$dir" || true
         else
-            rm -rf "$REAL_TOOLS/$name"
+            rm -rf "${REAL_TOOLS:?}/$dir"
         fi
     done
 }
 
 swap_tools() {
     for name in $INSTALLED_TOOLS; do
-        if [ -d "$REAL_TOOLS/$name" ]; then
-            rm -rf "$PREVIOUS/$name"
-            mv "$REAL_TOOLS/$name" "$PREVIOUS/$name" || return 1
+        dir=$(tool_dir "$name")
+        if [ -d "$REAL_TOOLS/$dir" ]; then
+            rm -rf "${PREVIOUS:?}/$dir"
+            mv "$REAL_TOOLS/$dir" "$PREVIOUS/$dir" || return 1
         fi
     done
     for name in $INSTALLED_TOOLS; do
-        [ -d "$STAGE_TOOLS/$name" ] || continue
-        mv "$STAGE_TOOLS/$name" "$REAL_TOOLS/$name" || return 1
+        dir=$(tool_dir "$name")
+        [ -d "$STAGE_TOOLS/$dir" ] || return 1
+        mv "$STAGE_TOOLS/$dir" "$REAL_TOOLS/$dir" || return 1
+        moved_shebangs "$REAL_TOOLS/$dir"
+    done
+}
+
+# uv writes each script's Python as an absolute path, the staging one: after
+# the move it named a folder the cleanup removes, and no command ran.
+moved_shebangs() {
+    for script in "$1"/bin/*; do
+        [ -f "$script" ] && [ ! -L "$script" ] || continue
+        first=$(head -n 1 "$script" 2>/dev/null || true)
+        case "$first" in
+            "#!$STAGE_TOOLS/"*)
+                {
+                    printf '#!%s/%s\n' "$REAL_TOOLS" "${first#"#!$STAGE_TOOLS/"}"
+                    tail -n +2 "$script"
+                } > "$script.heare-new" && chmod --reference="$script" "$script.heare-new" 2>/dev/null \
+                    || chmod 755 "$script.heare-new"
+                mv "$script.heare-new" "$script"
+                ;;
+        esac
     done
 }
 

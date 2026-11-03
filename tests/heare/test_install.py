@@ -85,3 +85,19 @@ def test_tools_are_staged_before_the_swap_and_the_previous_kept():
     assert 'UV_TOOL_BIN_DIR="$STAGE_BIN"' in script
     assert "heare-tool-previous" in script
     assert "restore_tools" in script
+
+
+def test_the_swap_moves_the_folders_uv_made_not_part_names():
+    """3 November, a clean Debian: the swap looked for tools/brain while uv
+    had made tools/heare-brain, and a fresh install left no tool at all."""
+    text = INSTALL.read_text(encoding="utf-8")
+    assert '"$REAL_TOOLS/$name"' not in text and '"$STAGE_TOOLS/$name"' not in text
+    assert '"$PREVIOUS/$name"' not in text
+    assert "tool_dir()" in text and "hands) printf 'heare-cli-hands'" in text
+
+
+def test_the_moved_scripts_name_the_python_they_now_sit_beside():
+    """A script uv staged names the staging Python in its first line; once
+    moved it must name the real one, or no command of heare runs."""
+    text = INSTALL.read_text(encoding="utf-8")
+    assert 'moved_shebangs "$REAL_TOOLS/$dir"' in text
