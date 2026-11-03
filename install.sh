@@ -671,6 +671,9 @@ After=network-online.target
 ExecStart=$BIN/$program
 Environment=PATH=$PATH
 Environment=HEARE_NO_BROWSER=1
+# A service has no one at the screen to unlock a desktop keyring: asking
+# it would hang the brain. The keys live in ~/.heare/machine/keys.json.
+Environment=PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
 Restart=always
 RestartSec=3
 

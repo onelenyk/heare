@@ -101,3 +101,10 @@ def test_the_moved_scripts_name_the_python_they_now_sit_beside():
     moved it must name the real one, or no command of heare runs."""
     text = INSTALL.read_text(encoding="utf-8")
     assert 'moved_shebangs "$REAL_TOOLS/$dir"' in text
+
+
+def test_a_linux_service_never_asks_a_desktop_keyring():
+    """3 November, the mini-PC: a desktop keyring waited for someone to
+    unlock it at the screen, and the brain answered nothing."""
+    text = INSTALL.read_text(encoding="utf-8")
+    assert "Environment=PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring" in text
