@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 13:09+0200\n"
+"POT-Creation-Date: 2026-11-05 13:18+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -259,14 +259,23 @@ msgstr "Відʼєднати"
 msgid "To hear you, allow the recogniser's key for the phone on the pult."
 msgstr "Щоб чути тебе, дозволь на пульті ключ розпізнавання для телефона."
 
+msgid "Listen hands-free"
+msgstr "Слухати без рук"
+
+msgid "Recognising…"
+msgstr "Розпізнаю…"
+
+msgid "Listening to the room. Call me by name."
+msgstr "Слухаю кімнату. Клич мене на ім'я."
+
+msgid "connecting…"
+msgstr "підключаюсь…"
+
 msgid "Speak"
 msgstr "Говори"
 
 msgid "Listening… tap to finish"
 msgstr "Слухаю… торкнись, щоб завершити"
-
-msgid "Recognising…"
-msgstr "Розпізнаю…"
 
 msgid "Say something…"
 msgstr "Скажи щось…"
@@ -276,9 +285,6 @@ msgstr "Надіслати"
 
 msgid "connected"
 msgstr "під'єднано"
-
-msgid "connecting…"
-msgstr "підключаюсь…"
 
 msgid "no connection"
 msgstr "немає зв'язку"

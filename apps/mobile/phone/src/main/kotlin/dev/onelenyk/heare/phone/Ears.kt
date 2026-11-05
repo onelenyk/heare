@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.ServiceCompat
 import dev.onelenyk.heare.tr
 import kotlinx.coroutines.CoroutineScope
@@ -17,15 +18,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
  * The phone's part, alive with the screen off: a foreground service of type
  * microphone, which Android does not kill for being in the background. It
- * holds the brain's stream now; the microphone joins it with the voice
- * (mobile.md, step 3). Started only while the app is open, as Android 14
- * requires for a microphone service.
+ * holds the brain's stream, and with «hands-free» on, the open microphone
+ * (Room). Started only while the app is open, as Android 14 requires for a
+ * microphone service.
  */
 class Ears : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -37,14 +39,40 @@ class Ears : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         ServiceCompat.startForeground(
             this, NOTE, notice(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        if (mouth == null) mouth = TextToSpeech(this) { }
+        if (mouth == null) mouth = TextToSpeech(this) { }.apply {
+            setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(id: String?) { Phone.speaking = true }
+                override fun onDone(id: String?) { quiet() }
+                @Deprecated("the old one, still called on some phones")
+                override fun onError(id: String?) { quiet() }
+            })
+        }
         if (living?.isActive != true) {
             val part = Phone.partFor(::speak) ?: run { stopSelf(); return START_NOT_STICKY }
             living = scope.launch { part.live() }
             scope.launch { part.keepKey() }
-            Phone.hush = { mouth?.stop() }
+            Phone.hush = { mouth?.stop(); Phone.speaking = false }
+            val room = Room(deaf = { Phone.speaking }) { pcm ->
+                part.spoken(pcm, handsFree = true, now = System::currentTimeMillis)
+            }
+            scope.launch {
+                var ear: Job? = null
+                Phone.handsFree.collect { on ->
+                    ear?.cancel()
+                    ear = if (on) launch { room.listen() } else null
+                }
+            }
         }
         return START_STICKY
+    }
+
+    /** Spoken out: the room is heard again a moment later, past the echo. */
+    private fun quiet() {
+        scope.launch {
+            delay(300)
+            Phone.speaking = false
+            Phone.part?.replied(System.currentTimeMillis())
+        }
     }
 
     private fun speak(text: String) {

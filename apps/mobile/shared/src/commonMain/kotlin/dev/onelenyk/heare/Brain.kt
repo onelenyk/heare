@@ -102,11 +102,13 @@ class Brain(val base: String, private val http: HttpClient) {
         return json.decodeFromString(Knocked.serializer(), text)
     }
 
-    suspend fun say(token: String, channel: String, text: String) {
+    /** A phrase to the brain; [overheard] when it was not said to it (kept, not answered). */
+    suspend fun say(token: String, channel: String, text: String, overheard: Boolean = false) {
         val answer = http.post("$base/api/input") {
             header(TOKEN, token)
             contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(Heard.serializer(), Heard(channel, text)))
+            setBody(json.encodeToString(Heard.serializer(),
+                Heard(channel, text, kind = if (overheard) "overheard" else "heard")))
         }
         if (answer.status != HttpStatusCode.OK) throw Refused(answer.status.value, answer.bodyAsText())
     }

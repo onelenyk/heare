@@ -52,6 +52,8 @@ class Part(
     val state: StateFlow<Talk> = talk
     private var token: String? = null
     private var ear: String? = null
+    /** When the brain last finished saying something: a reply invites an answer without the name. */
+    private var lastSaid: Long = 0L
 
     /**
      * Keep the recogniser's key: asked every few seconds while the person
@@ -78,8 +80,13 @@ class Part(
 
     fun hearing(now: Hearing) = talk.update { it.copy(hearing = now) }
 
-    /** What the person said aloud: words, then the brain. Too little is nothing. */
-    suspend fun spoken(pcm: ShortArray) {
+    /**
+     * What the person said aloud: words, then the brain. Too little is
+     * nothing. Pressed for ([handsFree] false), it is said to the brain.
+     * Heard by an ear that is always open, it is said to the brain only with
+     * its name, or right after a reply; else the brain keeps it as overheard.
+     */
+    suspend fun spoken(pcm: ShortArray, handsFree: Boolean = false, now: () -> Long = { 0L }) {
         val key = ear
         val ears = whisper
         if (key == null || ears == null || pcm.size < Whisper.RATE / 3) {
@@ -89,7 +96,10 @@ class Part(
         hearing(Hearing.Recognizing)
         try {
             val words = ears.words(pcm, key, talk.value.language)
-            if (words.isNotBlank()) say(words)
+            if (words.isBlank()) return
+            val toMe = !handsFree || Wake(talk.value.name).addressed(words) ||
+                now() - lastSaid < FOLLOW_UP_MS
+            if (toMe) say(words) else overhear(words)
         } finally {
             hearing(Hearing.Idle)
         }
@@ -145,6 +155,14 @@ class Part(
         brain.say(mine, about.channel, said)
     }
 
+    private suspend fun overhear(text: String) {
+        val mine = token ?: return
+        brain.say(mine, about.channel, text, overheard = true)
+    }
+
+    /** The brain's reply ended at [at] (ms): the next phrase may skip the name. */
+    fun replied(at: Long) { lastSaid = at }
+
     internal fun heard(event: JsonObject) {
         if (event.text("channel") != about.channel) return
         when (event.text("kind")) {
@@ -176,5 +194,6 @@ class Part(
 }
 
 private const val EAR_KEY = "GROQ_API_KEY"
+private const val FOLLOW_UP_MS = 20_000L
 
 private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull

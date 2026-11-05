@@ -23,6 +23,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -147,18 +148,33 @@ private fun Conversation(talk: Talk?, forget: () -> Unit) {
                 color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 8.dp))
         }
         val hearing = talk?.hearing ?: Hearing.Idle
-        Button(
-            onClick = { Phone.listen() },
-            enabled = talk?.link == Link.Here && talk.keyWaiting.not() && hearing != Hearing.Recognizing,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(72.dp),
-            colors = if (hearing == Hearing.Listening) ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors(),
-        ) {
+        val handsFree by Phone.handsFree.collectAsState()
+        val ready = talk?.link == Link.Here && talk.keyWaiting.not()
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Listen hands-free"), Modifier.weight(1f))
+            Switch(checked = handsFree, onCheckedChange = { Phone.handsFree(it) })
+        }
+        if (handsFree) {
+            // The open microphone holds the mic: no button, only what it does.
             Text(when (hearing) {
-                Hearing.Idle -> tr("Speak")
-                Hearing.Listening -> tr("Listening… tap to finish")
                 Hearing.Recognizing -> tr("Recognising…")
-            }, style = MaterialTheme.typography.titleMedium)
+                else -> if (ready) tr("Listening to the room. Call me by name.") else tr("connecting…")
+            }, Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        } else {
+            Button(
+                onClick = { Phone.listen() },
+                enabled = ready && hearing != Hearing.Recognizing,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(72.dp),
+                colors = if (hearing == Hearing.Listening) ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors(),
+            ) {
+                Text(when (hearing) {
+                    Hearing.Idle -> tr("Speak")
+                    Hearing.Listening -> tr("Listening… tap to finish")
+                    Hearing.Recognizing -> tr("Recognising…")
+                }, style = MaterialTheme.typography.titleMedium)
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(typed, { typed = it }, Modifier.weight(1f),

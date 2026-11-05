@@ -53,6 +53,7 @@ object Phone {
     fun open(context: Context) {
         app = context.applicationContext
         prefs = app.getSharedPreferences("heare", Context.MODE_PRIVATE)
+        handsFree.value = prefs.getBoolean("hands_free", false)
     }
 
     val paired: Boolean get() = prefs.getString("machine_token", null) != null
@@ -116,6 +117,17 @@ object Phone {
     }
 
     private val mic = Mic()
+
+    /** The phone is speaking: the open microphone must not hear it. */
+    @Volatile var speaking = false
+
+    /** The microphone always open (Room), kept across launches. */
+    val handsFree = MutableStateFlow(false)
+
+    fun handsFree(on: Boolean) {
+        prefs.edit().putBoolean("hands_free", on).apply()
+        handsFree.value = on
+    }
 
     /** Set by Ears: stops the phone speaking, so it does not hear itself. */
     var hush: () -> Unit = {}
