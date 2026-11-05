@@ -102,7 +102,9 @@ PAGES = [
     PACKAGES / "heare-keeper/heare/installer.html",
     *sorted((ROOT / "apps/mac/Sources").rglob("*.swift")),
     *sorted(p for p in (ROOT / "apps/mobile").rglob("*.kt")
-            if "/src/main" in str(p) or "/src/commonMain" in str(p)),
+            if ("/src/main" in str(p) or "/src/commonMain" in str(p))
+            # How the recogniser writes the assistant's name: heard, not said.
+            and p.name != "Wake.kt"),
 ]
 PAGE_MAY_SAY = ("Українська", "агент|agent")
 _COMMENTS = re.compile(r"/\*.*?\*/|<!--.*?-->|(?<![:\"'])//[^\n]*", re.S)
