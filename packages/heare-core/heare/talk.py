@@ -21,6 +21,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from heare.wire import routed
+
 TIMEOUT_S = 20.0
 MAX_TOKENS = 1024
 ANTHROPIC_VERSION = "2023-06-01"
@@ -57,7 +59,8 @@ class Talk:
             body["tools"] = verbs
         answer = await self._client.post(
             f"{self._wire.base_url.rstrip('/')}/chat/completions", json=body,
-            timeout=TIMEOUT_S, headers={"Authorization": f"Bearer {self._wire.key}"})
+            timeout=TIMEOUT_S, headers={"Authorization": f"Bearer {self._wire.key}",
+                                         **routed(self._wire.base_url)})
         answer.raise_for_status()
         said = (answer.json().get("choices") or [{}])[0].get("message") or {}
         events: list[dict] = []

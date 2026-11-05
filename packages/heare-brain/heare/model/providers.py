@@ -309,9 +309,12 @@ def make_identity_bootstrap(
     is_anthropic = config.api_style == "anthropic"
 
     async def _bootstrap(prompt: str) -> dict:
+        from heare.wire import routed  # deferred, as the rest here
+
         headers: dict[str, str] = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            **routed(endpoint),
         }
 
         if is_anthropic:

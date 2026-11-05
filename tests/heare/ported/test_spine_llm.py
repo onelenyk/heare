@@ -387,3 +387,20 @@ async def test_content_delta_before_tool_call_both_arrive_delta_first():
         "name": "lookup",
         "arguments": '{"q": 1}',
     }
+
+
+async def test_opencode_is_told_the_session_and_others_are_not():
+    """5 November 2026: opencode's gateway answered every call without
+    x-opencode-session with 400 MissingSessionID, and the brain fell silent."""
+    seen: list[httpx.Headers] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers)
+        return httpx.Response(200, content=_sse(_delta_line("ok"), "[DONE]"))
+
+    opencode = LLMConfig(base_url="https://opencode.ai/zen/go/v1", api_key="k", model="m")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        assert await _collect(stream_chat([], opencode, client=client)) == ["ok"]
+        await _collect(stream_chat([], CFG, client=client))
+    assert seen[0].get("x-opencode-session", "").startswith("heare-")
+    assert "x-opencode-session" not in seen[1]

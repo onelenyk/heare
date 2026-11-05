@@ -29,7 +29,10 @@ KNOW_EVERYTHING = {"app", "listener", "brain"}
 # the hand, the body behind the door and the router.
 # heare.words puts the catalog into a page: the brain's door and the keeper's
 # form hand theirs out the same way.
-LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "heare.words"}
+# heare.wire is what a provider needs on the wire beyond the key (opencode's
+# session): the brain's model and the parts' own one (heare.talk) send it alike.
+LEAVES = {"heare.keys", "heare.laws", "heare.model.providers", "heare.hand", "heare.words",
+          "heare.wire"}
 # The core may grow, but not into the tangle it replaces. If this fails,
 # something in the core is a part. Raised deliberately for the question
 # channel (an executor asking the person mid-work), not by drift; on

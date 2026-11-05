@@ -15,6 +15,8 @@ from typing import Any, AsyncIterator
 
 import httpx
 
+from heare.wire import routed
+
 logger = logging.getLogger("heare.model.llm")
 
 
@@ -157,6 +159,7 @@ async def _openai_events(
     headers = {
         "Authorization": f"Bearer {cfg.api_key}",
         "Content-Type": "application/json",
+        **routed(cfg.base_url),
     }
     payload: dict[str, Any] = {
         "model": cfg.model,
