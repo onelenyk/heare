@@ -36,6 +36,10 @@ enum Updater {
         for leftover in [staged, failed] where FileManager.default.fileExists(atPath: leftover.path) {
             try? FileManager.default.removeItem(at: leftover)
         }
+        // The new app was unpacked as heare.app.new first, and macOS may
+        // remember it by that name: the microphone prompt and Privacy
+        // settings then say «heare.app.new». Register it again where it is.
+        LSRegisterURL(bundle as CFURL, true)
     }
 
     /// The previous app is no longer the way back: this one is healthy.

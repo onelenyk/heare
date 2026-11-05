@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 /// The menubar app: it starts the keeper and the brain, keeps them up, and
 /// shows what they say. It holds no logic of heare's own — what a part is,
@@ -39,6 +40,28 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var offeredOld = false
     private var lastAsked = Date.distantPast
 
+    /// What macOS says of the microphone, in the keeper's log: when the
+    /// voice hears only zeros, this tells a refusal from an attribution.
+    static func noteMicrophone(_ when: String) {
+        let state: String
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: state = "authorized"
+        case .denied: state = "denied"
+        case .restricted: state = "restricted"
+        case .notDetermined: state = "not determined"
+        @unknown default: state = "unknown"
+        }
+        let log = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".heare/logs/app-keeper.log")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let line = "\(stamp) app: microphone \(when): \(state)\n"
+        if let handle = try? FileHandle(forWritingTo: log) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.cleanUp()
         DistributedNotificationCenter.default().addObserver(
@@ -53,7 +76,19 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.menu = menu
         draw()
 
-        keeper.start()
+        // The voice is a Python child: its CoreAudio stream never makes
+        // macOS ask, it is only handed zeros. So the app asks, before its
+        // children open the microphone — after every update too, since an
+        // ad-hoc signed build is a new app to macOS (5 November).
+        Self.noteMicrophone("at launch")
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { _ in
+                Self.noteMicrophone("after asking")
+                DispatchQueue.main.async { [weak self] in self?.keeper.start() }
+            }
+        } else {
+            keeper.start()
+        }
         if config.brainHere { brain.start() }
         if !config.setupDone { installer.show(config) }
 
