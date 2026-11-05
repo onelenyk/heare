@@ -9,7 +9,9 @@ import dev.onelenyk.heare.Knock
 import dev.onelenyk.heare.Part
 import dev.onelenyk.heare.Refused
 import dev.onelenyk.heare.Talk
+import dev.onelenyk.heare.Whisper
 import dev.onelenyk.heare.Words
+import dev.onelenyk.heare.Hearing
 import dev.onelenyk.heare.tr
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -98,7 +100,7 @@ object Phone {
             version = BuildConfig.VERSION_NAME,
             started = System.currentTimeMillis() / 1000.0,
         )
-        return Part(Brain(base, http), token, about, speak).also { made ->
+        return Part(Brain(base, http), token, about, speak, Whisper(http)).also { made ->
             part = made
             scope.launch {
                 var language: String? = null
@@ -108,6 +110,28 @@ object Phone {
                         Words.use(language?.let(::wordsFor))
                     }
                     talk.value = now
+                }
+            }
+        }
+    }
+
+    private val mic = Mic()
+
+    /** Set by Ears: stops the phone speaking, so it does not hear itself. */
+    var hush: () -> Unit = {}
+
+    /** The microphone button: a tap listens, a second tap ends the phrase. */
+    fun listen() {
+        val live = part ?: return
+        when (live.state.value.hearing) {
+            Hearing.Listening -> mic.stop()
+            Hearing.Recognizing -> Unit
+            Hearing.Idle -> {
+                hush()
+                live.hearing(Hearing.Listening)
+                scope.launch {
+                    val pcm = runCatching { mic.utterance() }.getOrDefault(ShortArray(0))
+                    runCatching { live.spoken(pcm) }.onFailure { live.hearing(Hearing.Idle) }
                 }
             }
         }

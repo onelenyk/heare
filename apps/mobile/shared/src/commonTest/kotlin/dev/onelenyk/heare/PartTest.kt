@@ -19,7 +19,7 @@ class PartTest {
         val http = HttpClient(MockEngine { respond("{}", HttpStatusCode.OK, headersOf("Content-Type", "application/json")) }) {
             install(HttpTimeout)
         }
-        return Part(Brain("http://brain", http), "machine", about) { spoken += it }
+        return Part(Brain("http://brain", http), "machine", about, onSaid = { spoken += it })
     }
 
     private fun event(text: String) = Json.parseToJsonElement(text).jsonObject
@@ -56,5 +56,13 @@ class PartTest {
         assertEquals("На зв'язку", tr("Connected"))
         assertEquals("Paired as {name}".replace("{name}", "pixel"), tr("Paired as {name}", "name" to "pixel"))
         Words.use(null)
+    }
+
+    @Test
+    fun a_wav_says_16_khz_mono_and_its_length() {
+        val wav = Whisper.wav(ShortArray(16_000) { 1 })
+        assertEquals("RIFF", wav.decodeToString(0, 4))
+        assertEquals(44 + 32_000, wav.size)
+        assertEquals(16_000, (wav[24].toInt() and 0xff) or ((wav[25].toInt() and 0xff) shl 8))
     }
 }

@@ -41,6 +41,8 @@ class Ears : Service() {
         if (living?.isActive != true) {
             val part = Phone.partFor(::speak) ?: run { stopSelf(); return START_NOT_STICKY }
             living = scope.launch { part.live() }
+            scope.launch { part.keepKey() }
+            Phone.hush = { mouth?.stop() }
         }
         return START_STICKY
     }

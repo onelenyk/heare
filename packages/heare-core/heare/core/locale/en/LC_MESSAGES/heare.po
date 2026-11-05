@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 12:29+0200\n"
+"POT-Creation-Date: 2026-11-05 13:09+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -254,6 +254,18 @@ msgid "Pair"
 msgstr ""
 
 msgid "Unpair"
+msgstr ""
+
+msgid "To hear you, allow the recogniser's key for the phone on the pult."
+msgstr ""
+
+msgid "Speak"
+msgstr ""
+
+msgid "Listening… tap to finish"
+msgstr ""
+
+msgid "Recognising…"
 msgstr ""
 
 msgid "Say something…"

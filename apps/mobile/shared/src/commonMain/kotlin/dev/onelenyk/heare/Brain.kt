@@ -62,6 +62,12 @@ private data class Heard(
     val v: Int = PROTOCOL,
 )
 
+@Serializable
+private data class KeyAsk(val key: String, val fingerprint: String, val version: String)
+
+@Serializable
+data class Lent(val value: String? = null, val waiting: Boolean = false)
+
 /** The brain answered, but not with a yes: the code, the key or the name. */
 class Refused(val status: Int, why: String) : Exception(why)
 
@@ -103,6 +109,21 @@ class Brain(val base: String, private val http: HttpClient) {
             setBody(json.encodeToString(Heard.serializer(), Heard(channel, text)))
         }
         if (answer.status != HttpStatusCode.OK) throw Refused(answer.status.value, answer.bodyAsText())
+    }
+
+    /**
+     * Ask the brain to lend a key (protocol.md, «Ключі частин»). The person
+     * allows it on the pult once per [fingerprint]; until then [Lent.waiting].
+     */
+    suspend fun ask(token: String, key: String, fingerprint: String, version: String): Lent {
+        val answer = http.post("$base/api/keys/ask") {
+            header(TOKEN, token)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(KeyAsk.serializer(), KeyAsk(key, fingerprint, version)))
+        }
+        val text = answer.bodyAsText()
+        if (answer.status != HttpStatusCode.OK) throw Refused(answer.status.value, text)
+        return json.decodeFromString(Lent.serializer(), text)
     }
 
     suspend fun alive(): Boolean =

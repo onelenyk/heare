@@ -15,6 +15,9 @@ enum class Link { Knocking, Here, Away, Unpaired }
 
 enum class Who { Person, Brain }
 
+/** The ear: what happens to what the person says aloud. */
+enum class Hearing { Idle, Listening, Recognizing }
+
 data class Line(val who: Who, val text: String, val done: Boolean = true, val failed: Boolean = false)
 
 data class Talk(
@@ -23,6 +26,9 @@ data class Talk(
     val name: String? = null,
     val language: String? = null,
     val why: String? = null,
+    val hearing: Hearing = Hearing.Idle,
+    /** The recogniser's key is not allowed on the pult yet. */
+    val keyWaiting: Boolean = false,
 )
 
 /**
@@ -38,10 +44,56 @@ class Part(
     private val machineToken: String,
     private val about: Knock,
     private val onSaid: (String) -> Unit = {},
+    private val whisper: Whisper? = null,
+    /** Whose code this is: a new build asks for the key again. */
+    private val fingerprint: String = about.version,
 ) {
     private val talk = MutableStateFlow(Talk())
     val state: StateFlow<Talk> = talk
     private var token: String? = null
+    private var ear: String? = null
+
+    /**
+     * Keep the recogniser's key: asked every few seconds while the person
+     * has not allowed it, then again now and then (part.py's borrowing).
+     */
+    suspend fun keepKey() {
+        while (true) {
+            val mine = token
+            var waiting = true
+            if (mine != null) {
+                try {
+                    val lent = brain.ask(mine, EAR_KEY, fingerprint, about.version)
+                    ear = lent.value
+                    waiting = lent.waiting || lent.value == null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+            }
+            talk.update { it.copy(keyWaiting = waiting && mine != null) }
+            delay(if (waiting) 5_000L else 300_000L)
+        }
+    }
+
+    fun hearing(now: Hearing) = talk.update { it.copy(hearing = now) }
+
+    /** What the person said aloud: words, then the brain. Too little is nothing. */
+    suspend fun spoken(pcm: ShortArray) {
+        val key = ear
+        val ears = whisper
+        if (key == null || ears == null || pcm.size < Whisper.RATE / 3) {
+            hearing(Hearing.Idle)
+            return
+        }
+        hearing(Hearing.Recognizing)
+        try {
+            val words = ears.words(pcm, key, talk.value.language)
+            if (words.isNotBlank()) say(words)
+        } finally {
+            hearing(Hearing.Idle)
+        }
+    }
 
     suspend fun live() {
         var wait = 1_000L
@@ -122,5 +174,7 @@ class Part(
         }
     }
 }
+
+private const val EAR_KEY = "GROQ_API_KEY"
 
 private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull

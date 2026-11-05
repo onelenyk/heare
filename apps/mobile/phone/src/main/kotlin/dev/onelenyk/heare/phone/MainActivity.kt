@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -28,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import dev.onelenyk.heare.Hearing
 import dev.onelenyk.heare.Line
 import dev.onelenyk.heare.Link
 import dev.onelenyk.heare.Talk
@@ -59,10 +63,13 @@ class MainActivity : ComponentActivity() {
                     if (!paired) {
                         Pairing { paired = true; startEars() }
                     } else {
-                        Conversation(talk) {
-                            Ears.stop(this)
-                            Phone.forget()
-                            paired = false
+                        // The words come with the brain's language: draw again when it arrives.
+                        key(talk?.language) {
+                            Conversation(talk) {
+                                Ears.stop(this)
+                                Phone.forget()
+                                paired = false
+                            }
                         }
                     }
                 }
@@ -134,6 +141,24 @@ private fun Conversation(talk: Talk?, forget: () -> Unit) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list,
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(lines) { Said(it) }
+        }
+        if (talk?.keyWaiting == true) {
+            Text(tr("To hear you, allow the recogniser's key for the phone on the pult."),
+                color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 8.dp))
+        }
+        val hearing = talk?.hearing ?: Hearing.Idle
+        Button(
+            onClick = { Phone.listen() },
+            enabled = talk?.link == Link.Here && talk.keyWaiting.not() && hearing != Hearing.Recognizing,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(72.dp),
+            colors = if (hearing == Hearing.Listening) ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors(),
+        ) {
+            Text(when (hearing) {
+                Hearing.Idle -> tr("Speak")
+                Hearing.Listening -> tr("Listening… tap to finish")
+                Hearing.Recognizing -> tr("Recognising…")
+            }, style = MaterialTheme.typography.titleMedium)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(typed, { typed = it }, Modifier.weight(1f),
