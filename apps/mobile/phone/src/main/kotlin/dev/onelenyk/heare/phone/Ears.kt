@@ -76,6 +76,7 @@ class Ears : Service() {
     }
 
     private fun speak(text: String) {
+        if (!Phone.visible) told(text)
         val tts = mouth ?: return
         val language = Phone.talk.value?.language ?: "uk"
         tts.language = Locale.forLanguageTag(language)
@@ -86,6 +87,27 @@ class Ears : Service() {
         scope.cancel()
         mouth?.shutdown()
         super.onDestroy()
+    }
+
+    /**
+     * What the brain said while the conversation was not on the screen —
+     * a reminder, news, a reply heard from the pocket — as a notification
+     * that sounds, so a phone face down still shows it.
+     */
+    private fun told(text: String) {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(SAID, tr("What heare says"), NotificationManager.IMPORTANCE_HIGH))
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        manager.notify(SAID_NOTE, Notification.Builder(this, SAID)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle(Phone.talk.value?.name ?: "heare")
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build())
     }
 
     private fun notice(): Notification {
@@ -106,6 +128,13 @@ class Ears : Service() {
     companion object {
         private const val NOTE = 1
         private const val CHANNEL = "ears"
+        private const val SAID = "said"
+        private const val SAID_NOTE = 2
+
+        /** The conversation is open: what was told is read already. */
+        fun seen(context: Context) {
+            context.getSystemService(NotificationManager::class.java).cancel(SAID_NOTE)
+        }
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, Ears::class.java))

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 13:18+0200\n"
+"POT-Creation-Date: 2026-11-05 13:35+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -234,6 +234,9 @@ msgstr "старт із маком не вимкнувся"
 
 msgid "heare is still running — first «Quit» in its menu"
 msgstr "heare ще працює — спершу «Вийти» в його меню"
+
+msgid "What heare says"
+msgstr "Що каже heare"
 
 msgid "heare is here"
 msgstr "heare поруч"

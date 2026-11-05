@@ -118,6 +118,9 @@ object Phone {
 
     private val mic = Mic()
 
+    /** The conversation is on the screen: a reply needs no notification then. */
+    @Volatile var visible = false
+
     /** The phone is speaking: the open microphone must not hear it. */
     @Volatile var speaking = false
 

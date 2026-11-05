@@ -79,6 +79,9 @@ class MainActivity : ComponentActivity() {
         if (Phone.paired) startEars()
     }
 
+    override fun onResume() { super.onResume(); Phone.visible = true; Ears.seen(this) }
+    override fun onPause() { Phone.visible = false; super.onPause() }
+
     /** The microphone service may start only with the microphone allowed. */
     private fun startEars() {
         val missing = listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
