@@ -9,9 +9,9 @@ first — ``uv run python -m heare.brain``.
 
 from __future__ import annotations
 
+from heare.config import machine_host
 import argparse
 import asyncio
-import socket
 import sys
 
 from heare import layout, logs
@@ -20,8 +20,13 @@ from heare.core.i18n import N_, _
 
 UI = [
     {"name": "printing", "kind": "toggle", "label": N_("Print"), "value": True},
-    {"name": "state", "kind": "label", "label": N_("State"), "head": True,
-     "value": N_("listening to the terminal")},
+    {
+        "name": "state",
+        "kind": "label",
+        "label": N_("State"),
+        "head": True,
+        "value": N_("listening to the terminal"),
+    },
 ]
 
 
@@ -45,8 +50,11 @@ class Printer:
         if event.get("kind") == "control" and event.get("channel") == "text":
             if event.get("name") == "printing":
                 self.values["printing"] = bool(event.get("value"))
-                self.values["state"] = (N_("listening to the terminal") if self.values["printing"]
-                                        else N_("silent"))
+                self.values["state"] = (
+                    N_("listening to the terminal")
+                    if self.values["printing"]
+                    else N_("silent")
+                )
                 if self.wire is not None:
                     self.wire.report(self.values)
             return
@@ -74,10 +82,15 @@ async def _typed(wire: part.Wire) -> None:
         if line is None:
             return
         if line.strip():
-            await wire.post("/api/input", {
-                "channel": "text", "kind": "heard", "text": line.strip(),
-                "addressed": True,
-            })
+            await wire.post(
+                "/api/input",
+                {
+                    "channel": "text",
+                    "kind": "heard",
+                    "text": line.strip(),
+                    "addressed": True,
+                },
+            )
 
 
 async def run() -> int:
@@ -85,7 +98,7 @@ async def run() -> int:
         sys.stdin.reconfigure(errors="replace")
     except (AttributeError, OSError):
         pass
-    host = socket.gethostname()
+    host = machine_host()
     printer = Printer()
 
     async def work(wire: part.Wire) -> None:
@@ -95,10 +108,18 @@ async def run() -> int:
 
     # The chat shows the whole conversation, not only what was typed here.
     return await part.live(
-        {"channel": "text", "forms": ["input", "output"],
-         "about": "a chat in the terminal", "key": f"text@{host}", "host": host,
-         "ui": UI, "hears": "all"},
-        work, on_event=printer.event)
+        {
+            "channel": "text",
+            "forms": ["input", "output"],
+            "about": "a chat in the terminal",
+            "key": f"text@{host}",
+            "host": host,
+            "ui": UI,
+            "hears": "all",
+        },
+        work,
+        on_event=printer.event,
+    )
 
 
 def main() -> int:

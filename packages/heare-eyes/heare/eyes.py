@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import socket
 import sys
 
 import httpx
@@ -126,7 +125,7 @@ class Door:
 
 async def run() -> int:
     settings = Settings()
-    host = socket.gethostname()
+    host = settings.host
     async with httpx.AsyncClient(timeout=None) as client:
         door = Door(client, settings.base, settings)
 

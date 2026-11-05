@@ -60,6 +60,7 @@ def form(tmp_path, monkeypatch):
     monkeypatch.setattr(
         setup, "Settings",
         lambda: Settings(config, machine_token_file=machine,
+                         machine_name_file=tmp_path / "machine_name",
                          api_token_file=tmp_path / "api_token",
                          parts_dir=tmp_path / "parts"),
     )
@@ -179,7 +180,7 @@ def test_a_body_is_paired_with_the_brain_it_names(form, tmp_path, monkeypatch):
 
     def paired(url, code, kind, name):
         asked.update(url=url, code=code, kind=kind)
-        return {"token": "machine-token"}
+        return {"pid": "machine@MBP-M4--Nazar.lan", "token": "machine-token"}
 
     monkeypatch.setattr(setup, "pair", paired)
     with pytest.raises(urllib.error.HTTPError) as short:
@@ -191,6 +192,8 @@ def test_a_body_is_paired_with_the_brain_it_names(form, tmp_path, monkeypatch):
     assert status == 200 and state["role"] == "body" and state["url"] == "https://brain.example"
     assert asked == {"url": "https://brain.example", "code": "ABCD1234", "kind": "machine"}
     assert (tmp_path / "machine_token").read_text() == "machine-token"
+    assert (tmp_path / "machine_name").read_text() == "MBP-M4--Nazar.lan", \
+        "the name the brain knows it by is kept: its parts key on it"
 
 
 def test_the_brain_here_forgets_a_brain_elsewhere(form):

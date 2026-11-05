@@ -13,7 +13,6 @@ import argparse
 import asyncio
 import json
 import logging
-import socket
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 
@@ -419,7 +418,7 @@ async def _live(settings: Settings, wire: part.Wire, client: httpx.Client,
 async def run(settings: Settings | None = None, *,
               client: httpx.AsyncClient | None = None) -> int:
     settings = settings or Settings()
-    host = socket.gethostname()
+    host = settings.host
     # Events arrive before the voice is open; until then there is no mouth.
     held: dict = {}
 

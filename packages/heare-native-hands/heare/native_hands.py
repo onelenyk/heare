@@ -23,7 +23,6 @@ import asyncio
 import json
 import logging
 import re
-import socket
 import sys
 import time
 from dataclasses import dataclass
@@ -528,7 +527,7 @@ async def run(settings: Settings | None = None, model: Model | None = None,
               host: str | None = None) -> int:
     """The part's life; a bench hands in its own brain, model and host."""
     settings = settings or Settings()
-    host = host or socket.gethostname()
+    host = host or settings.host
     reach = Reach(settings)
     async with httpx.AsyncClient(
             timeout=httpx.Timeout(HTTP_S, connect=5.0)) as client:

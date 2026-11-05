@@ -14,7 +14,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import socket
 import sys
 import time
 from pathlib import Path
@@ -160,7 +159,7 @@ class Sources:
 
 async def run() -> int:
     settings = Settings()
-    host = socket.gethostname()
+    host = settings.host
     async with (
         httpx.AsyncClient(timeout=None) as client,
         httpx.AsyncClient(timeout=WEATHER_TIMEOUT_S) as web,

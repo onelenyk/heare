@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import tomllib
 from pathlib import Path
 
@@ -49,6 +50,7 @@ DEFAULTS = {
     "parts_dir": MACHINE / "parts",
     "api_token_file": MACHINE / "api_token",
     "machine_token_file": MACHINE / "machine_token",
+    "machine_name_file": MACHINE / "machine_name",
     # Where the brain is. Empty means this machine — a body on another one
     # is told once, by the setup form.
     "url": "",
@@ -167,7 +169,16 @@ class Settings:
         knock with a key this brain never issued and be refused forever.
         """
         Path(self.machine_token_file).unlink(missing_ok=True)
+        Path(self.machine_name_file).unlink(missing_ok=True)
         self.set("url", "")
+
+    @property
+    def host(self) -> str:
+        """What this machine's parts are called after: the name it was paired
+        under. Never the network's name of the day — on 5 November a reboot
+        turned MBP-M4--Nazar.lan into MacBook-Pro-M4--Nazar.local, and the
+        brain refused every part as «not your name»."""
+        return machine_host(Path(self.machine_name_file))
 
     @property
     def secret(self) -> str:
@@ -220,3 +231,14 @@ class Settings:
 # keeper's form — unless its owner tells i18n where else to look.
 _chosen = Settings()
 i18n.choose(lambda: str(_chosen.language))
+
+
+def machine_host(name_file: Path = MACHINE / "machine_name") -> str:
+    """The paired name if there is one, else the host's (a brain's own
+    machine is never paired). Settings.host says why."""
+    try:
+        name = name_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        name = ""
+    return name or socket.gethostname()
+

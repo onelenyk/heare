@@ -22,7 +22,7 @@ from pathlib import Path
 
 from heare import layout, logs
 from heare import hand, keys, part
-from heare.config import Settings
+from heare.config import Settings, machine_host
 from heare.reach import runner
 from heare.reach.agents import KNOWN as AGENTS, MODE, MODES, Agent
 from heare.reach.terminal import Terminal
@@ -450,7 +450,7 @@ async def run() -> int:
             wiring.cancel()
             await asyncio.gather(wiring, return_exceptions=True)
 
-    host = socket.gethostname()
+    host = machine_host()
     try:
         # The channel is the agent's name. Switching the runner type
         # therefore changes the channel, while the away card in the

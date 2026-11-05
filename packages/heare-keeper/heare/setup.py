@@ -192,6 +192,9 @@ class _Handler(BaseHTTPRequestHandler):
             token.parent.mkdir(parents=True, exist_ok=True)
             token.write_text(answer["token"], encoding="utf-8")
             token.chmod(0o600)
+            # The name the brain knows this machine by: every part keys on it.
+            paired = str(answer.get("pid") or "").split("@", 1)[-1] or socket.gethostname()
+            Path(settings.machine_name_file).write_text(paired, encoding="utf-8")
             settings.set("url", url)
         else:
             settings.forget_pairing()
