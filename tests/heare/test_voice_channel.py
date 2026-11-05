@@ -59,6 +59,11 @@ class FakeDevice:
     def silent_for(self) -> float:
         return self.silent
 
+    zeros = 0.0
+
+    def zeros_for(self) -> float:
+        return self.zeros
+
     async def restart_input(self) -> bool:
         self.restart_calls += 1
         if self.restart_result:
@@ -200,6 +205,24 @@ async def test_the_voice_loop_reports_a_dead_mic_and_reopens_it():
     deaf = [note for note in port.notes if str(note[0]).startswith("deaf:")]
     assert len(deaf) == 1, "one outage is one remark"
     assert device.restart_calls == 1, "one reopen, not a storm"
+
+
+async def test_a_microphone_the_system_keeps_shut_is_said_once_and_not_reopened():
+    """5 November: the stream ran, macOS handed it only zeros (a stale
+    permission), no orange dot, and heare said nothing for three days."""
+    device, port = FakeDevice(), FakePort()
+    device.zeros = 30.0
+    voice = Voice(device, _settings(), watch_s=0.01)
+    running = asyncio.create_task(voice.run(port))
+
+    await _until(lambda: any(str(n[0]).startswith("deaf:") for n in port.notes))
+    await asyncio.sleep(0.08)
+    await _stop(running)
+
+    deaf = [note for note in port.notes if str(note[0]).startswith("deaf:")]
+    assert len(deaf) == 1, "one outage is one remark"
+    assert "Input" in str(deaf[0]) or "Вхід" in str(deaf[0]), "it says where to fix it: the input level first"
+    assert device.restart_calls == 0, "a reopen is only another shut stream"
 
 
 async def test_a_brain_restart_mid_reply_starts_a_new_utterance(monkeypatch):

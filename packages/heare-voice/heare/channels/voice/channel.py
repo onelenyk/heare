@@ -186,7 +186,8 @@ class Voice:
             logger.error("the microphone is deaf: %s", text)
             if self._port is not None:
                 self._port.note(key, text)
-        if not reading.deaf:
+        if not reading.deaf or reading.shut:
+            # Shut by the system: a reopen is only another shut stream.
             self._retry_s = WATCHDOG_RETRY_S
             return
         if now < self._restart_at:

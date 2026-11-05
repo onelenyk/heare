@@ -149,6 +149,8 @@ class AudioIO:
         # a gap, and a clock that can step backwards would report a
         # working microphone as dead, or the reverse.
         self._last_frame_ts: float = 0.0
+        self._last_sound_ts: float = 0.0
+        self._opened_ts: float = 0.0
 
         # Event loop where we'll enqueue input frames
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -185,6 +187,15 @@ class AudioIO:
         survives, serving its dashboard and answering /state, deaf.
         """
         return self._input_stream is not None
+
+    def zeros_for(self, now: float | None = None) -> float:
+        """Seconds the device has called with nothing but zeros: not a
+        quiet room, a microphone the system keeps shut."""
+        if not self._last_frame_ts:
+            return 0.0
+        now = now if now is not None else time.monotonic()
+        since = self._last_sound_ts or self._opened_ts
+        return max(0.0, min(now, self._last_frame_ts + 1.0) - since) if since else 0.0
 
     def silent_for(self, now: float | None = None) -> float:
         """Seconds since the device last handed us anything.
@@ -274,6 +285,7 @@ class AudioIO:
             logger.error("audio: the device has not opened in %d s; still waiting for it",
                          OPEN_SLOW_S)
         await opening
+        self._opened_ts = time.monotonic()
         # A stream that opens and never calls back is exactly the failure
         # worth catching, so the clock starts here rather than on the
         # first frame — otherwise the gap would be measured from zero and
@@ -430,6 +442,11 @@ class AudioIO:
         # microphone, which is the one confusion that makes the whole
         # signal useless.
         self._last_frame_ts = time.monotonic()
+        # A real room is never exact zeros; macOS hands a process it does
+        # not let near the microphone exactly that, with no error and no
+        # orange dot (5 November: «permission is there», and nothing heard).
+        if bytes(indata).strip(b"\0"):
+            self._last_sound_ts = self._last_frame_ts
 
         if self.mute_input or self.mute_input_user:
             return

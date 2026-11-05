@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 14:51+0200\n"
+"POT-Creation-Date: 2026-11-05 17:44+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -2270,6 +2270,9 @@ msgstr ""
 msgid "I cannot hear — the microphone did not open. I need a restart."
 msgstr ""
 
+msgid "I cannot hear — the microphone gives only silence. Check the input level in Sound → Input, and heare in Privacy & Security → Microphone."
+msgstr ""
+
 #, python-brace-format
 msgid "I stopped hearing {s} seconds ago — the microphone seems gone. I need a restart."
 msgstr ""
@@ -2338,5 +2341,8 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "All imported: {n} notes read."
+#~ msgstr ""
+
+#~ msgid "I cannot hear — macOS gives me only silence from the microphone. Check heare in Privacy & Security → Microphone."
 #~ msgstr ""
 

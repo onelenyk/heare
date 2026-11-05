@@ -56,6 +56,13 @@ class Hearing:
     stream_open: bool  # did an input stream survive boot
     silent_for: float  # since the device last called back
     muted: bool  # by a person, on purpose
+    zeros_for: float = 0.0  # calling back, but with nothing but zeros
+
+    @property
+    def shut(self) -> bool:
+        """The device calls, the system hands it only zeros: a permission,
+        not a device — reopening will not help, the person can."""
+        return self.zeros_for >= SILENT_AFTER_S
 
     @property
     def deaf(self) -> bool:
@@ -64,7 +71,7 @@ class Hearing:
             return False
         if not self.stream_open:
             return True
-        return self.silent_for >= SILENT_AFTER_S
+        return self.silent_for >= SILENT_AFTER_S or self.shut
 
     def describe(self) -> str:
         """What to say out loud. In the first person, because it is the
@@ -73,6 +80,11 @@ class Hearing:
         from something that talks."""
         if not self.stream_open:
             return _("I cannot hear — the microphone did not open. I need a restart.")
+        if self.silent_for < SILENT_AFTER_S and self.shut:
+            # 5 November: the input slider read 43 and the microphone sat at
+            # zero; moving the slider brought it back. Not only a permission.
+            return _("I cannot hear — the microphone gives only silence. Check the input "
+                     "level in Sound → Input, and heare in Privacy & Security → Microphone.")
         return (
             _("I stopped hearing {s} seconds ago — the microphone seems gone. "
               "I need a restart.").format(s=int(self.silent_for))
@@ -100,17 +112,18 @@ class EarWatch:
         """
         if not hearing.deaf:
             if self._said:
-                logger.info("hearing: the microphone is back")
+                logger.warning("hearing: the microphone is back")
             self._said = False
             return None
         if self._said:
             return None
         self._said = True
-        began = int(now - hearing.silent_for)
+        began = int(now - max(hearing.silent_for, hearing.zeros_for))
         logger.error(
-            "hearing: deaf — stream_open=%s silent_for=%.0fs",
+            "hearing: deaf — stream_open=%s silent_for=%.0fs zeros_for=%.0fs",
             hearing.stream_open,
             hearing.silent_for,
+            hearing.zeros_for,
         )
         return hearing.describe(), f"deaf:{began}"
 
@@ -133,6 +146,7 @@ def read(audio: object | None, *, muted: bool = False) -> Hearing:
             stream_open=bool(getattr(audio, "input_open", False)),
             silent_for=float(audio.silent_for()),  # type: ignore[attr-defined]
             muted=bool(muted or getattr(audio, "mute_input_user", False)),
+            zeros_for=float(getattr(audio, "zeros_for", lambda: 0.0)()),
         )
     except Exception:  # noqa: BLE001
         logger.exception("hearing: could not read the ear (non-fatal)")

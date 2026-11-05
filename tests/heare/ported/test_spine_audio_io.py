@@ -788,3 +788,32 @@ async def test_a_device_slow_to_open_does_not_hold_the_loop(monkeypatch, caplog)
     beating.cancel()
     assert "has not opened" in caplog.text
     await audio.stop()
+
+
+class TestShutMicrophone:
+    """The system's «no» to the microphone is zeros, not an error."""
+
+    def _frame(self, audio_io: AudioIO, data: bytes) -> None:
+        audio_io._on_input(bytearray(data), len(data) // 2, None, None)
+
+    def test_only_zeros_count_up_and_any_sound_resets(self, monkeypatch) -> None:
+        import heare.channels.voice.device as device
+
+        clock = [100.0]
+        monkeypatch.setattr(device.time, "monotonic", lambda: clock[0])
+        audio_io = AudioIO(input_rate=16000, output_rate=24000, frame_ms=20)
+        audio_io._loop = asyncio.new_event_loop()
+        audio_io._opened_ts = 100.0
+        for _ in range(30):
+            clock[0] += 1.0
+            self._frame(audio_io, b"\x00" * 640)
+        assert audio_io.zeros_for() >= 29.0
+
+        clock[0] += 1.0
+        self._frame(audio_io, b"\x00" * 638 + b"\x01\x00")
+        assert audio_io.zeros_for() < 2.0, "a quiet room is never exact zeros"
+
+    def test_a_device_that_never_called_is_not_shut(self) -> None:
+        audio_io = AudioIO(input_rate=16000, output_rate=24000, frame_ms=20)
+        assert audio_io.zeros_for() == 0.0
+

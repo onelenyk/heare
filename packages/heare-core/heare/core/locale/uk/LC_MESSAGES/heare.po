@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  heare\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-05 14:51+0200\n"
+"POT-Creation-Date: 2026-11-05 17:44+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: uk\n"
@@ -2278,6 +2278,9 @@ msgstr "немає ключа розпізнавання: дозволь йог�
 msgid "I cannot hear — the microphone did not open. I need a restart."
 msgstr "я не чую — мікрофон не відкрився. Мене треба перезапустити."
 
+msgid "I cannot hear — the microphone gives only silence. Check the input level in Sound → Input, and heare in Privacy & Security → Microphone."
+msgstr "Я не чую — мікрофон дає саму тишу. Перевір рівень входу в «Звук → Вхід» і дозвіл heare у «Приватність і безпека → Мікрофон»."
+
 #, python-brace-format
 msgid "I stopped hearing {s} seconds ago — the microphone seems gone. I need a restart."
 msgstr "я перестав чути {s} секунд тому — схоже, зник мікрофон. Мене треба перезапустити."
@@ -2344,4 +2347,7 @@ msgstr "я перестав чути {s} секунд тому — схоже, �
 
 #~ msgid "All imported: {n} notes read."
 #~ msgstr "Усе імпортовано, прочитано нотаток: {n}."
+
+#~ msgid "I cannot hear — macOS gives me only silence from the microphone. Check heare in Privacy & Security → Microphone."
+#~ msgstr "Я не чую — macOS дає мені з мікрофона саму тишу. Перевір heare у «Приватність і безпека → Мікрофон»."
 
