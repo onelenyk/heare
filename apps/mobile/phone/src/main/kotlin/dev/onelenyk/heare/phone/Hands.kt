@@ -4,10 +4,14 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import dev.onelenyk.heare.Done
-import dev.onelenyk.heare.Skill
+import dev.onelenyk.heare.PHONE_SKILLS
+import dev.onelenyk.heare.pick
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -36,7 +40,11 @@ class Hands : AccessibilityService() {
     }
     override fun onInterrupt() {}
 
+    /** When the screen last moved (uptime ms). */
+    @Volatile private var moved = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        moved = SystemClock.uptimeMillis()
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             app = event.packageName?.toString()
         }
@@ -123,12 +131,47 @@ class Hands : AccessibilityService() {
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        // The action's own answer lies mid-transition (false, yet typed):
+        // what counts is what the field holds now.
+        target.refresh()
+        return target.text?.toString() == text
     }
 
-    fun does(name: String, args: JsonObject): Done = when (name) {
+    /** Typing into a field that is still appearing: once more, when it stands. */
+    private suspend fun typedSurely(text: String, field: String?): Boolean {
+        if (typed(text, field)) return true
+        settled()
+        return typed(text, field)
+    }
+
+    /**
+     * Until the screen stops moving: bringalive's waitForIdle. A skill that
+     * reads mid-animation reads the screen that is leaving, and one that
+     * answers mid-animation tells the brain about a screen not there yet.
+     */
+    private suspend fun settled() {
+        val start = SystemClock.uptimeMillis()
+        delay(150)
+        while (SystemClock.uptimeMillis() - start < SETTLE_MS) {
+            if (SystemClock.uptimeMillis() - moved >= QUIET_MS && rootInActiveWindow != null) return
+            delay(50)
+        }
+    }
+
+    private fun front(): String? = rootInActiveWindow?.packageName?.toString() ?: app
+
+    suspend fun does(name: String, args: JsonObject): Done {
+        val read = name in setOf("screen", "active_app", "apps")
+        if (read) settled()
+        val done = act(name, args)
+        if (!read && done.ok) settled()
+        return done
+    }
+
+    private suspend fun act(name: String, args: JsonObject): Done = when (name) {
         "screen" -> Done(true, screen())
-        "active_app" -> Done(true, JsonPrimitive(rootInActiveWindow?.packageName?.toString() ?: app ?: "unknown"))
+        "active_app" -> Done(true, JsonPrimitive(front() ?: "unknown"))
         "apps" -> Done(true, JsonPrimitive(launchable(this).joinToString("\n") { "${it.first}: ${it.second}" }))
         "back" -> said(performGlobalAction(GLOBAL_ACTION_BACK), "went back")
         "home" -> said(performGlobalAction(GLOBAL_ACTION_HOME), "home screen")
@@ -140,19 +183,27 @@ class Hands : AccessibilityService() {
             if (node == null) Done(false, JsonPrimitive("no such element; read the screen again"))
             else said(tap(node), "tapped")
         }
-        "type" -> said(typed(args.text("text").orEmpty(), args.text("field")), "typed")
+        "type" -> said(typedSurely(args.text("text").orEmpty(), args.text("field")), "typed")
         else -> Done(false, JsonPrimitive("no such skill"))
     }
 
-    private fun opened(name: String): Done {
+    private suspend fun opened(name: String): Done {
         val wanted = name.trim()
-        val match = launchable(this).firstOrNull { it.first.equals(wanted, true) || it.second == wanted }
-            ?: launchable(this).firstOrNull { it.first.contains(wanted, true) }
-            ?: return Done(false, JsonPrimitive("no app called $wanted; ask apps"))
+        val match = pick(launchable(this), wanted) ?: return Done(false, JsonPrimitive("no app called $wanted; ask apps"))
         val start = packageManager.getLaunchIntentForPackage(match.second)
             ?: return Done(false, JsonPrimitive("${match.first} cannot be opened"))
+        val before = front()
         startActivity(start.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        return Done(true, JsonPrimitive("opened ${match.first}"))
+        // Said opened only once Android shows it: the next skill reads that app.
+        // An app opens where it was left, and that screen may be another
+        // package's (Settings' search is), so any new front counts, and is named.
+        val shown = withTimeoutOrNull(OPEN_MS) {
+            while (front() != match.second && (front() == before || front() == null)) delay(50)
+            true
+        } == true
+        return if (!shown) Done(false, JsonPrimitive("asked to open ${match.first}, but ${front()} is still in front"))
+        else if (front() == match.second) Done(true, JsonPrimitive("opened ${match.first}"))
+        else Done(true, JsonPrimitive("opened ${match.first}, where it was left: ${front()} in front"))
     }
 
     private fun said(ok: Boolean, what: String) =
@@ -163,6 +214,10 @@ class Hands : AccessibilityService() {
             private set
 
         private const val SCREEN_CHARS = 6_000
+        // Inside the brain's five seconds for a call, with room to answer.
+        private const val SETTLE_MS = 2_000L
+        private const val QUIET_MS = 300L
+        private const val OPEN_MS = 2_500L
 
         /** What the person can open: (label, package), by label. */
         fun launchable(context: Context): List<Pair<String, String>> {
@@ -174,37 +229,7 @@ class Hands : AccessibilityService() {
                 .sortedBy { it.first.lowercase() }
         }
 
-        /** The phone's hands as the brain's model reads them: English, by protocol §6. */
-        val SKILLS: List<Skill> = listOf(
-            skill("screen", "Read what is on the phone's screen now: numbered elements, what each can do", "read"),
-            skill("active_app", "Which app is open on the phone", "read"),
-            skill("apps", "The apps on the phone that can be opened: label and package", "read"),
-            skill("back", "Press back on the phone", "harmless"),
-            skill("home", "Go to the phone's home screen", "harmless"),
-            skill("scroll", "Scroll the list on the phone's screen", "harmless",
-                "direction" to "down or up"),
-            skill("open_app", "Open an app on the phone by its label or package", "change",
-                "name" to "the app's label, as apps lists it", required = listOf("name")),
-            skill("tap", "Tap an element on the phone's screen: by its number from screen, or by its text",
-                "change", "index" to "the element's number from screen", "text" to "text on the element"),
-            skill("type", "Type text into a field on the phone's screen (the focused one, or the one named)",
-                "change", "text" to "what to type", "field" to "text or hint of the field",
-                required = listOf("text")),
-        )
-
-        private fun skill(
-            name: String, about: String, effect: String,
-            vararg params: Pair<String, String>, required: List<String> = emptyList(),
-        ) = Skill(name, about, effect, buildJsonObject {
-            put("type", "object")
-            putJsonObject("properties") {
-                for ((key, what) in params) putJsonObject(key) {
-                    put("type", if (key == "index") "integer" else "string")
-                    put("description", what)
-                }
-            }
-            if (required.isNotEmpty()) putJsonArray("required") { required.forEach { add(JsonPrimitive(it)) } }
-        })
+        val SKILLS = PHONE_SKILLS
     }
 }
 
